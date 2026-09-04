@@ -61,6 +61,15 @@ def workspace_command_tool() -> AgentTool:
             timeout_seconds=timeout_seconds,
             stdin_text=stdin_text,
         )
+        # Foreground execution is a one-shot command. Mirror subprocess.run(input=...)
+        # semantics by closing stdin after the optional payload so programs waiting
+        # for EOF do not hang indefinitely. Background commands intentionally keep
+        # stdin open for write_workspace_process.
+        if started.process.stdin is not None:
+            try:
+                started.process.stdin.close()
+            except OSError:
+                pass
         context.emit(
             AgentEventKind.PROCESS_STARTED,
             {
@@ -81,10 +90,14 @@ def workspace_command_tool() -> AgentTool:
                 },
             )
 
-        snapshot = started.wait(
-            cancel_check=lambda: context.cancelled,
-            on_output=emit_output,
-        )
+        try:
+            snapshot = started.wait(
+                cancel_check=lambda: context.cancelled,
+                on_output=emit_output,
+            )
+        except KeyboardInterrupt:
+            started.terminate_tree()
+            raise
         context.emit(
             AgentEventKind.PROCESS_EXITED,
             {
