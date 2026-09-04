@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from dataclasses import replace
 from pathlib import Path
 
@@ -24,7 +25,7 @@ class SandboxAgentRuntime(DurableAgentRuntime):
         self,
         *args,
         sandbox_manager: SandboxManager | None = None,
-        sandbox_policy: SandboxPolicy | str = SandboxPolicy.AUTO,
+        sandbox_policy: SandboxPolicy | str | None = None,
         **kwargs,
     ) -> None:
         supplied_store = kwargs.get("process_store")
@@ -35,7 +36,10 @@ class SandboxAgentRuntime(DurableAgentRuntime):
             if supplied_store is not None:
                 sandbox_manager = supplied_store.sandbox_manager
             else:
-                sandbox_manager = SandboxManager(policy=sandbox_policy)
+                resolved_policy = sandbox_policy
+                if resolved_policy is None:
+                    resolved_policy = str(os.environ.get("LOOM_SANDBOX_POLICY") or SandboxPolicy.AUTO.value)
+                sandbox_manager = SandboxManager(policy=resolved_policy)
         elif supplied_store is not None and supplied_store.sandbox_manager is not sandbox_manager:
             raise ValueError("sandbox_manager must match the supplied process_store")
 
