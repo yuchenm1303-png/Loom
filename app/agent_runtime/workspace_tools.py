@@ -141,7 +141,7 @@ def workspace_write_tool() -> AgentTool:
         name="write_workspace_text",
         description=(
             "Create or completely replace one UTF-8 text file inside the current workspace. "
-            "This mutating tool requires explicit user approval."
+            "Mutation is controlled by the current session permission mode."
         ),
         input_schema={
             "type": "object",
@@ -200,7 +200,7 @@ def workspace_replace_tool() -> AgentTool:
         name="replace_workspace_text",
         description=(
             "Apply one precise text edit inside a workspace file by replacing an exact old_text block. "
-            "The edit fails if the old block is absent or ambiguous. Requires explicit user approval."
+            "The edit fails if the old block is absent or ambiguous. Mutation follows the current permission mode."
         ),
         input_schema={
             "type": "object",
@@ -301,7 +301,7 @@ def workspace_command_tool() -> AgentTool:
         description=(
             "Run one executable directly (no shell expansion) with argv inside a workspace directory. "
             "Use it for tests, linters, git, compilers, or project commands. API keys/tokens/password-like "
-            "environment variables are stripped. Arbitrary process execution is sensitive and always requires approval."
+            "environment variables are stripped. Process execution is sensitive and follows the current permission mode."
         ),
         input_schema={
             "type": "object",
@@ -331,7 +331,7 @@ def legacy_workspace_write_note_tool() -> AgentTool:
         name="write_workspace_note",
         description=(
             "Compatibility alias for write_workspace_text. Write a UTF-8 file inside the workspace. "
-            "Requires explicit user approval."
+            "Mutation follows the current session permission mode."
         ),
         input_schema=current.input_schema,
         handler=write_note,
