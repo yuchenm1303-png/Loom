@@ -203,3 +203,36 @@ def test_active_goal_can_continue_after_runtime_restart(tmp_path):
     user_messages = [message for message in request.messages if message.role is MessageRole.USER]
     assert "implement durable recovery" in str(user_messages[-1].content)
     assert restarted.get_goal(session.session_id).status is GoalStatus.ACTIVE
+
+
+def test_model_can_complete_goal_and_stop_future_continuations(tmp_path):
+    project = tmp_path / "project"
+    project.mkdir()
+    platform = ScriptedPlatform(
+        [
+            ModelResponse(
+                tool_calls=(
+                    ToolCall(
+                        call_id="goal-complete",
+                        name="mark_thread_goal",
+                        arguments={"status": "complete"},
+                    ),
+                )
+            ),
+            ModelResponse(text="Goal is complete."),
+        ]
+    )
+    store = FileAgentSessionStore(tmp_path / "state")
+    runtime = AgentRuntime(platform=platform, store=store, tools=loom_default_tools())
+    session = runtime.create_session("agent.fast", workspace_dir=project)
+    runtime.set_goal(session.session_id, "finish one durable unit")
+
+    result = runtime.continue_goal(session.session_id, max_turns=3)
+
+    assert result.status is AgentStatus.COMPLETED
+    assert result.final_text == "Goal is complete."
+    assert runtime.get_goal(session.session_id).status is GoalStatus.COMPLETE
+    assert len(platform.requests) == 2
+    assert AgentEventKind.TOOL_APPROVAL_REQUIRED not in [
+        event.kind for event in store.events(session.session_id)
+    ]
