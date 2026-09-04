@@ -1,39 +1,20 @@
 from __future__ import annotations
 
 import os
-import subprocess
 from pathlib import Path
 from typing import Any
 
 from .contracts import ToolEffect
+from .diff_tracker import TurnDiffTracker
+from .patch_tools import apply_patch_tool, get_turn_diff_tool
+from .process_tools import managed_process_tools, workspace_command_tool
 from .tools import AgentTool, ToolContext, ToolRegistry, ToolResult
 
 
 _MAX_WRITE_CHARS = 1_000_000
 _MAX_READ_FILE_BYTES = 1_000_000
 _MAX_SEARCH_RESULTS = 200
-_MAX_COMMAND_OUTPUT_CHARS = 20_000
-_DEFAULT_COMMAND_TIMEOUT = 120
-_MAX_COMMAND_TIMEOUT = 600
-_SECRET_ENV_MARKERS = ("API_KEY", "TOKEN", "SECRET", "PASSWORD", "PASSWD", "PRIVATE_KEY")
 _SKIP_DIR_NAMES = {".git", ".hg", ".svn", "__pycache__", ".venv", "venv", "node_modules"}
-
-
-def _safe_process_environment() -> dict[str, str]:
-    output: dict[str, str] = {}
-    for name, value in os.environ.items():
-        upper = name.upper()
-        if any(marker in upper for marker in _SECRET_ENV_MARKERS):
-            continue
-        output[name] = value
-    return output
-
-
-def _bounded_text(value: str, limit: int = _MAX_COMMAND_OUTPUT_CHARS) -> tuple[str, bool]:
-    text = str(value or "")
-    if len(text) <= limit:
-        return text, False
-    return text[:limit], True
 
 
 def _iter_workspace_files(root: Path):
@@ -44,6 +25,18 @@ def _iter_workspace_files(root: Path):
             path = base / filename
             if not path.is_symlink() and path.is_file():
                 yield path
+
+
+def _record_change(
+    context: ToolContext,
+    relative: str,
+    *,
+    before: str | None,
+    after: str | None,
+) -> None:
+    tracker = context.service("diff_tracker", required=False)
+    if isinstance(tracker, TurnDiffTracker):
+        tracker.record_text_change(relative, before=before, after=after)
 
 
 def workspace_search_tool() -> AgentTool:
@@ -128,9 +121,17 @@ def workspace_write_tool() -> AgentTool:
         if len(text) > _MAX_WRITE_CHARS:
             raise ValueError(f"workspace text exceeds {_MAX_WRITE_CHARS:,} characters")
         target = context.resolve_workspace_path(relative)
+        before = None
+        if target.exists():
+            if not target.is_file():
+                raise ValueError("workspace write target must be a regular file")
+            if target.stat().st_size > _MAX_READ_FILE_BYTES:
+                raise ValueError("existing workspace text file exceeds editable size limit")
+            before = target.read_text(encoding="utf-8")
         target.parent.mkdir(parents=True, exist_ok=True)
         context.raise_if_cancelled()
         target.write_text(text, encoding="utf-8")
+        _record_change(context, relative, before=before, after=text)
         return ToolResult(
             ok=True,
             content=f"Wrote workspace file: {relative}",
@@ -141,7 +142,7 @@ def workspace_write_tool() -> AgentTool:
         name="write_workspace_text",
         description=(
             "Create or completely replace one UTF-8 text file inside the current workspace. "
-            "Mutation is controlled by the current session permission mode."
+            "The mutation is tracked in the current turn diff."
         ),
         input_schema={
             "type": "object",
@@ -186,6 +187,7 @@ def workspace_replace_tool() -> AgentTool:
             raise ValueError(f"updated workspace text exceeds {_MAX_WRITE_CHARS:,} characters")
         context.raise_if_cancelled()
         target.write_text(updated, encoding="utf-8")
+        _record_change(context, relative, before=text, after=updated)
         return ToolResult(
             ok=True,
             content=f"Replaced one exact block in: {relative}",
@@ -199,8 +201,9 @@ def workspace_replace_tool() -> AgentTool:
     return AgentTool(
         name="replace_workspace_text",
         description=(
-            "Apply one precise text edit inside a workspace file by replacing an exact old_text block. "
-            "The edit fails if the old block is absent or ambiguous. Mutation follows the current permission mode."
+            "Compatibility precision edit: replace one exact text block inside a workspace file. "
+            "It fails closed if the old block is absent or ambiguous and is tracked in the turn diff. "
+            "Prefer apply_patch for multi-file edits."
         ),
         input_schema={
             "type": "object",
@@ -217,108 +220,6 @@ def workspace_replace_tool() -> AgentTool:
     )
 
 
-def workspace_command_tool() -> AgentTool:
-    def run_command(context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
-        context.raise_if_cancelled()
-        raw_argv = arguments["argv"]
-        if not isinstance(raw_argv, list) or not raw_argv:
-            raise ValueError("argv must be a non-empty array")
-        argv = [str(value) for value in raw_argv]
-        if len(argv) > 256:
-            raise ValueError("argv contains too many entries")
-        if any(not value for value in argv):
-            raise ValueError("argv entries must not be empty")
-        if any(len(value) > 16_000 for value in argv):
-            raise ValueError("an argv entry is too long")
-
-        relative_cwd = str(arguments.get("cwd") or ".").strip() or "."
-        cwd = context.resolve_workspace_path(relative_cwd)
-        if not cwd.is_dir():
-            raise ValueError("command cwd must be a workspace directory")
-
-        timeout_seconds = int(arguments.get("timeout_seconds") or _DEFAULT_COMMAND_TIMEOUT)
-        if not 1 <= timeout_seconds <= _MAX_COMMAND_TIMEOUT:
-            raise ValueError(
-                f"timeout_seconds must be within 1..{_MAX_COMMAND_TIMEOUT}"
-            )
-        stdin_text = str(arguments.get("stdin") or "")
-        if len(stdin_text) > 256_000:
-            raise ValueError("stdin exceeds 256,000 characters")
-
-        try:
-            completed = subprocess.run(
-                argv,
-                cwd=str(cwd),
-                input=stdin_text if stdin_text else None,
-                capture_output=True,
-                text=True,
-                errors="replace",
-                timeout=timeout_seconds,
-                shell=False,
-                env=_safe_process_environment(),
-                check=False,
-            )
-        except FileNotFoundError as exc:
-            return ToolResult(ok=False, content=f"Executable not found: {argv[0]}", data={"error": str(exc)})
-        except subprocess.TimeoutExpired as exc:
-            stdout, stdout_truncated = _bounded_text(str(exc.stdout or ""))
-            stderr, stderr_truncated = _bounded_text(str(exc.stderr or ""))
-            return ToolResult(
-                ok=False,
-                content=f"Command timed out after {timeout_seconds} seconds.",
-                data={
-                    "argv": argv,
-                    "cwd": relative_cwd,
-                    "timeout_seconds": timeout_seconds,
-                    "stdout": stdout,
-                    "stderr": stderr,
-                    "output_truncated": stdout_truncated or stderr_truncated,
-                },
-            )
-
-        stdout, stdout_truncated = _bounded_text(completed.stdout)
-        stderr, stderr_truncated = _bounded_text(completed.stderr)
-        content_parts = [f"exit={completed.returncode}"]
-        if stdout:
-            content_parts.append(f"stdout:\n{stdout}")
-        if stderr:
-            content_parts.append(f"stderr:\n{stderr}")
-        return ToolResult(
-            ok=completed.returncode == 0,
-            content="\n".join(content_parts),
-            data={
-                "argv": argv,
-                "cwd": relative_cwd,
-                "returncode": completed.returncode,
-                "stdout": stdout,
-                "stderr": stderr,
-                "output_truncated": stdout_truncated or stderr_truncated,
-            },
-        )
-
-    return AgentTool(
-        name="run_workspace_command",
-        description=(
-            "Run one executable directly (no shell expansion) with argv inside a workspace directory. "
-            "Use it for tests, linters, git, compilers, or project commands. API keys/tokens/password-like "
-            "environment variables are stripped. Process execution is sensitive and follows the current permission mode."
-        ),
-        input_schema={
-            "type": "object",
-            "properties": {
-                "argv": {"type": "array", "items": {"type": "string"}},
-                "cwd": {"type": "string"},
-                "stdin": {"type": "string"},
-                "timeout_seconds": {"type": "integer"},
-            },
-            "required": ["argv"],
-            "additionalProperties": False,
-        },
-        handler=run_command,
-        effect=ToolEffect.SENSITIVE,
-    )
-
-
 def legacy_workspace_write_note_tool() -> AgentTool:
     """Compatibility alias kept for sessions created by Loom 0.1.0."""
 
@@ -330,8 +231,7 @@ def legacy_workspace_write_note_tool() -> AgentTool:
     return AgentTool(
         name="write_workspace_note",
         description=(
-            "Compatibility alias for write_workspace_text. Write a UTF-8 file inside the workspace. "
-            "Mutation follows the current session permission mode."
+            "Compatibility alias for write_workspace_text. Write a UTF-8 file inside the workspace."
         ),
         input_schema=current.input_schema,
         handler=write_note,
@@ -346,7 +246,10 @@ def loom_default_tools() -> ToolRegistry:
     registry.register(workspace_search_tool())
     registry.register(workspace_write_tool())
     registry.register(workspace_replace_tool())
-    registry.register(workspace_command_tool())
+    registry.register(apply_patch_tool())
+    registry.register(get_turn_diff_tool())
+    for tool in managed_process_tools():
+        registry.register(tool)
     registry.register(legacy_workspace_write_note_tool())
     return registry
 
