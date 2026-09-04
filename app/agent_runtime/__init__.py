@@ -1,3 +1,10 @@
+from .agent_control import AgentControl, AgentExecutionSnapshot
+from .agent_graph import (
+    AgentGraphStore,
+    AgentHistoryMode,
+    AgentNode,
+    AgentRelationStatus,
+)
 from .builtin_tools import builtin_read_only_tools
 from .context_runtime import ContextAgentRuntime
 from .context_state import (
@@ -28,6 +35,8 @@ from .durable_state import (
     ThreadGoal,
 )
 from .history import HistoryRepair, repair_tool_history
+from .multi_agent_runtime import MultiAgentRuntime
+from .multi_agent_tools import multi_agent_tools
 from .orchestrator import PreparedToolCall, ToolOrchestrator
 from .patch_runtime import ApplyPatchRuntime, PatchApplyResult, PatchPlan, PlannedFileChange
 from .permissions import (
@@ -70,15 +79,21 @@ from .tools import (
 )
 
 # Runtime v2 default stack:
-# Core -> Durable -> Sandbox -> Context.
+# Core -> Durable -> Sandbox -> Context -> Multi-Agent.
 # Lower layers remain exported for embedders that intentionally need them.
-AgentRuntime = ContextAgentRuntime
+AgentRuntime = MultiAgentRuntime
 
 __all__ = [
+    "AgentControl",
     "AgentEvent",
     "AgentEventKind",
+    "AgentExecutionSnapshot",
+    "AgentGraphStore",
+    "AgentHistoryMode",
     "AgentLimits",
     "AgentModelPlatform",
+    "AgentNode",
+    "AgentRelationStatus",
     "AgentRunResult",
     "AgentRuntime",
     "AgentSession",
@@ -100,6 +115,7 @@ __all__ = [
     "GoalStatus",
     "HistoryRepair",
     "ManagedProcess",
+    "MultiAgentRuntime",
     "PatchApplyResult",
     "PatchPlan",
     "PendingToolApproval",
@@ -139,6 +155,7 @@ __all__ = [
     "build_world_state_envelope",
     "builtin_read_only_tools",
     "compaction_split_index",
+    "multi_agent_tools",
     "permission_preset",
     "repair_tool_history",
     "validate_tool_arguments",
