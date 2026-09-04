@@ -21,6 +21,11 @@ class AgentStatus(str, Enum):
 class AgentEventKind(str, Enum):
     SESSION_CREATED = "session_created"
     PERMISSION_CHANGED = "permission_changed"
+    GOAL_UPDATED = "goal_updated"
+    QUEUE_ENQUEUED = "queue_enqueued"
+    QUEUE_DISPATCHED = "queue_dispatched"
+    QUEUE_REMOVED = "queue_removed"
+    HISTORY_REPAIRED = "history_repaired"
     TURN_STARTED = "turn_started"
     USER_MESSAGE = "user_message"
     MODEL_REQUESTED = "model_requested"

@@ -11,6 +11,15 @@ from .contracts import (
     ToolEffect,
 )
 from .diff_tracker import DiffSnapshot, DiffTrackerRegistry, TurnDiffTracker
+from .durable_runtime import DurableAgentRuntime
+from .durable_state import (
+    DurableThreadStateStore,
+    GoalStatus,
+    QueueItemState,
+    QueuedTurn,
+    ThreadGoal,
+)
+from .history import HistoryRepair, repair_tool_history
 from .orchestrator import PreparedToolCall, ToolOrchestrator
 from .patch_runtime import ApplyPatchRuntime, PatchApplyResult, PatchPlan, PlannedFileChange
 from .permissions import (
@@ -23,7 +32,12 @@ from .permissions import (
     permission_preset,
 )
 from .process_runtime import ManagedProcess, ProcessSnapshot, ProcessStore
-from .runtime import AgentModelPlatform, AgentRuntime, CancellationToken, DEFAULT_AGENT_SYSTEM_PROMPT
+from .runtime import (
+    AgentModelPlatform,
+    AgentRuntime as CoreAgentRuntime,
+    CancellationToken,
+    DEFAULT_AGENT_SYSTEM_PROMPT,
+)
 from .step import StepContext, WorldStateSnapshot
 from .storage import FileAgentSessionStore
 from .tools import (
@@ -38,6 +52,11 @@ from .tools import (
     validate_tool_arguments,
 )
 
+# Runtime v2 durability is now the package default. CoreAgentRuntime remains
+# exported for embedders that explicitly want the execution loop without
+# SQLite goal/queue state or automatic history repair.
+AgentRuntime = DurableAgentRuntime
+
 __all__ = [
     "AgentEvent",
     "AgentEventKind",
@@ -51,10 +70,15 @@ __all__ = [
     "ApplyPatchRuntime",
     "ApprovalPolicy",
     "CancellationToken",
+    "CoreAgentRuntime",
     "DEFAULT_AGENT_SYSTEM_PROMPT",
     "DiffSnapshot",
     "DiffTrackerRegistry",
+    "DurableAgentRuntime",
+    "DurableThreadStateStore",
     "FileAgentSessionStore",
+    "GoalStatus",
+    "HistoryRepair",
     "ManagedProcess",
     "PatchApplyResult",
     "PatchPlan",
@@ -69,7 +93,10 @@ __all__ = [
     "PreparedToolCall",
     "ProcessSnapshot",
     "ProcessStore",
+    "QueueItemState",
+    "QueuedTurn",
     "StepContext",
+    "ThreadGoal",
     "ToolContext",
     "ToolEffect",
     "ToolExposure",
@@ -83,5 +110,6 @@ __all__ = [
     "WorldStateSnapshot",
     "builtin_read_only_tools",
     "permission_preset",
+    "repair_tool_history",
     "validate_tool_arguments",
 ]

@@ -12,6 +12,7 @@ from app.agent_runtime import (
     AgentRuntime,
     AgentStatus,
     FileAgentSessionStore,
+    GoalStatus,
     PermissionMode,
 )
 from app.agent_runtime.workspace_tools import loom_default_tools
@@ -167,6 +168,10 @@ def _event_printer(event: AgentEvent) -> None:
         print(f"  ✗ {data.get('tool', '')}: {str(data.get('content') or '')[:240]}", flush=True)
     elif event.kind is AgentEventKind.TOOL_DENIED and data.get("source") == "permission":
         print(f"  ⛔ {data.get('tool', '')}: blocked by permissions", flush=True)
+    elif event.kind is AgentEventKind.QUEUE_DISPATCHED:
+        print(f"  ↪ queued turn {data.get('queue_id', '')}", flush=True)
+    elif event.kind is AgentEventKind.HISTORY_REPAIRED:
+        print("  ↻ repaired interrupted tool history", flush=True)
 
 
 def _finish_result(runtime: AgentRuntime, result):
@@ -186,6 +191,14 @@ def _finish_result(runtime: AgentRuntime, result):
     return result
 
 
+def _print_run_result(result) -> None:
+    if result.final_text:
+        print(f"\nLoom> {result.final_text}")
+    if result.status not in {AgentStatus.COMPLETED, AgentStatus.CANCELLED}:
+        detail = result.error or result.status.value
+        print(f"\n[{result.status.value}] {detail}", file=sys.stderr)
+
+
 def _run_prompt(runtime: AgentRuntime, session_id: str, prompt: str):
     try:
         result = runtime.start_turn(session_id, prompt)
@@ -193,11 +206,7 @@ def _run_prompt(runtime: AgentRuntime, session_id: str, prompt: str):
     except KeyboardInterrupt:
         print("\nStopping current turn…", file=sys.stderr)
         result = runtime.cancel(session_id)
-    if result.final_text:
-        print(f"\nLoom> {result.final_text}")
-    if result.status not in {AgentStatus.COMPLETED, AgentStatus.CANCELLED}:
-        detail = result.error or result.status.value
-        print(f"\n[{result.status.value}] {detail}", file=sys.stderr)
+    _print_run_result(result)
     return result
 
 
@@ -224,19 +233,51 @@ def _list_sessions(store: FileAgentSessionStore) -> None:
         )
 
 
+def _show_goal(runtime: AgentRuntime, session_id: str) -> None:
+    goal = runtime.get_goal(session_id)
+    if goal is None:
+        print("No durable goal.")
+        return
+    budget = "unlimited" if goal.token_budget is None else str(goal.token_budget)
+    print(f"Goal:    {goal.objective}")
+    print(f"Status:  {goal.status.value}")
+    print(f"Tokens:  {goal.tokens_used}/{budget}")
+
+
+def _show_queue(runtime: AgentRuntime, session_id: str) -> None:
+    items = runtime.list_queued_turns(session_id)
+    if not items:
+        print("Queue is empty.")
+        return
+    for index, item in enumerate(items, start=1):
+        preview = item.text.replace("\n", " ")[:100]
+        print(f"{index:>2}. {item.queue_id}  {item.state.value:10}  {preview}")
+
+
 def _print_help() -> None:
     print(
         "Commands:\n"
-        "  /new [path]          create a fresh session, reusing current workspace unless path is given\n"
-        "  /sessions            list saved sessions\n"
-        "  /use <session-id>    switch to a saved session\n"
-        "  /session             show current session id\n"
-        "  /workspace           show current workspace path\n"
-        "  /permissions         show current permission mode\n"
-        "  /permissions <mode>  set read-only / approval / workspace / full-access\n"
-        "  /usage               show current token usage\n"
-        "  /help                show this help\n"
-        "  /quit                exit Loom\n"
+        "  /new [path]             create a fresh session, reusing current workspace unless path is given\n"
+        "  /sessions               list saved sessions\n"
+        "  /use <session-id>       switch to a saved session\n"
+        "  /session                show current session id\n"
+        "  /workspace              show current workspace path\n"
+        "  /permissions            show current permission mode\n"
+        "  /permissions <mode>     set read-only / approval / workspace / full-access\n"
+        "  /goal                   show durable goal\n"
+        "  /goal set <objective>   create/replace the active durable goal\n"
+        "  /goal budget <n> <obj>  create goal with a model-token budget\n"
+        "  /goal pause|resume      pause/resume goal continuation\n"
+        "  /goal blocked|complete  mark the goal blocked/complete\n"
+        "  /goal continue [n]      run up to n continuation turns (default 1)\n"
+        "  /goal clear             remove the durable goal\n"
+        "  /queue                  list queued future turns\n"
+        "  /queue add <text>       append a durable future turn\n"
+        "  /queue run [n]          synchronously drain queued turns\n"
+        "  /queue remove <id>      remove one queued turn\n"
+        "  /usage                  show current token usage\n"
+        "  /help                   show this help\n"
+        "  /quit                   exit Loom\n"
         "Ctrl+C stops the active turn; Ctrl+D exits the prompt."
     )
 
@@ -315,6 +356,88 @@ def _interactive(runtime: AgentRuntime, store: FileAgentSessionStore, session_id
                 print(f"Permissions: {session.permission_mode.value}")
             except (ValueError, RuntimeError) as exc:
                 print(f"Cannot change permissions: {exc}", file=sys.stderr)
+            continue
+        if text == "/goal":
+            _show_goal(runtime, session_id)
+            continue
+        if text.startswith("/goal set "):
+            objective = text[len("/goal set "):].strip()
+            try:
+                runtime.set_goal(session_id, objective)
+                _show_goal(runtime, session_id)
+            except (ValueError, RuntimeError) as exc:
+                print(f"Cannot set goal: {exc}", file=sys.stderr)
+            continue
+        if text.startswith("/goal budget "):
+            rest = text[len("/goal budget "):].strip()
+            pieces = rest.split(maxsplit=1)
+            if len(pieces) != 2:
+                print("Usage: /goal budget <tokens> <objective>", file=sys.stderr)
+                continue
+            try:
+                budget = int(pieces[0])
+                runtime.set_goal(session_id, pieces[1], token_budget=budget)
+                _show_goal(runtime, session_id)
+            except (ValueError, RuntimeError) as exc:
+                print(f"Cannot set goal: {exc}", file=sys.stderr)
+            continue
+        if text in {"/goal pause", "/goal resume", "/goal blocked", "/goal complete"}:
+            status = {
+                "/goal pause": GoalStatus.PAUSED,
+                "/goal resume": GoalStatus.ACTIVE,
+                "/goal blocked": GoalStatus.BLOCKED,
+                "/goal complete": GoalStatus.COMPLETE,
+            }[text]
+            try:
+                runtime.set_goal_status(session_id, status)
+                _show_goal(runtime, session_id)
+            except (KeyError, ValueError, RuntimeError) as exc:
+                print(f"Cannot update goal: {exc}", file=sys.stderr)
+            continue
+        if text == "/goal clear":
+            runtime.clear_goal(session_id)
+            print("Goal cleared.")
+            continue
+        if text == "/goal continue" or text.startswith("/goal continue "):
+            raw = text[len("/goal continue"):].strip()
+            try:
+                turns = int(raw) if raw else 1
+                result = runtime.continue_goal(session_id, max_turns=turns)
+                result = _finish_result(runtime, result)
+                _print_run_result(result)
+            except (ValueError, RuntimeError) as exc:
+                print(f"Cannot continue goal: {exc}", file=sys.stderr)
+            continue
+        if text == "/queue":
+            _show_queue(runtime, session_id)
+            continue
+        if text.startswith("/queue add "):
+            body = text[len("/queue add "):].strip()
+            try:
+                item = runtime.enqueue_turn(session_id, body)
+                print(f"Queued: {item.queue_id}")
+            except (ValueError, RuntimeError) as exc:
+                print(f"Cannot queue turn: {exc}", file=sys.stderr)
+            continue
+        if text == "/queue run" or text.startswith("/queue run "):
+            raw = text[len("/queue run"):].strip()
+            try:
+                turns = int(raw) if raw else None
+                result = runtime.run_queued(session_id, max_turns=turns)
+                if result is None:
+                    print("Queue is empty.")
+                else:
+                    result = _finish_result(runtime, result)
+                    _print_run_result(result)
+            except (ValueError, RuntimeError) as exc:
+                print(f"Cannot run queue: {exc}", file=sys.stderr)
+            continue
+        if text.startswith("/queue remove "):
+            queue_id = text[len("/queue remove "):].strip()
+            if runtime.remove_queued_turn(session_id, queue_id):
+                print("Queued turn removed.")
+            else:
+                print("Queued turn not found.", file=sys.stderr)
             continue
         if text == "/usage":
             usage = runtime.get_session(session_id).usage
