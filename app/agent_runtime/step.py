@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 from .contracts import PermissionMode
 from .permissions import ApprovalPolicy, PermissionProfile, permission_preset
+from .sandbox import SandboxSnapshot
 from .tools import ToolRouter
 
 
@@ -13,6 +14,7 @@ class WorldStateSnapshot:
     profile_id: str
     permission_mode: PermissionMode
     tool_names: tuple[str, ...]
+    sandbox: SandboxSnapshot | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,6 +40,7 @@ class StepContext:
         profile_id: str,
         permission_mode: PermissionMode | str,
         tool_router: ToolRouter,
+        sandbox_snapshot: SandboxSnapshot | None = None,
     ) -> "StepContext":
         preset = permission_preset(permission_mode)
         world_state = WorldStateSnapshot(
@@ -45,6 +48,7 @@ class StepContext:
             profile_id=str(profile_id),
             permission_mode=preset.mode,
             tool_names=tuple(tool.name for tool in tool_router.all()),
+            sandbox=sandbox_snapshot,
         )
         return cls(
             step_id=str(step_id),
