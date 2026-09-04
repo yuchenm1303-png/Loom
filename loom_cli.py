@@ -6,7 +6,14 @@ import os
 import sys
 from pathlib import Path
 
-from app.agent_runtime import AgentEvent, AgentEventKind, AgentRuntime, AgentStatus, FileAgentSessionStore
+from app.agent_runtime import (
+    AgentEvent,
+    AgentEventKind,
+    AgentRuntime,
+    AgentStatus,
+    FileAgentSessionStore,
+    PermissionMode,
+)
 from app.agent_runtime.workspace_tools import loom_default_tools
 from app.ai import (
     AGENT_FAST_ROLE,
@@ -123,12 +130,26 @@ def _resolve_workspace(value: str | Path) -> Path:
     return workspace
 
 
-def _create_workspace_session(runtime: AgentRuntime, workspace: str | Path):
+def _resolve_new_permission_mode(args: argparse.Namespace) -> PermissionMode:
+    raw = str(args.permission_mode or _first_env("LOOM_PERMISSION_MODE") or PermissionMode.APPROVAL.value)
+    try:
+        return PermissionMode(raw)
+    except ValueError as exc:
+        choices = ", ".join(mode.value for mode in PermissionMode)
+        raise SystemExit(f"Invalid permission mode {raw!r}; choose one of: {choices}") from exc
+
+
+def _create_workspace_session(
+    runtime: AgentRuntime,
+    workspace: str | Path,
+    permission_mode: PermissionMode | str,
+):
     root = _resolve_workspace(workspace)
-    session = runtime.create_session(AGENT_FAST_ROLE.role_id)
-    session.workspace_dir = str(root)
-    runtime.store.save(session)
-    return session
+    return runtime.create_session(
+        AGENT_FAST_ROLE.role_id,
+        workspace_dir=root,
+        permission_mode=permission_mode,
+    )
 
 
 def _event_printer(event: AgentEvent) -> None:
@@ -144,6 +165,8 @@ def _event_printer(event: AgentEvent) -> None:
         print(f"  ✓ {data.get('tool', '')}: {str(data.get('content') or '')[:240]}", flush=True)
     elif event.kind is AgentEventKind.TOOL_FAILED:
         print(f"  ✗ {data.get('tool', '')}: {str(data.get('content') or '')[:240]}", flush=True)
+    elif event.kind is AgentEventKind.TOOL_DENIED and data.get("source") == "permission":
+        print(f"  ⛔ {data.get('tool', '')}: blocked by permissions", flush=True)
 
 
 def _finish_result(runtime: AgentRuntime, result):
@@ -152,6 +175,7 @@ def _finish_result(runtime: AgentRuntime, result):
         print("\nApproval required")
         print(f"  tool:   {pending.tool_name}")
         print(f"  effect: {pending.effect.value}")
+        print(f"  reason: {pending.reason}")
         print(json.dumps(pending.arguments, ensure_ascii=False, indent=2))
         answer = input("Approve this tool call? [y/N] ").strip().casefold()
         result = runtime.resume_approval(
@@ -195,6 +219,7 @@ def _list_sessions(store: FileAgentSessionStore) -> None:
     for session in rows[:30]:
         print(
             f"{session.session_id}  {session.status.value:16}  "
+            f"permissions={session.permission_mode.value:11}  "
             f"tokens={session.usage.total_tokens:<8}  {session.updated_at}  {session.workspace_dir}"
         )
 
@@ -207,6 +232,8 @@ def _print_help() -> None:
         "  /use <session-id>    switch to a saved session\n"
         "  /session             show current session id\n"
         "  /workspace           show current workspace path\n"
+        "  /permissions         show current permission mode\n"
+        "  /permissions <mode>  set read-only / approval / workspace / full-access\n"
         "  /usage               show current token usage\n"
         "  /help                show this help\n"
         "  /quit                exit Loom\n"
@@ -217,8 +244,9 @@ def _print_help() -> None:
 def _interactive(runtime: AgentRuntime, store: FileAgentSessionStore, session_id: str) -> int:
     session = runtime.get_session(session_id)
     print("Loom interactive agent")
-    print(f"Session:   {session_id}")
-    print(f"Workspace: {session.workspace_dir}")
+    print(f"Session:     {session_id}")
+    print(f"Workspace:   {session.workspace_dir}")
+    print(f"Permissions: {session.permission_mode.value}")
     print("Type /help for commands.\n")
     while True:
         try:
@@ -238,16 +266,21 @@ def _interactive(runtime: AgentRuntime, store: FileAgentSessionStore, session_id
             continue
         if text == "/new" or text.startswith("/new "):
             supplied = text[4:].strip()
-            current_workspace = runtime.get_session(session_id).workspace_dir
-            workspace = supplied or current_workspace
+            current = runtime.get_session(session_id)
+            workspace = supplied or current.workspace_dir
             try:
-                session = _create_workspace_session(runtime, workspace)
-            except SystemExit as exc:
+                session = _create_workspace_session(
+                    runtime,
+                    workspace,
+                    current.permission_mode,
+                )
+            except (SystemExit, ValueError) as exc:
                 print(str(exc), file=sys.stderr)
                 continue
             session_id = session.session_id
             print(f"New session: {session_id}")
             print(f"Workspace:   {session.workspace_dir}")
+            print(f"Permissions: {session.permission_mode.value}")
             continue
         if text == "/sessions":
             _list_sessions(store)
@@ -262,6 +295,7 @@ def _interactive(runtime: AgentRuntime, store: FileAgentSessionStore, session_id
                 session_id = candidate
                 print(f"Using session: {session_id}")
                 print(f"Workspace:     {session.workspace_dir}")
+                print(f"Permissions:   {session.permission_mode.value}")
             except Exception as exc:
                 print(f"Cannot load session: {exc}", file=sys.stderr)
             continue
@@ -270,6 +304,17 @@ def _interactive(runtime: AgentRuntime, store: FileAgentSessionStore, session_id
             continue
         if text == "/workspace":
             print(runtime.get_session(session_id).workspace_dir)
+            continue
+        if text == "/permissions":
+            print(runtime.get_session(session_id).permission_mode.value)
+            continue
+        if text.startswith("/permissions "):
+            value = text[len("/permissions "):].strip()
+            try:
+                session = runtime.set_permission_mode(session_id, PermissionMode(value))
+                print(f"Permissions: {session.permission_mode.value}")
+            except (ValueError, RuntimeError) as exc:
+                print(f"Cannot change permissions: {exc}", file=sys.stderr)
             continue
         if text == "/usage":
             usage = runtime.get_session(session_id).usage
@@ -293,6 +338,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="workspace for a new session; defaults to the current directory",
     )
     parser.add_argument("--session", help="resume an existing Loom session")
+    parser.add_argument(
+        "--permission-mode",
+        choices=[mode.value for mode in PermissionMode],
+        help="permission preset for a new session, or explicit override when resuming",
+    )
     parser.add_argument("--timeout", type=float, default=120.0)
     parser.add_argument("--quiet-events", action="store_true")
     return parser
@@ -312,14 +362,21 @@ def main(argv: list[str] | None = None) -> int:
         if session.status is AgentStatus.RUNNING:
             runtime.recover_interrupted(args.session)
             session = runtime.get_session(args.session)
+        if args.permission_mode:
+            session = runtime.set_permission_mode(args.session, PermissionMode(args.permission_mode))
         session_id = args.session
     else:
-        session = _create_workspace_session(runtime, args.workspace or Path.cwd())
+        session = _create_workspace_session(
+            runtime,
+            args.workspace or Path.cwd(),
+            _resolve_new_permission_mode(args),
+        )
         session_id = session.session_id
 
     session = runtime.get_session(session_id)
     print(f"Loom · {model} · session {session_id}")
     print(f"Workspace · {session.workspace_dir}")
+    print(f"Permissions · {session.permission_mode.value}")
     if args.prompt:
         result = _run_prompt(runtime, session_id, " ".join(args.prompt))
         return 0 if result.status is AgentStatus.COMPLETED else 1
