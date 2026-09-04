@@ -18,8 +18,10 @@ from .contracts import (
     PendingToolApproval,
     PermissionMode,
 )
+from .diff_tracker import DiffTrackerRegistry
 from .orchestrator import PreparedToolCall, ToolOrchestrator
 from .permissions import PermissionDecision
+from .process_runtime import ProcessStore
 from .step import StepContext
 from .storage import FileAgentSessionStore, utc_now
 from .tools import ToolContext, ToolPolicy, ToolRegistry, ToolResult
@@ -54,13 +56,12 @@ EventListener = Callable[[AgentEvent], None]
 
 
 class AgentRuntime:
-    """Durable turn/tool harness over the provider-neutral AIPlatform.
+    """Durable tool-using Agent runtime.
 
-    Runtime v2 introduces a frozen per-sampling ``StepContext`` plus a central
-    ``ToolOrchestrator``. Permission profiles describe what a session may do;
-    approval policy is evaluated separately. Durable state contains observable
-    messages/events only; private model chain-of-thought is neither requested nor
-    persisted.
+    Each model sampling step receives a frozen ``StepContext``. Every tool call
+    crosses ``ToolOrchestrator`` before execution. Runtime-owned services such as
+    managed processes and turn diffs are injected into the tool context rather
+    than hidden in individual tool modules.
     """
 
     def __init__(
@@ -73,6 +74,8 @@ class AgentRuntime:
         limits: AgentLimits | None = None,
         default_permission_mode: PermissionMode | str = PermissionMode.APPROVAL,
         orchestrator: ToolOrchestrator | None = None,
+        process_store: ProcessStore | None = None,
+        diff_trackers: DiffTrackerRegistry | None = None,
     ) -> None:
         self.platform = platform
         self.store = store
@@ -81,11 +84,16 @@ class AgentRuntime:
         self.limits = limits or AgentLimits()
         self.default_permission_mode = PermissionMode(default_permission_mode)
         self.orchestrator = orchestrator or ToolOrchestrator()
+        self.process_store = process_store or ProcessStore()
+        self.diff_trackers = diff_trackers or DiffTrackerRegistry()
         self._listeners: list[EventListener] = []
         self._session_locks: dict[str, threading.RLock] = {}
         self._session_locks_guard = threading.Lock()
         self._active_tokens: dict[str, CancellationToken] = {}
         self._active_tokens_guard = threading.Lock()
+
+    def close(self) -> None:
+        self.process_store.terminate_all()
 
     def subscribe(self, listener: EventListener) -> None:
         if not callable(listener):
@@ -153,6 +161,11 @@ class AgentRuntime:
             previous = session.permission_mode
             if previous is resolved:
                 return session
+            # Loom does not yet have an OS sandbox capable of retroactively
+            # constraining an already-running process. Kill stale terminals on
+            # any permission transition instead of pretending the new profile
+            # was applied to them.
+            self.process_store.terminate_session(session.session_id)
             session.permission_mode = resolved
             self._record(
                 session,
@@ -180,6 +193,7 @@ class AgentRuntime:
             session.pending_approval = None
             session.final_text = ""
             session.error = ""
+            self.diff_trackers.for_turn(session.session_id, turn_id)
             session.messages.append(AIMessage(role=MessageRole.USER, content=text))
             self._record(
                 session,
@@ -285,6 +299,9 @@ class AgentRuntime:
             session = self.store.load(session_id)
             if session.status is AgentStatus.RUNNING:
                 session.status = AgentStatus.INTERRUPTED
+                session.pending_approval = None
+                session.pending_tool_calls.clear()
+                session.pending_step_id = ""
                 session.error = "Agent process stopped before the active turn reached a durable terminal state."
                 self._record(session, AgentEventKind.TURN_INTERRUPTED, data={"error": session.error})
             return self._result(session)
@@ -387,10 +404,15 @@ class AgentRuntime:
                 session.status = AgentStatus.COMPLETED
                 session.final_text = response.text
                 session.error = ""
+                diff = self.diff_trackers.snapshot(session.session_id, session.current_turn_id)
                 self._record(
                     session,
                     AgentEventKind.TURN_COMPLETED,
-                    data={"text": response.text},
+                    data={
+                        "text": response.text,
+                        "diff_revision": diff.revision,
+                        "changed_paths": list(diff.paths),
+                    },
                 )
                 return self._result(session)
         except Exception as exc:
@@ -527,11 +549,19 @@ class AgentRuntime:
             AgentEventKind.TOOL_STARTED,
             data={"call_id": call.call_id, "tool": call.name, "step_id": step.step_id},
         )
+        tracker = self.diff_trackers.for_turn(session.session_id, session.current_turn_id)
+        diff_revision_before = tracker.revision
         context = ToolContext(
             session_id=session.session_id,
             turn_id=session.current_turn_id,
             workspace=Path(step.world_state.workspace_dir),
+            permission_mode=session.permission_mode.value,
             is_cancelled=lambda: token.cancelled,
+            services={
+                "process_store": self.process_store,
+                "diff_tracker": tracker,
+            },
+            emit_event=lambda kind, data: self._record(session, kind, data=data),
         )
         try:
             result = tool.handler(context, call.arguments)
@@ -539,6 +569,19 @@ class AgentRuntime:
                 raise TypeError("agent tool handler must return ToolResult")
         except Exception as exc:
             result = ToolResult(ok=False, content=f"{type(exc).__name__}: {exc}")
+
+        if tracker.revision != diff_revision_before:
+            snapshot = tracker.snapshot(max_chars=self.limits.max_tool_result_chars)
+            self._record(
+                session,
+                AgentEventKind.TURN_DIFF_UPDATED,
+                data={
+                    "revision": snapshot.revision,
+                    "paths": list(snapshot.paths),
+                    "diff": snapshot.diff,
+                    "truncated": snapshot.truncated,
+                },
+            )
         self._append_tool_result(session, call, result, failed=not result.ok)
         if self._cancel_if_requested(session, token):
             return False
