@@ -1,4 +1,12 @@
 from .builtin_tools import builtin_read_only_tools
+from .context_runtime import ContextAgentRuntime
+from .context_state import (
+    ContextCheckpoint,
+    ContextCheckpointStore,
+    WorldStateEnvelope,
+    build_world_state_envelope,
+    compaction_split_index,
+)
 from .contracts import (
     AgentEvent,
     AgentEventKind,
@@ -61,10 +69,10 @@ from .tools import (
     validate_tool_arguments,
 )
 
-# Runtime v2 durability plus explicit sandbox planning is now the package
-# default. CoreAgentRuntime and DurableAgentRuntime remain exported for embedders
-# that intentionally want a lower-level layer.
-AgentRuntime = SandboxAgentRuntime
+# Runtime v2 default stack:
+# Core -> Durable -> Sandbox -> Context.
+# Lower layers remain exported for embedders that intentionally need them.
+AgentRuntime = ContextAgentRuntime
 
 __all__ = [
     "AgentEvent",
@@ -79,6 +87,9 @@ __all__ = [
     "ApplyPatchRuntime",
     "ApprovalPolicy",
     "CancellationToken",
+    "ContextAgentRuntime",
+    "ContextCheckpoint",
+    "ContextCheckpointStore",
     "CoreAgentRuntime",
     "DEFAULT_AGENT_SYSTEM_PROMPT",
     "DiffSnapshot",
@@ -123,8 +134,11 @@ __all__ = [
     "ToolResult",
     "ToolRouter",
     "TurnDiffTracker",
+    "WorldStateEnvelope",
     "WorldStateSnapshot",
+    "build_world_state_envelope",
     "builtin_read_only_tools",
+    "compaction_split_index",
     "permission_preset",
     "repair_tool_history",
     "validate_tool_arguments",
