@@ -5,16 +5,17 @@ import re
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Mapping
 
 from app.ai import ToolDefinition
 
-from .contracts import ToolEffect
+from .contracts import AgentEventKind, ToolEffect
 
 
 _TOOL_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]{0,127}$")
 ToolHandler = Callable[["ToolContext", dict[str, Any]], "ToolResult"]
 CancelCheck = Callable[[], bool]
+EventEmitter = Callable[[AgentEventKind, dict[str, object]], None]
 
 
 def _never_cancelled() -> bool:
@@ -33,7 +34,10 @@ class ToolContext:
     session_id: str
     turn_id: str
     workspace: Path
+    permission_mode: str = "approval"
     is_cancelled: CancelCheck = _never_cancelled
+    services: Mapping[str, Any] = field(default_factory=dict)
+    emit_event: EventEmitter | None = None
 
     @property
     def cancelled(self) -> bool:
@@ -54,6 +58,19 @@ class ToolContext:
         except ValueError as exc:
             raise ValueError("tool path escapes the agent workspace") from exc
         return candidate
+
+    def service(self, name: str, *, required: bool = True) -> Any:
+        key = str(name or "").strip()
+        if not key:
+            raise ValueError("tool service name must not be empty")
+        value = self.services.get(key)
+        if value is None and required:
+            raise RuntimeError(f"tool runtime service is unavailable: {key}")
+        return value
+
+    def emit(self, kind: AgentEventKind, data: dict[str, object]) -> None:
+        if self.emit_event is not None:
+            self.emit_event(AgentEventKind(kind), dict(data))
 
 
 @dataclass(frozen=True, slots=True)
@@ -255,6 +272,7 @@ def _validate_value(schema: dict[str, Any], value: Any, *, path: str, root: bool
 __all__ = [
     "AgentTool",
     "CancelCheck",
+    "EventEmitter",
     "ToolContext",
     "ToolExposure",
     "ToolHandler",

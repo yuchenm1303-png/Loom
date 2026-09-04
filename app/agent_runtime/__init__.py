@@ -10,7 +10,9 @@ from .contracts import (
     PermissionMode,
     ToolEffect,
 )
+from .diff_tracker import DiffSnapshot, DiffTrackerRegistry, TurnDiffTracker
 from .orchestrator import PreparedToolCall, ToolOrchestrator
+from .patch_runtime import ApplyPatchRuntime, PatchApplyResult, PatchPlan, PlannedFileChange
 from .permissions import (
     ApprovalPolicy,
     PermissionDecision,
@@ -20,6 +22,7 @@ from .permissions import (
     PermissionProfile,
     permission_preset,
 )
+from .process_runtime import ManagedProcess, ProcessSnapshot, ProcessStore
 from .runtime import AgentModelPlatform, AgentRuntime, CancellationToken, DEFAULT_AGENT_SYSTEM_PROMPT
 from .step import StepContext, WorldStateSnapshot
 from .storage import FileAgentSessionStore
@@ -45,10 +48,16 @@ __all__ = [
     "AgentSession",
     "AgentStatus",
     "AgentTool",
+    "ApplyPatchRuntime",
     "ApprovalPolicy",
     "CancellationToken",
     "DEFAULT_AGENT_SYSTEM_PROMPT",
+    "DiffSnapshot",
+    "DiffTrackerRegistry",
     "FileAgentSessionStore",
+    "ManagedProcess",
+    "PatchApplyResult",
+    "PatchPlan",
     "PendingToolApproval",
     "PermissionDecision",
     "PermissionEngine",
@@ -56,7 +65,10 @@ __all__ = [
     "PermissionMode",
     "PermissionPreset",
     "PermissionProfile",
+    "PlannedFileChange",
     "PreparedToolCall",
+    "ProcessSnapshot",
+    "ProcessStore",
     "StepContext",
     "ToolContext",
     "ToolEffect",
@@ -67,6 +79,7 @@ __all__ = [
     "ToolRegistry",
     "ToolResult",
     "ToolRouter",
+    "TurnDiffTracker",
     "WorldStateSnapshot",
     "builtin_read_only_tools",
     "permission_preset",
