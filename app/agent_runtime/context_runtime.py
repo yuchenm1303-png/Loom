@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 from app.ai import AIMessage, ChatRequest, MessageRole, ModelResponse, ModelUsage, ToolChoice
 
 from .context_state import (
@@ -12,9 +10,17 @@ from .context_state import (
     compaction_split_index,
 )
 from .contracts import AgentEventKind, AgentRunResult, AgentSession, AgentStatus
-from .history import repair_tool_history
+from .history import HistoryRepair, repair_tool_history
 from .runtime import CancellationToken
 from .sandbox_runtime import SandboxAgentRuntime
+
+
+_COMPACTION_SYSTEM_PROMPT = (
+    "You are compacting earlier canonical conversation history for a continuing Loom agent thread. "
+    "Return a concise plain-text summary that preserves user goals, constraints, decisions, important facts, "
+    "files or symbols touched, tool outcomes, errors, and unresolved work. Distinguish observed tool results "
+    "from proposals. Do not invent facts and do not include private chain-of-thought."
+)
 
 
 class ContextAgentRuntime(SandboxAgentRuntime):
@@ -25,9 +31,10 @@ class ContextAgentRuntime(SandboxAgentRuntime):
     The digest/reference data is still tracked so a future stateful provider can
     switch to delta injection without changing the WorldState contract.
 
-    Conversation compaction is explicit and loss-aware: old canonical messages are
-    archived in an atomic checkpoint before the active transcript is replaced by a
-    summary plus a safe recent suffix.
+    Conversation compaction is loss-aware: old canonical messages are archived in
+    an atomic checkpoint before the active transcript is replaced by a summary plus
+    a safe recent suffix. Summary generation is a separate model task rather than a
+    model-originated tool call, so compaction never mutates history mid-tool-group.
     """
 
     def __init__(self, *args, checkpoint_store: ContextCheckpointStore | None = None, **kwargs) -> None:
@@ -62,6 +69,71 @@ class ContextAgentRuntime(SandboxAgentRuntime):
             changed_paths=diff.paths,
         )
 
+    def _prepare_compaction_locked(
+        self,
+        session: AgentSession,
+        *,
+        keep_recent: int,
+    ) -> tuple[HistoryRepair, tuple[AIMessage, ...], tuple[AIMessage, ...]]:
+        repaired = repair_tool_history(
+            session.messages,
+            max_tool_result_chars=self.limits.max_tool_result_chars,
+        )
+        messages = tuple(repaired.messages)
+        split = compaction_split_index(messages, keep_recent=keep_recent)
+        if split <= 0:
+            raise ValueError("not enough safely compactable history")
+        return repaired, messages[:split], messages[split:]
+
+    def _commit_compaction_locked(
+        self,
+        session: AgentSession,
+        *,
+        summary: str,
+        repaired: HistoryRepair,
+        archived: tuple[AIMessage, ...],
+        retained: tuple[AIMessage, ...],
+        summary_source: str,
+        summary_usage: ModelUsage | None = None,
+    ) -> ContextCheckpoint:
+        text = str(summary or "").strip()
+        if not text:
+            raise ValueError("context summary must not be empty")
+        step = self._build_step_context(session, next_model_step=False)
+        envelope = self._context_envelope(session, step)
+        checkpoint = self.checkpoint_store.create(
+            session_id=session.session_id,
+            summary=text,
+            archived_messages=archived,
+            retained_message_count=len(retained),
+            world_state_digest=envelope.digest,
+        )
+        session.messages = [checkpoint.summary_message(), *retained]
+        if summary_usage is not None:
+            session.usage = _add_usage(session.usage, summary_usage)
+        self._record(
+            session,
+            AgentEventKind.CONTEXT_CHECKPOINTED,
+            data={
+                "checkpoint_id": checkpoint.checkpoint_id,
+                "archived_messages": checkpoint.archived_message_count,
+                "retained_messages": checkpoint.retained_message_count,
+                "world_state_digest": checkpoint.world_state_digest,
+                "history_repaired": repaired.changed,
+                "summary_source": summary_source,
+                "summary_usage": (
+                    {
+                        "input_tokens": summary_usage.input_tokens,
+                        "output_tokens": summary_usage.output_tokens,
+                        "total_tokens": summary_usage.total_tokens,
+                    }
+                    if summary_usage is not None
+                    else None
+                ),
+            },
+        )
+        return checkpoint
+
     def compact_context(
         self,
         session_id: str,
@@ -69,48 +141,65 @@ class ContextAgentRuntime(SandboxAgentRuntime):
         *,
         keep_recent: int = 24,
     ) -> ContextCheckpoint:
-        text = str(summary or "").strip()
-        if not text:
-            raise ValueError("context summary must not be empty")
         lock = self._session_lock(session_id)
         with lock:
             session = self.store.load(session_id)
             if session.status in {AgentStatus.RUNNING, AgentStatus.WAITING_APPROVAL}:
                 raise RuntimeError("cannot compact context while a turn is active")
-
-            repaired = repair_tool_history(
-                session.messages,
-                max_tool_result_chars=self.limits.max_tool_result_chars,
-            )
-            messages = tuple(repaired.messages)
-            split = compaction_split_index(messages, keep_recent=keep_recent)
-            if split <= 0:
-                raise ValueError("not enough safely compactable history")
-
-            step = self._build_step_context(session, next_model_step=False)
-            envelope = self._context_envelope(session, step)
-            archived = messages[:split]
-            retained = messages[split:]
-            checkpoint = self.checkpoint_store.create(
-                session_id=session.session_id,
-                summary=text,
-                archived_messages=archived,
-                retained_message_count=len(retained),
-                world_state_digest=envelope.digest,
-            )
-            session.messages = [checkpoint.summary_message(), *retained]
-            self._record(
+            repaired, archived, retained = self._prepare_compaction_locked(
                 session,
-                AgentEventKind.CONTEXT_CHECKPOINTED,
-                data={
-                    "checkpoint_id": checkpoint.checkpoint_id,
-                    "archived_messages": checkpoint.archived_message_count,
-                    "retained_messages": checkpoint.retained_message_count,
-                    "world_state_digest": checkpoint.world_state_digest,
-                    "history_repaired": repaired.changed,
-                },
+                keep_recent=keep_recent,
             )
-            return checkpoint
+            return self._commit_compaction_locked(
+                session,
+                summary=summary,
+                repaired=repaired,
+                archived=archived,
+                retained=retained,
+                summary_source="caller",
+            )
+
+    def compact_context_with_model(
+        self,
+        session_id: str,
+        *,
+        keep_recent: int = 24,
+    ) -> ContextCheckpoint:
+        """Generate a semantic summary with the session model, then checkpoint atomically."""
+        lock = self._session_lock(session_id)
+        with lock:
+            session = self.store.load(session_id)
+            if session.status in {AgentStatus.RUNNING, AgentStatus.WAITING_APPROVAL}:
+                raise RuntimeError("cannot compact context while a turn is active")
+            repaired, archived, retained = self._prepare_compaction_locked(
+                session,
+                keep_recent=keep_recent,
+            )
+            request = ChatRequest(
+                messages=(
+                    AIMessage(role=MessageRole.SYSTEM, content=_COMPACTION_SYSTEM_PROMPT),
+                    *archived,
+                ),
+                tools=(),
+                tool_choice=ToolChoice.NONE,
+            )
+            response = self.platform.execute_chat(session.profile_id, request)
+            if not isinstance(response, ModelResponse):
+                raise TypeError("agent model platform must return ModelResponse")
+            if response.tool_calls:
+                raise RuntimeError("context compaction model returned unexpected tool calls")
+            summary = str(response.text or "").strip()
+            if not summary:
+                raise RuntimeError("context compaction model returned an empty summary")
+            return self._commit_compaction_locked(
+                session,
+                summary=summary,
+                repaired=repaired,
+                archived=archived,
+                retained=retained,
+                summary_source="model",
+                summary_usage=response.usage,
+            )
 
     def list_context_checkpoints(self, session_id: str) -> tuple[ContextCheckpoint, ...]:
         # Validate the Loom session before exposing checkpoint storage.
@@ -142,7 +231,7 @@ class ContextAgentRuntime(SandboxAgentRuntime):
                 if len(messages) > self.limits.max_messages:
                     return self._limit(
                         session,
-                        "context message limit reached; create a context checkpoint before continuing",
+                        "context message limit reached; run a context compaction task before continuing",
                     )
 
                 self._record(
