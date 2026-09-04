@@ -1,6 +1,6 @@
 # Loom
 
-Loom is a personal, general-purpose AI agent built for real tool use. Runtime v2 is organized around durable thread state, frozen per-step execution context, explicit permission modes, managed processes, atomic file edits, crash recovery, durable goals/queues, and an honest OS-sandbox boundary.
+Loom is a personal, general-purpose AI agent built for real tool use. Runtime v2 is organized around durable thread state, frozen per-step execution context, explicit permission modes, managed processes, atomic file edits, crash recovery, durable goals/queues, authoritative context checkpoints, independent sub-agents, and an honest OS-sandbox boundary.
 
 The initial core was cleanly extracted from the validated generic Agent architecture in `yuchenm1303-png/ecommerce-agent` at `feat/commerce-ai-platform@04cceaf2efd8aea867989781fb3c91ebb13cb3c9`. No Listing, Makro, supplier, product-field, or other commerce production code is included here.
 
@@ -32,9 +32,17 @@ The initial core was cleanly extracted from the validated generic Agent architec
 - Explicit OS-sandbox planning and capability reporting
 - Linux Bubblewrap backend when available and usable
 - Model-visible `get_sandbox_status`
+- Authoritative per-step `LOOM_RUNTIME_STATE` / WorldState envelope
+- Stable WorldState digest ready for future state-delta transport
+- Atomic archived context checkpoints
+- Model-driven context compaction with usage accounting
+- SQLite/WAL durable `AgentGraph`
+- Independent sub-agent sessions with inherited workspace/permissions
+- Model-facing spawn/message/wait/list/close sub-agent tools
+- Durable cross-agent follow-up via the normal Loom queue
 - Secret-like environment variables stripped from child processes
 
-Private model chain-of-thought is neither requested nor persisted. Loom stores only observable messages, tool activity, lifecycle events, usage, and durable thread/workspace state.
+Private model chain-of-thought is neither requested nor persisted. Loom stores only observable messages, tool activity, lifecycle events, usage, durable thread/workspace state, archived context checkpoints, and durable agent-graph metadata.
 
 ## Install
 
@@ -107,6 +115,8 @@ A permission change is persisted with the session. Loom refuses to change it whi
 
 `full-access` means registered Loom tools do not repeatedly stop for approval. File tools still enforce their mechanical path rules, command execution remains `shell=False`, secret-like environment variables remain stripped, and timeout/output bounds remain active.
 
+Sub-agents never gain authority merely by being spawned. A child inherits the parent's workspace and permission mode, and every child tool call still crosses the normal Loom permission/sandbox pipeline.
+
 ## OS sandbox policy
 
 Permission/approval and OS isolation are separate concepts.
@@ -149,7 +159,19 @@ Runtime v2 creates a frozen `StepContext` for every model sampling step. The sna
 - exact `ToolRouter` exposed to that sampling step
 - effective sandbox capability snapshot
 
+The model also receives a transient authoritative `LOOM_RUNTIME_STATE` envelope containing the current workspace/model/permission/sandbox/tool state, durable goal/queue state, current turn diff, and active agent-tree topology. This envelope is not appended to canonical conversation history.
+
+WorldState has a stable digest that excludes step identity. Adjacent model steps with unchanged runtime state therefore share the same digest, which leaves a clean path to future provider-specific delta injection without pretending stateless Chat Completions already saves those tokens.
+
 If the model returns tool calls, Loom executes them against the same step identity and routing/permission snapshot. Approval resume stays bound to the same model step.
+
+## Context checkpoints and compaction
+
+Conversation compaction is loss-aware. Loom repairs tool-call/output pairing, chooses a safe boundary that starts at a real user message, archives the old canonical prefix atomically, and only then replaces the active prefix with a compacted summary.
+
+`compact_context_with_model` runs a dedicated no-tools model request over the archived prefix, accounts for its model usage, and commits the resulting summary only after the checkpoint archive is durable. Active turns cannot be compacted.
+
+The original archived messages remain available under the session's `context_checkpoints` directory instead of being silently discarded.
 
 ## Managed processes
 
@@ -207,6 +229,24 @@ Interactive commands include:
 /queue remove <id>
 ```
 
+## Multi-Agent / AgentGraph
+
+A Loom sub-agent is a real independent Loom session/thread, not a nested synchronous model call. Its conversation history, turns, goal, queue, failures, and usage are separate, while the parent/child/root relationship is persisted in SQLite/WAL `AgentGraph` state.
+
+The model can use:
+
+- `spawn_agent` — create an independent child and start delegated work in the background
+- `send_agent_message` — append durable follow-up work to a child queue and optionally wake it
+- `wait_agent` — wait briefly for an in-process child and read its durable status/result
+- `list_agents` — inspect the current durable agent tree
+- `close_agent` — cancel/terminate a child subtree and mark its graph nodes closed
+
+History inheritance is selectable as `none`, `recent`, or `all`. Loom deliberately removes the currently executing `spawn_agent` control call before copying parent history so a child never inherits a half-written tool-call transcript.
+
+Python `Future` objects are only temporary execution handles. AgentGraph relationships, child sessions, and child queued work remain durable across a Loom process restart; the restarted runtime reconstructs control from those stores rather than attempting to serialize a running Python stack.
+
+Default safety limits are 16 active sub-agents per tree and depth 4. These are runtime constructor settings and can be lowered by embedders.
+
 ## DashScope defaults
 
 With `DASHSCOPE_API_KEY` or the legacy-compatible `AI_API_KEY`, Loom defaults to:
@@ -256,6 +296,11 @@ Secrets are resolved at runtime and are not written into session snapshots or re
 - managed process tools listed above
 - `get_sandbox_status`
 - durable goal state tools
+- `spawn_agent`
+- `send_agent_message`
+- `wait_agent`
+- `list_agents`
+- `close_agent`
 - legacy compatibility alias `write_workspace_note`
 
 ## Test
@@ -266,7 +311,7 @@ python -m pytest
 
 GitHub Actions runs installation, `compileall`, pytest, and a CLI smoke test on pushes to `main` and on pull requests.
 
-The suite covers model/tool loops, per-step identity, permissions, persistence, managed process interaction, cancellation, timeout, secret stripping, atomic patches, turn diffs, durable goal/queue recovery, history repair, sandbox planning, sandbox fallback honesty, and interrupted-process cleanup.
+The suite covers model/tool loops, per-step identity, permissions, persistence, managed process interaction, cancellation, timeout, secret stripping, atomic patches, turn diffs, durable goal/queue recovery, history repair, sandbox planning, sandbox fallback honesty, interrupted-process cleanup, WorldState/checkpoint compaction, parent→child model delegation, durable AgentGraph state, cross-agent queue recovery after restart, tree boundaries, and agent safety limits.
 
 ## Runtime v2 direction
 
@@ -276,16 +321,16 @@ Completed foundation layers now include:
 2. first-class atomic patching + `DiffTracker`
 3. durable Goal / Queue + history recovery
 4. explicit OS-sandbox planning with Linux Bubblewrap support
+5. authoritative WorldState + archived context checkpoints + model compaction
+6. durable Multi-Agent + AgentGraph + model-facing delegation tools
 
 Next high-value layers:
 
-1. richer `WorldState` and context-diff injection
-2. canonical compaction/checkpoints
-3. Multi-Agent + AgentGraph
-4. Memory
-5. Web Search
-6. Browser / Computer Use
-7. MCP / Skills / Tool Search / Code Mode
-8. additional native sandbox backends and network permissions
+1. Memory
+2. Web Search
+3. Browser / Computer Use
+4. MCP / Skills / Tool Search / Code Mode
+5. richer provider-specific context-diff transport
+6. additional native sandbox backends and network permissions
 
-The core design rule remains: Thread state is durable; Turn/Task/Process execution is temporary; every tool crosses one routing and permission boundary; OS isolation is reported truthfully rather than assumed.
+The core design rule remains: Thread/AgentGraph/Goal/Queue/context archives are durable; Turn/Task/Process/Future execution is temporary; every tool crosses one routing and permission boundary; sub-agents never gain authority merely by being spawned; OS isolation is reported truthfully rather than assumed.
