@@ -124,7 +124,7 @@ def test_process_store_reports_honest_unsandboxed_fallback(tmp_path):
     assert "sandbox-fallback-ok" in snapshot.stdout
     assert snapshot.sandbox.enforced is False
     assert snapshot.sandbox.backend is SandboxBackend.NONE
-    assert "not implemented" in snapshot.sandbox.reason
+    assert "implemented for windows" in snapshot.sandbox.reason.casefold()
 
 
 def test_default_runtime_freezes_sandbox_state_and_registers_status_tool(tmp_path):
