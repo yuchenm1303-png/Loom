@@ -26,6 +26,7 @@ class AgentEventKind(str, Enum):
     QUEUE_DISPATCHED = "queue_dispatched"
     QUEUE_REMOVED = "queue_removed"
     HISTORY_REPAIRED = "history_repaired"
+    CONTEXT_CHECKPOINTED = "context_checkpointed"
     TURN_STARTED = "turn_started"
     USER_MESSAGE = "user_message"
     MODEL_REQUESTED = "model_requested"
