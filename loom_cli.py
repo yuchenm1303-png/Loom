@@ -114,6 +114,23 @@ def _build_runtime(args: argparse.Namespace) -> tuple[AgentRuntime, FileAgentSes
     return runtime, store, model
 
 
+def _resolve_workspace(value: str | Path) -> Path:
+    workspace = Path(value).expanduser().resolve()
+    if not workspace.exists():
+        raise SystemExit(f"Workspace does not exist: {workspace}")
+    if not workspace.is_dir():
+        raise SystemExit(f"Workspace is not a directory: {workspace}")
+    return workspace
+
+
+def _create_workspace_session(runtime: AgentRuntime, workspace: str | Path):
+    root = _resolve_workspace(workspace)
+    session = runtime.create_session(AGENT_FAST_ROLE.role_id)
+    session.workspace_dir = str(root)
+    runtime.store.save(session)
+    return session
+
+
 def _event_printer(event: AgentEvent) -> None:
     data = event.data
     if event.kind is AgentEventKind.MODEL_REQUESTED:
@@ -178,14 +195,14 @@ def _list_sessions(store: FileAgentSessionStore) -> None:
     for session in rows[:30]:
         print(
             f"{session.session_id}  {session.status.value:16}  "
-            f"tokens={session.usage.total_tokens:<8}  {session.updated_at}"
+            f"tokens={session.usage.total_tokens:<8}  {session.updated_at}  {session.workspace_dir}"
         )
 
 
 def _print_help() -> None:
     print(
         "Commands:\n"
-        "  /new                 create a fresh session\n"
+        "  /new [path]          create a fresh session, reusing current workspace unless path is given\n"
         "  /sessions            list saved sessions\n"
         "  /use <session-id>    switch to a saved session\n"
         "  /session             show current session id\n"
@@ -198,8 +215,10 @@ def _print_help() -> None:
 
 
 def _interactive(runtime: AgentRuntime, store: FileAgentSessionStore, session_id: str) -> int:
+    session = runtime.get_session(session_id)
     print("Loom interactive agent")
-    print(f"Session: {session_id}")
+    print(f"Session:   {session_id}")
+    print(f"Workspace: {session.workspace_dir}")
     print("Type /help for commands.\n")
     while True:
         try:
@@ -217,10 +236,18 @@ def _interactive(runtime: AgentRuntime, store: FileAgentSessionStore, session_id
         if text == "/help":
             _print_help()
             continue
-        if text == "/new":
-            session = runtime.create_session(AGENT_FAST_ROLE.role_id)
+        if text == "/new" or text.startswith("/new "):
+            supplied = text[4:].strip()
+            current_workspace = runtime.get_session(session_id).workspace_dir
+            workspace = supplied or current_workspace
+            try:
+                session = _create_workspace_session(runtime, workspace)
+            except SystemExit as exc:
+                print(str(exc), file=sys.stderr)
+                continue
             session_id = session.session_id
             print(f"New session: {session_id}")
+            print(f"Workspace:   {session.workspace_dir}")
             continue
         if text == "/sessions":
             _list_sessions(store)
@@ -231,8 +258,10 @@ def _interactive(runtime: AgentRuntime, store: FileAgentSessionStore, session_id
                 session = runtime.get_session(candidate)
                 if session.status is AgentStatus.RUNNING:
                     runtime.recover_interrupted(candidate)
+                    session = runtime.get_session(candidate)
                 session_id = candidate
                 print(f"Using session: {session_id}")
+                print(f"Workspace:     {session.workspace_dir}")
             except Exception as exc:
                 print(f"Cannot load session: {exc}", file=sys.stderr)
             continue
@@ -259,6 +288,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--base-url")
     parser.add_argument("--model")
     parser.add_argument("--home", help="runtime state root; defaults to ~/.loom")
+    parser.add_argument(
+        "--workspace",
+        help="workspace for a new session; defaults to the current directory",
+    )
     parser.add_argument("--session", help="resume an existing Loom session")
     parser.add_argument("--timeout", type=float, default=120.0)
     parser.add_argument("--quiet-events", action="store_true")
@@ -267,6 +300,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.session and args.workspace:
+        raise SystemExit("--workspace cannot be combined with --session; resumed sessions keep their saved workspace.")
+
     runtime, store, model = _build_runtime(args)
     if not args.quiet_events:
         runtime.subscribe(_event_printer)
@@ -275,11 +311,15 @@ def main(argv: list[str] | None = None) -> int:
         session = runtime.get_session(args.session)
         if session.status is AgentStatus.RUNNING:
             runtime.recover_interrupted(args.session)
+            session = runtime.get_session(args.session)
         session_id = args.session
     else:
-        session_id = runtime.create_session(AGENT_FAST_ROLE.role_id).session_id
+        session = _create_workspace_session(runtime, args.workspace or Path.cwd())
+        session_id = session.session_id
 
+    session = runtime.get_session(session_id)
     print(f"Loom · {model} · session {session_id}")
+    print(f"Workspace · {session.workspace_dir}")
     if args.prompt:
         result = _run_prompt(runtime, session_id, " ".join(args.prompt))
         return 0 if result.status is AgentStatus.COMPLETED else 1
