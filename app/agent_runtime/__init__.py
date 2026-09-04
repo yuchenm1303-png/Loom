@@ -38,6 +38,15 @@ from .runtime import (
     CancellationToken,
     DEFAULT_AGENT_SYSTEM_PROMPT,
 )
+from .sandbox import (
+    SandboxBackend,
+    SandboxCommand,
+    SandboxManager,
+    SandboxMode,
+    SandboxPolicy,
+    SandboxSnapshot,
+)
+from .sandbox_runtime import SandboxAgentRuntime
 from .step import StepContext, WorldStateSnapshot
 from .storage import FileAgentSessionStore
 from .tools import (
@@ -52,10 +61,10 @@ from .tools import (
     validate_tool_arguments,
 )
 
-# Runtime v2 durability is now the package default. CoreAgentRuntime remains
-# exported for embedders that explicitly want the execution loop without
-# SQLite goal/queue state or automatic history repair.
-AgentRuntime = DurableAgentRuntime
+# Runtime v2 durability plus explicit sandbox planning is now the package
+# default. CoreAgentRuntime and DurableAgentRuntime remain exported for embedders
+# that intentionally want a lower-level layer.
+AgentRuntime = SandboxAgentRuntime
 
 __all__ = [
     "AgentEvent",
@@ -95,6 +104,13 @@ __all__ = [
     "ProcessStore",
     "QueueItemState",
     "QueuedTurn",
+    "SandboxAgentRuntime",
+    "SandboxBackend",
+    "SandboxCommand",
+    "SandboxManager",
+    "SandboxMode",
+    "SandboxPolicy",
+    "SandboxSnapshot",
     "StepContext",
     "ThreadGoal",
     "ToolContext",

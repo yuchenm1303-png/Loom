@@ -34,6 +34,12 @@ def _result_from_snapshot(snapshot: ProcessSnapshot, *, content_prefix: str = ""
     parts.append(
         f"process={snapshot.process_id} status={'running' if snapshot.running else 'exited'}"
     )
+    if snapshot.sandbox.enforced:
+        parts.append(
+            f"sandbox={snapshot.sandbox.backend.value}:{snapshot.sandbox.mode.value}"
+        )
+    elif snapshot.sandbox.mode.value != "disabled":
+        parts.append(f"sandbox=not-enforced ({snapshot.sandbox.reason})")
     if snapshot.returncode is not None:
         parts.append(f"exit={snapshot.returncode}")
     if snapshot.stdout:
@@ -57,19 +63,15 @@ def workspace_command_tool() -> AgentTool:
             session_id=context.session_id,
             argv=argv,
             cwd=cwd,
+            workspace=context.workspace,
             permission_mode=context.permission_mode,
             timeout_seconds=timeout_seconds,
             stdin_text=stdin_text,
         )
-        # Foreground execution is a one-shot command. Mirror subprocess.run(input=...)
-        # semantics by closing stdin after the optional payload so programs waiting
-        # for EOF do not hang indefinitely. Background commands intentionally keep
-        # stdin open for write_workspace_process.
-        if started.process.stdin is not None:
-            try:
-                started.process.stdin.close()
-            except OSError:
-                pass
+        # Foreground execution mirrors subprocess.run(input=...): once the
+        # supplied input has been written, close stdin so programs waiting for
+        # EOF can finish. Background processes intentionally keep stdin open.
+        started.close_stdin()
         context.emit(
             AgentEventKind.PROCESS_STARTED,
             {
@@ -77,6 +79,7 @@ def workspace_command_tool() -> AgentTool:
                 "argv": list(argv),
                 "cwd": relative_cwd,
                 "background": False,
+                "sandbox": started.sandbox.to_dict(),
             },
         )
 
@@ -90,20 +93,17 @@ def workspace_command_tool() -> AgentTool:
                 },
             )
 
-        try:
-            snapshot = started.wait(
-                cancel_check=lambda: context.cancelled,
-                on_output=emit_output,
-            )
-        except KeyboardInterrupt:
-            started.terminate_tree()
-            raise
+        snapshot = started.wait(
+            cancel_check=lambda: context.cancelled,
+            on_output=emit_output,
+        )
         context.emit(
             AgentEventKind.PROCESS_EXITED,
             {
                 "process_id": snapshot.process_id,
                 "returncode": snapshot.returncode,
                 "timed_out": snapshot.timed_out,
+                "sandbox": snapshot.sandbox.to_dict(),
             },
         )
         if context.cancelled:
@@ -119,7 +119,8 @@ def workspace_command_tool() -> AgentTool:
         description=(
             "Run one executable directly with argv and wait for it to exit. The command gets a managed "
             "process id, bounded output, timeout enforcement, cancellation-aware process-tree termination, "
-            "and secret-like environment variables are stripped. No shell expansion is used."
+            "and secret-like environment variables are stripped. Loom attempts the configured OS sandbox "
+            "for non-full-access sessions and reports whether isolation was actually enforced. No shell expansion is used."
         ),
         input_schema={
             "type": "object",
@@ -145,6 +146,7 @@ def start_workspace_command_tool() -> AgentTool:
             session_id=context.session_id,
             argv=argv,
             cwd=cwd,
+            workspace=context.workspace,
             permission_mode=context.permission_mode,
             timeout_seconds=timeout_seconds,
             stdin_text=stdin_text,
@@ -157,6 +159,7 @@ def start_workspace_command_tool() -> AgentTool:
                 "argv": list(argv),
                 "cwd": relative_cwd,
                 "background": True,
+                "sandbox": managed.sandbox.to_dict(),
             },
         )
         return _result_from_snapshot(
@@ -169,7 +172,7 @@ def start_workspace_command_tool() -> AgentTool:
         description=(
             "Start a long-running executable directly in the workspace and return immediately with a process_id. "
             "Use poll_workspace_process, write_workspace_process, interrupt_workspace_process or "
-            "terminate_workspace_process to interact with it later."
+            "terminate_workspace_process to interact with it later. Sandbox enforcement is reported in the result."
         ),
         input_schema={
             "type": "object",
@@ -206,6 +209,7 @@ def poll_workspace_process_tool() -> AgentTool:
                     "process_id": snapshot.process_id,
                     "returncode": snapshot.returncode,
                     "timed_out": snapshot.timed_out,
+                    "sandbox": snapshot.sandbox.to_dict(),
                 },
             )
         return ToolResult(ok=True, content=content, data=snapshot.to_dict())
@@ -308,6 +312,7 @@ def terminate_workspace_process_tool() -> AgentTool:
                 "process_id": snapshot.process_id,
                 "returncode": snapshot.returncode,
                 "timed_out": snapshot.timed_out,
+                "sandbox": snapshot.sandbox.to_dict(),
             },
         )
         return ToolResult(

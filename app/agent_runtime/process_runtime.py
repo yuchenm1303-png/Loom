@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
+from .sandbox import SandboxManager, SandboxSnapshot
+
 
 _MAX_PROCESSES = 32
 _MAX_TRANSCRIPT_CHARS = 100_000
@@ -66,6 +68,7 @@ class ProcessSnapshot:
     returncode: int | None
     stdout: str
     stderr: str
+    sandbox: SandboxSnapshot
     stdout_delta: str = ""
     stderr_delta: str = ""
     timed_out: bool = False
@@ -85,6 +88,7 @@ class ProcessSnapshot:
             "stderr_delta": self.stderr_delta,
             "timed_out": self.timed_out,
             "output_truncated": self.output_truncated,
+            "sandbox": self.sandbox.to_dict(),
         }
 
 
@@ -97,6 +101,7 @@ class ManagedProcess:
         argv: tuple[str, ...],
         cwd: Path,
         permission_mode: str,
+        sandbox: SandboxSnapshot,
         process: subprocess.Popen[str],
         timeout_seconds: int,
     ) -> None:
@@ -105,6 +110,7 @@ class ManagedProcess:
         self.argv = argv
         self.cwd = cwd
         self.permission_mode = permission_mode
+        self.sandbox = sandbox
         self.process = process
         self.timeout_seconds = timeout_seconds
         self.started_monotonic = time.monotonic()
@@ -208,6 +214,7 @@ class ManagedProcess:
             returncode=self.process.poll(),
             stdout=stdout,
             stderr=stderr,
+            sandbox=self.sandbox,
             stdout_delta=stdout_delta,
             stderr_delta=stderr_delta,
             timed_out=timed_out,
@@ -225,6 +232,15 @@ class ManagedProcess:
             self.process.stdin.flush()
         except (BrokenPipeError, OSError, ValueError) as exc:
             raise RuntimeError("process stdin is closed") from exc
+
+    def close_stdin(self) -> None:
+        stream = self.process.stdin
+        if stream is None or stream.closed:
+            return
+        try:
+            stream.close()
+        except (BrokenPipeError, OSError, ValueError):
+            pass
 
     def interrupt(self) -> None:
         if not self.running:
@@ -290,8 +306,14 @@ class ManagedProcess:
 class ProcessStore:
     """In-memory lifecycle manager for commands that may span model turns."""
 
-    def __init__(self, *, max_processes: int = _MAX_PROCESSES) -> None:
+    def __init__(
+        self,
+        *,
+        max_processes: int = _MAX_PROCESSES,
+        sandbox_manager: SandboxManager | None = None,
+    ) -> None:
         self.max_processes = max(1, int(max_processes))
+        self.sandbox_manager = sandbox_manager or SandboxManager()
         self._lock = threading.RLock()
         self._processes: dict[str, ManagedProcess] = {}
         self._order: list[str] = []
@@ -322,8 +344,17 @@ class ProcessStore:
         permission_mode: str,
         timeout_seconds: int,
         stdin_text: str = "",
+        workspace: Path | None = None,
     ) -> ManagedProcess:
         self._prune_finished()
+        root = Path(workspace or cwd).expanduser().resolve()
+        prepared = self.sandbox_manager.prepare(
+            argv=tuple(argv),
+            cwd=Path(cwd),
+            workspace=root,
+            permission_mode=permission_mode,
+        )
+
         kwargs: dict[str, object] = {}
         if os.name == "nt":
             kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP  # type: ignore[attr-defined]
@@ -331,8 +362,8 @@ class ProcessStore:
             kwargs["start_new_session"] = True
         try:
             process = subprocess.Popen(
-                list(argv),
-                cwd=str(cwd),
+                list(prepared.argv),
+                cwd=str(prepared.cwd),
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -349,9 +380,10 @@ class ProcessStore:
         managed = ManagedProcess(
             process_id=process_id,
             session_id=session_id,
-            argv=argv,
-            cwd=cwd,
+            argv=tuple(argv),
+            cwd=Path(cwd).expanduser().resolve(),
             permission_mode=str(permission_mode),
+            sandbox=prepared.snapshot,
             process=process,
             timeout_seconds=timeout_seconds,
         )
@@ -383,6 +415,7 @@ class ProcessStore:
         stdin_text: str = "",
         cancel_check: Callable[[], bool] | None = None,
         on_output: Callable[[str, str], None] | None = None,
+        workspace: Path | None = None,
     ) -> ProcessSnapshot:
         managed = self.start(
             session_id=session_id,
@@ -391,8 +424,15 @@ class ProcessStore:
             permission_mode=permission_mode,
             timeout_seconds=timeout_seconds,
             stdin_text=stdin_text,
+            workspace=workspace,
         )
         return managed.wait(cancel_check=cancel_check, on_output=on_output)
+
+    def sandbox_snapshot(self, *, permission_mode: str, workspace: Path) -> SandboxSnapshot:
+        return self.sandbox_manager.snapshot(
+            permission_mode=permission_mode,
+            workspace=workspace,
+        )
 
     def list_for_session(self, session_id: str) -> tuple[ProcessSnapshot, ...]:
         with self._lock:
