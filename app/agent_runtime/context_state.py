@@ -34,12 +34,7 @@ def build_world_state_envelope(
     changed_paths: tuple[str, ...] = (),
 ) -> WorldStateEnvelope:
     sandbox = step.world_state.sandbox
-    payload: dict[str, Any] = {
-        "version": _CONTEXT_VERSION,
-        "session_id": step.session_id,
-        "turn_id": step.turn_id,
-        "step_id": step.step_id,
-        "model_step": step.model_step,
+    state: dict[str, Any] = {
         "workspace": step.world_state.workspace_dir,
         "model_profile": step.world_state.profile_id,
         "permissions": {
@@ -56,8 +51,28 @@ def build_world_state_envelope(
             "changed_paths": list(changed_paths),
         },
     }
-    canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    # Execution identity is useful to the model but must not poison the state
+    # reference hash. Two adjacent model steps with the same actual runtime state
+    # should produce the same digest so future stateful backends can send deltas.
+    identity = {
+        "session_id": step.session_id,
+        "turn_id": step.turn_id,
+        "step_id": step.step_id,
+        "model_step": step.model_step,
+    }
+    canonical_state = json.dumps(
+        state,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    digest = hashlib.sha256(canonical_state.encode("utf-8")).hexdigest()
+    payload: dict[str, Any] = {
+        "version": _CONTEXT_VERSION,
+        "identity": identity,
+        "state_digest": digest,
+        "state": state,
+    }
     text = (
         "LOOM_RUNTIME_STATE v1\n"
         "This runtime state is authoritative for the current model step. "
