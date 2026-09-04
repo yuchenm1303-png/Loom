@@ -9,7 +9,15 @@ from typing import Any
 
 from app.ai import AIMessage, ImagePart, MessageRole, ModelUsage, TextPart, ToolCall
 
-from .contracts import AgentEvent, AgentEventKind, AgentSession, AgentStatus, PendingToolApproval, ToolEffect
+from .contracts import (
+    AgentEvent,
+    AgentEventKind,
+    AgentSession,
+    AgentStatus,
+    PendingToolApproval,
+    PermissionMode,
+    ToolEffect,
+)
 
 
 def utc_now() -> str:
@@ -129,17 +137,19 @@ def _usage_from_dict(payload: Any) -> ModelUsage:
 
 def session_to_dict(session: AgentSession) -> dict[str, Any]:
     return {
-        "version": 1,
+        "version": 2,
         "session_id": session.session_id,
         "profile_id": session.profile_id,
         "system_prompt": session.system_prompt,
         "workspace_dir": session.workspace_dir,
+        "permission_mode": session.permission_mode.value,
         "created_at": session.created_at,
         "updated_at": session.updated_at,
         "status": session.status.value,
         "current_turn_id": session.current_turn_id,
         "messages": [_message_to_dict(message) for message in session.messages],
         "pending_tool_calls": [_tool_call_to_dict(call) for call in session.pending_tool_calls],
+        "pending_step_id": session.pending_step_id,
         "pending_approval": _approval_to_dict(session.pending_approval),
         "model_steps": session.model_steps,
         "tool_calls": session.tool_calls,
@@ -155,6 +165,9 @@ def session_from_dict(payload: dict[str, Any]) -> AgentSession:
         profile_id=str(payload.get("profile_id") or ""),
         system_prompt=str(payload.get("system_prompt") or ""),
         workspace_dir=str(payload.get("workspace_dir") or ""),
+        permission_mode=PermissionMode(
+            str(payload.get("permission_mode") or PermissionMode.APPROVAL.value)
+        ),
         created_at=str(payload.get("created_at") or ""),
         updated_at=str(payload.get("updated_at") or ""),
         status=AgentStatus(str(payload.get("status") or AgentStatus.IDLE.value)),
@@ -169,6 +182,7 @@ def session_from_dict(payload: dict[str, Any]) -> AgentSession:
             for item in payload.get("pending_tool_calls", [])
             if isinstance(item, dict)
         ],
+        pending_step_id=str(payload.get("pending_step_id") or ""),
         pending_approval=_approval_from_dict(payload.get("pending_approval")),
         model_steps=int(payload.get("model_steps") or 0),
         tool_calls=int(payload.get("tool_calls") or 0),
@@ -179,12 +193,11 @@ def session_from_dict(payload: dict[str, Any]) -> AgentSession:
 
 
 class FileAgentSessionStore:
-    """Local durable state for the detached Agent Harness.
+    """Local durable state for Loom Agent Runtime.
 
     ``session.json`` is an atomic resumable snapshot. ``events.jsonl`` is an
-    append-only UI/audit feed. The harness stores observable messages, tool
-    activity and lifecycle state only; it has no field for private model
-    chain-of-thought.
+    append-only UI/audit feed. Observable state is persisted; private model
+    chain-of-thought is not.
     """
 
     def __init__(self, runtime_root: str | Path) -> None:
@@ -207,7 +220,9 @@ class FileAgentSessionStore:
         if directory.exists():
             raise FileExistsError(f"agent session already exists: {session.session_id}")
         directory.mkdir(parents=True, exist_ok=False)
-        self.workspace_dir(session.session_id)
+        internal_workspace = (directory / "workspace").resolve()
+        if Path(session.workspace_dir).resolve() == internal_workspace:
+            internal_workspace.mkdir(parents=True, exist_ok=True)
         self.save(session)
 
     def save(self, session: AgentSession) -> None:

@@ -16,9 +16,13 @@ from .contracts import (
     AgentSession,
     AgentStatus,
     PendingToolApproval,
+    PermissionMode,
 )
+from .orchestrator import PreparedToolCall, ToolOrchestrator
+from .permissions import PermissionDecision
+from .step import StepContext
 from .storage import FileAgentSessionStore, utc_now
-from .tools import ToolContext, ToolPolicy, ToolRegistry, ToolResult, validate_tool_arguments
+from .tools import ToolContext, ToolPolicy, ToolRegistry, ToolResult
 
 
 DEFAULT_AGENT_SYSTEM_PROMPT = (
@@ -50,12 +54,13 @@ EventListener = Callable[[AgentEvent], None]
 
 
 class AgentRuntime:
-    """Detached Codex-style turn/tool harness over the provider-neutral AIPlatform.
+    """Durable turn/tool harness over the provider-neutral AIPlatform.
 
-    One turn repeatedly samples the model, executes advertised tools, returns
-    observations, and stops on a final assistant response. Durable state contains
-    observable messages/events only; private model chain-of-thought is neither
-    requested nor persisted.
+    Runtime v2 introduces a frozen per-sampling ``StepContext`` plus a central
+    ``ToolOrchestrator``. Permission profiles describe what a session may do;
+    approval policy is evaluated separately. Durable state contains observable
+    messages/events only; private model chain-of-thought is neither requested nor
+    persisted.
     """
 
     def __init__(
@@ -66,12 +71,16 @@ class AgentRuntime:
         tools: ToolRegistry | None = None,
         policy: ToolPolicy | None = None,
         limits: AgentLimits | None = None,
+        default_permission_mode: PermissionMode | str = PermissionMode.APPROVAL,
+        orchestrator: ToolOrchestrator | None = None,
     ) -> None:
         self.platform = platform
         self.store = store
         self.tools = tools or ToolRegistry()
         self.policy = policy or ToolPolicy()
         self.limits = limits or AgentLimits()
+        self.default_permission_mode = PermissionMode(default_permission_mode)
+        self.orchestrator = orchestrator or ToolOrchestrator()
         self._listeners: list[EventListener] = []
         self._session_locks: dict[str, threading.RLock] = {}
         self._session_locks_guard = threading.Lock()
@@ -88,6 +97,8 @@ class AgentRuntime:
         profile_id: str,
         *,
         system_prompt: str = DEFAULT_AGENT_SYSTEM_PROMPT,
+        workspace_dir: str | Path | None = None,
+        permission_mode: PermissionMode | str | None = None,
     ) -> AgentSession:
         profile = str(profile_id or "").strip().casefold()
         prompt = str(system_prompt or "").strip()
@@ -95,7 +106,15 @@ class AgentRuntime:
             raise ValueError("agent session requires profile_id and system_prompt")
         session_id = str(uuid.uuid4())
         now = utc_now()
-        workspace = self.store.session_dir(session_id) / "workspace"
+        if workspace_dir is None:
+            workspace = (self.store.session_dir(session_id) / "workspace").resolve()
+        else:
+            workspace = Path(workspace_dir).expanduser().resolve()
+            if not workspace.exists():
+                raise ValueError(f"agent workspace does not exist: {workspace}")
+            if not workspace.is_dir():
+                raise ValueError(f"agent workspace is not a directory: {workspace}")
+        mode = PermissionMode(permission_mode or self.default_permission_mode)
         session = AgentSession(
             session_id=session_id,
             profile_id=profile,
@@ -103,13 +122,44 @@ class AgentRuntime:
             workspace_dir=str(workspace),
             created_at=now,
             updated_at=now,
+            permission_mode=mode,
         )
         self.store.create(session)
-        self._record(session, AgentEventKind.SESSION_CREATED, data={"profile_id": profile})
+        self._record(
+            session,
+            AgentEventKind.SESSION_CREATED,
+            data={
+                "profile_id": profile,
+                "workspace_dir": str(workspace),
+                "permission_mode": mode.value,
+            },
+        )
         return session
 
     def get_session(self, session_id: str) -> AgentSession:
         return self.store.load(session_id)
+
+    def set_permission_mode(
+        self,
+        session_id: str,
+        mode: PermissionMode | str,
+    ) -> AgentSession:
+        resolved = PermissionMode(mode)
+        lock = self._session_lock(session_id)
+        with lock:
+            session = self.store.load(session_id)
+            if session.status in {AgentStatus.RUNNING, AgentStatus.WAITING_APPROVAL}:
+                raise RuntimeError("cannot change permissions while a turn is active")
+            previous = session.permission_mode
+            if previous is resolved:
+                return session
+            session.permission_mode = resolved
+            self._record(
+                session,
+                AgentEventKind.PERMISSION_CHANGED,
+                data={"previous": previous.value, "current": resolved.value},
+            )
+            return session
 
     def start_turn(self, session_id: str, user_text: str) -> AgentRunResult:
         text = str(user_text or "").strip()
@@ -126,11 +176,16 @@ class AgentRuntime:
             session.model_steps = 0
             session.tool_calls = 0
             session.pending_tool_calls.clear()
+            session.pending_step_id = ""
             session.pending_approval = None
             session.final_text = ""
             session.error = ""
             session.messages.append(AIMessage(role=MessageRole.USER, content=text))
-            self._record(session, AgentEventKind.TURN_STARTED, data={})
+            self._record(
+                session,
+                AgentEventKind.TURN_STARTED,
+                data={"permission_mode": session.permission_mode.value},
+            )
             self._record(session, AgentEventKind.USER_MESSAGE, data={"text": text})
             token = self._activate(session.session_id)
             try:
@@ -159,18 +214,24 @@ class AgentRuntime:
             session.status = AgentStatus.RUNNING
             session.pending_approval = None
             call = session.pending_tool_calls.pop(0)
+            step = self._build_step_context(
+                session,
+                next_model_step=False,
+                step_id=session.pending_step_id or None,
+            )
             token = self._activate(session.session_id)
             try:
                 if approved:
                     self._record(
                         session,
                         AgentEventKind.TOOL_APPROVED,
-                        data={"call_id": call.call_id, "tool": call.name},
+                        data={"call_id": call.call_id, "tool": call.name, "step_id": step.step_id},
                     )
                     if not self._consume_tool_call(
                         session,
                         call,
                         token=token,
+                        step=step,
                         approval_granted=True,
                     ):
                         return self._result(session)
@@ -178,7 +239,12 @@ class AgentRuntime:
                     self._record(
                         session,
                         AgentEventKind.TOOL_DENIED,
-                        data={"call_id": call.call_id, "tool": call.name},
+                        data={
+                            "call_id": call.call_id,
+                            "tool": call.name,
+                            "source": "user",
+                            "step_id": step.step_id,
+                        },
                     )
                     self._append_tool_result(
                         session,
@@ -187,7 +253,7 @@ class AgentRuntime:
                         failed=True,
                     )
 
-                if not self._process_pending_tools(session, token):
+                if not self._process_pending_tools(session, token, step=step):
                     return self._result(session)
                 return self._drive(session, token)
             finally:
@@ -208,6 +274,7 @@ class AgentRuntime:
                 session.status = AgentStatus.CANCELLED
                 session.pending_approval = None
                 session.pending_tool_calls.clear()
+                session.pending_step_id = ""
                 session.error = "cancelled by user"
                 self._record(session, AgentEventKind.TURN_CANCELLED, data={})
             return self._result(session)
@@ -233,6 +300,7 @@ class AgentRuntime:
                 if session.model_steps >= self.limits.max_model_steps:
                     return self._limit(session, "model step limit reached")
 
+                step = self._build_step_context(session, next_model_step=True)
                 messages = [AIMessage(role=MessageRole.SYSTEM, content=session.system_prompt), *session.messages]
                 if len(messages) > self.limits.max_messages:
                     return self._limit(
@@ -245,16 +313,18 @@ class AgentRuntime:
                     AgentEventKind.MODEL_REQUESTED,
                     data={
                         "profile_id": session.profile_id,
-                        "step": session.model_steps + 1,
+                        "step": step.model_step,
+                        "step_id": step.step_id,
                         "message_count": len(messages),
-                        "tool_count": len(self.tools.all()),
+                        "tool_count": len(step.tool_router.all()),
+                        "permission_mode": step.world_state.permission_mode.value,
                     },
                 )
                 response = self.platform.execute_chat(
                     session.profile_id,
                     ChatRequest(
                         messages=tuple(messages),
-                        tools=self.tools.definitions(),
+                        tools=step.tool_router.definitions(),
                         tool_choice=ToolChoice.AUTO,
                     ),
                 )
@@ -277,6 +347,7 @@ class AgentRuntime:
                     session,
                     AgentEventKind.MODEL_RESPONSE,
                     data={
+                        "step_id": step.step_id,
                         "text": response.text,
                         "finish_reason": response.finish_reason,
                         "response_id": response.response_id,
@@ -297,12 +368,20 @@ class AgentRuntime:
                     if session.tool_calls > self.limits.max_tool_calls:
                         return self._limit(session, "tool call limit reached")
                     session.pending_tool_calls.extend(response.tool_calls)
+                    session.pending_step_id = step.step_id
                     for call in response.tool_calls:
                         self._record(
                             session,
                             AgentEventKind.TOOL_REQUESTED,
-                            data={"call_id": call.call_id, "tool": call.name, "arguments": call.arguments},
+                            data={
+                                "call_id": call.call_id,
+                                "tool": call.name,
+                                "arguments": call.arguments,
+                                "step_id": step.step_id,
+                            },
                         )
+                    if not self._process_pending_tools(session, token, step=step):
+                        return self._result(session)
                     continue
 
                 session.status = AgentStatus.COMPLETED
@@ -320,39 +399,67 @@ class AgentRuntime:
             self._record(session, AgentEventKind.TURN_FAILED, data={"error": session.error})
             return self._result(session)
 
-    def _process_pending_tools(self, session: AgentSession, token: CancellationToken) -> bool:
+    def _process_pending_tools(
+        self,
+        session: AgentSession,
+        token: CancellationToken,
+        *,
+        step: StepContext | None = None,
+    ) -> bool:
+        execution_step = step or self._build_step_context(
+            session,
+            next_model_step=False,
+            step_id=session.pending_step_id or None,
+        )
         while session.pending_tool_calls:
             if self._cancel_if_requested(session, token):
                 return False
             call = session.pending_tool_calls[0]
-            tool = self.tools.get(call.name)
-            if tool is None:
-                session.pending_tool_calls.pop(0)
-                self._append_tool_result(
-                    session,
-                    call,
-                    ToolResult(ok=False, content=f"Unknown tool: {call.name}"),
-                    failed=True,
-                )
-                continue
             try:
-                validate_tool_arguments(tool.input_schema, call.arguments)
+                prepared = self.orchestrator.prepare(
+                    execution_step,
+                    call,
+                    legacy_policy=self.policy,
+                )
             except ValueError as exc:
                 session.pending_tool_calls.pop(0)
                 self._append_tool_result(
                     session,
                     call,
-                    ToolResult(ok=False, content=f"Invalid tool arguments: {exc}"),
+                    ToolResult(ok=False, content=f"Invalid tool request: {exc}"),
                     failed=True,
                 )
                 continue
-            if self.policy.requires_approval(tool):
+
+            if prepared.decision is PermissionDecision.DENY:
+                session.pending_tool_calls.pop(0)
+                self._record(
+                    session,
+                    AgentEventKind.TOOL_DENIED,
+                    data={
+                        "call_id": call.call_id,
+                        "tool": call.name,
+                        "source": "permission",
+                        "reason": prepared.reason,
+                        "permission_mode": session.permission_mode.value,
+                        "step_id": execution_step.step_id,
+                    },
+                )
+                self._append_tool_result(
+                    session,
+                    call,
+                    ToolResult(ok=False, content=f"Tool call blocked by permissions. {prepared.reason}"),
+                    failed=True,
+                )
+                continue
+
+            if prepared.decision is PermissionDecision.APPROVAL:
                 session.pending_approval = PendingToolApproval(
                     call_id=call.call_id,
                     tool_name=call.name,
                     arguments=call.arguments,
-                    effect=tool.effect,
-                    reason=f"Tool effect {tool.effect.value} requires explicit user approval.",
+                    effect=prepared.tool.effect,
+                    reason=prepared.reason,
                 )
                 session.status = AgentStatus.WAITING_APPROVAL
                 self._record(
@@ -362,19 +469,18 @@ class AgentRuntime:
                         "call_id": call.call_id,
                         "tool": call.name,
                         "arguments": call.arguments,
-                        "effect": tool.effect.value,
+                        "effect": prepared.tool.effect.value,
+                        "reason": prepared.reason,
+                        "permission_mode": session.permission_mode.value,
+                        "step_id": execution_step.step_id,
                     },
                 )
                 return False
 
             session.pending_tool_calls.pop(0)
-            if not self._consume_tool_call(
-                session,
-                call,
-                token=token,
-                approval_granted=False,
-            ):
+            if not self._execute_prepared_tool(session, prepared, token=token, step=execution_step):
                 return False
+        session.pending_step_id = ""
         return True
 
     def _consume_tool_call(
@@ -383,41 +489,48 @@ class AgentRuntime:
         call: ToolCall,
         *,
         token: CancellationToken,
+        step: StepContext,
         approval_granted: bool,
     ) -> bool:
         if self._cancel_if_requested(session, token):
             return False
-        tool = self.tools.get(call.name)
-        if tool is None:
-            self._append_tool_result(
-                session,
-                call,
-                ToolResult(ok=False, content=f"Unknown tool: {call.name}"),
-                failed=True,
-            )
-            return True
         try:
-            validate_tool_arguments(tool.input_schema, call.arguments)
+            prepared = self.orchestrator.prepare(step, call, legacy_policy=self.policy)
         except ValueError as exc:
             self._append_tool_result(
                 session,
                 call,
-                ToolResult(ok=False, content=f"Invalid tool arguments: {exc}"),
+                ToolResult(ok=False, content=f"Invalid tool request: {exc}"),
                 failed=True,
             )
             return True
-        if self.policy.requires_approval(tool) and not approval_granted:
-            raise RuntimeError("mutating/sensitive tool reached executor without approval")
+        if prepared.decision is PermissionDecision.DENY:
+            raise RuntimeError("permission-denied tool reached executor")
+        if prepared.decision is PermissionDecision.APPROVAL and not approval_granted:
+            raise RuntimeError("approval-required tool reached executor without approval")
+        return self._execute_prepared_tool(session, prepared, token=token, step=step)
 
+    def _execute_prepared_tool(
+        self,
+        session: AgentSession,
+        prepared: PreparedToolCall,
+        *,
+        token: CancellationToken,
+        step: StepContext,
+    ) -> bool:
+        if self._cancel_if_requested(session, token):
+            return False
+        call = prepared.call
+        tool = prepared.tool
         self._record(
             session,
             AgentEventKind.TOOL_STARTED,
-            data={"call_id": call.call_id, "tool": call.name},
+            data={"call_id": call.call_id, "tool": call.name, "step_id": step.step_id},
         )
         context = ToolContext(
             session_id=session.session_id,
             turn_id=session.current_turn_id,
-            workspace=Path(session.workspace_dir),
+            workspace=Path(step.world_state.workspace_dir),
             is_cancelled=lambda: token.cancelled,
         )
         try:
@@ -430,6 +543,25 @@ class AgentRuntime:
         if self._cancel_if_requested(session, token):
             return False
         return True
+
+    def _build_step_context(
+        self,
+        session: AgentSession,
+        *,
+        next_model_step: bool,
+        step_id: str | None = None,
+    ) -> StepContext:
+        model_step = session.model_steps + (1 if next_model_step else 0)
+        return StepContext.build(
+            step_id=step_id or str(uuid.uuid4()),
+            session_id=session.session_id,
+            turn_id=session.current_turn_id,
+            model_step=model_step,
+            workspace_dir=session.workspace_dir,
+            profile_id=session.profile_id,
+            permission_mode=session.permission_mode,
+            tool_router=self.tools.router(),
+        )
 
     def _append_tool_result(
         self,
@@ -465,6 +597,7 @@ class AgentRuntime:
         session.error = reason
         session.pending_approval = None
         session.pending_tool_calls.clear()
+        session.pending_step_id = ""
         self._record(session, AgentEventKind.LIMIT_REACHED, data={"reason": reason})
         return self._result(session)
 
@@ -476,6 +609,7 @@ class AgentRuntime:
         session.status = AgentStatus.CANCELLED
         session.pending_approval = None
         session.pending_tool_calls.clear()
+        session.pending_step_id = ""
         session.error = "cancelled by user"
         self._record(session, AgentEventKind.TURN_CANCELLED, data={})
         return True

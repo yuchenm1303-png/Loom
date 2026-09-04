@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
 from typing import Any, Callable
 
@@ -18,6 +19,13 @@ CancelCheck = Callable[[], bool]
 
 def _never_cancelled() -> bool:
     return False
+
+
+class ToolExposure(str, Enum):
+    DIRECT = "direct"
+    DEFERRED = "deferred"
+    CODE_MODE_ONLY = "code_mode_only"
+    HIDDEN = "hidden"
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,6 +102,7 @@ class AgentTool:
     input_schema: dict[str, Any]
     handler: ToolHandler
     effect: ToolEffect = ToolEffect.READ_ONLY
+    exposure: ToolExposure = ToolExposure.DIRECT
 
     def __post_init__(self) -> None:
         name = str(self.name or "").strip()
@@ -109,6 +118,7 @@ class AgentTool:
         object.__setattr__(self, "name", name)
         object.__setattr__(self, "description", description)
         object.__setattr__(self, "effect", ToolEffect(self.effect))
+        object.__setattr__(self, "exposure", ToolExposure(self.exposure))
 
     def definition(self) -> ToolDefinition:
         return ToolDefinition(
@@ -120,6 +130,13 @@ class AgentTool:
 
 @dataclass(frozen=True, slots=True)
 class ToolPolicy:
+    """Legacy approval policy retained for Loom 0.1 callers.
+
+    Runtime v2 uses permission profiles plus approval policy. When a session uses
+    the compatibility ``approval`` mode, this policy still controls which tool
+    effects are auto-approved so existing embedding code keeps its behavior.
+    """
+
     auto_approved_effects: frozenset[ToolEffect] = frozenset({ToolEffect.READ_ONLY})
 
     def __post_init__(self) -> None:
@@ -131,6 +148,22 @@ class ToolPolicy:
 
     def requires_approval(self, tool: AgentTool) -> bool:
         return tool.effect not in self.auto_approved_effects
+
+
+class ToolRouter:
+    """Immutable per-step view of tools exposed directly to the model."""
+
+    def __init__(self, tools: tuple[AgentTool, ...]) -> None:
+        self._tools = {tool.name: tool for tool in tools}
+
+    def get(self, name: str) -> AgentTool | None:
+        return self._tools.get(str(name or "").strip())
+
+    def definitions(self) -> tuple[ToolDefinition, ...]:
+        return tuple(self._tools[name].definition() for name in sorted(self._tools))
+
+    def all(self) -> tuple[AgentTool, ...]:
+        return tuple(self._tools[name] for name in sorted(self._tools))
 
 
 class ToolRegistry:
@@ -150,10 +183,17 @@ class ToolRegistry:
         return self._tools.get(str(name or "").strip())
 
     def definitions(self) -> tuple[ToolDefinition, ...]:
-        return tuple(self._tools[name].definition() for name in sorted(self._tools))
+        return self.router().definitions()
 
     def all(self) -> tuple[AgentTool, ...]:
         return tuple(self._tools[name] for name in sorted(self._tools))
+
+    def router(self) -> ToolRouter:
+        direct = tuple(
+            tool for tool in self.all()
+            if tool.exposure is ToolExposure.DIRECT
+        )
+        return ToolRouter(direct)
 
 
 def validate_tool_arguments(schema: dict[str, Any], arguments: dict[str, Any]) -> None:
@@ -216,9 +256,11 @@ __all__ = [
     "AgentTool",
     "CancelCheck",
     "ToolContext",
+    "ToolExposure",
     "ToolHandler",
     "ToolPolicy",
     "ToolRegistry",
     "ToolResult",
+    "ToolRouter",
     "validate_tool_arguments",
 ]
