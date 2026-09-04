@@ -20,6 +20,7 @@ class AgentStatus(str, Enum):
 
 class AgentEventKind(str, Enum):
     SESSION_CREATED = "session_created"
+    PERMISSION_CHANGED = "permission_changed"
     TURN_STARTED = "turn_started"
     USER_MESSAGE = "user_message"
     MODEL_REQUESTED = "model_requested"
@@ -42,6 +43,13 @@ class ToolEffect(str, Enum):
     READ_ONLY = "read_only"
     MUTATING = "mutating"
     SENSITIVE = "sensitive"
+
+
+class PermissionMode(str, Enum):
+    READ_ONLY = "read-only"
+    APPROVAL = "approval"
+    WORKSPACE = "workspace"
+    FULL_ACCESS = "full-access"
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,10 +102,12 @@ class AgentSession:
     workspace_dir: str
     created_at: str
     updated_at: str
+    permission_mode: PermissionMode = PermissionMode.APPROVAL
     status: AgentStatus = AgentStatus.IDLE
     current_turn_id: str = ""
     messages: list[AIMessage] = field(default_factory=list)
     pending_tool_calls: list[ToolCall] = field(default_factory=list)
+    pending_step_id: str = ""
     pending_approval: PendingToolApproval | None = None
     model_steps: int = 0
     tool_calls: int = 0
@@ -110,6 +120,7 @@ class AgentSession:
         self.profile_id = str(self.profile_id or "").strip().casefold()
         self.system_prompt = str(self.system_prompt or "").strip()
         self.workspace_dir = str(self.workspace_dir or "").strip()
+        self.permission_mode = PermissionMode(self.permission_mode)
         self.status = AgentStatus(self.status)
         self.messages = list(self.messages)
         self.pending_tool_calls = list(self.pending_tool_calls)
@@ -148,5 +159,6 @@ __all__ = [
     "AgentSession",
     "AgentStatus",
     "PendingToolApproval",
+    "PermissionMode",
     "ToolEffect",
 ]
