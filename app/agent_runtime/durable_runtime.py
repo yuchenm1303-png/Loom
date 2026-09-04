@@ -11,6 +11,7 @@ from .durable_state import DurableThreadStateStore, GoalStatus, QueuedTurn, Thre
 from .history import HistoryRepair, repair_tool_history
 from .runtime import AgentRuntime as CoreAgentRuntime
 from .storage import utc_now
+from .thread_state_tools import durable_thread_tools
 
 
 class DurableAgentRuntime(CoreAgentRuntime):
@@ -32,6 +33,9 @@ class DurableAgentRuntime(CoreAgentRuntime):
     ) -> None:
         super().__init__(*args, **kwargs)
         self.durable_state = durable_state or DurableThreadStateStore(self.store.root.parent)
+        for tool in durable_thread_tools(self.durable_state):
+            if self.tools.get(tool.name) is None:
+                self.tools.register(tool)
         self.auto_drain_queue = bool(auto_drain_queue)
         self.max_auto_queued_turns = max(1, int(max_auto_queued_turns))
 
@@ -174,7 +178,9 @@ class DurableAgentRuntime(CoreAgentRuntime):
                 "Continue pursuing this durable Loom goal:\n"
                 f"{goal.objective}\n\n"
                 "Review the existing thread history and workspace state, then take the next concrete "
-                "steps. Do not restart completed work. If progress is blocked, explain the blocker clearly."
+                "steps. Do not restart completed work. If the durable goal is fully finished, use "
+                "mark_thread_goal with status=complete. If progress cannot continue without an external "
+                "dependency, use mark_thread_goal with status=blocked."
             )
             result = self._start_turn_once(session_id, prompt, source="goal")
             result = self._track_goal_usage(result)
