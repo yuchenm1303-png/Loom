@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Sequence
+from typing import Any, Sequence
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+
+from app.ai import ModelResponse, ToolCall
 
 from .browser_backend import browser_use_session_backend_factory
 from .browser_security import BrowserSecurityPolicy
@@ -30,6 +32,7 @@ _JWT_RE = re.compile(r"\b[A-Za-z0-9_-]{12,}\.[A-Za-z0-9_-]{12,}\.[A-Za-z0-9_-]{8
 _PROVIDER_TOKEN_RE = re.compile(
     r"\b(?:ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|xox[baprs]-[A-Za-z0-9-]{12,})\b"
 )
+_BLOCKED_SECRET_ARGUMENT = "_loom_blocked_sensitive_input"
 
 
 def redact_browser_text(value: str) -> str:
@@ -78,6 +81,64 @@ def _safe_state_dict(state: BrowserPageState, *, max_dom_chars: int = 30_000) ->
     payload["tabs"] = safe_tabs
     payload["errors"] = [redact_browser_text(str(item))[:2000] for item in payload.get("errors", []) or []]
     return payload
+
+
+def _sanitize_browser_tool_call(call: ToolCall) -> ToolCall:
+    """Remove secret-shaped browser arguments before Runtime can persist them.
+
+    Runtime v2 durably records model tool-call arguments before tool execution. A
+    browser password/token therefore cannot be made safe merely by redacting the
+    ToolResult. Browser v1 has no secret-handle channel, so secret-shaped values are
+    replaced *before* the canonical Session/event boundary and the call is marked
+    invalid. The extra marker is intentionally outside the tool schema; validation
+    rejects it before any browser action can execute with a redacted credential.
+    """
+
+    if not call.name.startswith("browser_"):
+        return call
+    arguments: dict[str, Any] = dict(call.arguments)
+    blocked = False
+
+    if call.name == "browser_type" and "text" in arguments:
+        raw_text = str(arguments.get("text") or "")
+        safe_text = redact_browser_text(raw_text)
+        if safe_text != raw_text:
+            arguments["text"] = "[REDACTED_SENSITIVE_INPUT]"
+            blocked = True
+
+    if call.name in {"browser_open", "browser_navigate"} and "url" in arguments:
+        raw_url = str(arguments.get("url") or "")
+        safe_url = redact_browser_url(raw_url)
+        if safe_url != raw_url:
+            arguments["url"] = safe_url
+            blocked = True
+
+    if blocked:
+        arguments[_BLOCKED_SECRET_ARGUMENT] = True
+        return ToolCall(call_id=call.call_id, name=call.name, arguments=arguments)
+    return call
+
+
+class _BrowserSecretBoundaryPlatform:
+    """Small platform adapter that scrubs browser calls before durable Runtime sees them."""
+
+    def __init__(self, delegate: Any) -> None:
+        self._delegate = delegate
+
+    def execute_chat(self, profile_id, request) -> ModelResponse:
+        response = self._delegate.execute_chat(profile_id, request)
+        if not isinstance(response, ModelResponse) or not response.tool_calls:
+            return response
+        calls = tuple(_sanitize_browser_tool_call(call) for call in response.tool_calls)
+        if calls == response.tool_calls:
+            return response
+        return ModelResponse(
+            text=response.text,
+            tool_calls=calls,
+            usage=response.usage,
+            finish_reason=response.finish_reason,
+            response_id=response.response_id,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -184,6 +245,10 @@ class BrowserRuntime(WebSearchRuntime):
         **kwargs,
     ) -> None:
         super().__init__(*args, **kwargs)
+        # The base Runtime persists ModelResponse tool arguments immediately. Put
+        # browser-specific secret scrubbing in front of that durable boundary.
+        self.platform = _BrowserSecretBoundaryPlatform(self.platform)
+
         factory = browser_backend_factory
         backend_name = "custom" if factory is not None else "disabled"
         if factory is None and auto_configure_browser and browser_use_available():
