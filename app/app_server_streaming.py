@@ -13,6 +13,7 @@ from .app_server import (
     PROTOCOL_VERSION,
     _apply_event_to_item,
     _base_item,
+    _tool_item_id,
 )
 
 
@@ -26,6 +27,11 @@ class StreamingLoomAppServerService(LoomAppServerService):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self._streamed_assistant_steps: set[tuple[str, str, str]] = set()
+        # Provider tool-call chunks can precede the chunk that carries the final
+        # call id. Buffer by model-step/index until the durable call identity is
+        # known, then use tool:<call_id> for the whole live/durable lifecycle.
+        self._streamed_tool_calls: dict[tuple[str, str, str, int], dict[str, Any]] = {}
+        self._stream_last_tool_index: dict[tuple[str, str, str], int] = {}
         subscribe = getattr(self.runtime, "subscribe_stream", None)
         if callable(subscribe):
             subscribe(self._on_runtime_stream)
@@ -54,6 +60,50 @@ class StreamingLoomAppServerService(LoomAppServerService):
                     if replacement:
                         item["id"] = replacement
         return payload
+
+    def _tool_stream_state(self, event: AgentStreamEvent) -> tuple[dict[str, Any], int]:
+        base_key = (event.session_id, event.turn_id, event.step_id)
+        raw_index = event.data.get("index")
+        with self._guard:
+            if raw_index is None:
+                index = self._stream_last_tool_index.get(base_key, 0)
+            else:
+                index = max(0, int(raw_index))
+                self._stream_last_tool_index[base_key] = index
+            key = (*base_key, index)
+            state = self._streamed_tool_calls.setdefault(
+                key,
+                {
+                    "call_id": "",
+                    "tool_name": "",
+                    "pending_arguments": [],
+                    "started": False,
+                },
+            )
+        return state, index
+
+    def _emit_tool_argument_delta(
+        self,
+        event: AgentStreamEvent,
+        *,
+        call_id: str,
+        tool_name: str,
+        fragment: str,
+    ) -> None:
+        self._notify(
+            "item/delta",
+            {
+                "threadId": event.session_id,
+                "turnId": event.turn_id,
+                "itemId": _tool_item_id(call_id),
+                "delta": {
+                    "kind": "tool_call_argument",
+                    "callId": call_id,
+                    "toolName": tool_name or None,
+                    "arguments": fragment,
+                },
+            },
+        )
 
     def _on_runtime_stream(self, event: AgentStreamEvent) -> None:
         if event.kind is AgentStreamEventKind.ASSISTANT_TEXT_DELTA:
@@ -92,20 +142,67 @@ class StreamingLoomAppServerService(LoomAppServerService):
             return
 
         if event.kind is AgentStreamEventKind.TOOL_CALL_ARGUMENT_DELTA:
-            self._notify(
-                "item/delta",
-                {
-                    "threadId": event.session_id,
-                    "turnId": event.turn_id,
-                    "itemId": f"model-tool:{event.step_id}:{event.data.get('index', 0)}",
-                    "delta": {
-                        "kind": "tool_call_argument",
-                        "callId": str(event.data.get("call_id") or "") or None,
-                        "toolName": str(event.data.get("tool") or "") or None,
-                        "arguments": str(event.data.get("arguments_delta") or ""),
+            state, _index = self._tool_stream_state(event)
+            incoming_call_id = str(event.data.get("call_id") or "").strip()
+            incoming_tool_name = str(event.data.get("tool") or "").strip()
+            fragment = str(event.data.get("arguments_delta") or "")
+            with self._guard:
+                if incoming_call_id:
+                    existing_call_id = str(state.get("call_id") or "")
+                    if existing_call_id and existing_call_id != incoming_call_id:
+                        # The provider accumulator will reject this malformed
+                        # stream before a canonical ToolCall is committed. Keep
+                        # the first public identity stable rather than orphaning
+                        # a second client item.
+                        incoming_call_id = existing_call_id
+                    else:
+                        state["call_id"] = incoming_call_id
+                if incoming_tool_name:
+                    existing_name = str(state.get("tool_name") or "")
+                    if not existing_name:
+                        state["tool_name"] = incoming_tool_name
+                    elif existing_name != incoming_tool_name:
+                        state["tool_name"] = existing_name + incoming_tool_name
+                if fragment:
+                    state["pending_arguments"].append(fragment)
+                call_id = str(state.get("call_id") or "")
+                tool_name = str(state.get("tool_name") or "")
+                first = bool(call_id) and not bool(state.get("started"))
+                if first:
+                    state["started"] = True
+                pending = list(state.get("pending_arguments") or []) if call_id else []
+                if call_id:
+                    state["pending_arguments"].clear()
+
+            # Do not emit a provisional index-only item. Wait until the provider
+            # has supplied the real call id, then flush all earlier fragments to
+            # that same identity used by TOOL_REQUESTED/STARTED/COMPLETED.
+            if not call_id:
+                return
+            if first:
+                self._notify(
+                    "item/started",
+                    {
+                        "item": {
+                            "id": _tool_item_id(call_id),
+                            "threadId": event.session_id,
+                            "turnId": event.turn_id,
+                            "type": "tool_call",
+                            "status": "streaming_arguments",
+                            "createdAt": event.created_at,
+                            "updatedAt": event.created_at,
+                            "callId": call_id,
+                            "toolName": tool_name or None,
+                        }
                     },
-                },
-            )
+                )
+            for buffered_fragment in pending:
+                self._emit_tool_argument_delta(
+                    event,
+                    call_id=call_id,
+                    tool_name=tool_name,
+                    fragment=buffered_fragment,
+                )
             return
 
         if event.kind is AgentStreamEventKind.MODEL_STREAM_COMPLETED:
@@ -132,6 +229,58 @@ class StreamingLoomAppServerService(LoomAppServerService):
                     },
                 )
 
+    def _take_streamed_tool_call(self, event: AgentEvent) -> dict[str, Any] | None:
+        call_id = str(event.data.get("call_id") or "").strip()
+        if not call_id:
+            return None
+        with self._guard:
+            for key, state in tuple(self._streamed_tool_calls.items()):
+                if key[0] != event.session_id or key[1] != event.turn_id:
+                    continue
+                if str(state.get("call_id") or "") != call_id:
+                    continue
+                self._streamed_tool_calls.pop(key, None)
+                return dict(state)
+        return None
+
+    def _clear_turn_tool_streams(self, event: AgentEvent, *, close_started: bool) -> None:
+        with self._guard:
+            stale = [
+                (key, dict(state))
+                for key, state in self._streamed_tool_calls.items()
+                if key[0] == event.session_id and key[1] == event.turn_id
+            ]
+            for key, _state in stale:
+                self._streamed_tool_calls.pop(key, None)
+            stale_steps = [
+                key
+                for key in self._stream_last_tool_index
+                if key[0] == event.session_id and key[1] == event.turn_id
+            ]
+            for key in stale_steps:
+                self._stream_last_tool_index.pop(key, None)
+        if not close_started:
+            return
+        for _key, state in stale:
+            call_id = str(state.get("call_id") or "")
+            if not call_id or not state.get("started"):
+                continue
+            self._notify(
+                "item/completed",
+                {
+                    "item": {
+                        "id": _tool_item_id(call_id),
+                        "threadId": event.session_id,
+                        "turnId": event.turn_id,
+                        "type": "tool_call",
+                        "status": event.kind.value.removeprefix("turn_"),
+                        "updatedAt": event.created_at,
+                        "callId": call_id,
+                        "toolName": str(state.get("tool_name") or "") or None,
+                    }
+                },
+            )
+
     def _on_runtime_event(self, event: AgentEvent) -> None:
         if event.kind is AgentEventKind.MODEL_RESPONSE and str(event.data.get("text") or ""):
             step_id = str(event.data.get("step_id") or "").strip()
@@ -150,6 +299,41 @@ class StreamingLoomAppServerService(LoomAppServerService):
                 _apply_event_to_item(item, event)
                 self._notify("item/completed", {"item": item})
                 return
+
+        if event.kind is AgentEventKind.TOOL_REQUESTED:
+            streamed_tool = self._take_streamed_tool_call(event)
+            if streamed_tool is not None and streamed_tool.get("started"):
+                call_id = str(event.data.get("call_id") or "")
+                self._notify(
+                    "item/delta",
+                    {
+                        "threadId": event.session_id,
+                        "turnId": event.turn_id,
+                        "itemId": _tool_item_id(call_id),
+                        "delta": {
+                            "status": "started",
+                            "callId": call_id,
+                            "toolName": str(event.data.get("tool") or ""),
+                            "arguments": copy.deepcopy(event.data.get("arguments") or {}),
+                            "nested": bool(event.data.get("nested")),
+                            "parentCallId": str(event.data.get("parent_call_id") or "") or None,
+                        },
+                    },
+                )
+                return
+
+        terminal_kinds = {
+            AgentEventKind.TURN_COMPLETED,
+            AgentEventKind.TURN_FAILED,
+            AgentEventKind.TURN_CANCELLED,
+            AgentEventKind.TURN_INTERRUPTED,
+            AgentEventKind.LIMIT_REACHED,
+        }
+        if event.kind in terminal_kinds:
+            self._clear_turn_tool_streams(
+                event,
+                close_started=event.kind is not AgentEventKind.TURN_COMPLETED,
+            )
 
         if event.kind in {
             AgentEventKind.TURN_FAILED,
