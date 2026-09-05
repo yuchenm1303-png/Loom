@@ -10,8 +10,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
-from app.ai import ImagePart, MessageRole, TextPart
-from app.ai.roles import AGENT_FAST_ROLE
+from app.ai import AGENT_FAST_ROLE, ImagePart, MessageRole, TextPart
 from app.agent_runtime import AgentStatus, PermissionMode
 
 
