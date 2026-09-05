@@ -27,6 +27,12 @@ jobs:
 
   browser-adapter-smoke:
     runs-on: ubuntu-latest
+    env:
+      # browser-use 0.13.x reads IN_DOCKER to enable its documented Chromium
+      # container launch flags (including --no-sandbox). GitHub-hosted runners
+      # otherwise look like a regular Linux host even though Chrome requires the
+      # container-style launch policy in this test environment.
+      IN_DOCKER: "true"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
