@@ -25,6 +25,18 @@ jobs:
       - name: CLI smoke
         run: loom --help
 
+  mcp-adapter-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install MCP extra
+        run: python -m pip install -e '.[dev,mcp]'
+      - name: MCP SDK v2 adapter contract
+        run: python -m pytest -q tests/test_mcp_sdk_compat.py
+
   browser-adapter-smoke:
     runs-on: ubuntu-latest
     env:
