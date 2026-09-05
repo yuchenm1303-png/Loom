@@ -19,13 +19,14 @@ jobs:
       - name: Install
         run: python -m pip install -e '.[dev]'
       - name: Compile
-        run: python -m compileall -q app loom_cli.py loom_web.py run_loom.py
+        run: python -m compileall -q app loom_cli.py loom_web.py loom_app_server.py run_loom.py
       - name: Test
         run: python -m pytest
       - name: CLI smoke
         run: |
           loom --help
           loom-web --help
+          loom-app-server --help
 
   windows-context-smoke:
     runs-on: windows-latest

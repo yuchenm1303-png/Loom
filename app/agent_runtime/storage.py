@@ -147,6 +147,7 @@ def session_to_dict(session: AgentSession) -> dict[str, Any]:
         "updated_at": session.updated_at,
         "status": session.status.value,
         "current_turn_id": session.current_turn_id,
+        "forked_from_id": session.forked_from_id,
         "messages": [_message_to_dict(message) for message in session.messages],
         "pending_tool_calls": [_tool_call_to_dict(call) for call in session.pending_tool_calls],
         "pending_step_id": session.pending_step_id,
@@ -172,6 +173,7 @@ def session_from_dict(payload: dict[str, Any]) -> AgentSession:
         updated_at=str(payload.get("updated_at") or ""),
         status=AgentStatus(str(payload.get("status") or AgentStatus.IDLE.value)),
         current_turn_id=str(payload.get("current_turn_id") or ""),
+        forked_from_id=str(payload.get("forked_from_id") or ""),
         messages=[
             _message_from_dict(dict(item))
             for item in payload.get("messages", [])
