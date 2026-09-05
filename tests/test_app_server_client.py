@@ -15,12 +15,12 @@ from app.app_server_client import (
 
 
 _FAKE_SERVER = textwrap.dedent(
-    r'''
+    '''
     import json
     import sys
 
     def send(payload):
-        sys.stdout.write(json.dumps(payload, separators=(",", ":")) + "\n")
+        sys.stdout.write(json.dumps(payload, separators=(",", ":")) + "\\n")
         sys.stdout.flush()
 
     for raw in sys.stdin:
@@ -28,7 +28,7 @@ _FAKE_SERVER = textwrap.dedent(
         method = request.get("method")
         if "id" not in request:
             if method == "initialized":
-                sys.stderr.write("fake-server-ready\n")
+                sys.stderr.write("fake-server-ready\\n")
                 sys.stderr.flush()
             continue
         request_id = request["id"]
