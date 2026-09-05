@@ -112,6 +112,17 @@ from .sandbox import (
     SandboxSnapshot,
 )
 from .sandbox_runtime import SandboxAgentRuntime
+from .skills import (
+    ParsedSkillDocument,
+    SkillCatalogSnapshot,
+    SkillDefinition,
+    SkillError,
+    SkillManager,
+    SkillRoot,
+    SkillScope,
+    parse_skill_document,
+)
+from .skills_runtime import SkillRuntime
 from .step import StepContext, WorldStateSnapshot
 from .storage import FileAgentSessionStore
 from .tool_search_runtime import ToolSearchRuntime
@@ -140,11 +151,11 @@ from .web_search_runtime import WebSearchRuntime
 from .web_search_tools import web_search_tools
 
 # Runtime v2 default stack:
-# Core -> Durable -> Sandbox -> Context -> Multi-Agent -> Memory -> Web Search -> Browser -> MCP -> Tool Search.
-# The default wrapper auto-loads operator MCP config and defers MCP tools behind
-# on-demand search so the initial model tool surface remains bounded.
+# Core -> Durable -> Sandbox -> Context -> Multi-Agent -> Memory -> Web Search -> Browser -> MCP -> Tool Search -> Skills.
+# The default wrapper auto-loads operator MCP config, keeps deferred tools behind
+# on-demand search, and exposes reusable SKILL.md workflows only when requested.
 # Lower layers remain exported for embedders that intentionally need them.
-AgentRuntime = ToolSearchRuntime
+AgentRuntime = SkillRuntime
 
 __all__ = [
     "AgentControl",
@@ -214,6 +225,7 @@ __all__ = [
     "MemoryScope",
     "MemoryStore",
     "MultiAgentRuntime",
+    "ParsedSkillDocument",
     "PatchApplyResult",
     "PatchPlan",
     "PendingToolApproval",
@@ -236,6 +248,13 @@ __all__ = [
     "SandboxMode",
     "SandboxPolicy",
     "SandboxSnapshot",
+    "SkillCatalogSnapshot",
+    "SkillDefinition",
+    "SkillError",
+    "SkillManager",
+    "SkillRoot",
+    "SkillRuntime",
+    "SkillScope",
     "StepContext",
     "TavilyWebSearchProvider",
     "ThreadGoal",
@@ -268,6 +287,7 @@ __all__ = [
     "mcp_sdk_available",
     "memory_tools",
     "multi_agent_tools",
+    "parse_skill_document",
     "permission_preset",
     "redact_browser_text",
     "redact_browser_url",
