@@ -150,9 +150,15 @@ class ToolSearchRuntime(ConfiguredMCPRuntime):
             ),
         )
 
-    def start_turn(self, session_id: str, user_text: str):
+    def start_turn(
+        self,
+        session_id: str,
+        user_text: str,
+        *,
+        turn_id: str | None = None,
+    ):
         self._clear_session_activations(session_id)
-        result = super().start_turn(session_id, user_text)
+        result = super().start_turn(session_id, user_text, turn_id=turn_id)
         if result.status is not AgentStatus.WAITING_APPROVAL:
             self._clear_session_activations(session_id)
         return result
