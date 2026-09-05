@@ -5,6 +5,28 @@ from .agent_graph import (
     AgentNode,
     AgentRelationStatus,
 )
+from .browser_backend import BrowserUseSessionBackend, browser_use_session_backend_factory
+from .browser_runtime import (
+    BrowserRuntime,
+    BrowserSessionHandle,
+    BrowserSessionStore,
+    BrowserStateSnapshot,
+    redact_browser_text,
+    redact_browser_url,
+)
+from .browser_security import BrowserSecurityPolicy
+from .browser_session import (
+    BrowserBackend,
+    BrowserBackendFactory,
+    BrowserError,
+    BrowserLaunchOptions,
+    BrowserPageState,
+    BrowserUnavailableError,
+    BrowserURLPolicy,
+    BrowserURLPolicyError,
+    ManagedBrowserSession,
+)
+from .browser_use_backend import BrowserUseBackend, browser_use_available, browser_use_backend_factory
 from .builtin_tools import builtin_read_only_tools
 from .context_runtime import ContextAgentRuntime
 from .context_state import (
@@ -104,9 +126,9 @@ from .web_search_runtime import WebSearchRuntime
 from .web_search_tools import web_search_tools
 
 # Runtime v2 default stack:
-# Core -> Durable -> Sandbox -> Context -> Multi-Agent -> Memory -> Web Search.
+# Core -> Durable -> Sandbox -> Context -> Multi-Agent -> Memory -> Web Search -> Browser.
 # Lower layers remain exported for embedders that intentionally need them.
-AgentRuntime = WebSearchRuntime
+AgentRuntime = BrowserRuntime
 
 __all__ = [
     "AgentControl",
@@ -127,6 +149,21 @@ __all__ = [
     "ApplyPatchRuntime",
     "ApprovalPolicy",
     "BraveWebSearchProvider",
+    "BrowserBackend",
+    "BrowserBackendFactory",
+    "BrowserError",
+    "BrowserLaunchOptions",
+    "BrowserPageState",
+    "BrowserRuntime",
+    "BrowserSecurityPolicy",
+    "BrowserSessionHandle",
+    "BrowserSessionStore",
+    "BrowserStateSnapshot",
+    "BrowserUnavailableError",
+    "BrowserURLPolicy",
+    "BrowserURLPolicyError",
+    "BrowserUseBackend",
+    "BrowserUseSessionBackend",
     "CancellationToken",
     "ContextAgentRuntime",
     "ContextCheckpoint",
@@ -141,6 +178,7 @@ __all__ = [
     "GoalStatus",
     "HistoryRepair",
     "JSONTransport",
+    "ManagedBrowserSession",
     "ManagedProcess",
     "MemoryCandidate",
     "MemoryCandidateState",
@@ -194,12 +232,17 @@ __all__ = [
     "WebSearchRuntime",
     "WorldStateEnvelope",
     "WorldStateSnapshot",
+    "browser_use_available",
+    "browser_use_backend_factory",
+    "browser_use_session_backend_factory",
     "build_world_state_envelope",
     "builtin_read_only_tools",
     "compaction_split_index",
     "memory_tools",
     "multi_agent_tools",
     "permission_preset",
+    "redact_browser_text",
+    "redact_browser_url",
     "redact_secrets",
     "repair_tool_history",
     "validate_tool_arguments",
