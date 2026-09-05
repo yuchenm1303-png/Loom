@@ -24,3 +24,15 @@ jobs:
         run: python -m pytest
       - name: CLI smoke
         run: loom --help
+
+  browser-adapter-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install browser extra
+        run: python -m pip install -e '.[dev,browser]'
+      - name: Browser-use adapter contract
+        run: python -m pytest -q tests/test_browser_use_compat.py
