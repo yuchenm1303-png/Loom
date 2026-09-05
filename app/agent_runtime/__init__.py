@@ -114,6 +114,7 @@ from .sandbox import (
 from .sandbox_runtime import SandboxAgentRuntime
 from .step import StepContext, WorldStateSnapshot
 from .storage import FileAgentSessionStore
+from .tool_search_runtime import ToolSearchRuntime
 from .tools import (
     AgentTool,
     ToolContext,
@@ -139,10 +140,11 @@ from .web_search_runtime import WebSearchRuntime
 from .web_search_tools import web_search_tools
 
 # Runtime v2 default stack:
-# Core -> Durable -> Sandbox -> Context -> Multi-Agent -> Memory -> Web Search -> Browser -> MCP.
-# The default wrapper auto-loads operator MCP config from the Loom runtime home.
+# Core -> Durable -> Sandbox -> Context -> Multi-Agent -> Memory -> Web Search -> Browser -> MCP -> Tool Search.
+# The default wrapper auto-loads operator MCP config and defers MCP tools behind
+# on-demand search so the initial model tool surface remains bounded.
 # Lower layers remain exported for embedders that intentionally need them.
-AgentRuntime = ConfiguredMCPRuntime
+AgentRuntime = ToolSearchRuntime
 
 __all__ = [
     "AgentControl",
@@ -246,6 +248,7 @@ __all__ = [
     "ToolRegistry",
     "ToolResult",
     "ToolRouter",
+    "ToolSearchRuntime",
     "TurnDiffTracker",
     "WebSearchError",
     "WebSearchProvider",

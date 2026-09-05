@@ -5,7 +5,7 @@ import re
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Mapping, Sequence
 
 from app.ai import ToolDefinition
 
@@ -13,6 +13,7 @@ from .contracts import AgentEventKind, ToolEffect
 
 
 _TOOL_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]{0,127}$")
+_SEARCH_TOKEN_RE = re.compile(r"[^\W_]+", flags=re.UNICODE)
 ToolHandler = Callable[["ToolContext", dict[str, Any]], "ToolResult"]
 CancelCheck = Callable[[], bool]
 EventEmitter = Callable[[AgentEventKind, dict[str, object]], None]
@@ -20,6 +21,10 @@ EventEmitter = Callable[[AgentEventKind, dict[str, object]], None]
 
 def _never_cancelled() -> bool:
     return False
+
+
+def _search_tokens(value: str) -> tuple[str, ...]:
+    return tuple(_SEARCH_TOKEN_RE.findall(str(value or "").casefold()))
 
 
 class ToolExposure(str, Enum):
@@ -205,12 +210,57 @@ class ToolRegistry:
     def all(self) -> tuple[AgentTool, ...]:
         return tuple(self._tools[name] for name in sorted(self._tools))
 
-    def router(self) -> ToolRouter:
-        direct = tuple(
-            tool for tool in self.all()
-            if tool.exposure is ToolExposure.DIRECT
-        )
-        return ToolRouter(direct)
+    def deferred(self) -> tuple[AgentTool, ...]:
+        return tuple(tool for tool in self.all() if tool.exposure is ToolExposure.DEFERRED)
+
+    def search_deferred(self, query: str, *, limit: int = 5) -> tuple[AgentTool, ...]:
+        raw_query = str(query or "").strip()
+        if not raw_query:
+            raise ValueError("tool search query must not be empty")
+        resolved_limit = max(1, min(20, int(limit)))
+        query_folded = raw_query.casefold()
+        query_tokens = _search_tokens(raw_query)
+        scored: list[tuple[int, str, AgentTool]] = []
+
+        for tool in self.deferred():
+            name_folded = tool.name.casefold()
+            description_folded = tool.description.casefold()
+            name_tokens = set(_search_tokens(tool.name))
+            description_tokens = set(_search_tokens(tool.description))
+            score = 0
+
+            if query_folded == name_folded:
+                score += 10_000
+            elif name_folded.startswith(query_folded):
+                score += 7_000
+            elif query_folded in name_folded:
+                score += 5_000
+            elif query_folded in description_folded:
+                score += 1_500
+
+            for token in query_tokens:
+                if token in name_tokens:
+                    score += 700
+                elif any(part.startswith(token) or token.startswith(part) for part in name_tokens):
+                    score += 350
+                if token in description_tokens:
+                    score += 120
+
+            if score > 0:
+                scored.append((score, tool.name, tool))
+
+        scored.sort(key=lambda item: (-item[0], item[1]))
+        return tuple(item[2] for item in scored[:resolved_limit])
+
+    def router(self, *, activated_names: Sequence[str] = ()) -> ToolRouter:
+        activated = {str(name or "").strip() for name in activated_names if str(name or "").strip()}
+        visible: list[AgentTool] = []
+        for tool in self.all():
+            if tool.exposure is ToolExposure.DIRECT:
+                visible.append(tool)
+            elif tool.exposure is ToolExposure.DEFERRED and tool.name in activated:
+                visible.append(tool)
+        return ToolRouter(tuple(visible))
 
 
 def validate_tool_arguments(schema: dict[str, Any], arguments: dict[str, Any]) -> None:
