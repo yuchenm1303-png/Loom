@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Mapping, Protocol
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urlsplit
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 
 _MAX_QUERY_CHARS = 400
@@ -83,6 +83,13 @@ class WebSearchProvider(Protocol):
 JSONTransport = Callable[[str, str, Mapping[str, str], bytes | None, float], Mapping[str, Any]]
 
 
+class _NoRedirectHandler(HTTPRedirectHandler):
+    """Never forward provider credentials across an HTTP redirect."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: ANN001
+        return None
+
+
 def _validate_query(query: str) -> str:
     text = " ".join(str(query or "").split())
     if not text:
@@ -108,14 +115,18 @@ def _default_json_transport(
     body: bytes | None,
     timeout_seconds: float,
 ) -> Mapping[str, Any]:
+    parsed = urlsplit(url)
+    if parsed.scheme != "https" or not parsed.hostname:
+        raise WebSearchError("web search provider endpoint must be absolute HTTPS")
     request = Request(
         url=url,
         data=body,
         headers=dict(headers),
         method=str(method or "GET").upper(),
     )
+    opener = build_opener(_NoRedirectHandler())
     try:
-        with urlopen(request, timeout=float(timeout_seconds)) as response:
+        with opener.open(request, timeout=float(timeout_seconds)) as response:
             declared = response.headers.get("Content-Length")
             if declared and int(declared) > _MAX_RESPONSE_BYTES:
                 raise WebSearchError("web search provider response is too large")
@@ -123,6 +134,8 @@ def _default_json_transport(
             if len(raw) > _MAX_RESPONSE_BYTES:
                 raise WebSearchError("web search provider response is too large")
     except HTTPError as exc:
+        if 300 <= int(exc.code) < 400:
+            raise WebSearchError("web search provider redirect was refused") from exc
         raise WebSearchError(f"web search provider returned HTTP {exc.code}") from exc
     except URLError as exc:
         reason = type(getattr(exc, "reason", None)).__name__ or "network error"
