@@ -125,6 +125,9 @@ class _BrowserSecretBoundaryPlatform:
     def __init__(self, delegate: Any) -> None:
         self._delegate = delegate
 
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._delegate, name)
+
     def execute_chat(self, profile_id, request) -> ModelResponse:
         response = self._delegate.execute_chat(profile_id, request)
         if not isinstance(response, ModelResponse) or not response.tool_calls:
