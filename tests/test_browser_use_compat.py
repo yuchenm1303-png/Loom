@@ -37,3 +37,25 @@ def test_browser_use_013_adapter_import_and_event_contract():
         assert backend.state_revision == 0
     finally:
         backend.close()
+
+
+def test_browser_use_backend_launches_real_headless_browser_and_captures_png():
+    """Exercise the actual Chrome/CDP lifecycle without depending on external network."""
+
+    backend = BrowserUseSessionBackend(
+        BrowserLaunchOptions(headless=True),
+        action_timeout_seconds=45.0,
+    )
+    try:
+        state = backend.start()
+        assert backend.state_revision >= 1
+        assert state.url in {"", "about:blank"} or bool(state.tabs)
+
+        refreshed = backend.refresh()
+        assert backend.state_revision >= 2
+        assert isinstance(refreshed.dom, str)
+
+        png = backend.screenshot(full_page=False)
+        assert png.startswith(b"\x89PNG\r\n\x1a\n")
+    finally:
+        backend.close()
