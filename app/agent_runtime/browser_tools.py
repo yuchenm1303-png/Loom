@@ -124,7 +124,9 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
         store = _store(runtime)
         browser_id = str(arguments["browser_id"])
         store.ensure_revision(context.session_id, browser_id, int(arguments["state_revision"]))
-        text = str(arguments["text"])
+        raw_value = arguments["text"]
+        resolver = getattr(runtime, "consume_browser_type_text", None)
+        text = str(resolver(raw_value)) if callable(resolver) else str(raw_value)
         if len(text) > 20_000:
             raise ValueError("browser_type text exceeds 20,000 characters")
         store.type_text(
@@ -286,8 +288,9 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
             AgentTool(
                 name="browser_type",
                 description=(
-                    "Type ordinary non-secret text into an element from the latest browser_state. Browser v1 intentionally "
-                    "does not provide a secret/password/token/cookie injection channel."
+                    "Type text into an element from the latest browser_state. Model-produced typed text is kept in a one-shot "
+                    "in-memory payload and is not stored as a durable tool-call argument. Browser v1 has no automatic "
+                    "credential store or secret injection channel."
                 ),
                 input_schema=_schema(
                     {
