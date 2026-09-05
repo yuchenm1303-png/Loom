@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import pytest
@@ -69,5 +70,38 @@ def test_mcp_v2_inprocess_tools_list_and_call_round_trip(tmp_path: Path):
         assert status["tool_count"] == 1
         assert status["servers"][0]["connected"] is True
         assert status["servers"][0]["protocol_version"]
+    finally:
+        manager.close()
+
+
+def test_mcp_v2_real_stdio_subprocess_round_trip(tmp_path: Path):
+    fixture = Path(__file__).parent / "fixtures" / "mcp_stdio_server.py"
+    manager = MCPClientManager(
+        (
+            MCPServerConfig(
+                name="stdio",
+                transport="stdio",
+                command=sys.executable,
+                args=(str(fixture),),
+                default_effect=ToolEffect.READ_ONLY,
+                timeout_seconds=20.0,
+            ),
+        )
+    )
+    try:
+        manager.connect()
+        tools = manager.agent_tools()
+        assert [tool.name for tool in tools] == ["mcp.stdio.echo"]
+
+        result = tools[0].handler(
+            ToolContext(
+                session_id="session-stdio",
+                turn_id="turn-stdio",
+                workspace=tmp_path,
+            ),
+            {"text": "process"},
+        )
+        assert result.ok is True
+        assert "stdio:process" in result.content
     finally:
         manager.close()
