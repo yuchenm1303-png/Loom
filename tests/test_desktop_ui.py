@@ -10,7 +10,7 @@ pytest.importorskip("PySide6")
 
 from PySide6.QtWidgets import QApplication
 
-from app.desktop_ui import LoomDesktopWindow
+from app.desktop_ui import LoomDesktopWindow, ThreadListItemWidget
 
 
 class FakeClient:
@@ -207,9 +207,20 @@ def test_native_window_rehydrates_thread_and_protocol_backed_panels(tmp_path):
         assert "demo.txt" in window.diff_view.toPlainText()
         assert "browser_navigate" in window.browser_view.toPlainText()
         assert "spawn_agent" in window.agents_view.toPlainText()
+        assert "process started" in window.activity_view.toPlainText()
+        assert window.thread_title_label.text() == "Inspect project"
         assert window.permission_label.text() == "workspace"
-        assert window.sandbox_label.text() == "Sandbox: not enforced · none"
-        assert "Provider streaming: on" in window.protocol_label.text()
+        assert window.status_label.text() == "Completed"
+        assert window.status_label.property("state") == "completed"
+        assert window.sandbox_label.text() == "Not sandboxed · none"
+        assert window.sandbox_label.property("state") == "unprotected"
+        assert "Provider streaming · on" in window.protocol_label.text()
+        assert window.connection_dot.property("state") == "connected"
+        assert window.thread_list.count() == 1
+        assert isinstance(
+            window.thread_list.itemWidget(window.thread_list.item(0)),
+            ThreadListItemWidget,
+        )
     finally:
         window.close()
         app.processEvents()
@@ -254,7 +265,9 @@ def test_native_window_renders_streaming_assistant_and_approval_card(tmp_path):
             },
         )
         _wait_for(app, lambda: "Live provider chunk" in window.transcript.toPlainText())
-        assert window.status_label.text() == "running"
+        assert window.status_label.text() == "Running"
+        assert window.status_label.property("state") == "running"
+        assert window.composer_state_label.text() == "Loom is working"
         assert window.stop_button.isEnabled() is True
 
         client.emit(
@@ -275,7 +288,9 @@ def test_native_window_renders_streaming_assistant_and_approval_card(tmp_path):
         assert window.approval_frame.isVisible() is True
         assert "run_workspace_command" in window.approval_title.text()
         assert "python" in window.approval_details.text()
-        assert window.status_label.text() == "waiting_approval"
+        assert window.status_label.text() == "Waiting Approval"
+        assert window.status_label.property("state") == "waiting_approval"
+        assert window.composer_state_label.text() == "Waiting for approval"
     finally:
         window.close()
         app.processEvents()
