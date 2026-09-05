@@ -5,10 +5,10 @@ from typing import Any
 
 from .configuration import AIConfiguration
 from .credential_resolver import CredentialResolver
-from .openai_runtime import OpenAIChatBackend
-from .platform import AIPlatform
+from .openai_streaming import OpenAIStreamingChatBackend
 from .profiles import ModelProfile
 from .provider_catalog import ProviderAdapter, ProviderConnection
+from .streaming_platform import StreamingAIPlatform
 
 
 ClientFactory = Callable[[ProviderConnection, ModelProfile, str], Any]
@@ -20,11 +20,13 @@ def build_ai_platform(
     credential_resolver: CredentialResolver,
     client_factory: ClientFactory | None = None,
     request_timeout_seconds: float = 120.0,
-) -> AIPlatform:
+) -> StreamingAIPlatform:
     """Build an executable platform from a validated, secret-free configuration.
 
     Credential values are resolved only here at runtime. They never enter
-    ``AIConfiguration`` / ``ModelProfile`` snapshots.
+    ``AIConfiguration`` / ``ModelProfile`` snapshots. The returned platform is
+    stream-capable but starts with streaming disabled; Loom's top-level Runtime
+    enables it so detached callers retain the legacy completion behavior.
     """
 
     if not isinstance(configuration, AIConfiguration):
@@ -32,7 +34,7 @@ def build_ai_platform(
     if not isinstance(credential_resolver, CredentialResolver):
         raise TypeError("credential_resolver must be CredentialResolver")
 
-    platform = AIPlatform()
+    platform = StreamingAIPlatform(prefer_streaming=False)
     for profile in configuration.profiles.all():
         connection = configuration.providers.require_executable(profile.provider)
         secret = credential_resolver.resolve(connection.credential_ref)
@@ -45,7 +47,7 @@ def build_ai_platform(
             ProviderAdapter.OPENAI,
             ProviderAdapter.OPENAI_COMPATIBLE,
         }:
-            backend = OpenAIChatBackend(
+            backend = OpenAIStreamingChatBackend(
                 connection=connection,
                 profile=profile,
                 api_key=secret,

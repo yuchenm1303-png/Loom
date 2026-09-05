@@ -34,6 +34,7 @@ from .errors import (
     AITransportError,
 )
 from .openai_runtime import OpenAIChatBackend
+from .openai_streaming import OpenAIStreamingChatBackend
 from .platform import AIPlatform, ChatModelBackend, StructuredModelBackend
 from .profiles import ModelProfile, ModelRegistry
 from .provider_catalog import (
@@ -46,6 +47,12 @@ from .provider_catalog import (
 )
 from .roles import ModelRole
 from .runtime import ClientFactory, build_ai_platform
+from .streaming_platform import (
+    ProviderStreamEvent,
+    ProviderStreamEventKind,
+    ProviderStreamListener,
+    StreamingAIPlatform,
+)
 
 __all__ = [
     "AGENT_FAST_PROFILE_ID",
@@ -79,12 +86,17 @@ __all__ = [
     "ModelRole",
     "ModelUsage",
     "OpenAIChatBackend",
+    "OpenAIStreamingChatBackend",
     "ProviderAdapter",
     "ProviderCatalog",
     "ProviderConnection",
     "ProviderDescriptor",
+    "ProviderStreamEvent",
+    "ProviderStreamEventKind",
+    "ProviderStreamListener",
     "StreamEvent",
     "StreamEventKind",
+    "StreamingAIPlatform",
     "StructuredModelBackend",
     "StructuredOutputMode",
     "StructuredRequest",

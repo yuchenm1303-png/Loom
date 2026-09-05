@@ -1,36 +1,39 @@
 # Web UI live feedback
 
-Loom's local Web UI shows immediate execution feedback after a prompt is submitted so a slow model request does not look like a frozen interface.
+Loom's local Web UI shows immediate execution feedback after a prompt is submitted so a slow model/tool request does not look frozen.
 
-This is **live runtime status**, not token-level model streaming.
+Phase 2.2 adds genuine public assistant-text provider streaming to the earlier runtime-status feedback.
 
 ## What the UI shows
 
-As soon as a turn is accepted, the conversation displays a temporary Loom working row and starts an elapsed timer. The text is then updated from durable runtime events already produced by Loom, for example:
+As soon as a turn is accepted, the conversation starts an elapsed working state. Depending on the active step it can show:
 
-- waiting for the configured model
-- running a Loom tool
-- running a nested Code Mode tool
-- a tool finished and Loom is continuing
-- a workspace process is running or finished
-- the workspace changed and Loom is checking the result
-- waiting for user approval
+- partial assistant text from the real provider stream;
+- waiting for the configured model;
+- running a Loom tool or nested Code Mode tool;
+- tool/process completion and continuation;
+- workspace diff activity;
+- waiting for user approval.
 
-The right-side Runtime Activity panel continues to show the underlying event history.
+The right-side Runtime Activity panel continues to show durable execution events.
 
-## Polling
+## Browser delivery
 
-The browser polls the localhost service adaptively:
+The Web UI remains a debug/fallback client and uses adaptive localhost polling:
 
-- about 450 ms while a turn or approval is active
-- about 1.1 seconds while idle
+- about 450 ms while a turn or approval is active;
+- about 1.1 seconds while idle.
 
-The polling loop is non-overlapping: the next poll is scheduled only after the current refresh finishes.
+The next poll is scheduled only after the previous refresh completes. During a streamed model step the server snapshot contains the public assistant text accumulated from provider chunks so far, so several small provider chunks can be visually coalesced into one browser refresh.
+
+Rich clients using `loom-app-server` receive provider-backed `item/delta` notifications directly and do not depend on this Web polling mechanism.
+
+## Durable boundary
+
+Partial assistant text is transient presentation state. It is not added to `session.json`, canonical history, or `events.jsonl`.
+
+Only the reconstructed final ModelResponse becomes the durable assistant message and `MODEL_RESPONSE`. If the stream fails or a UI disconnects, Loom can fail/recover the Turn without a half-written canonical assistant message.
 
 ## Reasoning privacy
 
-Live feedback is derived from runtime state and tool events. Loom does not expose private model chain-of-thought. It reports useful execution state such as model waits, tool calls, process activity, approvals, and completion.
-
-## Streaming scope
-
-The current provider/runtime contract still returns each model response as a completed response. Adding genuine token streaming would require a separate provider/runtime streaming contract and event path. This UI feature deliberately does not pretend otherwise.
+Loom streams public assistant content and observable tool/process state only. Provider hidden reasoning fields and private model chain-of-thought are deliberately not exposed as stream events.

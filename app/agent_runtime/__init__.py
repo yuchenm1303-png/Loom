@@ -127,6 +127,12 @@ from .skills import (
 from .skills_runtime import SkillRuntime
 from .step import StepContext, WorldStateSnapshot
 from .storage import FileAgentSessionStore
+from .streaming_runtime import (
+    AgentStreamEvent,
+    AgentStreamEventKind,
+    AgentStreamListener,
+    StreamingAgentRuntime,
+)
 from .tool_search_runtime import ToolSearchRuntime
 from .tools import (
     AgentTool,
@@ -153,11 +159,11 @@ from .web_search_runtime import WebSearchRuntime
 from .web_search_tools import web_search_tools
 
 # Runtime v2 default stack:
-# Core -> Durable -> Sandbox -> Context -> Multi-Agent -> Memory -> Web Search -> Browser -> MCP -> Tool Search -> Skills -> Code Mode.
-# The default wrapper keeps deferred tools bounded, exposes SKILL.md workflows on demand,
-# and allows restricted code cells to compose nested Loom tools without bypassing permissions.
+# Core -> Durable -> Sandbox -> Context -> Multi-Agent -> Memory -> Web Search -> Browser -> MCP -> Tool Search -> Skills -> Code Mode -> Streaming.
+# Streaming is a transient observer layer over the same canonical drive loop; the
+# final MODEL_RESPONSE remains the durable message boundary.
 # Lower layers remain exported for embedders that intentionally need them.
-AgentRuntime = CodeModeRuntime
+AgentRuntime = StreamingAgentRuntime
 
 __all__ = [
     "AgentControl",
@@ -174,6 +180,9 @@ __all__ = [
     "AgentRuntime",
     "AgentSession",
     "AgentStatus",
+    "AgentStreamEvent",
+    "AgentStreamEventKind",
+    "AgentStreamListener",
     "AgentTool",
     "ApplyPatchRuntime",
     "ApprovalPolicy",
@@ -263,6 +272,7 @@ __all__ = [
     "SkillRuntime",
     "SkillScope",
     "StepContext",
+    "StreamingAgentRuntime",
     "TavilyWebSearchProvider",
     "ThreadGoal",
     "ToolContext",

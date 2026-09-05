@@ -7,7 +7,7 @@ import pytest
 browser_use = pytest.importorskip("browser_use")
 
 from app.agent_runtime.browser_backend import BrowserUseSessionBackend
-from app.agent_runtime.browser_session import BrowserLaunchOptions, BrowserUnavailableError
+from app.agent_runtime.browser_session import BrowserError, BrowserLaunchOptions
 from app.agent_runtime.browser_use_backend import browser_use_available
 
 
@@ -42,15 +42,17 @@ def test_browser_use_013_adapter_import_and_event_contract():
 
 
 def test_browser_use_backend_launches_real_headless_browser_and_captures_png():
-    """Exercise a real Chrome/CDP lifecycle while tolerating browser-use's attach race.
+    """Exercise a real Chrome/CDP lifecycle while tolerating browser-use launch races.
 
     browser-use 0.13.x can occasionally launch Chrome and establish the root CDP
-    connection before its SessionManager observes the first target within the
-    upstream two-second attach window. Each retry uses a completely fresh backend
-    and Chrome process; persistent launch/CDP failures still fail this test.
+    connection before its SessionManager observes the first target, or its
+    BrowserStartEvent can hit the upstream 30-second watchdog while Chrome is
+    otherwise still starting on a loaded CI runner. Both surface through Loom's
+    BrowserError boundary. Each retry uses a completely fresh backend and Chrome
+    process; persistent launch/CDP failures still fail this test.
     """
 
-    last_error: BrowserUnavailableError | None = None
+    last_error: BrowserError | None = None
     for attempt in range(3):
         backend = BrowserUseSessionBackend(
             BrowserLaunchOptions(headless=True),
@@ -59,7 +61,7 @@ def test_browser_use_backend_launches_real_headless_browser_and_captures_png():
         try:
             try:
                 state = backend.start()
-            except BrowserUnavailableError as exc:
+            except BrowserError as exc:
                 last_error = exc
                 if attempt == 2:
                     raise
