@@ -214,7 +214,8 @@ def test_native_window_rehydrates_thread_and_protocol_backed_panels(tmp_path):
         assert window.status_label.property("state") == "completed"
         assert window.sandbox_label.text() == "Not sandboxed · none"
         assert window.sandbox_label.property("state") == "unprotected"
-        assert "Streaming on" in window.protocol_label.text()
+        assert window.protocol_label.text() == "Connected"
+        assert "Provider streaming · on" in window.protocol_label.toolTip()
         assert window.connection_dot.property("state") == "connected"
         assert window.thread_section_label.text() == "THREADS  1"
         assert window.thread_list.count() == 1
