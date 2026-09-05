@@ -120,6 +120,13 @@ def wait_idle(service: LoomWebService, session_id: str, timeout: float = 2.0) ->
     raise AssertionError("UI background task did not become idle")
 
 
+def _css_rule(css: str, selector: str) -> str:
+    marker = f"{selector} {{"
+    start = css.index(marker)
+    end = css.index("}", start)
+    return css[start:end]
+
+
 def test_service_creates_session_and_runs_real_runtime_adapter(tmp_path: Path) -> None:
     service, _runtime, _store, workspace = build_service(tmp_path)
     created = service.create_session(
@@ -211,6 +218,23 @@ def test_web_server_is_local_ui_and_rejects_cross_origin_post(tmp_path: Path) ->
         server.shutdown()
         server.server_close()
         thread.join(timeout=2)
+
+
+def test_desktop_layout_keeps_composer_inside_viewport() -> None:
+    css_path = Path(__file__).resolve().parents[1] / "app" / "web_static" / "styles.css"
+    css = css_path.read_text(encoding="utf-8")
+
+    app_shell = _css_rule(css, ".app-shell")
+    workspace_shell = _css_rule(css, ".workspace-shell")
+    content_grid = _css_rule(css, ".content-grid")
+    conversation_panel = _css_rule(css, ".conversation-panel")
+
+    assert "height: 100vh;" in app_shell
+    assert "min-height: 0;" in app_shell
+    assert "overflow: hidden;" in app_shell
+    for rule in (workspace_shell, content_grid, conversation_panel):
+        assert "min-height: 0;" in rule
+        assert "overflow: hidden;" in rule
 
 
 def test_service_rejects_missing_workspace(tmp_path: Path) -> None:
