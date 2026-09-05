@@ -207,20 +207,20 @@ def test_native_window_rehydrates_thread_and_protocol_backed_panels(tmp_path):
         assert "demo.txt" in window.diff_view.toPlainText()
         assert "browser_navigate" in window.browser_view.toPlainText()
         assert "spawn_agent" in window.agents_view.toPlainText()
-        assert "process started" in window.activity_view.toPlainText()
+        assert "Process started" in window.activity_view.toPlainText()
         assert window.thread_title_label.text() == "Inspect project"
         assert window.permission_label.text() == "workspace"
         assert window.status_label.text() == "Completed"
         assert window.status_label.property("state") == "completed"
         assert window.sandbox_label.text() == "Not sandboxed · none"
         assert window.sandbox_label.property("state") == "unprotected"
-        assert "Provider streaming · on" in window.protocol_label.text()
+        assert "Streaming on" in window.protocol_label.text()
         assert window.connection_dot.property("state") == "connected"
+        assert window.thread_section_label.text() == "THREADS  1"
         assert window.thread_list.count() == 1
-        assert isinstance(
-            window.thread_list.itemWidget(window.thread_list.item(0)),
-            ThreadListItemWidget,
-        )
+        row = window.thread_list.itemWidget(window.thread_list.item(0))
+        assert isinstance(row, ThreadListItemWidget)
+        assert "tmp_path" not in row.toolTip()
     finally:
         window.close()
         app.processEvents()
@@ -291,6 +291,44 @@ def test_native_window_renders_streaming_assistant_and_approval_card(tmp_path):
         assert window.status_label.text() == "Waiting Approval"
         assert window.status_label.property("state") == "waiting_approval"
         assert window.composer_state_label.text() == "Waiting for approval"
+    finally:
+        window.close()
+        app.processEvents()
+
+
+def test_native_window_empty_state_prompt_and_panel_toggles(tmp_path):
+    app = QApplication.instance() or QApplication([])
+    client = FakeClient(tmp_path)
+    window = LoomDesktopWindow(
+        client=client,
+        initialization=_initialization(tmp_path),
+        default_workspace=tmp_path,
+        default_permission_mode="workspace",
+    )
+    window.show()
+    try:
+        _wait_for(app, lambda: window.current_thread_id == "thread-1")
+        window._durable_messages = []
+        window._live_assistant.clear()
+        window._optimistic_user = None
+        window._render_transcript()
+        app.processEvents()
+        assert window.empty_state.isVisible() is True
+        assert window.transcript.isVisible() is False
+
+        window._fill_composer("Inspect this project")
+        assert window.composer.toPlainText() == "Inspect this project"
+
+        window.toggle_sidebar()
+        window.toggle_runtime()
+        app.processEvents()
+        assert window.sidebar_panel.isVisible() is False
+        assert window.activity_panel.isVisible() is False
+        window.toggle_sidebar()
+        window.toggle_runtime()
+        app.processEvents()
+        assert window.sidebar_panel.isVisible() is True
+        assert window.activity_panel.isVisible() is True
     finally:
         window.close()
         app.processEvents()
