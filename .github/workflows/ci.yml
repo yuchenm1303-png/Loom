@@ -19,7 +19,7 @@ jobs:
       - name: Install
         run: python -m pip install -e '.[dev]'
       - name: Compile
-        run: python -m compileall -q app loom_cli.py loom_web.py loom_app_server.py run_loom.py
+        run: python -m compileall -q app loom_cli.py loom_web.py loom_app_server.py loom_desktop.py run_loom.py
       - name: Test
         run: python -m pytest
       - name: CLI smoke
@@ -27,6 +27,7 @@ jobs:
           loom --help
           loom-web --help
           loom-app-server --help
+          loom-desktop --help
 
   windows-context-smoke:
     runs-on: windows-latest
@@ -39,6 +40,22 @@ jobs:
         run: python -m pip install -e ".[dev]"
       - name: Runtime state path contract
         run: python -m pytest -q tests/test_context_runtime.py::test_model_request_contains_authoritative_runtime_state
+
+  windows-desktop-smoke:
+    runs-on: windows-latest
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install desktop extra
+        run: python -m pip install -e ".[dev,desktop]"
+      - name: Desktop process and Qt contracts
+        run: python -m pytest -q tests/test_app_server_client.py tests/test_desktop_ui.py
+      - name: Desktop launcher smoke
+        run: loom-desktop --help
 
   mcp-adapter-smoke:
     runs-on: ubuntu-latest
