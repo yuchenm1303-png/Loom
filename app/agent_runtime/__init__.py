@@ -58,6 +58,7 @@ from .durable_state import (
     ThreadGoal,
 )
 from .history import HistoryRepair, repair_tool_history
+from .mcp_configured_runtime import ConfiguredMCPRuntime
 from .mcp_runtime import (
     MCPClientManager,
     MCPConfigurationError,
@@ -139,8 +140,9 @@ from .web_search_tools import web_search_tools
 
 # Runtime v2 default stack:
 # Core -> Durable -> Sandbox -> Context -> Multi-Agent -> Memory -> Web Search -> Browser -> MCP.
+# The default wrapper auto-loads operator MCP config from the Loom runtime home.
 # Lower layers remain exported for embedders that intentionally need them.
-AgentRuntime = MCPRuntime
+AgentRuntime = ConfiguredMCPRuntime
 
 __all__ = [
     "AgentControl",
@@ -178,6 +180,7 @@ __all__ = [
     "BrowserUseBackend",
     "BrowserUseSessionBackend",
     "CancellationToken",
+    "ConfiguredMCPRuntime",
     "ContextAgentRuntime",
     "ContextCheckpoint",
     "ContextCheckpointStore",
