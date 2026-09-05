@@ -4,7 +4,7 @@ import argparse
 from pathlib import Path
 
 from app.agent_runtime import AgentStatus, PermissionMode
-from app.web_ui import serve_local_ui
+from app.web_ui_streaming import serve_streaming_local_ui
 from loom_cli import _build_runtime, _resolve_new_permission_mode
 
 
@@ -53,7 +53,7 @@ def main(argv: list[str] | None = None) -> int:
             raise SystemExit(f"Workspace is not a directory: {default_workspace}")
         default_permission = _resolve_new_permission_mode(args)
 
-    return serve_local_ui(
+    return serve_streaming_local_ui(
         runtime=runtime,
         store=store,
         model=model,
