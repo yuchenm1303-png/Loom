@@ -58,6 +58,18 @@ from .durable_state import (
     ThreadGoal,
 )
 from .history import HistoryRepair, repair_tool_history
+from .mcp_configured_runtime import ConfiguredMCPRuntime
+from .mcp_runtime import (
+    MCPClientManager,
+    MCPConfigurationError,
+    MCPRuntime,
+    MCPServerConfig,
+    MCPToolDescriptor,
+    MCPUnavailableError,
+    canonical_mcp_tool_name,
+    load_mcp_server_configs,
+    mcp_sdk_available,
+)
 from .memory_runtime import MemoryExtractionResult, MemoryRuntime
 from .memory_store import (
     MemoryCandidate,
@@ -127,9 +139,10 @@ from .web_search_runtime import WebSearchRuntime
 from .web_search_tools import web_search_tools
 
 # Runtime v2 default stack:
-# Core -> Durable -> Sandbox -> Context -> Multi-Agent -> Memory -> Web Search -> Browser.
+# Core -> Durable -> Sandbox -> Context -> Multi-Agent -> Memory -> Web Search -> Browser -> MCP.
+# The default wrapper auto-loads operator MCP config from the Loom runtime home.
 # Lower layers remain exported for embedders that intentionally need them.
-AgentRuntime = BrowserRuntime
+AgentRuntime = ConfiguredMCPRuntime
 
 __all__ = [
     "AgentControl",
@@ -167,6 +180,7 @@ __all__ = [
     "BrowserUseBackend",
     "BrowserUseSessionBackend",
     "CancellationToken",
+    "ConfiguredMCPRuntime",
     "ContextAgentRuntime",
     "ContextCheckpoint",
     "ContextCheckpointStore",
@@ -180,6 +194,12 @@ __all__ = [
     "GoalStatus",
     "HistoryRepair",
     "JSONTransport",
+    "MCPClientManager",
+    "MCPConfigurationError",
+    "MCPRuntime",
+    "MCPServerConfig",
+    "MCPToolDescriptor",
+    "MCPUnavailableError",
     "ManagedBrowserSession",
     "ManagedProcess",
     "MemoryCandidate",
@@ -239,7 +259,10 @@ __all__ = [
     "browser_use_session_backend_factory",
     "build_world_state_envelope",
     "builtin_read_only_tools",
+    "canonical_mcp_tool_name",
     "compaction_split_index",
+    "load_mcp_server_configs",
+    "mcp_sdk_available",
     "memory_tools",
     "multi_agent_tools",
     "permission_preset",

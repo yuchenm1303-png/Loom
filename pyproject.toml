@@ -19,6 +19,9 @@ dev = [
 browser = [
     "browser-use>=0.13.10,<0.14",
 ]
+mcp = [
+    "mcp>=2.1,<3",
+]
 
 [project.scripts]
 loom = "loom_cli:main"
