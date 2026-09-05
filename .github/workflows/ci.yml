@@ -52,8 +52,8 @@ jobs:
           python-version: "3.12"
       - name: Install desktop extra
         run: python -m pip install -e ".[dev,desktop]"
-      - name: Desktop process, UTF-8 protocol, and Qt contracts
-        run: python -m pytest -q tests/test_app_server_client.py tests/test_app_server_stdio_encoding.py tests/test_desktop_ui.py tests/test_desktop_ui_v3.py tests/test_desktop_thread_scroll.py
+      - name: Desktop process, UTF-8 protocol, Qt, scroll, and motion contracts
+        run: python -m pytest -q tests/test_app_server_client.py tests/test_app_server_stdio_encoding.py tests/test_desktop_ui.py tests/test_desktop_ui_v3.py tests/test_desktop_thread_scroll.py tests/test_desktop_ui_motion.py
       - name: Desktop launcher smoke
         run: loom-desktop --help
 
