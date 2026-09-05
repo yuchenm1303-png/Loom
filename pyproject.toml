@@ -23,14 +23,20 @@ browser = [
 mcp = [
     "mcp>=2.1,<3",
 ]
+desktop = [
+    "PySide6>=6.7,<7",
+]
 
 [project.scripts]
 loom = "loom_cli:main"
 loom-web = "loom_web:main"
 loom-app-server = "loom_app_server:main"
 
+[project.gui-scripts]
+loom-desktop = "loom_desktop:main"
+
 [tool.setuptools]
-py-modules = ["loom_cli", "loom_web", "loom_app_server"]
+py-modules = ["loom_cli", "loom_web", "loom_app_server", "loom_desktop"]
 
 [tool.setuptools.package-data]
 app = ["web_static/*"]
