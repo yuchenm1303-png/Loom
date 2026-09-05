@@ -126,8 +126,14 @@ class DurableAgentRuntime(CoreAgentRuntime):
             )
         return removed
 
-    def start_turn(self, session_id: str, user_text: str) -> AgentRunResult:
-        result = self._start_turn_once(session_id, user_text)
+    def start_turn(
+        self,
+        session_id: str,
+        user_text: str,
+        *,
+        turn_id: str | None = None,
+    ) -> AgentRunResult:
+        result = self._start_turn_once(session_id, user_text, turn_id=turn_id)
         result = self._track_goal_usage(result)
         if self.auto_drain_queue and result.status is AgentStatus.COMPLETED:
             return self._drain_queue(session_id, result)
@@ -274,7 +280,9 @@ class DurableAgentRuntime(CoreAgentRuntime):
             if session.status is AgentStatus.RUNNING:
                 raise RuntimeError("agent session already has an active turn")
 
-            resolved_turn_id = str(turn_id or uuid.uuid4())
+            resolved_turn_id = str(turn_id or uuid.uuid4()).strip()
+            if not resolved_turn_id:
+                raise ValueError("turn_id must not be empty")
             session.current_turn_id = resolved_turn_id
             session.status = AgentStatus.RUNNING
             session.model_steps = 0
