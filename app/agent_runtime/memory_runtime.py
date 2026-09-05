@@ -16,6 +16,7 @@ from .memory_store import (
     MemoryScope,
     MemoryStore,
     redact_secrets,
+    workspace_memory_key,
 )
 from .memory_tools import memory_tools
 from .multi_agent_runtime import MultiAgentRuntime
@@ -184,6 +185,38 @@ class MemoryRuntime(MultiAgentRuntime):
     def memory_status(self, session_id: str) -> dict[str, int]:
         session = self.store.load(session_id)
         return self.memory_store.counts(workspace=session.workspace_dir)
+
+    def forget_memory(self, session_id: str, memory_id: str) -> bool:
+        """Forget one memory visible to this session.
+
+        Workspace-scoped records cannot be deleted through a session attached to a
+        different workspace. Global records are visible/user-controlled everywhere.
+        """
+        lock = self._session_lock(session_id)
+        with lock:
+            session = self.store.load(session_id)
+            if session.status in {AgentStatus.RUNNING, AgentStatus.WAITING_APPROVAL}:
+                raise RuntimeError("cannot forget long-term memory while a turn is active")
+            record = self.memory_store.get(memory_id)
+            if record is None:
+                return False
+            if (
+                record.scope is MemoryScope.WORKSPACE
+                and record.scope_key != workspace_memory_key(session.workspace_dir)
+            ):
+                raise PermissionError("memory belongs to a different workspace")
+            forgotten = self.memory_store.delete(record.memory_id)
+            if forgotten:
+                self._record(
+                    session,
+                    AgentEventKind.MEMORY_FORGOTTEN,
+                    data={
+                        "memory_id": record.memory_id,
+                        "scope": record.scope.value,
+                        "category": record.category.value,
+                    },
+                )
+            return forgotten
 
     def _request_context_messages(
         self,
