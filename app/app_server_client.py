@@ -30,12 +30,14 @@ class JsonRpcClientError(AppServerClientError):
 
 @dataclass(frozen=True, slots=True)
 class AppServerProcessConfig:
+    """Source/packaged process configuration without carrying provider secrets."""
+
     workspace: str | Path
-    provider: str = "openai-compatible"
+    provider: str | None = None
     base_url: str | None = None
     model: str | None = None
     home: str | Path | None = None
-    permission_mode: str = "workspace"
+    permission_mode: str | None = None
     timeout_seconds: float = 120.0
     app_server_executable: str | Path | None = None
 
@@ -46,22 +48,22 @@ class AppServerProcessConfig:
             command = [sys.executable, "-m", "loom_app_server"]
         command.extend(
             [
-                "--provider",
-                self.provider,
                 "--workspace",
                 str(Path(self.workspace).expanduser().resolve()),
-                "--permission-mode",
-                self.permission_mode,
                 "--timeout",
                 str(float(self.timeout_seconds)),
             ]
         )
+        if self.provider:
+            command.extend(["--provider", str(self.provider)])
         if self.base_url:
-            command.extend(["--base-url", self.base_url])
+            command.extend(["--base-url", str(self.base_url)])
         if self.model:
-            command.extend(["--model", self.model])
+            command.extend(["--model", str(self.model)])
         if self.home:
             command.extend(["--home", str(Path(self.home).expanduser().resolve())])
+        if self.permission_mode:
+            command.extend(["--permission-mode", str(self.permission_mode)])
         return command
 
 
@@ -169,7 +171,12 @@ class LoomAppServerClient:
         self._stdout_thread.start()
         self._stderr_thread.start()
 
-    def start_and_initialize(self, *, client_name: str, client_version: str = "0.1") -> dict[str, Any]:
+    def start_and_initialize(
+        self,
+        *,
+        client_name: str,
+        client_version: str = "0.1",
+    ) -> dict[str, Any]:
         self.start()
         result = self.request(
             "initialize",
@@ -178,6 +185,8 @@ class LoomAppServerClient:
                 "clientInfo": {"name": str(client_name), "version": str(client_version)},
             },
         )
+        if not isinstance(result, dict):
+            raise AppServerClientError("App Server initialize returned an invalid result")
         self.notify("initialized", {})
         return result
 
@@ -216,7 +225,7 @@ class LoomAppServerClient:
                 raise AppServerClientError(f"App Server request timed out: {method}") from exc
             if kind == "result":
                 return payload
-            if isinstance(payload, JsonRpcClientError):
+            if isinstance(payload, Exception):
                 raise payload
             raise AppServerClientError(str(payload))
         finally:
@@ -237,22 +246,27 @@ class LoomAppServerClient:
     def thread_list(self, *, limit: int = 100) -> dict[str, Any]:
         return dict(self.request("thread/list", {"limit": int(limit)}))
 
-    def thread_start(self, *, workspace: str | Path, permission_mode: str) -> dict[str, Any]:
-        return dict(
-            self.request(
-                "thread/start",
-                {
-                    "workspace": str(Path(workspace).expanduser().resolve()),
-                    "permissionMode": str(permission_mode),
-                },
-            )
-        )
+    def thread_start(
+        self,
+        *,
+        workspace: str | Path,
+        permission_mode: str | None = None,
+    ) -> dict[str, Any]:
+        params: dict[str, Any] = {
+            "workspace": str(Path(workspace).expanduser().resolve()),
+        }
+        if permission_mode:
+            params["permissionMode"] = str(permission_mode)
+        return dict(self.request("thread/start", params))
 
     def thread_resume(self, thread_id: str) -> dict[str, Any]:
         return dict(self.request("thread/resume", {"threadId": str(thread_id)}))
 
     def thread_read(self, thread_id: str) -> dict[str, Any]:
         return dict(self.request("thread/read", {"threadId": str(thread_id)}))
+
+    def thread_fork(self, thread_id: str) -> dict[str, Any]:
+        return dict(self.request("thread/fork", {"threadId": str(thread_id)}))
 
     def turn_start(self, thread_id: str, text: str) -> dict[str, Any]:
         return dict(self.request("turn/start", {"threadId": str(thread_id), "input": str(text)}))
@@ -317,8 +331,9 @@ class LoomAppServerClient:
                         except Exception:
                             continue
         finally:
-            self._fail_pending(self._exit_message("Loom App Server exited"))
-            self._emit_exit(self._exit_message("Loom App Server exited"))
+            message = self._exit_message("Loom App Server exited")
+            self._fail_pending(message)
+            self._emit_exit(message)
 
     def _stderr_loop(self) -> None:
         process = self._process
@@ -341,7 +356,7 @@ class LoomAppServerClient:
         if "error" in frame:
             raw = frame.get("error") or {}
             if isinstance(raw, dict):
-                error = JsonRpcClientError(
+                error: Exception = JsonRpcClientError(
                     code=int(raw.get("code") or -32603),
                     message=str(raw.get("message") or "JSON-RPC error"),
                     data=raw.get("data"),
