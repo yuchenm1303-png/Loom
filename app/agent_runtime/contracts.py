@@ -29,6 +29,7 @@ class AgentEventKind(str, Enum):
     CONTEXT_CHECKPOINTED = "context_checkpointed"
     MEMORY_EXTRACTED = "memory_extracted"
     MEMORY_CONSOLIDATED = "memory_consolidated"
+    MEMORY_FORGOTTEN = "memory_forgotten"
     TURN_STARTED = "turn_started"
     USER_MESSAGE = "user_message"
     MODEL_REQUESTED = "model_requested"
