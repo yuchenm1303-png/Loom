@@ -7,13 +7,14 @@ from .agent_graph import (
 )
 from .browser_backend import BrowserUseSessionBackend, browser_use_session_backend_factory
 from .browser_runtime import (
-    BrowserRuntime,
+    BrowserRuntime as BrowserRuntimeBase,
     BrowserSessionHandle,
     BrowserSessionStore,
     BrowserStateSnapshot,
     redact_browser_text,
     redact_browser_url,
 )
+from .browser_runtime_v1 import BrowserRuntime
 from .browser_security import BrowserSecurityPolicy
 from .browser_session import (
     BrowserBackend,
@@ -155,6 +156,7 @@ __all__ = [
     "BrowserLaunchOptions",
     "BrowserPageState",
     "BrowserRuntime",
+    "BrowserRuntimeBase",
     "BrowserSecurityPolicy",
     "BrowserSessionHandle",
     "BrowserSessionStore",
