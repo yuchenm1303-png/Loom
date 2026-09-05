@@ -9,7 +9,28 @@ mcp = pytest.importorskip("mcp")
 
 from mcp.server import MCPServer
 
-from app.agent_runtime import MCPClientManager, MCPServerConfig, ToolContext, ToolEffect
+from app.agent_runtime import (
+    AgentStatus,
+    FileAgentSessionStore,
+    MCPClientManager,
+    MCPRuntime,
+    MCPServerConfig,
+    PermissionMode,
+    ToolContext,
+    ToolEffect,
+    ToolRegistry,
+)
+from app.ai import AGENT_FAST_ROLE, ModelResponse, ToolCall
+
+
+class _ScriptedPlatform:
+    def __init__(self, responses):
+        self.responses = list(responses)
+
+    def execute_chat(self, _profile_id, _request):
+        if not self.responses:
+            raise AssertionError("scripted platform ran out of responses")
+        return self.responses.pop(0)
 
 
 def test_mcp_v2_inprocess_tools_list_and_call_round_trip(tmp_path: Path):
@@ -105,3 +126,70 @@ def test_mcp_v2_real_stdio_subprocess_round_trip(tmp_path: Path):
         assert "stdio:process" in result.content
     finally:
         manager.close()
+
+
+def test_mcp_sensitive_tool_still_crosses_loom_approval_boundary(tmp_path: Path):
+    calls: list[str] = []
+    server = MCPServer("Approval fixture")
+
+    @server.tool()
+    def external_write(value: str) -> str:
+        """Simulate a write to an external system."""
+        calls.append(value)
+        return f"wrote:{value}"
+
+    platform = _ScriptedPlatform(
+        [
+            ModelResponse(
+                tool_calls=(
+                    ToolCall(
+                        call_id="mcp-call-1",
+                        name="mcp.approval.external_write",
+                        arguments={"value": "approved"},
+                    ),
+                )
+            ),
+            ModelResponse(text="done"),
+        ]
+    )
+    runtime = MCPRuntime(
+        platform=platform,
+        store=FileAgentSessionStore(tmp_path / "state"),
+        tools=ToolRegistry(),
+        mcp_servers=(
+            MCPServerConfig(
+                name="approval",
+                transport="stdio",
+                command="ignored-by-inprocess-test",
+                default_effect=ToolEffect.SENSITIVE,
+            ),
+        ),
+        mcp_target_factory=lambda _config: server,
+        auto_configure_browser=False,
+        auto_configure_web_search=False,
+    )
+    try:
+        session = runtime.create_session(
+            AGENT_FAST_ROLE.role_id,
+            workspace_dir=tmp_path,
+            permission_mode=PermissionMode.APPROVAL,
+        )
+
+        waiting = runtime.start_turn(session.session_id, "Write to the external system.")
+        assert waiting.status is AgentStatus.WAITING_APPROVAL
+        assert waiting.pending_approval is not None
+        assert waiting.pending_approval.call_id == "mcp-call-1"
+        assert waiting.pending_approval.tool_name == "mcp.approval.external_write"
+        assert waiting.pending_approval.effect is ToolEffect.SENSITIVE
+        assert calls == []
+
+        completed = runtime.resume_approval(
+            session.session_id,
+            "mcp-call-1",
+            approved=True,
+        )
+        assert completed.status is AgentStatus.COMPLETED
+        assert completed.final_text == "done"
+        assert calls == ["approved"]
+    finally:
+        runtime.close()
