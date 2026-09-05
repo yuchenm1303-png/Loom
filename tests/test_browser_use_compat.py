@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import time
+
 import pytest
 
 browser_use = pytest.importorskip("browser_use")
 
 from app.agent_runtime.browser_backend import BrowserUseSessionBackend
-from app.agent_runtime.browser_session import BrowserLaunchOptions
+from app.agent_runtime.browser_session import BrowserLaunchOptions, BrowserUnavailableError
 from app.agent_runtime.browser_use_backend import browser_use_available
 
 
@@ -40,22 +42,41 @@ def test_browser_use_013_adapter_import_and_event_contract():
 
 
 def test_browser_use_backend_launches_real_headless_browser_and_captures_png():
-    """Exercise the actual Chrome/CDP lifecycle without depending on external network."""
+    """Exercise a real Chrome/CDP lifecycle while tolerating browser-use's attach race.
 
-    backend = BrowserUseSessionBackend(
-        BrowserLaunchOptions(headless=True),
-        action_timeout_seconds=45.0,
-    )
-    try:
-        state = backend.start()
-        assert backend.state_revision >= 1
-        assert state.url in {"", "about:blank"} or bool(state.tabs)
+    browser-use 0.13.x can occasionally launch Chrome and establish the root CDP
+    connection before its SessionManager observes the first target within the
+    upstream two-second attach window. Each retry uses a completely fresh backend
+    and Chrome process; persistent launch/CDP failures still fail this test.
+    """
 
-        refreshed = backend.refresh()
-        assert backend.state_revision >= 2
-        assert isinstance(refreshed.dom, str)
+    last_error: BrowserUnavailableError | None = None
+    for attempt in range(3):
+        backend = BrowserUseSessionBackend(
+            BrowserLaunchOptions(headless=True),
+            action_timeout_seconds=45.0,
+        )
+        try:
+            try:
+                state = backend.start()
+            except BrowserUnavailableError as exc:
+                last_error = exc
+                if attempt == 2:
+                    raise
+                time.sleep(0.5)
+                continue
 
-        png = backend.screenshot(full_page=False)
-        assert png.startswith(b"\x89PNG\r\n\x1a\n")
-    finally:
-        backend.close()
+            assert backend.state_revision >= 1
+            assert state.url in {"", "about:blank"} or bool(state.tabs)
+
+            refreshed = backend.refresh()
+            assert backend.state_revision >= 2
+            assert isinstance(refreshed.dom, str)
+
+            png = backend.screenshot(full_page=False)
+            assert png.startswith(b"\x89PNG\r\n\x1a\n")
+            return
+        finally:
+            backend.close()
+
+    assert last_error is None, "browser smoke exhausted retries without a result"
