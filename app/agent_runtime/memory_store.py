@@ -340,14 +340,48 @@ class MemoryStore:
 
         if not touched_ids:
             return ()
-        unique_ids = tuple(dict.fromkeys(touched_ids))
-        return tuple(self.get(memory_id) for memory_id in unique_ids if self.get(memory_id) is not None)
+        records: list[MemoryRecord] = []
+        for memory_id in dict.fromkeys(touched_ids):
+            record = self.get(memory_id)
+            if record is not None:
+                records.append(record)
+        return tuple(records)
 
     def get(self, memory_id: str) -> MemoryRecord | None:
         key = _key(memory_id, "memory_id")
         with self._lock, self._connect() as connection:
             row = connection.execute("SELECT * FROM memories WHERE memory_id = ?", (key,)).fetchone()
         return _record_from_row(row) if row is not None else None
+
+    def delete(self, memory_id: str) -> bool:
+        """Forget one consolidated memory and its candidate copies.
+
+        Extraction summary rows remain as audit metadata and are never used for
+        retrieval. Candidate rows sharing the canonical fingerprint are removed so
+        a later consolidation cannot silently recreate the forgotten memory.
+        """
+        key = _key(memory_id, "memory_id")
+        with self._lock, self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                row = connection.execute(
+                    "SELECT fingerprint FROM memories WHERE memory_id = ?",
+                    (key,),
+                ).fetchone()
+                if row is None:
+                    connection.execute("ROLLBACK")
+                    return False
+                fingerprint = str(row["fingerprint"])
+                connection.execute("DELETE FROM memories WHERE memory_id = ?", (key,))
+                connection.execute(
+                    "DELETE FROM memory_candidates WHERE fingerprint = ?",
+                    (fingerprint,),
+                )
+                connection.execute("COMMIT")
+                return True
+            except Exception:
+                connection.execute("ROLLBACK")
+                raise
 
     def list_records(
         self,
