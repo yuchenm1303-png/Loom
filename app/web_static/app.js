@@ -5,7 +5,11 @@ const state = {
   lastRenderKey: "",
   polling: null,
   toastTimer: null,
+  workingSince: 0,
 };
+
+const ACTIVE_POLL_MS = 450;
+const IDLE_POLL_MS = 1100;
 
 const el = (id) => document.getElementById(id);
 
@@ -181,6 +185,27 @@ function createMessageNode(message) {
   return root;
 }
 
+function createWorkingNode(text) {
+  const root = document.createElement("article");
+  root.className = "message assistant loom-working";
+  root.dataset.loomWorking = "true";
+
+  const avatar = document.createElement("div");
+  avatar.className = "message-avatar";
+  avatar.textContent = "L";
+
+  const body = document.createElement("div");
+  const label = document.createElement("div");
+  label.className = "message-label";
+  label.textContent = "Loom";
+  const status = document.createElement("div");
+  status.className = "message-body loom-working-text";
+  status.textContent = text;
+  body.append(label, status);
+  root.append(avatar, body);
+  return root;
+}
+
 const interestingEventKinds = new Set([
   "model_requested",
   "tool_requested",
@@ -207,14 +232,15 @@ const interestingEventKinds = new Set([
 function eventPresentation(event) {
   const data = event.data || {};
   const kind = event.kind || "event";
+  const nested = data.nested ? "Code Mode · " : "";
   if (kind === "model_requested") return ["◇", "Model step", `Step ${data.step ?? ""}`.trim()];
-  if (kind === "tool_requested") return ["→", data.tool || "Tool requested", summarizeArguments(data.arguments)];
-  if (kind === "tool_started") return ["·", data.tool || "Tool running", "Running"];
-  if (kind === "tool_completed") return ["✓", data.tool || "Tool completed", String(data.content || "").slice(0, 170)];
-  if (kind === "tool_failed") return ["!", data.tool || "Tool failed", String(data.content || "").slice(0, 170)];
+  if (kind === "tool_requested") return ["→", `${nested}${data.tool || "Tool requested"}`, summarizeArguments(data.arguments)];
+  if (kind === "tool_started") return ["·", `${nested}${data.tool || "Tool running"}`, "Running"];
+  if (kind === "tool_completed") return ["✓", `${nested}${data.tool || "Tool completed"}`, String(data.content || "").slice(0, 170)];
+  if (kind === "tool_failed") return ["!", `${nested}${data.tool || "Tool failed"}`, String(data.content || "").slice(0, 170)];
   if (kind === "tool_approval_required") return ["?", data.tool || "Approval", data.reason || "Waiting for approval"];
   if (kind === "tool_approved") return ["✓", data.tool || "Approved", "Approved by user"];
-  if (kind === "tool_denied") return ["×", data.tool || "Denied", data.source || "Denied"];
+  if (kind === "tool_denied") return ["×", `${nested}${data.tool || "Denied"}`, data.source || "Denied"];
   if (kind === "process_started") return ["▶", "Process started", data.command || data.process_id || ""];
   if (kind === "process_output") return ["…", "Process output", String(data.output || data.content || "").slice(0, 170)];
   if (kind === "process_exited") return ["■", "Process exited", `Exit ${data.returncode ?? data.exit_code ?? ""}`.trim()];
@@ -291,6 +317,89 @@ function renderApproval(pending, active) {
   refs.denyButton.disabled = active;
 }
 
+function activeTurnStart(snapshot) {
+  const events = Array.isArray(snapshot?.events) ? snapshot.events : [];
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (event.kind !== "turn_started") continue;
+    const parsed = Date.parse(event.created_at || "");
+    if (Number.isFinite(parsed)) return parsed;
+    break;
+  }
+  return 0;
+}
+
+function ensureWorkingClock(snapshot, active) {
+  if (!active) {
+    state.workingSince = 0;
+    return;
+  }
+  if (!state.workingSince) {
+    state.workingSince = activeTurnStart(snapshot) || Date.now();
+  }
+}
+
+function workingElapsedSeconds() {
+  if (!state.workingSince) return 0;
+  return Math.max(0, Math.floor((Date.now() - state.workingSince) / 1000));
+}
+
+function latestLiveEvent(snapshot) {
+  const events = Array.isArray(snapshot?.events) ? snapshot.events : [];
+  const useful = new Set([
+    "model_requested",
+    "tool_requested",
+    "tool_started",
+    "tool_completed",
+    "tool_failed",
+    "process_started",
+    "process_output",
+    "process_exited",
+    "turn_diff_updated",
+    "memory_extracted",
+    "memory_consolidated",
+  ]);
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    if (useful.has(events[index].kind)) return events[index];
+  }
+  return null;
+}
+
+function liveWorkingText(snapshot) {
+  const elapsed = workingElapsedSeconds();
+  const suffix = elapsed > 0 ? ` · ${elapsed}s` : "";
+  if (snapshot?.pending_approval) return `Waiting for your approval${suffix}`;
+
+  const event = latestLiveEvent(snapshot);
+  const data = event?.data || {};
+  const tool = String(data.tool || "tool");
+  const nested = data.nested ? "Code Mode · " : "";
+  if (!event) return `Waiting for ${state.bootstrap?.model || "model"}…${suffix}`;
+  if (event.kind === "model_requested") return `Waiting for ${state.bootstrap?.model || "model"}…${suffix}`;
+  if (event.kind === "tool_requested" || event.kind === "tool_started") return `${nested}Running ${tool}…${suffix}`;
+  if (event.kind === "tool_completed") return `${nested}${tool} finished · continuing…${suffix}`;
+  if (event.kind === "tool_failed") return `${nested}${tool} failed · Loom is recovering…${suffix}`;
+  if (event.kind === "process_started" || event.kind === "process_output") return `Running workspace process…${suffix}`;
+  if (event.kind === "process_exited") return `Workspace process finished · continuing…${suffix}`;
+  if (event.kind === "turn_diff_updated") return `Workspace changed · checking result…${suffix}`;
+  if (event.kind === "memory_extracted" || event.kind === "memory_consolidated") return `Updating context…${suffix}`;
+  return `Loom is working…${suffix}`;
+}
+
+function updateLiveStatus(snapshot) {
+  const session = snapshot?.session || {};
+  const active = Boolean(snapshot?.active || session.active);
+  const waiting = Boolean(snapshot?.pending_approval);
+  ensureWorkingClock(snapshot, active || waiting);
+
+  if (active || waiting) {
+    const text = liveWorkingText(snapshot);
+    refs.composerStatus.textContent = text;
+    const pending = refs.messages.querySelector("[data-loom-working='true'] .loom-working-text");
+    if (pending) pending.textContent = text;
+  }
+}
+
 function renderSnapshot(snapshot, { preserveScroll = false } = {}) {
   state.snapshot = snapshot;
   const session = snapshot.session;
@@ -319,21 +428,25 @@ function renderSnapshot(snapshot, { preserveScroll = false } = {}) {
     if (node) refs.messages.append(node);
   }
 
+  const waiting = Boolean(snapshot.pending_approval);
+  ensureWorkingClock(snapshot, active || waiting);
+  if (active && !waiting) {
+    refs.messages.append(createWorkingNode(liveWorkingText(snapshot)));
+  }
+
   renderActivity(snapshot.events || []);
   renderApproval(snapshot.pending_approval, active);
 
-  const waiting = Boolean(snapshot.pending_approval);
   refs.promptInput.disabled = active || waiting;
   refs.sendButton.disabled = active || waiting || !refs.promptInput.value.trim();
   refs.stopButton.classList.toggle("hidden", !active);
 
-  if (active) {
-    refs.composerStatus.textContent = "Loom is working… tool activity updates on the right.";
-  } else if (waiting) {
-    refs.composerStatus.textContent = "Review the approval request before continuing.";
+  if (active || waiting) {
+    updateLiveStatus(snapshot);
   } else if (session.status === "failed") {
     refs.composerStatus.textContent = "The last turn failed. You can send another message.";
   } else {
+    state.workingSince = 0;
     refs.composerStatus.textContent = "Ready.";
   }
 
@@ -362,6 +475,7 @@ async function refreshSession({ preserveScroll = true, refreshSessions = false }
       renderSnapshot(snapshot, { preserveScroll });
     } else {
       state.snapshot = snapshot;
+      updateLiveStatus(snapshot);
     }
     if (refreshSessions) await refreshSessionList();
   } catch (error) {
@@ -379,9 +493,21 @@ async function refreshSessionList() {
 async function selectSession(sessionId) {
   state.sessionId = sessionId;
   state.lastRenderKey = "";
+  state.workingSince = 0;
   renderSessions(state.bootstrap?.sessions || []);
   await refreshSession({ preserveScroll: false });
   await refreshSessionList();
+}
+
+function showOptimisticWorkingState() {
+  state.workingSince = Date.now();
+  refs.composerStatus.textContent = `Waiting for ${state.bootstrap?.model || "model"}…`;
+  const existing = refs.messages.querySelector("[data-loom-working='true']");
+  if (existing) existing.remove();
+  refs.messages.append(createWorkingNode(refs.composerStatus.textContent));
+  requestAnimationFrame(() => {
+    refs.messageScroller.scrollTop = refs.messageScroller.scrollHeight;
+  });
 }
 
 async function sendPrompt() {
@@ -390,6 +516,7 @@ async function sendPrompt() {
   refs.promptInput.value = "";
   resizeTextarea();
   refs.sendButton.disabled = true;
+  showOptimisticWorkingState();
   try {
     await api(`/api/sessions/${encodeURIComponent(state.sessionId)}/turn`, {
       method: "POST",
@@ -398,8 +525,12 @@ async function sendPrompt() {
     state.lastRenderKey = "";
     await refreshSession({ preserveScroll: false, refreshSessions: true });
   } catch (error) {
+    state.workingSince = 0;
     refs.promptInput.value = text;
     resizeTextarea();
+    const pending = refs.messages.querySelector("[data-loom-working='true']");
+    if (pending) pending.remove();
+    refs.composerStatus.textContent = "Ready.";
     showToast(error.message);
   }
 }
@@ -409,6 +540,7 @@ async function resolveApproval(approved) {
   if (!state.sessionId || !pending) return;
   refs.approveButton.disabled = true;
   refs.denyButton.disabled = true;
+  state.workingSince = Date.now();
   try {
     await api(`/api/sessions/${encodeURIComponent(state.sessionId)}/approval`, {
       method: "POST",
@@ -417,6 +549,7 @@ async function resolveApproval(approved) {
     state.lastRenderKey = "";
     await refreshSession({ preserveScroll: true, refreshSessions: true });
   } catch (error) {
+    state.workingSince = 0;
     showToast(error.message);
     refs.approveButton.disabled = false;
     refs.denyButton.disabled = false;
@@ -430,6 +563,7 @@ async function stopTurn() {
       method: "POST",
       body: "{}",
     });
+    state.workingSince = 0;
     state.lastRenderKey = "";
     await refreshSession({ preserveScroll: true, refreshSessions: true });
   } catch (error) {
@@ -449,6 +583,7 @@ async function createSession() {
     closeModal();
     state.sessionId = snapshot.session.session_id;
     state.lastRenderKey = "";
+    state.workingSince = 0;
     await refreshSessionList();
     renderSnapshot(snapshot, { preserveScroll: false });
   } catch (error) {
@@ -482,6 +617,27 @@ function resizeTextarea() {
   refs.sendButton.disabled = blocked || !refs.promptInput.value.trim();
 }
 
+function schedulePoll(delay) {
+  clearTimeout(state.polling);
+  state.polling = setTimeout(pollLoop, delay);
+}
+
+async function pollLoop() {
+  let nextDelay = IDLE_POLL_MS;
+  try {
+    if (state.sessionId) {
+      await refreshSession({ preserveScroll: true });
+      const busy = Boolean(state.snapshot?.active || state.snapshot?.pending_approval);
+      if (busy) {
+        await refreshSessionList();
+        nextDelay = ACTIVE_POLL_MS;
+      }
+    }
+  } finally {
+    schedulePoll(nextDelay);
+  }
+}
+
 async function boot() {
   try {
     const bootstrap = await api("/api/bootstrap");
@@ -501,13 +657,7 @@ async function boot() {
       openModal();
     }
 
-    state.polling = setInterval(async () => {
-      if (!state.sessionId) return;
-      await refreshSession({ preserveScroll: true });
-      if (state.snapshot?.active || state.snapshot?.pending_approval) {
-        await refreshSessionList();
-      }
-    }, 850);
+    schedulePoll(state.snapshot?.active ? ACTIVE_POLL_MS : IDLE_POLL_MS);
   } catch (error) {
     showToast(`Cannot start UI: ${error.message}`);
   }
