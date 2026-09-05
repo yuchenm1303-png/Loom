@@ -118,6 +118,7 @@ class AgentSession:
     permission_mode: PermissionMode = PermissionMode.APPROVAL
     status: AgentStatus = AgentStatus.IDLE
     current_turn_id: str = ""
+    forked_from_id: str = ""
     messages: list[AIMessage] = field(default_factory=list)
     pending_tool_calls: list[ToolCall] = field(default_factory=list)
     pending_step_id: str = ""
@@ -133,6 +134,7 @@ class AgentSession:
         self.profile_id = str(self.profile_id or "").strip().casefold()
         self.system_prompt = str(self.system_prompt or "").strip()
         self.workspace_dir = str(self.workspace_dir or "").strip()
+        self.forked_from_id = str(self.forked_from_id or "").strip()
         self.permission_mode = PermissionMode(self.permission_mode)
         self.status = AgentStatus(self.status)
         self.messages = list(self.messages)
