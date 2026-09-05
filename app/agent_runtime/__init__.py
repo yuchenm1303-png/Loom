@@ -29,6 +29,8 @@ from .browser_session import (
 )
 from .browser_use_backend import BrowserUseBackend, browser_use_available, browser_use_backend_factory
 from .builtin_tools import builtin_read_only_tools
+from .code_mode import CodeModeError, CodeModeExecution, CodeModeInterpreter, CodeModeLimits
+from .code_mode_runtime import CodeModeRuntime
 from .context_runtime import ContextAgentRuntime
 from .context_state import (
     ContextCheckpoint,
@@ -151,11 +153,11 @@ from .web_search_runtime import WebSearchRuntime
 from .web_search_tools import web_search_tools
 
 # Runtime v2 default stack:
-# Core -> Durable -> Sandbox -> Context -> Multi-Agent -> Memory -> Web Search -> Browser -> MCP -> Tool Search -> Skills.
-# The default wrapper auto-loads operator MCP config, keeps deferred tools behind
-# on-demand search, and exposes reusable SKILL.md workflows only when requested.
+# Core -> Durable -> Sandbox -> Context -> Multi-Agent -> Memory -> Web Search -> Browser -> MCP -> Tool Search -> Skills -> Code Mode.
+# The default wrapper keeps deferred tools bounded, exposes SKILL.md workflows on demand,
+# and allows restricted code cells to compose nested Loom tools without bypassing permissions.
 # Lower layers remain exported for embedders that intentionally need them.
-AgentRuntime = SkillRuntime
+AgentRuntime = CodeModeRuntime
 
 __all__ = [
     "AgentControl",
@@ -193,6 +195,11 @@ __all__ = [
     "BrowserUseBackend",
     "BrowserUseSessionBackend",
     "CancellationToken",
+    "CodeModeError",
+    "CodeModeExecution",
+    "CodeModeInterpreter",
+    "CodeModeLimits",
+    "CodeModeRuntime",
     "ConfiguredMCPRuntime",
     "ContextAgentRuntime",
     "ContextCheckpoint",
