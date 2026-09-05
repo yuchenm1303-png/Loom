@@ -90,11 +90,23 @@ from .tools import (
     ToolRouter,
     validate_tool_arguments,
 )
+from .web_search import (
+    BraveWebSearchProvider,
+    JSONTransport,
+    TavilyWebSearchProvider,
+    WebSearchError,
+    WebSearchProvider,
+    WebSearchResponse,
+    WebSearchResult,
+    web_search_provider_from_env,
+)
+from .web_search_runtime import WebSearchRuntime
+from .web_search_tools import web_search_tools
 
 # Runtime v2 default stack:
-# Core -> Durable -> Sandbox -> Context -> Multi-Agent -> Memory.
+# Core -> Durable -> Sandbox -> Context -> Multi-Agent -> Memory -> Web Search.
 # Lower layers remain exported for embedders that intentionally need them.
-AgentRuntime = MemoryRuntime
+AgentRuntime = WebSearchRuntime
 
 __all__ = [
     "AgentControl",
@@ -114,6 +126,7 @@ __all__ = [
     "AgentTool",
     "ApplyPatchRuntime",
     "ApprovalPolicy",
+    "BraveWebSearchProvider",
     "CancellationToken",
     "ContextAgentRuntime",
     "ContextCheckpoint",
@@ -127,6 +140,7 @@ __all__ = [
     "FileAgentSessionStore",
     "GoalStatus",
     "HistoryRepair",
+    "JSONTransport",
     "ManagedProcess",
     "MemoryCandidate",
     "MemoryCandidateState",
@@ -161,6 +175,7 @@ __all__ = [
     "SandboxPolicy",
     "SandboxSnapshot",
     "StepContext",
+    "TavilyWebSearchProvider",
     "ThreadGoal",
     "ToolContext",
     "ToolEffect",
@@ -172,6 +187,11 @@ __all__ = [
     "ToolResult",
     "ToolRouter",
     "TurnDiffTracker",
+    "WebSearchError",
+    "WebSearchProvider",
+    "WebSearchResponse",
+    "WebSearchResult",
+    "WebSearchRuntime",
     "WorldStateEnvelope",
     "WorldStateSnapshot",
     "build_world_state_envelope",
@@ -183,5 +203,7 @@ __all__ = [
     "redact_secrets",
     "repair_tool_history",
     "validate_tool_arguments",
+    "web_search_provider_from_env",
+    "web_search_tools",
     "workspace_memory_key",
 ]
