@@ -53,7 +53,14 @@ class SmoothThreadScrollController(QObject):
         return int(round(self._target))
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802 - Qt override
-        if watched is not self.view.viewport() or event.type() != QEvent.Type.Wheel:
+        # Qt may dispatch one last filter callback while Python wrappers are being
+        # torn down. Avoid touching a QListWidget whose C++ object is already gone.
+        try:
+            viewport = self.view.viewport()
+        except RuntimeError:
+            return False
+
+        if watched is not viewport or event.type() != QEvent.Type.Wheel:
             return super().eventFilter(watched, event)
 
         if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
