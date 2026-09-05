@@ -27,9 +27,10 @@ mcp = [
 [project.scripts]
 loom = "loom_cli:main"
 loom-web = "loom_web:main"
+loom-app-server = "loom_app_server:main"
 
 [tool.setuptools]
-py-modules = ["loom_cli", "loom_web"]
+py-modules = ["loom_cli", "loom_web", "loom_app_server"]
 
 [tool.setuptools.package-data]
 app = ["web_static/*"]
