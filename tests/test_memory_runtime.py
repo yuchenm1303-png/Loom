@@ -242,3 +242,46 @@ def test_memory_store_survives_runtime_restart(tmp_path):
     assert "durable Thread" in records[0].text
     assert store1.load(session.session_id).session_id == session.session_id
     runtime2.close()
+
+
+def test_forget_memory_enforces_workspace_boundary_and_removes_candidate_copies(tmp_path):
+    runtime, store, _ = _runtime(tmp_path)
+    workspace_a = tmp_path / "a"
+    workspace_b = tmp_path / "b"
+    workspace_a.mkdir()
+    workspace_b.mkdir()
+    session_a = runtime.create_session(AGENT_FAST_ROLE.role_id, workspace_dir=workspace_a)
+    session_b = runtime.create_session(AGENT_FAST_ROLE.role_id, workspace_dir=workspace_b)
+    runtime.memory_store.add_extraction(
+        source_session_id=session_a.session_id,
+        source_turn_id="seed",
+        workspace=workspace_a,
+        summary="seed",
+        candidates=(
+            MemoryCandidate(
+                text="Workspace A uses release branch stable-a.",
+                scope=MemoryScope.WORKSPACE,
+                category=MemoryCategory.DECISION,
+                importance=5,
+            ),
+        ),
+    )
+    records = runtime.memory_store.consolidate_pending()
+    memory_id = records[0].memory_id
+
+    try:
+        runtime.forget_memory(session_b.session_id, memory_id)
+    except PermissionError as exc:
+        assert "different workspace" in str(exc)
+    else:  # pragma: no cover
+        raise AssertionError("a different workspace must not delete workspace memory")
+
+    assert runtime.forget_memory(session_a.session_id, memory_id) is True
+    assert runtime.memory_store.get(memory_id) is None
+    assert runtime.memory_store.consolidate_pending() == ()
+    assert not runtime.search_memory(session_a.session_id, "stable-a")
+    assert any(
+        event.kind is AgentEventKind.MEMORY_FORGOTTEN
+        for event in store.events(session_a.session_id)
+    )
+    runtime.close()
