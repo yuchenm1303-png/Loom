@@ -1,6 +1,6 @@
 # Loom
 
-Loom is a personal, general-purpose AI agent built for real tool use. Runtime v2 is organized around durable thread state, frozen per-step execution context, explicit permission modes, managed processes, atomic file edits, crash recovery, durable goals/queues, authoritative context checkpoints, independent sub-agents, durable long-term memory, and an honest OS-sandbox boundary.
+Loom is a personal, general-purpose AI agent built for real tool use. Runtime v2 is organized around durable thread state, frozen per-step execution context, explicit permission modes, managed processes, atomic file edits, crash recovery, durable goals/queues, authoritative context checkpoints, independent sub-agents, durable long-term memory, credential-backed web search, and an honest OS-sandbox boundary.
 
 The initial core was cleanly extracted from the validated generic Agent architecture in `yuchenm1303-png/ecommerce-agent` at `feat/commerce-ai-platform@04cceaf2efd8aea867989781fb3c91ebb13cb3c9`. No Listing, Makro, supplier, product-field, or other commerce production code is included here.
 
@@ -45,6 +45,9 @@ The initial core was cleanly extracted from the validated generic Agent architec
 - Secret redaction before memory extraction and persistence
 - Transient relevance-based memory injection without polluting canonical history
 - User-controlled memory inspection, search, extraction, consolidation, and forgetting
+- Pluggable Brave Search / Tavily external web search
+- Web-search credentials kept out of Session / WorldState / tool results
+- Explicit network-sensitive approval boundary for web search
 - Secret-like environment variables stripped from child processes
 
 Private model chain-of-thought is neither requested nor persisted. Loom stores only observable messages, tool activity, lifecycle events, usage, durable thread/workspace state, archived context checkpoints, durable agent-graph metadata, and validated long-term memory records.
@@ -85,7 +88,7 @@ loom --session <session-id>
 
 A new session defaults to `approval` for backward compatibility.
 
-| Mode | Read-only tools | Workspace file mutation | Process execution |
+| Mode | Read-only tools | Workspace file mutation | Sensitive/network/process tools |
 | --- | --- | --- | --- |
 | `read-only` | automatic | denied | denied |
 | `approval` | automatic | asks | asks |
@@ -146,7 +149,7 @@ Current real backend support:
 - macOS: not implemented yet
 - Windows: not implemented yet
 
-For a workspace sandbox on Linux, Loom mounts the host root read-only, makes the selected workspace writable, gives the process an isolated `/tmp`, and re-mounts `.git`, `.loom`, and `.agents` read-only when those paths exist. Network isolation is **not** implemented yet and is reported as such.
+For a workspace sandbox on Linux, Loom mounts the host root read-only, makes the selected workspace writable, gives the process an isolated `/tmp`, and re-mounts `.git`, `.loom`, and `.agents` read-only when those paths exist. Network isolation for arbitrary subprocesses is **not** implemented yet and is reported as such.
 
 `full-access` intentionally disables the OS sandbox even if Bubblewrap is available.
 
@@ -294,6 +297,62 @@ Explicit user/API controls are available in the CLI:
 
 `/memory forget` removes the canonical retrievable memory and candidate rows sharing its fingerprint so later consolidation cannot silently recreate it. Workspace-scoped memories can only be forgotten from a session attached to that workspace. Extraction summary rows remain audit metadata and are not used for retrieval.
 
+## Web search
+
+Loom supports external public-web search through credential-backed provider adapters. Search is intentionally separate from arbitrary subprocess network access and is classified as a `SENSITIVE` tool effect.
+
+Supported providers:
+
+- Brave Search API
+- Tavily Search API
+
+The easiest setup auto-detects a provider-specific key:
+
+```powershell
+$env:BRAVE_SEARCH_API_KEY="your-brave-key"
+loom
+```
+
+or:
+
+```powershell
+$env:TAVILY_API_KEY="your-tavily-key"
+loom
+```
+
+A provider-neutral key can be used when the provider is explicit:
+
+```powershell
+$env:LOOM_WEB_SEARCH_PROVIDER="brave"  # or tavily
+$env:LOOM_WEB_SEARCH_API_KEY="your-key"
+loom
+```
+
+Optional timeout override:
+
+```powershell
+$env:LOOM_WEB_SEARCH_TIMEOUT="20"
+```
+
+Disable search explicitly with:
+
+```powershell
+$env:LOOM_WEB_SEARCH_PROVIDER="off"
+```
+
+When no provider is configured, Loom exposes only `web_search_status`; the `web_search` tool itself is absent from the model's `ToolRouter`. When configured, `web_search` returns ranked titles, URLs, source hosts, and snippets.
+
+Permission behavior:
+
+- `read-only` — external search is denied and no network request is made
+- `approval` — asks before each search call
+- `workspace` — asks before each search call
+- `full-access` — executes search without an approval stop
+
+Provider credentials live only inside the runtime provider object. They are not written to session JSON, WorldState, memory, tool output, or search results. The built-in transport uses fixed HTTPS provider endpoints, refuses redirects while credentials are attached, caps response size, and reports provider/network errors without echoing secrets.
+
+Search currently returns provider snippets and source URLs; Loom does **not** yet expose an arbitrary web-page fetch/browser tool. That capability belongs in the Browser / Computer Use layer so URL navigation can receive its own SSRF, permission, and content-boundary controls.
+
 ## DashScope defaults
 
 With `DASHSCOPE_API_KEY` or the legacy-compatible `AI_API_KEY`, Loom defaults to:
@@ -350,6 +409,8 @@ Secrets are resolved at runtime and are not written into session snapshots or re
 - `close_agent`
 - `search_memory`
 - `memory_status`
+- `web_search_status`
+- `web_search` when a provider is configured
 - legacy compatibility alias `write_workspace_note`
 
 ## Test
@@ -360,7 +421,7 @@ python -m pytest
 
 GitHub Actions runs installation, `compileall`, pytest, and a CLI smoke test on pushes to `main` and on pull requests.
 
-The suite covers model/tool loops, per-step identity, permissions, persistence, managed process interaction, cancellation, timeout, secret stripping, atomic patches, turn diffs, durable goal/queue recovery, history repair, sandbox planning, sandbox fallback honesty, interrupted-process cleanup, WorldState/checkpoint compaction, parent→child model delegation, durable AgentGraph state, cross-agent queue recovery after restart, tree boundaries, agent safety limits, memory secret redaction, global/workspace isolation, transient retrieval injection, duplicate consolidation, forgetting boundaries, and memory restart persistence.
+The suite covers model/tool loops, per-step identity, permissions, persistence, managed process interaction, cancellation, timeout, secret stripping, atomic patches, turn diffs, durable goal/queue recovery, history repair, sandbox planning, sandbox fallback honesty, interrupted-process cleanup, WorldState/checkpoint compaction, parent→child model delegation, durable AgentGraph state, cross-agent queue recovery after restart, tree boundaries, agent safety limits, memory secret redaction, global/workspace isolation, transient retrieval injection, duplicate consolidation, forgetting boundaries, memory restart persistence, Brave/Tavily provider contracts, network approval gating, search denial in read-only mode, and unconfigured search exposure.
 
 ## Runtime v2 direction
 
@@ -373,13 +434,13 @@ Completed foundation layers now include:
 5. authoritative WorldState + archived context checkpoints + model compaction
 6. durable Multi-Agent + AgentGraph + model-facing delegation tools
 7. durable long-term Memory + extraction/consolidation/retrieval controls
+8. credential-backed Web Search with explicit network permission gating
 
 Next high-value layers:
 
-1. Web Search
-2. Browser / Computer Use
-3. MCP / Skills / Tool Search / Code Mode
-4. richer provider-specific context-diff transport
-5. additional native sandbox backends and network permissions
+1. Browser / Computer Use
+2. MCP / Skills / Tool Search / Code Mode
+3. richer provider-specific context-diff transport
+4. additional native sandbox backends and network permissions
 
-The core design rule remains: Thread/AgentGraph/Goal/Queue/context archives/validated memory are durable; Turn/Task/Process/Future execution is temporary; every tool crosses one routing and permission boundary; sub-agents never gain authority merely by being spawned; memory is advisory and user-controllable; OS isolation is reported truthfully rather than assumed.
+The core design rule remains: Thread/AgentGraph/Goal/Queue/context archives/validated memory are durable; Turn/Task/Process/Future execution is temporary; every tool crosses one routing and permission boundary; sub-agents never gain authority merely by being spawned; memory is advisory and user-controllable; external web search is explicitly permissioned and credential-isolated; OS isolation is reported truthfully rather than assumed.
