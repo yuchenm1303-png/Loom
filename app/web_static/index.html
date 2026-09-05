@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Loom</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand-row">
+        <div class="brand-mark" aria-hidden="true">L</div>
+        <div>
+          <div class="brand-name">Loom</div>
+          <div class="brand-subtitle">local agent</div>
+        </div>
+      </div>
+
+      <button id="newSessionButton" class="primary-button wide" type="button">
+        <span class="button-icon">＋</span>
+        New session
+      </button>
+
+      <div class="sidebar-label">Sessions</div>
+      <nav id="sessionList" class="session-list" aria-label="Saved sessions"></nav>
+
+      <div class="sidebar-footer">
+        <div class="local-dot"></div>
+        <div>
+          <div class="footer-title">Running locally</div>
+          <div class="footer-caption">127.0.0.1 only</div>
+        </div>
+      </div>
+    </aside>
+
+    <main class="workspace-shell">
+      <header class="topbar">
+        <div class="workspace-meta">
+          <div class="eyebrow">Workspace</div>
+          <div id="workspacePath" class="workspace-path">No session selected</div>
+        </div>
+        <div class="topbar-controls">
+          <div class="model-pill">
+            <span class="model-dot"></span>
+            <span id="modelName">—</span>
+          </div>
+          <label class="permission-control">
+            <span>Permissions</span>
+            <select id="permissionSelect" disabled></select>
+          </label>
+        </div>
+      </header>
+
+      <div class="content-grid">
+        <section class="conversation-panel">
+          <div id="emptyState" class="empty-state">
+            <div class="empty-orb" aria-hidden="true"></div>
+            <h1>Build with Loom</h1>
+            <p>Choose a workspace, start a session, and talk directly to the real agent runtime.</p>
+            <button id="emptyNewSessionButton" class="primary-button" type="button">Start a session</button>
+          </div>
+
+          <div id="messageScroller" class="message-scroller hidden">
+            <div id="messages" class="messages"></div>
+          </div>
+
+          <section id="approvalCard" class="approval-card hidden" aria-live="polite">
+            <div class="approval-header">
+              <div>
+                <div class="approval-kicker">Approval required</div>
+                <div id="approvalTool" class="approval-title"></div>
+              </div>
+              <span id="approvalEffect" class="effect-badge"></span>
+            </div>
+            <p id="approvalReason" class="approval-reason"></p>
+            <pre id="approvalArguments" class="approval-arguments"></pre>
+            <div class="approval-actions">
+              <button id="denyButton" class="secondary-button" type="button">Deny</button>
+              <button id="approveButton" class="primary-button" type="button">Allow once</button>
+            </div>
+          </section>
+
+          <div class="composer-wrap">
+            <div id="composerStatus" class="composer-status">Select or create a session to begin.</div>
+            <div class="composer">
+              <textarea id="promptInput" rows="1" placeholder="Ask Loom to inspect, edit, run, browse…" disabled></textarea>
+              <div class="composer-actions">
+                <button id="stopButton" class="icon-button danger hidden" type="button" aria-label="Stop current turn">■</button>
+                <button id="sendButton" class="send-button" type="button" disabled aria-label="Send message">↑</button>
+              </div>
+            </div>
+            <div class="composer-hint">Enter to send · Shift+Enter for a new line</div>
+          </div>
+        </section>
+
+        <aside class="activity-panel">
+          <div class="activity-header">
+            <div>
+              <div class="eyebrow">Runtime</div>
+              <h2>Activity</h2>
+            </div>
+            <span id="statusBadge" class="status-badge">idle</span>
+          </div>
+
+          <div class="usage-grid">
+            <div class="metric-card">
+              <span class="metric-label">Tokens</span>
+              <strong id="tokenCount">0</strong>
+            </div>
+            <div class="metric-card">
+              <span class="metric-label">Events</span>
+              <strong id="eventCount">0</strong>
+            </div>
+          </div>
+
+          <div id="runtimeError" class="runtime-error hidden"></div>
+          <div id="activityList" class="activity-list">
+            <div class="activity-empty">Tool calls and runtime events will appear here.</div>
+          </div>
+        </aside>
+      </div>
+    </main>
+  </div>
+
+  <div id="modalBackdrop" class="modal-backdrop hidden" role="presentation">
+    <section class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <div class="modal-header">
+        <div>
+          <div class="eyebrow">New session</div>
+          <h2 id="modalTitle">Choose a workspace</h2>
+        </div>
+        <button id="closeModalButton" class="icon-button" type="button" aria-label="Close">×</button>
+      </div>
+      <label class="field">
+        <span>Workspace path</span>
+        <input id="workspaceInput" type="text" autocomplete="off" spellcheck="false" placeholder="C:\\path\\to\\project">
+      </label>
+      <label class="field">
+        <span>Permission mode</span>
+        <select id="newPermissionSelect"></select>
+      </label>
+      <p class="modal-note">The folder must already exist. Loom will stay bound to that workspace for this session.</p>
+      <div class="modal-actions">
+        <button id="cancelModalButton" class="secondary-button" type="button">Cancel</button>
+        <button id="createSessionButton" class="primary-button" type="button">Create session</button>
+      </div>
+    </section>
+  </div>
+
+  <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+
+  <script src="/app.js" defer></script>
+</body>
+</html>
