@@ -35,6 +35,19 @@ from .durable_state import (
     ThreadGoal,
 )
 from .history import HistoryRepair, repair_tool_history
+from .memory_runtime import MemoryExtractionResult, MemoryRuntime
+from .memory_store import (
+    MemoryCandidate,
+    MemoryCandidateState,
+    MemoryCategory,
+    MemoryExtraction,
+    MemoryRecord,
+    MemoryScope,
+    MemoryStore,
+    redact_secrets,
+    workspace_memory_key,
+)
+from .memory_tools import memory_tools
 from .multi_agent_runtime import MultiAgentRuntime
 from .multi_agent_tools import multi_agent_tools
 from .orchestrator import PreparedToolCall, ToolOrchestrator
@@ -79,9 +92,9 @@ from .tools import (
 )
 
 # Runtime v2 default stack:
-# Core -> Durable -> Sandbox -> Context -> Multi-Agent.
+# Core -> Durable -> Sandbox -> Context -> Multi-Agent -> Memory.
 # Lower layers remain exported for embedders that intentionally need them.
-AgentRuntime = MultiAgentRuntime
+AgentRuntime = MemoryRuntime
 
 __all__ = [
     "AgentControl",
@@ -115,6 +128,15 @@ __all__ = [
     "GoalStatus",
     "HistoryRepair",
     "ManagedProcess",
+    "MemoryCandidate",
+    "MemoryCandidateState",
+    "MemoryCategory",
+    "MemoryExtraction",
+    "MemoryExtractionResult",
+    "MemoryRecord",
+    "MemoryRuntime",
+    "MemoryScope",
+    "MemoryStore",
     "MultiAgentRuntime",
     "PatchApplyResult",
     "PatchPlan",
@@ -155,8 +177,11 @@ __all__ = [
     "build_world_state_envelope",
     "builtin_read_only_tools",
     "compaction_split_index",
+    "memory_tools",
     "multi_agent_tools",
     "permission_preset",
+    "redact_secrets",
     "repair_tool_history",
     "validate_tool_arguments",
+    "workspace_memory_key",
 ]

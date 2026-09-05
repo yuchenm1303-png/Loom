@@ -206,6 +206,27 @@ class ContextAgentRuntime(SandboxAgentRuntime):
         self.store.load(session_id)
         return self.checkpoint_store.list(session_id)
 
+    def _request_context_messages(
+        self,
+        session: AgentSession,
+        step,
+        envelope: WorldStateEnvelope,
+    ) -> tuple[AIMessage, ...]:
+        """Return transient system context for one model sampling request.
+
+        Subclasses may append advisory context such as retrieved memory without
+        persisting it into canonical thread history or duplicating the drive loop.
+        """
+        _ = step
+        return (
+            AIMessage(role=MessageRole.SYSTEM, content=session.system_prompt),
+            AIMessage(
+                role=MessageRole.SYSTEM,
+                name="loom_runtime_state",
+                content=envelope.text,
+            ),
+        )
+
     def _drive(self, session: AgentSession, token: CancellationToken) -> AgentRunResult:
         try:
             while True:
@@ -220,12 +241,7 @@ class ContextAgentRuntime(SandboxAgentRuntime):
                 step = self._build_step_context(session, next_model_step=True)
                 envelope = self._context_envelope(session, step)
                 messages = [
-                    AIMessage(role=MessageRole.SYSTEM, content=session.system_prompt),
-                    AIMessage(
-                        role=MessageRole.SYSTEM,
-                        name="loom_runtime_state",
-                        content=envelope.text,
-                    ),
+                    *self._request_context_messages(session, step, envelope),
                     *session.messages,
                 ]
                 if len(messages) > self.limits.max_messages:

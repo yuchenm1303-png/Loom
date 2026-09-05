@@ -172,6 +172,12 @@ def _event_printer(event: AgentEvent) -> None:
         print(f"  ↪ queued turn {data.get('queue_id', '')}", flush=True)
     elif event.kind is AgentEventKind.HISTORY_REPAIRED:
         print("  ↻ repaired interrupted tool history", flush=True)
+    elif event.kind is AgentEventKind.MEMORY_EXTRACTED:
+        print(f"  ◇ memory extracted: {data.get('candidate_count', 0)} candidate(s)", flush=True)
+    elif event.kind is AgentEventKind.MEMORY_CONSOLIDATED:
+        print(f"  ◇ memory consolidated: {data.get('count', 0)} record(s)", flush=True)
+    elif event.kind is AgentEventKind.MEMORY_FORGOTTEN:
+        print(f"  ◇ memory forgotten: {data.get('memory_id', '')}", flush=True)
 
 
 def _finish_result(runtime: AgentRuntime, result):
@@ -254,6 +260,26 @@ def _show_queue(runtime: AgentRuntime, session_id: str) -> None:
         print(f"{index:>2}. {item.queue_id}  {item.state.value:10}  {preview}")
 
 
+def _print_memory_records(records) -> None:
+    if not records:
+        print("No matching long-term memories.")
+        return
+    for record in records:
+        preview = record.text.replace("\n", " ")
+        print(
+            f"{record.memory_id}  {record.scope.value:9}  {record.category.value:10}  "
+            f"importance={record.importance} sources={record.source_count}  {preview}"
+        )
+
+
+def _show_memory_status(runtime: AgentRuntime, session_id: str) -> None:
+    counts = runtime.memory_status(session_id)
+    print(
+        f"Memory: visible={counts['visible']} total={counts['total']} "
+        f"pending={counts['pending']}"
+    )
+
+
 def _print_help() -> None:
     print(
         "Commands:\n"
@@ -275,6 +301,12 @@ def _print_help() -> None:
         "  /queue add <text>       append a durable future turn\n"
         "  /queue run [n]          synchronously drain queued turns\n"
         "  /queue remove <id>      remove one queued turn\n"
+        "  /memory                 show long-term memory status\n"
+        "  /memory extract         extract durable memories from this thread\n"
+        "  /memory consolidate     consolidate pending memory candidates\n"
+        "  /memory list [n]        list memories visible to this workspace\n"
+        "  /memory search <query>  search long-term memory\n"
+        "  /memory forget <id>     forget one visible long-term memory\n"
         "  /usage                  show current token usage\n"
         "  /help                   show this help\n"
         "  /quit                   exit Loom\n"
@@ -438,6 +470,58 @@ def _interactive(runtime: AgentRuntime, store: FileAgentSessionStore, session_id
                 print("Queued turn removed.")
             else:
                 print("Queued turn not found.", file=sys.stderr)
+            continue
+        if text in {"/memory", "/memory status"}:
+            _show_memory_status(runtime, session_id)
+            continue
+        if text == "/memory extract":
+            try:
+                result = runtime.extract_memory_from_thread(session_id)
+                print(
+                    f"Memory extraction: {result.extraction.candidate_count} candidate(s), "
+                    f"{len(result.consolidated)} consolidated record(s), "
+                    f"tokens={result.usage.total_tokens}."
+                )
+            except (ValueError, RuntimeError) as exc:
+                print(f"Cannot extract memory: {exc}", file=sys.stderr)
+            continue
+        if text == "/memory consolidate":
+            try:
+                records = runtime.consolidate_memory(session_id=session_id)
+                print(f"Consolidated {len(records)} memory record(s).")
+            except (ValueError, RuntimeError) as exc:
+                print(f"Cannot consolidate memory: {exc}", file=sys.stderr)
+            continue
+        if text == "/memory list" or text.startswith("/memory list "):
+            raw = text[len("/memory list"):].strip()
+            try:
+                limit = int(raw) if raw else 50
+                _print_memory_records(runtime.list_memory(session_id, limit=limit))
+            except (ValueError, RuntimeError) as exc:
+                print(f"Cannot list memory: {exc}", file=sys.stderr)
+            continue
+        if text.startswith("/memory search "):
+            query = text[len("/memory search "):].strip()
+            if not query:
+                print("Usage: /memory search <query>", file=sys.stderr)
+                continue
+            try:
+                _print_memory_records(runtime.search_memory(session_id, query, limit=20))
+            except (ValueError, RuntimeError) as exc:
+                print(f"Cannot search memory: {exc}", file=sys.stderr)
+            continue
+        if text.startswith("/memory forget "):
+            memory_id = text[len("/memory forget "):].strip()
+            if not memory_id:
+                print("Usage: /memory forget <id>", file=sys.stderr)
+                continue
+            try:
+                if runtime.forget_memory(session_id, memory_id):
+                    print("Memory forgotten.")
+                else:
+                    print("Memory not found.", file=sys.stderr)
+            except (PermissionError, ValueError, RuntimeError) as exc:
+                print(f"Cannot forget memory: {exc}", file=sys.stderr)
             continue
         if text == "/usage":
             usage = runtime.get_session(session_id).usage

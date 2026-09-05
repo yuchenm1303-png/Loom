@@ -1,6 +1,6 @@
 # Loom
 
-Loom is a personal, general-purpose AI agent built for real tool use. Runtime v2 is organized around durable thread state, frozen per-step execution context, explicit permission modes, managed processes, atomic file edits, crash recovery, durable goals/queues, authoritative context checkpoints, independent sub-agents, and an honest OS-sandbox boundary.
+Loom is a personal, general-purpose AI agent built for real tool use. Runtime v2 is organized around durable thread state, frozen per-step execution context, explicit permission modes, managed processes, atomic file edits, crash recovery, durable goals/queues, authoritative context checkpoints, independent sub-agents, durable long-term memory, and an honest OS-sandbox boundary.
 
 The initial core was cleanly extracted from the validated generic Agent architecture in `yuchenm1303-png/ecommerce-agent` at `feat/commerce-ai-platform@04cceaf2efd8aea867989781fb3c91ebb13cb3c9`. No Listing, Makro, supplier, product-field, or other commerce production code is included here.
 
@@ -40,9 +40,14 @@ The initial core was cleanly extracted from the validated generic Agent architec
 - Independent sub-agent sessions with inherited workspace/permissions
 - Model-facing spawn/message/wait/list/close sub-agent tools
 - Durable cross-agent follow-up via the normal Loom queue
+- SQLite/WAL long-term memory with separate extraction and consolidation
+- Global and workspace-scoped memory isolation
+- Secret redaction before memory extraction and persistence
+- Transient relevance-based memory injection without polluting canonical history
+- User-controlled memory inspection, search, extraction, consolidation, and forgetting
 - Secret-like environment variables stripped from child processes
 
-Private model chain-of-thought is neither requested nor persisted. Loom stores only observable messages, tool activity, lifecycle events, usage, durable thread/workspace state, archived context checkpoints, and durable agent-graph metadata.
+Private model chain-of-thought is neither requested nor persisted. Loom stores only observable messages, tool activity, lifecycle events, usage, durable thread/workspace state, archived context checkpoints, durable agent-graph metadata, and validated long-term memory records.
 
 ## Install
 
@@ -247,6 +252,48 @@ Python `Future` objects are only temporary execution handles. AgentGraph relatio
 
 Default safety limits are 16 active sub-agents per tree and depth 4. These are runtime constructor settings and can be lowered by embedders.
 
+## Long-term memory
+
+Long-term memory is intentionally separate from normal conversation history. A model cannot directly write or delete memory through an ordinary tool call.
+
+The write path is:
+
+```text
+observable thread transcript
+    → secret redaction
+    → dedicated no-tools extraction request
+    → validated pending candidates
+    → separate consolidation boundary
+    → canonical memory records
+```
+
+System/runtime context is excluded from extraction input. Candidate text is redacted again before persistence. Exact normalized duplicates collapse into one canonical memory and increment a source count.
+
+Memory has two scopes:
+
+- `global` — stable user preferences/facts useful across projects
+- `workspace` — project architecture, decisions, constraints, and conventions tied to the current workspace
+
+For each model request, Loom searches consolidated global + current-workspace memory using the recent user message as a query. Relevant matches are injected as a transient `loom_memory` system message. They are explicitly advisory and may be stale; they never override the current user message, WorldState, or observed tool results, and they are not persisted into canonical thread history.
+
+The model has only read-only memory tools:
+
+- `search_memory`
+- `memory_status`
+
+Explicit user/API controls are available in the CLI:
+
+```text
+/memory
+/memory extract
+/memory consolidate
+/memory list [n]
+/memory search <query>
+/memory forget <memory-id>
+```
+
+`/memory forget` removes the canonical retrievable memory and candidate rows sharing its fingerprint so later consolidation cannot silently recreate it. Workspace-scoped memories can only be forgotten from a session attached to that workspace. Extraction summary rows remain audit metadata and are not used for retrieval.
+
 ## DashScope defaults
 
 With `DASHSCOPE_API_KEY` or the legacy-compatible `AI_API_KEY`, Loom defaults to:
@@ -301,6 +348,8 @@ Secrets are resolved at runtime and are not written into session snapshots or re
 - `wait_agent`
 - `list_agents`
 - `close_agent`
+- `search_memory`
+- `memory_status`
 - legacy compatibility alias `write_workspace_note`
 
 ## Test
@@ -311,7 +360,7 @@ python -m pytest
 
 GitHub Actions runs installation, `compileall`, pytest, and a CLI smoke test on pushes to `main` and on pull requests.
 
-The suite covers model/tool loops, per-step identity, permissions, persistence, managed process interaction, cancellation, timeout, secret stripping, atomic patches, turn diffs, durable goal/queue recovery, history repair, sandbox planning, sandbox fallback honesty, interrupted-process cleanup, WorldState/checkpoint compaction, parent→child model delegation, durable AgentGraph state, cross-agent queue recovery after restart, tree boundaries, and agent safety limits.
+The suite covers model/tool loops, per-step identity, permissions, persistence, managed process interaction, cancellation, timeout, secret stripping, atomic patches, turn diffs, durable goal/queue recovery, history repair, sandbox planning, sandbox fallback honesty, interrupted-process cleanup, WorldState/checkpoint compaction, parent→child model delegation, durable AgentGraph state, cross-agent queue recovery after restart, tree boundaries, agent safety limits, memory secret redaction, global/workspace isolation, transient retrieval injection, duplicate consolidation, forgetting boundaries, and memory restart persistence.
 
 ## Runtime v2 direction
 
@@ -323,14 +372,14 @@ Completed foundation layers now include:
 4. explicit OS-sandbox planning with Linux Bubblewrap support
 5. authoritative WorldState + archived context checkpoints + model compaction
 6. durable Multi-Agent + AgentGraph + model-facing delegation tools
+7. durable long-term Memory + extraction/consolidation/retrieval controls
 
 Next high-value layers:
 
-1. Memory
-2. Web Search
-3. Browser / Computer Use
-4. MCP / Skills / Tool Search / Code Mode
-5. richer provider-specific context-diff transport
-6. additional native sandbox backends and network permissions
+1. Web Search
+2. Browser / Computer Use
+3. MCP / Skills / Tool Search / Code Mode
+4. richer provider-specific context-diff transport
+5. additional native sandbox backends and network permissions
 
-The core design rule remains: Thread/AgentGraph/Goal/Queue/context archives are durable; Turn/Task/Process/Future execution is temporary; every tool crosses one routing and permission boundary; sub-agents never gain authority merely by being spawned; OS isolation is reported truthfully rather than assumed.
+The core design rule remains: Thread/AgentGraph/Goal/Queue/context archives/validated memory are durable; Turn/Task/Process/Future execution is temporary; every tool crosses one routing and permission boundary; sub-agents never gain authority merely by being spawned; memory is advisory and user-controllable; OS isolation is reported truthfully rather than assumed.
