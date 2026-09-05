@@ -145,9 +145,11 @@ def test_symlink_escape_is_skipped_when_supported(tmp_path: Path):
     root.mkdir(parents=True)
     outside = tmp_path / "outside"
     outside_skill = _write_skill(outside, "escaped", description="Escaped workflow", body="ESCAPED")
-    link_dir = root / "linked"
+    linked_skill_dir = root / "escaped"
+    linked_skill_dir.mkdir()
+    linked_skill_file = linked_skill_dir / "SKILL.md"
     try:
-        link_dir.symlink_to(outside_skill.parent, target_is_directory=True)
+        linked_skill_file.symlink_to(outside_skill)
     except OSError:
         pytest.skip("symlink creation is not available on this platform")
 
