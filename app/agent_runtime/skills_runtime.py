@@ -21,7 +21,10 @@ class SkillRuntime(ToolSearchRuntime):
         super().__init__(*args, **kwargs)
         if skill_roots is None:
             root = Path(getattr(self.store, "root", "")).expanduser().resolve()
-            runtime_home = root.parent
+            try:
+                runtime_home = root.parents[1]
+            except IndexError:
+                runtime_home = root.parent
             resolved_roots = (
                 runtime_home / "skills",
                 Path.home() / ".agents" / "skills",
