@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from app.agent_runtime import (
     AgentEventKind,
     AgentRuntime,
@@ -58,10 +60,11 @@ def test_model_request_contains_authoritative_runtime_state(tmp_path):
     assert context.role is MessageRole.SYSTEM
     assert context.name == "loom_runtime_state"
     assert "LOOM_RUNTIME_STATE v1" in context.content
-    assert str(workspace.resolve()) in context.content
-    assert '"mode": "workspace"' in context.content
-    assert "Finish the refactor" in context.content
-    assert '"policy": "off"' in context.content
+    runtime_payload = json.loads(context.content.split("\n", 2)[2])
+    assert runtime_payload["state"]["workspace"] == str(workspace.resolve())
+    assert runtime_payload["state"]["permissions"]["mode"] == "workspace"
+    assert runtime_payload["state"]["goal"]["objective"] == "Finish the refactor"
+    assert runtime_payload["state"]["sandbox"]["policy"] == "off"
 
     requested = [
         event for event in store.events(session.session_id)
