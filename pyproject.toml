@@ -16,6 +16,9 @@ dependencies = [
 dev = [
     "pytest>=8,<9",
 ]
+browser = [
+    "browser-use>=0.13.10,<0.14",
+]
 
 [project.scripts]
 loom = "loom_cli:main"
