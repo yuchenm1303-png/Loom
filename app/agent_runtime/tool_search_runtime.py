@@ -7,7 +7,7 @@ from typing import Any
 from .contracts import AgentSession, AgentStatus, ToolEffect
 from .mcp_configured_runtime import ConfiguredMCPRuntime
 from .step import StepContext
-from .tools import AgentTool, ToolContext, ToolExposure, ToolResult
+from .tools import AgentTool, ToolContext, ToolExposure, ToolRegistry, ToolResult
 
 
 class ToolSearchRuntime(ConfiguredMCPRuntime):
@@ -18,10 +18,29 @@ class ToolSearchRuntime(ConfiguredMCPRuntime):
     process restarts while the user is deciding whether to approve it.
     """
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
+    def __init__(
+        self,
+        *args: Any,
+        defer_mcp_tools: bool = True,
+        **kwargs: Any,
+    ) -> None:
         self._tool_search_guard = threading.RLock()
         self._turn_activations: dict[tuple[str, str], set[str]] = {}
+        self.defer_mcp_tools = bool(defer_mcp_tools)
         super().__init__(*args, **kwargs)
+
+        # Codex-style default: once tool search exists, direct MCP tools move out
+        # of the initial model context. Explicit hidden/code-mode classifications
+        # remain untouched. Embedders can set defer_mcp_tools=False when they
+        # intentionally want the lower-level MCP direct-exposure behavior.
+        if self.defer_mcp_tools:
+            rebuilt: list[AgentTool] = []
+            for existing in self.tools.all():
+                if existing.name.startswith("mcp.") and existing.exposure is ToolExposure.DIRECT:
+                    existing = replace(existing, exposure=ToolExposure.DEFERRED)
+                rebuilt.append(existing)
+            self.tools = ToolRegistry(tuple(rebuilt))
+
         tool = self._tool_search_tool()
         if self.tools.get(tool.name) is not None:
             raise ValueError(f"tool search conflicts with existing tool: {tool.name}")
