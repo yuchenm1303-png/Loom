@@ -45,6 +45,10 @@ jobs:
     runs-on: windows-latest
     env:
       QT_QPA_PLATFORM: offscreen
+      # Legacy widget contract tests assert final state after one event pump.
+      # Keep them deterministic while the dedicated motion test below explicitly
+      # removes this variable and validates the real animated path.
+      LOOM_REDUCE_MOTION: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
