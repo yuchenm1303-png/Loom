@@ -67,11 +67,15 @@ Remote tools are registered as:
 mcp.<server>.<tool>
 ```
 
-Names are canonicalized to Loom's model-safe tool-name contract. Server tools are `direct` by default in MCP Runtime v1. The registry already supports `deferred`, `code_mode_only`, and `hidden`; the next Tool Search / Code Mode stage will use those exposure classes rather than introducing a second MCP-specific router.
+Names are canonicalized to Loom's model-safe tool-name contract. The lower-level `MCPRuntime` preserves each server tool's configured exposure. The default top-level Loom runtime now adds Tool Search and automatically moves MCP tools that would otherwise be `direct` to `deferred`, keeping large MCP catalogs out of the initial model context.
+
+The model initially sees the read-only `tool_search` tool. A matching MCP tool is exposed only after the model searches for the needed capability, and that activation lasts only for the current turn. `hidden` and `code_mode_only` tools are never returned by Tool Search. Embedders that intentionally want the old direct MCP surface can instantiate the lower-level `MCPRuntime` or set `defer_mcp_tools=False` on `ToolSearchRuntime`.
 
 ## Durable-state boundary
 
 MCP text and structured results are bounded before they reach the model/session. Secret-shaped text is redacted. Image/audio payload bytes are not embedded into durable tool results; v1 records a bounded placeholder instead. File/resource transfer will get a workspace-bound policy in a later stage rather than silently persisting arbitrary remote binary data.
+
+Deferred-tool activation itself is intentionally turn-scoped and is not written into long-lived Session state. If a deferred sensitive tool has already reached Loom's approval boundary, the durable pending-approval record contains the exact tool name. A fresh runtime can therefore reconstruct that one tool for `resume_approval` without persisting the broader search result set.
 
 ## Protocol/SDK baseline
 
