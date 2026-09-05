@@ -32,7 +32,9 @@ This is not described as an OS/network sandbox. DNS rebinding and Chromium proce
 
 Browser v1 intentionally has **no automatic credential/sensitive-data injection channel**. API keys, tokens, passwords, cookies, private keys, storage state, and browser cookies are not copied from Loom configuration into `BrowserSession`, `WorldState`, SQLite, Session, ToolResult, or logs by the Browser layer.
 
-Model-visible browser text and URLs receive defense-in-depth redaction for common secret-shaped assignments, bearer/OpenAI/provider tokens, JWTs, and sensitive query parameters. `browser_type` never echoes typed text in its result. This does not make arbitrary page content trustworthy; prompt injection remains untrusted input.
+Runtime v2 durably records model tool-call arguments before a tool handler runs, so ToolResult-only redaction is insufficient. BrowserRuntime therefore places a small secret-boundary adapter in front of the durable Runtime response path. Secret-shaped values in `browser_type`, `browser_open`, or `browser_navigate` are replaced before they can enter canonical Session/events; the sanitized call is deliberately made schema-invalid so it cannot execute with a redacted credential. Browser v1 has no model-facing password/token/cookie injection path. A future credential feature must use opaque secret handles resolved only inside the execution layer rather than putting raw secret values into model tool arguments.
+
+Model-visible browser text and URLs also receive defense-in-depth redaction for common secret-shaped assignments, bearer/OpenAI/provider tokens, JWTs, and sensitive query parameters. `browser_type` never echoes typed text in its result. This does not make arbitrary page content trustworthy; prompt injection remains untrusted input.
 
 Screenshots are only produced on an explicit `browser_screenshot` tool call. PNG bytes are written to a path inside the current Loom workspace; screenshot bytes are not embedded in ToolResult or Session history.
 
