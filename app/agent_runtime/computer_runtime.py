@@ -4,7 +4,7 @@ import os
 import threading
 import time
 from collections import defaultdict, deque
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Sequence
 
 from .browser_runtime_v1 import BrowserRuntime
@@ -150,7 +150,9 @@ class ComputerSessionStore:
             before = self._publish(owner, self.operator.observe())
             trajectory: Sequence[ComputerTrajectoryEntry] = tuple(self._trajectory[owner])
             prediction = self.grounder.predict(instruction, before.observation, trajectory)
-            action = prediction.action
+            action = self._promote_click_to_uia(prediction.action, before.observation)
+            if action != prediction.action:
+                prediction = ComputerPrediction(action=action, thought=prediction.thought)
             if action.type not in {ComputerActionType.FINISH, ComputerActionType.CALL_USER} and self._is_stuck(owner, before, action):
                 raise RuntimeError(
                     "Computer Use stuck detection blocked a third identical action on an unchanged screenshot; "
@@ -189,6 +191,35 @@ class ComputerSessionStore:
                 )
             )
             return ComputerStepOutcome(before, prediction, execution, after, verification)
+
+    @staticmethod
+    def _promote_click_to_uia(action: ComputerAction, observation: ComputerObservation) -> ComputerAction:
+        """Promote a visual single-click to the most specific enabled UIA target.
+
+        UI-TARS intentionally predicts frame-local coordinates so it remains a
+        replaceable visual grounding backend. When that point lands inside a UIA
+        control from the *same* observation, Loom can safely attach the semantic
+        control id and let the Windows operator try Invoke before physical input.
+        Double/right clicks keep their physical semantics and are not promoted.
+        """
+
+        if action.type is not ComputerActionType.CLICK or action.control_id or action.point is None:
+            return action
+        screen_x, screen_y = observation.frame.to_screen(action.point)
+        matches = [
+            control
+            for control in observation.controls
+            if control.enabled
+            and control.rect.left <= screen_x < control.rect.right
+            and control.rect.top <= screen_y < control.rect.bottom
+        ]
+        if not matches:
+            return action
+        target = min(
+            matches,
+            key=lambda control: (control.rect.width * control.rect.height, control.control_id),
+        )
+        return replace(action, control_id=target.control_id)
 
     def _is_stuck(self, owner: str, before: ComputerStateSnapshot, action: ComputerAction) -> bool:
         history = tuple(self._trajectory[owner])
