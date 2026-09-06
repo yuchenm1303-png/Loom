@@ -210,7 +210,10 @@ class PyWinAutoWindowsOperator:
                             action=action,
                             native=True,
                         )
-                    self._native_click(wrapper, double=False, right=False)
+                    if not self._native_click(wrapper, double=False, right=False):
+                        point = self._wrapper_center(wrapper, observation.frame)
+                        if point is not None:
+                            self._click_point(observation.frame, point)
                 elif action.point is not None:
                     self._click_point(observation.frame, action.point)
                 self._send_unicode_text(action.text)
@@ -350,18 +353,12 @@ class PyWinAutoWindowsOperator:
                 time.sleep(0.08)
 
     def _native_click(self, wrapper, *, double: bool, right: bool) -> bool:
+        if double or right:
+            return False
         try:
-            if not double and not right:
-                invoke = getattr(wrapper, "invoke", None)
-                if callable(invoke):
-                    invoke()
-                    return True
-        except Exception:
-            pass
-        try:
-            click_input = getattr(wrapper, "click_input", None)
-            if callable(click_input):
-                click_input(button="right" if right else "left", double=double)
+            invoke = getattr(wrapper, "invoke", None)
+            if callable(invoke):
+                invoke()
                 return True
         except Exception:
             pass
