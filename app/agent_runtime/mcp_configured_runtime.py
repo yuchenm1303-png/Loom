@@ -4,11 +4,18 @@ import os
 from pathlib import Path
 from typing import Any, Sequence
 
+from .computer_runtime import ComputerUseRuntime
 from .mcp_runtime import MCPRuntime, MCPServerConfig, load_mcp_server_configs
 
 
-class ConfiguredMCPRuntime(MCPRuntime):
-    """Default Loom runtime that discovers operator MCP config from the runtime home.
+class ConfiguredMCPRuntime(ComputerUseRuntime, MCPRuntime):
+    """Default Loom runtime with Computer Use plus operator MCP discovery.
+
+    ``ComputerUseRuntime`` and ``MCPRuntime`` are sibling layers over BrowserRuntime.
+    The cooperative MRO deliberately composes them here so Loom keeps one canonical
+    Agent drive loop while the default stack gains Computer Use before Tool Search,
+    Skills, Code Mode and Streaming. Embedders that intentionally instantiate the
+    lower-level ``MCPRuntime`` continue to get the historical MCP-only layer.
 
     Embedders can pass ``mcp_servers`` explicitly. The CLI does not need MCP-specific
     wiring: when omitted, Loom reads ``$LOOM_CONFIG`` or ``<runtime-home>/config.toml``.
