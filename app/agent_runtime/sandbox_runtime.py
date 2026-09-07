@@ -6,6 +6,7 @@ from pathlib import Path
 
 from .contracts import AgentSession
 from .durable_runtime import DurableAgentRuntime
+from .permissions import permission_snapshot
 from .process_runtime import ProcessStore
 from .sandbox import SandboxManager, SandboxPolicy, SandboxSnapshot
 from .sandbox_tools import sandbox_status_tool
@@ -54,8 +55,9 @@ class SandboxAgentRuntime(DurableAgentRuntime):
 
     def sandbox_status(self, session_id: str) -> SandboxSnapshot:
         session = self.store.load(session_id)
-        return self.process_store.sandbox_snapshot(
-            permission_mode=session.permission_mode.value,
+        permissions = permission_snapshot(session.permission_mode)
+        return self.sandbox_manager.snapshot(
+            permissions=permissions,
             workspace=Path(session.workspace_dir),
         )
 
@@ -78,9 +80,9 @@ class SandboxAgentRuntime(DurableAgentRuntime):
             next_model_step=next_model_step,
             step_id=step_id,
         )
-        snapshot = self.process_store.sandbox_snapshot(
-            permission_mode=session.permission_mode.value,
-            workspace=Path(session.workspace_dir),
+        snapshot = self.sandbox_manager.snapshot(
+            permissions=step.permissions,
+            workspace=Path(step.world_state.workspace_dir),
         )
         return replace(
             step,
