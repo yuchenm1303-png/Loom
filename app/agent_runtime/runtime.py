@@ -318,7 +318,8 @@ class AgentRuntime:
                     return self._limit(session, "model step limit reached")
 
                 step = self._build_step_context(session, next_model_step=True)
-                messages = [AIMessage(role=MessageRole.SYSTEM, content=session.system_prompt), *session.messages]
+                system_prompt = self._model_system_prompt(session, step)
+                messages = [AIMessage(role=MessageRole.SYSTEM, content=system_prompt), *session.messages]
                 if len(messages) > self.limits.max_messages:
                     return self._limit(
                         session,
@@ -605,6 +606,13 @@ class AgentRuntime:
             permission_mode=session.permission_mode,
             tool_router=self.tools.router(),
         )
+
+    def _model_system_prompt(self, session: AgentSession, step: StepContext) -> str:
+        capability_contract = self.orchestrator.capability_contract(
+            step,
+            legacy_policy=self.policy,
+        )
+        return f"{session.system_prompt}\n\n{capability_contract}"
 
     def _append_tool_result(
         self,
