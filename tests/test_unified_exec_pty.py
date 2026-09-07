@@ -68,7 +68,10 @@ def test_exec_pipe_captures_stdout_stderr_exit_cwd_env_and_unicode(tmp_path, mon
         workspace=project,
         permission_mode="full-access",
         timeout_seconds=10,
-        env={"LOOM_TEST_VALUE": "works"},
+        # Pipe transport is byte-oriented and deliberately does not rewrite an
+        # arbitrary child's locale. Configure this Python fixture to emit UTF-8
+        # so the test measures Loom's UTF-8 capture/decoding boundary itself.
+        env={"LOOM_TEST_VALUE": "works", "PYTHONIOENCODING": "utf-8"},
     )
 
     assert snapshot.state is ProcessState.EXITED
