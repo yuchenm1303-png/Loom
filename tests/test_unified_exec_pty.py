@@ -166,7 +166,9 @@ def test_real_pty_is_tty_interactive_unicode_and_resize(tmp_path):
         cols=80,
     )
 
-    _wait_until(lambda: "TTY" in managed.snapshot().stdout)
+    _wait_until(
+        lambda: "TTY True True True 80 24" in managed.snapshot().stdout.replace("\r", "")
+    )
     first = managed.snapshot()
     assert first.pty is True
     assert "TTY True True True 80 24" in first.stdout.replace("\r", "")
