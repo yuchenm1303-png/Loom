@@ -55,7 +55,7 @@ The Windows policy currently requests:
 
 - workspace read/write only in workspace-write mode
 - workspace read-only in read-only mode
-- tool/runtime directories read-only as needed for the target executable
+- only concrete, existing runtime roots required by the selected executable (plus existing explicit Python runtime roots) as additional read grants
 - `.git`, `.loom`, and `.agents` read-only when present
 - outbound network denied
 - inbound and host-loopback network denied
@@ -63,6 +63,8 @@ The Windows policy currently requests:
 - clipboard access disabled
 - input injection disabled
 - a filtered child environment with secret-like variables excluded
+
+`PATH` remains child-process lookup data; Loom does **not** expand every PATH entry into an MXC filesystem grant. This matters on AppContainer+DACL hosts because every explicit read root may require ACL work, and host PATH values commonly contain stale, nonexistent, or unrelated directories. Filesystem grants therefore stay minimal and are derived from the executable actually selected for the command.
 
 The repository CI installs the official `@microsoft/mxc-sdk` package on `windows-latest`, runs `wxc-exec --probe`, and then executes real enforcement smoke tests. Those tests verify that workspace writes succeed only when allowed, writes outside the workspace are blocked, read-only workspace writes are blocked, secret-like environment values do not cross the sandbox boundary, and network connectivity is denied.
 
