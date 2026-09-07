@@ -53,11 +53,15 @@ class SmoothThreadScrollController(QObject):
         return int(round(self._target))
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802 - Qt override
-        # Qt may dispatch one last filter callback while Python wrappers are being
-        # torn down. Avoid touching a QListWidget whose C++ object is already gone.
+        # Qt can dispatch callbacks while a controller is being initialized or
+        # after its parent widget has started C++ teardown. In either boundary
+        # the Python wrapper may no longer expose a live ``view`` attribute.
+        view = getattr(self, "view", None)
+        if view is None:
+            return False
         try:
-            viewport = self.view.viewport()
-        except RuntimeError:
+            viewport = view.viewport()
+        except (AttributeError, RuntimeError):
             return False
 
         if watched is not viewport or event.type() != QEvent.Type.Wheel:
