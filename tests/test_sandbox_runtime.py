@@ -203,7 +203,8 @@ def test_full_access_intentionally_bypasses_os_sandbox(tmp_path):
     assert prepared.snapshot.enforced is False
 
 
-def test_required_sandbox_fails_closed_when_backend_unavailable(tmp_path):
+def test_required_sandbox_fails_closed_when_backend_unavailable(tmp_path, monkeypatch):
+    monkeypatch.delenv("LOOM_WINDOWS_SANDBOX_EXECUTABLE", raising=False)
     workspace = tmp_path / "project"
     workspace.mkdir()
     manager = SandboxManager(
@@ -221,7 +222,8 @@ def test_required_sandbox_fails_closed_when_backend_unavailable(tmp_path):
         )
 
 
-def test_process_store_reports_honest_unsandboxed_fallback(tmp_path):
+def test_process_store_reports_honest_unsandboxed_fallback(tmp_path, monkeypatch):
+    monkeypatch.delenv("LOOM_WINDOWS_SANDBOX_EXECUTABLE", raising=False)
     workspace = tmp_path / "project"
     workspace.mkdir()
     manager = SandboxManager(
@@ -282,7 +284,8 @@ def test_process_store_passes_the_exact_sanitized_child_environment_to_sandbox(
     assert "LOOM_TEST_API_KEY" not in manager.environment
 
 
-def test_default_runtime_freezes_sandbox_state_and_registers_status_tool(tmp_path):
+def test_default_runtime_freezes_sandbox_state_and_registers_status_tool(tmp_path, monkeypatch):
+    monkeypatch.delenv("LOOM_WINDOWS_SANDBOX_EXECUTABLE", raising=False)
     workspace = tmp_path / "project"
     workspace.mkdir()
     store = FileAgentSessionStore(tmp_path / "state")
