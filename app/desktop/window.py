@@ -83,7 +83,6 @@ class LoomDesktopWindow(QMainWindow):
         self.state = ThreadState()
         self.current_workspace = str(self.default_workspace)
         self.current_turn_id = ""
-        self._threads_by_id: dict[str, dict[str, Any]] = {}
         self._thread_view = "active"
         self._thread_counts = {"active": 0, "archived": 0, "all": 0}
         self._thread_management_supported = False
@@ -92,7 +91,6 @@ class LoomDesktopWindow(QMainWindow):
         self._activity_tail: list[tuple[str, str, str]] = []
         self._sidebar_visible = True
         self._runtime_visible = True
-        self._motion_enabled = theme.motion_enabled()
 
         self.bridge = DesktopEventBridge(self)
         self.rpc = RpcRunner(self.bridge)
@@ -589,11 +587,6 @@ class LoomDesktopWindow(QMainWindow):
             self._thread_counts["active"] = len(records)
 
         selected_id = self.state.thread_id
-        self._threads_by_id = {
-            fmt.text(record.get("id")): record
-            for record in records
-            if isinstance(record, dict) and fmt.text(record.get("id"))
-        }
 
         self.thread_list.blockSignals(True)
         self.thread_list.clear()
@@ -858,7 +851,6 @@ class LoomDesktopWindow(QMainWindow):
             record = payload.get("thread") if isinstance(payload, dict) else None
             if isinstance(record, dict):
                 thread_id = fmt.text(record.get("id"))
-                self._threads_by_id[thread_id] = record
                 self.current_workspace = fmt.text(record.get("workspace")) or self.current_workspace
                 self._startup_autocreate = False
                 self.refresh_threads()
