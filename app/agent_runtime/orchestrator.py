@@ -74,9 +74,11 @@ class ToolOrchestrator:
             PermissionDecision.APPROVAL: [],
             PermissionDecision.DENY: [],
         }
+        decisions_by_name: dict[str, PermissionDecision] = {}
         for tool in step.tool_router.all():
             decision, _ = self.evaluate_tool(step, tool, legacy_policy=legacy_policy)
             grouped[decision].append(f"{tool.name}[{tool.effect.value}]")
+            decisions_by_name[tool.name] = decision
 
         def names(decision: PermissionDecision) -> str:
             values = grouped[decision]
@@ -91,6 +93,22 @@ class ToolOrchestrator:
                 f"enforced={str(sandbox.enforced).lower()}; scope=process-execution"
             )
 
+        intent_routes: list[str] = []
+        exec_decision = decisions_by_name.get("exec")
+        if exec_decision is not None:
+            intent_routes.append(
+                f"host_system_read=exec:{exec_decision.value}; "
+                "use for CLI-queryable host/system facts such as memory, CPU, disk, processes, and network status"
+            )
+        computer_status_decision = decisions_by_name.get("computer_status")
+        if computer_status_decision is not None:
+            intent_routes.append(
+                f"windows_gui_status=computer_status:{computer_status_decision.value}; "
+                "scope=GUI Computer Use only; it does not report exec/browser/filesystem availability"
+            )
+        if not intent_routes:
+            intent_routes.append("(no core intent routes exposed in this step)")
+
         return "\n".join(
             (
                 "<loom_capability_contract>",
@@ -101,6 +119,8 @@ class ToolOrchestrator:
                 f"allow={names(PermissionDecision.ALLOW)}",
                 f"approval={names(PermissionDecision.APPROVAL)}",
                 f"deny={names(PermissionDecision.DENY)}",
+                "Intent routes:",
+                *intent_routes,
                 "Rules:",
                 "1. Tool names are not a capability ontology. Match the user's intent to tool semantics and schemas; a general-purpose tool may satisfy a request even when no specialist tool has a matching name.",
                 "2. Authorization is not capability. A tool listed under approval is available to attempt; call it when appropriate and let the harness request user approval. A tool under deny is blocked by the current permission mode, not evidence that Loom never supports that capability.",
@@ -108,6 +128,10 @@ class ToolOrchestrator:
                 "4. Do not infer host, OS, network, filesystem, process, browser, or GUI inaccessibility merely because access is tool-mediated or because sandboxing exists. Sandbox state describes process-execution isolation only unless a tool result explicitly states a broader limitation.",
                 "5. Disambiguate user vocabulary from Loom subsystem names by context. Do not map a user noun to a same-named internal subsystem unless the request actually refers to that subsystem.",
                 "6. Say a capability is unavailable only from runtime evidence: no suitable exposed/deferred tool exists, a relevant status/tool result reports it unavailable, or permission/runtime policy explicitly blocks it with no usable alternative. Distinguish unavailable, approval-required, denied, and execution-failed.",
+                "7. For read-only host/system facts that an OS command can query (for example RAM, CPU, disk, process, or network status), use exec when it is allowed or approval-required. Computer Use, screen capture, and GUI input are not prerequisites for CLI-queryable system facts.",
+                "8. A computer_status result is scoped only to the Windows GUI Computer Use subsystem. If it reports disabled or unavailable, do not infer that exec, browser, filesystem, MCP, or other independent tools are disabled; evaluate each subsystem separately.",
+                "9. Do not ask the user in prose to pre-authorize an approval-required tool. Issue the appropriate tool call and let Loom's approval mechanism request consent. Ask the user only when required tool input is genuinely missing or a tool explicitly requests user assistance.",
+                "10. When the user asks broadly whether Loom can control or inspect their computer, answer by capability surface (for example GUI, shell/processes, filesystem, browser) from current runtime evidence rather than collapsing all surfaces into one yes/no based on computer_status.",
                 "</loom_capability_contract>",
             )
         )
