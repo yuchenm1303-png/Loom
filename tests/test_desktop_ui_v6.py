@@ -8,11 +8,12 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6")
 
 from app.desktop_ui import LoomDesktopWindow
-from app.desktop_ui_v6 import _rich_blocks
+from app.desktop_ui_v6 import LoomDesktopWindow as LoomDesktopWindowV6, _rich_blocks
 
 
-def test_active_desktop_entrypoint_uses_v6_visual_layer():
-    assert LoomDesktopWindow.__module__ == "app.desktop_ui_v6"
+def test_active_desktop_entrypoint_preserves_v6_visual_layer():
+    assert issubclass(LoomDesktopWindow, LoomDesktopWindowV6)
+    assert LoomDesktopWindow.__module__ == "app.desktop_ui_v8"
 
 
 def test_v6_transcript_markup_is_readable_and_html_safe():
