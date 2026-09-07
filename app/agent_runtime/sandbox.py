@@ -9,6 +9,7 @@ from enum import Enum
 from pathlib import Path
 
 from .contracts import PermissionMode
+from .permissions import FileSystemAccess, PermissionSnapshot, permission_snapshot
 
 
 class SandboxPolicy(str, Enum):
@@ -60,10 +61,10 @@ class SandboxCommand:
 class SandboxManager:
     """Plans OS-level command isolation without pretending unavailable backends exist.
 
-    Loom currently supports Bubblewrap on Linux when it is installed *and* a
-    minimal probe succeeds. Other platforms remain explicitly unavailable. In
-    AUTO mode Loom falls back to the legacy workspace/process boundary; REQUIRED
-    mode fails closed when no OS sandbox is usable; OFF deliberately disables it.
+    Authorization and containment no longer interpret PermissionMode separately:
+    both resolve through the same immutable PermissionSnapshot. Loom currently
+    supports Bubblewrap on Linux when it is installed and a minimal probe
+    succeeds. Other platforms remain explicitly unavailable.
     """
 
     def __init__(
@@ -115,21 +116,37 @@ class SandboxManager:
         return False, f"Bubblewrap probe exited {completed.returncode}: {detail or 'no stderr'}"
 
     @staticmethod
-    def mode_for_permission(permission_mode: PermissionMode | str) -> SandboxMode:
-        mode = PermissionMode(permission_mode)
-        if mode is PermissionMode.FULL_ACCESS:
+    def mode_for_permissions(permissions: PermissionSnapshot) -> SandboxMode:
+        access = permission_snapshot(permissions).file_system_access
+        if access is FileSystemAccess.UNRESTRICTED:
             return SandboxMode.DISABLED
-        if mode is PermissionMode.READ_ONLY:
+        if access is FileSystemAccess.READ_ONLY:
             return SandboxMode.READ_ONLY
         return SandboxMode.WORKSPACE
+
+    @staticmethod
+    def mode_for_permission(permission_mode: PermissionMode | str) -> SandboxMode:
+        """Compatibility helper resolved through the canonical snapshot table."""
+
+        return SandboxManager.mode_for_permissions(permission_snapshot(permission_mode))
 
     def snapshot(
         self,
         *,
-        permission_mode: PermissionMode | str,
         workspace: str | Path,
+        permissions: PermissionSnapshot | None = None,
+        permission_mode: PermissionMode | str | None = None,
     ) -> SandboxSnapshot:
-        mode = self.mode_for_permission(permission_mode)
+        if permissions is None:
+            if permission_mode is None:
+                raise ValueError("sandbox snapshot requires permissions or permission_mode")
+            permissions = permission_snapshot(permission_mode)
+        else:
+            permissions = permission_snapshot(permissions)
+            if permission_mode is not None and permissions.mode is not PermissionMode(permission_mode):
+                raise ValueError("sandbox permission_mode does not match permission snapshot")
+
+        mode = self.mode_for_permissions(permissions)
         _ = Path(workspace).expanduser().resolve()
 
         if mode is SandboxMode.DISABLED:
@@ -139,7 +156,7 @@ class SandboxManager:
                 backend=SandboxBackend.NONE,
                 available=self._backend_available,
                 enforced=False,
-                reason="Full-access permission mode intentionally disables the OS sandbox.",
+                reason="Permission snapshot intentionally selects unrestricted filesystem access.",
             )
         if self.policy is SandboxPolicy.OFF:
             return SandboxSnapshot(
@@ -174,7 +191,8 @@ class SandboxManager:
         argv: tuple[str, ...],
         cwd: Path,
         workspace: Path,
-        permission_mode: PermissionMode | str,
+        permissions: PermissionSnapshot | None = None,
+        permission_mode: PermissionMode | str | None = None,
     ) -> SandboxCommand:
         root = Path(workspace).expanduser().resolve()
         resolved_cwd = Path(cwd).expanduser().resolve()
@@ -183,7 +201,11 @@ class SandboxManager:
         except ValueError as exc:
             raise ValueError("command cwd escapes the Loom workspace") from exc
 
-        snapshot = self.snapshot(permission_mode=permission_mode, workspace=root)
+        snapshot = self.snapshot(
+            permissions=permissions,
+            permission_mode=permission_mode,
+            workspace=root,
+        )
         if (
             snapshot.mode is not SandboxMode.DISABLED
             and self.policy is SandboxPolicy.REQUIRED
