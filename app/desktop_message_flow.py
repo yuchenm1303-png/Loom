@@ -86,9 +86,18 @@ def _command(argv: Any) -> str:
 
 
 def _argument_hint(arguments: Mapping[str, Any]) -> str:
-    for key in ("url", "query", "path", "cwd", "task", "process_id", "processId", "selector"):
+    for key in (
+        "url",
+        "query",
+        "path",
+        "cwd",
+        "task",
+        "process_id",
+        "processId",
+        "selector",
+    ):
         value = arguments.get(key)
-        if value not in {None, "", []}:
+        if value is not None and value != "" and value != []:
             text = _text(value).replace("\n", " ").strip()
             return text if len(text) <= 170 else text[:167] + "…"
     argv = arguments.get("argv")
@@ -227,7 +236,11 @@ def _tool_item(raw: Mapping[str, Any]) -> FlowItem:
         marker = "Δ"
         category = "file"
     else:
-        title = f"Using {_human_tool_name(name)}" if running else f"Used {_human_tool_name(name)}"
+        title = (
+            f"Using {_human_tool_name(name)}"
+            if running
+            else f"Used {_human_tool_name(name)}"
+        )
         marker = "◇"
         category = "tool"
 
@@ -239,7 +252,7 @@ def _tool_item(raw: Mapping[str, Any]) -> FlowItem:
     if content:
         body_parts.append("result:\n" + content[-4_000:])
     result = raw.get("result")
-    if result not in {None, {}, []}:
+    if result is not None and result != {} and result != []:
         body_parts.append("data:\n" + _compact_json(result, limit=4_000))
     return FlowItem(
         item_id=_text(raw.get("id")) or f"tool:{_text(raw.get('callId'))}",
@@ -261,7 +274,11 @@ def _file_item(raw: Mapping[str, Any]) -> FlowItem:
     paths = [str(path) for path in (raw.get("paths") or [])]
     status = _text(raw.get("status")) or "completed"
     count = len(paths)
-    title = f"Changed {count} file{'s' if count != 1 else ''}" if count else "Workspace changed"
+    title = (
+        f"Changed {count} file{'s' if count != 1 else ''}"
+        if count
+        else "Workspace changed"
+    )
     detail = ", ".join(paths[:4])
     if len(paths) > 4:
         detail += f" · +{len(paths) - 4} more"
@@ -298,7 +315,7 @@ def _approval_item(raw: Mapping[str, Any]) -> FlowItem:
         else f"Approved · {_human_tool_name(tool)}"
     )
     arguments = _mapping(raw.get("arguments"))
-    body_parts = []
+    body_parts: list[str] = []
     reason = _text(raw.get("reason"))
     if reason:
         body_parts.append(reason)
@@ -380,19 +397,31 @@ def _context_item(event: Mapping[str, Any]) -> FlowItem | None:
     data = _mapping(event.get("data"))
     if kind == "context_checkpointed":
         source = _text(data.get("summary_source"))
-        title = "Context automatically compacted" if source == "model" else "Context checkpointed"
+        title = (
+            "Context automatically compacted"
+            if source == "model"
+            else "Context checkpointed"
+        )
         archived = int(data.get("archived_messages") or 0)
         retained = int(data.get("retained_messages") or 0)
         detail = f"archived {archived} · retained {retained}"
         marker = "↯"
     elif kind == "history_repaired":
-        title, detail, marker = "Conversation history repaired", "Canonical tool history normalized", "↯"
+        title = "Conversation history repaired"
+        detail = "Canonical tool history normalized"
+        marker = "↯"
     elif kind == "memory_extracted":
-        title, detail, marker = "Memory extracted", "Durable memory candidates updated", "◇"
+        title = "Memory extracted"
+        detail = "Durable memory candidates updated"
+        marker = "◇"
     elif kind == "memory_consolidated":
-        title, detail, marker = "Memory consolidated", "Durable memory records compacted", "◇"
+        title = "Memory consolidated"
+        detail = "Durable memory records compacted"
+        marker = "◇"
     else:
-        title, detail, marker = "Task goal updated", _text(data.get("objective"))[:180], "◇"
+        title = "Task goal updated"
+        detail = _text(data.get("objective"))[:180]
+        marker = "◇"
     return FlowItem(
         item_id=f"event:{_text(event.get('eventId'))}",
         turn_id=_text(event.get("turnId")),
@@ -411,27 +440,44 @@ def _context_item(event: Mapping[str, Any]) -> FlowItem | None:
 
 def _sort_items(items: Iterable[FlowItem]) -> tuple[FlowItem, ...]:
     decorated = list(enumerate(items))
-    decorated.sort(key=lambda pair: (_parse_time(pair[1].created_at) or datetime.max.replace(tzinfo=timezone.utc), pair[0]))
+    decorated.sort(
+        key=lambda pair: (
+            _parse_time(pair[1].created_at)
+            or datetime.max.replace(tzinfo=timezone.utc),
+            pair[0],
+        )
+    )
     return tuple(item for _, item in decorated)
 
 
-def _dedupe_exec_tools(items: Iterable[FlowItem], raw_items: Iterable[Mapping[str, Any]]) -> tuple[FlowItem, ...]:
+def _dedupe_exec_tools(
+    items: Iterable[FlowItem],
+    raw_items: Iterable[Mapping[str, Any]],
+) -> tuple[FlowItem, ...]:
+    records = list(raw_items)
     process_commands = {
         tuple(str(part) for part in (raw.get("argv") or []))
-        for raw in raw_items
-        if _text(raw.get("type")) == "process" and isinstance(raw.get("argv"), (list, tuple))
+        for raw in records
+        if _text(raw.get("type")) == "process"
+        and isinstance(raw.get("argv"), (list, tuple))
     }
     output: list[FlowItem] = []
     for item in items:
         if item.kind != "command" or not item.item_id.startswith("tool:"):
             output.append(item)
             continue
-        raw_match = next((raw for raw in raw_items if _text(raw.get("id")) == item.item_id), None)
+        raw_match = next(
+            (raw for raw in records if _text(raw.get("id")) == item.item_id),
+            None,
+        )
         if raw_match is None:
             output.append(item)
             continue
         argv = _mapping(raw_match.get("arguments")).get("argv")
-        if isinstance(argv, (list, tuple)) and tuple(str(part) for part in argv) in process_commands:
+        if (
+            isinstance(argv, (list, tuple))
+            and tuple(str(part) for part in argv) in process_commands
+        ):
             continue
         output.append(item)
     return tuple(output)
@@ -445,12 +491,15 @@ def build_message_flow(
     live_assistant: Mapping[str, str] | None = None,
     optimistic_user: str | None = None,
 ) -> tuple[FlowTurn, ...]:
-    raw_turns = [dict(turn) for turn in (snapshot.get("turns") or []) if isinstance(turn, Mapping)]
+    raw_turns = [
+        dict(turn)
+        for turn in (snapshot.get("turns") or [])
+        if isinstance(turn, Mapping)
+    ]
     live_turns = dict(live_turns or {})
     live_records = [dict(item) for item in live_items if isinstance(item, Mapping)]
 
     turn_map: dict[str, FlowTurn] = {}
-    turn_raw_items: dict[str, list[dict[str, Any]]] = {}
     order: list[str] = []
 
     for raw in raw_turns:
@@ -458,8 +507,11 @@ def build_message_flow(
         if not turn_id:
             continue
         order.append(turn_id)
-        records = [dict(item) for item in (raw.get("items") or []) if isinstance(item, Mapping)]
-        turn_raw_items[turn_id] = records
+        records = [
+            dict(item)
+            for item in (raw.get("items") or [])
+            if isinstance(item, Mapping)
+        ]
         mapped = [item_from_record(record) for record in records]
         items = tuple(item for item in mapped if item is not None)
         turn_map[turn_id] = FlowTurn(
@@ -482,7 +534,6 @@ def build_message_flow(
             )
         else:
             order.append(turn_id)
-            turn_raw_items[turn_id] = []
             turn_map[turn_id] = FlowTurn(
                 turn_id=turn_id,
                 status=_text(raw.get("status")) or "running",
@@ -493,19 +544,34 @@ def build_message_flow(
             )
 
     durable_ids = {item.item_id for turn in turn_map.values() for item in turn.items}
+    thread = _mapping(snapshot.get("thread"))
+    current_turn_id = _text(thread.get("currentTurnId"))
     for record in live_records:
         mapped = item_from_record(record)
         if mapped is None or mapped.item_id in durable_ids:
             continue
-        turn_id = mapped.turn_id or _text(snapshot.get("thread", {}).get("currentTurnId")) or "live"
+        turn_id = mapped.turn_id or current_turn_id or "live"
         if turn_id not in turn_map:
             order.append(turn_id)
-            turn_raw_items[turn_id] = []
-            turn_map[turn_id] = FlowTurn(turn_id, "running", mapped.created_at, "", "user", ())
+            turn_map[turn_id] = FlowTurn(
+                turn_id,
+                "running",
+                mapped.created_at,
+                "",
+                "user",
+                (),
+            )
         current = turn_map[turn_id]
-        turn_map[turn_id] = replace(current, items=_sort_items((*current.items, mapped)))
+        turn_map[turn_id] = replace(
+            current,
+            items=_sort_items((*current.items, mapped)),
+        )
 
-    events = [event for event in (snapshot.get("events") or []) if isinstance(event, Mapping)]
+    events = [
+        event
+        for event in (snapshot.get("events") or [])
+        if isinstance(event, Mapping)
+    ]
     for event in events:
         mapped = _context_item(event)
         if mapped is None:
@@ -514,7 +580,10 @@ def build_message_flow(
         if turn_id and turn_id in turn_map:
             current = turn_map[turn_id]
             if mapped.item_id not in {item.item_id for item in current.items}:
-                turn_map[turn_id] = replace(current, items=_sort_items((*current.items, mapped)))
+                turn_map[turn_id] = replace(
+                    current,
+                    items=_sort_items((*current.items, mapped)),
+                )
             continue
         synthetic_id = f"system:{mapped.item_id}"
         order.append(synthetic_id)
@@ -527,12 +596,27 @@ def build_message_flow(
             items=(mapped,),
         )
 
-    has_chat = any(item.kind in {"user", "assistant"} for turn in turn_map.values() for item in turn.items)
-    messages = [message for message in (snapshot.get("messages") or []) if isinstance(message, Mapping)]
+    has_chat = any(
+        item.kind in {"user", "assistant"}
+        for turn in turn_map.values()
+        for item in turn.items
+    )
+    messages = [
+        message
+        for message in (snapshot.get("messages") or [])
+        if isinstance(message, Mapping)
+    ]
     if messages and not has_chat:
         if not order:
             order.append("history")
-            turn_map["history"] = FlowTurn("history", "completed", "", "", "user", ())
+            turn_map["history"] = FlowTurn(
+                "history",
+                "completed",
+                "",
+                "",
+                "user",
+                (),
+            )
         first_id, last_id = order[0], order[-1]
         users: list[FlowItem] = []
         assistants: list[FlowItem] = []
@@ -558,14 +642,27 @@ def build_message_flow(
             turn_map[first_id] = replace(current, items=tuple(users) + current.items)
         if assistants:
             current = turn_map[last_id]
-            turn_map[last_id] = replace(current, items=current.items + tuple(assistants))
+            turn_map[last_id] = replace(
+                current,
+                items=current.items + tuple(assistants),
+            )
 
-    current_turn_id = _text(_mapping(snapshot.get("thread")).get("currentTurnId"))
-    target_turn_id = current_turn_id if current_turn_id in turn_map else (order[-1] if order else "live")
+    target_turn_id = (
+        current_turn_id
+        if current_turn_id in turn_map
+        else (order[-1] if order else "live")
+    )
     if optimistic_user:
         if target_turn_id not in turn_map:
             order.append(target_turn_id)
-            turn_map[target_turn_id] = FlowTurn(target_turn_id, "running", "", "", "user", ())
+            turn_map[target_turn_id] = FlowTurn(
+                target_turn_id,
+                "running",
+                "",
+                "",
+                "user",
+                (),
+            )
         current = turn_map[target_turn_id]
         user_item = FlowItem(
             item_id="optimistic:user",
@@ -579,12 +676,22 @@ def build_message_flow(
             tone="user",
             streaming=True,
         )
-        turn_map[target_turn_id] = replace(current, items=(user_item, *current.items))
+        turn_map[target_turn_id] = replace(
+            current,
+            items=(user_item, *current.items),
+        )
 
     if live_assistant:
         if target_turn_id not in turn_map:
             order.append(target_turn_id)
-            turn_map[target_turn_id] = FlowTurn(target_turn_id, "running", "", "", "user", ())
+            turn_map[target_turn_id] = FlowTurn(
+                target_turn_id,
+                "running",
+                "",
+                "",
+                "user",
+                (),
+            )
         current = turn_map[target_turn_id]
         live_chat = [
             FlowItem(
@@ -603,7 +710,10 @@ def build_message_flow(
             if text
         ]
         if live_chat:
-            turn_map[target_turn_id] = replace(current, items=current.items + tuple(live_chat))
+            turn_map[target_turn_id] = replace(
+                current,
+                items=current.items + tuple(live_chat),
+            )
 
     unique_order: list[str] = []
     seen: set[str] = set()
@@ -616,7 +726,8 @@ def build_message_flow(
     decorated = list(enumerate(unique_order))
     decorated.sort(
         key=lambda pair: (
-            _parse_time(turn_map[pair[1]].started_at) or datetime.max.replace(tzinfo=timezone.utc),
+            _parse_time(turn_map[pair[1]].started_at)
+            or datetime.max.replace(tzinfo=timezone.utc),
             pair[0],
         )
     )
