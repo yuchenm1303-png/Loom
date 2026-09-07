@@ -5,8 +5,10 @@ Loom keeps its Python runtime, App Server, PySide desktop, Browser Use, and Comp
 
 ## Pinned baselines
 
-- Loom baseline: `174b85d91a9b64eb1d9cb280566d8f5cf379b9fd`
-- OpenAI Codex baseline: `694b6319d3ad2399f6e435760a22d9b9357f0697`
+- Loom baseline for phase 2: `6512d71e7686ac6e3c004055cde94ab459211bee`
+- OpenAI Codex baseline for phase 2: `5ecb3afd1bf405149e2159bfda50093b0c1b5fab`
+
+The previous Codex baseline was `694b6319d3ad2399f6e435760a22d9b9357f0697`. The current Codex head is one commit ahead and that change is TUI `/resume` and `/cd` scheduling, not a change to the core tool/approval/exec boundaries reviewed here.
 
 Re-audit against newer Codex commits before each large alignment phase instead of assuming this document remains current forever.
 
@@ -24,16 +26,19 @@ Codex source reviewed for this baseline:
   - selected settings separated from immutable resolved step settings
 - `codex-rs/core/src/tools/spec_plan.rs`
   - canonical per-step tool-plan construction and exposure
+- `codex-rs/core/src/tools/handlers/shell_spec.rs`
+  - shell/exec semantics are expressed in the actual tool specification
+  - approval-related command options are part of the tool/runtime protocol rather than a model-side capability matrix
 - `codex-rs/core/src/tools/handlers/unified_exec/exec_command.rs`
   - exec derives approval, environment, sandbox context, and additional permissions from frozen step/turn state
 
 ## Alignment matrix
 
-| Area | Loom status at baseline | Codex-alignment direction | Priority |
+| Area | Loom status | Codex-alignment direction | Priority |
 | --- | --- | --- | --- |
-| StepContext | Partial | Keep one immutable per-sampling snapshot for effective runtime state | P0 |
-| Permission profile | Partial / split | One resolved permission snapshot is the source for authorization and containment | P0 |
-| Tool authorization | Strong | Keep one orchestrator path for model capability claims and real execution | P0 |
+| StepContext | Stronger after phase 1 | Keep one immutable per-sampling snapshot for effective runtime state | P0 |
+| Permission profile | Stronger after phase 1 | One resolved permission snapshot is the source for authorization and containment | P0 |
+| Tool authorization | Stronger after phase 2 | Model chooses from finalized tool specs; runtime alone owns allow / approval / deny | P0 |
 | Sandbox policy | Partial | Derive containment from resolved permission snapshot; no independent mode interpretation | P0 |
 | Windows OS sandbox | Incomplete | Add a genuinely enforced Windows backend and enforcement smoke tests; never label Job Object alone as filesystem sandbox | P0 |
 | Unified exec + PTY | Strong | Continue using one managed lifecycle; align permission/environment context around it | P1 |
@@ -50,7 +55,7 @@ Codex source reviewed for this baseline:
 
 ## Phase 1: resolved permission snapshot
 
-Implemented on `align/codex-permission-snapshot-v1`:
+Implemented on `align/codex-permission-snapshot-v1` and merged as `4b9e97176f4033df26561a8d0219f2eac028eac2`:
 
 1. Add immutable `PermissionSnapshot` as the canonical resolved permission version.
 2. Keep tool authorization and filesystem containment as explicit dimensions of that same snapshot.
@@ -61,6 +66,26 @@ Implemented on `align/codex-permission-snapshot-v1`:
 7. Preserve existing behavior, including the compatibility `approval` mode: read-only tools are auto-allowed, mutating/sensitive tools require approval, and approved process execution remains workspace-contained.
 
 This phase intentionally does **not** claim Windows OS sandbox completion and does **not** add network isolation that Loom cannot enforce.
+
+## Phase 2: tool-first model behavior
+
+Implemented on `align/codex-tool-first-behavior-v2`:
+
+1. Keep the finalized per-step `ToolRouter` definitions as the model-visible capability surface.
+2. Stop injecting a dynamic allow/approval/deny capability matrix, permission mode, filesystem mode, sandbox state, individual tool names, or hand-written intent routes into the system prompt.
+3. Keep only a small invariant harness contract: select suitable tools from their schemas, call them directly, and let Loom Runtime own allow / approval / deny.
+4. Keep `PermissionEngine` and `PermissionSnapshot` authoritative for actual execution. No permission is weakened and the model is not asked to predict authorization before calling a tool.
+5. Treat tool status/failure as subsystem-scoped evidence. One disabled tool must not implicitly disable unrelated shell, filesystem, browser, MCP, or GUI capabilities.
+6. Preserve deferred discovery: if `tool_search` is exposed and direct tools are insufficient, use it before claiming that no capability exists.
+7. Add regression coverage proving the model prompt is permission-invariant while Workspace approval and Read Only denial still happen in Runtime after the model emits the tool call.
+
+The key behavioral invariant is now:
+
+`user intent -> finalized tool specs -> model tool call -> runtime authorization -> allow / approval / deny -> result`
+
+not:
+
+`user intent -> model reads a permission matrix -> model guesses whether it is allowed -> maybe asks user in prose -> tool call`.
 
 ## Next phases
 
