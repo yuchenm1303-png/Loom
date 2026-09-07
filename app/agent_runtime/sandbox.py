@@ -486,40 +486,44 @@ class SandboxManager:
         argv: tuple[str, ...],
         environment: Mapping[str, str],
     ) -> list[str]:
+        """Grant only concrete runtime roots needed to start the target command.
+
+        ProcessContainer's AppContainer+DACL fallback mutates ACLs on every
+        declared path. Passing the host's entire PATH is both unnecessarily
+        broad and can fail on stale/nonexistent entries. Resolve the actual
+        executable and a small set of existing runtime roots instead.
+        """
+
         output: list[str] = []
         path_value = str(environment.get("PATH") or environment.get("Path") or "")
-        for entry in path_value.split(os.pathsep):
-            text = entry.strip().strip('"')
-            if text and Path(text).is_absolute():
-                output.append(str(Path(text).resolve()))
-
-        for name in (
-            "SYSTEMROOT",
-            "WINDIR",
-            "PROGRAMFILES",
-            "PROGRAMFILES(X86)",
-            "PROGRAMW6432",
-            "PYTHONHOME",
-            "VIRTUAL_ENV",
-        ):
-            value = str(environment.get(name) or "").strip().strip('"')
-            if value and Path(value).is_absolute():
-                output.append(str(Path(value).resolve()))
-
-        python_path = str(environment.get("PYTHONPATH") or "")
-        for entry in python_path.split(os.pathsep):
-            text = entry.strip().strip('"')
-            if text and Path(text).is_absolute():
-                output.append(str(Path(text).resolve()))
 
         program = str(argv[0] if argv else "").strip().strip('"')
         candidate = Path(program)
         if candidate.is_absolute():
-            output.append(str(candidate.resolve().parent))
+            if candidate.exists():
+                output.append(str(candidate.resolve().parent))
         else:
             located = shutil.which(program, path=path_value or None)
             if located:
                 output.append(str(Path(located).resolve().parent))
+
+        for name in ("SYSTEMROOT", "WINDIR", "PYTHONHOME", "VIRTUAL_ENV"):
+            value = str(environment.get(name) or "").strip().strip('"')
+            if not value:
+                continue
+            path = Path(value)
+            if path.is_absolute() and path.exists():
+                output.append(str(path.resolve()))
+
+        python_path = str(environment.get("PYTHONPATH") or "")
+        for entry in python_path.split(os.pathsep):
+            text = entry.strip().strip('"')
+            if not text:
+                continue
+            path = Path(text)
+            if path.is_absolute() and path.exists():
+                output.append(str(path.resolve()))
+
         return _unique_paths(output)
 
 
