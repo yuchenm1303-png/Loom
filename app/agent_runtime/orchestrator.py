@@ -31,23 +31,22 @@ class ToolOrchestrator:
         *,
         legacy_policy: ToolPolicy | None = None,
     ) -> tuple[PermissionDecision, str]:
-        """Return the same authorization decision used by real tool execution.
+        """Return the exact authorization decision used by real execution.
 
-        Model-facing capability grounding must never maintain a second,
-        approximate permission model. Keeping this logic here lets the runtime
-        explain allow/approval/deny state using the exact execution boundary.
+        The frozen StepContext permission snapshot is authoritative. Capability
+        grounding and execution deliberately share this path so model-facing
+        claims cannot drift from the actual permission boundary.
         """
 
         evaluation = self.permission_engine.evaluate(
             effect=tool.effect,
-            profile=step.permission_profile,
-            approval_policy=step.approval_policy,
+            snapshot=step.permissions,
         )
         decision = evaluation.decision
         reason = evaluation.reason
 
         if (
-            step.world_state.permission_mode is PermissionMode.APPROVAL
+            step.permissions.mode is PermissionMode.APPROVAL
             and legacy_policy is not None
         ):
             decision = (
@@ -68,13 +67,7 @@ class ToolOrchestrator:
         *,
         legacy_policy: ToolPolicy | None = None,
     ) -> str:
-        """Build a compact, authoritative capability contract for one model step.
-
-        Tool schemas remain the semantic source of truth. This block only tells
-        the model how those real tools relate to current authorization and
-        sandbox state, preventing it from inventing capability restrictions from
-        tool names, missing specialist tools, or generic safety assumptions.
-        """
+        """Build a compact, authoritative capability contract for one model step."""
 
         grouped: dict[PermissionDecision, list[str]] = {
             PermissionDecision.ALLOW: [],
@@ -102,7 +95,8 @@ class ToolOrchestrator:
             (
                 "<loom_capability_contract>",
                 "This block is generated from the current Loom runtime state and is authoritative for capability claims.",
-                f"permission_mode={step.world_state.permission_mode.value}",
+                f"permission_mode={step.permissions.mode.value}",
+                f"filesystem_access={step.permissions.file_system_access.value}",
                 sandbox_line,
                 f"allow={names(PermissionDecision.ALLOW)}",
                 f"approval={names(PermissionDecision.APPROVAL)}",
