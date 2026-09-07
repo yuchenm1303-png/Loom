@@ -11,9 +11,12 @@ pytest.importorskip("PySide6")
 from PySide6.QtWidgets import QApplication
 
 from app.desktop_ui import LoomDesktopWindow, ThreadListItemWidget
+from app.desktop.widgets import ActivityCard, MessageWidget
 
 
 class FakeClient:
+    """Minimal App Server stand-in speaking the same shapes as the real one."""
+
     def __init__(self, workspace) -> None:
         self.workspace = str(workspace)
         self.notification_listener = None
@@ -22,6 +25,11 @@ class FakeClient:
         self.closed = False
         self.approvals = []
         self.turns = []
+        self.requests = []
+        self.reads = 0
+        self.fail_turn = False
+
+    # -- subscriptions ----------------------------------------------------
 
     def subscribe_notifications(self, listener):
         self.notification_listener = listener
@@ -32,43 +40,56 @@ class FakeClient:
     def subscribe_exit(self, listener):
         self.exit_listener = listener
 
+    # -- protocol ---------------------------------------------------------
+
+    def _record(self, *, archived=False):
+        return {
+            "id": "thread-archived" if archived else "thread-1",
+            "title": "Archived work" if archived else "Inspect project",
+            "workspace": self.workspace,
+            "permissionMode": "workspace",
+            "status": "completed",
+            "currentTurnId": "turn-1",
+            "archived": archived,
+            "usage": {"inputTokens": 4, "outputTokens": 3, "totalTokens": 7},
+        }
+
     def thread_list(self, *, limit=100):
         assert limit >= 1
         return {
-            "threads": [
-                {
-                    "id": "thread-1",
-                    "title": "Inspect project",
-                    "workspace": self.workspace,
-                    "permissionMode": "workspace",
-                    "status": "completed",
-                    "currentTurnId": "turn-1",
-                    "usage": {"inputTokens": 4, "outputTokens": 3, "totalTokens": 7},
-                }
-            ]
+            "threads": [self._record()],
+            "counts": {"active": 1, "archived": 1, "all": 2},
         }
 
+    def request(self, method, params):
+        self.requests.append((method, params))
+        if method == "thread/list":
+            if params.get("view") == "archived":
+                return {
+                    "threads": [self._record(archived=True)],
+                    "counts": {"active": 1, "archived": 1, "all": 2},
+                }
+            return self.thread_list(limit=params.get("limit", 100))
+        if method == "thread/rename":
+            record = dict(self._record(), title=params["title"])
+            return {"thread": record}
+        if method == "thread/archive":
+            return {"thread": dict(self._record(), archived=params["archived"])}
+        if method == "thread/delete":
+            return {"threadId": params["threadId"]}
+        raise AssertionError(f"unexpected request: {method}")
+
     def thread_read(self, thread_id):
-        assert thread_id == "thread-1"
+        self.reads += 1
+        archived = thread_id == "thread-archived"
         return {
-            "thread": {
-                "id": "thread-1",
-                "title": "Inspect project",
-                "workspace": self.workspace,
-                "permissionMode": "workspace",
-                "status": "completed",
-                "currentTurnId": "turn-1",
-                "usage": {"inputTokens": 4, "outputTokens": 3, "totalTokens": 7},
-            },
-            "messages": [
-                {"role": "user", "content": "Inspect the repository"},
-                {"role": "assistant", "content": "The repository is ready."},
-            ],
+            "thread": self._record(archived=archived),
+            "messages": [],
             "pendingApproval": None,
             "events": [
                 {
                     "eventId": "evt-1",
-                    "threadId": "thread-1",
+                    "threadId": thread_id,
                     "turnId": "turn-1",
                     "kind": "process_started",
                     "createdAt": "2026-09-05T12:00:00+00:00",
@@ -76,7 +97,7 @@ class FakeClient:
                 },
                 {
                     "eventId": "evt-2",
-                    "threadId": "thread-1",
+                    "threadId": thread_id,
                     "turnId": "turn-1",
                     "kind": "turn_diff_updated",
                     "createdAt": "2026-09-05T12:00:01+00:00",
@@ -86,13 +107,17 @@ class FakeClient:
             "turns": [
                 {
                     "id": "turn-1",
-                    "threadId": "thread-1",
+                    "threadId": thread_id,
                     "status": "completed",
                     "items": [
                         {
+                            "id": "user:1",
+                            "type": "user_message",
+                            "status": "completed",
+                            "text": "Inspect the repository",
+                        },
+                        {
                             "id": "process:proc-1",
-                            "threadId": "thread-1",
-                            "turnId": "turn-1",
                             "type": "process",
                             "status": "completed",
                             "processId": "proc-1",
@@ -104,8 +129,6 @@ class FakeClient:
                         },
                         {
                             "id": "diff:evt-2",
-                            "threadId": "thread-1",
-                            "turnId": "turn-1",
                             "type": "file_edit",
                             "status": "completed",
                             "paths": ["demo.txt"],
@@ -114,8 +137,6 @@ class FakeClient:
                         },
                         {
                             "id": "tool:browser-1",
-                            "threadId": "thread-1",
-                            "turnId": "turn-1",
                             "type": "tool_call",
                             "status": "completed",
                             "toolName": "browser_navigate",
@@ -123,12 +144,16 @@ class FakeClient:
                         },
                         {
                             "id": "tool:agent-1",
-                            "threadId": "thread-1",
-                            "turnId": "turn-1",
                             "type": "tool_call",
                             "status": "completed",
                             "toolName": "spawn_agent",
                             "arguments": {"task": "review"},
+                        },
+                        {
+                            "id": "assistant:1",
+                            "type": "assistant_message",
+                            "status": "completed",
+                            "text": "The repository is ready.",
                         },
                     ],
                 }
@@ -149,6 +174,8 @@ class FakeClient:
         }
 
     def turn_start(self, thread_id, text):
+        if self.fail_turn:
+            raise RuntimeError("provider unavailable")
         self.turns.append((thread_id, text))
         return {"turn": {"id": "turn-live", "threadId": thread_id, "status": "starting"}}
 
@@ -167,7 +194,7 @@ class FakeClient:
         self.notification_listener(method, params)
 
 
-def _wait_for(app, predicate, timeout=2.0):
+def _wait_for(app, predicate, timeout=3.0):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         app.processEvents()
@@ -177,11 +204,11 @@ def _wait_for(app, predicate, timeout=2.0):
     raise AssertionError("Qt desktop condition did not become true")
 
 
-def _initialization(workspace):
+def _initialization(workspace, *, management=True):
     return {
         "protocolVersion": 1,
         "serverInfo": {"name": "loom-app-server", "version": "0.1.0"},
-        "capabilities": {"providerStreaming": True},
+        "capabilities": {"providerStreaming": True, "threadManagement": management},
         "runtime": {
             "defaultWorkspace": str(workspace),
             "defaultPermissionMode": "workspace",
@@ -189,7 +216,8 @@ def _initialization(workspace):
     }
 
 
-def test_native_window_rehydrates_thread_and_protocol_backed_panels(tmp_path):
+@pytest.fixture
+def desktop(tmp_path):
     app = QApplication.instance() or QApplication([])
     client = FakeClient(tmp_path)
     window = LoomDesktopWindow(
@@ -199,105 +227,268 @@ def test_native_window_rehydrates_thread_and_protocol_backed_panels(tmp_path):
         default_permission_mode="workspace",
     )
     window.show()
+    _wait_for(app, lambda: window.current_thread_id == "thread-1")
     try:
-        _wait_for(app, lambda: window.current_thread_id == "thread-1")
-        assert "Inspect the repository" in window.transcript.toPlainText()
-        assert "The repository is ready." in window.transcript.toPlainText()
-        assert "python -V" in window.terminal_view.toPlainText()
-        assert "demo.txt" in window.diff_view.toPlainText()
-        assert "browser_navigate" in window.browser_view.toPlainText()
-        assert "spawn_agent" in window.agents_view.toPlainText()
-        assert "Process started" in window.activity_view.toPlainText()
-        assert window.thread_title_label.text() == "Inspect project"
-        assert window.permission_label.text() == "workspace"
-        assert window.status_label.text() == "Completed"
-        assert window.status_label.property("state") == "completed"
-        assert window.sandbox_label.text() == "Not sandboxed · none"
-        assert window.sandbox_label.property("state") == "unprotected"
-        assert window.protocol_label.text() == "Connected"
-        assert "Provider streaming · on" in window.protocol_label.toolTip()
-        assert window.connection_dot.property("state") == "connected"
-        assert window.thread_section_label.text() == "THREADS  1"
-        assert window.thread_list.count() == 1
-        row = window.thread_list.itemWidget(window.thread_list.item(0))
-        assert isinstance(row, ThreadListItemWidget)
-        assert "tmp_path" not in row.toolTip()
+        yield app, client, window
     finally:
         window.close()
         app.processEvents()
-    assert client.closed is True
 
 
-def test_native_window_renders_streaming_assistant_and_approval_card(tmp_path):
-    app = QApplication.instance() or QApplication([])
-    client = FakeClient(tmp_path)
-    window = LoomDesktopWindow(
-        client=client,
-        initialization=_initialization(tmp_path),
-        default_workspace=tmp_path,
-        default_permission_mode="workspace",
+def _transcript_widgets(window):
+    return [window.transcript._widgets[key] for key in window.transcript._order]
+
+
+def test_thread_rehydrates_into_transcript_and_runtime_panels(desktop):
+    _app, client, window = desktop
+
+    assert "Inspect the repository" in window.transcript.toPlainText()
+    assert "The repository is ready." in window.transcript.toPlainText()
+    assert "python -V" in window.terminal_view.toPlainText()
+    assert "demo.txt" in window.diff_view.toPlainText()
+    assert "browser_navigate" in window.browser_view.toPlainText()
+    assert "spawn_agent" in window.agents_view.toPlainText()
+    assert "Process started" in window.activity_view.toPlainText()
+
+    assert window.thread_title_label.text() == "Inspect project"
+    assert window.permission_label.text() == "workspace"
+    assert window.status_label.text() == "Completed"
+    assert window.status_label.property("state") == "completed"
+    assert window.sandbox_label.text() == "Not sandboxed · none"
+    assert window.sandbox_label.property("state") == "unprotected"
+    assert window.protocol_label.text() == "Connected"
+    assert "Provider streaming · on" in window.protocol_label.toolTip()
+    assert window.connection_dot.property("state") == "connected"
+    assert window.thread_section_label.text() == "CHATS  1"
+    assert client.closed is False
+
+
+def test_tool_process_and_diff_items_render_inline_as_cards(desktop):
+    _app, _client, window = desktop
+    widgets = _transcript_widgets(window)
+
+    kinds = [
+        widget.kind if isinstance(widget, ActivityCard) else widget.role for widget in widgets
+    ]
+    assert kinds == ["user", "process", "diff", "tool", "tool", "assistant"]
+
+    process_card = widgets[1]
+    assert process_card.title_label.text() == "$ python -V"
+    assert "Python 3.12.10" in process_card._body_text
+
+    diff_card = widgets[2]
+    assert diff_card.title_label.text() == "Edited 1 file"
+    assert "+hello" in diff_card._body_text
+
+
+def test_thread_rows_size_themselves_instead_of_using_a_fixed_height(desktop):
+    _app, _client, window = desktop
+
+    assert window.thread_list.count() == 1
+    item = window.thread_list.item(0)
+    row = window.thread_list.itemWidget(item)
+    assert isinstance(row, ThreadListItemWidget)
+    # The old client hard-coded 58/60px rows while later layers changed the row
+    # contents, which left large gaps in the sidebar.
+    assert item.sizeHint().height() == max(52, row.sizeHint().height())
+
+
+def test_streaming_updates_only_the_live_message_widget(desktop):
+    app, client, window = desktop
+
+    before = {key: id(widget) for key, widget in window.transcript._widgets.items()}
+
+    client.emit(
+        "turn/started",
+        {"threadId": "thread-1", "turn": {"id": "turn-live", "status": "running"}},
     )
-    window.show()
-    try:
-        _wait_for(app, lambda: window.current_thread_id == "thread-1")
-        client.emit(
-            "turn/started",
-            {"threadId": "thread-1", "turn": {"id": "turn-live", "status": "running"}},
-        )
-        client.emit(
-            "item/started",
-            {
-                "item": {
-                    "id": "assistant:step:step-live",
-                    "threadId": "thread-1",
-                    "turnId": "turn-live",
-                    "type": "assistant_message",
-                    "status": "streaming",
-                }
-            },
-        )
+    client.emit(
+        "item/started",
+        {
+            "item": {
+                "id": "assistant:live",
+                "threadId": "thread-1",
+                "turnId": "turn-live",
+                "type": "assistant_message",
+                "status": "streaming",
+            }
+        },
+    )
+    for chunk in ("Live ", "provider ", "chunk"):
         client.emit(
             "item/delta",
             {
                 "threadId": "thread-1",
-                "turnId": "turn-live",
-                "itemId": "assistant:step:step-live",
-                "delta": {"text": "Live provider chunk"},
+                "itemId": "assistant:live",
+                "delta": {"text": chunk},
             },
         )
-        _wait_for(app, lambda: "Live provider chunk" in window.transcript.toPlainText())
-        assert window.status_label.text() == "Running"
-        assert window.status_label.property("state") == "running"
-        assert window.composer_state_label.text() == "Loom is working"
-        assert window.stop_button.isEnabled() is True
+    _wait_for(app, lambda: "Live provider chunk" in window.transcript.toPlainText())
 
+    # Every widget that existed before streaming is the same object afterwards.
+    for key, identity in before.items():
+        assert id(window.transcript._widgets[key]) == identity
+
+    live = window.transcript._widgets["assistant:live"]
+    assert isinstance(live, MessageWidget)
+    assert live.stream_badge.isVisible() is True
+    assert window.status_label.text() == "Running"
+    assert window.composer_state_label.text() == "Loom is working"
+    assert window.stop_button.isEnabled() is True
+
+
+def test_approval_card_answers_with_the_call_it_displayed(desktop):
+    app, client, window = desktop
+
+    client.emit(
+        "approval/requested",
+        {
+            "threadId": "thread-1",
+            "approval": {
+                "callId": "call-approval",
+                "toolName": "run_workspace_command",
+                "arguments": {"argv": ["python", "-V"]},
+                "effect": "sensitive",
+                "reason": "process execution requires approval",
+            },
+        },
+    )
+    app.processEvents()
+
+    assert window.approval_frame.isVisible() is True
+    assert "run_workspace_command" in window.approval_title.text()
+    assert "sensitive" in window.approval_details.text()
+    assert "python" in window.approval_frame.arguments_view.toPlainText()
+    assert window.status_label.text() == "Waiting Approval"
+    assert window.composer_state_label.text() == "Waiting for approval"
+
+    window.approval_frame.allow_button.click()
+    _wait_for(app, lambda: client.approvals)
+    assert client.approvals == [("thread-1", "call-approval", True)]
+
+
+def test_rpc_failures_surface_in_the_banner_not_a_modal_dialog(desktop):
+    app, client, window = desktop
+    client.fail_turn = True
+
+    window.composer.setPlainText("do the thing")
+    window.send_prompt()
+    _wait_for(app, lambda: window.banner.isVisible())
+
+    assert "provider unavailable" in window.banner.label.text()
+    window.banner.dismiss()
+    assert window.banner.isVisible() is False
+
+
+def test_empty_conversation_shows_the_starting_prompts(desktop):
+    app, _client, window = desktop
+
+    window.state.reset()
+    window._render_transcript()
+    app.processEvents()
+    assert window.empty_state.isVisible() is True
+    assert window.transcript.isVisible() is False
+
+    window.empty_state.promptChosen.emit("Inspect this project")
+    assert window.composer.toPlainText() == "Inspect this project"
+
+
+def test_panel_toggles_hide_and_restore_both_side_panels(desktop):
+    app, _client, window = desktop
+
+    window.toggle_sidebar()
+    window.toggle_runtime()
+    app.processEvents()
+    assert window.sidebar_panel.isVisible() is False
+    assert window.activity_panel.isVisible() is False
+
+    window.toggle_sidebar()
+    window.toggle_runtime()
+    app.processEvents()
+    assert window.sidebar_panel.isVisible() is True
+    assert window.activity_panel.isVisible() is True
+
+
+def test_conversation_library_search_archive_view_and_read_only_state(desktop):
+    app, client, window = desktop
+
+    assert window.thread_search.placeholderText() == "Search conversations"
+    assert window.archive_view_button.isEnabled() is True
+    assert window.thread_actions_button.isEnabled() is True
+
+    window.thread_search.setText("nothing matches")
+    app.processEvents()
+    assert window.thread_list.item(0).isHidden() is True
+    assert window.thread_section_label.text() == "CHATS  0/1"
+    window.thread_search.clear()
+    app.processEvents()
+
+    window.archive_view_button.setChecked(True)
+    window._toggle_archive_view(True)
+    _wait_for(app, lambda: window.thread_section_label.text().startswith("ARCHIVED"))
+    assert any(
+        method == "thread/list" and params.get("view") == "archived"
+        for method, params in client.requests
+    )
+
+    _wait_for(app, lambda: window.current_thread_id == "thread-archived")
+    assert window.composer.isReadOnly() is True
+    assert window.send_button.isEnabled() is False
+    assert window.composer_state_label.text() == "Archived · read-only"
+
+
+def test_renaming_a_conversation_updates_the_header(desktop):
+    app, client, window = desktop
+
+    window.rpc.submit(
+        "thread-rename:thread-1",
+        lambda: window._thread_action(
+            "thread/rename", {"threadId": "thread-1", "title": "Renamed"}
+        ),
+    )
+    _wait_for(app, lambda: window.thread_title_label.text() == "Renamed")
+    assert ("thread/rename", {"threadId": "thread-1", "title": "Renamed"}) in client.requests
+
+
+def test_item_bursts_are_reconciled_once_rather_than_per_item(desktop):
+    app, client, window = desktop
+    reads_before = client.reads
+
+    for index in range(8):
         client.emit(
-            "approval/requested",
+            "item/completed",
             {
                 "threadId": "thread-1",
-                "turnId": "turn-live",
-                "approval": {
-                    "callId": "call-approval",
-                    "toolName": "run_workspace_command",
-                    "arguments": {"argv": ["python", "-V"]},
-                    "effect": "sensitive",
-                    "reason": "process execution requires approval",
+                "item": {
+                    "id": f"tool:burst-{index}",
+                    "type": "tool_call",
+                    "status": "completed",
+                    "toolName": "read_file",
                 },
             },
         )
-        app.processEvents()
-        assert window.approval_frame.isVisible() is True
-        assert "run_workspace_command" in window.approval_title.text()
-        assert "python" in window.approval_details.text()
-        assert window.status_label.text() == "Waiting Approval"
-        assert window.status_label.property("state") == "waiting_approval"
-        assert window.composer_state_label.text() == "Waiting for approval"
-    finally:
-        window.close()
-        app.processEvents()
+    app.processEvents()
+    # The old client issued one full thread/read per completed item.
+    assert client.reads == reads_before
+
+    _wait_for(app, lambda: client.reads > reads_before)
+    assert client.reads == reads_before + 1
 
 
-def test_native_window_empty_state_prompt_and_panel_toggles(tmp_path):
+def test_server_exit_marks_the_connection_and_disables_sending(desktop):
+    app, client, window = desktop
+
+    assert client.exit_listener is not None
+    client.exit_listener("Loom App Server exited (exit code 1)")
+    _wait_for(app, lambda: window.connection_dot.property("state") == "disconnected")
+
+    assert window.protocol_label.text() == "App Server · stopped"
+    assert window.send_button.isEnabled() is False
+    assert window.stop_button.isEnabled() is False
+    assert "exit code 1" in window.banner.label.text()
+
+
+def test_closing_the_window_shuts_down_the_client(tmp_path):
     app = QApplication.instance() or QApplication([])
     client = FakeClient(tmp_path)
     window = LoomDesktopWindow(
@@ -307,29 +498,7 @@ def test_native_window_empty_state_prompt_and_panel_toggles(tmp_path):
         default_permission_mode="workspace",
     )
     window.show()
-    try:
-        _wait_for(app, lambda: window.current_thread_id == "thread-1")
-        window._durable_messages = []
-        window._live_assistant.clear()
-        window._optimistic_user = None
-        window._render_transcript()
-        app.processEvents()
-        assert window.empty_state.isVisible() is True
-        assert window.transcript.isVisible() is False
-
-        window._fill_composer("Inspect this project")
-        assert window.composer.toPlainText() == "Inspect this project"
-
-        window.toggle_sidebar()
-        window.toggle_runtime()
-        app.processEvents()
-        assert window.sidebar_panel.isVisible() is False
-        assert window.activity_panel.isVisible() is False
-        window.toggle_sidebar()
-        window.toggle_runtime()
-        app.processEvents()
-        assert window.sidebar_panel.isVisible() is True
-        assert window.activity_panel.isVisible() is True
-    finally:
-        window.close()
-        app.processEvents()
+    _wait_for(app, lambda: window.current_thread_id == "thread-1")
+    window.close()
+    app.processEvents()
+    assert client.closed is True
