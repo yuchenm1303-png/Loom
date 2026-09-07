@@ -8,11 +8,17 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6")
 
 from app.desktop_ui import LoomDesktopWindow
-from app.desktop_ui_v9 import _ACTIVITY_STYLE, _TRANSCRIPT_STYLE, _UI_TYPOGRAPHY_QSS
+from app.desktop_ui_v9 import (
+    LoomDesktopWindow as LoomDesktopWindowV9,
+    _ACTIVITY_STYLE,
+    _TRANSCRIPT_STYLE,
+    _UI_TYPOGRAPHY_QSS,
+)
 
 
-def test_active_desktop_entrypoint_uses_readability_typography_layer():
-    assert LoomDesktopWindow.__module__ == "app.desktop_ui_v9"
+def test_active_desktop_entrypoint_preserves_readability_typography_layer():
+    assert issubclass(LoomDesktopWindow, LoomDesktopWindowV9)
+    assert LoomDesktopWindow.__module__ == "app.desktop_ui_v10"
 
 
 def test_v9_typography_contract_prioritizes_readability_and_cjk_fallbacks():
