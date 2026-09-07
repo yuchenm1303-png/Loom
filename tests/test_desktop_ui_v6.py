@@ -11,8 +11,8 @@ from app.desktop_ui import LoomDesktopWindow
 from app.desktop_ui_v6 import _rich_blocks
 
 
-def test_active_desktop_entrypoint_uses_v6_visual_layer():
-    assert LoomDesktopWindow.__module__ == "app.desktop_ui_v6"
+def test_active_desktop_entrypoint_uses_v7_message_flow_layer():
+    assert LoomDesktopWindow.__module__ == "app.desktop_ui_v7"
 
 
 def test_v6_transcript_markup_is_readable_and_html_safe():
