@@ -13,7 +13,7 @@ from app.desktop_ui_v6 import LoomDesktopWindow as LoomDesktopWindowV6, _rich_bl
 
 def test_active_desktop_entrypoint_preserves_v6_visual_layer():
     assert issubclass(LoomDesktopWindow, LoomDesktopWindowV6)
-    assert LoomDesktopWindow.__module__ == "app.desktop_ui_v9"
+    assert LoomDesktopWindow.__module__ == "app.desktop_ui_v10"
 
 
 def test_v6_transcript_markup_is_readable_and_html_safe():
