@@ -53,6 +53,32 @@ jobs:
       - name: Unified Exec and real ConPTY contracts
         run: python -m pytest -q tests/test_unified_exec_pty.py
 
+  windows-sandbox-smoke:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install Loom and Microsoft MXC
+        run: |
+          python -m pip install -e ".[dev]"
+          npm install --no-save @microsoft/mxc-sdk@0.8.0
+      - name: Locate and probe MXC
+        shell: pwsh
+        run: |
+          $arch = if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64") { "arm64" } else { "x64" }
+          $exe = Join-Path $env:GITHUB_WORKSPACE "node_modules\@microsoft\mxc-sdk\bin\$arch\wxc-exec.exe"
+          if (-not (Test-Path $exe)) { throw "MXC wxc-exec.exe was not installed at $exe" }
+          & $exe --probe
+          if ($LASTEXITCODE -ne 0) { throw "MXC platform probe failed with exit code $LASTEXITCODE" }
+          "LOOM_WINDOWS_SANDBOX_EXECUTABLE=$exe" >> $env:GITHUB_ENV
+      - name: Windows MXC policy and enforcement contracts
+        run: python -m pytest -q tests/test_sandbox_runtime.py tests/test_windows_mxc_integration.py
+
   windows-desktop-smoke:
     runs-on: windows-latest
     env:
