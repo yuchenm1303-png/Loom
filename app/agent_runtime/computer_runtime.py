@@ -8,6 +8,7 @@ from dataclasses import dataclass, replace
 from typing import Sequence
 
 from .browser_runtime_v1 import BrowserRuntime
+from .computer_alibaba import AlibabaGUIPlusGroundingBackend, GUI_PLUS_GROUNDER_ALIASES
 from .computer_grounding import ComputerGroundingBackend, UITarsGroundingBackend
 from .computer_transient import ComputerTransientInputPlatform
 from .computer_types import (
@@ -196,11 +197,11 @@ class ComputerSessionStore:
     def _promote_click_to_uia(action: ComputerAction, observation: ComputerObservation) -> ComputerAction:
         """Promote a visual single-click to the most specific enabled UIA target.
 
-        UI-TARS intentionally predicts frame-local coordinates so it remains a
-        replaceable visual grounding backend. When that point lands inside a UIA
-        control from the *same* observation, Loom can safely attach the semantic
-        control id and let the Windows operator try Invoke before physical input.
-        Double/right clicks keep their physical semantics and are not promoted.
+        Visual grounding backends intentionally predict frame-local coordinates so
+        they remain replaceable. When that point lands inside a UIA control from
+        the *same* observation, Loom can safely attach the semantic control id and
+        let the Windows operator try Invoke before physical input. Double/right
+        clicks keep their physical semantics and are not promoted.
         """
 
         if action.type is not ComputerActionType.CLICK or action.control_id or action.point is None:
@@ -305,6 +306,7 @@ class ComputerUseRuntime(BrowserRuntime):
         computer_operator: ComputerOperator | None = None,
         computer_grounder: ComputerGroundingBackend | None = None,
         computer_model_profile: str | None = None,
+        computer_grounder_kind: str | None = None,
         auto_configure_computer: bool = True,
         computer_settle_delay: float = 0.25,
         **kwargs,
@@ -323,13 +325,43 @@ class ComputerUseRuntime(BrowserRuntime):
             or os.environ.get("LOOM_COMPUTER_MODEL_PROFILE")
             or ""
         ).strip().casefold()
+        requested_grounder = str(
+            computer_grounder_kind
+            or os.environ.get("LOOM_COMPUTER_GROUNDER")
+            or ""
+        ).strip().casefold()
         grounder = computer_grounder
-        if grounder is None and profile:
-            grounder = UITarsGroundingBackend(self.platform, profile)
+        selected_grounder = str(getattr(grounder, "name", "") or "").strip().casefold()
+
+        if grounder is None and operator is not None:
+            has_alibaba_secret = bool(
+                str(os.environ.get("LOOM_COMPUTER_API_KEY") or "").strip()
+                or str(os.environ.get("DASHSCOPE_API_KEY") or "").strip()
+            )
+            wants_alibaba = requested_grounder in GUI_PLUS_GROUNDER_ALIASES or (
+                not requested_grounder and not profile and has_alibaba_secret
+            )
+            if wants_alibaba:
+                grounder = AlibabaGUIPlusGroundingBackend.from_environment()
+                if grounder is None:
+                    raise RuntimeError(
+                        "Alibaba GUI-Plus grounding requires LOOM_COMPUTER_API_KEY or DASHSCOPE_API_KEY"
+                    )
+                selected_grounder = grounder.name
+            elif profile:
+                if requested_grounder and requested_grounder not in {"ui-tars", "uitars"}:
+                    raise ValueError(f"unsupported Computer Use grounder: {requested_grounder}")
+                grounder = UITarsGroundingBackend(self.platform, profile)
+                selected_grounder = grounder.name
+            elif requested_grounder:
+                if requested_grounder in {"ui-tars", "uitars"}:
+                    raise RuntimeError("UI-TARS grounding requires LOOM_COMPUTER_MODEL_PROFILE")
+                raise ValueError(f"unsupported Computer Use grounder: {requested_grounder}")
 
         self.computer_backend_name = backend_name
         self.computer_model_profile = profile
         self.computer_grounder_name = str(getattr(grounder, "name", "") or "disabled")
+        self.computer_grounder_kind = selected_grounder or requested_grounder or "disabled"
         self.computer_sessions = (
             ComputerSessionStore(
                 operator,
@@ -349,15 +381,24 @@ class ComputerUseRuntime(BrowserRuntime):
     def computer_status(self, owner_session_id: str | None = None) -> dict[str, object]:
         store = self.computer_sessions
         operator_status = dict(store.operator.status()) if store is not None else {}
+        grounder_config: dict[str, object] = {}
+        if store is not None and store.grounder is not None:
+            safe_config = getattr(store.grounder, "safe_config", None)
+            if callable(safe_config):
+                grounder_config = dict(safe_config())
+                grounder_config.pop("base_url", None)
         return {
             "enabled": store is not None,
             "operator": self.computer_backend_name,
             "grounder": self.computer_grounder_name,
+            "grounder_kind": self.computer_grounder_kind,
+            "grounder_config": grounder_config,
             "model_profile": self.computer_model_profile,
             "policy_step_enabled": bool(store is not None and store.grounder is not None),
             "state_persistence": "ephemeral",
             "screenshot_persistence": "none unless computer_observe save_screenshot=true",
             "typed_text_persistence": "transient_only for model-produced tool calls",
+            "credential_persistence": "runtime environment only; not stored in Loom session state",
             "observation_mode": "screenshot + UIA hybrid when Windows backend is enabled",
             "verification": "post-action re-observation; deterministic foreground-window check for switch_window",
             **operator_status,
