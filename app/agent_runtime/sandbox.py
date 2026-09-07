@@ -486,40 +486,49 @@ class SandboxManager:
         argv: tuple[str, ...],
         environment: Mapping[str, str],
     ) -> list[str]:
+        """Return only concrete runtime roots needed by the selected executable.
+
+        MXC's AppContainer+DACL fallback may need to mutate ACLs for every
+        explicit read root. Treating the entire host PATH as a grant is both
+        over-broad and brittle (PATH commonly contains stale/nonexistent
+        entries). Resolve the executable from PATH, then grant only its actual
+        containing runtime plus explicit Python runtime roots that exist.
+        """
+
         output: list[str] = []
         path_value = str(environment.get("PATH") or environment.get("Path") or "")
-        for entry in path_value.split(os.pathsep):
-            text = entry.strip().strip('"')
-            if text and Path(text).is_absolute():
-                output.append(str(Path(text).resolve()))
+        program = str(argv[0] if argv else "").strip().strip('"')
+        candidate = Path(program)
+        if candidate.is_absolute():
+            try:
+                resolved = candidate.resolve()
+            except OSError:
+                resolved = candidate
+            if resolved.exists():
+                output.append(str(resolved.parent))
+        else:
+            located = shutil.which(program, path=path_value or None)
+            if located:
+                resolved = Path(located).resolve()
+                if resolved.exists():
+                    output.append(str(resolved.parent))
 
-        for name in (
-            "SYSTEMROOT",
-            "WINDIR",
-            "PROGRAMFILES",
-            "PROGRAMFILES(X86)",
-            "PROGRAMW6432",
-            "PYTHONHOME",
-            "VIRTUAL_ENV",
-        ):
+        for name in ("PYTHONHOME", "VIRTUAL_ENV"):
             value = str(environment.get(name) or "").strip().strip('"')
-            if value and Path(value).is_absolute():
-                output.append(str(Path(value).resolve()))
+            if not value:
+                continue
+            path = Path(value)
+            if path.is_absolute() and path.exists():
+                output.append(str(path.resolve()))
 
         python_path = str(environment.get("PYTHONPATH") or "")
         for entry in python_path.split(os.pathsep):
             text = entry.strip().strip('"')
-            if text and Path(text).is_absolute():
-                output.append(str(Path(text).resolve()))
-
-        program = str(argv[0] if argv else "").strip().strip('"')
-        candidate = Path(program)
-        if candidate.is_absolute():
-            output.append(str(candidate.resolve().parent))
-        else:
-            located = shutil.which(program, path=path_value or None)
-            if located:
-                output.append(str(Path(located).resolve().parent))
+            if not text:
+                continue
+            path = Path(text)
+            if path.is_absolute() and path.exists():
+                output.append(str(path.resolve()))
         return _unique_paths(output)
 
 
