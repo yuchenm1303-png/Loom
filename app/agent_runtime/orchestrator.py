@@ -33,9 +33,9 @@ class ToolOrchestrator:
     ) -> tuple[PermissionDecision, str]:
         """Return the exact authorization decision used by real execution.
 
-        The frozen StepContext permission snapshot is authoritative. Capability
-        grounding and execution deliberately share this path so model-facing
-        claims cannot drift from the actual permission boundary.
+        The frozen StepContext permission snapshot is authoritative. The model
+        does not need to predict this decision before it emits a tool call;
+        Loom's runtime owns allow/approval/deny enforcement.
         """
 
         evaluation = self.permission_engine.evaluate(
@@ -67,72 +67,32 @@ class ToolOrchestrator:
         *,
         legacy_policy: ToolPolicy | None = None,
     ) -> str:
-        """Build a compact, authoritative capability contract for one model step."""
+        """Return model-facing tool-harness rules without leaking permission policy.
 
-        grouped: dict[PermissionDecision, list[str]] = {
-            PermissionDecision.ALLOW: [],
-            PermissionDecision.APPROVAL: [],
-            PermissionDecision.DENY: [],
-        }
-        decisions_by_name: dict[str, PermissionDecision] = {}
-        for tool in step.tool_router.all():
-            decision, _ = self.evaluate_tool(step, tool, legacy_policy=legacy_policy)
-            grouped[decision].append(f"{tool.name}[{tool.effect.value}]")
-            decisions_by_name[tool.name] = decision
+        This method keeps its historical name for compatibility. Earlier Loom
+        versions injected a per-step capability matrix containing tool names,
+        permission decisions, sandbox state, and hand-written intent routes.
+        That made the model perform a second, fallible authorization pass before
+        calling tools. Codex instead treats the finalized tool plan as the
+        model-visible capability surface and keeps authorization in the runtime.
 
-        def names(decision: PermissionDecision) -> str:
-            values = grouped[decision]
-            return ", ".join(values) if values else "(none)"
+        The current contract is therefore intentionally invariant across
+        permission profiles for the same model/tool request. ``step`` and
+        ``legacy_policy`` remain parameters only so callers do not need a
+        migration in the same release.
+        """
 
-        sandbox = step.world_state.sandbox
-        if sandbox is None:
-            sandbox_line = "sandbox=not-reported"
-        else:
-            sandbox_line = (
-                f"sandbox={sandbox.backend.value}:{sandbox.mode.value}; "
-                f"enforced={str(sandbox.enforced).lower()}; scope=process-execution"
-            )
-
-        intent_routes: list[str] = []
-        exec_decision = decisions_by_name.get("exec")
-        if exec_decision is not None:
-            intent_routes.append(
-                f"host_system_read=exec:{exec_decision.value}; "
-                "use for CLI-queryable host/system facts such as memory, CPU, disk, processes, and network status"
-            )
-        computer_status_decision = decisions_by_name.get("computer_status")
-        if computer_status_decision is not None:
-            intent_routes.append(
-                f"windows_gui_status=computer_status:{computer_status_decision.value}; "
-                "scope=GUI Computer Use only; it does not report exec/browser/filesystem availability"
-            )
-        if not intent_routes:
-            intent_routes.append("(no core intent routes exposed in this step)")
-
+        del step, legacy_policy
         return "\n".join(
             (
-                "<loom_capability_contract>",
-                "This block is generated from the current Loom runtime state and is authoritative for capability claims.",
-                f"permission_mode={step.permissions.mode.value}",
-                f"filesystem_access={step.permissions.file_system_access.value}",
-                sandbox_line,
-                f"allow={names(PermissionDecision.ALLOW)}",
-                f"approval={names(PermissionDecision.APPROVAL)}",
-                f"deny={names(PermissionDecision.DENY)}",
-                "Intent routes:",
-                *intent_routes,
-                "Rules:",
-                "1. Tool names are not a capability ontology. Match the user's intent to tool semantics and schemas; a general-purpose tool may satisfy a request even when no specialist tool has a matching name.",
-                "2. Authorization is not capability. A tool listed under approval is available to attempt; call it when appropriate and let the harness request user approval. A tool under deny is blocked by the current permission mode, not evidence that Loom never supports that capability.",
-                "3. Before claiming that Loom cannot access, inspect, control, read, write, browse, execute, or observe something, check all suitable exposed tools. If tool_search is available, use it to discover deferred tools before declaring that no matching capability exists.",
-                "4. Do not infer host, OS, network, filesystem, process, browser, or GUI inaccessibility merely because access is tool-mediated or because sandboxing exists. Sandbox state describes process-execution isolation only unless a tool result explicitly states a broader limitation.",
-                "5. Disambiguate user vocabulary from Loom subsystem names by context. Do not map a user noun to a same-named internal subsystem unless the request actually refers to that subsystem.",
-                "6. Say a capability is unavailable only from runtime evidence: no suitable exposed/deferred tool exists, a relevant status/tool result reports it unavailable, or permission/runtime policy explicitly blocks it with no usable alternative. Distinguish unavailable, approval-required, denied, and execution-failed.",
-                "7. For read-only host/system facts that an OS command can query (for example RAM, CPU, disk, process, or network status), use exec when it is allowed or approval-required. Computer Use, screen capture, and GUI input are not prerequisites for CLI-queryable system facts.",
-                "8. A computer_status result is scoped only to the Windows GUI Computer Use subsystem. If it reports disabled or unavailable, do not infer that exec, browser, filesystem, MCP, or other independent tools are disabled; evaluate each subsystem separately.",
-                "9. Do not ask the user in prose to pre-authorize an approval-required tool. Issue the appropriate tool call and let Loom's approval mechanism request consent. Ask the user only when required tool input is genuinely missing or a tool explicitly requests user assistance.",
-                "10. When the user asks broadly whether Loom can control or inspect their computer, answer by capability surface (for example GUI, shell/processes, filesystem, browser) from current runtime evidence rather than collapsing all surfaces into one yes/no based on computer_status.",
-                "</loom_capability_contract>",
+                "<loom_tool_harness>",
+                "The tool definitions attached to this model request are the authoritative capability surface for this step.",
+                "Choose tools from their semantic descriptions and schemas. A general-purpose tool may satisfy a request even when no specialist tool has a matching name.",
+                "When a suitable tool exists, issue the tool call directly. Do not ask the user to pre-authorize it in prose; Loom's runtime will allow it, request approval, or deny it according to the active policy.",
+                "A tool status or failure is scoped to that tool or subsystem. Do not infer that unrelated tools or subsystems are unavailable from one disabled status, sandbox report, denial, or execution failure.",
+                "If tool_search is exposed and no direct tool is suitable, use it before concluding that the requested capability is unavailable.",
+                "Only claim that Loom cannot perform a requested action after the exposed/deferred tool surface and actual runtime results provide that evidence.",
+                "</loom_tool_harness>",
             )
         )
 
