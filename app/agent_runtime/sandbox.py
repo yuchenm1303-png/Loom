@@ -1,14 +1,52 @@
 from __future__ import annotations
 
+import base64
+import json
 import os
 import platform
 import shutil
 import subprocess
+import uuid
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
+from typing import Mapping
 
 from .contracts import PermissionMode
+
+
+_MXC_SCHEMA_VERSION = "0.8.0-alpha"
+_MXC_CONFIG_LIMIT = 22_000
+_MXC_ENV_ALWAYS = frozenset(
+    {
+        "ALLUSERSPROFILE",
+        "APPDATA",
+        "COMSPEC",
+        "HOME",
+        "HOMEDRIVE",
+        "HOMEPATH",
+        "LOCALAPPDATA",
+        "NUMBER_OF_PROCESSORS",
+        "OS",
+        "PATH",
+        "PATHEXT",
+        "PROCESSOR_ARCHITECTURE",
+        "PROGRAMDATA",
+        "PROGRAMFILES",
+        "PROGRAMFILES(X86)",
+        "PROGRAMW6432",
+        "PSMODULEPATH",
+        "PYTHONHOME",
+        "PYTHONPATH",
+        "SYSTEMDRIVE",
+        "SYSTEMROOT",
+        "TEMP",
+        "TMP",
+        "USERPROFILE",
+        "WINDIR",
+    }
+)
+_SECRET_ENV_MARKERS = ("API_KEY", "TOKEN", "SECRET", "PASSWORD", "PASSWD", "PRIVATE_KEY")
 
 
 class SandboxPolicy(str, Enum):
@@ -26,6 +64,7 @@ class SandboxMode(str, Enum):
 class SandboxBackend(str, Enum):
     NONE = "none"
     BUBBLEWRAP = "bubblewrap"
+    WINDOWS_MXC = "windows-mxc"
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,10 +99,15 @@ class SandboxCommand:
 class SandboxManager:
     """Plans OS-level command isolation without pretending unavailable backends exist.
 
-    Loom currently supports Bubblewrap on Linux when it is installed *and* a
-    minimal probe succeeds. Other platforms remain explicitly unavailable. In
-    AUTO mode Loom falls back to the legacy workspace/process boundary; REQUIRED
-    mode fails closed when no OS sandbox is usable; OFF deliberately disables it.
+    Linux uses Bubblewrap when it is installed and its minimal probe succeeds.
+    Windows can use Microsoft's MXC ``wxc-exec`` ProcessContainer frontend,
+    which selects an OS-backed BaseContainer/AppContainer isolation tier and
+    fails rather than silently executing an uncontained target when no tier can
+    honor the requested policy.
+
+    In AUTO mode Loom falls back to the existing workspace/process boundary if
+    no supported OS sandbox launcher is available. REQUIRED fails closed. OFF
+    deliberately disables OS sandboxing. FULL_ACCESS intentionally bypasses it.
     """
 
     def __init__(
@@ -71,28 +115,60 @@ class SandboxManager:
         *,
         policy: SandboxPolicy | str = SandboxPolicy.AUTO,
         bubblewrap_executable: str | None = None,
+        windows_mxc_executable: str | None = None,
         probe_backend: bool = True,
         system_name: str | None = None,
     ) -> None:
         self.policy = SandboxPolicy(policy)
         self.system_name = str(system_name or platform.system()).strip().casefold()
-        explicit = str(bubblewrap_executable or "").strip()
-        discovered = explicit or (shutil.which("bwrap") if self.system_name == "linux" else "")
-        self.bubblewrap_executable = str(discovered or "")
+        self.bubblewrap_executable = ""
+        self.windows_mxc_executable = ""
         self._backend_available = False
         self._backend_reason = "No supported OS sandbox backend is available."
 
-        if self.system_name != "linux":
-            self._backend_reason = f"No Loom OS sandbox backend is implemented for {self.system_name or 'this platform'}."
-        elif not self.bubblewrap_executable:
-            self._backend_reason = "Bubblewrap (bwrap) was not found on PATH."
-        elif not probe_backend:
-            self._backend_available = True
-            self._backend_reason = "Bubblewrap availability was accepted without a runtime probe."
-        else:
-            ok, reason = self._probe_bubblewrap(self.bubblewrap_executable)
-            self._backend_available = ok
-            self._backend_reason = reason
+        if self.system_name == "linux":
+            explicit = str(bubblewrap_executable or "").strip()
+            self.bubblewrap_executable = str(explicit or shutil.which("bwrap") or "")
+            if not self.bubblewrap_executable:
+                self._backend_reason = "Bubblewrap (bwrap) was not found on PATH."
+            elif not probe_backend:
+                self._backend_available = True
+                self._backend_reason = "Bubblewrap availability was accepted without a runtime probe."
+            else:
+                ok, reason = self._probe_bubblewrap(self.bubblewrap_executable)
+                self._backend_available = ok
+                self._backend_reason = reason
+            return
+
+        if self.system_name == "windows":
+            explicit = str(
+                windows_mxc_executable
+                or os.environ.get("LOOM_WINDOWS_SANDBOX_EXECUTABLE")
+                or ""
+            ).strip()
+            self.windows_mxc_executable = str(
+                explicit
+                or shutil.which("wxc-exec.exe")
+                or shutil.which("wxc-exec")
+                or ""
+            )
+            if not self.windows_mxc_executable:
+                self._backend_reason = (
+                    "Microsoft MXC wxc-exec was not found. Install/bundle MXC or set "
+                    "LOOM_WINDOWS_SANDBOX_EXECUTABLE to enable the Windows OS sandbox."
+                )
+            elif not probe_backend:
+                self._backend_available = True
+                self._backend_reason = "Microsoft MXC launcher availability was accepted without a runtime probe."
+            else:
+                ok, reason = self._probe_windows_mxc(self.windows_mxc_executable)
+                self._backend_available = ok
+                self._backend_reason = reason
+            return
+
+        self._backend_reason = (
+            f"No Loom OS sandbox backend is implemented for {self.system_name or 'this platform'}."
+        )
 
     @staticmethod
     def _probe_bubblewrap(executable: str) -> tuple[bool, str]:
@@ -113,6 +189,27 @@ class SandboxManager:
             return True, "Bubblewrap probe succeeded."
         detail = str(completed.stderr or "").strip().replace("\n", " ")[:240]
         return False, f"Bubblewrap probe exited {completed.returncode}: {detail or 'no stderr'}"
+
+    @staticmethod
+    def _probe_windows_mxc(executable: str) -> tuple[bool, str]:
+        try:
+            completed = subprocess.run(
+                [executable, "--version"],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                errors="replace",
+                timeout=5,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            return False, f"Microsoft MXC launcher probe failed: {type(exc).__name__}: {exc}"
+        if completed.returncode == 0:
+            detail = str(completed.stdout or completed.stderr or "").strip().replace("\n", " ")[:160]
+            return True, f"Microsoft MXC launcher probe succeeded{': ' + detail if detail else '.'}"
+        detail = str(completed.stderr or completed.stdout or "").strip().replace("\n", " ")[:240]
+        return False, f"Microsoft MXC launcher probe exited {completed.returncode}: {detail or 'no output'}"
 
     @staticmethod
     def mode_for_permission(permission_mode: PermissionMode | str) -> SandboxMode:
@@ -151,13 +248,23 @@ class SandboxManager:
                 reason="OS sandboxing was explicitly disabled by runtime policy.",
             )
         if self._backend_available:
+            if self.system_name == "linux":
+                backend = SandboxBackend.BUBBLEWRAP
+                network_isolated = False
+            elif self.system_name == "windows":
+                backend = SandboxBackend.WINDOWS_MXC
+                network_isolated = True
+            else:  # defensive: availability is never set for unsupported platforms
+                backend = SandboxBackend.NONE
+                network_isolated = False
             return SandboxSnapshot(
                 policy=self.policy,
                 mode=mode,
-                backend=SandboxBackend.BUBBLEWRAP,
+                backend=backend,
                 available=True,
                 enforced=True,
                 reason=self._backend_reason,
+                network_isolated=network_isolated,
             )
         return SandboxSnapshot(
             policy=self.policy,
@@ -175,6 +282,7 @@ class SandboxManager:
         cwd: Path,
         workspace: Path,
         permission_mode: PermissionMode | str,
+        environment: Mapping[str, str] | None = None,
     ) -> SandboxCommand:
         root = Path(workspace).expanduser().resolve()
         resolved_cwd = Path(cwd).expanduser().resolve()
@@ -202,6 +310,18 @@ class SandboxManager:
                     mode=snapshot.mode,
                 ),
                 cwd=Path("/"),
+                snapshot=snapshot,
+            )
+        if snapshot.backend is SandboxBackend.WINDOWS_MXC:
+            return SandboxCommand(
+                argv=self._windows_mxc_argv(
+                    argv=tuple(argv),
+                    cwd=resolved_cwd,
+                    workspace=root,
+                    mode=snapshot.mode,
+                    environment=environment or {},
+                ),
+                cwd=resolved_cwd,
                 snapshot=snapshot,
             )
         raise RuntimeError(f"unsupported sandbox backend: {snapshot.backend.value}")
@@ -243,6 +363,127 @@ class SandboxManager:
         command.extend(["--chdir", str(cwd), "--"])
         command.extend(argv)
         return tuple(command)
+
+    def _windows_mxc_argv(
+        self,
+        *,
+        argv: tuple[str, ...],
+        cwd: Path,
+        workspace: Path,
+        mode: SandboxMode,
+        environment: Mapping[str, str],
+    ) -> tuple[str, ...]:
+        executable = self.windows_mxc_executable
+        if not executable:
+            raise RuntimeError("Microsoft MXC wxc-exec is unavailable")
+        if mode is SandboxMode.DISABLED:
+            return argv
+
+        readonly_paths = self._windows_tool_read_paths(argv=argv, environment=environment)
+        if mode is SandboxMode.READ_ONLY:
+            readonly_paths.insert(0, str(workspace))
+            readwrite_paths: list[str] = []
+        else:
+            readwrite_paths = [str(workspace)]
+
+        child_env = self._windows_mxc_environment(environment)
+        config: dict[str, object] = {
+            "version": _MXC_SCHEMA_VERSION,
+            "containerId": f"loom-{uuid.uuid4().hex[:12]}",
+            "containment": "process",
+            "lifecycle": {"destroyOnExit": True, "preservePolicy": False},
+            "process": {
+                "commandLine": subprocess.list2cmdline(list(argv)),
+                "cwd": str(cwd),
+                "timeout": 0,
+                "env": [f"{key}={value}" for key, value in sorted(child_env.items())],
+            },
+            "filesystem": {
+                "readwritePaths": _unique_paths(readwrite_paths),
+                "readonlyPaths": _unique_paths(readonly_paths),
+                "deniedPaths": [],
+            },
+            "network": {"defaultPolicy": "block"},
+            "ui": {"disable": True, "clipboard": "none", "injection": False},
+            "processContainer": {
+                "leastPrivilege": False,
+                "capabilities": [],
+                "ui": {
+                    "isolation": "container",
+                    "desktopSystemControl": False,
+                    "systemSettings": "none",
+                    "ime": False,
+                },
+            },
+        }
+        raw = json.dumps(config, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        encoded = base64.b64encode(raw).decode("ascii")
+        if len(encoded) > _MXC_CONFIG_LIMIT:
+            raise RuntimeError(
+                "Windows MXC sandbox configuration is too large for safe inline launch; "
+                "reduce the child environment or PATH"
+            )
+        return (executable, "--config-base64", encoded)
+
+    @staticmethod
+    def _windows_mxc_environment(environment: Mapping[str, str]) -> dict[str, str]:
+        output: dict[str, str] = {}
+        for raw_name, raw_value in environment.items():
+            name = str(raw_name)
+            upper = name.upper()
+            if any(marker in upper for marker in _SECRET_ENV_MARKERS):
+                continue
+            # Keep Windows/Python execution essentials and explicit LOOM_EXEC_*
+            # values. Arbitrary host environment is intentionally not copied
+            # into a command-line encoded sandbox specification.
+            if upper in _MXC_ENV_ALWAYS or upper.startswith("LOOM_EXEC_"):
+                value = str(raw_value)
+                if "\x00" not in value:
+                    output[name] = value
+        return output
+
+    @staticmethod
+    def _windows_tool_read_paths(
+        *,
+        argv: tuple[str, ...],
+        environment: Mapping[str, str],
+    ) -> list[str]:
+        output: list[str] = []
+        path_value = str(environment.get("PATH") or environment.get("Path") or "")
+        for entry in path_value.split(os.pathsep):
+            text = entry.strip().strip('"')
+            if text and Path(text).is_absolute():
+                output.append(str(Path(text).resolve()))
+
+        for name in ("SYSTEMROOT", "WINDIR", "PROGRAMFILES", "PROGRAMFILES(X86)", "PROGRAMW6432"):
+            value = str(environment.get(name) or "").strip()
+            if value and Path(value).is_absolute():
+                output.append(str(Path(value).resolve()))
+
+        program = str(argv[0] if argv else "").strip().strip('"')
+        candidate = Path(program)
+        if candidate.is_absolute():
+            output.append(str(candidate.resolve().parent))
+        else:
+            located = shutil.which(program, path=path_value or None)
+            if located:
+                output.append(str(Path(located).resolve().parent))
+        return _unique_paths(output)
+
+
+def _unique_paths(values: list[str]) -> list[str]:
+    output: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        text = str(value or "").strip()
+        if not text:
+            continue
+        key = os.path.normcase(os.path.normpath(text))
+        if key in seen:
+            continue
+        seen.add(key)
+        output.append(text)
+    return output
 
 
 __all__ = [

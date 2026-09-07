@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import json
 import sys
 from pathlib import Path
 
@@ -39,6 +41,20 @@ def _fake_bwrap_manager(policy=SandboxPolicy.AUTO) -> SandboxManager:
     )
 
 
+def _fake_windows_mxc_manager(policy=SandboxPolicy.AUTO) -> SandboxManager:
+    return SandboxManager(
+        policy=policy,
+        windows_mxc_executable=r"C:\loom-test\wxc-exec.exe",
+        probe_backend=False,
+        system_name="Windows",
+    )
+
+
+def _decode_mxc_config(argv: tuple[str, ...]) -> dict[str, object]:
+    assert argv[1] == "--config-base64"
+    return json.loads(base64.b64decode(argv[2]).decode("utf-8"))
+
+
 def test_workspace_sandbox_plan_wraps_command_and_protects_metadata(tmp_path):
     workspace = tmp_path / "project"
     workspace.mkdir()
@@ -63,6 +79,83 @@ def test_workspace_sandbox_plan_wraps_command_and_protects_metadata(tmp_path):
     assert str(workspace.resolve()) in prepared.argv
     assert str((workspace / ".git").resolve()) in prepared.argv
     assert prepared.argv[-2:] == ("python", "-V")
+
+
+def test_windows_workspace_mxc_plan_is_os_sandboxed_and_network_blocked(tmp_path):
+    workspace = (tmp_path / "project").resolve()
+    workspace.mkdir()
+    manager = _fake_windows_mxc_manager()
+
+    prepared = manager.prepare(
+        argv=("python", "-c", "print('ok')"),
+        cwd=workspace,
+        workspace=workspace,
+        permission_mode=PermissionMode.WORKSPACE,
+        environment={
+            "PATH": r"C:\Python312;C:\Windows\System32",
+            "SYSTEMROOT": r"C:\Windows",
+            "LOOM_EXEC_VISIBLE": "works",
+            "OPENAI_API_KEY": "must-not-cross-sandbox-boundary",
+        },
+    )
+
+    assert prepared.snapshot.enforced is True
+    assert prepared.snapshot.backend is SandboxBackend.WINDOWS_MXC
+    assert prepared.snapshot.mode is SandboxMode.WORKSPACE
+    assert prepared.snapshot.network_isolated is True
+    assert prepared.argv[0] == r"C:\loom-test\wxc-exec.exe"
+
+    config = _decode_mxc_config(prepared.argv)
+    assert config["containment"] == "process"
+    assert config["network"] == {"defaultPolicy": "block"}
+    assert config["ui"] == {"disable": True, "clipboard": "none", "injection": False}
+    filesystem = config["filesystem"]
+    assert str(workspace) in filesystem["readwritePaths"]
+    assert str(workspace) not in filesystem["readonlyPaths"]
+    process = config["process"]
+    assert process["cwd"] == str(workspace)
+    assert "LOOM_EXEC_VISIBLE=works" in process["env"]
+    assert "must-not-cross-sandbox-boundary" not in repr(config)
+    assert not any("API_KEY=" in value for value in process["env"])
+
+
+def test_windows_read_only_mxc_plan_does_not_grant_workspace_write(tmp_path):
+    workspace = (tmp_path / "project").resolve()
+    workspace.mkdir()
+    manager = _fake_windows_mxc_manager()
+
+    prepared = manager.prepare(
+        argv=("python", "-V"),
+        cwd=workspace,
+        workspace=workspace,
+        permission_mode=PermissionMode.READ_ONLY,
+        environment={"PATH": r"C:\Python312"},
+    )
+
+    config = _decode_mxc_config(prepared.argv)
+    filesystem = config["filesystem"]
+    assert filesystem["readwritePaths"] == []
+    assert str(workspace) in filesystem["readonlyPaths"]
+    assert prepared.snapshot.mode is SandboxMode.READ_ONLY
+
+
+def test_windows_mxc_full_access_never_wraps_command(tmp_path):
+    workspace = (tmp_path / "project").resolve()
+    workspace.mkdir()
+    manager = _fake_windows_mxc_manager()
+
+    prepared = manager.prepare(
+        argv=("python", "-V"),
+        cwd=workspace,
+        workspace=workspace,
+        permission_mode=PermissionMode.FULL_ACCESS,
+        environment={"PATH": r"C:\Python312"},
+    )
+
+    assert prepared.argv == ("python", "-V")
+    assert prepared.snapshot.mode is SandboxMode.DISABLED
+    assert prepared.snapshot.enforced is False
+    assert prepared.snapshot.backend is SandboxBackend.NONE
 
 
 def test_full_access_intentionally_bypasses_os_sandbox(tmp_path):
@@ -124,7 +217,7 @@ def test_process_store_reports_honest_unsandboxed_fallback(tmp_path):
     assert "sandbox-fallback-ok" in snapshot.stdout
     assert snapshot.sandbox.enforced is False
     assert snapshot.sandbox.backend is SandboxBackend.NONE
-    assert "implemented for windows" in snapshot.sandbox.reason.casefold()
+    assert "wxc-exec" in snapshot.sandbox.reason.casefold()
 
 
 def test_default_runtime_freezes_sandbox_state_and_registers_status_tool(tmp_path):
