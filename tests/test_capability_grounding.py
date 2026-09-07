@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 from app.ai import ChatRequest, MessageRole, ModelResponse, ToolCall
-from app.agent_runtime.contracts import PermissionMode, ToolEffect
+from app.agent_runtime.contracts import AgentStatus, PermissionMode, ToolEffect
 from app.agent_runtime.orchestrator import ToolOrchestrator
 from app.agent_runtime.runtime import AgentRuntime
 from app.agent_runtime.step import StepContext
 from app.agent_runtime.storage import FileAgentSessionStore
-from app.agent_runtime.tools import AgentTool, ToolContext, ToolPolicy, ToolRegistry, ToolResult
+from app.agent_runtime.tools import AgentTool, ToolPolicy, ToolRegistry, ToolResult
 
 
 class CapturePlatform:
@@ -18,12 +18,39 @@ class CapturePlatform:
         return ModelResponse(text="done")
 
 
-def _tool(name: str, effect: ToolEffect) -> AgentTool:
+class OneToolPlatform:
+    def __init__(self, tool_name: str) -> None:
+        self.tool_name = tool_name
+        self.requests: list[ChatRequest] = []
+        self.calls = 0
+
+    def execute_chat(self, profile_id: str, request: ChatRequest) -> ModelResponse:
+        self.requests.append(request)
+        self.calls += 1
+        if self.calls == 1:
+            return ModelResponse(
+                tool_calls=(
+                    ToolCall(
+                        call_id="call-1",
+                        name=self.tool_name,
+                        arguments={},
+                    ),
+                )
+            )
+        return ModelResponse(text="done")
+
+
+def _tool(name: str, effect: ToolEffect, *, ran: list[str] | None = None) -> AgentTool:
+    def handler(context, arguments):
+        if ran is not None:
+            ran.append(name)
+        return ToolResult(ok=True, content="ok")
+
     return AgentTool(
         name=name,
         description=f"General test capability {name}.",
         input_schema={"type": "object", "properties": {}, "additionalProperties": False},
-        handler=lambda context, arguments: ToolResult(ok=True, content="ok"),
+        handler=handler,
         effect=effect,
     )
 
@@ -48,84 +75,35 @@ def _step(permission_mode: PermissionMode) -> StepContext:
     )
 
 
-def _core_route_step(permission_mode: PermissionMode) -> StepContext:
-    registry = ToolRegistry(
-        (
-            _tool("exec", ToolEffect.SENSITIVE),
-            _tool("computer_status", ToolEffect.READ_ONLY),
-            _tool("browser_navigate", ToolEffect.SENSITIVE),
-        )
-    )
-    return StepContext.build(
-        step_id="step-routes",
-        session_id="session-routes",
-        turn_id="turn-routes",
-        model_step=1,
-        workspace_dir=".",
-        profile_id="agent.fast",
-        permission_mode=permission_mode,
-        tool_router=registry.router(),
-    )
-
-
-def test_capability_contract_uses_real_workspace_permission_decisions():
+def test_model_harness_contract_is_permission_invariant_and_tool_first():
     orchestrator = ToolOrchestrator()
-    step = _step(PermissionMode.WORKSPACE)
 
-    contract = orchestrator.capability_contract(step)
+    workspace_contract = orchestrator.capability_contract(_step(PermissionMode.WORKSPACE))
+    read_only_contract = orchestrator.capability_contract(_step(PermissionMode.READ_ONLY))
 
-    assert "permission_mode=workspace" in contract
-    assert "inspect_anything[read_only]" in contract
-    assert "change_anything[mutating]" in contract
-    assert "approval=general_exec[sensitive]" in contract
-    assert "deny=(none)" in contract
-    assert "Tool names are not a capability ontology" in contract
-    assert "Authorization is not capability" in contract
-    assert "general-purpose tool may satisfy a request" in contract
-    assert "Disambiguate user vocabulary from Loom subsystem names by context" in contract
+    assert workspace_contract == read_only_contract
+    assert workspace_contract.startswith("<loom_tool_harness>")
+    assert "tool definitions attached to this model request are the authoritative capability surface" in workspace_contract
+    assert "issue the tool call directly" in workspace_contract
+    assert "Do not ask the user to pre-authorize it in prose" in workspace_contract
+    assert "runtime will allow it, request approval, or deny it" in workspace_contract
+    assert "status or failure is scoped to that tool or subsystem" in workspace_contract
+    assert "tool_search" in workspace_contract
 
-
-def test_capability_contract_distinguishes_denied_from_unavailable():
-    orchestrator = ToolOrchestrator()
-    step = _step(PermissionMode.READ_ONLY)
-
-    contract = orchestrator.capability_contract(step)
-
-    assert "permission_mode=read-only" in contract
-    assert "allow=inspect_anything[read_only]" in contract
-    assert "approval=(none)" in contract
-    deny_line = next(line for line in contract.splitlines() if line.startswith("deny="))
-    assert "change_anything[mutating]" in deny_line
-    assert "general_exec[sensitive]" in deny_line
-    assert "blocked by the current permission mode, not evidence that Loom never supports" in contract
+    # Authorization and containment are runtime concerns, not a second model-side
+    # capability matrix. The system prompt must not enumerate these values.
+    assert "permission_mode=" not in workspace_contract
+    assert "filesystem_access=" not in workspace_contract
+    assert "sandbox=" not in workspace_contract
+    assert "allow=" not in workspace_contract
+    assert "approval=" not in workspace_contract
+    assert "deny=" not in workspace_contract
+    assert "inspect_anything" not in workspace_contract
+    assert "general_exec" not in workspace_contract
+    assert "change_anything" not in workspace_contract
 
 
-def test_capability_contract_routes_host_cli_and_gui_status_independently():
-    orchestrator = ToolOrchestrator()
-    contract = orchestrator.capability_contract(_core_route_step(PermissionMode.WORKSPACE))
-
-    assert "host_system_read=exec:approval" in contract
-    assert "memory, CPU, disk, processes, and network status" in contract
-    assert "windows_gui_status=computer_status:allow" in contract
-    assert "scope=GUI Computer Use only" in contract
-    assert "Computer Use, screen capture, and GUI input are not prerequisites" in contract
-    assert "A computer_status result is scoped only to the Windows GUI Computer Use subsystem" in contract
-    assert "do not infer that exec, browser, filesystem, MCP, or other independent tools are disabled" in contract
-    assert "Do not ask the user in prose to pre-authorize an approval-required tool" in contract
-    assert "answer by capability surface" in contract
-
-
-def test_capability_contract_marks_host_cli_blocked_in_read_only_mode_without_calling_it_unavailable():
-    orchestrator = ToolOrchestrator()
-    contract = orchestrator.capability_contract(_core_route_step(PermissionMode.READ_ONLY))
-
-    assert "host_system_read=exec:deny" in contract
-    assert "windows_gui_status=computer_status:allow" in contract
-    assert "A tool under deny is blocked by the current permission mode" in contract
-    assert "Say a capability is unavailable only from runtime evidence" in contract
-
-
-def test_capability_contract_and_execution_share_one_authorization_evaluator():
+def test_authorization_and_execution_share_one_runtime_evaluator():
     orchestrator = ToolOrchestrator()
     legacy_policy = ToolPolicy()
 
@@ -146,14 +124,13 @@ def test_capability_contract_and_execution_share_one_authorization_evaluator():
             assert prepared.reason == expected_reason
 
 
-def test_runtime_injects_fresh_contract_without_persisting_it(tmp_path):
+def test_runtime_injects_tool_harness_without_persisting_policy_matrix(tmp_path):
     platform = CapturePlatform()
     store = FileAgentSessionStore(tmp_path / "state")
     registry = ToolRegistry(
         (
             _tool("host_probe", ToolEffect.READ_ONLY),
             _tool("general_exec", ToolEffect.SENSITIVE),
-            _tool("exec", ToolEffect.SENSITIVE),
             _tool("computer_status", ToolEffect.READ_ONLY),
         )
     )
@@ -175,18 +152,95 @@ def test_runtime_injects_fresh_contract_without_persisting_it(tmp_path):
     system = request.messages[0]
     assert system.role is MessageRole.SYSTEM
     assert isinstance(system.content, str)
-    assert system.content.startswith("CUSTOM BASE PROMPT\n\n<loom_capability_contract>")
-    approval_line = next(line for line in system.content.splitlines() if line.startswith("approval="))
-    assert "general_exec[sensitive]" in approval_line
-    assert "exec[sensitive]" in approval_line
-    assert "computer_status[read_only]" in system.content
-    assert "host_probe[read_only]" in system.content
-    assert "host_system_read=exec:approval" in system.content
-    assert "windows_gui_status=computer_status:allow" in system.content
-    assert "Do not infer host, OS, network, filesystem, process, browser, or GUI inaccessibility" in system.content
-    assert "Do not ask the user in prose to pre-authorize an approval-required tool" in system.content
+    assert system.content.startswith("CUSTOM BASE PROMPT\n\n<loom_tool_harness>")
+    assert "authoritative capability surface" in system.content
+    assert "pre-authorize" in system.content
+    assert "permission_mode=" not in system.content
+    assert "allow=" not in system.content
+    assert "approval=" not in system.content
+    assert "deny=" not in system.content
+    assert "host_probe" not in system.content
+    assert "general_exec" not in system.content
+    assert "computer_status" not in system.content
+
+    # The exact current capability surface is already represented structurally
+    # by the request's tool definitions, not duplicated into prompt prose.
+    assert {tool.name for tool in request.tools} == {
+        "computer_status",
+        "general_exec",
+        "host_probe",
+    }
 
     persisted = runtime.get_session(session.session_id)
     assert persisted.system_prompt == "CUSTOM BASE PROMPT"
-    assert "loom_capability_contract" not in persisted.system_prompt
+    assert "loom_tool_harness" not in persisted.system_prompt
+    runtime.close()
+
+
+def test_model_emits_tool_call_before_workspace_approval_and_runtime_owns_consent(tmp_path):
+    ran: list[str] = []
+    platform = OneToolPlatform("general_exec")
+    store = FileAgentSessionStore(tmp_path / "state")
+    runtime = AgentRuntime(
+        platform=platform,
+        store=store,
+        tools=ToolRegistry((_tool("general_exec", ToolEffect.SENSITIVE, ran=ran),)),
+    )
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    session = runtime.create_session(
+        "agent.fast",
+        workspace_dir=workspace,
+        permission_mode=PermissionMode.WORKSPACE,
+    )
+
+    waiting = runtime.start_turn(session.session_id, "Do the task.")
+
+    assert waiting.status is AgentStatus.WAITING_APPROVAL
+    assert waiting.pending_approval is not None
+    assert waiting.pending_approval.tool_name == "general_exec"
+    assert ran == []
+    assert platform.calls == 1
+    assert "permission_mode=" not in str(platform.requests[0].messages[0].content)
+
+    completed = runtime.resume_approval(
+        session.session_id,
+        waiting.pending_approval.call_id,
+        approved=True,
+    )
+
+    assert completed.status is AgentStatus.COMPLETED
+    assert completed.final_text == "done"
+    assert ran == ["general_exec"]
+    assert platform.calls == 2
+    runtime.close()
+
+
+def test_model_can_attempt_denied_tool_and_runtime_returns_denial_as_observation(tmp_path):
+    ran: list[str] = []
+    platform = OneToolPlatform("general_exec")
+    store = FileAgentSessionStore(tmp_path / "state")
+    runtime = AgentRuntime(
+        platform=platform,
+        store=store,
+        tools=ToolRegistry((_tool("general_exec", ToolEffect.SENSITIVE, ran=ran),)),
+    )
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    session = runtime.create_session(
+        "agent.fast",
+        workspace_dir=workspace,
+        permission_mode=PermissionMode.READ_ONLY,
+    )
+
+    result = runtime.start_turn(session.session_id, "Try the task.")
+
+    assert result.status is AgentStatus.COMPLETED
+    assert result.final_text == "done"
+    assert ran == []
+    assert platform.calls == 2
+    second_request = platform.requests[1]
+    tool_messages = [message for message in second_request.messages if message.role is MessageRole.TOOL]
+    assert tool_messages
+    assert "blocked by permissions" in str(tool_messages[-1].content)
     runtime.close()
