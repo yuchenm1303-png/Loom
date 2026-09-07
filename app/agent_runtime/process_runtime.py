@@ -935,13 +935,17 @@ class ProcessStore:
     ) -> ManagedProcess:
         self._prune_finished()
         root = Path(workspace or cwd).expanduser().resolve()
+        child_env = safe_process_environment(env)
         # PermissionEngine runs before the tool handler. This second boundary is
-        # intentionally SandboxManager.prepare before _spawn_backend.
+        # intentionally SandboxManager.prepare before _spawn_backend. The exact
+        # sanitized child environment is frozen before both planning and spawn so
+        # MXC can grant only the executable/runtime paths the target actually uses.
         prepared = self.sandbox_manager.prepare(
             argv=tuple(argv),
             cwd=Path(cwd),
             workspace=root,
             permission_mode=permission_mode,
+            environment=child_env,
         )
         parsed_rows, parsed_cols = validate_terminal_size(rows, cols)
         process_id = f"proc-{uuid.uuid4().hex[:12]}"
@@ -949,7 +953,7 @@ class ProcessStore:
             backend = _spawn_backend(
                 argv=tuple(prepared.argv),
                 cwd=Path(prepared.cwd),
-                env=safe_process_environment(env),
+                env=child_env,
                 pty=bool(pty),
                 rows=parsed_rows,
                 cols=parsed_cols,
