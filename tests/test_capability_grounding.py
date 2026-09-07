@@ -176,8 +176,9 @@ def test_runtime_injects_fresh_contract_without_persisting_it(tmp_path):
     assert system.role is MessageRole.SYSTEM
     assert isinstance(system.content, str)
     assert system.content.startswith("CUSTOM BASE PROMPT\n\n<loom_capability_contract>")
-    assert "approval=general_exec[sensitive]" in system.content
-    assert "exec[sensitive]" in system.content
+    approval_line = next(line for line in system.content.splitlines() if line.startswith("approval="))
+    assert "general_exec[sensitive]" in approval_line
+    assert "exec[sensitive]" in approval_line
     assert "computer_status[read_only]" in system.content
     assert "host_probe[read_only]" in system.content
     assert "host_system_read=exec:approval" in system.content
