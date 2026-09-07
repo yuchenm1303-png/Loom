@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.desktop_ui_v9 import (
+from app.desktop_ui_v10 import (
     ComposerTextEdit,
     DesktopEventBridge,
     LoomDesktopWindow,
