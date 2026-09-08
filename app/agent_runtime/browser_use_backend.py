@@ -71,6 +71,7 @@ class BrowserUseBackend(BrowserBackend):
     options: BrowserLaunchOptions
     action_timeout_seconds: float = _DEFAULT_ACTION_TIMEOUT
     user_data_dir: str | Path | None = None
+    cdp_url: str | None = None
 
     def __post_init__(self) -> None:
         if importlib.util.find_spec("browser_use") is None:
@@ -92,6 +93,7 @@ class BrowserUseBackend(BrowserBackend):
         os.environ.setdefault("BROWSER_USE_SETUP_LOGGING", "false")
         from browser_use import BrowserProfile, BrowserSession
 
+        attached = bool(str(self.cdp_url or "").strip())
         profile = BrowserProfile(
             headless=self.options.headless,
             allowed_domains=list(self.options.allowed_domains) or None,
@@ -104,8 +106,12 @@ class BrowserUseBackend(BrowserBackend):
             ],
             block_ip_addresses=True,
             enable_default_extensions=False,
-            user_data_dir=self.user_data_dir,
-            keep_alive=False,
+            # Existing CDP browsers own their own profile. Supplying a second
+            # user_data_dir would be misleading and is ignored by browser-use's
+            # attach path anyway, so keep the two modes explicitly separate.
+            user_data_dir=None if attached else self.user_data_dir,
+            cdp_url=str(self.cdp_url).strip() if attached else None,
+            keep_alive=True if attached else False,
         )
         self._session = BrowserSession(browser_profile=profile)
         return self._session
@@ -217,7 +223,14 @@ class BrowserUseBackend(BrowserBackend):
     async def _close_async(self) -> None:
         if self._session is not None:
             try:
-                await self._session.kill()
+                # A CDP-attached Chrome/Edge process belongs to the user, not
+                # Loom. browser-use stop() disconnects its event/CDP state without
+                # force-killing that external browser. Local Loom launches still
+                # use kill() so we do not leak child Chromium processes.
+                if str(self.cdp_url or "").strip():
+                    await self._session.stop()
+                else:
+                    await self._session.kill()
             finally:
                 self._session = None
 
