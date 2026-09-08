@@ -18,12 +18,17 @@ from typing import Any, Iterable
 from PySide6.QtCore import QEvent, QObject, Qt, Signal
 from PySide6.QtGui import QKeyEvent
 from PySide6.QtWidgets import (
+    QComboBox,
+    QDialog,
+    QDialogButtonBox,
+    QFormLayout,
     QFrame,
     QHBoxLayout,
     QInputDialog,
     QLabel,
     QLineEdit,
     QMenu,
+    QMessageBox,
     QPushButton,
     QSizePolicy,
     QTextEdit,
@@ -32,6 +37,7 @@ from PySide6.QtWidgets import (
     QWidgetAction,
 )
 
+from app.ai.model_store import ModelConfigStore, StoredModel, model_id_from_selection
 from app.desktop import format as fmt
 from app.desktop.widgets import repolish
 
@@ -105,6 +111,104 @@ def _menu_caption(text: str, parent: QMenu) -> QWidgetAction:
     action.setDefaultWidget(label)
     action.setEnabled(False)
     return action
+
+
+class AddModelDialog(QDialog):
+    """Small setup dialog for an OpenAI or OpenAI-compatible Agent model."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Add model API")
+        self.setModal(True)
+        self.setMinimumWidth(460)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(18, 18, 18, 16)
+        layout.setSpacing(12)
+
+        hint = QLabel(
+            "Connect an OpenAI-compatible endpoint or OpenAI directly. "
+            "For Agent use, the selected model should support tool calling and streaming."
+        )
+        hint.setWordWrap(True)
+        hint.setObjectName("menuCaption")
+        layout.addWidget(hint)
+
+        form = QFormLayout()
+        form.setHorizontalSpacing(14)
+        form.setVerticalSpacing(10)
+
+        self.name_edit = QLineEdit()
+        self.name_edit.setPlaceholderText("e.g. Work API · Claude")
+        form.addRow("Name", self.name_edit)
+
+        self.adapter_combo = QComboBox()
+        self.adapter_combo.addItem("OpenAI-compatible", "openai-compatible")
+        self.adapter_combo.addItem("OpenAI", "openai")
+        self.adapter_combo.currentIndexChanged.connect(self._sync_adapter)
+        form.addRow("API type", self.adapter_combo)
+
+        self.base_url_edit = QLineEdit()
+        self.base_url_edit.setPlaceholderText("https://api.example.com/v1")
+        form.addRow("Base URL", self.base_url_edit)
+
+        self.model_edit = QLineEdit()
+        self.model_edit.setPlaceholderText("Model ID exposed by the API")
+        form.addRow("Model", self.model_edit)
+
+        self.api_key_edit = QLineEdit()
+        self.api_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
+        self.api_key_edit.setPlaceholderText("API key (stored in the OS credential store)")
+        form.addRow("API key", self.api_key_edit)
+        layout.addLayout(form)
+
+        self.buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel
+        )
+        save_button = self.buttons.button(QDialogButtonBox.StandardButton.Save)
+        if save_button is not None:
+            save_button.setText("Add model")
+        self.buttons.accepted.connect(self.accept)
+        self.buttons.rejected.connect(self.reject)
+        layout.addWidget(self.buttons)
+        self._sync_adapter()
+
+    def _sync_adapter(self) -> None:
+        compatible = self.adapter() == "openai-compatible"
+        self.base_url_edit.setEnabled(compatible)
+        self.base_url_edit.setPlaceholderText(
+            "https://api.example.com/v1" if compatible else "OpenAI default endpoint"
+        )
+        if not compatible:
+            self.base_url_edit.clear()
+
+    def adapter(self) -> str:
+        return str(self.adapter_combo.currentData() or "openai-compatible")
+
+    def values(self) -> dict[str, str]:
+        return {
+            "display_name": " ".join(self.name_edit.text().split()),
+            "adapter": self.adapter(),
+            "base_url": self.base_url_edit.text().strip(),
+            "model": self.model_edit.text().strip(),
+            "api_key": self.api_key_edit.text().strip(),
+        }
+
+    def accept(self) -> None:
+        values = self.values()
+        missing = []
+        if not values["display_name"]:
+            missing.append("Name")
+        if values["adapter"] == "openai-compatible" and not values["base_url"]:
+            missing.append("Base URL")
+        if not values["model"]:
+            missing.append("Model")
+        if not values["api_key"]:
+            missing.append("API key")
+        if missing:
+            QMessageBox.warning(self, "Missing model settings", "Please fill in: " + ", ".join(missing))
+            return
+        super().accept()
 
 
 class ComposerPanel(QFrame):
@@ -260,13 +364,13 @@ class ComposerPanel(QFrame):
         self._model_history = [
             value
             for value in dict.fromkeys(fmt.text(item).strip() for item in history)
-            if value and value != model
+            if value and value != model and model_id_from_selection(value) is None
         ]
         self._model_locked_reason = fmt.text(locked_reason)
         self.model_button.set_value(model or "no model")
         self.model_button.setToolTip(
             self._model_locked_reason
-            or "Model this App Server was launched with. Changing it restarts the local server."
+            or "Switch the model or a saved API connection. Changing it restarts the local App Server."
         )
         self.model_button.setEnabled(not self._model_locked_reason)
 
@@ -314,35 +418,79 @@ class ComposerPanel(QFrame):
         if mode and mode != current:
             self.permissionChosen.emit(mode)
 
+    def _stored_models(self) -> tuple[tuple[StoredModel, ...], str | None, str]:
+        try:
+            store = ModelConfigStore()
+            return store.list_models(), store.active_model_id, ""
+        except Exception as exc:
+            return (), None, str(exc)
+
+    def _add_model(self) -> StoredModel | None:
+        dialog = AddModelDialog(self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return None
+        try:
+            return ModelConfigStore().save_model(**dialog.values())
+        except Exception as exc:
+            QMessageBox.warning(self, "Could not save model", str(exc))
+            return None
+
     def _open_model_menu(self) -> None:
         menu = QMenu(self)
         menu.addAction(
             _menu_caption(
-                "The local App Server runs one model. Switching restarts it; "
-                "durable conversations are kept.",
+                "Saved API connections switch both endpoint and model. Switching restarts "
+                "the local App Server; durable conversations are kept.",
                 menu,
             )
         )
         current = self.model_button.value
         actions: dict[Any, str] = {}
-        for model in (current, *self._model_history):
-            if not model:
+        saved, active_model_id, load_error = self._stored_models()
+
+        if saved:
+            for entry in saved:
+                action = menu.addAction(f"{entry.display_name}  ·  {entry.model}")
+                action.setCheckable(True)
+                action.setChecked(entry.model_id == active_model_id and entry.model == current)
+                endpoint = entry.base_url or "OpenAI default endpoint"
+                action.setToolTip(f"{entry.adapter.value}\n{endpoint}\n{entry.model}")
+                actions[action] = entry.selection
+            menu.addSeparator()
+        elif load_error:
+            menu.addAction(_menu_caption(f"Saved models unavailable: {load_error}", menu))
+
+        # Preserve the existing lightweight model-name switch for one provider.
+        # A saved connection is a different lane because it also changes endpoint/key.
+        if active_model_id is None:
+            recent = [current, *self._model_history]
+        else:
+            recent = list(self._model_history)
+        for model in dict.fromkeys(recent):
+            if not model or model_id_from_selection(model) is not None:
                 continue
             action = menu.addAction(model)
             action.setCheckable(True)
-            action.setChecked(model == current)
+            action.setChecked(active_model_id is None and model == current)
             actions[action] = model
+
         menu.addSeparator()
-        custom = menu.addAction("Other model…")
+        add_api = menu.addAction("Add API / model…")
+        custom = menu.addAction("Other model name…")
 
         chosen = menu.exec(self.mapToGlobal(self.model_button.geometry().topLeft()))
         if chosen is None:
+            return
+        if chosen is add_api:
+            entry = self._add_model()
+            if entry is not None:
+                self.modelChosen.emit(entry.selection)
             return
         if chosen is custom:
             value, accepted = QInputDialog.getText(
                 self,
                 "Switch model",
-                "Model name for the local App Server",
+                "Model name for the current API connection",
                 QLineEdit.EchoMode.Normal,
                 current,
             )
@@ -351,7 +499,7 @@ class ComposerPanel(QFrame):
                 self.modelChosen.emit(value)
             return
         model = actions.get(chosen)
-        if model and model != current:
+        if model:
             self.modelChosen.emit(model)
 
 
@@ -360,6 +508,7 @@ __all__ = [
     "MIN_HEIGHT",
     "PERMISSION_DETAIL",
     "PERMISSION_MODES",
+    "AddModelDialog",
     "ComposerPanel",
     "ComposerTextEdit",
     "ControlButton",
