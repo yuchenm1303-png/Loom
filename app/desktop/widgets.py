@@ -1045,6 +1045,30 @@ class EmptyState(QFrame):
         layout.addStretch(1)
 
 
+class CenteredColumn(QWidget):
+    """Hold one child at the conversation's measure, centred in a wide window.
+
+    Laying the child out with an alignment flag instead would hand it its
+    sizeHint width, which is narrower than the transcript and leaves the two
+    visibly out of line.
+    """
+
+    def __init__(self, child: QWidget, max_width: int, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._max_width = max(0, int(max_width))
+        self.child = child
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        layout.addWidget(child)
+        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+
+    def resizeEvent(self, event: Any) -> None:  # noqa: N802 - Qt override
+        super().resizeEvent(event)
+        gutter = max(0, (self.width() - self._max_width) // 2)
+        self.layout().setContentsMargins(gutter, 0, gutter, 0)
+
+
 def read_only_panel(name: str) -> QPlainTextEdit:
     view = QPlainTextEdit()
     view.setObjectName(name)

@@ -13,7 +13,8 @@ from PySide6.QtWidgets import QApplication
 
 from app.desktop_ui import LoomDesktopWindow, ThreadListItemWidget
 from app.desktop.widgets import ActivityCard, MessageWidget, ThreadGroupHeader
-from app.desktop.window import THREAD_ROLE
+from app.desktop.widgets import TranscriptView
+from app.desktop.window import COMPOSER_MIN_HEIGHT, THREAD_ROLE
 
 
 class FakeClient:
@@ -322,13 +323,51 @@ def test_rows_show_only_a_title_and_keep_the_detail_in_the_tooltip(desktop):
 def test_searching_hides_a_project_heading_with_no_matches(desktop):
     app, _client, window = desktop
 
+    # Groups name themselves, so the count row only earns its line while a
+    # search is narrowing the list.
+    assert window.thread_section_row.isVisible() is False
+
     window.thread_search.setText("nothing matches")
     app.processEvents()
     assert window.thread_list.item(0).isHidden() is True
+    assert window.thread_section_row.isVisible() is True
+    assert window.thread_section_label.text() == "CHATS  0/1"
 
     window.thread_search.clear()
     app.processEvents()
     assert window.thread_list.item(0).isHidden() is False
+    assert window.thread_section_row.isVisible() is False
+
+
+def test_the_composer_starts_compact_and_hides_idle_chrome(desktop):
+    _app, _client, window = desktop
+
+    # A tall empty box with a disabled Stop button and a "Ready" label reads as
+    # clutter; none of it says anything until a turn is running.
+    assert window.composer.height() == COMPOSER_MIN_HEIGHT
+    assert window.stop_button.isVisible() is False
+    assert window.composer_state_label.isVisible() is False
+    # This thread has spent tokens, so the counter has something to report.
+    assert window.usage_label.text() == "7 tokens"
+
+
+def test_an_unused_conversation_shows_no_token_counter(desktop):
+    app, _client, window = desktop
+
+    window.new_thread_in_current_workspace()
+    app.processEvents()
+    assert window.usage_label.isVisible() is False
+    assert window.usage_label.text() == ""
+
+
+def test_the_composer_shares_the_transcript_measure(desktop):
+    app, _client, window = desktop
+    window.resize(1990, 1180)
+    app.processEvents()
+
+    # Laying it out with an alignment flag gave it its sizeHint width, which
+    # left it visibly narrower than the conversation above it.
+    assert window.composer_frame.width() == TranscriptView.MAX_CONTENT_WIDTH + 18
 
 
 def test_streaming_updates_only_the_live_message_widget(desktop):
@@ -545,11 +584,14 @@ def test_item_bursts_are_reconciled_once_rather_than_per_item(desktop):
                 },
             },
         )
-    app.processEvents()
-    # The old client issued one full thread/read per completed item.
-    assert client.reads == reads_before
 
     _wait_for(app, lambda: client.reads > reads_before)
+    # Let any further scheduled reads land before counting.
+    for _ in range(40):
+        app.processEvents()
+        time.sleep(0.01)
+
+    # The old client issued one full thread/read per completed item.
     assert client.reads == reads_before + 1
 
 

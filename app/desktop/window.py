@@ -43,6 +43,7 @@ from app.desktop.widgets import (
     ApprovalCard,
     Banner,
     CardListView,
+    CenteredColumn,
     ComposerTextEdit,
     DiffView,
     EmptyState,
@@ -56,6 +57,9 @@ from app.desktop.widgets import (
 
 THREAD_ROLE = Qt.ItemDataRole.UserRole
 GROUP_ROLE = Qt.ItemDataRole.UserRole + 1
+
+COMPOSER_MIN_HEIGHT = 40
+COMPOSER_MAX_HEIGHT = 220
 
 PERMISSION_MODES = ("read-only", "approval", "workspace", "full-access")
 
@@ -238,18 +242,18 @@ class LoomDesktopWindow(QMainWindow):
         toolbar.addWidget(self.thread_actions_button)
         layout.addWidget(self.thread_library_toolbar)
 
-        header = QHBoxLayout()
+        # Each run of rows already names its project, so a standing "CHATS 23"
+        # heading above them only repeats the shape of the list. It earns its
+        # line while a search is narrowing things down.
+        self.thread_section_row = QWidget()
+        header = QHBoxLayout(self.thread_section_row)
         header.setContentsMargins(2, 2, 0, 0)
         self.thread_section_label = QLabel("CHATS")
         self.thread_section_label.setObjectName("sectionLabel")
         header.addWidget(self.thread_section_label)
         header.addStretch(1)
-        self.refresh_button = QPushButton("↻")
-        self.refresh_button.setObjectName("iconButton")
-        self.refresh_button.setToolTip("Refresh durable threads")
-        self.refresh_button.clicked.connect(self.refresh_threads)
-        header.addWidget(self.refresh_button)
-        layout.addLayout(header)
+        self.thread_section_row.hide()
+        layout.addWidget(self.thread_section_row)
 
         self.thread_list = QListWidget()
         self.thread_list.setObjectName("threadList")
@@ -328,8 +332,7 @@ class LoomDesktopWindow(QMainWindow):
         # column reads as one thing instead of three widths.
         column = TranscriptView.MAX_CONTENT_WIDTH + 18
         self.banner = Banner()
-        self.banner.setMaximumWidth(column)
-        layout.addWidget(self.banner, 0, Qt.AlignmentFlag.AlignHCenter)
+        layout.addWidget(CenteredColumn(self.banner, column))
 
         self.empty_state = EmptyState()
         self.empty_state.promptChosen.connect(self._fill_composer)
@@ -341,8 +344,7 @@ class LoomDesktopWindow(QMainWindow):
 
         self.approval_frame = ApprovalCard()
         self.approval_frame.responded.connect(self.respond_approval)
-        self.approval_frame.setMaximumWidth(column)
-        layout.addWidget(self.approval_frame, 0, Qt.AlignmentFlag.AlignHCenter)
+        layout.addWidget(CenteredColumn(self.approval_frame, column))
         # Familiar aliases so callers can reach the card's parts directly.
         self.approval_title = self.approval_frame.title_label
         self.approval_details = self.approval_frame.details_label
@@ -353,14 +355,16 @@ class LoomDesktopWindow(QMainWindow):
         self.composer_frame.setObjectName("composerFrame")
         self.composer_frame.setProperty("focused", False)
         composer_layout = QVBoxLayout(self.composer_frame)
-        composer_layout.setContentsMargins(16, 13, 12, 11)
-        composer_layout.setSpacing(7)
+        composer_layout.setContentsMargins(14, 11, 10, 9)
+        composer_layout.setSpacing(8)
 
         self.composer = ComposerTextEdit()
         self.composer.setObjectName("composer")
         self.composer.setPlaceholderText("Message Loom…")
-        self.composer.setMinimumHeight(68)
-        self.composer.setMaximumHeight(220)
+        # Start at one line and grow with the text, the way a message box
+        # should; a permanently tall empty box just reads as hollow.
+        self.composer.setMinimumHeight(COMPOSER_MIN_HEIGHT)
+        self.composer.setMaximumHeight(COMPOSER_MAX_HEIGHT)
         self.composer.sendRequested.connect(self.send_prompt)
         self.composer.textChanged.connect(self._sync_composer_height)
         self.composer.installEventFilter(self)
@@ -409,8 +413,7 @@ class LoomDesktopWindow(QMainWindow):
             QSizePolicy.Policy.Fixed,
         )
         self._sync_composer_height()
-        self.composer_frame.setMaximumWidth(column)
-        layout.addWidget(self.composer_frame, 0, Qt.AlignmentFlag.AlignHCenter)
+        layout.addWidget(CenteredColumn(self.composer_frame, column))
 
         self.main_splitter.addWidget(panel)
 
@@ -530,8 +533,10 @@ class LoomDesktopWindow(QMainWindow):
 
     def _sync_composer_height(self) -> None:
         document = self.composer.document()
-        height = document.size().height() + document.documentMargin() * 2 + 12
-        self.composer.setFixedHeight(int(max(68.0, min(height, 220.0))))
+        height = document.size().height() + document.documentMargin() * 2 + 10
+        self.composer.setFixedHeight(
+            int(max(float(COMPOSER_MIN_HEIGHT), min(height, float(COMPOSER_MAX_HEIGHT))))
+        )
 
     def toggle_sidebar(self) -> None:
         self._sidebar_visible = not self._sidebar_visible
@@ -648,7 +653,7 @@ class LoomDesktopWindow(QMainWindow):
         self.thread_title_label.setText("New conversation")
         self._set_workspace_display(self.current_workspace)
         self._set_permission_display(self.default_permission_mode)
-        self.usage_label.setText("0 tokens")
+        self._set_usage(0)
         self._render_transcript()
         self._render_runtime_panels()
         self._set_status("idle")
@@ -824,6 +829,7 @@ class LoomDesktopWindow(QMainWindow):
         self.thread_section_label.setText(
             f"{label}  {visible}/{total}" if query and visible != total else f"{label}  {total}"
         )
+        self.thread_section_row.setVisible(bool(query))
         archived = self._thread_counts.get("archived", 0)
         self.archive_view_button.setText(f"Archived {archived}" if archived else "Archived")
 
@@ -850,40 +856,41 @@ class LoomDesktopWindow(QMainWindow):
         return record if isinstance(record, dict) else None
 
     def _sync_thread_actions(self) -> None:
-        self.thread_actions_button.setEnabled(
-            self._thread_management_supported and self._selected_record() is not None
-        )
+        # The menu always has Refresh to offer, so it is never dead.
+        self.thread_actions_button.setEnabled(True)
 
     def _show_thread_context_menu(self, position: Any) -> None:
         item = self.thread_list.itemAt(position)
-        if item is None:
+        if item is None or not isinstance(item.data(THREAD_ROLE), dict):
             return
         self.thread_list.setCurrentItem(item)
         self._open_thread_menu(self.thread_list.viewport().mapToGlobal(position))
 
     def _show_selected_thread_menu(self) -> None:
-        if self._selected_record() is None:
-            return
         anchor = self.thread_actions_button
         self._open_thread_menu(anchor.mapToGlobal(anchor.rect().bottomLeft()))
 
     def _open_thread_menu(self, global_position: Any) -> None:
         record = self._selected_record()
-        if record is None or not self._thread_management_supported:
-            return
         menu = QMenu(self)
-        rename = menu.addAction("Rename")
-        rename.setShortcut(QKeySequence("F2"))
-        archived = bool(record.get("archived"))
-        archive = menu.addAction("Restore" if archived else "Archive")
-        menu.addSeparator()
-        delete = menu.addAction("Delete permanently…")
+        refresh = menu.addAction("Refresh")
+        rename = archive = delete = None
+        if record is not None and self._thread_management_supported:
+            menu.addSeparator()
+            rename = menu.addAction("Rename")
+            rename.setShortcut(QKeySequence("F2"))
+            archive = menu.addAction("Restore" if record.get("archived") else "Archive")
+            menu.addSeparator()
+            delete = menu.addAction("Delete permanently…")
+
         chosen = menu.exec(global_position)
-        if chosen is rename:
+        if chosen is refresh:
+            self.refresh_threads()
+        elif chosen is not None and chosen is rename:
             self._rename_selected_thread()
-        elif chosen is archive:
+        elif chosen is not None and chosen is archive:
             self._archive_selected_thread()
-        elif chosen is delete:
+        elif chosen is not None and chosen is delete:
             self._delete_selected_thread()
 
     def _thread_action(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
@@ -1095,7 +1102,7 @@ class LoomDesktopWindow(QMainWindow):
         self._set_permission_display(
             fmt.text(self.state.thread.get("permissionMode")) or self.default_permission_mode
         )
-        self.usage_label.setText(f"{self.state.total_tokens:,} tokens")
+        self._set_usage(self.state.total_tokens)
 
         approval = self.state.pending_approval
         if approval:
@@ -1139,13 +1146,18 @@ class LoomDesktopWindow(QMainWindow):
         archived = self.state.archived
         active = status in fmt.ACTIVE_STATUSES
         has_thread = bool(self.state.thread_id)
+        can_send = (has_thread or self._draft_workspace is not None) and not active and not archived
+
+        # Stop is meaningless unless there is something to stop, and a greyed
+        # button next to the send control is just clutter.
         self.stop_button.setEnabled(active and has_thread and not archived)
-        self.send_button.setEnabled(has_thread and not active and not archived)
+        self.stop_button.setVisible(active and has_thread and not archived)
+        self.send_button.setEnabled(can_send)
         self.composer.setReadOnly(archived)
 
         if archived:
             self.composer.setPlaceholderText("Archived conversation · restore to continue")
-            self.composer_state_label.setText("Archived · read-only")
+            self._set_composer_state("Archived · read-only")
             return
         self.composer.setPlaceholderText("Message Loom…")
         if status == "waiting_approval":
@@ -1155,8 +1167,17 @@ class LoomDesktopWindow(QMainWindow):
         elif status == "failed":
             state_text = "Turn failed"
         else:
-            state_text = "Ready"
-        self.composer_state_label.setText(state_text)
+            # "Ready" is the resting state; saying so every time says nothing.
+            state_text = ""
+        self._set_composer_state(state_text)
+
+    def _set_usage(self, total: int) -> None:
+        self.usage_label.setText(f"{total:,} tokens" if total else "")
+        self.usage_label.setVisible(bool(total))
+
+    def _set_composer_state(self, text: str) -> None:
+        self.composer_state_label.setText(text)
+        self.composer_state_label.setVisible(bool(text))
 
     def _render_runtime_panels(self) -> None:
         events = self.state.snapshot.get("events") or []
