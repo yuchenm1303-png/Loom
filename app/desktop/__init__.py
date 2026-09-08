@@ -13,6 +13,7 @@ from app.desktop.composer import ComposerPanel, ComposerTextEdit
 from app.desktop import composer_polish as _composer_polish
 from app.desktop import iconography as _iconography
 from app.desktop import sidebar_motion as _sidebar_motion
+from app.desktop import sidebar_motion_smooth as _sidebar_motion_smooth
 from app.desktop import widgets as _widgets
 from app.desktop.output_presentation import MessageWidget, TranscriptView
 from app.desktop.thread_presentation import ThreadListItemWidget, thread_row_size
@@ -25,6 +26,7 @@ _widgets.ThreadListItemWidget = ThreadListItemWidget
 _widgets.thread_row_size = thread_row_size
 _iconography.install()
 _sidebar_motion.install_widgets()
+_sidebar_motion_smooth.install()
 _composer_polish.install()
 
 from app.desktop.widgets import (  # noqa: E402 - presentation is installed first
