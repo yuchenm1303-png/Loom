@@ -140,5 +140,5 @@ jobs:
           python-version: "3.12"
       - name: Install browser extra
         run: python -m pip install -e '.[dev,browser]'
-      - name: Browser-use adapter contract
-        run: python -m pytest -q tests/test_browser_use_compat.py
+      - name: Browser-use adapter and interaction contracts
+        run: python -m pytest -q tests/test_browser_use_compat.py tests/test_browser_actor_contract.py tests/test_browser_interaction_tools.py
