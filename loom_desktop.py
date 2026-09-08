@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
+from app.ai.model_store import ModelConfigStore
 from app.app_server_client import AppServerProcessConfig, LoomAppServerClient
 
 
@@ -43,6 +45,13 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     workspace = _workspace(args.workspace)
 
+    # The UI and launcher both open the same model registry. When --home is
+    # explicit, publish it before importing the desktop package so there is one
+    # source of truth for the whole process.
+    if args.home:
+        os.environ["LOOM_HOME"] = str(Path(args.home).expanduser().resolve())
+    model_store = ModelConfigStore(args.home)
+
     try:
         from PySide6.QtWidgets import QApplication, QMessageBox
         from app.desktop_ui import LoomDesktopWindow
@@ -56,16 +65,30 @@ def main(argv: list[str] | None = None) -> int:
     app.setApplicationName("Loom")
     app.setOrganizationName("Loom")
 
-    def start_server(model: str | None) -> tuple[LoomAppServerClient, dict]:
-        """Launch an App Server process and complete its handshake.
+    def start_server(selection: str | None) -> tuple[LoomAppServerClient, dict]:
+        """Launch an App Server for a raw model name or a saved API profile.
 
-        The desktop client owns this process, so switching model means starting
-        a new one: the protocol binds a model per server, not per Thread.
+        Saved profiles carry provider endpoint metadata only. Their API key is
+        resolved from the OS credential store here, copied into the child
+        process environment, and never sent through the App Server protocol.
         """
+        saved = model_store.model_for_selection(selection)
+        child_env: dict[str, str] | None = None
+        if saved is not None:
+            provider = saved.adapter.value
+            base_url = saved.base_url or None
+            model = saved.model
+            child_env = os.environ.copy()
+            child_env["LOOM_API_KEY"] = model_store.secret_for(saved)
+        else:
+            provider = args.provider
+            base_url = args.base_url
+            model = selection if selection is not None else args.model
+
         config = AppServerProcessConfig(
             workspace=workspace,
-            provider=args.provider,
-            base_url=args.base_url,
+            provider=provider,
+            base_url=base_url,
             model=model,
             home=args.home,
             permission_mode=args.permission_mode,
@@ -74,19 +97,35 @@ def main(argv: list[str] | None = None) -> int:
         )
         server = LoomAppServerClient(
             config.command(),
+            env=child_env,
             request_timeout_seconds=max(10.0, min(float(args.timeout), 120.0)),
         )
         try:
             handshake = server.start_and_initialize(
                 client_name="loom-desktop", client_version="0.1"
             )
+            if saved is not None:
+                model_store.set_active(saved.model_id)
+            elif model_store.active_model_id is not None:
+                model_store.set_active(None)
         except Exception:
             server.close()
             raise
         return server, handshake
 
+    # Explicit legacy CLI flags win. Otherwise a saved model becomes the next
+    # launch default, so selecting a model survives closing and reopening Loom.
+    initial_selection = args.model
+    if not any((args.provider, args.base_url, args.model)):
+        try:
+            active = model_store.active_model()
+        except Exception:
+            active = None
+        if active is not None:
+            initial_selection = active.selection
+
     try:
-        client, initialization = start_server(args.model)
+        client, initialization = start_server(initial_selection)
     except Exception as exc:
         QMessageBox.critical(
             None,
