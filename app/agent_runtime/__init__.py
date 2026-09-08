@@ -113,6 +113,12 @@ from .sandbox import (
     SandboxPolicy,
     SandboxSnapshot,
 )
+from . import windows_background_process as _windows_background_process
+
+# A GUI-hosted Agent Runtime must never allocate visible console windows for
+# cmd.exe / PowerShell / taskkill / MXC probe subprocesses on Windows.
+_windows_background_process.install()
+
 from .sandbox_runtime import SandboxAgentRuntime
 from .skills import (
     ParsedSkillDocument,
