@@ -14,7 +14,8 @@ from PySide6.QtWidgets import QApplication
 from app.desktop_ui import LoomDesktopWindow, ThreadListItemWidget
 from app.desktop.widgets import ActivityCard, MessageWidget, ThreadGroupHeader
 from app.desktop.widgets import TranscriptView
-from app.desktop.window import COMPOSER_MIN_HEIGHT, THREAD_ROLE
+from app.desktop.composer import MIN_HEIGHT as COMPOSER_MIN_HEIGHT
+from app.desktop.window import THREAD_ROLE
 
 
 class FakeClient:
@@ -31,6 +32,7 @@ class FakeClient:
         self.requests = []
         self.reads = 0
         self.fail_turn = False
+        self.started_modes = []
 
     # -- subscriptions ----------------------------------------------------
 
@@ -166,6 +168,7 @@ class FakeClient:
         }
 
     def thread_start(self, *, workspace, permission_mode):
+        self.started_modes.append(permission_mode)
         return {
             "thread": {
                 "id": "thread-new",
@@ -207,7 +210,7 @@ def _wait_for(app, predicate, timeout=3.0):
     raise AssertionError("Qt desktop condition did not become true")
 
 
-def _initialization(workspace, *, management=True):
+def _initialization(workspace, *, management=True, model="qwen-plus"):
     return {
         "protocolVersion": 1,
         "serverInfo": {"name": "loom-app-server", "version": "0.1.0"},
@@ -215,6 +218,8 @@ def _initialization(workspace, *, management=True):
         "runtime": {
             "defaultWorkspace": str(workspace),
             "defaultPermissionMode": "workspace",
+            "model": model,
+            "permissionModes": ["read-only", "approval", "workspace", "full-access"],
         },
     }
 
@@ -254,7 +259,7 @@ def test_thread_rehydrates_into_transcript_and_runtime_panels(desktop):
     assert "Process started" in window.activity_view.toPlainText()
 
     assert window.thread_title_label.text() == "Inspect project"
-    assert window.permission_label.text() == "workspace"
+    assert window.permission_label.value == "workspace"
     assert window.status_label.text() == "Completed"
     assert window.status_label.property("state") == "completed"
     assert window.sandbox_label.text() == "Not sandboxed · none"
@@ -593,6 +598,112 @@ def test_item_bursts_are_reconciled_once_rather_than_per_item(desktop):
 
     # The old client issued one full thread/read per completed item.
     assert client.reads == reads_before + 1
+
+
+def test_the_model_control_reports_what_the_server_runs(desktop):
+    _app, _client, window = desktop
+
+    assert window.current_model == "qwen-plus"
+    assert window.model_button.value == "qwen-plus"
+    # Without a way to restart the server this window cannot change the model,
+    # so the control says so instead of offering a choice that does nothing.
+    assert window.model_button.isEnabled() is False
+
+
+def test_switching_model_relaunches_the_server_and_keeps_the_conversation(tmp_path):
+    app = QApplication.instance() or QApplication([])
+    started: list[str] = []
+    clients: list[FakeClient] = []
+
+    def factory(model):
+        started.append(model)
+        client = FakeClient(tmp_path)
+        clients.append(client)
+        return client, _initialization(tmp_path, model=model)
+
+    first = FakeClient(tmp_path)
+    window = LoomDesktopWindow(
+        client=first,
+        initialization=_initialization(tmp_path),
+        default_workspace=tmp_path,
+        default_permission_mode="workspace",
+        client_factory=factory,
+    )
+    window.show()
+    _wait_for(app, lambda: window.current_thread_id == "thread-1")
+    try:
+        assert window.model_button.isEnabled() is True
+
+        window.switch_model("qwen-max")
+        _wait_for(app, lambda: window.current_model == "qwen-max")
+
+        assert started == ["qwen-max"]
+        assert first.closed is True
+        assert window.client is clients[0]
+        assert window.model_button.value == "qwen-max"
+        # Threads live in the Loom home, so the open conversation comes back.
+        _wait_for(app, lambda: window.current_thread_id == "thread-1")
+    finally:
+        window.close()
+        app.processEvents()
+
+
+def test_switching_model_is_refused_while_a_turn_is_running(tmp_path):
+    app = QApplication.instance() or QApplication([])
+    started: list[str] = []
+
+    def factory(model):
+        started.append(model)
+        return FakeClient(tmp_path), _initialization(tmp_path, model=model)
+
+    client = FakeClient(tmp_path)
+    window = LoomDesktopWindow(
+        client=client,
+        initialization=_initialization(tmp_path),
+        default_workspace=tmp_path,
+        default_permission_mode="workspace",
+        client_factory=factory,
+    )
+    window.show()
+    _wait_for(app, lambda: window.current_thread_id == "thread-1")
+    try:
+        client.emit(
+            "turn/started",
+            {"threadId": "thread-1", "turn": {"id": "turn-live", "status": "running"}},
+        )
+        app.processEvents()
+
+        window.switch_model("qwen-max")
+        app.processEvents()
+
+        # Restarting mid-turn would silently discard the running work.
+        assert started == []
+        assert window.current_model == "qwen-plus"
+        assert window.banner.isVisible() is True
+    finally:
+        window.close()
+        app.processEvents()
+
+
+def test_choosing_a_permission_mode_applies_to_the_next_conversation(desktop):
+    app, client, window = desktop
+
+    # thread-1 was created as "workspace" and keeps that mode.
+    assert window.permission_label.value == "workspace"
+
+    window.choose_permission_mode("read-only")
+    app.processEvents()
+    assert window.default_permission_mode == "read-only"
+    assert window.permission_label.value == "workspace"
+
+    window.new_thread_in_current_workspace()
+    app.processEvents()
+    assert window.permission_label.value == "read-only"
+
+    window.composer_panel.set_text("go")
+    window.send_prompt()
+    _wait_for(app, lambda: client.turns)
+    assert client.started_modes == ["read-only"]
 
 
 def test_server_exit_marks_the_connection_and_disables_sending(desktop):

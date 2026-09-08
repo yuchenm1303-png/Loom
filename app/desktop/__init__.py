@@ -9,12 +9,12 @@ from __future__ import annotations
 
 from app.desktop.rpc import DesktopEventBridge, RpcRunner
 from app.desktop.state import ThreadState, TranscriptEntry
+from app.desktop.composer import ComposerPanel, ComposerTextEdit
 from app.desktop.widgets import (
     ActivityCard,
     ApprovalCard,
     Banner,
     CodeBlock,
-    ComposerTextEdit,
     EmptyState,
     MessageWidget,
     ThreadListItemWidget,
@@ -27,6 +27,7 @@ __all__ = [
     "ApprovalCard",
     "Banner",
     "CodeBlock",
+    "ComposerPanel",
     "ComposerTextEdit",
     "DesktopEventBridge",
     "EmptyState",

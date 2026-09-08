@@ -36,7 +36,6 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSizePolicy,
-    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -744,21 +743,6 @@ class DiffView(QPlainTextEdit):
         self.setPlainText(value)
 
 
-class ComposerTextEdit(QTextEdit):
-    """Enter sends, Shift+Enter inserts a newline."""
-
-    sendRequested = Signal()
-
-    def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802 - Qt override
-        if event.key() in {Qt.Key.Key_Return, Qt.Key.Key_Enter} and not (
-            event.modifiers() & Qt.KeyboardModifier.ShiftModifier
-        ):
-            self.sendRequested.emit()
-            event.accept()
-            return
-        super().keyPressEvent(event)
-
-
 # Only states that ask something of the reader earn a dot. Idle and completed
 # are the resting states of almost every row, so marking them says nothing.
 _ATTENTION_STATES = {
@@ -1102,7 +1086,6 @@ __all__ = [
     "ApprovalCard",
     "Banner",
     "CodeBlock",
-    "ComposerTextEdit",
     "EmptyState",
     "MessageWidget",
     "RichLabel",

@@ -56,24 +56,38 @@ def main(argv: list[str] | None = None) -> int:
     app.setApplicationName("Loom")
     app.setOrganizationName("Loom")
 
-    config = AppServerProcessConfig(
-        workspace=workspace,
-        provider=args.provider,
-        base_url=args.base_url,
-        model=args.model,
-        home=args.home,
-        permission_mode=args.permission_mode,
-        timeout_seconds=args.timeout,
-        app_server_executable=args.app_server_executable,
-    )
-    client = LoomAppServerClient(
-        config.command(),
-        request_timeout_seconds=max(10.0, min(float(args.timeout), 120.0)),
-    )
+    def start_server(model: str | None) -> tuple[LoomAppServerClient, dict]:
+        """Launch an App Server process and complete its handshake.
+
+        The desktop client owns this process, so switching model means starting
+        a new one: the protocol binds a model per server, not per Thread.
+        """
+        config = AppServerProcessConfig(
+            workspace=workspace,
+            provider=args.provider,
+            base_url=args.base_url,
+            model=model,
+            home=args.home,
+            permission_mode=args.permission_mode,
+            timeout_seconds=args.timeout,
+            app_server_executable=args.app_server_executable,
+        )
+        server = LoomAppServerClient(
+            config.command(),
+            request_timeout_seconds=max(10.0, min(float(args.timeout), 120.0)),
+        )
+        try:
+            handshake = server.start_and_initialize(
+                client_name="loom-desktop", client_version="0.1"
+            )
+        except Exception:
+            server.close()
+            raise
+        return server, handshake
+
     try:
-        initialization = client.start_and_initialize(client_name="loom-desktop", client_version="0.1")
+        client, initialization = start_server(args.model)
     except Exception as exc:
-        client.close()
         QMessageBox.critical(
             None,
             "Loom could not start",
@@ -88,12 +102,15 @@ def main(argv: list[str] | None = None) -> int:
         initialization=initialization,
         default_workspace=workspace,
         default_permission_mode=str(default_permission),
+        client_factory=start_server,
     )
     window.show()
     try:
         return int(app.exec())
     finally:
-        client.close()
+        # Switching model replaces the window's client, so close whichever
+        # server process it actually ended up owning.
+        window.client.close()
 
 
 if __name__ == "__main__":

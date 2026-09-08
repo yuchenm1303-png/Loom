@@ -7,6 +7,7 @@ The implementation lives in :mod:`app.desktop`. This module stays so
 from __future__ import annotations
 
 from app.desktop import (
+    ComposerPanel,
     ComposerTextEdit,
     DesktopEventBridge,
     LoomDesktopWindow,
@@ -14,6 +15,7 @@ from app.desktop import (
 )
 
 __all__ = [
+    "ComposerPanel",
     "ComposerTextEdit",
     "DesktopEventBridge",
     "LoomDesktopWindow",

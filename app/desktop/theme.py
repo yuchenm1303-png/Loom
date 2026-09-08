@@ -312,15 +312,19 @@ QTextEdit#composer {{
 QLabel#composerHint, QLabel#composerState {{ color:{TEXT_FAINT}; font-size:10px; }}
 QLabel#composerState {{ color:#8990a0; }}
 
-/* Workspace and permission are decisions, not decorations. */
+/* Workspace, permission and model are decisions, not decorations. */
 QPushButton#composerControl {{
-    min-height:26px; padding:0 10px; border-radius:8px;
+    min-height:27px; padding:0 10px; border-radius:8px;
     background:transparent; border:1px solid #1e2430;
     color:#9aa2b1; font-size:11px; font-weight:600;
 }}
 QPushButton#composerControl:hover {{ background:{BG_HOVER}; border-color:#2f3646; color:{TEXT}; }}
-QPushButton#composerControl[mode="full-access"] {{ color:{WARN}; border-color:#4a3a20; }}
+QPushButton#composerControl:disabled {{ color:#4d5462; border-color:#171b23; background:transparent; }}
+QPushButton#composerControl[mode="full-access"] {{ color:{WARN}; border-color:#4a3a20; background:#1a1509; }}
 QPushButton#composerControl[mode="read-only"] {{ color:#8ab4d8; border-color:#25384a; }}
+QPushButton#composerControl[mode="workspace"] {{ color:#a9a2f0; border-color:#2e2b4a; }}
+
+QLabel#menuCaption {{ color:{TEXT_FAINT}; font-size:11px; }}
 
 QPushButton#sendButton {{
     border-radius:17px; padding:0; font-size:15px; font-weight:800;

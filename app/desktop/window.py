@@ -9,9 +9,9 @@ from __future__ import annotations
 
 import html
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
-from PySide6.QtCore import QEvent, QObject, Qt, QTimer
+from PySide6.QtCore import QSettings, Qt, QTimer
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -39,12 +39,12 @@ from app.desktop import format as fmt
 from app.desktop import theme
 from app.desktop.rpc import DesktopEventBridge, RpcRunner, connect_client
 from app.desktop.state import ThreadState
+from app.desktop.composer import ComposerPanel
 from app.desktop.widgets import (
     ApprovalCard,
     Banner,
     CardListView,
     CenteredColumn,
-    ComposerTextEdit,
     DiffView,
     EmptyState,
     ThreadGroupHeader,
@@ -57,11 +57,6 @@ from app.desktop.widgets import (
 
 THREAD_ROLE = Qt.ItemDataRole.UserRole
 GROUP_ROLE = Qt.ItemDataRole.UserRole + 1
-
-COMPOSER_MIN_HEIGHT = 40
-COMPOSER_MAX_HEIGHT = 220
-
-PERMISSION_MODES = ("read-only", "approval", "workspace", "full-access")
 
 # One coalescing window for the "something changed, re-read the thread" work
 # that notifications trigger in bursts.
@@ -79,9 +74,13 @@ class LoomDesktopWindow(QMainWindow):
         initialization: dict[str, Any],
         default_workspace: str | Path,
         default_permission_mode: str | None = None,
+        client_factory: Callable[[str], tuple[Any, dict[str, Any]]] | None = None,
     ) -> None:
         super().__init__()
         self.client = client
+        # Supplied by the launcher, which owns App Server process configuration.
+        # Without it the model control stays read-only rather than pretending.
+        self.client_factory = client_factory
         self.initialization = dict(initialization or {})
         self.default_workspace = Path(default_workspace).expanduser().resolve()
         runtime_info = self.initialization.get("runtime") or {}
@@ -101,6 +100,9 @@ class LoomDesktopWindow(QMainWindow):
         self._activity_tail: list[tuple[str, str, str]] = []
         self._sidebar_visible = True
         self._runtime_visible = True
+        self.current_model = ""
+        stored = QSettings().value("desktop/modelHistory", [])
+        self._model_history = [str(item) for item in stored or [] if str(item).strip()]
 
         self.bridge = DesktopEventBridge(self)
         self.rpc = RpcRunner(self.bridge)
@@ -351,69 +353,24 @@ class LoomDesktopWindow(QMainWindow):
         self.allow_button = self.approval_frame.allow_button
         self.deny_button = self.approval_frame.deny_button
 
-        self.composer_frame = QFrame()
-        self.composer_frame.setObjectName("composerFrame")
-        self.composer_frame.setProperty("focused", False)
-        composer_layout = QVBoxLayout(self.composer_frame)
-        composer_layout.setContentsMargins(14, 11, 10, 9)
-        composer_layout.setSpacing(8)
+        self.composer_panel = ComposerPanel()
+        self.composer_panel.submitted.connect(self.send_prompt)
+        self.composer_panel.interrupted.connect(self.interrupt_turn)
+        self.composer_panel.workspaceRequested.connect(self.choose_workspace)
+        self.composer_panel.permissionChosen.connect(self.choose_permission_mode)
+        self.composer_panel.modelChosen.connect(self.switch_model)
+        layout.addWidget(CenteredColumn(self.composer_panel, column))
 
-        self.composer = ComposerTextEdit()
-        self.composer.setObjectName("composer")
-        self.composer.setPlaceholderText("Message Loom…")
-        # Start at one line and grow with the text, the way a message box
-        # should; a permanently tall empty box just reads as hollow.
-        self.composer.setMinimumHeight(COMPOSER_MIN_HEIGHT)
-        self.composer.setMaximumHeight(COMPOSER_MAX_HEIGHT)
-        self.composer.sendRequested.connect(self.send_prompt)
-        self.composer.textChanged.connect(self._sync_composer_height)
-        self.composer.installEventFilter(self)
-        composer_layout.addWidget(self.composer)
-
-        bar = QHBoxLayout()
-        bar.setSpacing(7)
-
-        self.workspace_button = QPushButton(fmt.short_path(self.default_workspace))
-        self.workspace_button.setObjectName("composerControl")
-        self.workspace_button.setToolTip("Change the project this conversation works in")
-        self.workspace_button.clicked.connect(self.choose_workspace)
-        bar.addWidget(self.workspace_button)
-
-        # The permission mode was a read-only chip; it decides what Loom is
-        # allowed to do, so it belongs where it can be changed.
-        self.permission_label = QPushButton(self.default_permission_mode)
-        self.permission_label.setObjectName("composerControl")
-        self.permission_label.setProperty("mode", self.default_permission_mode)
-        self.permission_label.setToolTip("Permission mode for new conversations")
-        self.permission_label.clicked.connect(self._show_permission_menu)
-        bar.addWidget(self.permission_label)
-
-        bar.addStretch(1)
-
-        self.usage_label = QLabel("0 tokens")
-        self.usage_label.setObjectName("composerHint")
-        bar.addWidget(self.usage_label)
-        self.composer_state_label = QLabel("Ready")
-        self.composer_state_label.setObjectName("composerState")
-        bar.addWidget(self.composer_state_label)
-        self.stop_button = QPushButton("Stop")
-        self.stop_button.setObjectName("stopButton")
-        self.stop_button.setEnabled(False)
-        self.stop_button.clicked.connect(self.interrupt_turn)
-        bar.addWidget(self.stop_button)
-        self.send_button = QPushButton("↑")
-        self.send_button.setObjectName("sendButton")
-        self.send_button.setToolTip("Send  ·  Enter")
-        self.send_button.setFixedSize(34, 34)
-        self.send_button.clicked.connect(self.send_prompt)
-        bar.addWidget(self.send_button)
-        composer_layout.addLayout(bar)
-        self.composer_frame.setSizePolicy(
-            self.composer_frame.sizePolicy().horizontalPolicy(),
-            QSizePolicy.Policy.Fixed,
-        )
-        self._sync_composer_height()
-        layout.addWidget(CenteredColumn(self.composer_frame, column))
+        # Names the rest of the window and the tests already reach for.
+        self.composer_frame = self.composer_panel
+        self.composer = self.composer_panel.editor
+        self.send_button = self.composer_panel.send_button
+        self.stop_button = self.composer_panel.stop_button
+        self.usage_label = self.composer_panel.usage_label
+        self.composer_state_label = self.composer_panel.state_label
+        self.permission_label = self.composer_panel.permission_button
+        self.workspace_button = self.composer_panel.workspace_button
+        self.model_button = self.composer_panel.model_button
 
         self.main_splitter.addWidget(panel)
 
@@ -515,28 +472,28 @@ class LoomDesktopWindow(QMainWindow):
             if management
             else "Update Loom App Server to manage conversations"
         )
-        self.thread_actions_button.setEnabled(False)
+        self.thread_actions_button.setEnabled(True)
+
+        # Every composer control is filled from what this server reports, so a
+        # server with different modes or a different model cannot be misdescribed.
+        runtime = self.initialization.get("runtime") or {}
+        self.current_model = fmt.text(runtime.get("model"))
+        self.composer_panel.set_permission_modes(runtime.get("permissionModes") or ())
+        self.composer_panel.set_model(
+            self.current_model,
+            history=self._model_history,
+            locked_reason=(
+                ""
+                if self.client_factory is not None
+                else "Model is fixed for this window: it did not start the App Server."
+            ),
+        )
+        self._set_workspace_display(self.current_workspace)
+        self._set_permission_display(self.state.thread.get("permissionMode"))
 
     # ------------------------------------------------------------------
     # panel chrome
     # ------------------------------------------------------------------
-
-    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802 - Qt override
-        if watched is self.composer:
-            if event.type() == QEvent.Type.FocusIn:
-                self.composer_frame.setProperty("focused", True)
-                repolish(self.composer_frame)
-            elif event.type() == QEvent.Type.FocusOut:
-                self.composer_frame.setProperty("focused", False)
-                repolish(self.composer_frame)
-        return super().eventFilter(watched, event)
-
-    def _sync_composer_height(self) -> None:
-        document = self.composer.document()
-        height = document.size().height() + document.documentMargin() * 2 + 10
-        self.composer.setFixedHeight(
-            int(max(float(COMPOSER_MIN_HEIGHT), min(height, float(COMPOSER_MAX_HEIGHT))))
-        )
 
     def toggle_sidebar(self) -> None:
         self._sidebar_visible = not self._sidebar_visible
@@ -551,51 +508,94 @@ class LoomDesktopWindow(QMainWindow):
         repolish(self.runtime_toggle_button)
 
     def _fill_composer(self, value: str) -> None:
-        self.composer.setPlainText(value)
-        self.composer.setFocus()
-        cursor = self.composer.textCursor()
-        cursor.movePosition(cursor.MoveOperation.End)
-        self.composer.setTextCursor(cursor)
+        self.composer_panel.set_text(value)
 
-    def _show_permission_menu(self) -> None:
-        """Pick the mode new conversations start in.
+    def switch_model(self, model: str) -> None:
+        """Run the local App Server on a different model.
 
-        The App Server sets a thread's mode when it is created, so changing it
-        applies to the next conversation rather than rewriting this one.
+        The protocol has no per-thread model: one App Server process serves one
+        model, chosen when it launches. Switching therefore means relaunching
+        the server this window owns. Durable Threads live in the Loom home, so
+        they survive; anything mid-turn does not, which is why an active turn
+        blocks the switch.
         """
-        menu = QMenu(self)
-        current = self.permission_label.text()
-        chosen_action = None
-        for mode in PERMISSION_MODES:
-            action = menu.addAction(mode)
-            action.setCheckable(True)
-            action.setChecked(mode == current)
-            if mode == current:
-                chosen_action = action
-        picked = menu.exec(
-            self.permission_label.mapToGlobal(self.permission_label.rect().topLeft())
-        )
-        if picked is None or picked is chosen_action:
+        model = fmt.text(model).strip()
+        if not model or model == self.current_model:
             return
-        self.default_permission_mode = picked.text()
-        self._set_permission_display(self.default_permission_mode)
-        self._append_activity(
-            f"New conversations will use {self.default_permission_mode}", marker="•"
-        )
+        if self.client_factory is None:
+            self.notify("This window cannot restart the App Server, so the model is fixed.")
+            return
+        if self.state.status in fmt.ACTIVE_STATUSES:
+            self.notify("Finish or stop the current turn before switching model.")
+            return
+
+        previous = self.current_model
+        thread_id = self.state.thread_id
+        self._append_activity(f"Restarting App Server on {model}", marker="◆")
+        try:
+            client, initialization = self.client_factory(model)
+        except Exception as exc:
+            self.notify(f"Could not start the App Server on {model}: {exc}")
+            return
+
+        old_client = self.client
+        self.rpc.close()
+        close = getattr(old_client, "close", None)
+        if callable(close):
+            close()
+
+        self.client = client
+        self.initialization = dict(initialization or {})
+        self.rpc = RpcRunner(self.bridge)
+        connect_client(self.client, self.bridge)
+
+        self.state.reset()
+        self.current_turn_id = ""
+        self._draft_workspace = None
+        self._pending_prompt = ""
+        self.transcript.clear()
+        self._remember_model(model)
+        self._apply_initialization()
+        self._append_activity(f"App Server now running {model} (was {previous})", marker="✓")
+        self.refresh_threads()
+        if thread_id:
+            self.load_thread(thread_id)
+
+    def _remember_model(self, model: str) -> None:
+        model = fmt.text(model).strip()
+        if not model:
+            return
+        history = [model] + [item for item in self._model_history if item != model]
+        self._model_history = history[:6]
+        settings = QSettings()
+        settings.setValue("desktop/modelHistory", self._model_history)
+
+    def choose_permission_mode(self, mode: str) -> None:
+        """Adopt a permission mode for conversations started from here.
+
+        A durable Thread's mode is fixed when the App Server creates it, so this
+        governs the next conversation rather than rewriting the open one.
+        """
+        mode = fmt.text(mode).strip()
+        if not mode or mode == self.default_permission_mode:
+            return
+        self.default_permission_mode = mode
+        self._set_permission_display(self.state.thread.get("permissionMode"))
+        if self.state.thread_id:
+            self._append_activity(f"Next conversation will use {mode}", marker="•")
+        else:
+            self._append_activity(f"This conversation will use {mode}", marker="•")
 
     def _set_workspace_display(self, workspace: str) -> None:
         workspace = fmt.text(workspace)
-        self.workspace_button.setText(fmt.short_path(workspace))
-        self.workspace_button.setToolTip(workspace or "No workspace")
+        self.composer_panel.set_workspace(workspace)
         self.workspace_label.setText(fmt.short_path(workspace))
         self.workspace_path_label.setText(workspace)
 
-    def _set_permission_display(self, mode: str) -> None:
-        mode = fmt.text(mode) or self.default_permission_mode
-        self.permission_label.setText(mode)
-        if self.permission_label.property("mode") != mode:
-            self.permission_label.setProperty("mode", mode)
-            repolish(self.permission_label)
+    def _set_permission_display(self, thread_mode: Any = None) -> None:
+        self.composer_panel.set_permission(
+            self.default_permission_mode, thread_mode=fmt.text(thread_mode)
+        )
 
     def notify(self, message: str) -> None:
         """Surface a problem inline instead of interrupting with a dialog."""
@@ -652,12 +652,12 @@ class LoomDesktopWindow(QMainWindow):
 
         self.thread_title_label.setText("New conversation")
         self._set_workspace_display(self.current_workspace)
-        self._set_permission_display(self.default_permission_mode)
+        self._set_permission_display()
         self._set_usage(0)
         self._render_transcript()
         self._render_runtime_panels()
         self._set_status("idle")
-        self.composer.setFocus()
+        self.composer_panel.editor.setFocus()
 
     def _create_thread(self, workspace: Path) -> None:
         workspace = workspace.expanduser().resolve()
@@ -960,8 +960,8 @@ class LoomDesktopWindow(QMainWindow):
         self.current_turn_id = ""
         self._render_transcript()
         self.thread_title_label.setText("Archived conversations")
-        self.composer.setReadOnly(True)
-        self.composer.setPlaceholderText("Select an archived conversation to review it")
+        self.composer_panel.set_busy(active=False, can_send=False, read_only=True)
+        self.composer_panel.set_placeholder("Select an archived conversation to review it")
         self.send_button.setEnabled(False)
         self.stop_button.setEnabled(False)
         self.composer_state_label.setText(
@@ -972,15 +972,15 @@ class LoomDesktopWindow(QMainWindow):
     # turns
     # ------------------------------------------------------------------
 
-    def send_prompt(self) -> None:
-        text = self.composer.toPlainText().strip()
+    def send_prompt(self, text: str = "") -> None:
+        text = fmt.text(text).strip() or self.composer_panel.text()
         if not text or self.state.archived:
             return
         if not self.state.thread_id:
             if self._draft_workspace is None:
                 return
             # Create the thread now that the draft has content, then send.
-            self.composer.clear()
+            self.composer_panel.clear()
             self._pending_prompt = text
             self.state.set_optimistic_user(text)
             self._render_transcript()
@@ -988,7 +988,7 @@ class LoomDesktopWindow(QMainWindow):
             self._create_thread(self._draft_workspace)
             return
 
-        self.composer.clear()
+        self.composer_panel.clear()
         self.state.set_optimistic_user(text)
         self._render_transcript()
         self._set_status("starting")
@@ -1099,9 +1099,7 @@ class LoomDesktopWindow(QMainWindow):
 
         self.thread_title_label.setText(self.state.title or "New conversation")
         self._set_workspace_display(self.current_workspace)
-        self._set_permission_display(
-            fmt.text(self.state.thread.get("permissionMode")) or self.default_permission_mode
-        )
+        self._set_permission_display(self.state.thread.get("permissionMode"))
         self._set_usage(self.state.total_tokens)
 
         approval = self.state.pending_approval
@@ -1150,16 +1148,17 @@ class LoomDesktopWindow(QMainWindow):
 
         # Stop is meaningless unless there is something to stop, and a greyed
         # button next to the send control is just clutter.
-        self.stop_button.setEnabled(active and has_thread and not archived)
-        self.stop_button.setVisible(active and has_thread and not archived)
-        self.send_button.setEnabled(can_send)
-        self.composer.setReadOnly(archived)
+        self.composer_panel.set_busy(
+            active=active and has_thread and not archived,
+            can_send=can_send,
+            read_only=archived,
+        )
 
         if archived:
-            self.composer.setPlaceholderText("Archived conversation · restore to continue")
+            self.composer_panel.set_placeholder("Archived conversation · restore to continue")
             self._set_composer_state("Archived · read-only")
             return
-        self.composer.setPlaceholderText("Message Loom…")
+        self.composer_panel.set_placeholder("Message Loom…")
         if status == "waiting_approval":
             state_text = "Waiting for approval"
         elif status in {"running", "starting"}:
@@ -1172,12 +1171,10 @@ class LoomDesktopWindow(QMainWindow):
         self._set_composer_state(state_text)
 
     def _set_usage(self, total: int) -> None:
-        self.usage_label.setText(f"{total:,} tokens" if total else "")
-        self.usage_label.setVisible(bool(total))
+        self.composer_panel.set_usage(int(total or 0))
 
     def _set_composer_state(self, text: str) -> None:
-        self.composer_state_label.setText(text)
-        self.composer_state_label.setVisible(bool(text))
+        self.composer_panel.set_state(text)
 
     def _render_runtime_panels(self) -> None:
         events = self.state.snapshot.get("events") or []

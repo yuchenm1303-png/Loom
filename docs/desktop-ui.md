@@ -63,7 +63,8 @@ The client lives in `app/desktop/`. `app/desktop_ui.py` re-exports it so
 | `state.py` | `ThreadState`: the durable timeline plus live items, keyed by App Server item id. No Qt. |
 | `rpc.py` | `DesktopEventBridge` and `RpcRunner`: the worker-thread/UI-thread boundary. |
 | `theme.py` | Design tokens and the single application stylesheet. |
-| `widgets.py` | Transcript view, message and card widgets, composer, approval card, banner. |
+| `composer.py` | Prompt entry and the workspace / permission / model controls. |
+| `widgets.py` | Transcript view, message and card widgets, approval card, banner. |
 | `window.py` | `LoomDesktopWindow`: layout, protocol handling, conversation library. |
 
 The three logic modules carry no toolkit dependency, so transcript ordering,
@@ -121,6 +122,36 @@ quickly cannot leave an older snapshot on screen.
 Transport and conversation-management failures appear in a dismissible inline
 banner. Only genuinely destructive actions (deleting a conversation) use a modal.
 
+### Composer
+
+`app/desktop/composer.py` owns prompt entry and the decisions that apply to
+what is sent. Every control is backed by something the App Server exposes:
+
+| Control | Source | Effect |
+| --- | --- | --- |
+| Workspace | `thread/start` | Which project the next conversation is bound to. |
+| Permission mode | `runtime.permissionModes`, `thread/start` | What Loom may do without asking. |
+| Model | `runtime.model` | Which model the local App Server runs. |
+
+The permission menu's wording is taken from the resolved snapshots in
+`app/agent_runtime/permissions.py` so it cannot drift from what the runtime
+enforces, and a test pins the menu to `PermissionMode`. A Thread's mode is fixed
+when the App Server creates it, so an open conversation shows its own mode and a
+change applies to the next one.
+
+Protocol v1 binds a model to an App Server process, not to a Thread, so
+switching model relaunches the server this window owns. Durable Threads live in
+the Loom home and are reloaded afterwards; an active turn blocks the switch
+rather than being discarded. A window that did not start its own server (no
+`client_factory`) shows the model read-only instead of offering a choice that
+would do nothing.
+
+There is deliberately **no reasoning-effort control**. `loom_cli._build_runtime`
+registers exactly one role, `AGENT_FAST_ROLE`, with one binding;
+`AGENT_REASONING_ROLE` exists in `app/ai/agent.py` but is never registered, so
+an effort selector would have nothing to select between. Adding one means
+binding a second, reasoning-capable model first.
+
 ### Runtime inspector
 
 The right-side tabs show protocol-backed observable activity:
@@ -175,5 +206,6 @@ Desktop coverage is split by dependency:
 
 - `tests/test_desktop_state.py` and `tests/test_desktop_markdown.py` need no toolkit;
 - `tests/test_desktop_rpc.py` covers the threading boundary and request supersession;
+- `tests/test_desktop_composer.py` covers the composer controls and their limits;
 - `tests/test_desktop_transcript.py` covers widget reuse, scroll-follow and content sizing;
 - `tests/test_desktop_ui.py` drives the whole window against a fake App Server.
