@@ -36,6 +36,9 @@ GOOD: Final = "#74bd9d"
 WARN: Final = "#e0b473"
 BAD: Final = "#df8e98"
 
+ACTIVITY_ACCENT: Final = "#818cf8"
+CARD_BG: Final = "#0a0c10"
+
 FONT_UI: Final = (
     '"Segoe UI Variable Text","Segoe UI Variable","Microsoft YaHei UI",'
     '"Microsoft YaHei","Segoe UI",sans-serif'
@@ -68,7 +71,7 @@ def motion_enabled() -> bool:
 MESSAGE_CSS: Final = f"""
 <style>
 body {{ color:{TEXT}; font-family:{FONT_UI}; font-size:15px; }}
-p {{ margin:0 0 10px; line-height:1.62; }}
+p {{ margin:0 0 11px; line-height:1.68; }}
 strong {{ color:{TEXT_STRONG}; }}
 em {{ color:{TEXT}; }}
 a {{ color:{ACCENT_SOFT}; }}
@@ -92,17 +95,30 @@ blockquote {{
 
 ACTIVITY_CSS: Final = f"""
 <style>
-body {{ font-family:{FONT_UI}; background:{BG_PANEL}; color:#b5bbc6; margin:4px 6px 16px; font-size:12px; }}
-.event {{ border-bottom:1px solid {BORDER}; padding:10px 3px; }}
-.marker {{ display:inline-block; width:19px; font-weight:800; margin-right:7px; }}
+body {{ font-family:{FONT_UI}; background:{BG_PANEL}; color:#b5bbc6; margin:8px 6px 18px; font-size:13px; }}
+.event {{
+    background:{CARD_BG};
+    border:1px solid {BORDER};
+    border-left:2px solid #292e42;
+    padding:10px 11px 9px 10px;
+    margin:0 0 7px;
+}}
+.marker {{
+    display:inline-block; width:15px; font-family:{FONT_UI}; font-weight:800;
+    margin-right:8px; font-size:10px;
+}}
 .good {{ color:{GOOD}; }}
 .bad {{ color:{BAD}; }}
-.accent {{ color:#8a82e8; }}
+.accent {{ color:{ACCENT_SOFT}; }}
+.warn {{ color:{WARN}; }}
 .muted {{ color:{TEXT_MUTED}; }}
-.summary {{ color:#cbd0d8; line-height:1.45; }}
-.time {{ color:{TEXT_FAINT}; font-family:{FONT_MONO}; font-size:9px; margin:4px 0 0 26px; }}
-.quiet {{ margin:48px 10px; color:#d4d7dd; font-size:13px; }}
-.quiet span {{ color:{TEXT_MUTED}; }}
+.summary {{ color:#d3d7df; font-family:{FONT_UI}; font-weight:600; line-height:1.4; font-size:12px; }}
+.time {{
+    color:{TEXT_FAINT}; font-family:{FONT_MONO}; font-size:10px;
+    margin:5px 0 0 23px; letter-spacing:0.2px;
+}}
+.quiet {{ margin:60px 16px; color:#b0b6c0; font-size:15px; text-align:center; font-weight:500; }}
+.quiet span {{ color:{TEXT_MUTED}; display:block; margin-top:8px; font-size:13px; font-weight:400; }}
 </style>
 """
 
@@ -125,10 +141,10 @@ QFrame#conversationPanel {{ background:{BG_APP}; }}
 
 /* ---- brand / sidebar ---- */
 QLabel#brandMark {{
-    background:{ACCENT}; color:#ffffff; border-radius:10px;
-    font-size:16px; font-weight:800;
+    background:{ACCENT}; color:#ffffff; border-radius:9px;
+    font-size:14px; font-weight:800;
 }}
-QLabel#brandLabel {{ color:{TEXT_STRONG}; font-size:19px; font-weight:700; }}
+QLabel#brandLabel {{ color:{TEXT_STRONG}; font-size:15px; font-weight:650; letter-spacing:0.2px; }}
 QLabel#brandSubtitle, QLabel#mutedLabel {{ color:{TEXT_MUTED}; font-size:11px; }}
 QLabel#sectionLabel {{
     color:{TEXT_MUTED}; font-size:10px; font-weight:700; letter-spacing:1.35px;
@@ -201,15 +217,23 @@ QPushButton#threadActionsButton:disabled {{ color:#343b48; background:#0c0e13; b
 QListWidget#threadList {{ background:transparent; border:none; outline:none; padding:0; }}
 QListWidget#threadList::item {{
     background:transparent; border:1px solid transparent;
-    border-radius:8px; margin:0; padding:0;
+    border-radius:9px; margin:0; padding:0;
 }}
-QListWidget#threadList::item:hover {{ background:#12151c; }}
-QListWidget#threadList::item:selected {{ background:#1a1d29; border-color:#2b2f40; }}
+QListWidget#threadList::item:hover {{ background:#12151c; border-color:#171b23; }}
+QListWidget#threadList::item:selected {{ background:#171a26; border-color:#272b3d; }}
 QWidget#threadItemWidget, QWidget#threadGroupHeader {{ background:transparent; }}
-QLabel#threadItemTitle {{ color:#cfd4dd; font-size:13px; font-weight:500; }}
+QFrame#threadRowMarker {{ background:transparent; border:none; border-radius:1px; }}
+QFrame#threadRowMarker[active="true"] {{ background:{ACCENT}; }}
+QLabel#threadItemTitle {{ color:#c3c9d4; font-size:13px; font-weight:500; }}
+QLabel#threadItemTitle[active="true"] {{ color:{TEXT_STRONG}; font-weight:640; }}
+QLabel#threadItemMeta {{ color:{TEXT_FAINT}; font-size:10px; }}
+QLabel#threadItemMeta[state="running"] {{ color:#7fb2f5; }}
+QLabel#threadItemMeta[state="waiting_approval"] {{ color:{WARN}; }}
+QLabel#threadItemMeta[state="failed"] {{ color:{BAD}; }}
 QLabel#threadGroupLabel {{
     color:{TEXT_FAINT}; font-size:10px; font-weight:700; letter-spacing:1.2px;
 }}
+QFrame#threadGroupRule {{ background:{BORDER}; border:none; }}
 QLabel#threadDot {{ font-size:9px; color:{TEXT_MUTED}; }}
 QLabel#threadDot[state="running"] {{ color:#7fb2f5; }}
 QLabel#threadDot[state="waiting_approval"] {{ color:{WARN}; }}
@@ -238,15 +262,32 @@ QScrollArea#transcript {{ background:{BG_APP}; border:none; }}
 QWidget#transcriptCanvas {{ background:{BG_APP}; }}
 
 QFrame#userMessage {{
-    background:#11141b; border:1px solid {BORDER_STRONG}; border-radius:12px;
+    background:#19182a; border:1px solid #302d4b; border-radius:16px;
 }}
-QFrame#assistantMessage {{ background:transparent; border:none; }}
+QFrame#userMessage:hover {{ background:#1d1b30; border-color:#3b3760; }}
+QFrame#assistantMessage {{
+    background:#0c0e13; border:1px solid #171c25; border-radius:16px;
+}}
+QFrame#assistantMessage:hover {{ background:#0d1016; border-color:#202631; }}
+QLabel#messageRoleMark {{
+    border-radius:12px; font-size:11px; font-weight:800;
+    background:#171a22; color:#aeb4c0; border:1px solid #282e3a;
+}}
+QLabel#messageRoleMark[role="assistant"] {{
+    background:#211e3a; color:#c5c0ff; border-color:#39335f;
+}}
+QLabel#messageRoleMark[role="user"] {{
+    background:#202431; color:#d9dde7; border-color:#343a49;
+}}
 QLabel#messageRole {{
-    color:{TEXT_MUTED}; font-size:10px; font-weight:700; letter-spacing:1.05px;
+    color:{TEXT_MUTED}; font-size:12px; font-weight:650;
 }}
 QLabel#messageRole[role="assistant"] {{ color:{ACCENT_SOFT}; }}
 QLabel#messageBody {{ background:transparent; color:{TEXT}; font-size:15px; }}
-QLabel#streamBadge {{ color:#aaa4f6; font-size:9px; font-weight:650; }}
+QLabel#streamBadge {{
+    color:#aaa4f6; font-size:10px; font-weight:650;
+    background:#171526; border-radius:8px; padding:3px 8px;
+}}
 
 QFrame#codeBlock {{ background:#0c0f14; border:1px solid #202631; border-radius:9px; }}
 QLabel#codeLanguage {{ color:{TEXT_MUTED}; font-family:{FONT_MONO}; font-size:10px; }}
@@ -264,28 +305,38 @@ QPushButton#copyButton:hover {{ background:{BG_HOVER}; border-color:{BORDER_STRO
 
 /* ---- inline activity cards ---- */
 QFrame#activityCard {{
-    background:#0c0e14; border:1px solid #1b202a; border-radius:10px;
+    background:transparent;
+    border:none;
+    border-radius:0;
 }}
-QFrame#activityCard[state="failed"], QFrame#activityCard[state="denied"] {{ border-color:#432a2f; }}
-QFrame#activityCard[state="waiting"], QFrame#activityCard[state="waiting_approval"] {{ border-color:#453720; }}
-QFrame#activityCard[state="running"], QFrame#activityCard[state="started"] {{ border-color:#2a3350; }}
-QLabel#cardIcon {{ color:{TEXT_MUTED}; font-size:12px; font-weight:800; }}
-QLabel#cardTitle {{ color:#d6dae2; font-size:12px; font-weight:650; }}
-QLabel#cardSubtitle {{ color:{TEXT_MUTED}; font-size:11px; font-family:{FONT_MONO}; }}
-QLabel#cardStatus {{ font-size:10px; font-weight:650; color:{TEXT_MUTED}; }}
-QLabel#cardStatus[state="completed"] {{ color:{GOOD}; }}
+QLabel#cardIcon {{
+    color:#b7bdc8; font-size:13px; font-weight:800;
+    background:#11141a; border:1px solid #343943; border-radius:7px;
+}}
+QLabel#cardTitle {{ color:#e5e7ec; font-size:13px; font-weight:650; }}
+QLabel#cardSubtitle {{ color:#7f8693; font-size:11px; font-family:{FONT_MONO}; }}
+QFrame#cardBodyShell {{
+    background:#171819; border:1px solid #424448; border-radius:13px;
+}}
+QLabel#cardBodyTitle {{ color:#c7c9ce; font-size:12px; font-weight:600; }}
+QLabel#cardStatus {{
+    font-size:11px; font-weight:650; color:{TEXT_MUTED};
+    background:transparent; padding:2px 0;
+}}
+QLabel#cardStatus[state="completed"] {{ color:#929892; }}
 QLabel#cardStatus[state="failed"], QLabel#cardStatus[state="denied"] {{ color:{BAD}; }}
 QLabel#cardStatus[state="waiting"], QLabel#cardStatus[state="waiting_approval"] {{ color:{WARN}; }}
 QLabel#cardStatus[state="running"], QLabel#cardStatus[state="started"] {{ color:#95c4fb; }}
 QPlainTextEdit#cardBody {{
-    background:#080a0e; border:1px solid #171b23; border-radius:7px;
-    color:#aeb4c0; font-family:{FONT_MONO}; font-size:11px; padding:7px 8px;
+    background:transparent; border:none; border-radius:0;
+    color:#b9bbc0; font-family:{FONT_MONO}; font-size:12px; padding:3px 0;
     selection-background-color:#38335b;
 }}
 QPushButton#cardToggle {{
-    min-height:24px; padding:0 8px; border-radius:6px;
+    min-width:26px; max-width:26px; min-height:26px; max-height:26px;
+    padding:0; border-radius:7px;
     background:transparent; border:1px solid transparent;
-    color:{TEXT_MUTED}; font-size:10px; font-weight:600;
+    color:{TEXT_MUTED}; font-size:13px; font-weight:700;
 }}
 QPushButton#cardToggle:hover {{ background:{BG_HOVER}; border-color:{BORDER_STRONG}; color:{TEXT}; }}
 
@@ -351,23 +402,50 @@ QPushButton#bannerClose {{
 QPushButton#bannerClose:hover {{ background:#2a1a1e; color:#ffdde0; }}
 
 /* ---- runtime inspector ---- */
-QLabel#inspectorTitle {{ color:{TEXT_STRONG}; font-size:16px; font-weight:700; }}
-QTabWidget#activityTabs::pane {{ background:transparent; border:none; top:-1px; }}
-QTabBar::tab {{
-    background:transparent; color:{TEXT_MUTED}; padding:9px 5px;
-    margin-right:3px;
-    border:none; border-bottom:2px solid transparent; font-size:11px;
+QFrame#runtimeHeader {{
+    background:#0d1016; border:1px solid #191e28; border-radius:12px;
+    padding:14px 15px;
 }}
-QTabBar::tab:hover {{ color:#b5bac5; }}
-QTabBar::tab:selected {{ color:#e7e5ff; border-bottom-color:{ACCENT}; }}
+QLabel#runtimeDot {{
+    color:{ACTIVITY_ACCENT}; font-size:8px; background:{ACCENT_BG};
+    border:1px solid #37325c; border-radius:7px; padding:1px 4px;
+}}
+QLabel#inspectorTitle {{ color:{TEXT_STRONG}; font-size:17px; font-weight:700; letter-spacing:0.2px; }}
+QLabel#inspectorSubtitle {{ color:{TEXT_MUTED}; font-size:10px; letter-spacing:0.25px; }}
+QTabWidget#activityTabs::pane {{
+    background:transparent; border:none; border-top:1px solid {BORDER}; top:-1px;
+}}
+QTabWidget#activityTabs QTabBar {{ background:transparent; }}
+QTabWidget#activityTabs QTabBar::tab {{
+    background:transparent; color:{TEXT_MUTED}; padding:11px 8px 10px;
+    margin-right:2px; min-width:0;
+    border:none; border-bottom:2px solid transparent;
+    font-family:{FONT_UI}; font-size:12px; font-weight:600;
+}}
+QTabWidget#activityTabs QTabBar::tab:hover {{ color:#c3c8d2; background:#0e1117; }}
+QTabWidget#activityTabs QTabBar::tab:selected {{
+    color:#e8e6ff; background:#10121a; border-bottom:2px solid {ACTIVITY_ACCENT};
+}}
 QLabel#panelPlaceholder {{
-    color:{TEXT_MUTED}; font-size:12px; padding:44px 6px 0;
+    color:{TEXT_FAINT}; font-size:32px; padding:50px 6px 8px;
+    qproperty-alignment:AlignCenter;
 }}
-QLabel#panelPlaceholder span {{ color:{TEXT_FAINT}; }}
-QTextBrowser#activityView, QPlainTextEdit {{
+QLabel#panelPlaceholder span {{ color:{TEXT_MUTED}; font-size:13px; display:block; margin-top:8px; }}
+QScrollArea#activityTimeline, QWidget#activityTimelineCanvas {{ background:{BG_PANEL}; border:none; }}
+QFrame#activityEventRow {{
+    background:{CARD_BG}; border:1px solid {BORDER}; border-radius:10px;
+}}
+QFrame#activityEventRow:hover {{ background:#0e1117; border-color:#272d38; }}
+QLabel#activityEventTitle {{
+    color:#d9dde5; font-family:{FONT_UI}; font-size:12px; font-weight:600;
+}}
+QLabel#activityEventTime {{ color:{TEXT_FAINT}; font-family:{FONT_MONO}; font-size:10px; }}
+QLabel#panelPlaceholderTitle {{ color:#c9ced8; font-size:13px; font-weight:650; }}
+QLabel#panelPlaceholderBody {{ color:{TEXT_MUTED}; font-size:11px; }}
+QPlainTextEdit {{
     background:{BG_PANEL}; border:none; color:#adb3bf;
-    padding:6px 2px 6px 4px; selection-background-color:#38335b;
-    font-family:{FONT_MONO}; font-size:11px;
+    padding:5px 2px 6px 3px; selection-background-color:#38335b;
+    font-family:{FONT_MONO}; font-size:12px;
 }}
 
 /* ---- menus and chrome ---- */
@@ -388,6 +466,9 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height:0; }}
 QScrollBar:horizontal {{ background:transparent; height:9px; margin:2px; }}
 QScrollBar::handle:horizontal {{ background:#292e39; border-radius:4px; min-width:30px; }}
 QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ width:0; }}
+/* Styling any sub-control of a scrollbar drops the rest back to the native
+   painter, which drew the trough as a light stripe down the dark sidebar. */
+QScrollBar::add-page, QScrollBar::sub-page {{ background:transparent; }}
 """
 
 

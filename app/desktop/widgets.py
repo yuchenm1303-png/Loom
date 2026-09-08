@@ -13,6 +13,7 @@ from typing import Any
 from PySide6.QtCore import (
     QEasingCurve,
     QEvent,
+    QParallelAnimationGroup,
     QPropertyAnimation,
     QSize,
     Qt,
@@ -22,7 +23,12 @@ from PySide6.QtCore import (
 from PySide6.QtGui import (
     QColor,
     QGuiApplication,
+    QIcon,
     QKeyEvent,
+    QPainter,
+    QPainterPath,
+    QPen,
+    QPixmap,
     QSyntaxHighlighter,
     QTextCharFormat,
 )
@@ -68,10 +74,261 @@ def fade_in(widget: QWidget, *, duration_ms: int = theme.MOTION_CONTENT_MS) -> N
     animation.start(QPropertyAnimation.DeletionPolicy.DeleteWhenStopped)
 
 
+class PulseLabel(QLabel):
+    """Small, quiet activity signal used while a response or tool is live."""
+
+    def __init__(self, text: str = "", parent: QWidget | None = None) -> None:
+        super().__init__(text, parent)
+        self._pulse: QPropertyAnimation | None = None
+
+    def set_pulsing(self, pulsing: bool) -> None:
+        pulsing = bool(pulsing and theme.motion_enabled())
+        if not pulsing:
+            if self._pulse is not None:
+                self._pulse.stop()
+                self._pulse = None
+            self.setGraphicsEffect(None)
+            return
+        if self._pulse is not None:
+            return
+        effect = QGraphicsOpacityEffect(self)
+        self.setGraphicsEffect(effect)
+        pulse = QPropertyAnimation(effect, b"opacity", self)
+        pulse.setDuration(1050)
+        pulse.setStartValue(0.42)
+        pulse.setKeyValueAt(0.5, 1.0)
+        pulse.setEndValue(0.42)
+        pulse.setLoopCount(-1)
+        pulse.setEasingCurve(QEasingCurve.Type.InOutSine)
+        pulse.start()
+        self._pulse = pulse
+
+
 def copy_to_clipboard(value: str) -> None:
     clipboard = QGuiApplication.clipboard() or QApplication.clipboard()
     if clipboard is not None:
         clipboard.setText(fmt.text(value))
+
+
+class VectorIcon(QWidget):
+    """Small theme-aware icon drawn by Qt, independent of installed fonts."""
+
+    def __init__(
+        self,
+        name: str,
+        parent: QWidget | None = None,
+        *,
+        size: int = 28,
+        tone: str = "muted",
+        framed: bool = True,
+    ) -> None:
+        super().__init__(parent)
+        self.name = name
+        self.tone = tone
+        self.framed = framed
+        self.setFixedSize(size, size)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+
+    def set_tone(self, tone: str) -> None:
+        if tone != self.tone:
+            self.tone = tone
+            self.update()
+
+    def paintEvent(self, _event: Any) -> None:  # noqa: N802 - Qt override
+        colors = {
+            "accent": theme.ACCENT_SOFT,
+            "good": theme.GOOD,
+            "warn": theme.WARN,
+            "bad": theme.BAD,
+            "muted": "#858d9c",
+        }
+        color = QColor(colors.get(self.tone, colors["muted"]))
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        if self.framed:
+            painter.setPen(QPen(QColor("#272d38"), 1))
+            painter.setBrush(QColor("#141820"))
+            painter.drawRoundedRect(self.rect().adjusted(1, 1, -1, -1), 7, 7)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.setPen(QPen(color, 1.55, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+        c = self.width() / 2
+        s = min(self.width(), self.height()) * (0.24 if self.framed else 0.31)
+        x, y = c, self.height() / 2
+
+        if self.name in {"tool", "model"}:
+            path = QPainterPath()
+            path.moveTo(x, y - s)
+            path.lineTo(x + s, y)
+            path.lineTo(x, y + s)
+            path.lineTo(x - s, y)
+            path.closeSubpath()
+            painter.drawPath(path)
+            if self.name == "model":
+                painter.drawEllipse(int(x - 1), int(y - 1), 2, 2)
+        elif self.name == "terminal":
+            painter.drawLine(int(x - s), int(y - s * .55), int(x - s * .2), int(y))
+            painter.drawLine(int(x - s * .2), int(y), int(x - s), int(y + s * .55))
+            painter.drawLine(int(x + s * .05), int(y + s * .6), int(x + s), int(y + s * .6))
+        elif self.name == "diff":
+            painter.drawLine(int(x - s * .8), int(y - s), int(x - s * .8), int(y + s))
+            painter.drawLine(int(x + s * .8), int(y - s), int(x + s * .8), int(y + s))
+            painter.drawLine(int(x - s), int(y - s * .4), int(x - s * .55), int(y - s * .4))
+            painter.drawLine(int(x - s * .78), int(y - s * .62), int(x - s * .78), int(y - s * .18))
+            painter.drawLine(int(x + s * .55), int(y + s * .4), int(x + s), int(y + s * .4))
+        elif self.name == "check":
+            painter.drawLine(int(x - s), int(y), int(x - s * .25), int(y + s * .7))
+            painter.drawLine(int(x - s * .25), int(y + s * .7), int(x + s), int(y - s * .75))
+        elif self.name == "arrow":
+            painter.drawLine(int(x - s), int(y), int(x + s), int(y))
+            painter.drawLine(int(x + s * .35), int(y - s * .65), int(x + s), int(y))
+            painter.drawLine(int(x + s * .35), int(y + s * .65), int(x + s), int(y))
+        elif self.name == "error":
+            painter.drawEllipse(int(x - s), int(y - s), int(s * 2), int(s * 2))
+            painter.drawLine(int(x), int(y - s * .55), int(x), int(y + s * .15))
+            painter.drawPoint(int(x), int(y + s * .58))
+        elif self.name == "browser":
+            painter.drawRoundedRect(int(x - s), int(y - s * .8), int(s * 2), int(s * 1.6), 2, 2)
+            painter.drawLine(int(x - s), int(y - s * .3), int(x + s), int(y - s * .3))
+        elif self.name == "agents":
+            painter.drawEllipse(int(x - s * .35), int(y - s), int(s * .7), int(s * .7))
+            painter.drawArc(int(x - s), int(y - s * .1), int(s * 2), int(s * 1.25), 25 * 16, 130 * 16)
+        else:
+            painter.drawEllipse(int(x - 2), int(y - 2), 4, 4)
+
+
+class PulseVectorIcon(VectorIcon):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self._pulse: QPropertyAnimation | None = None
+
+    def set_pulsing(self, pulsing: bool) -> None:
+        pulsing = bool(pulsing and theme.motion_enabled())
+        if not pulsing:
+            if self._pulse is not None:
+                self._pulse.stop()
+                self._pulse = None
+            self.setGraphicsEffect(None)
+            return
+        if self._pulse is not None:
+            return
+        effect = QGraphicsOpacityEffect(self)
+        self.setGraphicsEffect(effect)
+        pulse = QPropertyAnimation(effect, b"opacity", self)
+        pulse.setDuration(1050)
+        pulse.setStartValue(0.5)
+        pulse.setKeyValueAt(0.5, 1.0)
+        pulse.setEndValue(0.5)
+        pulse.setLoopCount(-1)
+        pulse.start()
+        self._pulse = pulse
+
+
+def vector_icon(name: str, *, size: int = 18, tone: str = "muted") -> QIcon:
+    """Render the same geometry as a QIcon for tabs and native controls."""
+    canvas = VectorIcon(name, size=size, tone=tone, framed=False)
+    pixmap = QPixmap(size, size)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    canvas.render(pixmap)
+    canvas.deleteLater()
+    return QIcon(pixmap)
+
+
+def _event_icon(kind: str) -> tuple[str, str]:
+    if kind in {"turn_completed", "tool_completed", "process_exited"}:
+        return "check", "good"
+    if kind in {"turn_failed", "tool_failed"}:
+        return "error", "bad"
+    if kind.startswith("model_"):
+        return "model", "accent"
+    if kind.startswith("tool_"):
+        return "tool", "accent"
+    if kind.startswith("process_"):
+        return "terminal", "muted"
+    if kind == "turn_diff_updated":
+        return "diff", "accent"
+    if kind == "turn_started":
+        return "arrow", "muted"
+    return "dot", "muted"
+
+
+class ActivityEventRow(QFrame):
+    def __init__(self, when: str, kind: str, summary: str, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("activityEventRow")
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(10, 9, 10, 9)
+        layout.setSpacing(10)
+        icon_name, tone = _event_icon(kind)
+        icon = VectorIcon(icon_name, self, size=26, tone=tone)
+        layout.addWidget(icon, 0, Qt.AlignmentFlag.AlignTop)
+        copy = QVBoxLayout()
+        copy.setContentsMargins(0, 0, 0, 0)
+        copy.setSpacing(3)
+        title = QLabel(summary)
+        title.setObjectName("activityEventTitle")
+        title.setTextFormat(Qt.TextFormat.PlainText)
+        title.setWordWrap(True)
+        copy.addWidget(title)
+        timestamp = QLabel(when or "live")
+        timestamp.setObjectName("activityEventTime")
+        copy.addWidget(timestamp)
+        layout.addLayout(copy, 1)
+
+
+class EmptyPanel(QWidget):
+    def __init__(self, icon_name: str, title: str, body: str, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 52, 20, 20)
+        layout.setSpacing(9)
+        layout.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter)
+        icon = VectorIcon(icon_name, self, size=42, tone="muted")
+        layout.addWidget(icon, 0, Qt.AlignmentFlag.AlignHCenter)
+        title_label = QLabel(title)
+        title_label.setObjectName("panelPlaceholderTitle")
+        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(title_label)
+        body_label = QLabel(body)
+        body_label.setObjectName("panelPlaceholderBody")
+        body_label.setWordWrap(True)
+        body_label.setAlignment(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop)
+        layout.addWidget(body_label)
+
+
+class ActivityTimelineView(QScrollArea):
+    """Native Runtime timeline; no font glyphs are used as icons."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("activityTimeline")
+        self.setWidgetResizable(True)
+        self.setFrameShape(QFrame.Shape.NoFrame)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.canvas = QWidget()
+        self.canvas.setObjectName("activityTimelineCanvas")
+        self._layout = QVBoxLayout(self.canvas)
+        self._layout.setContentsMargins(3, 8, 8, 16)
+        self._layout.setSpacing(7)
+        self._layout.addStretch(1)
+        self.setWidget(self.canvas)
+        self._plain_text = ""
+
+    def render_events(self, events: list[tuple[str, str, str]]) -> None:
+        while self._layout.count() > 1:
+            item = self._layout.takeAt(0)
+            if item.widget() is not None:
+                item.widget().deleteLater()
+        self._plain_text = "\n".join(summary for _when, _kind, summary in events)
+        if not events:
+            empty = EmptyPanel("activity", "Runtime is quiet", "Model steps, tools, commands, diffs, and delegated work appear here.")
+            self._layout.insertWidget(0, empty, 1)
+        else:
+            for when, kind, summary in events:
+                self._layout.insertWidget(self._layout.count() - 1, ActivityEventRow(when, kind, summary, self.canvas))
+        QTimer.singleShot(0, lambda: self.verticalScrollBar().setValue(self.verticalScrollBar().maximum()))
+
+    def toPlainText(self) -> str:  # noqa: N802
+        return self._plain_text or "Runtime is quiet"
 
 
 class RichLabel(QLabel):
@@ -167,17 +424,23 @@ class MessageWidget(QFrame):
         self._widgets: list[QWidget] = []
 
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(*( (13, 11, 13, 12) if role == "user" else (0, 0, 0, 0) ))
+        outer.setContentsMargins(*( (16, 13, 16, 14) if role == "user" else (15, 14, 17, 16) ))
         outer.setSpacing(7)
 
         header = QHBoxLayout()
         header.setContentsMargins(0, 0, 0, 0)
         header.setSpacing(7)
-        self.role_label = QLabel("YOU" if role == "user" else "LOOM")
+        self.role_mark = QLabel("Y" if role == "user" else "L")
+        self.role_mark.setObjectName("messageRoleMark")
+        self.role_mark.setProperty("role", role)
+        self.role_mark.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.role_mark.setFixedSize(24, 24)
+        header.addWidget(self.role_mark)
+        self.role_label = QLabel("You" if role == "user" else "Loom")
         self.role_label.setObjectName("messageRole")
         self.role_label.setProperty("role", role)
         header.addWidget(self.role_label)
-        self.stream_badge = QLabel("· LIVE")
+        self.stream_badge = PulseLabel("Thinking")
         self.stream_badge.setObjectName("streamBadge")
         self.stream_badge.hide()
         header.addWidget(self.stream_badge)
@@ -220,6 +483,7 @@ class MessageWidget(QFrame):
 
     def set_streaming(self, streaming: bool) -> None:
         self.stream_badge.setVisible(bool(streaming))
+        self.stream_badge.set_pulsing(streaming)
 
     def set_text(self, value: str) -> None:
         """Update the body, reusing every block whose content did not change."""
@@ -254,10 +518,10 @@ class MessageWidget(QFrame):
 
 
 _CARD_ICONS = {
-    "tool": "◇",
-    "process": "$",
-    "diff": "Δ",
-    "error": "!",
+    "tool": "tool",
+    "process": "terminal",
+    "diff": "diff",
+    "error": "error",
 }
 
 
@@ -271,6 +535,7 @@ class ActivityCard(QFrame):
         self.kind = kind
         self.setObjectName("activityCard")
         self._body_text = ""
+        self._full_title = ""
         self._expanded = kind in {"diff", "error"}
         self._user_toggled = False
 
@@ -281,10 +546,8 @@ class ActivityCard(QFrame):
         header = QHBoxLayout()
         header.setContentsMargins(0, 0, 0, 0)
         header.setSpacing(8)
-        icon = QLabel(_CARD_ICONS.get(kind, "•"))
-        icon.setObjectName("cardIcon")
-        icon.setFixedWidth(13)
-        header.addWidget(icon)
+        self.icon = PulseVectorIcon(_CARD_ICONS.get(kind, "dot"), self, size=28)
+        header.addWidget(self.icon)
 
         titles = QVBoxLayout()
         titles.setContentsMargins(0, 0, 0, 0)
@@ -302,7 +565,6 @@ class ActivityCard(QFrame):
 
         self.status_label = QLabel("")
         self.status_label.setObjectName("cardStatus")
-        header.addWidget(self.status_label)
         self.toggle_button = QPushButton("Details")
         self.toggle_button.setObjectName("cardToggle")
         self.toggle_button.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -310,6 +572,14 @@ class ActivityCard(QFrame):
         header.addWidget(self.toggle_button)
         layout.addLayout(header)
 
+        self.body_shell = QFrame()
+        self.body_shell.setObjectName("cardBodyShell")
+        shell_layout = QVBoxLayout(self.body_shell)
+        shell_layout.setContentsMargins(11, 8, 11, 9)
+        shell_layout.setSpacing(5)
+        self.body_title = QLabel(self._body_heading())
+        self.body_title.setObjectName("cardBodyTitle")
+        shell_layout.addWidget(self.body_title)
         self.body = QPlainTextEdit()
         self.body.setObjectName("cardBody")
         self.body.setReadOnly(True)
@@ -318,27 +588,106 @@ class ActivityCard(QFrame):
         self.body.document().documentLayout().documentSizeChanged.connect(
             lambda _size: self._sync_height()
         )
-        self.body.hide()
-        layout.addWidget(self.body)
+        shell_layout.addWidget(self.body)
+        footer = QHBoxLayout()
+        footer.addStretch(1)
+        footer.addWidget(self.status_label)
+        shell_layout.addLayout(footer)
+        self.body_shell.hide()
+        layout.addWidget(self.body_shell)
 
         self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
+        self._body_animation: QParallelAnimationGroup | None = None
+
+    def _body_heading(self) -> str:
+        return {
+            "process": "Shell",
+            "tool": "Tool output",
+            "diff": "Changes",
+            "error": "Error",
+        }.get(self.kind, "Output")
+
+    def _presented_title(self, title: str, status: str) -> str:
+        if self.kind == "process":
+            if status in {"running", "started"}:
+                return f"Running {title}"
+            if status == "completed":
+                return f"Ran {title}"
+        return title
+
+    def _sync_title(self) -> None:
+        # Hidden Runtime tabs are initially laid out at a token width. Keep the
+        # source title intact until the card has a real viewport to measure.
+        if self.width() < 240:
+            self.title_label.setText(self._full_title)
+            return
+        available = max(120, self.width() - 170)
+        self.title_label.setText(
+            self.title_label.fontMetrics().elidedText(
+                self._full_title, Qt.TextElideMode.ElideRight, available
+            )
+        )
+
+    def resizeEvent(self, event: Any) -> None:  # noqa: N802 - Qt override
+        super().resizeEvent(event)
+        self._sync_title()
 
     def _toggle(self) -> None:
         self._user_toggled = True
         self._expanded = not self._expanded
-        self._sync_body()
+        self._sync_body(animate=True)
 
-    def _sync_body(self) -> None:
+    def _sync_body(self, *, animate: bool = False) -> None:
         has_body = bool(self._body_text)
         self.toggle_button.setVisible(has_body)
         show = has_body and self._expanded
-        self.body.setVisible(show)
-        self.toggle_button.setText("Hide" if show else "Details")
-        if show:
-            self._sync_height()
+        self.toggle_button.setText("⌃" if show else "⌄")
+        self.toggle_button.setToolTip("Hide output" if show else "Show output")
+        if not animate or not theme.motion_enabled():
+            self.body_shell.setVisible(show)
+            if show:
+                self._sync_height()
+            return
+
+        if self._body_animation is not None:
+            self._body_animation.stop()
+        document = self.body.document()
+        natural = int(max(30.0, min(document.size().height() + document.documentMargin() * 2 + 12, 360.0)))
+        natural += self.body_title.sizeHint().height() + self.status_label.sizeHint().height() + 31
+        start = self.body_shell.height() if self.body_shell.isVisible() else 0
+        end = natural if show else 0
+        self.body_shell.setVisible(True)
+        self.body_shell.setMaximumHeight(max(0, start))
+        effect = QGraphicsOpacityEffect(self.body_shell)
+        self.body_shell.setGraphicsEffect(effect)
+        effect.setOpacity(1.0 if start else 0.0)
+        group = QParallelAnimationGroup(self)
+        height = QPropertyAnimation(self.body_shell, b"maximumHeight", group)
+        height.setDuration(theme.MOTION_BASE_MS)
+        height.setStartValue(start)
+        height.setEndValue(end)
+        height.setEasingCurve(QEasingCurve.Type.OutCubic)
+        opacity = QPropertyAnimation(effect, b"opacity", group)
+        opacity.setDuration(theme.MOTION_FAST_MS)
+        opacity.setStartValue(1.0 if start else 0.0)
+        opacity.setEndValue(1.0 if show else 0.0)
+        group.addAnimation(height)
+        group.addAnimation(opacity)
+
+        def finish() -> None:
+            self.body_shell.setVisible(show)
+            self.body_shell.setMaximumHeight(16777215)
+            self.body_shell.setGraphicsEffect(None)
+            if show:
+                self._sync_height()
+            self._body_animation = None
+
+        group.finished.connect(finish)
+        self._body_animation = group
+        group.start()
 
     def _sync_height(self) -> None:
-        if not self.body.isVisible():
+        if not self.body_shell.isVisible():
             return
         document = self.body.document()
         height = document.size().height() + document.documentMargin() * 2 + 12
@@ -353,8 +702,11 @@ class ActivityCard(QFrame):
         body: str = "",
         auto_expand: bool | None = None,
     ) -> None:
-        if self.title_label.text() != title:
-            self.title_label.setText(title)
+        presented_title = self._presented_title(title, status)
+        if self._full_title != presented_title:
+            self._full_title = presented_title
+            self.title_label.setToolTip(presented_title)
+            self._sync_title()
         if subtitle:
             self.subtitle_label.setText(subtitle)
             self.subtitle_label.show()
@@ -368,6 +720,15 @@ class ActivityCard(QFrame):
         if self.property("state") != status:
             self.setProperty("state", status)
             repolish(self)
+        tone = (
+            "good" if status == "completed" else
+            "bad" if status in {"failed", "denied", "cancelled"} else
+            "warn" if status in {"waiting", "waiting_approval"} else
+            "accent" if status in {"running", "started"} else
+            "muted"
+        )
+        self.icon.set_tone(tone)
+        self.icon.set_pulsing(status in {"running", "started", "waiting"})
 
         body = body[-self.BODY_LIMIT :] if len(body) > self.BODY_LIMIT else body
         if body != self._body_text:
@@ -410,7 +771,7 @@ class TranscriptView(QScrollArea):
 
     # Long lines are hard to track back to the next one, so the conversation
     # keeps a comfortable measure and centres itself in a wide window.
-    MAX_CONTENT_WIDTH = 880
+    MAX_CONTENT_WIDTH = 820
 
     def __init__(
         self,
@@ -469,7 +830,7 @@ class TranscriptView(QScrollArea):
                     "\n".join(
                         part
                         for part in (
-                            widget.title_label.text(),
+                            widget._full_title,
                             widget.subtitle_label.text(),
                             widget._body_text,
                         )
@@ -509,7 +870,15 @@ class TranscriptView(QScrollArea):
                 widget = self._build(entry)
                 self._widgets[entry.key] = widget
                 # Keep the trailing stretch last.
-                self._layout.insertWidget(self._layout.count() - 1, widget)
+                alignment = (
+                    Qt.AlignmentFlag.AlignRight
+                    if entry.kind == "user"
+                    else Qt.AlignmentFlag.AlignTop
+                )
+                if entry.kind == "user":
+                    widget.setMaximumWidth(690)
+                    widget.setMinimumWidth(280)
+                self._layout.insertWidget(self._layout.count() - 1, widget, 0, alignment)
                 self._order.insert(min(index, len(self._order)), entry.key)
                 self._signatures[entry.key] = ()
                 if self._settled:
@@ -596,9 +965,9 @@ def describe_card(entry: TranscriptEntry) -> dict[str, Any]:
         command = fmt.command_line(item.get("argv")) or fmt.text(item.get("command"))
         stdout = fmt.text(item.get("stdout"))
         stderr = fmt.text(item.get("stderr"))
-        body = ""
+        body = f"$ {command}" if command else ""
         if stdout:
-            body += stdout
+            body += ("\n\n" if body else "") + stdout
         if stderr:
             body += ("\n" if body else "") + stderr
         exit_code = item.get("exitCode")
@@ -658,10 +1027,8 @@ class CardListView(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        self.placeholder = QLabel(f"<b>{empty_title}</b><br><span>{empty_body}</span>")
-        self.placeholder.setObjectName("panelPlaceholder")
-        self.placeholder.setWordWrap(True)
-        self.placeholder.setAlignment(Qt.AlignmentFlag.AlignTop)
+        icons = {"process": "terminal", "tool": "browser", "diff": "diff"}
+        self.placeholder = EmptyPanel(icons.get(kind, "tool"), empty_title, empty_body, self)
         layout.addWidget(self.placeholder, 1)
 
         # The Runtime panel is already narrow, so it takes no reading measure.
@@ -755,7 +1122,12 @@ _ATTENTION_STATES = {
 
 
 class ThreadListItemWidget(QWidget):
-    """One conversation row: a title, and a status dot only when it matters."""
+    """One conversation row: a title, when it last moved, and a dot when it asks.
+
+    A row used to be a title alone on a 52px band, so a project whose threads
+    are all called the same thing read as a stack of identical grey text. The
+    second line spends height that was already being paid for.
+    """
 
     def __init__(
         self,
@@ -770,13 +1142,31 @@ class ThreadListItemWidget(QWidget):
         self._full_title = fmt.text(record.get("title")).strip() or "New conversation"
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(11, 7, 10, 7)
-        layout.setSpacing(8)
+        layout.setContentsMargins(0, 0, 9, 0)
+        layout.setSpacing(0)
 
+        # Selection reads as a bar in the gutter rather than a lighter box, so
+        # the row does not change width or shift its text when it is chosen.
+        self.marker = QFrame()
+        self.marker.setObjectName("threadRowMarker")
+        self.marker.setFixedWidth(2)
+        gutter = QVBoxLayout()
+        gutter.setContentsMargins(3, 8, 6, 8)
+        gutter.addWidget(self.marker)
+        layout.addLayout(gutter)
+
+        lines = QVBoxLayout()
+        lines.setContentsMargins(0, 7, 0, 7)
+        lines.setSpacing(2)
+        layout.addLayout(lines, 1)
+
+        top = QHBoxLayout()
+        top.setContentsMargins(0, 0, 0, 0)
+        top.setSpacing(8)
         self.title_label = QLabel(self._full_title)
         self.title_label.setObjectName("threadItemTitle")
         self.title_label.setTextFormat(Qt.TextFormat.PlainText)
-        layout.addWidget(self.title_label, 1)
+        top.addWidget(self.title_label, 1)
 
         state = "" if record.get("archived") else fmt.text(record.get("status"))
         marker = _ATTENTION_STATES.get(state, "")
@@ -784,7 +1174,17 @@ class ThreadListItemWidget(QWidget):
         self.status_dot.setObjectName("threadDot")
         self.status_dot.setProperty("state", marker)
         self.status_dot.setVisible(bool(marker))
-        layout.addWidget(self.status_dot, 0, Qt.AlignmentFlag.AlignVCenter)
+        top.addWidget(self.status_dot, 0, Qt.AlignmentFlag.AlignVCenter)
+        lines.addLayout(top)
+
+        when = fmt.relative_time(record.get("updatedAt"))
+        # Resting states are the norm; naming them on every row says nothing.
+        attention = fmt.human_status(state) if marker else ""
+        self.meta_label = QLabel(" · ".join(part for part in (when, attention) if part))
+        self.meta_label.setObjectName("threadItemMeta")
+        self.meta_label.setProperty("state", marker)
+        self.meta_label.setTextFormat(Qt.TextFormat.PlainText)
+        lines.addWidget(self.meta_label)
 
         detail = " · ".join(
             part
@@ -800,6 +1200,13 @@ class ThreadListItemWidget(QWidget):
         )
         # The metadata every row used to print is available, just not shouted.
         self.setToolTip(f"{self._full_title}\n{detail}" if detail else self._full_title)
+
+    def set_active(self, active: bool) -> None:
+        """Mark the row the transcript is currently showing."""
+        for widget in (self.marker, self.title_label):
+            if widget.property("active") != active:
+                widget.setProperty("active", active)
+                repolish(widget)
 
     def resizeEvent(self, event: Any) -> None:  # noqa: N802 - Qt override
         super().resizeEvent(event)
@@ -820,12 +1227,18 @@ class ThreadGroupHeader(QWidget):
         self.setObjectName("threadGroupHeader")
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(11, 12, 10, 4)
-        layout.setSpacing(0)
+        layout.setContentsMargins(11, 14, 10, 5)
+        layout.setSpacing(9)
         self.label = QLabel(title.upper())
         self.label.setObjectName("threadGroupLabel")
         self.label.setTextFormat(Qt.TextFormat.PlainText)
         layout.addWidget(self.label)
+        # A hairline carries the grouping to the edge of the panel, so runs of
+        # rows separate without another line of text.
+        rule = QFrame()
+        rule.setObjectName("threadGroupRule")
+        rule.setFixedHeight(1)
+        layout.addWidget(rule, 1)
 
 
 class ApprovalCard(QFrame):

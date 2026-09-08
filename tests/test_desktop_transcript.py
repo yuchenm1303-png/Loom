@@ -117,7 +117,7 @@ def test_cards_are_built_for_non_message_entries(qt_app):
     assert isinstance(view._widgets["m"], MessageWidget)
     card = view._widgets["p"]
     assert isinstance(card, ActivityCard)
-    assert card.title_label.text() == "$ pytest -q"
+    assert card.title_label.text() == "Ran $ pytest -q"
     assert card.status_label.text() == "Completed"
     view.close()
 

@@ -3,8 +3,10 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import platform
 import uuid
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -17,12 +19,78 @@ from .storage import _message_from_dict, _message_to_dict, utc_now
 _CONTEXT_VERSION = 1
 _MAX_SUMMARY_CHARS = 100_000
 
+# One copy, because a second one drifted: MultiAgentRuntime re-rendered the
+# envelope with its own edited wording, so changes here silently had no effect.
+RUNTIME_STATE_PREAMBLE = (
+    "LOOM_RUNTIME_STATE v1\n"
+    "This runtime state is authoritative for the current model step. "
+    "`environment` describes the machine you are running on; you may inspect it with "
+    "the tools listed here. "
+    "Do not infer broader filesystem, process, network, approval, or sub-agent "
+    "permissions than stated here.\n"
+)
+
+
+def render_runtime_state_text(payload: dict[str, Any]) -> str:
+    return RUNTIME_STATE_PREAMBLE + json.dumps(
+        payload, ensure_ascii=False, sort_keys=True, indent=2
+    )
+
 
 @dataclass(frozen=True, slots=True)
 class WorldStateEnvelope:
     digest: str
     payload: dict[str, Any]
     text: str
+
+
+def _default_shell() -> str:
+    """The shell binary present on this host, if one can be named."""
+    if os.name == "nt":
+        return os.environ.get("COMSPEC") or "powershell.exe"
+    return os.environ.get("SHELL") or "/bin/sh"
+
+
+def build_host_environment() -> dict[str, Any]:
+    """Describe the machine the model is actually running on.
+
+    The envelope's preamble tells the model not to infer capabilities beyond
+    what is stated. Stating a workspace and a permission mode but never a host
+    therefore reads as "there is no host": a question about the computer falls
+    outside the described world, and the model looks for an in-scope tool whose
+    *name* matches instead of running a command.
+
+    ``exec`` runs argv without an implicit shell, so naming the shell alone
+    would invite the opposite error. The invocation note keeps the two facts
+    together.
+    """
+    system = platform.system() or os.name
+    friendly = {"Darwin": "macOS", "Windows": "Windows", "Linux": "Linux"}.get(system, system)
+    shell = _default_shell()
+    now = datetime.now().astimezone()
+    offset = now.strftime("%z")
+    return {
+        "platform": friendly,
+        "os_version": platform.release(),
+        "shell": shell,
+        "shell_invocation": (
+            "exec runs argv directly with no implicit shell. To use the shell, "
+            f"name it in argv, for example {_shell_example(shell)}."
+        ),
+        "current_date": now.date().isoformat(),
+        # A localized tzname is encoded in the host code page and differs per
+        # machine language; the offset says the same thing unambiguously.
+        "utc_offset": f"{offset[:3]}:{offset[3:]}" if len(offset) == 5 else offset,
+    }
+
+
+def _shell_example(shell: str) -> str:
+    stem = Path(shell).stem.casefold()
+    if stem in {"powershell", "pwsh"}:
+        return '["powershell", "-NoProfile", "-Command", "<command>"]'
+    if stem == "cmd":
+        return '["cmd", "/c", "<command>"]'
+    return f'["{shell}", "-lc", "<command>"]'
 
 
 def build_world_state_envelope(
@@ -35,6 +103,7 @@ def build_world_state_envelope(
 ) -> WorldStateEnvelope:
     sandbox = step.world_state.sandbox
     state: dict[str, Any] = {
+        "environment": build_host_environment(),
         "workspace": step.world_state.workspace_dir,
         "model_profile": step.world_state.profile_id,
         "permissions": {
@@ -73,13 +142,9 @@ def build_world_state_envelope(
         "state_digest": digest,
         "state": state,
     }
-    text = (
-        "LOOM_RUNTIME_STATE v1\n"
-        "This runtime state is authoritative for the current model step. "
-        "Do not infer broader filesystem, process, network, or approval permissions than stated here.\n"
-        + json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2)
+    return WorldStateEnvelope(
+        digest=digest, payload=payload, text=render_runtime_state_text(payload)
     )
-    return WorldStateEnvelope(digest=digest, payload=payload, text=text)
 
 
 @dataclass(frozen=True, slots=True)

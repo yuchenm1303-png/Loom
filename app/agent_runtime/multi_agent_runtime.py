@@ -10,7 +10,11 @@ from app.ai import AIMessage, MessageRole
 from .agent_control import AgentControl
 from .agent_graph import AgentGraphStore, AgentHistoryMode
 from .context_runtime import ContextAgentRuntime
-from .context_state import WorldStateEnvelope, compaction_split_index
+from .context_state import (
+    WorldStateEnvelope,
+    compaction_split_index,
+    render_runtime_state_text,
+)
 from .history import repair_tool_history
 from .multi_agent_tools import multi_agent_tools
 
@@ -147,14 +151,9 @@ class MultiAgentRuntime(ContextAgentRuntime):
         )
         digest = hashlib.sha256(canonical_state.encode("utf-8")).hexdigest()
         payload["state_digest"] = digest
-        text = (
-            "LOOM_RUNTIME_STATE v1\n"
-            "This runtime state is authoritative for the current model step. "
-            "Do not infer broader filesystem, process, network, approval, or sub-agent permissions "
-            "than stated here.\n"
-            + json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2)
+        return WorldStateEnvelope(
+            digest=digest, payload=payload, text=render_runtime_state_text(payload)
         )
-        return WorldStateEnvelope(digest=digest, payload=payload, text=text)
 
 
 __all__ = ["MultiAgentRuntime"]

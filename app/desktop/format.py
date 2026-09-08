@@ -7,6 +7,7 @@ so a label, a tooltip and an activity row cannot drift apart.
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -64,6 +65,40 @@ def short_time(value: Any) -> str:
     if "T" in raw:
         return raw.split("T", 1)[1][:8]
     return raw[-8:] if len(raw) >= 8 else raw
+
+
+def relative_time(value: Any, *, now: datetime | None = None) -> str:
+    """When a conversation last moved, in the width of a sidebar row.
+
+    Rows in a project are often named the same thing; "3h" against "Sep 2" is
+    what actually tells two of them apart at a glance.
+    """
+    raw = text(value).strip()
+    if not raw:
+        return ""
+    try:
+        moment = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return ""
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    reference = now or datetime.now(timezone.utc)
+    if reference.tzinfo is None:
+        reference = reference.replace(tzinfo=timezone.utc)
+
+    seconds = max(0.0, (reference - moment).total_seconds())
+    if seconds < 90:
+        return "now"
+    minutes = int(seconds // 60)
+    if minutes < 60:
+        return f"{minutes}m"
+    hours = minutes // 60
+    if hours < 24:
+        return f"{hours}h"
+    days = hours // 24
+    if days < 7:
+        return f"{days}d"
+    return moment.astimezone().strftime("%b %d").replace(" 0", " ")
 
 
 def format_tokens(value: Any) -> str:
@@ -212,6 +247,7 @@ __all__ = [
     "marker_tone",
     "notification_summary",
     "pretty",
+    "relative_time",
     "same_path",
     "short_path",
     "short_time",

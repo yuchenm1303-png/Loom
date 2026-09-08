@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import time
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -200,6 +201,12 @@ class FakeClient:
         self.notification_listener(method, params)
 
 
+def fmt_ago(**delta):
+    return (datetime.now(timezone.utc) - timedelta(**delta)).isoformat(
+        timespec="milliseconds"
+    )
+
+
 def _wait_for(app, predicate, timeout=3.0):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -281,8 +288,10 @@ def test_tool_process_and_diff_items_render_inline_as_cards(desktop):
     assert kinds == ["user", "process", "diff", "tool", "tool", "assistant"]
 
     process_card = widgets[1]
-    assert process_card.title_label.text() == "$ python -V"
+    assert process_card.title_label.text() == "Ran $ python -V"
     assert "Python 3.12.10" in process_card._body_text
+    assert process_card.body_title.text() == "Shell"
+    assert process_card.status_label.text() == "Completed"
 
     diff_card = widgets[2]
     assert diff_card.title_label.text() == "Edited 1 file"
@@ -323,6 +332,36 @@ def test_rows_show_only_a_title_and_keep_the_detail_in_the_tooltip(desktop):
     assert row.status_dot.isVisible() is False
     assert "Completed" in row.toolTip()
     assert "7 tokens" in row.toolTip()
+
+
+def test_rows_say_when_they_last_moved_and_name_only_states_that_ask(desktop):
+    _app, _client, window = desktop
+
+    quiet = ThreadListItemWidget(
+        {"title": "Quiet", "status": "completed", "updatedAt": fmt_ago(hours=3)},
+        window.thread_list,
+    )
+    assert quiet.meta_label.text() == "3h"
+    assert quiet.status_dot.isVisibleTo(quiet) is False
+
+    asking = ThreadListItemWidget(
+        {"title": "Asking", "status": "waiting_approval", "updatedAt": fmt_ago(minutes=4)},
+        window.thread_list,
+    )
+    assert asking.meta_label.text() == "4m · Waiting Approval"
+    assert asking.status_dot.isVisibleTo(asking) is True
+
+
+def test_the_open_conversation_is_marked_on_the_row_itself(desktop):
+    app, _client, window = desktop
+
+    row = window.thread_list.itemWidget(_thread_rows(window)[0])
+    assert row.marker.property("active") is True
+
+    # Selecting nothing leaves no row claiming to be the open one.
+    window.thread_list.setCurrentItem(None)
+    app.processEvents()
+    assert row.marker.property("active") is False
 
 
 def test_searching_hides_a_project_heading_with_no_matches(desktop):

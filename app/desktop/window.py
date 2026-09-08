@@ -7,11 +7,10 @@ thread state and renders observable Runtime activity.
 
 from __future__ import annotations
 
-import html
 from pathlib import Path
 from typing import Any, Callable
 
-from PySide6.QtCore import QSettings, Qt, QTimer
+from PySide6.QtCore import QSettings, QSize, Qt, QTimer
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -30,7 +29,6 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QSplitter,
     QTabWidget,
-    QTextBrowser,
     QVBoxLayout,
     QWidget,
 )
@@ -42,6 +40,7 @@ from app.desktop.state import ThreadState
 from app.desktop.composer import ComposerPanel
 from app.desktop.widgets import (
     ApprovalCard,
+    ActivityTimelineView,
     Banner,
     CardListView,
     CenteredColumn,
@@ -50,8 +49,10 @@ from app.desktop.widgets import (
     ThreadGroupHeader,
     ThreadListItemWidget,
     TranscriptView,
+    VectorIcon,
     repolish,
     thread_row_size,
+    vector_icon,
 )
 
 
@@ -184,15 +185,16 @@ class LoomDesktopWindow(QMainWindow):
         self.sidebar_panel.setMinimumWidth(262)
         self.sidebar_panel.setMaximumWidth(350)
         layout = QVBoxLayout(self.sidebar_panel)
-        layout.setContentsMargins(18, 20, 14, 14)
-        layout.setSpacing(14)
+        layout.setContentsMargins(14, 16, 10, 12)
+        layout.setSpacing(12)
 
         brand = QHBoxLayout()
-        brand.setSpacing(10)
+        brand.setContentsMargins(4, 0, 2, 2)
+        brand.setSpacing(9)
         mark = QLabel("L")
         mark.setObjectName("brandMark")
         mark.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        mark.setFixedSize(34, 34)
+        mark.setFixedSize(28, 28)
         brand.addWidget(mark)
         titles = QVBoxLayout()
         titles.setSpacing(0)
@@ -263,7 +265,7 @@ class LoomDesktopWindow(QMainWindow):
         self.thread_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.thread_list.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
         self.thread_list.setUniformItemSizes(False)
-        self.thread_list.setSpacing(2)
+        self.thread_list.setSpacing(1)
         self.thread_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.thread_list.customContextMenuRequested.connect(self._show_thread_context_menu)
         self.thread_list.currentItemChanged.connect(self._thread_selection_changed)
@@ -383,22 +385,34 @@ class LoomDesktopWindow(QMainWindow):
         layout.setContentsMargins(18, 20, 16, 14)
         layout.setSpacing(12)
 
-        title_row = QHBoxLayout()
+        header = QFrame()
+        header.setObjectName("runtimeHeader")
+        title_row = QHBoxLayout(header)
+        title_row.setContentsMargins(0, 0, 0, 0)
+        title_row.setSpacing(12)
         titles = QVBoxLayout()
-        titles.setSpacing(0)
+        titles.setContentsMargins(0, 0, 0, 0)
+        titles.setSpacing(4)
+        title_line = QHBoxLayout()
+        title_line.setContentsMargins(0, 0, 0, 0)
+        title_line.setSpacing(8)
+        self.runtime_dot = VectorIcon("model", size=22, tone="accent", framed=True)
+        title_line.addWidget(self.runtime_dot, 0, Qt.AlignmentFlag.AlignVCenter)
         title = QLabel("Runtime")
         title.setObjectName("inspectorTitle")
-        titles.addWidget(title)
-        subtitle = QLabel("Execution, changes, and delegated work")
-        subtitle.setObjectName("mutedLabel")
+        title_line.addWidget(title)
+        title_line.addStretch(1)
+        titles.addLayout(title_line)
+        subtitle = QLabel("Execution · Changes · Delegated")
+        subtitle.setObjectName("inspectorSubtitle")
         titles.addWidget(subtitle)
-        title_row.addLayout(titles)
+        title_row.addLayout(titles, 1)
         title_row.addStretch(1)
         self.sandbox_label = QLabel("No process")
         self.sandbox_label.setObjectName("sandboxChip")
         self.sandbox_label.setProperty("state", "idle")
-        title_row.addWidget(self.sandbox_label, 0, Qt.AlignmentFlag.AlignTop)
-        layout.addLayout(title_row)
+        title_row.addWidget(self.sandbox_label, 0, Qt.AlignmentFlag.AlignVCenter)
+        layout.addWidget(header)
 
         self.activity_tabs = QTabWidget()
         self.activity_tabs.setObjectName("activityTabs")
@@ -409,11 +423,7 @@ class LoomDesktopWindow(QMainWindow):
         # Eliding turns these into "Acti… Termi… …"; the panel is wide enough
         # for the full labels once the tab padding is tight.
         tab_bar.setElideMode(Qt.TextElideMode.ElideNone)
-        self.activity_view = QTextBrowser()
-        self.activity_view.setObjectName("activityView")
-        self.activity_view.setOpenExternalLinks(False)
-        self.activity_view.setFrameShape(QFrame.Shape.NoFrame)
-        self.activity_view.document().setDocumentMargin(0)
+        self.activity_view = ActivityTimelineView()
         self.terminal_view = CardListView(
             "process",
             empty_title="Terminal is quiet",
@@ -435,6 +445,14 @@ class LoomDesktopWindow(QMainWindow):
         self.activity_tabs.addTab(self.diff_view, "Diff")
         self.activity_tabs.addTab(self.browser_view, "Browser")
         self.activity_tabs.addTab(self.agents_view, "Agents")
+        for index, name in enumerate(("model", "terminal", "diff", "browser", "agents")):
+            self.activity_tabs.setTabIcon(index, vector_icon(name, size=16))
+        tab_bar.setIconSize(QSize(16, 16))
+        self.activity_tabs.setTabToolTip(0, "Runtime event timeline")
+        self.activity_tabs.setTabToolTip(1, "Commands and process output")
+        self.activity_tabs.setTabToolTip(2, "Workspace file changes")
+        self.activity_tabs.setTabToolTip(3, "Browser tool activity")
+        self.activity_tabs.setTabToolTip(4, "Delegated agent work")
         layout.addWidget(self.activity_tabs, 1)
 
         # Tab widths depend on the installed UI font, so let the tab bar decide
@@ -672,6 +690,7 @@ class LoomDesktopWindow(QMainWindow):
         self, current: QListWidgetItem | None, _previous: QListWidgetItem | None
     ) -> None:
         self._sync_thread_actions()
+        self._sync_thread_row_highlight()
         if current is None:
             return
         record = current.data(THREAD_ROLE) or {}
@@ -730,7 +749,9 @@ class LoomDesktopWindow(QMainWindow):
             self.thread_list.blockSignals(True)
             self.thread_list.setCurrentItem(selected_item)
             self.thread_list.blockSignals(False)
+            self._sync_thread_row_highlight()
             return
+        self._sync_thread_row_highlight()
 
         first = next(
             (
@@ -783,6 +804,19 @@ class LoomDesktopWindow(QMainWindow):
             )
             for name, items in ordered
         ]
+
+    def _sync_thread_row_highlight(self) -> None:
+        """Mark the open conversation on the row itself.
+
+        The list's own :selected rule only paints a slightly lighter box, which
+        on a dark panel is barely a signal; the row draws an accent gutter.
+        """
+        current = self.thread_list.currentItem()
+        for index in range(self.thread_list.count()):
+            item = self.thread_list.item(index)
+            widget = self.thread_list.itemWidget(item)
+            if isinstance(widget, ThreadListItemWidget):
+                widget.set_active(item is current and not item.isHidden())
 
     def _add_group_header(self, title: str) -> None:
         item = QListWidgetItem()
@@ -1181,7 +1215,7 @@ class LoomDesktopWindow(QMainWindow):
         self._activity_tail = [
             (
                 fmt.short_time(event.get("createdAt")),
-                fmt.event_marker(event.get("kind")),
+                fmt.text(event.get("kind")),
                 fmt.event_summary(event),
             )
             for event in events[-300:]
@@ -1205,23 +1239,7 @@ class LoomDesktopWindow(QMainWindow):
         self._update_sandbox_status(processes)
 
     def _render_activity(self) -> None:
-        rows: list[str] = []
-        for when, marker, summary in self._activity_tail[-300:]:
-            rows.append(
-                f"<div class='event'><span class='marker {fmt.marker_tone(marker)}'>"
-                f"{html.escape(marker)}</span>"
-                f"<span class='summary'>{html.escape(summary)}</span>"
-                f"<div class='time'>{html.escape(when or 'live')}</div></div>"
-            )
-        if not rows:
-            rows.append(
-                "<div class='quiet'><b>Runtime is quiet</b><br>"
-                "<span>Model steps, tools, commands, diffs, and delegated work will appear here."
-                "</span></div>"
-            )
-        self.activity_view.setHtml(theme.ACTIVITY_CSS + "".join(rows))
-        bar = self.activity_view.verticalScrollBar()
-        bar.setValue(bar.maximum())
+        self.activity_view.render_events(self._activity_tail[-300:])
 
     @staticmethod
     def _diff_text(items: list[dict[str, Any]]) -> str:
