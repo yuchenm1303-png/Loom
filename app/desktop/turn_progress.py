@@ -1,14 +1,4 @@
-"""Conversation-level progress feedback for a live Loom turn.
-
-The inline assistant thinking widget only exists after an assistant item has been
-created. There is an earlier and very noticeable gap after the user presses Enter:
-thread creation, turn startup, model dispatch, and tool transitions can all be
-happening while the transcript itself has nothing new to paint.
-
-This module gives that whole turn one stable status line immediately above the
-composer. It is deliberately plain product chrome rather than another card: a
-small semantic dot, a concise phase label, elapsed time, and a hairline rule.
-"""
+"""Persistent conversation-level progress feedback for a live Loom turn."""
 
 from __future__ import annotations
 
@@ -33,29 +23,16 @@ from app.desktop.widgets import CenteredColumn, TranscriptView, repolish
 _INSTALLED = False
 
 _PROGRESS_QSS = """
-QFrame#turnProgress {
-    background:transparent;
-    border:none;
-}
+QFrame#turnProgress { background:transparent; border:none; }
 QLabel#turnProgressDot {
-    min-width:6px;
-    max-width:6px;
-    min-height:6px;
-    max-height:6px;
-    border-radius:3px;
-    background:#6f7786;
+    min-width:6px; max-width:6px; min-height:6px; max-height:6px;
+    border-radius:3px; background:#6f7786;
 }
 QLabel#turnProgressText {
-    background:transparent;
-    color:#8d94a2;
-    font-size:11px;
-    font-weight:600;
+    background:transparent; color:#8d94a2; font-size:11px; font-weight:600;
 }
 QFrame#turnProgressRule {
-    min-height:1px;
-    max-height:1px;
-    background:#20252e;
-    border:none;
+    min-height:1px; max-height:1px; background:#20252e; border:none;
 }
 QFrame#turnProgress[tone="working"] QLabel#turnProgressDot { background:#8f97ea; }
 QFrame#turnProgress[tone="working"] QLabel#turnProgressText { color:#a7add8; }
@@ -69,7 +46,7 @@ QFrame#turnProgress[tone="failed"] QLabel#turnProgressText { color:#d1979f; }
 
 
 class TurnProgressLine(QFrame):
-    """Compact, always-readable status for the currently observed turn."""
+    """A compact status line shown above the composer while a turn is alive."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -192,7 +169,6 @@ def _sync_progress(window: Any, status: str | None = None) -> None:
     if getattr(window.state, "archived", False):
         progress.set_state("")
         return
-
     if status == "waiting_approval":
         progress.set_state("Waiting for approval", tone="waiting")
         return
@@ -215,7 +191,7 @@ def _sync_progress(window: Any, status: str | None = None) -> None:
         progress.set_state(text)
         return
 
-    summary = fmt.text(getattr(window, "_turn_summary", ""))
+    summary = fmt.text(getattr(window, "_turn_progress_summary", ""))
     progress.set_state(summary, tone="done" if summary else "")
 
 
@@ -234,7 +210,7 @@ def _item_phase(params: Any) -> str | None:
 
 
 def install_window(window_cls: type[Any]) -> None:
-    """Attach one progress line to LoomDesktopWindow without changing Runtime data."""
+    """Attach the progress line without changing Runtime or App Server behavior."""
     global _INSTALLED
     if _INSTALLED:
         return
@@ -253,6 +229,7 @@ def install_window(window_cls: type[Any]) -> None:
         original_build_ui(self)
         self._turn_phase = ""
         self._last_turn_elapsed = 0
+        self._turn_progress_summary = ""
 
         composer_host = self.composer_frame.parentWidget()
         conversation = composer_host.parentWidget() if composer_host is not None else None
@@ -261,8 +238,9 @@ def install_window(window_cls: type[Any]) -> None:
             return
 
         self.turn_progress = TurnProgressLine()
-        width = TranscriptView.MAX_CONTENT_WIDTH + 18
-        self.turn_progress_column = CenteredColumn(self.turn_progress, width)
+        self.turn_progress_column = CenteredColumn(
+            self.turn_progress, TranscriptView.MAX_CONTENT_WIDTH + 18
+        )
         index = layout.indexOf(composer_host)
         layout.insertWidget(index if index >= 0 else layout.count(), self.turn_progress_column)
         self.turn_progress_column.hide()
@@ -270,10 +248,11 @@ def install_window(window_cls: type[Any]) -> None:
     def send_prompt(self: Any, text: str = "") -> None:
         self._turn_phase = "starting"
         self._last_turn_elapsed = 0
+        self._turn_progress_summary = ""
         original_send_prompt(self, text)
-        # Draft conversations do not have a thread id yet, so the base status
-        # code intentionally does not start its clock. The user has still
-        # pressed Send, though; feedback should begin at that exact moment.
+        # Draft thread creation happens before the base window has a thread id,
+        # so begin feedback/elapsed time at the Send click rather than waiting
+        # for the first server notification.
         if fmt.text(self.status_label.property("state")) == "starting":
             if self._turn_started_at is None:
                 self._turn_started_at = time.monotonic()
@@ -283,9 +262,6 @@ def install_window(window_cls: type[Any]) -> None:
 
     def _set_status(self: Any, status: str) -> None:
         original_set_status(self, status)
-        # The old feedback lived in the crowded composer control row. Keep its
-        # text populated for compatibility/accessibility, but make the dedicated
-        # line the one visible status surface.
         self.composer_state_label.hide()
         _sync_progress(self, status)
 
@@ -298,15 +274,19 @@ def install_window(window_cls: type[Any]) -> None:
         elapsed = _elapsed(self)
         self._last_turn_elapsed = elapsed
         original_finish_turn_clock(self, status)
+        # Keep the base window's "Done · Ns" summary untouched for compatibility;
+        # the new visible product surface can use the clearer "Completed" wording.
         if fmt.text(status) == "completed":
-            self._turn_summary = (
+            self._turn_progress_summary = (
                 f"Completed · {fmt.elapsed_label(elapsed)}" if elapsed >= 1 else "Completed"
             )
-            self._turn_summary_timer.start()
+        else:
+            self._turn_progress_summary = ""
         self._turn_phase = ""
 
     def _clear_turn_summary(self: Any) -> None:
         original_clear_turn_summary(self)
+        self._turn_progress_summary = ""
         self.composer_state_label.hide()
         _sync_progress(self)
 
@@ -334,6 +314,7 @@ def install_window(window_cls: type[Any]) -> None:
         if fmt.text(thread_id) != fmt.text(self.state.thread_id):
             self._turn_phase = ""
             self._last_turn_elapsed = 0
+            self._turn_progress_summary = ""
         original_load_thread(self, thread_id)
 
     def _on_server_exit(self: Any, message: str) -> None:
