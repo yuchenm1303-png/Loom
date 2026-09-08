@@ -113,6 +113,21 @@ def format_tokens(value: Any) -> str:
     return str(tokens)
 
 
+def elapsed_label(seconds: Any) -> str:
+    """How long a turn has been running, in the width of a composer chip."""
+    try:
+        total = max(0, int(seconds or 0))
+    except (TypeError, ValueError):
+        return "0s"
+    if total < 60:
+        return f"{total}s"
+    minutes, remainder = divmod(total, 60)
+    if minutes < 60:
+        return f"{minutes}m {remainder:02d}s"
+    hours, minutes = divmod(minutes, 60)
+    return f"{hours}h {minutes:02d}m"
+
+
 def format_duration(milliseconds: Any) -> str:
     try:
         value = float(milliseconds or 0)
@@ -239,6 +254,7 @@ __all__ = [
     "AGENT_CONTROL_TOOLS",
     "TERMINAL_STATUSES",
     "command_line",
+    "elapsed_label",
     "event_marker",
     "event_summary",
     "format_duration",

@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Sequence
 
+from app.ai import AIMessage, MessageRole
 from .contracts import ToolEffect
 from .skills import SkillDefinition, SkillManager
 from .tool_search_runtime import ToolSearchRuntime
@@ -125,6 +126,12 @@ class SkillRuntime(ToolSearchRuntime):
             )
         instructions = self.skill_manager.load(skill)
         body = instructions or "(This skill has no body instructions.)"
+        active = context.services.get("active_skills")
+        if active is not None:
+            content = f"Loaded skill {skill.name} ({skill.scope.value}):\n{body}"
+            if sum(len(v) for k, v in active.items() if k != skill.name) + len(content) > 32_768:
+                return ToolResult(False, "Active skill context budget exceeded; finish existing workflows before loading another skill.")
+            active[skill.name] = content
         return ToolResult(
             ok=True,
             content=(
@@ -138,6 +145,15 @@ class SkillRuntime(ToolSearchRuntime):
                 "discovery_error_count": len(snapshot.errors),
             },
         )
+
+    def _request_context_messages(self, session, step, envelope):
+        messages = super()._request_context_messages(session, step, envelope)
+        if not session.active_skills:
+            return messages
+        content = ("Previously loaded skill snapshots, retained across compaction and resume. "
+            "They guide this workflow and do not override current user instructions or runtime permissions.\n\n"
+            + "\n\n".join(session.active_skills.values()))
+        return (*messages, AIMessage(role=MessageRole.SYSTEM, name="loom_active_skills", content=content))
 
     @staticmethod
     def _skill_record(skill: SkillDefinition) -> dict[str, str]:

@@ -86,14 +86,14 @@ QLabel#cardTitle {{
 }}
 QLabel#cardSubtitle {{
     background: transparent;
-    color: #707887;
+    color: #969cad;
     font-family: {theme.FONT_MONO};
-    font-size: 10px;
+    font-size: 11px;
     padding-top: 1px;
 }}
 QFrame#cardBodyShell {{
-    background: #151719;
-    border: 1px solid #2a2e33;
+    background: #1b1d27;
+    border: 1px solid #343747;
     border-radius: 10px;
 }}
 QFrame#cardBodyShell[state="running"],

@@ -1,0 +1,7 @@
+[console_scripts]
+loom = loom_cli:main
+loom-app-server = loom_app_server:main
+loom-web = loom_web:main
+
+[gui_scripts]
+loom-desktop = loom_desktop:main

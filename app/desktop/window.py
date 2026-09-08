@@ -7,6 +7,7 @@ thread state and renders observable Runtime activity.
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 from typing import Any, Callable
 
@@ -64,6 +65,10 @@ GROUP_ROLE = Qt.ItemDataRole.UserRole + 1
 RECONCILE_DELAY_MS = 90
 THREAD_LIST_DELAY_MS = 250
 
+# Composer feedback for the life of a turn.
+TURN_CLOCK_MS = 1000
+TURN_SUMMARY_MS = 4500
+
 
 class LoomDesktopWindow(QMainWindow):
     """Native Loom client over the stable App Server protocol."""
@@ -99,6 +104,11 @@ class LoomDesktopWindow(QMainWindow):
         self._pending_prompt = ""
         self._closed = False
         self._activity_tail: list[tuple[str, str, str]] = []
+        # A turn is the unit the composer reports on: when it started, and how
+        # long the last one took once it is over.
+        self._turn_started_at: float | None = None
+        self._turn_summary = ""
+        self._stopping = False
         self._sidebar_visible = True
         self._runtime_visible = True
         self.current_model = ""
@@ -123,6 +133,20 @@ class LoomDesktopWindow(QMainWindow):
         self._thread_list_timer.setSingleShot(True)
         self._thread_list_timer.setInterval(THREAD_LIST_DELAY_MS)
         self._thread_list_timer.timeout.connect(self.refresh_threads)
+
+        # A long turn otherwise reads as a frozen window: the same six words for
+        # two minutes. Ticking the elapsed time is the cheapest honest signal
+        # that work is still happening.
+        self._turn_clock = QTimer(self)
+        self._turn_clock.setInterval(TURN_CLOCK_MS)
+        self._turn_clock.timeout.connect(self._tick_turn_clock)
+
+        # How long the finished turn took stays up briefly, then gets out of the
+        # way; a permanent "Completed" chip beside the composer says nothing.
+        self._turn_summary_timer = QTimer(self)
+        self._turn_summary_timer.setSingleShot(True)
+        self._turn_summary_timer.setInterval(TURN_SUMMARY_MS)
+        self._turn_summary_timer.timeout.connect(self._clear_turn_summary)
 
         self._build_ui()
         self.setStyleSheet(theme.stylesheet())
@@ -162,7 +186,7 @@ class LoomDesktopWindow(QMainWindow):
         self._build_sidebar()
         self._build_conversation()
         self._build_runtime_panel()
-        self.main_splitter.setSizes([288, 1020, 372])
+        self.main_splitter.setSizes([280, 1040, 360])
         self.main_splitter.setStretchFactor(0, 0)
         self.main_splitter.setStretchFactor(1, 1)
         self.main_splitter.setStretchFactor(2, 0)
@@ -185,7 +209,7 @@ class LoomDesktopWindow(QMainWindow):
         self.sidebar_panel.setMinimumWidth(262)
         self.sidebar_panel.setMaximumWidth(350)
         layout = QVBoxLayout(self.sidebar_panel)
-        layout.setContentsMargins(14, 16, 10, 12)
+        layout.setContentsMargins(18, 24, 14, 18)
         layout.setSpacing(12)
 
         brand = QHBoxLayout()
@@ -194,7 +218,7 @@ class LoomDesktopWindow(QMainWindow):
         mark = QLabel("L")
         mark.setObjectName("brandMark")
         mark.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        mark.setFixedSize(28, 28)
+        mark.setFixedSize(36, 36)
         brand.addWidget(mark)
         titles = QVBoxLayout()
         titles.setSpacing(0)
@@ -403,7 +427,7 @@ class LoomDesktopWindow(QMainWindow):
         title_line.addWidget(title)
         title_line.addStretch(1)
         titles.addLayout(title_line)
-        subtitle = QLabel("Execution · Changes · Delegated")
+        subtitle = QLabel("Execution details")
         subtitle.setObjectName("inspectorSubtitle")
         titles.addWidget(subtitle)
         title_row.addLayout(titles, 1)
@@ -417,7 +441,7 @@ class LoomDesktopWindow(QMainWindow):
         self.activity_tabs = QTabWidget()
         self.activity_tabs.setObjectName("activityTabs")
         self.activity_tabs.setDocumentMode(True)
-        self.activity_tabs.setUsesScrollButtons(False)
+        self.activity_tabs.setUsesScrollButtons(True)
         tab_bar = self.activity_tabs.tabBar()
         tab_bar.setExpanding(False)
         # Eliding turns these into "Acti… Termi… …"; the panel is wide enough
@@ -455,15 +479,8 @@ class LoomDesktopWindow(QMainWindow):
         self.activity_tabs.setTabToolTip(4, "Delegated agent work")
         layout.addWidget(self.activity_tabs, 1)
 
-        # Tab widths depend on the installed UI font, so let the tab bar decide
-        # how narrow this panel may get instead of guessing a constant.
-        margins = layout.contentsMargins()
-        self.activity_panel.setMinimumWidth(
-            max(
-                self.activity_panel.minimumWidth(),
-                tab_bar.sizeHint().width() + margins.left() + margins.right() + 8,
-            )
-        )
+        # Keep room for the conversation; the tab bar scrolls at narrow widths.
+        self.activity_panel.setMinimumWidth(330)
 
         self.main_splitter.addWidget(self.activity_panel)
 
@@ -702,6 +719,13 @@ class LoomDesktopWindow(QMainWindow):
         thread_id = fmt.text(thread_id).strip()
         if not thread_id:
             return
+        if thread_id != self.state.thread_id:
+            # Elapsed time belongs to the turn being watched, and the last
+            # turn's summary belongs to the conversation it happened in.
+            self._turn_started_at = None
+            self._turn_summary = ""
+            self._turn_summary_timer.stop()
+            self._stopping = False
         # One tag for all snapshot reads: a newer selection supersedes an older
         # in-flight one instead of racing it onto the screen.
         self.rpc.submit("snapshot", lambda: self.client.thread_read(thread_id))
@@ -1010,6 +1034,12 @@ class LoomDesktopWindow(QMainWindow):
         text = fmt.text(text).strip() or self.composer_panel.text()
         if not text or self.state.archived:
             return
+        # A new prompt supersedes whatever the last turn had to say, and the
+        # reader must see what they just sent even if they had scrolled up.
+        self._turn_summary = ""
+        self._turn_summary_timer.stop()
+        self._turn_started_at = None
+        self._stopping = False
         if not self.state.thread_id:
             if self._draft_workspace is None:
                 return
@@ -1018,6 +1048,7 @@ class LoomDesktopWindow(QMainWindow):
             self._pending_prompt = text
             self.state.set_optimistic_user(text)
             self._render_transcript()
+            self.transcript.scroll_to_tail()
             self._set_status("starting")
             self._create_thread(self._draft_workspace)
             return
@@ -1025,6 +1056,7 @@ class LoomDesktopWindow(QMainWindow):
         self.composer_panel.clear()
         self.state.set_optimistic_user(text)
         self._render_transcript()
+        self.transcript.scroll_to_tail()
         self._set_status("starting")
         thread_id = self.state.thread_id
         self.rpc.submit(f"turn:{thread_id}", lambda: self.client.turn_start(thread_id, text))
@@ -1034,6 +1066,11 @@ class LoomDesktopWindow(QMainWindow):
         if not thread_id:
             return
         turn_id = self.current_turn_id or None
+        # Stopping is a request to a running turn, not an instant state change.
+        # Saying so immediately is the difference between a considered pause and
+        # a button that appears to have done nothing.
+        self._stopping = True
+        self._set_status(self.state.status)
         self.rpc.submit(
             f"interrupt:{thread_id}", lambda: self.client.turn_interrupt(thread_id, turn_id)
         )
@@ -1160,6 +1197,12 @@ class LoomDesktopWindow(QMainWindow):
     def _render_transcript(self) -> None:
         entries = self.state.entries()
         if not entries:
+            # A live turn briefly has nothing to show between the durable
+            # snapshot and the first live item. Throwing the reader back to
+            # "Ready to begin?" in that gap reads as the conversation being
+            # lost, so the transcript holds its ground while work is running.
+            if self.state.status in fmt.ACTIVE_STATUSES and not self.transcript.isHidden():
+                return
             self.transcript.clear()
             self.transcript.hide()
             self.empty_state.show()
@@ -1188,27 +1231,79 @@ class LoomDesktopWindow(QMainWindow):
             read_only=archived,
         )
 
+        self._sync_turn_clock(active and has_thread and not archived)
+
         if archived:
             self.composer_panel.set_placeholder("Archived conversation · restore to continue")
             self._set_composer_state("Archived · read-only")
             return
         self.composer_panel.set_placeholder("Message Loom…")
         if status == "waiting_approval":
-            state_text = "Waiting for approval"
+            state_text, tone = "Waiting for approval", "waiting"
+        elif self._stopping and status in {"running", "starting"}:
+            state_text, tone = "Stopping…", "waiting"
         elif status in {"running", "starting"}:
-            state_text = "Loom is working"
+            state_text, tone = self._working_text(), "working"
         elif status == "failed":
-            state_text = "Turn failed"
+            state_text, tone = "Turn failed", "failed"
+        elif status == "cancelled":
+            state_text, tone = "Stopped", ""
         else:
             # "Ready" is the resting state; saying so every time says nothing.
-            state_text = ""
-        self._set_composer_state(state_text)
+            state_text, tone = self._turn_summary, "done" if self._turn_summary else ""
+        self._set_composer_state(state_text, tone=tone)
+
+    # ---- the life of a turn ------------------------------------------------
+
+    def _working_text(self) -> str:
+        elapsed = self._elapsed_seconds()
+        if elapsed < 2:
+            return "Loom is working"
+        return f"Loom is working · {fmt.elapsed_label(elapsed)}"
+
+    def _elapsed_seconds(self) -> int:
+        if self._turn_started_at is None:
+            return 0
+        return max(0, int(time.monotonic() - self._turn_started_at))
+
+    def _sync_turn_clock(self, running: bool) -> None:
+        if running:
+            if self._turn_started_at is None:
+                self._turn_started_at = time.monotonic()
+            if not self._turn_clock.isActive():
+                self._turn_clock.start()
+            return
+        self._turn_clock.stop()
+
+    def _tick_turn_clock(self) -> None:
+        if self.state.status in {"running", "starting"} and not self.state.archived:
+            self._set_composer_state(self._working_text())
+            return
+        self._turn_clock.stop()
+
+    def _finish_turn_clock(self, status: str) -> None:
+        """Report how long the turn took, briefly, then stop saying anything."""
+        elapsed = self._elapsed_seconds()
+        self._turn_clock.stop()
+        self._turn_started_at = None
+        self._stopping = False
+        if status == "completed" and elapsed >= 2:
+            self._turn_summary = f"Done · {fmt.elapsed_label(elapsed)}"
+            self._turn_summary_timer.start()
+        else:
+            self._turn_summary = ""
+            self._turn_summary_timer.stop()
+
+    def _clear_turn_summary(self) -> None:
+        self._turn_summary = ""
+        if self.state.status not in fmt.ACTIVE_STATUSES:
+            self._set_composer_state("")
 
     def _set_usage(self, total: int) -> None:
         self.composer_panel.set_usage(int(total or 0))
 
-    def _set_composer_state(self, text: str) -> None:
-        self.composer_panel.set_state(text)
+    def _set_composer_state(self, text: str, *, tone: str = "") -> None:
+        self.composer_panel.set_state(text, tone=tone)
 
     def _render_runtime_panels(self) -> None:
         events = self.state.snapshot.get("events") or []
@@ -1280,6 +1375,11 @@ class LoomDesktopWindow(QMainWindow):
             repolish(self.sandbox_label)
 
     def _append_activity(self, text: str, *, marker: str = "•") -> None:
+        # Streaming a single reply emits one notification per chunk, which used
+        # to stack dozens of identical "Loom is responding" rows and bury the
+        # steps that actually differ. Repeats collapse into the row they repeat.
+        if self._activity_tail and self._activity_tail[-1][2] == text:
+            return
         self._activity_tail = self._activity_tail[-299:] + [("live", marker, text)]
         self._render_activity()
 
@@ -1289,6 +1389,12 @@ class LoomDesktopWindow(QMainWindow):
 
     def _on_notification(self, method: str, params: Any) -> None:
         if not isinstance(params, dict):
+            return
+        if method == "thread/resync":
+            if not params.get("threadId") or params.get("threadId") == self.state.thread_id:
+                self.state.finish_streaming()
+                self._schedule_reconcile()
+            self.schedule_thread_refresh()
             return
         if method in {"thread/started", "thread/updated", "thread/deleted"}:
             self.schedule_thread_refresh()
@@ -1335,8 +1441,13 @@ class LoomDesktopWindow(QMainWindow):
             self.state.clear_optimistic_user()
             self.state.set_status(status)
             self.approval_frame.dismiss()
+            self._finish_turn_clock(status)
             self._render_transcript()
             self._set_status(status)
+            # The turn is over and the next move is the reader's, so the caret
+            # goes back where they need it without them reaching for the mouse.
+            if not self.state.archived:
+                self.composer.setFocus(Qt.FocusReason.OtherFocusReason)
             self._schedule_reconcile()
             self.schedule_thread_refresh()
 
@@ -1354,10 +1465,11 @@ class LoomDesktopWindow(QMainWindow):
             changed = bool(
                 self.state.append_process_output(item_id, stdout=stdout, stderr=stderr)
             ) or changed
-            if stdout:
-                self.terminal_view.appendPlainText(stdout.rstrip("\n"))
-            if stderr:
-                self.terminal_view.appendPlainText(stderr.rstrip("\n"))
+            # The Terminal tab is a card list rendered from thread state, not a
+            # text box to append to. Calling the old plain-text API raised on
+            # every streamed chunk, which killed this handler before the
+            # transcript could show the output arriving.
+            self.terminal_view.render_items(self.state.items_of_type("process")[-30:])
         if changed:
             self._render_transcript()
 

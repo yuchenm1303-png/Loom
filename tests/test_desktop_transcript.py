@@ -117,8 +117,8 @@ def test_cards_are_built_for_non_message_entries(qt_app):
     assert isinstance(view._widgets["m"], MessageWidget)
     card = view._widgets["p"]
     assert isinstance(card, ActivityCard)
-    assert card.title_label.text() == "Ran $ pytest -q"
-    assert card.status_label.text() == "Completed"
+    assert card.title_label.text() == "Ran pytest -q"
+    assert card.status_label.text() == "✓  Success"
     view.close()
 
 
@@ -141,4 +141,20 @@ def test_new_rows_fade_in_unless_reduced_motion_is_requested(qt_app, monkeypatch
     assert (effect is None) is reduced
 
     _settle(qt_app, view, rounds=80)
+    view.close()
+
+
+def test_a_code_block_is_tall_enough_to_read(qt_app):
+    view = TranscriptView()
+    view.resize(760, 500)
+    view.show()
+    source = "\n".join(f"line_{index} = {index}" for index in range(6))
+    view.render([_message("a", f"here:\n\n```python\n{source}\n```\n")])
+    _settle(qt_app, view)
+
+    block = view._widgets["a"]._widgets[-1]
+    spacing = block.body.fontMetrics().lineSpacing()
+    # QPlainTextEdit reports its document height in lines, not pixels. Adding
+    # that to pixel margins clamped every block to a clipped two-line box.
+    assert block.body.height() >= 6 * spacing
     view.close()

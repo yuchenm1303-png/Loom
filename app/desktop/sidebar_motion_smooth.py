@@ -21,7 +21,7 @@ from PySide6.QtWidgets import QWidget
 from app.desktop import sidebar_motion, theme
 
 
-_PANEL_DURATION_MS = 205
+_PANEL_DURATION_MS = 240
 
 
 def _set_exact_width(panel: QWidget, width: int | float) -> None:
@@ -48,8 +48,8 @@ def _set_panel_visible(
 ) -> None:
     """Animate splitter width without fading away allocated panel space."""
     original_min, original_max = self._panel_constraints[key]
-    splitter = self.window.main_splitter
-    index = splitter.indexOf(panel)
+    splitter = getattr(self.window, "main_splitter", None)
+    index = splitter.indexOf(panel) if splitter is not None else -1
 
     running = self._panel_animations.pop(key, None)
     reversing = running is not None
@@ -62,7 +62,7 @@ def _set_panel_visible(
     # into a panel transition.
     panel.setGraphicsEffect(None)
 
-    if not theme.motion_enabled():
+    if not theme.motion_enabled() or splitter is None:
         _restore_constraints(self, key, panel)
         panel.setVisible(bool(visible))
         if index >= 0:

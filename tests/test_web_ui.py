@@ -244,3 +244,40 @@ def test_service_rejects_missing_workspace(tmp_path: Path) -> None:
             workspace=str(tmp_path / "missing"),
             permission_mode="approval",
         )
+
+def test_snapshot_does_not_report_idle_with_stale_messages(tmp_path: Path, monkeypatch) -> None:
+    service, runtime, store, workspace = build_service(tmp_path)
+    session_id = service.create_session(workspace=str(workspace), permission_mode="approval")["session"]["session_id"]
+    service._active_sessions.add(session_id)
+    persisted = threading.Event()
+    original_events = store.events
+    workers = []
+
+    def finish():
+        runtime.start_turn(session_id, "finished during snapshot")
+        # A real worker clears active under this same guard after persisting.
+        acquired = service._guard.acquire(blocking=False)
+        if acquired:
+            try:
+                service._active_sessions.discard(session_id)
+            finally:
+                service._guard.release()
+        persisted.set()
+        if not acquired:
+            with service._guard:
+                service._active_sessions.discard(session_id)
+
+    def events_after_completion(sid):
+        worker = threading.Thread(target=finish)
+        workers.append(worker)
+        worker.start()
+        assert persisted.wait(2)
+        return original_events(sid)
+
+    monkeypatch.setattr(store, "events", events_after_completion)
+    snapshot = service.snapshot(session_id)
+    for worker in workers:
+        worker.join(2)
+        assert not worker.is_alive()
+    assert snapshot["active"] or snapshot["final_text"] == "Echo: finished during snapshot"
+    assert snapshot["session"]["active"] == snapshot["active"]

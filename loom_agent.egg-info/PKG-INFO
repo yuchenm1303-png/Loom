@@ -1,3 +1,28 @@
+Metadata-Version: 2.4
+Name: loom-agent
+Version: 0.1.0
+Summary: Personal general-purpose tool-using AI agent
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+Requires-Dist: openai<3,>=1
+Requires-Dist: keyring<26,>=25
+Requires-Dist: PyYAML<7,>=6
+Requires-Dist: jsonschema<5,>=4.23
+Requires-Dist: pywinpty<4,>=3.0.5; platform_system == "Windows"
+Provides-Extra: dev
+Requires-Dist: pytest<9,>=8; extra == "dev"
+Provides-Extra: browser
+Requires-Dist: browser-use<0.14,>=0.13.10; extra == "browser"
+Provides-Extra: mcp
+Requires-Dist: mcp<3,>=2.1; extra == "mcp"
+Provides-Extra: desktop
+Requires-Dist: PySide6<7,>=6.7; extra == "desktop"
+Provides-Extra: computer
+Requires-Dist: Pillow<13,>=11; extra == "computer"
+Requires-Dist: pyautogui<0.10,>=0.9.54; extra == "computer"
+Requires-Dist: pywinauto<0.7,>=0.6.9; extra == "computer"
+Requires-Dist: pywin32<400,>=306; extra == "computer"
+
 # Loom
 
 Loom is a personal, general-purpose AI agent built for real tool use. Runtime v2 is organized around durable thread state, frozen per-step execution context, explicit permission modes, managed processes, atomic file edits, crash recovery, durable goals/queues, authoritative context checkpoints, independent sub-agents, durable long-term memory, credential-backed web search, and an honest OS-sandbox boundary.

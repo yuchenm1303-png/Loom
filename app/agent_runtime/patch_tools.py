@@ -5,6 +5,7 @@ from typing import Any
 from .contracts import ToolEffect
 from .diff_tracker import TurnDiffTracker
 from .patch_runtime import ApplyPatchRuntime
+from .patch_format import parse_text_patch
 from .tools import AgentTool, ToolContext, ToolResult
 
 
@@ -22,7 +23,7 @@ def apply_patch_tool() -> AgentTool:
         context.raise_if_cancelled()
         result = runtime.apply(
             context,
-            arguments["changes"],
+            parse_text_patch(context, arguments["patch"]) if "patch" in arguments else arguments["changes"],
             diff_tracker=_tracker(context),
         )
         return ToolResult(
@@ -54,14 +55,16 @@ def apply_patch_tool() -> AgentTool:
             "Atomically validate and apply a structured multi-file text patch inside the workspace. "
             "Actions: add(path, content), update(path, old_text, new_text) or whole-file content, "
             "delete(path, optional expected_text), and move(path, move_to). All operations validate "
-            "before filesystem mutation; failures leave files unchanged. Returns the current turn diff."
+            "before filesystem mutation. Alternatively pass patch with Codex-style *** Begin Patch / "
+            "Add File / Update File / Delete File / End Patch text and exact context hunks. Returns the current turn diff."
         ),
         input_schema={
             "type": "object",
             "properties": {
                 "changes": {"type": "array", "items": change_schema},
+                "patch": {"type": "string"},
             },
-            "required": ["changes"],
+            "oneOf": [{"required": ["changes"]}, {"required": ["patch"]}],
             "additionalProperties": False,
         },
         handler=apply_patch,

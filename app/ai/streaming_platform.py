@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from .execution_control import check_cancelled
+
 import json
 import threading
 from dataclasses import dataclass, field
@@ -7,7 +9,7 @@ from enum import Enum
 from typing import Any, Callable
 
 from .contracts import ChatRequest, ModelResponse, ModelUsage, StreamEvent, StreamEventKind, ToolCall
-from .errors import AIResponseError
+from .errors import AIResponseError, AITransportError
 from .platform import AIPlatform
 
 
@@ -48,6 +50,7 @@ class _StreamAccumulator:
         self.call_indexes: dict[str, int] = {}
         self.last_tool_index: int | None = None
         self.finish_reason = ""
+        self.completed = False
 
     def consume(self, event: StreamEvent) -> None:
         if event.kind is StreamEventKind.TEXT_DELTA:
@@ -58,6 +61,7 @@ class _StreamAccumulator:
             self._consume_tool_delta(event)
             return
         if event.kind is StreamEventKind.COMPLETED:
+            self.completed = True
             if event.finish_reason:
                 self.finish_reason = event.finish_reason
             return
@@ -100,6 +104,8 @@ class _StreamAccumulator:
         response_id: str = "",
         finish_reason: str = "",
     ) -> ModelResponse:
+        if not self.completed:
+            raise AITransportError("model stream ended without a completion marker")
         calls: list[ToolCall] = []
         for index in sorted(self.tool_calls):
             buffer = self.tool_calls[index]
@@ -174,29 +180,36 @@ class StreamingAIPlatform(AIPlatform):
             return super().execute_chat(profile_id, request)
 
         accumulator = _StreamAccumulator()
-        for raw_event in stream_method(request):
-            if not isinstance(raw_event, StreamEvent):
-                raise TypeError("streaming model backend must yield StreamEvent values")
-            accumulator.consume(raw_event)
-            if raw_event.kind is StreamEventKind.TEXT_DELTA and raw_event.text_delta:
-                self._publish(
-                    ProviderStreamEvent(
-                        profile_id=profile.profile_id,
-                        kind=ProviderStreamEventKind.TEXT_DELTA,
-                        text_delta=raw_event.text_delta,
+        stream = stream_method(request)
+        try:
+            for raw_event in stream:
+                check_cancelled()
+                if not isinstance(raw_event, StreamEvent):
+                    raise TypeError("streaming model backend must yield StreamEvent values")
+                accumulator.consume(raw_event)
+                if raw_event.kind is StreamEventKind.TEXT_DELTA and raw_event.text_delta:
+                    self._publish(
+                        ProviderStreamEvent(
+                            profile_id=profile.profile_id,
+                            kind=ProviderStreamEventKind.TEXT_DELTA,
+                            text_delta=raw_event.text_delta,
+                        )
                     )
-                )
-            elif raw_event.kind is StreamEventKind.TOOL_CALL_DELTA:
-                self._publish(
-                    ProviderStreamEvent(
-                        profile_id=profile.profile_id,
-                        kind=ProviderStreamEventKind.TOOL_CALL_DELTA,
-                        tool_call_index=raw_event.tool_call_index,
-                        tool_call_id=raw_event.tool_call_id,
-                        tool_name=raw_event.tool_name,
-                        arguments_delta=raw_event.arguments_delta,
+                elif raw_event.kind is StreamEventKind.TOOL_CALL_DELTA:
+                    self._publish(
+                        ProviderStreamEvent(
+                            profile_id=profile.profile_id,
+                            kind=ProviderStreamEventKind.TOOL_CALL_DELTA,
+                            tool_call_index=raw_event.tool_call_index,
+                            tool_call_id=raw_event.tool_call_id,
+                            tool_name=raw_event.tool_name,
+                            arguments_delta=raw_event.arguments_delta,
+                        )
                     )
-                )
+        finally:
+            close = getattr(stream, "close", None)
+            if callable(close):
+                close()
 
         metadata: dict[str, Any] = {}
         metadata_getter = getattr(backend, "last_stream_metadata", None)

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import threading
+from contextvars import ContextVar
+from app.ai.execution_control import current_control
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable
@@ -52,7 +54,7 @@ class StreamingAgentRuntime(CodeModeRuntime):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         self._stream_listener_guard = threading.RLock()
         self._stream_listeners: list[AgentStreamListener] = []
-        self._stream_context = threading.local()
+        self._stream_context = ContextVar("loom_stream_context", default=None)
         self._provider_streaming_enabled = False
         super().__init__(*args, **kwargs)
 
@@ -97,7 +99,10 @@ class StreamingAgentRuntime(CodeModeRuntime):
                 continue
 
     def _on_provider_stream(self, event: ProviderStreamEvent) -> None:
-        context = getattr(self._stream_context, "current", None)
+        control = current_control.get()
+        if control is not None and control.cancelled:
+            return
+        context = self._stream_context.get()
         if not isinstance(context, _ModelStreamContext):
             # Detached model tasks such as memory extraction/compaction may use
             # the same platform but are not part of an active Agent model step.
@@ -152,12 +157,12 @@ class StreamingAgentRuntime(CodeModeRuntime):
         event = super()._record(session, kind, data=data)
         if kind is AgentEventKind.MODEL_REQUESTED:
             step_id = str(data.get("step_id") or "").strip()
-            self._stream_context.current = _ModelStreamContext(
+            self._stream_context.set(_ModelStreamContext(
                 session_id=session.session_id,
                 turn_id=session.current_turn_id,
                 step_id=step_id,
                 profile_id=session.profile_id,
-            )
+            ))
         elif kind in {
             AgentEventKind.MODEL_RESPONSE,
             AgentEventKind.TURN_COMPLETED,
@@ -166,13 +171,13 @@ class StreamingAgentRuntime(CodeModeRuntime):
             AgentEventKind.TURN_INTERRUPTED,
             AgentEventKind.LIMIT_REACHED,
         }:
-            self._stream_context.current = None
+            self._stream_context.set(None)
         return event
 
     def close(self) -> None:
         with self._stream_listener_guard:
             self._stream_listeners.clear()
-        self._stream_context.current = None
+        self._stream_context.set(None)
         super().close()
 
 

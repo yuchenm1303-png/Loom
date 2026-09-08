@@ -13,24 +13,24 @@ from typing import Final
 
 # ---- tokens --------------------------------------------------------------
 
-BG_APP: Final = "#090a0e"
-BG_PANEL: Final = "#0b0d12"
-BG_RAISED: Final = "#0e1117"
-BG_INPUT: Final = "#10141b"
-BG_HOVER: Final = "#141820"
+BG_APP: Final = "#101116"
+BG_PANEL: Final = "#15161d"
+BG_RAISED: Final = "#1b1d27"
+BG_INPUT: Final = "#20222e"
+BG_HOVER: Final = "#262837"
 
-BORDER: Final = "#181c24"
-BORDER_STRONG: Final = "#252b36"
-BORDER_FOCUS: Final = "#4a4670"
+BORDER: Final = "#272936"
+BORDER_STRONG: Final = "#363949"
+BORDER_FOCUS: Final = "#9384eb"
 
 TEXT: Final = "#e8ebf1"
 TEXT_STRONG: Final = "#f5f6f9"
-TEXT_MUTED: Final = "#79808f"
-TEXT_FAINT: Final = "#5e6675"
+TEXT_MUTED: Final = "#a0a4b5"
+TEXT_FAINT: Final = "#858b9e"
 
-ACCENT: Final = "#6f65df"
-ACCENT_SOFT: Final = "#9189f0"
-ACCENT_BG: Final = "#171624"
+ACCENT: Final = "#8875ec"
+ACCENT_SOFT: Final = "#b5a7ff"
+ACCENT_BG: Final = "#252139"
 
 GOOD: Final = "#74bd9d"
 WARN: Final = "#e0b473"
@@ -39,20 +39,16 @@ BAD: Final = "#df8e98"
 ACTIVITY_ACCENT: Final = "#818cf8"
 CARD_BG: Final = "#0a0c10"
 
-FONT_UI: Final = (
-    '"Segoe UI Variable Text","Segoe UI Variable","Microsoft YaHei UI",'
-    '"Microsoft YaHei","Segoe UI",sans-serif'
-)
-FONT_MONO: Final = (
-    '"Cascadia Mono","Cascadia Code","Consolas","Microsoft YaHei UI",monospace'
-)
+# Qt resolves missing glyphs through the platform fallback font automatically.
+FONT_UI: Final = '"Microsoft YaHei UI", "Segoe UI"'
+FONT_MONO: Final = '"Cascadia Mono"'
 
 # ---- motion --------------------------------------------------------------
 
 MOTION_MICRO_MS: Final = 80
 MOTION_FAST_MS: Final = 120
 MOTION_BASE_MS: Final = 160
-MOTION_CONTENT_MS: Final = 190
+MOTION_CONTENT_MS: Final = 260
 MOTION_PANEL_MS: Final = 230
 
 
@@ -141,15 +137,22 @@ QFrame#conversationPanel {{ background:{BG_APP}; }}
 
 /* ---- brand / sidebar ---- */
 QLabel#brandMark {{
-    background:{ACCENT}; color:#ffffff; border-radius:9px;
+    background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 #b39aff,stop:1 #6855cf); color:#ffffff; border-radius:11px;
     font-size:14px; font-weight:800;
 }}
-QLabel#brandLabel {{ color:{TEXT_STRONG}; font-size:15px; font-weight:650; letter-spacing:0.2px; }}
+QLabel#brandLabel {{ color:{TEXT_STRONG}; font-size:19px; font-weight:650; letter-spacing:0.2px; }}
 QLabel#brandSubtitle, QLabel#mutedLabel {{ color:{TEXT_MUTED}; font-size:11px; }}
 QLabel#sectionLabel {{
     color:{TEXT_MUTED}; font-size:10px; font-weight:700; letter-spacing:1.35px;
 }}
 
+QLabel#emptyEmblem {{
+    background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 #b79aff,stop:1 #6855cb);
+    color:white; border:1px solid #b49bef; border-radius:20px;
+    font-size:30px; font-weight:700;
+}}
+QPushButton:focus {{ border-color:{BORDER_FOCUS}; }}
+QToolTip {{ background:#292637; color:{TEXT_STRONG}; border:1px solid #625781; padding:7px; }}
 /* ---- buttons ---- */
 QPushButton {{
     min-height:34px;
@@ -197,7 +200,7 @@ QLineEdit#threadSearch {{
     color:#d9dde5; selection-background-color:#5f57c9; font-size:12px;
 }}
 QLineEdit#threadSearch:hover {{ border-color:#29303c; background:{BG_INPUT}; }}
-QLineEdit#threadSearch:focus {{ border-color:{BORDER_FOCUS}; background:#11151d; }}
+QLineEdit#threadSearch:focus {{ border-color:{BORDER_FOCUS}; background:#252432; }}
 QPushButton#archiveViewButton {{
     min-height:34px; padding:0 10px; background:{BG_RAISED};
     border:1px solid #1c222c; border-radius:9px;
@@ -400,26 +403,30 @@ QPushButton#cardToggle:pressed {{
 
 /* ---- empty state ---- */
 QFrame#emptyState, QFrame#emptyStateContent {{ background:transparent; }}
-QLabel#emptyKicker {{ color:#8175e8; font-size:10px; font-weight:750; letter-spacing:1.5px; }}
-QLabel#emptyTitle {{ color:{TEXT_STRONG}; font-size:25px; font-weight:700; }}
-QLabel#emptyBody {{ color:{TEXT_MUTED}; font-size:13px; }}
+QLabel#emptyKicker {{ color:#b5a7ff; font-size:10px; font-weight:750; letter-spacing:1.5px; }}
+QLabel#emptyTitle {{ color:{TEXT_STRONG}; font-size:34px; font-weight:700; }}
+QLabel#emptyBody {{ color:{TEXT_MUTED}; font-size:14px; }}
 QPushButton#promptSuggestion {{
-    background:{BG_RAISED}; border:1px solid #1a1f2a; border-radius:10px;
-    min-height:40px; color:#adb3c0; font-weight:550; text-align:left; padding:0 13px;
+    background:{BG_RAISED}; border:1px solid #343343; border-radius:14px;
+    min-height:92px; max-height:92px; color:#d6d3e7; font-size:13px; font-weight:550; text-align:left; padding:0 12px;
 }}
-QPushButton#promptSuggestion:hover {{ background:#11151d; border-color:#2a3040; color:{TEXT}; }}
+QPushButton#promptSuggestion:hover {{ background:#292538; border-color:#7964ba; color:{TEXT_STRONG}; }}
 
 /* ---- composer ---- */
 QFrame#composerFrame {{
-    background:{BG_RAISED}; border:1px solid {BORDER_STRONG}; border-radius:14px;
+    background:qlineargradient(x1:0,y1:0,x2:1,y2:1,stop:0 #252532,stop:1 #1b1d27); border:1px solid #454252; border-radius:18px;
 }}
-QFrame#composerFrame[focused="true"] {{ border-color:{BORDER_FOCUS}; background:#11151d; }}
+QFrame#composerFrame[focused="true"] {{ border-color:#454252; }}
 QTextEdit#composer {{
     background:transparent; border:none; padding:4px 2px 6px;
     color:{TEXT_STRONG}; font-size:14px; selection-background-color:#484078;
 }}
 QLabel#composerHint, QLabel#composerState {{ color:{TEXT_FAINT}; font-size:10px; }}
-QLabel#composerState {{ color:#8990a0; }}
+QLabel#composerState {{ color:#8990a0; font-size:11px; font-weight:600; }}
+QLabel#composerState[tone="working"] {{ color:{ACCENT_SOFT}; }}
+QLabel#composerState[tone="waiting"] {{ color:{WARN}; }}
+QLabel#composerState[tone="failed"] {{ color:{BAD}; }}
+QLabel#composerState[tone="done"] {{ color:{GOOD}; }}
 
 /* Workspace, permission and model are decisions, not decorations. */
 QPushButton#composerControl {{
@@ -480,7 +487,7 @@ QTabWidget#activityTabs QTabBar::tab {{
     border:none; border-bottom:2px solid transparent;
     font-family:{FONT_UI}; font-size:12px; font-weight:600;
 }}
-QTabWidget#activityTabs QTabBar::tab:hover {{ color:#c3c8d2; background:#0e1117; }}
+QTabWidget#activityTabs QTabBar::tab:hover {{ color:#c3c8d2; background:#1b1d27; }}
 QTabWidget#activityTabs QTabBar::tab:selected {{
     color:#e8e6ff; background:#10121a; border-bottom:2px solid {ACTIVITY_ACCENT};
 }}
@@ -493,7 +500,7 @@ QScrollArea#activityTimeline, QWidget#activityTimelineCanvas {{ background:{BG_P
 QFrame#activityEventRow {{
     background:{CARD_BG}; border:1px solid {BORDER}; border-radius:10px;
 }}
-QFrame#activityEventRow:hover {{ background:#0e1117; border-color:#272d38; }}
+QFrame#activityEventRow:hover {{ background:#1b1d27; border-color:#272d38; }}
 QLabel#activityEventTitle {{
     color:#d9dde5; font-family:{FONT_UI}; font-size:12px; font-weight:600;
 }}
@@ -506,6 +513,16 @@ QPlainTextEdit {{
     font-family:{FONT_MONO}; font-size:12px;
 }}
 
+/* ---- settings forms ---- */
+QDialog {{ background:{BG_PANEL}; }}
+QLineEdit, QComboBox {{
+    background:{BG_INPUT}; border:1px solid {BORDER_STRONG};
+    border-radius:8px; min-height:34px; padding:0 10px; color:{TEXT};
+    selection-background-color:{ACCENT};
+}}
+QLineEdit:focus, QComboBox:focus {{ border-color:{BORDER_FOCUS}; }}
+QComboBox::drop-down {{ border:none; width:24px; }}
+QComboBox QAbstractItemView {{ background:{BG_RAISED}; color:{TEXT}; selection-background-color:{ACCENT_BG}; }}
 /* ---- menus and chrome ---- */
 QMenu {{
     background:#101319; border:1px solid #282e39; border-radius:9px;

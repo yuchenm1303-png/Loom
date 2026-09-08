@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
 import threading
 import uuid
+from dataclasses import replace
 from pathlib import Path
 from typing import Callable, Protocol
 
@@ -19,6 +21,11 @@ from .contracts import (
     PermissionMode,
 )
 from .diff_tracker import DiffTrackerRegistry
+from .model_execution import ModelExecutor
+from .instructions import InstructionLoader
+from .execution_binding import binding_digest
+from .journal import ExecutionLease
+from app.ai.execution_control import ModelCancelled
 from .orchestrator import PreparedToolCall, ToolOrchestrator
 from .permissions import PermissionDecision
 from .process_runtime import ProcessStore
@@ -98,18 +105,27 @@ class AgentRuntime:
         self.store = store
         self.tools = tools or ToolRegistry()
         self.policy = policy or ToolPolicy()
-        self.limits = limits or AgentLimits()
+        self.limits = limits or AgentLimits(
+            context_window_tokens=int(os.environ.get("LOOM_CONTEXT_WINDOW_TOKENS", "32768")),
+            output_reserve_tokens=int(os.environ.get("LOOM_OUTPUT_RESERVE_TOKENS", "4096")),
+        )
         self.default_permission_mode = PermissionMode(default_permission_mode)
         self.orchestrator = orchestrator or ToolOrchestrator()
         self.process_store = process_store or ProcessStore()
         self.diff_trackers = diff_trackers or DiffTrackerRegistry()
+        self.model_executor = ModelExecutor()
+        self.instruction_loader = InstructionLoader()
         self._listeners: list[EventListener] = []
-        self._session_locks: dict[str, threading.RLock] = {}
+        self._session_locks: dict[str, ExecutionLease] = {}
         self._session_locks_guard = threading.Lock()
         self._active_tokens: dict[str, CancellationToken] = {}
-        self._active_tokens_guard = threading.Lock()
+        self._active_tokens_guard = threading.RLock()
 
     def close(self) -> None:
+        with self._active_tokens_guard:
+            tokens = tuple(self._active_tokens.values())
+        for token in tokens:
+            token.cancel()
         self.process_store.terminate_all()
 
     def subscribe(self, listener: EventListener) -> None:
@@ -242,6 +258,11 @@ class AgentRuntime:
             if not session.pending_tool_calls or session.pending_tool_calls[0].call_id != pending.call_id:
                 raise RuntimeError("pending tool approval state is inconsistent")
 
+            validation_step = self._build_step_context(session, next_model_step=False, step_id=session.pending_step_id or None)
+            selected_tool = validation_step.tool_router.get(pending.tool_name)
+            expected = session.pending_bindings.get(pending.call_id)
+            if approved and (selected_tool is None or not expected or binding_digest(validation_step, selected_tool, self.platform) != expected):
+                raise ValueError("approval binding changed or is legacy; deny this request and start a new turn")
             session.status = AgentStatus.RUNNING
             session.pending_approval = None
             call = session.pending_tool_calls.pop(0)
@@ -302,12 +323,9 @@ class AgentRuntime:
         with lock:
             session = self.store.load(session_id)
             if session.status in {AgentStatus.RUNNING, AgentStatus.WAITING_APPROVAL}:
-                session.status = AgentStatus.CANCELLED
-                session.pending_approval = None
-                session.pending_tool_calls.clear()
-                session.pending_step_id = ""
-                session.error = "cancelled by user"
-                self._record(session, AgentEventKind.TURN_CANCELLED, data={})
+                cancellation = CancellationToken()
+                cancellation.cancel()
+                self._cancel_if_requested(session, cancellation)
             return self._result(session)
 
     def recover_interrupted(self, session_id: str) -> AgentRunResult:
@@ -324,120 +342,40 @@ class AgentRuntime:
             return self._result(session)
 
     def _drive(self, session: AgentSession, token: CancellationToken) -> AgentRunResult:
-        try:
-            while True:
-                if self._cancel_if_requested(session, token):
-                    return self._result(session)
-                if session.pending_tool_calls:
-                    if not self._process_pending_tools(session, token):
-                        return self._result(session)
-                if session.model_steps >= self.limits.max_model_steps:
-                    return self._limit(session, "model step limit reached")
+        from .turn_runner import TurnRunner
+        return TurnRunner(self).run(session, token)
 
-                step = self._build_step_context(session, next_model_step=True)
-                system_prompt = self._model_system_prompt(session, step)
-                messages = [AIMessage(role=MessageRole.SYSTEM, content=system_prompt), *session.messages]
-                if len(messages) > self.limits.max_messages:
-                    return self._limit(
-                        session,
-                        "context message limit reached; semantic compaction is not configured",
-                    )
+    def _prepare_model_request(self, session, step, token):
+        messages = [AIMessage(role=MessageRole.SYSTEM, content=self._model_system_prompt(session, step))]
+        instructions = self.instruction_loader.load(session.workspace_dir)
+        if instructions:
+            messages.append(AIMessage(role=MessageRole.SYSTEM, name="loom_project_instructions", content=instructions))
+        return [*messages, *session.messages], {}
 
-                self._record(
-                    session,
-                    AgentEventKind.MODEL_REQUESTED,
-                    data={
-                        "profile_id": session.profile_id,
-                        "step": step.model_step,
-                        "step_id": step.step_id,
-                        "message_count": len(messages),
-                        "tool_count": len(step.tool_router.all()),
-                        "permission_mode": step.world_state.permission_mode.value,
-                    },
-                )
-                response = self.platform.execute_chat(
-                    session.profile_id,
-                    ChatRequest(
-                        messages=tuple(messages),
-                        tools=step.tool_router.definitions(),
-                        tool_choice=ToolChoice.AUTO,
-                    ),
-                )
-                if not isinstance(response, ModelResponse):
-                    raise TypeError("agent model platform must return ModelResponse")
-                if not response.text and not response.tool_calls:
-                    raise RuntimeError("agent model response contained neither text nor tool calls")
-                if self._cancel_if_requested(session, token):
-                    return self._result(session)
+    def steer(self, session_id: str, text: str, *, turn_id: str) -> None:
+        value = str(text).strip()
+        if not value:
+            raise ValueError("steering input must not be empty")
+        with self._active_tokens_guard:
+            token = self._active_tokens.get(session_id)
+            session = self.store.load(session_id)
+            if token is None or token.cancelled or session.current_turn_id != turn_id:
+                raise ValueError("steering target is not the active turn")
+            self.store.submit_steering(session_id, turn_id, value)
 
-                session.model_steps += 1
-                session.usage = _add_usage(session.usage, response.usage)
-                assistant = AIMessage(
-                    role=MessageRole.ASSISTANT,
-                    content=response.text,
-                    tool_calls=response.tool_calls,
-                )
-                session.messages.append(assistant)
-                self._record(
-                    session,
-                    AgentEventKind.MODEL_RESPONSE,
-                    data={
-                        "step_id": step.step_id,
-                        "text": response.text,
-                        "finish_reason": response.finish_reason,
-                        "response_id": response.response_id,
-                        "tool_calls": [
-                            {"call_id": call.call_id, "name": call.name, "arguments": call.arguments}
-                            for call in response.tool_calls
-                        ],
-                        "usage": {
-                            "input_tokens": response.usage.input_tokens,
-                            "output_tokens": response.usage.output_tokens,
-                            "total_tokens": response.usage.total_tokens,
-                        },
-                    },
-                )
-
-                if response.tool_calls:
-                    session.tool_calls += len(response.tool_calls)
-                    if session.tool_calls > self.limits.max_tool_calls:
-                        return self._limit(session, "tool call limit reached")
-                    session.pending_tool_calls.extend(response.tool_calls)
-                    session.pending_step_id = step.step_id
-                    for call in response.tool_calls:
-                        self._record(
-                            session,
-                            AgentEventKind.TOOL_REQUESTED,
-                            data={
-                                "call_id": call.call_id,
-                                "tool": call.name,
-                                "arguments": call.arguments,
-                                "step_id": step.step_id,
-                            },
-                        )
-                    if not self._process_pending_tools(session, token, step=step):
-                        return self._result(session)
-                    continue
-
-                session.status = AgentStatus.COMPLETED
-                session.final_text = response.text
-                session.error = ""
-                diff = self.diff_trackers.snapshot(session.session_id, session.current_turn_id)
-                self._record(
-                    session,
-                    AgentEventKind.TURN_COMPLETED,
-                    data={
-                        "text": response.text,
-                        "diff_revision": diff.revision,
-                        "changed_paths": list(diff.paths),
-                    },
-                )
-                return self._result(session)
-        except Exception as exc:
-            session.status = AgentStatus.FAILED
-            session.error = f"{type(exc).__name__}: {exc}"
-            self._record(session, AgentEventKind.TURN_FAILED, data={"error": session.error})
-            return self._result(session)
+    def _consume_steering(self, session) -> bool:
+        items = self.store.pending_steering(session.session_id, session.current_turn_id)
+        consumed = False
+        for item in items:
+            if item["id"] in session.steering_ids:
+                continue
+            session.messages.append(AIMessage(role=MessageRole.USER, content=item["text"]))
+            session.steering_ids.append(item["id"])
+            self._record(session, AgentEventKind.USER_MESSAGE, data={"text": item["text"], "source": "steering", "input_id": item["id"]})
+            consumed = True
+        if items:
+            self.store.ack_steering(session.session_id, {item["id"] for item in items})
+        return consumed
 
     def _process_pending_tools(
         self,
@@ -452,9 +390,27 @@ class AgentRuntime:
             step_id=session.pending_step_id or None,
         )
         while session.pending_tool_calls:
+            if self.store.pending_steering(session.session_id, session.current_turn_id):
+                while session.pending_tool_calls:
+                    abandoned = session.pending_tool_calls.pop(0)
+                    self._append_tool_result(session, abandoned, ToolResult(False,
+                        "Not executed: new user steering arrived; reconsider this action."), failed=True)
+                self._consume_steering(session)
+                break
             if self._cancel_if_requested(session, token):
                 return False
             call = session.pending_tool_calls[0]
+            selected = execution_step.tool_router.get(call.name)
+            expected = session.pending_bindings.get(call.call_id)
+            if expected and selected is not None and binding_digest(execution_step, selected, self.platform) != expected:
+                from .history import repair_tool_history
+                session.messages = list(repair_tool_history(session.messages).messages)
+                session.pending_tool_calls.clear()
+                session.pending_step_id = ""
+                session.status = AgentStatus.FAILED
+                session.error = "pending tool binding changed; execution stopped"
+                self._record(session, AgentEventKind.TURN_FAILED, data={"error": session.error})
+                return False
             try:
                 prepared = self.orchestrator.prepare(
                     execution_step,
@@ -577,6 +533,9 @@ class AgentRuntime:
             is_cancelled=lambda: token.cancelled,
             services={
                 "process_store": self.process_store,
+                "permission_snapshot": step.permissions,
+                "environment_policy": step.environment_policy,
+                "active_skills": session.active_skills,
                 "diff_tracker": tracker,
             },
             emit_event=lambda kind, data: self._record(session, kind, data=data),
@@ -613,7 +572,7 @@ class AgentRuntime:
         step_id: str | None = None,
     ) -> StepContext:
         model_step = session.model_steps + (1 if next_model_step else 0)
-        return StepContext.build(
+        return replace(StepContext.build(
             step_id=step_id or str(uuid.uuid4()),
             session_id=session.session_id,
             turn_id=session.current_turn_id,
@@ -622,7 +581,7 @@ class AgentRuntime:
             profile_id=session.profile_id,
             permission_mode=session.permission_mode,
             tool_router=self.tools.router(),
-        )
+        ), environment_policy=self.process_store.environment_policy)
 
     def _model_system_prompt(self, session: AgentSession, step: StepContext) -> str:
         capability_contract = self.orchestrator.capability_contract(
@@ -679,6 +638,8 @@ class AgentRuntime:
         session.pending_tool_calls.clear()
         session.pending_step_id = ""
         session.error = "cancelled by user"
+        from .history import repair_tool_history
+        session.messages = list(repair_tool_history(session.messages, max_tool_result_chars=self.limits.max_tool_result_chars).messages)
         self._record(session, AgentEventKind.TURN_CANCELLED, data={})
         return True
 
@@ -698,8 +659,7 @@ class AgentRuntime:
             created_at=utc_now(),
             data=dict(data),
         )
-        self.store.append_event(event)
-        self.store.save(session)
+        self.store.commit_event(session, event)
         for listener in tuple(self._listeners):
             try:
                 listener(event)
@@ -718,10 +678,12 @@ class AgentRuntime:
             error=session.error,
         )
 
-    def _session_lock(self, session_id: str) -> threading.RLock:
+    def _session_lock(self, session_id: str) -> ExecutionLease:
         key = str(session_id or "").strip()
         with self._session_locks_guard:
-            return self._session_locks.setdefault(key, threading.RLock())
+            if key not in self._session_locks:
+                self._session_locks[key] = ExecutionLease(self.store.session_dir(key))
+            return self._session_locks[key]
 
     def _activate(self, session_id: str) -> CancellationToken:
         token = CancellationToken()

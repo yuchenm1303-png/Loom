@@ -118,6 +118,8 @@ class ApplyPatchRuntime:
             if action == "update":
                 if before is None:
                     raise ValueError(f"update target does not exist: {path}")
+                if "expected_text" in raw and raw["expected_text"] != before:
+                    raise ValueError(f"update preimage changed: {path}")
                 if "content" in raw:
                     content = raw.get("content")
                     if not isinstance(content, str):

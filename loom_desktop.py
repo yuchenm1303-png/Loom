@@ -11,8 +11,8 @@ from app.app_server_client import AppServerProcessConfig, LoomAppServerClient
 
 
 _PERMISSION_MODES = ("read-only", "approval", "workspace", "full-access")
-_MINIMAX_BASE_URL = "https://api.minimax.io/v1"
-_MINIMAX_DEFAULT_MODEL = "MiniMax-M2.7"
+_MINIMAX_BASE_URL = "https://api.minimaxi.com/v1"
+_MINIMAX_DEFAULT_MODEL = "MiniMax-M3"
 _PRIMARY_MINIMAX_KEY_ENV = ("MINIMAX_API_KEY", "LOOM_PRIMARY_API_KEY", "LOOM_API_KEY")
 
 

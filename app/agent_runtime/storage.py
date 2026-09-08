@@ -9,6 +9,8 @@ from typing import Any
 
 from app.ai import AIMessage, ImagePart, MessageRole, ModelUsage, TextPart, ToolCall
 
+from .journal import atomic_json, session_lock, recover, repair_tail
+
 from .contracts import (
     AgentEvent,
     AgentEventKind,
@@ -151,6 +153,9 @@ def session_to_dict(session: AgentSession) -> dict[str, Any]:
         "messages": [_message_to_dict(message) for message in session.messages],
         "pending_tool_calls": [_tool_call_to_dict(call) for call in session.pending_tool_calls],
         "pending_step_id": session.pending_step_id,
+        "pending_bindings": session.pending_bindings,
+        "steering_ids": session.steering_ids,
+        "active_skills": session.active_skills,
         "pending_approval": _approval_to_dict(session.pending_approval),
         "model_steps": session.model_steps,
         "tool_calls": session.tool_calls,
@@ -185,6 +190,9 @@ def session_from_dict(payload: dict[str, Any]) -> AgentSession:
             if isinstance(item, dict)
         ],
         pending_step_id=str(payload.get("pending_step_id") or ""),
+        pending_bindings=dict(payload.get("pending_bindings") or {}),
+        steering_ids=list(payload.get("steering_ids") or []),
+        active_skills=dict(payload.get("active_skills") or {}),
         pending_approval=_approval_from_dict(payload.get("pending_approval")),
         model_steps=int(payload.get("model_steps") or 0),
         tool_calls=int(payload.get("tool_calls") or 0),
@@ -228,6 +236,12 @@ class FileAgentSessionStore:
         self.save(session)
 
     def save(self, session: AgentSession) -> None:
+        directory = self.session_dir(session.session_id)
+        with session_lock(directory):
+            recover(directory)
+            self._save(session)
+
+    def _save(self, session: AgentSession) -> None:
         session.updated_at = utc_now()
         directory = self.session_dir(session.session_id)
         directory.mkdir(parents=True, exist_ok=True)
@@ -248,12 +262,57 @@ class FileAgentSessionStore:
 
     def load(self, session_id: str) -> AgentSession:
         target = self.session_dir(session_id) / "session.json"
-        payload = json.loads(target.read_text(encoding="utf-8"))
+        with session_lock(target.parent):
+            recover(target.parent)
+            payload = json.loads(target.read_text(encoding="utf-8"))
         if not isinstance(payload, dict):
             raise ValueError("agent session snapshot must be a JSON object")
         return session_from_dict(payload)
 
+    def submit_steering(self, session_id: str, turn_id: str, text: str) -> None:
+        directory = self.session_dir(session_id)
+        with session_lock(directory):
+            path = directory / "steering.json"
+            items = json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
+            if len(items) >= 100 or len(text) > 100_000:
+                raise ValueError("steering inbox limit reached")
+            items.append({"id": uuid.uuid4().hex, "turn_id": turn_id, "text": text})
+            atomic_json(path, items)
+
+    def pending_steering(self, session_id: str, turn_id: str):
+        directory = self.session_dir(session_id)
+        with session_lock(directory):
+            path = directory / "steering.json"
+            items = json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
+        return [item for item in items if item["turn_id"] == turn_id]
+
+    def ack_steering(self, session_id: str, identifiers):
+        directory = self.session_dir(session_id)
+        with session_lock(directory):
+            path = directory / "steering.json"
+            items = json.loads(path.read_text(encoding="utf-8")) if path.exists() else []
+            atomic_json(path, [item for item in items if item["id"] not in identifiers])
+
+    def commit_event(self, session: AgentSession, event: AgentEvent) -> None:
+        directory = self.session_dir(session.session_id)
+        with session_lock(directory):
+            recover(directory)
+            session.updated_at = utc_now()
+            payload = {"event_id": event.event_id, "session_id": event.session_id,
+                "turn_id": event.turn_id, "kind": event.kind.value, "created_at": event.created_at, "data": event.data}
+            atomic_json(directory / ".pending-commit.json", {"session": session_to_dict(session), "event": payload})
+            # Once the redo record is durable, recovery must complete both writes.
+            self._append_event(event)
+            self._save(session)
+            (directory / ".pending-commit.json").unlink()
+
     def append_event(self, event: AgentEvent) -> None:
+        directory = self.session_dir(event.session_id)
+        with session_lock(directory):
+            recover(directory)
+            self._append_event(event)
+
+    def _append_event(self, event: AgentEvent) -> None:
         directory = self.session_dir(event.session_id)
         directory.mkdir(parents=True, exist_ok=True)
         path = directory / "events.jsonl"
@@ -266,6 +325,7 @@ class FileAgentSessionStore:
             "data": event.data,
         }
         line = json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n"
+        repair_tail(path)
         with path.open("a", encoding="utf-8", newline="") as handle:
             handle.write(line)
             handle.flush()
@@ -273,13 +333,21 @@ class FileAgentSessionStore:
 
     def events(self, session_id: str) -> tuple[AgentEvent, ...]:
         path = self.session_dir(session_id) / "events.jsonl"
-        if not path.is_file():
-            return ()
         output: list[AgentEvent] = []
-        for raw in path.read_text(encoding="utf-8").splitlines():
+        with session_lock(path.parent):
+            recover(path.parent)
+            if not path.is_file():
+                return ()
+            lines = path.read_bytes().splitlines(keepends=True)
+        for index, raw in enumerate(lines):
             if not raw.strip():
                 continue
-            payload = json.loads(raw)
+            try:
+                payload = json.loads(raw)
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                if index == len(lines) - 1 and not raw.endswith(b"\n"):
+                    break  # A crash may leave an uncommitted final record.
+                raise
             output.append(
                 AgentEvent(
                     event_id=str(payload.get("event_id") or ""),

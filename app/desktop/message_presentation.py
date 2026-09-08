@@ -15,8 +15,8 @@ from __future__ import annotations
 import math
 from typing import Any
 
-from PySide6.QtCore import QEasingCurve, QPropertyAnimation, QRectF, QTimer, Qt
-from PySide6.QtGui import QColor, QPainter
+from PySide6.QtCore import QEasingCurve, QPropertyAnimation, QRectF, QSize, QTimer, Qt
+from PySide6.QtGui import QColor, QPainter, QTextDocument
 from PySide6.QtWidgets import (
     QFrame,
     QGraphicsOpacityEffect,
@@ -35,17 +35,17 @@ _USER_BUBBLE_QSS = """
 QFrame#userMessage {
     background:qlineargradient(
         x1:0, y1:0, x2:1, y2:1,
-        stop:0 #1b192e,
-        stop:1 #171626
+        stop:0 #282439,
+        stop:1 #22202f
     );
-    border:1px solid #343053;
+    border:1px solid #48405f;
     border-radius:14px;
 }
 QFrame#userMessage:hover {
     background:qlineargradient(
         x1:0, y1:0, x2:1, y2:1,
-        stop:0 #1e1c33,
-        stop:1 #1a182b
+        stop:0 #2c2740,
+        stop:1 #262235
     );
     border-color:#413b64;
 }
@@ -70,7 +70,7 @@ QWidget#streamStatus, QWidget#streamGlyph {
 }
 QLabel#streamStateLabel {
     background:transparent;
-    color:#8d88bd;
+    color:#aca2d6;
     font-size:11px;
     font-weight:600;
 }
@@ -266,6 +266,9 @@ class StreamingStatus(QWidget):
 class MessageWidget(base.MessageWidget):
     """Message without avatar/name chrome and with stable live-stream rendering."""
 
+    # An outgoing bubble hugs its text, so it needs a reading measure of its own.
+    USER_MAX_WIDTH = 620
+
     def __init__(self, role: str, parent: QWidget | None = None) -> None:
         super().__init__(role, parent)
         self._streaming = False
@@ -307,6 +310,47 @@ class MessageWidget(base.MessageWidget):
         if role == "user":
             self.setStyleSheet(_USER_BUBBLE_QSS)
 
+    # ---- measurement -----------------------------------------------------
+    #
+    # An outgoing bubble is laid out with AlignRight and a Maximum size policy,
+    # so the layout hands it exactly its sizeHint() width. QLabel's own hint for
+    # wrapped rich text is a heuristic that under-reports badly, which used to
+    # squeeze a long sentence into a ~200px bubble and clip it on one line.
+    # Measuring the document is the only honest answer.
+
+    def _text_frame(self) -> int:
+        margins = self.layout().contentsMargins() if self.layout() is not None else None
+        if margins is None:
+            return 0
+        return margins.left() + margins.right() + 2
+
+    def _ideal_text_width(self, limit: int) -> int:
+        ideal = 0
+        for widget in self._widgets:
+            if isinstance(widget, base.RichLabel):
+                document = QTextDocument()
+                document.setDefaultFont(widget.font())
+                document.setHtml(widget.text())
+                document.setTextWidth(limit)
+                ideal = max(ideal, int(document.idealWidth() + 0.999))
+            else:
+                ideal = max(ideal, widget.sizeHint().width())
+        return ideal
+
+    def sizeHint(self) -> QSize:  # noqa: N802 - Qt override
+        if self.role != "user" or not self._widgets:
+            return super().sizeHint()
+        frame = self._text_frame()
+        limit = max(80, self.USER_MAX_WIDTH - frame)
+        width = min(limit, max(48, self._ideal_text_width(limit))) + frame
+        return QSize(width, self.heightForWidth(width))
+
+    def heightForWidth(self, width: int) -> int:  # noqa: N802 - Qt override
+        # An assistant message with no text yet is not empty: it carries the
+        # thinking indicator. Collapsing it to zero is why the transcript looked
+        # frozen between pressing Enter and the first token arriving.
+        return max(int(super().heightForWidth(width)), self.minimumSizeHint().height())
+
     def enterEvent(self, event: Any) -> None:  # noqa: N802 - Qt override
         self.copy_button.hide()
         QFrame.enterEvent(self, event)
@@ -334,11 +378,21 @@ class MessageWidget(base.MessageWidget):
         self.stream_status.set_mode(mode)
         self.stream_status.set_active(self._streaming)
 
+        # A message whose body is still empty has no height-for-width to report,
+        # and the transcript layout collapses it to nothing -- which is why the
+        # thinking indicator was invisible for the whole pre-token wait. A floor
+        # equal to the status row keeps that moment on screen; it is dropped
+        # again as soon as real content can measure itself.
+        floor = self.minimumSizeHint().height() if self._streaming and not self._widgets else 0
+        if self.minimumHeight() != floor:
+            self.setMinimumHeight(floor)
+            self.updateGeometry()
+
     def _set_rich_markup(self, widget: base.RichLabel, html: str) -> None:
         """Apply role-appropriate rich text without a fake blank row in user bubbles."""
         if self.role == "user":
             widget.setText(_USER_MESSAGE_CSS + html)
-            widget.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+            widget.setAlignment(Qt.AlignmentFlag.AlignCenter)
             widget.updateGeometry()
             return
         widget.set_markup(html)
@@ -400,6 +454,10 @@ class MessageWidget(base.MessageWidget):
                 base.fade_in(widget, duration_ms=theme.MOTION_FAST_MS)
 
         self._blocks = blocks
+        if self.role == "user":
+            # The bubble hugs its content, so a new measurement is needed before
+            # the layout hands it a width.
+            self.updateGeometry()
         if self._streaming and value:
             self.stream_status.kick()
         self._sync_stream_status()
@@ -408,7 +466,7 @@ class MessageWidget(base.MessageWidget):
 class TranscriptView(base.TranscriptView):
     """Transcript whose outgoing bubbles fit their content instead of a card width."""
 
-    USER_MAX_WIDTH = 620
+    USER_MAX_WIDTH = MessageWidget.USER_MAX_WIDTH
 
     def _build(self, entry: TranscriptEntry) -> QWidget:
         if entry.kind in {"user", "assistant"}:

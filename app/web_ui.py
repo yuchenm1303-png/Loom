@@ -166,25 +166,27 @@ class LoomWebService:
         return self.snapshot(session.session_id)
 
     def snapshot(self, session_id: str) -> dict[str, Any]:
-        session = self._load(session_id)
-        events = self.store.events(session_id)
+        # Keep task completion from overtaking the persisted state read.
         with self._guard:
-            active = session_id in self._active_sessions
-            task_error = self._task_errors.get(session_id, "")
-        return {
-            "session": self._summary(session),
-            "messages": [_message_record(message) for message in session.messages],
-            "events": [_event_record(event) for event in events[-240:]],
-            "pending_approval": _approval_record(session.pending_approval),
-            "usage": {
-                "input_tokens": int(session.usage.input_tokens),
-                "output_tokens": int(session.usage.output_tokens),
-                "total_tokens": int(session.usage.total_tokens),
-            },
-            "error": session.error or task_error,
-            "final_text": session.final_text,
-            "active": active,
-        }
+            session = self._load(session_id)
+            events = self.store.events(session_id)
+            with self._guard:
+                active = session_id in self._active_sessions
+                task_error = self._task_errors.get(session_id, "")
+            return {
+                "session": self._summary(session),
+                "messages": [_message_record(message) for message in session.messages],
+                "events": [_event_record(event) for event in events[-240:]],
+                "pending_approval": _approval_record(session.pending_approval),
+                "usage": {
+                    "input_tokens": int(session.usage.input_tokens),
+                    "output_tokens": int(session.usage.output_tokens),
+                    "total_tokens": int(session.usage.total_tokens),
+                },
+                "error": session.error or task_error,
+                "final_text": session.final_text,
+                "active": active,
+            }
 
     def _launch(self, session_id: str, operation: Any) -> None:
         with self._guard:

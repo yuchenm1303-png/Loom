@@ -11,6 +11,7 @@ from .permissions import (
 )
 from .sandbox import SandboxSnapshot
 from .tools import ToolRouter
+from .shell_environment import ShellEnvironmentPolicy
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,6 +34,7 @@ class StepContext:
     world_state: WorldStateSnapshot
     permissions: PermissionSnapshot
     tool_router: ToolRouter
+    environment_policy: ShellEnvironmentPolicy = ShellEnvironmentPolicy()
 
     @property
     def permission_profile(self) -> PermissionProfile:

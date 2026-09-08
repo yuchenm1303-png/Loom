@@ -203,6 +203,7 @@ class SidebarMotionController(QObject):
         self._indicator.raise_()
         self._indicator_animation: QPropertyAnimation | None = None
         self._page_fade: QPropertyAnimation | None = None
+        self._fading_page: QWidget | None = None
 
         window.activity_tabs.currentChanged.connect(self._on_tab_changed)
         QTimer.singleShot(0, self._snap_indicator)
@@ -308,6 +309,7 @@ class SidebarMotionController(QObject):
         if target.isValid():
             if self._indicator_animation is not None:
                 self._indicator_animation.stop()
+                self._indicator_animation.deleteLater()
             if not theme.motion_enabled() or not self._indicator.geometry().isValid():
                 self._indicator.setGeometry(target)
             else:
@@ -318,13 +320,20 @@ class SidebarMotionController(QObject):
                 animation.setEasingCurve(QEasingCurve.Type.OutCubic)
                 self._indicator_animation = animation
                 animation.finished.connect(lambda: setattr(self, "_indicator_animation", None))
+                animation.finished.connect(animation.deleteLater)
                 animation.start()
 
+        if self._page_fade is not None:
+            self._page_fade.stop()
+            self._page_fade.deleteLater()
+            self._page_fade = None
+        if self._fading_page is not None:
+            self._fading_page.setGraphicsEffect(None)
+            self._fading_page = None
         page = self.window.activity_tabs.widget(index)
         if page is None or not theme.motion_enabled():
             return
-        if self._page_fade is not None:
-            self._page_fade.stop()
+        self._fading_page = page
         page.setGraphicsEffect(None)
         effect = QGraphicsOpacityEffect(page)
         page.setGraphicsEffect(effect)
@@ -338,13 +347,15 @@ class SidebarMotionController(QObject):
             if page.graphicsEffect() is effect:
                 page.setGraphicsEffect(None)
             self._page_fade = None
+            self._fading_page = None
+            fade.deleteLater()
 
         fade.finished.connect(finish_page)
         self._page_fade = fade
         fade.start()
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
-        if watched is self._tab_bar and event.type() in {
+        if watched is getattr(self, "_tab_bar", None) and event.type() in {
             QEvent.Type.Resize,
             QEvent.Type.Show,
             QEvent.Type.StyleChange,

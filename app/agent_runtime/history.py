@@ -83,10 +83,10 @@ def repair_tool_history(
             result = ToolResult(
                 ok=False,
                 content=(
-                    "Tool execution was aborted because the Loom runtime stopped before "
-                    "a durable tool result was recorded."
+                    "Tool result is unknown because the Loom runtime stopped before a durable result was recorded. "
+                    "The action may already have occurred; inspect the affected state before retrying."
                 ),
-                data={"aborted": True, "recovered": True},
+                data={"aborted": True, "recovered": True, "outcome_unknown": True},
             )
             output.append(
                 AIMessage(

@@ -146,3 +146,18 @@ See `docs/provider-streaming.md` for the full Phase 2.2 contract.
 ## Current contract
 
 A client can initialize, create/resume/list/read/fork a Thread, start/interrupt a Turn, answer approvals, receive true provider-backed assistant deltas, disconnect, reconnect, and rebuild authoritative durable state without importing `AgentRuntime` directly.
+
+
+## Reliability additions (2026-09-08)
+
+- `turn/steer`: `{threadId, turnId, input}` accepts a durable input for the matching
+  active turn. A stale ID is rejected. Unexecuted actions from the old model response
+  are cancelled at a safe boundary; an already executing side effect is not rolled back.
+- `thread/resync`: when bounded notification delivery overflows, the writer emits
+  `{threadId, reason: "notification_overflow", dropped}` after draining queued frames.
+  Clients must discard their assumption of complete delta delivery and call `thread/read`.
+- Model stream retries use a new step identity and close obsolete transient items.
+  Incomplete responses never produce a successful turn terminal event.
+
+The protocol remains Loom's own API; these additive methods are not a claim of complete
+Codex wire compatibility. See [implementation status](alignment-implementation-2026-09-08.md).

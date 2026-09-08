@@ -1,5 +1,8 @@
 # Loom ↔ OpenAI Codex runtime alignment
 
+> Current implementation and evidence: [2026-09-08 implementation](alignment-implementation-2026-09-08.md). The phase 1/2 notes below are historical. Status words such as Strong do not establish full parity or host enforcement.
+
+
 This document is an implementation checklist, not a claim that Loom is a Codex fork.
 Loom keeps its Python runtime, App Server, PySide desktop, Browser Use, and Computer Use adaptations while using Codex as the primary behavioral reference for mature Agent-runtime boundaries.
 
@@ -8,7 +11,7 @@ Loom keeps its Python runtime, App Server, PySide desktop, Browser Use, and Comp
 - Loom baseline for phase 2: `6512d71e7686ac6e3c004055cde94ab459211bee`
 - OpenAI Codex baseline for phase 2: `5ecb3afd1bf405149e2159bfda50093b0c1b5fab`
 
-The previous Codex baseline was `694b6319d3ad2399f6e435760a22d9b9357f0697`. The current Codex head is one commit ahead and that change is TUI `/resume` and `/cd` scheduling, not a change to the core tool/approval/exec boundaries reviewed here.
+The previous Codex baseline was `694b6319d3ad2399f6e435760a22d9b9357f0697`. At the time of the phase 2 audit, the Codex head was one commit ahead and that change is TUI `/resume` and `/cd` scheduling, not a change to the core tool/approval/exec boundaries reviewed here.
 
 Re-audit against newer Codex commits before each large alignment phase instead of assuming this document remains current forever.
 

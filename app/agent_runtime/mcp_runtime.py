@@ -483,6 +483,7 @@ class MCPClientManager:
                         handler=handler,
                         effect=descriptor.effect,
                         exposure=descriptor.exposure,
+                        binding_key=repr(connected.config),
                     )
                 )
         return tuple(tools)

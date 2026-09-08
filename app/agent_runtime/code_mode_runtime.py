@@ -320,6 +320,9 @@ class CodeModeRuntime(SkillRuntime):
             is_cancelled=lambda: token.cancelled,
             services={
                 "process_store": self.process_store,
+                "permission_snapshot": step.permissions,
+                "environment_policy": step.environment_policy,
+                "active_skills": session.active_skills,
                 "diff_tracker": tracker,
             },
             emit_event=lambda kind, data: self._record(session, kind, data=data),

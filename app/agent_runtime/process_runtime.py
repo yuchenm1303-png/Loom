@@ -14,6 +14,8 @@ from pathlib import Path
 from typing import Callable, Mapping, Protocol
 
 from .sandbox import SandboxManager, SandboxSnapshot
+from .shell_environment import ShellEnvironmentPolicy
+from .permissions import PermissionSnapshot
 
 
 _MAX_PROCESSES = 32
@@ -46,26 +48,7 @@ def _secret_env_name(name: str) -> bool:
 
 
 def safe_process_environment(overrides: Mapping[str, object] | None = None) -> dict[str, str]:
-    """Build a child environment without inheriting or injecting secret-like variables."""
-
-    output: dict[str, str] = {}
-    for name, value in os.environ.items():
-        if _secret_env_name(name):
-            continue
-        output[str(name)] = str(value)
-    for raw_name, raw_value in (overrides or {}).items():
-        name = str(raw_name)
-        if not name or "=" in name or "\x00" in name:
-            raise ValueError("environment variable names must be non-empty and cannot contain '=' or NUL")
-        if _secret_env_name(name):
-            raise ValueError(f"secret-like environment override is not allowed: {name}")
-        value = str(raw_value)
-        if "\x00" in value:
-            raise ValueError(f"environment variable value contains NUL: {name}")
-        if len(name) > 1024 or len(value) > 64_000:
-            raise ValueError("environment override is too large")
-        output[name] = value
-    return output
+    return ShellEnvironmentPolicy().build(overrides)
 
 
 def validate_argv(raw_argv: object) -> tuple[str, ...]:
@@ -892,9 +875,11 @@ class ProcessStore:
         *,
         max_processes: int = _MAX_PROCESSES,
         sandbox_manager: SandboxManager | None = None,
+        environment_policy: ShellEnvironmentPolicy | None = None,
     ) -> None:
         self.max_processes = max(1, int(max_processes))
         self.sandbox_manager = sandbox_manager or SandboxManager()
+        self.environment_policy = environment_policy or ShellEnvironmentPolicy()
         self._lock = threading.RLock()
         self._processes: dict[str, ManagedProcess] = {}
         self._order: list[str] = []
@@ -926,6 +911,8 @@ class ProcessStore:
         cwd: Path,
         permission_mode: str,
         timeout_seconds: int,
+        permissions: PermissionSnapshot | None = None,
+        environment_policy: ShellEnvironmentPolicy | None = None,
         stdin_text: str = "",
         workspace: Path | None = None,
         env: Mapping[str, object] | None = None,
@@ -935,7 +922,7 @@ class ProcessStore:
     ) -> ManagedProcess:
         self._prune_finished()
         root = Path(workspace or cwd).expanduser().resolve()
-        child_env = safe_process_environment(env)
+        child_env = (environment_policy or self.environment_policy).build(env)
         # PermissionEngine runs before the tool handler. This second boundary is
         # intentionally SandboxManager.prepare before _spawn_backend. The exact
         # sanitized child environment is frozen before both planning and spawn so
@@ -945,6 +932,7 @@ class ProcessStore:
             cwd=Path(cwd),
             workspace=root,
             permission_mode=permission_mode,
+            permissions=permissions,
             environment=child_env,
         )
         parsed_rows, parsed_cols = validate_terminal_size(rows, cols)
@@ -1001,6 +989,8 @@ class ProcessStore:
         cwd: Path,
         permission_mode: str,
         timeout_seconds: int,
+        permissions: PermissionSnapshot | None = None,
+        environment_policy: ShellEnvironmentPolicy | None = None,
         stdin_text: str = "",
         cancel_check: Callable[[], bool] | None = None,
         on_output: Callable[[str, str], None] | None = None,

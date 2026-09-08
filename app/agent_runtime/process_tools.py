@@ -185,6 +185,8 @@ def _exec_handler(
         cwd=cwd,
         workspace=context.workspace,
         permission_mode=context.permission_mode,
+        permissions=context.services.get("permission_snapshot"),
+        environment_policy=context.services.get("environment_policy"),
         timeout_seconds=timeout_seconds,
         stdin_text=stdin_text,
         env=env,

@@ -84,6 +84,36 @@ def test_streaming_code_updates_existing_code_block_in_place(app, monkeypatch):
     assert first_block.body.toPlainText() == "print('hello')"
 
 
+def test_a_long_outgoing_message_wraps_instead_of_being_clipped(app, monkeypatch):
+    monkeypatch.setenv("LOOM_REDUCE_MOTION", "1")
+    message = MessageWidget("user")
+    message.set_text(
+        "Refactor the transcript so streaming feels calm, and check the tests still pass"
+    )
+
+    hint = message.sizeHint()
+    # QLabel's own hint for wrapped rich text under-reports badly; the bubble has
+    # to measure the document or a long sentence is cut off on one line.
+    assert hint.width() > 300
+    assert hint.width() <= MessageWidget.USER_MAX_WIDTH
+    assert message.heightForWidth(hint.width()) >= hint.height()
+
+
+def test_a_thinking_message_keeps_a_row_of_height_before_the_first_token(app, monkeypatch):
+    monkeypatch.setenv("LOOM_REDUCE_MOTION", "1")
+    message = MessageWidget("assistant")
+
+    message.set_streaming(True)
+    # With no body blocks the layout reports no height-for-width, and the
+    # transcript used to collapse the whole message -- hiding the only thing on
+    # screen between pressing Enter and the first token.
+    assert message.minimumHeight() > 0
+    assert message.heightForWidth(700) >= message.stream_status.sizeHint().height()
+
+    message.set_text("First token")
+    assert message.minimumHeight() == 0
+
+
 def test_reduced_motion_keeps_stream_glyph_static(app, monkeypatch):
     monkeypatch.setenv("LOOM_REDUCE_MOTION", "1")
     glyph = StreamGlyph()

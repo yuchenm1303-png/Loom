@@ -282,6 +282,19 @@ class StreamingLoomAppServerService(LoomAppServerService):
             )
 
     def _on_runtime_event(self, event: AgentEvent) -> None:
+        if event.kind is AgentEventKind.MODEL_REQUESTED and int(event.data.get("attempt") or 0) > 0:
+            # A failed sampling attempt has no canonical response. Close its live
+            # items before the new step starts so retries never leave phantom spinners.
+            with self._guard:
+                stale = [key for key in self._streamed_assistant_steps
+                    if key[0] == event.session_id and key[1] == event.turn_id]
+                for key in stale:
+                    self._streamed_assistant_steps.discard(key)
+            for _, _, step_id in stale:
+                self._notify("item/completed", {"item": {"id": _assistant_step_item_id(step_id),
+                    "threadId": event.session_id, "turnId": event.turn_id,
+                    "type": "assistant_message", "status": "interrupted", "updatedAt": event.created_at}})
+            self._clear_turn_tool_streams(event, close_started=True)
         if event.kind is AgentEventKind.MODEL_RESPONSE and str(event.data.get("text") or ""):
             step_id = str(event.data.get("step_id") or "").strip()
             key = (event.session_id, event.turn_id, step_id)

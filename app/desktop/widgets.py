@@ -36,6 +36,7 @@ from PySide6.QtWidgets import (
     QApplication,
     QFrame,
     QGraphicsOpacityEffect,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QPlainTextEdit,
@@ -102,6 +103,28 @@ class PulseLabel(QLabel):
         pulse.setEasingCurve(QEasingCurve.Type.InOutSine)
         pulse.start()
         self._pulse = pulse
+
+
+def plain_text_height(view: QPlainTextEdit, *, minimum: float, maximum: float) -> int:
+    """Pixel height that shows all of a read-only plain-text view's content.
+
+    ``QPlainTextDocumentLayout`` reports ``documentSize().height()`` as a line
+    count, not a pixel height -- the two were being added to pixel margins, so a
+    two-line code block asked for 14px and was clamped to a clipped 24.
+    """
+    document = view.document()
+    lines = max(1.0, float(document.size().height()))
+    height = (
+        lines * view.fontMetrics().lineSpacing()
+        + document.documentMargin() * 2
+        + view.frameWidth() * 2
+        + 4
+    )
+    if view.lineWrapMode() == QPlainTextEdit.LineWrapMode.NoWrap:
+        viewport_width = view.viewport().width()
+        if viewport_width > 0 and document.size().width() > viewport_width:
+            height += view.horizontalScrollBar().sizeHint().height()
+    return int(max(float(minimum), min(height, float(maximum))))
 
 
 def copy_to_clipboard(value: str) -> None:
@@ -316,8 +339,13 @@ class ActivityTimelineView(QScrollArea):
     def render_events(self, events: list[tuple[str, str, str]]) -> None:
         while self._layout.count() > 1:
             item = self._layout.takeAt(0)
-            if item.widget() is not None:
-                item.widget().deleteLater()
+            widget = item.widget()
+            if widget is not None:
+                # Unparent before the deferred delete: a widget still parented
+                # to the canvas keeps painting its old geometry, which showed up
+                # as the empty-state text bleeding through the first rows.
+                widget.setParent(None)
+                widget.deleteLater()
         self._plain_text = "\n".join(summary for _when, _kind, summary in events)
         if not events:
             empty = EmptyPanel("activity", "Runtime is quiet", "Model steps, tools, commands, diffs, and delegated work appear here.")
@@ -402,9 +430,7 @@ class CodeBlock(QFrame):
             self._sync_height()
 
     def _sync_height(self) -> None:
-        document = self.body.document()
-        height = document.size().height() + document.documentMargin() * 2 + 4
-        self.body.setFixedHeight(int(max(24.0, min(height, 520.0))))
+        self.body.setFixedHeight(plain_text_height(self.body, minimum=26, maximum=520))
 
     def _copy(self) -> None:
         copy_to_clipboard(self._source)
@@ -651,8 +677,7 @@ class ActivityCard(QFrame):
 
         if self._body_animation is not None:
             self._body_animation.stop()
-        document = self.body.document()
-        natural = int(max(30.0, min(document.size().height() + document.documentMargin() * 2 + 12, 360.0)))
+        natural = self._body_height()
         natural += self.body_title.sizeHint().height() + self.status_label.sizeHint().height() + 31
         start = self.body_shell.height() if self.body_shell.isVisible() else 0
         end = natural if show else 0
@@ -686,12 +711,16 @@ class ActivityCard(QFrame):
         self._body_animation = group
         group.start()
 
+    def _body_height(self) -> int:
+        return plain_text_height(self.body, minimum=30, maximum=360)
+
     def _sync_height(self) -> None:
-        if not self.body_shell.isVisible():
+        # "Shown" here means the disclosure is open, not that the window happens
+        # to be on screen: a card on an inactive Runtime tab must still be sized
+        # correctly for when that tab is selected.
+        if self.body_shell.isHidden():
             return
-        document = self.body.document()
-        height = document.size().height() + document.documentMargin() * 2 + 12
-        self.body.setFixedHeight(int(max(30.0, min(height, 360.0))))
+        self.body.setFixedHeight(self._body_height())
 
     def update_card(
         self,
@@ -769,6 +798,9 @@ class TranscriptView(QScrollArea):
 
     TAIL_THRESHOLD_PX = 64
 
+    # Below this, following the tail is tracking; above it, it is a jump.
+    SMOOTH_TAIL_MIN_PX = 90
+
     # Long lines are hard to track back to the next one, so the conversation
     # keeps a comfortable measure and centres itself in a wide window.
     MAX_CONTENT_WIDTH = 820
@@ -810,6 +842,8 @@ class TranscriptView(QScrollArea):
         # Content height settles asynchronously, so "stay at the bottom" has to
         # react to the range growing rather than scroll once and hope.
         self._follow_tail = True
+        self._auto_scrolling = False
+        self._tail_animation: QPropertyAnimation | None = None
         bar = self.verticalScrollBar()
         bar.rangeChanged.connect(self._on_range_changed)
         bar.valueChanged.connect(self._on_value_changed)
@@ -876,8 +910,13 @@ class TranscriptView(QScrollArea):
                     else Qt.AlignmentFlag.AlignTop
                 )
                 if entry.kind == "user":
+                    widget.setMinimumWidth(0)
                     widget.setMaximumWidth(690)
-                    widget.setMinimumWidth(280)
+                    policy = widget.sizePolicy()
+                    policy.setHorizontalPolicy(QSizePolicy.Policy.Maximum)
+                    policy.setVerticalPolicy(QSizePolicy.Policy.Minimum)
+                    policy.setHeightForWidth(True)
+                    widget.setSizePolicy(policy)
                 self._layout.insertWidget(self._layout.count() - 1, widget, 0, alignment)
                 self._order.insert(min(index, len(self._order)), entry.key)
                 self._signatures[entry.key] = ()
@@ -920,17 +959,60 @@ class TranscriptView(QScrollArea):
         return bar.maximum() - bar.value() <= self.TAIL_THRESHOLD_PX
 
     def _on_range_changed(self, _minimum: int, maximum: int) -> None:
-        if self._follow_tail:
-            self.verticalScrollBar().setValue(maximum)
+        if not self._follow_tail:
+            return
+        bar = self.verticalScrollBar()
+        distance = maximum - bar.value()
+        # Token-by-token growth is a few pixels at a time and should track the
+        # text exactly. A whole code block or tool card arriving at once is a
+        # jump the eye cannot follow, so that one is eased instead.
+        if distance <= self.SMOOTH_TAIL_MIN_PX or not theme.motion_enabled():
+            self._set_scroll_value(maximum)
+            return
+        self._animate_to_tail(maximum)
+
+    def _set_scroll_value(self, value: int) -> None:
+        self._auto_scrolling = True
+        try:
+            self.verticalScrollBar().setValue(value)
+        finally:
+            self._auto_scrolling = False
+
+    def _animate_to_tail(self, maximum: int) -> None:
+        bar = self.verticalScrollBar()
+        if self._tail_animation is not None:
+            self._tail_animation.stop()
+        animation = QPropertyAnimation(bar, b"value", self)
+        animation.setDuration(theme.MOTION_BASE_MS)
+        animation.setStartValue(bar.value())
+        animation.setEndValue(maximum)
+        animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+        animation.valueChanged.connect(lambda _value: setattr(self, "_auto_scrolling", True))
+
+        def finish() -> None:
+            self._auto_scrolling = False
+            self._tail_animation = None
+
+        animation.finished.connect(finish)
+        self._tail_animation = animation
+        self._auto_scrolling = True
+        animation.start(QPropertyAnimation.DeletionPolicy.DeleteWhenStopped)
 
     def _on_value_changed(self, value: int) -> None:
         # Scrolling up parks the view; returning to the bottom resumes following.
+        # The view moving itself is not the reader changing their mind, so an
+        # eased catch-up must not be able to switch following off mid-flight.
+        if self._auto_scrolling:
+            return
         self._follow_tail = self.verticalScrollBar().maximum() - value <= self.TAIL_THRESHOLD_PX
 
     def scroll_to_tail(self) -> None:
+        if self._tail_animation is not None:
+            self._tail_animation.stop()
+            self._tail_animation = None
         self._follow_tail = True
         bar = self.verticalScrollBar()
-        bar.setValue(bar.maximum())
+        self._set_scroll_value(bar.maximum())
 
 
 def describe_card(entry: TranscriptEntry) -> dict[str, Any]:
@@ -1282,6 +1364,7 @@ class ApprovalCard(QFrame):
         self.arguments_view.setMaximumHeight(150)
         self.arguments_view.hide()
         layout.addWidget(self.arguments_view)
+        self._entrance: QPropertyAnimation | None = None
 
         actions = QHBoxLayout()
         actions.addStretch(1)
@@ -1313,11 +1396,23 @@ class ApprovalCard(QFrame):
         arguments = approval.get("arguments") or {}
         if arguments:
             self.arguments_view.setPlainText(fmt.pretty(arguments))
+            self._sync_arguments_height()
             self.arguments_view.show()
         else:
             self.arguments_view.hide()
         self.set_busy(False)
+        was_visible = self.isVisible()
         self.show()
+        # An approval interrupts the reader mid-turn, so it should arrive rather
+        # than appear: enough motion to catch the eye, not enough to delay them.
+        if not was_visible:
+            fade_in(self, duration_ms=theme.MOTION_BASE_MS)
+
+    def _sync_arguments_height(self) -> None:
+        """Show the call as it is, not padded out to a fixed inspector box."""
+        self.arguments_view.setFixedHeight(
+            plain_text_height(self.arguments_view, minimum=38, maximum=150)
+        )
 
     def dismiss(self) -> None:
         self._call_id = ""
@@ -1377,20 +1472,20 @@ class EmptyState(QFrame):
 
     PROMPTS: tuple[tuple[str, str], ...] = (
         (
-            "Review this project",
+            "Explore project",
             "Inspect this project and summarize its architecture. Do not modify files.",
         ),
         (
-            "Find a real bug",
+            "Find a bug",
             "Inspect the current project, identify one meaningful bug or risk, and explain the "
             "root cause before changing anything.",
         ),
         (
-            "Run the tests",
+            "Run tests",
             "Run the relevant test suite, summarize failures, and do not modify code yet.",
         ),
         (
-            "Explain architecture",
+            "Map architecture",
             "Explain this codebase from the entry points down to the main runtime and tool layers.",
         ),
     )
@@ -1405,41 +1500,62 @@ class EmptyState(QFrame):
 
         content = QFrame()
         content.setObjectName("emptyStateContent")
-        content.setMinimumWidth(460)
+        self.content = content
+        content.setMinimumWidth(0)
         content.setMaximumWidth(640)
         inner = QVBoxLayout(content)
-        inner.setContentsMargins(18, 18, 18, 18)
-        inner.setSpacing(11)
+        inner.setContentsMargins(8, 12, 8, 12)
+        inner.setSpacing(16)
 
+        emblem = QLabel("L")
+        emblem.setObjectName("emptyEmblem")
+        emblem.setFixedSize(64, 64)
+        emblem.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        inner.addWidget(emblem)
+        inner.addSpacing(8)
         kicker = QLabel("LOOM WORKSPACE")
         kicker.setObjectName("emptyKicker")
         inner.addWidget(kicker)
-        title = QLabel("Ready when you are")
+        title = QLabel("Ready to begin?")
         title.setObjectName("emptyTitle")
+        title.setWordWrap(True)
         inner.addWidget(title)
         body = QLabel(
-            "Inspect, edit, run, browse, and coordinate work in this project from one durable thread."
+            "Turn an idea into progress.\nAsk anything, or pick a place to start."
         )
         body.setObjectName("emptyBody")
         body.setWordWrap(True)
         inner.addWidget(body)
 
-        rows = (QHBoxLayout(), QHBoxLayout())
-        for row in rows:
-            row.setSpacing(8)
+        from app.desktop.interaction import SuggestionCard
+
+        grid = QGridLayout()
+        grid.setSpacing(12)
+        grid.setColumnStretch(0, 1)
+        grid.setColumnStretch(1, 1)
+        descriptions = ("Understand the codebase", "Trace a problem to its source", "Check what works", "See how it fits together")
+        inner.addSpacing(10)
         for index, (label, prompt) in enumerate(self.PROMPTS):
-            button = QPushButton(f"{label}   →")
+            button = SuggestionCard(label, descriptions[index])
             button.setObjectName("promptSuggestion")
+            button.setToolTip(prompt)
             button.setCursor(Qt.CursorShape.PointingHandCursor)
             button.clicked.connect(
                 lambda _checked=False, value=prompt: self.promptChosen.emit(value)
             )
-            rows[0 if index < 2 else 1].addWidget(button, 1)
-        for row in rows:
-            inner.addLayout(row)
+            grid.addWidget(button, index // 2, index % 2)
+        inner.addLayout(grid)
 
         layout.addWidget(content, 0, Qt.AlignmentFlag.AlignHCenter)
         layout.addStretch(1)
+
+    def resizeEvent(self, event: Any) -> None:
+        super().resizeEvent(event)
+        self.content.setFixedWidth(max(0, min(640, self.width() - 24)))
+
+    def showEvent(self, event: Any) -> None:
+        super().showEvent(event)
+        fade_in(self, duration_ms=320)
 
 
 class CenteredColumn(QWidget):

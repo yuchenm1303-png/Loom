@@ -499,13 +499,35 @@ class SandboxManager:
 
         program = str(argv[0] if argv else "").strip().strip('"')
         candidate = Path(program)
+        resolved_program = None
         if candidate.is_absolute():
             if candidate.exists():
-                output.append(str(candidate.resolve().parent))
+                resolved_program = candidate.resolve()
+                output.append(str(resolved_program.parent))
         else:
             located = shutil.which(program, path=path_value or None)
             if located:
-                output.append(str(Path(located).resolve().parent))
+                resolved_program = Path(located).resolve()
+                output.append(str(resolved_program.parent))
+
+        # A Windows venv launcher reads pyvenv.cfg beside/above Scripts and then
+        # loads the base interpreter. Directly launching .venv/Scripts/python.exe
+        # does not set VIRTUAL_ENV, so environment-only discovery misses both.
+        if resolved_program is not None and resolved_program.name.casefold() in {"python.exe", "pythonw.exe"}:
+            for root in (resolved_program.parent, resolved_program.parent.parent):
+                config = root / "pyvenv.cfg"
+                if not config.is_file():
+                    continue
+                output.append(str(root))
+                with config.open(encoding="utf-8-sig") as handle:
+                    text = handle.read(16_384)
+                for line in text.splitlines():
+                    key, separator, value = line.partition("=")
+                    if separator and key.strip().casefold() == "home":
+                        home = Path(value.strip())
+                        if home.is_absolute() and (home / "python.exe").is_file():
+                            output.append(str(home.resolve()))
+                break
 
         for name in ("SYSTEMROOT", "WINDIR", "PYTHONHOME", "VIRTUAL_ENV"):
             value = str(environment.get(name) or "").strip().strip('"')

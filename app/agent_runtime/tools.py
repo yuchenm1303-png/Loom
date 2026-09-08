@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+from copy import deepcopy
+from functools import lru_cache
+from dataclasses import replace
 import re
 from dataclasses import dataclass, field
 from enum import Enum
@@ -125,6 +128,7 @@ class AgentTool:
     handler: ToolHandler
     effect: ToolEffect = ToolEffect.READ_ONLY
     exposure: ToolExposure = ToolExposure.DIRECT
+    binding_key: str = ""
 
     def __post_init__(self) -> None:
         name = str(self.name or "").strip()
@@ -146,7 +150,7 @@ class AgentTool:
         return ToolDefinition(
             name=self.name,
             description=self.description,
-            input_schema=self.input_schema,
+            input_schema=deepcopy(self.input_schema),
         )
 
 
@@ -176,7 +180,7 @@ class ToolRouter:
     """Immutable per-step view of tools exposed directly to the model."""
 
     def __init__(self, tools: tuple[AgentTool, ...]) -> None:
-        self._tools = {tool.name: tool for tool in tools}
+        self._tools = {tool.name: replace(tool, input_schema=deepcopy(tool.input_schema)) for tool in tools}
 
     def get(self, name: str) -> AgentTool | None:
         return self._tools.get(str(name or "").strip())
@@ -263,60 +267,32 @@ class ToolRegistry:
         return ToolRouter(tuple(visible))
 
 
+@lru_cache(maxsize=256)
+def _schema_validator(serialized: str):
+    from jsonschema import Draft202012Validator, validators
+    from referencing import Registry
+    from referencing.exceptions import NoSuchResource
+    def no_network(uri):
+        raise NoSuchResource(ref=uri)
+    schema = json.loads(serialized)
+    cls = validators.validator_for(schema, default=Draft202012Validator)
+    cls.check_schema(schema)
+    return cls(schema, registry=Registry(retrieve=no_network))
+
+
 def validate_tool_arguments(schema: dict[str, Any], arguments: dict[str, Any]) -> None:
     if not isinstance(arguments, dict):
         raise ValueError("tool arguments must be a JSON object")
-    _validate_value(schema, arguments, path="$", root=True)
-
-
-def _validate_value(schema: dict[str, Any], value: Any, *, path: str, root: bool = False) -> None:
-    if not isinstance(schema, dict):
-        raise ValueError(f"invalid tool schema at {path}")
-    expected = schema.get("type")
-    if expected == "object":
-        if not isinstance(value, dict):
-            raise ValueError(f"{path} must be an object")
-        properties = schema.get("properties") or {}
-        if not isinstance(properties, dict):
-            raise ValueError(f"invalid properties schema at {path}")
-        required = schema.get("required") or []
-        for key in required:
-            if key not in value:
-                raise ValueError(f"{path}.{key} is required")
-        if schema.get("additionalProperties") is False:
-            unknown = sorted(set(value) - set(properties))
-            if unknown:
-                raise ValueError(f"{path} contains unsupported properties: {', '.join(unknown)}")
-        for key, item in value.items():
-            child_schema = properties.get(key)
-            if isinstance(child_schema, dict):
-                _validate_value(child_schema, item, path=f"{path}.{key}")
-    elif expected == "array":
-        if not isinstance(value, list):
-            raise ValueError(f"{path} must be an array")
-        item_schema = schema.get("items")
-        if isinstance(item_schema, dict):
-            for index, item in enumerate(value):
-                _validate_value(item_schema, item, path=f"{path}[{index}]")
-    elif expected == "string":
-        if not isinstance(value, str):
-            raise ValueError(f"{path} must be a string")
-    elif expected == "integer":
-        if isinstance(value, bool) or not isinstance(value, int):
-            raise ValueError(f"{path} must be an integer")
-    elif expected == "number":
-        if isinstance(value, bool) or not isinstance(value, (int, float)):
-            raise ValueError(f"{path} must be a number")
-    elif expected == "boolean":
-        if not isinstance(value, bool):
-            raise ValueError(f"{path} must be a boolean")
-    elif expected not in {None, "null"}:
-        raise ValueError(f"unsupported JSON schema type at {path}: {expected}")
-
-    if "enum" in schema and value not in schema["enum"]:
-        raise ValueError(f"{path} must be one of {schema['enum']!r}")
-    if root and expected != "object":
+    if schema.get("type") != "object":
         raise ValueError("tool root schema must be type=object")
+    try:
+        validator = _schema_validator(json.dumps(schema, sort_keys=True))
+        error = next(validator.iter_errors(arguments), None)
+    except Exception as exc:
+        raise ValueError(f"invalid or unresolved tool schema: {exc}") from exc
+    if error is not None:
+        path = "$" + "".join(f".{p}" for p in error.absolute_path)
+        raise ValueError(f"{path}: {error.message}")
 
 
 __all__ = [

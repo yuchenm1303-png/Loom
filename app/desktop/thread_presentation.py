@@ -62,8 +62,8 @@ QFrame#threadHoverSurface {
     border-radius: 9px;
 }
 QFrame#threadActiveSurface {
-    background: #24262d;
-    border: 1px solid #30333b;
+    background: #302b43;
+    border: 1px solid #504565;
     border-radius: 9px;
 }
 QFrame#threadSelectionAccent {
@@ -119,6 +119,10 @@ class _HoverCoordinator(QObject):
                 self._hovered = None
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
+        from shiboken6 import isValid
+
+        if not hasattr(self, "view") or not isValid(self.view):
+            return False
         if watched is self.view.viewport():
             if event.type() == QEvent.Type.MouseMove:
                 point = event.position().toPoint()  # type: ignore[attr-defined]

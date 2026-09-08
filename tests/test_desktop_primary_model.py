@@ -17,8 +17,8 @@ def test_minimax_is_the_default_desktop_primary_model():
     )
 
     assert provider == "openai-compatible"
-    assert base_url == _MINIMAX_BASE_URL == "https://api.minimax.io/v1"
-    assert model == _MINIMAX_DEFAULT_MODEL == "MiniMax-M2.7"
+    assert base_url == _MINIMAX_BASE_URL == "https://api.minimaxi.com/v1"
+    assert model == _MINIMAX_DEFAULT_MODEL == "MiniMax-M3"
     assert secret == "test-minimax-secret"
 
 

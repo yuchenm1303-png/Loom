@@ -6,6 +6,7 @@ from typing import Any
 
 from .contracts import ChatRequest, ModelUsage, StreamEvent, StreamEventKind
 from .errors import AITransportError
+from .execution_control import current_control, check_cancelled, ModelCancelled
 from .openai_runtime import OpenAIChatBackend, _usage_from
 from .provider_catalog import ProviderAdapter
 
@@ -52,12 +53,18 @@ class OpenAIStreamingChatBackend(OpenAIChatBackend):
             raise TypeError("request must be ChatRequest")
 
         self._stream_local.metadata = {}
+        check_cancelled()
         stream = self._create_stream(self._request_kwargs(request))
+        control = current_control.get()
+        close = getattr(stream, "close", None)
+        if control is not None and callable(close):
+            control.on_cancel(close)
         usage = ModelUsage()
         finish_reason = ""
         response_id = ""
         try:
             for chunk in stream:
+                check_cancelled()
                 chunk_id = str(getattr(chunk, "id", "") or "").strip()
                 if chunk_id:
                     response_id = chunk_id
@@ -91,6 +98,8 @@ class OpenAIStreamingChatBackend(OpenAIChatBackend):
                 if candidate_finish:
                     finish_reason = candidate_finish
 
+            if not finish_reason:
+                raise AITransportError("AI stream ended without a completion marker")
             self._stream_local.metadata = {
                 "usage": usage,
                 "finish_reason": finish_reason,
@@ -100,13 +109,16 @@ class OpenAIStreamingChatBackend(OpenAIChatBackend):
                 kind=StreamEventKind.COMPLETED,
                 finish_reason=finish_reason,
             )
-        except AITransportError:
+        except (AITransportError, ModelCancelled):
             raise
         except Exception as exc:
             raise AITransportError(
                 f"AI stream failed via provider {self.connection.provider_id!r}: "
                 f"{type(exc).__name__}: {exc}"
             ) from exc
+        finally:
+            if callable(close):
+                close()
 
 
 __all__ = ["OpenAIStreamingChatBackend"]

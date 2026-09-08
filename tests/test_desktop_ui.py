@@ -288,10 +288,10 @@ def test_tool_process_and_diff_items_render_inline_as_cards(desktop):
     assert kinds == ["user", "process", "diff", "tool", "tool", "assistant"]
 
     process_card = widgets[1]
-    assert process_card.title_label.text() == "Ran $ python -V"
+    assert process_card.title_label.text() == "Ran python -V"
     assert "Python 3.12.10" in process_card._body_text
     assert process_card.body_title.text() == "Shell"
-    assert process_card.status_label.text() == "Completed"
+    assert process_card.status_label.text() == "✓  Success"
 
     diff_card = widgets[2]
     assert diff_card.title_label.text() == "Edited 1 file"
@@ -453,10 +453,92 @@ def test_streaming_updates_only_the_live_message_widget(desktop):
 
     live = window.transcript._widgets["assistant:live"]
     assert isinstance(live, MessageWidget)
-    assert live.stream_badge.isVisible() is True
+    assert live.stream_status.isVisible() is True
+    assert live.stream_status.glyph._active is True
     assert window.status_label.text() == "Running"
-    assert window.composer_state_label.text() == "Loom is working"
+    # The label also carries elapsed time once a turn has been running a moment.
+    assert window.composer_state_label.text().startswith("Loom is working")
     assert window.stop_button.isEnabled() is True
+
+
+def test_streamed_process_output_reaches_the_transcript_while_it_runs(desktop):
+    app, client, window = desktop
+
+    client.emit(
+        "turn/started",
+        {"threadId": "thread-1", "turn": {"id": "turn-live", "status": "running"}},
+    )
+    client.emit(
+        "item/started",
+        {
+            "threadId": "thread-1",
+            "item": {
+                "id": "process:live",
+                "type": "process",
+                "status": "running",
+                "argv": ["python", "-V"],
+            },
+        },
+    )
+    # The Terminal tab is a card list, not a text box. Appending to it as if it
+    # were one raised on every chunk and killed the handler before the
+    # transcript could be re-rendered.
+    client.emit(
+        "item/delta",
+        {"threadId": "thread-1", "itemId": "process:live", "delta": {"stdout": "Python 3.12.10\n"}},
+    )
+    _wait_for(app, lambda: "Python 3.12.10" in window.transcript.toPlainText())
+    assert "Python 3.12.10" in window.terminal_view.toPlainText()
+
+
+def test_a_finished_turn_reports_how_long_it_took_and_then_stops_saying_so(desktop):
+    app, client, window = desktop
+
+    window.send_prompt("Run the tests")
+    assert window.composer_state_label.text().startswith("Loom is working")
+    assert window.composer_state_label.property("tone") == "working"
+
+    window._turn_started_at -= 7  # as if the turn had been running a while
+    client.emit(
+        "turn/completed",
+        {"threadId": "thread-1", "turn": {"id": "turn-live", "status": "completed"}},
+    )
+    app.processEvents()
+    assert window.composer_state_label.text() == "Done · 7s"
+    assert window.composer_state_label.property("tone") == "done"
+
+    # And it gets out of the way rather than becoming permanent chrome.
+    window._clear_turn_summary()
+    assert window.composer_state_label.text() == ""
+
+
+def test_a_live_turn_never_falls_back_to_the_empty_state(desktop):
+    app, client, window = desktop
+
+    window.send_prompt("Keep the transcript up")
+    client.emit(
+        "turn/started",
+        {"threadId": "thread-1", "turn": {"id": "turn-live", "status": "running"}},
+    )
+    # A snapshot that has not committed the prompt yet used to blank the
+    # conversation back to "Ready to begin?" mid-turn.
+    window.state.clear_optimistic_user()
+    window._render_transcript()
+    app.processEvents()
+
+    assert window.transcript.isHidden() is False
+    assert window.empty_state.isVisible() is False
+
+
+def test_repeated_activity_lines_collapse_instead_of_stacking(desktop):
+    _app, _client, window = desktop
+
+    window._append_activity("Loom is responding")
+    window._append_activity("Loom is responding")
+    window._append_activity("Loom is responding")
+
+    responding = [row for row in window._activity_tail if row[2] == "Loom is responding"]
+    assert len(responding) == 1
 
 
 def test_approval_card_answers_with_the_call_it_displayed(desktop):
@@ -520,7 +602,7 @@ def test_panel_toggles_hide_and_restore_both_side_panels(desktop):
 
     window.toggle_sidebar()
     window.toggle_runtime()
-    app.processEvents()
+    _wait_for(app, lambda: not window.sidebar_panel.isVisible() and not window.activity_panel.isVisible())
     assert window.sidebar_panel.isVisible() is False
     assert window.activity_panel.isVisible() is False
 

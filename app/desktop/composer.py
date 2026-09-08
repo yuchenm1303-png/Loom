@@ -40,6 +40,7 @@ from PySide6.QtWidgets import (
 from app.ai.model_store import ModelConfigStore, StoredModel, model_id_from_selection
 from app.desktop import format as fmt
 from app.desktop.widgets import repolish
+from app.desktop.interaction import FocusFrame
 
 
 MIN_HEIGHT = 40
@@ -274,7 +275,7 @@ class AddModelDialog(QDialog):
         super().accept()
 
 
-class ComposerPanel(QFrame):
+class ComposerPanel(FocusFrame):
     """Prompt entry plus the decisions that apply to what is sent."""
 
     submitted = Signal(str)
@@ -384,9 +385,11 @@ class ComposerPanel(QFrame):
         if watched is self.editor:
             if event.type() == QEvent.Type.FocusIn:
                 self.setProperty("focused", True)
+                self.animate_focus(True)
                 repolish(self)
             elif event.type() == QEvent.Type.FocusOut:
                 self.setProperty("focused", False)
+                self.animate_focus(False)
                 repolish(self)
         return super().eventFilter(watched, event)
 
@@ -441,9 +444,17 @@ class ComposerPanel(QFrame):
         self.usage_label.setText(f"{total:,} tokens" if total else "")
         self.usage_label.setVisible(bool(total))
 
-    def set_state(self, text: str) -> None:
+    def set_state(self, text: str, *, tone: str = "") -> None:
+        """What the conversation is doing right now, and how it should read.
+
+        The tone is the difference between "still working", "your turn to
+        answer" and "this failed"; without it every state is the same grey.
+        """
         self.state_label.setText(text)
         self.state_label.setVisible(bool(text))
+        if self.state_label.property("tone") != tone:
+            self.state_label.setProperty("tone", tone)
+            repolish(self.state_label)
 
     def set_busy(self, *, active: bool, can_send: bool, read_only: bool) -> None:
         self.stop_button.setVisible(active)

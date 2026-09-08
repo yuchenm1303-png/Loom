@@ -1,0 +1,25 @@
+openai<3,>=1
+keyring<26,>=25
+PyYAML<7,>=6
+jsonschema<5,>=4.23
+
+[:platform_system == "Windows"]
+pywinpty<4,>=3.0.5
+
+[browser]
+browser-use<0.14,>=0.13.10
+
+[computer]
+Pillow<13,>=11
+pyautogui<0.10,>=0.9.54
+pywinauto<0.7,>=0.6.9
+pywin32<400,>=306
+
+[desktop]
+PySide6<7,>=6.7
+
+[dev]
+pytest<9,>=8
+
+[mcp]
+mcp<3,>=2.1

@@ -566,6 +566,13 @@ class LoomAppServerService:
             }
         }
 
+    def turn_steer(self, params: dict[str, Any]) -> dict[str, Any]:
+        session_id = self._required_text(params, "threadId")
+        turn_id = self._required_text(params, "turnId")
+        text = self._required_text(params, "input")
+        self.runtime.steer(session_id, text, turn_id=turn_id)
+        return {"threadId": session_id, "turnId": turn_id, "accepted": True}
+
     def turn_interrupt(self, params: dict[str, Any]) -> dict[str, Any]:
         session_id = self._required_text(params, "threadId")
         session = self._load(session_id)
@@ -1039,6 +1046,7 @@ class LoomRpcController:
             "thread/fork": self.service.thread_fork,
             "turn/start": self.service.turn_start,
             "turn/interrupt": self.service.turn_interrupt,
+            "turn/steer": self.service.turn_steer,
             "approval/respond": self.service.approval_respond,
         }
         handler = handlers.get(method)
@@ -1068,6 +1076,8 @@ class JsonRpcStdioServer:
         self._write_lock = threading.Lock()
         self._writer: TextIO | None = None
         self._dropped_notifications = 0
+        self._resync_threads: set[str] = set()
+        self._resync_guard = threading.Lock()
         self.service.subscribe_notifications(self._on_notification)
 
     @property
@@ -1084,6 +1094,10 @@ class JsonRpcStdioServer:
             # Notifications are reconstructible from durable thread/read state.
             # Responses are never silently dropped; see _send_response.
             self._dropped_notifications += 1
+            item = params.get("item") or {}
+            thread_id = str(params.get("threadId") or item.get("threadId") or "")
+            with self._resync_guard:
+                self._resync_threads.add(thread_id)
 
     def _send_response(self, payload: dict[str, Any]) -> None:
         try:
@@ -1106,6 +1120,12 @@ class JsonRpcStdioServer:
             if payload is self._STOP:
                 return
             self._write_direct(payload)
+            if self._outbound.empty():
+                with self._resync_guard:
+                    threads, self._resync_threads = self._resync_threads, set()
+                for thread_id in threads:
+                    self._write_direct({"jsonrpc": "2.0", "method": "thread/resync", "params": {
+                        "threadId": thread_id, "reason": "notification_overflow", "dropped": self._dropped_notifications}})
 
     def _worker_loop(self) -> None:
         while True:

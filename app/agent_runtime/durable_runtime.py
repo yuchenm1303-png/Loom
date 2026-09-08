@@ -228,6 +228,7 @@ class DurableAgentRuntime(CoreAgentRuntime):
             session.pending_approval = None
             session.pending_tool_calls.clear()
             session.pending_step_id = ""
+            self._consume_steering(session)
             session.error = (
                 "Agent process stopped before the active turn reached a durable terminal state. "
                 "Incomplete tool calls were repaired as aborted observations."
@@ -297,6 +298,7 @@ class DurableAgentRuntime(CoreAgentRuntime):
             start_data: dict[str, object] = {
                 "permission_mode": session.permission_mode.value,
                 "source": source,
+                "usage_start": session.usage.total_tokens,
             }
             if queue_item is not None:
                 start_data["queue_id"] = queue_item.queue_id
@@ -376,9 +378,17 @@ class DurableAgentRuntime(CoreAgentRuntime):
             # current turn contribution from its model step events.
             turn_total = 0
             for event in self.store.events(result.session_id):
-                if event.turn_id != result.turn_id or event.kind is not AgentEventKind.MODEL_RESPONSE:
+                if event.turn_id != result.turn_id:
                     continue
-                usage = event.data.get("usage")
+                if event.kind is AgentEventKind.TURN_STARTED and "usage_start" in event.data:
+                    turn_total = max(0, after - int(event.data["usage_start"]))
+                    break
+                if event.kind is AgentEventKind.MODEL_RESPONSE:
+                    usage = event.data.get("usage")
+                elif event.kind is AgentEventKind.CONTEXT_CHECKPOINTED:
+                    usage = event.data.get("summary_usage")
+                else:
+                    continue
                 if isinstance(usage, dict):
                     turn_total += int(usage.get("total_tokens") or 0)
             delta = turn_total

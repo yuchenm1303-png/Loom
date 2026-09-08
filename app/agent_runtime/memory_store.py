@@ -4,6 +4,7 @@ import hashlib
 import math
 import re
 import sqlite3
+from contextlib import contextmanager
 import threading
 import uuid
 from dataclasses import dataclass
@@ -133,11 +134,16 @@ class MemoryStore:
         self._lock = threading.RLock()
         self._initialize()
 
-    def _connect(self) -> sqlite3.Connection:
+    @contextmanager
+    def _connect(self):
         connection = sqlite3.connect(self.path, timeout=30.0, isolation_level=None)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA busy_timeout = 30000")
-        return connection
+        try:
+            with connection:
+                yield connection
+        finally:
+            connection.close()
 
     def _initialize(self) -> None:
         with self._lock, self._connect() as connection:
