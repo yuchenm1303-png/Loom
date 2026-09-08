@@ -14,6 +14,7 @@ from app.desktop import composer_polish as _composer_polish
 from app.desktop import iconography as _iconography
 from app.desktop import sidebar_motion as _sidebar_motion
 from app.desktop import sidebar_motion_smooth as _sidebar_motion_smooth
+from app.desktop import turn_progress as _turn_progress
 from app.desktop import widgets as _widgets
 from app.desktop import widget_lifecycle as _widget_lifecycle
 
@@ -50,6 +51,7 @@ from app.desktop.widgets import (  # noqa: E402 - presentation is installed firs
 from app.desktop.window import LoomDesktopWindow  # noqa: E402
 
 _sidebar_motion.install_window(LoomDesktopWindow)
+_turn_progress.install_window(LoomDesktopWindow)
 
 __all__ = [
     "ActivityCard",
