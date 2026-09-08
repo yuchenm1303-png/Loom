@@ -13,7 +13,7 @@ from app.desktop.composer import ComposerPanel, ComposerTextEdit
 from app.desktop import iconography as _iconography
 from app.desktop import sidebar_motion as _sidebar_motion
 from app.desktop import widgets as _widgets
-from app.desktop.message_presentation import MessageWidget, TranscriptView
+from app.desktop.output_presentation import MessageWidget, TranscriptView
 from app.desktop.thread_presentation import ThreadListItemWidget, thread_row_size
 
 # Install presentation, icon, and motion hooks before ``window`` imports the

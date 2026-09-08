@@ -15,8 +15,8 @@ from __future__ import annotations
 
 from typing import Any, Iterable
 
-from PySide6.QtCore import QEvent, QObject, Qt, Signal
-from PySide6.QtGui import QKeyEvent
+from PySide6.QtCore import QEvent, QObject, QPoint, Qt, Signal
+from PySide6.QtGui import QFontMetrics, QKeyEvent
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -44,6 +44,9 @@ from app.desktop.widgets import repolish
 
 MIN_HEIGHT = 40
 MAX_HEIGHT = 220
+MODEL_MENU_WIDTH = 258
+MODEL_MENU_EDGE_GAP = 10
+MODEL_MENU_TEXT_WIDTH = 196
 
 PERMISSION_MODES: tuple[str, ...] = ("read-only", "approval", "workspace", "full-access")
 
@@ -100,17 +103,77 @@ class ControlButton(QPushButton):
         return self._value
 
 
-def _menu_caption(text: str, parent: QMenu) -> QWidgetAction:
+def _menu_caption(
+    text: str,
+    parent: QMenu,
+    *,
+    max_width: int = 330,
+    compact: bool = False,
+) -> QWidgetAction:
     """A non-interactive explanatory line inside a menu."""
     label = QLabel(text)
     label.setObjectName("menuCaption")
     label.setWordWrap(True)
-    label.setContentsMargins(11, 4, 11, 7)
-    label.setMaximumWidth(330)
+    if compact:
+        label.setContentsMargins(9, 3, 9, 5)
+    else:
+        label.setContentsMargins(11, 4, 11, 7)
+    label.setMaximumWidth(max_width)
     action = QWidgetAction(parent)
     action.setDefaultWidget(label)
     action.setEnabled(False)
     return action
+
+
+def _elide_menu_text(menu: QMenu, text: str, *, width: int = MODEL_MENU_TEXT_WIDTH) -> str:
+    """Keep one long provider/model label from widening the whole popup."""
+    return QFontMetrics(menu.font()).elidedText(
+        fmt.text(text), Qt.TextElideMode.ElideRight, max(80, int(width))
+    )
+
+
+def _bounded_menu_position(
+    menu: QMenu,
+    button: QWidget,
+    *,
+    width: int = MODEL_MENU_WIDTH,
+) -> QPoint:
+    """Size and position a popup so it stays inside the owning app window.
+
+    Qt normally keeps menus on-screen, but that can still let a composer popup
+    extend outside a small Loom window. The model picker is deliberately a
+    compact in-window surface, preferring the space above the composer control.
+    """
+    window = button.window()
+    gap = MODEL_MENU_EDGE_GAP
+    menu.setFixedWidth(width)
+    menu.ensurePolished()
+
+    max_height = max(140, window.height() - gap * 2)
+    menu.setMaximumHeight(max_height)
+    menu_height = min(menu.sizeHint().height(), max_height)
+
+    window_top_left = window.mapToGlobal(QPoint(0, 0))
+    left = window_top_left.x() + gap
+    top = window_top_left.y() + gap
+    right = window_top_left.x() + window.width() - gap
+    bottom = window_top_left.y() + window.height() - gap
+
+    button_top = button.mapToGlobal(QPoint(0, 0))
+    button_bottom = button.mapToGlobal(QPoint(0, button.height()))
+
+    max_x = max(left, right - width)
+    x = min(max(button_top.x(), left), max_x)
+
+    above = button_top.y() - menu_height - 6
+    below = button_bottom.y() + 6
+    if above >= top:
+        y = above
+    elif below + menu_height <= bottom:
+        y = below
+    else:
+        y = min(max(above, top), max(top, bottom - menu_height))
+    return QPoint(x, y)
 
 
 class AddModelDialog(QDialog):
@@ -437,11 +500,14 @@ class ComposerPanel(QFrame):
 
     def _open_model_menu(self) -> None:
         menu = QMenu(self)
+        menu.setObjectName("modelMenu")
+        menu.setToolTipsVisible(True)
         menu.addAction(
             _menu_caption(
-                "Saved API connections switch both endpoint and model. Switching restarts "
-                "the local App Server; durable conversations are kept.",
+                "Switching restarts the local model server. Conversations stay open.",
                 menu,
+                max_width=232,
+                compact=True,
             )
         )
         current = self.model_button.value
@@ -450,15 +516,25 @@ class ComposerPanel(QFrame):
 
         if saved:
             for entry in saved:
-                action = menu.addAction(f"{entry.display_name}  ·  {entry.model}")
+                full_label = f"{entry.display_name}  ·  {entry.model}"
+                action = menu.addAction(_elide_menu_text(menu, full_label))
                 action.setCheckable(True)
                 action.setChecked(entry.model_id == active_model_id and entry.model == current)
                 endpoint = entry.base_url or "OpenAI default endpoint"
-                action.setToolTip(f"{entry.adapter.value}\n{endpoint}\n{entry.model}")
+                action.setToolTip(
+                    f"{entry.display_name}\n{entry.adapter.value}\n{endpoint}\n{entry.model}"
+                )
                 actions[action] = entry.selection
             menu.addSeparator()
         elif load_error:
-            menu.addAction(_menu_caption(f"Saved models unavailable: {load_error}", menu))
+            menu.addAction(
+                _menu_caption(
+                    f"Saved models unavailable: {load_error}",
+                    menu,
+                    max_width=232,
+                    compact=True,
+                )
+            )
 
         # Preserve the existing lightweight model-name switch for one provider.
         # A saved connection is a different lane because it also changes endpoint/key.
@@ -469,16 +545,18 @@ class ComposerPanel(QFrame):
         for model in dict.fromkeys(recent):
             if not model or model_id_from_selection(model) is not None:
                 continue
-            action = menu.addAction(model)
+            action = menu.addAction(_elide_menu_text(menu, model))
             action.setCheckable(True)
             action.setChecked(active_model_id is None and model == current)
+            if action.text() != model:
+                action.setToolTip(model)
             actions[action] = model
 
         menu.addSeparator()
         add_api = menu.addAction("Add API / model…")
-        custom = menu.addAction("Other model name…")
+        custom = menu.addAction("Other model…")
 
-        chosen = menu.exec(self.mapToGlobal(self.model_button.geometry().topLeft()))
+        chosen = menu.exec(_bounded_menu_position(menu, self.model_button))
         if chosen is None:
             return
         if chosen is add_api:
@@ -506,6 +584,8 @@ class ComposerPanel(QFrame):
 __all__ = [
     "MAX_HEIGHT",
     "MIN_HEIGHT",
+    "MODEL_MENU_EDGE_GAP",
+    "MODEL_MENU_WIDTH",
     "PERMISSION_DETAIL",
     "PERMISSION_MODES",
     "AddModelDialog",

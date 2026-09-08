@@ -7,17 +7,21 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6")
 
-from PySide6.QtWidgets import QApplication
+from PySide6.QtCore import QPoint
+from PySide6.QtWidgets import QApplication, QMenu
 
 from app.agent_runtime.contracts import PermissionMode
 from app.desktop.composer import (
     MAX_HEIGHT,
     MIN_HEIGHT,
+    MODEL_MENU_EDGE_GAP,
+    MODEL_MENU_WIDTH,
     PERMISSION_DETAIL,
     PERMISSION_MODES,
     AddModelDialog,
     ComposerPanel,
     ControlButton,
+    _bounded_menu_position,
 )
 
 
@@ -97,6 +101,30 @@ def test_model_api_dialog_changes_base_url_policy_with_adapter(qt_app):
         assert dialog.base_url_edit.isEnabled() is True
     finally:
         dialog.close()
+
+
+def test_model_menu_stays_inside_a_compact_window(composer, qt_app):
+    composer.resize(340, 260)
+    composer.show()
+    qt_app.processEvents()
+
+    menu = QMenu(composer)
+    for index in range(14):
+        menu.addAction(f"very-long-provider-name-{index} · very-long-model-name-{index}")
+
+    point = _bounded_menu_position(menu, composer.model_button)
+    origin = composer.window().mapToGlobal(QPoint(0, 0))
+    menu_height = min(menu.sizeHint().height(), menu.maximumHeight())
+
+    assert menu.width() == MODEL_MENU_WIDTH
+    assert point.x() >= origin.x() + MODEL_MENU_EDGE_GAP
+    assert point.x() + MODEL_MENU_WIDTH <= (
+        origin.x() + composer.window().width() - MODEL_MENU_EDGE_GAP
+    )
+    assert point.y() >= origin.y() + MODEL_MENU_EDGE_GAP
+    assert point.y() + menu_height <= (
+        origin.y() + composer.window().height() - MODEL_MENU_EDGE_GAP
+    )
 
 
 def test_there_is_no_effort_control(composer):
