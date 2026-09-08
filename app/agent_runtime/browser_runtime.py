@@ -17,6 +17,7 @@ from .browser_session import (
     BrowserLaunchOptions,
     BrowserPageState,
     BrowserSessionManager,
+    BrowserURLPolicyError,
     ManagedBrowserSession,
 )
 from .browser_use_backend import browser_use_available
@@ -224,13 +225,41 @@ class BrowserSessionStore(BrowserSessionManager):
     without terminating that process.
     """
 
+    def __init__(self, *args, filter_unsafe_background_tabs: bool = False, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.filter_unsafe_background_tabs = bool(filter_unsafe_background_tabs)
+
     def _validated_state(self, state: BrowserPageState, options: BrowserLaunchOptions) -> BrowserPageState:
+        # The active tab is always fail-closed. CDP attachment creates/switches to a
+        # neutral about:blank work tab before the first state capture, so any later
+        # active private/internal destination indicates an actual navigation escape.
         checked = super()._validated_state(state, options)
+        safe_tabs: list[dict[str, str]] = []
         for tab in checked.tabs:
             url = str(tab.get("url", "")) if isinstance(tab, dict) else ""
-            if url and url != "about:blank":
+            if not url or url == "about:blank":
+                safe_tabs.append(tab)
+                continue
+            try:
                 self.url_policy.validate(url, allowed_domains=options.allowed_domains)
-        return checked
+            except BrowserURLPolicyError:
+                if self.filter_unsafe_background_tabs:
+                    # Existing Chrome/Edge can contain localhost, chrome:// and
+                    # extension tabs that Loom must neither expose nor control. They
+                    # stay open in the user's browser but disappear from model state.
+                    continue
+                raise
+            safe_tabs.append(tab)
+        if len(safe_tabs) == len(checked.tabs):
+            return checked
+        return BrowserPageState(
+            url=checked.url,
+            title=checked.title,
+            dom=checked.dom,
+            tabs=tuple(safe_tabs),
+            page_info=checked.page_info,
+            errors=checked.errors,
+        )
 
     def snapshot(self, owner_session_id: str, browser_id: str, *, refresh: bool = False) -> BrowserStateSnapshot:
         item = self._owned(owner_session_id, browser_id)
@@ -364,6 +393,7 @@ class BrowserRuntime(WebSearchRuntime):
                 url_policy=self.browser_security_policy,
                 max_sessions_per_owner=1 if exclusive_browser else 2,
                 max_sessions_total=1 if exclusive_browser else 8,
+                filter_unsafe_background_tabs=cdp_attached,
             )
             if factory is not None
             else None
@@ -380,7 +410,8 @@ class BrowserRuntime(WebSearchRuntime):
                         "Open Loom's configured existing local Chrome/Edge browser session through its loopback-only CDP "
                         "connection, optionally navigate to an http/https URL, and return a bounded LLM-facing DOM state. "
                         "The model cannot choose or inspect the CDP endpoint. Closing Loom disconnects without terminating "
-                        "the user's browser. allowed_domains can restrict the session."
+                        "the user's browser. Existing out-of-policy background tabs remain open but are hidden from Loom. "
+                        "allowed_domains can restrict the session."
                     ),
                 )
             elif profile_persistence and raw_tool.name == "browser_open":
