@@ -5,7 +5,15 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt
+from PySide6.QtCore import (
+    QCoreApplication,
+    QEasingCurve,
+    QEventLoop,
+    Property,
+    QPropertyAnimation,
+    Qt,
+)
+from PySide6.QtGui import QBrush, QColor, QLinearGradient, QPainter, QPen
 from PySide6.QtWidgets import (
     QFrame,
     QGraphicsOpacityEffect,
@@ -29,20 +37,112 @@ QLabel#turnProgressDot {
     border-radius:3px; background:#6f7786;
 }
 QLabel#turnProgressText {
-    background:transparent; color:#8d94a2; font-size:11px; font-weight:600;
+    background:transparent; font-size:11px; font-weight:600;
 }
 QFrame#turnProgressRule {
     min-height:1px; max-height:1px; background:#20252e; border:none;
 }
 QFrame#turnProgress[tone="working"] QLabel#turnProgressDot { background:#8f97ea; }
-QFrame#turnProgress[tone="working"] QLabel#turnProgressText { color:#a7add8; }
 QFrame#turnProgress[tone="waiting"] QLabel#turnProgressDot { background:#c89c55; }
-QFrame#turnProgress[tone="waiting"] QLabel#turnProgressText { color:#bd9d69; }
 QFrame#turnProgress[tone="done"] QLabel#turnProgressDot { background:#69b694; }
-QFrame#turnProgress[tone="done"] QLabel#turnProgressText { color:#82bea5; }
 QFrame#turnProgress[tone="failed"] QLabel#turnProgressDot { background:#c87984; }
-QFrame#turnProgress[tone="failed"] QLabel#turnProgressText { color:#d1979f; }
 """
+
+_TONE_COLORS = {
+    "": ("#8d94a2", "#e6e9f0"),
+    "working": ("#a7add8", "#f5f7ff"),
+    "waiting": ("#bd9d69", "#f4dfb8"),
+    "done": ("#82bea5", "#d8f5e8"),
+    "failed": ("#d1979f", "#ffe2e7"),
+}
+
+
+class ShimmerLabel(QLabel):
+    """Plain-text label with a restrained highlight sweeping across live text."""
+
+    def __init__(self, text: str = "", parent: QWidget | None = None) -> None:
+        super().__init__(text, parent)
+        self._shimmer_position = -0.25
+        self._shimmer: QPropertyAnimation | None = None
+        self._shimmer_requested = False
+        self._base_color = QColor(_TONE_COLORS[""][0])
+        self._shine_color = QColor(_TONE_COLORS[""][1])
+
+    def _get_shimmer_position(self) -> float:
+        return self._shimmer_position
+
+    def _set_shimmer_position(self, value: float) -> None:
+        self._shimmer_position = float(value)
+        self.update()
+
+    shimmerPosition = Property(float, _get_shimmer_position, _set_shimmer_position)
+
+    def set_colors(self, base: str, shine: str) -> None:
+        self._base_color = QColor(base)
+        self._shine_color = QColor(shine)
+        self.update()
+
+    def set_shimmer(self, active: bool) -> None:
+        self._shimmer_requested = bool(active)
+        should_animate = bool(active and theme.motion_enabled())
+        if not should_animate:
+            animation, self._shimmer = self._shimmer, None
+            if animation is not None:
+                try:
+                    animation.stop()
+                except RuntimeError:
+                    pass
+                animation.deleteLater()
+            self._shimmer_position = -0.25
+            self.update()
+            return
+        if self._shimmer is not None:
+            return
+        animation = QPropertyAnimation(self, b"shimmerPosition", self)
+        animation.setDuration(1450)
+        animation.setStartValue(-0.25)
+        animation.setEndValue(1.25)
+        animation.setLoopCount(-1)
+        animation.setEasingCurve(QEasingCurve.Type.Linear)
+        self._shimmer = animation
+        animation.start()
+
+    def paintEvent(self, _event: Any) -> None:  # noqa: N802 - Qt override
+        text = self.text()
+        if not text:
+            return
+
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+        painter.setFont(self.font())
+        brush = QBrush(self._base_color)
+
+        if self._shimmer is not None and self.width() > 0:
+            position = self._shimmer_position
+            if 0.0 <= position <= 1.0:
+                band = 0.13
+                left = max(0.0, position - band)
+                left_inner = max(0.0, position - band * 0.34)
+                right_inner = min(1.0, position + band * 0.34)
+                right = min(1.0, position + band)
+                gradient = QLinearGradient(0.0, 0.0, float(self.width()), 0.0)
+                stops: list[tuple[float, QColor]] = [
+                    (0.0, self._base_color),
+                    (left, self._base_color),
+                    (left_inner, self._shine_color),
+                    (position, self._shine_color),
+                    (right_inner, self._shine_color),
+                    (right, self._base_color),
+                    (1.0, self._base_color),
+                ]
+                unique: dict[float, QColor] = {}
+                for stop, color in stops:
+                    unique[round(max(0.0, min(1.0, stop)), 5)] = color
+                gradient.setStops(sorted(unique.items(), key=lambda entry: entry[0]))
+                brush = QBrush(gradient)
+
+        painter.setPen(QPen(brush, 1.0))
+        painter.drawText(self.rect(), int(self.alignment()), text)
 
 
 class TurnProgressLine(QFrame):
@@ -67,7 +167,7 @@ class TurnProgressLine(QFrame):
         self.dot.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         row.addWidget(self.dot, 0, Qt.AlignmentFlag.AlignVCenter)
 
-        self.label = QLabel("", self)
+        self.label = ShimmerLabel("", self)
         self.label.setObjectName("turnProgressText")
         self.label.setTextFormat(Qt.TextFormat.PlainText)
         row.addWidget(self.label, 0, Qt.AlignmentFlag.AlignVCenter)
@@ -123,18 +223,21 @@ class TurnProgressLine(QFrame):
         text = fmt.text(text).strip()
         if not text:
             self._stop_pulse()
+            self.label.set_shimmer(False)
             self.label.clear()
             self._set_visible(False)
             return
 
-        self.label.setText(text)
         tone = tone if tone in {"working", "waiting", "done", "failed"} else ""
+        self.label.setText(text)
+        base, shine = _TONE_COLORS[tone]
+        self.label.set_colors(base, shine)
         if self.property("tone") != tone:
             self.setProperty("tone", tone)
             repolish(self)
             repolish(self.dot)
-            repolish(self.label)
         self._set_visible(True)
+        self.label.set_shimmer(active)
         if active:
             self._start_pulse()
         else:
@@ -142,7 +245,7 @@ class TurnProgressLine(QFrame):
 
 
 def _elapsed(window: Any) -> int:
-    started = getattr(window, "_turn_started_at", None)
+    started = getattr(window, "_turn_progress_started_at", None)
     if started is None:
         return 0
     return max(0, int(time.monotonic() - float(started)))
@@ -195,6 +298,22 @@ def _sync_progress(window: Any, status: str | None = None) -> None:
     progress.set_state(summary, tone="done" if summary else "")
 
 
+def _flush_progress_paint(window: Any) -> None:
+    """Paint feedback before thread creation or RPC dispatch gets a chance to wait."""
+    progress = getattr(window, "turn_progress", None)
+    if not isinstance(progress, TurnProgressLine):
+        return
+    progress.update()
+    host = progress._host()
+    if host is not None:
+        host.update()
+    flags = (
+        QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents
+        | QEventLoop.ProcessEventsFlag.ExcludeSocketNotifiers
+    )
+    QCoreApplication.processEvents(flags)
+
+
 def _item_phase(params: Any) -> str | None:
     if not isinstance(params, dict):
         return None
@@ -230,6 +349,7 @@ def install_window(window_cls: type[Any]) -> None:
         self._turn_phase = ""
         self._last_turn_elapsed = 0
         self._turn_progress_summary = ""
+        self._turn_progress_started_at = None
 
         composer_host = self.composer_frame.parentWidget()
         conversation = composer_host.parentWidget() if composer_host is not None else None
@@ -246,16 +366,32 @@ def install_window(window_cls: type[Any]) -> None:
         self.turn_progress_column.hide()
 
     def send_prompt(self: Any, text: str = "") -> None:
+        candidate = fmt.text(text).strip() or self.composer_panel.text()
+        if not candidate or self.state.archived:
+            original_send_prompt(self, text)
+            return
+        if not self.state.thread_id and self._draft_workspace is None:
+            original_send_prompt(self, text)
+            return
+
         self._turn_phase = "starting"
         self._last_turn_elapsed = 0
         self._turn_progress_summary = ""
-        original_send_prompt(self, text)
-        # Draft thread creation happens before the base window has a thread id,
-        # so begin feedback/elapsed time at the Send click rather than waiting
-        # for the first server notification.
+        self._turn_progress_started_at = time.monotonic()
+        _sync_progress(self, "starting")
+        _flush_progress_paint(self)
+
+        try:
+            original_send_prompt(self, text)
+        except Exception:
+            self._last_turn_elapsed = _elapsed(self)
+            self._turn_progress_started_at = None
+            self.turn_progress.set_state("Failed", tone="failed")
+            raise
+
         if fmt.text(self.status_label.property("state")) == "starting":
             if self._turn_started_at is None:
-                self._turn_started_at = time.monotonic()
+                self._turn_started_at = self._turn_progress_started_at
             if not self._turn_clock.isActive():
                 self._turn_clock.start()
             _sync_progress(self, "starting")
@@ -274,8 +410,7 @@ def install_window(window_cls: type[Any]) -> None:
         elapsed = _elapsed(self)
         self._last_turn_elapsed = elapsed
         original_finish_turn_clock(self, status)
-        # Keep the base window's "Done · Ns" summary untouched for compatibility;
-        # the new visible product surface can use the clearer "Completed" wording.
+        self._turn_progress_started_at = None
         if fmt.text(status) == "completed":
             self._turn_progress_summary = (
                 f"Completed · {fmt.elapsed_label(elapsed)}" if elapsed >= 1 else "Completed"
@@ -315,11 +450,13 @@ def install_window(window_cls: type[Any]) -> None:
             self._turn_phase = ""
             self._last_turn_elapsed = 0
             self._turn_progress_summary = ""
+            self._turn_progress_started_at = None
         original_load_thread(self, thread_id)
 
     def _on_server_exit(self: Any, message: str) -> None:
         was_active = fmt.text(self.status_label.property("state")) in fmt.ACTIVE_STATUSES
         original_server_exit(self, message)
+        self._turn_progress_started_at = None
         if was_active and hasattr(self, "turn_progress"):
             self.turn_progress.set_state("Connection stopped", tone="failed")
 
@@ -335,4 +472,4 @@ def install_window(window_cls: type[Any]) -> None:
     _INSTALLED = True
 
 
-__all__ = ["TurnProgressLine", "install_window"]
+__all__ = ["ShimmerLabel", "TurnProgressLine", "install_window"]
