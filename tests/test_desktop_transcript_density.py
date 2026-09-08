@@ -18,19 +18,32 @@ def app():
     return QApplication.instance() or QApplication([])
 
 
-def test_main_transcript_uses_compact_default_spacing(app):
+def test_main_transcript_uses_zero_gap_default_spacing(app):
     view = TranscriptView()
-    assert view._layout.spacing() == 8
+    assert view._layout.spacing() == 0
 
 
-def test_activity_rows_keep_compact_vertical_chrome(app):
+def test_activity_rows_use_single_line_chrome(app):
     card = FlatActivityCard("tool")
     margins = card.layout().contentsMargins()
 
-    assert margins.top() == 1
-    assert margins.bottom() == 1
-    assert card.icon.size().width() == 18
-    assert card.toggle_button.size().width() == 24
+    assert margins.top() == 0
+    assert margins.bottom() == 0
+    assert card.icon.size().width() == 16
+    assert card.toggle_button.size().width() == 18
+
+
+def test_activity_metadata_stays_out_of_collapsed_row(app):
+    card = FlatActivityCard("tool")
+    card.update_card(
+        title="exec",
+        subtitle='{ "argv": ["cmd", "/c", "echo hello"] }',
+        status="running",
+        body="",
+    )
+
+    assert card.subtitle_label.isHidden()
+    assert "argv" in card.toolTip()
 
 
 def test_explicit_runtime_spacing_is_preserved(app):
