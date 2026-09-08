@@ -12,7 +12,7 @@ from .process_runtime import (
     validate_terminal_size,
     validate_timeout,
 )
-from .tools import AgentTool, ToolContext, ToolResult
+from .tools import AgentTool, ToolContext, ToolExposure, ToolResult
 
 
 _MAX_WAIT_SECONDS = 120.0
@@ -463,7 +463,9 @@ def exec_terminate_tool() -> AgentTool:
 def workspace_command_tool() -> AgentTool:
     return AgentTool(
         name="run_workspace_command",
-        description="Compatibility alias for exec with wait=true.",
+        description=(
+            "Run one command and wait for it to exit. Superseded by exec with wait=true."
+        ),
         input_schema=_exec_schema(include_wait=False),
         handler=lambda context, arguments: _exec_handler(
             context,
@@ -471,13 +473,20 @@ def workspace_command_tool() -> AgentTool:
             force_wait=True,
         ),
         effect=ToolEffect.SENSITIVE,
+        # One capability, one name in the model's context. These said only
+        # "Compatibility alias", and the model chose among ~50 entries by
+        # name. Still callable; tool_search matches the exact name.
+        exposure=ToolExposure.DEFERRED,
     )
 
 
 def start_workspace_command_tool() -> AgentTool:
     return AgentTool(
         name="start_workspace_command",
-        description="Compatibility alias for exec with wait=false.",
+        description=(
+            "Start one command without waiting for it to exit. "
+            "Superseded by exec with wait=false."
+        ),
         input_schema=_exec_schema(include_wait=False),
         handler=lambda context, arguments: _exec_handler(
             context,
@@ -485,6 +494,10 @@ def start_workspace_command_tool() -> AgentTool:
             force_wait=False,
         ),
         effect=ToolEffect.SENSITIVE,
+        # One capability, one name in the model's context. These said only
+        # "Compatibility alias", and the model chose among ~50 entries by
+        # name. Still callable; tool_search matches the exact name.
+        exposure=ToolExposure.DEFERRED,
     )
 
 
@@ -509,7 +522,10 @@ def poll_workspace_process_tool() -> AgentTool:
 
     return AgentTool(
         name="poll_workspace_process",
-        description="Compatibility non-blocking snapshot/drain for an existing managed process.",
+        description=(
+            "Take a non-blocking snapshot of a running managed process and drain its "
+            "buffered output. Superseded by exec_wait with wait_timeout_seconds=0."
+        ),
         input_schema={
             "type": "object",
             "properties": {"process_id": {"type": "string"}},
@@ -518,6 +534,10 @@ def poll_workspace_process_tool() -> AgentTool:
         },
         handler=poll,
         effect=ToolEffect.READ_ONLY,
+        # One capability, one name in the model's context. These said only
+        # "Compatibility alias", and the model chose among ~50 entries by
+        # name. Still callable; tool_search matches the exact name.
+        exposure=ToolExposure.DEFERRED,
     )
 
 
@@ -544,7 +564,9 @@ def write_workspace_process_tool() -> AgentTool:
     unified = exec_write_tool()
     return AgentTool(
         name="write_workspace_process",
-        description="Compatibility alias for exec_write text input.",
+        description=(
+            "Write text to the stdin of a running managed process. Superseded by exec_write."
+        ),
         input_schema={
             "type": "object",
             "properties": {
@@ -556,6 +578,10 @@ def write_workspace_process_tool() -> AgentTool:
         },
         handler=unified.handler,
         effect=ToolEffect.SENSITIVE,
+        # One capability, one name in the model's context. These said only
+        # "Compatibility alias", and the model chose among ~50 entries by
+        # name. Still callable; tool_search matches the exact name.
+        exposure=ToolExposure.DEFERRED,
     )
 
 
@@ -563,10 +589,16 @@ def interrupt_workspace_process_tool() -> AgentTool:
     unified = exec_interrupt_tool()
     return AgentTool(
         name="interrupt_workspace_process",
-        description="Compatibility alias for exec_interrupt.",
+        description=(
+            "Send Ctrl+C/SIGINT to a running managed process. Superseded by exec_interrupt."
+        ),
         input_schema=unified.input_schema,
         handler=unified.handler,
         effect=ToolEffect.SENSITIVE,
+        # One capability, one name in the model's context. These said only
+        # "Compatibility alias", and the model chose among ~50 entries by
+        # name. Still callable; tool_search matches the exact name.
+        exposure=ToolExposure.DEFERRED,
     )
 
 
@@ -574,10 +606,17 @@ def terminate_workspace_process_tool() -> AgentTool:
     unified = exec_terminate_tool()
     return AgentTool(
         name="terminate_workspace_process",
-        description="Compatibility alias for exec_terminate.",
+        description=(
+            "Terminate a running managed process and its descendants. "
+            "Superseded by exec_terminate."
+        ),
         input_schema=unified.input_schema,
         handler=unified.handler,
         effect=ToolEffect.SENSITIVE,
+        # One capability, one name in the model's context. These said only
+        # "Compatibility alias", and the model chose among ~50 entries by
+        # name. Still callable; tool_search matches the exact name.
+        exposure=ToolExposure.DEFERRED,
     )
 
 

@@ -230,7 +230,7 @@ def test_workspace_mode_still_requires_approval_for_process_execution(tmp_path):
                 tool_calls=(
                     ToolCall(
                         call_id="cmd-workspace",
-                        name="run_workspace_command",
+                        name="exec",
                         arguments={"argv": [sys.executable, "-c", "print('ok')"]},
                     ),
                 )
@@ -249,7 +249,7 @@ def test_workspace_mode_still_requires_approval_for_process_execution(tmp_path):
     waiting = runtime.start_turn(session.session_id, "Run command.")
 
     assert waiting.status is AgentStatus.WAITING_APPROVAL
-    assert waiting.pending_approval.tool_name == "run_workspace_command"
+    assert waiting.pending_approval.tool_name == "exec"
 
 
 def test_full_access_runs_sensitive_command_without_approval(tmp_path):
@@ -261,7 +261,7 @@ def test_full_access_runs_sensitive_command_without_approval(tmp_path):
                 tool_calls=(
                     ToolCall(
                         call_id="cmd-full",
-                        name="run_workspace_command",
+                        name="exec",
                         arguments={"argv": [sys.executable, "-c", "print('full-access-ok')"]},
                     ),
                 )
@@ -283,7 +283,7 @@ def test_full_access_runs_sensitive_command_without_approval(tmp_path):
     completed = [
         event for event in store.events(session.session_id)
         if event.kind is AgentEventKind.TOOL_COMPLETED
-        and event.data.get("tool") == "run_workspace_command"
+        and event.data.get("tool") == "exec"
     ]
     assert completed[-1].data["data"]["returncode"] == 0
     assert "full-access-ok" in completed[-1].data["data"]["stdout"]
@@ -416,7 +416,7 @@ def test_command_execution_requires_approval_and_captures_output(tmp_path):
                 tool_calls=(
                     ToolCall(
                         call_id="cmd-1",
-                        name="run_workspace_command",
+                        name="exec",
                         arguments={
                             "argv": [sys.executable, "-c", "print('command-ok')"],
                             "cwd": ".",
@@ -439,7 +439,7 @@ def test_command_execution_requires_approval_and_captures_output(tmp_path):
     waiting = runtime.start_turn(session.session_id, "Run the validation command.")
     assert waiting.status is AgentStatus.WAITING_APPROVAL
     assert waiting.pending_approval is not None
-    assert waiting.pending_approval.tool_name == "run_workspace_command"
+    assert waiting.pending_approval.tool_name == "exec"
 
     result = runtime.resume_approval(
         session.session_id,
@@ -451,7 +451,7 @@ def test_command_execution_requires_approval_and_captures_output(tmp_path):
     completed = [
         event for event in store.events(session.session_id)
         if event.kind is AgentEventKind.TOOL_COMPLETED
-        and event.data.get("tool") == "run_workspace_command"
+        and event.data.get("tool") == "exec"
     ]
     assert completed
     assert completed[-1].data["data"]["returncode"] == 0
@@ -469,7 +469,7 @@ def test_command_tool_strips_secret_environment(tmp_path, monkeypatch):
                 tool_calls=(
                     ToolCall(
                         call_id="cmd-secret",
-                        name="run_workspace_command",
+                        name="exec",
                         arguments={"argv": [sys.executable, "-c", script]},
                     ),
                 )
@@ -496,6 +496,6 @@ def test_command_tool_strips_secret_environment(tmp_path, monkeypatch):
     completed = [
         event for event in store.events(session.session_id)
         if event.kind is AgentEventKind.TOOL_COMPLETED
-        and event.data.get("tool") == "run_workspace_command"
+        and event.data.get("tool") == "exec"
     ]
     assert completed[-1].data["data"]["stdout"].strip() == "missing"

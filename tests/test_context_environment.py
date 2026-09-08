@@ -148,3 +148,47 @@ def test_the_prompt_points_at_the_envelope_for_platform_details():
     # The envelope carries platform and shell; the prompt has to send the model
     # there rather than let it guess a POSIX command on Windows.
     assert "LOOM_RUNTIME_STATE" in DEFAULT_AGENT_SYSTEM_PROMPT
+
+
+def test_one_capability_is_offered_under_one_name(tmp_path):
+    from app.agent_runtime.tools import ToolExposure
+
+    registry = loom_default_tools()
+    offered = {tool.name for tool in registry.router().definitions()}
+    deferred = {
+        tool.name for tool in registry.all() if tool.exposure is ToolExposure.DEFERRED
+    }
+
+    # These duplicate exec / exec_write / write_workspace_text under a second
+    # name. Offering both made the model pick between ~50 entries whose only
+    # distinguishing text was "Compatibility alias for ...".
+    for alias in (
+        "run_workspace_command",
+        "start_workspace_command",
+        "poll_workspace_process",
+        "write_workspace_process",
+        "interrupt_workspace_process",
+        "terminate_workspace_process",
+        "write_workspace_note",
+    ):
+        assert alias not in offered, f"{alias} is back in the model's context"
+        assert alias in deferred, f"{alias} must stay reachable through tool_search"
+
+    # The capabilities themselves stay directly available.
+    assert {"exec", "exec_write", "exec_wait", "write_workspace_text"} <= offered
+
+
+def test_a_deferred_alias_is_still_findable_by_its_exact_name():
+    registry = loom_default_tools()
+    # A durable session created before the unified exec tools can recover the
+    # old name in one step rather than failing outright.
+    matches = registry.search_deferred("run_workspace_command", limit=3)
+    assert matches and matches[0].name == "run_workspace_command"
+
+
+def test_no_tool_description_is_only_a_compatibility_note():
+    registry = loom_default_tools()
+    for tool in registry.all():
+        assert not tool.description.startswith("Compatibility"), tool.name
+        # "Alias for X" says nothing about what the tool does.
+        assert len(tool.description) > 45, f"{tool.name}: {tool.description!r}"

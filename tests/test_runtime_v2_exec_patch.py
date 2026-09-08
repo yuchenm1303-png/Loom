@@ -85,7 +85,7 @@ def test_runtime_emits_process_lifecycle_events(tmp_path):
                 tool_calls=(
                     ToolCall(
                         call_id="run-managed",
-                        name="run_workspace_command",
+                        name="exec",
                         arguments={
                             "argv": [sys.executable, "-u", "-c", "print('managed-ok')"],
                             "timeout_seconds": 10,
@@ -115,7 +115,7 @@ def test_runtime_emits_process_lifecycle_events(tmp_path):
     completed = [
         event for event in events
         if event.kind is AgentEventKind.TOOL_COMPLETED
-        and event.data.get("tool") == "run_workspace_command"
+        and event.data.get("tool") == "exec"
     ]
     assert "managed-ok" in completed[-1].data["data"]["stdout"]
     assert completed[-1].data["data"]["process_id"].startswith("proc-")

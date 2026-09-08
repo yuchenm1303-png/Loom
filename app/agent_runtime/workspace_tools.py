@@ -8,7 +8,7 @@ from .contracts import ToolEffect
 from .diff_tracker import TurnDiffTracker
 from .patch_tools import apply_patch_tool, get_turn_diff_tool
 from .process_tools import managed_process_tools, workspace_command_tool
-from .tools import AgentTool, ToolContext, ToolRegistry, ToolResult
+from .tools import AgentTool, ToolContext, ToolExposure, ToolRegistry, ToolResult
 
 
 _MAX_WRITE_CHARS = 1_000_000
@@ -201,8 +201,8 @@ def workspace_replace_tool() -> AgentTool:
     return AgentTool(
         name="replace_workspace_text",
         description=(
-            "Compatibility precision edit: replace one exact text block inside a workspace file. "
-            "It fails closed if the old block is absent or ambiguous and is tracked in the turn diff. "
+            "Replace one exact text block inside a workspace file. Fails closed if the old "
+            "block is absent or ambiguous, and the change is tracked in the turn diff. "
             "Prefer apply_patch for multi-file edits."
         ),
         input_schema={
@@ -231,10 +231,14 @@ def legacy_workspace_write_note_tool() -> AgentTool:
     return AgentTool(
         name="write_workspace_note",
         description=(
-            "Compatibility alias for write_workspace_text. Write a UTF-8 file inside the workspace."
+            "Create or replace one UTF-8 file inside the workspace. "
+            "Superseded by write_workspace_text."
         ),
         input_schema=current.input_schema,
         handler=write_note,
+        # Same capability under a second name; deferred so the model is
+        # offered one way to write a file.
+        exposure=ToolExposure.DEFERRED,
         effect=ToolEffect.MUTATING,
     )
 

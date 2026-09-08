@@ -25,7 +25,7 @@ RUNTIME_STATE_PREAMBLE = (
     "LOOM_RUNTIME_STATE v1\n"
     "This runtime state is authoritative for the current model step. "
     "`environment` describes the machine you are running on; you may inspect it with "
-    "the tools listed here. "
+    "your tools. "
     "Do not infer broader filesystem, process, network, approval, or sub-agent "
     "permissions than stated here.\n"
 )
@@ -112,7 +112,10 @@ def build_world_state_envelope(
             "approval_policy": step.approval_policy.value,
         },
         "sandbox": sandbox.to_dict() if sandbox is not None else None,
-        "tools": list(step.world_state.tool_names),
+        # Tool names are deliberately absent. Every callable tool is already
+        # sent as its own schema with its own description; repeating ~50 bare
+        # names here cost tokens and invited routing by name. It also listed
+        # deferred and hidden tools that the model cannot call.
         "goal": goal,
         "queue_pending": max(0, int(queue_pending)),
         "turn_diff": {

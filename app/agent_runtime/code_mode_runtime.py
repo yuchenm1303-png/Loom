@@ -83,10 +83,14 @@ class CodeModeRuntime(SkillRuntime):
                 call = f"tools.{tool.name}({', '.join(params)})"
             else:
                 call = f'tool("{tool.name}", {{...}})'
-            catalog.append(f"- {call}: {tool.description[:180]}")
+            # Signature only. Every tool listed here is also sent to the model
+            # as its own schema with its own description; repeating those made
+            # code_mode alone a ~9,000 character tool, duplicating the entire
+            # tool catalog in every request.
+            catalog.append(f"- {call}")
         catalog_text = "\n".join(catalog)
-        if len(catalog_text) > 10_000:
-            catalog_text = catalog_text[:9_980] + "\n…[catalog truncated]"
+        if len(catalog_text) > 4_000:
+            catalog_text = catalog_text[:3_980] + "\n…[catalog truncated]"
         return (
             "Compose several Loom tool calls inside one bounded code cell. This is not arbitrary Python: "
             "imports, functions/classes, while/try/with, host filesystem APIs, subprocess APIs, arbitrary attributes, "
@@ -97,7 +101,7 @@ class CodeModeRuntime(SkillRuntime):
             "tool invocation still passes through Loom's ToolOrchestrator and PermissionEngine. If a nested tool requires "
             "interactive approval, Code Mode will NOT execute it; call that tool normally outside Code Mode so the user "
             "can approve it. Deferred tools must first be activated with tool_search. Never place secrets in code source.\n\n"
-            "Direct nested tool catalog:\n"
+            "Callable signatures (each tool's own schema says what it does):\n"
             f"{catalog_text or '- No direct nested tools are currently registered.'}"
         )
 

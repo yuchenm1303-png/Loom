@@ -23,9 +23,10 @@ class InteractiveProcessPlatform:
                 tool_calls=(
                     ToolCall(
                         call_id="bg-start",
-                        name="start_workspace_command",
+                        name="exec",
                         arguments={
                             "argv": [sys.executable, "-u", "-c", script],
+                            "wait": False,
                             "timeout_seconds": 15,
                         },
                     ),
@@ -43,7 +44,7 @@ class InteractiveProcessPlatform:
                 tool_calls=(
                     ToolCall(
                         call_id="bg-write",
-                        name="write_workspace_process",
+                        name="exec_write",
                         arguments={"process_id": self.process_id, "text": "hello Loom\n"},
                     ),
                 )
@@ -58,8 +59,11 @@ class InteractiveProcessPlatform:
                     tool_calls=(
                         ToolCall(
                             call_id=f"bg-poll-{self.polls}",
-                            name="poll_workspace_process",
-                            arguments={"process_id": self.process_id},
+                            name="exec_wait",
+                            arguments={
+                                "process_id": self.process_id,
+                                "wait_timeout_seconds": 0,
+                            },
                         ),
                     )
                 )

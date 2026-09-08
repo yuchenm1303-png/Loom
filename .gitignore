@@ -14,4 +14,6 @@ venv/
 
 # Loom runtime state contains prompts, tool observations and workspace files.
 .loom/
-agent_runtime/
+# Anchored: unanchored, this also matched the source tree at app/agent_runtime/,
+# where any new file would have been silently untracked.
+/agent_runtime/
