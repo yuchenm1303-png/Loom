@@ -119,6 +119,13 @@ class BrowserUseBackend(BrowserBackend):
     async def _start_async(self) -> BrowserPageState:
         session = await self._ensure_session()
         await session.start()
+        if str(self.cdp_url or "").strip():
+            # Do not commandeer whichever user tab happened to be active when Loom
+            # attached. browser-use explicitly permits about:blank under its security
+            # watchdog, so create/switch to a neutral work tab before returning state.
+            from browser_use.browser.events import NavigateToUrlEvent
+
+            await self._dispatch(NavigateToUrlEvent(url="about:blank", new_tab=True))
         return await self._state_async()
 
     def start(self) -> BrowserPageState:
