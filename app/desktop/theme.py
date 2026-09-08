@@ -305,40 +305,98 @@ QPushButton#copyButton:hover {{ background:{BG_HOVER}; border-color:{BORDER_STRO
 
 /* ---- inline activity cards ---- */
 QFrame#activityCard {{
+    background:#0d1016;
+    border:1px solid #202631;
+    border-radius:14px;
+}}
+QFrame#activityCard:hover {{
+    background:#0f1219;
+    border-color:#2c3440;
+}}
+QFrame#activityCard[state="completed"] {{
+    background:#0d1211;
+    border-color:#25362f;
+}}
+QFrame#activityCard[state="running"], QFrame#activityCard[state="started"] {{
+    background:#0d1118;
+    border-color:#27364a;
+}}
+QFrame#activityCard[state="waiting"], QFrame#activityCard[state="waiting_approval"] {{
+    background:#15120d;
+    border-color:#4a3b22;
+}}
+QFrame#activityCard[state="failed"], QFrame#activityCard[state="denied"], QFrame#activityCard[state="cancelled"] {{
+    background:#151013;
+    border-color:#47282f;
+}}
+QLabel#cardIcon {{
+    color:#c4cad4; font-size:13px; font-weight:800;
+    background:#121720; border:1px solid #2b3440; border-radius:8px;
+}}
+QLabel#cardTitle {{
+    color:#eef1f6; font-size:13px; font-weight:680;
+}}
+QLabel#cardSubtitle {{
+    color:#747d8c; font-size:10px; font-family:{FONT_MONO};
+}}
+QFrame#cardBodyShell {{
+    background:#090c11;
+    border:1px solid #1d2530;
+    border-radius:10px;
+}}
+QLabel#cardBodyTitle {{
+    color:#8d96a5; font-size:10px; font-weight:700; letter-spacing:0.7px;
+}}
+QLabel#cardStatus {{
+    font-size:10px; font-weight:700;
+    color:#8b94a3;
+    background:#11161d;
+    border:1px solid #252d37;
+    border-radius:8px;
+    padding:3px 8px;
+}}
+QLabel#cardStatus[state="completed"] {{
+    color:#8fd3b5;
+    background:#0f1b17;
+    border-color:#234538;
+}}
+QLabel#cardStatus[state="failed"], QLabel#cardStatus[state="denied"], QLabel#cardStatus[state="cancelled"] {{
+    color:#e8a1aa;
+    background:#211317;
+    border-color:#4a2930;
+}}
+QLabel#cardStatus[state="waiting"], QLabel#cardStatus[state="waiting_approval"] {{
+    color:#e8c07e;
+    background:#211a10;
+    border-color:#49391f;
+}}
+QLabel#cardStatus[state="running"], QLabel#cardStatus[state="started"] {{
+    color:#9bcaff;
+    background:#101925;
+    border-color:#263c54;
+}}
+QPlainTextEdit#cardBody {{
     background:transparent;
     border:none;
     border-radius:0;
-}}
-QLabel#cardIcon {{
-    color:#b7bdc8; font-size:13px; font-weight:800;
-    background:#11141a; border:1px solid #343943; border-radius:7px;
-}}
-QLabel#cardTitle {{ color:#e5e7ec; font-size:13px; font-weight:650; }}
-QLabel#cardSubtitle {{ color:#7f8693; font-size:11px; font-family:{FONT_MONO}; }}
-QFrame#cardBodyShell {{
-    background:#171819; border:1px solid #424448; border-radius:13px;
-}}
-QLabel#cardBodyTitle {{ color:#c7c9ce; font-size:12px; font-weight:600; }}
-QLabel#cardStatus {{
-    font-size:11px; font-weight:650; color:{TEXT_MUTED};
-    background:transparent; padding:2px 0;
-}}
-QLabel#cardStatus[state="completed"] {{ color:#929892; }}
-QLabel#cardStatus[state="failed"], QLabel#cardStatus[state="denied"] {{ color:{BAD}; }}
-QLabel#cardStatus[state="waiting"], QLabel#cardStatus[state="waiting_approval"] {{ color:{WARN}; }}
-QLabel#cardStatus[state="running"], QLabel#cardStatus[state="started"] {{ color:#95c4fb; }}
-QPlainTextEdit#cardBody {{
-    background:transparent; border:none; border-radius:0;
-    color:#b9bbc0; font-family:{FONT_MONO}; font-size:12px; padding:3px 0;
+    color:#c2c8d1;
+    font-family:{FONT_MONO};
+    font-size:12px;
+    padding:4px 1px 2px;
     selection-background-color:#38335b;
 }}
 QPushButton#cardToggle {{
-    min-width:26px; max-width:26px; min-height:26px; max-height:26px;
-    padding:0; border-radius:7px;
-    background:transparent; border:1px solid transparent;
-    color:{TEXT_MUTED}; font-size:13px; font-weight:700;
+    min-width:28px; max-width:28px; min-height:28px; max-height:28px;
+    padding:0; border-radius:8px;
+    background:#11161d; border:1px solid #252d37;
+    color:#949dac; font-size:13px; font-weight:700;
 }}
-QPushButton#cardToggle:hover {{ background:{BG_HOVER}; border-color:{BORDER_STRONG}; color:{TEXT}; }}
+QPushButton#cardToggle:hover {{
+    background:#171d26; border-color:#36404d; color:#eef1f6;
+}}
+QPushButton#cardToggle:pressed {{
+    background:#0d1117; border-color:#2b333d;
+}}
 
 /* ---- empty state ---- */
 QFrame#emptyState, QFrame#emptyStateContent {{ background:transparent; }}
