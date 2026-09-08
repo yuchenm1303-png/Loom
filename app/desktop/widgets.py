@@ -977,10 +977,20 @@ class TranscriptView(QScrollArea):
         finally:
             self._auto_scrolling = False
 
+    def _stop_tail_animation(self) -> None:
+        # ``DeleteWhenStopped`` frees the C++ object as soon as the ease ends,
+        # so a kept reference must be dropped before it is touched again.
+        animation, self._tail_animation = self._tail_animation, None
+        if animation is None:
+            return
+        try:
+            animation.stop()
+        except RuntimeError:
+            pass
+
     def _animate_to_tail(self, maximum: int) -> None:
         bar = self.verticalScrollBar()
-        if self._tail_animation is not None:
-            self._tail_animation.stop()
+        self._stop_tail_animation()
         animation = QPropertyAnimation(bar, b"value", self)
         animation.setDuration(theme.MOTION_BASE_MS)
         animation.setStartValue(bar.value())
@@ -1006,9 +1016,7 @@ class TranscriptView(QScrollArea):
         self._follow_tail = self.verticalScrollBar().maximum() - value <= self.TAIL_THRESHOLD_PX
 
     def scroll_to_tail(self) -> None:
-        if self._tail_animation is not None:
-            self._tail_animation.stop()
-            self._tail_animation = None
+        self._stop_tail_animation()
         self._follow_tail = True
         bar = self.verticalScrollBar()
         self._set_scroll_value(bar.maximum())

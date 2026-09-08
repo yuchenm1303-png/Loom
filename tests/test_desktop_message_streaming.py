@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import time
 
 import pytest
 
@@ -137,6 +138,37 @@ def test_model_thinking_is_folded_away_instead_of_printed(app, monkeypatch):
     # And it is one click away rather than gone.
     message.reasoning.toggle.click()
     assert message.reasoning.body.isHidden() is False
+
+
+def test_the_thinking_disclosure_closes_again_after_it_is_opened(app, monkeypatch):
+    # With motion on, the rotation is freed by Qt when it ends. Holding on to
+    # the dead object made the second click raise inside the slot -- Qt swallows
+    # that, so the block opened once and then ignored every further click.
+    monkeypatch.delenv("LOOM_REDUCE_MOTION", raising=False)
+    message = MessageWidget("assistant")
+    message.set_text("<think>weighing it up</think>Answer.")
+    message.show()
+
+    def settle():
+        for _ in range(60):
+            app.processEvents()
+            time.sleep(0.005)
+
+    message.reasoning.toggle.click()
+    settle()
+    assert message.reasoning._expanded is True
+    assert message.reasoning.body.isHidden() is False
+
+    message.reasoning.toggle.click()
+    settle()
+    assert message.reasoning._expanded is False
+    assert message.reasoning.body.isHidden() is True
+    assert message.reasoning.toggle.angle == 0.0
+
+    message.reasoning.toggle.click()
+    settle()
+    assert message.reasoning.body.isHidden() is False
+    message.close()
 
 
 def test_a_message_without_thinking_shows_no_reasoning_row(app, monkeypatch):

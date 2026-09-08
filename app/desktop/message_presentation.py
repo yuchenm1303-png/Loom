@@ -324,11 +324,25 @@ class ReasoningToggle(QPushButton):
 
     angle = Property(float, _get_angle, _set_angle)
 
+    def _release_animation(self) -> None:
+        """Drop the finished rotation before touching it again.
+
+        ``DeleteWhenStopped`` frees the C++ object the moment the rotation ends,
+        so a kept Python reference is a live grenade: calling ``stop()`` on it
+        raises inside the click handler, Qt swallows the exception, and the whole
+        toggle silently stops working after its first use.
+        """
+        animation, self._animation = self._animation, None
+        if animation is None:
+            return
+        try:
+            animation.stop()
+        except RuntimeError:
+            pass
+
     def set_expanded(self, expanded: bool, *, animate: bool) -> None:
         target = 90.0 if expanded else 0.0
-        if self._animation is not None:
-            self._animation.stop()
-            self._animation = None
+        self._release_animation()
         if not animate or not theme.motion_enabled() or abs(self._angle - target) < 0.5:
             self._set_angle(target)
             return
@@ -337,7 +351,12 @@ class ReasoningToggle(QPushButton):
         animation.setStartValue(self._angle)
         animation.setEndValue(target)
         animation.setEasingCurve(QEasingCurve.Type.OutCubic)
-        animation.finished.connect(lambda: self._set_angle(target))
+
+        def finish() -> None:
+            self._animation = None
+            self._set_angle(target)
+
+        animation.finished.connect(finish)
         self._animation = animation
         animation.start(QPropertyAnimation.DeletionPolicy.DeleteWhenStopped)
 
