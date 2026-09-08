@@ -5,6 +5,7 @@ module only changes how one conversation row is presented so the sidebar reads
 like a mature recent-conversations list instead of a stack of tall cards.
 
 Motion is deliberately restrained:
+- hover eases in/out instead of flashing;
 - first appearance fades in quickly;
 - selection settles into place with a soft surface + short accent rail;
 - live states breathe slowly instead of blinking;
@@ -18,6 +19,8 @@ from typing import Any, ClassVar
 
 from PySide6.QtCore import (
     QEasingCurve,
+    QEvent,
+    QObject,
     QParallelAnimationGroup,
     QPropertyAnimation,
     QRect,
@@ -29,6 +32,7 @@ from PySide6.QtWidgets import (
     QGraphicsOpacityEffect,
     QHBoxLayout,
     QLabel,
+    QListWidget,
     QWidget,
 )
 
@@ -50,6 +54,11 @@ _ROW_QSS = """
 QWidget#threadItemWidget {
     background: transparent;
     border: 1px solid transparent;
+    border-radius: 9px;
+}
+QFrame#threadHoverSurface {
+    background: #171a21;
+    border: 1px solid #232832;
     border-radius: 9px;
 }
 QFrame#threadActiveSurface {
@@ -83,6 +92,55 @@ QLabel#threadDot[state="failed"] { color: #df8e98; }
 """
 
 
+class _HoverCoordinator(QObject):
+    """Animate row hover without stealing clicks from QListWidget."""
+
+    def __init__(self, view: QListWidget) -> None:
+        super().__init__(view)
+        self.view = view
+        self._hovered: QWidget | None = None
+        viewport = view.viewport()
+        viewport.setMouseTracking(True)
+        viewport.installEventFilter(self)
+
+    def _set_hovered(self, widget: QWidget | None) -> None:
+        if widget is self._hovered:
+            return
+        if self._hovered is not None:
+            try:
+                self._hovered.set_hovered(False)  # type: ignore[attr-defined]
+            except RuntimeError:
+                pass
+        self._hovered = widget
+        if widget is not None:
+            try:
+                widget.set_hovered(True)  # type: ignore[attr-defined]
+            except RuntimeError:
+                self._hovered = None
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:  # noqa: N802
+        if watched is self.view.viewport():
+            if event.type() == QEvent.Type.MouseMove:
+                point = event.position().toPoint()  # type: ignore[attr-defined]
+                item = self.view.itemAt(point)
+                widget = self.view.itemWidget(item) if item is not None else None
+                if widget is not None and hasattr(widget, "set_hovered"):
+                    self._set_hovered(widget)
+                else:
+                    self._set_hovered(None)
+            elif event.type() in {QEvent.Type.Leave, QEvent.Type.Hide}:
+                self._set_hovered(None)
+        return False
+
+
+def _ensure_hover_coordinator(parent: QWidget | None) -> None:
+    if not isinstance(parent, QListWidget):
+        return
+    if getattr(parent, "_loom_thread_hover_motion", None) is not None:
+        return
+    parent._loom_thread_hover_motion = _HoverCoordinator(parent)  # type: ignore[attr-defined]
+
+
 class ThreadListItemWidget(QWidget):
     """A single compact conversation row with restrained product-grade motion."""
 
@@ -111,19 +169,31 @@ class ThreadListItemWidget(QWidget):
         self._thread_id = fmt.text(record.get("id")).strip()
         self._full_title = fmt.text(record.get("title")).strip() or "New conversation"
         self._active = False
+        self._hovered = False
         self._entry_animation: QPropertyAnimation | None = None
+        self._hover_animation: QPropertyAnimation | None = None
         self._selection_animation: QParallelAnimationGroup | None = None
         self._attention_animation: QPropertyAnimation | None = None
 
-        # Animated selection surface. The QListWidget still supplies immediate
-        # hit feedback; this slightly richer layer fades/settles on top of it.
+        # Hover surface lives behind the selected surface. The QListWidget keeps
+        # owning pointer/click semantics; this layer only masks its abrupt hover
+        # state with a 100ms visual ease.
+        self.hover_surface = QFrame(self)
+        self.hover_surface.setObjectName("threadHoverSurface")
+        self.hover_surface.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self._hover_effect = QGraphicsOpacityEffect(self.hover_surface)
+        self._hover_effect.setOpacity(0.0)
+        self.hover_surface.setGraphicsEffect(self._hover_effect)
+        self.hover_surface.lower()
+
+        # Animated selection surface. The list supplies immediate hit feedback;
+        # this slightly richer layer fades/settles on top of it.
         self.active_surface = QFrame(self)
         self.active_surface.setObjectName("threadActiveSurface")
         self.active_surface.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         self._surface_effect = QGraphicsOpacityEffect(self.active_surface)
         self._surface_effect.setOpacity(0.0)
         self.active_surface.setGraphicsEffect(self._surface_effect)
-        self.active_surface.lower()
 
         # Short accent rail: intentionally not full-height, so selection feels
         # precise rather than like a navigation sidebar from a dashboard.
@@ -178,6 +248,7 @@ class ThreadListItemWidget(QWidget):
         )
         self.setToolTip(f"{self._full_title}\n{detail}" if detail else self._full_title)
 
+        _ensure_hover_coordinator(parent)
         self._start_attention_motion(attention)
 
     # ------------------------------------------------------------------
@@ -197,12 +268,36 @@ class ThreadListItemWidget(QWidget):
         self._surface_effect.setOpacity(1.0 if active else 0.0)
         self._marker_effect.setOpacity(0.92 if active else 0.0)
 
+    def _animate_hover(self, hovered: bool) -> None:
+        if self._hover_animation is not None:
+            self._hover_animation.stop()
+            self._hover_animation = None
+
+        target = 0.0 if self._active else (0.82 if hovered else 0.0)
+        if not theme.motion_enabled() or not self.isVisible():
+            self._hover_effect.setOpacity(target)
+            return
+
+        animation = QPropertyAnimation(self._hover_effect, b"opacity", self)
+        animation.setDuration(105 if hovered else 85)
+        animation.setStartValue(self._hover_effect.opacity())
+        animation.setEndValue(target)
+        animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+
+        def finish() -> None:
+            self._hover_effect.setOpacity(target)
+            self._hover_animation = None
+
+        animation.finished.connect(finish)
+        self._hover_animation = animation
+        animation.start()
+
     def _animate_selection(self, active: bool) -> None:
         if self._selection_animation is not None:
             self._selection_animation.stop()
             self._selection_animation = None
 
-        if not theme.motion_enabled() or not self.isVisible():
+        if not theme.motion_enabled() or not self.isVisible() or self.width() < 40:
             self._set_selection_visual(active)
             return
 
@@ -299,6 +394,13 @@ class ThreadListItemWidget(QWidget):
     # public row contract
     # ------------------------------------------------------------------
 
+    def set_hovered(self, hovered: bool) -> None:
+        hovered = bool(hovered)
+        if self._hovered == hovered:
+            return
+        self._hovered = hovered
+        self._animate_hover(hovered)
+
     def set_active(self, active: bool) -> None:
         """Mark the row whose thread is currently open."""
         active = bool(active)
@@ -310,6 +412,10 @@ class ThreadListItemWidget(QWidget):
             if widget.property("active") != active:
                 widget.setProperty("active", active)
                 base.repolish(widget)
+
+        # Selected rows suppress the hover overlay; when selection leaves a row
+        # that the pointer still occupies, hover softly returns.
+        self._animate_hover(self._hovered and not active)
 
         # Only animate a genuine selection change. Recreating the same row during
         # a library refresh should restore the selected state immediately.
@@ -333,6 +439,7 @@ class ThreadListItemWidget(QWidget):
     def resizeEvent(self, event: Any) -> None:  # noqa: N802 - Qt override
         super().resizeEvent(event)
 
+        self.hover_surface.setGeometry(self._surface_rect())
         # Layout-driven resizes should not fight an in-flight selection settle.
         if self._selection_animation is None:
             self.active_surface.setGeometry(self._surface_rect())
