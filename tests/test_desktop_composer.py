@@ -15,6 +15,7 @@ from app.desktop.composer import (
     MIN_HEIGHT,
     PERMISSION_DETAIL,
     PERMISSION_MODES,
+    AddModelDialog,
     ComposerPanel,
     ControlButton,
 )
@@ -77,6 +78,25 @@ def test_the_model_control_is_disabled_when_it_cannot_do_anything(composer):
     assert composer.model_button.isEnabled() is True
     # The current model is not repeated in its own history.
     assert composer._model_history == ["qwen-max"]
+
+
+def test_model_api_dialog_changes_base_url_policy_with_adapter(qt_app):
+    dialog = AddModelDialog()
+    try:
+        assert dialog.adapter() == "openai-compatible"
+        assert dialog.base_url_edit.isEnabled() is True
+
+        dialog.adapter_combo.setCurrentIndex(1)
+        qt_app.processEvents()
+        assert dialog.adapter() == "openai"
+        assert dialog.base_url_edit.isEnabled() is False
+        assert dialog.base_url_edit.text() == ""
+
+        dialog.adapter_combo.setCurrentIndex(0)
+        qt_app.processEvents()
+        assert dialog.base_url_edit.isEnabled() is True
+    finally:
+        dialog.close()
 
 
 def test_there_is_no_effort_control(composer):
