@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from pathlib import Path
 from typing import Any, Sequence
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from app.ai import ModelResponse, ToolCall
 
-from .browser_backend import browser_use_session_backend_factory
+from .browser_backend import BrowserUseSessionBackend
 from .browser_security import BrowserSecurityPolicy
 from .browser_session import (
     BrowserBackendFactory,
@@ -144,6 +145,29 @@ class _BrowserSecretBoundaryPlatform:
         )
 
 
+def _default_browser_profile_dir(store_root: str | Path) -> Path:
+    """Resolve Loom's browser profile outside durable per-session state."""
+
+    sessions_root = Path(store_root).expanduser().resolve()
+    if sessions_root.name == "sessions" and sessions_root.parent.name == "agent_runtime":
+        runtime_root = sessions_root.parent.parent
+    else:
+        runtime_root = sessions_root.parent
+    return (runtime_root / "browser" / "profiles" / "default").resolve()
+
+
+def _prepare_profile_dir(path: str | Path) -> Path:
+    profile_dir = Path(path).expanduser().resolve()
+    profile_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        profile_dir.chmod(0o700)
+    except OSError:
+        # Windows ACLs and some network filesystems do not map cleanly to POSIX
+        # modes. The profile still stays under the current user's Loom home.
+        pass
+    return profile_dir
+
+
 @dataclass(frozen=True, slots=True)
 class BrowserStateSnapshot:
     browser_id: str
@@ -162,11 +186,12 @@ BrowserSessionHandle = ManagedBrowserSession
 
 
 class BrowserSessionStore(BrowserSessionManager):
-    """Ephemeral Loom-session-owned browser handles.
+    """Loom-session-owned live browser handles.
 
-    Browser processes, tabs, selector maps and cookies are deliberately not written
-    to Loom's durable Session/SQLite state. After a Loom process restart there is no
-    automatic browser reattachment in v1; callers must open a new browser session.
+    Browser processes, tabs, selector maps and element revisions remain ephemeral and
+    are never serialized into Loom's Session state. The browser-use backend may use a
+    separate persistent Chromium user-data directory so ordinary cookies/local storage
+    survive closing Loom and can be reused by the next browser session.
     """
 
     def _validated_state(self, state: BrowserPageState, options: BrowserLaunchOptions) -> BrowserPageState:
@@ -245,6 +270,8 @@ class BrowserRuntime(WebSearchRuntime):
         auto_configure_browser: bool = True,
         browser_headless: bool = True,
         browser_allowed_domains: Sequence[str] = (),
+        browser_persist_profile: bool = True,
+        browser_profile_dir: str | Path | None = None,
         **kwargs,
     ) -> None:
         super().__init__(*args, **kwargs)
@@ -254,23 +281,56 @@ class BrowserRuntime(WebSearchRuntime):
 
         factory = browser_backend_factory
         backend_name = "custom" if factory is not None else "disabled"
+        profile_dir: Path | None = None
+        profile_persistence = False
         if factory is None and auto_configure_browser and browser_use_available():
-            factory = browser_use_session_backend_factory
+            if browser_persist_profile:
+                configured = browser_profile_dir or _default_browser_profile_dir(self.store.root)
+                profile_dir = _prepare_profile_dir(configured)
+                profile_persistence = True
+
+            def build_browser_use_backend(options: BrowserLaunchOptions):
+                backend = BrowserUseSessionBackend(options=options)
+                backend.user_data_dir = profile_dir
+                return backend
+
+            factory = build_browser_use_backend
             backend_name = "browser-use"
 
         self.browser_backend_name = backend_name
         self.browser_headless = bool(browser_headless)
         self.browser_allowed_domains = tuple(str(item) for item in browser_allowed_domains)
         self.browser_security_policy = browser_security_policy or BrowserSecurityPolicy()
+        self.browser_profile_persistence = profile_persistence
+        self.browser_profile_dir = profile_dir
         self.browser_sessions = (
-            BrowserSessionStore(factory, url_policy=self.browser_security_policy)
+            BrowserSessionStore(
+                factory,
+                url_policy=self.browser_security_policy,
+                # A Chromium user-data directory is process-exclusive. Reuse tabs
+                # inside one session rather than racing two Chrome processes over
+                # the same cookie/login database.
+                max_sessions_per_owner=1 if profile_persistence else 2,
+                max_sessions_total=1 if profile_persistence else 8,
+            )
             if factory is not None
             else None
         )
 
         from .browser_tools import browser_tools
 
-        for tool in browser_tools(self):
+        for raw_tool in browser_tools(self):
+            tool = raw_tool
+            if profile_persistence and raw_tool.name == "browser_open":
+                tool = replace(
+                    raw_tool,
+                    description=(
+                        "Open Loom's local browser-use session using the persistent default browser profile, optionally "
+                        "navigate to an http/https URL, and return a bounded LLM-facing DOM state. Cookies and ordinary "
+                        "site storage can survive browser restarts; live tabs and element indexes do not. allowed_domains "
+                        "can restrict the session. No browser-profile filesystem path or cookie value is exposed to the model."
+                    ),
+                )
             if self.tools.get(tool.name) is None:
                 self.tools.register(tool)
 
@@ -279,14 +339,21 @@ class BrowserRuntime(WebSearchRuntime):
         active = 0
         if store is not None and owner_session_id:
             active = len(store.list(owner_session_id))
+        persistent = bool(self.browser_profile_persistence)
         return {
             "enabled": store is not None,
             "backend": self.browser_backend_name,
             "active_sessions": active,
-            "session_persistence": "ephemeral",
-            "crash_recovery": "new_session_required_after_process_restart",
+            "session_persistence": "profile-persistent" if persistent else "ephemeral",
+            "crash_recovery": (
+                "new_session_reuses_persistent_profile"
+                if persistent
+                else "new_session_required_after_process_restart"
+            ),
             "secret_injection": False,
-            "storage_state_persistence": False,
+            "storage_state_persistence": persistent,
+            "profile_name": "default" if persistent else "",
+            "profile_path_exposed": False,
             "downloads": False,
             "uploads": False,
             "url_policy": "execution-layer pre/post navigation plus backend redirect/popup enforcement",

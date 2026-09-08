@@ -6,6 +6,7 @@ import os
 import threading
 from concurrent.futures import TimeoutError as FutureTimeoutError
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Coroutine
 
 from .browser_session import (
@@ -69,6 +70,7 @@ class _AsyncLoopThread:
 class BrowserUseBackend(BrowserBackend):
     options: BrowserLaunchOptions
     action_timeout_seconds: float = _DEFAULT_ACTION_TIMEOUT
+    user_data_dir: str | Path | None = None
 
     def __post_init__(self) -> None:
         if importlib.util.find_spec("browser_use") is None:
@@ -102,7 +104,7 @@ class BrowserUseBackend(BrowserBackend):
             ],
             block_ip_addresses=True,
             enable_default_extensions=False,
-            user_data_dir=None,
+            user_data_dir=self.user_data_dir,
             keep_alive=False,
         )
         self._session = BrowserSession(browser_profile=profile)
