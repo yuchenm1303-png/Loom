@@ -55,6 +55,15 @@ QFrame#userMessage QLabel#messageBody {
 }
 """
 
+# Rich text paragraphs carry an 11px trailing margin in the assistant document
+# stylesheet. Inside a compact outgoing bubble that margin reads as a blank row
+# below the text and makes the baseline look too high. User-message blocks already
+# get their separation from body_layout, so their paragraph itself should be tight.
+_USER_MESSAGE_CSS = theme.MESSAGE_CSS.replace(
+    "p { margin:0 0 11px; line-height:1.68; }",
+    "p { margin:0; line-height:1.48; }",
+)
+
 _STREAM_QSS = """
 QWidget#streamStatus, QWidget#streamGlyph {
     background:transparent;
@@ -280,8 +289,12 @@ class MessageWidget(base.MessageWidget):
         self.stream_status = StreamingStatus(self)
         if layout is not None:
             if role == "user":
-                layout.setContentsMargins(14, 9, 14, 10)
+                # Equal vertical insets keep one-line messages optically centered.
+                # The rich-text paragraph itself has no trailing margin (see
+                # _USER_MESSAGE_CSS), so these are the only top/bottom gutters.
+                layout.setContentsMargins(14, 10, 14, 10)
                 layout.setSpacing(0)
+                self.body_layout.setSpacing(6)
             else:
                 layout.setContentsMargins(15, 8, 17, 12)
                 layout.setSpacing(5)
@@ -321,6 +334,15 @@ class MessageWidget(base.MessageWidget):
         self.stream_status.set_mode(mode)
         self.stream_status.set_active(self._streaming)
 
+    def _set_rich_markup(self, widget: base.RichLabel, html: str) -> None:
+        """Apply role-appropriate rich text without a fake blank row in user bubbles."""
+        if self.role == "user":
+            widget.setText(_USER_MESSAGE_CSS + html)
+            widget.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+            widget.updateGeometry()
+            return
+        widget.set_markup(html)
+
     def set_text(self, value: str) -> None:
         """Update streaming Markdown in place instead of rebuilding every token.
 
@@ -351,7 +373,7 @@ class MessageWidget(base.MessageWidget):
             new = blocks[shared]
             widget = self._widgets[shared]
             if old.kind == new.kind == "rich" and isinstance(widget, base.RichLabel):
-                widget.set_markup(new.html)
+                self._set_rich_markup(widget, new.html)
                 shared += 1
             elif old.kind == new.kind == "code" and isinstance(widget, base.CodeBlock):
                 widget.set_source(new.language, new.source)
@@ -368,7 +390,7 @@ class MessageWidget(base.MessageWidget):
                 widget = base.CodeBlock(block.language, block.source, self)
             else:
                 widget = base.RichLabel(self)
-                widget.set_markup(block.html)
+                self._set_rich_markup(widget, block.html)
             self.body_layout.addWidget(widget)
             self._widgets.append(widget)
 
