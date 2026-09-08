@@ -12,12 +12,15 @@ from app.desktop.state import ThreadState, TranscriptEntry
 from app.desktop.composer import ComposerPanel, ComposerTextEdit
 from app.desktop import widgets as _widgets
 from app.desktop.message_presentation import MessageWidget, TranscriptView
+from app.desktop.thread_presentation import ThreadListItemWidget, thread_row_size
 
-# Install the presentation subclasses before ``window`` imports the transcript
-# types.  This keeps the durable transcript behavior in ``widgets`` unchanged
-# while the public desktop client uses the compact chat presentation.
+# Install presentation subclasses before ``window`` imports the corresponding
+# widget types.  Durable transcript/thread behavior stays in ``widgets`` while
+# the public desktop client gets compact chat and conversation-list chrome.
 _widgets.MessageWidget = MessageWidget
 _widgets.TranscriptView = TranscriptView
+_widgets.ThreadListItemWidget = ThreadListItemWidget
+_widgets.thread_row_size = thread_row_size
 
 from app.desktop.widgets import (  # noqa: E402 - presentation is installed first
     ActivityCard,
@@ -25,7 +28,6 @@ from app.desktop.widgets import (  # noqa: E402 - presentation is installed firs
     Banner,
     CodeBlock,
     EmptyState,
-    ThreadListItemWidget,
 )
 from app.desktop.window import LoomDesktopWindow  # noqa: E402
 
