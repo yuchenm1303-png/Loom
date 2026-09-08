@@ -1,13 +1,13 @@
 """Loom's native vector icon system.
 
-The desktop client deliberately avoids icon fonts and bundled bitmap assets.
-Every glyph is drawn on the same 24-unit grid with one line language, so the
-Runtime header, tabs, event rows and inline tool cards stay visually coherent at
-any DPI.
+The desktop client uses a restrained, product-style line icon language rather
+than decorative AI glyphs. Every icon sits on the same 24-unit grid and uses
+the same stroke geometry so Runtime tabs, event rows, and inline cards read as
+one commercial desktop product.
 
-The icon is meant to describe *what* is acting while the adjacent status text
-describes *how* it is going.  In particular, completed tool calls keep their
-identity icon instead of all turning into green checks.
+Identity and state stay separate: the glyph says what is acting, while the
+adjacent status badge says how it is going. Completed tool cards therefore keep
+their capability icon instead of becoming a wall of green checks.
 """
 
 from __future__ import annotations
@@ -20,9 +20,10 @@ from PySide6.QtGui import QColor, QIcon, QPainter, QPainterPath, QPen, QPixmap
 from app.desktop import theme
 
 
-_TOOL_BLUE = "#7da9f6"
-_AGENT_PURPLE = "#9a92f4"
-_NEUTRAL = "#9aa2af"
+# Deliberately subdued. These are information colors, not neon decoration.
+_TOOL_BLUE = "#77a0d6"
+_AGENT_PURPLE = "#8e88d8"
+_NEUTRAL = "#9098a5"
 
 
 def _tone_color(tone: str) -> QColor:
@@ -39,20 +40,19 @@ def _tone_color(tone: str) -> QColor:
 
 
 def _frame_colors(tone: str) -> tuple[QColor, QColor]:
-    background, border = {
-        "accent": ("#151522", "#332f50"),
-        "tool": ("#111720", "#293747"),
-        "good": ("#111815", "#2a4037"),
-        "warn": ("#1b1710", "#44371f"),
-        "bad": ("#1b1316", "#44282e"),
-        "muted": ("#111419", "#2b3039"),
-    }.get(tone, ("#111419", "#2b3039"))
-    return QColor(background), QColor(border)
+    """Quiet framing: one dark surface, only a small semantic border shift."""
+    border = {
+        "accent": "#343246",
+        "tool": "#2d3743",
+        "good": "#2d3934",
+        "warn": "#3c3529",
+        "bad": "#3b2e31",
+        "muted": "#2a2f37",
+    }.get(tone, "#2a2f37")
+    return QColor("#101318"), QColor(border)
 
 
 def _box(rect: QRectF, *, framed: bool) -> QRectF:
-    # Framed activity-card icons intentionally breathe a little more than tab
-    # icons.  The geometry itself still uses the exact same 24-unit grid.
     inset = rect.width() * (0.235 if framed else 0.10)
     return rect.adjusted(inset, inset, -inset, -inset)
 
@@ -68,7 +68,14 @@ def _line(painter: QPainter, box: QRectF, *coords: float) -> None:
     painter.drawLine(_p(box, coords[0], coords[1]), _p(box, coords[2], coords[3]))
 
 
-def _ellipse(painter: QPainter, box: QRectF, x: float, y: float, w: float, h: float) -> None:
+def _ellipse(
+    painter: QPainter,
+    box: QRectF,
+    x: float,
+    y: float,
+    w: float,
+    h: float,
+) -> None:
     painter.drawEllipse(QRectF(_p(box, x, y), _p(box, x + w, y + h)))
 
 
@@ -86,7 +93,13 @@ def _rounded_rect(
     painter.drawRoundedRect(rect, r, r)
 
 
-def _filled_dot(painter: QPainter, box: QRectF, x: float, y: float, diameter: float) -> None:
+def _filled_dot(
+    painter: QPainter,
+    box: QRectF,
+    x: float,
+    y: float,
+    diameter: float,
+) -> None:
     old = painter.brush()
     painter.setBrush(painter.pen().color())
     _ellipse(painter, box, x - diameter / 2, y - diameter / 2, diameter, diameter)
@@ -99,26 +112,22 @@ def _filled_dot(painter: QPainter, box: QRectF, x: float, y: float, diameter: fl
 
 
 def _draw_agent(painter: QPainter, box: QRectF) -> None:
-    """Loom's signature agent glyph: routed intent through a decision core."""
-    path = QPainterPath(_p(box, 5, 18))
-    path.cubicTo(_p(box, 7.5, 18), _p(box, 8.4, 12.1), _p(box, 12, 12))
-    path.cubicTo(_p(box, 15.2, 11.9), _p(box, 15.8, 6), _p(box, 19, 6))
-    painter.drawPath(path)
-    _filled_dot(painter, box, 5, 18, 3.2)
-    _ellipse(painter, box, 9.4, 9.4, 5.2, 5.2)
-    _filled_dot(painter, box, 12, 12, 1.8)
-    _filled_dot(painter, box, 19, 6, 3.2)
+    """Agent / orchestration: a clean routed branch, not a molecule symbol."""
+    _line(painter, box, 5, 6, 10, 6)
+    _line(painter, box, 10, 6, 10, 18)
+    _line(painter, box, 10, 10, 18, 10)
+    _line(painter, box, 10, 18, 18, 18)
+    _ellipse(painter, box, 3.7, 4.7, 2.6, 2.6)
+    _ellipse(painter, box, 16.7, 8.7, 2.6, 2.6)
+    _ellipse(painter, box, 16.7, 16.7, 2.6, 2.6)
 
 
 def _draw_agents(painter: QPainter, box: QRectF) -> None:
-    """Delegation graph: one coordinator branching into two workers."""
-    _ellipse(painter, box, 9.2, 3, 5.6, 5.6)
-    _filled_dot(painter, box, 12, 5.8, 1.8)
-    _line(painter, box, 12, 8.8, 12, 12)
-    _line(painter, box, 12, 12, 6.2, 16)
-    _line(painter, box, 12, 12, 17.8, 16)
-    _ellipse(painter, box, 3.8, 15.2, 4.8, 4.8)
-    _ellipse(painter, box, 15.4, 15.2, 4.8, 4.8)
+    """Delegated work: stacked work surfaces rather than a node constellation."""
+    _rounded_rect(painter, box, 6, 4, 13, 11, 2.0)
+    _rounded_rect(painter, box, 3, 9, 13, 11, 2.0)
+    _line(painter, box, 7, 13, 12, 13)
+    _line(painter, box, 7, 16.5, 10.5, 16.5)
 
 
 def _draw_terminal(painter: QPainter, box: QRectF) -> None:
@@ -129,45 +138,41 @@ def _draw_terminal(painter: QPainter, box: QRectF) -> None:
 
 
 def _draw_computer(painter: QPainter, box: QRectF) -> None:
-    """Desktop surface plus pointer; reserved for Computer Use tools."""
     _rounded_rect(painter, box, 2.2, 3.2, 19.6, 13.8, 2.0)
     _line(painter, box, 9, 20.5, 15, 20.5)
     _line(painter, box, 12, 17.2, 12, 20.2)
-    pointer = QPainterPath(_p(box, 12.8, 7.0))
-    pointer.lineTo(_p(box, 18.7, 11.2))
-    pointer.lineTo(_p(box, 15.7, 12.0))
-    pointer.lineTo(_p(box, 17.8, 15.8))
-    pointer.lineTo(_p(box, 15.8, 16.8))
-    pointer.lineTo(_p(box, 13.8, 12.9))
-    pointer.lineTo(_p(box, 11.8, 15.1))
+    pointer = QPainterPath(_p(box, 12.7, 7.0))
+    pointer.lineTo(_p(box, 18.5, 11.0))
+    pointer.lineTo(_p(box, 15.6, 11.8))
+    pointer.lineTo(_p(box, 17.5, 15.3))
+    pointer.lineTo(_p(box, 15.6, 16.3))
+    pointer.lineTo(_p(box, 13.6, 12.6))
+    pointer.lineTo(_p(box, 11.8, 14.7))
     pointer.closeSubpath()
     painter.drawPath(pointer)
 
 
 def _draw_browser(painter: QPainter, box: QRectF) -> None:
-    """A real browser window rather than the generic globe metaphor."""
     _rounded_rect(painter, box, 2.2, 3.2, 19.6, 17.6, 2.3)
     _line(painter, box, 2.8, 8.2, 21.2, 8.2)
     for x in (5.1, 8.2, 11.3):
-        _filled_dot(painter, box, x, 5.8, 1.6)
+        _filled_dot(painter, box, x, 5.8, 1.35)
     _line(painter, box, 6, 12, 18, 12)
     _line(painter, box, 6, 15.2, 15.2, 15.2)
 
 
 def _draw_tool(painter: QPainter, box: QRectF) -> None:
-    """Generic capability connector for tools without a stronger identity."""
-    path = QPainterPath(_p(box, 12, 3.2))
-    path.lineTo(_p(box, 18.6, 7))
-    path.lineTo(_p(box, 18.6, 14.7))
-    path.lineTo(_p(box, 12, 18.6))
-    path.lineTo(_p(box, 5.4, 14.7))
-    path.lineTo(_p(box, 5.4, 7))
+    """Generic tool: a conventional wrench, instantly readable in business UI."""
+    path = QPainterPath(_p(box, 5.0, 4.5))
+    path.cubicTo(_p(box, 8.0, 3.0), _p(box, 11.2, 5.2), _p(box, 10.5, 8.5))
+    path.lineTo(_p(box, 8.5, 10.5))
+    path.cubicTo(_p(box, 5.3, 11.2), _p(box, 3.0, 8.0), _p(box, 4.5, 5.0))
+    path.lineTo(_p(box, 7.0, 7.5))
+    path.lineTo(_p(box, 8.2, 6.3))
     path.closeSubpath()
     painter.drawPath(path)
-    _ellipse(painter, box, 9.4, 8.8, 5.2, 5.2)
-    _line(painter, box, 12, 3.2, 12, 8.4)
-    _line(painter, box, 18.6, 10.8, 15, 10.8)
-    _line(painter, box, 9, 10.8, 5.4, 10.8)
+    _line(painter, box, 9.7, 9.7, 18.2, 18.2)
+    _ellipse(painter, box, 16.4, 16.4, 3.6, 3.6)
 
 
 def _draw_search(painter: QPainter, box: QRectF) -> None:
@@ -201,75 +206,71 @@ def _draw_edit(painter: QPainter, box: QRectF) -> None:
 
 
 def _draw_diff(painter: QPainter, box: QRectF) -> None:
-    _draw_file(painter, box)
-    _line(painter, box, 7.8, 11.2, 12.8, 11.2)
-    _line(painter, box, 10.3, 8.7, 10.3, 13.7)
-    _line(painter, box, 8, 17, 14, 17)
+    """Two-column change marker; simpler than a decorated document glyph."""
+    _line(painter, box, 6, 4, 6, 20)
+    _line(painter, box, 18, 4, 18, 20)
+    _line(painter, box, 3.5, 9, 8.5, 9)
+    _line(painter, box, 6, 6.5, 6, 11.5)
+    _line(painter, box, 15.5, 15, 20.5, 15)
 
 
 def _draw_activity(painter: QPainter, box: QRectF) -> None:
     _line(painter, box, 6.2, 5, 6.2, 19)
     for y in (6, 12, 18):
-        _filled_dot(painter, box, 6.2, y, 2.5)
+        _filled_dot(painter, box, 6.2, y, 2.2)
     _line(painter, box, 9, 6, 19, 6)
     _line(painter, box, 9, 12, 16.5, 12)
     _line(painter, box, 9, 18, 19, 18)
 
 
 # ---------------------------------------------------------------------------
-# Runtime/event glyphs
+# Runtime / event glyphs
 # ---------------------------------------------------------------------------
 
 
 def _draw_session(painter: QPainter, box: QRectF) -> None:
     _ellipse(painter, box, 3, 3, 18, 18)
-    _filled_dot(painter, box, 12, 12, 3.2)
+    _filled_dot(painter, box, 12, 12, 2.8)
 
 
 def _draw_turn_start(painter: QPainter, box: QRectF) -> None:
     _ellipse(painter, box, 3, 3, 18, 18)
-    path = QPainterPath(_p(box, 9.6, 7.7))
-    path.lineTo(_p(box, 16.2, 12))
-    path.lineTo(_p(box, 9.6, 16.3))
-    path.closeSubpath()
-    painter.drawPath(path)
+    _line(painter, box, 8.2, 12, 15.8, 12)
+    _line(painter, box, 12.5, 8.7, 15.8, 12)
+    _line(painter, box, 12.5, 15.3, 15.8, 12)
 
 
 def _draw_prompt(painter: QPainter, box: QRectF) -> None:
-    path = QPainterPath(_p(box, 5, 5))
-    path.lineTo(_p(box, 19, 5))
-    path.quadTo(_p(box, 21, 5), _p(box, 21, 7))
-    path.lineTo(_p(box, 21, 15))
-    path.quadTo(_p(box, 21, 17), _p(box, 19, 17))
-    path.lineTo(_p(box, 10, 17))
-    path.lineTo(_p(box, 6, 20))
-    path.lineTo(_p(box, 6.7, 17))
-    path.lineTo(_p(box, 5, 17))
-    path.quadTo(_p(box, 3, 17), _p(box, 3, 15))
-    path.lineTo(_p(box, 3, 7))
-    path.quadTo(_p(box, 3, 5), _p(box, 5, 5))
+    _rounded_rect(painter, box, 3, 4, 18, 13, 2.5)
+    path = QPainterPath(_p(box, 8, 17))
+    path.lineTo(_p(box, 6.2, 20))
+    path.lineTo(_p(box, 11, 17))
     painter.drawPath(path)
 
 
 def _draw_model_request(painter: QPainter, box: QRectF) -> None:
-    _line(painter, box, 7, 7, 12, 12)
-    _line(painter, box, 17, 7, 12, 12)
-    _line(painter, box, 12, 12, 7, 17)
-    _line(painter, box, 12, 12, 17, 17)
-    for x, y in ((7, 7), (17, 7), (12, 12), (7, 17), (17, 17)):
-        _ellipse(painter, box, x - 1.8, y - 1.8, 3.6, 3.6)
+    """Model call: compact processor chip, not a sparkle or game-like node."""
+    _rounded_rect(painter, box, 6, 6, 12, 12, 2.0)
+    _rounded_rect(painter, box, 9, 9, 6, 6, 1.3)
+    for x in (8, 12, 16):
+        _line(painter, box, x, 3, x, 6)
+        _line(painter, box, x, 18, x, 21)
+    for y in (8, 12, 16):
+        _line(painter, box, 3, y, 6, y)
+        _line(painter, box, 18, y, 21, y)
 
 
 def _draw_model_response(painter: QPainter, box: QRectF) -> None:
     _draw_prompt(painter, box)
-    _line(painter, box, 8, 10, 16, 10)
-    _line(painter, box, 8, 13.5, 14, 13.5)
+    _line(painter, box, 7, 9, 17, 9)
+    _line(painter, box, 7, 12.5, 14.5, 12.5)
 
 
 def _draw_spinner(painter: QPainter, box: QRectF) -> None:
-    rect = QRectF(_p(box, 4, 4), _p(box, 20, 20))
-    painter.drawArc(rect, 35 * 16, 245 * 16)
-    _filled_dot(painter, box, 18.3, 5.7, 2.2)
+    """Running state: quiet clock metaphor instead of a bright open C-spinner."""
+    _ellipse(painter, box, 3, 3, 18, 18)
+    _line(painter, box, 12, 7.2, 12, 12)
+    _line(painter, box, 12, 12, 15.8, 14.2)
 
 
 def _draw_check(painter: QPainter, box: QRectF) -> None:
@@ -311,12 +312,11 @@ def _draw_terminal_done(painter: QPainter, box: QRectF) -> None:
 
 
 def _draw_dot(painter: QPainter, box: QRectF) -> None:
-    _filled_dot(painter, box, 12, 12, 4)
+    _filled_dot(painter, box, 12, 12, 3.5)
 
 
 _DRAWERS = {
     "activity": _draw_activity,
-    # The Runtime header is the Agent surface, not a generic spark/diamond.
     "model": _draw_agent,
     "agent": _draw_agent,
     "agents": _draw_agents,
@@ -352,6 +352,7 @@ def _paint_icon(
     framed: bool,
 ) -> None:
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
     if framed:
         background, border = _frame_colors(tone)
         painter.setPen(QPen(border, 1.0))
@@ -359,7 +360,7 @@ def _paint_icon(
         painter.drawRoundedRect(rect.adjusted(1, 1, -1, -1), 7, 7)
 
     color = _tone_color(tone)
-    width = max(1.35, min(1.7, rect.width() * 0.057))
+    width = max(1.3, min(1.58, rect.width() * 0.052))
     painter.setBrush(Qt.BrushStyle.NoBrush)
     painter.setPen(
         QPen(
@@ -370,8 +371,7 @@ def _paint_icon(
             Qt.PenJoinStyle.RoundJoin,
         )
     )
-    box = _box(rect, framed=framed)
-    _DRAWERS.get(name, _draw_dot)(painter, box)
+    _DRAWERS.get(name, _draw_dot)(painter, _box(rect, framed=framed))
 
 
 def _vector_paint_event(self: Any, _event: Any) -> None:
@@ -380,7 +380,7 @@ def _vector_paint_event(self: Any, _event: Any) -> None:
 
 
 def _vector_icon(name: str, *, size: int = 18, tone: str = "muted") -> QIcon:
-    """Render a truly transparent native icon; no styled QWidget is involved."""
+    """Render a truly transparent native icon without a styled QWidget."""
     pixmap = QPixmap(size, size)
     pixmap.fill(Qt.GlobalColor.transparent)
     painter = QPainter(pixmap)
@@ -491,7 +491,7 @@ def _card_icon_for(kind: str, title: str) -> tuple[str, str]:
 
 
 def _install_activity_card_routing(widgets: Any) -> None:
-    """Give inline cards a type icon without changing transcript behaviour."""
+    """Give inline cards a capability glyph without changing transcript behavior."""
     cls = widgets.ActivityCard
     if getattr(cls, "_loom_iconography_routing", False):
         return
@@ -519,9 +519,9 @@ def _install_activity_card_routing(widgets: Any) -> None:
         if getattr(self.icon, "name", "") != icon_name:
             self.icon.name = icon_name
             self.icon.update()
-        # Status already has its own badge.  Keeping the left glyph tied to the
-        # capability avoids the immature "everything becomes a green check"
-        # effect and matches the compact command-card language.
+
+        # Status already has its own badge. Keep the left-side icon neutral so
+        # completed cards do not acquire a bright green "selected/game" look.
         self.icon.set_tone(icon_tone)
 
     cls.update_card = update_card
