@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.desktop.markdown import parse_blocks, render_html
+from app.desktop.markdown import parse_blocks, render_html, split_reasoning
 
 
 def test_prose_and_code_are_separate_blocks():
@@ -55,3 +55,32 @@ def test_links_render_but_only_for_http_urls():
 
 def test_empty_text_still_renders_a_valid_document():
     assert render_html("") == "<p></p>"
+
+
+def test_inline_thinking_is_separated_from_the_reply():
+    thinking, body, live = split_reasoning("<think>weigh it up</think>Here is the answer.")
+    assert thinking == "weigh it up"
+    assert body == "Here is the answer."
+    assert live is False
+
+
+def test_unclosed_thinking_is_all_reasoning_while_it_streams():
+    thinking, body, live = split_reasoning("<think>still weighing")
+    assert (thinking, body, live) == ("still weighing", "", True)
+
+
+def test_a_reply_that_starts_mid_thought_is_still_split():
+    # Some reasoning models emit only the closing tag.
+    assert split_reasoning("weighing</think>answer") == ("weighing", "answer", False)
+
+
+def test_several_thinking_passes_are_collected_in_order():
+    thinking, body, _live = split_reasoning("a<think>one</think>b<think>two</think>c")
+    assert thinking == "one\n\ntwo"
+    assert body == "abc"
+
+
+def test_a_half_arrived_opening_tag_never_shows_as_text():
+    # Deltas split anywhere, including inside the tag itself.
+    assert split_reasoning("Ready <thi") == ("", "Ready", False)
+    assert split_reasoning("plain text") == ("", "plain text", False)

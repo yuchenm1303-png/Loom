@@ -13,19 +13,33 @@ in place so token deltas do not make the whole message flicker.
 from __future__ import annotations
 
 import math
+import time
 from typing import Any
 
-from PySide6.QtCore import QEasingCurve, QPropertyAnimation, QRectF, QSize, QTimer, Qt
-from PySide6.QtGui import QColor, QPainter, QTextDocument
+from PySide6.QtCore import (
+    Property,
+    QEasingCurve,
+    QParallelAnimationGroup,
+    QPointF,
+    QPropertyAnimation,
+    QRectF,
+    QSize,
+    QTimer,
+    Qt,
+)
+from PySide6.QtGui import QColor, QPainter, QPen, QTextDocument
 from PySide6.QtWidgets import (
     QFrame,
     QGraphicsOpacityEffect,
     QHBoxLayout,
     QLabel,
+    QPushButton,
     QSizePolicy,
+    QVBoxLayout,
     QWidget,
 )
 
+from app.desktop import format as fmt
 from app.desktop import markdown, theme
 from app.desktop import widgets as base
 from app.desktop.state import TranscriptEntry
@@ -63,6 +77,31 @@ _USER_MESSAGE_CSS = theme.MESSAGE_CSS.replace(
     "p { margin:0 0 11px; line-height:1.68; }",
     "p { margin:0; line-height:1.48; }",
 )
+
+_REASONING_QSS = f"""
+QFrame#reasoningBlock {{ background:transparent; border:none; }}
+QPushButton#reasoningToggle {{
+    background:transparent;
+    border:none;
+    border-radius:6px;
+    padding:2px 8px 2px 18px;
+    color:#8a90a6;
+    font-size:11px;
+    font-weight:600;
+    text-align:left;
+    min-height:20px;
+}}
+QPushButton#reasoningToggle:hover {{ background:#1b1d27; color:#c3c7d4; }}
+QLabel#reasoningBody {{
+    background:transparent;
+    border-left:2px solid #33374a;
+    margin-left:7px;
+    padding:2px 6px 4px 11px;
+    color:#9aa0b2;
+    font-family:{theme.FONT_UI};
+    font-size:12px;
+}}
+"""
 
 _STREAM_QSS = """
 QWidget#streamStatus, QWidget#streamGlyph {
@@ -263,6 +302,224 @@ class StreamingStatus(QWidget):
         animation.start()
 
 
+class ReasoningToggle(QPushButton):
+    """One quiet line that opens the model's own thinking."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("reasoningToggle")
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFlat(True)
+        self._angle = 0.0
+        self._animation: QPropertyAnimation | None = None
+
+    def _get_angle(self) -> float:
+        return self._angle
+
+    def _set_angle(self, value: float) -> None:
+        value = float(value)
+        if value != self._angle:
+            self._angle = value
+            self.update()
+
+    angle = Property(float, _get_angle, _set_angle)
+
+    def set_expanded(self, expanded: bool, *, animate: bool) -> None:
+        target = 90.0 if expanded else 0.0
+        if self._animation is not None:
+            self._animation.stop()
+            self._animation = None
+        if not animate or not theme.motion_enabled() or abs(self._angle - target) < 0.5:
+            self._set_angle(target)
+            return
+        animation = QPropertyAnimation(self, b"angle", self)
+        animation.setDuration(theme.MOTION_FAST_MS)
+        animation.setStartValue(self._angle)
+        animation.setEndValue(target)
+        animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+        animation.finished.connect(lambda: self._set_angle(target))
+        self._animation = animation
+        animation.start(QPropertyAnimation.DeletionPolicy.DeleteWhenStopped)
+
+    def paintEvent(self, event: Any) -> None:  # noqa: N802 - Qt override
+        super().paintEvent(event)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.translate(6.0, self.height() / 2)
+        painter.rotate(self._angle)
+        color = QColor("#a8a1c8" if self.underMouse() else "#7d829a")
+        painter.setPen(
+            QPen(color, 1.3, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
+        )
+        painter.drawLine(QPointF(-1.8, -3.3), QPointF(1.9, 0.0))
+        painter.drawLine(QPointF(1.9, 0.0), QPointF(-1.8, 3.3))
+
+
+class ReasoningBlock(QFrame):
+    """The model's private thinking, folded away from the reading line.
+
+    Reasoning models stream their chain of thought in the ordinary content
+    field. It is genuinely useful when a reply surprises you, and pure noise the
+    rest of the time, so it stays one click away instead of in the transcript.
+    """
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("reasoningBlock")
+        self.setStyleSheet(_REASONING_QSS)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+
+        self.toggle = ReasoningToggle(self)
+        self.toggle.clicked.connect(self._toggle)
+        layout.addWidget(self.toggle, 0, Qt.AlignmentFlag.AlignLeft)
+
+        self.body = QLabel(self)
+        self.body.setObjectName("reasoningBody")
+        self.body.setWordWrap(True)
+        self.body.setTextFormat(Qt.TextFormat.PlainText)
+        self.body.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.body.hide()
+        layout.addWidget(self.body)
+
+        self._text = ""
+        self._live = False
+        self._expanded = False
+        self._started: float | None = None
+        self._seconds = 0
+        self._animation: QParallelAnimationGroup | None = None
+        self._clock = QTimer(self)
+        self._clock.setInterval(1000)
+        self._clock.timeout.connect(self._sync_label)
+        self.hide()
+
+    # -- content ---------------------------------------------------------
+
+    def set_reasoning(self, text: str, *, live: bool) -> None:
+        text = text or ""
+        if not text:
+            self._clock.stop()
+            self._started = None
+            self.hide()
+            return
+
+        if self._started is None:
+            self._started = time.monotonic()
+        if text != self._text:
+            self._text = text
+            self.body.setText(text)
+        if live != self._live:
+            self._live = live
+            if live:
+                if theme.motion_enabled():
+                    self._clock.start()
+            else:
+                self._clock.stop()
+                self._seconds = self._elapsed()
+        self.show()
+        self._sync_label()
+
+    def finish(self) -> None:
+        """The turn ended; whatever was being thought is no longer in progress."""
+        if self._live:
+            self._live = False
+            self._clock.stop()
+            self._seconds = self._elapsed()
+            self._sync_label()
+
+    def _elapsed(self) -> int:
+        if self._started is None:
+            return 0
+        return max(0, int(time.monotonic() - self._started))
+
+    def _sync_label(self) -> None:
+        if self._live:
+            elapsed = self._elapsed()
+            suffix = f" · {fmt.elapsed_label(elapsed)}" if elapsed >= 2 else ""
+            self.toggle.setText(f"Thinking{suffix}")
+        else:
+            seconds = self._seconds or self._elapsed()
+            # Only claim a duration this widget actually watched; a rehydrated
+            # message has no honest number to report.
+            self.toggle.setText(
+                f"Thought for {fmt.elapsed_label(seconds)}" if seconds >= 2 else "Thought process"
+            )
+        self.toggle.setToolTip(
+            "The model's own reasoning. It is kept in the conversation history "
+            "but stays out of the reply."
+        )
+
+    # -- disclosure ------------------------------------------------------
+
+    def _toggle(self) -> None:
+        self._expanded = not self._expanded
+        self._sync_body(animate=True)
+
+    def _settle_layout(self, *, again: bool = True) -> None:
+        """Tell the transcript the message changed height.
+
+        The disclosure runs inside an already-laid-out message; without an
+        explicit invalidation the message keeps its old height and the tail of
+        the reply is clipped. Wrapped labels only report their final height once
+        they have been re-measured at the new width, so this runs twice: now,
+        and once the layout that follows has settled.
+        """
+        self.updateGeometry()
+        parent = self.parentWidget()
+        if parent is not None:
+            if parent.layout() is not None:
+                parent.layout().invalidate()
+            parent.updateGeometry()
+        if again:
+            QTimer.singleShot(0, lambda: self._settle_layout(again=False))
+
+    def _sync_body(self, *, animate: bool) -> None:
+        show = self._expanded
+        self.toggle.set_expanded(show, animate=animate)
+        if not animate or not theme.motion_enabled():
+            self.body.setMaximumHeight(16777215)
+            self.body.setVisible(show)
+            self._settle_layout()
+            return
+
+        if self._animation is not None:
+            self._animation.stop()
+        natural = max(0, self.body.heightForWidth(max(120, self.width())))
+        start = self.body.height() if self.body.isVisible() else 0
+        self.body.setVisible(True)
+        self.body.setMaximumHeight(max(0, start))
+
+        effect = QGraphicsOpacityEffect(self.body)
+        self.body.setGraphicsEffect(effect)
+        effect.setOpacity(1.0 if start else 0.0)
+
+        group = QParallelAnimationGroup(self)
+        height = QPropertyAnimation(self.body, b"maximumHeight", group)
+        height.setDuration(theme.MOTION_BASE_MS)
+        height.setStartValue(start)
+        height.setEndValue(natural if show else 0)
+        height.setEasingCurve(QEasingCurve.Type.OutCubic)
+        opacity = QPropertyAnimation(effect, b"opacity", group)
+        opacity.setDuration(theme.MOTION_FAST_MS)
+        opacity.setStartValue(1.0 if start else 0.0)
+        opacity.setEndValue(1.0 if show else 0.0)
+        group.addAnimation(height)
+        group.addAnimation(opacity)
+
+        def finish() -> None:
+            self.body.setVisible(show)
+            self.body.setMaximumHeight(16777215)
+            self.body.setGraphicsEffect(None)
+            self._animation = None
+            self._settle_layout()
+
+        group.finished.connect(finish)
+        self._animation = group
+        group.start()
+
+
 class MessageWidget(base.MessageWidget):
     """Message without avatar/name chrome and with stable live-stream rendering."""
 
@@ -290,6 +547,11 @@ class MessageWidget(base.MessageWidget):
 
         layout = self.layout()
         self.stream_status = StreamingStatus(self)
+        # Only a reply can think. A sent message is never reasoning.
+        self.reasoning = ReasoningBlock(self) if role == "assistant" else None
+        if self.reasoning is not None and layout is not None:
+            # Above the answer, because that is the order it happened in.
+            layout.insertWidget(0, self.reasoning)
         if layout is not None:
             if role == "user":
                 # Equal vertical insets keep one-line messages optically centered.
@@ -369,6 +631,8 @@ class MessageWidget(base.MessageWidget):
             return
 
         self._streaming = bool(streaming)
+        if not self._streaming and self.reasoning is not None:
+            self.reasoning.finish()
         self._sync_stream_status()
 
     def _sync_stream_status(self) -> None:
@@ -393,7 +657,20 @@ class MessageWidget(base.MessageWidget):
         if self.role == "user":
             widget.setText(_USER_MESSAGE_CSS + html)
             widget.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            # Keep the RichLabel at least as wide as its unwrapped text so a
+            # short "你好" never collapses to a one-character-per-line column
+            # when the transcript pane itself is narrow.
+            document = QTextDocument()
+            document.setDefaultFont(widget.font())
+            document.setHtml(_USER_MESSAGE_CSS + html)
+            widget.setMinimumWidth(int(document.idealWidth() + 0.999))
             widget.updateGeometry()
+            # The bubble frame also needs a minimum width equal to its body, or
+            # the parent layout can still shrink the frame below the label's
+            # content and produce the same narrow column.
+            frame = self._text_frame()
+            self.setMinimumWidth(max(48, int(document.idealWidth() + 0.999)) + frame)
+            self.updateGeometry()
             return
         widget.set_markup(html)
 
@@ -405,6 +682,11 @@ class MessageWidget(base.MessageWidget):
         flashes and unnecessary layout churn. Reuse one changed block when its
         type stays the same, then only create genuinely new blocks.
         """
+        if self.reasoning is not None:
+            # A reasoning model streams its thinking inline in the reply. It is
+            # folded into its own block; only the answer stays in the transcript.
+            thinking, value, live = markdown.split_reasoning(value)
+            self.reasoning.set_reasoning(thinking, live=live and self._streaming)
         if value == self._text:
             self._sync_stream_status()
             return
@@ -477,15 +759,16 @@ class TranscriptView(base.TranscriptView):
         super().render(entries)
 
         # The legacy transcript enforced a 280px minimum width for user cards.
-        # Reset that after reconciliation so "你好" and other short messages are
-        # genuinely compact, while long messages still wrap at a readable width.
+        # Reset the *upper* bound here so long messages wrap at a readable width,
+        # but leave the per-message minimum width alone — each MessageWidget
+        # already tracks its own content-based minimum so a short "你好" stays
+        # a single line and is not crushed into a one-character-per-line column.
         for entry in entries:
             if entry.kind != "user":
                 continue
             widget = self._widgets.get(entry.key)
             if not isinstance(widget, MessageWidget):
                 continue
-            widget.setMinimumWidth(0)
             widget.setMaximumWidth(self.USER_MAX_WIDTH)
             policy = widget.sizePolicy()
             policy.setHorizontalPolicy(QSizePolicy.Policy.Maximum)
@@ -497,6 +780,8 @@ class TranscriptView(base.TranscriptView):
 
 __all__ = [
     "MessageWidget",
+    "ReasoningBlock",
+    "ReasoningToggle",
     "StreamGlyph",
     "StreamingStatus",
     "TranscriptView",

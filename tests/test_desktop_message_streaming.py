@@ -114,6 +114,41 @@ def test_a_thinking_message_keeps_a_row_of_height_before_the_first_token(app, mo
     assert message.minimumHeight() == 0
 
 
+def test_model_thinking_is_folded_away_instead_of_printed(app, monkeypatch):
+    monkeypatch.setenv("LOOM_REDUCE_MOTION", "1")
+    message = MessageWidget("assistant")
+
+    message.set_streaming(True)
+    message.set_text("<think>The user greeted me in Chinese.")
+    # While it is still thinking there is nothing to answer with yet.
+    assert message._text == ""
+    assert message.reasoning.isHidden() is False
+    assert message.reasoning.body.isHidden() is True
+    assert message.reasoning.toggle.text().startswith("Thinking")
+
+    message.set_text("<think>The user greeted me in Chinese.</think>你好！")
+    message.set_streaming(False)
+
+    # The reply reads as the reply; the raw tag never reaches the transcript.
+    assert message._text == "你好！"
+    assert "The user greeted me" in message.reasoning.body.text()
+    assert message.reasoning.toggle.text().startswith(("Thought process", "Thought for"))
+
+    # And it is one click away rather than gone.
+    message.reasoning.toggle.click()
+    assert message.reasoning.body.isHidden() is False
+
+
+def test_a_message_without_thinking_shows_no_reasoning_row(app, monkeypatch):
+    monkeypatch.setenv("LOOM_REDUCE_MOTION", "1")
+    message = MessageWidget("assistant")
+
+    message.set_text("Plain answer with no reasoning.")
+
+    assert message.reasoning.isHidden() is True
+    assert message._text == "Plain answer with no reasoning."
+
+
 def test_reduced_motion_keeps_stream_glyph_static(app, monkeypatch):
     monkeypatch.setenv("LOOM_REDUCE_MOTION", "1")
     glyph = StreamGlyph()

@@ -175,6 +175,65 @@ def parse_blocks(value: str) -> list[Block]:
     return blocks
 
 
+THINK_OPEN = "<think>"
+THINK_CLOSE = "</think>"
+
+
+def _drop_partial_open_tag(value: str) -> str:
+    """Hold back a half-arrived ``<think>`` so it never flashes as literal text.
+
+    Deltas split anywhere, including inside the tag. Two or more characters of
+    the opening tag are held; a lone ``<`` is left alone because prose uses it.
+    """
+    for size in range(len(THINK_OPEN) - 1, 1, -1):
+        if value.endswith(THINK_OPEN[:size]):
+            return value[:-size]
+    return value
+
+
+def split_reasoning(value: str) -> tuple[str, str, bool]:
+    """Separate a reasoning model's private thinking from what it is saying.
+
+    Models such as MiniMax-M2 stream their chain of thought inside the ordinary
+    ``content`` field, wrapped in ``<think>`` tags, rather than in a separate
+    reasoning field. Returns ``(reasoning, visible, live)``, where ``live`` marks
+    thinking that has not been closed yet -- the normal mid-stream state.
+
+    Nothing is discarded here: the durable message keeps its original text, and
+    reasoning models need their own thinking in the history they are replayed.
+    """
+    text = value or ""
+    reasoning: list[str] = []
+    visible: list[str] = []
+    live = False
+
+    rest = text
+    while rest:
+        start = rest.find(THINK_OPEN)
+        close = rest.find(THINK_CLOSE)
+        if start < 0 and close < 0:
+            visible.append(rest)
+            break
+        if close >= 0 and (start < 0 or close < start):
+            # A closing tag with no opening one: the reply began mid-thought.
+            reasoning.append(rest[:close])
+            rest = rest[close + len(THINK_CLOSE) :]
+            continue
+        visible.append(rest[:start])
+        rest = rest[start + len(THINK_OPEN) :]
+        end = rest.find(THINK_CLOSE)
+        if end < 0:
+            reasoning.append(rest)
+            live = True
+            break
+        reasoning.append(rest[:end])
+        rest = rest[end + len(THINK_CLOSE) :]
+
+    body = _drop_partial_open_tag("".join(visible)).strip()
+    thinking = "\n\n".join(part.strip() for part in reasoning if part.strip())
+    return thinking, body, live
+
+
 def render_html(value: str) -> str:
     """Whole-message HTML, used where a single rich-text string is required."""
     parts: list[str] = []
@@ -189,4 +248,12 @@ def render_html(value: str) -> str:
     return "".join(parts) or "<p></p>"
 
 
-__all__ = ["Block", "inline_html", "parse_blocks", "render_html"]
+__all__ = [
+    "Block",
+    "THINK_CLOSE",
+    "THINK_OPEN",
+    "inline_html",
+    "parse_blocks",
+    "render_html",
+    "split_reasoning",
+]

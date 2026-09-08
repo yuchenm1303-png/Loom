@@ -910,7 +910,6 @@ class TranscriptView(QScrollArea):
                     else Qt.AlignmentFlag.AlignTop
                 )
                 if entry.kind == "user":
-                    widget.setMinimumWidth(0)
                     widget.setMaximumWidth(690)
                     policy = widget.sizePolicy()
                     policy.setHorizontalPolicy(QSizePolicy.Policy.Maximum)
