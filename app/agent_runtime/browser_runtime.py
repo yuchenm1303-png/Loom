@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import ipaddress
+import os
 import re
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -85,15 +87,7 @@ def _safe_state_dict(state: BrowserPageState, *, max_dom_chars: int = 30_000) ->
 
 
 def _sanitize_browser_tool_call(call: ToolCall) -> ToolCall:
-    """Remove secret-shaped browser arguments before Runtime can persist them.
-
-    Runtime v2 durably records model tool-call arguments before tool execution. A
-    browser password/token therefore cannot be made safe merely by redacting the
-    ToolResult. Browser v1 has no secret-handle channel, so secret-shaped values are
-    replaced *before* the canonical Session/event boundary and the call is marked
-    invalid. The extra marker is intentionally outside the tool schema; validation
-    rejects it before any browser action can execute with a redacted credential.
-    """
+    """Remove secret-shaped browser arguments before Runtime can persist them."""
 
     if not call.name.startswith("browser_"):
         return call
@@ -168,6 +162,42 @@ def _prepare_profile_dir(path: str | Path) -> Path:
     return profile_dir
 
 
+def _validate_local_cdp_url(value: str) -> str:
+    """Accept only explicit loopback Chrome DevTools endpoints.
+
+    CDP grants full control of every page in the attached browser. It is therefore
+    runtime configuration, never a model tool argument, and remote hosts are rejected
+    even when the caller would otherwise allow private-network browser navigation.
+    """
+
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    try:
+        parsed = urlsplit(raw)
+        port = parsed.port
+    except ValueError as exc:
+        raise ValueError("browser CDP URL is invalid") from exc
+    if parsed.scheme.casefold() not in {"http", "https", "ws", "wss"}:
+        raise ValueError("browser CDP URL must use http/https/ws/wss")
+    if parsed.username is not None or parsed.password is not None:
+        raise ValueError("browser CDP URL must not contain credentials")
+    host = str(parsed.hostname or "").strip()
+    if not host:
+        raise ValueError("browser CDP URL must contain a loopback IP hostname")
+    try:
+        address = ipaddress.ip_address(host.split("%", 1)[0])
+    except ValueError as exc:
+        raise ValueError("browser CDP URL must use literal 127.0.0.1 or ::1, not a hostname") from exc
+    if not address.is_loopback:
+        raise ValueError("browser CDP URL is restricted to the local loopback interface")
+    if port is None or not 1 <= int(port) <= 65535:
+        raise ValueError("browser CDP URL must include an explicit port")
+    if parsed.query or parsed.fragment:
+        raise ValueError("browser CDP URL must not contain query parameters or fragments")
+    return raw
+
+
 @dataclass(frozen=True, slots=True)
 class BrowserStateSnapshot:
     browser_id: str
@@ -188,10 +218,10 @@ BrowserSessionHandle = ManagedBrowserSession
 class BrowserSessionStore(BrowserSessionManager):
     """Loom-session-owned live browser handles.
 
-    Browser processes, tabs, selector maps and element revisions remain ephemeral and
-    are never serialized into Loom's Session state. The browser-use backend may use a
-    separate persistent Chromium user-data directory so ordinary cookies/local storage
-    survive closing Loom and can be reused by the next browser session.
+    Live handles, tabs, selector maps and element revisions are never serialized into
+    Loom session state. Local browser-use launches may reuse Loom's persistent profile;
+    CDP mode instead attaches to a user-owned local Chrome/Edge process and disconnects
+    without terminating that process.
     """
 
     def _validated_state(self, state: BrowserPageState, options: BrowserLaunchOptions) -> BrowserPageState:
@@ -272,6 +302,7 @@ class BrowserRuntime(WebSearchRuntime):
         browser_allowed_domains: Sequence[str] = (),
         browser_persist_profile: bool = True,
         browser_profile_dir: str | Path | None = None,
+        browser_cdp_url: str | None = None,
         **kwargs,
     ) -> None:
         super().__init__(*args, **kwargs)
@@ -281,10 +312,27 @@ class BrowserRuntime(WebSearchRuntime):
 
         factory = browser_backend_factory
         backend_name = "custom" if factory is not None else "disabled"
+        explicit_cdp = browser_cdp_url is not None
+        configured_cdp = browser_cdp_url
+        if configured_cdp is None and factory is None and auto_configure_browser:
+            configured_cdp = os.environ.get("LOOM_BROWSER_CDP_URL")
+        cdp_url = _validate_local_cdp_url(str(configured_cdp or ""))
+        if cdp_url and factory is not None:
+            raise ValueError("browser_cdp_url cannot be combined with a custom browser backend factory")
+        if cdp_url and browser_profile_dir is not None:
+            raise ValueError("browser_cdp_url cannot be combined with browser_profile_dir")
+        if cdp_url and not auto_configure_browser:
+            raise ValueError("browser_cdp_url requires auto_configure_browser=True")
+        if explicit_cdp and not cdp_url:
+            raise ValueError("browser_cdp_url must not be empty")
+
         profile_dir: Path | None = None
         profile_persistence = False
+        cdp_attached = False
         if factory is None and auto_configure_browser and browser_use_available():
-            if browser_persist_profile:
+            if cdp_url:
+                cdp_attached = True
+            elif browser_persist_profile:
                 configured = browser_profile_dir or _default_browser_profile_dir(self.store.root)
                 profile_dir = _prepare_profile_dir(configured)
                 profile_persistence = True
@@ -292,10 +340,13 @@ class BrowserRuntime(WebSearchRuntime):
             def build_browser_use_backend(options: BrowserLaunchOptions):
                 backend = BrowserUseSessionBackend(options=options)
                 backend.user_data_dir = profile_dir
+                backend.cdp_url = cdp_url or None
                 return backend
 
             factory = build_browser_use_backend
             backend_name = "browser-use"
+        elif cdp_url:
+            raise RuntimeError("browser_cdp_url requires the browser-use extra")
 
         self.browser_backend_name = backend_name
         self.browser_headless = bool(browser_headless)
@@ -303,15 +354,16 @@ class BrowserRuntime(WebSearchRuntime):
         self.browser_security_policy = browser_security_policy or BrowserSecurityPolicy()
         self.browser_profile_persistence = profile_persistence
         self.browser_profile_dir = profile_dir
+        self.browser_cdp_attached = cdp_attached
+        # Never expose or persist the configured control endpoint in tool/status
+        # payloads. Keep it only inside the backend closure used for attachment.
+        exclusive_browser = profile_persistence or cdp_attached
         self.browser_sessions = (
             BrowserSessionStore(
                 factory,
                 url_policy=self.browser_security_policy,
-                # A Chromium user-data directory is process-exclusive. Reuse tabs
-                # inside one session rather than racing two Chrome processes over
-                # the same cookie/login database.
-                max_sessions_per_owner=1 if profile_persistence else 2,
-                max_sessions_total=1 if profile_persistence else 8,
+                max_sessions_per_owner=1 if exclusive_browser else 2,
+                max_sessions_total=1 if exclusive_browser else 8,
             )
             if factory is not None
             else None
@@ -321,7 +373,17 @@ class BrowserRuntime(WebSearchRuntime):
 
         for raw_tool in browser_tools(self):
             tool = raw_tool
-            if profile_persistence and raw_tool.name == "browser_open":
+            if cdp_attached and raw_tool.name == "browser_open":
+                tool = replace(
+                    raw_tool,
+                    description=(
+                        "Open Loom's configured existing local Chrome/Edge browser session through its loopback-only CDP "
+                        "connection, optionally navigate to an http/https URL, and return a bounded LLM-facing DOM state. "
+                        "The model cannot choose or inspect the CDP endpoint. Closing Loom disconnects without terminating "
+                        "the user's browser. allowed_domains can restrict the session."
+                    ),
+                )
+            elif profile_persistence and raw_tool.name == "browser_open":
                 tool = replace(
                     raw_tool,
                     description=(
@@ -340,19 +402,34 @@ class BrowserRuntime(WebSearchRuntime):
         if store is not None and owner_session_id:
             active = len(store.list(owner_session_id))
         persistent = bool(self.browser_profile_persistence)
+        attached = bool(self.browser_cdp_attached)
+        if attached:
+            persistence = "external-browser"
+            recovery = "reattach_to_configured_local_browser"
+            profile_name = "external"
+            connection = "cdp-attach"
+        elif persistent:
+            persistence = "profile-persistent"
+            recovery = "new_session_reuses_persistent_profile"
+            profile_name = "default"
+            connection = "local-launch"
+        else:
+            persistence = "ephemeral"
+            recovery = "new_session_required_after_process_restart"
+            profile_name = ""
+            connection = "local-launch" if store is not None else "disabled"
         return {
             "enabled": store is not None,
             "backend": self.browser_backend_name,
+            "browser_connection": connection,
+            "external_browser": attached,
+            "cdp_endpoint_exposed": False,
             "active_sessions": active,
-            "session_persistence": "profile-persistent" if persistent else "ephemeral",
-            "crash_recovery": (
-                "new_session_reuses_persistent_profile"
-                if persistent
-                else "new_session_required_after_process_restart"
-            ),
+            "session_persistence": persistence,
+            "crash_recovery": recovery,
             "secret_injection": False,
-            "storage_state_persistence": persistent,
-            "profile_name": "default" if persistent else "",
+            "storage_state_persistence": persistent or attached,
+            "profile_name": profile_name,
             "profile_path_exposed": False,
             "downloads": False,
             "uploads": False,
