@@ -27,13 +27,15 @@ from app.desktop.output_presentation import MessageWidget, TranscriptView
 from app.desktop import transcript_density as _transcript_density
 from app.desktop import activity_hierarchy as _activity_hierarchy
 from app.desktop import activity_motion as _activity_motion
+from app.desktop import activity_disclosure as _activity_disclosure
 from app.desktop.thread_presentation import ThreadListItemWidget, thread_row_size
 
-# Install presentation, density, hierarchy, motion, icon, and composer polish
-# hooks before ``window`` imports the corresponding widget types and renderer.
+# Install presentation, density, hierarchy, disclosure, motion, icon, and
+# composer polish hooks before ``window`` imports the corresponding widget types.
 _transcript_density.install()
 _activity_hierarchy.install()
 _activity_motion.install()
+_activity_disclosure.install()
 _widgets.MessageWidget = MessageWidget
 _widgets.TranscriptView = TranscriptView
 _widgets.ThreadListItemWidget = ThreadListItemWidget
