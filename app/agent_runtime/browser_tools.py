@@ -37,6 +37,31 @@ def _store(runtime: "BrowserRuntime") -> "BrowserSessionStore":
     return store
 
 
+def _backend_snapshot_action(
+    store: "BrowserSessionStore",
+    owner_session_id: str,
+    browser_id: str,
+    method_name: str,
+    *args: object,
+) -> "BrowserStateSnapshot":
+    """Run an optional backend interaction and pass the result through Loom validation.
+
+    Extended interactions deliberately live behind the backend boundary. Custom
+    backends can opt into them without changing the BrowserSessionManager protocol,
+    while Loom still validates post-action URLs and refreshes the managed snapshot.
+    """
+
+    item = store._owned(owner_session_id, browser_id)
+    method = getattr(item.backend, method_name, None)
+    if not callable(method):
+        raise RuntimeError(
+            f"browser backend {item.backend.backend_name!r} does not support {method_name}"
+        )
+    state = method(*args)
+    store._update_state(item, state)
+    return store.snapshot(owner_session_id, browser_id)
+
+
 def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
     def status(context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
         return ToolResult(
@@ -96,7 +121,7 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
         snapshot = store.snapshot(context.session_id, browser_id, refresh=True)
         return _snapshot_result(
             snapshot,
-            "Browser state refreshed. Use only this state_revision with browser_click/browser_type.",
+            "Browser state refreshed. Use only this state_revision with element-targeting browser tools.",
         )
 
     def navigate(context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
@@ -137,6 +162,68 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
             clear=bool(arguments.get("clear", True)),
         )
         return _snapshot_result(store.snapshot(context.session_id, browser_id), "Browser text input completed.")
+
+    def hover(context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
+        context.raise_if_cancelled()
+        store = _store(runtime)
+        browser_id = str(arguments["browser_id"])
+        store.ensure_revision(context.session_id, browser_id, int(arguments["state_revision"]))
+        snapshot = _backend_snapshot_action(
+            store,
+            context.session_id,
+            browser_id,
+            "hover",
+            int(arguments["index"]),
+        )
+        return _snapshot_result(snapshot, "Browser hover completed.")
+
+    def press_key(context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
+        context.raise_if_cancelled()
+        store = _store(runtime)
+        browser_id = str(arguments["browser_id"])
+        store.ensure_revision(context.session_id, browser_id, int(arguments["state_revision"]))
+        key = str(arguments["key"] or "").strip()
+        if not key:
+            raise ValueError("browser_press key must not be empty")
+        snapshot = _backend_snapshot_action(
+            store,
+            context.session_id,
+            browser_id,
+            "press_key",
+            key,
+        )
+        return _snapshot_result(snapshot, "Browser key press completed.")
+
+    def select_option(context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
+        context.raise_if_cancelled()
+        store = _store(runtime)
+        browser_id = str(arguments["browser_id"])
+        store.ensure_revision(context.session_id, browser_id, int(arguments["state_revision"]))
+        value = str(arguments["value"])
+        snapshot = _backend_snapshot_action(
+            store,
+            context.session_id,
+            browser_id,
+            "select_option",
+            int(arguments["index"]),
+            value,
+        )
+        return _snapshot_result(snapshot, "Browser dropdown selection completed.")
+
+    def drag(context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
+        context.raise_if_cancelled()
+        store = _store(runtime)
+        browser_id = str(arguments["browser_id"])
+        store.ensure_revision(context.session_id, browser_id, int(arguments["state_revision"]))
+        snapshot = _backend_snapshot_action(
+            store,
+            context.session_id,
+            browser_id,
+            "drag",
+            int(arguments["source_index"]),
+            int(arguments["target_index"]),
+        )
+        return _snapshot_result(snapshot, "Browser drag-and-drop completed.")
 
     def scroll(context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
         context.raise_if_cancelled()
@@ -225,6 +312,8 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
         )
 
     sensitive = ToolEffect.SENSITIVE
+    revision_schema = {"type": "integer", "minimum": 1}
+    index_schema = {"type": "integer", "minimum": 0}
     tools.extend(
         [
             AgentTool(
@@ -277,8 +366,8 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
                 input_schema=_schema(
                     {
                         "browser_id": _browser_id_schema(),
-                        "index": {"type": "integer", "minimum": 0},
-                        "state_revision": {"type": "integer", "minimum": 1},
+                        "index": index_schema,
+                        "state_revision": revision_schema,
                     },
                     ("browser_id", "index", "state_revision"),
                 ),
@@ -295,14 +384,84 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
                 input_schema=_schema(
                     {
                         "browser_id": _browser_id_schema(),
-                        "index": {"type": "integer", "minimum": 0},
-                        "state_revision": {"type": "integer", "minimum": 1},
+                        "index": index_schema,
+                        "state_revision": revision_schema,
                         "text": {"type": "string", "maxLength": 20000},
                         "clear": {"type": "boolean"},
                     },
                     ("browser_id", "index", "state_revision", "text"),
                 ),
                 handler=type_text,
+                effect=sensitive,
+            ),
+            AgentTool(
+                name="browser_hover",
+                description=(
+                    "Hover an element from the latest browser_state to reveal CSS hover menus, tooltips, or hidden controls. "
+                    "Requires the matching state_revision so stale element indexes fail closed."
+                ),
+                input_schema=_schema(
+                    {
+                        "browser_id": _browser_id_schema(),
+                        "index": index_schema,
+                        "state_revision": revision_schema,
+                    },
+                    ("browser_id", "index", "state_revision"),
+                ),
+                handler=hover,
+                effect=sensitive,
+            ),
+            AgentTool(
+                name="browser_press",
+                description=(
+                    "Press a keyboard key or combination such as Enter, Escape, Tab, Control+A, or Shift+Tab in the active page. "
+                    "Requires the latest state_revision to avoid acting on stale focus state."
+                ),
+                input_schema=_schema(
+                    {
+                        "browser_id": _browser_id_schema(),
+                        "state_revision": revision_schema,
+                        "key": {"type": "string", "minLength": 1, "maxLength": 100},
+                    },
+                    ("browser_id", "state_revision", "key"),
+                ),
+                handler=press_key,
+                effect=sensitive,
+            ),
+            AgentTool(
+                name="browser_select",
+                description=(
+                    "Select a value from a native select element identified by an index from the latest browser_state. "
+                    "Requires the matching state_revision."
+                ),
+                input_schema=_schema(
+                    {
+                        "browser_id": _browser_id_schema(),
+                        "index": index_schema,
+                        "state_revision": revision_schema,
+                        "value": {"type": "string", "minLength": 1, "maxLength": 2000},
+                    },
+                    ("browser_id", "index", "state_revision", "value"),
+                ),
+                handler=select_option,
+                effect=sensitive,
+            ),
+            AgentTool(
+                name="browser_drag",
+                description=(
+                    "Drag one DOM element onto another using indexes from the same latest browser_state snapshot. "
+                    "Requires the matching state_revision."
+                ),
+                input_schema=_schema(
+                    {
+                        "browser_id": _browser_id_schema(),
+                        "source_index": index_schema,
+                        "target_index": index_schema,
+                        "state_revision": revision_schema,
+                    },
+                    ("browser_id", "source_index", "target_index", "state_revision"),
+                ),
+                handler=drag,
                 effect=sensitive,
             ),
             AgentTool(
