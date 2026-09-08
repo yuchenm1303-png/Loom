@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -9,6 +10,9 @@ from .tools import AgentTool, ToolContext, ToolResult
 
 if TYPE_CHECKING:
     from .browser_runtime import BrowserRuntime, BrowserSessionStore, BrowserStateSnapshot
+
+
+_ELEMENT_INDEX_RE = re.compile(r"\[(\d+)\]")
 
 
 def _schema(properties: dict[str, Any], required: tuple[str, ...] = ()) -> dict[str, Any]:
@@ -28,6 +32,129 @@ def _browser_id_schema() -> dict[str, Any]:
 
 def _snapshot_result(snapshot: "BrowserStateSnapshot", message: str) -> ToolResult:
     return ToolResult(ok=True, content=message, data=snapshot.to_dict())
+
+
+def _bounded_dom_chars(arguments: dict[str, Any], *, default: int) -> int:
+    value = int(arguments.get("max_dom_chars", default))
+    if not 1_000 <= value <= 60_000:
+        raise ValueError("max_dom_chars must be within 1000..60000")
+    return value
+
+
+def _compact_snapshot_data(
+    snapshot: "BrowserStateSnapshot",
+    *,
+    max_dom_chars: int = 12_000,
+) -> dict[str, object]:
+    """Return a token-lean state while preserving actionable selector indexes.
+
+    browser-use already serializes a compact DOM, but large pages still contain a
+    great deal of non-actionable text. Loom's compact view keeps the beginning of the
+    page plus every indexed interactive line and one neighboring text line on either
+    side. Element indexes remain from the exact same state_revision.
+    """
+
+    source = snapshot.to_dict(max_dom_chars=120_000)
+    dom = str(source.get("dom") or "")
+    lines = [line.strip() for line in dom.splitlines() if line.strip()]
+    selected: set[int] = set(range(min(8, len(lines))))
+    for index, line in enumerate(lines):
+        if _ELEMENT_INDEX_RE.search(line):
+            selected.add(index)
+            if index > 0:
+                selected.add(index - 1)
+            if index + 1 < len(lines):
+                selected.add(index + 1)
+
+    output_lines: list[str] = []
+    used = 0
+    clipped = False
+    for index in sorted(selected):
+        line = lines[index]
+        if len(line) > 1_500:
+            line = line[:1_500] + "…"
+            clipped = True
+        addition = len(line) + (1 if output_lines else 0)
+        if used + addition > max_dom_chars:
+            clipped = True
+            break
+        output_lines.append(line)
+        used += addition
+
+    compact_dom = "\n".join(output_lines)
+    omitted = len(selected) < len(lines) or len(output_lines) < len(selected)
+    source["dom"] = compact_dom
+    source["dom_view"] = "compact"
+    source["dom_source_chars"] = len(dom)
+    source["dom_source_lines"] = len(lines)
+    source["dom_visible_lines"] = len(output_lines)
+    source["dom_truncated"] = bool(source.get("dom_truncated")) or omitted or clipped
+    return source
+
+
+def _full_snapshot_data(
+    snapshot: "BrowserStateSnapshot",
+    *,
+    max_dom_chars: int = 30_000,
+) -> dict[str, object]:
+    data = snapshot.to_dict(max_dom_chars=max_dom_chars)
+    data["dom_view"] = "full"
+    return data
+
+
+def _find_dom_matches(
+    snapshot: "BrowserStateSnapshot",
+    query: str,
+    *,
+    max_results: int,
+    context_lines: int,
+    case_sensitive: bool,
+) -> dict[str, object]:
+    source = snapshot.to_dict(max_dom_chars=120_000)
+    dom = str(source.get("dom") or "")
+    lines = dom.splitlines()
+    needle = query if case_sensitive else query.casefold()
+    matches: list[dict[str, object]] = []
+    total = 0
+
+    for index, raw_line in enumerate(lines):
+        candidate = raw_line if case_sensitive else raw_line.casefold()
+        if needle not in candidate:
+            continue
+        total += 1
+        if len(matches) >= max_results:
+            continue
+        start = max(0, index - context_lines)
+        end = min(len(lines), index + context_lines + 1)
+        before = [line.strip()[:1_200] for line in lines[start:index] if line.strip()]
+        after = [line.strip()[:1_200] for line in lines[index + 1 : end] if line.strip()]
+        text = raw_line.strip()[:1_500]
+        direct_indexes = sorted({int(value) for value in _ELEMENT_INDEX_RE.findall(raw_line)})
+        nearby_text = "\n".join(lines[start:end])
+        nearby_indexes = sorted({int(value) for value in _ELEMENT_INDEX_RE.findall(nearby_text)})
+        matches.append(
+            {
+                "line_number": index + 1,
+                "text": text,
+                "indexes": direct_indexes,
+                "nearby_indexes": nearby_indexes,
+                "context_before": before,
+                "context_after": after,
+            }
+        )
+
+    return {
+        "browser_id": source["browser_id"],
+        "state_revision": source["state_revision"],
+        "url": source["url"],
+        "title": source["title"],
+        "query": query,
+        "case_sensitive": case_sensitive,
+        "match_count": total,
+        "returned_matches": len(matches),
+        "matches_truncated": total > len(matches),
+        "matches": matches,
+    }
 
 
 def _store(runtime: "BrowserRuntime") -> "BrowserSessionStore":
@@ -119,9 +246,56 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
         store = _store(runtime)
         browser_id = str(arguments["browser_id"])
         snapshot = store.snapshot(context.session_id, browser_id, refresh=True)
-        return _snapshot_result(
+        view = str(arguments.get("view") or "full").casefold()
+        if view == "compact":
+            data = _compact_snapshot_data(
+                snapshot,
+                max_dom_chars=_bounded_dom_chars(arguments, default=12_000),
+            )
+            message = (
+                "Browser state refreshed in compact view. Indexed elements still belong to this exact state_revision; "
+                "use browser_find or request full view if surrounding page text is missing."
+            )
+        elif view == "full":
+            data = _full_snapshot_data(
+                snapshot,
+                max_dom_chars=_bounded_dom_chars(arguments, default=30_000),
+            )
+            message = "Browser state refreshed. Use only this state_revision with element-targeting browser tools."
+        else:
+            raise ValueError("browser_state view must be full or compact")
+        return ToolResult(ok=True, content=message, data=data)
+
+    def find(context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
+        context.raise_if_cancelled()
+        store = _store(runtime)
+        browser_id = str(arguments["browser_id"])
+        query = str(arguments["query"] or "").strip()
+        if not query:
+            raise ValueError("browser_find query must not be empty")
+        if len(query) > 500:
+            raise ValueError("browser_find query exceeds 500 characters")
+        max_results = int(arguments.get("max_results", 12))
+        if not 1 <= max_results <= 25:
+            raise ValueError("browser_find max_results must be within 1..25")
+        context_lines = int(arguments.get("context_lines", 1))
+        if not 0 <= context_lines <= 2:
+            raise ValueError("browser_find context_lines must be within 0..2")
+        snapshot = store.snapshot(context.session_id, browser_id, refresh=True)
+        data = _find_dom_matches(
             snapshot,
-            "Browser state refreshed. Use only this state_revision with element-targeting browser tools.",
+            query,
+            max_results=max_results,
+            context_lines=context_lines,
+            case_sensitive=bool(arguments.get("case_sensitive", False)),
+        )
+        return ToolResult(
+            ok=True,
+            content=(
+                "Browser DOM search completed on a freshly refreshed state. Any returned element indexes and nearby_indexes "
+                "are valid only with the returned state_revision."
+            ),
+            data=data,
         )
 
     def navigate(context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
@@ -338,9 +512,39 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
             ),
             AgentTool(
                 name="browser_state",
-                description="Refresh the current page and return bounded DOM/tabs plus a new state_revision.",
-                input_schema=_schema({"browser_id": _browser_id_schema()}, ("browser_id",)),
+                description=(
+                    "Refresh the page and return a new state_revision. Use view='compact' for a smaller actionable DOM "
+                    "that preserves indexed elements plus nearby text, or view='full' for the broader bounded DOM."
+                ),
+                input_schema=_schema(
+                    {
+                        "browser_id": _browser_id_schema(),
+                        "view": {"type": "string", "enum": ["full", "compact"]},
+                        "max_dom_chars": {"type": "integer", "minimum": 1000, "maximum": 60000},
+                    },
+                    ("browser_id",),
+                ),
                 handler=state,
+                effect=sensitive,
+            ),
+            AgentTool(
+                name="browser_find",
+                description=(
+                    "Refresh and search the current model-visible DOM for plain text without returning the whole page. "
+                    "Returns matching lines, nearby context, selector indexes, and a fresh state_revision so the result can "
+                    "be followed directly by browser_click/type/hover/select when appropriate."
+                ),
+                input_schema=_schema(
+                    {
+                        "browser_id": _browser_id_schema(),
+                        "query": {"type": "string", "minLength": 1, "maxLength": 500},
+                        "max_results": {"type": "integer", "minimum": 1, "maximum": 25},
+                        "context_lines": {"type": "integer", "minimum": 0, "maximum": 2},
+                        "case_sensitive": {"type": "boolean"},
+                    },
+                    ("browser_id", "query"),
+                ),
+                handler=find,
                 effect=sensitive,
             ),
             AgentTool(
@@ -360,8 +564,8 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
             AgentTool(
                 name="browser_click",
                 description=(
-                    "Click an element index from the latest browser_state. state_revision is mandatory so stale DOM indexes "
-                    "fail closed instead of clicking a newly remapped element."
+                    "Click an element index from the latest browser_state/browser_find. state_revision is mandatory so stale "
+                    "DOM indexes fail closed instead of clicking a newly remapped element."
                 ),
                 input_schema=_schema(
                     {
@@ -377,9 +581,9 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
             AgentTool(
                 name="browser_type",
                 description=(
-                    "Type text into an element from the latest browser_state. Model-produced typed text is kept in a one-shot "
-                    "in-memory payload and is not stored as a durable tool-call argument. Browser v1 has no automatic "
-                    "credential store or secret injection channel."
+                    "Type text into an element from the latest browser_state/browser_find. Model-produced typed text is kept "
+                    "in a one-shot in-memory payload and is not stored as a durable tool-call argument. Browser v1 has no "
+                    "automatic credential store or secret injection channel."
                 ),
                 input_schema=_schema(
                     {
@@ -397,8 +601,8 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
             AgentTool(
                 name="browser_hover",
                 description=(
-                    "Hover an element from the latest browser_state to reveal CSS hover menus, tooltips, or hidden controls. "
-                    "Requires the matching state_revision so stale element indexes fail closed."
+                    "Hover an element from the latest browser_state/browser_find to reveal CSS hover menus, tooltips, or "
+                    "hidden controls. Requires the matching state_revision so stale element indexes fail closed."
                 ),
                 input_schema=_schema(
                     {
@@ -431,7 +635,7 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
             AgentTool(
                 name="browser_select",
                 description=(
-                    "Select a value from a native select element identified by an index from the latest browser_state. "
+                    "Select a value from a native select element identified by an index from the latest browser_state/browser_find. "
                     "Requires the matching state_revision."
                 ),
                 input_schema=_schema(
