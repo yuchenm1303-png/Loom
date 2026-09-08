@@ -306,7 +306,7 @@ def _thread_rows(window):
     ]
 
 
-def test_rows_are_grouped_by_project_and_size_themselves(desktop):
+def test_rows_are_grouped_by_project_and_compact(desktop):
     _app, _client, window = desktop
 
     header = window.thread_list.item(0)
@@ -318,9 +318,8 @@ def test_rows_are_grouped_by_project_and_size_themselves(desktop):
     assert len(rows) == 1
     row = window.thread_list.itemWidget(rows[0])
     assert isinstance(row, ThreadListItemWidget)
-    # The old client hard-coded 58/60px rows while later layers changed the row
-    # contents, which left large gaps in the sidebar.
-    assert rows[0].sizeHint().height() == max(52, row.sizeHint().height())
+    assert rows[0].sizeHint().height() == 40
+    assert row.meta_label.isHidden() is True
 
 
 def test_rows_show_only_a_title_and_keep_the_detail_in_the_tooltip(desktop):
@@ -357,11 +356,13 @@ def test_the_open_conversation_is_marked_on_the_row_itself(desktop):
 
     row = window.thread_list.itemWidget(_thread_rows(window)[0])
     assert row.marker.property("active") is True
+    assert row.property("active") is True
 
     # Selecting nothing leaves no row claiming to be the open one.
     window.thread_list.setCurrentItem(None)
     app.processEvents()
     assert row.marker.property("active") is False
+    assert row.property("active") is False
 
 
 def test_searching_hides_a_project_heading_with_no_matches(desktop):
