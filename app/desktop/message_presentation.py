@@ -56,7 +56,7 @@ QFrame#userMessage QLabel#messageBody {
 """
 
 _STREAM_QSS = """
-QWidget#streamStatus {
+QWidget#streamStatus, QWidget#streamGlyph {
     background:transparent;
 }
 QLabel#streamStateLabel {
@@ -84,6 +84,7 @@ class StreamGlyph(QWidget):
         self._mode = self.THINKING
         self._phase = 0.0
         self._active = False
+        self.setObjectName("streamGlyph")
         self.setFixedSize(28, 12)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
 
@@ -198,6 +199,7 @@ class StreamingStatus(QWidget):
 
         if self._fade is not None:
             self._fade.stop()
+            self._fade.deleteLater()
             self._fade = None
         self.setGraphicsEffect(None)
 
@@ -219,6 +221,7 @@ class StreamingStatus(QWidget):
                 if self._active:
                     self.setGraphicsEffect(None)
                 self._fade = None
+                animation.deleteLater()
 
             animation.finished.connect(finish_in)
             self._fade = animation
@@ -244,6 +247,7 @@ class StreamingStatus(QWidget):
                 self.hide()
             self.setGraphicsEffect(None)
             self._fade = None
+            animation.deleteLater()
 
         animation.finished.connect(finish_out)
         self._fade = animation
