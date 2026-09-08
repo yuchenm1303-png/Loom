@@ -16,10 +16,12 @@ from app.desktop import sidebar_motion as _sidebar_motion
 from app.desktop import sidebar_motion_smooth as _sidebar_motion_smooth
 from app.desktop import widgets as _widgets
 from app.desktop.output_presentation import MessageWidget, TranscriptView
+from app.desktop import transcript_density as _transcript_density
 from app.desktop.thread_presentation import ThreadListItemWidget, thread_row_size
 
-# Install presentation, icon, motion, and composer polish hooks before ``window``
-# imports the corresponding widget types and native icon renderer.
+# Install presentation, density, icon, motion, and composer polish hooks before
+# ``window`` imports the corresponding widget types and native icon renderer.
+_transcript_density.install()
 _widgets.MessageWidget = MessageWidget
 _widgets.TranscriptView = TranscriptView
 _widgets.ThreadListItemWidget = ThreadListItemWidget
