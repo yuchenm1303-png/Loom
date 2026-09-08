@@ -42,17 +42,22 @@ from app.desktop.state import ThreadState
 from app.desktop.widgets import (
     ApprovalCard,
     Banner,
+    CardListView,
     ComposerTextEdit,
+    DiffView,
     EmptyState,
+    ThreadGroupHeader,
     ThreadListItemWidget,
     TranscriptView,
-    read_only_panel,
     repolish,
     thread_row_size,
 )
 
 
 THREAD_ROLE = Qt.ItemDataRole.UserRole
+GROUP_ROLE = Qt.ItemDataRole.UserRole + 1
+
+PERMISSION_MODES = ("read-only", "approval", "workspace", "full-access")
 
 # One coalescing window for the "something changed, re-read the thread" work
 # that notifications trigger in bursts.
@@ -86,7 +91,8 @@ class LoomDesktopWindow(QMainWindow):
         self._thread_view = "active"
         self._thread_counts = {"active": 0, "archived": 0, "all": 0}
         self._thread_management_supported = False
-        self._startup_autocreate = True
+        self._draft_workspace: Path | None = None
+        self._pending_prompt = ""
         self._closed = False
         self._activity_tail: list[tuple[str, str, str]] = []
         self._sidebar_visible = True
@@ -149,7 +155,7 @@ class LoomDesktopWindow(QMainWindow):
         self._build_sidebar()
         self._build_conversation()
         self._build_runtime_panel()
-        self.main_splitter.setSizes([288, 1050, 340])
+        self.main_splitter.setSizes([288, 1020, 372])
         self.main_splitter.setStretchFactor(0, 0)
         self.main_splitter.setStretchFactor(1, 1)
         self.main_splitter.setStretchFactor(2, 0)
@@ -278,50 +284,52 @@ class LoomDesktopWindow(QMainWindow):
         layout.setContentsMargins(30, 20, 30, 20)
         layout.setSpacing(14)
 
+        # One line: panel toggles, the conversation's name, and its state. The
+        # project is named by the composer's workspace chip and the sidebar
+        # grouping, so the header no longer repeats it twice more.
         header = QFrame()
         header.setObjectName("workspaceHeader")
-        header_layout = QVBoxLayout(header)
-        header_layout.setContentsMargins(1, 0, 1, 13)
-        header_layout.setSpacing(6)
+        header_layout = QHBoxLayout(header)
+        header_layout.setContentsMargins(1, 0, 1, 12)
+        header_layout.setSpacing(8)
 
-        top = QHBoxLayout()
-        top.setSpacing(8)
-        self.sidebar_toggle_button = QPushButton("Threads")
+        self.sidebar_toggle_button = QPushButton("☰")
         self.sidebar_toggle_button.setObjectName("panelToggle")
-        self.sidebar_toggle_button.setToolTip("Show or hide the thread sidebar")
+        self.sidebar_toggle_button.setToolTip("Show or hide the conversation sidebar")
         self.sidebar_toggle_button.clicked.connect(self.toggle_sidebar)
-        top.addWidget(self.sidebar_toggle_button)
+        header_layout.addWidget(self.sidebar_toggle_button)
+
         self.thread_title_label = QLabel("New conversation")
         self.thread_title_label.setObjectName("threadTitle")
         self.thread_title_label.setTextFormat(Qt.TextFormat.PlainText)
-        top.addWidget(self.thread_title_label, 1)
+        header_layout.addWidget(self.thread_title_label, 1)
+
         self.status_label = QLabel("Idle")
         self.status_label.setObjectName("statusChip")
         self.status_label.setProperty("state", "idle")
-        top.addWidget(self.status_label)
+        header_layout.addWidget(self.status_label)
+
         self.runtime_toggle_button = QPushButton("Runtime")
         self.runtime_toggle_button.setObjectName("panelToggle")
         self.runtime_toggle_button.setToolTip("Show or hide the Runtime inspector")
         self.runtime_toggle_button.clicked.connect(self.toggle_runtime)
-        top.addWidget(self.runtime_toggle_button)
-        header_layout.addLayout(top)
-
-        project = QHBoxLayout()
-        project.setSpacing(8)
-        self.workspace_label = QLabel(fmt.short_path(self.default_workspace))
-        self.workspace_label.setObjectName("projectName")
-        project.addWidget(self.workspace_label)
-        self.workspace_path_label = QLabel(str(self.default_workspace))
-        self.workspace_path_label.setObjectName("mutedLabel")
-        self.workspace_path_label.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse
-        )
-        project.addWidget(self.workspace_path_label, 1)
-        header_layout.addLayout(project)
+        header_layout.addWidget(self.runtime_toggle_button)
         layout.addWidget(header)
 
+        # Kept as the canonical place to read the full workspace path.
+        self.workspace_label = QLabel(fmt.short_path(self.default_workspace))
+        self.workspace_label.setObjectName("projectName")
+        self.workspace_path_label = QLabel(str(self.default_workspace))
+        self.workspace_path_label.setObjectName("mutedLabel")
+        self.workspace_label.hide()
+        self.workspace_path_label.hide()
+
+        # Banner, approval and composer share the transcript's measure so the
+        # column reads as one thing instead of three widths.
+        column = TranscriptView.MAX_CONTENT_WIDTH + 18
         self.banner = Banner()
-        layout.addWidget(self.banner)
+        self.banner.setMaximumWidth(column)
+        layout.addWidget(self.banner, 0, Qt.AlignmentFlag.AlignHCenter)
 
         self.empty_state = EmptyState()
         self.empty_state.promptChosen.connect(self._fill_composer)
@@ -333,7 +341,8 @@ class LoomDesktopWindow(QMainWindow):
 
         self.approval_frame = ApprovalCard()
         self.approval_frame.responded.connect(self.respond_approval)
-        layout.addWidget(self.approval_frame)
+        self.approval_frame.setMaximumWidth(column)
+        layout.addWidget(self.approval_frame, 0, Qt.AlignmentFlag.AlignHCenter)
         # Familiar aliases so callers can reach the card's parts directly.
         self.approval_title = self.approval_frame.title_label
         self.approval_details = self.approval_frame.details_label
@@ -359,16 +368,26 @@ class LoomDesktopWindow(QMainWindow):
 
         bar = QHBoxLayout()
         bar.setSpacing(7)
-        hint = QLabel("Enter to send   ·   Shift+Enter for newline")
-        hint.setObjectName("composerHint")
-        bar.addWidget(hint)
-        bar.addStretch(1)
-        self.permission_label = QLabel(self.default_permission_mode)
-        self.permission_label.setObjectName("composerChip")
-        self.permission_label.setToolTip("Permission mode for this thread")
+
+        self.workspace_button = QPushButton(fmt.short_path(self.default_workspace))
+        self.workspace_button.setObjectName("composerControl")
+        self.workspace_button.setToolTip("Change the project this conversation works in")
+        self.workspace_button.clicked.connect(self.choose_workspace)
+        bar.addWidget(self.workspace_button)
+
+        # The permission mode was a read-only chip; it decides what Loom is
+        # allowed to do, so it belongs where it can be changed.
+        self.permission_label = QPushButton(self.default_permission_mode)
+        self.permission_label.setObjectName("composerControl")
+        self.permission_label.setProperty("mode", self.default_permission_mode)
+        self.permission_label.setToolTip("Permission mode for new conversations")
+        self.permission_label.clicked.connect(self._show_permission_menu)
         bar.addWidget(self.permission_label)
+
+        bar.addStretch(1)
+
         self.usage_label = QLabel("0 tokens")
-        self.usage_label.setObjectName("composerChip")
+        self.usage_label.setObjectName("composerHint")
         bar.addWidget(self.usage_label)
         self.composer_state_label = QLabel("Ready")
         self.composer_state_label.setObjectName("composerState")
@@ -378,9 +397,10 @@ class LoomDesktopWindow(QMainWindow):
         self.stop_button.setEnabled(False)
         self.stop_button.clicked.connect(self.interrupt_turn)
         bar.addWidget(self.stop_button)
-        self.send_button = QPushButton("Send  ↑")
+        self.send_button = QPushButton("↑")
         self.send_button.setObjectName("sendButton")
-        self.send_button.setMinimumWidth(92)
+        self.send_button.setToolTip("Send  ·  Enter")
+        self.send_button.setFixedSize(34, 34)
         self.send_button.clicked.connect(self.send_prompt)
         bar.addWidget(self.send_button)
         composer_layout.addLayout(bar)
@@ -389,15 +409,16 @@ class LoomDesktopWindow(QMainWindow):
             QSizePolicy.Policy.Fixed,
         )
         self._sync_composer_height()
-        layout.addWidget(self.composer_frame)
+        self.composer_frame.setMaximumWidth(column)
+        layout.addWidget(self.composer_frame, 0, Qt.AlignmentFlag.AlignHCenter)
 
         self.main_splitter.addWidget(panel)
 
     def _build_runtime_panel(self) -> None:
         self.activity_panel = QFrame()
         self.activity_panel.setObjectName("activityPanel")
-        self.activity_panel.setMinimumWidth(304)
-        self.activity_panel.setMaximumWidth(430)
+        self.activity_panel.setMinimumWidth(330)
+        self.activity_panel.setMaximumWidth(460)
         layout = QVBoxLayout(self.activity_panel)
         layout.setContentsMargins(18, 20, 16, 14)
         layout.setSpacing(12)
@@ -425,22 +446,46 @@ class LoomDesktopWindow(QMainWindow):
         self.activity_tabs.setUsesScrollButtons(False)
         tab_bar = self.activity_tabs.tabBar()
         tab_bar.setExpanding(False)
-        tab_bar.setElideMode(Qt.TextElideMode.ElideRight)
+        # Eliding turns these into "Acti… Termi… …"; the panel is wide enough
+        # for the full labels once the tab padding is tight.
+        tab_bar.setElideMode(Qt.TextElideMode.ElideNone)
         self.activity_view = QTextBrowser()
         self.activity_view.setObjectName("activityView")
         self.activity_view.setOpenExternalLinks(False)
         self.activity_view.setFrameShape(QFrame.Shape.NoFrame)
         self.activity_view.document().setDocumentMargin(0)
-        self.terminal_view = read_only_panel("terminalView")
-        self.diff_view = read_only_panel("diffView")
-        self.browser_view = read_only_panel("browserView")
-        self.agents_view = read_only_panel("agentsView")
+        self.terminal_view = CardListView(
+            "process",
+            empty_title="Terminal is quiet",
+            empty_body="Managed command output appears here when Loom runs a process.",
+        )
+        self.diff_view = DiffView()
+        self.browser_view = CardListView(
+            "tool",
+            empty_title="Browser is idle",
+            empty_body="Navigation and Browser tool activity appears here when Loom uses the web.",
+        )
+        self.agents_view = CardListView(
+            "tool",
+            empty_title="No delegated work",
+            empty_body="Sub-agent coordination appears here when Loom spawns an agent.",
+        )
         self.activity_tabs.addTab(self.activity_view, "Activity")
         self.activity_tabs.addTab(self.terminal_view, "Terminal")
         self.activity_tabs.addTab(self.diff_view, "Diff")
         self.activity_tabs.addTab(self.browser_view, "Browser")
         self.activity_tabs.addTab(self.agents_view, "Agents")
         layout.addWidget(self.activity_tabs, 1)
+
+        # Tab widths depend on the installed UI font, so let the tab bar decide
+        # how narrow this panel may get instead of guessing a constant.
+        margins = layout.contentsMargins()
+        self.activity_panel.setMinimumWidth(
+            max(
+                self.activity_panel.minimumWidth(),
+                tab_bar.sizeHint().width() + margins.left() + margins.right() + 8,
+            )
+        )
 
         self.main_splitter.addWidget(self.activity_panel)
 
@@ -507,6 +552,46 @@ class LoomDesktopWindow(QMainWindow):
         cursor.movePosition(cursor.MoveOperation.End)
         self.composer.setTextCursor(cursor)
 
+    def _show_permission_menu(self) -> None:
+        """Pick the mode new conversations start in.
+
+        The App Server sets a thread's mode when it is created, so changing it
+        applies to the next conversation rather than rewriting this one.
+        """
+        menu = QMenu(self)
+        current = self.permission_label.text()
+        chosen_action = None
+        for mode in PERMISSION_MODES:
+            action = menu.addAction(mode)
+            action.setCheckable(True)
+            action.setChecked(mode == current)
+            if mode == current:
+                chosen_action = action
+        picked = menu.exec(
+            self.permission_label.mapToGlobal(self.permission_label.rect().topLeft())
+        )
+        if picked is None or picked is chosen_action:
+            return
+        self.default_permission_mode = picked.text()
+        self._set_permission_display(self.default_permission_mode)
+        self._append_activity(
+            f"New conversations will use {self.default_permission_mode}", marker="•"
+        )
+
+    def _set_workspace_display(self, workspace: str) -> None:
+        workspace = fmt.text(workspace)
+        self.workspace_button.setText(fmt.short_path(workspace))
+        self.workspace_button.setToolTip(workspace or "No workspace")
+        self.workspace_label.setText(fmt.short_path(workspace))
+        self.workspace_path_label.setText(workspace)
+
+    def _set_permission_display(self, mode: str) -> None:
+        mode = fmt.text(mode) or self.default_permission_mode
+        self.permission_label.setText(mode)
+        if self.permission_label.property("mode") != mode:
+            self.permission_label.setProperty("mode", mode)
+            repolish(self.permission_label)
+
     def notify(self, message: str) -> None:
         """Surface a problem inline instead of interrupting with a dialog."""
         self.banner.show_message(message)
@@ -538,10 +623,36 @@ class LoomDesktopWindow(QMainWindow):
             self, "Open Loom workspace", self.current_workspace or str(self.default_workspace)
         )
         if selected:
-            self._create_thread(Path(selected))
+            self.begin_draft(Path(selected))
+            self.refresh_threads()
 
     def new_thread_in_current_workspace(self) -> None:
-        self._create_thread(Path(self.current_workspace or self.default_workspace))
+        self.begin_draft(Path(self.current_workspace or self.default_workspace))
+
+    def begin_draft(self, workspace: Path) -> None:
+        """Open an unsent conversation.
+
+        The thread is only created on the server once there is something to
+        say, so opening the app or clicking "New thread" and walking away no
+        longer leaves an empty conversation in the library forever.
+        """
+        self._draft_workspace = workspace.expanduser().resolve()
+        self.current_workspace = str(self._draft_workspace)
+        self.state.reset()
+        self.current_turn_id = ""
+        self.approval_frame.dismiss()
+        self.thread_list.blockSignals(True)
+        self.thread_list.setCurrentItem(None)
+        self.thread_list.blockSignals(False)
+
+        self.thread_title_label.setText("New conversation")
+        self._set_workspace_display(self.current_workspace)
+        self._set_permission_display(self.default_permission_mode)
+        self.usage_label.setText("0 tokens")
+        self._render_transcript()
+        self._render_runtime_panels()
+        self._set_status("idle")
+        self.composer.setFocus()
 
     def _create_thread(self, workspace: Path) -> None:
         workspace = workspace.expanduser().resolve()
@@ -591,20 +702,20 @@ class LoomDesktopWindow(QMainWindow):
         self.thread_list.blockSignals(True)
         self.thread_list.clear()
         selected_item: QListWidgetItem | None = None
-        for record in records:
-            if not isinstance(record, dict):
-                continue
-            widget = ThreadListItemWidget(
-                record, self.thread_list, active_workspace=self.current_workspace
-            )
-            item = QListWidgetItem()
-            item.setSizeHint(thread_row_size(widget))
-            item.setToolTip(fmt.text(record.get("title")))
-            item.setData(THREAD_ROLE, record)
-            self.thread_list.addItem(item)
-            self.thread_list.setItemWidget(item, widget)
-            if fmt.text(record.get("id")) == selected_id:
-                selected_item = item
+        for group, group_records in self._group_threads(records):
+            self._add_group_header(group)
+            for record in group_records:
+                widget = ThreadListItemWidget(
+                    record, self.thread_list, active_workspace=self.current_workspace
+                )
+                item = QListWidgetItem()
+                item.setSizeHint(thread_row_size(widget))
+                item.setData(THREAD_ROLE, record)
+                item.setData(GROUP_ROLE, group)
+                self.thread_list.addItem(item)
+                self.thread_list.setItemWidget(item, widget)
+                if fmt.text(record.get("id")) == selected_id:
+                    selected_item = item
         self.thread_list.blockSignals(False)
 
         self._apply_thread_filter()
@@ -618,36 +729,81 @@ class LoomDesktopWindow(QMainWindow):
 
         first = next(
             (
-                self.thread_list.item(index)
+                item
                 for index in range(self.thread_list.count())
-                if not self.thread_list.item(index).isHidden()
+                if (item := self.thread_list.item(index)).data(THREAD_ROLE)
+                and not item.isHidden()
             ),
             None,
         )
-        if first is not None:
+        # A brand-new conversation stays a draft until it is sent, so opening
+        # Loom no longer leaves an empty thread behind every time.
+        if first is not None and not self._draft_workspace:
             self.thread_list.setCurrentItem(first)
-            record = first.data(THREAD_ROLE) or {}
-            self.load_thread(fmt.text(record.get("id")))
-            self._startup_autocreate = False
+            self.load_thread(fmt.text((first.data(THREAD_ROLE) or {}).get("id")))
             return
 
         if self._thread_view == "archived":
             self._show_empty_archive_state()
             return
-        if self._startup_autocreate:
-            self._startup_autocreate = False
-            self._create_thread(self.default_workspace)
-        elif selected_id:
-            self.state.reset()
-            self.current_turn_id = ""
-            self._create_thread(Path(self.current_workspace or self.default_workspace))
+        if first is None and not self._draft_workspace:
+            self.begin_draft(Path(self.current_workspace or self.default_workspace))
+
+    def _group_threads(
+        self, records: list[Any]
+    ) -> list[tuple[str, list[dict[str, Any]]]]:
+        """Group rows by project, current workspace first, newest within a group.
+
+        Every row used to repeat its workspace; naming it once per run of rows
+        says the same thing without the noise.
+        """
+        groups: dict[str, list[dict[str, Any]]] = {}
+        for record in records:
+            if not isinstance(record, dict):
+                continue
+            workspace = fmt.text(record.get("workspace"))
+            groups.setdefault(fmt.short_path(workspace) if workspace else "No project", []).append(
+                record
+            )
+
+        current = fmt.short_path(self.current_workspace) if self.current_workspace else ""
+        ordered = sorted(
+            groups.items(),
+            key=lambda entry: (entry[0] != current, entry[0].casefold()),
+        )
+        return [
+            (
+                name,
+                sorted(items, key=lambda r: fmt.text(r.get("updatedAt")), reverse=True),
+            )
+            for name, items in ordered
+        ]
+
+    def _add_group_header(self, title: str) -> None:
+        item = QListWidgetItem()
+        item.setFlags(Qt.ItemFlag.NoItemFlags)
+        item.setData(GROUP_ROLE, title)
+        widget = ThreadGroupHeader(title, self.thread_list)
+        item.setSizeHint(widget.sizeHint())
+        self.thread_list.addItem(item)
+        self.thread_list.setItemWidget(item, widget)
 
     def _apply_thread_filter(self, _value: str | None = None) -> None:
         query = " ".join(self.thread_search.text().split()).casefold()
         visible = 0
+        total = 0
+        group_has_rows: dict[str, bool] = {}
+        headers: list[QListWidgetItem] = []
+
         for index in range(self.thread_list.count()):
             item = self.thread_list.item(index)
-            record = item.data(THREAD_ROLE) or {}
+            record = item.data(THREAD_ROLE)
+            group = fmt.text(item.data(GROUP_ROLE))
+            if not isinstance(record, dict):
+                headers.append(item)
+                group_has_rows.setdefault(group, False)
+                continue
+            total += 1
             haystack = " ".join(
                 (
                     fmt.text(record.get("title")),
@@ -657,9 +813,13 @@ class LoomDesktopWindow(QMainWindow):
             ).casefold()
             hidden = bool(query) and query not in haystack
             item.setHidden(hidden)
-            visible += 0 if hidden else 1
+            if not hidden:
+                visible += 1
+                group_has_rows[group] = True
 
-        total = self.thread_list.count()
+        # A project heading with nothing under it is just a stray label.
+        for header in headers:
+            header.setHidden(not group_has_rows.get(fmt.text(header.data(GROUP_ROLE)), False))
         label = "ARCHIVED" if self._thread_view == "archived" else "CHATS"
         self.thread_section_label.setText(
             f"{label}  {visible}/{total}" if query and visible != total else f"{label}  {total}"
@@ -807,8 +967,20 @@ class LoomDesktopWindow(QMainWindow):
 
     def send_prompt(self) -> None:
         text = self.composer.toPlainText().strip()
-        if not text or not self.state.thread_id or self.state.archived:
+        if not text or self.state.archived:
             return
+        if not self.state.thread_id:
+            if self._draft_workspace is None:
+                return
+            # Create the thread now that the draft has content, then send.
+            self.composer.clear()
+            self._pending_prompt = text
+            self.state.set_optimistic_user(text)
+            self._render_transcript()
+            self._set_status("starting")
+            self._create_thread(self._draft_workspace)
+            return
+
         self.composer.clear()
         self.state.set_optimistic_user(text)
         self._render_transcript()
@@ -852,7 +1024,13 @@ class LoomDesktopWindow(QMainWindow):
             if isinstance(record, dict):
                 thread_id = fmt.text(record.get("id"))
                 self.current_workspace = fmt.text(record.get("workspace")) or self.current_workspace
-                self._startup_autocreate = False
+                self._draft_workspace = None
+                prompt, self._pending_prompt = self._pending_prompt, ""
+                if prompt:
+                    self.rpc.submit(
+                        f"turn:{thread_id}",
+                        lambda: self.client.turn_start(thread_id, prompt),
+                    )
                 self.refresh_threads()
                 self.load_thread(thread_id)
             return
@@ -913,9 +1091,8 @@ class LoomDesktopWindow(QMainWindow):
         self.current_workspace = self.state.workspace or self.current_workspace
 
         self.thread_title_label.setText(self.state.title or "New conversation")
-        self.workspace_label.setText(fmt.short_path(self.current_workspace))
-        self.workspace_path_label.setText(self.current_workspace)
-        self.permission_label.setText(
+        self._set_workspace_display(self.current_workspace)
+        self._set_permission_display(
             fmt.text(self.state.thread.get("permissionMode")) or self.default_permission_mode
         )
         self.usage_label.setText(f"{self.state.total_tokens:,} tokens")
@@ -1003,10 +1180,10 @@ class LoomDesktopWindow(QMainWindow):
             lambda item: fmt.text(item.get("toolName")) in fmt.AGENT_CONTROL_TOOLS
         )
 
-        self.terminal_view.setPlainText(self._process_text(processes))
-        self.diff_view.setPlainText(self._diff_text(diffs))
-        self.browser_view.setPlainText(self._tool_text(browser, "browser"))
-        self.agents_view.setPlainText(self._tool_text(agents, "agent"))
+        self.terminal_view.render_items(processes[-30:])
+        self.diff_view.set_diff(self._diff_text(diffs), keep_columns=bool(diffs))
+        self.browser_view.render_items(browser[-30:])
+        self.agents_view.render_items(agents[-30:])
         self._update_sandbox_status(processes)
 
     def _render_activity(self) -> None:
@@ -1029,29 +1206,6 @@ class LoomDesktopWindow(QMainWindow):
         bar.setValue(bar.maximum())
 
     @staticmethod
-    def _process_text(items: list[dict[str, Any]]) -> str:
-        if not items:
-            return (
-                "Terminal is quiet.\n\n"
-                "Managed command output will appear here when Loom runs a process."
-            )
-        chunks: list[str] = []
-        for item in items[-20:]:
-            header = (
-                f"{fmt.human_status(item.get('status'))}  ·  {fmt.text(item.get('processId'))}\n"
-                f"$ {fmt.command_line(item.get('argv'))}\n"
-                f"{fmt.text(item.get('cwd'))}"
-            )
-            stdout = fmt.text(item.get("stdout"))
-            stderr = fmt.text(item.get("stderr"))
-            if stdout:
-                header += f"\n\nstdout\n{stdout[-8000:]}"
-            if stderr:
-                header += f"\n\nstderr\n{stderr[-8000:]}"
-            chunks.append(header)
-        return "\n\n────────────────────────────────\n\n".join(chunks)
-
-    @staticmethod
     def _diff_text(items: list[dict[str, Any]]) -> str:
         if not items:
             return (
@@ -1065,24 +1219,6 @@ class LoomDesktopWindow(QMainWindow):
             body += "\n\n(diff truncated by Runtime)"
         diff = fmt.text(latest.get("diff"))
         return body + (f"\n\n{diff}" if diff else "")
-
-    @staticmethod
-    def _tool_text(items: list[dict[str, Any]], category: str) -> str:
-        if not items:
-            if category == "browser":
-                return (
-                    "Browser is idle.\n\n"
-                    "Navigation and Browser tool activity will appear here when Loom uses the web."
-                )
-            return (
-                "No agent coordination yet.\n\n"
-                "Sub-agent control activity will appear here when Loom delegates work."
-            )
-        return "\n\n────────────────────────────────\n\n".join(
-            f"{fmt.human_status(item.get('status'))}  ·  {fmt.text(item.get('toolName'))}\n"
-            f"{fmt.pretty(item.get('arguments') or {})}"
-            for item in items[-30:]
-        )
 
     def _update_sandbox_status(self, processes: list[dict[str, Any]]) -> None:
         sandbox = next(

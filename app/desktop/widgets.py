@@ -19,7 +19,13 @@ from PySide6.QtCore import (
     QTimer,
     Signal,
 )
-from PySide6.QtGui import QGuiApplication, QKeyEvent
+from PySide6.QtGui import (
+    QColor,
+    QGuiApplication,
+    QKeyEvent,
+    QSyntaxHighlighter,
+    QTextCharFormat,
+)
 from PySide6.QtWidgets import (
     QApplication,
     QFrame,
@@ -403,7 +409,18 @@ class TranscriptView(QScrollArea):
 
     TAIL_THRESHOLD_PX = 64
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    # Long lines are hard to track back to the next one, so the conversation
+    # keeps a comfortable measure and centres itself in a wide window.
+    MAX_CONTENT_WIDTH = 880
+
+    def __init__(
+        self,
+        parent: QWidget | None = None,
+        *,
+        margins: tuple[int, int, int, int] = (4, 14, 14, 28),
+        spacing: int = 20,
+        max_content_width: int = MAX_CONTENT_WIDTH,
+    ) -> None:
         super().__init__(parent)
         self.setObjectName("transcript")
         self.setWidgetResizable(True)
@@ -415,9 +432,11 @@ class TranscriptView(QScrollArea):
         canvas_policy = QSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
         canvas_policy.setHeightForWidth(True)
         self.canvas.setSizePolicy(canvas_policy)
+        self._base_margins = margins
+        self._max_content_width = max(0, int(max_content_width))
         self._layout = QVBoxLayout(self.canvas)
-        self._layout.setContentsMargins(4, 14, 14, 28)
-        self._layout.setSpacing(20)
+        self._layout.setContentsMargins(*margins)
+        self._layout.setSpacing(spacing)
         self._layout.addStretch(1)
         self.setWidget(self.canvas)
 
@@ -517,6 +536,17 @@ class TranscriptView(QScrollArea):
         if isinstance(widget, ActivityCard):
             widget.update_card(**describe_card(entry))
 
+    def resizeEvent(self, event: Any) -> None:  # noqa: N802 - Qt override
+        super().resizeEvent(event)
+        left, top, right, bottom = self._base_margins
+        if self._max_content_width:
+            slack = self.viewport().width() - self._max_content_width - left - right
+            if slack > 0:
+                gutter = slack // 2
+                left += gutter
+                right += gutter
+        self._layout.setContentsMargins(left, top, right, bottom)
+
     def _at_tail(self) -> bool:
         bar = self.verticalScrollBar()
         return bar.maximum() - bar.value() <= self.TAIL_THRESHOLD_PX
@@ -608,6 +638,112 @@ def describe_card(entry: TranscriptEntry) -> dict[str, Any]:
     }
 
 
+class CardListView(QWidget):
+    """A Runtime tab rendered as cards, or a quiet placeholder when empty.
+
+    Reuses the transcript's keyed reconciliation so a running process updates in
+    place instead of the whole panel being rewritten as text.
+    """
+
+    def __init__(
+        self,
+        kind: str,
+        *,
+        empty_title: str,
+        empty_body: str,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self.kind = kind
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        self.placeholder = QLabel(f"<b>{empty_title}</b><br><span>{empty_body}</span>")
+        self.placeholder.setObjectName("panelPlaceholder")
+        self.placeholder.setWordWrap(True)
+        self.placeholder.setAlignment(Qt.AlignmentFlag.AlignTop)
+        layout.addWidget(self.placeholder, 1)
+
+        # The Runtime panel is already narrow, so it takes no reading measure.
+        self.cards = TranscriptView(margins=(2, 8, 8, 16), spacing=8, max_content_width=0)
+        self.cards.hide()
+        layout.addWidget(self.cards, 1)
+        # Widgets on an inactive tab report isVisible() as False, so what is
+        # showing has to be tracked rather than asked.
+        self._has_items = False
+
+    def render_items(self, items: list[dict[str, Any]]) -> None:
+        entries = [
+            TranscriptEntry(
+                key=fmt.text(item.get("id")) or f"{self.kind}:{index}",
+                kind=self.kind,
+                item=item,
+            )
+            for index, item in enumerate(items)
+        ]
+        self._has_items = bool(entries)
+        if not entries:
+            self.cards.clear()
+            self.cards.hide()
+            self.placeholder.show()
+            return
+        self.placeholder.hide()
+        self.cards.show()
+        self.cards.render(entries)
+
+    def toPlainText(self) -> str:  # noqa: N802 - mirrors the panels it replaces
+        return self.cards.toPlainText() if self._has_items else self.placeholder.text()
+
+
+class DiffHighlighter(QSyntaxHighlighter):
+    """Colour unified-diff lines so additions and removals read at a glance."""
+
+    def __init__(self, document: Any) -> None:
+        super().__init__(document)
+        self._added = QTextCharFormat()
+        self._added.setForeground(QColor(theme.GOOD))
+        self._removed = QTextCharFormat()
+        self._removed.setForeground(QColor(theme.BAD))
+        self._hunk = QTextCharFormat()
+        self._hunk.setForeground(QColor(theme.ACCENT_SOFT))
+        self._meta = QTextCharFormat()
+        self._meta.setForeground(QColor(theme.TEXT_MUTED))
+
+    def highlightBlock(self, text: str) -> None:  # noqa: N802 - Qt override
+        if text.startswith(("+++", "---", "diff ", "index ")):
+            fmt_ = self._meta
+        elif text.startswith("@@"):
+            fmt_ = self._hunk
+        elif text.startswith("+"):
+            fmt_ = self._added
+        elif text.startswith("-"):
+            fmt_ = self._removed
+        else:
+            return
+        self.setFormat(0, len(text), fmt_)
+
+
+class DiffView(QPlainTextEdit):
+    """Read-only unified diff with colouring."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("diffView")
+        self.setReadOnly(True)
+        self.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+        self.setFrameShape(QFrame.Shape.NoFrame)
+        self.highlighter = DiffHighlighter(self.document())
+
+    def set_diff(self, value: str, *, keep_columns: bool) -> None:
+        self.setLineWrapMode(
+            QPlainTextEdit.LineWrapMode.NoWrap
+            if keep_columns
+            else QPlainTextEdit.LineWrapMode.WidgetWidth
+        )
+        self.setPlainText(value)
+
+
 class ComposerTextEdit(QTextEdit):
     """Enter sends, Shift+Enter inserts a newline."""
 
@@ -623,8 +759,19 @@ class ComposerTextEdit(QTextEdit):
         super().keyPressEvent(event)
 
 
+# Only states that ask something of the reader earn a dot. Idle and completed
+# are the resting states of almost every row, so marking them says nothing.
+_ATTENTION_STATES = {
+    "running": "running",
+    "starting": "running",
+    "waiting_approval": "waiting_approval",
+    "failed": "failed",
+    "cancelled": "failed",
+}
+
+
 class ThreadListItemWidget(QWidget):
-    """Conversation row: title, quiet metadata, status."""
+    """One conversation row: a title, and a status dot only when it matters."""
 
     def __init__(
         self,
@@ -638,53 +785,63 @@ class ThreadListItemWidget(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         self._full_title = fmt.text(record.get("title")).strip() or "New conversation"
 
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 9, 12, 9)
-        layout.setSpacing(5)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(11, 7, 10, 7)
+        layout.setSpacing(8)
 
         self.title_label = QLabel(self._full_title)
         self.title_label.setObjectName("threadItemTitle")
         self.title_label.setTextFormat(Qt.TextFormat.PlainText)
-        self.title_label.setToolTip(self._full_title)
-        layout.addWidget(self.title_label)
+        layout.addWidget(self.title_label, 1)
 
-        meta = QHBoxLayout()
-        meta.setContentsMargins(0, 0, 0, 0)
-        meta.setSpacing(7)
+        state = "" if record.get("archived") else fmt.text(record.get("status"))
+        marker = _ATTENTION_STATES.get(state, "")
+        self.status_dot = QLabel("●")
+        self.status_dot.setObjectName("threadDot")
+        self.status_dot.setProperty("state", marker)
+        self.status_dot.setVisible(bool(marker))
+        layout.addWidget(self.status_dot, 0, Qt.AlignmentFlag.AlignVCenter)
 
-        workspace = fmt.text(record.get("workspace"))
-        if workspace and not fmt.same_path(workspace, active_workspace):
-            label = QLabel(fmt.short_path(workspace))
-            label.setObjectName("threadItemMeta")
-            meta.addWidget(label)
-
-        usage = record.get("usage")
-        total = usage.get("totalTokens") if isinstance(usage, dict) else None
-        if total:
-            tokens = QLabel(fmt.format_tokens(total))
-            tokens.setObjectName("threadItemMeta")
-            meta.addWidget(tokens)
-
-        meta.addStretch(1)
-        if record.get("archived"):
-            state, label_text = "archived", "Archived"
-        else:
-            state = fmt.text(record.get("status")) or "idle"
-            label_text = fmt.human_status(state)
-        status = QLabel(label_text)
-        status.setObjectName("threadStatus")
-        status.setProperty("state", state)
-        meta.addWidget(status)
-        layout.addLayout(meta)
+        detail = " · ".join(
+            part
+            for part in (
+                fmt.short_path(record.get("workspace")) if record.get("workspace") else "",
+                fmt.human_status(record.get("status")),
+                f"{fmt.format_tokens((record.get('usage') or {}).get('totalTokens'))} tokens"
+                if isinstance(record.get("usage"), dict)
+                and (record.get("usage") or {}).get("totalTokens")
+                else "",
+            )
+            if part
+        )
+        # The metadata every row used to print is available, just not shouted.
+        self.setToolTip(f"{self._full_title}\n{detail}" if detail else self._full_title)
 
     def resizeEvent(self, event: Any) -> None:  # noqa: N802 - Qt override
         super().resizeEvent(event)
-        available = max(48, self.width() - 28)
+        reserved = 21 + 8 if self.status_dot.isVisible() else 21
+        available = max(48, self.width() - reserved)
         self.title_label.setText(
             self.title_label.fontMetrics().elidedText(
                 self._full_title, Qt.TextElideMode.ElideRight, available
             )
         )
+
+
+class ThreadGroupHeader(QWidget):
+    """Non-selectable separator naming the project a run of rows belongs to."""
+
+    def __init__(self, title: str, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("threadGroupHeader")
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(11, 12, 10, 4)
+        layout.setSpacing(0)
+        self.label = QLabel(title.upper())
+        self.label.setObjectName("threadGroupLabel")
+        self.label.setTextFormat(Qt.TextFormat.PlainText)
+        layout.addWidget(self.label)
 
 
 class ApprovalCard(QFrame):
@@ -892,8 +1049,22 @@ def read_only_panel(name: str) -> QPlainTextEdit:
     view = QPlainTextEdit()
     view.setObjectName(name)
     view.setReadOnly(True)
-    view.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+    view.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
     return view
+
+
+def set_panel_text(view: QPlainTextEdit, value: str, *, keep_columns: bool) -> None:
+    """Fill a runtime panel, wrapping unless the content needs its columns.
+
+    Command output and diffs are read by column, so they stay unwrapped; prose
+    placeholders wrap instead of forcing a horizontal scrollbar across the panel.
+    """
+    view.setLineWrapMode(
+        QPlainTextEdit.LineWrapMode.NoWrap
+        if keep_columns
+        else QPlainTextEdit.LineWrapMode.WidgetWidth
+    )
+    view.setPlainText(value)
 
 
 def thread_row_size(widget: QWidget) -> QSize:

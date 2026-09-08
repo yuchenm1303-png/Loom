@@ -116,6 +116,9 @@ QMainWindow, QWidget {{
     font-family:{FONT_UI};
     font-size:13px;
 }}
+/* QLabel is a QWidget, so the rule above would paint the app background as a
+   visible dark rectangle on every panel that is lighter than it. */
+QLabel {{ background:transparent; }}
 QFrame#sidebar {{ background:{BG_PANEL}; border-right:1px solid {BORDER}; }}
 QFrame#activityPanel {{ background:{BG_PANEL}; border-left:1px solid {BORDER}; }}
 QFrame#conversationPanel {{ background:{BG_APP}; }}
@@ -198,24 +201,19 @@ QPushButton#threadActionsButton:disabled {{ color:#343b48; background:#0c0e13; b
 QListWidget#threadList {{ background:transparent; border:none; outline:none; padding:0; }}
 QListWidget#threadList::item {{
     background:transparent; border:1px solid transparent;
-    border-radius:9px; margin:1px 0; padding:0;
+    border-radius:8px; margin:0; padding:0;
 }}
-QListWidget#threadList::item:hover {{ background:#0f1218; }}
-QListWidget#threadList::item:selected {{
-    background:#141620; border-color:#2b2f40; border-left:2px solid #7168e2;
+QListWidget#threadList::item:hover {{ background:#12151c; }}
+QListWidget#threadList::item:selected {{ background:#1a1d29; border-color:#2b2f40; }}
+QWidget#threadItemWidget, QWidget#threadGroupHeader {{ background:transparent; }}
+QLabel#threadItemTitle {{ color:#cfd4dd; font-size:13px; font-weight:500; }}
+QLabel#threadGroupLabel {{
+    color:{TEXT_FAINT}; font-size:10px; font-weight:700; letter-spacing:1.2px;
 }}
-QWidget#threadItemWidget {{ background:transparent; }}
-QLabel#threadItemTitle {{ background:transparent; color:#dfe2e9; font-size:14px; font-weight:650; }}
-QLabel#threadItemMeta {{ background:transparent; color:#697183; font-size:10px; }}
-QLabel#threadStatus {{
-    background:#11141a; color:{TEXT_MUTED}; border-radius:7px;
-    padding:2px 6px; font-size:10px; font-weight:650;
-}}
-QLabel#threadStatus[state="completed"] {{ color:{GOOD}; background:#0f1916; }}
-QLabel#threadStatus[state="running"], QLabel#threadStatus[state="starting"] {{ color:#95c4fb; background:#111925; }}
-QLabel#threadStatus[state="waiting_approval"] {{ color:{WARN}; background:#201910; }}
-QLabel#threadStatus[state="failed"], QLabel#threadStatus[state="cancelled"] {{ color:{BAD}; background:#1e1416; }}
-QLabel#threadStatus[state="archived"] {{ color:#7c8493; background:transparent; padding:0; }}
+QLabel#threadDot {{ font-size:9px; color:{TEXT_MUTED}; }}
+QLabel#threadDot[state="running"] {{ color:#7fb2f5; }}
+QLabel#threadDot[state="waiting_approval"] {{ color:{WARN}; }}
+QLabel#threadDot[state="failed"] {{ color:{BAD}; }}
 
 /* ---- conversation header ---- */
 QFrame#workspaceHeader {{ background:transparent; border:none; border-bottom:1px solid {BORDER}; }}
@@ -313,9 +311,19 @@ QTextEdit#composer {{
 }}
 QLabel#composerHint, QLabel#composerState {{ color:{TEXT_FAINT}; font-size:10px; }}
 QLabel#composerState {{ color:#8990a0; }}
-QLabel#composerChip {{
-    color:#858c9c; background:#11141a; border-radius:7px;
-    padding:3px 8px; font-size:10px;
+
+/* Workspace and permission are decisions, not decorations. */
+QPushButton#composerControl {{
+    min-height:26px; padding:0 10px; border-radius:8px;
+    background:transparent; border:1px solid #1e2430;
+    color:#9aa2b1; font-size:11px; font-weight:600;
+}}
+QPushButton#composerControl:hover {{ background:{BG_HOVER}; border-color:#2f3646; color:{TEXT}; }}
+QPushButton#composerControl[mode="full-access"] {{ color:{WARN}; border-color:#4a3a20; }}
+QPushButton#composerControl[mode="read-only"] {{ color:#8ab4d8; border-color:#25384a; }}
+
+QPushButton#sendButton {{
+    border-radius:17px; padding:0; font-size:15px; font-weight:800;
 }}
 
 /* ---- approval ---- */
@@ -342,11 +350,16 @@ QPushButton#bannerClose:hover {{ background:#2a1a1e; color:#ffdde0; }}
 QLabel#inspectorTitle {{ color:{TEXT_STRONG}; font-size:16px; font-weight:700; }}
 QTabWidget#activityTabs::pane {{ background:transparent; border:none; top:-1px; }}
 QTabBar::tab {{
-    background:transparent; color:{TEXT_MUTED}; padding:9px 10px;
+    background:transparent; color:{TEXT_MUTED}; padding:9px 5px;
+    margin-right:3px;
     border:none; border-bottom:2px solid transparent; font-size:11px;
 }}
 QTabBar::tab:hover {{ color:#b5bac5; }}
 QTabBar::tab:selected {{ color:#e7e5ff; border-bottom-color:{ACCENT}; }}
+QLabel#panelPlaceholder {{
+    color:{TEXT_MUTED}; font-size:12px; padding:44px 6px 0;
+}}
+QLabel#panelPlaceholder span {{ color:{TEXT_FAINT}; }}
 QTextBrowser#activityView, QPlainTextEdit {{
     background:{BG_PANEL}; border:none; color:#adb3bf;
     padding:6px 2px 6px 4px; selection-background-color:#38335b;

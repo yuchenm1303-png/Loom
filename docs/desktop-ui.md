@@ -73,15 +73,20 @@ Markdown parsing and request supersession are tested without a GUI.
 
 The shell contains three main areas.
 
-### Project / Thread sidebar
+### Conversation sidebar
 
-- durable Thread list from `thread/list`;
-- automatic reopen of an existing durable Thread;
-- project/workspace chooser;
-- creation of a new workspace-bound Thread;
-- Thread status and workspace identity.
+- durable Thread list from `thread/list`, grouped by project with the current
+  workspace first and the newest conversation at the top of each group;
+- one line per conversation: its title, plus a status dot only for states that
+  ask something of the reader (running, waiting for approval, failed). Workspace,
+  status and token totals stay in the row's tooltip rather than on every row;
+- search, archive view, rename/archive/delete;
+- automatic reopen of an existing durable Thread.
 
-If no durable Thread exists in the selected Loom home, the client creates one in the launch workspace.
+A new conversation is a **draft**: `thread/start` is only called once the first
+prompt is sent. Opening Loom, or pressing Ctrl+N and walking away, therefore
+leaves nothing behind. Previously the client created a Thread eagerly, which is
+why libraries filled up with empty conversations named after their folder.
 
 ### Conversation workspace
 
@@ -121,11 +126,16 @@ banner. Only genuinely destructive actions (deleting a conversation) use a modal
 The right-side tabs show protocol-backed observable activity:
 
 - Runtime event history;
-- managed process / terminal activity and output;
-- latest current-Turn diff;
-- Browser tool activity;
-- AgentGraph control-tool activity;
+- managed processes as cards, with their command, exit status and output;
+- latest current-Turn diff, coloured by hunk, addition and removal;
+- Browser tool activity as cards;
+- AgentGraph control-tool activity as cards;
 - the latest process sandbox report when one exists.
+
+The card tabs reuse the transcript's keyed reconciliation, so a running process
+updates in place instead of the panel being rewritten as text. The panel's
+minimum width is derived from its own tab bar, so the tab labels fit whatever UI
+font is installed rather than being elided to "Acti… Termi…".
 
 The Browser and Agents tabs are intentionally honest about the current protocol boundary: App Server v1 exposes their activity through ordinary tool/runtime events, but it does not yet define dedicated live Browser-state or AgentGraph-snapshot methods. The UI does not invent those states.
 

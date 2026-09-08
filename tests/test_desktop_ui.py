@@ -8,10 +8,12 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6")
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 
 from app.desktop_ui import LoomDesktopWindow, ThreadListItemWidget
-from app.desktop.widgets import ActivityCard, MessageWidget
+from app.desktop.widgets import ActivityCard, MessageWidget, ThreadGroupHeader
+from app.desktop.window import THREAD_ROLE
 
 
 class FakeClient:
@@ -281,16 +283,52 @@ def test_tool_process_and_diff_items_render_inline_as_cards(desktop):
     assert "+hello" in diff_card._body_text
 
 
-def test_thread_rows_size_themselves_instead_of_using_a_fixed_height(desktop):
+def _thread_rows(window):
+    return [
+        window.thread_list.item(index)
+        for index in range(window.thread_list.count())
+        if isinstance(window.thread_list.item(index).data(THREAD_ROLE), dict)
+    ]
+
+
+def test_rows_are_grouped_by_project_and_size_themselves(desktop):
     _app, _client, window = desktop
 
-    assert window.thread_list.count() == 1
-    item = window.thread_list.item(0)
-    row = window.thread_list.itemWidget(item)
+    header = window.thread_list.item(0)
+    assert header.data(THREAD_ROLE) is None
+    assert isinstance(window.thread_list.itemWidget(header), ThreadGroupHeader)
+    assert header.flags() == Qt.ItemFlag.NoItemFlags
+
+    rows = _thread_rows(window)
+    assert len(rows) == 1
+    row = window.thread_list.itemWidget(rows[0])
     assert isinstance(row, ThreadListItemWidget)
     # The old client hard-coded 58/60px rows while later layers changed the row
     # contents, which left large gaps in the sidebar.
-    assert item.sizeHint().height() == max(52, row.sizeHint().height())
+    assert rows[0].sizeHint().height() == max(52, row.sizeHint().height())
+
+
+def test_rows_show_only_a_title_and_keep_the_detail_in_the_tooltip(desktop):
+    _app, _client, window = desktop
+
+    row = window.thread_list.itemWidget(_thread_rows(window)[0])
+    assert row.title_label.text() == "Inspect project"
+    # Completed is a resting state, so it earns no dot.
+    assert row.status_dot.isVisible() is False
+    assert "Completed" in row.toolTip()
+    assert "7 tokens" in row.toolTip()
+
+
+def test_searching_hides_a_project_heading_with_no_matches(desktop):
+    app, _client, window = desktop
+
+    window.thread_search.setText("nothing matches")
+    app.processEvents()
+    assert window.thread_list.item(0).isHidden() is True
+
+    window.thread_search.clear()
+    app.processEvents()
+    assert window.thread_list.item(0).isHidden() is False
 
 
 def test_streaming_updates_only_the_live_message_widget(desktop):
@@ -409,6 +447,47 @@ def test_panel_toggles_hide_and_restore_both_side_panels(desktop):
     assert window.activity_panel.isVisible() is True
 
 
+def test_a_new_conversation_stays_a_draft_until_it_is_sent(desktop):
+    app, client, window = desktop
+    rows_before = len(_thread_rows(window))
+
+    window.new_thread_in_current_workspace()
+    app.processEvents()
+    # Clicking "New thread" must not create anything on the server yet; the old
+    # client did, which is why the library filled up with empty conversations.
+    assert window.current_thread_id == ""
+    assert window.empty_state.isVisible() is True
+    assert len(_thread_rows(window)) == rows_before
+
+    window.composer.setPlainText("first message")
+    window.send_prompt()
+    _wait_for(app, lambda: client.turns)
+
+    assert client.turns == [("thread-new", "first message")]
+    assert window._draft_workspace is None
+
+
+def test_startup_with_no_threads_opens_a_draft_instead_of_creating_one(tmp_path):
+    app = QApplication.instance() or QApplication([])
+    client = FakeClient(tmp_path)
+    client.thread_list = lambda *, limit=100: {"threads": [], "counts": {"active": 0}}
+    window = LoomDesktopWindow(
+        client=client,
+        initialization=_initialization(tmp_path),
+        default_workspace=tmp_path,
+        default_permission_mode="workspace",
+    )
+    window.show()
+    _wait_for(app, lambda: window._draft_workspace is not None)
+    try:
+        assert window.current_thread_id == ""
+        assert window.thread_title_label.text() == "New conversation"
+        assert window.empty_state.isVisible() is True
+    finally:
+        window.close()
+        app.processEvents()
+
+
 def test_conversation_library_search_archive_view_and_read_only_state(desktop):
     app, client, window = desktop
 
@@ -418,7 +497,6 @@ def test_conversation_library_search_archive_view_and_read_only_state(desktop):
 
     window.thread_search.setText("nothing matches")
     app.processEvents()
-    assert window.thread_list.item(0).isHidden() is True
     assert window.thread_section_label.text() == "CHATS  0/1"
     window.thread_search.clear()
     app.processEvents()
