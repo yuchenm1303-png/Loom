@@ -109,7 +109,7 @@ def _category(entry: TranscriptEntry | None) -> str | None:
 
 
 def _basename(value: str) -> str:
-    value = value.strip().strip('"\'')
+    value = value.strip().strip("\"'")
     parts = re.split(r"[\\/]", value)
     return parts[-1] if parts else value
 
