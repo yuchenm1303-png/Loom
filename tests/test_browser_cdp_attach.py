@@ -6,8 +6,9 @@ import pytest
 
 import app.agent_runtime.browser_runtime as browser_runtime_module
 import app.agent_runtime.browser_use_backend as browser_use_backend_module
+from app.agent_runtime.browser_runtime import BrowserSessionStore
 from app.agent_runtime.browser_security import BrowserSecurityPolicy
-from app.agent_runtime.browser_session import BrowserLaunchOptions, BrowserPageState
+from app.agent_runtime.browser_session import BrowserLaunchOptions, BrowserPageState, BrowserURLPolicyError
 from app.agent_runtime.browser_use_backend import BrowserUseBackend
 from app.agent_runtime.sandbox import SandboxManager, SandboxPolicy
 from app.agent_runtime.storage import FileAgentSessionStore
@@ -109,6 +110,7 @@ def test_runtime_attaches_to_configured_external_browser_without_exposing_endpoi
         assert backend.cdp_url == endpoint
         assert backend.user_data_dir is None
         assert store.max_sessions_total == 1
+        assert store.filter_unsafe_background_tabs is True
 
         tool = runtime.tools.get("browser_open")
         assert tool is not None
@@ -146,6 +148,78 @@ def test_cdp_attach_rejects_ambiguous_profile_configuration(tmp_path, monkeypatc
             browser_cdp_url="http://127.0.0.1:9222",
             browser_profile_dir=tmp_path / "other-profile",
         )
+
+
+def test_cdp_store_hides_existing_out_of_policy_background_tabs():
+    class TabsBackend:
+        backend_name = "browser-use"
+        state_revision = 1
+
+        def start(self):
+            return BrowserPageState(
+                url="about:blank",
+                title="Loom work tab",
+                tabs=(
+                    {"tab_id": "safe", "url": "https://example.com", "title": "Safe"},
+                    {"tab_id": "local", "url": "http://127.0.0.1:3000", "title": "Local"},
+                    {"tab_id": "chrome", "url": "chrome://settings/", "title": "Settings"},
+                    {"tab_id": "blank", "url": "about:blank", "title": "Blank"},
+                ),
+            )
+
+        def close(self):
+            return None
+
+    store = BrowserSessionStore(
+        lambda options: TabsBackend(),
+        url_policy=BrowserSecurityPolicy(resolve_dns=False),
+        filter_unsafe_background_tabs=True,
+    )
+    item = store.start("owner")
+    assert [tab["tab_id"] for tab in item.last_state.tabs] == ["safe", "blank"]
+
+
+def test_cdp_store_keeps_active_navigation_fail_closed():
+    class EscapeBackend:
+        backend_name = "browser-use"
+        state_revision = 1
+
+        def __init__(self):
+            self.closed = False
+
+        def start(self):
+            return BrowserPageState(url="about:blank", title="Loom work tab")
+
+        def state(self):
+            return BrowserPageState(url="http://127.0.0.1:3000", title="Private")
+
+        def close(self):
+            self.closed = True
+
+    backend = EscapeBackend()
+    store = BrowserSessionStore(
+        lambda options: backend,
+        url_policy=BrowserSecurityPolicy(resolve_dns=False),
+        filter_unsafe_background_tabs=True,
+    )
+    item = store.start("owner")
+    with pytest.raises(BrowserURLPolicyError):
+        store.state("owner", item.browser_id)
+    assert backend.closed is True
+    assert store.list("owner") == ()
+
+
+def test_browser_use_profile_receives_cdp_endpoint_without_connecting(tmp_path):
+    pytest.importorskip("browser_use")
+    endpoint = "ws://127.0.0.1:9333/devtools/browser/contract"
+    backend = BrowserUseBackend(BrowserLaunchOptions(), cdp_url=endpoint)
+    try:
+        session = backend._runner.run(backend._ensure_session(), timeout=10.0)
+        assert session.browser_profile.cdp_url == endpoint
+        assert session.browser_profile.keep_alive is True
+    finally:
+        backend._session = None
+        backend.close()
 
 
 def test_cdp_backend_disconnects_without_killing_user_browser(monkeypatch):
