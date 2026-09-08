@@ -15,6 +15,13 @@ from app.desktop import iconography as _iconography
 from app.desktop import sidebar_motion as _sidebar_motion
 from app.desktop import sidebar_motion_smooth as _sidebar_motion_smooth
 from app.desktop import widgets as _widgets
+from app.desktop import widget_lifecycle as _widget_lifecycle
+
+# Install the disposal guard before presentation subclasses are imported. This
+# prevents QWidget.setParent(None) disposal paths from becoming transient native
+# top-level windows while a streamed transcript is being reconciled.
+_widget_lifecycle.install()
+
 from app.desktop.output_presentation import MessageWidget, TranscriptView
 from app.desktop import transcript_density as _transcript_density
 from app.desktop.thread_presentation import ThreadListItemWidget, thread_row_size
