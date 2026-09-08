@@ -9,7 +9,7 @@ pytest.importorskip("PySide6")
 
 from PySide6.QtWidgets import QApplication
 
-from app.desktop import widgets
+from app.desktop import iconography, widgets
 
 
 @pytest.fixture(scope="module")
@@ -24,6 +24,48 @@ def test_runtime_tab_icons_keep_transparent_corners(app):
 
     assert image.pixelColor(0, 0).alpha() == 0
     assert image.pixelColor(17, 17).alpha() == 0
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["agent", "agents", "terminal", "computer", "browser", "tool", "search", "file", "edit"],
+)
+def test_product_icons_render_visible_vector_pixels(app, name):
+    image = widgets.vector_icon(name, size=20).pixmap(20, 20).toImage()
+    assert any(
+        image.pixelColor(x, y).alpha() > 0
+        for y in range(image.height())
+        for x in range(image.width())
+    )
+
+
+@pytest.mark.parametrize(
+    ("title", "expected"),
+    [
+        ("Used computer_status", "computer"),
+        ("browser_navigate", "browser"),
+        ("web_search", "search"),
+        ("read_file", "file"),
+        ("apply_patch", "edit"),
+        ("exec_command", "terminal"),
+        ("spawn_agent", "agent"),
+        ("some_mcp_tool", "tool"),
+    ],
+)
+def test_tool_names_route_to_product_glyphs(title, expected):
+    assert iconography._tool_icon_name(title) == expected
+
+
+def test_inline_tool_card_keeps_capability_icon_after_completion(app):
+    card = widgets.ActivityCard("tool")
+    card.update_card(
+        title="Used computer_status",
+        status="completed",
+        body='{"result": "ok"}',
+    )
+
+    assert card.icon.name == "computer"
+    assert card.icon.tone == "muted"
 
 
 @pytest.mark.parametrize(
