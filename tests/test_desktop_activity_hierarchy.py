@@ -77,7 +77,7 @@ def test_attention_tool_request_is_never_coalesced(app):
     assert "tool:exec" in view._order
 
 
-def test_activity_groups_get_semantic_headers(app):
+def test_activity_groups_keep_semantics_without_visible_section_bars(app):
     view = TranscriptView()
     entries = [_process("p1", "cmd /c echo one"), _process("p2", "cmd /c echo two"), _diff("d1")]
     view.render(entries)
@@ -87,11 +87,12 @@ def test_activity_groups_get_semantic_headers(app):
     diff = view._widgets["d1"]
 
     assert isinstance(first, FlatActivityCard)
-    assert first._activity_section_label.text() == "Commands"
-    assert not first._activity_section.isHidden()
+    assert first.property("activityCategory") == "command"
+    assert second.property("activityCategory") == "command"
+    assert diff.property("activityCategory") == "file"
+    assert first._activity_section.isHidden()
     assert second._activity_section.isHidden()
-    assert diff._activity_section_label.text() == "Files"
-    assert not diff._activity_section.isHidden()
+    assert diff._activity_section.isHidden()
     assert diff.title_label.text() == "Edited history.py"
 
 
