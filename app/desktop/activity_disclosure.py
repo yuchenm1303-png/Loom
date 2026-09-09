@@ -185,6 +185,10 @@ def install() -> None:
 
     def card_init(self: Any, kind: str, parent: QWidget | None = None) -> None:
         original_init(self, kind, parent)
+        # Inline transcript activity should stay compact until the reader asks
+        # for details. Base cards historically pre-opened errors/diffs, which
+        # made a busy agent turn expand into a wall of output by default.
+        self._expanded = False
         _replace_chevron(self)
         # Title/icon clicks should land on the row itself. Expanded body widgets
         # stay normal so code selection and scrollbars never toggle the card.
@@ -210,6 +214,12 @@ def install() -> None:
         body: str = "",
         auto_expand: bool | None = None,
     ) -> None:
+        # Running/failed tools and processes used to request automatic
+        # expansion from the renderer. Ignore those requests until the user has
+        # explicitly opened this row; after that, the card's own toggle state is
+        # authoritative across streaming/status updates.
+        if not self._user_toggled:
+            auto_expand = False
         original_update(
             self,
             title=title,
