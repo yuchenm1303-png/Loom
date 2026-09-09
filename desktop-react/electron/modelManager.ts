@@ -123,6 +123,7 @@ export class DesktopModelManager {
     const current = this.currentSpec ?? this.ensureInitial();
     const profile = this.runBridge<ModelProfile>("set-reasoning", {
       selection: current.selection,
+      model: current.model,
       kind,
       value,
     });
@@ -143,10 +144,14 @@ export class DesktopModelManager {
     if (!value) throw new Error("Model ID must not be empty");
     const current = this.currentSpec ?? this.ensureInitial();
     if (value !== current.model) this.rememberCurrentModel(current.model);
+    const described = this.runBridge<ModelProfile>("describe-model", {
+      selection: current.selection,
+      model: value,
+    });
     const next: ModelLaunchSpec = {
       ...current,
       model: value,
-      reasoning: value === current.model ? current.reasoning : null,
+      reasoning: described.reasoning ?? null,
     };
     this.currentSpec = next;
     return next;
@@ -163,7 +168,7 @@ export class DesktopModelManager {
   }
 
   private runBridge<T>(
-    command: "list" | "resolve" | "save" | "set-active" | "set-reasoning",
+    command: "list" | "resolve" | "describe-model" | "save" | "set-active" | "set-reasoning",
     payload: Record<string, unknown>,
   ): T {
     const python = process.env.LOOM_PYTHON || (process.platform === "win32" ? "python" : "python3");
