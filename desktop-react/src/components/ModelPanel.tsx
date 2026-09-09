@@ -1,17 +1,27 @@
 import {
   ArrowLeft,
   Check,
+  ChevronDown,
   ChevronRight,
   Cpu,
+  Gauge,
   Globe,
   KeyRound,
   Plus,
   RefreshCw,
   Server,
   SlidersHorizontal,
+  Sparkles,
+  Zap,
 } from "lucide-react";
 import { useMemo, useState } from "react";
-import type { AddModelInput, ModelProfile, ModelSnapshot } from "../types/loom";
+import type {
+  AddModelInput,
+  ModelProfile,
+  ModelReasoningOption,
+  ModelReasoningState,
+  ModelSnapshot,
+} from "../types/loom";
 import "./model-panel.css";
 
 type ModelView = "list" | "add" | "custom";
@@ -24,6 +34,7 @@ interface ModelPanelProps {
   onSwitchProfile(selection: string): Promise<void> | void;
   onSwitchCurrent(model: string): Promise<void> | void;
   onAddModel(input: AddModelInput): Promise<void> | void;
+  onReasoningChange(kind: string, value: string): Promise<void> | void;
   onClose(): void;
 }
 
@@ -45,6 +56,107 @@ function profileSubtitle(profile: ModelProfile): string {
   return `${adapterLabel(profile.adapter)} · ${endpointLabel(profile.baseUrl)}`;
 }
 
+function activeReasoningOption(reasoning: ModelReasoningState): ModelReasoningOption | undefined {
+  return reasoning.options.find((option) => option.value === reasoning.value);
+}
+
+function ReasoningControl({
+  reasoning,
+  busy,
+  running,
+  onChange,
+}: {
+  reasoning: ModelReasoningState;
+  busy?: boolean;
+  running?: boolean;
+  onChange(kind: string, value: string): Promise<void> | void;
+}) {
+  const current = activeReasoningOption(reasoning) ?? reasoning.options[0];
+  const currentIsAdvanced = Boolean(current?.advanced);
+  const [showAdvanced, setShowAdvanced] = useState(currentIsAdvanced);
+  const [error, setError] = useState("");
+  const standard = reasoning.options.filter((option) => !option.advanced);
+  const advanced = reasoning.options.filter((option) => option.advanced);
+  const visible = showAdvanced ? reasoning.options : standard;
+  const selectedIndex = Math.max(0, visible.findIndex((option) => option.value === reasoning.value));
+  const progress = visible.length <= 1 ? 0 : (selectedIndex / (visible.length - 1)) * 100;
+  const locked = Boolean(busy || running);
+
+  async function choose(option: ModelReasoningOption) {
+    if (locked || option.value === reasoning.value) return;
+    setError("");
+    try {
+      await onChange(reasoning.kind, option.value);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    }
+  }
+
+  return (
+    <section className="reasoning-card" aria-label="Reasoning strength">
+      <div className="reasoning-head">
+        <span className="reasoning-icon"><Zap size={16} fill="currentColor" /></span>
+        <div className="reasoning-heading-copy">
+          <span className="reasoning-eyebrow">Reasoning</span>
+          <strong>{current?.label || reasoning.value}</strong>
+        </div>
+        <span className="reasoning-source">{reasoning.source}</span>
+      </div>
+
+      <p className="reasoning-description">
+        {current?.description || "Controls how much deliberate reasoning the model uses for new work."}
+      </p>
+
+      <div className={`reasoning-scale ${locked ? "locked" : ""}`} style={{ "--reasoning-progress": `${progress}%` } as React.CSSProperties}>
+        <div className="reasoning-track" aria-hidden="true"><span /></div>
+        <div className="reasoning-stops">
+          {visible.map((option) => {
+            const selected = option.value === reasoning.value;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                className={`reasoning-stop ${selected ? "active" : ""} ${option.advanced ? "advanced" : ""}`}
+                disabled={locked}
+                aria-pressed={selected}
+                title={option.description}
+                onClick={() => void choose(option)}
+              >
+                <span className="reasoning-dot">{selected ? <Sparkles size={10} /> : null}</span>
+                <span className="reasoning-stop-label">{option.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="reasoning-meta-row">
+        <span><Gauge size={12} /> Applies to every model step in the next turn</span>
+        {advanced.length ? (
+          <button
+            type="button"
+            className={`reasoning-more ${showAdvanced ? "open" : ""}`}
+            disabled={locked && !showAdvanced}
+            onClick={() => setShowAdvanced((value) => !value)}
+          >
+            {showAdvanced ? "Standard levels" : "More reasoning"}
+            <ChevronDown size={12} />
+          </button>
+        ) : null}
+      </div>
+
+      {showAdvanced && advanced.length ? (
+        <div className="reasoning-warning">
+          <Zap size={12} />
+          <span>Max and Ultra are intentionally separated because they can use substantially more reasoning and may change task delegation behavior.</span>
+        </div>
+      ) : null}
+      {running ? <div className="reasoning-locked-note">Stop the active turn before changing reasoning.</div> : null}
+      {error ? <div className="composer-popover-error">{error}</div> : null}
+    </section>
+  );
+}
+
 export function ModelPanel({
   runtimeModel,
   snapshot,
@@ -53,6 +165,7 @@ export function ModelPanel({
   onSwitchProfile,
   onSwitchCurrent,
   onAddModel,
+  onReasoningChange,
   onClose,
 }: ModelPanelProps) {
   const [view, setView] = useState<ModelView>("list");
@@ -69,6 +182,7 @@ export function ModelPanel({
   const currentAdapter = snapshot?.current?.adapter || "openai-compatible";
   const currentBaseUrl = snapshot?.current?.baseUrl || "";
   const currentSelection = snapshot?.current?.selection || "";
+  const currentReasoning = snapshot?.current?.reasoning ?? null;
   const profiles = snapshot?.profiles ?? [];
   const savedCount = profiles.filter((profile) => profile.kind === "saved").length;
   const recent = useMemo(
@@ -238,6 +352,20 @@ export function ModelPanel({
         <span className="model-runtime-check"><Check size={14} /></span>
       </div>
 
+      {currentReasoning ? (
+        <ReasoningControl
+          reasoning={currentReasoning}
+          busy={busy}
+          running={running}
+          onChange={onReasoningChange}
+        />
+      ) : (
+        <div className="reasoning-unavailable">
+          <Gauge size={14} />
+          <div><strong>Provider reasoning</strong><span>This model does not advertise a safe reasoning control. Its provider default is used.</span></div>
+        </div>
+      )}
+
       <div className="model-section-heading">
         <span>Connections</span>
         <em>{savedCount ? `${savedCount} saved` : "Primary + custom"}</em>
@@ -246,6 +374,7 @@ export function ModelPanel({
       <div className="model-profile-list">
         {profiles.map((profile) => {
           const exactActive = profile.selection === currentSelection && profile.model === currentModel;
+          const profileReasoning = profile.reasoning ? activeReasoningOption(profile.reasoning) : null;
           return (
             <button
               key={profile.selection}
@@ -259,6 +388,7 @@ export function ModelPanel({
                 <span className="model-profile-title-row">
                   <strong>{profile.name}</strong>
                   {profile.kind === "builtin" ? <em>Primary</em> : null}
+                  {profileReasoning ? <em className="model-reasoning-badge">{profileReasoning.label}</em> : null}
                 </span>
                 <span>{profile.model}</span>
                 <small>{profileSubtitle(profile)}</small>
@@ -287,7 +417,7 @@ export function ModelPanel({
       {error ? <div className="composer-popover-error">{error}</div> : null}
       <div className="model-restart-note">
         <RefreshCw size={12} />
-        <span>Switching models restarts the local App Server. Conversations stay on disk and reopen automatically.</span>
+        <span>Model switches restart the local App Server. Reasoning changes apply live to the next turn.</span>
       </div>
     </div>
   );
