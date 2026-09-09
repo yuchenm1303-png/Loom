@@ -145,11 +145,25 @@ function showRendererFailure(title: string, detail: string): void {
   void window.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
 }
 
+function devServerUrlFromArgs(): string | null {
+  const prefix = "--dev-url=";
+  const arg = process.argv.find((value) => value.startsWith(prefix));
+  const value = arg?.slice(prefix.length).trim();
+  return value || null;
+}
+
 async function loadRenderer(window: BrowserWindow): Promise<void> {
-  const devUrl = "http://127.0.0.1:5173";
+  const devUrl = devServerUrlFromArgs();
   try {
-    if (!app.isPackaged) await window.loadURL(devUrl);
-    else await window.loadFile(path.join(DESKTOP_ROOT, "dist", "index.html"));
+    if (devUrl) {
+      console.log(`[loom-desktop] loading dev renderer ${devUrl}`);
+      await window.loadURL(devUrl);
+      return;
+    }
+
+    const builtIndex = path.join(DESKTOP_ROOT, "dist", "index.html");
+    console.log(`[loom-desktop] loading built renderer ${builtIndex}`);
+    await window.loadFile(builtIndex);
   } catch (error) {
     const detail = error instanceof Error ? error.stack || error.message : String(error);
     console.error("Loom renderer navigation failed", detail);
