@@ -25,25 +25,20 @@ QWidget#threadGroupHeader {
 }
 QLabel#threadGroupLabel {
     background: transparent;
-    color: #98a2b8;
+    color: #8e97aa;
     font-size: 10px;
-    font-weight: 720;
-    letter-spacing: 0.95px;
+    font-weight: 700;
+    letter-spacing: 0.9px;
     padding: 0px;
 }
 QWidget#threadGroupHeader[orphan="true"] QLabel#threadGroupLabel {
-    color: #7f899d;
+    color: #767f91;
 }
 QFrame#threadGroupRule {
     min-height: 1px;
     max-height: 1px;
     border: none;
-    background: qlineargradient(
-        x1:0, y1:0, x2:1, y2:0,
-        stop:0 #303747,
-        stop:0.65 #282e3b,
-        stop:1 transparent
-    );
+    background: #242731;
 }
 QPushButton#threadGroupAddButton,
 QPushButton#threadGroupMoreButton {
@@ -54,28 +49,28 @@ QPushButton#threadGroupMoreButton {
     padding: 0px;
     background: transparent;
     border: 1px solid transparent;
-    border-radius: 7px;
+    border-radius: 6px;
 }
 QPushButton#threadGroupAddButton:hover,
 QPushButton#threadGroupMoreButton:hover {
-    background: #1b2029;
-    border-color: #303846;
+    background: #1c1e25;
+    border-color: transparent;
 }
 QPushButton#threadGroupAddButton:pressed,
 QPushButton#threadGroupMoreButton:pressed {
-    background: #121720;
-    border-color: #262e3b;
+    background: #181a20;
+    border-color: transparent;
 }
 QLabel#threadGroupCount {
-    min-width: 20px;
+    min-width: 14px;
     max-height: 20px;
-    padding: 0px 6px;
-    background: #151a23;
-    border: 1px solid #293142;
-    border-radius: 9px;
-    color: #929db4;
+    padding: 0px 2px;
+    background: transparent;
+    border: none;
+    border-radius: 0px;
+    color: #798294;
     font-size: 10px;
-    font-weight: 700;
+    font-weight: 620;
 }
 """
 
@@ -87,8 +82,8 @@ def _action_icon(kind: str, *, size: int = 14) -> QIcon:
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
     painter.setPen(
         QPen(
-            QColor("#8994a9"),
-            1.35,
+            QColor("#7f899b"),
+            1.3,
             Qt.PenStyle.SolidLine,
             Qt.PenCapStyle.RoundCap,
             Qt.PenJoinStyle.RoundJoin,
@@ -96,13 +91,13 @@ def _action_icon(kind: str, *, size: int = 14) -> QIcon:
     )
     c = size / 2.0
     if kind == "add":
-        painter.drawLine(QPointF(c, 3.4), QPointF(c, size - 3.4))
-        painter.drawLine(QPointF(3.4, c), QPointF(size - 3.4, c))
+        painter.drawLine(QPointF(c, 3.5), QPointF(c, size - 3.5))
+        painter.drawLine(QPointF(3.5, c), QPointF(size - 3.5, c))
     else:
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor("#8994a9"))
+        painter.setBrush(QColor("#7f899b"))
         for x in (c - 3.5, c, c + 3.5):
-            painter.drawEllipse(QPointF(x, c), 1.05, 1.05)
+            painter.drawEllipse(QPointF(x, c), 1.0, 1.0)
     painter.end()
     return QIcon(pixmap)
 
@@ -158,8 +153,8 @@ def _polish_header(header: Any, title: str) -> None:
     for button in header.findChildren(QPushButton):
         _normalise_action(button)
 
-    # Some sidebar variants expose a group count next to the divider. Turn that
-    # raw number into metadata rather than letting it float as plain text.
+    # Counts are metadata, not badges. Keep the public label while removing the
+    # extra outlined capsule that previously competed with the section title.
     for label in header.findChildren(QLabel):
         if label is title_label:
             continue
