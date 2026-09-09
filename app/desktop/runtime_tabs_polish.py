@@ -108,6 +108,8 @@ def polish_runtime_tabs(tabs: Any) -> None:
     tabs.setStyleSheet(_RUNTIME_TABS_QSS)
 
     bar = tabs.tabBar()
+    bar.setUsesScrollButtons(False)
+    bar.setDrawBase(False)
     bar.setExpanding(False)
     bar.setElideMode(Qt.TextElideMode.ElideNone)
     bar.setIconSize(QSize(14, 14))
