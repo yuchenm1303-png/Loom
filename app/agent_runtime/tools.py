@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 import json
 from copy import deepcopy
 from functools import lru_cache
@@ -280,6 +281,16 @@ def _schema_validator(serialized: str):
     return cls(schema, registry=Registry(retrieve=no_network))
 
 
+class ToolValidationUnavailable(RuntimeError):
+    """Loom cannot validate any tool call, so nothing can run.
+
+    Kept distinct from a bad schema. A missing validator library made every
+    tool -- including ``echo`` -- fail with "invalid or unresolved tool schema",
+    which reads like a per-tool problem. The model reported Loom's schema layer
+    as broken and invented an explanation, because that is what it was told.
+    """
+
+
 def validate_tool_arguments(schema: dict[str, Any], arguments: dict[str, Any]) -> None:
     if not isinstance(arguments, dict):
         raise ValueError("tool arguments must be a JSON object")
@@ -288,6 +299,12 @@ def validate_tool_arguments(schema: dict[str, Any], arguments: dict[str, Any]) -
     try:
         validator = _schema_validator(json.dumps(schema, sort_keys=True))
         error = next(validator.iter_errors(arguments), None)
+    except ImportError as exc:
+        raise ToolValidationUnavailable(
+            f"Loom is installed without its schema validator ({exc}). No tool can run. "
+            f"Reinstall Loom for the interpreter running it: "
+            f'"{sys.executable}" -m pip install -e .'
+        ) from exc
     except Exception as exc:
         raise ValueError(f"invalid or unresolved tool schema: {exc}") from exc
     if error is not None:
