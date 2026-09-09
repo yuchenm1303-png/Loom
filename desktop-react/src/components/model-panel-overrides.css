@@ -16,6 +16,7 @@
   backdrop-filter: blur(18px);
 }
 
+.model-manager-popover .composer-popover-heading > div > span,
 .model-manager-popover .composer-popover-context {
   display: none;
 }
