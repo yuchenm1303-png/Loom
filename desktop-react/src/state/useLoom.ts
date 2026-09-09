@@ -75,6 +75,17 @@ export function useLoom() {
     });
   }, [active?.thread.currentTurnId, active?.thread.id]);
 
+  const setPermissionMode = useCallback(async (permissionMode: string) => {
+    if (!active?.thread.id) return;
+    const result = await requireBridge().call<{ thread: ThreadRecord }>("thread/set_permission_mode", {
+      threadId: active.thread.id,
+      permissionMode,
+    });
+    const updated = result.thread;
+    setThreads((current) => current.map((thread) => (thread.id === updated.id ? updated : thread)));
+    setActive((current) => current && current.thread.id === updated.id ? { ...current, thread: updated } : current);
+  }, [active?.thread.id]);
+
   const respondApproval = useCallback(async (item: TranscriptItem, approved: boolean) => {
     if (!active?.thread.id || !item.callId) return;
     await requireBridge().call("approval/respond", {
@@ -100,7 +111,12 @@ export function useLoom() {
 
       if (message.method === "thread/updated") {
         const thread = params.thread as ThreadRecord | undefined;
-        if (thread) setThreads((current) => current.map((entry) => (entry.id === thread.id ? thread : entry)));
+        if (thread) {
+          setThreads((current) => current.map((entry) => (entry.id === thread.id ? thread : entry)));
+          if (thread.id === activeId) {
+            setActive((current) => current && current.thread.id === thread.id ? { ...current, thread } : current);
+          }
+        }
         return;
       }
       if (message.method === "thread/deleted") {
@@ -174,6 +190,7 @@ export function useLoom() {
     newThread,
     send,
     interrupt,
+    setPermissionMode,
     respondApproval,
-  }), [active, connection, error, interrupt, items, newThread, openThread, respondApproval, runtime, send, threads]);
+  }), [active, connection, error, interrupt, items, newThread, openThread, respondApproval, runtime, send, setPermissionMode, threads]);
 }
