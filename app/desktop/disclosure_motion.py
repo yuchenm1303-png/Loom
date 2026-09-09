@@ -25,6 +25,8 @@ from __future__ import annotations
 import weakref
 from typing import Any
 
+from PySide6.QtCore import Qt
+
 from app.desktop import message_presentation as messages
 from app.desktop import output_presentation as output
 from app.desktop import widgets as base
@@ -97,6 +99,15 @@ def _activity_sync_body(self: Any, *, animate: bool = False) -> None:
     self.updateGeometry()
 
 
+def _transcript_for(widget: Any) -> Any | None:
+    parent = widget.parentWidget()
+    while parent is not None:
+        if hasattr(parent, "_follow_tail") and hasattr(parent, "_stop_tail_animation"):
+            return parent
+        parent = parent.parentWidget()
+    return None
+
+
 def _suspend_tail_for_disclosure(view: Any) -> None:
     """Keep the clicked disclosure anchored instead of chasing the new tail."""
 
@@ -159,6 +170,20 @@ def install() -> None:
         _wire_view_disclosures(self)
 
     base.TranscriptView.render = render
+
+    # activity_disclosure makes the whole activity header clickable, not just the
+    # chevron. Freeze tail-follow on the row's left press as well so title/icon
+    # clicks get the same stable viewport semantics as chevron clicks.
+    original_card_press = output.FlatActivityCard.mousePressEvent
+
+    def card_press(self: Any, event: Any) -> None:
+        if event.button() == Qt.MouseButton.LeftButton and bool(getattr(self, "_body_text", "")):
+            view = _transcript_for(self)
+            if view is not None:
+                _suspend_tail_for_disclosure(view)
+        original_card_press(self, event)
+
+    output.FlatActivityCard.mousePressEvent = card_press
     _INSTALLED = True
 
 
