@@ -70,6 +70,10 @@ _user_message_actions.install()
 from app.desktop.transcript_disclosure import FlowMessageWidget as MessageWidget  # noqa: E402
 from app.desktop.transcript_viewport import AnchoredTranscriptView as TranscriptView  # noqa: E402
 
+# Hidden disclosure bodies do not need to be remeasured for every stream token;
+# install that fast path only now, after the canonical classes exist.
+_stream_render_pipeline.install_disclosure_fast_path()
+
 _widgets.MessageWidget = MessageWidget
 _widgets.TranscriptView = TranscriptView
 _widgets.ThreadListItemWidget = ThreadListItemWidget
