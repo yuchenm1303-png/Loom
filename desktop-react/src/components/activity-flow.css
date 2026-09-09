@@ -1,105 +1,46 @@
 .task-flow {
-  --flow-text: #c9ced8;
-  --flow-muted: #7e8694;
-  --flow-faint: #5e6674;
-  --flow-line: rgba(255, 255, 255, .055);
-  --flow-hover: rgba(255, 255, 255, .026);
-  --flow-purple: #aaa2f2;
-  width: min(700px, 100%);
-  display: grid;
-  gap: 7px;
-  padding: 3px 0 4px;
-  animation: task-flow-enter 220ms cubic-bezier(.2,.78,.2,1) both;
+  --flow-text: #c8cdd6;
+  --flow-muted: #8b929e;
+  --flow-faint: #626a76;
+  --flow-hover: rgba(255, 255, 255, .022);
+  width: min(760px, 100%);
+  display: block;
+  padding: 1px 0;
+  animation: task-flow-enter 180ms cubic-bezier(.2,.78,.2,1) both;
 }
 
-.task-flow-summary {
-  min-height: 30px;
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  color: #aeb4bf;
-}
-
-.task-flow-summary-icon {
-  width: 26px;
-  height: 26px;
-  flex: none;
-  display: grid;
-  place-items: center;
-  border: 1px solid #292e39;
-  border-radius: 8px;
-  background: linear-gradient(180deg, #171a20, #13161b);
-  color: #929aa8;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.025);
-}
-
-.task-flow-summary-copy {
-  min-width: 0;
-  display: flex;
-  align-items: baseline;
-  gap: 7px;
-}
-
-.task-flow-summary-copy strong {
-  min-width: 0;
-  color: #c9cdd5;
-  font-size: 12px;
-  font-weight: 620;
-  letter-spacing: .002em;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.task-flow-summary-copy span {
-  flex: none;
-  color: #626a77;
-  font-size: 9px;
-  font-variant-numeric: tabular-nums;
+/* Task groups are intentionally invisible: the transcript should read as a
+   compact chronological command stream rather than a stack of cards. */
+.task-flow-summary,
+.task-flow-disclosure {
+  display: none !important;
 }
 
 .task-flow-list {
-  position: relative;
-  display: grid;
-  gap: 0;
-  margin-left: 12px;
-  padding-left: 23px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
 }
 
-.task-flow-list::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 5px;
-  bottom: 5px;
-  width: 1px;
-  background: linear-gradient(180deg, transparent, #272b34 10%, #272b34 90%, transparent);
-  opacity: .72;
+.task-flow-list::before,
+.task-flow-row::before {
+  content: none !important;
+  display: none !important;
 }
 
 .task-flow-row {
-  position: relative;
   min-width: 0;
   min-height: 28px;
   display: grid;
-  grid-template-columns: 17px minmax(0, 1fr) auto;
+  grid-template-columns: 24px minmax(0, 1fr) 10px;
   align-items: center;
   gap: 7px;
-  padding: 3px 6px 3px 0;
-  border-radius: 7px;
+  padding: 1px 2px;
+  border-radius: 6px;
   color: var(--flow-muted);
-  transition: background 150ms ease, color 150ms ease, transform 150ms cubic-bezier(.2,.8,.2,1);
-}
-
-.task-flow-row::before {
-  content: "";
-  position: absolute;
-  left: -23px;
-  top: 50%;
-  width: 8px;
-  height: 1px;
-  background: #292e38;
-  transform: translateY(-50%);
+  transition: background 130ms ease, color 130ms ease, transform 130ms cubic-bezier(.2,.8,.2,1);
 }
 
 .task-flow-row:hover {
@@ -109,17 +50,22 @@
 }
 
 .task-flow-row-icon {
-  width: 17px;
-  height: 17px;
+  width: 22px;
+  height: 22px;
   display: grid;
   place-items: center;
-  color: #747d8b;
-  transition: color 150ms ease, transform 150ms ease;
+  border: 1px solid #2a2f39;
+  border-radius: 6px;
+  background: linear-gradient(180deg, rgba(22,25,31,.86), rgba(17,19,24,.86));
+  color: #8b929e;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.025);
+  transition: color 130ms ease, border-color 130ms ease, background 130ms ease;
 }
 
 .task-flow-row:hover .task-flow-row-icon {
-  color: #9da5b2;
-  transform: scale(1.03);
+  color: #aeb5c0;
+  border-color: #343a45;
+  background: #181b21;
 }
 
 .task-flow-row-main {
@@ -128,20 +74,22 @@
   align-items: baseline;
   gap: 6px;
   overflow: hidden;
+  white-space: nowrap;
 }
 
 .task-flow-verb {
   flex: none;
-  color: #969eaa;
-  font-size: 11px;
-  font-weight: 560;
+  color: #a8aeb8;
+  font-size: 11.5px;
+  font-weight: 620;
+  letter-spacing: .001em;
 }
 
 .task-flow-primary {
   min-width: 0;
   color: var(--flow-text);
   font-size: 11.5px;
-  line-height: 1.45;
+  line-height: 1.35;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -150,22 +98,20 @@
 .task-flow-primary.code {
   color: #b7bdc8;
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-  font-size: 10.5px;
+  font-size: 10.8px;
   letter-spacing: -.012em;
 }
 
 .task-flow-path {
   color: #b9bec8;
-  text-decoration: underline;
-  text-decoration-color: rgba(185,190,200,.23);
-  text-underline-offset: 2px;
+  text-decoration: none;
 }
 
 .task-flow-diffstat {
   flex: none;
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  gap: 4px;
   margin-left: 1px;
   font: 9px/1 "SFMono-Regular", Consolas, monospace;
   font-variant-numeric: tabular-nums;
@@ -174,41 +120,39 @@
 .task-flow-plus { color: #79aa91; }
 .task-flow-minus { color: #c47a83; }
 
+/* Status is deliberately reduced to a tiny semantic dot. The full status is
+   still available through title/aria-label in the React markup. */
 .task-flow-status {
-  height: 20px;
+  width: 10px;
+  height: 22px;
   flex: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 0 3px;
-  color: #646c79;
-  font-size: 9px;
-  line-height: 1;
-  text-transform: capitalize;
-  white-space: nowrap;
-  opacity: .84;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  opacity: .78;
+}
+
+.task-flow-status > span:not(.task-flow-status-dot) {
+  display: none !important;
 }
 
 .task-flow-status-dot {
   width: 5px;
   height: 5px;
-  flex: none;
   border-radius: 50%;
   background: #656d79;
 }
 
-.task-flow-status.completed,
-.task-flow-status.changed { color: #769684; }
 .task-flow-status.completed .task-flow-status-dot,
-.task-flow-status.changed .task-flow-status-dot { background: #74a087; }
+.task-flow-status.changed .task-flow-status-dot {
+  background: #70a186;
+}
 
-.task-flow-status.failed,
-.task-flow-status.denied { color: #b66f79; }
 .task-flow-status.failed .task-flow-status-dot,
-.task-flow-status.denied .task-flow-status-dot { background: #c5727c; }
+.task-flow-status.denied .task-flow-status-dot {
+  background: #c7727c;
+}
 
-.task-flow-status.running,
-.task-flow-status.started { color: #9992d9; }
 .task-flow-status.running .task-flow-status-dot,
 .task-flow-status.started .task-flow-status-dot {
   background: #a39af0;
@@ -216,110 +160,50 @@
   animation: task-flow-pulse 1.8s ease-out infinite;
 }
 
-.task-flow-status.cancelled,
-.task-flow-status.interrupted { color: #8a8292; }
-
-.task-flow-disclosure {
-  margin: 1px 0 0 12px;
-  padding-left: 23px;
+.task-flow-status.cancelled .task-flow-status-dot,
+.task-flow-status.interrupted .task-flow-status-dot {
+  background: #8a8292;
 }
 
-.task-flow-disclosure .disclosure-trigger {
-  min-height: 24px;
-  padding: 2px 4px 2px 0;
-  color: #69717e;
-  font-size: 10px;
-}
-
-.task-flow-disclosure .disclosure-trigger:hover { color: #969daa; }
-.task-flow-disclosure .disclosure-chevron { width: 12px; height: 12px; }
-
-.task-flow-details {
-  display: grid;
-  gap: 7px;
-  padding: 7px 0 2px;
-}
-
-.task-flow-detail {
-  overflow: hidden;
-  border: 1px solid #242933;
-  border-radius: 9px;
-  background: rgba(16,18,23,.76);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.018);
-}
-
-.task-flow-detail-head {
-  min-height: 32px;
-  display: grid;
-  grid-template-columns: 17px minmax(0,1fr) auto;
-  align-items: center;
-  gap: 7px;
-  padding: 0 9px;
-  border-bottom: 1px solid rgba(255,255,255,.035);
-  color: #7f8795;
-}
-
-.task-flow-detail-head > svg { color: #737b89; }
-
-.task-flow-detail-title {
-  min-width: 0;
-  color: #aeb4bf;
-  font-size: 10.5px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.task-flow-detail-kind {
-  color: #565e6b;
-  font-size: 8px;
-  letter-spacing: .035em;
-  text-transform: uppercase;
-}
-
-.task-flow-detail pre {
-  margin: 0;
-  max-height: 280px;
-  overflow: auto;
-  padding: 10px 11px;
-  background: #0f1116;
-  color: #aeb5c1;
-  font: 10px/1.55 "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  scrollbar-width: thin;
-  scrollbar-color: #292d36 transparent;
-}
-
-.task-flow-detail pre::-webkit-scrollbar { width: 6px; height: 6px; }
-.task-flow-detail pre::-webkit-scrollbar-thumb { background: #292d36; border-radius: 999px; }
-
+/* Kept for compatibility with existing markup; detail panels are hidden in
+   the transcript's compact mode. */
+.task-flow-details,
+.task-flow-detail,
+.task-flow-detail-head,
+.task-flow-detail pre,
 .task-flow-detail .task-flow-detail-empty {
-  padding: 9px 11px;
-  color: #626a77;
-  font-size: 10px;
+  display: none !important;
 }
 
 .task-flow-single {
-  width: min(700px, 100%);
+  width: min(760px, 100%);
 }
 
 @keyframes task-flow-enter {
-  from { opacity: 0; transform: translateY(5px); }
+  from { opacity: 0; transform: translateY(3px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes task-flow-pulse {
-  0% { box-shadow: 0 0 0 0 rgba(163,154,240,.30); }
-  70%, 100% { box-shadow: 0 0 0 5px rgba(163,154,240,0); }
+  0% { box-shadow: 0 0 0 0 rgba(163,154,240,.28); }
+  70%, 100% { box-shadow: 0 0 0 4px rgba(163,154,240,0); }
 }
 
 @media (max-width: 760px) {
-  .task-flow-summary-copy span { display: none; }
-  .task-flow-status { font-size: 0; padding-right: 1px; }
-  .task-flow-status-dot { width: 6px; height: 6px; }
-  .task-flow-list,
-  .task-flow-disclosure { margin-left: 5px; }
+  .task-flow {
+    width: 100%;
+  }
+
+  .task-flow-row {
+    grid-template-columns: 22px minmax(0, 1fr) 8px;
+    gap: 6px;
+    min-height: 27px;
+  }
+
+  .task-flow-row-icon {
+    width: 20px;
+    height: 20px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -328,5 +212,8 @@
   .task-flow-status.started .task-flow-status-dot {
     animation: none !important;
   }
-  .task-flow-row { transition: none !important; }
+
+  .task-flow-row {
+    transition: none !important;
+  }
 }
