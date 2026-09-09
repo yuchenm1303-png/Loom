@@ -124,6 +124,7 @@ def test_thread_library_search_delete_and_protocol_capability(tmp_path: Path) ->
             "archive": True,
             "delete": True,
             "search": True,
+            "permissionMode": True,
         }
 
         deleted = controller.handle(
@@ -137,6 +138,67 @@ def test_thread_library_search_delete_and_protocol_capability(tmp_path: Path) ->
         assert deleted["result"] == {"deleted": True, "threadId": thread_id}
         assert not store.session_dir(thread_id).exists()
         assert workspace.exists()
+    finally:
+        runtime.close()
+
+
+def test_thread_permission_profile_updates_and_persists(tmp_path: Path) -> None:
+    service, runtime, store, workspace = _build_service(tmp_path)
+    notifications: list[tuple[str, dict]] = []
+    service.subscribe_notifications(lambda method, params: notifications.append((method, params)))
+    try:
+        created = service.thread_start(
+            {"workspace": str(workspace), "permissionMode": PermissionMode.APPROVAL.value}
+        )["thread"]
+        thread_id = created["id"]
+        assert created["permissionMode"] == PermissionMode.APPROVAL.value
+
+        controller = ManagedStreamingLoomRpcController(service)
+        initialized = controller.handle(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": PROTOCOL_VERSION,
+                    "clientInfo": {"name": "pytest", "version": "1"},
+                },
+            }
+        )
+        assert initialized["result"]["capabilities"]["threadManagement"]["permissionMode"] is True
+
+        changed = controller.handle(
+            {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "thread/set_permission_mode",
+                "params": {
+                    "threadId": thread_id,
+                    "permissionMode": PermissionMode.FULL_ACCESS.value,
+                },
+            }
+        )
+        assert changed["result"]["thread"]["permissionMode"] == PermissionMode.FULL_ACCESS.value
+        assert store.load(thread_id).permission_mode is PermissionMode.FULL_ACCESS
+        assert service.thread_read({"threadId": thread_id})["thread"]["permissionMode"] == PermissionMode.FULL_ACCESS.value
+        assert any(
+            method == "thread/updated"
+            and params.get("reason") == "permission_changed"
+            and params.get("thread", {}).get("permissionMode") == PermissionMode.FULL_ACCESS.value
+            for method, params in notifications
+        )
+
+        invalid = controller.handle(
+            {
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "thread/set_permission_mode",
+                "params": {"threadId": thread_id, "permissionMode": "not-a-profile"},
+            }
+        )
+        assert invalid["error"]["code"] == -32602
+        assert PermissionMode.APPROVAL.value in invalid["error"]["data"]["supported"]
+        assert store.load(thread_id).permission_mode is PermissionMode.FULL_ACCESS
     finally:
         runtime.close()
 
