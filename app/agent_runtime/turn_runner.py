@@ -29,17 +29,20 @@ class TurnRunner:
                     messages, extra = rt._prepare_model_request(session, step, token)
                     if len(messages) > rt.limits.max_messages:
                         return rt._limit(session, "context message limit reached; no safe compaction boundary")
+                    reasoning = getattr(rt, "reasoning", None)
                     rt._record(session, Event.MODEL_REQUESTED, data={
                         "profile_id": session.profile_id, "step": step.model_step,
                         "step_id": step.step_id, "message_count": len(messages),
                         "tool_count": len(step.tool_router.all()),
                         "permission_mode": step.world_state.permission_mode.value,
+                        "reasoning": reasoning.as_safe_dict() if reasoning is not None else None,
                         "attempt": attempt, **extra,
                     })
                     try:
                         response = rt.model_executor.execute(rt.platform, session.profile_id,
                             ChatRequest(messages=tuple(messages), tools=step.tool_router.definitions(),
-                                tool_choice=ToolChoice.AUTO, max_output_tokens=rt.limits.output_reserve_tokens), token)
+                                tool_choice=ToolChoice.AUTO, max_output_tokens=rt.limits.output_reserve_tokens,
+                                reasoning=reasoning), token)
                         break
                     except AITransportError:
                         if attempt >= rt.limits.model_retries:
