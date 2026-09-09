@@ -14,10 +14,12 @@ def _option(value: str, label: str, description: str, *, advanced: bool = False)
     }
 
 
+# MiniMax's hosted OpenAI-compatible M3 endpoint documents adaptive thinking as
+# the default and supports disabling it. Keep this catalog conservative even
+# though the open-weight model can expose additional deployment-specific modes.
 _MINIMAX_M3_OPTIONS = [
-    _option("disabled", "Direct", "Skip deliberate thinking for the lowest latency."),
+    _option("disabled", "Direct", "Disable deliberate thinking for the lowest latency."),
     _option("adaptive", "Adaptive", "Let M3 decide when deeper reasoning is useful."),
-    _option("enabled", "Deep", "Reason before every response and after tool results."),
 ]
 
 _OPENAI_STANDARD_OPTIONS = [
@@ -53,7 +55,7 @@ def reasoning_capability(*, model: str, adapter: str, base_url: str = "") -> dic
             "kind": ReasoningKind.MINIMAX_THINKING.value,
             "defaultValue": "adaptive",
             "options": list(_MINIMAX_M3_OPTIONS),
-            "source": "MiniMax M3",
+            "source": "MiniMax M3 hosted API",
         }
 
     is_openai_reasoning = (
