@@ -411,7 +411,15 @@ export function Transcript({ items, running, promptDisabled, onPrompt, onApprova
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const previousCount = useRef(0);
   const blocks = groupTranscript(items);
-  const latestAssistant = [...items].reverse().find((item) => item.type === "assistant_message");
+  let lastUserIndex = -1;
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    if (items[index].type === "user_message") {
+      lastUserIndex = index;
+      break;
+    }
+  }
+  const currentTurnItems = lastUserIndex >= 0 ? items.slice(lastUserIndex + 1) : items;
+  const latestAssistant = [...currentTurnItems].reverse().find((item) => item.type === "assistant_message");
   const latestAssistantState = latestAssistant ? splitReasoning(latestAssistant.text ?? "") : null;
   const showPendingThinking = Boolean(
     running &&
