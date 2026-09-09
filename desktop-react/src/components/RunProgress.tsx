@@ -43,7 +43,7 @@ function phaseFor(items: TranscriptItem[], threadStatus?: string): string {
   if (runningActivity?.type === "tool_call") return "Running tools…";
 
   const latestAssistant = [...items].reverse().find((item) => item.type === "assistant_message");
-  if (latestAssistant && String(latestAssistant.text ?? "").trim()) return "Writing response…";
+  if (latestAssistant && String(latestAssistant.text ?? "").trim()) return "正在跟进…";
 
   const hasFinishedActivity = items.some((item) =>
     ["tool_call", "process", "file_edit"].includes(item.type) && !isRunningStatus(item.status),
