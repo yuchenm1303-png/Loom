@@ -3,6 +3,10 @@
 Assistant text is split into blocks rather than one HTML string: prose becomes
 rich-text labels and fenced code becomes a real code widget with its own copy
 action. Everything is escaped before any markup is added.
+
+The renderer intentionally supports the small pieces that make agent answers
+read like documents rather than debug logs: compact GitHub-style tables and
+quiet callouts in addition to prose, lists, quotes and fenced code.
 """
 
 from __future__ import annotations
@@ -23,6 +27,8 @@ _LIST = re.compile(r"^\s*([-*+]|\d+[.)])\s+(.+)$")
 _CHECK = re.compile(r"^\[([ xX])\]\s+(.+)$")
 _QUOTE = re.compile(r"^\s*>\s?(.*)$")
 _RULE = re.compile(r"^\s*([-*_])\s*(\1\s*){2,}$")
+_TABLE_DIVIDER_CELL = re.compile(r"^:?-{3,}:?$")
+_CALLOUT = re.compile(r"^\s*(?:⚠️?|❗)\s*(.+)$")
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,6 +64,109 @@ def inline_html(value: str) -> str:
     return safe
 
 
+def _split_table_row(value: str) -> list[str]:
+    """Split one Markdown table row while respecting escaped pipes."""
+    text = value.strip()
+    if text.startswith("|"):
+        text = text[1:]
+    if text.endswith("|") and not text.endswith(r"\|"):
+        text = text[:-1]
+
+    cells: list[str] = []
+    current: list[str] = []
+    escaped = False
+    for char in text:
+        if escaped:
+            if char != "|":
+                current.append("\\")
+            current.append(char)
+            escaped = False
+            continue
+        if char == "\\":
+            escaped = True
+            continue
+        if char == "|":
+            cells.append("".join(current).strip())
+            current.clear()
+            continue
+        current.append(char)
+    if escaped:
+        current.append("\\")
+    cells.append("".join(current).strip())
+    return cells
+
+
+def _table_alignment(cell: str) -> str | None:
+    marker = cell.strip().replace(" ", "")
+    if not _TABLE_DIVIDER_CELL.fullmatch(marker):
+        return None
+    left = marker.startswith(":")
+    right = marker.endswith(":")
+    if left and right:
+        return "center"
+    if right:
+        return "right"
+    return "left"
+
+
+def _parse_table_divider(value: str) -> list[str] | None:
+    if "|" not in value:
+        return None
+    cells = _split_table_row(value)
+    if len(cells) < 2:
+        return None
+    alignments: list[str] = []
+    for cell in cells:
+        alignment = _table_alignment(cell)
+        if alignment is None:
+            return None
+        alignments.append(alignment)
+    return alignments
+
+
+def _numeric_columns(rows: list[list[str]], column_count: int) -> set[int]:
+    """Right-align data-heavy columns even when the model omitted ':' markers."""
+    numeric: set[int] = set()
+    for index in range(column_count):
+        values = [row[index] for row in rows if index < len(row) and row[index].strip()]
+        if not values:
+            continue
+        if all(re.search(r"\d", value) is not None for value in values):
+            numeric.add(index)
+    return numeric
+
+
+def _table_html(headers: list[str], alignments: list[str], rows: list[list[str]]) -> str:
+    column_count = len(headers)
+    normalized_rows = [
+        (row + [""] * column_count)[:column_count]
+        for row in rows
+    ]
+    numeric = _numeric_columns(normalized_rows, column_count)
+
+    def align(index: int) -> str:
+        explicit = alignments[index] if index < len(alignments) else "left"
+        return "right" if explicit == "left" and index in numeric else explicit
+
+    header = "".join(
+        f"<th align='{align(index)}'>{inline_html(value)}</th>"
+        for index, value in enumerate(headers)
+    )
+    body = "".join(
+        "<tr>"
+        + "".join(
+            f"<td align='{align(index)}'>{inline_html(value)}</td>"
+            for index, value in enumerate(row)
+        )
+        + "</tr>"
+        for row in normalized_rows
+    )
+    return (
+        "<table class='mdTable' cellspacing='0' cellpadding='0' width='100%'>"
+        f"<tr>{header}</tr>{body}</table>"
+    )
+
+
 def parse_blocks(value: str) -> list[Block]:
     """Split Markdown-ish text into rich-text and code blocks, in order."""
     blocks: list[Block] = []
@@ -69,6 +178,10 @@ def parse_blocks(value: str) -> list[Block]:
     code: list[str] = []
     language = ""
     in_code = False
+
+    table_headers: list[str] | None = None
+    table_alignments: list[str] = []
+    table_rows: list[list[str]] = []
 
     def flush_paragraph() -> None:
         if paragraph:
@@ -101,7 +214,17 @@ def parse_blocks(value: str) -> list[Block]:
             )
             quote.clear()
 
+    def flush_table() -> None:
+        nonlocal table_headers, table_alignments
+        if table_headers is None:
+            return
+        chunks.append(_table_html(table_headers, table_alignments, table_rows))
+        table_headers = None
+        table_alignments = []
+        table_rows.clear()
+
     def flush_text() -> None:
+        flush_table()
         flush_paragraph()
         flush_list()
         flush_quote()
@@ -119,6 +242,8 @@ def parse_blocks(value: str) -> list[Block]:
     for line in value.splitlines():
         fence = _FENCE.match(line)
         if fence:
+            if table_headers is not None:
+                flush_table()
             if in_code:
                 emit_code()
                 language = ""
@@ -131,9 +256,36 @@ def parse_blocks(value: str) -> list[Block]:
         if in_code:
             code.append(line)
             continue
+
+        if table_headers is not None:
+            if line.strip() and "|" in line:
+                row = _split_table_row(line)
+                if len(row) >= 2:
+                    table_rows.append(row)
+                    continue
+            flush_table()
+
         if not line.strip():
             flush_text()
             continue
+
+        divider = _parse_table_divider(line)
+        if divider is not None and len(paragraph) == 1:
+            headers = _split_table_row(paragraph[0])
+            if len(headers) == len(divider):
+                paragraph.clear()
+                flush_list()
+                flush_quote()
+                table_headers = headers
+                table_alignments = divider
+                continue
+
+        callout = _CALLOUT.match(line)
+        if callout:
+            flush_text()
+            chunks.append(f"<div class='callout warning'>{inline_html(callout.group(1))}</div>")
+            continue
+
         if _RULE.match(line):
             flush_text()
             chunks.append("<div class='rule'></div>")
