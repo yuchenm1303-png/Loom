@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.desktop import message_presentation as presentation
+from app.desktop import output_presentation
 from app.desktop import theme
 from app.desktop import widgets as base
 
@@ -294,10 +295,35 @@ def install() -> None:
             if getattr(entry, "kind", "") != "assistant":
                 continue
             widget = self._widgets.get(entry.key)
-            if not isinstance(widget, presentation.MessageWidget):
+            # ``output_presentation.MessageWidget`` is a subclass of
+            # ``message_presentation.MessageWidget`` and is what
+            # ``TranscriptView._build`` actually instantiates. The previous
+            # check used the base class only and silently skipped every real
+            # widget, so the footer timestamp was never assigned from the
+            # assistant item and ``sync()`` immediately overwrote it with the
+            # current local time.
+            if not isinstance(widget, output_presentation.MessageWidget):
                 continue
             item = getattr(entry, "item", {}) or {}
             widget.set_message_timestamp(item.get("updatedAt") or item.get("createdAt"))
+
+    # ``TranscriptView`` is subclassed by ``output_presentation`` (the class
+    # ``TranscriptView._build`` actually instantiates) and by ``message_presentation``
+    # (the one this module previously aliased as ``presentation``). Two
+    # sibling install passes — activity_hierarchy and disclosure_motion — each
+    # monkey-patch the ``output_presentation`` subclass specifically. Patching
+    # only the base class here would mean the wrapper lives behind another
+    # installed wrapper and never runs, leaving the footer permanently on the
+    # current local time instead of the assistant item's updatedAt.
+    # Wrap whatever wrapper currently owns the output_presentation subclass so
+    # the activity_hierarchy / disclosure_motion installs still run first.
+    outer_render = output_presentation.TranscriptView.render
+
+    def chained_render(self: Any, entries: list[Any]) -> None:
+        outer_render(self, entries)
+        render(self, entries)
+
+    output_presentation.TranscriptView.render = chained_render
 
     presentation.MessageWidget.__init__ = message_init
     presentation.MessageWidget.set_text = set_text

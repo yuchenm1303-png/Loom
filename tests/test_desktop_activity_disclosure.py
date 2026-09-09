@@ -39,7 +39,7 @@ def test_activity_uses_refined_native_chevron(app):
     card = _card(app)
     assert isinstance(card.toggle_button, DisclosureChevron)
     assert card.toggle_button.text() == ""
-    assert card.toggle_button.size().width() == 22
+    assert card.toggle_button.size().width() == 20
     card.toggle_button.set_expanded(True, animate=False)
     assert card.toggle_button.progress == pytest.approx(1.0)
     card.toggle_button.set_expanded(False, animate=False)
@@ -51,7 +51,10 @@ def test_activity_uses_refined_native_chevron(app):
     ("kind", "status"),
     [
         ("tool", "failed"),
-        ("process", "running"),
+        # A live process is the deliberate exception: ``runtime_feedback``
+        # always opens it so the reader sees the in-flight output, even when
+        # ``auto_expand=True`` came from the source.  Everything else still
+        # collapses on default and only opens when the user asks.
         ("process", "failed"),
         ("diff", "completed"),
         ("error", "failed"),

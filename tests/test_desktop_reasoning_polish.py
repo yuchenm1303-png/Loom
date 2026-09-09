@@ -52,6 +52,15 @@ def test_reasoning_disclosure_uses_quiet_inline_surface(app, monkeypatch):
 
 
 def test_reasoning_disclosure_animates_height_opacity_and_chevron(app, monkeypatch):
+    """Reasoning disclosure commits once and only the chevron rotates.
+
+    Earlier passes animated ``body.maximumHeight`` together with an opacity
+    fade. The current low-reflow policy replaces that with a single layout
+    commit: the body becomes visible at its natural height, no opacity effect
+    is attached, and only the chevron paint event animates. The interaction
+    still feels responsive (the chevron rotates, the body appears), without
+    mutating the transcript's scroll range on every animation frame.
+    """
     monkeypatch.delenv("LOOM_REDUCE_MOTION", raising=False)
     message = MessageWidget("assistant")
     message.resize(720, 240)
@@ -65,23 +74,20 @@ def test_reasoning_disclosure_animates_height_opacity_and_chevron(app, monkeypat
     reasoning = message.reasoning
     assert reasoning is not None
     reasoning.toggle.click()
-
-    assert reasoning._animation is not None
-    assert reasoning.toggle._animation is not None
-    assert reasoning.toggle.property("expanded") is True
-    assert reasoning.body.isHidden() is False
-    assert reasoning.body.maximumHeight() < 16777215
-
     _settle(app)
-    assert reasoning._expanded is True
+
+    assert reasoning._animation is None
+    assert reasoning.toggle._animation is None
+    assert reasoning.toggle.property("expanded") is True
     assert reasoning.body.isHidden() is False
     assert reasoning.body.maximumHeight() == 16777215
     assert reasoning.toggle.angle == 90.0
 
     reasoning.toggle.click()
-    assert reasoning._animation is not None
-    assert reasoning.toggle.property("expanded") is False
     _settle(app)
+
+    assert reasoning._animation is None
+    assert reasoning.toggle.property("expanded") is False
     assert reasoning._expanded is False
     assert reasoning.body.isHidden() is True
     assert reasoning.toggle.angle == 0.0
