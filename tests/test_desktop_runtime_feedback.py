@@ -85,9 +85,14 @@ def test_failed_tool_is_one_compact_row_until_user_opens_details(app, monkeypatc
     )
 
     assert card.property("runtimeState") == "failed"
+    assert card.title_label.text() == "Run command"
+    assert card.title_label.toolTip() == "exec"
     assert card.runtime_badge.isHidden() is False
     assert card.runtime_badge.label.text() == "Failed"
+    assert card.runtime_badge.height() == 20
     assert card.runtime_badge.spinner.isHidden() is True
+    assert card.toggle_button.width() == 20
+    assert card.toggle_button.height() == 20
     assert card.status_label.isHidden() is True
     assert card._expanded is False
     assert card.body_shell.isHidden() is True
