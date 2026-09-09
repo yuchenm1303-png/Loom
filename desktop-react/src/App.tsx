@@ -12,7 +12,8 @@ export default function App() {
   const [inspectorOpen, setInspectorOpen] = useState(true);
   const thread = loom.active?.thread;
   const running = loom.turnActive || thread?.status === "running" || thread?.status === "waiting_approval";
-  const conversationDisabled = !thread || loom.connection !== "ready" || running;
+  const archived = Boolean(thread?.archived);
+  const conversationDisabled = !thread || loom.connection !== "ready" || running || archived;
 
   const progressProps = {
     items: loom.items,
@@ -40,8 +41,15 @@ export default function App() {
       <Sidebar
         threads={loom.threads}
         activeId={thread?.id}
-        onOpen={(threadId) => void loom.openThread(threadId)}
-        onNew={() => void loom.newThread()}
+        threadView={loom.threadView}
+        archivedCount={loom.threadCounts.archived}
+        onOpen={loom.openThread}
+        onNew={loom.newThread}
+        onRename={loom.renameThread}
+        onArchive={loom.archiveThread}
+        onDelete={loom.deleteThread}
+        onFork={loom.forkThread}
+        onViewChange={loom.setThreadView}
       />
 
       <section className="workspace">
@@ -52,6 +60,7 @@ export default function App() {
           </div>
           <div className="thread-header-actions">
             {running ? <span className="running-pill"><span className="status-dot live" />Working</span> : null}
+            {archived ? <span className="running-pill">Archived · read only</span> : null}
             {!inspectorOpen ? (
               <button className="icon-button" onClick={() => setInspectorOpen(true)} title="Open runtime inspector"><PanelRightOpen size={17} /></button>
             ) : null}
@@ -71,7 +80,7 @@ export default function App() {
         <div className="composer-stage">
           {running ? <RunProgress {...progressProps} placement="bottom" /> : null}
           <Composer
-            disabled={!thread || loom.connection !== "ready"}
+            disabled={!thread || loom.connection !== "ready" || archived}
             running={running}
             model={loom.runtime.model}
             modelSnapshot={loom.models}
