@@ -61,6 +61,20 @@ body {
 .approval-copy { font-size: 11.5px !important; }
 .button { font-size: 11.5px !important; }
 
+/* Compact task/activity flow */
+.task-flow-summary-copy strong { font-size: 13.5px !important; }
+.task-flow-summary-copy span { font-size: 10.5px !important; }
+.task-flow-verb { font-size: 12.5px !important; }
+.task-flow-primary { font-size: 13px !important; }
+.task-flow-primary.code { font-size: 12px !important; }
+.task-flow-diffstat { font-size: 10.5px !important; }
+.task-flow-status { font-size: 10.5px !important; }
+.task-flow-disclosure .disclosure-trigger { font-size: 11.5px !important; }
+.task-flow-detail-title { font-size: 12px !important; }
+.task-flow-detail-kind { font-size: 9.5px !important; }
+.task-flow-detail pre { font-size: 11.5px !important; }
+.task-flow-detail .task-flow-detail-empty { font-size: 11.5px !important; }
+
 /* Composer */
 .composer textarea { font-size: 15.5px !important; }
 .composer-tool,
