@@ -18,6 +18,7 @@ from app.desktop import iconography as _iconography
 from app.desktop import tool_icon_polish as _tool_icon_polish
 from app.desktop import sidebar_motion as _sidebar_motion
 from app.desktop import sidebar_motion_smooth as _sidebar_motion_smooth
+from app.desktop import sidebar_group_polish as _sidebar_group_polish
 from app.desktop import turn_progress as _turn_progress
 from app.desktop import widgets as _widgets
 from app.desktop import widget_lifecycle as _widget_lifecycle
@@ -77,6 +78,7 @@ _iconography.install()
 _tool_icon_polish.install()
 _sidebar_motion.install_widgets()
 _sidebar_motion_smooth.install()
+_sidebar_group_polish.install()
 _composer_polish.install()
 _model_selector_polish.install()
 _permission_menu_polish.install()
