@@ -9,7 +9,7 @@ import {
   Terminal,
   Wrench,
 } from "lucide-react";
-import { useMemo, useState, type ComponentType } from "react";
+import { useMemo, useState } from "react";
 import type { TranscriptItem } from "../types/loom";
 import "./Inspector.css";
 
@@ -19,8 +19,7 @@ interface InspectorProps {
 }
 
 type Tab = "activity" | "changes" | "terminal";
-
-type IconComponent = ComponentType<{ size?: number; strokeWidth?: number; className?: string }>;
+type IconComponent = typeof Activity;
 
 const tabs: Array<{ id: Tab; label: string; icon: IconComponent }> = [
   { id: "activity", label: "Activity", icon: Activity },
