@@ -1,0 +1,236 @@
+/* Runtime empty-state mark polish. Kept separate so the inspector layout stays easy to tune. */
+
+.runtime-empty-visual {
+  width: 112px;
+  height: 104px;
+  margin-bottom: 22px;
+  transform: translateZ(0);
+}
+
+.runtime-empty-visual::before {
+  width: 82px;
+  height: 82px;
+  background:
+    radial-gradient(circle, rgba(151, 137, 255, .16) 0%, rgba(139, 124, 246, .065) 38%, rgba(139, 124, 246, .018) 61%, transparent 75%);
+  filter: blur(7px);
+  animation: runtime-mark-halo 4.8s ease-in-out infinite;
+}
+
+.runtime-empty-visual::after {
+  content: "";
+  position: absolute;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: rgba(177, 168, 255, .72);
+  box-shadow:
+    -48px 13px 0 -1px rgba(126, 114, 222, .36),
+    -38px -29px 0 -1px rgba(255, 255, 255, .18),
+    43px -24px 0 -1px rgba(151, 138, 246, .34),
+    48px 18px 0 -1px rgba(255, 255, 255, .13),
+    31px 38px 0 -1px rgba(126, 114, 222, .22);
+  opacity: .64;
+  animation: runtime-mark-stars 5.2s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.runtime-orbit {
+  transition: border-color 240ms ease, opacity 240ms ease, filter 240ms ease;
+}
+
+.runtime-orbit-one {
+  width: 82px;
+  height: 82px;
+  border-color: rgba(139, 124, 246, .16);
+  box-shadow:
+    inset 0 0 22px rgba(139, 124, 246, .018),
+    0 0 24px rgba(139, 124, 246, .018);
+  animation: runtime-mark-ring-breathe 5.8s ease-in-out infinite;
+}
+
+.runtime-orbit-one::before {
+  content: "";
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  top: 8px;
+  right: 13px;
+  border-radius: 50%;
+  background: #8f84e9;
+  box-shadow:
+    0 0 0 3px rgba(139, 124, 246, .055),
+    0 0 12px rgba(139, 124, 246, .38);
+  opacity: .68;
+}
+
+.runtime-orbit-one::after {
+  content: "";
+  position: absolute;
+  inset: 10px;
+  border: 1px solid rgba(255, 255, 255, .035);
+  border-radius: 50%;
+  border-left-color: rgba(139, 124, 246, .075);
+  border-bottom-color: transparent;
+  animation: runtime-mark-inner-spin 14s linear infinite reverse;
+}
+
+.runtime-orbit-two {
+  width: 108px;
+  height: 59px;
+  border-color: rgba(255, 255, 255, .068);
+  box-shadow: 0 0 18px rgba(0, 0, 0, .08);
+  transform: rotate(-22deg);
+  animation: runtime-mark-ellipse 7.2s ease-in-out infinite;
+}
+
+.runtime-orbit-two::before {
+  content: "";
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  left: 8px;
+  top: 30px;
+  border-radius: 50%;
+  background: rgba(169, 157, 255, .72);
+  box-shadow: 0 0 9px rgba(139, 124, 246, .3);
+}
+
+.runtime-orbit-two::after {
+  content: "";
+  position: absolute;
+  width: 14px;
+  height: 1px;
+  right: 9px;
+  top: 17px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, rgba(170, 159, 255, .28), transparent);
+  transform: rotate(16deg);
+  opacity: .72;
+}
+
+.runtime-orbit-dot {
+  width: 6px;
+  height: 6px;
+  top: 10px;
+  left: 53px;
+  background: #968af3;
+  box-shadow:
+    0 0 0 3px rgba(139, 124, 246, .055),
+    0 0 13px rgba(139, 124, 246, .5);
+  transform-origin: 3px 42px;
+  animation-duration: 8.6s;
+}
+
+.runtime-empty-icon {
+  width: 47px;
+  height: 47px;
+  border-color: #333844;
+  border-radius: 14px;
+  background:
+    linear-gradient(145deg, rgba(31, 34, 43, .98), rgba(17, 20, 26, .98));
+  color: #a196f2;
+  outline: 1px solid rgba(139, 124, 246, .055);
+  outline-offset: 3px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .055),
+    inset 0 -1px 0 rgba(0, 0, 0, .22),
+    0 12px 32px rgba(0, 0, 0, .22),
+    0 0 24px rgba(139, 124, 246, .055);
+  animation: runtime-mark-float 5s ease-in-out infinite;
+  transition:
+    transform 260ms cubic-bezier(.2, .75, .2, 1),
+    border-color 220ms ease,
+    color 220ms ease,
+    box-shadow 220ms ease;
+}
+
+.runtime-empty-icon::before {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, .025);
+  pointer-events: none;
+}
+
+.runtime-empty-icon::after {
+  content: "";
+  position: absolute;
+  left: 13px;
+  right: 13px;
+  bottom: 5px;
+  height: 1px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, rgba(154, 141, 244, .48), transparent);
+  opacity: .58;
+  pointer-events: none;
+}
+
+.runtime-empty-icon svg {
+  filter: drop-shadow(0 0 7px rgba(139, 124, 246, .16));
+  transition: transform 260ms cubic-bezier(.2, .75, .2, 1), filter 220ms ease;
+}
+
+.runtime-empty:hover .runtime-empty-icon {
+  transform: translateY(-2px) scale(1.035);
+  border-color: rgba(139, 124, 246, .34);
+  color: #b0a6ff;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .065),
+    inset 0 -1px 0 rgba(0, 0, 0, .22),
+    0 16px 36px rgba(0, 0, 0, .25),
+    0 0 28px rgba(139, 124, 246, .095);
+}
+
+.runtime-empty:hover .runtime-empty-icon svg {
+  transform: scale(1.06);
+  filter: drop-shadow(0 0 9px rgba(139, 124, 246, .24));
+}
+
+.runtime-empty:hover .runtime-orbit-one {
+  border-color: rgba(139, 124, 246, .22);
+}
+
+.runtime-empty:hover .runtime-orbit-two {
+  border-color: rgba(255, 255, 255, .085);
+}
+
+@keyframes runtime-mark-halo {
+  0%, 100% { opacity: .72; transform: scale(.94); }
+  50% { opacity: 1; transform: scale(1.07); }
+}
+
+@keyframes runtime-mark-stars {
+  0%, 100% { opacity: .42; transform: scale(.94) rotate(0deg); }
+  50% { opacity: .76; transform: scale(1.03) rotate(5deg); }
+}
+
+@keyframes runtime-mark-ring-breathe {
+  0%, 100% { transform: scale(.985); opacity: .82; }
+  50% { transform: scale(1.025); opacity: 1; }
+}
+
+@keyframes runtime-mark-inner-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes runtime-mark-ellipse {
+  0%, 100% { transform: rotate(-22deg) scaleX(.99); opacity: .78; }
+  50% { transform: rotate(-18deg) scaleX(1.025); opacity: 1; }
+}
+
+@keyframes runtime-mark-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-1.5px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .runtime-empty-visual::before,
+  .runtime-empty-visual::after,
+  .runtime-orbit-one,
+  .runtime-orbit-one::after,
+  .runtime-orbit-two,
+  .runtime-empty-icon {
+    animation: none !important;
+  }
+}
