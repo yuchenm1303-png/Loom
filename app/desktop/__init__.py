@@ -43,6 +43,7 @@ from app.desktop import runtime_feedback as _runtime_feedback
 from app.desktop import activity_compact_panel as _activity_compact_panel
 from app.desktop import agent_working_indicator as _agent_working_indicator
 from app.desktop import transcript_flow as _transcript_flow
+from app.desktop import stream_render_pipeline as _stream_render_pipeline
 from app.desktop.thread_presentation import ThreadListItemWidget, thread_row_size
 
 _transcript_density.install()
@@ -55,8 +56,10 @@ _user_bubble_alignment.install()
 _agent_working_indicator.install_widgets()
 _message_actions_turn_boundary.install_view()
 # The keyed reconciler may change canonical order after a live snapshot refresh,
-# so physically move existing Qt widgets to that order.
+# so physically move existing Qt widgets to that order. Content-only stream
+# frames bypass this structural lane entirely.
 _transcript_flow.install()
+_stream_render_pipeline.install_view()
 # User controls are installed after the final transcript reconciler so each user
 # entry remains one canonical keyed shell: bubble first, actions directly below.
 _user_message_actions.install()
@@ -94,6 +97,9 @@ _sidebar_motion.install_window(LoomDesktopWindow)
 _turn_progress.install_window(LoomDesktopWindow)
 _agent_working_indicator.install_window(LoomDesktopWindow)
 _message_actions_turn_boundary.install_window(LoomDesktopWindow)
+# Install last so high-frequency item/delta traffic enters the bounded streaming
+# lane after all structural window wrappers have established their behavior.
+_stream_render_pipeline.install_window(LoomDesktopWindow)
 
 __all__ = [
     "ActivityCard",
