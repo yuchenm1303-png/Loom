@@ -1,20 +1,23 @@
-"""Continuous splitter-native motion for Loom's left and right side panels.
+"""Continuous, low-reflow motion for Loom's left and right side panels.
 
-A side panel lives inside ``QSplitter``.  Animating its minimum/maximum width on
-every frame makes two layout systems fight over the same geometry: the child
-changes its constraints, then the splitter resolves those constraints and
-moves the other sections.  On Windows that reads as tiny stalls, uneven speed
-and, on a fast reversal, an occasional one-frame gap.
+The first splitter-native pass removed width-constraint fighting, but it still
+called ``QSplitter.setSizes`` on every animation frame while the conversation
+pane's full widget tree stayed live.  A transcript can contain hundreds of rich
+labels, tool cards and scroll areas, so every one of those width changes caused
+Qt to recursively re-run layout/height-for-width work.  On Windows the animation
+therefore looked smooth in an empty thread and visibly stuttered in a real one.
 
-This pass makes the splitter the single owner of motion.  During a transition
-we relax only the moving panel's minimum width once, keep the panel painted,
-and transfer pixels directly between that panel and the conversation section
-with ``QSplitter.setSizes``.  The opposite side never moves.  No opacity effect
-is involved, so there is no frame where space exists but content has vanished.
+This pass keeps QSplitter as the single owner of the moving edge, but temporarily
+freezes the *deep child layouts* of the moving panel and the conversation pane.
+The top-level frames still resize and paint on every frame, while their children
+stay at their last settled geometry and are naturally clipped/revealed by the
+moving edge.  At the endpoint the layouts are re-enabled and activated exactly
+once.  That turns ~15 expensive transcript reflows into one final reflow without
+changing the final geometry or introducing opacity gaps.
 
-The implementation also starts every reversal from the *actual* current
-splitter sizes and scales its duration to the remaining distance.  Repeated
-clicks therefore reverse naturally instead of restarting from an old target.
+Layout freezes are reference-counted because the left and right panels can move
+at the same time and share the conversation layout.  Reversing an in-flight
+animation keeps the same freeze, so there is no release/reacquire frame or jump.
 """
 
 from __future__ import annotations
@@ -22,14 +25,16 @@ from __future__ import annotations
 from typing import Any
 
 from PySide6.QtCore import QEasingCurve, QVariantAnimation
-from PySide6.QtWidgets import QSplitter, QWidget
+from PySide6.QtWidgets import QLayout, QSplitter, QWidget
 
 from app.desktop import sidebar_motion, theme
 
 
-_OPEN_DURATION_MS = 248
-_CLOSE_DURATION_MS = 218
-_MIN_REVERSAL_MS = 105
+# Slightly tighter than the old 248/218 ms timings.  The motion still has enough
+# room to read, but spends fewer frames asking the splitter to move on Windows.
+_OPEN_DURATION_MS = 210
+_CLOSE_DURATION_MS = 185
+_MIN_REVERSAL_MS = 90
 
 
 def _restore_constraints(controller: Any, key: str, panel: QWidget) -> None:
@@ -51,8 +56,6 @@ def _center_index(splitter: QSplitter, panel_index: int) -> int:
         return 1
     if panel_index == count - 1:
         return count - 2
-    # A side-panel controller should never target a middle section, but falling
-    # back to the adjacent section is still deterministic and avoids a crash.
     return max(0, panel_index - 1)
 
 
@@ -63,9 +66,9 @@ def _apply_splitter_width(
 ) -> int:
     """Move exactly the requested side width and give/take pixels from center.
 
-    ``QSplitter`` may be resized by the window while an animation is running.
-    Reading its current sizes on every frame means that external resize is
-    preserved; only the delta needed for this animation is transferred.
+    Only the two participating top-level splitter sections move.  Their deep
+    layouts are suspended by ``_acquire_layout_freeze`` during an animation, so
+    this operation remains cheap even when the transcript is large.
     """
     sizes = list(splitter.sizes())
     if panel_index < 0 or panel_index >= len(sizes):
@@ -79,24 +82,110 @@ def _apply_splitter_width(
     if desired == current:
         return current
 
-    # Positive delta means the side opens and the conversation gives up pixels;
-    # negative delta means the side closes and the conversation receives them.
     delta = desired - current
     sizes[panel_index] = desired
     sizes[center] = max(0, int(sizes[center]) - delta)
     splitter.setSizes(sizes)
-    return max(0, int(splitter.sizes()[panel_index]))
+    # Do not query/force the entire splitter a second time unless Qt actually
+    # had to clamp us.  ``sizes()`` is still cheap here because child layouts are
+    # frozen, but this keeps the hot path to one geometry mutation per frame.
+    actual_sizes = splitter.sizes()
+    return max(0, int(actual_sizes[panel_index])) if panel_index < len(actual_sizes) else desired
 
 
 def _transition_duration(*, opening: bool, start: int, end: int, full_width: int) -> int:
-    """Keep full transitions luxurious while short reversals stay responsive."""
+    """Keep full transitions polished while short reversals stay responsive."""
     base = _OPEN_DURATION_MS if opening else _CLOSE_DURATION_MS
     span = max(1, int(full_width))
     fraction = min(1.0, abs(int(end) - int(start)) / span)
-    # sqrt-like falloff keeps a half-finished reversal from suddenly becoming
-    # too fast, while a tiny reversal never spends another full quarter second.
     scaled = int(round(base * max(0.48, fraction ** 0.58)))
     return max(_MIN_REVERSAL_MS, min(base, scaled))
+
+
+def _freeze_registry(controller: Any) -> dict[int, dict[str, Any]]:
+    registry = getattr(controller, "_panel_layout_freezes", None)
+    if registry is None:
+        registry = {}
+        controller._panel_layout_freezes = registry
+    return registry
+
+
+def _freeze_owners(controller: Any) -> dict[str, list[int]]:
+    owners = getattr(controller, "_panel_layout_freeze_owners", None)
+    if owners is None:
+        owners = {}
+        controller._panel_layout_freeze_owners = owners
+    return owners
+
+
+def _acquire_layout_freeze(
+    controller: Any,
+    key: str,
+    *widgets: QWidget,
+) -> None:
+    """Suspend expensive descendant relayout until this transition settles.
+
+    ``QLayout.setEnabled(False)`` does not hide children.  Their last geometry
+    keeps painting while the parent frame changes width, which is exactly the
+    visual we want: content is clipped/revealed continuously, rather than being
+    rewrapped on every animation frame.
+    """
+    owners = _freeze_owners(controller)
+    if key in owners:
+        # An in-flight reversal for the same side keeps the existing freeze.
+        return
+
+    registry = _freeze_registry(controller)
+    acquired: list[int] = []
+    seen: set[int] = set()
+    for widget in widgets:
+        if widget is None:
+            continue
+        layout = widget.layout()
+        if not isinstance(layout, QLayout):
+            continue
+        token = id(layout)
+        if token in seen:
+            continue
+        seen.add(token)
+        record = registry.get(token)
+        if record is None:
+            record = {
+                "layout": layout,
+                "count": 0,
+                "was_enabled": bool(layout.isEnabled()),
+            }
+            registry[token] = record
+        if int(record["count"]) == 0 and bool(record["was_enabled"]):
+            layout.setEnabled(False)
+        record["count"] = int(record["count"]) + 1
+        acquired.append(token)
+    owners[key] = acquired
+
+
+def _release_layout_freeze(controller: Any, key: str) -> None:
+    """Release one side's freeze and perform at most one final deep layout."""
+    owners = _freeze_owners(controller)
+    tokens = owners.pop(key, [])
+    registry = _freeze_registry(controller)
+    for token in tokens:
+        record = registry.get(token)
+        if record is None:
+            continue
+        count = max(0, int(record["count"]) - 1)
+        record["count"] = count
+        if count:
+            continue
+        layout = record.get("layout")
+        was_enabled = bool(record.get("was_enabled"))
+        registry.pop(token, None)
+        if not isinstance(layout, QLayout) or not was_enabled:
+            continue
+        layout.setEnabled(True)
+        # One deterministic endpoint reflow replaces the per-frame recursive
+        # relayout that made the previous animation stutter.
+        layout.invalidate()
+        layout.activate()
 
 
 def _set_panel_visible(
@@ -105,10 +194,11 @@ def _set_panel_visible(
     panel: QWidget,
     visible: bool,
 ) -> None:
-    """Reveal/collapse a side panel as one continuous splitter-edge movement."""
+    """Reveal/collapse a side panel as one continuous, low-reflow edge move."""
     original_min, original_max = self._panel_constraints[key]
     splitter = getattr(self.window, "main_splitter", None)
     if not isinstance(splitter, QSplitter):
+        _release_layout_freeze(self, key)
         _restore_constraints(self, key, panel)
         panel.setVisible(bool(visible))
         return
@@ -116,27 +206,29 @@ def _set_panel_visible(
     index = splitter.indexOf(panel)
     center = _center_index(splitter, index)
     if index < 0 or center < 0:
+        _release_layout_freeze(self, key)
         _restore_constraints(self, key, panel)
         panel.setVisible(bool(visible))
         return
 
+    center_widget = splitter.widget(center)
+
     running = self._panel_animations.pop(key, None)
     reversing = running is not None
     if running is not None:
-        # stop() leaves QSplitter exactly where the previous frame put it.  The
-        # new animation samples that real geometry below, so a reversal has no
-        # discontinuity and no stale target-width jump.
+        # stop() leaves QSplitter exactly where the previous frame put it.  Do
+        # not release layouts here: the reverse leg continues with the same
+        # frozen geometry and therefore has no one-frame layout spike.
         running.stop()
         try:
             running.deleteLater()
         except RuntimeError:
             pass
 
-    # The old animation used opacity; never let a stale effect survive a hot
-    # reload or a transition reversal.  Panels remain fully painted throughout.
     panel.setGraphicsEffect(None)
 
     if not theme.motion_enabled():
+        _release_layout_freeze(self, key)
         if visible:
             panel.show()
         else:
@@ -149,8 +241,6 @@ def _set_panel_visible(
     sizes_before = list(splitter.sizes())
     current_width = max(0, int(sizes_before[index])) if index < len(sizes_before) else 0
 
-    # Remember a user's manually resized settled width, but never overwrite it
-    # with an intermediate width from a reversed animation.
     if not visible and was_visible and current_width >= original_min and not reversing:
         self._panel_widths[key] = min(current_width, original_max)
 
@@ -160,26 +250,25 @@ def _set_panel_visible(
     )
 
     if visible and not was_visible:
-        # Relax constraints before show(), then immediately give any width Qt
-        # assigned on show back to the conversation.  All of this happens in the
-        # same event-loop turn, so the first painted frame is genuinely width 0.
         panel.setMinimumWidth(0)
         panel.setMaximumWidth(original_max)
         splitter.setCollapsible(index, True)
+        # Freeze before show() so a hidden Runtime/sidebar does not recursively
+        # lay itself out at its temporary zero width.
+        _acquire_layout_freeze(self, key, panel, center_widget)
         panel.show()
         _apply_splitter_width(splitter, index, 0)
         current_width = max(0, int(splitter.sizes()[index]))
     elif not visible and not was_visible:
+        _release_layout_freeze(self, key)
         _restore_constraints(self, key, panel)
         splitter.setCollapsible(index, False)
         return
     else:
-        # Do this once per transition, not every frame.  It is the critical
-        # difference from the previous implementation: QSplitter now owns every
-        # intermediate geometry instead of reacting to changing child limits.
         panel.setMinimumWidth(0)
         panel.setMaximumWidth(original_max)
         splitter.setCollapsible(index, True)
+        _acquire_layout_freeze(self, key, panel, center_widget)
         current_width = max(0, int(splitter.sizes()[index]))
 
     end_width = target_width if visible else 0
@@ -190,6 +279,7 @@ def _set_panel_visible(
             self._panel_widths[key] = current_width
         _restore_constraints(self, key, panel)
         splitter.setCollapsible(index, False)
+        _release_layout_freeze(self, key)
         return
 
     animation = QVariantAnimation(self)
@@ -203,24 +293,22 @@ def _set_panel_visible(
             full_width=target_width,
         )
     )
-    # No bounce/overshoot: panel chrome should feel like a native desktop edge,
-    # not a drawer.  OutQuart gives opening a soft settle; closing is slightly
-    # tighter while still decelerating into the edge.
-    animation.setEasingCurve(
-        QEasingCurve.Type.OutQuart if visible else QEasingCurve.Type.OutCubic
-    )
+    # One restrained curve for both directions makes the edge velocity easier
+    # to track and avoids the slightly mushy final quarter of OutQuart.
+    animation.setEasingCurve(QEasingCurve.Type.OutCubic)
 
     last_applied = current_width
 
     def apply_width(value: Any) -> None:
         nonlocal last_applied
         desired = max(0, int(round(float(value))))
+        # Qt's animation timer can emit duplicate rounded widths; never run a
+        # splitter geometry pass for a frame that does not move the edge.
         if desired == last_applied:
             return
         last_applied = _apply_splitter_width(splitter, index, desired)
 
     def finish() -> None:
-        # Commit the exact endpoint before restoring normal drag constraints.
         actual = _apply_splitter_width(splitter, index, end_width)
         if not visible:
             panel.hide()
@@ -230,6 +318,9 @@ def _set_panel_visible(
         splitter.setCollapsible(index, False)
         if self._panel_animations.get(key) is animation:
             self._panel_animations.pop(key, None)
+        # Restore after the splitter is at its final size so descendants only
+        # calculate their expensive height-for-width geometry once.
+        _release_layout_freeze(self, key)
         animation.deleteLater()
 
     animation.valueChanged.connect(apply_width)
@@ -244,7 +335,9 @@ def install() -> None:
 
 
 __all__ = [
+    "_acquire_layout_freeze",
     "_apply_splitter_width",
+    "_release_layout_freeze",
     "_transition_duration",
     "install",
 ]
