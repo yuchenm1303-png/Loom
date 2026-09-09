@@ -11,6 +11,7 @@ from app.desktop.rpc import DesktopEventBridge, RpcRunner
 from app.desktop.state import ThreadState, TranscriptEntry
 from app.desktop.composer import ComposerPanel, ComposerTextEdit
 from app.desktop import composer_polish as _composer_polish
+from app.desktop import model_selector_polish as _model_selector_polish
 from app.desktop import permission_menu_polish as _permission_menu_polish
 from app.desktop import composer_menu_motion as _composer_menu_motion
 from app.desktop import iconography as _iconography
@@ -69,6 +70,7 @@ _tool_icon_polish.install()
 _sidebar_motion.install_widgets()
 _sidebar_motion_smooth.install()
 _composer_polish.install()
+_model_selector_polish.install()
 _permission_menu_polish.install()
 _composer_menu_motion.install()
 
