@@ -1,15 +1,20 @@
-"""Keep the central agent transcript physically ordered like the Runtime timeline.
+"""Keep the central agent transcript ordered like a real agent conversation.
 
-``ThreadState`` already exposes a chronological list, but the native transcript
-reconciler historically only inserted *new* widgets. When a later snapshot
-corrected the order of existing live items, ``_order`` changed while the
-QVBoxLayout did not. The data said ``assistant -> command -> assistant`` while
-Qt still painted ``assistant -> assistant -> command``.
+The App Server timeline is deliberately lossless, but a finished turn can still
+arrive in a presentation-hostile order after live/snapshot reconciliation:
+``final assistant -> tools/processes/diffs``.  A normal agent transcript reads
+``work -> final assistant``.  This module is the final presentation integrity
+pass and fixes both the semantic entry order and the physical Qt layout order.
 
-This final presentation guard runs after the other transcript wrappers. It
-reorders existing widgets in-place, preserves the user-message alignment, keeps
-the working indicator at the tail, and also normalises legacy turn-error rows so
-an error can never be shown as the contradictory ``× Completed``.
+Rules are intentionally conservative:
+- active turns keep literal live order;
+- failed/error turns keep literal order;
+- in a completed historical/settled turn, only the *last* assistant message can
+  be moved, and only when activity rows incorrectly trail it;
+- earlier assistant narration remains interleaved with the work it introduced.
+
+It also normalises legacy turn-error rows so an error can never be shown as the
+contradictory ``× Completed``.
 """
 
 from __future__ import annotations
@@ -24,10 +29,72 @@ from app.desktop import widgets as base
 
 
 _INSTALLED = False
+_ACTIVITY_KINDS = {"tool", "process", "diff"}
 
 
 def _entry_alignment(kind: str) -> Qt.AlignmentFlag:
     return Qt.AlignmentFlag.AlignRight if kind == "user" else Qt.AlignmentFlag.AlignTop
+
+
+def _settle_segment(segment: list[Any], *, active: bool) -> list[Any]:
+    """Put trailing work before the final assistant message of a settled turn."""
+    if active or not segment:
+        return segment
+    if any(getattr(entry, "kind", "") == "error" for entry in segment):
+        return segment
+
+    assistant_indexes = [
+        index
+        for index, entry in enumerate(segment)
+        if getattr(entry, "kind", "") == "assistant"
+    ]
+    if not assistant_indexes:
+        return segment
+
+    final_index = assistant_indexes[-1]
+    final_entry = segment[final_index]
+    if bool(getattr(final_entry, "streaming", False)):
+        return segment
+
+    trailing = segment[final_index + 1 :]
+    if not any(getattr(entry, "kind", "") in _ACTIVITY_KINDS for entry in trailing):
+        return segment
+
+    # Preserve everything before the final assistant exactly as emitted.  Only
+    # lift the terminal reply over activity rows that were incorrectly appended
+    # after it by reconciliation.  This yields the familiar agent flow:
+    # narration -> command -> narration -> command -> final answer.
+    return segment[:final_index] + trailing + [final_entry]
+
+
+def _semantic_entries(entries: list[Any], *, turn_active: bool) -> list[Any]:
+    """Return presentation order without flattening intermediate narration."""
+    if not entries:
+        return []
+
+    # User rows delimit turns.  A user row belongs to the segment it starts, so
+    # previous completed turns can still be repaired while the newest one runs.
+    segments: list[list[Any]] = []
+    current: list[Any] = []
+    for entry in entries:
+        if getattr(entry, "kind", "") == "user" and current:
+            segments.append(current)
+            current = [entry]
+        else:
+            current.append(entry)
+    if current:
+        segments.append(current)
+
+    settled: list[Any] = []
+    last_index = len(segments) - 1
+    for index, segment in enumerate(segments):
+        settled.extend(
+            _settle_segment(
+                segment,
+                active=bool(turn_active and index == last_index),
+            )
+        )
+    return settled
 
 
 def _reorder_layout(view: Any, entries: list[Any]) -> None:
@@ -127,7 +194,7 @@ def _normalise_error_card(entry: Any) -> dict[str, Any]:
 
 
 def install() -> None:
-    """Install physical-order and legacy-error guards once."""
+    """Install semantic/physical order and legacy-error guards once."""
     global _INSTALLED
     if _INSTALLED:
         return
@@ -136,10 +203,15 @@ def install() -> None:
     original_render = presentation.TranscriptView.render
 
     def render(self: Any, entries: list[Any]) -> None:
-        original_render(self, entries)
         # Runtime inspector uses the same class with max_content_width=0 and is
-        # already a literal event list. Only the central conversation needs this
-        # editorial ordering guard.
+        # already a literal event list. Only the central conversation gets the
+        # semantic turn presentation pass.
+        if getattr(self, "_max_content_width", 0):
+            entries = _semantic_entries(
+                entries,
+                turn_active=bool(self.property("turnActive")),
+            )
+        original_render(self, entries)
         if getattr(self, "_max_content_width", 0):
             _reorder_layout(self, entries)
 
@@ -155,4 +227,10 @@ def install() -> None:
     base.describe_card = describe_card
 
 
-__all__ = ["_normalise_error_card", "_reorder_layout", "install"]
+__all__ = [
+    "_normalise_error_card",
+    "_reorder_layout",
+    "_semantic_entries",
+    "_settle_segment",
+    "install",
+]
