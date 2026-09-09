@@ -21,6 +21,7 @@ from app.desktop import tool_icon_polish as _tool_icon_polish
 from app.desktop import sidebar_motion as _sidebar_motion
 from app.desktop import sidebar_motion_smooth as _sidebar_motion_smooth
 from app.desktop import sidebar_group_polish as _sidebar_group_polish
+from app.desktop import sidebar_brand_polish as _sidebar_brand_polish
 from app.desktop import turn_progress as _turn_progress
 from app.desktop import runtime_tabs_polish as _runtime_tabs_polish
 from app.desktop import widgets as _widgets
@@ -93,6 +94,10 @@ _composer_menu_motion.install()
 # Final hierarchy pass: remove accumulated card/pill chrome after each component
 # has registered its own semantic selectors.
 _deplasticize.install()
+# The top-left identity/action cluster needs a stricter width-aware pass after
+# generic de-plasticizing: compact brand mark, calmer type and a single readable
+# primary action beside an icon-only project opener.
+_sidebar_brand_polish.install()
 # The composer has one stricter final rule than the generic hierarchy pass:
 # ordinary controls are toolbar text, usage is metadata, and Send is the only
 # filled action. Install this after de-plasticizing so no earlier pill styling
@@ -118,6 +123,7 @@ from app.desktop.widgets import (  # noqa: E402 - presentation is installed firs
 from app.desktop.window import LoomDesktopWindow  # noqa: E402
 
 _sidebar_motion.install_window(LoomDesktopWindow)
+_sidebar_brand_polish.install_window(LoomDesktopWindow)
 _turn_progress.install_window(LoomDesktopWindow)
 _agent_working_indicator.install_window(LoomDesktopWindow)
 _message_actions_turn_boundary.install_window(LoomDesktopWindow)
