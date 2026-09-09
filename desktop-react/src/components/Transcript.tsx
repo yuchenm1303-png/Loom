@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { TranscriptItem } from "../types/loom";
+import "./activity-flow.css";
 
 interface TranscriptProps {
   items: TranscriptItem[];
@@ -21,6 +22,10 @@ interface TranscriptProps {
   onPrompt?(prompt: string): void;
   onApproval(item: TranscriptItem, approved: boolean): void;
 }
+
+type TranscriptBlock =
+  | { kind: "item"; item: TranscriptItem }
+  | { kind: "activity"; items: TranscriptItem[] };
 
 const starterPrompts = [
   {
@@ -74,43 +79,213 @@ function Disclosure({ label, children, openByDefault = false }: { label: string;
   );
 }
 
-function ActivityIcon({ running, children }: { running: boolean; children: ReactNode }) {
+function isActivityItem(item: TranscriptItem): boolean {
+  return item.type === "tool_call" || item.type === "process" || item.type === "file_edit";
+}
+
+function groupTranscript(items: TranscriptItem[]): TranscriptBlock[] {
+  const blocks: TranscriptBlock[] = [];
+  let activity: TranscriptItem[] = [];
+  let activityTurn = "";
+
+  const flush = () => {
+    if (!activity.length) return;
+    blocks.push({ kind: "activity", items: activity });
+    activity = [];
+    activityTurn = "";
+  };
+
+  for (const item of items) {
+    if (!isActivityItem(item)) {
+      flush();
+      blocks.push({ kind: "item", item });
+      continue;
+    }
+
+    const nextTurn = String(item.turnId ?? "");
+    if (activity.length && activityTurn && nextTurn && nextTurn !== activityTurn) flush();
+    if (!activity.length) activityTurn = nextTurn;
+    activity.push(item);
+  }
+
+  flush();
+  return blocks;
+}
+
+function processCommand(item: TranscriptItem): string {
+  if (Array.isArray(item.argv)) return item.argv.map(String).join(" ");
+  return String(item.command ?? item.toolName ?? "Process");
+}
+
+function itemStatus(item: TranscriptItem): string {
+  if (item.type === "file_edit") return item.status || "changed";
+  return item.status || "completed";
+}
+
+function statusLabel(status: string): string {
+  if (status === "started") return "Running";
+  if (status === "completed") return "Completed";
+  if (status === "changed") return "Changed";
+  if (status === "failed") return "Failed";
+  if (status === "denied") return "Denied";
+  if (status === "cancelled") return "Cancelled";
+  if (status === "interrupted") return "Interrupted";
+  return status;
+}
+
+function ActivityStatus({ status }: { status: string }) {
+  const quiet = status === "completed" || status === "changed";
+  const label = statusLabel(status);
   return (
-    <span className={`activity-icon-shell ${running ? "is-running" : ""}`}>
-      {children}
-      {running ? <span className="activity-pulse" /> : null}
+    <span className={`task-flow-status ${status}`} title={label} aria-label={label}>
+      <span className="task-flow-status-dot" />
+      {!quiet ? <span>{label}</span> : null}
     </span>
   );
 }
 
-function ToolItem({ item }: { item: TranscriptItem }) {
-  const detail = item.content || item.stdout || item.stderr || (item.arguments ? JSON.stringify(item.arguments, null, 2) : "");
-  const running = item.status === "running" || item.status === "started";
+function diffStats(diff?: string): { added: number; removed: number } {
+  if (!diff) return { added: 0, removed: 0 };
+  let added = 0;
+  let removed = 0;
+  for (const line of diff.split("\n")) {
+    if (line.startsWith("+") && !line.startsWith("+++")) added += 1;
+    else if (line.startsWith("-") && !line.startsWith("---")) removed += 1;
+  }
+  return { added, removed };
+}
+
+function fileLabel(item: TranscriptItem): string {
+  const paths = item.paths ?? [];
+  if (!paths.length) return "workspace";
+  if (paths.length === 1) return paths[0];
+  if (paths.length === 2) return `${paths[0]}, ${paths[1]}`;
+  return `${paths[0]}, ${paths[1]} +${paths.length - 2}`;
+}
+
+function activitySummary(items: TranscriptItem[]): string {
+  const processes = items.filter((item) => item.type === "process").length;
+  const edits = items.filter((item) => item.type === "file_edit").length;
+  const tools = items.filter((item) => item.type === "tool_call").length;
+  const running = items.some((item) => ["running", "started"].includes(itemStatus(item)));
+
+  if (running) return "Working through the task";
+  if (edits && processes && !tools) return "Edited files and ran commands";
+  if (edits && tools && !processes) return "Edited files and used tools";
+  if (processes && tools && !edits) return "Ran commands and used tools";
+  if (edits && processes && tools) return "Worked through the task";
+  if (processes) return processes === 1 ? "Ran a command" : `Ran ${processes} commands`;
+  if (edits) return edits === 1 ? "Edited a file" : `Edited ${edits} files`;
+  if (tools) return tools === 1 ? "Used a tool" : `Used ${tools} tools`;
+  return "Task activity";
+}
+
+function activityDetail(item: TranscriptItem): string {
+  if (item.type === "process") {
+    const stdout = String(item.stdout ?? "");
+    const stderr = String(item.stderr ?? "");
+    return `${stdout}${stderr ? `${stdout ? "\n" : ""}${stderr}` : ""}`.trim();
+  }
+  if (item.type === "file_edit") return String(item.diff ?? "").trim();
+  if (item.content) return String(item.content);
+  if (item.stdout || item.stderr) return `${String(item.stdout ?? "")}${item.stderr ? `\n${String(item.stderr)}` : ""}`.trim();
+  if (item.arguments !== undefined) {
+    try {
+      return JSON.stringify(item.arguments, null, 2);
+    } catch {
+      return String(item.arguments);
+    }
+  }
+  return "";
+}
+
+function ActivityGlyph({ item, size = 13 }: { item: TranscriptItem; size?: number }) {
+  if (item.type === "process") return <Terminal size={size} />;
+  if (item.type === "file_edit") return <FileDiff size={size} />;
+  return <Wrench size={size} />;
+}
+
+function ActivityRow({ item }: { item: TranscriptItem }) {
+  const status = itemStatus(item);
+  const stats = item.type === "file_edit" ? diffStats(item.diff) : null;
+
   return (
-    <div className={`activity-row ${running ? "is-running" : ""}`}>
-      <div className="activity-line">
-        <ActivityIcon running={running}><Wrench size={13} /></ActivityIcon>
-        <span className="activity-title">{item.toolName || "Tool"}</span>
-        <span className={`activity-status ${item.status ?? ""}`}>{item.status || ""}</span>
-      </div>
-      {detail ? <Disclosure label="Details"><pre className="activity-output">{detail}</pre></Disclosure> : null}
+    <div className="task-flow-row">
+      <span className="task-flow-row-icon"><ActivityGlyph item={item} /></span>
+      <span className="task-flow-row-main">
+        {item.type === "process" ? (
+          <>
+            <span className="task-flow-verb">Ran</span>
+            <span className="task-flow-primary code">{processCommand(item)}</span>
+          </>
+        ) : item.type === "file_edit" ? (
+          <>
+            <span className="task-flow-verb">Edited</span>
+            <span className="task-flow-primary task-flow-path">{fileLabel(item)}</span>
+            {stats && (stats.added > 0 || stats.removed > 0) ? (
+              <span className="task-flow-diffstat">
+                <span className="task-flow-plus">+{stats.added}</span>
+                <span className="task-flow-minus">-{stats.removed}</span>
+              </span>
+            ) : null}
+          </>
+        ) : (
+          <>
+            <span className="task-flow-verb">Used</span>
+            <span className="task-flow-primary">{item.toolName || "Tool"}</span>
+          </>
+        )}
+      </span>
+      <ActivityStatus status={status} />
     </div>
   );
 }
 
-function ProcessItem({ item }: { item: TranscriptItem }) {
-  const command = Array.isArray(item.argv) ? item.argv.join(" ") : String(item.command ?? "Process");
-  const output = `${item.stdout ?? ""}${item.stderr ? `\n${item.stderr}` : ""}`;
-  const running = item.status === "running" || item.status === "started";
+function ActivityDetail({ item }: { item: TranscriptItem }) {
+  const detail = activityDetail(item);
+  const title = item.type === "process" ? processCommand(item) : item.type === "file_edit" ? fileLabel(item) : item.toolName || "Tool";
+  const kind = item.type === "process" ? "Command" : item.type === "file_edit" ? "Change" : "Tool";
   return (
-    <div className={`activity-row ${running ? "is-running" : ""}`}>
-      <div className="activity-line">
-        <ActivityIcon running={running}><Terminal size={13} /></ActivityIcon>
-        <span className="activity-title">{command}</span>
-        <span className={`activity-status ${item.status ?? ""}`}>{item.status || ""}</span>
+    <div className="task-flow-detail">
+      <div className="task-flow-detail-head">
+        <ActivityGlyph item={item} size={12} />
+        <span className="task-flow-detail-title">{title}</span>
+        <span className="task-flow-detail-kind">{kind}</span>
       </div>
-      {output ? <Disclosure label="Shell output" openByDefault={item.status === "running"}><pre className="activity-output">{output}</pre></Disclosure> : null}
+      {detail ? <pre>{detail}</pre> : <div className="task-flow-detail-empty">No additional output.</div>}
     </div>
+  );
+}
+
+function ActivityFlow({ items }: { items: TranscriptItem[] }) {
+  const hasDetails = items.some((item) => Boolean(activityDetail(item)));
+  const compact = items.length === 1;
+  return (
+    <section className={`task-flow ${compact ? "task-flow-single" : ""}`} aria-label="Task activity">
+      {!compact ? (
+        <div className="task-flow-summary">
+          <span className="task-flow-summary-icon"><Wrench size={13} /></span>
+          <span className="task-flow-summary-copy">
+            <strong>{activitySummary(items)}</strong>
+            <span>{items.length} actions</span>
+          </span>
+        </div>
+      ) : null}
+
+      <div className="task-flow-list">
+        {items.map((item) => <ActivityRow key={item.id} item={item} />)}
+      </div>
+
+      {hasDetails ? (
+        <div className="task-flow-disclosure">
+          <Disclosure label="Details" openByDefault={items.some((item) => ["running", "started"].includes(itemStatus(item)))}>
+            <div className="task-flow-details">
+              {items.map((item) => <ActivityDetail key={item.id} item={item} />)}
+            </div>
+          </Disclosure>
+        </div>
+      ) : null}
+    </section>
   );
 }
 
@@ -135,18 +310,6 @@ function ItemView({ item, onApproval }: { item: TranscriptItem; onApproval(item:
       </div>
     );
   }
-  if (item.type === "tool_call") return <ToolItem item={item} />;
-  if (item.type === "process") return <ProcessItem item={item} />;
-  if (item.type === "file_edit") return (
-    <div className="activity-row file-edit-row">
-      <div className="activity-line">
-        <ActivityIcon running={false}><FileDiff size={13} /></ActivityIcon>
-        <span className="activity-title">Edited {(item.paths ?? []).join(", ") || "workspace"}</span>
-        <span className="activity-status completed">changed</span>
-      </div>
-      {item.diff ? <Disclosure label="View diff"><pre className="diff-output">{item.diff}</pre></Disclosure> : null}
-    </div>
-  );
   if (item.type === "approval") return (
     <div className="approval-card">
       <div className="approval-icon"><CircleAlert size={16} /></div>
@@ -204,6 +367,7 @@ function EmptyState({ disabled, onPrompt }: { disabled?: boolean; onPrompt?(prom
 export function Transcript({ items, promptDisabled, onPrompt, onApproval }: TranscriptProps) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const previousCount = useRef(0);
+  const blocks = groupTranscript(items);
 
   useEffect(() => {
     if (items.length > previousCount.current) {
@@ -227,10 +391,16 @@ export function Transcript({ items, promptDisabled, onPrompt, onApproval }: Tran
       <main className="transcript" aria-live="polite">
         {!items.length ? (
           <EmptyState disabled={promptDisabled} onPrompt={onPrompt} />
-        ) : items.map((item) => (
-          <div className={`transcript-entry entry-${item.type}`} key={item.id}>
-            <ItemView item={item} onApproval={onApproval} />
-          </div>
+        ) : blocks.map((block, index) => (
+          block.kind === "activity" ? (
+            <div className="transcript-entry entry-activity" key={`activity-${block.items[0]?.id ?? index}`}>
+              <ActivityFlow items={block.items} />
+            </div>
+          ) : (
+            <div className={`transcript-entry entry-${block.item.type}`} key={block.item.id}>
+              <ItemView item={block.item} onApproval={onApproval} />
+            </div>
+          )
         ))}
       </main>
     </div>
