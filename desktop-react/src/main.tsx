@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import App from "./App";
 import { BootErrorBoundary } from "./components/BootErrorBoundary";
 import "./styles.css";
+import "./shell-fix.css";
 
 const rootElement = document.getElementById("root");
 if (!rootElement) throw new Error("Loom renderer root element is missing");
