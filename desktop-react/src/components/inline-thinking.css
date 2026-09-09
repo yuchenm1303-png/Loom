@@ -1,3 +1,10 @@
+/* The legacy assistant placeholder duplicates the dedicated run progress and
+   inline thinking feedback. Hide the entire empty assistant entry so it does
+   not leave a card or vertical gap while the turn is still starting. */
+.entry-assistant_message:has(.streaming-placeholder) {
+  display: none !important;
+}
+
 .conversation-stage.is-running .transcript::after {
   content: "正在思考…";
   align-self: flex-start;
