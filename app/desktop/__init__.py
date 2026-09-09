@@ -28,7 +28,10 @@ from app.desktop import widget_lifecycle as _widget_lifecycle
 # top-level windows while a streamed transcript is being reconciled.
 _widget_lifecycle.install()
 
-from app.desktop.output_presentation import MessageWidget, TranscriptView
+# Presentation layers may refine density, hierarchy and runtime state, but they
+# no longer own disclosure animation. Thought process and task details are
+# constructed later from one native AnimatedReveal component.
+from app.desktop import output_presentation as _output_presentation
 from app.desktop import message_actions as _message_actions
 from app.desktop import message_actions_polish as _message_actions_polish
 from app.desktop import message_actions_turn_boundary as _message_actions_turn_boundary
@@ -36,40 +39,36 @@ from app.desktop import user_bubble_alignment as _user_bubble_alignment
 from app.desktop import user_message_actions as _user_message_actions
 from app.desktop import transcript_density as _transcript_density
 from app.desktop import activity_hierarchy as _activity_hierarchy
-from app.desktop import activity_motion as _activity_motion
-from app.desktop import activity_disclosure as _activity_disclosure
-from app.desktop import reasoning_polish as _reasoning_polish
 from app.desktop import runtime_feedback as _runtime_feedback
 from app.desktop import activity_compact_panel as _activity_compact_panel
-from app.desktop import disclosure_motion as _disclosure_motion
 from app.desktop import agent_working_indicator as _agent_working_indicator
 from app.desktop import transcript_flow as _transcript_flow
 from app.desktop.thread_presentation import ThreadListItemWidget, thread_row_size
 
-# Install the task presentation pipeline in order. The low-reflow disclosure
-# policy is deliberately last: earlier passes own visual styling and chevrons,
-# while the final pass owns geometry/scroll behavior so no later polish can
-# reintroduce per-frame transcript relayout. The working indicator wraps the
-# settled transcript last so it always remains the visible tail row.
 _transcript_density.install()
 _activity_hierarchy.install()
-_activity_motion.install()
-_activity_disclosure.install()
-_reasoning_polish.install()
 _runtime_feedback.install()
 _activity_compact_panel.install()
 _message_actions.install()
 _message_actions_polish.install()
 _user_bubble_alignment.install()
-_disclosure_motion.install()
 _agent_working_indicator.install_widgets()
 _message_actions_turn_boundary.install_view()
-# Final integrity pass: the keyed reconciler may change canonical order after a
-# live snapshot refresh, so physically move existing Qt widgets to that order.
+# The keyed reconciler may change canonical order after a live snapshot refresh,
+# so physically move existing Qt widgets to that order.
 _transcript_flow.install()
 # User controls are installed after the final transcript reconciler so each user
 # entry remains one canonical keyed shell: bubble first, actions directly below.
 _user_message_actions.install()
+
+# Canonical transcript widgets are defined only after presentation/runtime
+# refinements above are installed. Their disclosure behavior is class-owned,
+# rather than monkey-patched by a chain of animation passes.
+from app.desktop.transcript_disclosure import (  # noqa: E402
+    FlowMessageWidget as MessageWidget,
+    FlowTranscriptView as TranscriptView,
+)
+
 _widgets.MessageWidget = MessageWidget
 _widgets.TranscriptView = TranscriptView
 _widgets.ThreadListItemWidget = ThreadListItemWidget

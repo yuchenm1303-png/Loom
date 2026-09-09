@@ -10,7 +10,8 @@ pytest.importorskip("PySide6")
 
 from PySide6.QtWidgets import QApplication
 
-from app.desktop.message_presentation import MessageWidget
+from app.desktop import MessageWidget
+from app.desktop.transcript_disclosure import AnimatedReveal, ReasoningDisclosure
 
 
 @pytest.fixture(scope="module")
@@ -30,10 +31,11 @@ def test_reasoning_disclosure_uses_quiet_inline_surface(app, monkeypatch):
     message.set_text("<think>先确认环境，再执行需要的命令。</think>好的。")
 
     reasoning = message.reasoning
-    assert reasoning is not None
+    assert isinstance(reasoning, ReasoningDisclosure)
+    assert isinstance(reasoning.reveal, AnimatedReveal)
     assert reasoning.isHidden() is False
     assert reasoning.toggle.minimumHeight() >= 26
-    assert reasoning.toggle.property("expanded") is False
+    assert not bool(reasoning.toggle.property("expanded"))
     assert "background:transparent" in reasoning.styleSheet()
     assert "border:none" in reasoning.styleSheet()
     assert 'reasoningToggle[expanded="true"]' in reasoning.styleSheet()
@@ -41,26 +43,17 @@ def test_reasoning_disclosure_uses_quiet_inline_surface(app, monkeypatch):
 
     reasoning.toggle.click()
     assert reasoning.toggle.property("expanded") is True
-    assert reasoning.body.isHidden() is False
+    assert reasoning.reveal.progress == 1.0
     assert reasoning.toggle.toolTip() == "Hide thought process"
 
     reasoning.toggle.click()
-    assert reasoning.toggle.property("expanded") is False
-    assert reasoning.body.isHidden() is True
+    assert not bool(reasoning.toggle.property("expanded"))
+    assert reasoning.reveal.progress == 0.0
     assert reasoning.toggle.toolTip() == "Show thought process"
     message.close()
 
 
-def test_reasoning_disclosure_animates_height_opacity_and_chevron(app, monkeypatch):
-    """Reasoning disclosure commits once and only the chevron rotates.
-
-    Earlier passes animated ``body.maximumHeight`` together with an opacity
-    fade. The current low-reflow policy replaces that with a single layout
-    commit: the body becomes visible at its natural height, no opacity effect
-    is attached, and only the chevron paint event animates. The interaction
-    still feels responsive (the chevron rotates, the body appears), without
-    mutating the transcript's scroll range on every animation frame.
-    """
+def test_reasoning_disclosure_has_one_animation_owner(app, monkeypatch):
     monkeypatch.delenv("LOOM_REDUCE_MOTION", raising=False)
     message = MessageWidget("assistant")
     message.resize(720, 240)
@@ -72,23 +65,20 @@ def test_reasoning_disclosure_animates_height_opacity_and_chevron(app, monkeypat
     app.processEvents()
 
     reasoning = message.reasoning
-    assert reasoning is not None
+    assert isinstance(reasoning, ReasoningDisclosure)
+    reasoning.toggle.click()
+    assert reasoning.reveal._animation is not None
+    assert not hasattr(reasoning, "_animation")
+    assert not hasattr(reasoning.toggle, "_animation")
+
+    _settle(app)
+    assert reasoning.reveal._animation is None
+    assert reasoning.reveal.progress == pytest.approx(1.0)
+    assert reasoning.toggle.progress == pytest.approx(1.0)
+
     reasoning.toggle.click()
     _settle(app)
-
-    assert reasoning._animation is None
-    assert reasoning.toggle._animation is None
-    assert reasoning.toggle.property("expanded") is True
-    assert reasoning.body.isHidden() is False
-    assert reasoning.body.maximumHeight() == 16777215
-    assert reasoning.toggle.angle == 90.0
-
-    reasoning.toggle.click()
-    _settle(app)
-
-    assert reasoning._animation is None
-    assert reasoning.toggle.property("expanded") is False
-    assert reasoning._expanded is False
-    assert reasoning.body.isHidden() is True
-    assert reasoning.toggle.angle == 0.0
+    assert reasoning.reveal._animation is None
+    assert reasoning.reveal.progress == pytest.approx(0.0)
+    assert reasoning.toggle.progress == pytest.approx(0.0)
     message.close()
