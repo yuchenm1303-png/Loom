@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from PySide6.QtCore import QRectF, QSize, Qt
+from PySide6.QtCore import QPointF, QSize, Qt
 from PySide6.QtGui import QColor, QIcon, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import QLabel
 
@@ -102,14 +102,11 @@ QPushButton#openProjectButton:pressed {
 
 def _icon(kind: str, *, size: int = 16) -> QIcon:
     """Render tiny brand-adjacent icons without font glyph dependencies."""
-    dpr = 2.0
-    pixmap = QPixmap(int(size * dpr), int(size * dpr))
-    pixmap.setDevicePixelRatio(dpr)
+    pixmap = QPixmap(size, size)
     pixmap.fill(Qt.GlobalColor.transparent)
 
     painter = QPainter(pixmap)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-    painter.scale(dpr, dpr)
     painter.setBrush(Qt.BrushStyle.NoBrush)
     color = QColor("#aaa4ee" if kind == "plus" else "#8e96a3")
     painter.setPen(
@@ -125,20 +122,19 @@ def _icon(kind: str, *, size: int = 16) -> QIcon:
     if kind == "plus":
         c = size / 2.0
         span = 3.25
-        painter.drawLine(c - span, c, c + span, c)
-        painter.drawLine(c, c - span, c, c + span)
+        painter.drawLine(QPointF(c - span, c), QPointF(c + span, c))
+        painter.drawLine(QPointF(c, c - span), QPointF(c, c + span))
     else:
         # Familiar open-folder outline, optically centered on a 16px box.
-        path = QPainterPath()
-        path.moveTo(2.3, 5.2)
-        path.lineTo(6.2, 5.2)
-        path.lineTo(7.6, 6.7)
-        path.lineTo(13.5, 6.7)
-        path.lineTo(13.5, 12.6)
-        path.lineTo(2.3, 12.6)
+        path = QPainterPath(QPointF(2.3, 5.2))
+        path.lineTo(QPointF(6.2, 5.2))
+        path.lineTo(QPointF(7.6, 6.7))
+        path.lineTo(QPointF(13.5, 6.7))
+        path.lineTo(QPointF(13.5, 12.6))
+        path.lineTo(QPointF(2.3, 12.6))
         path.closeSubpath()
         painter.drawPath(path)
-        painter.drawLine(2.6, 7.8, 13.2, 7.8)
+        painter.drawLine(QPointF(2.6, 7.8), QPointF(13.2, 7.8))
 
     painter.end()
     return QIcon(pixmap)
@@ -199,10 +195,6 @@ def install_window(window_cls: type[Any]) -> None:
         self.new_thread_button.setIcon(_icon("plus"))
         self.new_thread_button.setIconSize(QSize(16, 16))
         self.new_thread_button.setMinimumWidth(0)
-        self.new_thread_button.setSizePolicy(
-            self.new_thread_button.sizePolicy().horizontalPolicy(),
-            self.new_thread_button.sizePolicy().verticalPolicy(),
-        )
 
         self.open_project_button.setText("")
         self.open_project_button.setIcon(_icon("folder"))
