@@ -28,7 +28,6 @@ from typing import Any, Iterable
 from PySide6.QtCore import QTimer
 
 from app.desktop import output_presentation
-from app.desktop import transcript_disclosure
 
 
 # ~33 fps is visually continuous for text while leaving the GUI thread enough
@@ -129,12 +128,20 @@ def _flush_stream_frame(window: Any) -> None:
         _render_terminal_now(window)
 
 
-def _install_collapsed_reveal_fast_path() -> None:
-    """Do not measure hidden disclosure bodies on every output token."""
+def install_disclosure_fast_path() -> None:
+    """Do not measure hidden disclosure bodies on every output token.
+
+    Importing transcript_disclosure is intentionally delayed until the desktop
+    package has installed all presentation refinements. That preserves Loom's
+    canonical class-construction order instead of accidentally defining final
+    transcript widgets too early just to install a performance hook.
+    """
     global _REVEAL_INSTALLED
     if _REVEAL_INSTALLED:
         return
     _REVEAL_INSTALLED = True
+
+    from app.desktop import transcript_disclosure
 
     cls = transcript_disclosure.AnimatedReveal
     original_refresh = cls.refresh_target
@@ -165,10 +172,9 @@ def install_view() -> None:
     def update_stream_entries(self: Any, entries: Iterable[Any]) -> bool:
         return _update_existing_entries(self, entries)
 
-    # AnchoredTranscriptView is created later and inherits this method from the
-    # presentation class, so no second patch is required.
+    # AnchoredTranscriptView inherits this method from the presentation class,
+    # so stream frames never need a second reconciler or another render wrapper.
     output_presentation.TranscriptView.update_stream_entries = update_stream_entries
-    _install_collapsed_reveal_fast_path()
 
 
 def install_window(window_cls: type[Any]) -> None:
@@ -217,14 +223,13 @@ def install_window(window_cls: type[Any]) -> None:
             return original_apply_item_delta(self, params)
 
         item_id = params.get("itemId")
-        changed_keys: set[str] = set()
         handled = False
 
         if "text" in delta:
             handled = True
             key = self.state.append_text_delta(item_id, delta.get("text"))
             if key:
-                changed_keys.add(key)
+                _schedule_stream_frame(self, key)
 
         stdout = str(delta.get("stdout") or "")
         stderr = str(delta.get("stderr") or "")
@@ -232,16 +237,7 @@ def install_window(window_cls: type[Any]) -> None:
             handled = True
             key = self.state.append_process_output(item_id, stdout=stdout, stderr=stderr)
             if key:
-                changed_keys.add(key)
                 _schedule_stream_frame(self, key, terminal=True)
-
-        for key in changed_keys:
-            if stdout or stderr:
-                # The process key was already scheduled above; adding it to a set
-                # again is harmless but avoid restarting/checking the timer twice.
-                if key == str(item_id or ""):
-                    continue
-            _schedule_stream_frame(self, key)
 
         if handled:
             return None
@@ -266,6 +262,7 @@ __all__ = [
     "_entries_for_keys",
     "_flush_stream_frame",
     "_update_existing_entries",
+    "install_disclosure_fast_path",
     "install_view",
     "install_window",
 ]
