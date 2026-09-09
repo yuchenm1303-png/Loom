@@ -14,6 +14,7 @@ from app.desktop import composer_polish as _composer_polish
 from app.desktop import model_selector_polish as _model_selector_polish
 from app.desktop import permission_menu_polish as _permission_menu_polish
 from app.desktop import composer_menu_motion as _composer_menu_motion
+from app.desktop import composer_minimal_chrome as _composer_minimal_chrome
 from app.desktop import deplasticize as _deplasticize
 from app.desktop import iconography as _iconography
 from app.desktop import tool_icon_polish as _tool_icon_polish
@@ -92,6 +93,11 @@ _composer_menu_motion.install()
 # Final hierarchy pass: remove accumulated card/pill chrome after each component
 # has registered its own semantic selectors.
 _deplasticize.install()
+# The composer has one stricter final rule than the generic hierarchy pass:
+# ordinary controls are toolbar text, usage is metadata, and Send is the only
+# filled action. Install this after de-plasticizing so no earlier pill styling
+# can leak back into the final control row.
+_composer_minimal_chrome.install()
 # Import this only after the canonical transcript classes exist. The refinement
 # wraps their already-settled constructors; importing it near the top would pull
 # presentation modules in before the widget-lifecycle guard is installed.
