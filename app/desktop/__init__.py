@@ -33,11 +33,13 @@ from app.desktop import activity_disclosure as _activity_disclosure
 from app.desktop import reasoning_polish as _reasoning_polish
 from app.desktop import runtime_feedback as _runtime_feedback
 from app.desktop import activity_compact_panel as _activity_compact_panel
+from app.desktop import disclosure_motion as _disclosure_motion
 from app.desktop.thread_presentation import ThreadListItemWidget, thread_row_size
 
-# Install the task presentation pipeline in order.  The compact-panel pass is
-# deliberately last so it can keep runtime semantics while normalising the final
-# visual treatment into one quiet disclosure list.
+# Install the task presentation pipeline in order. The low-reflow disclosure
+# policy is deliberately last: earlier passes own visual styling and chevrons,
+# while the final pass owns geometry/scroll behavior so no later polish can
+# reintroduce per-frame transcript relayout.
 _transcript_density.install()
 _activity_hierarchy.install()
 _activity_motion.install()
@@ -45,6 +47,7 @@ _activity_disclosure.install()
 _reasoning_polish.install()
 _runtime_feedback.install()
 _activity_compact_panel.install()
+_disclosure_motion.install()
 _widgets.MessageWidget = MessageWidget
 _widgets.TranscriptView = TranscriptView
 _widgets.ThreadListItemWidget = ThreadListItemWidget
