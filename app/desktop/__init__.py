@@ -20,6 +20,7 @@ from app.desktop import sidebar_motion as _sidebar_motion
 from app.desktop import sidebar_motion_smooth as _sidebar_motion_smooth
 from app.desktop import sidebar_group_polish as _sidebar_group_polish
 from app.desktop import turn_progress as _turn_progress
+from app.desktop import runtime_tabs_polish as _runtime_tabs_polish
 from app.desktop import widgets as _widgets
 from app.desktop import widget_lifecycle as _widget_lifecycle
 
@@ -101,6 +102,7 @@ _sidebar_motion.install_window(LoomDesktopWindow)
 _turn_progress.install_window(LoomDesktopWindow)
 _agent_working_indicator.install_window(LoomDesktopWindow)
 _message_actions_turn_boundary.install_window(LoomDesktopWindow)
+_runtime_tabs_polish.install_window(LoomDesktopWindow)
 # Install last so high-frequency item/delta traffic enters the bounded streaming
 # lane after all structural window wrappers have established their behavior.
 _stream_render_pipeline.install_window(LoomDesktopWindow)
