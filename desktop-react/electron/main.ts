@@ -132,6 +132,31 @@ class LoomRpcProcess {
 let mainWindow: BrowserWindow | null = null;
 const rpc = new LoomRpcProcess((payload) => mainWindow?.webContents.send("loom:notification", payload));
 
+function rendererFailureDocument(title: string, detail: string): string {
+  const safeTitle = title.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char] ?? char);
+  const safeDetail = detail.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char] ?? char);
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="color-scheme" content="dark"><title>Loom startup error</title><style>html,body{height:100%;margin:0;background:#0d0e11;color:#eceef2;font-family:Segoe UI,sans-serif}.wrap{height:100%;display:grid;place-items:center;padding:32px;box-sizing:border-box}.card{width:min(680px,100%);padding:22px;border:1px solid #303440;border-radius:14px;background:#15171d;box-shadow:0 18px 60px rgba(0,0,0,.28)}h1{font-size:18px;margin:0 0 10px}p{color:#a5abb6;font-size:13px;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere;margin:0}</style></head><body><div class="wrap"><div class="card"><h1>${safeTitle}</h1><p>${safeDetail}</p></div></div></body></html>`;
+}
+
+function showRendererFailure(title: string, detail: string): void {
+  const window = mainWindow;
+  if (!window || window.isDestroyed()) return;
+  const html = rendererFailureDocument(title, detail);
+  void window.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+}
+
+async function loadRenderer(window: BrowserWindow): Promise<void> {
+  const devUrl = "http://127.0.0.1:5173";
+  try {
+    if (!app.isPackaged) await window.loadURL(devUrl);
+    else await window.loadFile(path.join(DESKTOP_ROOT, "dist", "index.html"));
+  } catch (error) {
+    const detail = error instanceof Error ? error.stack || error.message : String(error);
+    console.error("Loom renderer navigation failed", detail);
+    showRendererFailure("Loom renderer could not be loaded", detail);
+  }
+}
+
 function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1440,
@@ -148,14 +173,30 @@ function createWindow(): void {
       sandbox: true,
     },
   });
-  mainWindow.once("ready-to-show", () => mainWindow?.show());
 
-  const devUrl = process.env.VITE_DEV_SERVER_URL || "http://127.0.0.1:5173";
-  if (!app.isPackaged) void mainWindow.loadURL(devUrl);
-  else void mainWindow.loadFile(path.join(DESKTOP_ROOT, "dist", "index.html"));
+  const window = mainWindow;
+  window.once("ready-to-show", () => window.show());
+  window.webContents.on("did-fail-load", (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+    if (!isMainFrame || validatedURL.startsWith("data:text/html")) return;
+    const detail = `${errorDescription} (${errorCode})\n${validatedURL}`;
+    console.error("Loom renderer did-fail-load", detail);
+    showRendererFailure("Loom renderer failed to navigate", detail);
+  });
+  window.webContents.on("preload-error", (_event, preloadPath, error) => {
+    const detail = `${preloadPath}\n${error.stack || error.message}`;
+    console.error("Loom preload failed", detail);
+    showRendererFailure("Loom preload failed to load", detail);
+  });
+  window.webContents.on("render-process-gone", (_event, details) => {
+    const detail = `reason=${details.reason}, exitCode=${details.exitCode}`;
+    console.error("Loom renderer process exited", detail);
+    showRendererFailure("Loom renderer process exited", detail);
+  });
 
-  mainWindow.on("closed", () => {
-    mainWindow = null;
+  void loadRenderer(window);
+
+  window.on("closed", () => {
+    if (mainWindow === window) mainWindow = null;
   });
 }
 
