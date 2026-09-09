@@ -91,15 +91,23 @@ function ItemView({ item, onApproval }: { item: TranscriptItem; onApproval(item:
 }
 
 export function Transcript({ items, onApproval }: TranscriptProps) {
-  const endRef = useRef<HTMLDivElement | null>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
   const previousCount = useRef(0);
+
   useEffect(() => {
-    if (items.length > previousCount.current) endRef.current?.scrollIntoView({ block: "end" });
+    if (items.length > previousCount.current) {
+      const scroller = scrollRef.current;
+      if (scroller) {
+        requestAnimationFrame(() => {
+          scroller.scrollTop = scroller.scrollHeight;
+        });
+      }
+    }
     previousCount.current = items.length;
   }, [items.length]);
 
   return (
-    <div className="transcript-scroll">
+    <div className="transcript-scroll" ref={scrollRef}>
       <main className="transcript" aria-live="polite">
         {!items.length ? (
           <div className="empty-state">
@@ -108,7 +116,6 @@ export function Transcript({ items, onApproval }: TranscriptProps) {
             <p>Ask Loom to inspect a project, change code, use tools, or work through a task.</p>
           </div>
         ) : items.map((item) => <ItemView key={item.id} item={item} onApproval={onApproval} />)}
-        <div ref={endRef} />
       </main>
     </div>
   );
