@@ -33,6 +33,7 @@ def test_running_process_is_visibly_live_and_opens_streaming_output(app, monkeyp
     assert card.property("runtimeState") == "running"
     assert card.runtime_badge.isHidden() is False
     assert card.runtime_badge.label.text().startswith("Running ·")
+    assert card.runtime_badge.spinner.isHidden() is False
     assert card._expanded is True
     assert card.body_shell.isHidden() is False
     assert "checking C:" in card.body.toPlainText()
@@ -71,6 +72,31 @@ def test_historical_completed_process_stays_compact(app, monkeypatch):
     assert card.runtime_badge.isHidden() is True
     assert card._expanded is False
     assert card.body_shell.isHidden() is True
+    card.close()
+
+
+def test_failed_tool_is_one_compact_row_until_user_opens_details(app, monkeypatch):
+    monkeypatch.setenv("LOOM_REDUCE_MOTION", "1")
+    card = FlatActivityCard("tool")
+    card.update_card(
+        title="exec",
+        status="failed",
+        body="arguments\n{\"argv\": [\"powershell\"]}\n\nresult\nboom",
+    )
+
+    assert card.property("runtimeState") == "failed"
+    assert card.runtime_badge.isHidden() is False
+    assert card.runtime_badge.label.text() == "Failed"
+    assert card.runtime_badge.spinner.isHidden() is True
+    assert card.status_label.isHidden() is True
+    assert card._expanded is False
+    assert card.body_shell.isHidden() is True
+    assert card.body_title.text() == "Shell"
+
+    card._toggle()
+    assert card._expanded is True
+    assert card.body_shell.isHidden() is False
+    assert card.status_label.isHidden() is True
     card.close()
 
 
