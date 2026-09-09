@@ -1,68 +1,183 @@
-.conversation-stage.is-running .transcript::after {
-  content: "正在思考…";
+.inline-thinking,
+.live-reasoning {
   align-self: flex-start;
-  min-height: 22px;
+  min-width: 0;
+  color: #8f95a1;
+}
+
+.inline-thinking {
+  min-height: 28px;
   display: inline-flex;
   align-items: center;
-  margin-top: -7px;
+  gap: 8px;
+  margin-top: -5px;
   padding: 1px 0;
+  animation: inline-thinking-enter 180ms cubic-bezier(.2,.8,.2,1) both;
+}
+
+.thinking-symbol {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  color: #a99df2;
+  filter: drop-shadow(0 0 8px rgba(169,157,242,.14));
+  transform-origin: center;
+  animation: thinking-symbol-breathe 1.9s ease-in-out infinite;
+}
+
+.thinking-shimmer {
+  display: inline-block;
   font-size: 12.5px;
-  font-weight: 540;
+  font-weight: 560;
   line-height: 1.45;
-  letter-spacing: .015em;
+  letter-spacing: .01em;
   color: transparent;
   background-image: linear-gradient(
-    100deg,
-    #747a86 0%,
-    #8b919d 28%,
-    #e2e5eb 46%,
-    #b8afef 55%,
-    #858b97 70%,
-    #747a86 100%
+    102deg,
+    #777e8b 0%,
+    #8e95a2 28%,
+    #e7e9ee 46%,
+    #b9aff4 56%,
+    #8c93a0 72%,
+    #777e8b 100%
   );
   background-size: 230% 100%;
-  background-position: 120% 0;
+  background-position: 125% 0;
   -webkit-background-clip: text;
   background-clip: text;
-  animation: inline-thinking-shimmer 1.75s cubic-bezier(.42, 0, .58, 1) infinite;
-  user-select: none;
-  pointer-events: none;
+  animation: thinking-text-shimmer 1.7s cubic-bezier(.42,0,.58,1) infinite;
 }
 
-/* A faint caret-like glint keeps the waiting state visibly alive while the
-   text shimmer connects it to the user's latest message. */
-.conversation-stage.is-running .transcript::before {
+.live-reasoning {
+  width: min(720px, 100%);
+  display: grid;
+  gap: 0;
+  margin-top: -5px;
+  animation: inline-thinking-enter 180ms cubic-bezier(.2,.8,.2,1) both;
+}
+
+.live-reasoning-trigger {
+  width: fit-content;
+  max-width: 100%;
+  min-height: 30px;
+  padding: 2px 2px 2px 0;
+  border: 0;
+  background: transparent;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #8f95a1;
+  cursor: pointer;
+  text-align: left;
+}
+
+.live-reasoning-trigger:disabled {
+  cursor: default;
+}
+
+.live-reasoning-trigger:not(:disabled):hover .thinking-symbol {
+  color: #b7adfb;
+}
+
+.live-reasoning-trigger:not(:disabled):hover .thinking-shimmer {
+  filter: brightness(1.08);
+}
+
+.live-reasoning-chevron {
+  flex: none;
+  color: #646b77;
+  transition: transform 160ms cubic-bezier(.2,.8,.2,1), color 140ms ease;
+}
+
+.live-reasoning.open .live-reasoning-chevron {
+  transform: rotate(90deg);
+  color: #8c93a0;
+}
+
+.live-reasoning-grid {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows 210ms cubic-bezier(.2,.8,.2,1),
+    opacity 150ms ease;
+}
+
+.live-reasoning.open .live-reasoning-grid {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+.live-reasoning-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.live-reasoning-copy {
+  position: relative;
+  margin: 5px 0 3px 28px;
+  padding: 9px 12px 9px 13px;
+  border-left: 1px solid rgba(167,154,244,.2);
+  color: #8d939e;
+  font-size: 11.5px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: linear-gradient(90deg, rgba(159,145,240,.035), transparent 64%);
+}
+
+.live-reasoning-copy::before {
   content: "";
   position: absolute;
-  left: -9px;
-  bottom: 55px;
-  width: 2px;
-  height: 14px;
-  border-radius: 999px;
-  background: linear-gradient(180deg, rgba(165,150,246,.12), rgba(231,139,98,.52), rgba(165,150,246,.12));
-  opacity: .55;
-  animation: inline-thinking-breathe 1.75s ease-in-out infinite;
-  pointer-events: none;
+  top: 0;
+  bottom: 0;
+  left: -1px;
+  width: 1px;
+  background: linear-gradient(
+    180deg,
+    transparent,
+    rgba(183,171,251,.62),
+    rgba(231,139,98,.34),
+    transparent
+  );
+  background-size: 100% 220%;
+  animation: reasoning-rail-sweep 2s ease-in-out infinite;
 }
 
-@keyframes inline-thinking-shimmer {
-  0% { background-position: 125% 0; opacity: .76; }
+@keyframes thinking-text-shimmer {
+  0% { background-position: 125% 0; opacity: .78; }
   45% { opacity: 1; }
-  100% { background-position: -125% 0; opacity: .76; }
+  100% { background-position: -125% 0; opacity: .78; }
 }
 
-@keyframes inline-thinking-breathe {
-  0%, 100% { opacity: .2; transform: scaleY(.72); }
-  50% { opacity: .72; transform: scaleY(1); }
+@keyframes thinking-symbol-breathe {
+  0%, 100% { opacity: .62; transform: scale(.94); }
+  50% { opacity: 1; transform: scale(1.04); }
+}
+
+@keyframes reasoning-rail-sweep {
+  0% { background-position: 0 120%; opacity: .35; }
+  50% { opacity: .82; }
+  100% { background-position: 0 -120%; opacity: .35; }
+}
+
+@keyframes inline-thinking-enter {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .conversation-stage.is-running .transcript::after,
-  .conversation-stage.is-running .transcript::before {
+  .thinking-symbol,
+  .thinking-shimmer,
+  .live-reasoning-copy::before,
+  .inline-thinking,
+  .live-reasoning {
     animation: none !important;
   }
 
-  .conversation-stage.is-running .transcript::after {
+  .thinking-shimmer {
     color: #9298a3;
     background: none;
   }
