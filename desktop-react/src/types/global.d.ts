@@ -12,6 +12,7 @@ export interface LoomBridge {
   switchModelProfile<T = unknown>(selection: string): Promise<T>;
   switchCurrentModel<T = unknown>(model: string): Promise<T>;
   addModel<T = unknown>(input: Record<string, unknown>): Promise<T>;
+  setReasoning<T = unknown>(kind: string, value: string): Promise<T>;
   onNotification(listener: (payload: LoomNotification) => void): () => void;
 }
 

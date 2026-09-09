@@ -93,6 +93,7 @@ export default function App() {
             onModelProfileChange={loom.switchModelProfile}
             onCustomModelChange={loom.switchCurrentModel}
             onAddModel={loom.addModel}
+            onReasoningChange={loom.setReasoning}
             onSend={loom.send}
             onInterrupt={loom.interrupt}
           />

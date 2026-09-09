@@ -6,6 +6,9 @@ import sys
 from typing import Any, Mapping
 
 from app.ai.model_store import ModelConfigStore, StoredModel
+from app.ai.reasoning import ReasoningRequest
+from app.ai.reasoning_catalog import resolved_reasoning
+from app.ai.reasoning_store import ReasoningConfigStore
 
 
 PRIMARY_SELECTION = "builtin:minimax"
@@ -47,21 +50,90 @@ def _safe_primary() -> dict[str, Any]:
     }
 
 
-def _snapshot(store: ModelConfigStore) -> dict[str, Any]:
-    saved = [_safe_saved(entry) for entry in store.list_models()]
+def _reasoning_key(selection: str, model: str) -> str:
+    selection_key = str(selection or "").strip()
+    model_key = str(model or "").strip().casefold()
+    if not selection_key or not model_key:
+        raise ValueError("reasoning preference requires selection and model")
+    return f"{selection_key}::{model_key}"
+
+
+def _saved_reasoning(profile: dict[str, Any], reasoning_store: ReasoningConfigStore) -> ReasoningRequest | None:
+    selection = str(profile.get("selection") or "").strip()
+    model = str(profile.get("model") or "").strip()
+    if not selection or not model:
+        return None
+    saved = reasoning_store.get(_reasoning_key(selection, model))
+    if saved is not None:
+        return saved
+    # Backward-compatible migration path for the first implementation, which
+    # stored one preference per connection rather than per connection+model.
+    return reasoning_store.get(selection)
+
+
+def _with_reasoning(profile: dict[str, Any], reasoning_store: ReasoningConfigStore) -> dict[str, Any]:
+    capability, selected = resolved_reasoning(
+        model=str(profile.get("model") or ""),
+        adapter=str(profile.get("adapter") or ""),
+        base_url=str(profile.get("baseUrl") or ""),
+        saved=_saved_reasoning(profile, reasoning_store),
+    )
+    payload = dict(profile)
+    if capability is not None and selected is not None:
+        payload["reasoning"] = {
+            **capability,
+            "value": selected.value,
+        }
+    else:
+        payload["reasoning"] = None
+    return payload
+
+
+def _base_profile_for_selection(store: ModelConfigStore, selection: str) -> dict[str, Any]:
+    requested = str(selection or "").strip()
+    if requested == PRIMARY_SELECTION:
+        return _safe_primary()
+    saved = store.model_for_selection(requested)
+    if saved is None:
+        raise ValueError(f"unknown model selection: {requested!r}")
+    return _safe_saved(saved)
+
+
+def _describe_model(
+    store: ModelConfigStore,
+    reasoning_store: ReasoningConfigStore,
+    selection: str,
+    model: str,
+) -> dict[str, Any]:
+    requested_model = str(model or "").strip()
+    if not requested_model:
+        raise ValueError("model must not be empty")
+    profile = _base_profile_for_selection(store, selection)
+    profile["model"] = requested_model
+    return _with_reasoning(profile, reasoning_store)
+
+
+def _snapshot(store: ModelConfigStore, reasoning_store: ReasoningConfigStore) -> dict[str, Any]:
+    primary = _with_reasoning(_safe_primary(), reasoning_store)
+    saved = [_with_reasoning(_safe_saved(entry), reasoning_store) for entry in store.list_models()]
     return {
-        "primary": _safe_primary(),
-        "profiles": [_safe_primary(), *saved],
+        "primary": primary,
+        "profiles": [primary, *saved],
         "activeModelId": store.active_model_id,
     }
 
 
-def _resolve(store: ModelConfigStore, selection: str | None) -> dict[str, Any]:
+def _resolve(
+    store: ModelConfigStore,
+    reasoning_store: ReasoningConfigStore,
+    selection: str | None,
+) -> dict[str, Any]:
     requested = str(selection or "").strip()
     if not requested:
         active = store.active_model()
         requested = active.selection if active is not None else PRIMARY_SELECTION
 
+    profile = _with_reasoning(_base_profile_for_selection(store, requested), reasoning_store)
     if requested == PRIMARY_SELECTION:
         api_key = _primary_minimax_key()
         if not api_key:
@@ -69,18 +141,17 @@ def _resolve(store: ModelConfigStore, selection: str | None) -> dict[str, Any]:
                 "MiniMax primary API key is not configured. Set MINIMAX_API_KEY or "
                 "LOOM_PRIMARY_API_KEY, or add a saved model connection."
             )
-        primary = _safe_primary()
         return {
-            **primary,
+            **profile,
             "provider": "openai-compatible",
             "apiKey": api_key,
         }
 
     saved = store.model_for_selection(requested)
-    if saved is None:
+    if saved is None:  # defensive: _base_profile_for_selection already validates this
         raise ValueError(f"unknown model selection: {requested!r}")
     return {
-        **_safe_saved(saved),
+        **profile,
         "provider": saved.adapter.value,
         "apiKey": store.secret_for(saved),
     }
@@ -113,7 +184,11 @@ def _save(store: ModelConfigStore, payload: dict[str, Any]) -> dict[str, Any]:
     return _safe_saved(entry)
 
 
-def _set_active(store: ModelConfigStore, payload: dict[str, Any]) -> dict[str, Any]:
+def _set_active(
+    store: ModelConfigStore,
+    reasoning_store: ReasoningConfigStore,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
     selection = str(payload.get("selection") or "").strip()
     if not selection or selection == PRIMARY_SELECTION:
         store.set_active(None)
@@ -122,27 +197,69 @@ def _set_active(store: ModelConfigStore, payload: dict[str, Any]) -> dict[str, A
         if saved is None:
             raise ValueError(f"unknown model selection: {selection!r}")
         store.set_active(saved.model_id)
-    return _snapshot(store)
+    return _snapshot(store, reasoning_store)
+
+
+def _set_reasoning(
+    store: ModelConfigStore,
+    reasoning_store: ReasoningConfigStore,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    selection = str(payload.get("selection") or "").strip()
+    model = str(payload.get("model") or "").strip()
+    if not selection:
+        raise ValueError("selection must not be empty")
+    described = _describe_model(store, reasoning_store, selection, model)
+    capability = described.get("reasoning")
+    if not isinstance(capability, dict):
+        raise ValueError("the selected model does not advertise reasoning controls")
+    requested = ReasoningRequest.from_values(payload.get("kind"), payload.get("value"))
+    if requested is None:
+        raise ValueError("reasoning kind and value are required")
+    if requested.kind.value != str(capability.get("kind") or ""):
+        raise ValueError("reasoning kind is not supported by the selected model")
+    supported = {
+        str(item.get("value") or "")
+        for item in capability.get("options") or []
+        if isinstance(item, dict)
+    }
+    if requested.value not in supported:
+        raise ValueError(f"reasoning value {requested.value!r} is not supported by the selected model")
+    reasoning_store.set(_reasoning_key(selection, model), requested)
+    return _describe_model(store, reasoning_store, selection, model)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
-    if len(args) != 1 or args[0] not in {"list", "resolve", "save", "set-active"}:
-        sys.stderr.write("usage: loom_model_bridge.py {list|resolve|save|set-active}\n")
+    commands = {"list", "resolve", "describe-model", "save", "set-active", "set-reasoning"}
+    if len(args) != 1 or args[0] not in commands:
+        sys.stderr.write(
+            "usage: loom_model_bridge.py {list|resolve|describe-model|save|set-active|set-reasoning}\n"
+        )
         return 2
 
     command = args[0]
     try:
         store = ModelConfigStore()
+        reasoning_store = ReasoningConfigStore(store.home)
         payload = _read_stdin_object()
         if command == "list":
-            result = _snapshot(store)
+            result = _snapshot(store, reasoning_store)
         elif command == "resolve":
-            result = _resolve(store, str(payload.get("selection") or "") or None)
+            result = _resolve(store, reasoning_store, str(payload.get("selection") or "") or None)
+        elif command == "describe-model":
+            result = _describe_model(
+                store,
+                reasoning_store,
+                str(payload.get("selection") or ""),
+                str(payload.get("model") or ""),
+            )
         elif command == "save":
             result = _save(store, payload)
+        elif command == "set-active":
+            result = _set_active(store, reasoning_store, payload)
         else:
-            result = _set_active(store, payload)
+            result = _set_reasoning(store, reasoning_store, payload)
         _write({"ok": True, "result": result})
         return 0
     except Exception as exc:

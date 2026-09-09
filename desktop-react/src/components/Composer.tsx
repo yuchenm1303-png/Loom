@@ -28,6 +28,7 @@ interface ComposerProps {
   onModelProfileChange?(selection: string): Promise<void> | void;
   onCustomModelChange?(model: string): Promise<void> | void;
   onAddModel?(input: AddModelInput): Promise<void> | void;
+  onReasoningChange?(kind: string, value: string): Promise<void> | void;
   onSend(input: string): Promise<void> | void;
   onInterrupt(): Promise<void> | void;
 }
@@ -102,6 +103,7 @@ export function Composer({
   onModelProfileChange,
   onCustomModelChange,
   onAddModel,
+  onReasoningChange,
   onSend,
   onInterrupt,
 }: ComposerProps) {
@@ -305,7 +307,7 @@ export function Composer({
                       <span className="composer-popover-icon model"><Cpu size={16} /></span>
                       <div>
                         <strong>Models</strong>
-                        <span>Switch runtime models or connect a custom API.</span>
+                        <span>Switch runtime models, tune reasoning, or connect a custom API.</span>
                       </div>
                     </div>
                     <span className="composer-popover-context">Runtime</span>
@@ -327,6 +329,10 @@ export function Composer({
                     onAddModel={async (input) => {
                       if (!onAddModel) throw new Error("Adding model APIs is unavailable.");
                       await onAddModel(input);
+                    }}
+                    onReasoningChange={async (kind, nextValue) => {
+                      if (!onReasoningChange) throw new Error("Reasoning control is unavailable.");
+                      await onReasoningChange(kind, nextValue);
                     }}
                     onClose={() => setOpenPanel(null)}
                   />

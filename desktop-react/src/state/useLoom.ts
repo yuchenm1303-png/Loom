@@ -4,6 +4,7 @@ import type {
   InitializeResult,
   ModelRestartResult,
   ModelSnapshot,
+  ReasoningUpdateResult,
   ThreadReadResult,
   ThreadRecord,
   TranscriptItem,
@@ -242,6 +243,17 @@ export function useLoom() {
     }
   }, [applyModelRestart]);
 
+  const setReasoning = useCallback(async (kind: string, value: string) => {
+    setModelBusy(true);
+    try {
+      const result = await requireBridge().setReasoning<ReasoningUpdateResult>(kind, value);
+      setRuntime(result.runtime ?? {});
+      setModels(result.models);
+    } finally {
+      setModelBusy(false);
+    }
+  }, []);
+
   const respondApproval = useCallback(async (item: TranscriptItem, approved: boolean) => {
     if (!active?.thread.id || !item.callId) return;
     await requireBridge().call("approval/respond", {
@@ -261,6 +273,12 @@ export function useLoom() {
 
     const unsubscribe = bridge.onNotification((message) => {
       const params = message.params ?? {};
+      if (message.method === "runtime/updated") {
+        const nextRuntime = params.runtime as InitializeResult["runtime"] | undefined;
+        if (nextRuntime) setRuntime(nextRuntime);
+        return;
+      }
+
       const nestedItem = params.item as Record<string, unknown> | undefined;
       const threadId = String(params.threadId ?? nestedItem?.threadId ?? "");
       const activeId = activeIdRef.current;
@@ -383,6 +401,7 @@ export function useLoom() {
     switchModelProfile,
     switchCurrentModel,
     addModel,
+    setReasoning,
     respondApproval,
   }), [
     active,
@@ -403,6 +422,7 @@ export function useLoom() {
     runtime,
     send,
     setPermissionMode,
+    setReasoning,
     setThreadView,
     switchCurrentModel,
     switchModelProfile,

@@ -6,6 +6,7 @@ import "./styles.css";
 import "./shell-fix.css";
 import "./typography-scale.css";
 import "./components/model-panel-overrides.css";
+import "./components/reasoning-control.css";
 
 const rootElement = document.getElementById("root");
 if (!rootElement) throw new Error("Loom renderer root element is missing");

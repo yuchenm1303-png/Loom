@@ -45,6 +45,7 @@ from .provider_catalog import (
     ProviderDescriptor,
     provider_descriptor,
 )
+from .reasoning import ReasoningKind, ReasoningRequest
 from .roles import ModelRole
 from .runtime import ClientFactory, build_ai_platform
 from .streaming_platform import (
@@ -94,6 +95,8 @@ __all__ = [
     "ProviderStreamEvent",
     "ProviderStreamEventKind",
     "ProviderStreamListener",
+    "ReasoningKind",
+    "ReasoningRequest",
     "StreamEvent",
     "StreamEventKind",
     "StreamingAIPlatform",
