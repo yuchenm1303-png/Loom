@@ -8,6 +8,10 @@ export interface LoomBridge {
   connect(): Promise<unknown>;
   call<T = unknown>(method: string, params?: Record<string, unknown>): Promise<T>;
   disconnect(): Promise<void>;
+  listModels<T = unknown>(): Promise<T>;
+  switchModelProfile<T = unknown>(selection: string): Promise<T>;
+  switchCurrentModel<T = unknown>(model: string): Promise<T>;
+  addModel<T = unknown>(input: Record<string, unknown>): Promise<T>;
   onNotification(listener: (payload: LoomNotification) => void): () => void;
 }
 

@@ -12,17 +12,22 @@ import {
   Square,
 } from "lucide-react";
 import { FormEvent, KeyboardEvent as ReactKeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
+import type { AddModelInput, ModelSnapshot } from "../types/loom";
+import { ModelPanel } from "./ModelPanel";
 import "./composer.css";
 
 interface ComposerProps {
   disabled?: boolean;
   running?: boolean;
   model?: string;
-  models?: string[];
+  modelSnapshot?: ModelSnapshot | null;
+  modelBusy?: boolean;
   permissionMode?: string;
   permissionModes?: string[];
   onPermissionModeChange?(mode: string): Promise<void> | void;
-  onModelChange?(model: string): Promise<void> | void;
+  onModelProfileChange?(selection: string): Promise<void> | void;
+  onCustomModelChange?(model: string): Promise<void> | void;
+  onAddModel?(input: AddModelInput): Promise<void> | void;
   onSend(input: string): Promise<void> | void;
   onInterrupt(): Promise<void> | void;
 }
@@ -89,11 +94,14 @@ export function Composer({
   disabled,
   running,
   model,
-  models,
+  modelSnapshot,
+  modelBusy,
   permissionMode,
   permissionModes,
   onPermissionModeChange,
-  onModelChange,
+  onModelProfileChange,
+  onCustomModelChange,
+  onAddModel,
   onSend,
   onInterrupt,
 }: ComposerProps) {
@@ -109,11 +117,6 @@ export function Composer({
     const values = permissionModes?.length ? permissionModes : ["read-only", "approval", "workspace", "full-access"];
     return Array.from(new Set(values.filter(Boolean)));
   }, [permissionModes]);
-
-  const availableModels = useMemo(() => {
-    const values = [...(models ?? []), model ?? ""].filter(Boolean);
-    return Array.from(new Set(values));
-  }, [model, models]);
 
   useEffect(() => {
     const textarea = textareaRef.current;
@@ -185,26 +188,8 @@ export function Composer({
     }
   }
 
-  async function chooseModel(nextModel: string) {
-    if (nextModel === model) {
-      setOpenPanel(null);
-      return;
-    }
-    if (!onModelChange || running) return;
-
-    setPendingSelection(nextModel);
-    setPanelError("");
-    try {
-      await onModelChange(nextModel);
-      setOpenPanel(null);
-    } catch (cause) {
-      setPanelError(cause instanceof Error ? cause.message : "Could not switch models.");
-    } finally {
-      setPendingSelection("");
-    }
-  }
-
   const currentPermission = permissionPresentation(permissionMode || "approval");
+  const currentModel = modelSnapshot?.current?.model || model || "Model";
 
   return (
     <div className="composer-wrap" ref={composerRootRef}>
@@ -303,72 +288,48 @@ export function Composer({
               <button
                 type="button"
                 className={`composer-chip model-chip ${openPanel === "model" ? "is-open" : ""}`}
-                title={model || "Model"}
+                title={currentModel}
                 aria-haspopup="menu"
                 aria-expanded={openPanel === "model"}
                 onClick={() => togglePanel("model")}
               >
                 <Cpu size={13} />
-                <span>{model || "Model"}</span>
+                <span>{currentModel}</span>
                 <ChevronDown size={13} className="composer-chip-chevron" />
               </button>
 
               {openPanel === "model" ? (
-                <div className="composer-popover model-popover" role="menu" aria-label="Models">
+                <div className="composer-popover model-popover model-manager-popover" role="dialog" aria-label="Model manager">
                   <div className="composer-popover-head">
                     <div className="composer-popover-heading">
                       <span className="composer-popover-icon model"><Cpu size={16} /></span>
                       <div>
-                        <strong>Model</strong>
-                        <span>Select the model used for new work in this runtime.</span>
+                        <strong>Models</strong>
+                        <span>Switch runtime models or connect a custom API.</span>
                       </div>
                     </div>
                     <span className="composer-popover-context">Runtime</span>
                   </div>
 
-                  <div className="composer-option-list model-option-list">
-                    {(availableModels.length ? availableModels : [model || "Model"]).map((candidate) => {
-                      const active = candidate === model;
-                      const pending = pendingSelection === candidate;
-                      const selectable = active || Boolean(onModelChange);
-                      return (
-                        <button
-                          key={candidate}
-                          type="button"
-                          className={`composer-option model-option ${active ? "active" : ""}`}
-                          role="menuitemradio"
-                          aria-checked={active}
-                          disabled={Boolean(pendingSelection) || running || !selectable}
-                          onClick={() => void chooseModel(candidate)}
-                        >
-                          <span className="composer-option-icon model"><Cpu size={15} /></span>
-                          <span className="composer-option-copy">
-                            <span className="composer-option-title-row">
-                              <strong>{candidate}</strong>
-                              {active ? <em className="model-active-badge"><i /> Active</em> : null}
-                            </span>
-                            <span className="composer-option-description">
-                              {active ? "Connected to the current Agent Runtime." : "Configured model available to this runtime."}
-                            </span>
-                          </span>
-                          <span className={`composer-option-check ${pending ? "pending" : ""}`}>
-                            {pending ? <span className="composer-mini-spinner" /> : active ? <Check size={13} /> : null}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  {availableModels.length <= 1 && !onModelChange ? (
-                    <div className="composer-model-notice">
-                      <span className="model-notice-dot" />
-                      <span>One model is configured. Additional model profiles will appear here automatically when the runtime exposes them.</span>
-                    </div>
-                  ) : null}
-                  {panelError ? <div className="composer-popover-error">{panelError}</div> : null}
-                  <div className="composer-popover-footnote">
-                    Provider credentials stay behind the App Server boundary and are never exposed to the renderer.
-                  </div>
+                  <ModelPanel
+                    runtimeModel={model}
+                    snapshot={modelSnapshot ?? null}
+                    busy={modelBusy}
+                    running={running}
+                    onSwitchProfile={async (selection) => {
+                      if (!onModelProfileChange) throw new Error("Model switching is unavailable.");
+                      await onModelProfileChange(selection);
+                    }}
+                    onSwitchCurrent={async (nextModel) => {
+                      if (!onCustomModelChange) throw new Error("Custom model switching is unavailable.");
+                      await onCustomModelChange(nextModel);
+                    }}
+                    onAddModel={async (input) => {
+                      if (!onAddModel) throw new Error("Adding model APIs is unavailable.");
+                      await onAddModel(input);
+                    }}
+                    onClose={() => setOpenPanel(null)}
+                  />
                 </div>
               ) : null}
             </div>

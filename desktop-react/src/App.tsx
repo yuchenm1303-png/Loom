@@ -5,7 +5,6 @@ import { Inspector } from "./components/Inspector";
 import { RunProgress } from "./components/RunProgress";
 import { Sidebar } from "./components/Sidebar";
 import { Transcript } from "./components/Transcript";
-import "./components/inline-thinking.css";
 import { useLoom } from "./state/useLoom";
 
 export default function App() {
@@ -59,7 +58,7 @@ export default function App() {
           </div>
         </header>
 
-        <div className={`conversation-stage ${running ? "is-running" : ""}`}>
+        <div className="conversation-stage">
           {running ? <RunProgress {...progressProps} placement="top" /> : null}
           <Transcript
             items={loom.items}
@@ -75,9 +74,14 @@ export default function App() {
             disabled={!thread || loom.connection !== "ready"}
             running={running}
             model={loom.runtime.model}
+            modelSnapshot={loom.models}
+            modelBusy={loom.modelBusy}
             permissionMode={thread?.permissionMode || loom.runtime.defaultPermissionMode}
             permissionModes={loom.runtime.permissionModes}
             onPermissionModeChange={loom.setPermissionMode}
+            onModelProfileChange={loom.switchModelProfile}
+            onCustomModelChange={loom.switchCurrentModel}
+            onAddModel={loom.addModel}
             onSend={loom.send}
             onInterrupt={loom.interrupt}
           />

@@ -69,6 +69,41 @@ export interface ThreadReadResult {
   error?: string;
 }
 
+export interface ModelProfile {
+  selection: string;
+  id: string;
+  kind: "builtin" | "saved";
+  name: string;
+  adapter: string;
+  baseUrl: string;
+  model: string;
+}
+
+export interface CurrentModel extends ModelProfile {
+  provider: string;
+}
+
+export interface ModelSnapshot {
+  primary: ModelProfile;
+  profiles: ModelProfile[];
+  activeModelId: string | null;
+  current: CurrentModel | null;
+  recentModels: string[];
+}
+
+export interface AddModelInput {
+  name: string;
+  adapter: "openai" | "openai-compatible";
+  baseUrl: string;
+  model: string;
+  apiKey: string;
+}
+
+export interface ModelRestartResult {
+  initialization: InitializeResult;
+  models: ModelSnapshot;
+}
+
 export interface InitializeResult {
   protocolVersion: number;
   serverInfo: { name: string; version: string };
