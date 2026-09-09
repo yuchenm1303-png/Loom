@@ -9,9 +9,9 @@
       html, body, #root { width: 100%; height: 100%; margin: 0; }
       body { background: #0d0e11; color: #eceef2; font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
       .boot-sentinel { height: 100%; display: grid; place-items: center; background: #0d0e11; }
-      .boot-sentinel-card { display: grid; gap: 8px; text-align: center; color: #8c93a1; }
+      .boot-sentinel-card { width: min(620px, calc(100% - 48px)); display: grid; gap: 8px; text-align: center; color: #8c93a1; }
       .boot-sentinel-card strong { color: #d8dbe2; font-size: 14px; font-weight: 650; }
-      .boot-sentinel-card span { font-size: 11px; }
+      .boot-sentinel-card span { font-size: 11px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
     </style>
   </head>
   <body>
@@ -19,10 +19,25 @@
       <div class="boot-sentinel">
         <div class="boot-sentinel-card">
           <strong>Starting Loom…</strong>
-          <span>Renderer HTML loaded. Waiting for React.</span>
+          <span id="boot-detail">Renderer HTML loaded. Waiting for React.</span>
         </div>
       </div>
     </div>
+    <script>
+      function showBootFailure(label, value) {
+        var detail = document.getElementById("boot-detail");
+        if (!detail) return;
+        var message = value && value.message ? value.message : String(value || "Unknown renderer error");
+        detail.textContent = label + "\n" + message;
+        detail.style.color = "#dc7c86";
+      }
+      window.addEventListener("error", function (event) {
+        showBootFailure("Renderer script error", event.error || event.message);
+      });
+      window.addEventListener("unhandledrejection", function (event) {
+        showBootFailure("Renderer promise rejection", event.reason);
+      });
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
