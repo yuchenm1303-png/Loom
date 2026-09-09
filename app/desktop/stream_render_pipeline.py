@@ -69,10 +69,34 @@ def _update_existing_entries(view: Any, entries: Iterable[Any]) -> bool:
 
 
 def _entries_for_keys(state: Any, keys: set[str]) -> list[Any]:
+    """Materialise only dirty transcript entries, not the whole conversation."""
     if not keys:
         return []
-    # Keep durable transcript order rather than set order. This matters when a
-    # single frame contains the end of one assistant step and process output.
+
+    # ThreadState exposes these as internal building blocks so its ordinary
+    # entries() API can stay simple. The stream lane is the one performance-
+    # sensitive caller: flushing and constructing 1-2 dirty rows avoids walking
+    # hundreds of historical transcript items 30+ times a second.
+    flush = getattr(state, "_flush_stream_fragments", None)
+    order = getattr(state, "_order", None)
+    items = getattr(state, "_items", None)
+    build = getattr(state, "_entry", None)
+    if callable(flush) and isinstance(order, list) and isinstance(items, dict) and callable(build):
+        flush(keys)
+        wanted = {str(key) for key in keys}
+        result = []
+        for key in order:
+            if key not in wanted:
+                continue
+            item = items.get(key)
+            if item is None:
+                continue
+            entry = build(key, item)
+            if entry is not None:
+                result.append(entry)
+        return result
+
+    # Compatibility fallback for alternate/test state objects.
     return [entry for entry in state.entries() if getattr(entry, "key", "") in keys]
 
 
@@ -81,6 +105,15 @@ def _render_terminal_now(window: Any) -> None:
     state = getattr(window, "state", None)
     if terminal is None or state is None:
         return
+    # An inactive Runtime tab has no pixels on screen. Do not keep laying out 30
+    # terminal cards for every stdout frame just in case the reader opens it.
+    # Structural snapshots/completion refresh it, and a live process will refresh
+    # it on the next frame immediately after the tab becomes visible.
+    try:
+        if not terminal.isVisible():
+            return
+    except (AttributeError, RuntimeError):
+        pass
     terminal.render_items(state.items_of_type("process")[-30:])
 
 
