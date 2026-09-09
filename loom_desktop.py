@@ -3,11 +3,75 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+import threading
+import traceback
 from pathlib import Path
 from typing import Mapping
 
 from app.ai.model_store import ModelConfigStore
 from app.app_server_client import AppServerProcessConfig, LoomAppServerClient
+
+
+def _install_stack_dump_handlers() -> None:
+    """Dump every Python thread's traceback when the user requests it.
+
+    On Windows, ``pythonw.exe`` swallows stdout/stderr and the OS marks the
+    Qt event loop as "Not Responding" instead of letting us print a traceback.
+    Pressing Ctrl+Break in the console (or sending SIGBREAK via ``kill -SIGBREAK``
+    from bash) writes a stack dump to ``LOOM_STACK_DUMP_PATH`` so a frozen UI
+    can still be diagnosed without a debugger attached.
+    """
+
+    try:
+        import signal
+    except ImportError:
+        return
+
+    main_thread_id = threading.get_ident()
+    dump_path = os.environ.get(
+        "LOOM_STACK_DUMP_PATH",
+        str(Path.home() / ".loom" / "loom-stack-dump.log"),
+    )
+    try:
+        Path(dump_path).parent.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        return
+
+    def _dump(label: str) -> None:
+        frames = sys._current_frames()
+        # Prefer the main thread — the Qt event loop runs there and that is
+        # where "Not Responding" freezes originate.
+        main_frame = frames.get(main_thread_id)
+        lines = [f"=== Loom stack dump ({label}) ==="]
+        for tid, frame in frames.items():
+            tag = "main" if tid == main_thread_id else f"tid={tid}"
+            lines.append(f"--- thread {tag} ---")
+            lines.extend(traceback.format_stack(frame))
+        try:
+            with open(dump_path, "a", encoding="utf-8") as fh:
+                fh.write("".join(lines))
+                fh.write("\n")
+        except OSError:
+            pass
+        try:
+            sys.stderr.write("".join(lines))
+            sys.stderr.flush()
+        except Exception:
+            pass
+
+    def _handler(signum: int, frame: object) -> None:  # noqa: ARG001 - signal API
+        _dump(f"signal {signum}")
+
+    for sig_name in ("SIGBREAK", "SIGUSR1", "SIGTERM"):
+        sig = getattr(signal, sig_name, None)
+        if sig is None:
+            continue
+        try:
+            signal.signal(sig, _handler)
+        except (ValueError, OSError):
+            # SIGBREAK / SIGUSR1 may only be installed from the main thread on
+            # Windows; SIGTERM sometimes refuses console handlers under pythonw.
+            continue
 
 
 _PERMISSION_MODES = ("read-only", "approval", "workspace", "full-access")
@@ -85,6 +149,7 @@ def _default_primary_model(
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     workspace = _workspace(args.workspace)
+    _install_stack_dump_handlers()
 
     # The UI and launcher both open the same model registry. When --home is
     # explicit, publish it before importing the desktop package so there is one
@@ -122,10 +187,14 @@ def main(argv: list[str] | None = None) -> int:
         """
         saved = model_store.model_for_selection(selection)
         child_env: dict[str, str] | None = None
+        # Only a saved connection carries a user-declared answer about images.
+        # Every other launch path leaves it to the App Server default.
+        vision: bool | None = None
         if saved is not None:
             provider = saved.adapter.value
             base_url = saved.base_url or None
             model = saved.model
+            vision = saved.vision
             child_env = os.environ.copy()
             child_env["LOOM_API_KEY"] = model_store.secret_for(saved)
         elif explicit_launch:
@@ -140,6 +209,7 @@ def main(argv: list[str] | None = None) -> int:
                 provider = active_saved.adapter.value
                 base_url = active_saved.base_url or None
                 model = selection
+                vision = active_saved.vision
                 child_env = os.environ.copy()
                 child_env["LOOM_API_KEY"] = model_store.secret_for(active_saved)
             else:
@@ -156,6 +226,7 @@ def main(argv: list[str] | None = None) -> int:
             permission_mode=args.permission_mode,
             timeout_seconds=args.timeout,
             app_server_executable=args.app_server_executable,
+            vision=vision,
         )
         server = LoomAppServerClient(
             config.command(),
