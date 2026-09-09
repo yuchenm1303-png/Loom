@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from app.ai import (
     AIMessage,
     ChatRequest,
@@ -16,6 +18,7 @@ from app.ai import (
 from app.ai.model_store import ModelConfigStore
 from app.ai.reasoning_catalog import reasoning_capability, resolved_reasoning
 from app.ai.reasoning_store import ReasoningConfigStore
+from loom_app_server import _validate_reasoning_for_runtime
 from loom_model_bridge import _describe_model, _set_reasoning
 
 
@@ -113,6 +116,24 @@ def test_openai_reasoning_is_sent_as_reasoning_effort() -> None:
     )
 
     assert kwargs["extra_body"] == {"reasoning_effort": "high"}
+
+
+def test_app_server_accepts_only_catalogued_minimax_hosted_modes() -> None:
+    capability = _validate_reasoning_for_runtime(
+        model="MiniMax-M3",
+        provider="openai-compatible",
+        base_url="https://api.minimaxi.com/v1",
+        reasoning=ReasoningRequest(ReasoningKind.MINIMAX_THINKING, "adaptive"),
+    )
+    assert capability is not None
+
+    with pytest.raises(SystemExit, match="not supported"):
+        _validate_reasoning_for_runtime(
+            model="MiniMax-M3",
+            provider="openai-compatible",
+            base_url="https://api.minimaxi.com/v1",
+            reasoning=ReasoningRequest(ReasoningKind.MINIMAX_THINKING, "enabled"),
+        )
 
 
 def test_reasoning_preferences_are_scoped_to_connection_and_model(tmp_path) -> None:
