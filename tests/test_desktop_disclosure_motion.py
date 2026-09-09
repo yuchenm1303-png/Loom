@@ -68,6 +68,47 @@ def test_reveal_progress_physically_moves_following_layout_content(app):
     root.close()
 
 
+def test_reveal_progress_writes_geometry_only_when_pixel_height_changes(app):
+    class CountingReveal(AnimatedReveal):
+        def __init__(self, content, parent=None):
+            self.minimum_writes = 0
+            self.maximum_writes = 0
+            super().__init__(content, parent)
+
+        def setMinimumHeight(self, height):  # noqa: N802 - Qt API
+            self.minimum_writes += 1
+            super().setMinimumHeight(height)
+
+        def setMaximumHeight(self, height):  # noqa: N802 - Qt API
+            self.maximum_writes += 1
+            super().setMaximumHeight(height)
+
+    reveal = CountingReveal(QLabel("detail"))
+    # Ignore the one-time construction constraints. The animation path should
+    # never mutate minimumHeight, and repeated progress samples that round to the
+    # same pixel must not invalidate layout again.
+    reveal.minimum_writes = 0
+    reveal.maximum_writes = 0
+    reveal._target_height = 100
+    reveal._geometry_height = 0
+
+    reveal._set_progress(0.251)
+    assert reveal.minimumHeight() == 0
+    assert reveal.maximumHeight() == 25
+    assert reveal.minimum_writes == 0
+    assert reveal.maximum_writes == 1
+
+    reveal._set_progress(0.252)
+    assert reveal.maximumHeight() == 25
+    assert reveal.minimum_writes == 0
+    assert reveal.maximum_writes == 1
+
+    reveal._set_progress(0.26)
+    assert reveal.maximumHeight() == 26
+    assert reveal.maximum_writes == 2
+    reveal.close()
+
+
 def test_task_disclosure_uses_one_real_reveal_without_viewport_overlay(app, monkeypatch):
     monkeypatch.delenv("LOOM_REDUCE_MOTION", raising=False)
     view = TranscriptView()

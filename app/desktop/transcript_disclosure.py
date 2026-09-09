@@ -68,6 +68,7 @@ class AnimatedReveal(QWidget):
 
         self._progress = 0.0
         self._target_height = 0
+        self._geometry_height = 0
         self._expanded = False
         self._animation: QPropertyAnimation | None = None
         self._resize_pending = False
@@ -88,9 +89,20 @@ class AnimatedReveal(QWidget):
         self._progress = value
         target = max(0, int(self._target_height))
         height = int(round(target * value))
-        self.setMinimumHeight(height)
-        self.setMaximumHeight(height)
-        self.updateGeometry()
+
+        # Keep one geometry mutation per visible pixel step. ``minimumHeight``
+        # remains zero for the lifetime of the reveal; changing both minimum and
+        # maximum height plus calling updateGeometry() used to invalidate the Qt
+        # layout several times for every animation tick. ``setMaximumHeight`` is
+        # sufficient to clamp the Fixed-size reveal and already invalidates its
+        # parent layout. The real transcript layout still advances one pixel at a
+        # time, but it now performs only the work needed for that new height.
+        if height != self._geometry_height:
+            self._geometry_height = height
+            self.setMaximumHeight(height)
+
+        # Chevron painting still follows the continuous animation progress even
+        # on frames where rounding produced the same integer layout height.
         self.progressChanged.emit(value)
 
     progress = Property(float, _get_progress, _set_progress, notify=progressChanged)
