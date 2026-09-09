@@ -392,3 +392,440 @@
     animation: none;
   }
 }
+
+/* Composer control popovers ------------------------------------------------ */
+
+.composer-wrap {
+  z-index: 30;
+}
+
+.composer.has-panel,
+.composer:has(.composer-popover) {
+  overflow: visible;
+}
+
+.composer-control-anchor {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.composer-chip {
+  cursor: pointer;
+}
+
+.composer-chip.is-open {
+  color: #dedaff;
+  border-color: rgba(139,124,246,.22);
+  background: rgba(139,124,246,.09);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.018), 0 0 0 1px rgba(139,124,246,.035);
+}
+
+.composer-chip-chevron {
+  flex: none;
+  opacity: .6;
+  transition: transform 160ms cubic-bezier(.2,.8,.2,1), opacity 160ms ease;
+}
+
+.composer-chip:hover .composer-chip-chevron,
+.composer-chip.is-open .composer-chip-chevron {
+  opacity: 1;
+}
+
+.composer-chip.is-open .composer-chip-chevron {
+  transform: rotate(180deg);
+}
+
+.composer-popover {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 12px);
+  width: 372px;
+  padding: 10px;
+  border: 1px solid rgba(70,76,91,.92);
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, rgba(25,27,34,.985), rgba(17,19,24,.992)),
+    #17191f;
+  box-shadow:
+    0 28px 68px rgba(0,0,0,.42),
+    0 10px 26px rgba(0,0,0,.24),
+    inset 0 1px 0 rgba(255,255,255,.04);
+  backdrop-filter: blur(18px);
+  transform-origin: 26px calc(100% + 8px);
+  animation: composer-popover-in 170ms cubic-bezier(.18,.86,.24,1);
+  z-index: 90;
+}
+
+.composer-popover::before {
+  content: "";
+  position: absolute;
+  left: 25px;
+  bottom: -6px;
+  width: 11px;
+  height: 11px;
+  transform: rotate(45deg);
+  border-right: 1px solid rgba(70,76,91,.92);
+  border-bottom: 1px solid rgba(70,76,91,.92);
+  background: #111318;
+}
+
+.model-popover {
+  width: 356px;
+}
+
+@keyframes composer-popover-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.composer-popover-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 5px 5px 11px;
+  border-bottom: 1px solid rgba(255,255,255,.055);
+}
+
+.composer-popover-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  min-width: 0;
+}
+
+.composer-popover-heading > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.composer-popover-heading strong {
+  color: #eef0f5;
+  font-size: 12px;
+  line-height: 1.25;
+  font-weight: 660;
+}
+
+.composer-popover-heading span:not(.composer-popover-icon) {
+  color: #858c99;
+  font-size: 10.5px;
+  line-height: 1.45;
+}
+
+.composer-popover-icon {
+  width: 29px;
+  height: 29px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  border: 1px solid rgba(255,255,255,.06);
+  background: rgba(255,255,255,.025);
+  color: #a9a2ea;
+}
+
+.composer-popover-icon.model {
+  color: #9eabc2;
+}
+
+.composer-popover-context {
+  flex: none;
+  margin-top: 1px;
+  padding: 4px 7px;
+  border: 1px solid #30343e;
+  border-radius: 999px;
+  background: #15171d;
+  color: #727987;
+  font-size: 9px;
+  font-weight: 620;
+  letter-spacing: .02em;
+}
+
+.composer-option-list {
+  display: grid;
+  gap: 4px;
+  padding-top: 8px;
+}
+
+.composer-option {
+  width: 100%;
+  min-height: 64px;
+  padding: 8px 9px;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  background: transparent;
+  display: grid;
+  grid-template-columns: 31px minmax(0,1fr) 22px;
+  align-items: center;
+  gap: 9px;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    transform 120ms ease,
+    box-shadow 150ms ease;
+}
+
+.composer-option:hover:not(:disabled) {
+  border-color: rgba(255,255,255,.055);
+  background: rgba(255,255,255,.035);
+}
+
+.composer-option:active:not(:disabled) {
+  transform: scale(.992);
+}
+
+.composer-option.active {
+  border-color: rgba(139,124,246,.17);
+  background: linear-gradient(90deg, rgba(139,124,246,.10), rgba(139,124,246,.035));
+  box-shadow: inset 2px 0 0 rgba(154,143,247,.68);
+}
+
+.composer-option.danger:not(.active):hover:not(:disabled) {
+  border-color: rgba(211,98,116,.12);
+  background: rgba(211,98,116,.035);
+}
+
+.composer-option:disabled {
+  cursor: default;
+}
+
+.composer-option:disabled:not(.active) {
+  opacity: .58;
+}
+
+.composer-option-icon {
+  width: 31px;
+  height: 31px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #30343d;
+  background: #15171d;
+  color: #8e96a5;
+}
+
+.composer-option-icon.safe {
+  color: #8eb9a0;
+}
+
+.composer-option-icon.recommended {
+  color: #aaa0ff;
+  border-color: rgba(139,124,246,.20);
+  background: rgba(139,124,246,.055);
+}
+
+.composer-option-icon.flexible {
+  color: #91a5c6;
+}
+
+.composer-option-icon.danger {
+  color: #c9848e;
+  border-color: rgba(201,102,116,.14);
+  background: rgba(201,102,116,.035);
+}
+
+.composer-option-icon.model {
+  color: #9ba7bd;
+}
+
+.composer-option-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.composer-option-title-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.composer-option-title-row strong {
+  min-width: 0;
+  color: #dfe2e8;
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.permission-badge,
+.model-active-badge {
+  flex: none;
+  padding: 3px 6px;
+  border: 1px solid #30343c;
+  border-radius: 999px;
+  background: #15171d;
+  color: #777e8b;
+  font-size: 8.5px;
+  line-height: 1;
+  font-style: normal;
+  font-weight: 620;
+}
+
+.permission-badge.safe {
+  color: #88ac97;
+  border-color: rgba(118,166,137,.18);
+}
+
+.permission-badge.recommended {
+  color: #aba3ef;
+  border-color: rgba(139,124,246,.20);
+  background: rgba(139,124,246,.045);
+}
+
+.permission-badge.flexible {
+  color: #90a0ba;
+}
+
+.permission-badge.danger {
+  color: #c67e89;
+  border-color: rgba(198,105,119,.16);
+  background: rgba(198,105,119,.035);
+}
+
+.model-active-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #9f98dd;
+  border-color: rgba(139,124,246,.19);
+  background: rgba(139,124,246,.045);
+}
+
+.model-active-badge i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #9f95eb;
+  box-shadow: 0 0 0 3px rgba(139,124,246,.08);
+}
+
+.composer-option-description {
+  color: #7e8592;
+  font-size: 9.5px;
+  line-height: 1.45;
+}
+
+.composer-option-check {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  color: transparent;
+}
+
+.composer-option.active .composer-option-check {
+  color: #bbb4fb;
+  background: rgba(139,124,246,.08);
+}
+
+.composer-mini-spinner {
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid rgba(170,160,255,.25);
+  border-top-color: #aaa0ff;
+  border-radius: 50%;
+  animation: composer-mini-spin .7s linear infinite;
+}
+
+@keyframes composer-mini-spin {
+  to { transform: rotate(360deg); }
+}
+
+.composer-popover-footnote,
+.composer-model-notice,
+.composer-popover-error {
+  margin-top: 8px;
+  border-radius: 9px;
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.composer-popover-footnote {
+  padding: 8px 9px 2px;
+  border-top: 1px solid rgba(255,255,255,.045);
+  border-radius: 0;
+  color: #626976;
+}
+
+.composer-model-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 9px 10px;
+  border: 1px solid rgba(255,255,255,.045);
+  background: rgba(255,255,255,.018);
+  color: #727987;
+}
+
+.model-notice-dot {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  margin-top: 4px;
+  border-radius: 50%;
+  background: #7e8796;
+  box-shadow: 0 0 0 3px rgba(126,135,150,.08);
+}
+
+.composer-popover-error {
+  padding: 8px 9px;
+  border: 1px solid rgba(210,92,109,.14);
+  background: rgba(210,92,109,.055);
+  color: #c8838d;
+}
+
+@media (max-width: 760px) {
+  .composer-popover,
+  .model-popover {
+    width: min(360px, calc(100vw - 44px));
+  }
+
+  .model-control-anchor .composer-popover {
+    left: auto;
+    right: -44px;
+  }
+
+  .model-control-anchor .composer-popover::before {
+    left: auto;
+    right: 58px;
+  }
+
+  .composer-option {
+    grid-template-columns: 29px minmax(0,1fr) 20px;
+    min-height: 60px;
+    padding-inline: 8px;
+  }
+
+  .composer-option-icon {
+    width: 29px;
+    height: 29px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .composer-popover,
+  .composer-chip-chevron,
+  .composer-option,
+  .composer-mini-spinner {
+    animation: none;
+    transition: none;
+  }
+}
