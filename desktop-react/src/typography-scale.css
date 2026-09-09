@@ -1,0 +1,117 @@
+/*
+ * Global readability pass.
+ *
+ * The desktop shell historically used a dense 8–13px type scale. Keep the
+ * existing layout/spacing, but lift readable text roughly 12–18% so the UI is
+ * comfortable at normal desktop viewing distance.
+ */
+
+:root {
+  --loom-font-body: 15px;
+  --loom-font-ui: 12.5px;
+  --loom-font-meta: 10.5px;
+}
+
+body {
+  font-size: var(--loom-font-body);
+}
+
+/* Sidebar */
+.sidebar .brand-row strong { font-size: 14px !important; }
+.sidebar .brand-row span { font-size: 12px !important; }
+.sidebar .brand-mark { font-size: 14px !important; }
+.sidebar .new-thread-copy { font-size: 13px !important; }
+.sidebar .new-thread kbd,
+.sidebar .search-shortcut { font-size: 9.5px !important; }
+.sidebar .search-box input { font-size: 12.5px !important; }
+.sidebar .sidebar-section-label { font-size: 10.5px !important; }
+.sidebar .section-count { font-size: 9.5px !important; }
+.sidebar .thread-title { font-size: 13px !important; }
+.sidebar .thread-meta { font-size: 10.5px !important; }
+.sidebar .sidebar-empty strong { font-size: 11.5px !important; }
+.sidebar .sidebar-empty > span:last-of-type,
+.sidebar .sidebar-empty button { font-size: 10.5px !important; }
+.sidebar .sidebar-footer-button { font-size: 12.5px !important; }
+.sidebar .footer-badge { font-size: 9.5px !important; }
+
+/* Conversation header */
+.thread-heading strong { font-size: 14px !important; }
+.thread-heading span { font-size: 11.5px !important; }
+.running-pill { font-size: 11.5px !important; }
+
+/* Empty conversation state */
+.empty-kicker { font-size: 11.5px !important; }
+.empty-state > p { font-size: 14px !important; }
+.starter-eyebrow { font-size: 10.5px !important; }
+.starter-content strong { font-size: 12.5px !important; }
+.starter-content > span:last-child { font-size: 11.5px !important; }
+
+/* Main transcript */
+.user-message,
+.assistant-message { font-size: 15px !important; }
+.streaming-placeholder { font-size: 12.5px !important; }
+.disclosure-trigger { font-size: 12.5px !important; }
+.reasoning-copy { font-size: 14px !important; }
+.activity-title { font-size: 12.5px !important; }
+.activity-status { font-size: 10.5px !important; }
+.activity-output,
+.diff-output { font-size: 12px !important; }
+.error-row { font-size: 12.5px !important; }
+.approval-title { font-size: 12.5px !important; }
+.approval-copy { font-size: 11.5px !important; }
+.button { font-size: 11.5px !important; }
+
+/* Compact task/activity flow */
+.task-flow-summary-copy strong { font-size: 13.5px !important; }
+.task-flow-summary-copy span { font-size: 10.5px !important; }
+.task-flow-verb { font-size: 12.5px !important; }
+.task-flow-primary { font-size: 13px !important; }
+.task-flow-primary.code { font-size: 12px !important; }
+.task-flow-diffstat { font-size: 10.5px !important; }
+.task-flow-status { font-size: 10.5px !important; }
+.task-flow-disclosure .disclosure-trigger { font-size: 11.5px !important; }
+.task-flow-detail-title { font-size: 12px !important; }
+.task-flow-detail-kind { font-size: 9.5px !important; }
+.task-flow-detail pre { font-size: 11.5px !important; }
+.task-flow-detail .task-flow-detail-empty { font-size: 11.5px !important; }
+
+/* Composer */
+.composer textarea { font-size: 15.5px !important; }
+.composer-tool,
+.composer-chip { font-size: 12px !important; }
+.composer-keycap { font-size: 10.5px !important; }
+.composer-running-label { font-size: 11.5px !important; }
+.composer-hint { font-size: 10.5px !important; }
+
+/* Runtime inspector */
+.runtime-title-row strong { font-size: 13.5px !important; }
+.runtime-caption { font-size: 10.5px !important; }
+.runtime-health { font-size: 9.5px !important; }
+.runtime-tab { font-size: 10.5px !important; }
+.runtime-tab-count { font-size: 9.5px !important; }
+.runtime-section-bar { font-size: 9.5px !important; }
+.runtime-empty strong { font-size: 13px !important; }
+.runtime-empty p { font-size: 11.5px !important; }
+.runtime-empty-chips span { font-size: 9.5px !important; }
+.runtime-event-title { font-size: 12px !important; }
+.runtime-event-subtitle { font-size: 10px !important; }
+.runtime-event-detail pre { font-size: 11px !important; }
+.runtime-footer { font-size: 10.5px !important; }
+
+/* Legacy/fallback inspector selectors that are still present in the shell CSS. */
+.inspector-header strong { font-size: 13px !important; }
+.inspector-tabs button { font-size: 10.5px !important; }
+.inspector-empty { font-size: 12.5px !important; }
+.inspector-row-title { font-size: 12.5px !important; }
+.inspector-row-meta { font-size: 10.5px !important; }
+
+/* Error surface */
+.boot-error-card h1 { font-size: 19px !important; }
+.boot-error-card p { font-size: 13.5px !important; }
+
+@media (max-width: 1180px) {
+  /* Keep the readability gain on smaller desktop windows instead of shrinking type. */
+  .user-message,
+  .assistant-message { font-size: 14.5px !important; }
+  .composer textarea { font-size: 15px !important; }
+}
