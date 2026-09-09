@@ -1,5 +1,6 @@
 import { ArrowUp, Cpu, Paperclip, ShieldCheck, Sparkles, Square } from "lucide-react";
 import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
+import "./composer.css";
 
 interface ComposerProps {
   disabled?: boolean;
