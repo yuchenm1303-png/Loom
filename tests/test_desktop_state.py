@@ -85,6 +85,69 @@ def test_plain_messages_render_when_turn_items_carry_no_conversation():
     assert kinds == ["user", "assistant", "process"]
 
 
+def test_event_history_restores_messages_between_activity_rows():
+    state = ThreadState()
+    state.apply_snapshot(
+        _snapshot(
+            messages=[
+                {"role": "user", "content": "Inspect the repository"},
+                {"role": "assistant", "content": "I will inspect it first."},
+                {"role": "assistant", "content": "Now I will update the file."},
+            ],
+            turns=_turn(
+                {
+                    "id": "process:1",
+                    "type": "process",
+                    "status": "completed",
+                    "argv": ["git", "status"],
+                    "createdAt": "2026-09-09T06:00:02+00:00",
+                },
+                {
+                    "id": "diff:1",
+                    "type": "file_edit",
+                    "status": "completed",
+                    "paths": ["app.py"],
+                    "createdAt": "2026-09-09T06:00:04+00:00",
+                },
+            ),
+            events=[
+                {
+                    "eventId": "u1",
+                    "threadId": "thread-1",
+                    "turnId": "turn-1",
+                    "kind": "user_message",
+                    "createdAt": "2026-09-09T06:00:00+00:00",
+                    "data": {"text": "Inspect the repository"},
+                },
+                {
+                    "eventId": "a1",
+                    "threadId": "thread-1",
+                    "turnId": "turn-1",
+                    "kind": "model_response",
+                    "createdAt": "2026-09-09T06:00:01+00:00",
+                    "data": {"text": "I will inspect it first."},
+                },
+                {
+                    "eventId": "a2",
+                    "threadId": "thread-1",
+                    "turnId": "turn-1",
+                    "kind": "model_response",
+                    "createdAt": "2026-09-09T06:00:03+00:00",
+                    "data": {"text": "Now I will update the file."},
+                },
+            ],
+        )
+    )
+
+    assert [(entry.kind, entry.key) for entry in state.entries()] == [
+        ("user", "user:u1"),
+        ("assistant", "assistant:a1"),
+        ("process", "process:1"),
+        ("assistant", "assistant:a2"),
+        ("diff", "diff:1"),
+    ]
+
+
 def test_turn_items_win_over_duplicate_plain_messages():
     state = ThreadState()
     state.apply_snapshot(
@@ -126,6 +189,63 @@ def test_snapshot_refresh_keeps_an_uncommitted_streaming_item():
 
     assert [entry.key for entry in state.entries()] == ["assistant:live"]
     assert state.entries()[0].text == "partial"
+
+
+def test_snapshot_refresh_keeps_live_activity_before_a_newer_assistant_message():
+    state = ThreadState()
+    state.apply_snapshot(
+        _snapshot(
+            turns=_turn(
+                {
+                    "id": "assistant:first",
+                    "type": "assistant_message",
+                    "status": "completed",
+                    "text": "I will check that.",
+                    "createdAt": "2026-09-09T06:00:01+00:00",
+                }
+            )
+        )
+    )
+    state.upsert_item(
+        {
+            "id": "process:live",
+            "type": "process",
+            "status": "running",
+            "argv": ["git", "status"],
+            "createdAt": "2026-09-09T06:00:02+00:00",
+        },
+        streaming=True,
+    )
+
+    # The next snapshot knows about the newer assistant step but has not yet
+    # committed the live process item. The process must stay between the two
+    # messages rather than being appended after the newer reply.
+    state.apply_snapshot(
+        _snapshot(
+            turns=_turn(
+                {
+                    "id": "assistant:first",
+                    "type": "assistant_message",
+                    "status": "completed",
+                    "text": "I will check that.",
+                    "createdAt": "2026-09-09T06:00:01+00:00",
+                },
+                {
+                    "id": "assistant:second",
+                    "type": "assistant_message",
+                    "status": "completed",
+                    "text": "The check finished.",
+                    "createdAt": "2026-09-09T06:00:03+00:00",
+                },
+            )
+        )
+    )
+
+    assert [entry.key for entry in state.entries()] == [
+        "assistant:first",
+        "process:live",
+        "assistant:second",
+    ]
 
 
 def test_optimistic_prompt_is_replaced_by_the_durable_user_item():
