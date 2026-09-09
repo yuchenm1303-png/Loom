@@ -1,22 +1,24 @@
-"""Smooth transcript disclosures without per-frame layout work.
+"""One restrained motion system for transcript disclosures.
 
-Animating ``maximumHeight`` inside the transcript is expensive: every frame
-invalidates the conversation QVBoxLayout, changes the scroll range and can make
-scroll-to-tail fight the disclosure. The previous safety pass therefore made
-geometry atomic, but that also made opening/closing feel like a hard jump.
+The transcript is a live Qt layout. Tweening card heights every frame makes the
+scroll range, tail-follow and every row below the disclosure fight the animation.
+A full viewport screenshot avoids that reflow, but it can also make the page feel
+like one large image is being dragged around.
 
-This module keeps the atomic geometry commit and adds motion with a FLIP-like
-viewport snapshot:
+This coordinator keeps the good part of FLIP and makes the actual disclosure the
+visual subject:
 
-* capture the pixels below the disclosure edge before changing layout;
-* commit the real expanded/collapsed geometry exactly once;
-* slide the captured pixels to their new position over the already-settled UI;
-* animate the tiny chevron normally;
-* never tween message/card height and never rasterise a live terminal widget on
-  every frame.
+* the clicked title/header never moves;
+* real detail content is committed to its final geometry exactly once;
+* opening content gets a tiny opacity/3px settle, never scale or spring motion;
+* only the content column below the disclosure edge is snapshotted and displaced;
+* opening and closing use fixed, product-wide timings instead of distance-based
+  durations;
+* chevrons use the same shared timing tokens as both reasoning and task rows;
+* reduced-motion users get the final state immediately.
 
-The result reads as a real push/reveal animation while Qt only lays the transcript
-out once per click.
+The result is a short top-reveal: content appears to have been sitting directly
+under the row all along, while the rows beneath it simply make room.
 """
 
 from __future__ import annotations
@@ -29,22 +31,30 @@ from PySide6.QtCore import (
     QPoint,
     QPointF,
     Property,
+    QParallelAnimationGroup,
     QPropertyAnimation,
     QRect,
     Qt,
 )
 from PySide6.QtGui import QPainter, QPixmap
-from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import QGraphicsOpacityEffect, QWidget
 
 from app.desktop import message_presentation as messages
 from app.desktop import output_presentation as output
 from app.desktop import theme
 from app.desktop import widgets as base
+from app.desktop.disclosure_motion_tokens import (
+    CONTENT_OFFSET_PX,
+    CONTENT_REVEAL_MS,
+    DISCLOSURE_CLOSE_MS,
+    DISCLOSURE_OPEN_MS,
+)
 
 
 _INSTALLED = False
 _UNBOUNDED_HEIGHT = 16_777_215
 _MIN_TRAVEL_PX = 3
+_COLUMN_GUTTER_PX = 6
 
 
 def _stop_animation(owner: Any, name: str) -> None:
@@ -62,12 +72,39 @@ def _stop_animation(owner: Any, name: str) -> None:
         pass
 
 
-class _ViewportSlide(QWidget):
-    """Paint a frozen viewport slice while its Y offset animates.
+def _clear_content_motion(owner: Any) -> None:
+    """Return a previously animated live surface to its exact layout geometry."""
+    animation = getattr(owner, "_loom_content_animation", None)
+    surface = getattr(owner, "_loom_content_surface", None)
+    target_pos = getattr(owner, "_loom_content_target_pos", None)
+    owner._loom_content_animation = None
+    owner._loom_content_surface = None
+    owner._loom_content_target_pos = None
 
-    It is an ordinary child of the scroll area's viewport, not a layout item, so
-    moving it never changes transcript geometry. The pixmap is captured once at
-    click time; animation frames only repaint this lightweight overlay.
+    if animation is not None:
+        try:
+            animation.stop()
+        except RuntimeError:
+            pass
+        try:
+            animation.deleteLater()
+        except RuntimeError:
+            pass
+    if surface is not None:
+        try:
+            if target_pos is not None:
+                surface.move(target_pos)
+            surface.setGraphicsEffect(None)
+        except RuntimeError:
+            pass
+
+
+class _ViewportSlide(QWidget):
+    """Move only the old content column below a disclosure edge.
+
+    The snapshot is intentionally narrow: blank viewport gutters are never part
+    of the moving object.  That small distinction keeps the interaction reading
+    as nearby rows making room instead of the whole application being dragged.
     """
 
     def __init__(
@@ -75,6 +112,7 @@ class _ViewportSlide(QWidget):
         view: Any,
         pixmap: QPixmap,
         *,
+        x: int,
         anchor_y: int,
     ) -> None:
         viewport = view.viewport()
@@ -87,9 +125,9 @@ class _ViewportSlide(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.setGeometry(
-            0,
+            x,
             anchor_y,
-            max(1, viewport.width()),
+            max(1, pixmap.width()),
             max(1, viewport.height() - anchor_y),
         )
         self.show()
@@ -109,9 +147,6 @@ class _ViewportSlide(QWidget):
 
     def paintEvent(self, _event: Any) -> None:  # noqa: N802 - Qt override
         painter = QPainter(self)
-        # No scaling is involved. Drawing the cached pixmap at a translated Y is
-        # substantially cheaper than applying an opacity effect to live terminal
-        # or rich-text widgets.
         painter.drawPixmap(QPointF(0.0, self._offset), self._pixmap)
 
     def play(self, distance: int, *, opening: bool) -> None:
@@ -120,21 +155,14 @@ class _ViewportSlide(QWidget):
             self.finish()
             return
 
-        # Long output should not feel slower just because the panel is taller.
-        # Distance only adds a small amount of time, capped tightly.
-        travel = min(abs(distance), 360)
-        if opening:
-            duration = int(min(220, max(155, 150 + travel * 0.18)))
-            easing = QEasingCurve.Type.OutCubic
-        else:
-            duration = int(min(185, max(130, 125 + travel * 0.15)))
-            easing = QEasingCurve.Type.InOutCubic
-
         animation = QPropertyAnimation(self, b"offset", self)
-        animation.setDuration(duration)
+        animation.setDuration(DISCLOSURE_OPEN_MS if opening else DISCLOSURE_CLOSE_MS)
         animation.setStartValue(0.0)
         animation.setEndValue(float(distance))
-        animation.setEasingCurve(easing)
+        # Direct response is more important than physically accurate inertia in
+        # a high-frequency disclosure. OutCubic moves immediately and settles
+        # quietly, with no bounce or spring tail.
+        animation.setEasingCurve(QEasingCurve.Type.OutCubic)
         animation.finished.connect(self.finish)
         self._animation = animation
         animation.start()
@@ -159,8 +187,7 @@ class _ViewportSlide(QWidget):
 
 
 def _reasoning_sync_body(self: Any, *, animate: bool) -> None:
-    """Commit reasoning geometry once; the viewport overlay supplies motion."""
-
+    """Commit reasoning geometry once; the coordinator supplies visual motion."""
     show = bool(self._expanded)
     self.toggle.set_expanded(show, animate=animate)
     self.toggle.setToolTip("Hide thought process" if show else "Show thought process")
@@ -173,8 +200,7 @@ def _reasoning_sync_body(self: Any, *, animate: bool) -> None:
 
 
 def _activity_sync_body(self: Any, *, animate: bool = False) -> None:
-    """Commit activity geometry once; never tween the terminal/card height."""
-
+    """Commit task-detail geometry once; never tween a live terminal/card height."""
     has_body = bool(self._body_text)
     show = bool(has_body and self._expanded)
     toggle = self.toggle_button
@@ -207,7 +233,6 @@ def _transcript_for(widget: Any) -> Any | None:
 
 def _suspend_tail_for_disclosure(view: Any) -> None:
     """Keep the clicked disclosure anchored instead of chasing the new tail."""
-
     try:
         view._stop_tail_animation()
     except (AttributeError, RuntimeError):
@@ -238,8 +263,7 @@ def _layout_extent(widget: Any) -> int:
 
 
 def _activate_layout_chain(widget: Any, view: Any) -> None:
-    """Settle the new geometry synchronously once, before the overlay moves."""
-
+    """Settle the new geometry synchronously once, before displacement moves."""
     current = widget
     canvas = getattr(view, "canvas", None)
     while current is not None:
@@ -257,11 +281,22 @@ def _activate_layout_chain(widget: Any, view: Any) -> None:
     view.viewport().update()
 
 
-def _capture_overlay(view: Any, anchor_y: int) -> _ViewportSlide | None:
+def _column_bounds(owner: Any, view: Any) -> tuple[int, int]:
     viewport = view.viewport()
-    width = viewport.width()
+    try:
+        left = owner.mapTo(viewport, QPoint(0, 0)).x() - _COLUMN_GUTTER_PX
+        right = left + owner.width() + _COLUMN_GUTTER_PX * 2
+    except RuntimeError:
+        return 0, viewport.width()
+    left = max(0, int(left))
+    right = min(viewport.width(), max(left + 1, int(right)))
+    return left, max(1, right - left)
+
+
+def _capture_overlay(view: Any, owner: Any, anchor_y: int) -> _ViewportSlide | None:
+    viewport = view.viewport()
     height = viewport.height()
-    if width <= 1 or height <= 2:
+    if viewport.width() <= 1 or height <= 2:
         return None
 
     anchor_y = max(0, min(int(anchor_y), height - 1))
@@ -269,19 +304,19 @@ def _capture_overlay(view: Any, anchor_y: int) -> _ViewportSlide | None:
     if crop_height <= 1:
         return None
 
+    x, width = _column_bounds(owner, view)
     _dispose_overlay(view)
-    pixmap = viewport.grab(QRect(0, anchor_y, width, crop_height))
+    pixmap = viewport.grab(QRect(x, anchor_y, width, crop_height))
     if pixmap.isNull():
         return None
 
-    overlay = _ViewportSlide(view, pixmap, anchor_y=anchor_y)
+    overlay = _ViewportSlide(view, pixmap, x=x, anchor_y=anchor_y)
     view._loom_disclosure_overlay = overlay
     return overlay
 
 
 def _activity_anchor(card: Any, view: Any) -> int:
     """Viewport Y where tool/process detail begins."""
-
     local_y: int | None = None
     shell = card.body_shell
     if shell.isVisible() and shell.geometry().height() > 0:
@@ -303,7 +338,6 @@ def _activity_anchor(card: Any, view: Any) -> int:
 
 def _reasoning_anchor(block: Any, view: Any) -> int:
     """Viewport Y where thought-process detail begins."""
-
     if block.body.isVisible() and block.body.geometry().height() > 0:
         local_y = int(block.body.geometry().top())
     else:
@@ -313,15 +347,67 @@ def _reasoning_anchor(block: Any, view: Any) -> int:
     return int(block.mapTo(view.viewport(), QPoint(0, local_y)).y())
 
 
-def _run_snapshot_transition(
+def _animate_open_surface(owner: Any, surface: QWidget, *, quiet: bool) -> None:
+    """Give the real revealed content a tiny settle while geometry stays fixed."""
+    _clear_content_motion(owner)
+    try:
+        target_pos = surface.pos()
+        effect = QGraphicsOpacityEffect(surface)
+        surface.setGraphicsEffect(effect)
+        # Reasoning is subordinate prose and can enter more softly. Task panels
+        # are structural surfaces, so start them closer to their final opacity.
+        effect.setOpacity(0.18 if quiet else 0.52)
+        surface.move(target_pos + QPoint(0, CONTENT_OFFSET_PX))
+    except RuntimeError:
+        return
+
+    group = QParallelAnimationGroup(owner)
+    opacity = QPropertyAnimation(effect, b"opacity", group)
+    opacity.setDuration(CONTENT_REVEAL_MS)
+    opacity.setStartValue(effect.opacity())
+    opacity.setEndValue(1.0)
+    opacity.setEasingCurve(QEasingCurve.Type.OutCubic)
+    group.addAnimation(opacity)
+
+    position = QPropertyAnimation(surface, b"pos", group)
+    position.setDuration(DISCLOSURE_OPEN_MS)
+    position.setStartValue(surface.pos())
+    position.setEndValue(target_pos)
+    position.setEasingCurve(QEasingCurve.Type.OutCubic)
+    group.addAnimation(position)
+
+    owner._loom_content_animation = group
+    owner._loom_content_surface = surface
+    owner._loom_content_target_pos = target_pos
+
+    def finish() -> None:
+        if getattr(owner, "_loom_content_animation", None) is not group:
+            return
+        owner._loom_content_animation = None
+        owner._loom_content_surface = None
+        owner._loom_content_target_pos = None
+        try:
+            surface.move(target_pos)
+            surface.setGraphicsEffect(None)
+        except RuntimeError:
+            pass
+        group.deleteLater()
+
+    group.finished.connect(finish)
+    group.start()
+
+
+def _run_transition(
     owner: Any,
     *,
     opening: bool,
     anchor: Callable[[Any, Any], int],
+    surface: Callable[[Any], QWidget],
+    quiet: bool,
     commit: Callable[[], None],
 ) -> None:
-    """Commit layout once, then animate the old pixels to their new Y position."""
-
+    """Top-reveal live content while only displaced rows use cached pixels."""
+    _clear_content_motion(owner)
     view = _transcript_for(owner)
     if view is None or not theme.motion_enabled():
         commit()
@@ -330,20 +416,27 @@ def _run_snapshot_transition(
     _suspend_tail_for_disclosure(view)
     old_extent = _layout_extent(owner)
     anchor_y = anchor(owner, view)
-    overlay = _capture_overlay(view, anchor_y)
+    overlay = _capture_overlay(view, owner, anchor_y)
 
-    # Real widgets move to the final layout in this one call. The snapshot still
-    # paints the old state above them, so users never see the atomic jump.
+    # Commit the real final state in one layout pass. The cached old rows cover
+    # the atomic displacement; opening then reveals the live surface underneath.
     commit()
     _activate_layout_chain(owner, view)
     new_extent = _layout_extent(owner)
     distance = int(new_extent - old_extent)
 
+    if opening:
+        try:
+            revealed = surface(owner)
+            if revealed.isVisible():
+                _animate_open_surface(owner, revealed, quiet=quiet)
+        except (AttributeError, RuntimeError):
+            pass
+
     if overlay is None or abs(distance) < _MIN_TRAVEL_PX:
         if overlay is not None:
             overlay.finish()
         return
-
     overlay.play(distance, opening=opening)
 
 
@@ -372,15 +465,13 @@ def _wire_view_disclosures(view: Any) -> None:
 
 
 def install() -> None:
-    """Install the snapshot-driven low-reflow disclosure policy once."""
-
+    """Install the shared low-reflow disclosure choreography once."""
     global _INSTALLED
     if _INSTALLED:
         return
 
-    # Earlier presentation passes may install maximumHeight tweens. Geometry is
-    # final here so no later visual polish can reintroduce per-frame transcript
-    # layout work.
+    # Earlier presentation passes own styling and component semantics. Geometry
+    # ends here so no later hook can reintroduce per-frame transcript relayout.
     messages.ReasoningBlock._sync_body = _reasoning_sync_body
     base.ActivityCard._sync_body = _activity_sync_body
     output.FlatActivityCard._sync_body = _activity_sync_body
@@ -390,19 +481,23 @@ def install() -> None:
 
     def reasoning_toggle(self: Any) -> None:
         opening = not bool(self._expanded)
-        _run_snapshot_transition(
+        _run_transition(
             self,
             opening=opening,
             anchor=_reasoning_anchor,
+            surface=lambda owner: owner.body,
+            quiet=True,
             commit=lambda: original_reasoning_toggle(self),
         )
 
     def activity_toggle(self: Any) -> None:
         opening = not bool(self._expanded)
-        _run_snapshot_transition(
+        _run_transition(
             self,
             opening=opening,
             anchor=_activity_anchor,
+            surface=lambda owner: owner.body_shell,
+            quiet=False,
             commit=lambda: original_activity_toggle(self),
         )
 
@@ -417,8 +512,8 @@ def install() -> None:
 
     base.TranscriptView.render = render
 
-    # The whole activity header is clickable. Freeze auto-tail on press so title
-    # and icon clicks have the same viewport semantics as the chevron itself.
+    # The entire activity header is clickable. Freeze auto-tail on press so an
+    # icon/title click and a chevron click have identical viewport semantics.
     original_card_press = output.FlatActivityCard.mousePressEvent
 
     def card_press(self: Any, event: Any) -> None:
