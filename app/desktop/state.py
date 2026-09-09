@@ -1,10 +1,17 @@
 """Client-side thread state for the desktop transcript.
 
-The App Server already exposes a fully ordered, typed timeline through
-``turns[].items[]``: user messages, assistant messages, tool calls, approvals,
-managed processes, file edits and turn errors. This module turns that timeline
--- plus live ``item/*`` notifications -- into a stable list of transcript
-entries the view can reconcile by key.
+The App Server exposes a typed turn timeline through ``turns[].items[]``.  This
+module turns that durable timeline -- plus live ``item/*`` notifications -- into
+a stable list of transcript entries the view can reconcile by key.
+
+Two ordering details are important for an agent UI:
+- older / partially migrated snapshots can have activity items in ``turns`` but
+  keep conversation text only in top-level ``messages``; when event history is
+  available we recover those message items at their real timestamps instead of
+  prepending all prose before every command;
+- a snapshot refresh must not append an uncommitted live process/tool to the end
+  of the transcript, because that makes activity visibly jump below a newer
+  assistant message.
 
 Nothing here imports Qt, so the reconciliation rules are testable on their own.
 """
@@ -31,6 +38,7 @@ _ENTRY_KINDS = {
 # Approvals are surfaced by the dedicated approval card and by the owning
 # tool_call item's status, so they never become their own transcript entry.
 _SKIPPED_ITEM_TYPES = {"approval"}
+_MESSAGE_ITEM_TYPES = {"user_message", "assistant_message"}
 
 
 @dataclass(slots=True)
@@ -156,6 +164,94 @@ class ThreadState:
     def tool_items(self, predicate) -> list[dict[str, Any]]:
         return [item for item in self.items_of_type("tool_call") if predicate(item)]
 
+    # ---- timeline helpers ------------------------------------------------
+
+    @staticmethod
+    def _item_stamp(item: dict[str, Any]) -> str:
+        """Return a sortable server timestamp when one is available."""
+        return fmt.text(item.get("createdAt") or item.get("created_at")).strip()
+
+    @classmethod
+    def _insert_by_time(
+        cls,
+        timeline: list[dict[str, Any]],
+        item: dict[str, Any],
+    ) -> None:
+        """Insert one recovered/live item without disturbing equal-time order."""
+        stamp = cls._item_stamp(item)
+        if not stamp:
+            timeline.append(item)
+            return
+
+        for index, existing in enumerate(timeline):
+            existing_stamp = cls._item_stamp(existing)
+            if existing_stamp and existing_stamp > stamp:
+                timeline.insert(index, item)
+                return
+        timeline.append(item)
+
+    @classmethod
+    def _merge_preserved_items(
+        cls,
+        durable: list[dict[str, Any]],
+        preserved: list[dict[str, Any]],
+        old_order: list[str],
+    ) -> list[dict[str, Any]]:
+        """Reinsert live-only rows at their original chronological position.
+
+        Most live items carry ``createdAt`` from ``item/started``.  That is the
+        strongest ordering signal.  If a legacy notification lacks a timestamp,
+        fall back to its old neighbours rather than blindly appending it after
+        the newest durable assistant message.
+        """
+        merged = list(durable)
+        known = {fmt.text(item.get("id")) for item in merged}
+        old_index = {key: index for index, key in enumerate(old_order)}
+
+        for item in preserved:
+            key = fmt.text(item.get("id"))
+            if not key or key in known:
+                continue
+
+            if cls._item_stamp(item):
+                cls._insert_by_time(merged, item)
+                known.add(key)
+                continue
+
+            position = old_index.get(key)
+            inserted = False
+            if position is not None:
+                # Prefer the next surviving neighbour: placing before it keeps a
+                # live command between the same two messages after refresh.
+                for neighbour in old_order[position + 1 :]:
+                    if neighbour not in known:
+                        continue
+                    for target, existing in enumerate(merged):
+                        if fmt.text(existing.get("id")) == neighbour:
+                            merged.insert(target, item)
+                            inserted = True
+                            break
+                    if inserted:
+                        break
+
+                if not inserted:
+                    for neighbour in reversed(old_order[:position]):
+                        if neighbour not in known:
+                            continue
+                        for target, existing in enumerate(merged):
+                            if fmt.text(existing.get("id")) == neighbour:
+                                merged.insert(target + 1, item)
+                                inserted = True
+                                break
+                        if inserted:
+                            break
+
+            if not inserted:
+                merged.append(item)
+            known.add(key)
+
+        return merged
+
     # ---- writes ----------------------------------------------------------
 
     def reset(self) -> None:
@@ -178,6 +274,9 @@ class ThreadState:
             return False
 
         switching = thread_id != self.thread_id
+        old_order = list(self._order)
+        old_items = dict(self._items)
+
         self.thread_id = thread_id
         self.thread = dict(thread)
         self.snapshot = snapshot
@@ -187,26 +286,30 @@ class ThreadState:
         if switching:
             self._streaming.clear()
             self._optimistic_user = ""
+            old_order = []
+            old_items = {}
 
         durable = list(self._snapshot_items(snapshot))
         durable_keys = {fmt.text(item.get("id")) for item in durable}
 
-        # Keep live-only items that the snapshot has not committed yet, so an
-        # in-flight turn does not visibly collapse on every refresh.
-        preserved = [
+        # Keep live-only items that the snapshot has not committed yet.  They
+        # must stay where they originally occurred; appending them at the end is
+        # what made command/file rows jump below a newer assistant message.
+        preserved_keys = [
             key
-            for key in self._order
+            for key in old_order
             if key not in durable_keys and key in self._streaming
         ]
-        preserved_items = {key: self._items[key] for key in preserved if key in self._items}
+        preserved_items = [
+            old_items[key]
+            for key in preserved_keys
+            if key in old_items
+        ]
+        if preserved_items:
+            durable = self._merge_preserved_items(durable, preserved_items, old_order)
 
         self._items = {fmt.text(item.get("id")): item for item in durable}
         self._order = [fmt.text(item.get("id")) for item in durable]
-        for key in preserved:
-            item = preserved_items.get(key)
-            if item is not None:
-                self._items[key] = item
-                self._order.append(key)
 
         self._streaming &= set(self._order)
         if any(fmt.text(item.get("type")) == "user_message" for item in durable):
@@ -215,12 +318,14 @@ class ThreadState:
 
     @classmethod
     def _snapshot_items(cls, snapshot: dict[str, Any]) -> Iterable[dict[str, Any]]:
-        """Ordered durable items, with a plain-message fallback.
+        """Return the best available chronological durable transcript.
 
-        ``turns[].items[]`` is the richer source and normally already contains
-        the conversation itself. A server that reports only tool/process items
-        there, or one whose events were pruned, still hands back ``messages``;
-        those are prepended so the conversation never renders empty.
+        Modern snapshots already carry messages and activity together in
+        ``turns[].items[]``.  Older snapshots sometimes carry only activity there
+        and leave prose in top-level ``messages``.  When raw events are present,
+        recover the user/assistant items from those events and merge them into
+        their true timestamp positions.  Only if event history cannot help do we
+        fall back to the old plain-message list.
         """
         timeline: list[dict[str, Any]] = []
         has_messages = False
@@ -233,13 +338,68 @@ class ThreadState:
                 item_type = fmt.text(item.get("type"))
                 if item_type in _SKIPPED_ITEM_TYPES:
                     continue
-                if item_type in {"user_message", "assistant_message"}:
+                if item_type in _MESSAGE_ITEM_TYPES:
                     has_messages = True
                 timeline.append(item)
 
-        if not has_messages:
-            yield from cls._message_items(snapshot)
+        if has_messages:
+            yield from timeline
+            return
+
+        recovered = list(cls._event_message_items(snapshot))
+        if recovered:
+            merged = list(timeline)
+            for item in recovered:
+                cls._insert_by_time(merged, item)
+            yield from merged
+            return
+
+        # Last-resort compatibility path for snapshots whose event history was
+        # pruned.  There is no trustworthy timing data left, so preserving the
+        # conversation text is preferable to dropping it entirely.
+        yield from cls._message_items(snapshot)
         yield from timeline
+
+    @staticmethod
+    def _event_message_items(snapshot: dict[str, Any]) -> Iterable[dict[str, Any]]:
+        """Recover renderable message items from the ordered Runtime event log."""
+        for index, event in enumerate(snapshot.get("events") or []):
+            if not isinstance(event, dict):
+                continue
+            event_id = fmt.text(event.get("eventId") or event.get("event_id")).strip()
+            if not event_id:
+                continue
+            kind = fmt.text(event.get("kind")).strip().casefold()
+            data = event.get("data")
+            if not isinstance(data, dict):
+                data = {}
+
+            if kind == "user_message":
+                item_type = "user_message"
+                text = fmt.text(data.get("text"))
+                item_id = f"user:{event_id}"
+            elif kind == "model_response":
+                item_type = "assistant_message"
+                text = fmt.text(data.get("text"))
+                if not text.strip():
+                    continue
+                item_id = f"assistant:{event_id}"
+            else:
+                continue
+
+            if not text.strip():
+                continue
+            yield {
+                "id": item_id,
+                "threadId": fmt.text(event.get("threadId")) or None,
+                "turnId": fmt.text(event.get("turnId")) or None,
+                "type": item_type,
+                "status": "completed",
+                "text": text,
+                "createdAt": fmt.text(event.get("createdAt")),
+                "updatedAt": fmt.text(event.get("createdAt")),
+                "eventOrder": index,
+            }
 
     @staticmethod
     def _message_items(snapshot: dict[str, Any]) -> Iterable[dict[str, Any]]:
