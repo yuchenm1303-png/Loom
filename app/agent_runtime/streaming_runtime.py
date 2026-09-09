@@ -20,8 +20,11 @@ from .stickers import (
     StickerPreferences,
     StickerResult,
     StickerStreamSanitizer,
+    _STICKER_OPT_IN_RE,
+    _STICKER_OPT_OUT_RE,
     build_sticker_system_prompt,
     finalize_reply,
+    is_catalog_or_test_request,
     reconcile_stream_reply,
 )
 from .storage import utc_now
@@ -148,6 +151,7 @@ class StreamingAgentRuntime(CodeModeRuntime):
                 user_text = message.content
             elif message.role is MessageRole.ASSISTANT:
                 assistant_history.append(message.content)
+
         custom_instructions = str(getattr(session, "system_prompt", "") or "")
         try:
             project = self.instruction_loader.load(session.workspace_dir)
@@ -155,12 +159,25 @@ class StreamingAgentRuntime(CodeModeRuntime):
             project = ""
         if project:
             custom_instructions = f"{custom_instructions}\n{project}".strip()
+
+        # Preserve the worker's V244 gate without inventing a Loom-specific
+        # policy. Current-turn explicit opt-in overrides a custom-instruction
+        # opt-out; a current-turn opt-out is still handled by analyze_scene.
+        current_opt_in = bool(_STICKER_OPT_IN_RE.search(user_text)) or is_catalog_or_test_request(user_text)
+        custom_opt_out = bool(
+            not current_opt_in
+            and custom_instructions
+            and _STICKER_OPT_OUT_RE.search(custom_instructions)
+        )
+        with self._sticker_guard:
+            preferences = self._sticker_preferences
+        allow_stickers = not custom_opt_out and preferences.frequency > 0
+
         return StickerContext(
             user_text=user_text,
             assistant_history=tuple(assistant_history[-8:]),
-            custom_instructions=custom_instructions,
             streaming=streaming,
-            allow_stickers=True,
+            allow_stickers=allow_stickers,
         )
 
     def _prepare_model_request(self, session, step, token):
