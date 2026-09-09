@@ -107,7 +107,7 @@ export function Sidebar({ threads, activeId, onOpen, onNew }: SidebarProps) {
         <span className="section-count">{filtered.length}</span>
       </div>
 
-      <div className="thread-list" role="list" aria-label="Conversations">
+      <div className="thread-list" aria-label="Conversations">
         {filtered.map((thread) => {
           const active = thread.id === activeId;
           const running = thread.status === "running";
@@ -120,7 +120,6 @@ export function Sidebar({ threads, activeId, onOpen, onNew }: SidebarProps) {
               title={thread.title || "New conversation"}
               aria-current={active ? "page" : undefined}
               data-running={running ? "true" : undefined}
-              role="listitem"
             >
               <span className="thread-title">{thread.title || "New conversation"}</span>
               <span className="thread-meta">
