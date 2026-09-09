@@ -92,6 +92,45 @@ def test_reversal_duration_is_shorter_than_full_motion():
     assert smooth._MIN_REVERSAL_MS <= partial < full
 
 
+def test_left_drawer_content_stays_locked_to_moving_inner_edge():
+    full_width = 280.0
+    halfway = QRect(0, 0, 140, 500)
+    settled = QRect(0, 0, 280, 500)
+
+    # Halfway through opening, the whole sidebar surface is still 140px to the
+    # left of its settled position; its right edge remains attached to divider.
+    assert smooth._anchored_draw_x(halfway, full_width, "right") == -140
+    assert smooth._anchored_draw_x(settled, full_width, "right") == 0
+
+
+def test_right_drawer_content_stays_locked_to_moving_inner_edge():
+    full_width = 280.0
+    halfway = QRect(860, 0, 140, 500)
+    settled = QRect(720, 0, 280, 500)
+
+    # Runtime is anchored to its left/inner edge, so the surface translates with
+    # that divider rather than sitting still while a mask sweeps over the text.
+    assert smooth._anchored_draw_x(halfway, full_width, "left") == 860
+    assert smooth._anchored_draw_x(settled, full_width, "left") == 720
+
+
+def test_conversation_surface_tracks_pane_center_without_overshoot():
+    content_width = 360.0
+    before = QRect(280, 0, 360, 500)
+    halfway = QRect(140, 0, 500, 500)
+    after = QRect(0, 0, 640, 500)
+
+    before_x = smooth._anchored_draw_x(before, content_width, "center")
+    halfway_x = smooth._anchored_draw_x(halfway, content_width, "center")
+    after_x = smooth._anchored_draw_x(after, content_width, "center")
+
+    assert before_x == 280
+    assert halfway_x == 210
+    assert after_x == 140
+    # The left edge moved 280px, but centred content moves only half that amount.
+    assert before_x - after_x == 140
+
+
 def test_real_splitter_commits_once_then_stays_fixed_during_animation(app, monkeypatch):
     monkeypatch.setattr(smooth.theme, "motion_enabled", lambda: True)
     host, splitter, left, center, right = _splitter()
@@ -109,7 +148,6 @@ def test_real_splitter_commits_once_then_stays_fixed_during_animation(app, monke
     transition = controller._panel_snapshot_transition
     animation = controller._panel_animations["sidebar"]
 
-    # The live tree is already at the destination and painting is suspended.
     settled_sizes = splitter.sizes()
     assert transition is not None
     assert left.isHidden()
@@ -122,8 +160,6 @@ def test_real_splitter_commits_once_then_stays_fixed_during_animation(app, monke
     animation.setCurrentTime(max(1, animation.duration() // 2))
     app.processEvents()
 
-    # Mid-animation frames only repaint the snapshot overlay. The heavyweight
-    # splitter geometry must not move again.
     assert splitter.sizes() == settled_sizes
 
     animation.setCurrentTime(animation.duration())
@@ -160,8 +196,6 @@ def test_same_side_reversal_reuses_snapshot_and_restores_origin(app, monkeypatch
     opening = controller._panel_animations["sidebar"]
     assert float(opening.startValue()) == pytest.approx(halfway_progress, abs=0.02)
     assert float(opening.endValue()) == pytest.approx(0.0)
-    # The live splitter stays at the hidden endpoint until the snapshot has
-    # visually travelled back to the origin.
     assert left.isHidden()
 
     opening.setCurrentTime(opening.duration())
