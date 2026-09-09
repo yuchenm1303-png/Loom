@@ -2,7 +2,7 @@
 
 The composer is the one piece of chrome users touch on every turn, so its
 controls should read as one deliberately designed system rather than a row of
-unrelated pills.  Behaviour stays in ``composer.py``; this module only refines
+unrelated pills. Behaviour stays in ``composer.py``; this module only refines
 visual hierarchy, vector iconography, density, and state styling.
 """
 
@@ -12,6 +12,7 @@ from typing import Any
 
 from PySide6.QtCore import QPointF, QRectF, QSize, Qt
 from PySide6.QtGui import QColor, QIcon, QPainter, QPainterPath, QPen, QPixmap
+from PySide6.QtWidgets import QPushButton
 
 from app.desktop import theme
 
@@ -50,93 +51,120 @@ QTextEdit#composer {
     selection-background-color:#514a83;
 }
 
-/* All composer decision controls share the same physical geometry. */
+/* ---- compact control system ---------------------------------------- */
+/*
+   All four controls share one silhouette and baseline. Their semantic colour
+   lives in the icon and a very small border/text tint instead of four unrelated
+   fills, which makes the row read like one professional toolbar.
+*/
 QPushButton#composerControl,
+QPushButton#composerAttach,
 QPushButton#composerWorkspace,
 QPushButton#composerPermission,
 QPushButton#composerModel {
-    min-height:29px;
-    max-height:29px;
-    padding:0 10px;
-    border-radius:9px;
-    background:#161922;
-    border:1px solid #292e3b;
-    color:#adb4c2;
+    min-height:31px;
+    max-height:31px;
+    padding:0 11px 0 10px;
+    border-radius:10px;
+    background:#151821;
+    border:1px solid #2d3240;
+    color:#c2c8d3;
     font-size:11px;
-    font-weight:620;
+    font-weight:610;
 }
 QPushButton#composerControl:hover,
+QPushButton#composerAttach:hover,
 QPushButton#composerWorkspace:hover,
 QPushButton#composerPermission:hover,
 QPushButton#composerModel:hover {
-    background:#1d202b;
-    border-color:#3a4050;
-    color:#edf0f5;
+    background:#1b1f2a;
+    border-color:#414858;
+    color:#f0f2f6;
 }
 QPushButton#composerControl:pressed,
+QPushButton#composerAttach:pressed,
 QPushButton#composerWorkspace:pressed,
 QPushButton#composerPermission:pressed,
 QPushButton#composerModel:pressed {
-    background:#13161e;
-    border-color:#303645;
+    background:#11141b;
+    border-color:#353b49;
 }
 QPushButton#composerControl:disabled,
+QPushButton#composerAttach:disabled,
 QPushButton#composerWorkspace:disabled,
 QPushButton#composerPermission:disabled,
 QPushButton#composerModel:disabled {
-    color:#555d6b;
-    background:#12141b;
-    border-color:#1e222c;
+    color:#5f6674;
+    background:#12151c;
+    border-color:#222733;
 }
 
-/* Project and model are neutral decisions; the subtle tint only aids scanning. */
+/* Attach is an action, but intentionally quiet beside Send. */
+QPushButton#composerAttach {
+    color:#bcc4d0;
+    background:#151821;
+    border-color:#2e3442;
+}
+QPushButton#composerAttach:hover {
+    color:#eef2f8;
+    background:#1b202a;
+    border-color:#465164;
+}
+
+/* Workspace should feel structural rather than decorative. */
 QPushButton#composerWorkspace {
-    color:#bbc3d0;
-    background:#171a23;
+    color:#c1c8d3;
+    background:#161922;
+    border-color:#303644;
 }
 QPushButton#composerWorkspace:hover {
     color:#f1f3f7;
-    border-color:#3b4252;
-}
-QPushButton#composerModel {
-    color:#b8b5db;
-    background:#181923;
-    border-color:#2d2d3d;
-}
-QPushButton#composerModel:hover {
-    color:#dedaff;
-    background:#1d1d2a;
-    border-color:#42405b;
+    background:#1b1f29;
+    border-color:#465062;
 }
 
-/* Permission colour is meaningful, but restrained enough not to dominate. */
+/* Permission colour is meaningful. Full access is the only deliberately warm
+   state because it changes the safety boundary of the agent. */
 QPushButton#composerPermission[mode="full-access"] {
-    color:#e6c47f;
-    background:#1d180e;
-    border-color:#55431f;
+    color:#f0cf88;
+    background:#211a0c;
+    border-color:#6c501c;
 }
 QPushButton#composerPermission[mode="full-access"]:hover {
-    color:#f2d99e;
-    background:#241d10;
-    border-color:#705824;
+    color:#ffe1a1;
+    background:#2a210e;
+    border-color:#8a6724;
 }
 QPushButton#composerPermission[mode="read-only"] {
-    color:#9fc1dc;
-    background:#131a21;
-    border-color:#294052;
+    color:#a9cbe4;
+    background:#141b22;
+    border-color:#30495a;
 }
 QPushButton#composerPermission[mode="workspace"] {
-    color:#bbb5f0;
-    background:#171725;
-    border-color:#383456;
+    color:#c6bff4;
+    background:#181725;
+    border-color:#433c67;
 }
 QPushButton#composerPermission[mode="approval"] {
-    color:#c7bddd;
+    color:#cbc2df;
     background:#191820;
-    border-color:#393442;
+    border-color:#40394a;
 }
 
-/* Usage is metadata, not a fourth button. */
+/* Model is the only cool accent in the row; keep it subtle enough that the
+   active permission state remains easier to scan. */
+QPushButton#composerModel {
+    color:#c8c3ed;
+    background:#181923;
+    border-color:#343248;
+}
+QPushButton#composerModel:hover {
+    color:#e6e1ff;
+    background:#1e1e2b;
+    border-color:#514d6f;
+}
+
+/* Usage is metadata, not another decision pill. */
 QLabel#composerUsage {
     min-height:25px;
     max-height:25px;
@@ -213,7 +241,11 @@ def _compact_tokens(total: int) -> str:
 
 
 def _icon_pixmap(kind: str, color: str, *, size: int = 16) -> QPixmap:
-    """Render crisp, font-independent composer icons with Qt primitives."""
+    """Render crisp, font-independent composer icons with Qt primitives.
+
+    Every glyph uses the same 16px optical box and round 1.4-ish stroke so the
+    row stays visually coherent on Windows at fractional DPI scaling.
+    """
     pixmap = QPixmap(size, size)
     pixmap.fill(Qt.GlobalColor.transparent)
     painter = QPainter(pixmap)
@@ -222,7 +254,7 @@ def _icon_pixmap(kind: str, color: str, *, size: int = 16) -> QPixmap:
     painter.setPen(
         QPen(
             QColor(color),
-            1.35,
+            1.42,
             Qt.PenStyle.SolidLine,
             Qt.PenCapStyle.RoundCap,
             Qt.PenJoinStyle.RoundJoin,
@@ -230,37 +262,62 @@ def _icon_pixmap(kind: str, color: str, *, size: int = 16) -> QPixmap:
     )
     c = size / 2.0
 
-    if kind == "workspace":
-        # Small folder/project glyph.
+    if kind == "attach":
+        # A real paperclip, not a plus sign. Two nested arcs make it recognisable
+        # at 16 px without turning into a generic chain/link icon.
         path = QPainterPath()
-        path.moveTo(2.7, 5.0)
-        path.lineTo(6.1, 5.0)
-        path.lineTo(7.3, 6.25)
-        path.lineTo(13.2, 6.25)
-        path.lineTo(13.2, 12.25)
-        path.lineTo(2.7, 12.25)
+        path.moveTo(10.9, 5.0)
+        path.cubicTo(12.4, 6.5, 12.35, 8.6, 10.9, 10.05)
+        path.lineTo(7.45, 13.5)
+        path.cubicTo(5.7, 15.25, 2.85, 15.15, 1.25, 13.55)
+        path.cubicTo(-0.35, 11.95, -0.45, 9.2, 1.35, 7.4)
+        path.lineTo(6.75, 2.0)
+        path.cubicTo(8.0, 0.75, 10.0, 0.8, 11.2, 2.0)
+        path.cubicTo(12.4, 3.2, 12.4, 5.05, 11.2, 6.25)
+        path.lineTo(5.85, 11.6)
+        path.cubicTo(5.15, 12.3, 4.05, 12.25, 3.4, 11.6)
+        path.cubicTo(2.75, 10.95, 2.75, 9.9, 3.45, 9.2)
+        path.lineTo(8.35, 4.3)
+        painter.drawPath(path)
+    elif kind == "workspace":
+        # Clean folder silhouette with a small tab. No internal divider: at this
+        # size a second line made the old glyph feel busy and icon-font-like.
+        path = QPainterPath()
+        path.moveTo(2.35, 5.1)
+        path.lineTo(6.05, 5.1)
+        path.lineTo(7.25, 6.45)
+        path.lineTo(13.45, 6.45)
+        path.lineTo(13.45, 12.45)
+        path.cubicTo(13.45, 13.0, 13.0, 13.45, 12.45, 13.45)
+        path.lineTo(3.35, 13.45)
+        path.cubicTo(2.8, 13.45, 2.35, 13.0, 2.35, 12.45)
         path.closeSubpath()
         painter.drawPath(path)
-        painter.drawLine(QPointF(3.0, 7.45), QPointF(12.9, 7.45))
     elif kind == "permission":
-        path = QPainterPath()
-        path.moveTo(c, 2.4)
-        path.cubicTo(9.2, 3.55, 10.6, 4.0, 12.1, 4.35)
-        path.lineTo(11.55, 8.85)
-        path.cubicTo(11.2, 11.1, 9.7, 12.65, c, 13.55)
-        path.cubicTo(6.3, 12.65, 4.8, 11.1, 4.45, 8.85)
-        path.lineTo(3.9, 4.35)
-        path.cubicTo(5.4, 4.0, 6.8, 3.55, c, 2.4)
-        painter.drawPath(path)
+        # Shield with a small centre keyhole. This reads as capability / access,
+        # rather than the previous generic outline shield.
+        shield = QPainterPath()
+        shield.moveTo(c, 2.25)
+        shield.cubicTo(9.2, 3.35, 10.55, 3.85, 12.0, 4.2)
+        shield.lineTo(11.55, 8.7)
+        shield.cubicTo(11.25, 10.95, 9.65, 12.65, c, 13.65)
+        shield.cubicTo(6.35, 12.65, 4.75, 10.95, 4.45, 8.7)
+        shield.lineTo(4.0, 4.2)
+        shield.cubicTo(5.45, 3.85, 6.8, 3.35, c, 2.25)
+        painter.drawPath(shield)
+        painter.drawEllipse(QRectF(c - 0.9, 6.45, 1.8, 1.8))
+        painter.drawLine(QPointF(c, 8.25), QPointF(c, 10.0))
     elif kind == "model":
-        path = QPainterPath()
-        path.moveTo(c, 2.8)
-        path.lineTo(12.2, c)
-        path.lineTo(c, 13.2)
-        path.lineTo(3.8, c)
-        path.closeSubpath()
-        painter.drawPath(path)
-        painter.drawEllipse(QRectF(c - 1.15, c - 1.15, 2.3, 2.3))
+        # Four-point model/spark mark: more distinctive than a plain diamond,
+        # while still quiet enough for a utility control.
+        outer = QPainterPath()
+        outer.moveTo(c, 2.15)
+        outer.cubicTo(8.55, 5.4, 10.05, 6.9, 13.25, c)
+        outer.cubicTo(10.05, 9.1, 8.55, 10.6, c, 13.85)
+        outer.cubicTo(7.45, 10.6, 5.95, 9.1, 2.75, c)
+        outer.cubicTo(5.95, 6.9, 7.45, 5.4, c, 2.15)
+        painter.drawPath(outer)
+        painter.drawEllipse(QRectF(c - 0.95, c - 0.95, 1.9, 1.9))
     elif kind == "send":
         painter.setPen(
             QPen(
@@ -290,13 +347,33 @@ def _set_control_icon(button: Any, kind: str, color: str) -> None:
     # ``ControlButton`` historically embedded a Unicode glyph in its text. Keep
     # value handling intact while switching the icon to a platform-independent
     # vector so Windows font fallback cannot make the toolbar look inconsistent.
-    button._icon = ""
+    if hasattr(button, "_icon"):
+        button._icon = ""
     button.setIcon(_composer_icon(kind, color))
-    button.setIconSize(QSize(15, 15))
-    button.setMinimumHeight(29)
-    button.setMaximumHeight(29)
+    button.setIconSize(QSize(16, 16))
+    button.setMinimumHeight(31)
+    button.setMaximumHeight(31)
     if getattr(button, "_value", ""):
         button.setText(button._value)
+
+
+def _polish_attach_button(panel: Any) -> None:
+    """Upgrade an attachment control when the attachment feature is installed.
+
+    Attachment support is intentionally optional in the desktop client. Some
+    builds add the button in a later feature layer, so find it semantically
+    instead of making composer_polish own attachment behaviour.
+    """
+    for button in panel.findChildren(QPushButton):
+        name = button.objectName().casefold()
+        label = " ".join(button.text().split()).casefold()
+        if "attach" not in name and label not in {"attach", "+ attach"}:
+            continue
+        button.setObjectName("composerAttach")
+        button.setText("Attach")
+        _set_control_icon(button, "attach", "#aeb8c8")
+        button.setToolTip(button.toolTip() or "Attach files or images")
+        return
 
 
 def install() -> None:
@@ -315,15 +392,16 @@ def install() -> None:
     def init(self: Any, *args: Any, **kwargs: Any) -> None:
         original_init(self, *args, **kwargs)
 
-        # Give each decision a semantic selector while retaining the generic
-        # composer-control styling as a fallback for future controls (Attach,
-        # reasoning, etc.).
+        # Give each decision a semantic selector and one consistent vector-icon
+        # system. Colours are restrained, with the safety-sensitive permission
+        # state carrying the strongest semantic emphasis.
         self.workspace_button.setObjectName("composerWorkspace")
         self.permission_button.setObjectName("composerPermission")
         self.model_button.setObjectName("composerModel")
-        _set_control_icon(self.workspace_button, "workspace", "#9ca7b9")
-        _set_control_icon(self.permission_button, "permission", "#c5ad73")
-        _set_control_icon(self.model_button, "model", "#aaa5df")
+        _set_control_icon(self.workspace_button, "workspace", "#aab5c7")
+        _set_control_icon(self.permission_button, "permission", "#d3b466")
+        _set_control_icon(self.model_button, "model", "#b6aef0")
+        _polish_attach_button(self)
 
         self.usage_label.setObjectName("composerUsage")
         self.usage_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -336,8 +414,8 @@ def install() -> None:
         self.send_button.setFixedSize(34, 34)
         self.send_button.setToolTip("Send · Enter")
 
-        # Slightly more deliberate breathing room than the original 6px row,
-        # while keeping the entire composer compact.
+        # 8 px between utility controls is enough separation to scan each target,
+        # but still lets the four buttons read as one compact control group.
         outer = self.layout()
         if outer is not None:
             outer.setContentsMargins(16, 12, 12, 10)
@@ -345,7 +423,7 @@ def install() -> None:
             if outer.count() > 1:
                 controls = outer.itemAt(1).layout()
                 if controls is not None:
-                    controls.setSpacing(7)
+                    controls.setSpacing(8)
 
     def set_usage(self: Any, total: int) -> None:
         value = max(0, int(total or 0))
@@ -364,4 +442,4 @@ def install() -> None:
     theme.stylesheet = stylesheet
 
 
-__all__ = ["install", "_compact_tokens"]
+__all__ = ["install", "_compact_tokens", "_icon_pixmap"]
