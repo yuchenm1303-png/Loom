@@ -1,0 +1,213 @@
+.assistant-copy.has-inline-stickers {
+  white-space: pre-wrap;
+}
+
+.assistant-inline-sticker {
+  display: inline-block;
+  width: 96px;
+  height: 96px;
+  max-width: min(30vw, 112px);
+  max-height: min(30vw, 112px);
+  object-fit: contain;
+  vertical-align: middle;
+  margin: 4px 5px 4px 2px;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.sticker-popover {
+  width: min(430px, calc(100vw - 48px));
+}
+
+.sticker-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 2px 2px 0;
+}
+
+.sticker-panel-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 2px 2px;
+}
+
+.sticker-panel-symbol {
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--accent, #6f7cff) 12%, transparent);
+  color: var(--accent, #6f7cff);
+  flex: 0 0 auto;
+}
+
+.sticker-panel-summary > div {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sticker-panel-summary strong {
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.sticker-panel-summary span:not(.sticker-panel-symbol) {
+  color: var(--text-muted, #8b8d98);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.sticker-settings-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+}
+
+.sticker-setting {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.sticker-setting-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.sticker-setting-head > span {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sticker-setting-head strong {
+  font-size: 12px;
+  font-weight: 620;
+}
+
+.sticker-setting-head small {
+  max-width: 320px;
+  color: var(--text-muted, #8b8d98);
+  font-size: 10.5px;
+  line-height: 1.35;
+}
+
+.sticker-setting-head em {
+  min-width: 42px;
+  padding: 2px 7px;
+  border: 1px solid var(--border-subtle, rgba(128, 128, 128, .18));
+  border-radius: 7px;
+  background: var(--surface-raised, rgba(128, 128, 128, .06));
+  color: var(--text-secondary, #a6a8b2);
+  font-size: 10.5px;
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.sticker-setting input[type="range"] {
+  --sticker-progress: 50%;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  margin: 3px 0 2px;
+  border-radius: 999px;
+  outline: none;
+  background: linear-gradient(
+    to right,
+    var(--accent, #6f7cff) 0,
+    var(--accent, #6f7cff) var(--sticker-progress),
+    color-mix(in srgb, currentColor 13%, transparent) var(--sticker-progress),
+    color-mix(in srgb, currentColor 13%, transparent) 100%
+  );
+  cursor: pointer;
+}
+
+.sticker-setting input[type="range"]:disabled {
+  cursor: not-allowed;
+  opacity: .48;
+}
+
+.sticker-setting input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  width: 13px;
+  height: 13px;
+  border: 2px solid var(--surface, #18191d);
+  border-radius: 50%;
+  background: var(--accent, #6f7cff);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent, #6f7cff) 45%, transparent);
+}
+
+.sticker-panel-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 2px;
+}
+
+.sticker-reset-button,
+.sticker-save-button {
+  min-height: 30px;
+  border-radius: 8px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.sticker-reset-button {
+  border: 1px solid var(--border-subtle, rgba(128, 128, 128, .18));
+  background: transparent;
+  color: var(--text-secondary, #a6a8b2);
+}
+
+.sticker-save-button {
+  min-width: 74px;
+  border: 1px solid color-mix(in srgb, var(--accent, #6f7cff) 35%, transparent);
+  background: color-mix(in srgb, var(--accent, #6f7cff) 15%, transparent);
+  color: var(--text-primary, #f4f4f5);
+}
+
+.sticker-save-button.saved {
+  border-color: color-mix(in srgb, #4fbf7f 38%, transparent);
+  background: color-mix(in srgb, #4fbf7f 13%, transparent);
+}
+
+.sticker-reset-button:disabled,
+.sticker-save-button:disabled {
+  cursor: default;
+  opacity: .42;
+}
+
+.sticker-panel-error,
+.sticker-panel-note {
+  border-radius: 8px;
+  padding: 7px 9px;
+  font-size: 10.5px;
+  line-height: 1.4;
+}
+
+.sticker-panel-error {
+  border: 1px solid color-mix(in srgb, #e26969 30%, transparent);
+  background: color-mix(in srgb, #e26969 8%, transparent);
+  color: #df7777;
+}
+
+.sticker-panel-note {
+  background: color-mix(in srgb, currentColor 4%, transparent);
+  color: var(--text-muted, #8b8d98);
+}

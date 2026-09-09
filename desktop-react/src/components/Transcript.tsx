@@ -14,8 +14,10 @@ import {
   Zap,
 } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { splitInlineStickerText } from "../chatStickers";
 import type { TranscriptItem } from "../types/loom";
 import "./activity-flow.css";
+import "./stickers.css";
 
 interface TranscriptProps {
   items: TranscriptItem[];
@@ -102,6 +104,29 @@ function splitReasoning(text: string): ReasoningSplit {
   }
 
   return { reasoning: "", answer: raw, state: "none" };
+}
+
+function AssistantCopy({ text }: { text: string }) {
+  const segments = splitInlineStickerText(text);
+  const hasStickers = segments.some((segment) => segment.kind === "sticker");
+  return (
+    <div className={`assistant-copy ${hasStickers ? "has-inline-stickers" : ""}`}>
+      {segments.map((segment, index) => segment.kind === "text" ? (
+        <span key={`text-${index}`}>{segment.text}</span>
+      ) : (
+        <img
+          key={`sticker-${segment.asset.key}-${index}`}
+          className="assistant-inline-sticker"
+          src={segment.asset.url}
+          alt={segment.asset.alt}
+          title={segment.asset.alt}
+          width={96}
+          height={96}
+          draggable={false}
+        />
+      ))}
+    </div>
+  );
 }
 
 function Disclosure({ label, children, openByDefault = false }: { label: string; children: ReactNode; openByDefault?: boolean }) {
@@ -349,7 +374,7 @@ function ItemView({ item, onApproval }: { item: TranscriptItem; onApproval(item:
     return (
       <div className="assistant-message">
         {parsed.reasoning ? <Disclosure label="Thought process"><div className="reasoning-copy">{parsed.reasoning}</div></Disclosure> : null}
-        {parsed.answer.trim() ? <div className="assistant-copy">{parsed.answer}</div> : null}
+        {parsed.answer.trim() ? <AssistantCopy text={parsed.answer} /> : null}
       </div>
     );
   }

@@ -115,6 +115,14 @@ export interface AddModelInput {
   apiKey: string;
 }
 
+export interface StickerPreferences {
+  schema?: "ai_ledger_chat_expression_preferences_v2" | string;
+  frequency: number;
+  intensity: number;
+  maxPerReply: number;
+  repeatCount: number;
+}
+
 export interface ModelRestartResult {
   initialization: InitializeResult;
   models: ModelSnapshot;
@@ -135,5 +143,6 @@ export interface InitializeResult {
     defaultPermissionMode?: string;
     permissionModes?: string[];
     reasoning?: { kind: string; value: string } | null;
+    stickerPreferences?: StickerPreferences | null;
   };
 }
