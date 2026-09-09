@@ -26,6 +26,7 @@ from app.desktop import widget_lifecycle as _widget_lifecycle
 _widget_lifecycle.install()
 
 from app.desktop.output_presentation import MessageWidget, TranscriptView
+from app.desktop import message_actions as _message_actions
 from app.desktop import transcript_density as _transcript_density
 from app.desktop import activity_hierarchy as _activity_hierarchy
 from app.desktop import activity_motion as _activity_motion
@@ -47,6 +48,7 @@ _activity_disclosure.install()
 _reasoning_polish.install()
 _runtime_feedback.install()
 _activity_compact_panel.install()
+_message_actions.install()
 _disclosure_motion.install()
 _widgets.MessageWidget = MessageWidget
 _widgets.TranscriptView = TranscriptView
