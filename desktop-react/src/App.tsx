@@ -11,6 +11,7 @@ export default function App() {
   const [inspectorOpen, setInspectorOpen] = useState(true);
   const thread = loom.active?.thread;
   const running = thread?.status === "running" || thread?.status === "waiting_approval";
+  const conversationDisabled = !thread || loom.connection !== "ready" || running;
 
   if (loom.connection === "error") {
     return (
@@ -48,7 +49,12 @@ export default function App() {
           </div>
         </header>
 
-        <Transcript items={loom.items} onApproval={(item, approved) => void loom.respondApproval(item, approved)} />
+        <Transcript
+          items={loom.items}
+          promptDisabled={conversationDisabled}
+          onPrompt={(prompt) => void loom.send(prompt)}
+          onApproval={(item, approved) => void loom.respondApproval(item, approved)}
+        />
 
         <Composer
           disabled={!thread || loom.connection !== "ready"}
