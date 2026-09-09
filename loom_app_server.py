@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import TextIO
 
 from app.agent_runtime import PermissionMode
+from app.ai import ReasoningRequest
 from app.app_server_reasoning import serve_reasoning_managed_streaming_stdio
 from loom_cli import _build_runtime, _resolve_new_permission_mode
 
@@ -69,6 +70,7 @@ def main(argv: list[str] | None = None) -> int:
     # construction is intentionally reused from the CLI so credentials and
     # provider configuration never enter client-visible protocol state.
     runtime, store, model = _build_runtime(args)
+    runtime.reasoning = ReasoningRequest.from_values(args.reasoning_kind, args.reasoning_value)
     permission_mode = _resolve_new_permission_mode(args)
     return serve_reasoning_managed_streaming_stdio(
         runtime=runtime,
