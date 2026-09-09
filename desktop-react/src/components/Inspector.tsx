@@ -12,6 +12,7 @@ import {
 import { useMemo, useState } from "react";
 import type { TranscriptItem } from "../types/loom";
 import "./Inspector.css";
+import "./InspectorMark.css";
 
 interface InspectorProps {
   items: TranscriptItem[];
