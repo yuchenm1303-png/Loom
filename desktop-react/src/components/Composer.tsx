@@ -11,7 +11,7 @@ import {
   Sparkles,
   Square,
 } from "lucide-react";
-import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, KeyboardEvent as ReactKeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import "./composer.css";
 
 interface ComposerProps {
@@ -130,7 +130,7 @@ export function Composer({
       }
     }
 
-    function handleEscape(event: globalThis.KeyboardEvent) {
+    function handleEscape(event: KeyboardEvent) {
       if (event.key === "Escape") {
         setOpenPanel(null);
         setPanelError("");
@@ -154,7 +154,7 @@ export function Composer({
     await onSend(input);
   }
 
-  function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+  function onKeyDown(event: ReactKeyboardEvent<HTMLTextAreaElement>) {
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       void submit();
