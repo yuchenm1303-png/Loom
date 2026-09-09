@@ -161,3 +161,68 @@ def test_manual_reasoning_disclosure_uses_same_anchor_policy(app):
     assert view._follow_tail is False
     assert view._auto_scrolling is False
     view.close()
+
+
+def test_collapsing_reasoning_near_tail_never_moves_thought_header(app):
+    view = TranscriptView()
+    view.resize(760, 260)
+    view.show()
+
+    entries = [
+        TranscriptEntry(
+            key="assistant:before",
+            kind="assistant",
+            text="Earlier context.\n\n" * 8,
+        ),
+        TranscriptEntry(
+            key="assistant:target",
+            kind="assistant",
+            text=(
+                "<think>"
+                "Inspect one.\nInspect two.\nInspect three.\nInspect four.\n"
+                "Inspect five.\nInspect six."
+                "</think>Done."
+            ),
+        ),
+    ]
+    view.render(entries)
+    app.processEvents()
+
+    message = view._widgets["assistant:target"]
+    assert isinstance(message, FlowMessageWidget)
+    reasoning = message.reasoning
+    reasoning.set_expanded(True, animate=False)
+    app.processEvents()
+
+    bar = view.verticalScrollBar()
+    bar.setValue(bar.maximum())
+    app.processEvents()
+    assert bar.maximum() > 0
+
+    header_before = _viewport_y(view, reasoning.toggle)
+    range_before = bar.maximum()
+    canvas_height_before = view.canvas.height()
+
+    # ``pressed`` is the exact point where the viewport policy gets control,
+    # before the click toggles the reveal. The pre-collapse canvas height must be
+    # retained so Qt cannot shorten the scroll range and clamp the scrollbar.
+    reasoning.toggle.pressed.emit()
+    assert view.canvas.minimumHeight() >= canvas_height_before
+
+    reasoning._expanded = False
+    reasoning.reveal._expanded = False
+    reasoning.reveal._set_progress(0.5)
+    app.processEvents()
+
+    assert bar.maximum() == range_before
+    assert _viewport_y(view, reasoning.toggle) == pytest.approx(header_before, abs=1)
+
+    reasoning.reveal._set_progress(0.0)
+    app.processEvents()
+    assert bar.maximum() == range_before
+    assert _viewport_y(view, reasoning.toggle) == pytest.approx(header_before, abs=1)
+
+    reasoning.reveal.expandedChanged.emit(False)
+    app.processEvents()
+    assert _viewport_y(view, reasoning.toggle) == pytest.approx(header_before, abs=1)
+    view.close()
