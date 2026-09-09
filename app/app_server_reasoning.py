@@ -19,7 +19,9 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
     def runtime_status(self) -> dict[str, Any]:
         status = super().runtime_status()
         reasoning = getattr(self.runtime, "reasoning", None)
+        capability = getattr(self.runtime, "reasoning_capability", None)
         status["reasoning"] = reasoning.as_safe_dict() if reasoning is not None else None
+        status["reasoningCapability"] = dict(capability) if isinstance(capability, dict) else None
         return status
 
     def runtime_set_reasoning(self, params: dict[str, Any]) -> dict[str, Any]:
@@ -28,7 +30,26 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
         if active:
             raise RuntimeError("finish or stop the current turn before changing reasoning")
 
+        capability = getattr(self.runtime, "reasoning_capability", None)
+        if not isinstance(capability, dict):
+            raise ValueError("the current model does not advertise reasoning controls")
+
         reasoning = ReasoningRequest.from_values(params.get("kind"), params.get("value"))
+        if reasoning is None:
+            raise ValueError("reasoning kind and value are required")
+        expected_kind = str(capability.get("kind") or "")
+        if reasoning.kind.value != expected_kind:
+            raise ValueError("reasoning kind is not supported by the current model")
+        supported = {
+            str(option.get("value") or "")
+            for option in capability.get("options") or []
+            if isinstance(option, dict)
+        }
+        if reasoning.value not in supported:
+            raise ValueError(
+                f"reasoning value {reasoning.value!r} is not supported by the current model"
+            )
+
         self.runtime.reasoning = reasoning
         updated = self.runtime_status()
         self._notify(
