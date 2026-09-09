@@ -1,38 +1,69 @@
-"""Stable disclosure motion for transcript activity output.
+"""Stable, visible disclosure motion for transcript activity output.
 
-Animating a large QPlainTextEdit by changing its parent's height every frame is
-expensive: Qt repeatedly relays out scrollbars, the transcript scroll range
-changes on every frame, and the tail-follow animation then fights that layout.
-The result is the visible shake/jank that large diffs used to produce.
+The first disclosure pass intentionally skipped height animation once a body was
+larger than 180px. That kept huge diffs stable, but it also made ordinary tool
+rows such as ``exec`` snap open because their argument JSON often crosses that
+threshold.
 
-This hook keeps motion where it helps:
-- the disclosure chevron always gets its small rotation;
-- short output surfaces use one cheap maximum-height tween;
-- large code/diff surfaces settle their geometry once and reveal immediately;
-- transcript tail-follow is suspended while geometry changes, then restored once.
-
-No opacity effect is applied to the code surface, so text stays crisp and large
-outputs do not require full-surface compositing on every animation frame.
+This pass keeps the large-diff protection while giving normal tool/process rows
+a real disclosure transition:
+- semantic chevron rotation remains the primary state cue;
+- normal tool/process bodies use a short height reveal;
+- small bodies also get a restrained opacity fade;
+- very large documents still settle in one layout pass to avoid scrollbar jank;
+- transcript tail-follow stays suspended while geometry changes.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-from PySide6.QtCore import QEasingCurve, QPropertyAnimation, QTimer, Qt
-from PySide6.QtWidgets import QPlainTextEdit
+from PySide6.QtCore import (
+    QEasingCurve,
+    QParallelAnimationGroup,
+    QPropertyAnimation,
+    QTimer,
+    Qt,
+)
+from PySide6.QtWidgets import QGraphicsOpacityEffect, QPlainTextEdit
 
 from app.desktop import output_presentation as presentation
 from app.desktop import theme
 
 
 _INSTALLED = False
-_SHORT_REVEAL_LIMIT = 180
 _BODY_MIN_HEIGHT = 30
 _BODY_MAX_HEIGHT = 360
-_REVEAL_MS = 125
-_COLLAPSE_MS = 105
+_REVEAL_MS = 165
+_COLLAPSE_MS = 130
+_FADE_IN_MS = 115
+_FADE_OUT_MS = 90
 _UNBOUNDED_HEIGHT = 16_777_215
+
+# Animate ordinary command/tool output much more generously than a diff. Large
+# diffs are the expensive pathological case because they combine a big document,
+# two scrollbars and a changing transcript scroll range.
+_TWEEN_HEIGHT_LIMIT = {
+    "tool": 430,
+    "process": 330,
+    "error": 270,
+    "diff": 155,
+}
+_TWEEN_CHAR_LIMIT = {
+    "tool": 7_000,
+    "process": 6_000,
+    "error": 4_500,
+    "diff": 2_400,
+}
+_TWEEN_BLOCK_LIMIT = {
+    "tool": 52,
+    "process": 44,
+    "error": 34,
+    "diff": 22,
+}
+_FADE_HEIGHT_LIMIT = 250
+_FADE_CHAR_LIMIT = 3_200
+_FADE_BLOCK_LIMIT = 26
 
 
 def _transcript_for(card: Any) -> Any | None:
@@ -70,9 +101,6 @@ def _release_tail(card: Any) -> None:
     if view is None or not following:
         return
 
-    # QScrollArea publishes its new range after the surrounding layout settles.
-    # Restore following on the next event-loop turn, then perform one exact tail
-    # placement instead of starting/restarting a scroll animation per frame.
     def restore() -> None:
         try:
             view._follow_tail = True
@@ -83,19 +111,29 @@ def _release_tail(card: Any) -> None:
     QTimer.singleShot(0, restore)
 
 
+def _clear_effect(card: Any) -> None:
+    try:
+        card.body_shell.setGraphicsEffect(None)
+    except RuntimeError:
+        pass
+
+
 def _stop_animation(card: Any) -> None:
     animation = getattr(card, "_body_animation", None)
     card._body_animation = None
     if animation is None:
+        _clear_effect(card)
         return
     try:
         animation.stop()
     except RuntimeError:
+        _clear_effect(card)
         return
     try:
         animation.deleteLater()
     except RuntimeError:
         pass
+    _clear_effect(card)
 
 
 def _body_height(card: Any) -> int:
@@ -161,7 +199,36 @@ def _prepare_geometry(card: Any) -> int:
         card._activity_measure_guard = False
 
 
+def _document_metrics(card: Any) -> tuple[int, int]:
+    text = str(getattr(card, "_body_text", "") or "")
+    try:
+        blocks = max(1, int(card.body.document().blockCount()))
+    except (AttributeError, RuntimeError, TypeError, ValueError):
+        blocks = max(1, text.count("\n") + 1)
+    return len(text), blocks
+
+
+def _can_tween(card: Any, travel: int) -> bool:
+    kind = str(getattr(card, "kind", "tool") or "tool")
+    chars, blocks = _document_metrics(card)
+    return (
+        travel <= _TWEEN_HEIGHT_LIMIT.get(kind, 280)
+        and chars <= _TWEEN_CHAR_LIMIT.get(kind, 4_000)
+        and blocks <= _TWEEN_BLOCK_LIMIT.get(kind, 32)
+    )
+
+
+def _can_fade(card: Any, target: int) -> bool:
+    chars, blocks = _document_metrics(card)
+    return (
+        target <= _FADE_HEIGHT_LIMIT
+        and chars <= _FADE_CHAR_LIMIT
+        and blocks <= _FADE_BLOCK_LIMIT
+    )
+
+
 def _settle(card: Any, show: bool) -> None:
+    _clear_effect(card)
     card.body_shell.setMaximumHeight(_UNBOUNDED_HEIGHT)
     card.body_shell.setVisible(show)
     if show:
@@ -202,46 +269,71 @@ def _stable_sync_body(card: Any, *, animate: bool = False) -> None:
         _settle(card, show)
         return
 
-    # Large code/diff surfaces are the pathological case. A 300-400px height
-    # tween forces dozens of expensive QPlainTextEdit + scrollbar relayouts.
-    # Reveal them in one stable geometry update; the chevron still provides the
-    # interaction motion, and the transcript no longer shakes.
     travel = target if show else current
-    if travel > _SHORT_REVEAL_LIMIT:
+    if not _can_tween(card, travel):
+        # Large outputs deliberately do not tween geometry. The chevron still
+        # rotates, so the interaction has feedback without reintroducing the
+        # large-diff shake this module exists to prevent.
         _settle(card, show)
         return
 
     if show:
-        card.body_shell.setMaximumHeight(max(0, current))
-        card.body_shell.show()
         start, end = max(0, current), target
+        card.body_shell.setMaximumHeight(start)
+        card.body_shell.show()
         duration = _REVEAL_MS
+        easing = QEasingCurve.Type.OutCubic
     else:
         if not card.body_shell.isVisible():
             _settle(card, False)
             return
         start, end = max(0, current), 0
         duration = _COLLAPSE_MS
+        easing = QEasingCurve.Type.InCubic
 
-    animation = QPropertyAnimation(card.body_shell, b"maximumHeight", card)
-    animation.setDuration(duration)
-    animation.setStartValue(start)
-    animation.setEndValue(end)
-    animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+    group = QParallelAnimationGroup(card)
+
+    height = QPropertyAnimation(card.body_shell, b"maximumHeight", group)
+    height.setDuration(duration)
+    height.setStartValue(start)
+    height.setEndValue(end)
+    height.setEasingCurve(easing)
+    group.addAnimation(height)
+
+    # Small command/tool details can afford a very light fade. It makes the
+    # disclosure feel deliberate without compositing a huge code/diff surface.
+    if _can_fade(card, target):
+        effect = QGraphicsOpacityEffect(card.body_shell)
+        card.body_shell.setGraphicsEffect(effect)
+        opacity = QPropertyAnimation(effect, b"opacity", group)
+        if show:
+            effect.setOpacity(0.18)
+            opacity.setDuration(_FADE_IN_MS)
+            opacity.setStartValue(0.18)
+            opacity.setEndValue(1.0)
+            opacity.setEasingCurve(QEasingCurve.Type.OutCubic)
+        else:
+            effect.setOpacity(1.0)
+            opacity.setDuration(_FADE_OUT_MS)
+            opacity.setStartValue(1.0)
+            opacity.setEndValue(0.35)
+            opacity.setEasingCurve(QEasingCurve.Type.InCubic)
+        group.addAnimation(opacity)
 
     def finish() -> None:
         card._body_animation = None
+        _clear_effect(card)
         card.body_shell.setMaximumHeight(_UNBOUNDED_HEIGHT)
         card.body_shell.setVisible(show)
         if show:
             _prepare_geometry(card)
         card.updateGeometry()
         _release_tail(card)
-        animation.deleteLater()
+        group.deleteLater()
 
-    animation.finished.connect(finish)
-    card._body_animation = animation
-    animation.start()
+    group.finished.connect(finish)
+    card._body_animation = group
+    group.start()
 
 
 def install() -> None:
