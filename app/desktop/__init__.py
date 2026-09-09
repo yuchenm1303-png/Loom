@@ -15,7 +15,6 @@ from app.desktop import model_selector_polish as _model_selector_polish
 from app.desktop import permission_menu_polish as _permission_menu_polish
 from app.desktop import composer_menu_motion as _composer_menu_motion
 from app.desktop import deplasticize as _deplasticize
-from app.desktop import conversation_refinement as _conversation_refinement
 from app.desktop import iconography as _iconography
 from app.desktop import tool_icon_polish as _tool_icon_polish
 from app.desktop import sidebar_motion as _sidebar_motion
@@ -93,6 +92,11 @@ _composer_menu_motion.install()
 # Final hierarchy pass: remove accumulated card/pill chrome after each component
 # has registered its own semantic selectors.
 _deplasticize.install()
+# Import this only after the canonical transcript classes exist. The refinement
+# wraps their already-settled constructors; importing it near the top would pull
+# presentation modules in before the widget-lifecycle guard is installed.
+from app.desktop import conversation_refinement as _conversation_refinement  # noqa: E402
+
 # The conversation needs one extra reading pass after generic de-plasticizing:
 # tighter prose, true Markdown tables, quieter task rows and lower-emphasis
 # response actions. It is deliberately last among transcript presentation layers.
