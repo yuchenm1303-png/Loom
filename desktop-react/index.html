@@ -5,9 +5,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark" />
     <title>Loom</title>
+    <style>
+      html, body, #root { width: 100%; height: 100%; margin: 0; }
+      body { background: #0d0e11; color: #eceef2; font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      .boot-sentinel { height: 100%; display: grid; place-items: center; background: #0d0e11; }
+      .boot-sentinel-card { display: grid; gap: 8px; text-align: center; color: #8c93a1; }
+      .boot-sentinel-card strong { color: #d8dbe2; font-size: 14px; font-weight: 650; }
+      .boot-sentinel-card span { font-size: 11px; }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="boot-sentinel">
+        <div class="boot-sentinel-card">
+          <strong>Starting Loom…</strong>
+          <span>Renderer HTML loaded. Waiting for React.</span>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
