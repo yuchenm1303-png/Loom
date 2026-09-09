@@ -2,6 +2,7 @@ import { PanelRightOpen, RotateCcw } from "lucide-react";
 import { useState } from "react";
 import { Composer } from "./components/Composer";
 import { Inspector } from "./components/Inspector";
+import { RunProgress } from "./components/RunProgress";
 import { Sidebar } from "./components/Sidebar";
 import { Transcript } from "./components/Transcript";
 import { useLoom } from "./state/useLoom";
@@ -10,8 +11,16 @@ export default function App() {
   const loom = useLoom();
   const [inspectorOpen, setInspectorOpen] = useState(true);
   const thread = loom.active?.thread;
-  const running = thread?.status === "running" || thread?.status === "waiting_approval";
+  const running = loom.turnActive || thread?.status === "running" || thread?.status === "waiting_approval";
   const conversationDisabled = !thread || loom.connection !== "ready" || running;
+
+  const progressProps = {
+    items: loom.items,
+    startedAt: loom.turnStartedAt,
+    threadStatus: thread?.status,
+    currentTurnId: thread?.currentTurnId,
+    totalTokens: thread?.usage?.totalTokens,
+  };
 
   if (loom.connection === "error") {
     return (
@@ -49,23 +58,29 @@ export default function App() {
           </div>
         </header>
 
-        <Transcript
-          items={loom.items}
-          promptDisabled={conversationDisabled}
-          onPrompt={(prompt) => void loom.send(prompt)}
-          onApproval={(item, approved) => void loom.respondApproval(item, approved)}
-        />
+        <div className="conversation-stage">
+          {running ? <RunProgress {...progressProps} placement="top" /> : null}
+          <Transcript
+            items={loom.items}
+            promptDisabled={conversationDisabled}
+            onPrompt={(prompt) => void loom.send(prompt)}
+            onApproval={(item, approved) => void loom.respondApproval(item, approved)}
+          />
+        </div>
 
-        <Composer
-          disabled={!thread || loom.connection !== "ready"}
-          running={running}
-          model={loom.runtime.model}
-          permissionMode={thread?.permissionMode || loom.runtime.defaultPermissionMode}
-          permissionModes={loom.runtime.permissionModes}
-          onPermissionModeChange={loom.setPermissionMode}
-          onSend={loom.send}
-          onInterrupt={loom.interrupt}
-        />
+        <div className="composer-stage">
+          {running ? <RunProgress {...progressProps} placement="bottom" /> : null}
+          <Composer
+            disabled={!thread || loom.connection !== "ready"}
+            running={running}
+            model={loom.runtime.model}
+            permissionMode={thread?.permissionMode || loom.runtime.defaultPermissionMode}
+            permissionModes={loom.runtime.permissionModes}
+            onPermissionModeChange={loom.setPermissionMode}
+            onSend={loom.send}
+            onInterrupt={loom.interrupt}
+          />
+        </div>
       </section>
 
       {inspectorOpen ? <Inspector items={loom.items} onClose={() => setInspectorOpen(false)} /> : null}
