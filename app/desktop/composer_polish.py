@@ -4,6 +4,12 @@ The composer is the one piece of chrome users touch on every turn, so its
 controls should read as one deliberately designed system rather than a row of
 unrelated pills. Behaviour stays in ``composer.py``; this module only refines
 visual hierarchy, vector iconography, density, and state styling.
+
+Composer icons deliberately use a ``QIconEngine`` instead of storing 16x16
+pixmaps. Qt can therefore paint the original vector geometry directly into the
+button at the target screen's device pixel ratio. This matters on Windows at
+125%/150% scaling, where pre-rasterised 16px icons otherwise get interpolated
+and look visibly softer than the neighbouring DirectWrite text.
 """
 
 from __future__ import annotations
@@ -11,7 +17,7 @@ from __future__ import annotations
 from typing import Any
 
 from PySide6.QtCore import QPointF, QRectF, QSize, Qt
-from PySide6.QtGui import QColor, QIcon, QPainter, QPainterPath, QPen, QPixmap
+from PySide6.QtGui import QColor, QIcon, QIconEngine, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import QLabel, QPushButton
 
 from app.desktop import theme
@@ -300,16 +306,32 @@ class UsageBadge(QLabel):
         painter.end()
 
 
-def _icon_pixmap(kind: str, color: str, *, size: int = 16) -> QPixmap:
-    """Render crisp, font-independent composer icons with Qt primitives.
+def _paint_composer_icon(
+    painter: QPainter,
+    rect: QRectF,
+    kind: str,
+    color: str,
+) -> None:
+    """Paint one composer glyph directly into the current paint device.
 
-    Every glyph uses the same 16px optical box and round 1.4-ish stroke so the
-    row stays visually coherent on Windows at fractional DPI scaling.
+    Geometry is authored on a 16-unit logical grid, then transformed into the
+    requested logical rectangle. Because the painter already targets the real
+    widget/screen (or a DPR-aware fallback pixmap), Qt performs antialiasing once
+    at the final device resolution instead of scaling a pre-antialiased 16px
+    bitmap a second time.
     """
-    pixmap = QPixmap(size, size)
-    pixmap.fill(Qt.GlobalColor.transparent)
-    painter = QPainter(pixmap)
+    side = min(float(rect.width()), float(rect.height()))
+    if side <= 0.0:
+        return
+
+    painter.save()
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.translate(
+        rect.center().x() - side / 2.0,
+        rect.center().y() - side / 2.0,
+    )
+    scale = side / 16.0
+    painter.scale(scale, scale)
     painter.setBrush(Qt.BrushStyle.NoBrush)
     painter.setPen(
         QPen(
@@ -320,11 +342,9 @@ def _icon_pixmap(kind: str, color: str, *, size: int = 16) -> QPixmap:
             Qt.PenJoinStyle.RoundJoin,
         )
     )
-    c = size / 2.0
+    c = 8.0
 
     if kind == "attach":
-        # A real paperclip, not a plus sign. Two nested arcs make it recognisable
-        # at 16 px without turning into a generic chain/link icon.
         path = QPainterPath()
         path.moveTo(10.9, 5.0)
         path.cubicTo(12.4, 6.5, 12.35, 8.6, 10.9, 10.05)
@@ -340,8 +360,6 @@ def _icon_pixmap(kind: str, color: str, *, size: int = 16) -> QPixmap:
         path.lineTo(8.35, 4.3)
         painter.drawPath(path)
     elif kind == "workspace":
-        # Clean folder silhouette with a small tab. No internal divider: at this
-        # size a second line made the old glyph feel busy and icon-font-like.
         path = QPainterPath()
         path.moveTo(2.35, 5.1)
         path.lineTo(6.05, 5.1)
@@ -354,8 +372,6 @@ def _icon_pixmap(kind: str, color: str, *, size: int = 16) -> QPixmap:
         path.closeSubpath()
         painter.drawPath(path)
     elif kind == "permission":
-        # Shield with a small centre keyhole. This reads as capability / access,
-        # rather than the previous generic outline shield.
         shield = QPainterPath()
         shield.moveTo(c, 2.25)
         shield.cubicTo(9.2, 3.35, 10.55, 3.85, 12.0, 4.2)
@@ -368,8 +384,6 @@ def _icon_pixmap(kind: str, color: str, *, size: int = 16) -> QPixmap:
         painter.drawEllipse(QRectF(c - 0.9, 6.45, 1.8, 1.8))
         painter.drawLine(QPointF(c, 8.25), QPointF(c, 10.0))
     elif kind == "model":
-        # Four-point model/spark mark: more distinctive than a plain diamond,
-        # while still quiet enough for a utility control.
         outer = QPainterPath()
         outer.moveTo(c, 2.15)
         outer.cubicTo(8.55, 5.4, 10.05, 6.9, 13.25, c)
@@ -392,21 +406,120 @@ def _icon_pixmap(kind: str, color: str, *, size: int = 16) -> QPixmap:
         painter.drawLine(QPointF(c, 4.25), QPointF(4.95, 7.05))
         painter.drawLine(QPointF(c, 4.25), QPointF(11.05, 7.05))
 
+    painter.restore()
+
+
+def _render_icon_pixmap(
+    kind: str,
+    color: str,
+    size: QSize,
+    *,
+    device_pixel_ratio: float = 1.0,
+) -> QPixmap:
+    """Raster fallback for APIs that explicitly request a pixmap.
+
+    The physical backing store is scaled to the requested DPR and tagged with
+    that DPR before painting, so even this fallback never stretches a 1x bitmap
+    on a 1.25x/1.5x monitor.
+    """
+    dpr = max(1.0, float(device_pixel_ratio or 1.0))
+    logical_width = max(1, int(size.width()))
+    logical_height = max(1, int(size.height()))
+    physical = QSize(
+        max(1, int(round(logical_width * dpr))),
+        max(1, int(round(logical_height * dpr))),
+    )
+    pixmap = QPixmap(physical)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    pixmap.setDevicePixelRatio(dpr)
+    painter = QPainter(pixmap)
+    _paint_composer_icon(
+        painter,
+        QRectF(0.0, 0.0, float(logical_width), float(logical_height)),
+        kind,
+        color,
+    )
     painter.end()
     return pixmap
 
 
+class _ComposerIconEngine(QIconEngine):
+    """Vector-backed icon engine that stays sharp across screen DPR changes."""
+
+    def __init__(self, kind: str, normal: str, disabled: str = "#5b6270") -> None:
+        super().__init__()
+        self.kind = kind
+        self.normal = normal
+        self.disabled = disabled
+
+    def clone(self) -> "_ComposerIconEngine":
+        return _ComposerIconEngine(self.kind, self.normal, self.disabled)
+
+    def _color(self, mode: QIcon.Mode) -> str:
+        return self.disabled if mode == QIcon.Mode.Disabled else self.normal
+
+    def paint(
+        self,
+        painter: QPainter,
+        rect: Any,
+        mode: QIcon.Mode,
+        state: QIcon.State,
+    ) -> None:
+        del state
+        _paint_composer_icon(painter, QRectF(rect), self.kind, self._color(mode))
+
+    def pixmap(
+        self,
+        size: QSize,
+        mode: QIcon.Mode,
+        state: QIcon.State,
+    ) -> QPixmap:
+        del state
+        return _render_icon_pixmap(self.kind, self._color(mode), size)
+
+    def scaledPixmap(
+        self,
+        size: QSize,
+        mode: QIcon.Mode,
+        state: QIcon.State,
+        scale: float,
+    ) -> QPixmap:  # noqa: N802 - Qt virtual name
+        del state
+        return _render_icon_pixmap(
+            self.kind,
+            self._color(mode),
+            size,
+            device_pixel_ratio=scale,
+        )
+
+
+def _icon_pixmap(
+    kind: str,
+    color: str,
+    *,
+    size: int = 16,
+    device_pixel_ratio: float = 1.0,
+) -> QPixmap:
+    """Compatibility/testing helper; production buttons use ``QIconEngine``."""
+    return _render_icon_pixmap(
+        kind,
+        color,
+        QSize(size, size),
+        device_pixel_ratio=device_pixel_ratio,
+    )
+
+
 def _composer_icon(kind: str, normal: str, disabled: str = "#5b6270") -> QIcon:
-    icon = QIcon()
-    icon.addPixmap(_icon_pixmap(kind, normal), QIcon.Mode.Normal, QIcon.State.Off)
-    icon.addPixmap(_icon_pixmap(kind, disabled), QIcon.Mode.Disabled, QIcon.State.Off)
-    return icon
+    # Do not add pre-rendered pixmaps here. A custom engine lets QStyle ask for
+    # the icon at the current target device resolution on every paint, including
+    # after dragging the Loom window between monitors with different DPI.
+    return QIcon(_ComposerIconEngine(kind, normal, disabled))
 
 
 def _set_control_icon(button: Any, kind: str, color: str) -> None:
     # ``ControlButton`` historically embedded a Unicode glyph in its text. Keep
     # value handling intact while switching the icon to a platform-independent
-    # vector so Windows font fallback cannot make the toolbar look inconsistent.
+    # vector that is painted at the target screen's actual device ratio.
     if hasattr(button, "_icon"):
         button._icon = ""
     button.setIcon(_composer_icon(kind, color))
@@ -531,4 +644,12 @@ def install() -> None:
     theme.stylesheet = stylesheet
 
 
-__all__ = ["install", "_compact_tokens", "_icon_pixmap", "UsageBadge"]
+__all__ = [
+    "UsageBadge",
+    "_ComposerIconEngine",
+    "_compact_tokens",
+    "_composer_icon",
+    "_icon_pixmap",
+    "_paint_composer_icon",
+    "install",
+]
