@@ -12,7 +12,7 @@ from typing import Any
 
 from PySide6.QtCore import QPointF, QRectF, QSize, Qt
 from PySide6.QtGui import QColor, QIcon, QPainter, QPainterPath, QPen, QPixmap
-from PySide6.QtWidgets import QPushButton
+from PySide6.QtWidgets import QLabel, QPushButton
 
 from app.desktop import theme
 
@@ -164,48 +164,64 @@ QPushButton#composerModel:hover {
     border-color:#514d6f;
 }
 
-/* Usage is metadata, not another decision pill. */
+/* ---- right-side metadata + primary action -------------------------- */
+/*
+   Usage is deliberately quieter than the four decision controls. The tiny
+   context-ring painted by UsageBadge is enough iconography, so the chip can be
+   compact without reading like a fifth button.
+*/
 QLabel#composerUsage {
-    min-height:25px;
-    max-height:25px;
-    padding:0 9px;
-    color:#858fa0;
-    background:#0f131a;
-    border:1px solid #202734;
-    border-radius:8px;
+    min-height:27px;
+    max-height:27px;
+    padding:0 10px 0 25px;
+    color:#959faf;
+    background:#11151d;
+    border:1px solid #272e3a;
+    border-radius:9px;
     font-size:10px;
-    font-weight:650;
+    font-weight:600;
 }
 QLabel#composerUsage:hover {
-    color:#aab2bf;
-    background:#121720;
-    border-color:#2b3442;
+    color:#c0c7d2;
+    background:#141922;
+    border-color:#343c4a;
 }
 
-/* Send is the only primary action in the row. */
+/* Send is the only primary action. A softly rounded square is more stable at
+   fractional Windows DPI than a 34px circle and no longer kisses the top edge
+   of the control row, which was making the old button look clipped. */
 QPushButton#sendButton {
-    min-width:34px;
-    max-width:34px;
-    min-height:34px;
-    max-height:34px;
+    min-width:32px;
+    max-width:32px;
+    min-height:32px;
+    max-height:32px;
     padding:0;
-    border-radius:17px;
-    background:qlineargradient(x1:0,y1:0,x2:0,y2:1,stop:0 #8278ed,stop:1 #685fda);
-    border:1px solid #9189f2;
+    margin:0;
+    border-radius:10px;
+    background:qlineargradient(
+        x1:0,y1:0,x2:0,y2:1,
+        stop:0 #7d72e8,
+        stop:1 #675bd3
+    );
+    border:1px solid #8d84e8;
     color:#ffffff;
 }
 QPushButton#sendButton:hover {
-    background:qlineargradient(x1:0,y1:0,x2:0,y2:1,stop:0 #9188f4,stop:1 #756be4);
-    border-color:#aaa4f7;
+    background:qlineargradient(
+        x1:0,y1:0,x2:0,y2:1,
+        stop:0 #8b81ef,
+        stop:1 #7468dc
+    );
+    border-color:#a49cf0;
 }
 QPushButton#sendButton:pressed {
-    background:#6259cb;
-    border-color:#7d74df;
+    background:#6055c8;
+    border-color:#8178df;
 }
 QPushButton#sendButton:disabled {
-    background:#191b25;
-    border-color:#292d39;
-    color:#59606e;
+    background:#181b24;
+    border-color:#292e3a;
+    color:#59616f;
 }
 
 QPushButton#stopButton {
@@ -238,6 +254,50 @@ def _compact_tokens(total: int) -> str:
     if value < 100_000_000:
         return f"{value / 1_000_000:.1f}m"
     return f"{value / 1_000_000:.0f}m"
+
+
+class UsageBadge(QLabel):
+    """Quiet token metadata with a native context-ring glyph.
+
+    Keeping this a QLabel preserves the public ``usage_label`` surface used by
+    the window while letting us draw a crisp icon without relying on a Unicode
+    symbol or making usage look like an actionable button.
+    """
+
+    def __init__(self, parent: Any = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("composerUsage")
+        self.setTextFormat(Qt.TextFormat.PlainText)
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setToolTip("Conversation token usage")
+        self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
+
+    def paintEvent(self, event: Any) -> None:  # noqa: N802 - Qt override
+        super().paintEvent(event)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        rect = QRectF(9.0, self.height() / 2.0 - 3.7, 7.4, 7.4)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.setPen(
+            QPen(
+                QColor("#4f586b"),
+                1.05,
+                Qt.PenStyle.SolidLine,
+                Qt.PenCapStyle.RoundCap,
+            )
+        )
+        painter.drawEllipse(rect)
+        painter.setPen(
+            QPen(
+                QColor("#8d84df"),
+                1.35,
+                Qt.PenStyle.SolidLine,
+                Qt.PenCapStyle.RoundCap,
+            )
+        )
+        painter.drawArc(rect, 38 * 16, 155 * 16)
+        painter.end()
 
 
 def _icon_pixmap(kind: str, color: str, *, size: int = 16) -> QPixmap:
@@ -322,15 +382,15 @@ def _icon_pixmap(kind: str, color: str, *, size: int = 16) -> QPixmap:
         painter.setPen(
             QPen(
                 QColor(color),
-                1.6,
+                1.55,
                 Qt.PenStyle.SolidLine,
                 Qt.PenCapStyle.RoundCap,
                 Qt.PenJoinStyle.RoundJoin,
             )
         )
-        painter.drawLine(QPointF(c, 12.1), QPointF(c, 4.0))
-        painter.drawLine(QPointF(c, 4.0), QPointF(4.8, 7.15))
-        painter.drawLine(QPointF(c, 4.0), QPointF(11.2, 7.15))
+        painter.drawLine(QPointF(c, 11.8), QPointF(c, 4.25))
+        painter.drawLine(QPointF(c, 4.25), QPointF(4.95, 7.05))
+        painter.drawLine(QPointF(c, 4.25), QPointF(11.05, 7.05))
 
     painter.end()
     return pixmap
@@ -376,6 +436,26 @@ def _polish_attach_button(panel: Any) -> None:
         return
 
 
+def _replace_usage_badge(panel: Any, controls: Any) -> UsageBadge:
+    """Swap the plain usage label for the refined metadata badge in-place."""
+    old = panel.usage_label
+    index = controls.indexOf(old)
+    badge = UsageBadge(panel)
+    badge.setText(old.text())
+    badge.setToolTip(old.toolTip() or "Conversation token usage")
+    badge.setVisible(old.isVisible())
+
+    controls.removeWidget(old)
+    old.hide()
+    old.deleteLater()
+    if index >= 0:
+        controls.insertWidget(index, badge, 0, Qt.AlignmentFlag.AlignVCenter)
+    else:
+        controls.addWidget(badge, 0, Qt.AlignmentFlag.AlignVCenter)
+    panel.usage_label = badge
+    return badge
+
+
 def install() -> None:
     """Install composer presentation tweaks once."""
     global _INSTALLED
@@ -403,27 +483,36 @@ def install() -> None:
         _set_control_icon(self.model_button, "model", "#b6aef0")
         _polish_attach_button(self)
 
-        self.usage_label.setObjectName("composerUsage")
-        self.usage_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.usage_label.setTextFormat(Qt.TextFormat.PlainText)
-        self.usage_label.setToolTip("Conversation token usage")
-
         self.send_button.setText("")
         self.send_button.setIcon(_composer_icon("send", "#ffffff"))
-        self.send_button.setIconSize(QSize(16, 16))
-        self.send_button.setFixedSize(34, 34)
+        self.send_button.setIconSize(QSize(15, 15))
+        self.send_button.setFixedSize(32, 32)
         self.send_button.setToolTip("Send · Enter")
 
-        # 8 px between utility controls is enough separation to scan each target,
-        # but still lets the four buttons read as one compact control group.
         outer = self.layout()
         if outer is not None:
-            outer.setContentsMargins(16, 12, 12, 10)
+            # The extra two pixels at the bottom and the explicit row gutters are
+            # intentional: Windows fractional DPI used to clip the circular Send
+            # button against the control row's top edge.
+            outer.setContentsMargins(16, 12, 12, 12)
             outer.setSpacing(9)
             if outer.count() > 1:
                 controls = outer.itemAt(1).layout()
                 if controls is not None:
+                    _replace_usage_badge(self, controls)
                     controls.setSpacing(8)
+                    controls.setContentsMargins(0, 4, 0, 4)
+                    controls.setAlignment(self.send_button, Qt.AlignmentFlag.AlignVCenter)
+                    controls.setAlignment(self.usage_label, Qt.AlignmentFlag.AlignVCenter)
+
+            outer.invalidate()
+            outer.activate()
+            self.updateGeometry()
+        else:
+            self.usage_label.setObjectName("composerUsage")
+            self.usage_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.usage_label.setTextFormat(Qt.TextFormat.PlainText)
+            self.usage_label.setToolTip("Conversation token usage")
 
     def set_usage(self: Any, total: int) -> None:
         value = max(0, int(total or 0))
@@ -442,4 +531,4 @@ def install() -> None:
     theme.stylesheet = stylesheet
 
 
-__all__ = ["install", "_compact_tokens", "_icon_pixmap"]
+__all__ = ["install", "_compact_tokens", "_icon_pixmap", "UsageBadge"]
