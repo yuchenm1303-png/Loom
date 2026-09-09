@@ -1,20 +1,17 @@
 import {
   ArrowLeft,
   Check,
-  ChevronDown,
   ChevronRight,
   Cpu,
-  Gauge,
-  Globe,
   KeyRound,
   Plus,
   RefreshCw,
+  RotateCcw,
   Server,
   SlidersHorizontal,
-  Sparkles,
   Zap,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type {
   AddModelInput,
   ModelProfile,
@@ -24,7 +21,7 @@ import type {
 } from "../types/loom";
 import "./model-panel.css";
 
-type ModelView = "list" | "add" | "custom";
+type ModelView = "list" | "profiles" | "add" | "custom";
 
 interface ModelPanelProps {
   runtimeModel?: string;
@@ -61,97 +58,99 @@ function activeReasoningOption(reasoning: ModelReasoningState): ModelReasoningOp
 }
 
 function ReasoningControl({
+  modelName,
   reasoning,
   busy,
   running,
   onChange,
 }: {
+  modelName: string;
   reasoning: ModelReasoningState;
   busy?: boolean;
   running?: boolean;
   onChange(kind: string, value: string): Promise<void> | void;
 }) {
-  const current = activeReasoningOption(reasoning) ?? reasoning.options[0];
-  const currentIsAdvanced = Boolean(current?.advanced);
-  const [showAdvanced, setShowAdvanced] = useState(currentIsAdvanced);
+  const selectedIndex = Math.max(0, reasoning.options.findIndex((option) => option.value === reasoning.value));
+  const [displayIndex, setDisplayIndex] = useState(selectedIndex);
   const [error, setError] = useState("");
-  const standard = reasoning.options.filter((option) => !option.advanced);
-  const advanced = reasoning.options.filter((option) => option.advanced);
-  const visible = showAdvanced ? reasoning.options : standard;
-  const selectedIndex = Math.max(0, visible.findIndex((option) => option.value === reasoning.value));
-  const progress = visible.length <= 1 ? 0 : (selectedIndex / (visible.length - 1)) * 100;
   const locked = Boolean(busy || running);
+  const displayOption = reasoning.options[displayIndex] ?? reasoning.options[selectedIndex] ?? reasoning.options[0];
+  const canReset = reasoning.value !== reasoning.defaultValue;
 
-  async function choose(option: ModelReasoningOption) {
-    if (locked || option.value === reasoning.value) return;
+  useEffect(() => {
+    setDisplayIndex(selectedIndex);
+  }, [selectedIndex]);
+
+  async function commit(index: number) {
+    const option = reasoning.options[index];
+    if (!option || locked || option.value === reasoning.value) return;
     setError("");
+    setDisplayIndex(index);
     try {
       await onChange(reasoning.kind, option.value);
     } catch (cause) {
+      setDisplayIndex(selectedIndex);
       setError(cause instanceof Error ? cause.message : String(cause));
     }
   }
 
+  async function reset() {
+    const index = reasoning.options.findIndex((option) => option.value === reasoning.defaultValue);
+    if (index >= 0) await commit(index);
+  }
+
   return (
-    <section className="reasoning-card" aria-label="Reasoning strength">
+    <section className={`reasoning-card ${locked ? "locked" : ""}`} aria-label="Reasoning strength">
       <div className="reasoning-head">
-        <span className="reasoning-icon"><Zap size={16} fill="currentColor" /></span>
+        <span className="reasoning-icon"><Zap size={17} fill="currentColor" /></span>
         <div className="reasoning-heading-copy">
-          <span className="reasoning-eyebrow">Reasoning</span>
-          <strong>{current?.label || reasoning.value}</strong>
+          <strong>{displayOption?.label || reasoning.value}</strong>
+          <span>{modelName}</span>
         </div>
-        <span className="reasoning-source">{reasoning.source}</span>
+        <button
+          type="button"
+          className="reasoning-reset"
+          disabled={locked || !canReset}
+          onClick={() => void reset()}
+          title="Reset reasoning"
+          aria-label="Reset reasoning"
+        >
+          <RotateCcw size={15} />
+        </button>
       </div>
 
-      <p className="reasoning-description">
-        {current?.description || "Controls how much deliberate reasoning the model uses for new work."}
-      </p>
-
-      <div className={`reasoning-scale ${locked ? "locked" : ""}`} style={{ "--reasoning-progress": `${progress}%` } as React.CSSProperties}>
-        <div className="reasoning-track" aria-hidden="true"><span /></div>
-        <div className="reasoning-stops">
-          {visible.map((option) => {
-            const selected = option.value === reasoning.value;
-            return (
-              <button
-                key={option.value}
-                type="button"
-                className={`reasoning-stop ${selected ? "active" : ""} ${option.advanced ? "advanced" : ""}`}
-                disabled={locked}
-                aria-pressed={selected}
-                title={option.description}
-                onClick={() => void choose(option)}
-              >
-                <span className="reasoning-dot">{selected ? <Sparkles size={10} /> : null}</span>
-                <span className="reasoning-stop-label">{option.label}</span>
-              </button>
-            );
-          })}
+      <div className="reasoning-slider-shell">
+        <div className="reasoning-energy-track" aria-hidden="true">
+          <span className="reasoning-particle p1" />
+          <span className="reasoning-particle p2" />
+          <span className="reasoning-particle p3" />
+          <span className="reasoning-particle p4" />
+          <span className="reasoning-particle p5" />
+          <span className="reasoning-particle p6" />
+          <span className="reasoning-particle p7" />
         </div>
+        <input
+          className="reasoning-range"
+          type="range"
+          min={0}
+          max={Math.max(0, reasoning.options.length - 1)}
+          step={1}
+          value={displayIndex}
+          disabled={locked || reasoning.options.length <= 1}
+          aria-label="Reasoning strength"
+          aria-valuetext={displayOption?.label || reasoning.value}
+          title={displayOption?.description || "Reasoning strength"}
+          onChange={(event) => setDisplayIndex(Number(event.currentTarget.value))}
+          onPointerUp={(event) => void commit(Number(event.currentTarget.value))}
+          onKeyUp={(event) => {
+            if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) {
+              void commit(Number(event.currentTarget.value));
+            }
+          }}
+        />
       </div>
 
-      <div className="reasoning-meta-row">
-        <span><Gauge size={12} /> Applies to every model step in the next turn</span>
-        {advanced.length ? (
-          <button
-            type="button"
-            className={`reasoning-more ${showAdvanced ? "open" : ""}`}
-            disabled={locked && !showAdvanced}
-            onClick={() => setShowAdvanced((value) => !value)}
-          >
-            {showAdvanced ? "Standard levels" : "More reasoning"}
-            <ChevronDown size={12} />
-          </button>
-        ) : null}
-      </div>
-
-      {showAdvanced && advanced.length ? (
-        <div className="reasoning-warning">
-          <Zap size={12} />
-          <span>Max and Ultra are intentionally separated because they can use substantially more reasoning and may change task delegation behavior.</span>
-        </div>
-      ) : null}
-      {running ? <div className="reasoning-locked-note">Stop the active turn before changing reasoning.</div> : null}
+      {running ? <div className="reasoning-locked-note">Stop the active turn to change reasoning.</div> : null}
       {error ? <div className="composer-popover-error">{error}</div> : null}
     </section>
   );
@@ -184,7 +183,6 @@ export function ModelPanel({
   const currentSelection = snapshot?.current?.selection || "";
   const currentReasoning = snapshot?.current?.reasoning ?? null;
   const profiles = snapshot?.profiles ?? [];
-  const savedCount = profiles.filter((profile) => profile.kind === "saved").length;
   const recent = useMemo(
     () => (snapshot?.recentModels ?? []).filter((item) => item && item !== currentModel).slice(0, 4),
     [currentModel, snapshot?.recentModels],
@@ -235,13 +233,13 @@ export function ModelPanel({
     return (
       <div className="model-manager-view">
         <button type="button" className="model-back" onClick={() => { setView("list"); setError(""); }}>
-          <ArrowLeft size={14} /> Back to models
+          <ArrowLeft size={14} /> Back
         </button>
         <div className="model-form-heading">
           <span className="model-form-icon"><Plus size={17} /></span>
           <div>
             <strong>Add API / model</strong>
-            <span>Connect OpenAI directly or any OpenAI-compatible Chat Completions endpoint.</span>
+            <span>Connect OpenAI or an OpenAI-compatible endpoint.</span>
           </div>
         </div>
 
@@ -274,14 +272,14 @@ export function ModelPanel({
             <span>API key</span>
             <div className="model-secret-input">
               <KeyRound size={14} />
-              <input type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder="Stored in the operating-system credential store" />
+              <input type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder="Stored securely in the OS credential store" />
             </div>
           </label>
         </div>
 
         <div className="model-security-note">
           <KeyRound size={13} />
-          <span>The key is saved to the OS credential store; Loom only writes non-secret connection metadata to models.json.</span>
+          <span>API keys stay in the operating-system credential store.</span>
         </div>
         {error ? <div className="composer-popover-error">{error}</div> : null}
         <div className="model-form-actions">
@@ -298,14 +296,14 @@ export function ModelPanel({
   if (view === "custom") {
     return (
       <div className="model-manager-view">
-        <button type="button" className="model-back" onClick={() => { setView("list"); setError(""); }}>
-          <ArrowLeft size={14} /> Back to models
+        <button type="button" className="model-back" onClick={() => { setView("profiles"); setError(""); }}>
+          <ArrowLeft size={14} /> Back
         </button>
         <div className="model-form-heading">
           <span className="model-form-icon"><SlidersHorizontal size={17} /></span>
           <div>
-            <strong>Use another model ID</strong>
-            <span>Keep the current API connection and switch only the provider model name.</span>
+            <strong>Other model ID</strong>
+            <span>Keep the same API connection and change only the model name.</span>
           </div>
         </div>
         <div className="model-connection-summary">
@@ -327,7 +325,7 @@ export function ModelPanel({
         ) : null}
         {error ? <div className="composer-popover-error">{error}</div> : null}
         <div className="model-form-actions">
-          <button type="button" className="model-secondary-button" onClick={() => setView("list")}>Cancel</button>
+          <button type="button" className="model-secondary-button" onClick={() => setView("profiles")}>Cancel</button>
           <button type="button" className="model-primary-button" disabled={locked} onClick={() => void submitCustom()}>
             {busy ? <RefreshCw size={14} className="model-spin" /> : <RefreshCw size={14} />}
             Switch model
@@ -337,74 +335,82 @@ export function ModelPanel({
     );
   }
 
-  return (
-    <div className="model-manager-view">
-      <div className="model-current-card">
-        <div className="model-current-icon"><Cpu size={18} /></div>
-        <div className="model-current-copy">
-          <div className="model-current-title-row">
-            <strong>{currentModel}</strong>
-            <span className="model-active-pill"><i /> Active</span>
+  if (view === "profiles") {
+    return (
+      <div className="model-manager-view">
+        <button type="button" className="model-back" onClick={() => { setView("list"); setError(""); }}>
+          <ArrowLeft size={14} /> Back
+        </button>
+        <div className="model-form-heading">
+          <span className="model-form-icon"><Cpu size={17} /></span>
+          <div>
+            <strong>Models</strong>
+            <span>Choose a saved connection or use another model ID.</span>
           </div>
-          <span>{currentName} · {adapterLabel(currentAdapter)}</span>
-          <small><Globe size={11} /> {endpointLabel(currentBaseUrl || snapshot?.primary.baseUrl || "")}</small>
         </div>
-        <span className="model-runtime-check"><Check size={14} /></span>
-      </div>
 
+        <div className="model-profile-list">
+          {profiles.map((profile) => {
+            const exactActive = profile.selection === currentSelection && profile.model === currentModel;
+            const profileReasoning = profile.reasoning ? activeReasoningOption(profile.reasoning) : null;
+            return (
+              <button
+                key={profile.selection}
+                type="button"
+                className={`model-profile-row ${exactActive ? "active" : ""}`}
+                disabled={locked || exactActive}
+                onClick={() => void run(() => onSwitchProfile(profile.selection))}
+              >
+                <span className={`model-profile-icon ${profile.kind}`}><Server size={15} /></span>
+                <span className="model-profile-copy">
+                  <span className="model-profile-title-row">
+                    <strong>{profile.name}</strong>
+                    {profile.kind === "builtin" ? <em>Primary</em> : null}
+                    {profileReasoning ? <em className="model-reasoning-badge">{profileReasoning.label}</em> : null}
+                  </span>
+                  <span>{profile.model}</span>
+                  <small>{profileSubtitle(profile)}</small>
+                </span>
+                <span className="model-profile-action">
+                  {exactActive ? <Check size={14} /> : busy ? <RefreshCw size={13} className="model-spin" /> : <ChevronRight size={14} />}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        <button type="button" className="model-wide-action" onClick={() => { setView("custom"); setError(""); }} disabled={locked}>
+          <SlidersHorizontal size={15} />
+          <span><strong>Other model ID</strong><small>Same API connection</small></span>
+          <ChevronRight size={14} />
+        </button>
+        {error ? <div className="composer-popover-error">{error}</div> : null}
+      </div>
+    );
+  }
+
+  return (
+    <div className="model-manager-view model-manager-home">
       {currentReasoning ? (
         <ReasoningControl
+          modelName={currentModel}
           reasoning={currentReasoning}
           busy={busy}
           running={running}
           onChange={onReasoningChange}
         />
       ) : (
-        <div className="reasoning-unavailable">
-          <Gauge size={14} />
-          <div><strong>Provider reasoning</strong><span>This model does not advertise a safe reasoning control. Its provider default is used.</span></div>
+        <div className="model-compact-current">
+          <span className="model-compact-icon"><Cpu size={16} /></span>
+          <div><strong>{currentModel}</strong><span>{currentName} · {adapterLabel(currentAdapter)}</span></div>
+          <Check size={14} />
         </div>
       )}
 
-      <div className="model-section-heading">
-        <span>Connections</span>
-        <em>{savedCount ? `${savedCount} saved` : "Primary + custom"}</em>
-      </div>
-
-      <div className="model-profile-list">
-        {profiles.map((profile) => {
-          const exactActive = profile.selection === currentSelection && profile.model === currentModel;
-          const profileReasoning = profile.reasoning ? activeReasoningOption(profile.reasoning) : null;
-          return (
-            <button
-              key={profile.selection}
-              type="button"
-              className={`model-profile-row ${exactActive ? "active" : ""}`}
-              disabled={locked || exactActive}
-              onClick={() => void run(() => onSwitchProfile(profile.selection))}
-            >
-              <span className={`model-profile-icon ${profile.kind}`}><Server size={15} /></span>
-              <span className="model-profile-copy">
-                <span className="model-profile-title-row">
-                  <strong>{profile.name}</strong>
-                  {profile.kind === "builtin" ? <em>Primary</em> : null}
-                  {profileReasoning ? <em className="model-reasoning-badge">{profileReasoning.label}</em> : null}
-                </span>
-                <span>{profile.model}</span>
-                <small>{profileSubtitle(profile)}</small>
-              </span>
-              <span className="model-profile-action">
-                {exactActive ? <Check size={14} /> : busy ? <RefreshCw size={13} className="model-spin" /> : <ChevronRight size={14} />}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-
       <div className="model-manager-actions">
-        <button type="button" onClick={() => { setView("custom"); setError(""); }} disabled={locked}>
-          <SlidersHorizontal size={15} />
-          <span><strong>Other model ID</strong><small>Same API connection</small></span>
+        <button type="button" onClick={() => { setView("profiles"); setError(""); }} disabled={locked}>
+          <Cpu size={15} />
+          <span><strong>Models</strong><small>{currentModel}</small></span>
           <ChevronRight size={14} />
         </button>
         <button type="button" onClick={() => { setView("add"); setError(""); }} disabled={locked}>
@@ -415,10 +421,6 @@ export function ModelPanel({
       </div>
 
       {error ? <div className="composer-popover-error">{error}</div> : null}
-      <div className="model-restart-note">
-        <RefreshCw size={12} />
-        <span>Model switches restart the local App Server. Reasoning changes apply live to the next turn.</span>
-      </div>
     </div>
   );
 }
