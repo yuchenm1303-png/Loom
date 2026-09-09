@@ -21,7 +21,8 @@ from PySide6.QtWidgets import QWidget
 from app.desktop import sidebar_motion, theme
 
 
-_PANEL_DURATION_MS = 240
+_PANEL_DURATION_MS = 210
+_PANEL_DURATION_LONG_MS = 260
 
 
 def _set_exact_width(panel: QWidget, width: int | float) -> None:
@@ -115,17 +116,23 @@ def _set_panel_visible(
         return
 
     animation = QVariantAnimation(self)
-    animation.setDuration(_PANEL_DURATION_MS)
+    # Opening breathes into place with a softer curve; closing gets out of
+    # the way quickly because the user has dismissed the panel and shouldn't
+    # have to wait for it to leave.
+    animation.setDuration(_PANEL_DURATION_LONG_MS if visible else _PANEL_DURATION_MS)
     animation.setStartValue(current_width)
     animation.setEndValue(end_width)
-    animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+    animation.setEasingCurve(
+        QEasingCurve.Type.OutQuint if visible else QEasingCurve.Type.InOutQuart
+    )
 
     def apply_width(value: Any) -> None:
         _set_exact_width(panel, value)
-        # Keep the splitter's own geometry queue moving with the child. This is
-        # cheap and avoids a one-event-loop lag between the panel and center pane.
+        # ``updateGeometry`` is enough — it lets the splitter recompute its
+        # section sizes from the new exact width. Calling ``update`` here
+        # would repaint the whole splitter every frame, which is the real
+        # source of the "dragged through mud" feel during the transition.
         splitter.updateGeometry()
-        splitter.update()
 
     def finish() -> None:
         _set_exact_width(panel, end_width)
@@ -137,7 +144,6 @@ def _set_panel_visible(
         if self._panel_animations.get(key) is animation:
             self._panel_animations.pop(key, None)
         splitter.updateGeometry()
-        splitter.update()
         animation.deleteLater()
 
     animation.valueChanged.connect(apply_width)
