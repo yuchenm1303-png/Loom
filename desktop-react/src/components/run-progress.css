@@ -6,8 +6,18 @@
   overflow: hidden;
 }
 
+/* Keep the conversation viewport permanently in row 2. When the top run
+   progress unmounts after a turn finishes, CSS grid auto-placement would
+   otherwise move the transcript into the first `auto` row and collapse the
+   visible chat area. */
 .conversation-stage > .transcript-scroll {
+  grid-row: 2;
   min-height: 0;
+  min-width: 0;
+}
+
+.conversation-stage > .run-progress-frame.top {
+  grid-row: 1;
 }
 
 .composer-stage {
