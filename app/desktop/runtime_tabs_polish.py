@@ -1,10 +1,9 @@
-"""Compact, product-grade navigation for the Runtime inspector tabs.
+"""Compact, restrained navigation for the Runtime inspector tabs.
 
-The Runtime panel is intentionally narrow. The default QTabBar overflow buttons
-were visually heavy and made a five-tab inspector look like a horizontally
-scrolled document. This pass keeps every destination visible at once, uses a
-quiet segmented rail, and lets the selected tab carry the accent through both
-its surface and vector icon.
+The Runtime panel is intentionally narrow. All destinations stay visible at
+once, but the navigation now behaves like a lightweight tool rail rather than a
+segmented control nested inside another card. The selected destination is
+carried by typography, its vector icon and one thin underline.
 """
 
 from __future__ import annotations
@@ -27,60 +26,61 @@ QTabWidget#activityTabs {{
 QTabWidget#activityTabs::pane {{
     background:transparent;
     border:none;
-    margin-top:8px;
+    border-top:1px solid #1d1f26;
+    margin-top:5px;
 }}
 QTabWidget#activityTabs::tab-bar {{
     alignment:center;
 }}
 QTabWidget#activityTabs QTabBar {{
-    background:#0c0f15;
-    border:1px solid #1e2430;
-    border-radius:10px;
-    padding:3px;
+    background:transparent;
+    border:none;
+    border-radius:0;
+    padding:0;
 }}
 QTabWidget#activityTabs QTabBar::tab {{
     min-width:0;
-    min-height:27px;
-    margin:0 1px;
-    padding:4px 4px;
+    min-height:28px;
+    margin:0 2px;
+    padding:5px 5px 6px;
     background:transparent;
-    border:1px solid transparent;
-    border-radius:7px;
-    color:#8f97a7;
+    border:none;
+    border-bottom:1px solid transparent;
+    border-radius:0;
+    color:#858c98;
     font-family:{theme.FONT_UI};
     font-size:10px;
-    font-weight:620;
+    font-weight:580;
 }}
 QTabWidget#activityTabs QTabBar::tab:hover:!selected {{
-    background:#151923;
-    border-color:#202633;
-    color:#c9ced8;
+    background:transparent;
+    color:#c2c6ce;
 }}
 QTabWidget#activityTabs QTabBar::tab:selected {{
-    background:#1d1a2d;
-    border-color:#3b3559;
-    color:#f0edff;
-    font-weight:700;
+    background:transparent;
+    border-bottom:1px solid #7771d5;
+    color:#e4e5ea;
+    font-weight:650;
 }}
 QTabWidget#activityTabs QTabBar::tab:pressed {{
-    background:#171522;
+    background:#17181e;
 }}
 QTabWidget#activityTabs QToolButton {{
     min-width:24px;
     max-width:24px;
     min-height:24px;
     max-height:24px;
-    margin:3px;
+    margin:2px;
     padding:0;
     background:transparent;
     border:1px solid transparent;
-    border-radius:7px;
-    color:#8f97a7;
+    border-radius:6px;
+    color:#858c98;
 }}
 QTabWidget#activityTabs QToolButton:hover {{
-    background:#171b24;
-    border-color:#262d39;
-    color:#e1e5ed;
+    background:#1a1c22;
+    border-color:transparent;
+    color:#d5d8de;
 }}
 """
 
