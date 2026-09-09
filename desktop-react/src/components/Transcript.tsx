@@ -1,5 +1,6 @@
 import {
   ArrowUpRight,
+  BrainCircuit,
   Bug,
   Check,
   ChevronRight,
@@ -18,6 +19,7 @@ import "./activity-flow.css";
 
 interface TranscriptProps {
   items: TranscriptItem[];
+  running?: boolean;
   promptDisabled?: boolean;
   onPrompt?(prompt: string): void;
   onApproval(item: TranscriptItem, approved: boolean): void;
@@ -26,6 +28,14 @@ interface TranscriptProps {
 type TranscriptBlock =
   | { kind: "item"; item: TranscriptItem }
   | { kind: "activity"; items: TranscriptItem[] };
+
+type ReasoningState = "none" | "streaming" | "closed";
+
+interface ReasoningSplit {
+  reasoning: string;
+  answer: string;
+  state: ReasoningState;
+}
 
 const starterPrompts = [
   {
@@ -58,10 +68,40 @@ const starterPrompts = [
   },
 ] as const;
 
-function splitReasoning(text: string): { reasoning: string; answer: string } {
-  const match = text.match(/<think>([\s\S]*?)<\/think>([\s\S]*)/i);
-  if (!match) return { reasoning: "", answer: text };
-  return { reasoning: match[1].trim(), answer: match[2].trimStart() };
+function splitReasoning(text: string): ReasoningSplit {
+  const raw = String(text ?? "");
+  const lower = raw.toLowerCase();
+  const openTag = "<think>";
+  const closeTag = "</think>";
+  const openIndex = lower.indexOf(openTag);
+
+  if (openIndex >= 0) {
+    const reasoningStart = openIndex + openTag.length;
+    const closeIndex = lower.indexOf(closeTag, reasoningStart);
+    const prefix = raw.slice(0, openIndex).trim();
+
+    if (closeIndex < 0) {
+      return {
+        reasoning: raw.slice(reasoningStart).trimStart(),
+        answer: "",
+        state: "streaming",
+      };
+    }
+
+    const suffix = raw.slice(closeIndex + closeTag.length).trimStart();
+    return {
+      reasoning: raw.slice(reasoningStart, closeIndex).trim(),
+      answer: [prefix, suffix].filter(Boolean).join(prefix && suffix ? "\n" : ""),
+      state: "closed",
+    };
+  }
+
+  const trimmedStart = raw.trimStart().toLowerCase();
+  if (trimmedStart && openTag.startsWith(trimmedStart) && trimmedStart.startsWith("<")) {
+    return { reasoning: "", answer: "", state: "streaming" };
+  }
+
+  return { reasoning: "", answer: raw, state: "none" };
 }
 
 function Disclosure({ label, children, openByDefault = false }: { label: string; children: ReactNode; openByDefault?: boolean }) {
@@ -75,6 +115,44 @@ function Disclosure({ label, children, openByDefault = false }: { label: string;
       <div className="disclosure-grid">
         <div className="disclosure-inner">{children}</div>
       </div>
+    </div>
+  );
+}
+
+function LiveReasoning({ reasoning }: { reasoning: string }) {
+  const [open, setOpen] = useState(false);
+  const hasReasoning = Boolean(reasoning.trim());
+
+  return (
+    <div className={`live-reasoning ${open ? "open" : ""}`}>
+      <button
+        type="button"
+        className="live-reasoning-trigger"
+        onClick={() => hasReasoning && setOpen((value) => !value)}
+        aria-expanded={hasReasoning ? open : undefined}
+        disabled={!hasReasoning}
+      >
+        <span className="thinking-symbol" aria-hidden="true"><BrainCircuit size={15} /></span>
+        <span className="thinking-shimmer">正在思考…</span>
+        {hasReasoning ? <ChevronRight size={13} className="live-reasoning-chevron" aria-hidden="true" /> : null}
+      </button>
+
+      {hasReasoning ? (
+        <div className="live-reasoning-grid">
+          <div className="live-reasoning-inner">
+            <div className="live-reasoning-copy">{reasoning}</div>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function PendingThinking() {
+  return (
+    <div className="inline-thinking" role="status" aria-live="polite">
+      <span className="thinking-symbol" aria-hidden="true"><BrainCircuit size={15} /></span>
+      <span className="thinking-shimmer">正在思考…</span>
     </div>
   );
 }
@@ -257,24 +335,21 @@ function ActivityFlow({ items }: { items: TranscriptItem[] }) {
   );
 }
 
-function StreamingIndicator() {
-  return (
-    <div className="streaming-placeholder" role="status">
-      <span className="streaming-spark"><Sparkles size={13} /></span>
-      <span>Loom is working</span>
-      <span className="streaming-dots" aria-hidden="true"><i /><i /><i /></span>
-    </div>
-  );
-}
-
 function ItemView({ item, onApproval }: { item: TranscriptItem; onApproval(item: TranscriptItem, approved: boolean): void }) {
   if (item.type === "user_message") return <div className="user-message">{item.text}</div>;
   if (item.type === "assistant_message") {
-    const { reasoning, answer } = splitReasoning(item.text ?? "");
+    const parsed = splitReasoning(item.text ?? "");
+
+    if (parsed.state === "streaming") {
+      return <div className="assistant-message"><LiveReasoning reasoning={parsed.reasoning} /></div>;
+    }
+
+    if (!parsed.reasoning && !parsed.answer.trim()) return null;
+
     return (
       <div className="assistant-message">
-        {reasoning ? <Disclosure label="Thought process"><div className="reasoning-copy">{reasoning}</div></Disclosure> : null}
-        {answer ? <div className="assistant-copy">{answer}</div> : <StreamingIndicator />}
+        {parsed.reasoning ? <Disclosure label="Thought process"><div className="reasoning-copy">{parsed.reasoning}</div></Disclosure> : null}
+        {parsed.answer.trim() ? <div className="assistant-copy">{parsed.answer}</div> : null}
       </div>
     );
   }
@@ -332,10 +407,17 @@ function EmptyState({ disabled, onPrompt }: { disabled?: boolean; onPrompt?(prom
   );
 }
 
-export function Transcript({ items, promptDisabled, onPrompt, onApproval }: TranscriptProps) {
+export function Transcript({ items, running, promptDisabled, onPrompt, onApproval }: TranscriptProps) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const previousCount = useRef(0);
   const blocks = groupTranscript(items);
+  const latestAssistant = [...items].reverse().find((item) => item.type === "assistant_message");
+  const latestAssistantState = latestAssistant ? splitReasoning(latestAssistant.text ?? "") : null;
+  const showPendingThinking = Boolean(
+    running &&
+    latestAssistantState?.state !== "streaming" &&
+    !latestAssistantState?.answer.trim(),
+  );
 
   useEffect(() => {
     if (items.length > previousCount.current) {
@@ -370,6 +452,7 @@ export function Transcript({ items, promptDisabled, onPrompt, onApproval }: Tran
             </div>
           )
         ))}
+        {showPendingThinking ? <PendingThinking /> : null}
       </main>
     </div>
   );
