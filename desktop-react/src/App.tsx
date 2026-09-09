@@ -61,6 +61,8 @@ export default function App() {
           running={running}
           model={loom.runtime.model}
           permissionMode={thread?.permissionMode || loom.runtime.defaultPermissionMode}
+          permissionModes={loom.runtime.permissionModes}
+          onPermissionModeChange={loom.setPermissionMode}
           onSend={loom.send}
           onInterrupt={loom.interrupt}
         />
