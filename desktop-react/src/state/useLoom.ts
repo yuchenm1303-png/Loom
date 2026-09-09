@@ -29,6 +29,19 @@ function requireBridge(): Window["loom"] {
   return bridge;
 }
 
+function threadIsRunning(thread?: ThreadRecord | null): boolean {
+  return thread?.status === "running" || thread?.status === "waiting_approval";
+}
+
+function turnStartFromRead(result: ThreadReadResult): number | null {
+  if (!threadIsRunning(result.thread)) return null;
+  const currentTurn = result.thread.currentTurnId
+    ? (result.turns ?? []).find((turn) => turn.id === result.thread.currentTurnId)
+    : [...(result.turns ?? [])].reverse().find((turn) => turn.status === "running" || turn.status === "waiting_approval");
+  const stamp = Date.parse(String(currentTurn?.startedAt ?? ""));
+  return Number.isFinite(stamp) ? stamp : Date.now();
+}
+
 export function useLoom() {
   const [connection, setConnection] = useState<"connecting" | "ready" | "error">("connecting");
   const [error, setError] = useState("");
@@ -36,6 +49,8 @@ export function useLoom() {
   const [threads, setThreads] = useState<ThreadRecord[]>([]);
   const [active, setActive] = useState<ThreadReadResult | null>(null);
   const [items, setItems] = useState<TranscriptItem[]>([]);
+  const [turnActive, setTurnActive] = useState(false);
+  const [turnStartedAt, setTurnStartedAt] = useState<number | null>(null);
   const activeIdRef = useRef("");
 
   useEffect(() => {
@@ -54,6 +69,9 @@ export function useLoom() {
     activeIdRef.current = result.thread.id;
     setActive(result);
     setItems(flattenItems(result.turns ?? []));
+    const running = threadIsRunning(result.thread);
+    setTurnActive(running);
+    setTurnStartedAt(running ? turnStartFromRead(result) : null);
   }, []);
 
   const newThread = useCallback(async () => {
@@ -64,7 +82,15 @@ export function useLoom() {
 
   const send = useCallback(async (input: string) => {
     if (!active?.thread.id || !input.trim()) return;
-    await requireBridge().call("turn/start", { threadId: active.thread.id, input: input.trim() });
+    setTurnActive(true);
+    setTurnStartedAt(Date.now());
+    try {
+      await requireBridge().call("turn/start", { threadId: active.thread.id, input: input.trim() });
+    } catch (cause) {
+      setTurnActive(false);
+      setTurnStartedAt(null);
+      throw cause;
+    }
   }, [active?.thread.id]);
 
   const interrupt = useCallback(async () => {
@@ -115,6 +141,10 @@ export function useLoom() {
           setThreads((current) => current.map((entry) => (entry.id === thread.id ? thread : entry)));
           if (thread.id === activeId) {
             setActive((current) => current && current.thread.id === thread.id ? { ...current, thread } : current);
+            const running = threadIsRunning(thread);
+            setTurnActive(running);
+            if (running) setTurnStartedAt((current) => current ?? Date.now());
+            else setTurnStartedAt(null);
           }
         }
         return;
@@ -128,7 +158,11 @@ export function useLoom() {
 
       if (message.method === "item/started") {
         const item = params.item as TranscriptItem | undefined;
-        if (item) setItems((current) => current.some((entry) => entry.id === item.id) ? current : [...current, item]);
+        if (item) {
+          setTurnActive(true);
+          setTurnStartedAt((current) => current ?? Date.now());
+          setItems((current) => current.some((entry) => entry.id === item.id) ? current : [...current, item]);
+        }
       } else if (message.method === "item/delta") {
         const itemId = String(params.itemId ?? "");
         const delta = (params.delta ?? {}) as Record<string, unknown>;
@@ -147,6 +181,8 @@ export function useLoom() {
       } else if (message.method === "thread/resync") {
         void openThread(activeId);
       } else if (message.method === "turn/completed") {
+        setTurnActive(false);
+        setTurnStartedAt(null);
         void refreshThreads();
       }
     });
@@ -186,11 +222,13 @@ export function useLoom() {
     threads,
     active,
     items,
+    turnActive,
+    turnStartedAt,
     openThread,
     newThread,
     send,
     interrupt,
     setPermissionMode,
     respondApproval,
-  }), [active, connection, error, interrupt, items, newThread, openThread, respondApproval, runtime, send, setPermissionMode, threads]);
+  }), [active, connection, error, interrupt, items, newThread, openThread, respondApproval, runtime, send, setPermissionMode, threads, turnActive, turnStartedAt]);
 }
