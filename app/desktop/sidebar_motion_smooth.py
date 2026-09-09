@@ -1,27 +1,23 @@
 """Composited side-panel transitions for Loom's native desktop UI.
 
-The left library, conversation transcript and Runtime inspector are all sizeable
-QWidget trees. Animating ``QSplitter.setSizes`` on every frame makes Qt resize
-and repaint those trees on the GUI thread, which stutters badly once a real
-thread contains many messages and Runtime rows.
+The desktop panes are heavyweight QWidget trees.  The live splitter therefore
+commits only once at a transition endpoint; the ~200 ms motion itself is painted
+from snapshots by one lightweight overlay.
 
-This module keeps live layout and visual motion separate:
+The important visual rule in this pass is that content belongs to a *surface*:
 
-* capture the settled splitter panes once;
-* commit the requested real splitter layout once under an overlay;
-* capture the settled destination once;
-* freeze live splitter painting for the ~200 ms transition;
-* animate only a lightweight snapshot overlay;
-* reveal the already-laid-out destination and repaint it once at the endpoint.
+* left-sidebar pixels stay attached to the moving inner/right edge;
+* Runtime pixels stay attached to the moving inner/left edge;
+* conversation pixels stay attached to the moving pane centre;
+* no text cross-fade happens while geometry is moving.
 
-The overlay interpolates the three pane boundaries with one progress value. The
-conversation therefore retreats as either side panel opens, while panel content
-is revealed by clipping rather than by repeatedly resizing hundreds of widgets.
+That keeps labels, icons and cards travelling with their column instead of being
+revealed through a stationary mask or briefly double-painted at two wrap widths.
 """
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from PySide6.QtCore import QEasingCurve, QObject, QPoint, QRect, Qt, QVariantAnimation
 from PySide6.QtGui import QColor, QPainter, QPen, QPixmap
@@ -33,7 +29,8 @@ from app.desktop import sidebar_motion, theme
 _OPEN_DURATION_MS = 210
 _CLOSE_DURATION_MS = 190
 _MIN_REVERSAL_MS = 80
-_CENTER_CROSSFADE_START = 0.62
+
+_Anchor = Literal["left", "right", "center"]
 
 
 def _restore_constraints(controller: Any, key: str, panel: QWidget) -> None:
@@ -60,7 +57,7 @@ def _transition_duration(
     start_progress: float = 0.0,
     end_progress: float = 1.0,
 ) -> int:
-    """Scale duration to remaining visual distance, useful for reversals."""
+    """Scale duration to remaining distance so reversals never feel sticky."""
     base = _OPEN_DURATION_MS if opening else _CLOSE_DURATION_MS
     fraction = min(1.0, max(0.0, abs(float(end_progress) - float(start_progress))))
     scaled = int(round(base * max(0.42, fraction ** 0.6)))
@@ -77,8 +74,25 @@ def _lerp_rect(start: QRect, end: QRect, progress: float) -> QRect:
     )
 
 
+def _anchored_draw_x(rect: QRect, content_width: float, anchor: _Anchor) -> int:
+    """Place an unscaled snapshot against a stable visual anchor.
+
+    ``right`` is used by the left drawer so its content follows the divider.
+    ``left`` is used by the right drawer for the same reason.  The conversation
+    uses ``center``: when one side grows by N pixels its visual content moves by
+    roughly N/2, matching a centred content column instead of overshooting by N.
+    """
+    width = max(0.0, float(content_width))
+    if anchor == "right":
+        return int(round(rect.right() + 1 - width))
+    if anchor == "center":
+        centre = float(rect.x()) + float(rect.width()) / 2.0
+        return int(round(centre - width / 2.0))
+    return int(rect.x())
+
+
 def _pane_rects(splitter: QSplitter) -> list[QRect]:
-    """Return paint-space pane rects, normalising hidden side panes to zero."""
+    """Return splitter-space pane rects, normalising hidden sides to zero."""
     count = splitter.count()
     height = max(0, splitter.height())
     width = max(0, splitter.width())
@@ -104,8 +118,6 @@ def _pane_rects(splitter: QSplitter) -> list[QRect]:
 def _capture_widget(widget: QWidget | None) -> QPixmap | None:
     if widget is None or not widget.isVisible() or widget.width() <= 0 or widget.height() <= 0:
         return None
-    # QWidget.grab() performs one explicit render and preserves devicePixelRatio,
-    # so the overlay stays crisp on Windows fractional-DPI displays.
     return widget.grab()
 
 
@@ -123,7 +135,7 @@ def _logical_width(pixmap: QPixmap) -> float:
 
 
 class _SnapshotOverlay(QWidget):
-    """Cheap compositor that animates three static pane snapshots."""
+    """One cheap compositor for all three pane surfaces."""
 
     def __init__(
         self,
@@ -176,33 +188,28 @@ class _SnapshotOverlay(QWidget):
         self.progress = max(0.0, min(1.0, float(progress)))
         self.update()
 
-    def _draw_pixmap_anchored(
+    def _draw_snapshot(
         self,
         painter: QPainter,
         pixmap: QPixmap | None,
-        rect: QRect,
+        clip_rect: QRect,
         *,
-        anchor_right: bool = False,
-        opacity: float = 1.0,
+        anchor: _Anchor,
     ) -> None:
-        if pixmap is None or rect.width() <= 0 or rect.height() <= 0 or opacity <= 0:
+        if pixmap is None or clip_rect.width() <= 0 or clip_rect.height() <= 0:
             return
         painter.save()
-        painter.setClipRect(rect)
-        painter.setOpacity(max(0.0, min(1.0, float(opacity))))
-        if anchor_right:
-            draw_x = int(round(rect.right() + 1 - _logical_width(pixmap)))
-        else:
-            draw_x = rect.x()
-        painter.drawPixmap(draw_x, rect.y(), pixmap)
+        painter.setClipRect(clip_rect)
+        draw_x = _anchored_draw_x(clip_rect, _logical_width(pixmap), anchor)
+        painter.drawPixmap(draw_x, clip_rect.y(), pixmap)
         painter.restore()
 
     def paintEvent(self, _event: Any) -> None:  # noqa: N802 - Qt override
         painter = QPainter(self)
         painter.fillRect(self.rect(), QColor(theme.BG_APP))
 
-        # Exact endpoint snapshots eliminate any one-frame mismatch in handles,
-        # fonts, scrollbars or fractional-DPI rounding.
+        # Exact endpoint frames prevent a one-frame mismatch in fonts, scrollbars
+        # or fractional-DPI handle positions when the live tree is revealed.
         if self.progress <= 0.0001:
             painter.drawPixmap(0, 0, self.before_full)
             return
@@ -218,30 +225,21 @@ class _SnapshotOverlay(QWidget):
             for index in range(count)
         ]
 
-        # The conversation is the only pane whose content width changes
-        # materially. Draw destination underneath, then keep the origin snapshot
-        # opaque for most of the trip. That makes its content move as one surface
-        # and only re-wrap visually near the settled endpoint.
         center = 1 if count >= 3 else max(0, count // 2)
         center_rect = rects[center]
-        after_center = self.after_panes[center] if center < len(self.after_panes) else None
         before_center = self.before_panes[center] if center < len(self.before_panes) else None
-        self._draw_pixmap_anchored(painter, after_center, center_rect)
+        after_center = self.after_panes[center] if center < len(self.after_panes) else None
 
-        if self.progress <= _CENTER_CROSSFADE_START:
-            old_opacity = 1.0
-        else:
-            tail = (self.progress - _CENTER_CROSSFADE_START) / (1.0 - _CENTER_CROSSFADE_START)
-            old_opacity = max(0.0, 1.0 - tail)
-        self._draw_pixmap_anchored(
-            painter,
-            before_center,
-            center_rect,
-            opacity=old_opacity,
-        )
+        # Destination fills only space the rigid origin surface cannot cover when
+        # the conversation pane is expanding.  The origin stays fully opaque and
+        # centred for the whole trip: no cross-fade means no doubled text and no
+        # competing line wraps sliding through one another.
+        self._draw_snapshot(painter, after_center, center_rect, anchor="center")
+        self._draw_snapshot(painter, before_center, center_rect, anchor="center")
 
-        # Side panes are drawers: keep their content pinned to the outside edge
-        # and reveal/hide it only through the interpolated clip rectangle.
+        # Drawer content is locked to its *inner* divider.  This is intentionally
+        # the opposite of a stationary reveal mask: text/icons physically travel
+        # with the column as it enters or leaves the viewport.
         for index in range(count):
             if index == center:
                 continue
@@ -253,15 +251,9 @@ class _SnapshotOverlay(QWidget):
                 if opening and index < len(self.after_panes)
                 else self.before_panes[index] if index < len(self.before_panes) else None
             )
-            self._draw_pixmap_anchored(
-                painter,
-                pixmap,
-                rects[index],
-                anchor_right=index == count - 1,
-            )
+            anchor: _Anchor = "right" if index == 0 else "left"
+            self._draw_snapshot(painter, pixmap, rects[index], anchor=anchor)
 
-        # One restrained divider keeps the moving edges visually locked together
-        # even though QSplitter itself is no longer repainting each frame.
         painter.setOpacity(1.0)
         painter.setPen(QPen(QColor(theme.BORDER), 1))
         if count >= 2 and rects[0].width() > 0:
@@ -278,7 +270,7 @@ def _commit_panel_state(
     visible: bool,
     width: int,
 ) -> None:
-    """Commit one real splitter state exactly once; no animation lives here."""
+    """Commit one real splitter endpoint; animation never lives in this path."""
     splitter = getattr(controller.window, "main_splitter", None)
     if not isinstance(splitter, QSplitter):
         panel.setVisible(bool(visible))
@@ -367,7 +359,6 @@ class _PanelSnapshotTransition:
             before_panes=self.before_panes,
             before_full=self.before_full,
         )
-        # Paint the exact old frame before the real splitter is touched.
         self.overlay.repaint()
 
         _commit_panel_state(
@@ -386,9 +377,8 @@ class _PanelSnapshotTransition:
             after_full=self.after_full,
         )
 
-        # Everything under the overlay is already in the requested final state.
-        # Stop live painting until the compositor settles so Agent/Runtime updates
-        # cannot steal animation frames on the GUI thread.
+        # Agent/Runtime updates may continue underneath, but none of their heavy
+        # widgets are repainted during the transition.
         self.splitter.setUpdatesEnabled(False)
 
         self.animation: QVariantAnimation | None = None
@@ -458,8 +448,6 @@ class _PanelSnapshotTransition:
         self.overlay.set_progress(1.0 if endpoint_after else 0.0)
         self.overlay.repaint()
 
-        # Repaint the live destination once while the overlay still covers it,
-        # then remove the compositor. This avoids an endpoint flash.
         self.splitter.setUpdatesEnabled(True)
         self.splitter.repaint()
         self.overlay.hide()
@@ -479,9 +467,6 @@ class _PanelSnapshotTransition:
         if pending is not None:
             self.controller._panel_snapshot_pending = None
             pending_key, pending_panel, pending_visible = pending
-            # Route through the installed implementation directly.  The
-            # controller method is monkey-patched during desktop package setup
-            # and lightweight embedders/tests need not duplicate that binding.
             _set_panel_visible(
                 self.controller,
                 pending_key,
@@ -496,7 +481,7 @@ def _set_panel_visible(
     panel: QWidget,
     visible: bool,
 ) -> None:
-    """Animate side-panel chrome without live-resizing its QWidget tree."""
+    """Animate pane surfaces without live-resizing their QWidget trees."""
     splitter = getattr(self.window, "main_splitter", None)
     if not isinstance(splitter, QSplitter):
         panel.setVisible(bool(visible))
@@ -518,9 +503,8 @@ def _set_panel_visible(
     if active is not None and not active._finished:
         if active.key == key and active.request_visible(bool(visible)):
             return
-        # One compositor owns the whole splitter so both edges and the center use
-        # one clock. If the opposite side is clicked during the ~200 ms motion,
-        # keep only the latest request and start it the instant this pass settles.
+        # One compositor owns the splitter. Keep only the latest opposite-side
+        # request so both dividers never fight over the conversation surface.
         self._panel_snapshot_pending = (key, panel, bool(visible))
         return
 
@@ -533,13 +517,14 @@ def _set_panel_visible(
 
 
 def install() -> None:
-    """Replace live QSplitter resize animation with snapshot compositing."""
+    """Replace live splitter resize with rigid-surface snapshot compositing."""
     sidebar_motion.SidebarMotionController.set_panel_visible = _set_panel_visible
 
 
 __all__ = [
     "_PanelSnapshotTransition",
     "_SnapshotOverlay",
+    "_anchored_draw_x",
     "_commit_panel_state",
     "_lerp_rect",
     "_pane_rects",
