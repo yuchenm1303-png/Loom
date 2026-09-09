@@ -130,6 +130,13 @@
   opacity: .7;
 }
 
+/* The global run progress already communicates the active turn. Hide the
+   legacy assistant streaming placeholder so the UI never shows a duplicate
+   "Loom is working..." row beneath the progress indicator. */
+.entry-assistant_message:has(.streaming-placeholder) {
+  display: none !important;
+}
+
 @keyframes run-progress-spin {
   to { transform: rotate(360deg); }
 }
