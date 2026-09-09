@@ -8,7 +8,7 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6")
 
-from PySide6.QtWidgets import QApplication, QFrame, QSplitter
+from PySide6.QtWidgets import QApplication, QFrame, QLabel, QSplitter, QVBoxLayout
 from PySide6.QtCore import Qt
 
 from app.desktop import sidebar_motion_smooth as smooth
@@ -19,7 +19,7 @@ def app():
     return QApplication.instance() or QApplication([])
 
 
-def _splitter():
+def _splitter(*, with_layouts: bool = False):
     splitter = QSplitter(Qt.Orientation.Horizontal)
     left = QFrame()
     center = QFrame()
@@ -27,6 +27,14 @@ def _splitter():
     left.setMinimumWidth(0)
     right.setMinimumWidth(0)
     center.setMinimumWidth(120)
+
+    if with_layouts:
+        for widget, text in ((left, "left"), (center, "center"), (right, "right")):
+            layout = QVBoxLayout(widget)
+            # A child is enough to make the QLayout state meaningful without
+            # turning this regression test into a performance benchmark.
+            layout.addWidget(QLabel(text, widget))
+
     splitter.addWidget(left)
     splitter.addWidget(center)
     splitter.addWidget(right)
@@ -73,7 +81,7 @@ def test_short_reversal_uses_less_time_than_a_full_open():
 
 def test_panel_remains_painted_during_close_and_can_reverse(app, monkeypatch):
     monkeypatch.setattr(smooth.theme, "motion_enabled", lambda: True)
-    splitter, left, center, right = _splitter()
+    splitter, left, center, right = _splitter(with_layouts=True)
     left.setMinimumWidth(262)
     left.setMaximumWidth(350)
     splitter.setSizes([280, 360, 360])
@@ -88,6 +96,9 @@ def test_panel_remains_painted_during_close_and_can_reverse(app, monkeypatch):
 
     smooth._set_panel_visible(controller, "sidebar", left, False)
     closing = controller._panel_animations["sidebar"]
+    assert left.layout().isEnabled() is False
+    assert center.layout().isEnabled() is False
+
     closing.setCurrentTime(max(1, closing.duration() // 2))
     QApplication.processEvents()
 
@@ -97,11 +108,13 @@ def test_panel_remains_painted_during_close_and_can_reverse(app, monkeypatch):
     assert 0 < halfway < 280
 
     # Reverse immediately. The new animation must start from the actual halfway
-    # splitter geometry instead of snapping back to 0 or the old open width.
+    # splitter geometry and retain the same frozen layouts (no release spike).
     smooth._set_panel_visible(controller, "sidebar", left, True)
     opening = controller._panel_animations["sidebar"]
     assert abs(int(opening.startValue()) - splitter.sizes()[0]) <= 2
     assert int(opening.endValue()) == 280
+    assert left.layout().isEnabled() is False
+    assert center.layout().isEnabled() is False
 
     opening.setCurrentTime(opening.duration())
     QApplication.processEvents()
@@ -109,4 +122,81 @@ def test_panel_remains_painted_during_close_and_can_reverse(app, monkeypatch):
     assert abs(splitter.sizes()[0] - 280) <= 3
     assert left.minimumWidth() == 262
     assert left.maximumWidth() == 350
+    assert left.layout().isEnabled() is True
+    assert center.layout().isEnabled() is True
+    splitter.close()
+
+
+def test_deep_layouts_reflow_only_after_endpoint(app, monkeypatch):
+    monkeypatch.setattr(smooth.theme, "motion_enabled", lambda: True)
+    splitter, left, center, right = _splitter(with_layouts=True)
+    left.setMinimumWidth(262)
+    left.setMaximumWidth(350)
+    splitter.setSizes([280, 360, 360])
+    QApplication.processEvents()
+
+    controller = SimpleNamespace(
+        window=SimpleNamespace(main_splitter=splitter),
+        _panel_constraints={"sidebar": (262, 350)},
+        _panel_widths={"sidebar": 280},
+        _panel_animations={},
+    )
+
+    smooth._set_panel_visible(controller, "sidebar", left, False)
+    animation = controller._panel_animations["sidebar"]
+
+    assert left.layout().isEnabled() is False
+    assert center.layout().isEnabled() is False
+    assert right.layout().isEnabled() is True
+
+    animation.setCurrentTime(animation.duration() // 2)
+    QApplication.processEvents()
+    assert left.layout().isEnabled() is False
+    assert center.layout().isEnabled() is False
+
+    animation.setCurrentTime(animation.duration())
+    QApplication.processEvents()
+    assert left.layout().isEnabled() is True
+    assert center.layout().isEnabled() is True
+    assert right.layout().isEnabled() is True
+    splitter.close()
+
+
+def test_shared_conversation_layout_stays_frozen_until_both_sides_settle(app, monkeypatch):
+    monkeypatch.setattr(smooth.theme, "motion_enabled", lambda: True)
+    splitter, left, center, right = _splitter(with_layouts=True)
+    left.setMinimumWidth(262)
+    left.setMaximumWidth(350)
+    right.setMinimumWidth(330)
+    right.setMaximumWidth(430)
+    splitter.setSizes([280, 360, 360])
+    QApplication.processEvents()
+
+    controller = SimpleNamespace(
+        window=SimpleNamespace(main_splitter=splitter),
+        _panel_constraints={"sidebar": (262, 350), "runtime": (330, 430)},
+        _panel_widths={"sidebar": 280, "runtime": 360},
+        _panel_animations={},
+    )
+
+    smooth._set_panel_visible(controller, "sidebar", left, False)
+    smooth._set_panel_visible(controller, "runtime", right, False)
+    left_animation = controller._panel_animations["sidebar"]
+    right_animation = controller._panel_animations["runtime"]
+
+    assert left.layout().isEnabled() is False
+    assert center.layout().isEnabled() is False
+    assert right.layout().isEnabled() is False
+
+    left_animation.setCurrentTime(left_animation.duration())
+    QApplication.processEvents()
+    assert left.layout().isEnabled() is True
+    # Runtime still owns one reference to the shared conversation layout.
+    assert center.layout().isEnabled() is False
+    assert right.layout().isEnabled() is False
+
+    right_animation.setCurrentTime(right_animation.duration())
+    QApplication.processEvents()
+    assert center.layout().isEnabled() is True
+    assert right.layout().isEnabled() is True
     splitter.close()
