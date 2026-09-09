@@ -69,6 +69,21 @@ export interface ThreadReadResult {
   error?: string;
 }
 
+export interface ModelReasoningOption {
+  value: string;
+  label: string;
+  description: string;
+  advanced: boolean;
+}
+
+export interface ModelReasoningState {
+  kind: "openai-effort" | "minimax-thinking" | string;
+  value: string;
+  defaultValue: string;
+  options: ModelReasoningOption[];
+  source: string;
+}
+
 export interface ModelProfile {
   selection: string;
   id: string;
@@ -77,6 +92,7 @@ export interface ModelProfile {
   adapter: string;
   baseUrl: string;
   model: string;
+  reasoning?: ModelReasoningState | null;
 }
 
 export interface CurrentModel extends ModelProfile {
@@ -104,6 +120,11 @@ export interface ModelRestartResult {
   models: ModelSnapshot;
 }
 
+export interface ReasoningUpdateResult {
+  runtime: InitializeResult["runtime"];
+  models: ModelSnapshot;
+}
+
 export interface InitializeResult {
   protocolVersion: number;
   serverInfo: { name: string; version: string };
@@ -113,5 +134,6 @@ export interface InitializeResult {
     defaultWorkspace?: string;
     defaultPermissionMode?: string;
     permissionModes?: string[];
+    reasoning?: { kind: string; value: string } | null;
   };
 }
