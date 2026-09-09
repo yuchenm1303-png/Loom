@@ -5,8 +5,10 @@
   "type": "module",
   "main": "dist-electron/main.js",
   "scripts": {
-    "dev": "concurrently -k \"vite --host 127.0.0.1\" \"tsc -p tsconfig.electron.json --watch --preserveWatchOutput\" \"wait-on http://127.0.0.1:5173 dist-electron/main.js && electron dist-electron/main.js\"",
-    "build": "tsc -p tsconfig.electron.json && tsc --noEmit && vite build",
+    "clean:electron": "node -e \"require('node:fs').rmSync('dist-electron',{recursive:true,force:true})\"",
+    "build:electron": "tsc -p tsconfig.electron.json",
+    "dev": "npm run clean:electron && npm run build:electron && concurrently -k \"vite --host 127.0.0.1\" \"tsc -p tsconfig.electron.json --watch --preserveWatchOutput\" \"wait-on http://127.0.0.1:5173 && electron dist-electron/main.js\"",
+    "build": "npm run clean:electron && npm run build:electron && tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.electron.json --noEmit",
     "start": "electron dist-electron/main.js"
   },
