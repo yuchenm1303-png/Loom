@@ -1,6 +1,21 @@
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 
+export interface ModelReasoningOption {
+  value: string;
+  label: string;
+  description: string;
+  advanced: boolean;
+}
+
+export interface ModelReasoningState {
+  kind: "openai-effort" | "minimax-thinking" | string;
+  value: string;
+  defaultValue: string;
+  options: ModelReasoningOption[];
+  source: string;
+}
+
 export interface ModelProfile {
   selection: string;
   id: string;
@@ -9,6 +24,7 @@ export interface ModelProfile {
   adapter: "openai" | "openai-compatible" | string;
   baseUrl: string;
   model: string;
+  reasoning?: ModelReasoningState | null;
 }
 
 export interface ModelLaunchSpec extends ModelProfile {
@@ -81,6 +97,7 @@ export class DesktopModelManager {
           baseUrl: this.currentSpec.baseUrl,
           model: this.currentSpec.model,
           provider: this.currentSpec.provider,
+          reasoning: this.currentSpec.reasoning ?? null,
         }
       : null;
     return {
@@ -91,21 +108,27 @@ export class DesktopModelManager {
   }
 
   resolve(selection: string): ModelLaunchSpec {
-    const resolved = this.runBridge<ModelLaunchSpec>("resolve", { selection });
-    return resolved;
+    return this.runBridge<ModelLaunchSpec>("resolve", { selection });
   }
 
   add(input: AddModelInput): ModelProfile {
-    // ``AddModelInput`` is a concrete record that the registry's runtime
-    // serializer rejects as ``Record<string, unknown>`` because its properties
-    // are not implicitly indexable. The bridge command itself serializes the
-    // payload, so widening to ``unknown`` at this seam is the right place to
-    // bridge a typed input into an indexable record.
     return this.runBridge<ModelProfile>("save", input as unknown as Record<string, unknown>);
   }
 
   setActive(selection: string): void {
     this.runBridge<RegistrySnapshot>("set-active", { selection });
+  }
+
+  setReasoning(kind: string, value: string): ModelReasoningState {
+    const current = this.currentSpec ?? this.ensureInitial();
+    const profile = this.runBridge<ModelProfile>("set-reasoning", {
+      selection: current.selection,
+      kind,
+      value,
+    });
+    if (!profile.reasoning) throw new Error("Selected model does not expose reasoning controls");
+    this.currentSpec = { ...current, reasoning: profile.reasoning };
+    return profile.reasoning;
   }
 
   useProfile(selection: string): ModelLaunchSpec {
@@ -120,7 +143,11 @@ export class DesktopModelManager {
     if (!value) throw new Error("Model ID must not be empty");
     const current = this.currentSpec ?? this.ensureInitial();
     if (value !== current.model) this.rememberCurrentModel(current.model);
-    const next: ModelLaunchSpec = { ...current, model: value };
+    const next: ModelLaunchSpec = {
+      ...current,
+      model: value,
+      reasoning: value === current.model ? current.reasoning : null,
+    };
     this.currentSpec = next;
     return next;
   }
@@ -135,7 +162,10 @@ export class DesktopModelManager {
     this.recentModels = [value, ...this.recentModels.filter((entry) => entry !== value)].slice(0, 8);
   }
 
-  private runBridge<T>(command: "list" | "resolve" | "save" | "set-active", payload: Record<string, unknown>): T {
+  private runBridge<T>(
+    command: "list" | "resolve" | "save" | "set-active" | "set-reasoning",
+    payload: Record<string, unknown>,
+  ): T {
     const python = process.env.LOOM_PYTHON || (process.platform === "win32" ? "python" : "python3");
     const script = path.join(this.repoRoot, "loom_model_bridge.py");
     const result = spawnSync(python, [script, command], {
