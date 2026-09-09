@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from PySide6.QtCore import QPointF, QRectF, QSize, Qt
+from PySide6.QtCore import QPointF, QRectF, QSize, Qt, qVersion
 from PySide6.QtGui import QColor, QIcon, QIconEngine, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import QLabel, QPushButton
 
@@ -24,6 +24,21 @@ from app.desktop import theme
 
 
 _INSTALLED = False
+
+
+def _qt_version_tuple() -> tuple[int, int, int]:
+    values: list[int] = []
+    for part in qVersion().split(".")[:3]:
+        digits = "".join(ch for ch in part if ch.isdigit())
+        values.append(int(digits or 0))
+    while len(values) < 3:
+        values.append(0)
+    return values[0], values[1], values[2]
+
+
+# Qt fixed QIcon::pixmap(size, dpr) in 6.8. Before then, scaledPixmap() was
+# handed a device-dependent size; from 6.8 onward it receives logical pixels.
+_QT_SCALED_PIXMAP_SIZE_IS_PHYSICAL = _qt_version_tuple() < (6, 8, 0)
 
 _COMPOSER_POLISH_QSS = r"""
 /* ---- composer surface ------------------------------------------------ */
@@ -58,11 +73,6 @@ QTextEdit#composer {
 }
 
 /* ---- compact control system ---------------------------------------- */
-/*
-   All four controls share one silhouette and baseline. Their semantic colour
-   lives in the icon and a very small border/text tint instead of four unrelated
-   fills, which makes the row read like one professional toolbar.
-*/
 QPushButton#composerControl,
 QPushButton#composerAttach,
 QPushButton#composerWorkspace,
@@ -105,7 +115,6 @@ QPushButton#composerModel:disabled {
     border-color:#222733;
 }
 
-/* Attach is an action, but intentionally quiet beside Send. */
 QPushButton#composerAttach {
     color:#bcc4d0;
     background:#151821;
@@ -117,7 +126,6 @@ QPushButton#composerAttach:hover {
     border-color:#465164;
 }
 
-/* Workspace should feel structural rather than decorative. */
 QPushButton#composerWorkspace {
     color:#c1c8d3;
     background:#161922;
@@ -129,8 +137,6 @@ QPushButton#composerWorkspace:hover {
     border-color:#465062;
 }
 
-/* Permission colour is meaningful. Full access is the only deliberately warm
-   state because it changes the safety boundary of the agent. */
 QPushButton#composerPermission[mode="full-access"] {
     color:#f0cf88;
     background:#211a0c;
@@ -157,8 +163,6 @@ QPushButton#composerPermission[mode="approval"] {
     border-color:#40394a;
 }
 
-/* Model is the only cool accent in the row; keep it subtle enough that the
-   active permission state remains easier to scan. */
 QPushButton#composerModel {
     color:#c8c3ed;
     background:#181923;
@@ -170,12 +174,6 @@ QPushButton#composerModel:hover {
     border-color:#514d6f;
 }
 
-/* ---- right-side metadata + primary action -------------------------- */
-/*
-   Usage is deliberately quieter than the four decision controls. The tiny
-   context-ring painted by UsageBadge is enough iconography, so the chip can be
-   compact without reading like a fifth button.
-*/
 QLabel#composerUsage {
     min-height:27px;
     max-height:27px;
@@ -193,9 +191,6 @@ QLabel#composerUsage:hover {
     border-color:#343c4a;
 }
 
-/* Send is the only primary action. A softly rounded square is more stable at
-   fractional Windows DPI than a 34px circle and no longer kisses the top edge
-   of the control row, which was making the old button look clipped. */
 QPushButton#sendButton {
     min-width:32px;
     max-width:32px;
@@ -263,12 +258,7 @@ def _compact_tokens(total: int) -> str:
 
 
 class UsageBadge(QLabel):
-    """Quiet token metadata with a native context-ring glyph.
-
-    Keeping this a QLabel preserves the public ``usage_label`` surface used by
-    the window while letting us draw a crisp icon without relying on a Unicode
-    symbol or making usage look like an actionable button.
-    """
+    """Quiet token metadata with a native context-ring glyph."""
 
     def __init__(self, parent: Any = None) -> None:
         super().__init__(parent)
@@ -282,56 +272,24 @@ class UsageBadge(QLabel):
         super().paintEvent(event)
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-
         rect = QRectF(9.0, self.height() / 2.0 - 3.7, 7.4, 7.4)
         painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.setPen(
-            QPen(
-                QColor("#4f586b"),
-                1.05,
-                Qt.PenStyle.SolidLine,
-                Qt.PenCapStyle.RoundCap,
-            )
-        )
+        painter.setPen(QPen(QColor("#4f586b"), 1.05, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
         painter.drawEllipse(rect)
-        painter.setPen(
-            QPen(
-                QColor("#8d84df"),
-                1.35,
-                Qt.PenStyle.SolidLine,
-                Qt.PenCapStyle.RoundCap,
-            )
-        )
+        painter.setPen(QPen(QColor("#8d84df"), 1.35, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
         painter.drawArc(rect, 38 * 16, 155 * 16)
         painter.end()
 
 
-def _paint_composer_icon(
-    painter: QPainter,
-    rect: QRectF,
-    kind: str,
-    color: str,
-) -> None:
-    """Paint one composer glyph directly into the current paint device.
-
-    Geometry is authored on a 16-unit logical grid, then transformed into the
-    requested logical rectangle. Because the painter already targets the real
-    widget/screen (or a DPR-aware fallback pixmap), Qt performs antialiasing once
-    at the final device resolution instead of scaling a pre-antialiased 16px
-    bitmap a second time.
-    """
+def _paint_composer_icon(painter: QPainter, rect: QRectF, kind: str, color: str) -> None:
+    """Paint one glyph once, at the final paint device resolution."""
     side = min(float(rect.width()), float(rect.height()))
     if side <= 0.0:
         return
-
     painter.save()
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-    painter.translate(
-        rect.center().x() - side / 2.0,
-        rect.center().y() - side / 2.0,
-    )
-    scale = side / 16.0
-    painter.scale(scale, scale)
+    painter.translate(rect.center().x() - side / 2.0, rect.center().y() - side / 2.0)
+    painter.scale(side / 16.0, side / 16.0)
     painter.setBrush(Qt.BrushStyle.NoBrush)
     painter.setPen(
         QPen(
@@ -405,27 +363,22 @@ def _paint_composer_icon(
         painter.drawLine(QPointF(c, 11.8), QPointF(c, 4.25))
         painter.drawLine(QPointF(c, 4.25), QPointF(4.95, 7.05))
         painter.drawLine(QPointF(c, 4.25), QPointF(11.05, 7.05))
-
     painter.restore()
 
 
 def _render_icon_pixmap(
     kind: str,
     color: str,
-    size: QSize,
+    logical_size: QSize,
     *,
     device_pixel_ratio: float = 1.0,
+    physical_size: QSize | None = None,
 ) -> QPixmap:
-    """Raster fallback for APIs that explicitly request a pixmap.
-
-    The physical backing store is scaled to the requested DPR and tagged with
-    that DPR before painting, so even this fallback never stretches a 1x bitmap
-    on a 1.25x/1.5x monitor.
-    """
+    """DPR-aware fallback for APIs that explicitly request a pixmap."""
     dpr = max(1.0, float(device_pixel_ratio or 1.0))
-    logical_width = max(1, int(size.width()))
-    logical_height = max(1, int(size.height()))
-    physical = QSize(
+    logical_width = max(1, int(logical_size.width()))
+    logical_height = max(1, int(logical_size.height()))
+    physical = physical_size or QSize(
         max(1, int(round(logical_width * dpr))),
         max(1, int(round(logical_height * dpr))),
     )
@@ -443,6 +396,24 @@ def _render_icon_pixmap(
     return pixmap
 
 
+def _scaled_pixmap_geometry(size: QSize, scale: float) -> tuple[QSize, QSize]:
+    """Return (logical, physical) sizes for Qt 6.7 and Qt 6.8+ contracts."""
+    dpr = max(1.0, float(scale or 1.0))
+    if _QT_SCALED_PIXMAP_SIZE_IS_PHYSICAL:
+        physical = QSize(max(1, size.width()), max(1, size.height()))
+        logical = QSize(
+            max(1, int(round(physical.width() / dpr))),
+            max(1, int(round(physical.height() / dpr))),
+        )
+        return logical, physical
+    logical = QSize(max(1, size.width()), max(1, size.height()))
+    physical = QSize(
+        max(1, int(round(logical.width() * dpr))),
+        max(1, int(round(logical.height() * dpr))),
+    )
+    return logical, physical
+
+
 class _ComposerIconEngine(QIconEngine):
     """Vector-backed icon engine that stays sharp across screen DPR changes."""
 
@@ -458,22 +429,11 @@ class _ComposerIconEngine(QIconEngine):
     def _color(self, mode: QIcon.Mode) -> str:
         return self.disabled if mode == QIcon.Mode.Disabled else self.normal
 
-    def paint(
-        self,
-        painter: QPainter,
-        rect: Any,
-        mode: QIcon.Mode,
-        state: QIcon.State,
-    ) -> None:
+    def paint(self, painter: QPainter, rect: Any, mode: QIcon.Mode, state: QIcon.State) -> None:
         del state
         _paint_composer_icon(painter, QRectF(rect), self.kind, self._color(mode))
 
-    def pixmap(
-        self,
-        size: QSize,
-        mode: QIcon.Mode,
-        state: QIcon.State,
-    ) -> QPixmap:
+    def pixmap(self, size: QSize, mode: QIcon.Mode, state: QIcon.State) -> QPixmap:
         del state
         return _render_icon_pixmap(self.kind, self._color(mode), size)
 
@@ -485,11 +445,13 @@ class _ComposerIconEngine(QIconEngine):
         scale: float,
     ) -> QPixmap:  # noqa: N802 - Qt virtual name
         del state
+        logical, physical = _scaled_pixmap_geometry(size, scale)
         return _render_icon_pixmap(
             self.kind,
             self._color(mode),
-            size,
+            logical,
             device_pixel_ratio=scale,
+            physical_size=physical,
         )
 
 
@@ -510,16 +472,12 @@ def _icon_pixmap(
 
 
 def _composer_icon(kind: str, normal: str, disabled: str = "#5b6270") -> QIcon:
-    # Do not add pre-rendered pixmaps here. A custom engine lets QStyle ask for
-    # the icon at the current target device resolution on every paint, including
-    # after dragging the Loom window between monitors with different DPI.
+    # No pre-rendered pixmaps: the icon engine can repaint after the Loom window
+    # moves between monitors with different scale factors.
     return QIcon(_ComposerIconEngine(kind, normal, disabled))
 
 
 def _set_control_icon(button: Any, kind: str, color: str) -> None:
-    # ``ControlButton`` historically embedded a Unicode glyph in its text. Keep
-    # value handling intact while switching the icon to a platform-independent
-    # vector that is painted at the target screen's actual device ratio.
     if hasattr(button, "_icon"):
         button._icon = ""
     button.setIcon(_composer_icon(kind, color))
@@ -531,12 +489,6 @@ def _set_control_icon(button: Any, kind: str, color: str) -> None:
 
 
 def _polish_attach_button(panel: Any) -> None:
-    """Upgrade an attachment control when the attachment feature is installed.
-
-    Attachment support is intentionally optional in the desktop client. Some
-    builds add the button in a later feature layer, so find it semantically
-    instead of making composer_polish own attachment behaviour.
-    """
     for button in panel.findChildren(QPushButton):
         name = button.objectName().casefold()
         label = " ".join(button.text().split()).casefold()
@@ -550,14 +502,12 @@ def _polish_attach_button(panel: Any) -> None:
 
 
 def _replace_usage_badge(panel: Any, controls: Any) -> UsageBadge:
-    """Swap the plain usage label for the refined metadata badge in-place."""
     old = panel.usage_label
     index = controls.indexOf(old)
     badge = UsageBadge(panel)
     badge.setText(old.text())
     badge.setToolTip(old.toolTip() or "Conversation token usage")
     badge.setVisible(old.isVisible())
-
     controls.removeWidget(old)
     old.hide()
     old.deleteLater()
@@ -570,7 +520,6 @@ def _replace_usage_badge(panel: Any, controls: Any) -> UsageBadge:
 
 
 def install() -> None:
-    """Install composer presentation tweaks once."""
     global _INSTALLED
     if _INSTALLED:
         return
@@ -584,10 +533,6 @@ def install() -> None:
 
     def init(self: Any, *args: Any, **kwargs: Any) -> None:
         original_init(self, *args, **kwargs)
-
-        # Give each decision a semantic selector and one consistent vector-icon
-        # system. Colours are restrained, with the safety-sensitive permission
-        # state carrying the strongest semantic emphasis.
         self.workspace_button.setObjectName("composerWorkspace")
         self.permission_button.setObjectName("composerPermission")
         self.model_button.setObjectName("composerModel")
@@ -604,9 +549,6 @@ def install() -> None:
 
         outer = self.layout()
         if outer is not None:
-            # The extra two pixels at the bottom and the explicit row gutters are
-            # intentional: Windows fractional DPI used to clip the circular Send
-            # button against the control row's top edge.
             outer.setContentsMargins(16, 12, 12, 12)
             outer.setSpacing(9)
             if outer.count() > 1:
@@ -617,7 +559,6 @@ def install() -> None:
                     controls.setContentsMargins(0, 4, 0, 4)
                     controls.setAlignment(self.send_button, Qt.AlignmentFlag.AlignVCenter)
                     controls.setAlignment(self.usage_label, Qt.AlignmentFlag.AlignVCenter)
-
             outer.invalidate()
             outer.activate()
             self.updateGeometry()
@@ -651,5 +592,6 @@ __all__ = [
     "_composer_icon",
     "_icon_pixmap",
     "_paint_composer_icon",
+    "_scaled_pixmap_geometry",
     "install",
 ]
