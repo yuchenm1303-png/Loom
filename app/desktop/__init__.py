@@ -14,6 +14,7 @@ from app.desktop import composer_polish as _composer_polish
 from app.desktop import model_selector_polish as _model_selector_polish
 from app.desktop import permission_menu_polish as _permission_menu_polish
 from app.desktop import composer_menu_motion as _composer_menu_motion
+from app.desktop import deplasticize as _deplasticize
 from app.desktop import iconography as _iconography
 from app.desktop import tool_icon_polish as _tool_icon_polish
 from app.desktop import sidebar_motion as _sidebar_motion
@@ -88,6 +89,9 @@ _composer_polish.install()
 _model_selector_polish.install()
 _permission_menu_polish.install()
 _composer_menu_motion.install()
+# Final hierarchy pass: remove accumulated card/pill chrome after each component
+# has registered its own semantic selectors.
+_deplasticize.install()
 
 from app.desktop.widgets import (  # noqa: E402 - presentation is installed first
     ActivityCard,
