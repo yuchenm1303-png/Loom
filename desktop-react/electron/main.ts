@@ -23,19 +23,32 @@ class LoomRpcProcess {
   private nextId = 1;
   private pending = new Map<number, { resolve: (value: unknown) => void; reject: (error: Error) => void }>();
   private initialized = false;
+  private initializeResult: unknown = null;
+  private connectPromise: Promise<unknown> | null = null;
 
   constructor(private readonly notify: (payload: JsonRpcResponse) => void) {}
 
   async connect(): Promise<unknown> {
-    if (this.child && this.initialized) return this.call("runtime/status", {});
+    if (this.child && this.initialized) return this.initializeResult;
+    if (this.connectPromise) return this.connectPromise;
     if (!this.child) this.startProcess();
-    const result = await this.call("initialize", {
-      protocolVersion: 1,
-      clientInfo: { name: "loom-react-desktop", version: "0.1.0" },
-    });
-    this.sendNotification("initialized", {});
-    this.initialized = true;
-    return result;
+
+    this.connectPromise = (async () => {
+      const result = await this.call("initialize", {
+        protocolVersion: 1,
+        clientInfo: { name: "loom-react-desktop", version: "0.1.0" },
+      });
+      this.sendNotification("initialized", {});
+      this.initializeResult = result;
+      this.initialized = true;
+      return result;
+    })();
+
+    try {
+      return await this.connectPromise;
+    } finally {
+      this.connectPromise = null;
+    }
   }
 
   async call(method: string, params: Record<string, unknown> = {}): Promise<unknown> {
@@ -53,6 +66,8 @@ class LoomRpcProcess {
     const child = this.child;
     this.child = null;
     this.initialized = false;
+    this.initializeResult = null;
+    this.connectPromise = null;
     for (const { reject } of this.pending.values()) reject(new Error("Loom App Server stopped"));
     this.pending.clear();
     if (child && !child.killed) child.kill();
@@ -82,6 +97,8 @@ class LoomRpcProcess {
     child.on("exit", (code, signal) => {
       this.child = null;
       this.initialized = false;
+      this.initializeResult = null;
+      this.connectPromise = null;
       this.failAll(new Error(`Loom App Server exited (${code ?? signal ?? "unknown"})`));
     });
   }
