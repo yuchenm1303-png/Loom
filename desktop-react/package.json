@@ -7,10 +7,10 @@
   "scripts": {
     "clean:electron": "node -e \"require('node:fs').rmSync('dist-electron',{recursive:true,force:true})\"",
     "build:electron": "tsc -p tsconfig.electron.json",
-    "dev": "npm run clean:electron && npm run build:electron && concurrently -k \"vite --host 127.0.0.1\" \"tsc -p tsconfig.electron.json --watch --preserveWatchOutput\" \"wait-on http://127.0.0.1:5173 && electron dist-electron/main.js\"",
+    "dev": "npm run clean:electron && npm run build:electron && concurrently -k \"vite --host 127.0.0.1\" \"tsc -p tsconfig.electron.json --watch --preserveWatchOutput\" \"wait-on http://127.0.0.1:5173 && electron dist-electron/main.js --dev-url=http://127.0.0.1:5173\"",
     "build": "npm run clean:electron && npm run build:electron && tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.electron.json --noEmit",
-    "start": "electron dist-electron/main.js"
+    "start": "npm run build && electron dist-electron/main.js"
   },
   "dependencies": {
     "lucide-react": "^0.468.0",
