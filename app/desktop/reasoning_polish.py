@@ -1,9 +1,9 @@
-"""Premium presentation and motion for the assistant reasoning disclosure.
+"""Quiet presentation and motion for the assistant reasoning disclosure.
 
-The reasoning row is deliberately quieter than the answer itself, but it still
-needs to feel like a first-class product surface.  This module keeps the durable
-message/reasoning behavior in ``message_presentation`` intact and only refines
-its visual hierarchy and disclosure motion.
+The thought-process affordance should read like transcript chrome, not a card.
+This module keeps the durable message/reasoning behavior in
+``message_presentation`` intact and only refines its visual hierarchy and
+motion.
 """
 
 from __future__ import annotations
@@ -24,50 +24,55 @@ _CLOSE_MS = 165
 _CHEVRON_OPEN_MS = 185
 _CHEVRON_CLOSE_MS = 145
 
+# Thought process is deliberately integrated into the transcript.  The toggle is
+# a quiet disclosure row rather than a pill/card, and the expanded body uses only
+# a thin inset rule so reasoning stays visually subordinate to the final answer.
 _REASONING_POLISHED_QSS = f"""
 QFrame#reasoningBlock {{
     background:transparent;
     border:none;
 }}
 QPushButton#reasoningToggle {{
-    background:#151821;
-    border:1px solid #242938;
-    border-radius:8px;
-    padding:4px 12px 4px 27px;
-    color:#aab1c1;
+    background:transparent;
+    border:none;
+    border-radius:6px;
+    padding:2px 8px 2px 24px;
+    color:#8b93a3;
     font-family:{theme.FONT_UI};
     font-size:12px;
-    font-weight:620;
+    font-weight:560;
     text-align:left;
-    min-height:26px;
+    min-height:22px;
 }}
 QPushButton#reasoningToggle:hover {{
-    background:#1a1e29;
-    border-color:#303647;
-    color:#d4d8e2;
+    background:#101319;
+    color:#c3c9d4;
 }}
 QPushButton#reasoningToggle:pressed {{
-    background:#1d2230;
-    border-color:#3a4053;
+    background:#131720;
+    color:#e0e4eb;
 }}
 QPushButton#reasoningToggle[expanded="true"] {{
-    background:#181c27;
-    border-color:#303648;
-    color:#c8ceda;
+    background:transparent;
+    color:#b8bfca;
+}}
+QPushButton#reasoningToggle[expanded="true"]:hover {{
+    background:#101319;
+    color:#d4d9e1;
 }}
 QLabel#reasoningBody {{
-    background:#11151c;
-    border:1px solid #252b38;
-    border-left:2px solid #625b86;
-    border-radius:9px;
-    margin-left:8px;
-    padding:10px 13px 11px 13px;
-    color:#b7bdca;
+    background:transparent;
+    border:none;
+    border-left:2px solid #3d3a55;
+    border-radius:0;
+    margin-left:11px;
+    padding:5px 10px 6px 11px;
+    color:#9ca4b3;
     font-family:{theme.FONT_UI};
     font-size:12px;
 }}
 QLabel#reasoningBody:disabled {{
-    color:#8f96a5;
+    color:#7f8796;
 }}
 """
 
@@ -89,19 +94,19 @@ def _toggle_paint(self: Any, event: Any) -> None:
     if self.isDown():
         color = QColor("#e5e8ef")
     elif self.underMouse():
-        color = QColor("#c3c8d4")
+        color = QColor("#bcc3cf")
     elif expanded:
-        color = QColor("#9ca3b6")
+        color = QColor("#9098a9")
     else:
-        color = QColor("#777f92")
+        color = QColor("#6f7788")
 
-    painter.translate(13.0, self.height() / 2.0)
+    painter.translate(11.5, self.height() / 2.0)
     painter.rotate(float(self._angle))
     painter.translate(-0.2, 0.0)
     painter.setPen(
         QPen(
             color,
-            1.35,
+            1.3,
             Qt.PenStyle.SolidLine,
             Qt.PenCapStyle.RoundCap,
             Qt.PenJoinStyle.RoundJoin,
@@ -109,9 +114,9 @@ def _toggle_paint(self: Any, event: Any) -> None:
     )
     painter.setBrush(Qt.BrushStyle.NoBrush)
     path = QPainterPath()
-    path.moveTo(QPointF(-2.35, -3.55))
-    path.lineTo(QPointF(1.35, 0.0))
-    path.lineTo(QPointF(-2.35, 3.55))
+    path.moveTo(QPointF(-2.2, -3.25))
+    path.lineTo(QPointF(1.15, 0.0))
+    path.lineTo(QPointF(-2.2, 3.25))
     painter.drawPath(path)
 
 
@@ -155,9 +160,9 @@ def install() -> None:
         original_init(self, parent)
         layout = self.layout()
         if layout is not None:
-            layout.setContentsMargins(0, 1, 0, 1)
-            layout.setSpacing(7)
-        self.toggle.setMinimumHeight(30)
+            layout.setContentsMargins(0, 0, 0, 0)
+            layout.setSpacing(4)
+        self.toggle.setMinimumHeight(26)
         self.toggle.setProperty("expanded", False)
         self.toggle.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
         self.body.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
