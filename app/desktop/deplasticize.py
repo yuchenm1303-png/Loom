@@ -10,6 +10,8 @@ streaming, menus and thread state remain owned by their existing modules.
 
 from __future__ import annotations
 
+from typing import Any
+
 from app.desktop import theme
 
 
@@ -390,6 +392,46 @@ QScrollBar::handle:horizontal {
 }
 """
 
+# Thread rows carry a widget-local stylesheet, so application-level QSS cannot
+# flatten the selected surface. Append one tiny local override after the row is
+# constructed instead of rewriting the list/reconciliation behavior.
+_THREAD_ROW_FLAT_QSS = r"""
+QFrame#threadHoverSurface {
+    background:#1b1d23;
+    border:none;
+    border-radius:7px;
+}
+QFrame#threadActiveSurface {
+    background:#202129;
+    border:none;
+    border-radius:7px;
+}
+QFrame#threadSelectionAccent {
+    background:#8177ee;
+    border:none;
+}
+QLabel#threadItemTitle[active="true"] {
+    color:#f0f1f4;
+    font-weight:620;
+}
+"""
+
+
+def _install_thread_row_override() -> None:
+    from app.desktop import thread_presentation as threads
+
+    cls = threads.ThreadListItemWidget
+    if getattr(cls, "_loom_flat_chrome_installed", False):
+        return
+    cls._loom_flat_chrome_installed = True
+    original_init = cls.__init__
+
+    def init(self: Any, *args: Any, **kwargs: Any) -> None:
+        original_init(self, *args, **kwargs)
+        self.setStyleSheet(self.styleSheet() + _THREAD_ROW_FLAT_QSS)
+
+    cls.__init__ = init
+
 
 def install() -> None:
     """Append the global hierarchy stylesheet after all component polish."""
@@ -404,6 +446,26 @@ def install() -> None:
         return original_stylesheet() + _FLAT_CHROME_QSS
 
     theme.stylesheet = stylesheet
+    _install_thread_row_override()
 
 
-__all__ = ["install"]
+def install_window(window_cls: type[Any]) -> None:
+    """Remove the last framed dashboard glyph from the Runtime header."""
+    if getattr(window_cls, "_loom_flat_chrome_window_installed", False):
+        return
+    window_cls._loom_flat_chrome_window_installed = True
+
+    original = window_cls._build_runtime_panel
+
+    def build_runtime_panel(self: Any) -> None:
+        original(self)
+        icon = getattr(self, "runtime_dot", None)
+        if icon is not None and hasattr(icon, "framed"):
+            icon.framed = False
+            icon.setFixedSize(18, 18)
+            icon.update()
+
+    window_cls._build_runtime_panel = build_runtime_panel
+
+
+__all__ = ["install", "install_window"]
