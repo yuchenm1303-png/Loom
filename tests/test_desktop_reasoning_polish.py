@@ -24,7 +24,7 @@ def _settle(app: QApplication, *, loops: int = 70) -> None:
         time.sleep(0.005)
 
 
-def test_reasoning_disclosure_has_compact_product_surface(app, monkeypatch):
+def test_reasoning_disclosure_uses_quiet_inline_surface(app, monkeypatch):
     monkeypatch.setenv("LOOM_REDUCE_MOTION", "1")
     message = MessageWidget("assistant")
     message.set_text("<think>先确认环境，再执行需要的命令。</think>好的。")
@@ -32,11 +32,12 @@ def test_reasoning_disclosure_has_compact_product_surface(app, monkeypatch):
     reasoning = message.reasoning
     assert reasoning is not None
     assert reasoning.isHidden() is False
-    assert reasoning.toggle.minimumHeight() >= 30
+    assert reasoning.toggle.minimumHeight() >= 26
     assert reasoning.toggle.property("expanded") is False
-    assert "background:#151821" in reasoning.styleSheet()
+    assert "background:transparent" in reasoning.styleSheet()
+    assert "border:none" in reasoning.styleSheet()
     assert 'reasoningToggle[expanded="true"]' in reasoning.styleSheet()
-    assert "border-left:2px solid #625b86" in reasoning.styleSheet()
+    assert "border-left:2px solid #3d3a55" in reasoning.styleSheet()
 
     reasoning.toggle.click()
     assert reasoning.toggle.property("expanded") is True
