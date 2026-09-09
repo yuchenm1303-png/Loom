@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from PySide6.QtCore import QEasingCurve, QPoint, QRect, Qt, QVariantAnimation
+from PySide6.QtCore import QEasingCurve, QObject, QPoint, QRect, Qt, QVariantAnimation
 from PySide6.QtGui import QColor, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import QSplitter, QWidget
 
@@ -409,7 +409,8 @@ class _PanelSnapshotTransition:
             return
 
         opening = self.after_visible if destination >= 0.5 else self.before_visible
-        animation = QVariantAnimation(self.controller)
+        parent = self.controller if isinstance(self.controller, QObject) else None
+        animation = QVariantAnimation(parent)
         animation.setStartValue(current)
         animation.setEndValue(destination)
         animation.setDuration(
