@@ -37,12 +37,14 @@ from app.desktop import reasoning_polish as _reasoning_polish
 from app.desktop import runtime_feedback as _runtime_feedback
 from app.desktop import activity_compact_panel as _activity_compact_panel
 from app.desktop import disclosure_motion as _disclosure_motion
+from app.desktop import agent_working_indicator as _agent_working_indicator
 from app.desktop.thread_presentation import ThreadListItemWidget, thread_row_size
 
 # Install the task presentation pipeline in order. The low-reflow disclosure
 # policy is deliberately last: earlier passes own visual styling and chevrons,
 # while the final pass owns geometry/scroll behavior so no later polish can
-# reintroduce per-frame transcript relayout.
+# reintroduce per-frame transcript relayout. The working indicator wraps the
+# settled transcript last so it always remains the visible tail row.
 _transcript_density.install()
 _activity_hierarchy.install()
 _activity_motion.install()
@@ -54,6 +56,7 @@ _message_actions.install()
 _message_actions_polish.install()
 _user_bubble_alignment.install()
 _disclosure_motion.install()
+_agent_working_indicator.install_widgets()
 _widgets.MessageWidget = MessageWidget
 _widgets.TranscriptView = TranscriptView
 _widgets.ThreadListItemWidget = ThreadListItemWidget
@@ -76,6 +79,7 @@ from app.desktop.window import LoomDesktopWindow  # noqa: E402
 
 _sidebar_motion.install_window(LoomDesktopWindow)
 _turn_progress.install_window(LoomDesktopWindow)
+_agent_working_indicator.install_window(LoomDesktopWindow)
 
 __all__ = [
     "ActivityCard",
