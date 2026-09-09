@@ -263,6 +263,53 @@ class ManagedStreamingLoomAppServerService(StreamingLoomAppServerService):
         self._notify("thread/deleted", {"threadId": session.session_id})
         return {"deleted": True, "threadId": session.session_id}
 
+    def thread_set_permission_mode(self, params: dict[str, Any]) -> dict[str, Any]:
+        session = self._session_or_rpc_error(params.get("threadId"))
+        if self._is_active(session.session_id) or session.status in {
+            AgentStatus.RUNNING,
+            AgentStatus.WAITING_APPROVAL,
+        }:
+            raise JsonRpcError(
+                -32025,
+                "permission profile cannot change while the thread is active",
+                {"threadId": session.session_id, "status": session.status.value},
+            )
+
+        raw_mode = str(params.get("permissionMode") or "").strip()
+        if not raw_mode:
+            raise JsonRpcError(-32602, "permissionMode is required")
+        try:
+            permission_mode = PermissionMode(raw_mode)
+        except ValueError as exc:
+            raise JsonRpcError(
+                -32602,
+                "unsupported permissionMode",
+                {
+                    "permissionMode": raw_mode,
+                    "supported": [mode.value for mode in PermissionMode],
+                },
+            ) from exc
+
+        if session.permission_mode is permission_mode:
+            return {"thread": self._managed_record(session)}
+
+        session.permission_mode = permission_mode
+        try:
+            self.store.save(session)
+        except (OSError, ValueError) as exc:
+            raise JsonRpcError(
+                -32026,
+                "failed to persist permission profile",
+                {"threadId": session.session_id},
+            ) from exc
+
+        record = self._managed_record(session)
+        self._notify(
+            "thread/updated",
+            {"thread": record, "reason": "permission_changed"},
+        )
+        return {"thread": record}
+
     def turn_start(self, params: dict[str, Any]) -> dict[str, Any]:
         thread_id = str(params.get("threadId") or "").strip()
         if thread_id and self.thread_library.read(thread_id).get("archivedAt"):
@@ -284,6 +331,7 @@ class ManagedStreamingLoomRpcController(StreamingLoomRpcController):
             "archive": True,
             "delete": True,
             "search": True,
+            "permissionMode": True,
         }
         return result
 
@@ -292,6 +340,7 @@ class ManagedStreamingLoomRpcController(StreamingLoomRpcController):
             "thread/rename": self.service.thread_rename,
             "thread/archive": self.service.thread_archive,
             "thread/delete": self.service.thread_delete,
+            "thread/set_permission_mode": self.service.thread_set_permission_mode,
         }
         handler = handlers.get(method)
         if handler is not None:
