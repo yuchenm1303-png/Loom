@@ -1,0 +1,68 @@
+.conversation-stage.is-running .transcript::after {
+  content: "正在思考";
+  align-self: flex-start;
+  min-height: 22px;
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 0;
+  font-size: 12.5px;
+  font-weight: 540;
+  line-height: 1.45;
+  letter-spacing: .015em;
+  color: transparent;
+  background-image: linear-gradient(
+    100deg,
+    #747a86 0%,
+    #8b919d 28%,
+    #e2e5eb 46%,
+    #b8afef 55%,
+    #858b97 70%,
+    #747a86 100%
+  );
+  background-size: 230% 100%;
+  background-position: 120% 0;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: inline-thinking-shimmer 1.75s cubic-bezier(.42, 0, .58, 1) infinite;
+  user-select: none;
+  pointer-events: none;
+}
+
+/* A faint caret-like glint makes the waiting state feel alive without adding
+   another spinner or card to the conversation surface. */
+.conversation-stage.is-running .transcript::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: 52px;
+  width: 2px;
+  height: 14px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(165,150,246,.12), rgba(231,139,98,.52), rgba(165,150,246,.12));
+  opacity: .55;
+  animation: inline-thinking-breathe 1.75s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes inline-thinking-shimmer {
+  0% { background-position: 125% 0; opacity: .78; }
+  45% { opacity: 1; }
+  100% { background-position: -125% 0; opacity: .78; }
+}
+
+@keyframes inline-thinking-breathe {
+  0%, 100% { opacity: .2; transform: scaleY(.72); }
+  50% { opacity: .72; transform: scaleY(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .conversation-stage.is-running .transcript::after,
+  .conversation-stage.is-running .transcript::before {
+    animation: none !important;
+  }
+
+  .conversation-stage.is-running .transcript::after {
+    color: #9298a3;
+    background: none;
+  }
+}
