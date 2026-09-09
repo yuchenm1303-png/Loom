@@ -2,6 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import pytest
+
+pytest.importorskip("PySide6")
+
 from app.desktop.message_actions_turn_boundary import _terminal_assistant_keys
 
 
