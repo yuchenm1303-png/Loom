@@ -107,6 +107,9 @@ _turn_progress.install_window(LoomDesktopWindow)
 _agent_working_indicator.install_window(LoomDesktopWindow)
 _message_actions_turn_boundary.install_window(LoomDesktopWindow)
 _runtime_tabs_polish.install_window(LoomDesktopWindow)
+# Runtime tab polish owns navigation behavior; this last presentation wrapper
+# only removes the remaining framed dashboard glyph in the inspector header.
+_deplasticize.install_window(LoomDesktopWindow)
 # Install last so high-frequency item/delta traffic enters the bounded streaming
 # lane after all structural window wrappers have established their behavior.
 _stream_render_pipeline.install_window(LoomDesktopWindow)
