@@ -1,6 +1,6 @@
 """Client-side thread state for the desktop transcript.
 
-The App Server exposes a typed turn timeline through ``turns[].items[]``.  This
+The App Server exposes a typed turn timeline through ``turns[].items[]``. This
 module turns that durable timeline -- plus live ``item/*`` notifications -- into
 a stable list of transcript entries the view can reconcile by key.
 
@@ -12,6 +12,11 @@ Two ordering details are important for an agent UI:
 - a snapshot refresh must not append an uncommitted live process/tool to the end
   of the transcript, because that makes activity visibly jump below a newer
   assistant message.
+
+Live text/output fragments are buffered between UI frames. Appending a token is
+therefore O(1): it never recopies the whole accumulated answer just because the
+provider chose a very small chunk size. Read/reconcile boundaries materialise the
+fragments once, which keeps transport throughput independent from paint cadence.
 
 Nothing here imports Qt, so the reconciliation rules are testable on their own.
 """
@@ -39,6 +44,7 @@ _ENTRY_KINDS = {
 # tool_call item's status, so they never become their own transcript entry.
 _SKIPPED_ITEM_TYPES = {"approval"}
 _MESSAGE_ITEM_TYPES = {"user_message", "assistant_message"}
+_STREAM_FIELDS = ("text", "stdout", "stderr")
 
 
 @dataclass(slots=True)
@@ -87,6 +93,10 @@ class ThreadState:
         self._items: dict[str, dict[str, Any]] = {}
         self._order: list[str] = []
         self._streaming: set[str] = set()
+        # (item key, field) -> provider fragments not yet materialised into the
+        # canonical item string. Lists make token arrival O(1); a UI frame joins
+        # each dirty field at most once.
+        self._stream_fragments: dict[tuple[str, str], list[str]] = {}
         self._optimistic_user = ""
 
     # ---- reads -----------------------------------------------------------
@@ -118,6 +128,9 @@ class ThreadState:
             return 0
 
     def entries(self) -> list[TranscriptEntry]:
+        # This is the transcript paint boundary. Coalesce every provider chunk
+        # received since the previous frame before signatures are calculated.
+        self._flush_stream_fragments()
         rows: list[TranscriptEntry] = []
         for key in self._order:
             item = self._items.get(key)
@@ -154,6 +167,9 @@ class ThreadState:
         )
 
     def items_of_type(self, item_type: str) -> list[dict[str, Any]]:
+        # Runtime tabs are another read boundary and must observe complete output
+        # through the moment they render.
+        self._flush_stream_fragments()
         return [
             item
             for key in self._order
@@ -163,6 +179,37 @@ class ThreadState:
 
     def tool_items(self, predicate) -> list[dict[str, Any]]:
         return [item for item in self.items_of_type("tool_call") if predicate(item)]
+
+    # ---- stream buffering ------------------------------------------------
+
+    def _queue_stream_fragment(self, key: str, field_name: str, chunk: str) -> None:
+        if not key or not chunk:
+            return
+        self._stream_fragments.setdefault((key, field_name), []).append(chunk)
+
+    def _flush_item_fragments(self, key: str) -> None:
+        """Materialise pending provider fragments for one canonical item."""
+        item = self._items.get(key)
+        if item is None:
+            # An item can disappear during snapshot/thread replacement. Never
+            # let orphaned fragments leak into a later item that reuses its key.
+            for field_name in _STREAM_FIELDS:
+                self._stream_fragments.pop((key, field_name), None)
+            return
+        for field_name in _STREAM_FIELDS:
+            fragments = self._stream_fragments.pop((key, field_name), None)
+            if fragments:
+                item[field_name] = fmt.text(item.get(field_name)) + "".join(fragments)
+
+    def _flush_stream_fragments(self, keys: Iterable[str] | None = None) -> None:
+        if not self._stream_fragments:
+            return
+        if keys is None:
+            targets = {key for key, _field_name in self._stream_fragments}
+        else:
+            targets = {fmt.text(key) for key in keys if fmt.text(key)}
+        for key in targets:
+            self._flush_item_fragments(key)
 
     # ---- timeline helpers ------------------------------------------------
 
@@ -199,8 +246,8 @@ class ThreadState:
     ) -> list[dict[str, Any]]:
         """Reinsert live-only rows at their original chronological position.
 
-        Most live items carry ``createdAt`` from ``item/started``.  That is the
-        strongest ordering signal.  If a legacy notification lacks a timestamp,
+        Most live items carry ``createdAt`` from ``item/started``. That is the
+        strongest ordering signal. If a legacy notification lacks a timestamp,
         fall back to its old neighbours rather than blindly appending it after
         the newest durable assistant message.
         """
@@ -262,6 +309,7 @@ class ThreadState:
         self._items.clear()
         self._order.clear()
         self._streaming.clear()
+        self._stream_fragments.clear()
         self._optimistic_user = ""
 
     def apply_snapshot(self, snapshot: dict[str, Any]) -> bool:
@@ -273,6 +321,10 @@ class ThreadState:
         if not thread_id:
             return False
 
+        # A snapshot can race the UI frame that would normally materialise live
+        # fragments. Flush before copying the old state so preserved live-only
+        # rows carry every byte received from the provider.
+        self._flush_stream_fragments()
         switching = thread_id != self.thread_id
         old_order = list(self._order)
         old_items = dict(self._items)
@@ -285,6 +337,7 @@ class ThreadState:
 
         if switching:
             self._streaming.clear()
+            self._stream_fragments.clear()
             self._optimistic_user = ""
             old_order = []
             old_items = {}
@@ -292,7 +345,7 @@ class ThreadState:
         durable = list(self._snapshot_items(snapshot))
         durable_keys = {fmt.text(item.get("id")) for item in durable}
 
-        # Keep live-only items that the snapshot has not committed yet.  They
+        # Keep live-only items that the snapshot has not committed yet. They
         # must stay where they originally occurred; appending them at the end is
         # what made command/file rows jump below a newer assistant message.
         preserved_keys = [
@@ -312,6 +365,8 @@ class ThreadState:
         self._order = [fmt.text(item.get("id")) for item in durable]
 
         self._streaming &= set(self._order)
+        # No fragments should survive replacement of the canonical item map.
+        self._stream_fragments.clear()
         if any(fmt.text(item.get("type")) == "user_message" for item in durable):
             self._optimistic_user = ""
         return True
@@ -321,10 +376,10 @@ class ThreadState:
         """Return the best available chronological durable transcript.
 
         Modern snapshots already carry messages and activity together in
-        ``turns[].items[]``.  Older snapshots sometimes carry only activity there
-        and leave prose in top-level ``messages``.  When raw events are present,
+        ``turns[].items[]``. Older snapshots sometimes carry only activity there
+        and leave prose in top-level ``messages``. When raw events are present,
         recover the user/assistant items from those events and merge them into
-        their true timestamp positions.  Only if event history cannot help do we
+        their true timestamp positions. Only if event history cannot help do we
         fall back to the old plain-message list.
         """
         timeline: list[dict[str, Any]] = []
@@ -355,7 +410,7 @@ class ThreadState:
             return
 
         # Last-resort compatibility path for snapshots whose event history was
-        # pruned.  There is no trustworthy timing data left, so preserving the
+        # pruned. There is no trustworthy timing data left, so preserving the
         # conversation text is preferable to dropping it entirely.
         yield from cls._message_items(snapshot)
         yield from timeline
@@ -434,6 +489,9 @@ class ThreadState:
         if item_type in _SKIPPED_ITEM_TYPES:
             return ""
 
+        # Completion/status frames can arrive before the sampled UI frame. Fold
+        # buffered deltas into the existing item before merging server metadata.
+        self._flush_item_fragments(key)
         existing = self._items.get(key)
         if existing is None:
             self._items[key] = dict(item)
@@ -457,7 +515,7 @@ class ThreadState:
         return key
 
     def append_text_delta(self, item_id: Any, chunk: Any) -> str:
-        """Append streamed assistant text. Returns the affected key."""
+        """Queue streamed assistant text. Returns the affected key."""
         key = fmt.text(item_id)
         chunk = fmt.text(chunk)
         if not key or not chunk:
@@ -467,11 +525,12 @@ class ThreadState:
             item = {"id": key, "type": "assistant_message", "status": "running", "text": ""}
             self._items[key] = item
             self._order.append(key)
-        item["text"] = fmt.text(item.get("text")) + chunk
+        self._queue_stream_fragment(key, "text", chunk)
         self._streaming.add(key)
         return key
 
     def append_process_output(self, item_id: Any, *, stdout: str = "", stderr: str = "") -> str:
+        """Queue process output without recopying the whole terminal buffer."""
         key = fmt.text(item_id)
         if not key or not (stdout or stderr):
             return ""
@@ -481,17 +540,22 @@ class ThreadState:
             self._items[key] = item
             self._order.append(key)
         if stdout:
-            item["stdout"] = fmt.text(item.get("stdout")) + stdout
+            self._queue_stream_fragment(key, "stdout", fmt.text(stdout))
         if stderr:
-            item["stderr"] = fmt.text(item.get("stderr")) + stderr
+            self._queue_stream_fragment(key, "stderr", fmt.text(stderr))
         self._streaming.add(key)
         return key
 
     def finish_streaming(self, item_id: Any = None) -> None:
+        # Terminal transitions are another materialisation boundary. Never let a
+        # final frame hide bytes still sitting in fragment lists.
         if item_id is None:
+            self._flush_stream_fragments()
             self._streaming.clear()
             return
-        self._streaming.discard(fmt.text(item_id))
+        key = fmt.text(item_id)
+        self._flush_item_fragments(key)
+        self._streaming.discard(key)
 
     def set_pending_approval(self, approval: Any) -> dict[str, Any] | None:
         if isinstance(approval, dict) and approval.get("callId"):
