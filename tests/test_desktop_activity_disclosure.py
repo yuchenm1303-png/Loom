@@ -47,6 +47,36 @@ def test_activity_uses_refined_native_chevron(app):
     card.close()
 
 
+@pytest.mark.parametrize(
+    ("kind", "status"),
+    [
+        ("tool", "failed"),
+        ("process", "running"),
+        ("process", "failed"),
+        ("diff", "completed"),
+        ("error", "failed"),
+    ],
+)
+def test_activity_details_default_to_collapsed_even_when_source_requests_expansion(
+    app, kind, status
+):
+    card = FlatActivityCard(kind)
+    card.resize(720, 120)
+    card.update_card(
+        title="Example activity",
+        status=status,
+        body="details",
+        auto_expand=True,
+    )
+    card.show()
+    app.processEvents()
+
+    assert card._expanded is False
+    assert card.body_shell.isHidden()
+    assert card.toggle_button.progress == pytest.approx(0.0)
+    card.close()
+
+
 def test_clicking_activity_header_toggles_details(app):
     card = _card(app)
     assert card._expanded is False
@@ -68,6 +98,26 @@ def test_clicking_activity_header_toggles_details(app):
     )
     app.processEvents()
     assert card._expanded is False
+    card.close()
+
+
+def test_user_opened_activity_stays_open_across_status_updates(app):
+    card = _card(app)
+    card._toggle()
+    app.processEvents()
+    assert card._expanded is True
+    assert card._user_toggled is True
+
+    card.update_card(
+        title="Edited disk_scan.ps1",
+        status="completed",
+        body="Changes\n+ one\n+ two\n+ three",
+        auto_expand=False,
+    )
+    app.processEvents()
+
+    assert card._expanded is True
+    assert not card.body_shell.isHidden()
     card.close()
 
 
