@@ -1,14 +1,46 @@
-import { Archive, Plus, Search, X } from "lucide-react";
+import {
+  Archive,
+  ArchiveRestore,
+  ArrowLeft,
+  ChevronRight,
+  Copy,
+  Ellipsis,
+  Eye,
+  EyeOff,
+  GitFork,
+  Pencil,
+  Pin,
+  PinOff,
+  Plus,
+  Search,
+  Trash2,
+  X,
+} from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { ThreadRecord } from "../types/loom";
 import "./sidebar.css";
+
+type ThreadView = "active" | "archived";
+type Notice = { kind: "success" | "error"; text: string };
+type ContextMenuState = { threadId: string; x: number; y: number };
 
 interface SidebarProps {
   threads: ThreadRecord[];
   activeId?: string;
-  onOpen(threadId: string): void;
-  onNew(): void;
+  threadView: ThreadView;
+  archivedCount: number;
+  onOpen(threadId: string): Promise<void> | void;
+  onNew(workspace?: string): Promise<void> | void;
+  onRename(threadId: string, title: string): Promise<void>;
+  onArchive(threadId: string, archived: boolean): Promise<void>;
+  onDelete(threadId: string): Promise<void>;
+  onFork(threadId: string): Promise<void>;
+  onViewChange(view: ThreadView): Promise<void> | void;
 }
+
+const PINNED_STORAGE_KEY = "loom.sidebar.pinnedThreads";
+const UNREAD_STORAGE_KEY = "loom.sidebar.unreadThreads";
 
 function relativeTime(value: string): string {
   const stamp = Date.parse(value);
@@ -22,18 +54,104 @@ function relativeTime(value: string): string {
   return `${Math.floor(hours / 24)}d`;
 }
 
-function workspaceLabel(workspace?: string): string {
+function normalizeWorkspace(workspace?: string): string {
   const value = (workspace || "").trim();
-  if (!value) return "Other";
-  const normalized = value.replaceAll("\\", "/").replace(/\/+$/, "");
+  if (!value) return "";
+  return value.replaceAll("\\", "/").replace(/\/+$/, "");
+}
+
+function workspaceLabel(workspace?: string): string {
+  const normalized = normalizeWorkspace(workspace);
+  if (!normalized) return "Other";
   const parts = normalized.split("/").filter(Boolean);
   return parts.at(-1) || "Other";
 }
 
-export function Sidebar({ threads, activeId, onOpen, onNew }: SidebarProps) {
+function workspaceParentLabel(workspace?: string): string {
+  const normalized = normalizeWorkspace(workspace);
+  const parts = normalized.split("/").filter(Boolean);
+  return parts.length > 1 ? parts.at(-2) || "" : "";
+}
+
+function threadIsBusy(thread: ThreadRecord): boolean {
+  return thread.status === "running" || thread.status === "waiting_approval";
+}
+
+function readStoredIds(key: string): Set<string> {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(key) || "[]") as unknown;
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(parsed.filter((value): value is string => typeof value === "string" && Boolean(value)));
+  } catch {
+    return new Set();
+  }
+}
+
+function persistIds(key: string, values: Set<string>): void {
+  try {
+    window.localStorage.setItem(key, JSON.stringify([...values]));
+  } catch {
+    // Sidebar state still works for this process when storage is unavailable.
+  }
+}
+
+async function writeClipboard(value: string): Promise<void> {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(value);
+    return;
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = value;
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.select();
+  document.execCommand("copy");
+  textarea.remove();
+}
+
+function errorText(cause: unknown): string {
+  return cause instanceof Error ? cause.message : String(cause);
+}
+
+export function Sidebar({
+  threads,
+  activeId,
+  threadView,
+  archivedCount,
+  onOpen,
+  onNew,
+  onRename,
+  onArchive,
+  onDelete,
+  onFork,
+  onViewChange,
+}: SidebarProps) {
   const [query, setQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
+  const [pinnedIds, setPinnedIds] = useState<Set<string>>(() => readStoredIds(PINNED_STORAGE_KEY));
+  const [unreadIds, setUnreadIds] = useState<Set<string>>(() => readStoredIds(UNREAD_STORAGE_KEY));
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const [copyExpanded, setCopyExpanded] = useState(false);
+  const [deleteArmed, setDeleteArmed] = useState(false);
+  const [busyThreadId, setBusyThreadId] = useState<string | null>(null);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [notice, setNotice] = useState<Notice | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const renameRef = useRef<HTMLInputElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const renameCommittingRef = useRef(false);
+
+  const activeThread = useMemo(
+    () => threads.find((thread) => thread.id === activeId) ?? null,
+    [activeId, threads],
+  );
+
+  const menuThread = useMemo(
+    () => contextMenu ? threads.find((thread) => thread.id === contextMenu.threadId) ?? null : null,
+    [contextMenu, threads],
+  );
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -42,22 +160,40 @@ export function Sidebar({ threads, activeId, onOpen, onNew }: SidebarProps) {
   }, [query, threads]);
 
   const groups = useMemo(() => {
-    const result: Array<{ label: string; threads: ThreadRecord[] }> = [];
-    const index = new Map<string, number>();
+    const byWorkspace = new Map<string, { key: string; label: string; workspace: string; threads: ThreadRecord[] }>();
 
     for (const thread of filtered) {
-      const label = workspaceLabel(thread.workspace);
-      const existing = index.get(label);
-      if (existing !== undefined) {
-        result[existing].threads.push(thread);
-        continue;
+      const normalized = normalizeWorkspace(thread.workspace);
+      const key = normalized || "__other__";
+      const existing = byWorkspace.get(key);
+      if (existing) {
+        existing.threads.push(thread);
+      } else {
+        byWorkspace.set(key, {
+          key,
+          label: workspaceLabel(thread.workspace),
+          workspace: thread.workspace || "",
+          threads: [thread],
+        });
       }
-      index.set(label, result.length);
-      result.push({ label, threads: [thread] });
     }
 
-    return result;
-  }, [filtered]);
+    const result = [...byWorkspace.values()];
+    const labelCounts = new Map<string, number>();
+    for (const group of result) labelCounts.set(group.label, (labelCounts.get(group.label) ?? 0) + 1);
+
+    return result.map((group) => ({
+      ...group,
+      displayLabel: (labelCounts.get(group.label) ?? 0) > 1
+        ? `${group.label} · ${workspaceParentLabel(group.workspace) || "workspace"}`
+        : group.label,
+      threads: [...group.threads].sort((left, right) => {
+        const pinDelta = Number(pinnedIds.has(right.id)) - Number(pinnedIds.has(left.id));
+        if (pinDelta) return pinDelta;
+        return Date.parse(right.updatedAt || "") - Date.parse(left.updatedAt || "");
+      }),
+    }));
+  }, [filtered, pinnedIds]);
 
   const focusSearch = () => {
     setSearchOpen(true);
@@ -72,33 +208,210 @@ export function Sidebar({ threads, activeId, onOpen, onNew }: SidebarProps) {
     setSearchOpen(false);
   };
 
+  const updateStoredId = (
+    key: string,
+    setter: React.Dispatch<React.SetStateAction<Set<string>>>,
+    threadId: string,
+    enabled: boolean,
+  ) => {
+    setter((current) => {
+      const next = new Set(current);
+      if (enabled) next.add(threadId);
+      else next.delete(threadId);
+      persistIds(key, next);
+      return next;
+    });
+  };
+
+  const togglePinned = (threadId: string) => {
+    updateStoredId(PINNED_STORAGE_KEY, setPinnedIds, threadId, !pinnedIds.has(threadId));
+  };
+
+  const toggleUnread = (threadId: string) => {
+    updateStoredId(UNREAD_STORAGE_KEY, setUnreadIds, threadId, !unreadIds.has(threadId));
+  };
+
+  const markRead = (threadId: string) => {
+    if (unreadIds.has(threadId)) updateStoredId(UNREAD_STORAGE_KEY, setUnreadIds, threadId, false);
+  };
+
+  const openThread = async (thread: ThreadRecord) => {
+    markRead(thread.id);
+    setContextMenu(null);
+    await onOpen(thread.id);
+  };
+
+  const beginRename = (thread: ThreadRecord) => {
+    setContextMenu(null);
+    setDeleteArmed(false);
+    setRenamingId(thread.id);
+    setRenameValue(thread.title || "New conversation");
+    requestAnimationFrame(() => {
+      renameRef.current?.focus();
+      renameRef.current?.select();
+    });
+  };
+
+  const commitRename = async (thread: ThreadRecord) => {
+    if (renameCommittingRef.current || renamingId !== thread.id) return;
+    const title = renameValue.trim();
+    setRenamingId(null);
+    if (!title || title === thread.title) return;
+    renameCommittingRef.current = true;
+    setBusyThreadId(thread.id);
+    try {
+      await onRename(thread.id, title);
+      setNotice({ kind: "success", text: "会话已重命名" });
+    } catch (cause) {
+      setNotice({ kind: "error", text: `重命名失败：${errorText(cause)}` });
+    } finally {
+      renameCommittingRef.current = false;
+      setBusyThreadId(null);
+    }
+  };
+
+  const runRemoteAction = async (
+    thread: ThreadRecord,
+    successText: string,
+    action: () => Promise<void>,
+  ) => {
+    setContextMenu(null);
+    setCopyExpanded(false);
+    setDeleteArmed(false);
+    setBusyThreadId(thread.id);
+    try {
+      await action();
+      setNotice({ kind: "success", text: successText });
+    } catch (cause) {
+      setNotice({ kind: "error", text: errorText(cause) });
+    } finally {
+      setBusyThreadId(null);
+    }
+  };
+
+  const archiveThread = (thread: ThreadRecord) => {
+    const nextArchived = !Boolean(thread.archived);
+    return runRemoteAction(
+      thread,
+      nextArchived ? "会话已归档" : "会话已恢复",
+      () => onArchive(thread.id, nextArchived),
+    );
+  };
+
+  const forkThread = (thread: ThreadRecord) => runRemoteAction(
+    thread,
+    "已创建分叉会话",
+    () => onFork(thread.id),
+  );
+
+  const deleteThread = (thread: ThreadRecord) => runRemoteAction(
+    thread,
+    "会话已删除",
+    async () => {
+      await onDelete(thread.id);
+      updateStoredId(PINNED_STORAGE_KEY, setPinnedIds, thread.id, false);
+      updateStoredId(UNREAD_STORAGE_KEY, setUnreadIds, thread.id, false);
+    },
+  );
+
+  const copyThreadValue = async (thread: ThreadRecord, label: string, value: string) => {
+    try {
+      await writeClipboard(value);
+      setNotice({ kind: "success", text: `${label}已复制` });
+      setContextMenu(null);
+      setCopyExpanded(false);
+    } catch (cause) {
+      setNotice({ kind: "error", text: `复制失败：${errorText(cause)}` });
+    }
+  };
+
+  const openContextMenu = (thread: ThreadRecord, x: number, y: number) => {
+    const width = 264;
+    const height = 352;
+    setCopyExpanded(false);
+    setDeleteArmed(false);
+    setContextMenu({
+      threadId: thread.id,
+      x: Math.max(8, Math.min(x, window.innerWidth - width - 8)),
+      y: Math.max(8, Math.min(y, window.innerHeight - height - 8)),
+    });
+  };
+
+  useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(null), 2400);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      if (menuRef.current?.contains(event.target as Node)) return;
+      setContextMenu(null);
+    };
+    const close = () => setContextMenu(null);
+    window.addEventListener("pointerdown", handlePointerDown, true);
+    window.addEventListener("blur", close);
+    window.addEventListener("resize", close);
+    return () => {
+      window.removeEventListener("pointerdown", handlePointerDown, true);
+      window.removeEventListener("blur", close);
+      window.removeEventListener("resize", close);
+    };
+  }, [contextMenu]);
+
   useEffect(() => {
     const handleShortcut = (event: KeyboardEvent) => {
-      if (!(event.metaKey || event.ctrlKey)) return;
       const key = event.key.toLowerCase();
+      const commandKey = event.metaKey || event.ctrlKey;
 
-      if (key === "k") {
+      if (commandKey && !event.altKey && !event.shiftKey && key === "k") {
         event.preventDefault();
         focusSearch();
         return;
       }
 
-      if (key === "n") {
+      if (commandKey && !event.altKey && !event.shiftKey && key === "n") {
         event.preventDefault();
-        onNew();
+        void onNew();
+        return;
+      }
+
+      if (event.key === "Escape" && contextMenu) {
+        event.preventDefault();
+        setContextMenu(null);
+        return;
+      }
+
+      const target = event.target as HTMLElement | null;
+      const editing = Boolean(target?.matches("input, textarea, [contenteditable='true']"));
+      if (editing || !activeThread) return;
+
+      if (event.ctrlKey && event.altKey && !event.shiftKey && key === "r") {
+        event.preventDefault();
+        beginRename(activeThread);
+      } else if (event.ctrlKey && event.altKey && !event.shiftKey && key === "p") {
+        event.preventDefault();
+        togglePinned(activeThread.id);
+      } else if (event.ctrlKey && event.shiftKey && !event.altKey && key === "u") {
+        event.preventDefault();
+        toggleUnread(activeThread.id);
+      } else if (event.ctrlKey && event.shiftKey && !event.altKey && key === "a" && !threadIsBusy(activeThread)) {
+        event.preventDefault();
+        void archiveThread(activeThread);
       }
     };
 
     window.addEventListener("keydown", handleShortcut);
     return () => window.removeEventListener("keydown", handleShortcut);
-  }, [onNew]);
+  }, [activeThread, contextMenu, onNew, pinnedIds, unreadIds]);
 
   return (
     <aside className="sidebar compact-sidebar">
       <div className="compact-sidebar-header">
-        <strong>Loom</strong>
+        <strong>{threadView === "archived" ? "Archived" : "Loom"}</strong>
         <div className="compact-sidebar-actions">
-          <button type="button" onClick={onNew} title="New thread" aria-label="New thread">
+          <button type="button" onClick={() => void onNew()} title="New thread" aria-label="New thread">
             <Plus size={17} strokeWidth={1.8} />
           </button>
           <button
@@ -125,7 +438,7 @@ export function Sidebar({ threads, activeId, onOpen, onNew }: SidebarProps) {
               closeSearch();
             }
           }}
-          placeholder="Search conversations"
+          placeholder={threadView === "archived" ? "Search archived" : "Search conversations"}
           aria-label="Search conversations"
           tabIndex={searchOpen ? 0 : -1}
         />
@@ -136,12 +449,17 @@ export function Sidebar({ threads, activeId, onOpen, onNew }: SidebarProps) {
         ) : null}
       </div>
 
-      <div className="compact-thread-scroll" aria-label="Conversations">
+      <div className="compact-thread-scroll" aria-label={threadView === "archived" ? "Archived conversations" : "Conversations"}>
         {groups.map((group) => (
-          <section className="workspace-group" key={group.label}>
+          <section className="workspace-group" key={group.key}>
             <div className="workspace-group-header">
-              <span title={group.label}>{group.label}</span>
-              <button type="button" onClick={onNew} title={`New thread in ${group.label}`} aria-label={`New thread in ${group.label}`}>
+              <span title={group.workspace || group.displayLabel}>{group.displayLabel}</span>
+              <button
+                type="button"
+                onClick={() => void onNew(group.workspace || undefined)}
+                title={`New thread in ${group.displayLabel}`}
+                aria-label={`New thread in ${group.displayLabel}`}
+              >
                 <Plus size={15} strokeWidth={1.7} />
               </button>
             </div>
@@ -149,20 +467,93 @@ export function Sidebar({ threads, activeId, onOpen, onNew }: SidebarProps) {
             <div className="workspace-thread-list">
               {group.threads.map((thread) => {
                 const active = thread.id === activeId;
-                const running = thread.status === "running";
+                const running = threadIsBusy(thread);
+                const pinned = pinnedIds.has(thread.id);
+                const unread = unreadIds.has(thread.id);
+                const busy = busyThreadId === thread.id;
                 const time = relativeTime(thread.updatedAt);
+                const renaming = renamingId === thread.id;
+
                 return (
-                  <button
+                  <div
                     key={thread.id}
-                    className={`compact-thread-row ${active ? "active" : ""}`}
-                    onClick={() => onOpen(thread.id)}
-                    type="button"
-                    title={`${thread.title || "New conversation"}${time ? ` · ${time}` : ""}`}
-                    aria-current={active ? "page" : undefined}
+                    className={`compact-thread-row ${active ? "active" : ""} ${pinned ? "pinned" : ""} ${unread ? "unread" : ""} ${renaming ? "renaming" : ""}`}
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      openContextMenu(thread, event.clientX, event.clientY);
+                    }}
                   >
-                    <span className={`compact-thread-dot ${running ? "running" : ""}`} aria-hidden="true" />
-                    <span className="compact-thread-title">{thread.title || "New conversation"}</span>
-                  </button>
+                    {renaming ? (
+                      <div className="compact-thread-main rename-main">
+                        <span className={`compact-thread-dot ${running ? "running" : unread ? "unread" : ""}`} aria-hidden="true" />
+                        <input
+                          ref={renameRef}
+                          className="compact-thread-rename"
+                          value={renameValue}
+                          maxLength={120}
+                          onChange={(event) => setRenameValue(event.target.value)}
+                          onBlur={() => void commitRename(thread)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                              event.preventDefault();
+                              event.currentTarget.blur();
+                            } else if (event.key === "Escape") {
+                              event.preventDefault();
+                              setRenamingId(null);
+                            }
+                          }}
+                          aria-label="Rename conversation"
+                        />
+                      </div>
+                    ) : (
+                      <button
+                        className="compact-thread-main"
+                        onClick={() => void openThread(thread)}
+                        type="button"
+                        title={`${thread.title || "New conversation"}${time ? ` · ${time}` : ""}${pinned ? " · pinned" : ""}`}
+                        aria-current={active ? "page" : undefined}
+                      >
+                        <span className={`compact-thread-dot ${running ? "running" : unread ? "unread" : ""}`} aria-hidden="true" />
+                        <span className="compact-thread-title">{thread.title || "New conversation"}</span>
+                        {running ? <span className="sr-only">Running</span> : null}
+                        {unread ? <span className="sr-only">Unread</span> : null}
+                      </button>
+                    )}
+
+                    <div className="thread-quick-actions" aria-label="Conversation quick actions">
+                      <button
+                        type="button"
+                        className={pinned ? "is-active" : ""}
+                        onClick={() => togglePinned(thread.id)}
+                        title={pinned ? "Unpin" : "Pin"}
+                        aria-label={pinned ? "Unpin conversation" : "Pin conversation"}
+                        disabled={busy}
+                      >
+                        {pinned ? <PinOff size={13} strokeWidth={1.8} /> : <Pin size={13} strokeWidth={1.8} />}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void archiveThread(thread)}
+                        title={thread.archived ? "Restore" : "Archive"}
+                        aria-label={thread.archived ? "Restore conversation" : "Archive conversation"}
+                        disabled={busy || running}
+                      >
+                        {thread.archived ? <ArchiveRestore size={13} strokeWidth={1.8} /> : <Archive size={13} strokeWidth={1.8} />}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          const rect = event.currentTarget.getBoundingClientRect();
+                          openContextMenu(thread, rect.right + 7, rect.top - 5);
+                        }}
+                        title="More actions"
+                        aria-label="More conversation actions"
+                        disabled={busy}
+                      >
+                        <Ellipsis size={14} strokeWidth={1.9} />
+                      </button>
+                    </div>
+                  </div>
                 );
               })}
             </div>
@@ -171,20 +562,130 @@ export function Sidebar({ threads, activeId, onOpen, onNew }: SidebarProps) {
 
         {!groups.length ? (
           <div className="compact-sidebar-empty">
-            <span>{query ? "No matching conversations" : "No conversations yet"}</span>
-            <button type="button" onClick={query ? () => setQuery("") : onNew}>
-              {query ? "Clear search" : "New thread"}
+            <span>{query ? "No matching conversations" : threadView === "archived" ? "Archive is empty" : "No conversations yet"}</span>
+            <button
+              type="button"
+              onClick={query ? () => setQuery("") : threadView === "archived" ? () => void onViewChange("active") : () => void onNew()}
+            >
+              {query ? "Clear search" : threadView === "archived" ? "Back to conversations" : "New thread"}
             </button>
           </div>
         ) : null}
       </div>
 
+      {notice ? <div className={`sidebar-notice ${notice.kind}`}>{notice.text}</div> : null}
+
       <div className="compact-sidebar-footer">
-        <button type="button" disabled title="Archive view is coming soon">
-          <Archive size={14} strokeWidth={1.7} />
-          <span>Archive</span>
+        <button
+          type="button"
+          onClick={() => void onViewChange(threadView === "archived" ? "active" : "archived")}
+          title={threadView === "archived" ? "Back to conversations" : "Open archive"}
+        >
+          {threadView === "archived" ? <ArrowLeft size={14} strokeWidth={1.7} /> : <Archive size={14} strokeWidth={1.7} />}
+          <span>{threadView === "archived" ? "Conversations" : "Archive"}</span>
+          {threadView === "active" && archivedCount > 0 ? <span className="archive-count">{archivedCount}</span> : null}
         </button>
       </div>
+
+      {contextMenu && menuThread ? createPortal(
+        <div
+          ref={menuRef}
+          className="thread-context-menu"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          role="menu"
+          aria-label="Conversation actions"
+        >
+          <button type="button" role="menuitem" onClick={() => beginRename(menuThread)}>
+            <Pencil size={16} strokeWidth={1.75} />
+            <span>重命名</span>
+            <kbd>Ctrl+Alt+R</kbd>
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              togglePinned(menuThread.id);
+              setContextMenu(null);
+            }}
+          >
+            {pinnedIds.has(menuThread.id) ? <PinOff size={16} strokeWidth={1.75} /> : <Pin size={16} strokeWidth={1.75} />}
+            <span>{pinnedIds.has(menuThread.id) ? "取消置顶" : "置顶"}</span>
+            <kbd>Ctrl+Alt+P</kbd>
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              toggleUnread(menuThread.id);
+              setContextMenu(null);
+            }}
+          >
+            {unreadIds.has(menuThread.id) ? <Eye size={16} strokeWidth={1.75} /> : <EyeOff size={16} strokeWidth={1.75} />}
+            <span>{unreadIds.has(menuThread.id) ? "标记为已读" : "标记为未读"}</span>
+            <kbd>Ctrl+Shift+U</kbd>
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            disabled={threadIsBusy(menuThread)}
+            onClick={() => void archiveThread(menuThread)}
+          >
+            {menuThread.archived ? <ArchiveRestore size={16} strokeWidth={1.75} /> : <Archive size={16} strokeWidth={1.75} />}
+            <span>{menuThread.archived ? "恢复" : "归档"}</span>
+            <kbd>Ctrl+Shift+A</kbd>
+          </button>
+
+          <div className="thread-menu-separator" />
+
+          <button
+            type="button"
+            role="menuitem"
+            className={copyExpanded ? "submenu-open" : ""}
+            onClick={() => setCopyExpanded((current) => !current)}
+          >
+            <Copy size={16} strokeWidth={1.75} />
+            <span>复制</span>
+            <ChevronRight className="menu-chevron" size={15} strokeWidth={1.75} />
+          </button>
+          {copyExpanded ? (
+            <div className="thread-copy-submenu" role="group" aria-label="Copy conversation data">
+              <button type="button" onClick={() => void copyThreadValue(menuThread, "标题", menuThread.title || "New conversation")}>复制标题</button>
+              <button type="button" onClick={() => void copyThreadValue(menuThread, "会话 ID", menuThread.id)}>复制会话 ID</button>
+              <button type="button" onClick={() => void copyThreadValue(menuThread, "工作区路径", menuThread.workspace || "")}>复制工作区路径</button>
+            </div>
+          ) : null}
+
+          <button
+            type="button"
+            role="menuitem"
+            disabled={threadIsBusy(menuThread)}
+            onClick={() => void forkThread(menuThread)}
+          >
+            <GitFork size={16} strokeWidth={1.75} />
+            <span>分叉</span>
+          </button>
+
+          <div className="thread-menu-separator" />
+
+          <button
+            type="button"
+            role="menuitem"
+            className={`destructive ${deleteArmed ? "armed" : ""}`}
+            disabled={threadIsBusy(menuThread)}
+            onClick={() => {
+              if (!deleteArmed) {
+                setDeleteArmed(true);
+                return;
+              }
+              void deleteThread(menuThread);
+            }}
+          >
+            <Trash2 size={16} strokeWidth={1.75} />
+            <span>{deleteArmed ? "再次点击确认删除" : "删除会话"}</span>
+          </button>
+        </div>,
+        document.body,
+      ) : null}
     </aside>
   );
 }
