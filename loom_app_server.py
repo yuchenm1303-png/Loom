@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import TextIO
 
 from app.agent_runtime import PermissionMode
-from app.app_server_thread_management import serve_managed_streaming_stdio
+from app.app_server_reasoning import serve_reasoning_managed_streaming_stdio
 from loom_cli import _build_runtime, _resolve_new_permission_mode
 
 
@@ -39,6 +39,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--provider", choices=["openai", "openai-compatible"])
     parser.add_argument("--base-url")
     parser.add_argument("--model")
+    parser.add_argument("--reasoning-kind", choices=["openai-effort", "minimax-thinking"])
+    parser.add_argument("--reasoning-value")
     parser.add_argument("--home", help="runtime state root; defaults to ~/.loom")
     parser.add_argument("--workspace", help="default workspace for new threads")
     parser.add_argument(
@@ -68,7 +70,7 @@ def main(argv: list[str] | None = None) -> int:
     # provider configuration never enter client-visible protocol state.
     runtime, store, model = _build_runtime(args)
     permission_mode = _resolve_new_permission_mode(args)
-    return serve_managed_streaming_stdio(
+    return serve_reasoning_managed_streaming_stdio(
         runtime=runtime,
         store=store,
         model=model,
