@@ -1,0 +1,47 @@
+/*
+ * Keep the desktop chrome in one viewport-sized grid row.
+ *
+ * Without an explicit row constraint, CSS Grid's implicit `auto` row can grow
+ * to the transcript's max-content height. Programmatic transcript scrolling can
+ * then move the document viewport itself, which makes the fixed chrome appear
+ * empty (sidebar/header/inspector content has simply scrolled above the window).
+ */
+html,
+body,
+#root {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.app-shell {
+  grid-template-rows: minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.sidebar,
+.workspace,
+.inspector {
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.workspace {
+  grid-template-rows: 54px minmax(0, 1fr) auto;
+}
+
+.transcript-scroll {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  contain: size layout;
+}
+
+.composer-wrap {
+  min-width: 0;
+}
