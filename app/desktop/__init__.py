@@ -11,6 +11,7 @@ from app.desktop.rpc import DesktopEventBridge, RpcRunner
 from app.desktop.state import ThreadState, TranscriptEntry
 from app.desktop.composer import ComposerPanel, ComposerTextEdit
 from app.desktop import composer_polish as _composer_polish
+from app.desktop import permission_menu_polish as _permission_menu_polish
 from app.desktop import iconography as _iconography
 from app.desktop import sidebar_motion as _sidebar_motion
 from app.desktop import sidebar_motion_smooth as _sidebar_motion_smooth
@@ -44,6 +45,7 @@ _iconography.install()
 _sidebar_motion.install_widgets()
 _sidebar_motion_smooth.install()
 _composer_polish.install()
+_permission_menu_polish.install()
 
 from app.desktop.widgets import (  # noqa: E402 - presentation is installed first
     ActivityCard,
