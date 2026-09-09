@@ -118,10 +118,13 @@ def _reorder_layout(view: Any, entries: list[Any]) -> bool:
     if layout is None or not isinstance(widgets, dict):
         return False
 
-    # A cached key order is sufficient for the hot streaming path: content-only
-    # updates do not move widgets in the keyed reconciler. New/removed/reordered
-    # entries change this tuple and therefore re-enter the structural path.
-    if getattr(view, "_loom_flow_layout_order", None) == order:
+    # Key order alone is not enough across clear/rebuild or thread switches: a
+    # new widget tree may legitimately reuse the same keys. Include Python
+    # widget identity so the hot content-only path remains O(n) Python work with
+    # zero QLayout calls, while rebuilt rows still get one structural check.
+    identity = tuple(id(widgets.get(key)) for key in order)
+    layout_signature = (order, identity)
+    if getattr(view, "_loom_flow_layout_signature", None) == layout_signature:
         return False
 
     kind_by_key = {
@@ -137,9 +140,9 @@ def _reorder_layout(view: Any, entries: list[Any]) -> bool:
             moves.append((target_index, key, widget))
 
     # Base reconciliation often appends a new row in exactly the desired place.
-    # Remember that order without invalidating the layout at all.
+    # Remember that structure without invalidating the layout at all.
     if not moves:
-        view._loom_flow_layout_order = order
+        view._loom_flow_layout_signature = layout_signature
         return False
 
     canvas = getattr(view, "canvas", None)
@@ -166,7 +169,7 @@ def _reorder_layout(view: Any, entries: list[Any]) -> bool:
     # Scrolling and transcript chrome have dedicated owners. In particular, do
     # not call scroll_to_tail() here: rangeChanged already tracks token growth,
     # and forcing the scrollbar here used to fight that animation every frame.
-    view._loom_flow_layout_order = order
+    view._loom_flow_layout_signature = layout_signature
     return True
 
 
