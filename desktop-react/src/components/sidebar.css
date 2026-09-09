@@ -208,34 +208,59 @@
 .compact-thread-row {
   position: relative;
   width: 100%;
-  min-height: 31px;
-  padding: 0 8px 0 8px;
+  min-height: 32px;
   border: 1px solid transparent;
   border-radius: 7px;
-  display: grid;
-  grid-template-columns: 14px minmax(0,1fr);
-  align-items: center;
-  gap: 7px;
   background: transparent;
   color: #c7cbd2;
-  text-align: left;
-  cursor: pointer;
-  transition: background 110ms ease, color 110ms ease, border-color 110ms ease, transform 110ms ease;
+  overflow: hidden;
+  transition: background 110ms ease, color 110ms ease, border-color 110ms ease, box-shadow 110ms ease;
   animation: compact-thread-in 150ms cubic-bezier(.2,.75,.2,1) both;
 }
 
-.compact-thread-row:hover {
+.compact-thread-row:hover,
+.compact-thread-row:focus-within {
   background: rgba(255,255,255,.038);
   color: #eef0f3;
 }
-
-.compact-thread-row:active { transform: scale(.995); }
 
 .compact-thread-row.active {
   background: #343437;
   border-color: rgba(255,255,255,.035);
   color: #fff;
   box-shadow: inset 0 1px rgba(255,255,255,.025);
+}
+
+.compact-thread-row.unread:not(.active) {
+  color: #e1e4e9;
+}
+
+.compact-thread-row.pinned .compact-thread-title {
+  font-weight: 520;
+}
+
+.compact-thread-main {
+  width: 100%;
+  min-height: 30px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: inherit;
+  display: grid;
+  grid-template-columns: 14px minmax(0,1fr);
+  align-items: center;
+  gap: 7px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.compact-thread-main:active:not(.rename-main) {
+  transform: scale(.995);
+}
+
+.compact-thread-main.rename-main {
+  cursor: text;
 }
 
 .compact-thread-dot {
@@ -249,13 +274,20 @@
   transition: border-color 120ms ease, background 120ms ease, box-shadow 120ms ease;
 }
 
-.compact-thread-row:hover .compact-thread-dot {
+.compact-thread-row:hover .compact-thread-dot,
+.compact-thread-row:focus-within .compact-thread-dot {
   border-color: #777d86;
 }
 
 .compact-thread-row.active .compact-thread-dot {
   border-color: #90959d;
   background: #90959d;
+}
+
+.compact-thread-dot.unread {
+  border-color: #b9b3f5;
+  background: #b9b3f5;
+  box-shadow: 0 0 0 3px rgba(139,124,246,.06);
 }
 
 .compact-thread-dot.running {
@@ -278,6 +310,76 @@
 }
 
 .compact-thread-row.active .compact-thread-title { font-weight: 500; }
+.compact-thread-row.unread .compact-thread-title { font-weight: 560; }
+
+.compact-thread-rename {
+  width: 100%;
+  min-width: 0;
+  height: 24px;
+  border: 1px solid rgba(139,124,246,.42);
+  border-radius: 5px;
+  outline: 0;
+  padding: 0 6px;
+  background: #15161a;
+  color: #f0f1f4;
+  font-size: 12.5px;
+  box-shadow: 0 0 0 2px rgba(139,124,246,.055);
+}
+
+.thread-quick-actions {
+  position: absolute;
+  z-index: 3;
+  top: 3px;
+  right: 3px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  padding-left: 13px;
+  opacity: 0;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, #17181b 18%, #17181b 100%);
+  transition: opacity 105ms ease;
+}
+
+.compact-thread-row.active .thread-quick-actions {
+  background: linear-gradient(90deg, transparent, #343437 18%, #343437 100%);
+}
+
+.compact-thread-row:hover .thread-quick-actions,
+.compact-thread-row:focus-within .thread-quick-actions,
+.compact-thread-row.active .thread-quick-actions,
+.compact-thread-row.pinned .thread-quick-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.thread-quick-actions button {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  color: #858b95;
+  cursor: pointer;
+  transition: color 110ms ease, background 110ms ease, transform 110ms ease;
+}
+
+.thread-quick-actions button:hover:not(:disabled),
+.thread-quick-actions button.is-active {
+  color: #e5e7eb;
+  background: rgba(255,255,255,.07);
+}
+
+.thread-quick-actions button.is-active {
+  color: #b6aff5;
+}
+
+.thread-quick-actions button:active:not(:disabled) { transform: scale(.9); }
+.thread-quick-actions button:disabled { opacity: .34; cursor: default; }
 
 .compact-sidebar-empty {
   margin: 8px 7px;
@@ -316,14 +418,181 @@
   align-items: center;
   gap: 8px;
   background: transparent;
-  color: #5f6670;
+  color: #777e88;
   font-size: 12px;
   text-align: left;
+  cursor: pointer;
+  transition: color 120ms ease, background 120ms ease;
 }
 
-.compact-sidebar-footer > button:disabled {
-  opacity: .62;
+.compact-sidebar-footer > button:hover {
+  color: #c8ccd3;
+  background: rgba(255,255,255,.04);
+}
+
+.archive-count {
+  margin-left: auto;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 999px;
+  background: rgba(255,255,255,.045);
+  color: #727985;
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+}
+
+.sidebar-notice {
+  position: absolute !important;
+  z-index: 8 !important;
+  left: 12px;
+  right: 12px;
+  bottom: 50px;
+  min-height: 34px;
+  padding: 8px 10px;
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  background: rgba(27,29,34,.96);
+  color: #cbd0d7;
+  font-size: 10.5px;
+  line-height: 1.35;
+  box-shadow: 0 10px 26px rgba(0,0,0,.28);
+  backdrop-filter: blur(12px);
+  animation: sidebar-notice-in 160ms ease both;
+}
+
+.sidebar-notice.success { border-color: rgba(122,171,145,.18); }
+.sidebar-notice.error { border-color: rgba(220,124,134,.22); color: #dca0a7; }
+
+.thread-context-menu {
+  position: fixed;
+  z-index: 10000;
+  width: 264px;
+  padding: 7px 0;
+  border: 1px solid rgba(255,255,255,.095);
+  border-radius: 12px;
+  overflow: hidden;
+  background: rgba(31,31,32,.985);
+  color: #f1f2f4;
+  box-shadow: 0 18px 48px rgba(0,0,0,.42), inset 0 1px rgba(255,255,255,.025);
+  backdrop-filter: blur(18px) saturate(115%);
+  transform-origin: 0 0;
+  animation: thread-menu-in 125ms cubic-bezier(.2,.78,.2,1) both;
+}
+
+.thread-context-menu > button {
+  width: 100%;
+  min-height: 39px;
+  padding: 0 14px;
+  border: 0;
+  display: grid;
+  grid-template-columns: 22px minmax(0,1fr) auto;
+  align-items: center;
+  gap: 10px;
+  background: transparent;
+  color: #f1f2f4;
+  text-align: left;
+  cursor: pointer;
+  transition: background 90ms ease, color 90ms ease;
+}
+
+.thread-context-menu > button:hover:not(:disabled),
+.thread-context-menu > button.submenu-open {
+  background: rgba(255,255,255,.075);
+}
+
+.thread-context-menu > button:disabled {
+  opacity: .38;
   cursor: default;
+}
+
+.thread-context-menu > button > svg:first-child {
+  justify-self: center;
+  color: #f0f1f3;
+}
+
+.thread-context-menu > button > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 460;
+}
+
+.thread-context-menu kbd {
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: #cdd0d5;
+  font: 400 11px/1.2 Inter, ui-sans-serif, sans-serif;
+  white-space: nowrap;
+}
+
+.thread-context-menu .menu-chevron {
+  color: #a1a6ae;
+  transition: transform 120ms ease;
+}
+
+.thread-context-menu > button.submenu-open .menu-chevron {
+  transform: rotate(90deg);
+}
+
+.thread-menu-separator {
+  height: 1px;
+  margin: 6px 0;
+  background: rgba(255,255,255,.14);
+}
+
+.thread-copy-submenu {
+  margin: -1px 7px 5px 44px;
+  padding: 4px;
+  border: 1px solid rgba(255,255,255,.07);
+  border-radius: 8px;
+  display: grid;
+  background: rgba(18,18,19,.58);
+}
+
+.thread-copy-submenu button {
+  min-height: 30px;
+  border: 0;
+  border-radius: 6px;
+  padding: 0 8px;
+  background: transparent;
+  color: #bfc3ca;
+  font-size: 11.5px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.thread-copy-submenu button:hover {
+  background: rgba(255,255,255,.06);
+  color: #fff;
+}
+
+.thread-context-menu > button.destructive {
+  color: #e2969e;
+}
+
+.thread-context-menu > button.destructive > svg:first-child { color: #df8992; }
+.thread-context-menu > button.destructive:hover:not(:disabled) { background: rgba(220,124,134,.09); }
+.thread-context-menu > button.destructive.armed { background: rgba(220,124,134,.12); color: #f0a0a8; }
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 @keyframes compact-thread-in {
@@ -334,6 +603,16 @@
 @keyframes compact-thread-pulse {
   0% { box-shadow: 0 0 0 0 rgba(156,147,239,.24); }
   70%, 100% { box-shadow: 0 0 0 5px rgba(156,147,239,0); }
+}
+
+@keyframes thread-menu-in {
+  from { opacity: 0; transform: translateY(-3px) scale(.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes sidebar-notice-in {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 @media (max-width: 1180px) {
@@ -347,7 +626,10 @@
   .compact-sidebar-actions button,
   .workspace-group-header button,
   .compact-thread-row,
-  .compact-thread-dot.running {
+  .compact-thread-dot.running,
+  .thread-quick-actions,
+  .thread-context-menu,
+  .sidebar-notice {
     animation: none !important;
     transition-duration: .001ms !important;
   }
