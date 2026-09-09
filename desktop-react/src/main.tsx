@@ -1,10 +1,16 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
+import { BootErrorBoundary } from "./components/BootErrorBoundary";
 import "./styles.css";
 
-createRoot(document.getElementById("root")!).render(
+const rootElement = document.getElementById("root");
+if (!rootElement) throw new Error("Loom renderer root element is missing");
+
+createRoot(rootElement).render(
   <StrictMode>
-    <App />
+    <BootErrorBoundary>
+      <App />
+    </BootErrorBoundary>
   </StrictMode>,
 );

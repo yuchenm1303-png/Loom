@@ -17,6 +17,18 @@ function mergeDelta(item: TranscriptItem, delta: Record<string, unknown>): Trans
   return next;
 }
 
+function getBridge(): Window["loom"] | null {
+  return Reflect.get(window, "loom") as Window["loom"] | null;
+}
+
+function requireBridge(): Window["loom"] {
+  const bridge = getBridge();
+  if (!bridge) {
+    throw new Error("Loom preload bridge is unavailable. Check the Electron preload build.");
+  }
+  return bridge;
+}
+
 export function useLoom() {
   const [connection, setConnection] = useState<"connecting" | "ready" | "error">("connecting");
   const [error, setError] = useState("");
@@ -31,33 +43,33 @@ export function useLoom() {
   }, [active?.thread.id]);
 
   const refreshThreads = useCallback(async () => {
-    const result = await window.loom.call<{ threads: ThreadRecord[] }>("thread/list", { view: "active", limit: 100 });
+    const result = await requireBridge().call<{ threads: ThreadRecord[] }>("thread/list", { view: "active", limit: 100 });
     const next = result.threads ?? [];
     setThreads(next);
     return next;
   }, []);
 
   const openThread = useCallback(async (threadId: string) => {
-    const result = await window.loom.call<ThreadReadResult>("thread/read", { threadId });
+    const result = await requireBridge().call<ThreadReadResult>("thread/read", { threadId });
     activeIdRef.current = result.thread.id;
     setActive(result);
     setItems(flattenItems(result.turns ?? []));
   }, []);
 
   const newThread = useCallback(async () => {
-    const result = await window.loom.call<{ thread: ThreadRecord }>("thread/start", {});
+    const result = await requireBridge().call<{ thread: ThreadRecord }>("thread/start", {});
     await refreshThreads();
     await openThread(result.thread.id);
   }, [openThread, refreshThreads]);
 
   const send = useCallback(async (input: string) => {
     if (!active?.thread.id || !input.trim()) return;
-    await window.loom.call("turn/start", { threadId: active.thread.id, input: input.trim() });
+    await requireBridge().call("turn/start", { threadId: active.thread.id, input: input.trim() });
   }, [active?.thread.id]);
 
   const interrupt = useCallback(async () => {
     if (!active?.thread.id) return;
-    await window.loom.call("turn/interrupt", {
+    await requireBridge().call("turn/interrupt", {
       threadId: active.thread.id,
       turnId: active.thread.currentTurnId || undefined,
     });
@@ -65,7 +77,7 @@ export function useLoom() {
 
   const respondApproval = useCallback(async (item: TranscriptItem, approved: boolean) => {
     if (!active?.thread.id || !item.callId) return;
-    await window.loom.call("approval/respond", {
+    await requireBridge().call("approval/respond", {
       threadId: active.thread.id,
       callId: item.callId,
       approved,
@@ -73,7 +85,14 @@ export function useLoom() {
   }, [active?.thread.id]);
 
   useEffect(() => {
-    const unsubscribe = window.loom.onNotification((message) => {
+    const bridge = getBridge();
+    if (!bridge) {
+      setError("Loom preload bridge is unavailable. The renderer started, but Electron did not expose window.loom.");
+      setConnection("error");
+      return;
+    }
+
+    const unsubscribe = bridge.onNotification((message) => {
       const params = message.params ?? {};
       const nestedItem = params.item as Record<string, unknown> | undefined;
       const threadId = String(params.threadId ?? nestedItem?.threadId ?? "");
@@ -122,7 +141,11 @@ export function useLoom() {
     let disposed = false;
     (async () => {
       try {
-        const initialized = await window.loom.connect() as InitializeResult;
+        const bridge = getBridge();
+        if (!bridge) {
+          throw new Error("Loom preload bridge is unavailable. Check dist-electron/preload.cjs and BrowserWindow.webPreferences.preload.");
+        }
+        const initialized = await bridge.connect() as InitializeResult;
         if (disposed) return;
         setRuntime(initialized.runtime ?? {});
         const list = await refreshThreads();
