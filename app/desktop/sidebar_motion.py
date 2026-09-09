@@ -15,6 +15,7 @@ from PySide6.QtCore import (
     QEvent,
     QObject,
     QParallelAnimationGroup,
+    QPoint,
     QPropertyAnimation,
     QRect,
     QTimer,
@@ -52,41 +53,59 @@ def _repolish(widget: QWidget) -> None:
 
 
 def _reveal_row(row: QWidget) -> None:
-    """Bring one new Runtime row in with a compact height + opacity settle."""
+    """Bring one new Runtime row in with a quiet fade + small upward settle.
+
+    The first motion pass animated ``maximumHeight`` from 0 to natural, which
+    forced the activity timeline to re-layout and re-position every row
+    underneath the new one on every event arrival. That cascading layout is
+    what makes the whole column appear to "bounce" when a new event arrives.
+
+    This pass leaves the layout alone: the row is already at its final size
+    and position from the first paint of ``render_events``. We only cross-fade
+    opacity and slide the row 14 px from above to its target, so visually the
+    row "lands" instead of "expanding". No size hint changes, no relayout.
+    """
     if not theme.motion_enabled():
         return
 
-    natural_height = max(48, row.sizeHint().height())
     effect = QGraphicsOpacityEffect(row)
     row.setGraphicsEffect(effect)
     effect.setOpacity(0.0)
-    row.setMaximumHeight(0)
 
-    group = QParallelAnimationGroup(row)
+    def start() -> None:
+        origin = row.pos()
+        start_pos = QPoint(origin.x(), origin.y() - 14)
+        row.move(start_pos)
 
-    height = QPropertyAnimation(row, b"maximumHeight", group)
-    height.setDuration(_ROW_REVEAL_MS)
-    height.setStartValue(0)
-    height.setEndValue(natural_height)
-    height.setEasingCurve(QEasingCurve.Type.OutCubic)
-    group.addAnimation(height)
+        group = QParallelAnimationGroup(row)
 
-    opacity = QPropertyAnimation(effect, b"opacity", group)
-    opacity.setDuration(_ROW_REVEAL_MS - 20)
-    opacity.setStartValue(0.0)
-    opacity.setEndValue(1.0)
-    opacity.setEasingCurve(QEasingCurve.Type.OutCubic)
-    group.addAnimation(opacity)
+        opacity = QPropertyAnimation(effect, b"opacity", group)
+        opacity.setDuration(_ROW_REVEAL_MS)
+        opacity.setStartValue(0.0)
+        opacity.setEndValue(1.0)
+        opacity.setEasingCurve(QEasingCurve.Type.OutCubic)
+        group.addAnimation(opacity)
 
-    def finish() -> None:
-        row.setMaximumHeight(16777215)
-        if row.graphicsEffect() is effect:
-            row.setGraphicsEffect(None)
-        row._loom_row_reveal = None  # type: ignore[attr-defined]
+        slide = QPropertyAnimation(row, b"pos", group)
+        slide.setDuration(_ROW_REVEAL_MS)
+        slide.setStartValue(start_pos)
+        slide.setEndValue(origin)
+        slide.setEasingCurve(QEasingCurve.Type.OutCubic)
+        group.addAnimation(slide)
 
-    group.finished.connect(finish)
-    row._loom_row_reveal = group  # type: ignore[attr-defined]
-    group.start()
+        def finish() -> None:
+            if row.graphicsEffect() is effect:
+                row.setGraphicsEffect(None)
+            row._loom_row_reveal = None  # type: ignore[attr-defined]
+
+        group.finished.connect(finish)
+        row._loom_row_reveal = group  # type: ignore[attr-defined]
+        group.start()
+
+    # Defer one event loop so the parent's layout has a chance to assign
+    # the row its final geometry. Without this, ``row.pos()`` may still
+    # report (0, 0) and the slide has nowhere to settle.
+    QTimer.singleShot(0, start)
 
 
 def _pulse_latest_icon(row: QWidget) -> None:
@@ -286,7 +305,7 @@ class SidebarMotionController(QObject):
     # ---- Runtime tabs -------------------------------------------------
 
     def _indicator_rect(self, index: int) -> QRect:
-        if index < 0 or index >= self._tab_bar.count():
+        if not isValid(self._tab_bar) or index < 0 or index >= self._tab_bar.count():
             return QRect()
         tab = self._tab_bar.tabRect(index)
         inset = min(12, max(7, tab.width() // 8))
