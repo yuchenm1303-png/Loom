@@ -20,6 +20,7 @@ from .contracts import (
 from .errors import AIResponseError, AITransportError
 from .profiles import ModelProfile
 from .provider_catalog import ProviderAdapter, ProviderConnection
+from .reasoning import ReasoningKind
 
 
 def _message_payload(message: AIMessage) -> dict[str, Any]:
@@ -176,6 +177,16 @@ class OpenAIChatBackend:
             kwargs["temperature"] = request.temperature
         if request.max_output_tokens is not None:
             kwargs["max_tokens"] = request.max_output_tokens
+        if request.reasoning is not None:
+            extra_body: dict[str, Any] = {}
+            if request.reasoning.kind is ReasoningKind.MINIMAX_THINKING:
+                extra_body["thinking"] = {"type": request.reasoning.value}
+            elif request.reasoning.kind is ReasoningKind.OPENAI_EFFORT:
+                # ``extra_body`` keeps this compatible with OpenAI SDK versions
+                # that predate newer effort enum values while still emitting the
+                # canonical top-level reasoning_effort field on the wire.
+                extra_body["reasoning_effort"] = request.reasoning.value
+            kwargs["extra_body"] = extra_body
         return kwargs
 
     def _create(self, kwargs: dict[str, Any]) -> Any:
