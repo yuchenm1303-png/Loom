@@ -14,6 +14,7 @@ from app.desktop import composer_polish as _composer_polish
 from app.desktop import permission_menu_polish as _permission_menu_polish
 from app.desktop import composer_menu_motion as _composer_menu_motion
 from app.desktop import iconography as _iconography
+from app.desktop import tool_icon_polish as _tool_icon_polish
 from app.desktop import sidebar_motion as _sidebar_motion
 from app.desktop import sidebar_motion_smooth as _sidebar_motion_smooth
 from app.desktop import turn_progress as _turn_progress
@@ -64,6 +65,7 @@ _widgets.TranscriptView = TranscriptView
 _widgets.ThreadListItemWidget = ThreadListItemWidget
 _widgets.thread_row_size = thread_row_size
 _iconography.install()
+_tool_icon_polish.install()
 _sidebar_motion.install_widgets()
 _sidebar_motion_smooth.install()
 _composer_polish.install()
