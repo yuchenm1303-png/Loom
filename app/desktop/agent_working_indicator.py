@@ -12,6 +12,11 @@ The row appears immediately after the optimistic user message, follows tool rows
 at the tail while the agent is still working, and disappears as soon as the
 assistant starts producing its own message chrome, waits for approval, or the
 turn ends.
+
+The indicator is presentation chrome, not transcript data. It may move when a
+new structural row is appended, but content-only stream frames must never remove
+and reinsert it or force the scrollbar; those jobs belong to the keyed layout and
+TranscriptView's native tail-follow policy respectively.
 """
 
 from __future__ import annotations
@@ -118,18 +123,30 @@ class AgentWorkingIndicator(QWidget):
         self.setVisible(active)
 
 
-def _move_indicator_to_tail(view: Any) -> None:
+def _move_indicator_to_tail(view: Any) -> bool:
+    """Move the indicator only when a structural append displaced it."""
     indicator = getattr(view, "agent_working_indicator", None)
     layout = getattr(view, "_layout", None)
     if indicator is None or layout is None:
-        return
-    layout.removeWidget(indicator)
+        return False
+
+    current = layout.indexOf(indicator)
+    if current >= 0:
+        # The layout ends in one stretch. The indicator belongs immediately
+        # before that stretch; when it is already there, touching the layout is
+        # pure churn and caused a visible reflow on every streamed token.
+        desired = max(0, layout.count() - 2)
+        if current == desired:
+            return False
+        layout.removeWidget(indicator)
+
     layout.insertWidget(
         max(0, layout.count() - 1),
         indicator,
         0,
         Qt.AlignmentFlag.AlignLeft,
     )
+    return True
 
 
 def install_widgets() -> None:
@@ -159,12 +176,13 @@ def install_widgets() -> None:
         indicator = getattr(self, "agent_working_indicator", None)
         if indicator is None:
             return
-        _move_indicator_to_tail(self)
-        indicator.set_active(active)
+        # Showing a new tail row may require one structural move. Hiding it does
+        # not: visibility alone reclaims its space without disturbing siblings.
         if active:
-            # The user just submitted a message; this status is part of the same
-            # interaction and should be visible without requiring a manual scroll.
-            QTimer.singleShot(0, self.scroll_to_tail)
+            _move_indicator_to_tail(self)
+        indicator.set_active(active)
+        # Do not call scroll_to_tail here. send_prompt already establishes tail
+        # intent, and rangeChanged follows the extra indicator height naturally.
 
     def render(self: Any, entries: list[Any]) -> None:
         original_render(self, entries)
@@ -177,7 +195,6 @@ def install_widgets() -> None:
         indicator = getattr(self, "agent_working_indicator", None)
         if indicator is not None:
             indicator.set_active(False)
-            _move_indicator_to_tail(self)
 
     cls.__init__ = transcript_init
     cls.set_agent_working = set_agent_working
@@ -204,7 +221,6 @@ def install_window(window_cls: type[Any]) -> None:
         result = original_send_prompt(self, text)
         if can_submit and hasattr(self.transcript, "set_agent_working"):
             self.transcript.set_agent_working(True)
-            self.transcript.scroll_to_tail()
         return result
 
     def on_notification(self: Any, method: str, params: Any) -> Any:
