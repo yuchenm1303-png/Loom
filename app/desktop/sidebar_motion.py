@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from shiboken6 import isValid
+
 from PySide6.QtCore import (
     QEasingCurve,
     QEvent,

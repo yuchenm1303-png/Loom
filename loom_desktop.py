@@ -187,14 +187,10 @@ def main(argv: list[str] | None = None) -> int:
         """
         saved = model_store.model_for_selection(selection)
         child_env: dict[str, str] | None = None
-        # Only a saved connection carries a user-declared answer about images.
-        # Every other launch path leaves it to the App Server default.
-        vision: bool | None = None
         if saved is not None:
             provider = saved.adapter.value
             base_url = saved.base_url or None
             model = saved.model
-            vision = saved.vision
             child_env = os.environ.copy()
             child_env["LOOM_API_KEY"] = model_store.secret_for(saved)
         elif explicit_launch:
@@ -209,7 +205,6 @@ def main(argv: list[str] | None = None) -> int:
                 provider = active_saved.adapter.value
                 base_url = active_saved.base_url or None
                 model = selection
-                vision = active_saved.vision
                 child_env = os.environ.copy()
                 child_env["LOOM_API_KEY"] = model_store.secret_for(active_saved)
             else:
@@ -226,7 +221,6 @@ def main(argv: list[str] | None = None) -> int:
             permission_mode=args.permission_mode,
             timeout_seconds=args.timeout,
             app_server_executable=args.app_server_executable,
-            vision=vision,
         )
         server = LoomAppServerClient(
             config.command(),

@@ -479,7 +479,11 @@ class _PanelSnapshotTransition:
         if pending is not None:
             self.controller._panel_snapshot_pending = None
             pending_key, pending_panel, pending_visible = pending
-            self.controller.set_panel_visible(
+            # Route through the installed implementation directly.  The
+            # controller method is monkey-patched during desktop package setup
+            # and lightweight embedders/tests need not duplicate that binding.
+            _set_panel_visible(
+                self.controller,
                 pending_key,
                 pending_panel,
                 pending_visible,
