@@ -1,4 +1,4 @@
-import { Archive, MessageSquarePlus, Search, X } from "lucide-react";
+import { Archive, Plus, Search, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ThreadRecord } from "../types/loom";
 import "./sidebar.css";
@@ -22,20 +22,55 @@ function relativeTime(value: string): string {
   return `${Math.floor(hours / 24)}d`;
 }
 
+function workspaceLabel(workspace?: string): string {
+  const value = (workspace || "").trim();
+  if (!value) return "Other";
+  const normalized = value.replaceAll("\\", "/").replace(/\/+$/, "");
+  const parts = normalized.split("/").filter(Boolean);
+  return parts.at(-1) || "Other";
+}
+
 export function Sidebar({ threads, activeId, onOpen, onNew }: SidebarProps) {
   const [query, setQuery] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
-  const isMac = useMemo(
-    () => typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform),
-    [],
-  );
-  const shortcutMod = isMac ? "⌘" : "Ctrl";
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
     if (!needle) return threads;
     return threads.filter((thread) => `${thread.title} ${thread.workspace}`.toLowerCase().includes(needle));
   }, [query, threads]);
+
+  const groups = useMemo(() => {
+    const result: Array<{ label: string; threads: ThreadRecord[] }> = [];
+    const index = new Map<string, number>();
+
+    for (const thread of filtered) {
+      const label = workspaceLabel(thread.workspace);
+      const existing = index.get(label);
+      if (existing !== undefined) {
+        result[existing].threads.push(thread);
+        continue;
+      }
+      index.set(label, result.length);
+      result.push({ label, threads: [thread] });
+    }
+
+    return result;
+  }, [filtered]);
+
+  const focusSearch = () => {
+    setSearchOpen(true);
+    requestAnimationFrame(() => {
+      searchRef.current?.focus();
+      searchRef.current?.select();
+    });
+  };
+
+  const closeSearch = () => {
+    setQuery("");
+    setSearchOpen(false);
+  };
 
   useEffect(() => {
     const handleShortcut = (event: KeyboardEvent) => {
@@ -44,8 +79,7 @@ export function Sidebar({ threads, activeId, onOpen, onNew }: SidebarProps) {
 
       if (key === "k") {
         event.preventDefault();
-        searchRef.current?.focus();
-        searchRef.current?.select();
+        focusSearch();
         return;
       }
 
@@ -59,104 +93,96 @@ export function Sidebar({ threads, activeId, onOpen, onNew }: SidebarProps) {
     return () => window.removeEventListener("keydown", handleShortcut);
   }, [onNew]);
 
-  const clearSearch = () => {
-    setQuery("");
-    searchRef.current?.focus();
-  };
-
   return (
-    <aside className="sidebar">
-      <div className="brand-row">
-        <div className="brand-mark" aria-hidden="true">L</div>
-        <div className="brand-copy">
-          <strong>Loom</strong>
-          <span>Agent workspace</span>
+    <aside className="sidebar compact-sidebar">
+      <div className="compact-sidebar-header">
+        <strong>Loom</strong>
+        <div className="compact-sidebar-actions">
+          <button type="button" onClick={onNew} title="New thread" aria-label="New thread">
+            <Plus size={17} strokeWidth={1.8} />
+          </button>
+          <button
+            type="button"
+            onClick={searchOpen ? closeSearch : focusSearch}
+            className={searchOpen ? "active" : ""}
+            title="Search conversations"
+            aria-label="Search conversations"
+          >
+            <Search size={15} strokeWidth={1.8} />
+          </button>
         </div>
       </div>
 
-      <button className="new-thread" onClick={onNew} type="button">
-        <span className="new-thread-icon" aria-hidden="true">
-          <MessageSquarePlus size={16} strokeWidth={1.8} />
-        </span>
-        <span className="new-thread-copy">New thread</span>
-        <kbd>{shortcutMod} N</kbd>
-      </button>
-
-      <div className={`search-box ${query ? "has-query" : ""}`}>
-        <Search className="search-icon" size={14} strokeWidth={1.8} aria-hidden="true" />
+      <div className={`compact-search ${searchOpen ? "open" : ""}`} aria-hidden={!searchOpen}>
+        <Search size={14} strokeWidth={1.8} aria-hidden="true" />
         <input
           ref={searchRef}
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           onKeyDown={(event) => {
-            if (event.key === "Escape" && query) {
+            if (event.key === "Escape") {
               event.preventDefault();
-              clearSearch();
+              closeSearch();
             }
           }}
           placeholder="Search conversations"
           aria-label="Search conversations"
+          tabIndex={searchOpen ? 0 : -1}
         />
         {query ? (
-          <button className="search-clear" onClick={clearSearch} type="button" aria-label="Clear conversation search">
-            <X size={13} strokeWidth={2} />
+          <button type="button" onClick={() => setQuery("")} aria-label="Clear search">
+            <X size={13} strokeWidth={1.9} />
           </button>
-        ) : (
-          <kbd className="search-shortcut">{shortcutMod} K</kbd>
-        )}
+        ) : null}
       </div>
 
-      <div className="sidebar-section-label">
-        <span>Conversations</span>
-        <span className="section-count">{filtered.length}</span>
-      </div>
-
-      <div className="thread-list" aria-label="Conversations">
-        {filtered.map((thread) => {
-          const active = thread.id === activeId;
-          const running = thread.status === "running";
-          return (
-            <button
-              key={thread.id}
-              className={`thread-row ${active ? "active" : ""}`}
-              onClick={() => onOpen(thread.id)}
-              type="button"
-              title={thread.title || "New conversation"}
-              aria-current={active ? "page" : undefined}
-              data-running={running ? "true" : undefined}
-            >
-              <span className="thread-title">{thread.title || "New conversation"}</span>
-              <span className="thread-meta">
-                {running ? <span className="status-dot live" aria-label="Running" /> : null}
-                <span>{relativeTime(thread.updatedAt)}</span>
-              </span>
-            </button>
-          );
-        })}
-
-        {!filtered.length ? (
-          <div className="sidebar-empty">
-            <span className="sidebar-empty-icon" aria-hidden="true">
-              <Search size={14} strokeWidth={1.7} />
-            </span>
-            <strong>{query ? "No matching conversations" : "No conversations yet"}</strong>
-            <span>{query ? "Try a different title or workspace." : "Create a thread to start working with Loom."}</span>
-            {query ? (
-              <button type="button" onClick={clearSearch}>
-                Clear search
+      <div className="compact-thread-scroll" aria-label="Conversations">
+        {groups.map((group) => (
+          <section className="workspace-group" key={group.label}>
+            <div className="workspace-group-header">
+              <span title={group.label}>{group.label}</span>
+              <button type="button" onClick={onNew} title={`New thread in ${group.label}`} aria-label={`New thread in ${group.label}`}>
+                <Plus size={15} strokeWidth={1.7} />
               </button>
-            ) : null}
+            </div>
+
+            <div className="workspace-thread-list">
+              {group.threads.map((thread) => {
+                const active = thread.id === activeId;
+                const running = thread.status === "running";
+                const time = relativeTime(thread.updatedAt);
+                return (
+                  <button
+                    key={thread.id}
+                    className={`compact-thread-row ${active ? "active" : ""}`}
+                    onClick={() => onOpen(thread.id)}
+                    type="button"
+                    title={`${thread.title || "New conversation"}${time ? ` · ${time}` : ""}`}
+                    aria-current={active ? "page" : undefined}
+                  >
+                    <span className={`compact-thread-dot ${running ? "running" : ""}`} aria-hidden="true" />
+                    <span className="compact-thread-title">{thread.title || "New conversation"}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        ))}
+
+        {!groups.length ? (
+          <div className="compact-sidebar-empty">
+            <span>{query ? "No matching conversations" : "No conversations yet"}</span>
+            <button type="button" onClick={query ? () => setQuery("") : onNew}>
+              {query ? "Clear search" : "New thread"}
+            </button>
           </div>
         ) : null}
       </div>
 
-      <div className="sidebar-footer">
-        <button className="sidebar-footer-button" disabled type="button" title="Archive view is coming soon">
-          <span className="sidebar-footer-icon" aria-hidden="true">
-            <Archive size={15} strokeWidth={1.7} />
-          </span>
+      <div className="compact-sidebar-footer">
+        <button type="button" disabled title="Archive view is coming soon">
+          <Archive size={14} strokeWidth={1.7} />
           <span>Archive</span>
-          <span className="footer-badge">Soon</span>
         </button>
       </div>
     </aside>
