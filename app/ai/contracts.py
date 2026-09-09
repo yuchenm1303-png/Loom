@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
+from .reasoning import ReasoningRequest
+
 
 class MessageRole(str, Enum):
     SYSTEM = "system"
@@ -151,6 +153,7 @@ class ChatRequest:
     tool_choice: ToolChoice = ToolChoice.AUTO
     temperature: float | None = None
     max_output_tokens: int | None = None
+    reasoning: ReasoningRequest | None = None
 
     def __post_init__(self) -> None:
         messages = tuple(self.messages)
@@ -170,6 +173,9 @@ class ChatRequest:
         max_output_tokens = self.max_output_tokens
         if max_output_tokens is not None and int(max_output_tokens) < 1:
             raise ValueError("max_output_tokens must be positive")
+        reasoning = self.reasoning
+        if reasoning is not None and not isinstance(reasoning, ReasoningRequest):
+            raise TypeError("reasoning must be ReasoningRequest or None")
         object.__setattr__(self, "messages", messages)
         object.__setattr__(self, "tools", tools)
         object.__setattr__(self, "tool_choice", tool_choice)
