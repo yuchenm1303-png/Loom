@@ -2,9 +2,14 @@
 
 The App Server timeline is deliberately lossless, but a finished turn can still
 arrive in a presentation-hostile order after live/snapshot reconciliation:
-``final assistant -> tools/processes/diffs``.  A normal agent transcript reads
-``work -> final assistant``.  This module is the final presentation integrity
+``final assistant -> tools/processes/diffs``. A normal agent transcript reads
+``work -> final assistant``. This module is the final presentation integrity
 pass and fixes both the semantic entry order and the physical Qt layout order.
+
+The important boundary is structural versus streaming work. Text deltas are
+allowed to resize the one active message, but they must never reorder the whole
+QVBoxLayout, move transcript chrome, or take over scrollbar policy. Physical
+reordering therefore runs only when the semantic key order actually changes.
 
 Rules are intentionally conservative:
 - active turns keep literal live order;
@@ -21,7 +26,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from PySide6.QtCore import QTimer, Qt
+from PySide6.QtCore import Qt
 
 from app.desktop import format as fmt
 from app.desktop import output_presentation as presentation
@@ -60,9 +65,9 @@ def _settle_segment(segment: list[Any], *, active: bool) -> list[Any]:
     if not any(getattr(entry, "kind", "") in _ACTIVITY_KINDS for entry in trailing):
         return segment
 
-    # Preserve everything before the final assistant exactly as emitted.  Only
+    # Preserve everything before the final assistant exactly as emitted. Only
     # lift the terminal reply over activity rows that were incorrectly appended
-    # after it by reconciliation.  This yields the familiar agent flow:
+    # after it by reconciliation. This yields the familiar agent flow:
     # narration -> command -> narration -> command -> final answer.
     return segment[:final_index] + trailing + [final_entry]
 
@@ -72,7 +77,7 @@ def _semantic_entries(entries: list[Any], *, turn_active: bool) -> list[Any]:
     if not entries:
         return []
 
-    # User rows delimit turns.  A user row belongs to the segment it starts, so
+    # User rows delimit turns. A user row belongs to the segment it starts, so
     # previous completed turns can still be repaired while the newest one runs.
     segments: list[list[Any]] = []
     current: list[Any] = []
@@ -97,32 +102,53 @@ def _semantic_entries(entries: list[Any], *, turn_active: bool) -> list[Any]:
     return settled
 
 
-def _reorder_layout(view: Any, entries: list[Any]) -> None:
-    """Make QVBoxLayout order match the reconciler's canonical ``_order``."""
+def _reorder_layout(view: Any, entries: list[Any]) -> bool:
+    """Apply a structural order change once; return whether widgets actually moved.
+
+    The old implementation ran on every token. Even when every row was already
+    in the right place it froze the canvas, invalidated the full layout, moved
+    the working indicator, repainted everything and scheduled a forced scroll.
+    That turned a tiny text delta into whole-window work. The keyed reconciler
+    already handles content changes, so this function now owns *only* geometry
+    changes caused by a different semantic key order.
+    """
     layout = getattr(view, "_layout", None)
     widgets = getattr(view, "_widgets", None)
-    order = list(getattr(view, "_order", ()) or ())
-    if layout is None or not isinstance(widgets, dict) or not order:
-        return
+    order = tuple(getattr(view, "_order", ()) or ())
+    if layout is None or not isinstance(widgets, dict):
+        return False
+
+    # A cached key order is sufficient for the hot streaming path: content-only
+    # updates do not move widgets in the keyed reconciler. New/removed/reordered
+    # entries change this tuple and therefore re-enter the structural path.
+    if getattr(view, "_loom_flow_layout_order", None) == order:
+        return False
 
     kind_by_key = {
         str(getattr(entry, "key", "") or ""): str(getattr(entry, "kind", "") or "")
         for entry in entries
     }
+    moves: list[tuple[int, str, Any]] = []
+    for target_index, key in enumerate(order):
+        widget = widgets.get(key)
+        if widget is None:
+            continue
+        if layout.indexOf(widget) != target_index:
+            moves.append((target_index, key, widget))
 
-    # Moving several existing widgets can otherwise expose intermediate layout
-    # states for one paint cycle. Freeze only the canvas paint, not event
-    # processing, and commit the corrected order as one visual update.
+    # Base reconciliation often appends a new row in exactly the desired place.
+    # Remember that order without invalidating the layout at all.
+    if not moves:
+        view._loom_flow_layout_order = order
+        return False
+
     canvas = getattr(view, "canvas", None)
     if canvas is not None:
         canvas.setUpdatesEnabled(False)
     try:
-        for target_index, key in enumerate(order):
-            widget = widgets.get(key)
-            if widget is None:
-                continue
-            current_index = layout.indexOf(widget)
-            if current_index == target_index:
+        for target_index, key, widget in moves:
+            # Earlier moves can change later indexes, so re-check before touching.
+            if layout.indexOf(widget) == target_index:
                 continue
             layout.removeWidget(widget)
             layout.insertWidget(
@@ -131,28 +157,17 @@ def _reorder_layout(view: Any, entries: list[Any]) -> None:
                 0,
                 _entry_alignment(kind_by_key.get(key, "")),
             )
-
-        # The working indicator is presentation chrome, not a transcript entry.
-        # Keep it immediately before the trailing stretch after every reorder.
-        indicator = getattr(view, "agent_working_indicator", None)
-        if indicator is not None:
-            layout.removeWidget(indicator)
-            layout.insertWidget(
-                max(0, layout.count() - 1),
-                indicator,
-                0,
-                Qt.AlignmentFlag.AlignLeft,
-            )
         layout.invalidate()
     finally:
         if canvas is not None:
             canvas.setUpdatesEnabled(True)
             canvas.update()
 
-    # If the reader was following the live tail, a reorder must not strand the
-    # viewport a few rows above the current action.
-    if bool(getattr(view, "_follow_tail", False)):
-        QTimer.singleShot(0, view.scroll_to_tail)
+    # Scrolling and transcript chrome have dedicated owners. In particular, do
+    # not call scroll_to_tail() here: rangeChanged already tracks token growth,
+    # and forcing the scrollbar here used to fight that animation every frame.
+    view._loom_flow_layout_order = order
+    return True
 
 
 def _normalise_error_card(entry: Any) -> dict[str, Any]:
