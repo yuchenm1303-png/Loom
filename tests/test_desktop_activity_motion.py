@@ -20,6 +20,13 @@ def app():
     return QApplication.instance() or QApplication([])
 
 
+def _stop_card_animation(card: FlatActivityCard) -> None:
+    if card._body_animation is not None:
+        card._body_animation.stop()
+        card._body_animation = None
+    card.body_shell.setGraphicsEffect(None)
+
+
 def test_large_diff_reveal_settles_once_without_height_tween(app, monkeypatch):
     monkeypatch.setattr(theme, "motion_enabled", lambda: True)
     card = FlatActivityCard("diff")
@@ -42,7 +49,7 @@ def test_large_diff_reveal_settles_once_without_height_tween(app, monkeypatch):
     assert card.body_shell.graphicsEffect() is None
 
 
-def test_short_output_keeps_lightweight_height_motion(app, monkeypatch):
+def test_short_output_keeps_height_and_fade_motion(app, monkeypatch):
     monkeypatch.setattr(theme, "motion_enabled", lambda: True)
     card = FlatActivityCard("tool")
     card.update_card(
@@ -58,11 +65,48 @@ def test_short_output_keeps_lightweight_height_motion(app, monkeypatch):
     assert card._body_animation is not None
     assert card.body.height() < 180
     assert card.body.verticalScrollBarPolicy() == Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-    assert card.body_shell.graphicsEffect() is None
+    assert card.body_shell.graphicsEffect() is not None
 
-    # Do not leave a live animation behind in the shared QApplication fixture.
-    card._body_animation.stop()
-    card._body_animation = None
+    _stop_card_animation(card)
+
+
+def test_exec_arguments_above_old_cutoff_still_animate(app, monkeypatch):
+    """Typical multi-line exec JSON should not snap merely because it exceeds 180px."""
+    monkeypatch.setattr(theme, "motion_enabled", lambda: True)
+    card = FlatActivityCard("tool")
+    body = "\n".join(
+        [
+            '{',
+            '  "argv": [',
+            '    "powershell",',
+            '    "-NoProfile",',
+            '    "-ExecutionPolicy",',
+            '    "Bypass",',
+            '    "-Command",',
+            '    "$items = Get-ChildItem -Force",',
+            '    "$items | Select-Object Name,Length,LastWriteTime",',
+            '    "$items | Sort-Object Length -Descending",',
+            '    "$items | Format-Table -AutoSize"',
+            '  ],',
+            '  "timeout_seconds": 300,',
+            '  "cwd": "C:/Users/example/Loom"',
+            '}',
+        ]
+    )
+    card.update_card(
+        title="exec",
+        status="completed",
+        body=body,
+        auto_expand=False,
+    )
+
+    card._toggle()
+
+    assert card.body_shell.isVisible()
+    assert card.body.height() > 180
+    assert card._body_animation is not None
+
+    _stop_card_animation(card)
 
 
 def test_repeated_large_toggle_never_leaves_stale_animation(app, monkeypatch):
