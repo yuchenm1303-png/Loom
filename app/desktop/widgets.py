@@ -677,39 +677,42 @@ class ActivityCard(QFrame):
 
         if self._body_animation is not None:
             self._body_animation.stop()
-        natural = self._body_height()
-        natural += self.body_title.sizeHint().height() + self.status_label.sizeHint().height() + 31
-        start = self.body_shell.height() if self.body_shell.isVisible() else 0
-        end = natural if show else 0
-        self.body_shell.setVisible(True)
-        self.body_shell.setMaximumHeight(max(0, start))
-        effect = QGraphicsOpacityEffect(self.body_shell)
-        self.body_shell.setGraphicsEffect(effect)
-        effect.setOpacity(1.0 if start else 0.0)
-        group = QParallelAnimationGroup(self)
-        height = QPropertyAnimation(self.body_shell, b"maximumHeight", group)
-        height.setDuration(theme.MOTION_BASE_MS)
-        height.setStartValue(start)
-        height.setEndValue(end)
-        height.setEasingCurve(QEasingCurve.Type.OutCubic)
-        opacity = QPropertyAnimation(effect, b"opacity", group)
-        opacity.setDuration(theme.MOTION_FAST_MS)
-        opacity.setStartValue(1.0 if start else 0.0)
-        opacity.setEndValue(1.0 if show else 0.0)
-        group.addAnimation(height)
-        group.addAnimation(opacity)
-
-        def finish() -> None:
-            self.body_shell.setVisible(show)
-            self.body_shell.setMaximumHeight(16777215)
-            self.body_shell.setGraphicsEffect(None)
-            if show:
-                self._sync_height()
             self._body_animation = None
 
-        group.finished.connect(finish)
-        self._body_animation = group
-        group.start()
+        # The first motion pass animated ``maximumHeight`` from 0 to natural,
+        # which on every disclosure toggle forced the transcript to relayout
+        # every card below the toggle, making the whole page appear to bounce.
+        # This pass commits the layout in a single frame and only cross-fades
+        # opacity so the body "reveals" rather than "expands". No card below
+        # this one ever moves during the transition.
+        if show:
+            # Reveal: shell already occupies its final height from the next
+            # paint; just fade the opacity in.
+            self.body_shell.setVisible(True)
+            self._sync_height()
+            effect = QGraphicsOpacityEffect(self.body_shell)
+            self.body_shell.setGraphicsEffect(effect)
+            effect.setOpacity(0.0)
+            opacity = QPropertyAnimation(effect, b"opacity", self)
+            opacity.setDuration(theme.MOTION_BASE_MS)
+            opacity.setStartValue(0.0)
+            opacity.setEndValue(1.0)
+            opacity.setEasingCurve(QEasingCurve.Type.OutCubic)
+
+            def finish() -> None:
+                self.body_shell.setGraphicsEffect(None)
+                self._body_animation = None
+
+            opacity.finished.connect(finish)
+            self._body_animation = opacity
+            opacity.start()
+        else:
+            # Collapse: layout reclaims the space immediately. The shell fades
+            # out as the cards underneath snap into place; that single layout
+            # frame is what users feel as a clean "snap shut" instead of a
+            # multi-frame cascade.
+            self.body_shell.setVisible(False)
+            self.body_shell.setGraphicsEffect(None)
 
     def _body_height(self) -> int:
         return plain_text_height(self.body, minimum=30, maximum=360)
