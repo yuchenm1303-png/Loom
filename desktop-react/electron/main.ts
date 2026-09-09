@@ -25,10 +25,16 @@ interface JsonRpcResponse {
 
 interface RuntimeStatus {
   activeThreadIds?: unknown[];
+  reasoning?: { kind: string; value: string } | null;
 }
 
 interface ModelRestartResult {
   initialization: unknown;
+  models: ReturnType<DesktopModelManager["snapshot"]>;
+}
+
+interface ReasoningUpdateResult {
+  runtime: unknown;
   models: ReturnType<DesktopModelManager["snapshot"]>;
 }
 
@@ -83,7 +89,7 @@ class LoomRpcProcess {
     if (!this.child || !this.initialized) return;
     const status = await this.call("runtime/status", {}) as RuntimeStatus;
     if (Array.isArray(status.activeThreadIds) && status.activeThreadIds.length > 0) {
-      throw new Error("Finish or stop the current turn before switching models.");
+      throw new Error("Finish or stop the current turn before changing model settings.");
     }
   }
 
@@ -122,6 +128,10 @@ class LoomRpcProcess {
       spec.model,
     ];
     if (spec.baseUrl) args.push("--base-url", spec.baseUrl);
+    if (spec.reasoning) {
+      args.push("--reasoning-kind", spec.reasoning.kind);
+      args.push("--reasoning-value", spec.reasoning.value);
+    }
 
     const child = spawn(python, args, {
       cwd: REPO_ROOT,
@@ -307,6 +317,25 @@ ipcMain.handle("loom:model-add", async (_event, input: AddModelInput) => {
   await rpc.assertRestartSafe();
   const profile = modelManager.add(input);
   return changeModel(() => modelManager.useProfile(profile.selection), { persistSelection: profile.selection });
+});
+ipcMain.handle("loom:reasoning-set", async (_event, kind: string, value: string): Promise<ReasoningUpdateResult> => {
+  await rpc.assertRestartSafe();
+  const current = modelManager.current ?? modelManager.ensureInitial();
+  const previous = current.reasoning ?? null;
+  const next = modelManager.setReasoning(String(kind || "").trim(), String(value || "").trim());
+  try {
+    const runtime = await rpc.call("runtime/set_reasoning", { kind: next.kind, value: next.value });
+    return { runtime, models: modelManager.snapshot() };
+  } catch (error) {
+    if (previous) {
+      try {
+        modelManager.setReasoning(previous.kind, previous.value);
+      } catch (rollbackError) {
+        console.error("Could not restore previous reasoning setting", rollbackError);
+      }
+    }
+    throw error;
+  }
 });
 
 app.whenReady().then(createWindow);
