@@ -19,11 +19,10 @@ from PySide6.QtWidgets import QPushButton, QWidget
 
 from app.desktop import output_presentation as presentation
 from app.desktop import theme
+from app.desktop.disclosure_motion_tokens import CHEVRON_CLOSE_MS, CHEVRON_OPEN_MS
 
 
 _INSTALLED = False
-_OPEN_MS = 155
-_CLOSE_MS = 135
 
 
 class DisclosureChevron(QPushButton):
@@ -77,7 +76,7 @@ class DisclosureChevron(QPushButton):
             return
 
         animation = QPropertyAnimation(self, b"progress", self)
-        animation.setDuration(_OPEN_MS if expanded else _CLOSE_MS)
+        animation.setDuration(CHEVRON_OPEN_MS if expanded else CHEVRON_CLOSE_MS)
         animation.setStartValue(self._progress)
         animation.setEndValue(target)
         animation.setEasingCurve(QEasingCurve.Type.OutCubic)

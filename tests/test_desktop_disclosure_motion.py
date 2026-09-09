@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import time
 
 import pytest
 
@@ -10,8 +11,13 @@ pytest.importorskip("PySide6")
 from PySide6.QtWidgets import QApplication
 
 # Importing the public desktop package installs the presentation pipeline,
-# including the final low-reflow disclosure policy.
+# including the final shared disclosure-motion coordinator.
 from app.desktop import TranscriptView
+from app.desktop.disclosure_motion_tokens import (
+    CONTENT_OFFSET_PX,
+    DISCLOSURE_CLOSE_MS,
+    DISCLOSURE_OPEN_MS,
+)
 from app.desktop.message_presentation import ReasoningBlock
 from app.desktop.state import TranscriptEntry
 
@@ -21,8 +27,15 @@ def app():
     return QApplication.instance() or QApplication([])
 
 
+def _settle(app: QApplication, *, seconds: float = 0.24) -> None:
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        app.processEvents()
+        time.sleep(0.005)
+
+
 def test_reasoning_disclosure_never_tweens_layout_height(app):
-    # A standalone block has no transcript viewport to snapshot, so it should
+    # A standalone block has no transcript viewport to displace, so it should
     # still take the atomic geometry path without creating a height tween.
     block = ReasoningBlock()
     block.resize(720, 120)
@@ -46,7 +59,7 @@ def test_reasoning_disclosure_never_tweens_layout_height(app):
     block.close()
 
 
-def test_tool_disclosure_uses_snapshot_motion_without_height_tween(app):
+def test_tool_disclosure_reveals_live_surface_and_displaces_only_once(app):
     view = TranscriptView()
     view.resize(980, 620)
     view.show()
@@ -67,10 +80,6 @@ def test_tool_disclosure_uses_snapshot_motion_without_height_tween(app):
     card = view._widgets[entry.key]
     assert card.body_shell.isHidden()
 
-    # Manual disclosure is reading intent: freeze tail-follow before geometry
-    # changes, commit the real card once, then animate only a cached viewport
-    # slice. The live terminal/card itself must never carry a height animation or
-    # an opacity effect.
     view._follow_tail = True
     view._auto_scrolling = True
     card.toggle_button.click()
@@ -79,26 +88,38 @@ def test_tool_disclosure_uses_snapshot_motion_without_height_tween(app):
     assert overlay is not None
     assert overlay.parentWidget() is view.viewport()
     assert overlay._animation is not None
+    assert overlay._animation.duration() == DISCLOSURE_OPEN_MS
+    # Only the transcript content column is cached; blank viewport gutters stay
+    # visually stationary instead of making the whole page look translated.
+    assert overlay.width() < view.viewport().width()
     assert view._follow_tail is False
     assert view._auto_scrolling is False
+
     assert card.body_shell.isVisible()
     assert card.body_shell.maximumHeight() == 16_777_215
-    assert card.body_shell.graphicsEffect() is None
     assert card._body_animation is None
+    assert card.body_shell.graphicsEffect() is not None
+    assert card._loom_content_animation is not None
+    assert card.body_shell.y() == card._loom_content_target_pos.y() + CONTENT_OFFSET_PX
 
-    # Finish the visual overlay deterministically before exercising close.
+    # Opening settles the live panel back into its exact layout position.
     overlay.finish()
-    app.processEvents()
+    _settle(app)
+    assert card._loom_content_animation is None
+    assert card.body_shell.graphicsEffect() is None
+
     card.toggle_button.click()
     closing_overlay = getattr(view, "_loom_disclosure_overlay", None)
     assert closing_overlay is not None
+    assert closing_overlay._animation is not None
+    assert closing_overlay._animation.duration() == DISCLOSURE_CLOSE_MS
     assert card.body_shell.isHidden()
     assert card._body_animation is None
     closing_overlay.finish()
     view.close()
 
 
-def test_reasoning_in_transcript_uses_same_snapshot_motion(app):
+def test_reasoning_in_transcript_uses_quiet_live_reveal(app):
     view = TranscriptView()
     view.resize(980, 620)
     view.show()
@@ -124,10 +145,16 @@ def test_reasoning_in_transcript_uses_same_snapshot_motion(app):
     overlay = getattr(view, "_loom_disclosure_overlay", None)
     assert overlay is not None
     assert overlay._animation is not None
+    assert overlay._animation.duration() == DISCLOSURE_OPEN_MS
     assert reasoning.body.isVisible()
     assert reasoning.body.maximumHeight() == 16_777_215
-    assert reasoning.body.graphicsEffect() is None
     assert reasoning._animation is None
+    assert reasoning.body.graphicsEffect() is not None
+    assert reasoning._loom_content_animation is not None
+    assert reasoning.body.y() == reasoning._loom_content_target_pos.y() + CONTENT_OFFSET_PX
 
     overlay.finish()
+    _settle(app)
+    assert reasoning._loom_content_animation is None
+    assert reasoning.body.graphicsEffect() is None
     view.close()

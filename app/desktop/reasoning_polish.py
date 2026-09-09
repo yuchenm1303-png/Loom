@@ -1,30 +1,27 @@
-"""Quiet presentation and motion for the assistant reasoning disclosure.
+"""Quiet presentation for the assistant reasoning disclosure.
 
 The thought-process affordance should read like transcript chrome, not a card.
-This module keeps the durable message/reasoning behavior in
-``message_presentation`` intact and only refines its visual hierarchy and
-motion.
+This module owns the visual treatment and chevron.  Transcript geometry/motion
+is coordinated later by ``disclosure_motion`` so there is one choreography for
+reasoning and task details instead of stacked animation hooks.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-from PySide6.QtCore import QEasingCurve, QParallelAnimationGroup, QPointF, QPropertyAnimation, Qt
+from PySide6.QtCore import QEasingCurve, QPointF, QPropertyAnimation, Qt
 from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen
-from PySide6.QtWidgets import QGraphicsOpacityEffect, QPushButton, QSizePolicy, QWidget
+from PySide6.QtWidgets import QPushButton, QSizePolicy, QWidget
 
 from app.desktop import message_presentation as presentation
 from app.desktop import theme
+from app.desktop.disclosure_motion_tokens import CHEVRON_CLOSE_MS, CHEVRON_OPEN_MS
 
 
 _INSTALLED = False
-_OPEN_MS = 215
-_CLOSE_MS = 165
-_CHEVRON_OPEN_MS = 185
-_CHEVRON_CLOSE_MS = 145
 
-# Thought process is deliberately integrated into the transcript.  The toggle is
+# Thought process is deliberately integrated into the transcript. The toggle is
 # a quiet disclosure row rather than a pill/card, and the expanded body uses only
 # a thin inset rule so reasoning stays visually subordinate to the final answer.
 _REASONING_POLISHED_QSS = f"""
@@ -131,7 +128,7 @@ def _toggle_set_expanded(self: Any, expanded: bool, *, animate: bool) -> None:
         return
 
     animation = QPropertyAnimation(self, b"angle", self)
-    animation.setDuration(_CHEVRON_OPEN_MS if expanded else _CHEVRON_CLOSE_MS)
+    animation.setDuration(CHEVRON_OPEN_MS if expanded else CHEVRON_CLOSE_MS)
     animation.setStartValue(float(self._angle))
     animation.setEndValue(target)
     animation.setEasingCurve(QEasingCurve.Type.OutCubic)
@@ -146,7 +143,7 @@ def _toggle_set_expanded(self: Any, expanded: bool, *, animate: bool) -> None:
 
 
 def install() -> None:
-    """Install reasoning-specific polish once without changing message semantics."""
+    """Install reasoning-specific visual polish once without owning geometry."""
     global _INSTALLED
     if _INSTALLED:
         return
@@ -170,10 +167,12 @@ def install() -> None:
         _repolish(self.toggle)
 
     def sync_body(self: Any, *, animate: bool) -> None:
+        # Atomic fallback for standalone ReasoningBlock users. The public Desktop
+        # package installs disclosure_motion after this module and replaces this
+        # method with the shared transcript choreography.
         show = bool(self._expanded)
         self.toggle.set_expanded(show, animate=animate)
         self.toggle.setToolTip("Hide thought process" if show else "Show thought process")
-
         if self._animation is not None:
             try:
                 self._animation.stop()
@@ -181,54 +180,9 @@ def install() -> None:
                 pass
             self._animation = None
         self.body.setGraphicsEffect(None)
-
-        if not animate or not theme.motion_enabled():
-            self.body.setMaximumHeight(16777215)
-            self.body.setVisible(show)
-            self._settle_layout()
-            return
-
-        available_width = max(180, self.width() - 18)
-        natural = max(self.body.sizeHint().height(), self.body.heightForWidth(available_width), 1)
-        start = self.body.height() if self.body.isVisible() else 0
-        start = max(0, min(int(start), int(natural)))
-
-        self.body.setVisible(True)
-        self.body.setMaximumHeight(start)
-
-        effect = QGraphicsOpacityEffect(self.body)
-        self.body.setGraphicsEffect(effect)
-        effect.setOpacity(1.0 if start > 0 else 0.0)
-
-        group = QParallelAnimationGroup(self)
-        height = QPropertyAnimation(self.body, b"maximumHeight", group)
-        height.setDuration(_OPEN_MS if show else _CLOSE_MS)
-        height.setStartValue(start)
-        height.setEndValue(natural if show else 0)
-        height.setEasingCurve(
-            QEasingCurve.Type.OutCubic if show else QEasingCurve.Type.InOutCubic
-        )
-
-        opacity = QPropertyAnimation(effect, b"opacity", group)
-        opacity.setDuration(160 if show else 105)
-        opacity.setStartValue(1.0 if start > 0 else 0.0)
-        opacity.setEndValue(1.0 if show else 0.0)
-        opacity.setEasingCurve(QEasingCurve.Type.OutCubic)
-
-        height.valueChanged.connect(lambda _value: self._settle_layout(again=False))
-        group.addAnimation(height)
-        group.addAnimation(opacity)
-
-        def finish() -> None:
-            self.body.setVisible(show)
-            self.body.setMaximumHeight(16777215)
-            self.body.setGraphicsEffect(None)
-            self._animation = None
-            self._settle_layout()
-
-        group.finished.connect(finish)
-        self._animation = group
-        group.start()
+        self.body.setMaximumHeight(16_777_215)
+        self.body.setVisible(show)
+        self._settle_layout(again=show)
 
     presentation.ReasoningToggle.paintEvent = _toggle_paint
     presentation.ReasoningToggle.set_expanded = _toggle_set_expanded
