@@ -163,23 +163,6 @@ function fileLabel(item: TranscriptItem): string {
   return `${paths[0]}, ${paths[1]} +${paths.length - 2}`;
 }
 
-function activitySummary(items: TranscriptItem[]): string {
-  const processes = items.filter((item) => item.type === "process").length;
-  const edits = items.filter((item) => item.type === "file_edit").length;
-  const tools = items.filter((item) => item.type === "tool_call").length;
-  const running = items.some((item) => ["running", "started"].includes(itemStatus(item)));
-
-  if (running) return "Working through the task";
-  if (edits && processes && !tools) return "Edited files and ran commands";
-  if (edits && tools && !processes) return "Edited files and used tools";
-  if (processes && tools && !edits) return "Ran commands and used tools";
-  if (edits && processes && tools) return "Worked through the task";
-  if (processes) return processes === 1 ? "Ran a command" : `Ran ${processes} commands`;
-  if (edits) return edits === 1 ? "Edited a file" : `Edited ${edits} files`;
-  if (tools) return tools === 1 ? "Used a tool" : `Used ${tools} tools`;
-  return "Task activity";
-}
-
 function activityDetail(item: TranscriptItem): string {
   if (item.type === "process") {
     const stdout = String(item.stdout ?? "");
@@ -206,85 +189,70 @@ function ActivityGlyph({ item, size = 13 }: { item: TranscriptItem; size?: numbe
 }
 
 function ActivityRow({ item }: { item: TranscriptItem }) {
+  const [open, setOpen] = useState(false);
   const status = itemStatus(item);
   const stats = item.type === "file_edit" ? diffStats(item.diff) : null;
-
-  return (
-    <div className="task-flow-row">
-      <span className="task-flow-row-icon"><ActivityGlyph item={item} /></span>
-      <span className="task-flow-row-main">
-        {item.type === "process" ? (
-          <>
-            <span className="task-flow-verb">Ran</span>
-            <span className="task-flow-primary code">{processCommand(item)}</span>
-          </>
-        ) : item.type === "file_edit" ? (
-          <>
-            <span className="task-flow-verb">Edited</span>
-            <span className="task-flow-primary task-flow-path">{fileLabel(item)}</span>
-            {stats && (stats.added > 0 || stats.removed > 0) ? (
-              <span className="task-flow-diffstat">
-                <span className="task-flow-plus">+{stats.added}</span>
-                <span className="task-flow-minus">-{stats.removed}</span>
-              </span>
-            ) : null}
-          </>
-        ) : (
-          <>
-            <span className="task-flow-verb">Used</span>
-            <span className="task-flow-primary">{item.toolName || "Tool"}</span>
-          </>
-        )}
-      </span>
-      <ActivityStatus status={status} />
-    </div>
-  );
-}
-
-function ActivityDetail({ item }: { item: TranscriptItem }) {
   const detail = activityDetail(item);
-  const title = item.type === "process" ? processCommand(item) : item.type === "file_edit" ? fileLabel(item) : item.toolName || "Tool";
-  const kind = item.type === "process" ? "Command" : item.type === "file_edit" ? "Change" : "Tool";
+  const expandable = Boolean(detail);
+
   return (
-    <div className="task-flow-detail">
-      <div className="task-flow-detail-head">
-        <ActivityGlyph item={item} size={12} />
-        <span className="task-flow-detail-title">{title}</span>
-        <span className="task-flow-detail-kind">{kind}</span>
-      </div>
-      {detail ? <pre>{detail}</pre> : <div className="task-flow-detail-empty">No additional output.</div>}
+    <div className={`task-flow-row-wrap ${open ? "is-open" : ""}`}>
+      <button
+        type="button"
+        className={`task-flow-row ${expandable ? "is-expandable" : "no-detail"}`}
+        onClick={() => expandable && setOpen((value) => !value)}
+        aria-expanded={expandable ? open : undefined}
+        disabled={!expandable}
+        title={expandable ? (open ? "Collapse details" : "Expand details") : undefined}
+      >
+        <span className="task-flow-chevron" aria-hidden="true"><ChevronRight size={12} /></span>
+        <span className="task-flow-row-icon"><ActivityGlyph item={item} /></span>
+        <span className="task-flow-row-main">
+          {item.type === "process" ? (
+            <>
+              <span className="task-flow-verb">Ran</span>
+              <span className="task-flow-primary code">{processCommand(item)}</span>
+            </>
+          ) : item.type === "file_edit" ? (
+            <>
+              <span className="task-flow-verb">Edited</span>
+              <span className="task-flow-primary task-flow-path">{fileLabel(item)}</span>
+              {stats && (stats.added > 0 || stats.removed > 0) ? (
+                <span className="task-flow-diffstat">
+                  <span className="task-flow-plus">+{stats.added}</span>
+                  <span className="task-flow-minus">-{stats.removed}</span>
+                </span>
+              ) : null}
+            </>
+          ) : (
+            <>
+              <span className="task-flow-verb">Used</span>
+              <span className="task-flow-primary">{item.toolName || "Tool"}</span>
+            </>
+          )}
+        </span>
+        <ActivityStatus status={status} />
+      </button>
+
+      {expandable ? (
+        <div className={`task-flow-inline-detail-grid ${open ? "open" : ""}`}>
+          <div className="task-flow-inline-detail-inner">
+            <div className="task-flow-inline-detail">
+              <pre>{detail}</pre>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
 
 function ActivityFlow({ items }: { items: TranscriptItem[] }) {
-  const hasDetails = items.some((item) => Boolean(activityDetail(item)));
-  const compact = items.length === 1;
   return (
-    <section className={`task-flow ${compact ? "task-flow-single" : ""}`} aria-label="Task activity">
-      {!compact ? (
-        <div className="task-flow-summary">
-          <span className="task-flow-summary-icon"><Wrench size={13} /></span>
-          <span className="task-flow-summary-copy">
-            <strong>{activitySummary(items)}</strong>
-            <span>{items.length} actions</span>
-          </span>
-        </div>
-      ) : null}
-
+    <section className="task-flow" aria-label="Task activity">
       <div className="task-flow-list">
         {items.map((item) => <ActivityRow key={item.id} item={item} />)}
       </div>
-
-      {hasDetails ? (
-        <div className="task-flow-disclosure">
-          <Disclosure label="Details" openByDefault={items.some((item) => ["running", "started"].includes(itemStatus(item)))}>
-            <div className="task-flow-details">
-              {items.map((item) => <ActivityDetail key={item.id} item={item} />)}
-            </div>
-          </Disclosure>
-        </div>
-      ) : null}
     </section>
   );
 }
