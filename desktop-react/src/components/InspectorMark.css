@@ -1,127 +1,143 @@
-/* Minimal atomic-orbit treatment for the Runtime empty-state mark. */
+/* Minimal asymmetric atomic-orbit treatment for the Runtime empty-state mark. */
 
 .runtime-empty-visual {
-  width: 112px;
-  height: 104px;
+  position: relative;
+  width: 122px;
+  height: 106px;
   margin-bottom: 22px;
   transform: translateZ(0);
 }
 
-/* soft nucleus halo only — no decorative stars */
+/* Very soft center glow. No nucleus card, no decorative stars. */
 .runtime-empty-visual::before {
   content: "";
   position: absolute;
-  width: 70px;
-  height: 70px;
+  left: 50%;
+  top: 50%;
+  width: 54px;
+  height: 54px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(139, 124, 246, .11), rgba(139, 124, 246, .03) 52%, transparent 74%);
-  filter: blur(6px);
-  opacity: .82;
-  animation: runtime-atom-halo 5.2s ease-in-out infinite;
+  background: radial-gradient(circle, rgba(139, 124, 246, .105), rgba(139, 124, 246, .025) 52%, transparent 74%);
+  filter: blur(7px);
+  transform: translate(-47%, -49%);
+  opacity: .72;
+  animation: runtime-atom-halo 5.8s ease-in-out infinite;
+  pointer-events: none;
 }
 
-/* third atom orbit */
+/* Third orbit — deliberately offset so the atom is not geometrically perfect. */
 .runtime-empty-visual::after {
   content: "";
   position: absolute;
-  width: 102px;
-  height: 48px;
-  border: 1px solid rgba(139, 124, 246, .14);
+  left: 50%;
+  top: 50%;
+  width: 106px;
+  height: 43px;
+  border: 1px solid rgba(139, 124, 246, .145);
   border-radius: 50%;
-  transform: rotate(58deg);
+  transform: translate(-46%, -42%) rotate(49deg);
+  transform-origin: center;
   pointer-events: none;
+  transition: border-color 200ms ease, opacity 200ms ease;
 }
 
 .runtime-orbit {
   position: absolute;
+  left: 50%;
+  top: 50%;
   border-radius: 50%;
   box-shadow: none;
+  transform-origin: center;
   transition: border-color 200ms ease, opacity 200ms ease;
 }
 
-/* horizontal orbit */
+/* Wide, slightly low orbit. */
 .runtime-orbit-one {
-  width: 104px;
-  height: 48px;
+  width: 114px;
+  height: 44px;
   border: 1px solid rgba(255, 255, 255, .075);
-  transform: rotate(-4deg);
+  transform: translate(-54%, -43%) rotate(-8deg);
   animation: none;
 }
 
-/* electron on first orbit */
 .runtime-orbit-one::before {
   content: "";
   position: absolute;
-  width: 5px;
-  height: 5px;
-  top: 20px;
-  right: -3px;
+  width: 6px;
+  height: 6px;
+  right: 4px;
+  top: 8px;
   border-radius: 50%;
-  background: #9287ec;
-  box-shadow: 0 0 9px rgba(139, 124, 246, .38);
+  background: #9589ef;
+  box-shadow: 0 0 10px rgba(139, 124, 246, .4);
+  animation: runtime-electron-pulse 3.6s ease-in-out infinite;
 }
 
 .runtime-orbit-one::after {
   content: none;
 }
 
-/* diagonal orbit */
+/* Narrower rising orbit, shifted to the right. */
 .runtime-orbit-two {
-  width: 102px;
-  height: 48px;
-  border: 1px solid rgba(139, 124, 246, .13);
-  transform: rotate(-58deg);
+  width: 98px;
+  height: 42px;
+  border: 1px solid rgba(139, 124, 246, .135);
+  transform: translate(-44%, -56%) rotate(-63deg);
   box-shadow: none;
   animation: none;
 }
 
-/* electron on second orbit */
 .runtime-orbit-two::before {
   content: "";
   position: absolute;
   width: 4px;
   height: 4px;
-  left: 9px;
-  top: 8px;
+  left: 7px;
+  bottom: 7px;
   border-radius: 50%;
-  background: rgba(169, 158, 255, .78);
-  box-shadow: 0 0 8px rgba(139, 124, 246, .28);
+  background: rgba(171, 160, 255, .76);
+  box-shadow: 0 0 8px rgba(139, 124, 246, .3);
+  animation: runtime-electron-pulse 4.4s ease-in-out -1.3s infinite;
 }
 
 .runtime-orbit-two::after {
   content: none;
 }
 
-/* third electron; moves gently around the nucleus */
+/* Third electron sits off-center to keep the composition intentionally unbalanced. */
 .runtime-orbit-dot {
   position: absolute;
-  width: 6px;
-  height: 6px;
-  top: 17px;
-  left: 53px;
+  z-index: 1;
+  width: 5px;
+  height: 5px;
+  left: 22px;
+  top: 72px;
   border-radius: 50%;
-  background: #9b90f4;
-  box-shadow: 0 0 0 2px rgba(139, 124, 246, .045), 0 0 10px rgba(139, 124, 246, .42);
-  transform-origin: 3px 35px;
-  animation: runtime-atom-electron 10s linear infinite;
+  background: #8f84e9;
+  box-shadow: 0 0 9px rgba(139, 124, 246, .34);
+  transform: none;
+  animation: runtime-electron-pulse 4s ease-in-out -2.1s infinite;
 }
 
+/* The waveform itself is now the nucleus — no square container. */
 .runtime-empty-icon {
-  position: relative;
-  z-index: 2;
-  width: 47px;
-  height: 47px;
-  border: 1px solid #313642;
-  border-radius: 14px;
-  background: linear-gradient(145deg, rgba(29, 32, 40, .98), rgba(17, 20, 26, .98));
-  color: #a196f2;
+  position: absolute;
+  z-index: 3;
+  left: 50%;
+  top: 50%;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #a69af8;
   outline: none;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, .045),
-    0 11px 26px rgba(0, 0, 0, .2),
-    0 0 18px rgba(139, 124, 246, .045);
-  animation: runtime-atom-nucleus 5.2s ease-in-out infinite;
-  transition: transform 220ms cubic-bezier(.2, .75, .2, 1), border-color 200ms ease, color 200ms ease, box-shadow 200ms ease;
+  box-shadow: none;
+  transform: translate(-46%, -47%);
+  animation: runtime-atom-nucleus 5.4s ease-in-out infinite;
+  transition: color 200ms ease, filter 200ms ease, transform 220ms cubic-bezier(.2, .75, .2, 1);
 }
 
 .runtime-empty-icon::before,
@@ -130,51 +146,52 @@
 }
 
 .runtime-empty-icon svg {
-  filter: drop-shadow(0 0 6px rgba(139, 124, 246, .14));
+  width: 27px;
+  height: 27px;
+  filter: drop-shadow(0 0 7px rgba(139, 124, 246, .2));
   transition: transform 220ms cubic-bezier(.2, .75, .2, 1), filter 200ms ease;
 }
 
 .runtime-empty:hover .runtime-empty-icon {
-  transform: translateY(-1px) scale(1.025);
-  border-color: rgba(139, 124, 246, .3);
-  color: #ada3ff;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, .055),
-    0 13px 30px rgba(0, 0, 0, .22),
-    0 0 22px rgba(139, 124, 246, .075);
+  color: #b3a9ff;
+  transform: translate(-46%, calc(-47% - 1px)) scale(1.035);
+  filter: drop-shadow(0 0 3px rgba(139, 124, 246, .08));
 }
 
 .runtime-empty:hover .runtime-empty-icon svg {
-  transform: scale(1.04);
-  filter: drop-shadow(0 0 8px rgba(139, 124, 246, .2));
+  transform: scale(1.045);
+  filter: drop-shadow(0 0 9px rgba(139, 124, 246, .27));
 }
 
 .runtime-empty:hover .runtime-orbit-one {
-  border-color: rgba(255, 255, 255, .095);
+  border-color: rgba(255, 255, 255, .1);
 }
 
 .runtime-empty:hover .runtime-orbit-two,
 .runtime-empty:hover .runtime-empty-visual::after {
-  border-color: rgba(139, 124, 246, .18);
-}
-
-@keyframes runtime-atom-electron {
-  to { transform: rotate(360deg); }
+  border-color: rgba(139, 124, 246, .19);
 }
 
 @keyframes runtime-atom-halo {
-  0%, 100% { opacity: .68; transform: scale(.96); }
-  50% { opacity: .9; transform: scale(1.035); }
+  0%, 100% { opacity: .58; transform: translate(-47%, -49%) scale(.96); }
+  50% { opacity: .82; transform: translate(-47%, -49%) scale(1.04); }
 }
 
 @keyframes runtime-atom-nucleus {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-1px); }
+  0%, 100% { transform: translate(-46%, -47%); }
+  50% { transform: translate(-46%, calc(-47% - 1px)); }
+}
+
+@keyframes runtime-electron-pulse {
+  0%, 100% { opacity: .62; scale: .92; }
+  50% { opacity: 1; scale: 1.08; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .runtime-empty-visual::before,
   .runtime-orbit-dot,
+  .runtime-orbit-one::before,
+  .runtime-orbit-two::before,
   .runtime-empty-icon {
     animation: none !important;
   }
