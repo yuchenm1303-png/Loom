@@ -1,19 +1,23 @@
 .composer-popover.model-manager-popover {
-  width: min(500px, calc(100vw - 72px));
-  max-height: min(650px, calc(100vh - 110px));
+  width: min(410px, calc(100vw - 72px));
+  max-height: min(560px, calc(100vh - 110px));
   overflow-y: auto;
   scrollbar-width: thin;
-  padding: 11px;
+  padding: 10px;
 }
 
 .model-manager-popover .composer-popover-head {
   position: sticky;
-  top: -11px;
+  top: -10px;
   z-index: 4;
   margin: -1px -1px 2px;
-  padding: 11px 6px 12px;
+  padding: 9px 5px 10px;
   background: linear-gradient(180deg, rgba(25,27,34,.995), rgba(25,27,34,.965));
   backdrop-filter: blur(18px);
+}
+
+.model-manager-popover .composer-popover-context {
+  display: none;
 }
 
 @media (max-height: 720px) {
