@@ -3,6 +3,11 @@ import { ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import readline from "node:readline";
+import {
+  DesktopModelManager,
+  type AddModelInput,
+  type ModelLaunchSpec,
+} from "./modelManager.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -18,6 +23,15 @@ interface JsonRpcResponse {
   params?: Record<string, unknown>;
 }
 
+interface RuntimeStatus {
+  activeThreadIds?: unknown[];
+}
+
+interface ModelRestartResult {
+  initialization: unknown;
+  models: ReturnType<DesktopModelManager["snapshot"]>;
+}
+
 class LoomRpcProcess {
   private child: ChildProcessWithoutNullStreams | null = null;
   private nextId = 1;
@@ -26,7 +40,10 @@ class LoomRpcProcess {
   private initializeResult: unknown = null;
   private connectPromise: Promise<unknown> | null = null;
 
-  constructor(private readonly notify: (payload: JsonRpcResponse) => void) {}
+  constructor(
+    private readonly notify: (payload: JsonRpcResponse) => void,
+    private readonly models: DesktopModelManager,
+  ) {}
 
   async connect(): Promise<unknown> {
     if (this.child && this.initialized) return this.initializeResult;
@@ -62,6 +79,19 @@ class LoomRpcProcess {
     return promise;
   }
 
+  async assertRestartSafe(): Promise<void> {
+    if (!this.child || !this.initialized) return;
+    const status = await this.call("runtime/status", {}) as RuntimeStatus;
+    if (Array.isArray(status.activeThreadIds) && status.activeThreadIds.length > 0) {
+      throw new Error("Finish or stop the current turn before switching models.");
+    }
+  }
+
+  async restart(): Promise<unknown> {
+    this.stop();
+    return this.connect();
+  }
+
   stop(): void {
     const child = this.child;
     this.child = null;
@@ -79,11 +109,27 @@ class LoomRpcProcess {
   }
 
   private startProcess(): void {
+    const spec = this.models.current ?? this.models.ensureInitial();
     const python = process.env.LOOM_PYTHON || (process.platform === "win32" ? "python" : "python3");
     const script = path.join(REPO_ROOT, "loom_app_server.py");
-    const child = spawn(python, [script, "--workspace", REPO_ROOT], {
+    const args = [
+      script,
+      "--workspace",
+      REPO_ROOT,
+      "--provider",
+      spec.provider,
+      "--model",
+      spec.model,
+    ];
+    if (spec.baseUrl) args.push("--base-url", spec.baseUrl);
+
+    const child = spawn(python, args, {
       cwd: REPO_ROOT,
-      env: { ...process.env, PYTHONUTF8: "1" },
+      env: {
+        ...process.env,
+        PYTHONUTF8: "1",
+        LOOM_API_KEY: spec.apiKey,
+      },
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
     });
@@ -93,8 +139,11 @@ class LoomRpcProcess {
     stdout.on("line", (line) => this.handleLine(line));
     child.stderr.setEncoding("utf8");
     child.stderr.on("data", (chunk) => console.error(`[loom-app-server] ${String(chunk).trimEnd()}`));
-    child.on("error", (error) => this.failAll(error));
+    child.on("error", (error) => {
+      if (this.child === child) this.failAll(error);
+    });
     child.on("exit", (code, signal) => {
+      if (this.child !== child) return;
       this.child = null;
       this.initialized = false;
       this.initializeResult = null;
@@ -130,7 +179,33 @@ class LoomRpcProcess {
 }
 
 let mainWindow: BrowserWindow | null = null;
-const rpc = new LoomRpcProcess((payload) => mainWindow?.webContents.send("loom:notification", payload));
+const modelManager = new DesktopModelManager(REPO_ROOT);
+const rpc = new LoomRpcProcess(
+  (payload) => mainWindow?.webContents.send("loom:notification", payload),
+  modelManager,
+);
+
+async function changeModel(
+  apply: () => ModelLaunchSpec,
+  options: { persistSelection?: string } = {},
+): Promise<ModelRestartResult> {
+  await rpc.assertRestartSafe();
+  const previous = modelManager.current ?? modelManager.ensureInitial();
+  apply();
+  try {
+    const initialization = await rpc.restart();
+    if (options.persistSelection) modelManager.setActive(options.persistSelection);
+    return { initialization, models: modelManager.snapshot() };
+  } catch (error) {
+    modelManager.restore(previous);
+    try {
+      await rpc.restart();
+    } catch (rollbackError) {
+      console.error("Could not restore previous Loom model after failed switch", rollbackError);
+    }
+    throw error;
+  }
+}
 
 function rendererFailureDocument(title: string, detail: string): string {
   const safeTitle = title.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char] ?? char);
@@ -217,6 +292,22 @@ function createWindow(): void {
 ipcMain.handle("loom:connect", () => rpc.connect());
 ipcMain.handle("loom:call", (_event, method: string, params?: Record<string, unknown>) => rpc.call(method, params ?? {}));
 ipcMain.handle("loom:disconnect", () => rpc.stop());
+ipcMain.handle("loom:model-list", () => modelManager.snapshot());
+ipcMain.handle("loom:model-switch", async (_event, selection: string) => {
+  const value = String(selection || "").trim();
+  if (!value) throw new Error("Model profile is required");
+  return changeModel(() => modelManager.useProfile(value), { persistSelection: value });
+});
+ipcMain.handle("loom:model-switch-current", async (_event, model: string) => {
+  const value = String(model || "").trim();
+  if (!value) throw new Error("Model ID is required");
+  return changeModel(() => modelManager.useModelName(value));
+});
+ipcMain.handle("loom:model-add", async (_event, input: AddModelInput) => {
+  await rpc.assertRestartSafe();
+  const profile = modelManager.add(input);
+  return changeModel(() => modelManager.useProfile(profile.selection), { persistSelection: profile.selection });
+});
 
 app.whenReady().then(createWindow);
 app.on("activate", () => {

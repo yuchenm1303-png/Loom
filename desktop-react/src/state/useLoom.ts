@@ -1,5 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { InitializeResult, ThreadReadResult, ThreadRecord, TranscriptItem, TurnRecord } from "../types/loom";
+import type {
+  AddModelInput,
+  InitializeResult,
+  ModelRestartResult,
+  ModelSnapshot,
+  ThreadReadResult,
+  ThreadRecord,
+  TranscriptItem,
+  TurnRecord,
+} from "../types/loom";
 
 function flattenItems(turns: TurnRecord[]): TranscriptItem[] {
   return turns.flatMap((turn) => turn.items ?? []);
@@ -46,6 +55,8 @@ export function useLoom() {
   const [connection, setConnection] = useState<"connecting" | "ready" | "error">("connecting");
   const [error, setError] = useState("");
   const [runtime, setRuntime] = useState<InitializeResult["runtime"]>({});
+  const [models, setModels] = useState<ModelSnapshot | null>(null);
+  const [modelBusy, setModelBusy] = useState(false);
   const [threads, setThreads] = useState<ThreadRecord[]>([]);
   const [active, setActive] = useState<ThreadReadResult | null>(null);
   const [items, setItems] = useState<TranscriptItem[]>([]);
@@ -62,6 +73,12 @@ export function useLoom() {
     const next = result.threads ?? [];
     setThreads(next);
     return next;
+  }, []);
+
+  const refreshModels = useCallback(async () => {
+    const snapshot = await requireBridge().listModels<ModelSnapshot>();
+    setModels(snapshot);
+    return snapshot;
   }, []);
 
   const openThread = useCallback(async (threadId: string) => {
@@ -111,6 +128,54 @@ export function useLoom() {
     setThreads((current) => current.map((thread) => (thread.id === updated.id ? updated : thread)));
     setActive((current) => current && current.thread.id === updated.id ? { ...current, thread: updated } : current);
   }, [active?.thread.id]);
+
+  const applyModelRestart = useCallback(async (result: ModelRestartResult) => {
+    setRuntime(result.initialization.runtime ?? {});
+    setModels(result.models);
+    const preferredId = activeIdRef.current;
+    const list = await refreshThreads();
+    if (preferredId && list.some((thread) => thread.id === preferredId)) {
+      await openThread(preferredId);
+    } else if (list.length) {
+      await openThread(list[0].id);
+    } else {
+      activeIdRef.current = "";
+      setActive(null);
+      setItems([]);
+      setTurnActive(false);
+      setTurnStartedAt(null);
+    }
+  }, [openThread, refreshThreads]);
+
+  const switchModelProfile = useCallback(async (selection: string) => {
+    setModelBusy(true);
+    try {
+      const result = await requireBridge().switchModelProfile<ModelRestartResult>(selection);
+      await applyModelRestart(result);
+    } finally {
+      setModelBusy(false);
+    }
+  }, [applyModelRestart]);
+
+  const switchCurrentModel = useCallback(async (model: string) => {
+    setModelBusy(true);
+    try {
+      const result = await requireBridge().switchCurrentModel<ModelRestartResult>(model);
+      await applyModelRestart(result);
+    } finally {
+      setModelBusy(false);
+    }
+  }, [applyModelRestart]);
+
+  const addModel = useCallback(async (input: AddModelInput) => {
+    setModelBusy(true);
+    try {
+      const result = await requireBridge().addModel<ModelRestartResult>({ ...input });
+      await applyModelRestart(result);
+    } finally {
+      setModelBusy(false);
+    }
+  }, [applyModelRestart]);
 
   const respondApproval = useCallback(async (item: TranscriptItem, approved: boolean) => {
     if (!active?.thread.id || !item.callId) return;
@@ -200,6 +265,8 @@ export function useLoom() {
         const initialized = await bridge.connect() as InitializeResult;
         if (disposed) return;
         setRuntime(initialized.runtime ?? {});
+        await refreshModels();
+        if (disposed) return;
         const list = await refreshThreads();
         if (disposed) return;
         setConnection("ready");
@@ -213,12 +280,14 @@ export function useLoom() {
     return () => {
       disposed = true;
     };
-  }, [openThread, refreshThreads]);
+  }, [openThread, refreshModels, refreshThreads]);
 
   return useMemo(() => ({
     connection,
     error,
     runtime,
+    models,
+    modelBusy,
     threads,
     active,
     items,
@@ -229,6 +298,29 @@ export function useLoom() {
     send,
     interrupt,
     setPermissionMode,
+    switchModelProfile,
+    switchCurrentModel,
+    addModel,
     respondApproval,
-  }), [active, connection, error, interrupt, items, newThread, openThread, respondApproval, runtime, send, setPermissionMode, threads, turnActive, turnStartedAt]);
+  }), [
+    active,
+    addModel,
+    connection,
+    error,
+    interrupt,
+    items,
+    modelBusy,
+    models,
+    newThread,
+    openThread,
+    respondApproval,
+    runtime,
+    send,
+    setPermissionMode,
+    switchCurrentModel,
+    switchModelProfile,
+    threads,
+    turnActive,
+    turnStartedAt,
+  ]);
 }
