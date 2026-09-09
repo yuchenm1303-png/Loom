@@ -5,6 +5,7 @@ import { Inspector } from "./components/Inspector";
 import { RunProgress } from "./components/RunProgress";
 import { Sidebar } from "./components/Sidebar";
 import { Transcript } from "./components/Transcript";
+import "./components/inline-thinking.css";
 import { useLoom } from "./state/useLoom";
 
 export default function App() {
@@ -58,7 +59,7 @@ export default function App() {
           </div>
         </header>
 
-        <div className="conversation-stage">
+        <div className={`conversation-stage ${running ? "is-running" : ""}`}>
           {running ? <RunProgress {...progressProps} placement="top" /> : null}
           <Transcript
             items={loom.items}
