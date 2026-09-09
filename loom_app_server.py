@@ -7,6 +7,7 @@ from typing import TextIO
 
 from app.agent_runtime import PermissionMode
 from app.ai import ReasoningRequest
+from app.ai.reasoning_catalog import reasoning_capability
 from app.app_server_reasoning import serve_reasoning_managed_streaming_stdio
 from loom_cli import _build_runtime, _resolve_new_permission_mode
 
@@ -53,6 +54,38 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _validate_reasoning_for_runtime(
+    *,
+    model: str,
+    provider: str,
+    base_url: str,
+    reasoning: ReasoningRequest | None,
+) -> dict[str, object] | None:
+    capability = reasoning_capability(
+        model=model,
+        adapter=provider,
+        base_url=base_url,
+    )
+    if reasoning is None:
+        return capability
+    if capability is None:
+        raise SystemExit(f"Model {model!r} does not advertise a supported reasoning control")
+    if reasoning.kind.value != str(capability.get("kind") or ""):
+        raise SystemExit(
+            f"Reasoning kind {reasoning.kind.value!r} is not supported by model {model!r}"
+        )
+    supported = {
+        str(option.get("value") or "")
+        for option in capability.get("options") or []
+        if isinstance(option, dict)
+    }
+    if reasoning.value not in supported:
+        raise SystemExit(
+            f"Reasoning value {reasoning.value!r} is not supported by model {model!r}"
+        )
+    return capability
+
+
 def main(argv: list[str] | None = None) -> int:
     # JSON-RPC v1 explicitly uses UTF-8 JSONL. Configure this before parsing or
     # runtime startup so locale-dependent redirected stdio cannot enter the
@@ -70,7 +103,15 @@ def main(argv: list[str] | None = None) -> int:
     # construction is intentionally reused from the CLI so credentials and
     # provider configuration never enter client-visible protocol state.
     runtime, store, model = _build_runtime(args)
-    runtime.reasoning = ReasoningRequest.from_values(args.reasoning_kind, args.reasoning_value)
+    reasoning = ReasoningRequest.from_values(args.reasoning_kind, args.reasoning_value)
+    capability = _validate_reasoning_for_runtime(
+        model=model,
+        provider=str(args.provider or ""),
+        base_url=str(args.base_url or ""),
+        reasoning=reasoning,
+    )
+    runtime.reasoning = reasoning
+    runtime.reasoning_capability = capability
     permission_mode = _resolve_new_permission_mode(args)
     return serve_reasoning_managed_streaming_stdio(
         runtime=runtime,
