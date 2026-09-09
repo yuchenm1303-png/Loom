@@ -10,6 +10,10 @@ import type {
   TurnRecord,
 } from "../types/loom";
 
+type ThreadView = "active" | "archived";
+type ThreadCounts = { active: number; archived: number; all: number };
+type ThreadListResult = { threads: ThreadRecord[]; counts?: Partial<ThreadCounts> };
+
 function flattenItems(turns: TurnRecord[]): TranscriptItem[] {
   return turns.flatMap((turn) => turn.items ?? []);
 }
@@ -58,20 +62,39 @@ export function useLoom() {
   const [models, setModels] = useState<ModelSnapshot | null>(null);
   const [modelBusy, setModelBusy] = useState(false);
   const [threads, setThreads] = useState<ThreadRecord[]>([]);
+  const [threadView, setThreadViewState] = useState<ThreadView>("active");
+  const [threadCounts, setThreadCounts] = useState<ThreadCounts>({ active: 0, archived: 0, all: 0 });
   const [active, setActive] = useState<ThreadReadResult | null>(null);
   const [items, setItems] = useState<TranscriptItem[]>([]);
   const [turnActive, setTurnActive] = useState(false);
   const [turnStartedAt, setTurnStartedAt] = useState<number | null>(null);
   const activeIdRef = useRef("");
+  const threadViewRef = useRef<ThreadView>("active");
 
   useEffect(() => {
     activeIdRef.current = active?.thread.id ?? "";
   }, [active?.thread.id]);
 
-  const refreshThreads = useCallback(async () => {
-    const result = await requireBridge().call<{ threads: ThreadRecord[] }>("thread/list", { view: "active", limit: 100 });
+  const clearActive = useCallback(() => {
+    activeIdRef.current = "";
+    setActive(null);
+    setItems([]);
+    setTurnActive(false);
+    setTurnStartedAt(null);
+  }, []);
+
+  const refreshThreads = useCallback(async (viewOverride?: ThreadView) => {
+    const view = viewOverride ?? threadViewRef.current;
+    const result = await requireBridge().call<ThreadListResult>("thread/list", { view, limit: 100 });
     const next = result.threads ?? [];
     setThreads(next);
+    if (result.counts) {
+      setThreadCounts((current) => ({
+        active: Number(result.counts?.active ?? current.active),
+        archived: Number(result.counts?.archived ?? current.archived),
+        all: Number(result.counts?.all ?? current.all),
+      }));
+    }
     return next;
   }, []);
 
@@ -91,14 +114,60 @@ export function useLoom() {
     setTurnStartedAt(running ? turnStartFromRead(result) : null);
   }, []);
 
-  const newThread = useCallback(async () => {
-    const result = await requireBridge().call<{ thread: ThreadRecord }>("thread/start", {});
-    await refreshThreads();
+  const ensureSelection = useCallback(async (list: ThreadRecord[], preferredId = activeIdRef.current) => {
+    if (preferredId && list.some((thread) => thread.id === preferredId)) return;
+    if (list.length) {
+      await openThread(list[0].id);
+    } else {
+      clearActive();
+    }
+  }, [clearActive, openThread]);
+
+  const setThreadView = useCallback(async (view: ThreadView) => {
+    threadViewRef.current = view;
+    setThreadViewState(view);
+    const list = await refreshThreads(view);
+    await ensureSelection(list);
+  }, [ensureSelection, refreshThreads]);
+
+  const newThread = useCallback(async (workspace?: string) => {
+    const params = workspace?.trim() ? { workspace: workspace.trim() } : {};
+    const result = await requireBridge().call<{ thread: ThreadRecord }>("thread/start", params);
+    threadViewRef.current = "active";
+    setThreadViewState("active");
+    await refreshThreads("active");
+    await openThread(result.thread.id);
+  }, [openThread, refreshThreads]);
+
+  const renameThread = useCallback(async (threadId: string, title: string) => {
+    const result = await requireBridge().call<{ thread: ThreadRecord }>("thread/rename", { threadId, title });
+    const updated = result.thread;
+    setThreads((current) => current.map((thread) => (thread.id === updated.id ? updated : thread)));
+    setActive((current) => current && current.thread.id === updated.id ? { ...current, thread: updated } : current);
+  }, []);
+
+  const archiveThread = useCallback(async (threadId: string, archived: boolean) => {
+    await requireBridge().call<{ thread: ThreadRecord }>("thread/archive", { threadId, archived });
+    const list = await refreshThreads();
+    await ensureSelection(list);
+  }, [ensureSelection, refreshThreads]);
+
+  const deleteThread = useCallback(async (threadId: string) => {
+    await requireBridge().call("thread/delete", { threadId });
+    const list = await refreshThreads();
+    await ensureSelection(list, activeIdRef.current === threadId ? "" : activeIdRef.current);
+  }, [ensureSelection, refreshThreads]);
+
+  const forkThread = useCallback(async (threadId: string) => {
+    const result = await requireBridge().call<{ thread: ThreadRecord }>("thread/fork", { threadId });
+    threadViewRef.current = "active";
+    setThreadViewState("active");
+    await refreshThreads("active");
     await openThread(result.thread.id);
   }, [openThread, refreshThreads]);
 
   const send = useCallback(async (input: string) => {
-    if (!active?.thread.id || !input.trim()) return;
+    if (!active?.thread.id || active.thread.archived || !input.trim()) return;
     setTurnActive(true);
     setTurnStartedAt(Date.now());
     try {
@@ -108,7 +177,7 @@ export function useLoom() {
       setTurnStartedAt(null);
       throw cause;
     }
-  }, [active?.thread.id]);
+  }, [active?.thread.archived, active?.thread.id]);
 
   const interrupt = useCallback(async () => {
     if (!active?.thread.id) return;
@@ -119,7 +188,7 @@ export function useLoom() {
   }, [active?.thread.currentTurnId, active?.thread.id]);
 
   const setPermissionMode = useCallback(async (permissionMode: string) => {
-    if (!active?.thread.id) return;
+    if (!active?.thread.id || active.thread.archived) return;
     const result = await requireBridge().call<{ thread: ThreadRecord }>("thread/set_permission_mode", {
       threadId: active.thread.id,
       permissionMode,
@@ -127,7 +196,7 @@ export function useLoom() {
     const updated = result.thread;
     setThreads((current) => current.map((thread) => (thread.id === updated.id ? updated : thread)));
     setActive((current) => current && current.thread.id === updated.id ? { ...current, thread: updated } : current);
-  }, [active?.thread.id]);
+  }, [active?.thread.archived, active?.thread.id]);
 
   const applyModelRestart = useCallback(async (result: ModelRestartResult) => {
     setRuntime(result.initialization.runtime ?? {});
@@ -139,13 +208,9 @@ export function useLoom() {
     } else if (list.length) {
       await openThread(list[0].id);
     } else {
-      activeIdRef.current = "";
-      setActive(null);
-      setItems([]);
-      setTurnActive(false);
-      setTurnStartedAt(null);
+      clearActive();
     }
-  }, [openThread, refreshThreads]);
+  }, [clearActive, openThread, refreshThreads]);
 
   const switchModelProfile = useCallback(async (selection: string) => {
     setModelBusy(true);
@@ -203,7 +268,13 @@ export function useLoom() {
       if (message.method === "thread/updated") {
         const thread = params.thread as ThreadRecord | undefined;
         if (thread) {
-          setThreads((current) => current.map((entry) => (entry.id === thread.id ? thread : entry)));
+          const belongsInView = threadViewRef.current === "archived" ? Boolean(thread.archived) : !thread.archived;
+          setThreads((current) => {
+            const exists = current.some((entry) => entry.id === thread.id);
+            if (!belongsInView) return current.filter((entry) => entry.id !== thread.id);
+            if (exists) return current.map((entry) => (entry.id === thread.id ? thread : entry));
+            return [thread, ...current];
+          });
           if (thread.id === activeId) {
             setActive((current) => current && current.thread.id === thread.id ? { ...current, thread } : current);
             const running = threadIsRunning(thread);
@@ -215,10 +286,12 @@ export function useLoom() {
         return;
       }
       if (message.method === "thread/deleted") {
-        setThreads((current) => current.filter((entry) => entry.id !== String(params.threadId ?? "")));
+        const deletedId = String(params.threadId ?? "");
+        setThreads((current) => current.filter((entry) => entry.id !== deletedId));
+        if (deletedId && deletedId === activeId) clearActive();
         return;
       }
-      if (message.method === "thread/started") void refreshThreads();
+      if (message.method === "thread/started" && threadViewRef.current === "active") void refreshThreads("active");
       if (!activeId || threadId !== activeId) return;
 
       if (message.method === "item/started") {
@@ -252,7 +325,7 @@ export function useLoom() {
       }
     });
     return unsubscribe;
-  }, [openThread, refreshThreads]);
+  }, [clearActive, openThread, refreshThreads]);
 
   useEffect(() => {
     let disposed = false;
@@ -267,7 +340,9 @@ export function useLoom() {
         setRuntime(initialized.runtime ?? {});
         await refreshModels();
         if (disposed) return;
-        const list = await refreshThreads();
+        threadViewRef.current = "active";
+        setThreadViewState("active");
+        const list = await refreshThreads("active");
         if (disposed) return;
         setConnection("ready");
         if (list.length) await openThread(list[0].id);
@@ -289,12 +364,19 @@ export function useLoom() {
     models,
     modelBusy,
     threads,
+    threadView,
+    threadCounts,
     active,
     items,
     turnActive,
     turnStartedAt,
     openThread,
     newThread,
+    renameThread,
+    archiveThread,
+    deleteThread,
+    forkThread,
+    setThreadView,
     send,
     interrupt,
     setPermissionMode,
@@ -305,21 +387,28 @@ export function useLoom() {
   }), [
     active,
     addModel,
+    archiveThread,
     connection,
+    deleteThread,
     error,
+    forkThread,
     interrupt,
     items,
     modelBusy,
     models,
     newThread,
     openThread,
+    renameThread,
     respondApproval,
     runtime,
     send,
     setPermissionMode,
+    setThreadView,
     switchCurrentModel,
     switchModelProfile,
+    threadCounts,
     threads,
+    threadView,
     turnActive,
     turnStartedAt,
   ]);
