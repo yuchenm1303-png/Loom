@@ -96,7 +96,12 @@ export class DesktopModelManager {
   }
 
   add(input: AddModelInput): ModelProfile {
-    return this.runBridge<ModelProfile>("save", input);
+    // ``AddModelInput`` is a concrete record that the registry's runtime
+    // serializer rejects as ``Record<string, unknown>`` because its properties
+    // are not implicitly indexable. The bridge command itself serializes the
+    // payload, so widening to ``unknown`` at this seam is the right place to
+    // bridge a typed input into an indexable record.
+    return this.runBridge<ModelProfile>("save", input as unknown as Record<string, unknown>);
   }
 
   setActive(selection: string): void {
