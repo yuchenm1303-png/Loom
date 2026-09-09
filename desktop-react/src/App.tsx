@@ -72,6 +72,7 @@ export default function App() {
           {running ? <RunProgress {...progressProps} placement="top" /> : null}
           <Transcript
             items={loom.items}
+            running={running}
             promptDisabled={conversationDisabled}
             onPrompt={(prompt) => void loom.send(prompt)}
             onApproval={(item, approved) => void loom.respondApproval(item, approved)}
