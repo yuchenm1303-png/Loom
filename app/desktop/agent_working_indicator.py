@@ -53,7 +53,10 @@ class AgentWorkingGlyph(QWidget):
         self._timer.timeout.connect(self._advance)
 
     def set_active(self, active: bool) -> None:
-        self._active = bool(active)
+        active = bool(active)
+        if active == self._active:
+            return
+        self._active = active
         if self._active and theme.motion_enabled():
             if not self._timer.isActive():
                 self._timer.start()
@@ -118,6 +121,8 @@ class AgentWorkingIndicator(QWidget):
 
     def set_active(self, active: bool) -> None:
         active = bool(active)
+        if active == self._active:
+            return
         self._active = active
         self.glyph.set_active(active)
         self.setVisible(active)
@@ -174,7 +179,7 @@ def install_widgets() -> None:
 
     def set_agent_working(self: Any, active: bool) -> None:
         indicator = getattr(self, "agent_working_indicator", None)
-        if indicator is None:
+        if indicator is None or indicator.active == bool(active):
             return
         # Showing a new tail row may require one structural move. Hiding it does
         # not: visibility alone reclaims its space without disturbing siblings.
