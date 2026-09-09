@@ -41,6 +41,7 @@ from app.desktop import runtime_feedback as _runtime_feedback
 from app.desktop import activity_compact_panel as _activity_compact_panel
 from app.desktop import disclosure_motion as _disclosure_motion
 from app.desktop import agent_working_indicator as _agent_working_indicator
+from app.desktop import transcript_flow as _transcript_flow
 from app.desktop.thread_presentation import ThreadListItemWidget, thread_row_size
 
 # Install the task presentation pipeline in order. The low-reflow disclosure
@@ -61,6 +62,9 @@ _user_bubble_alignment.install()
 _disclosure_motion.install()
 _agent_working_indicator.install_widgets()
 _message_actions_turn_boundary.install_view()
+# Final integrity pass: the keyed reconciler may change canonical order after a
+# live snapshot refresh, so physically move existing Qt widgets to that order.
+_transcript_flow.install()
 _widgets.MessageWidget = MessageWidget
 _widgets.TranscriptView = TranscriptView
 _widgets.ThreadListItemWidget = ThreadListItemWidget
