@@ -89,3 +89,87 @@ def test_transcript_uses_durable_response_time(app, monkeypatch):
     assert message.message_actions.isHidden() is False
     assert message.message_actions.time_label.text() == "10:49"
     view.close()
+
+
+def _entry(key: str, kind: str, text: str = "", *, streaming: bool = False) -> TranscriptEntry:
+    item_type = {
+        "user": "user_message",
+        "assistant": "assistant_message",
+        "tool": "tool_call",
+    }.get(kind, kind)
+    item = {
+        "id": key,
+        "type": item_type,
+        "status": "running" if streaming else "completed",
+    }
+    if text:
+        item["text"] = text
+    if kind == "tool":
+        item["toolName"] = "exec"
+    return TranscriptEntry(
+        key=key,
+        kind=kind,
+        text=text,
+        streaming=streaming,
+        item=item,
+    )
+
+
+def test_completed_item_does_not_get_footer_while_turn_is_still_active(app, monkeypatch):
+    """item/completed is not the end of an agent turn when tools can follow."""
+    monkeypatch.setenv("LOOM_REDUCE_MOTION", "1")
+    view = TranscriptView()
+    view.resize(720, 420)
+    view.setProperty("turnActive", True)
+    entries = [
+        _entry("user:1", "user", "Clean my disk"),
+        _entry("assistant:1", "assistant", "I will scan it first."),
+        _entry("tool:1", "tool"),
+    ]
+
+    view.render(entries)
+    app.processEvents()
+
+    assert view._widgets["assistant:1"].message_actions.isHidden() is True
+    view.close()
+
+
+def test_only_last_assistant_in_completed_turn_gets_footer(app, monkeypatch):
+    """Intermediate narration stays chrome-free even after the full turn ends."""
+    monkeypatch.setenv("LOOM_REDUCE_MOTION", "1")
+    view = TranscriptView()
+    view.resize(720, 420)
+    view.setProperty("turnActive", False)
+    entries = [
+        _entry("user:1", "user", "Clean my disk"),
+        _entry("assistant:1", "assistant", "I will scan it first."),
+        _entry("tool:1", "tool"),
+        _entry("assistant:2", "assistant", "Cleanup finished."),
+    ]
+
+    view.render(entries)
+    app.processEvents()
+
+    assert view._widgets["assistant:1"].message_actions.isHidden() is True
+    assert view._widgets["assistant:2"].message_actions.isHidden() is False
+    view.close()
+
+
+def test_previous_turn_footer_stays_while_new_turn_is_active(app, monkeypatch):
+    monkeypatch.setenv("LOOM_REDUCE_MOTION", "1")
+    view = TranscriptView()
+    view.resize(720, 420)
+    view.setProperty("turnActive", True)
+    entries = [
+        _entry("user:1", "user", "First question"),
+        _entry("assistant:1", "assistant", "First final answer"),
+        _entry("user:2", "user", "Second question"),
+        _entry("assistant:2", "assistant", "Working on it"),
+    ]
+
+    view.render(entries)
+    app.processEvents()
+
+    assert view._widgets["assistant:1"].message_actions.isHidden() is False
+    assert view._widgets["assistant:2"].message_actions.isHidden() is True
+    view.close()
