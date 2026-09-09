@@ -64,10 +64,8 @@ _user_message_actions.install()
 # Canonical transcript widgets are defined only after presentation/runtime
 # refinements above are installed. Their disclosure behavior is class-owned,
 # rather than monkey-patched by a chain of animation passes.
-from app.desktop.transcript_disclosure import (  # noqa: E402
-    FlowMessageWidget as MessageWidget,
-    FlowTranscriptView as TranscriptView,
-)
+from app.desktop.transcript_disclosure import FlowMessageWidget as MessageWidget  # noqa: E402
+from app.desktop.transcript_viewport import AnchoredTranscriptView as TranscriptView  # noqa: E402
 
 _widgets.MessageWidget = MessageWidget
 _widgets.TranscriptView = TranscriptView
