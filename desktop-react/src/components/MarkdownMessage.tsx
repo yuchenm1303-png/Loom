@@ -5,7 +5,7 @@ import rehypeHighlight from "rehype-highlight";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
-import { splitInlineStickerText } from "../chatStickers";
+import { isChatStickerAssetUrl, splitInlineStickerText } from "../chatStickers";
 import "katex/dist/katex.min.css";
 import "./markdown-message.css";
 import "./stickers.css";
@@ -33,9 +33,19 @@ function languageLabel(children: ReactNode): string {
 }
 
 function stickerAwareMarkdown(content: string): string {
-  return splitInlineStickerText(content)
-    .map((segment) => {
-      if (segment.kind === "text") return segment.text;
+  const segments = splitInlineStickerText(content);
+  return segments
+    .map((segment, index) => {
+      if (segment.kind === "text") {
+        let text = segment.text;
+        if (segments[index - 1]?.kind === "sticker" && /^\s*\n(?!\n)/.test(text)) {
+          text = text.replace(/^[\t ]*\n[\t ]*/, " ");
+        }
+        if (segments[index + 1]?.kind === "sticker" && /\n[\t ]*$/.test(text) && !/\n\n[\t ]*$/.test(text)) {
+          text = text.replace(/\n[\t ]*$/, " ");
+        }
+        return text;
+      }
       const alt = segment.asset.alt.replace(/\\/g, "\\\\").replace(/\]/g, "\\]");
       return `![${alt}](${segment.asset.url})`;
     })
@@ -86,7 +96,7 @@ const markdownComponents: Components = {
     );
   },
   img({ src, alt, className, ...props }) {
-    const sticker = Boolean(src && src.includes("/chat-stickers/v1/"));
+    const sticker = isChatStickerAssetUrl(src);
     const classes = [className, sticker ? "assistant-inline-sticker" : ""].filter(Boolean).join(" ");
     return <img {...props} src={src} alt={alt || ""} className={classes || undefined} draggable={sticker ? false : undefined} />;
   },
