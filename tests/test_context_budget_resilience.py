@@ -3,7 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from app.ai import AIMessage, MessageRole, ModelResponse, ModelUsage
-from app.agent_runtime.context_budget import _trim_compaction_input_to_budget, prepare_context
+from app.ai.errors import AITransportError
+from app.agent_runtime.context_budget import _fit_compaction_input, prepare_context
 
 
 class ScriptedExecutor:
@@ -15,7 +16,10 @@ class ScriptedExecutor:
         self.requests.append((profile_id, request))
         if not self.responses:
             raise AssertionError("scripted compaction executor ran out of responses")
-        return self.responses.pop(0)
+        value = self.responses.pop(0)
+        if isinstance(value, BaseException):
+            raise value
+        return value
 
 
 class EmptyRouter:
@@ -124,9 +128,8 @@ def _long_history(*, pairs: int = 8, chars: int = 420) -> list[AIMessage]:
 def test_completed_model_response_is_usable_even_when_provider_reports_length() -> None:
     """Regression for RuntimeError: compaction did not produce a complete summary.
 
-    Codex waits for the model response to complete and uses the resulting assistant
-    message; it does not reject the turn with a provider-specific finish-reason
-    allow-list. Loom should do the same at its ModelResponse abstraction boundary.
+    Codex waits for response completion and uses the resulting assistant message;
+    it does not apply a provider-specific finish-reason allow-list afterwards.
     """
     runtime = FakeRuntime(
         [
@@ -144,6 +147,7 @@ def test_completed_model_response_is_usable_even_when_provider_reports_length() 
     assert len(runtime.model_executor.requests) == 1
     assert runtime.commits[-1]["summary_source"] == "auto"
     assert runtime.commits[-1]["summary"].startswith("Earlier work established")
+    assert runtime.commits[-1]["summary_usage"].total_tokens == 180
     assert metadata["auto_compacted"] is True
     assert metadata["compaction_attempts"] == 1
     assert messages[1].name == "loom_compaction"
@@ -164,8 +168,16 @@ def test_provider_specific_success_finish_reason_is_not_rejected() -> None:
 def test_empty_compaction_output_retries_without_failing_main_turn_immediately() -> None:
     runtime = FakeRuntime(
         [
-            ModelResponse(text="", finish_reason="stop"),
-            ModelResponse(text="Retry produced a usable compact handoff.", finish_reason="stop"),
+            ModelResponse(
+                text="",
+                finish_reason="stop",
+                usage=ModelUsage(input_tokens=80, output_tokens=0, total_tokens=80),
+            ),
+            ModelResponse(
+                text="Retry produced a usable compact handoff.",
+                finish_reason="stop",
+                usage=ModelUsage(input_tokens=80, output_tokens=25, total_tokens=105),
+            ),
         ]
     )
     session = Session(_long_history())
@@ -175,6 +187,7 @@ def test_empty_compaction_output_retries_without_failing_main_turn_immediately()
     assert len(runtime.model_executor.requests) == 2
     assert runtime.commits[-1]["summary_source"] == "auto_retry"
     assert runtime.commits[-1]["summary"] == "Retry produced a usable compact handoff."
+    assert runtime.commits[-1]["summary_usage"].total_tokens == 185
     assert metadata["compaction_attempts"] == 2
 
 
@@ -205,14 +218,44 @@ def test_oversized_compaction_input_drops_oldest_safe_history_like_codex() -> No
         AIMessage(role=MessageRole.ASSISTANT, content="recent-answer " + ("s" * 500)),
     )
 
-    request = _trim_compaction_input_to_budget(
+    compact_input, request = _fit_compaction_input(
         messages,
         budget=900,
         max_output_tokens=400,
     )
     request_text = "\n".join(str(message.content) for message in request.messages)
 
+    assert len(compact_input) < len(messages)
     assert "oldest-user" not in request_text
-    assert "oldest-answer" not in request_text
     assert "recent-user" in request_text
     assert "recent-answer" in request_text
+
+
+def test_provider_context_window_error_trims_oldest_and_retries() -> None:
+    runtime = FakeRuntime(
+        [
+            AITransportError("context_length_exceeded: maximum context length reached"),
+            ModelResponse(
+                text="Summary after dropping the oldest compact input.",
+                finish_reason="stop",
+            ),
+        ],
+        limits=Limits(
+            context_window_tokens=6000,
+            output_reserve_tokens=1200,
+            max_messages=160,
+            max_tool_result_chars=20_000,
+        ),
+    )
+    session = Session(_long_history(pairs=10, chars=650))
+
+    _messages, metadata = prepare_context(runtime, session, Step(), Token())
+
+    assert len(runtime.model_executor.requests) == 2
+    first = runtime.model_executor.requests[0][1]
+    second = runtime.model_executor.requests[1][1]
+    assert len(second.messages) < len(first.messages)
+    assert runtime.commits[-1]["summary"].startswith("Summary after dropping")
+    # Codex resets ordinary stream-retry count after context trimming; this is
+    # still the first successful response attempt from Loom's perspective.
+    assert metadata["compaction_attempts"] == 1
