@@ -62,6 +62,13 @@ def test_generated_title_sanitizer_removes_model_wrapping() -> None:
     assert _sanitize_generated_title("聊天") == ""
 
 
+def test_generated_title_sanitizer_rejects_leaked_reasoning() -> None:
+    assert _sanitize_generated_title("<think>Let me analyze this conversation to create a concise title") == ""
+    assert _sanitize_generated_title("think>Let me analyze this conversation to create a concise title") == ""
+    assert _sanitize_generated_title("Let me analyze this conversation to create a concise title") == ""
+    assert _sanitize_generated_title("<think>internal notes</think>\n标题：Loom 标题修复") == "Loom 标题修复"
+
+
 def test_first_completed_turn_generates_and_persists_title(tmp_path: Path) -> None:
     service, runtime, _store, platform, workspace = _build_service(
         tmp_path,
@@ -112,6 +119,9 @@ def test_first_completed_turn_generates_and_persists_title(tmp_path: Path) -> No
         title_prompt = str(title_request.messages[-1].content)
         assert "自动总结并生成简短标题" in title_prompt
         assert "已经把 Loom 的会话标题逻辑接好了" in title_prompt
+        system_prompt = str(title_request.messages[0].content)
+        assert "reasoning" in system_prompt
+        assert "<think>" in system_prompt
 
         assert any(
             method == "thread/updated" and params.get("reason") == "auto_title"
@@ -142,5 +152,45 @@ def test_manual_rename_always_wins_and_skips_auto_title(tmp_path: Path) -> None:
         assert record["titleSource"] == "manual"
         assert len(platform.requests) == 1
         assert service.thread_library.read(thread_id)["autoTitleDisabled"] is True
+    finally:
+        runtime.close()
+
+
+def test_existing_bad_auto_title_is_hidden_and_can_regenerate(tmp_path: Path) -> None:
+    service, runtime, _store, platform, workspace = _build_service(
+        tmp_path,
+        [
+            ModelResponse(text="normal assistant response"),
+            ModelResponse(text="Loom 标题清洗修复"),
+        ],
+    )
+    try:
+        thread_id = service.thread_start({"workspace": str(workspace)})["thread"]["id"]
+        service.thread_library.write(
+            thread_id,
+            {
+                "title": "think>Let me analyze this conversation to create a concise title",
+                "titleSource": "auto",
+                "autoTitleAttempts": 2,
+            },
+        )
+
+        record = service.thread_read({"threadId": thread_id})["thread"]
+        assert "think>" not in record["title"]
+        assert record["customTitle"] is False
+        assert record["titleSource"] == "fallback"
+
+        service.turn_start({"threadId": thread_id, "input": "继续修复自动标题"})
+        regenerated = _wait_until(
+            lambda: (
+                service.thread_read({"threadId": thread_id})["thread"]
+                if service.thread_read({"threadId": thread_id})["thread"].get("titleSource") == "auto"
+                else None
+            )
+        )
+        assert regenerated["title"] == "Loom 标题清洗修复"
+        metadata = service.thread_library.read(thread_id)
+        assert metadata["autoTitleAttempts"] == 1
+        assert metadata["autoTitleLastError"] == ""
     finally:
         runtime.close()
