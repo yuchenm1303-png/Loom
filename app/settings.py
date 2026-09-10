@@ -18,6 +18,8 @@ DEFAULT_SETTINGS: dict[str, Any] = {
         "skills": True,
         "toolSearch": True,
         "codeMode": True,
+        "attachments": True,
+        "stickers": True,
     },
 }
 
