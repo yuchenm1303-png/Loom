@@ -13,7 +13,7 @@ from typing import Any, TextIO
 from app.ai import AIMessage, ChatRequest, MessageRole, ToolChoice
 from app.agent_runtime import AgentEvent, AgentEventKind, AgentStatus, PermissionMode
 
-from .app_server import JsonRpcError, _message_text, _thread_record
+from .app_server import JsonRpcError, _message_text, _thread_record  # noqa: F401 (re-exported for override layers)
 from .app_server_streaming import (
     StreamingJsonRpcStdioServer,
     StreamingLoomAppServerService,
@@ -400,7 +400,10 @@ class ManagedStreamingLoomAppServerService(StreamingLoomAppServerService):
             raise JsonRpcError(-32004, "thread not found", {"threadId": thread_id}) from exc
 
     def _managed_record(self, session: Any) -> dict[str, Any]:
-        record = _thread_record(session, active=self._is_active(session.session_id))
+        # Build through the service's own record helper, not the bare module
+        # function: this is the class every desktop client actually talks to,
+        # and the bare one cannot resolve which project a thread belongs to.
+        record = self._record(session, active=self._is_active(session.session_id))
         metadata = self.thread_library.read(session.session_id)
         custom_title, title_source = _metadata_display_title(metadata)
         archived_at = str(metadata.get("archivedAt") or "").strip()
