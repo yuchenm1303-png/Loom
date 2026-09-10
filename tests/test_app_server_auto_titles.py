@@ -9,9 +9,27 @@ from app.app_server_thread_management import (
     ManagedStreamingLoomAppServerService,
     _sanitize_generated_title,
 )
+from app.thread_title_override import _AUTO_TITLE_VERSION as AUTO_TITLE_VERSION
+
+
+def _is_title_request(request) -> bool:
+    """Whether this call is the auto-title request rather than the turn."""
+    text = " ".join(str(message.content) for message in request.messages).casefold()
+    return "concise title" in text or "\"title\"" in text
 
 
 class RecordingPlatform:
+    """Scripted platform that routes by request kind, not by call order.
+
+    Auto-titling fires as soon as the first prompt arrives, concurrently with
+    the turn itself, so "first response is the reply, second is the title" is a
+    race: whichever thread reached the platform first took the wrong one.
+
+    The convention these tests already used is kept -- the *last* scripted
+    response is the title, the rest belong to turns -- but it is now honoured by
+    request kind rather than by arrival order.
+    """
+
     def __init__(self, responses) -> None:
         self.responses = list(responses)
         self.requests = []
@@ -20,6 +38,8 @@ class RecordingPlatform:
         self.requests.append(request)
         if not self.responses:
             raise AssertionError("scripted platform ran out of responses")
+        if _is_title_request(request) and len(self.responses) > 1:
+            return self.responses.pop()
         return self.responses.pop(0)
 
 
@@ -106,22 +126,34 @@ def test_first_completed_turn_generates_and_persists_title(tmp_path: Path) -> No
         metadata = service.thread_library.read(thread_id)
         assert metadata["title"] == "Loom 自动生成会话标题"
         assert metadata["titleSource"] == "auto"
-        assert metadata["autoTitleVersion"] == 1
+        # Read the constant rather than a literal: the auto-title schema is
+        # versioned and this assertion is about it being *stamped*, not about
+        # which revision happens to be current.
+        assert metadata["autoTitleVersion"] == AUTO_TITLE_VERSION
         assert metadata["autoTitleAttempts"] == 1
         assert metadata["autoTitleGeneratedAt"]
 
         assert len(platform.requests) == 2
-        title_request = platform.requests[-1]
+        # By predicate, not by position: the title request races the turn, so
+        # "the last call" is not reliably the title call.
+        title_request = next(r for r in platform.requests if _is_title_request(r))
         assert title_request.tool_choice is ToolChoice.NONE
         assert title_request.tools == ()
         assert title_request.max_output_tokens == 48
         assert title_request.temperature == 0.2
         title_prompt = str(title_request.messages[-1].content)
         assert "自动总结并生成简短标题" in title_prompt
-        assert "已经把 Loom 的会话标题逻辑接好了" in title_prompt
-        system_prompt = str(title_request.messages[0].content)
-        assert "reasoning" in system_prompt
-        assert "<think>" in system_prompt
+        # Only the user's first message. Titles are generated as soon as the
+        # prompt arrives, so there is no assistant reply to include yet -- and
+        # waiting for one is what used to leave threads untitled for a whole
+        # turn.
+        assert "已经把 Loom 的会话标题逻辑接好了" not in title_prompt
+        # The request is a single user message asking for strict JSON; there is
+        # no system message any more. Keeping leaked reasoning out of a title is
+        # now the sanitizer's job, covered by
+        # test_generated_title_sanitizer_rejects_leaked_reasoning.
+        assert len(title_request.messages) == 1
+        assert '{"title"' in title_prompt
 
         assert any(
             method == "thread/updated" and params.get("reason") == "auto_title"
@@ -190,7 +222,9 @@ def test_existing_bad_auto_title_is_hidden_and_can_regenerate(tmp_path: Path) ->
         )
         assert regenerated["title"] == "Loom 标题清洗修复"
         metadata = service.thread_library.read(thread_id)
-        assert metadata["autoTitleAttempts"] == 1
+        # Seeded at 1, and regenerating is itself an attempt. The counter caps
+        # retries; it is not reset by success, so 2 is the honest value.
+        assert metadata["autoTitleAttempts"] == 2
         assert metadata["autoTitleLastError"] == ""
     finally:
         runtime.close()

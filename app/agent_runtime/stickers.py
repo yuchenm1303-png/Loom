@@ -59,7 +59,11 @@ INLINE_STICKER_VISIBLE_MARKER_RE = re.compile(r"\[\[AI_LEDGER_INLINE_STICKER:([a
 INLINE_STICKER_ASSET_KEY_RE = re.compile(r"^[a-z0-9_]{2,48}$", re.I)
 
 _STICKER_OPT_OUT_RE = re.compile(
-    r"(不要|别|禁止|关闭|停用|取消).{0,10}(表情包|内联表情|聊天表情|内置表情|sticker)|(?:no|without|disable).{0,10}(?:sticker|sticker pack)",
+    # Spelled out rather than a bare 不/no, which would fire on any passing
+    # negative ("这个不错，发个表情包"). Each entry is a refusal on its own.
+    r"(不要|不用|不使用|不想|不需要|不必|无需|别|勿|禁止|关闭|停用|取消|去掉|移除)"
+    r".{0,10}(表情包|内联表情|聊天表情|内置表情|sticker)"
+    r"|(?:no|without|disable|stop|turn off).{0,10}(?:sticker|sticker pack|emoji)",
     re.I,
 )
 _STICKER_OPT_IN_RE = re.compile(
@@ -179,7 +183,12 @@ def analyze_scene(context: StickerContext, preferences: StickerPreferences) -> d
         return {"eligible": False, "allowOutput": False, "reason": "feature_disabled", "catalogOrTestRequest": catalog_request, "explicitUserOptOut": explicit_out}
     if not context.allow_stickers:
         return {"eligible": False, "allowOutput": False, "reason": "response_path_disallows_stickers", "catalogOrTestRequest": catalog_request, "explicitUserOptOut": explicit_out}
-    if explicit_out and not explicit_in:
+    # An explicit "no stickers" wins over an apparent opt-in, because the
+    # opt-in pattern also matches the *tail of the refusal*: "不要发表情包"
+    # contains "要发表情包", so asking for no stickers used to read as asking
+    # for them. Only an explicit catalog/test request overrides a refusal --
+    # that is the one case where the user genuinely wants to see them anyway.
+    if explicit_out and not catalog_request:
         return {"eligible": False, "allowOutput": False, "reason": "user_explicit_opt_out", "catalogOrTestRequest": catalog_request, "explicitUserOptOut": True}
     if preferences.frequency <= 0 and not catalog_request:
         return {"eligible": False, "allowOutput": False, "reason": "frequency_zero", "catalogOrTestRequest": catalog_request, "explicitUserOptOut": explicit_out}

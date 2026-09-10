@@ -317,7 +317,10 @@ function setNestedSetting(settings: DesktopSettings, path: string, value: unknow
   return {
     ...settings,
     [section]: {
-      ...((settings as Record<string, unknown>)[section] as Record<string, unknown> | undefined),
+      // Through unknown: DesktopSettings has no index signature, so TypeScript
+      // rightly refuses the direct cast. The dynamic lookup is the point here --
+      // the path comes from a settings row at runtime.
+      ...((settings as unknown as Record<string, unknown>)[section] as Record<string, unknown> | undefined),
       [key]: value,
     },
   } as DesktopSettings;

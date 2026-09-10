@@ -353,21 +353,32 @@ def _metadata_display_title(metadata: dict[str, Any]) -> tuple[str, str]:
     title_source = str(metadata.get("titleSource") or "").strip().casefold()
     source_prompt = str(metadata.get("autoTitleSourcePrompt") or metadata.get("autoTitlePendingSourcePrompt") or "")
 
+    # With no source prompt there is nothing to derive a title from, and
+    # ``_safe_initial_title_from_prompt("")`` answers with the generic "New
+    # Task". Records written before ``autoTitleSourcePrompt`` existed have no
+    # prompt, so an unusable auto title turned them all into "New Task" --
+    # worse than the client's own fallback, which is the thread's first
+    # message. Report no title instead and let the client fall back.
+    def derived() -> tuple[str, str] | None:
+        if not source_prompt.strip():
+            return None
+        title = _safe_initial_title_from_prompt(source_prompt)
+        return (title, "auto") if title else None
+
     if title_source == "auto":
         title = _sanitize_generated_title(custom_title, source_prompt=source_prompt)
         if title:
             return title, "auto"
-        fallback = _safe_initial_title_from_prompt(source_prompt)
-        return fallback, "auto"
+        return derived() or ("", "fallback")
 
     if title_source == "pending":
-        return _safe_initial_title_from_prompt(source_prompt), "auto"
+        return derived() or ("", "fallback")
 
     if custom_title:
         return custom_title, "manual" if title_source not in {"manual", "auto"} else title_source
 
     if metadata.get("autoTitlePending"):
-        return _safe_initial_title_from_prompt(source_prompt), "auto"
+        return derived() or ("", "fallback")
     return "", "fallback"
 
 

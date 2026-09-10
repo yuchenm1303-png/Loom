@@ -9,9 +9,11 @@ from app.agent_runtime.stickers import (
     CHAT_STICKER_CATALOG,
     INLINE_STICKER_STRUCTURED_PLAN_BEGIN,
     INLINE_STICKER_STRUCTURED_PLAN_END,
+    INLINE_STICKER_VISIBLE_MARKER_RE,
     StickerContext,
     StickerPreferences,
     StickerStreamSanitizer,
+    analyze_scene,
     build_sticker_system_prompt,
     extract_keys,
     finalize_reply,
@@ -103,7 +105,15 @@ def test_stream_sanitizer_buffers_marker_across_provider_chunks() -> None:
     visible += sanitizer.push("第一部分已经完成。[[AI_LEDGER_INLI")
     visible += sanitizer.push("NE_STICKER:joy_burst]] 接下来继续处理第二部分。")
     visible += sanitizer.finish()
-    assert "[[AI_LEDGER_INLI" not in visible
+
+    # A well-formed marker is the protocol, not a leak: the client renders it as
+    # a sticker. What must never survive is a *torn* one. Strip the whole
+    # markers first, then assert no fragment is left -- asserting on the raw
+    # prefix instead would also match every legitimate marker, so it could
+    # never pass once a sticker was emitted at all.
+    residue = INLINE_STICKER_VISIBLE_MARKER_RE.sub("", visible)
+    assert "AI_LEDGER" not in residue
+    assert "[[" not in residue
     assert len(extract_keys(sanitizer.value())) <= 4
 
 
@@ -258,3 +268,27 @@ def test_response_path_disallow_is_a_hard_boundary() -> None:
     )
     assert extract_keys(result.text) == []
     assert result.diagnostics["scene"]["reason"] == "response_path_disallows_stickers"
+
+
+def test_refusal_is_not_read_as_a_request() -> None:
+    """"不要发表情包" contains "要发表情包".
+
+    The opt-in pattern matched the tail of the refusal, and an apparent opt-in
+    used to cancel an explicit opt-out -- so asking for no stickers delivered
+    stickers. Only a catalog request may override a refusal now.
+    """
+    prefs = StickerPreferences(frequency=100, intensity=100, max_per_reply=4, repeat_count=1)
+
+    def allowed(text: str) -> bool:
+        scene = analyze_scene(StickerContext(user_text=text, streaming=True), prefs)
+        return bool(scene["allowOutput"])
+
+    for refusal in ("这次不要发表情包", "别发表情包了", "禁止使用表情包",
+                    "不使用表情包", "不需要表情包", "no stickers please"):
+        assert allowed(refusal) is False, refusal
+
+    for wanted in ("请发表情包", "给我看看全部表情包", "展示一下表情包目录", "继续"):
+        assert allowed(wanted) is True, wanted
+
+    # A negative that is not about stickers must not read as a refusal.
+    assert allowed("这个不错，发个表情包") is True

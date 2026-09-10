@@ -456,20 +456,23 @@ def _patch_mcp_configured_runtime(module: ModuleType) -> None:
     original_init = module.ConfiguredMCPRuntime.__init__
 
     def configured_init(self: Any, *args: Any, **kwargs: Any) -> None:  # noqa: ANN001
+        store = kwargs.get("store")
+        runtime_home = ""
+        if store is not None:
+            try:
+                runtime_home = str(Path(getattr(store, "root", "")).expanduser().resolve().parents[1])
+            except Exception:
+                runtime_home = ""
         if kwargs.get("mcp_servers") is None and kwargs.get("mcp_config_path") is None and not os.environ.get("LOOM_CONFIG"):
-            store = kwargs.get("store")
-            runtime_home = ""
-            if store is not None:
-                try:
-                    runtime_home = str(Path(getattr(store, "root", "")).expanduser().resolve().parents[1])
-                except Exception:
-                    runtime_home = ""
             for candidate in _mcp_config_paths(runtime_home):
                 if candidate.is_file():
                     kwargs["mcp_config_path"] = str(candidate)
                     break
         original_init(self, *args, **kwargs)
-        checked = [str(path) for path in _mcp_config_paths(getattr(self, "mcp_config_path", ""))]
+        # The runtime home, not the file that was chosen: passing the config
+        # path here asked for "<...>/config.toml/config.toml" and reported a
+        # list of places Loom had never looked.
+        checked = [str(path) for path in _mcp_config_paths(runtime_home)]
         self.mcp_config_checked_paths = tuple(checked)
 
     original_status = module.ConfiguredMCPRuntime.mcp_status

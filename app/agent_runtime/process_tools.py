@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from typing import Any, Mapping
 
 from .contracts import AgentEventKind, ToolEffect
@@ -13,6 +14,11 @@ from .process_runtime import (
     validate_timeout,
 )
 from .tools import AgentTool, ToolContext, ToolExposure, ToolResult
+
+
+# Long enough for a process that honours the interrupt to exit, short enough
+# that the agent is not left waiting on one that never will.
+INTERRUPT_SETTLE_SECONDS = 1.5
 
 
 _MAX_WAIT_SECONDS = 120.0
@@ -404,14 +410,28 @@ def exec_interrupt_tool() -> AgentTool:
             session_id=context.session_id,
         )
         managed.interrupt()
+        # An interrupt is a request, not an outcome, and on Windows a ConPTY
+        # child often ignores it entirely: writing Ctrl+C into the pty does not
+        # raise a console control event. Reporting an unconditional "sent"
+        # taught the agent that the process had stopped when it was still
+        # running. Look before answering.
+        deadline = time.monotonic() + INTERRUPT_SETTLE_SECONDS
+        while time.monotonic() < deadline and managed.running:
+            time.sleep(0.05)
+
         snapshot = managed.snapshot(drain_delta=True)
         _emit_snapshot_delta(context, managed, snapshot)
         _emit_exit_once(context, managed, snapshot)
-        return ToolResult(
-            ok=True,
-            content=f"Sent interrupt to {managed.process_id}.",
-            data=snapshot.to_dict(),
+        stopped = not managed.running
+        content = (
+            f"Interrupted {managed.process_id}."
+            if stopped
+            else (
+                f"Sent an interrupt to {managed.process_id}, but it is still running. "
+                "Use exec_terminate to stop it."
+            )
         )
+        return ToolResult(ok=True, content=content, data=snapshot.to_dict())
 
     return AgentTool(
         name="exec_interrupt",
