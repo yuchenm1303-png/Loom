@@ -1,9 +1,14 @@
 .sidebar.sidebar.compact-sidebar {
   position: relative;
   isolation: isolate;
-  padding: 18px 10px 10px;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 12px 10px 10px;
   overflow: hidden;
-  background: #0f1012;
+  background:
+    radial-gradient(240px 120px at 12% -30px, rgba(139, 124, 246, .07), transparent 72%),
+    #111214;
   border-right-color: rgba(255, 255, 255, .075);
   box-shadow: inset -1px 0 rgba(255, 255, 255, .012);
 }
@@ -14,7 +19,7 @@
   z-index: 0;
   inset: 0;
   pointer-events: none;
-  background: linear-gradient(180deg, rgba(255,255,255,.012), transparent 22%);
+  background: linear-gradient(180deg, rgba(255,255,255,.014), transparent 24%);
 }
 
 .compact-sidebar > * {
@@ -22,9 +27,10 @@
   z-index: 1;
 }
 
+.codex-sidebar-topbar,
 .compact-sidebar-header {
   min-height: 34px;
-  padding: 0 5px 7px 8px;
+  padding: 0 3px 7px 6px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -32,16 +38,36 @@
   user-select: none;
 }
 
+.codex-sidebar-brand {
+  min-width: 0;
+  height: 30px;
+  padding: 0 6px 0 7px;
+  border: 0;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: transparent;
+  color: #dedfe3;
+  cursor: default;
+}
+
+.codex-sidebar-brand span,
 .compact-sidebar-header > strong {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #d4d7dc;
-  font-size: 15px;
+  color: #dedfe3;
+  font-size: 16px;
   line-height: 1;
-  font-weight: 530;
-  letter-spacing: .005em;
+  font-weight: 680;
+  letter-spacing: -.02em;
+}
+
+.codex-sidebar-brand svg {
+  flex: none;
+  color: #858b96;
 }
 
 .compact-sidebar-actions {
@@ -53,38 +79,111 @@
 
 .compact-sidebar-actions button,
 .workspace-group-header button,
-.compact-search button {
+.compact-search button,
+.sidebar-section-title button,
+.project-group-actions button {
   border: 0;
   padding: 0;
   display: grid;
   place-items: center;
   background: transparent;
-  color: #969ca6;
+  color: #8f96a1;
   cursor: pointer;
-  transition: color 120ms ease, background 120ms ease, transform 120ms ease;
+  transition: color 120ms ease, background 120ms ease, transform 120ms ease, opacity 120ms ease;
 }
 
 .compact-sidebar-actions button {
-  width: 27px;
-  height: 27px;
-  border-radius: 6px;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
 }
 
 .compact-sidebar-actions button:hover,
 .compact-sidebar-actions button.active {
-  color: #e1e3e7;
-  background: rgba(255,255,255,.055);
+  color: #e7e8eb;
+  background: rgba(255,255,255,.06);
 }
 
 .compact-sidebar-actions button:active,
 .workspace-group-header button:active,
-.compact-search button:active {
-  transform: scale(.92);
+.compact-search button:active,
+.sidebar-new-conversation:active,
+.sidebar-secondary-action:active,
+.project-group-actions button:active {
+  transform: scale(.94);
+}
+
+.codex-sidebar-primary {
+  display: grid;
+  gap: 4px;
+  padding: 3px 0 12px;
+}
+
+.sidebar-new-conversation,
+.sidebar-secondary-action {
+  width: 100%;
+  min-height: 35px;
+  border: 0;
+  border-radius: 9px;
+  display: grid;
+  grid-template-columns: 25px minmax(0, 1fr) 18px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 9px;
+  background: transparent;
+  color: #d9dbe0;
+  text-align: left;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, transform 120ms ease;
+}
+
+.sidebar-new-conversation::after {
+  content: "+";
+  justify-self: end;
+  width: 17px;
+  height: 17px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255,255,255,.11);
+  border-radius: 999px;
+  color: #8d949f;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.sidebar-new-conversation:hover,
+.sidebar-secondary-action:hover {
+  color: #f4f5f7;
+  background: rgba(255,255,255,.055);
+}
+
+.sidebar-new-conversation > svg,
+.sidebar-secondary-action > svg {
+  justify-self: center;
+  color: #d9dbe0;
+}
+
+.sidebar-new-conversation span,
+.sidebar-secondary-action span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 560;
+}
+
+.sidebar-secondary-action {
+  color: #aeb4be;
+}
+
+.sidebar-secondary-action > svg {
+  color: #aeb4be;
 }
 
 .compact-search {
   height: 0;
-  margin: 0 2px;
+  margin: 0 1px;
   padding: 0 8px;
   overflow: hidden;
   opacity: 0;
@@ -93,19 +192,19 @@
   align-items: center;
   gap: 7px;
   border: 1px solid transparent;
-  border-radius: 7px;
-  background: #131417;
+  border-radius: 9px;
+  background: #17181b;
   color: #666d77;
   transform: translateY(-3px);
   transition: height 160ms cubic-bezier(.2,.78,.2,1), margin 160ms ease, opacity 120ms ease, transform 160ms ease, border-color 120ms ease;
 }
 
 .compact-search.open {
-  height: 32px;
-  margin: 2px 2px 12px;
+  height: 33px;
+  margin: 0 1px 12px;
   opacity: 1;
   transform: translateY(0);
-  border-color: rgba(255,255,255,.07);
+  border-color: rgba(255,255,255,.075);
 }
 
 .compact-search:focus-within {
@@ -126,9 +225,9 @@
 .compact-search input::placeholder { color: #646b75; }
 
 .compact-search button {
-  width: 20px;
-  height: 20px;
-  border-radius: 5px;
+  width: 21px;
+  height: 21px;
+  border-radius: 6px;
   color: #6f7680;
 }
 
@@ -156,18 +255,177 @@
 }
 .compact-thread-scroll::-webkit-scrollbar-thumb:hover { background: #464a53; }
 
-.workspace-group {
-  display: grid;
-  gap: 2px;
-  margin: 0 0 11px;
+.sidebar-section-title {
+  min-height: 31px;
+  margin-top: 4px;
+  padding: 12px 7px 4px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: #737985;
+  font-size: 11px;
+  font-weight: 680;
+  letter-spacing: .02em;
+  text-transform: uppercase;
 }
 
-/* An empty project is one heading, not a heading plus a paragraph. Letting it
-   collapse to its own height is what keeps a list of mostly-empty projects
-   scannable instead of three-quarters whitespace. */
-.workspace-group.is-empty { margin-bottom: 3px; }
+.sidebar-section-title button {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  opacity: .74;
+}
 
-.workspace-group:last-child { margin-bottom: 2px; }
+.sidebar-section-title button:hover {
+  opacity: 1;
+  color: #dedfe3;
+  background: rgba(255,255,255,.055);
+}
+
+.recent-title {
+  margin-top: 12px;
+}
+
+.project-list,
+.workspace-thread-list {
+  display: grid;
+  gap: 1px;
+}
+
+.workspace-group,
+.project-group {
+  display: grid;
+  gap: 2px;
+  margin: 0 0 7px;
+}
+
+.workspace-group.is-empty,
+.project-group.is-empty {
+  margin-bottom: 3px;
+}
+
+.project-group-row {
+  position: relative;
+  min-height: 34px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px;
+  border-radius: 9px;
+  color: #d0d3d9;
+}
+
+.project-group-main {
+  min-width: 0;
+  min-height: 34px;
+  border: 0;
+  border-radius: 9px;
+  display: grid;
+  grid-template-columns: 25px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 0 7px 0 8px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.project-group-main:hover,
+.project-group-row:focus-within .project-group-main {
+  background: rgba(255,255,255,.045);
+  color: #f2f3f5;
+}
+
+.project-group-main > svg {
+  justify-self: center;
+  color: #cdd1d8;
+}
+
+.project-group-main span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 560;
+}
+
+.project-group-main small {
+  min-width: 16px;
+  color: #6b727e;
+  font-size: 10.5px;
+  line-height: 1;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.project-group.is-empty .project-group-main {
+  color: #9fa5af;
+}
+
+.project-group.is-empty .project-group-main > svg {
+  color: #939aa5;
+}
+
+.project-group-actions {
+  position: absolute;
+  right: 4px;
+  top: 4px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  padding-left: 18px;
+  opacity: 0;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, #111214 22%, #111214 100%);
+  transition: opacity 110ms ease;
+}
+
+.project-group-row:hover .project-group-actions,
+.project-group-row:focus-within .project-group-actions,
+.project-group.has-menu .project-group-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.project-group-actions button {
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  color: #8c939e;
+}
+
+.project-group-actions button:hover {
+  color: #e6e8ec;
+  background: rgba(255,255,255,.065);
+}
+
+.project-group-actions button.danger:hover {
+  color: #eda0a8;
+  background: rgba(224,142,151,.12);
+}
+
+.project-rename-input {
+  margin: 3px 78px 3px 5px;
+}
+
+.project-thread-list {
+  margin-left: 18px;
+  padding-left: 7px;
+  border-left: 1px solid rgba(255,255,255,.045);
+}
+
+.recent-thread-list:empty::after {
+  content: "普通会话会显示在这里";
+  display: block;
+  padding: 8px 8px 6px;
+  color: #5f6671;
+  font-size: 11.5px;
+}
 
 .workspace-group-header {
   min-height: 26px;
@@ -183,59 +441,12 @@
   min-width: 0;
   background: rgba(255,255,255,.06);
   border: 1px solid rgba(255,255,255,.14);
-  border-radius: 5px;
+  border-radius: 6px;
   padding: 2px 6px;
   color: #e1e3e7;
   font: inherit;
   font-size: 12.5px;
   outline: none;
-}
-
-.workspace-group-menu-scrim {
-  position: fixed;
-  inset: 0;
-  z-index: 40;
-}
-
-.workspace-group-menu {
-  position: fixed;
-  z-index: 41;
-  min-width: 186px;
-  padding: 5px;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  background: #1b1d22;
-  border: 1px solid rgba(255,255,255,.09);
-  border-radius: 9px;
-  box-shadow: 0 14px 34px rgba(0,0,0,.42);
-}
-
-.workspace-group-menu button {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  width: 100%;
-  padding: 7px 9px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: #d3d6dc;
-  font-size: 12.5px;
-  text-align: left;
-  cursor: pointer;
-}
-
-.workspace-group-menu button:hover {
-  background: rgba(255,255,255,.06);
-}
-
-.workspace-group-menu button.danger {
-  color: #e08e97;
-}
-
-.workspace-group-menu button.danger:hover {
-  background: rgba(224,142,151,.12);
 }
 
 .workspace-group-header > span {
@@ -253,13 +464,9 @@
   width: 22px;
   height: 22px;
   flex: none;
-  border-radius: 5px;
+  border-radius: 6px;
   color: #858c96;
-  /* Out of the way until this group is the one being read. Six icons standing
-     permanently beside three names is more chrome than content. Keyboard focus
-     reveals them too, so quiet never means unreachable. */
   opacity: 0;
-  transition: opacity 110ms ease, color 110ms ease, background 110ms ease, transform 110ms ease;
 }
 
 .workspace-group:hover .workspace-group-header button,
@@ -273,21 +480,12 @@
   background: rgba(255,255,255,.055);
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .workspace-group-header button { transition: none; }
-}
-
-/* The name is the only thing here that should carry weight; the count steps
-   down from it. Scoped past `.workspace-group-header > span`, which is more
-   specific than a bare class and would otherwise win. */
 .workspace-group-header > span.workspace-group-label {
   flex: 1 1 auto;
   color: #c3c7ce;
   font-weight: 500;
 }
 
-/* A project with nothing in it reads as available rather than broken: dimmer
-   than one that holds work, with no extra glyph explaining itself. */
 .workspace-group.is-empty .workspace-group-header > span.workspace-group-label {
   color: #8b9098;
   font-weight: 450;
@@ -301,17 +499,12 @@
   color: #61666f;
 }
 
-.workspace-thread-list {
-  display: grid;
-  gap: 1px;
-}
-
 .compact-thread-row {
   position: relative;
   width: 100%;
   min-height: 32px;
   border: 1px solid transparent;
-  border-radius: 7px;
+  border-radius: 9px;
   background: transparent;
   color: #c7cbd2;
   overflow: hidden;
@@ -321,13 +514,13 @@
 
 .compact-thread-row:hover,
 .compact-thread-row:focus-within {
-  background: rgba(255,255,255,.038);
+  background: rgba(255,255,255,.04);
   color: #eef0f3;
 }
 
 .compact-thread-row.active {
   background: #343437;
-  border-color: rgba(255,255,255,.035);
+  border-color: rgba(255,255,255,.04);
   color: #fff;
   box-shadow: inset 0 1px rgba(255,255,255,.025);
 }
@@ -406,19 +599,19 @@
   color: inherit;
   font-size: 13px;
   line-height: 1.25;
-  font-weight: 430;
+  font-weight: 450;
   letter-spacing: 0;
 }
 
-.compact-thread-row.active .compact-thread-title { font-weight: 500; }
-.compact-thread-row.unread .compact-thread-title { font-weight: 560; }
+.compact-thread-row.active .compact-thread-title { font-weight: 560; }
+.compact-thread-row.unread .compact-thread-title { font-weight: 580; }
 
 .compact-thread-rename {
   width: 100%;
   min-width: 0;
   height: 24px;
   border: 1px solid rgba(139,124,246,.42);
-  border-radius: 5px;
+  border-radius: 6px;
   outline: 0;
   padding: 0 6px;
   background: #15161a;
@@ -460,7 +653,7 @@
   height: 24px;
   padding: 0;
   border: 0;
-  border-radius: 6px;
+  border-radius: 7px;
   display: grid;
   place-items: center;
   background: transparent;
@@ -511,10 +704,10 @@
 
 .compact-sidebar-footer > button {
   width: 100%;
-  min-height: 30px;
+  min-height: 32px;
   padding: 0 8px;
   border: 0;
-  border-radius: 7px;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -569,10 +762,16 @@
 .sidebar-notice.success { border-color: rgba(122,171,145,.18); }
 .sidebar-notice.error { border-color: rgba(220,124,134,.22); color: #dca0a7; }
 
+.workspace-group-menu-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+}
+
+.workspace-group-menu,
 .thread-context-menu {
   position: fixed;
   z-index: 10000;
-  width: 264px;
   padding: 7px 0;
   border: 1px solid rgba(255,255,255,.095);
   border-radius: 12px;
@@ -585,15 +784,23 @@
   animation: thread-menu-in 125ms cubic-bezier(.2,.78,.2,1) both;
 }
 
+.workspace-group-menu {
+  z-index: 41;
+  min-width: 186px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 5px;
+}
+
+.thread-context-menu {
+  width: 264px;
+}
+
+.workspace-group-menu button,
 .thread-context-menu > button {
   width: 100%;
-  min-height: 39px;
-  padding: 0 14px;
   border: 0;
-  display: grid;
-  grid-template-columns: 22px minmax(0,1fr) auto;
-  align-items: center;
-  gap: 10px;
   background: transparent;
   color: #f1f2f4;
   text-align: left;
@@ -601,9 +808,39 @@
   transition: background 90ms ease, color 90ms ease;
 }
 
+.workspace-group-menu button {
+  min-height: 32px;
+  padding: 0 9px;
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 12.5px;
+}
+
+.thread-context-menu > button {
+  min-height: 39px;
+  padding: 0 14px;
+  display: grid;
+  grid-template-columns: 22px minmax(0,1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.workspace-group-menu button:hover,
 .thread-context-menu > button:hover:not(:disabled),
 .thread-context-menu > button.submenu-open {
   background: rgba(255,255,255,.075);
+}
+
+.workspace-group-menu button.danger,
+.thread-context-menu > button.destructive {
+  color: #e2969e;
+}
+
+.workspace-group-menu button.danger:hover,
+.thread-context-menu > button.destructive:hover:not(:disabled) {
+  background: rgba(220,124,134,.09);
 }
 
 .thread-context-menu > button:disabled {
@@ -615,6 +852,8 @@
   justify-self: center;
   color: #f0f1f3;
 }
+
+.thread-context-menu > button.destructive > svg:first-child { color: #df8992; }
 
 .thread-context-menu > button > span {
   min-width: 0;
@@ -676,12 +915,6 @@
   color: #fff;
 }
 
-.thread-context-menu > button.destructive {
-  color: #e2969e;
-}
-
-.thread-context-menu > button.destructive > svg:first-child { color: #df8992; }
-.thread-context-menu > button.destructive:hover:not(:disabled) { background: rgba(220,124,134,.09); }
 .thread-context-menu > button.destructive.armed { background: rgba(220,124,134,.12); color: #f0a0a8; }
 
 .sr-only {
@@ -719,7 +952,8 @@
 @media (max-width: 1180px) {
   .sidebar.sidebar.compact-sidebar { padding-inline: 8px; }
   .compact-thread-title { font-size: 12.5px; }
-  .workspace-group-header > span { font-size: 12px; }
+  .workspace-group-header > span,
+  .project-group-main span { font-size: 12.5px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -729,8 +963,12 @@
   .compact-thread-row,
   .compact-thread-dot.running,
   .thread-quick-actions,
+  .project-group-actions,
   .thread-context-menu,
-  .sidebar-notice {
+  .workspace-group-menu,
+  .sidebar-notice,
+  .sidebar-new-conversation,
+  .sidebar-secondary-action {
     animation: none !important;
     transition-duration: .001ms !important;
   }
