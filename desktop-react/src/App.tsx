@@ -23,9 +23,21 @@ const RESOLVED_APPROVAL_STATUSES = new Set([
   "failed",
 ]);
 
+const COLLAPSED_PROJECTS_STORAGE_KEY = "loom.sidebar.collapsedProjects";
+
 function isResolvedApproval(item: TranscriptItem): boolean {
   if (item.type !== "approval") return false;
   return RESOLVED_APPROVAL_STATUSES.has(String(item.status || "").toLowerCase());
+}
+
+function readCollapsedProjects(): Set<string> {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(COLLAPSED_PROJECTS_STORAGE_KEY) || "[]") as unknown;
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(parsed.filter((value): value is string => typeof value === "string" && Boolean(value)));
+  } catch {
+    return new Set();
+  }
 }
 
 export default function App() {
@@ -49,6 +61,64 @@ export default function App() {
   useEffect(() => {
     setDismissedApprovalIds(new Set());
   }, [thread?.id]);
+
+  useEffect(() => {
+    if (settingsOpen) return;
+    const collapsedProjects = readCollapsedProjects();
+
+    const projectKey = (button: HTMLButtonElement): string => button.getAttribute("title") || button.textContent?.trim() || "";
+
+    const applyProjectState = () => {
+      document.querySelectorAll<HTMLButtonElement>(".project-group-main").forEach((button) => {
+        const group = button.closest<HTMLElement>(".project-group");
+        if (!group) return;
+        const key = projectKey(button);
+        const collapsed = Boolean(key && collapsedProjects.has(key));
+        group.classList.toggle("is-collapsed", collapsed);
+        button.setAttribute("aria-expanded", String(!collapsed));
+        button.setAttribute("aria-label", `${collapsed ? "展开" : "折叠"}项目 ${button.querySelector("span")?.textContent?.trim() || ""}`.trim());
+      });
+    };
+
+    const handleProjectClick = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      const button = target?.closest<HTMLButtonElement>(".project-group-main");
+      if (!button) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+
+      const group = button.closest<HTMLElement>(".project-group");
+      if (!group) return;
+      const key = projectKey(button);
+      const collapsed = !group.classList.contains("is-collapsed");
+      group.classList.toggle("is-collapsed", collapsed);
+      button.setAttribute("aria-expanded", String(!collapsed));
+      button.setAttribute("aria-label", `${collapsed ? "展开" : "折叠"}项目 ${button.querySelector("span")?.textContent?.trim() || ""}`.trim());
+
+      if (key) {
+        if (collapsed) collapsedProjects.add(key);
+        else collapsedProjects.delete(key);
+        try {
+          window.localStorage.setItem(COLLAPSED_PROJECTS_STORAGE_KEY, JSON.stringify([...collapsedProjects]));
+        } catch {
+          // The visual toggle still works for this renderer session.
+        }
+      }
+    };
+
+    applyProjectState();
+    document.addEventListener("click", handleProjectClick, true);
+    const observer = new MutationObserver(applyProjectState);
+    const sidebar = document.querySelector(".compact-sidebar");
+    if (sidebar) observer.observe(sidebar, { childList: true, subtree: true });
+
+    return () => {
+      document.removeEventListener("click", handleProjectClick, true);
+      observer.disconnect();
+    };
+  }, [settingsOpen, loom.projects.length, loom.threads.length]);
 
   const transcriptItems = loom.items.filter((item) => {
     if (item.type !== "approval") return true;
