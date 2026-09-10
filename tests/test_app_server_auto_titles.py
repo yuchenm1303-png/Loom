@@ -171,7 +171,7 @@ def test_existing_bad_auto_title_is_hidden_and_can_regenerate(tmp_path: Path) ->
             {
                 "title": "think>Let me analyze this conversation to create a concise title",
                 "titleSource": "auto",
-                "autoTitleAttempts": 2,
+                "autoTitleAttempts": 1,
             },
         )
 
