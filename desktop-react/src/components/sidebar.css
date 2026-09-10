@@ -159,43 +159,23 @@
 .workspace-group {
   display: grid;
   gap: 2px;
-  margin: 0 0 13px;
+  margin: 0 0 11px;
 }
+
+/* An empty project is one heading, not a heading plus a paragraph. Letting it
+   collapse to its own height is what keeps a list of mostly-empty projects
+   scannable instead of three-quarters whitespace. */
+.workspace-group.is-empty { margin-bottom: 3px; }
 
 .workspace-group:last-child { margin-bottom: 2px; }
 
 .workspace-group-header {
-  min-height: 28px;
+  min-height: 26px;
   padding: 0 3px 0 8px;
   display: flex;
   align-items: center;
   gap: 6px;
   color: #999fa8;
-}
-
-/* The label takes the slack so the controls stay pinned to the right edge no
-   matter how many of them a group has. */
-/* Scoped past `.workspace-group-header > span`, which is more specific than a
-   bare class and would otherwise keep the label's size on the count. */
-.workspace-group-header > span.workspace-group-count {
-  flex: 0 0 auto;
-  font-size: 11px;
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-  color: #6b7079;
-}
-
-.workspace-group-header > span.workspace-group-label {
-  flex: 1 1 auto;
-}
-
-/* A project you have not talked in yet is still a place, so its heading stays.
-   Saying it is empty is friendlier than a heading with nothing under it. */
-.workspace-group-empty {
-  margin: 0 0 4px;
-  padding: 0 8px 2px;
-  font-size: 11.5px;
-  color: #6b7079;
 }
 
 .workspace-group-rename {
@@ -270,18 +250,55 @@
 }
 
 .workspace-group-header button {
-  width: 25px;
-  height: 25px;
+  width: 22px;
+  height: 22px;
   flex: none;
-  border-radius: 6px;
+  border-radius: 5px;
   color: #858c96;
-  opacity: .84;
+  /* Out of the way until this group is the one being read. Six icons standing
+     permanently beside three names is more chrome than content. Keyboard focus
+     reveals them too, so quiet never means unreachable. */
+  opacity: 0;
+  transition: opacity 110ms ease, color 110ms ease, background 110ms ease, transform 110ms ease;
+}
+
+.workspace-group:hover .workspace-group-header button,
+.workspace-group.has-menu .workspace-group-header button,
+.workspace-group-header button:focus-visible {
+  opacity: 1;
 }
 
 .workspace-group-header button:hover {
   color: #e0e2e6;
-  background: rgba(255,255,255,.05);
-  opacity: 1;
+  background: rgba(255,255,255,.055);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workspace-group-header button { transition: none; }
+}
+
+/* The name is the only thing here that should carry weight; the count steps
+   down from it. Scoped past `.workspace-group-header > span`, which is more
+   specific than a bare class and would otherwise win. */
+.workspace-group-header > span.workspace-group-label {
+  flex: 1 1 auto;
+  color: #c3c7ce;
+  font-weight: 500;
+}
+
+/* A project with nothing in it reads as available rather than broken: dimmer
+   than one that holds work, with no extra glyph explaining itself. */
+.workspace-group.is-empty .workspace-group-header > span.workspace-group-label {
+  color: #8b9098;
+  font-weight: 450;
+}
+
+.workspace-group-header > span.workspace-group-count {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: #61666f;
 }
 
 .workspace-thread-list {
