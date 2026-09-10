@@ -38,8 +38,7 @@ export default function App() {
   const workspace = thread?.workspace || loom.runtime.defaultWorkspace || "";
   const currentModel = loom.models?.current?.name || loom.models?.current?.model || loom.runtime.model;
   const permissionMode = thread?.permissionMode || loom.runtime.defaultPermissionMode;
-  const runtimeSettings = loom.runtime.settings;
-  const capabilitySettings = runtimeSettings?.capabilities ?? {};
+  const capabilitySettings = loom.runtime.settings?.capabilities ?? {};
   const attachmentsEnabled = capabilitySettings.attachments !== false;
   const stickersEnabled = capabilitySettings.stickers !== false;
 
@@ -93,21 +92,26 @@ export default function App() {
     );
   }
 
+  if (settingsOpen) {
+    return (
+      <SettingsPage
+        runtime={loom.runtime}
+        models={loom.models}
+        running={Boolean(running)}
+        onClose={() => setSettingsOpen(false)}
+      />
+    );
+  }
+
   return (
-    <div className={`app-shell ${inspectorOpen && !settingsOpen ? "with-inspector" : ""} ${settingsOpen ? "settings-open" : ""}`}>
+    <div className={`app-shell ${inspectorOpen ? "with-inspector" : ""}`}>
       <Sidebar
         threads={loom.threads}
-        activeId={settingsOpen ? undefined : thread?.id}
+        activeId={thread?.id}
         threadView={loom.threadView}
         archivedCount={loom.threadCounts.archived}
-        onOpen={async (threadId) => {
-          setSettingsOpen(false);
-          await loom.openThread(threadId);
-        }}
-        onNew={async (nextWorkspace, projectId) => {
-          setSettingsOpen(false);
-          await loom.newThread(nextWorkspace, projectId);
-        }}
+        onOpen={loom.openThread}
+        onNew={loom.newThread}
         projects={loom.projects}
         projectsSupported={loom.projectsSupported}
         onAddProject={loom.createProject}
@@ -120,75 +124,61 @@ export default function App() {
         onViewChange={loom.setThreadView}
       />
 
-      {settingsOpen ? (
-        <section className="settings-host">
-          <SettingsPage
-            runtime={loom.runtime}
-            models={loom.models}
-            running={Boolean(running)}
-            onClose={() => setSettingsOpen(false)}
+      <section className="workspace">
+        <ThreadHeader
+          title={threadTitle}
+          workspace={workspace}
+          connection={loom.connection}
+          status={thread?.status}
+          running={running}
+          archived={archived}
+          model={currentModel}
+          permissionMode={permissionMode}
+          inspectorOpen={inspectorOpen}
+          onOpenSettings={() => setSettingsOpen(true)}
+          onToggleInspector={() => setInspectorOpen((open) => !open)}
+        />
+
+        <div className={`conversation-stage ${running ? "is-running" : ""}`}>
+          {running ? <RunProgress {...progressProps} placement="top" /> : null}
+          <Transcript
+            items={transcriptItems}
+            running={running}
+            currentTurnId={thread?.currentTurnId}
+            promptDisabled={conversationDisabled}
+            onPrompt={(prompt) => void loom.send(prompt)}
+            onApproval={handleApproval}
           />
-        </section>
-      ) : (
-        <>
-          <section className="workspace">
-            <ThreadHeader
-              title={threadTitle}
-              workspace={workspace}
-              connection={loom.connection}
-              status={thread?.status}
-              running={running}
-              archived={archived}
-              model={currentModel}
-              permissionMode={permissionMode}
-              inspectorOpen={inspectorOpen}
-              onOpenSettings={() => setSettingsOpen(true)}
-              onToggleInspector={() => setInspectorOpen((open) => !open)}
-            />
+        </div>
 
-            <div className={`conversation-stage ${running ? "is-running" : ""}`}>
-              {running ? <RunProgress {...progressProps} placement="top" /> : null}
-              <Transcript
-                items={transcriptItems}
-                running={running}
-                currentTurnId={thread?.currentTurnId}
-                promptDisabled={conversationDisabled}
-                onPrompt={(prompt) => void loom.send(prompt)}
-                onApproval={handleApproval}
-              />
-            </div>
+        <div className="composer-stage">
+          <Composer
+            disabled={!thread || loom.connection !== "ready" || archived}
+            running={running}
+            model={loom.runtime.model}
+            modelSnapshot={loom.models}
+            modelBusy={loom.modelBusy}
+            permissionMode={permissionMode}
+            permissionModes={loom.runtime.permissionModes}
+            stickerPreferences={stickersEnabled ? loom.runtime.stickerPreferences : null}
+            onPermissionModeChange={loom.setPermissionMode}
+            onModelProfileChange={loom.switchModelProfile}
+            onCustomModelChange={loom.switchCurrentModel}
+            onAddModel={loom.addModel}
+            onReasoningChange={loom.setReasoning}
+            onStickerPreferencesChange={async (preferences) => {
+              await window.loom.call("sticker/preferences/set", { preferences });
+            }}
+            imagesAllowed={
+              attachmentsEnabled && loom.runtime.attachments?.images !== false
+            }
+            onSend={loom.send}
+            onInterrupt={loom.interrupt}
+          />
+        </div>
+      </section>
 
-            <div className="composer-stage">
-              <Composer
-                disabled={!thread || loom.connection !== "ready" || archived}
-                running={running}
-                model={loom.runtime.model}
-                modelSnapshot={loom.models}
-                modelBusy={loom.modelBusy}
-                permissionMode={permissionMode}
-                permissionModes={loom.runtime.permissionModes}
-                stickerPreferences={stickersEnabled ? loom.runtime.stickerPreferences : null}
-                onPermissionModeChange={loom.setPermissionMode}
-                onModelProfileChange={loom.switchModelProfile}
-                onCustomModelChange={loom.switchCurrentModel}
-                onAddModel={loom.addModel}
-                onReasoningChange={loom.setReasoning}
-                onStickerPreferencesChange={async (preferences) => {
-                  await window.loom.call("sticker/preferences/set", { preferences });
-                }}
-                imagesAllowed={
-                  attachmentsEnabled &&
-                  (loom.runtime as { attachments?: { images?: boolean } } | undefined)?.attachments?.images !== false
-                }
-                onSend={loom.send}
-                onInterrupt={loom.interrupt}
-              />
-            </div>
-          </section>
-
-          {inspectorOpen ? <Inspector items={loom.items} onClose={() => setInspectorOpen(false)} /> : null}
-        </>
-      )}
+      {inspectorOpen ? <Inspector items={loom.items} onClose={() => setInspectorOpen(false)} /> : null}
     </div>
   );
 }
