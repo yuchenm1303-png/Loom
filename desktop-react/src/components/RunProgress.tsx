@@ -1,4 +1,4 @@
-import { Activity, Clock3, CircleAlert, FileDiff, Terminal, Wrench } from "lucide-react";
+import { Activity, Clock3, FileDiff, Terminal, Wrench } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { TranscriptItem } from "../types/loom";
 import "./run-progress.css";
@@ -17,7 +17,6 @@ interface RunStats {
   tools: number;
   commands: number;
   files: number;
-  failed: boolean;
 }
 
 function isRunningStatus(status?: string): boolean {
@@ -37,11 +36,14 @@ function currentRunItems(items: TranscriptItem[], currentTurnId?: string | null)
       break;
     }
   }
+
   return lastUserIndex >= 0 ? items.slice(lastUserIndex) : items;
 }
 
 function runStats(items: TranscriptItem[]): RunStats {
-  const activityItems = items.filter((item) => ["tool_call", "process", "file_edit", "approval", "error"].includes(item.type));
+  const activityItems = items.filter((item) =>
+    ["tool_call", "process", "file_edit", "approval", "error"].includes(item.type),
+  );
   const filePaths = new Set<string>();
 
   for (const item of activityItems) {
@@ -54,7 +56,6 @@ function runStats(items: TranscriptItem[]): RunStats {
     tools: activityItems.filter((item) => item.type === "tool_call").length,
     commands: activityItems.filter((item) => item.type === "process").length,
     files: filePaths.size,
-    failed: activityItems.some((item) => ["failed", "error", "denied"].includes(String(item.status || "").toLowerCase())),
   };
 }
 
@@ -64,6 +65,7 @@ function phaseFor(items: TranscriptItem[], threadStatus?: string): string {
   const runningActivity = [...items].reverse().find((item) =>
     ["tool_call", "process", "file_edit", "approval"].includes(item.type) && isRunningStatus(item.status),
   );
+
   if (runningActivity?.type === "approval") return "等待权限确认";
   if (runningActivity?.type === "process") return "正在运行命令";
   if (runningActivity?.type === "file_edit") return "正在编辑文件";
@@ -78,15 +80,6 @@ function phaseFor(items: TranscriptItem[], threadStatus?: string): string {
   if (hasFinishedActivity) return "正在分析结果";
 
   return "正在思考";
-}
-
-function phaseTone(phase: string, failed: boolean): string {
-  if (failed) return "danger";
-  if (phase.includes("权限")) return "attention";
-  if (phase.includes("命令")) return "command";
-  if (phase.includes("编辑")) return "file";
-  if (phase.includes("工具")) return "tool";
-  return "thinking";
 }
 
 function formatElapsed(seconds: number): string {
@@ -105,28 +98,12 @@ function formatTokens(tokens?: number): string | null {
   return `${tokens} tokens`;
 }
 
-function ThinkingOrb() {
-  return (
-    <span className="run-progress-thinking" aria-hidden="true">
-      <span className="run-progress-thinking-orbit"><i /></span>
-      <span className="run-progress-thinking-orbit secondary"><i /></span>
-      <span className="run-progress-thinking-core" />
-    </span>
-  );
-}
-
-function statLabel(stats: RunStats): string {
-  if (!stats.activity) return "准备中";
-  return `${stats.activity} 个过程项`;
-}
-
 export function RunProgress({ items, startedAt, threadStatus, currentTurnId, totalTokens, placement }: RunProgressProps) {
   const [now, setNow] = useState(() => Date.now());
   const runItems = useMemo(() => currentRunItems(items, currentTurnId), [currentTurnId, items]);
   const phase = useMemo(() => phaseFor(runItems, threadStatus), [runItems, threadStatus]);
   const stats = useMemo(() => runStats(runItems), [runItems]);
   const tokenLabel = formatTokens(totalTokens);
-  const tone = phaseTone(phase, stats.failed);
 
   useEffect(() => {
     setNow(Date.now());
@@ -138,40 +115,29 @@ export function RunProgress({ items, startedAt, threadStatus, currentTurnId, tot
 
   return (
     <div className={`run-progress-frame ${placement}`} role="status" aria-live="polite">
-      <div className={`run-progress-card tone-${tone}`}>
-        <div className="run-progress-card-main">
-          <div className="run-progress-orb-wrap">
-            {stats.failed ? <CircleAlert size={18} strokeWidth={1.8} /> : <ThinkingOrb />}
-          </div>
-
-          <div className="run-progress-copy">
-            <div className="run-progress-label-row">
-              <span className="run-progress-kicker"><Activity size={12} strokeWidth={1.8} /> Loom 正在工作</span>
-              <span className="run-progress-phase">{phase}</span>
-            </div>
-            <div className="run-progress-meta-row">
-              <span className="run-progress-meta"><Clock3 size={12} strokeWidth={1.8} /> 用时 {formatElapsed(elapsedSeconds)}</span>
-              <span className="run-progress-dot" aria-hidden="true" />
-              <span className="run-progress-meta">{statLabel(stats)}</span>
-              {tokenLabel ? <><span className="run-progress-dot" aria-hidden="true" /><span className="run-progress-meta">{tokenLabel}</span></> : null}
-            </div>
-          </div>
-
-          <div className="run-progress-stat-stack" aria-label="Runtime activity summary">
-            {stats.commands ? <span title="命令"><Terminal size={12} />{stats.commands}</span> : null}
-            {stats.tools ? <span title="工具"><Wrench size={12} />{stats.tools}</span> : null}
-            {stats.files ? <span title="文件"><FileDiff size={12} />{stats.files}</span> : null}
-          </div>
+      <div className="run-progress-inline">
+        <div className="run-progress-primary">
+          <span className="run-progress-live-dot" aria-hidden="true" />
+          <span className="run-progress-brand">
+            <Activity size={12} strokeWidth={1.9} />
+            Loom 正在工作
+          </span>
+          <span className="run-progress-divider" aria-hidden="true" />
+          <span className="run-progress-phase">{phase}</span>
         </div>
 
-        <div className="run-progress-rail" aria-hidden="true">
-          <span className="run-progress-node active" />
-          <span className="run-progress-line"><i /></span>
-          <span className={`run-progress-node ${stats.activity > 0 ? "active" : ""}`} />
-          <span className="run-progress-line"><i /></span>
-          <span className={`run-progress-node ${phase.includes("回复") || phase.includes("分析") ? "active" : ""}`} />
+        <div className="run-progress-meta">
+          <span className="run-progress-meta-item"><Clock3 size={12} strokeWidth={1.8} />用时 {formatElapsed(elapsedSeconds)}</span>
+          <span className="run-progress-meta-dot" aria-hidden="true" />
+          <span className="run-progress-meta-item">{stats.activity ? `${stats.activity} 个过程项` : "准备中"}</span>
+          {stats.commands ? <><span className="run-progress-meta-dot" aria-hidden="true" /><span className="run-progress-meta-item subtle"><Terminal size={11} />{stats.commands}</span></> : null}
+          {stats.tools ? <><span className="run-progress-meta-dot" aria-hidden="true" /><span className="run-progress-meta-item subtle"><Wrench size={11} />{stats.tools}</span></> : null}
+          {stats.files ? <><span className="run-progress-meta-dot" aria-hidden="true" /><span className="run-progress-meta-item subtle"><FileDiff size={11} />{stats.files}</span></> : null}
+          {tokenLabel ? <><span className="run-progress-meta-dot" aria-hidden="true" /><span className="run-progress-meta-item subtle">{tokenLabel}</span></> : null}
         </div>
       </div>
+
+      <div className="run-progress-track" aria-hidden="true"><span /></div>
     </div>
   );
 }
