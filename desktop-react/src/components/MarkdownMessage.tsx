@@ -33,15 +33,19 @@ function languageLabel(children: ReactNode): string {
 }
 
 function stickerAwareMarkdown(content: string): string {
-  return splitInlineStickerText(content)
-    .map((segment) => {
-      if (segment.kind === "text") return segment.text;
+  const segments = splitInlineStickerText(content);
+  return segments
+    .map((segment, index) => {
+      if (segment.kind === "text") {
+        let text = segment.text;
+        if (segments[index - 1]?.kind === "sticker") text = text.replace(/^[\t ]*\n(?!\n)/, " ");
+        if (segments[index + 1]?.kind === "sticker") text = text.replace(/(?<!\n)\n[\t ]*$/, " ");
+        return text;
+      }
       const alt = segment.asset.alt.replace(/\\/g, "\\\\").replace(/\]/g, "\\]");
       return `![${alt}](${segment.asset.url})`;
     })
-    .join("")
-    .replace(/(!\[[^\]]*\]\([^\n)]+\))[\t ]*\n(?!\n)/g, "$1 ")
-    .replace(/(?<!\n)\n[\t ]*(!\[[^\]]*\]\([^\n)]+\))/g, " $1");
+    .join("");
 }
 
 function CodeBlock({ children }: { children?: ReactNode }) {
@@ -68,7 +72,7 @@ function CodeBlock({ children }: { children?: ReactNode }) {
           <span>{copied ? "Copied" : "Copy"}</span>
         </button>
       </div>
-      <pre>{children}</pre>
+      <pre>{children}</CodeBlock>
     </div>
   );
 }
