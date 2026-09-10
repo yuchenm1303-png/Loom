@@ -9,6 +9,10 @@ from .execution_binding import binding_digest
 from .history import repair_tool_history
 
 
+def _exposed_tool_names(step) -> tuple[str, ...]:
+    return tuple(tool.name for tool in step.tool_router.all())
+
+
 class TurnRunner:
     def __init__(self, runtime):
         self.runtime = runtime
@@ -30,10 +34,11 @@ class TurnRunner:
                     if len(messages) > rt.limits.max_messages:
                         return rt._limit(session, "context message limit reached; no safe compaction boundary")
                     reasoning = getattr(rt, "reasoning", None)
+                    tool_names = _exposed_tool_names(step)
                     rt._record(session, Event.MODEL_REQUESTED, data={
                         "profile_id": session.profile_id, "step": step.model_step,
                         "step_id": step.step_id, "message_count": len(messages),
-                        "tool_count": len(step.tool_router.all()),
+                        "tool_count": len(tool_names), "tool_names": list(tool_names),
                         "permission_mode": step.world_state.permission_mode.value,
                         "reasoning": reasoning.as_safe_dict() if reasoning is not None else None,
                         "attempt": attempt, **extra,
