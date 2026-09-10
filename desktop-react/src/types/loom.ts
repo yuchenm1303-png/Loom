@@ -169,6 +169,7 @@ export interface LoomSettings {
 export interface ModelRestartResult {
   initialization: InitializeResult;
   models: ModelSnapshot;
+  hotSwitch?: boolean;
 }
 
 export interface ReasoningUpdateResult {
