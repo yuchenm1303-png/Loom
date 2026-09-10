@@ -37,6 +37,16 @@ _AUTO_TITLE_PREFIX_RE = re.compile(
     re.IGNORECASE,
 )
 _AUTO_TITLE_LIST_RE = re.compile(r"^(?:[-*•]+|\d+[.)、])\s*")
+_AUTO_TITLE_THINK_BLOCK_RE = re.compile(
+    r"<\s*think\s*>.*?<\s*/\s*think\s*>",
+    re.IGNORECASE | re.DOTALL,
+)
+_AUTO_TITLE_OPEN_THINK_RE = re.compile(r"^\s*<?\s*think\s*>", re.IGNORECASE)
+_AUTO_TITLE_CLOSE_THINK_RE = re.compile(r"<\s*/\s*think\s*>", re.IGNORECASE)
+_AUTO_TITLE_REASONING_LINE_RE = re.compile(
+    r"^(?:<?\s*think\s*>|analysis\s*[:>]|reasoning\s*[:>]|思考\s*[:：>]|让我(?:先)?(?:分析|想)|let\s+me\s+(?:analyze|think)|i\s+(?:need|will|should|can)\b|we\s+(?:need|should|can)\b|the\s+user\s+(?:is|wants|asked)|this\s+conversation\b)",
+    re.IGNORECASE,
+)
 _GENERIC_AUTO_TITLES = {
     "chat",
     "conversation",
@@ -73,6 +83,7 @@ def _clean_title_context(value: Any) -> str:
     """Keep only visible conversation text for the detached title request."""
 
     text = _AUTO_TITLE_CONTROL_RE.sub("", str(value or ""))
+    text = _strip_title_reasoning(text, reject_open_block=False)
     text = " ".join(text.replace("\x00", " ").split())
     if len(text) > _AUTO_TITLE_CONTEXT_CHARS:
         text = text[:_AUTO_TITLE_CONTEXT_CHARS].rstrip() + "…"
@@ -99,24 +110,89 @@ def _auto_title_context(session: Any) -> tuple[str, str]:
     return user_text, assistant_text
 
 
-def _sanitize_generated_title(value: Any) -> str:
-    """Turn model output into one compact sidebar-safe title."""
+def _strip_title_reasoning(value: Any, *, reject_open_block: bool = True) -> str:
+    """Remove provider-leaked reasoning from a title candidate.
 
-    raw = str(value or "").strip()
-    if not raw:
+    Some OpenAI-compatible reasoning models return ``<think>`` content inside the
+    normal text field. A title must never be created from that text. Closed think
+    blocks are stripped and the text after them may still be used. An unclosed
+    think block means the output is only reasoning or was truncated, so auto-title
+    generation should retry later instead of persisting a bad title.
+    """
+
+    text = str(value or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    if not text:
         return ""
-    raw = raw.replace("```", "").strip()
-    line = next((item.strip() for item in raw.splitlines() if item.strip()), "")
-    line = _AUTO_TITLE_LIST_RE.sub("", line)
+    text = text.replace("```", "").strip()
+    text = _AUTO_TITLE_THINK_BLOCK_RE.sub("\n", text).strip()
+
+    # If a provider returns just ``think>...`` or an unclosed ``<think>...`` block,
+    # do not salvage a title from the model's meta-analysis.
+    if _AUTO_TITLE_OPEN_THINK_RE.match(text):
+        return "" if reject_open_block else ""
+
+    close_match = _AUTO_TITLE_CLOSE_THINK_RE.search(text)
+    if close_match:
+        text = text[close_match.end():].strip()
+    return text
+
+
+def _sanitize_title_line(value: str) -> str:
+    line = _AUTO_TITLE_LIST_RE.sub("", value.strip())
     line = _AUTO_TITLE_PREFIX_RE.sub("", line)
     line = line.strip(" \t`'\"“”‘’[]【】<>《》")
     line = " ".join(line.split())
     line = re.sub(r"[。.!！?？;；,:：]+$", "", line).strip()
     if len(line) > _AUTO_TITLE_OUTPUT_CHARS:
         line = line[:_AUTO_TITLE_OUTPUT_CHARS].rstrip(" -–—:：,，。.!！?？")
-    if line.casefold() in _GENERIC_AUTO_TITLES:
-        return ""
     return line
+
+
+def _sanitize_generated_title(value: Any) -> str:
+    """Turn model output into one compact sidebar-safe title."""
+
+    raw = _strip_title_reasoning(value)
+    if not raw:
+        return ""
+
+    for item in raw.splitlines():
+        line = _sanitize_title_line(item)
+        if not line:
+            continue
+        folded = line.casefold()
+        if folded in _GENERIC_AUTO_TITLES:
+            continue
+        if _AUTO_TITLE_REASONING_LINE_RE.match(line):
+            continue
+        if "create a concise title" in folded or "conversation to create" in folded:
+            continue
+        return line
+    return ""
+
+
+def _metadata_title_blocks_auto_title(metadata: dict[str, Any]) -> bool:
+    title = str(metadata.get("title") or "").strip()
+    if not title:
+        return False
+    title_source = str(metadata.get("titleSource") or "").strip().casefold()
+    if title_source == "auto" and not _sanitize_generated_title(title):
+        return False
+    return True
+
+
+def _metadata_display_title(metadata: dict[str, Any]) -> tuple[str, str]:
+    custom_title = str(metadata.get("title") or "").strip()
+    title_source = str(metadata.get("titleSource") or "").strip().casefold()
+    if not custom_title:
+        return "", "fallback"
+    if title_source == "auto":
+        custom_title = _sanitize_generated_title(custom_title)
+        if not custom_title:
+            return "", "fallback"
+        return custom_title, "auto"
+    if title_source not in {"auto", "manual"}:
+        title_source = "manual"
+    return custom_title, title_source
 
 
 def _build_auto_title_request(session: Any) -> ChatRequest | None:
@@ -126,7 +202,8 @@ def _build_auto_title_request(session: Any) -> ChatRequest | None:
 
     system = (
         "Create a concise title for this desktop-agent conversation. Return only the title, with no "
-        "quotes, markdown, prefix, explanation, or ending punctuation. Match the user's main language. "
+        "quotes, markdown, prefix, explanation, reasoning, analysis, chain-of-thought, or ending punctuation. "
+        "Never include <think> tags or text such as 'Let me analyze'. Match the user's main language. "
         "Capture the concrete subject and task rather than copying a greeting. For Chinese, prefer 6-16 "
         "Chinese characters; otherwise prefer 3-8 words. Avoid generic titles such as Chat, Conversation, "
         "Help, 对话, 聊天, 问题, or 帮助."
@@ -211,8 +288,18 @@ class ThreadLibraryStore:
 
         with self._guard:
             payload = self._read_unlocked(session_id)
-            if str(payload.get("title") or "").strip() or bool(payload.get("autoTitleDisabled")):
+            if bool(payload.get("autoTitleDisabled")):
                 return False
+            if _metadata_title_blocks_auto_title(payload):
+                return False
+            title_source = str(payload.get("titleSource") or "").strip().casefold()
+            raw_title = str(payload.get("title") or "").strip()
+            if title_source == "auto" and raw_title:
+                # Bad titles produced by older builds, such as ``think>Let me...``,
+                # should not permanently block regeneration.
+                payload["title"] = ""
+                payload["autoTitleAttempts"] = 0
+                payload["autoTitleLastError"] = "reasoning_title_rejected"
             attempts = max(0, int(payload.get("autoTitleAttempts") or 0))
             if attempts >= _AUTO_TITLE_MAX_ATTEMPTS:
                 return False
@@ -231,7 +318,7 @@ class ThreadLibraryStore:
 
         with self._guard:
             payload = self._read_unlocked(session_id)
-            if str(payload.get("title") or "").strip() or bool(payload.get("autoTitleDisabled")):
+            if bool(payload.get("autoTitleDisabled")) or _metadata_title_blocks_auto_title(payload):
                 return False
             payload.update(
                 {
@@ -274,16 +361,10 @@ class ManagedStreamingLoomAppServerService(StreamingLoomAppServerService):
     def _managed_record(self, session: Any) -> dict[str, Any]:
         record = _thread_record(session, active=self._is_active(session.session_id))
         metadata = self.thread_library.read(session.session_id)
-        custom_title = str(metadata.get("title") or "").strip()
+        custom_title, title_source = _metadata_display_title(metadata)
         archived_at = str(metadata.get("archivedAt") or "").strip()
-        title_source = str(metadata.get("titleSource") or "").strip().casefold()
         if custom_title:
             record["title"] = custom_title
-            if title_source not in {"auto", "manual"}:
-                # Titles written before titleSource existed were user renames.
-                title_source = "manual"
-        else:
-            title_source = "fallback"
         record["customTitle"] = bool(custom_title)
         record["titleSource"] = title_source
         record["archived"] = bool(archived_at)
@@ -347,15 +428,10 @@ class ManagedStreamingLoomAppServerService(StreamingLoomAppServerService):
         if isinstance(thread, dict):
             thread_id = str(thread.get("id") or "")
             metadata = self.thread_library.read(thread_id)
-            custom_title = str(metadata.get("title") or "").strip()
+            custom_title, title_source = _metadata_display_title(metadata)
             archived_at = str(metadata.get("archivedAt") or "").strip()
-            title_source = str(metadata.get("titleSource") or "").strip().casefold()
             if custom_title:
                 thread["title"] = custom_title
-                if title_source not in {"auto", "manual"}:
-                    title_source = "manual"
-            else:
-                title_source = "fallback"
             thread["customTitle"] = bool(custom_title)
             thread["titleSource"] = title_source
             thread["archived"] = bool(archived_at)
@@ -509,8 +585,8 @@ class ManagedStreamingLoomAppServerService(StreamingLoomAppServerService):
                 return
             metadata = self.thread_library.read(thread_id)
             if (
-                str(metadata.get("title") or "").strip()
-                or bool(metadata.get("autoTitleDisabled"))
+                bool(metadata.get("autoTitleDisabled"))
+                or _metadata_title_blocks_auto_title(metadata)
                 or int(metadata.get("autoTitleAttempts") or 0) >= _AUTO_TITLE_MAX_ATTEMPTS
             ):
                 return
@@ -560,7 +636,7 @@ class ManagedStreamingLoomAppServerService(StreamingLoomAppServerService):
 
             if not title:
                 try:
-                    self.thread_library.write(thread_id, {"autoTitleLastError": "empty_or_generic_title"})
+                    self.thread_library.write(thread_id, {"autoTitleLastError": "empty_or_reasoning_title"})
                 except FileNotFoundError:
                     pass
                 return
