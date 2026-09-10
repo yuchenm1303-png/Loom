@@ -1,0 +1,95 @@
+name: Import bundled sticker assets once
+
+on:
+  push:
+    branches:
+      - fix/stickers-bundled-assets-final
+    paths:
+      - .github/workflows/import-stickers-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  import-stickers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/stickers-bundled-assets-final
+
+      - name: Download original AI Ledger sticker pack
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 \
+            --output /tmp/inline_stickers_v1.zip \
+            https://raw.githubusercontent.com/yuchenm1303-png/yuchen1303.github.io/dev-update-1/ai-ledger-android/app/src/main/assets/inline_stickers_v1.zip
+
+      - name: Extract and validate the 19 production WebP assets
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/loom-stickers desktop-react/src/assets/chat-stickers
+          mkdir -p /tmp/loom-stickers desktop-react/src/assets/chat-stickers
+          unzip -q /tmp/inline_stickers_v1.zip -d /tmp/loom-stickers
+
+          expected=(
+            joy_burst
+            affection_hug
+            health_check
+            thinking_soft
+            cheer_power
+            pout_no
+            comfort_friend
+            red_packet_congrats
+            gift_for_you
+            sparkle_excited
+            soft_smile
+            got_it_point
+            heart_thanks
+            confident_ready
+            playful_wink
+            confused_study
+            confirm_yes
+            idea_drawing
+            reject_no
+          )
+
+          for key in "${expected[@]}"; do
+            src="$(find /tmp/loom-stickers -type f -name "${key}.webp" -print -quit)"
+            if [ -z "$src" ]; then
+              echo "Missing expected sticker: ${key}.webp" >&2
+              find /tmp/loom-stickers -maxdepth 3 -type f -print | sort >&2
+              exit 1
+            fi
+            cp "$src" "desktop-react/src/assets/chat-stickers/${key}.webp"
+          done
+
+          count="$(find desktop-react/src/assets/chat-stickers -maxdepth 1 -type f -name '*.webp' | wc -l | tr -d ' ')"
+          test "$count" = "19"
+
+          python - <<'PY'
+          from pathlib import Path
+          import struct
+
+          root = Path('desktop-react/src/assets/chat-stickers')
+          files = sorted(root.glob('*.webp'))
+          assert len(files) == 19
+          for path in files:
+              raw = path.read_bytes()
+              assert len(raw) > 1000, (path, len(raw))
+              assert raw[:4] == b'RIFF' and raw[8:12] == b'WEBP', path
+          print('Validated 19 WebP sticker assets; total bytes:', sum(p.stat().st_size for p in files))
+          PY
+
+      - name: Commit bundled assets to the fix branch
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add desktop-react/src/assets/chat-stickers
+          if git diff --cached --quiet; then
+            echo "Sticker assets are already current."
+            exit 0
+          fi
+          git commit -m "fix(desktop-react): bundle original sticker assets"
+          git push origin HEAD:fix/stickers-bundled-assets-final
