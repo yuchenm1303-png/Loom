@@ -8,12 +8,16 @@ matches a registered project root. This patch stores that intent beside the
 thread metadata instead of trying to infer it from the filesystem path.
 """
 
+import importlib.abc
+import importlib.machinery
 import json
 import sys
+from types import ModuleType
 from typing import Any
 
 
 _TARGET_MODULE = "app.app_server_thread_management"
+_TRIGGER_MODULE = "app.app_server_reasoning"
 _INSTALLED = False
 
 _ORDINARY_KIND = "ordinary"
@@ -195,13 +199,52 @@ def patch(module: Any) -> None:
     service_cls._loom_ordinary_conversations_installed = True
 
 
+def _patch_loaded_target() -> None:
+    target = sys.modules.get(_TARGET_MODULE)
+    if target is not None:
+        patch(target)
+
+
+class _OrdinaryConversationLoader(importlib.abc.Loader):
+    def __init__(self, loader: importlib.abc.Loader) -> None:
+        self.loader = loader
+
+    def create_module(self, spec: importlib.machinery.ModuleSpec) -> ModuleType | None:
+        create_module = getattr(self.loader, "create_module", None)
+        if callable(create_module):
+            return create_module(spec)
+        return None
+
+    def exec_module(self, module: ModuleType) -> None:
+        exec_module = getattr(self.loader, "exec_module", None)
+        if not callable(exec_module):
+            raise ImportError(f"loader for {_TRIGGER_MODULE} cannot execute modules")
+        exec_module(module)
+        _patch_loaded_target()
+
+
+class _OrdinaryConversationFinder(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname: str, path: Any, target: ModuleType | None = None):
+        if fullname != _TRIGGER_MODULE:
+            return None
+        try:
+            sys.meta_path.remove(self)
+            spec = importlib.machinery.PathFinder.find_spec(fullname, path)
+        finally:
+            sys.meta_path.insert(0, self)
+        if spec is None or spec.loader is None or isinstance(spec.loader, _OrdinaryConversationLoader):
+            return spec
+        spec.loader = _OrdinaryConversationLoader(spec.loader)  # type: ignore[arg-type]
+        return spec
+
+
 def install() -> None:
     global _INSTALLED
     if _INSTALLED:
         return
-    existing = sys.modules.get(_TARGET_MODULE)
-    if existing is not None:
-        patch(existing)
+    _patch_loaded_target()
+    if _TRIGGER_MODULE not in sys.modules:
+        sys.meta_path.insert(0, _OrdinaryConversationFinder())
     _INSTALLED = True
 
 
