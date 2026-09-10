@@ -74,7 +74,10 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
         payload.setdefault("available", True)
         return payload
 
-    def _capability_status(self, settings: dict[str, Any]) -> dict[str, Any]:
+    def _capability_status(self, settings: dict[str, Any] | None = None) -> dict[str, Any]:
+        if settings is None:
+            store = getattr(self, "settings_store", None)
+            settings = store.snapshot() if store is not None else {}
         raw = settings.get("capabilities")
         preferences = dict(raw) if isinstance(raw, dict) else {}
 
@@ -369,6 +372,7 @@ def serve_reasoning_managed_streaming_stdio(
         model=model,
         default_workspace=default_workspace,
         default_permission_mode=default_permission_mode,
+        vision=bool(vision),
     )
     server = ReasoningManagedJsonRpcStdioServer(service)
     try:
