@@ -1,3 +1,11 @@
+/* Hard guard against the retired assistant waiting card. Older renderer code
+   may still mount it during hot reload / stale builds; it must never be visible
+   now that RunProgress + inline reasoning own the waiting state. */
+.streaming-placeholder,
+.entry-assistant_message:has(.streaming-placeholder) {
+  display: none !important;
+}
+
 .inline-thinking,
 .live-reasoning {
   align-self: flex-start;
