@@ -20,6 +20,7 @@ const REPO_ROOT = path.resolve(DESKTOP_ROOT, "..");
 const REPO_VENV_PYTHON = process.platform === "win32"
   ? path.join(REPO_ROOT, ".venv", "Scripts", "python.exe")
   : path.join(REPO_ROOT, ".venv", "bin", "python");
+const HTML_ESCAPE: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
 
 interface JsonRpcResponse {
   jsonrpc: "2.0";
@@ -388,7 +389,7 @@ async function deleteModel(selection: string): Promise<ModelRestartResult> {
 }
 
 function htmlEscape(value: string): string {
-  return value.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char] ?? char);
+  return value.replace(/[&<>"']/g, (char) => HTML_ESCAPE[char] ?? char);
 }
 
 function rendererFailureDocument(title: string, detail: string): string {
