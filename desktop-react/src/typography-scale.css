@@ -1,117 +1,247 @@
 /*
- * Global readability pass.
+ * Global readability scale.
  *
- * The desktop shell historically used a dense 8–13px type scale. Keep the
- * existing layout/spacing, but lift readable text roughly 12–18% so the UI is
- * comfortable at normal desktop viewing distance.
+ * Loom has a deliberately compact desktop UI, but several surfaces accumulated
+ * 8–11px labels that are difficult to read at normal Windows scaling. Keep the
+ * hierarchy and density, while raising secondary/meta text to a practical floor.
+ * This file is imported last so it remains the single readability authority.
  */
 
 :root {
-  --loom-font-body: 15px;
-  --loom-font-ui: 12.5px;
-  --loom-font-meta: 10.5px;
+  --loom-font-body: 15.5px;
+  --loom-font-ui: 13.5px;
+  --loom-font-meta: 12.5px;
+  --loom-font-micro: 11.5px;
 }
 
 body {
   font-size: var(--loom-font-body);
 }
 
-/* Sidebar */
-.sidebar .brand-row strong { font-size: 14px !important; }
-.sidebar .brand-row span { font-size: 12px !important; }
+/* Sidebar ---------------------------------------------------------------- */
+.sidebar .brand-row strong { font-size: 15px !important; }
+.sidebar .brand-row span { font-size: 13px !important; }
 .sidebar .brand-mark { font-size: 14px !important; }
-.sidebar .new-thread-copy { font-size: 13px !important; }
+.sidebar .new-thread-copy { font-size: 13.5px !important; }
 .sidebar .new-thread kbd,
-.sidebar .search-shortcut { font-size: 9.5px !important; }
-.sidebar .search-box input { font-size: 12.5px !important; }
-.sidebar .sidebar-section-label { font-size: 10.5px !important; }
-.sidebar .section-count { font-size: 9.5px !important; }
-.sidebar .thread-title { font-size: 13px !important; }
-.sidebar .thread-meta { font-size: 10.5px !important; }
-.sidebar .sidebar-empty strong { font-size: 11.5px !important; }
+.sidebar .search-shortcut { font-size: var(--loom-font-micro) !important; }
+.sidebar .search-box input { font-size: 13.5px !important; }
+.sidebar .sidebar-section-label { font-size: 12px !important; }
+.sidebar .section-count { font-size: var(--loom-font-micro) !important; }
+.sidebar .thread-title { font-size: 13.5px !important; }
+.sidebar .thread-meta { font-size: 12px !important; }
+.sidebar .sidebar-empty strong { font-size: 13px !important; }
 .sidebar .sidebar-empty > span:last-of-type,
-.sidebar .sidebar-empty button { font-size: 10.5px !important; }
-.sidebar .sidebar-footer-button { font-size: 12.5px !important; }
-.sidebar .footer-badge { font-size: 9.5px !important; }
+.sidebar .sidebar-empty button { font-size: 12px !important; }
+.sidebar .sidebar-footer-button { font-size: 13px !important; }
+.sidebar .footer-badge { font-size: var(--loom-font-micro) !important; }
 
-/* Conversation header */
-.thread-heading strong { font-size: 14px !important; }
-.thread-heading span { font-size: 11.5px !important; }
-.running-pill { font-size: 11.5px !important; }
+.compact-sidebar-header > strong::after { font-size: 12px !important; }
+.compact-search input { font-size: 13.5px !important; }
+.workspace-group-header > span { font-size: 13px !important; }
+.workspace-group-header > span.workspace-group-count { font-size: 12px !important; }
+.workspace-group-empty { font-size: 12.5px !important; }
+.workspace-group-rename,
+.workspace-group-menu button,
+.compact-thread-rename { font-size: 13px !important; }
+.compact-thread-title { font-size: 13.5px !important; }
+.compact-sidebar-empty,
+.compact-sidebar-empty button { font-size: 12.5px !important; }
+.compact-sidebar-footer > button { font-size: 13px !important; }
 
-/* Empty conversation state */
-.empty-kicker { font-size: 11.5px !important; }
-.empty-state > p { font-size: 14px !important; }
-.starter-eyebrow { font-size: 10.5px !important; }
-.starter-content strong { font-size: 12.5px !important; }
-.starter-content > span:last-child { font-size: 11.5px !important; }
+/* Conversation header ---------------------------------------------------- */
+.thread-heading strong { font-size: 14.5px !important; }
+.thread-heading span { font-size: 12.5px !important; }
+.running-pill { font-size: 12px !important; }
+.thread-title-line strong { font-size: 15.5px !important; }
+.workspace-leaf { font-size: 12.5px !important; }
+.workspace-full-path { font-size: 12px !important; }
+.thread-status-chip,
+.thread-meta-chip { font-size: 12px !important; }
 
-/* Main transcript */
+/* Empty conversation state ---------------------------------------------- */
+.empty-kicker { font-size: 12.5px !important; }
+.empty-state > p { font-size: 14.5px !important; }
+.starter-eyebrow { font-size: 12px !important; }
+.starter-content strong { font-size: 13.5px !important; }
+.starter-content > span:last-child { font-size: 12.5px !important; }
+
+/* Main transcript -------------------------------------------------------- */
 .user-message,
-.assistant-message { font-size: 15px !important; }
-.streaming-placeholder { font-size: 12.5px !important; }
-.disclosure-trigger { font-size: 12.5px !important; }
-.reasoning-copy { font-size: 14px !important; }
-.activity-title { font-size: 12.5px !important; }
-.activity-status { font-size: 10.5px !important; }
+.assistant-message { font-size: 15.5px !important; }
+.streaming-placeholder { font-size: 13px !important; }
+.disclosure-trigger { font-size: 13px !important; }
+.reasoning-copy { font-size: 14.5px !important; }
+.activity-title { font-size: 13.5px !important; }
+.activity-status { font-size: 12px !important; }
 .activity-output,
-.diff-output { font-size: 12px !important; }
-.error-row { font-size: 12.5px !important; }
-.approval-title { font-size: 12.5px !important; }
-.approval-copy { font-size: 11.5px !important; }
-.button { font-size: 11.5px !important; }
+.diff-output { font-size: 12.5px !important; }
+.error-row { font-size: 13.5px !important; }
+.approval-title { font-size: 13.5px !important; }
+.approval-copy { font-size: 12.5px !important; }
+.button { font-size: 12.5px !important; }
+.message-meta { font-size: 12px !important; }
 
-/* Compact task/activity flow */
-.task-flow-summary-copy strong { font-size: 13.5px !important; }
-.task-flow-summary-copy span { font-size: 10.5px !important; }
-.task-flow-verb { font-size: 12.5px !important; }
-.task-flow-primary { font-size: 13px !important; }
-.task-flow-primary.code { font-size: 12px !important; }
-.task-flow-diffstat { font-size: 10.5px !important; }
-.task-flow-status { font-size: 10.5px !important; }
-.task-flow-disclosure .disclosure-trigger { font-size: 11.5px !important; }
-.task-flow-detail-title { font-size: 12px !important; }
-.task-flow-detail-kind { font-size: 9.5px !important; }
-.task-flow-detail pre { font-size: 11.5px !important; }
-.task-flow-detail .task-flow-detail-empty { font-size: 11.5px !important; }
+/* Compact task/activity flow -------------------------------------------- */
+.task-flow-summary-copy strong { font-size: 14px !important; }
+.task-flow-summary-copy span { font-size: 12px !important; }
+.task-flow-verb { font-size: 13px !important; }
+.task-flow-primary { font-size: 13.5px !important; }
+.task-flow-primary.code { font-size: 12.5px !important; }
+.task-flow-diffstat { font-size: var(--loom-font-micro) !important; }
+.task-flow-status { font-size: var(--loom-font-micro) !important; }
+.task-flow-disclosure .disclosure-trigger { font-size: 12.5px !important; }
+.task-flow-detail-title { font-size: 13px !important; }
+.task-flow-detail-kind { font-size: var(--loom-font-micro) !important; }
+.task-flow-detail pre,
+.task-flow-inline-detail pre { font-size: 12.5px !important; }
+.task-flow-detail .task-flow-detail-empty { font-size: 12.5px !important; }
+.task-flow-group-title { font-size: 13px !important; }
+.task-flow-group-failed { font-size: var(--loom-font-micro) !important; }
+.task-flow-group .task-flow-verb,
+.task-flow-group .task-flow-primary { font-size: 12.75px !important; }
+.task-flow-group .task-flow-primary.code { font-size: 12.25px !important; }
+.task-flow-group-summary,
+.task-flow-summary-pill,
+.task-flow-summary-file,
+.task-flow-summary-more { font-size: var(--loom-font-micro) !important; }
 
-/* Composer */
-.composer textarea { font-size: 15.5px !important; }
+.turn-process-time { font-size: 13px !important; }
+.turn-process-meta { font-size: 12px !important; }
+.turn-process-failed { font-size: var(--loom-font-micro) !important; }
+.turn-artifacts-copy strong { font-size: 13px !important; }
+.turn-artifacts-stats,
+.turn-artifacts-action { font-size: var(--loom-font-micro) !important; }
+.turn-artifacts-files code,
+.turn-artifacts-more { font-size: var(--loom-font-micro) !important; }
+.turn-artifacts pre { font-size: 12.5px !important; }
+
+/* Composer --------------------------------------------------------------- */
+.composer textarea { font-size: 16px !important; }
 .composer-tool,
-.composer-chip { font-size: 12px !important; }
-.composer-keycap { font-size: 10.5px !important; }
-.composer-running-label { font-size: 11.5px !important; }
-.composer-hint { font-size: 10.5px !important; }
+.composer-chip { font-size: 13px !important; }
+.composer-keycap { font-size: var(--loom-font-micro) !important; }
+.composer-running-label { font-size: 12.5px !important; }
+.composer-hint { font-size: 12px !important; }
 
-/* Runtime inspector */
-.runtime-title-row strong { font-size: 13.5px !important; }
-.runtime-caption { font-size: 10.5px !important; }
-.runtime-health { font-size: 9.5px !important; }
-.runtime-tab { font-size: 10.5px !important; }
-.runtime-tab-count { font-size: 9.5px !important; }
-.runtime-section-bar { font-size: 9.5px !important; }
-.runtime-empty strong { font-size: 13px !important; }
-.runtime-empty p { font-size: 11.5px !important; }
-.runtime-empty-chips span { font-size: 9.5px !important; }
-.runtime-event-title { font-size: 12px !important; }
-.runtime-event-subtitle { font-size: 10px !important; }
-.runtime-event-detail pre { font-size: 11px !important; }
-.runtime-footer { font-size: 10.5px !important; }
+/* Model manager ---------------------------------------------------------- */
+.model-manager-popover .composer-popover-heading strong { font-size: 13.5px !important; }
+.model-compact-current strong { font-size: 13px !important; }
+.model-compact-current span:not(.model-compact-icon) { font-size: 12px !important; }
+.model-manager-actions strong,
+.model-wide-action strong,
+.model-manager-popover .model-manager-actions strong { font-size: 12.5px !important; }
+.model-manager-actions small,
+.model-wide-action small,
+.model-manager-popover .model-manager-actions small { font-size: var(--loom-font-micro) !important; }
+.model-profile-title-row strong { font-size: 12.5px !important; }
+.model-profile-title-row em { font-size: var(--loom-font-micro) !important; }
+.model-profile-copy > span,
+.model-profile-copy small { font-size: 12px !important; }
+.model-delete-note,
+.model-back,
+.model-security-note { font-size: 12px !important; }
+.model-form-heading strong { font-size: 13px !important; }
+.model-form-heading span,
+.model-field > span,
+.model-connection-summary span,
+.model-recent-row > span,
+.model-recent-row button { font-size: 12px !important; }
+.model-field input,
+.model-field select,
+.model-secret-input,
+.model-connection-summary strong { font-size: 12.5px !important; }
+.model-primary-button,
+.model-secondary-button { font-size: 12px !important; }
 
-/* Legacy/fallback inspector selectors that are still present in the shell CSS. */
-.inspector-header strong { font-size: 13px !important; }
-.inspector-tabs button { font-size: 10.5px !important; }
-.inspector-empty { font-size: 12.5px !important; }
-.inspector-row-title { font-size: 12.5px !important; }
-.inspector-row-meta { font-size: 10.5px !important; }
+/* Reasoning controls ----------------------------------------------------- */
+.reasoning-heading-copy::before { font-size: var(--loom-font-micro) !important; }
+.reasoning-heading-copy strong { font-size: 13px !important; }
+.reasoning-heading-copy span { font-size: var(--loom-font-micro) !important; }
+.reasoning-slider-shell::before,
+.reasoning-slider-shell::after { font-size: 10.5px !important; }
+.reasoning-locked-note { font-size: var(--loom-font-micro) !important; }
+.reasoning-unavailable strong { font-size: 12px !important; }
+.reasoning-unavailable span { font-size: var(--loom-font-micro) !important; }
 
-/* Error surface */
+/* Run progress ----------------------------------------------------------- */
+.run-progress-brand { font-size: 12px !important; }
+.run-progress-phase { font-size: 13px !important; }
+.run-progress-meta { font-size: var(--loom-font-micro) !important; }
+.run-progress-frame.bottom .run-progress-brand,
+.run-progress-frame.bottom .run-progress-phase { font-size: 12px !important; }
+.run-progress-frame.bottom .run-progress-meta { font-size: var(--loom-font-micro) !important; }
+
+/* Runtime inspector ------------------------------------------------------ */
+.runtime-title-row strong { font-size: 14px !important; }
+.runtime-caption { font-size: 12px !important; }
+.runtime-health { font-size: 10.5px !important; }
+.runtime-tab { font-size: 12px !important; }
+.runtime-tab-count { font-size: var(--loom-font-micro) !important; }
+.runtime-section-bar { font-size: var(--loom-font-micro) !important; }
+.runtime-empty strong { font-size: 14px !important; }
+.runtime-empty p { font-size: 13.5px !important; line-height: 1.6 !important; }
+.runtime-empty-chips span { font-size: var(--loom-font-micro) !important; }
+.runtime-event-title { font-size: 12.5px !important; }
+.runtime-event-subtitle { font-size: var(--loom-font-micro) !important; }
+.runtime-event-detail pre { font-size: 12px !important; }
+.runtime-footer { font-size: 12px !important; }
+
+/* Legacy/fallback inspector selectors still present in the shell CSS. */
+.inspector-header strong { font-size: 13.5px !important; }
+.inspector-tabs button { font-size: 12px !important; }
+.inspector-empty { font-size: 13px !important; }
+.inspector-row-title { font-size: 13px !important; }
+.inspector-row-meta { font-size: 12px !important; }
+
+/* Settings --------------------------------------------------------------- */
+.settings-back,
+.settings-search input { font-size: 13px !important; }
+.settings-sidebar-title span:not(.settings-brand-orb) { font-size: 12.5px !important; }
+.settings-nav-label { font-size: 12px !important; }
+.settings-nav button span { font-size: 13.5px !important; }
+.settings-sidebar-footer strong { font-size: 13px !important; }
+.settings-sidebar-footer span:last-child { font-size: 12px !important; }
+.settings-eyebrow { font-size: 12px !important; }
+.settings-tool-count { font-size: 12.5px !important; }
+.settings-section-heading p { font-size: 13px !important; }
+.settings-detail-row strong,
+.capability-title-line strong,
+.safety-summary strong,
+.plugin-row strong,
+.permission-card strong { font-size: 14px !important; }
+.settings-detail-row span,
+.capability-copy span:not(.settings-status-pill),
+.settings-callout span,
+.settings-callout-inline span,
+.model-summary-copy > span:last-child,
+.safety-summary span,
+.plugin-row span:not(.settings-status-pill),
+.permission-card span:not(.settings-status-pill) { font-size: 13px !important; }
+.settings-detail-row code { font-size: 12.5px !important; }
+.settings-option-card strong { font-size: 13.5px !important; }
+.settings-option-card span { font-size: 12.5px !important; }
+.settings-status-pill { font-size: 12px !important; }
+
+/* Generic semantic small text ------------------------------------------- */
+small { font-size: var(--loom-font-micro) !important; }
+
+/* Error surface ---------------------------------------------------------- */
 .boot-error-card h1 { font-size: 19px !important; }
 .boot-error-card p { font-size: 13.5px !important; }
 
 @media (max-width: 1180px) {
   /* Keep the readability gain on smaller desktop windows instead of shrinking type. */
   .user-message,
-  .assistant-message { font-size: 14.5px !important; }
-  .composer textarea { font-size: 15px !important; }
+  .assistant-message { font-size: 15px !important; }
+  .composer textarea { font-size: 15.5px !important; }
+  .thread-title-line strong { font-size: 15px !important; }
+}
+
+@media (max-width: 760px) {
+  /* Compact windows may hide low-priority labels, but visible text should remain readable. */
+  .workspace-leaf { font-size: 12px !important; }
+  .run-progress-brand { font-size: 11.5px !important; }
+  .run-progress-phase { font-size: 12.5px !important; }
+  .run-progress-meta { font-size: 11.5px !important; }
 }
