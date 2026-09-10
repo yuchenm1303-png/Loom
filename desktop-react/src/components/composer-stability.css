@@ -1,1 +1,35 @@
-/* Composer position is intentionally stable across input/tool focus changes. */
+/* Keep the composer geometry stable while focus moves between textarea and toolbar controls. */
+
+.composer.is-focused,
+.composer:focus-within {
+  transform: none;
+}
+
+/* Toolbar/popover focus should not make the input surface look focused. */
+.composer:focus-within:not(.is-focused) {
+  border-color: rgba(67,72,86,.84);
+  background: linear-gradient(180deg, rgba(24,26,32,.99), rgba(18,20,25,.99));
+  box-shadow:
+    0 16px 42px rgba(0,0,0,.28),
+    inset 0 1px 0 rgba(255,255,255,.035);
+}
+
+.composer:focus-within:not(.is-focused)::before {
+  opacity: .64;
+}
+
+/* The ambient footer glow belongs to textarea focus only, not model/permission buttons. */
+.composer-wrap:focus-within::before {
+  opacity: 0;
+}
+
+.composer-wrap:has(.composer.is-focused)::before {
+  opacity: 1;
+}
+
+/* Opening a floating panel must never move the composer itself. */
+.composer.has-panel,
+.composer.has-panel:focus-within,
+.composer.has-panel.is-focused {
+  transform: none;
+}
