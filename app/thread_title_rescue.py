@@ -9,6 +9,7 @@ import threading
 from types import ModuleType
 from typing import Any
 
+from . import thread_title_backfill as title_backfill
 from . import thread_title_override as title_override
 
 _TARGET_MODULE = "app.app_server_thread_management"
@@ -44,7 +45,7 @@ def _safe_fallback_title(prompt: str) -> str:
     return "New Task"
 
 
-def _notify_thread_updated(service: Any, module: ModuleType, thread_id: str, reason: str) -> None:
+def _notify_thread_updated(service: Any, thread_id: str, reason: str) -> None:
     try:
         latest = service.store.load(thread_id)
     except (FileNotFoundError, OSError, ValueError, json.JSONDecodeError):
@@ -130,7 +131,6 @@ def _patch_service(module: ModuleType) -> None:
     service_cls = module.ManagedStreamingLoomAppServerService
     original_turn_start = service_cls.turn_start
     original_schedule_auto_title = service_cls._schedule_auto_title
-    original_generate_auto_title = service_cls._generate_auto_title
     original_managed_record = service_cls._managed_record
     original_thread_read = service_cls.thread_read
 
@@ -175,7 +175,7 @@ def _patch_service(module: ModuleType) -> None:
                     self.thread_library.finish_auto_title_attempt(thread_id, "empty_title_context", source_prompt=source_prompt)
                 except FileNotFoundError:
                     return
-                _notify_thread_updated(self, module, thread_id, "auto_title_fallback")
+                _notify_thread_updated(self, thread_id, "auto_title_fallback")
                 return
 
             try:
@@ -185,7 +185,7 @@ def _patch_service(module: ModuleType) -> None:
             if not claimed:
                 return
 
-            _notify_thread_updated(self, module, thread_id, "auto_title_pending")
+            _notify_thread_updated(self, thread_id, "auto_title_pending")
 
             title = ""
             last_error = ""
@@ -219,7 +219,7 @@ def _patch_service(module: ModuleType) -> None:
                     self.thread_library.finish_auto_title_attempt(thread_id, last_error or "title_not_committed", source_prompt=source_prompt)
                 except FileNotFoundError:
                     return
-            _notify_thread_updated(self, module, thread_id, "auto_title" if committed else "auto_title_fallback")
+            _notify_thread_updated(self, thread_id, "auto_title" if committed else "auto_title_fallback")
         finally:
             with self._auto_title_guard:
                 self._auto_title_inflight.discard(thread_id)
@@ -253,6 +253,10 @@ def _patch_service(module: ModuleType) -> None:
             return record
         pending = bool(record.get("autoTitlePending")) or str(record.get("titleSource") or metadata.get("titleSource") or "").strip().casefold() == "pending"
         if pending:
+            record["title"] = title_override._AUTO_TITLE_PENDING_TITLE
+            record["customTitle"] = False
+            record["titleSource"] = "pending"
+            record["autoTitlePending"] = True
             prompt = _stored_title_prompt(self.thread_library, thread_id) or title_override._first_user_prompt(module, session)
             try:
                 self._schedule_auto_title(thread_id, user_prompt=prompt)
@@ -266,6 +270,10 @@ def _patch_service(module: ModuleType) -> None:
         if isinstance(thread, dict) and (thread.get("autoTitlePending") or str(thread.get("titleSource") or "").casefold() == "pending"):
             thread_id = str(thread.get("id") or "").strip()
             if thread_id:
+                thread["title"] = title_override._AUTO_TITLE_PENDING_TITLE
+                thread["customTitle"] = False
+                thread["titleSource"] = "pending"
+                thread["autoTitlePending"] = True
                 try:
                     session = self.store.load(thread_id)
                     prompt = _stored_title_prompt(self.thread_library, thread_id) or title_override._first_user_prompt(module, session)
@@ -284,6 +292,8 @@ def _patch_service(module: ModuleType) -> None:
 
 def patch(module: ModuleType) -> None:
     global _PATCHED
+    title_override.patch(module)
+    title_backfill.patch(module)
     service_cls = getattr(module, "ManagedStreamingLoomAppServerService", None)
     if service_cls is None or getattr(service_cls, "_loom_title_rescue_installed", False):
         _PATCHED = True
