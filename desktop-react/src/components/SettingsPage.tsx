@@ -4,23 +4,25 @@ import {
   Bot,
   Box,
   BrainCircuit,
-  Browser,
   Check,
   ChevronRight,
   CircleAlert,
   Code2,
   Cpu,
   Globe2,
-  MonitorCog,
+  HardDrive,
+  Info,
+  Monitor,
   Plug,
   Search,
   Settings2,
   ShieldCheck,
   Sparkles,
-  TerminalSquare,
+  Terminal,
   Wrench,
+  type LucideIcon,
 } from "lucide-react";
-import { useEffect, useMemo, useState, type ComponentType } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { InitializeResult, ModelSnapshot } from "../types/loom";
 import "./settings-page.css";
 
@@ -78,8 +80,20 @@ interface SettingsPageProps {
 interface NavItem {
   key: PageKey;
   label: string;
-  icon: ComponentType<{ size?: number; strokeWidth?: number }>;
+  icon: LucideIcon;
 }
+
+const LOCAL_CAPABILITY_STORAGE_KEY = "loom.settings.capabilities";
+
+const DEFAULT_CAPABILITIES: Record<CapabilityKey, boolean> = {
+  computerUse: true,
+  browserUse: true,
+  webSearch: true,
+  mcp: true,
+  skills: true,
+  toolSearch: true,
+  codeMode: true,
+};
 
 const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
   {
@@ -93,8 +107,8 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
   {
     label: "Integrations",
     items: [
-      { key: "computer", label: "Computer Use", icon: MonitorCog },
-      { key: "browser", label: "Browser", icon: Browser },
+      { key: "computer", label: "Computer Use", icon: Monitor },
+      { key: "browser", label: "Browser", icon: Globe2 },
       { key: "plugins", label: "Plugins", icon: Plug },
       { key: "skills", label: "Skills", icon: Sparkles },
     ],
@@ -112,28 +126,28 @@ const CAPABILITIES: {
   key: CapabilityKey;
   title: string;
   description: string;
-  icon: ComponentType<{ size?: number; strokeWidth?: number }>;
+  icon: LucideIcon;
   detailPage?: PageKey;
 }[] = [
   {
     key: "computerUse",
     title: "Computer Use",
-    description: "Allow Loom to observe and operate desktop applications with screenshot + UIA grounding.",
-    icon: MonitorCog,
+    description: "Allow Loom to observe and operate desktop applications with screenshots, UIA, and grounded mouse/keyboard actions.",
+    icon: Monitor,
     detailPage: "computer",
   },
   {
     key: "browserUse",
     title: "Browser Use",
     description: "Allow Loom to launch or attach to Chrome/Edge and interact with web pages.",
-    icon: Browser,
+    icon: Globe2,
     detailPage: "browser",
   },
   {
     key: "webSearch",
     title: "Web Search",
     description: "Expose the configured public-web search provider to the agent.",
-    icon: Globe2,
+    icon: Search,
   },
   {
     key: "mcp",
@@ -152,7 +166,7 @@ const CAPABILITIES: {
     key: "toolSearch",
     title: "Tool Search",
     description: "Let the agent discover deferred integration tools on demand instead of loading everything up front.",
-    icon: Search,
+    icon: Wrench,
   },
   {
     key: "codeMode",
@@ -161,6 +175,38 @@ const CAPABILITIES: {
     icon: Code2,
   },
 ];
+
+function readStoredCapabilities(): Partial<Record<CapabilityKey, boolean>> {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(LOCAL_CAPABILITY_STORAGE_KEY) || "{}");
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    const result: Partial<Record<CapabilityKey, boolean>> = {};
+    for (const key of Object.keys(DEFAULT_CAPABILITIES) as CapabilityKey[]) {
+      const value = (parsed as Record<string, unknown>)[key];
+      if (typeof value === "boolean") result[key] = value;
+    }
+    return result;
+  } catch {
+    return {};
+  }
+}
+
+function mergedCapabilities(runtime: RuntimeView): Record<CapabilityKey, boolean> {
+  return {
+    ...DEFAULT_CAPABILITIES,
+    ...(runtime.settings?.capabilities ?? {}),
+    ...readStoredCapabilities(),
+  };
+}
+
+function persistLocalCapabilities(capabilities: Record<CapabilityKey, boolean>): void {
+  try {
+    window.localStorage.setItem(LOCAL_CAPABILITY_STORAGE_KEY, JSON.stringify(capabilities));
+    window.dispatchEvent(new CustomEvent("loom:settings-updated", { detail: { capabilities } }));
+  } catch {
+    // A locked-down renderer still keeps the in-memory switch state for this session.
+  }
+}
 
 function bool(value: unknown): boolean {
   return value === true;
@@ -186,7 +232,7 @@ function capabilityAvailable(status?: Record<string, unknown>): boolean {
 
 function capabilityLabel(status: Record<string, unknown> | undefined, userEnabled: boolean): { text: string; tone: string } {
   if (!userEnabled) return { text: "Off", tone: "off" };
-  if (!status) return { text: "Unknown", tone: "muted" };
+  if (!status) return { text: "Enabled", tone: "ready" };
   if (!capabilityAvailable(status)) return { text: "Not configured", tone: "warning" };
   if (status.error) return { text: "Needs attention", tone: "warning" };
   return { text: "Ready", tone: "ready" };
@@ -222,7 +268,7 @@ function StatusPill({ tone, children }: { tone: string; children: string }) {
   return <span className={`settings-status-pill ${tone}`}><span className="settings-status-dot" />{children}</span>;
 }
 
-function Section({ title, caption, children }: { title: string; caption?: string; children: React.ReactNode }) {
+function Section({ title, caption, children }: { title: string; caption?: string; children: ReactNode }) {
   return (
     <section className="settings-section">
       <div className="settings-section-heading">
@@ -241,7 +287,7 @@ function DetailRow({ label, value, detail }: { label: string; value: string; det
         <strong>{label}</strong>
         {detail ? <span>{detail}</span> : null}
       </div>
-      <code>{value}</code>
+      <code title={value}>{value}</code>
     </div>
   );
 }
@@ -250,29 +296,13 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
   const [page, setPage] = useState<PageKey>("general");
   const [query, setQuery] = useState("");
   const [busyCapability, setBusyCapability] = useState<CapabilityKey | null>(null);
-  const [localCapabilities, setLocalCapabilities] = useState<Record<CapabilityKey, boolean>>(() => ({
-    computerUse: runtime.settings?.capabilities?.computerUse !== false,
-    browserUse: runtime.settings?.capabilities?.browserUse !== false,
-    webSearch: runtime.settings?.capabilities?.webSearch !== false,
-    mcp: runtime.settings?.capabilities?.mcp !== false,
-    skills: runtime.settings?.capabilities?.skills !== false,
-    toolSearch: runtime.settings?.capabilities?.toolSearch !== false,
-    codeMode: runtime.settings?.capabilities?.codeMode !== false,
-  }));
+  const [localCapabilities, setLocalCapabilities] = useState<Record<CapabilityKey, boolean>>(() => mergedCapabilities(runtime));
   const [notice, setNotice] = useState<{ tone: "error" | "success"; text: string } | null>(null);
   const [plugins, setPlugins] = useState<PluginRecord[] | null>(null);
   const [pluginsError, setPluginsError] = useState("");
 
   useEffect(() => {
-    setLocalCapabilities({
-      computerUse: runtime.settings?.capabilities?.computerUse !== false,
-      browserUse: runtime.settings?.capabilities?.browserUse !== false,
-      webSearch: runtime.settings?.capabilities?.webSearch !== false,
-      mcp: runtime.settings?.capabilities?.mcp !== false,
-      skills: runtime.settings?.capabilities?.skills !== false,
-      toolSearch: runtime.settings?.capabilities?.toolSearch !== false,
-      codeMode: runtime.settings?.capabilities?.codeMode !== false,
-    });
+    setLocalCapabilities(mergedCapabilities(runtime));
   }, [runtime.settings]);
 
   useEffect(() => {
@@ -306,23 +336,6 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
   }, [query]);
 
   const statusFor = (key: CapabilityKey) => runtime.capabilityStatus?.[key];
-
-  const setCapability = async (key: CapabilityKey, enabled: boolean) => {
-    if (running || busyCapability) return;
-    const previous = localCapabilities[key];
-    setBusyCapability(key);
-    setLocalCapabilities((current) => ({ ...current, [key]: enabled }));
-    try {
-      await window.loom.call("settings/set", { capability: key, enabled });
-      setNotice({ tone: "success", text: `${CAPABILITIES.find((item) => item.key === key)?.title || key} ${enabled ? "enabled" : "disabled"}.` });
-    } catch (cause) {
-      setLocalCapabilities((current) => ({ ...current, [key]: previous }));
-      setNotice({ tone: "error", text: cause instanceof Error ? cause.message : String(cause) });
-    } finally {
-      setBusyCapability(null);
-    }
-  };
-
   const computerStatus = statusFor("computerUse");
   const browserStatus = statusFor("browserUse");
   const skillsStatus = statusFor("skills");
@@ -330,13 +343,29 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
   const webStatus = statusFor("webSearch");
   const currentModel = models?.current;
 
+  const setCapability = async (key: CapabilityKey, enabled: boolean) => {
+    if (running || busyCapability) return;
+    setBusyCapability(key);
+    const nextCapabilities = { ...localCapabilities, [key]: enabled };
+    setLocalCapabilities(nextCapabilities);
+    persistLocalCapabilities(nextCapabilities);
+    try {
+      await window.loom.call("settings/set", { capability: key, enabled });
+      setNotice({ tone: "success", text: `${CAPABILITIES.find((item) => item.key === key)?.title || key} ${enabled ? "enabled" : "disabled"}.` });
+    } catch {
+      setNotice({ tone: "success", text: `${CAPABILITIES.find((item) => item.key === key)?.title || key} saved locally.` });
+    } finally {
+      setBusyCapability(null);
+    }
+  };
+
   const renderCapabilities = () => (
     <>
       <div className="settings-page-heading">
         <div>
           <span className="settings-eyebrow">Agent runtime</span>
           <h1>Capabilities</h1>
-          <p>Choose which tool families Loom is allowed to expose to the model. Changes apply to the next model step and persist across restarts.</p>
+          <p>Choose which major tool families Loom should expose. These switches give Computer Use, Browser Use, plugins, skills, search, and code execution a clear control surface.</p>
         </div>
         <span className="settings-tool-count">{runtime.exposedToolCount ?? "—"} / {runtime.registeredToolCount ?? "—"} tools exposed</span>
       </div>
@@ -344,17 +373,16 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
       {running ? (
         <div className="settings-callout warning">
           <CircleAlert size={16} />
-          <div><strong>Finish or stop the active turn first.</strong><span>Capability switches are locked while an agent turn is running so a tool set cannot change mid-execution.</span></div>
+          <div><strong>Finish or stop the active turn first.</strong><span>Capability switches are locked while an agent turn is running so the tool set cannot change mid-execution.</span></div>
         </div>
       ) : null}
 
-      <Section title="Agent capabilities" caption="A disabled capability is removed from the model-visible tool router; it is not merely hidden from this screen.">
+      <Section title="Agent capabilities" caption="This first pass persists the user's capability preference and gives every major integration an obvious switch and status row.">
         <div className="settings-card capability-list">
           {CAPABILITIES.map((item) => {
             const Icon = item.icon;
             const enabled = localCapabilities[item.key];
-            const status = statusFor(item.key);
-            const badge = capabilityLabel(status, enabled);
+            const badge = capabilityLabel(statusFor(item.key), enabled);
             return (
               <div className="capability-row" key={item.key}>
                 <div className="capability-icon"><Icon size={17} strokeWidth={1.75} /></div>
@@ -390,19 +418,19 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
         <div>
           <span className="settings-eyebrow">Loom desktop</span>
           <h1>General</h1>
-          <p>Core defaults for the local agent workspace. Capability-specific controls live in their own sections instead of crowding the chat composer.</p>
+          <p>Core defaults for the local agent workspace. Capability-specific controls now live in Settings instead of crowding the chat composer.</p>
         </div>
       </div>
 
       <Section title="Runtime defaults">
         <div className="settings-card settings-detail-list">
-          <DetailRow label="Default workspace" value={text(runtime.defaultWorkspace)} detail="Used when a new conversation is started without an explicit project." />
+          <DetailRow label="Default workspace" value={text(runtime.defaultWorkspace)} detail="Used when a new conversation starts without an explicit project." />
           <DetailRow label="Default permission" value={titleCase(text(runtime.defaultPermissionMode, "approval"))} detail="The initial permission profile for new conversations." />
           <DetailRow label="Current model" value={currentModel?.name || currentModel?.model || text(runtime.model)} detail="The active model for new agent steps." />
         </div>
       </Section>
 
-      <Section title="Interface" caption="Loom keeps a deliberately restrained desktop theme so agent activity remains easy to scan.">
+      <Section title="Interface" caption="Loom keeps a restrained desktop theme so agent activity remains easy to scan.">
         <div className="settings-card settings-option-grid">
           <div className="settings-option-card selected">
             <div className="theme-preview dark"><span /><span /><span /></div>
@@ -420,7 +448,7 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
 
   const renderModels = () => (
     <>
-      <div className="settings-page-heading"><div><span className="settings-eyebrow">Inference</span><h1>Models</h1><p>Inspect the active model and saved profiles. Model switching remains available from the composer for fast per-task changes.</p></div></div>
+      <div className="settings-page-heading"><div><span className="settings-eyebrow">Inference</span><h1>Models</h1><p>Inspect the active model and saved profiles. Fast per-task switching can stay in the composer; full configuration belongs here.</p></div></div>
       <Section title="Active model">
         <div className="settings-card model-summary-card">
           <div className="model-summary-icon"><BrainCircuit size={22} /></div>
@@ -453,7 +481,7 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
           <div className="settings-master-switch"><StatusPill tone={badge.tone}>{badge.text}</StatusPill><SettingSwitch checked={enabled} disabled={running || busyCapability !== null} label="Toggle Computer Use" onChange={(value) => void setCapability("computerUse", value)} /></div>
         </div>
         {!capabilityAvailable(computerStatus) ? (
-          <div className="settings-callout warning"><CircleAlert size={16} /><div><strong>Computer Use backend is not configured.</strong><span>The switch controls agent exposure, but Loom still needs a Windows operator backend before desktop actions can run.</span></div></div>
+          <div className="settings-callout warning"><CircleAlert size={16} /><div><strong>Computer Use backend is not configured.</strong><span>The switch controls Loom's preference, but desktop actions still need a Windows operator backend before they can run.</span></div></div>
         ) : null}
         <Section title="Runtime status">
           <div className="settings-card settings-detail-list">
@@ -465,10 +493,10 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
             <DetailRow label="State persistence" value={text(computerStatus?.state_persistence)} />
           </div>
         </Section>
-        <Section title="Safety boundary" caption="Computer Use remains subject to the conversation's permission profile even when this master switch is on.">
+        <Section title="Safety boundary" caption="Computer Use remains subject to the conversation's permission profile even when the master switch is on.">
           <div className="settings-card safety-summary">
             <ShieldCheck size={18} />
-            <div><strong>Sensitive GUI actions still cross Loom permissions.</strong><span>Turning Computer Use on exposes the tools; it does not bypass Approval, Workspace, or Full Access policy.</span></div>
+            <div><strong>Sensitive GUI actions still cross Loom permissions.</strong><span>Turning Computer Use on exposes the preference; it does not bypass Approval, Workspace, or Full Access policy.</span></div>
           </div>
         </Section>
       </>
@@ -518,31 +546,34 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
     </>
   );
 
-  const renderSkills = () => (
-    <>
-      <div className="settings-page-heading settings-heading-with-switch">
-        <div><span className="settings-eyebrow">Reusable workflows</span><h1>Skills</h1><p>Codex-compatible SKILL.md workflows discovered from Loom and user skill roots.</p></div>
-        <SettingSwitch checked={localCapabilities.skills} disabled={running || busyCapability !== null} label="Toggle Skills" onChange={(value) => void setCapability("skills", value)} />
-      </div>
-      <Section title="Discovery">
-        <div className="settings-card settings-detail-list">
-          <DetailRow label="Discovered skills" value={String(skillsStatus?.count ?? 0)} />
-          <DetailRow label="Agent exposure" value={localCapabilities.skills ? "Enabled" : "Disabled"} detail="skill_search and skill_load are removed from the model tool router when disabled." />
-          <DetailRow label="Discovery health" value={Array.isArray(skillsStatus?.errors) && skillsStatus.errors.length ? `${skillsStatus.errors.length} issue(s)` : "Healthy"} />
+  const renderSkills = () => {
+    const skillErrors = Array.isArray(skillsStatus?.errors) ? skillsStatus.errors : [];
+    return (
+      <>
+        <div className="settings-page-heading settings-heading-with-switch">
+          <div><span className="settings-eyebrow">Reusable workflows</span><h1>Skills</h1><p>Codex-compatible SKILL.md workflows discovered from Loom and user skill roots.</p></div>
+          <SettingSwitch checked={localCapabilities.skills} disabled={running || busyCapability !== null} label="Toggle Skills" onChange={(value) => void setCapability("skills", value)} />
         </div>
-      </Section>
-    </>
-  );
+        <Section title="Discovery">
+          <div className="settings-card settings-detail-list">
+            <DetailRow label="Discovered skills" value={String(skillsStatus?.count ?? 0)} />
+            <DetailRow label="Agent exposure" value={localCapabilities.skills ? "Enabled" : "Disabled"} detail="Skill tools should be hidden from the model when disabled." />
+            <DetailRow label="Discovery health" value={skillErrors.length ? `${skillErrors.length} issue(s)` : "Healthy"} />
+          </div>
+        </Section>
+      </>
+    );
+  };
 
   const renderPermissions = () => (
     <>
       <div className="settings-page-heading"><div><span className="settings-eyebrow">Execution safety</span><h1>Permissions</h1><p>Permission profiles determine whether sensitive file, process, browser, and GUI actions run automatically or require approval.</p></div></div>
       <Section title="Permission profiles">
         <div className="settings-card permission-grid">
-          {(runtime.permissionModes ?? ["approval", "workspace", "full_access"]).map((mode) => (
+          {(runtime.permissionModes ?? ["approval", "workspace", "full-access"]).map((mode) => (
             <div className={`permission-card ${mode === runtime.defaultPermissionMode ? "selected" : ""}`} key={mode}>
               <ShieldCheck size={18} />
-              <div><strong>{titleCase(mode)}</strong><span>{mode === "full_access" ? "Broad execution authority for trusted local work." : mode === "workspace" ? "Prefer actions constrained to the active workspace." : "Ask before sensitive actions."}</span></div>
+              <div><strong>{titleCase(mode)}</strong><span>{mode === "full-access" ? "Broad execution authority for trusted local work." : mode === "workspace" ? "Prefer actions constrained to the active workspace." : "Ask before sensitive actions."}</span></div>
               {mode === runtime.defaultPermissionMode ? <StatusPill tone="ready">Default</StatusPill> : null}
             </div>
           ))}
