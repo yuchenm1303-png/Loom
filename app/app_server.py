@@ -6,6 +6,7 @@ import json
 import queue
 import sys
 import threading
+import traceback
 import uuid
 from collections import OrderedDict
 from pathlib import Path
@@ -1164,13 +1165,16 @@ class LoomRpcController:
                 "id": request_id,
                 "error": {"code": -32009, "message": str(exc)},
             }
-        except Exception:
+        except Exception as exc:
+            traceback.print_exc()
+            sys.stderr.write(f"[app-server] handler error for {method}: {type(exc).__name__}: {exc}\n")
+            sys.stderr.flush()
             if isinstance(payload, dict) and "id" not in payload:
                 return None
             return {
                 "jsonrpc": "2.0",
                 "id": request_id,
-                "error": {"code": -32603, "message": "Internal server error"},
+                "error": {"code": -32603, "message": f"Internal server error: {type(exc).__name__}: {exc}"},
             }
 
     def _initialize(self, params: dict[str, Any]) -> dict[str, Any]:

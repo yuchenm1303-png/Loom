@@ -332,6 +332,47 @@ class ThreadLibraryStore:
             self._write_unlocked(session_id, payload)
             return True
 
+    def mark_auto_title_pending(
+        self,
+        session_id: str,
+        *,
+        source_prompt: str = "",
+    ) -> bool:
+        """Reserve a backfill slot for the first user prompt.
+
+        The backfill patch uses this to mark ``titleSource="pending"`` so the
+        UI can show the placeholder as a provisional title while the model is
+        asked to replace it. Returns True only on the first successful claim;
+        subsequent calls return False so the backfill task is not rescheduled.
+        """
+
+        prompt = str(source_prompt or "").strip()
+        with self._guard:
+            payload = self._read_unlocked(session_id)
+            if bool(payload.get("autoTitleDisabled")):
+                return False
+            if _metadata_title_blocks_auto_title(payload):
+                return False
+            existing_source = str(payload.get("titleSource") or "").strip().casefold()
+            if existing_source == "pending":
+                # Already reserved — let the inflight backfill finish.
+                return False
+            raw_title = str(payload.get("title") or "").strip()
+            title_source = str(payload.get("titleSource") or "").strip().casefold()
+            if title_source == "auto" and raw_title:
+                return False
+            payload.update(
+                {
+                    "titleSource": "pending",
+                    "autoTitlePendingSourcePrompt": prompt,
+                    "autoTitlePendingAt": _utc_now(),
+                    "autoTitleAttempts": max(int(payload.get("autoTitleAttempts") or 0), 1),
+                    "autoTitleLastError": "",
+                }
+            )
+            self._write_unlocked(session_id, payload)
+            return True
+
     def delete_session(self, session_id: str) -> None:
         with self._guard:
             directory = self.session_store.session_dir(session_id)
