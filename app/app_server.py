@@ -15,7 +15,9 @@ from typing import Any, Callable, TextIO
 from app.ai import AGENT_FAST_ROLE, ImagePart, MessageRole, TextPart
 from app.agent_runtime import AgentEvent, AgentEventKind, AgentStatus, PermissionMode
 from app.agent_runtime.storage import utc_now
+from app.agent_runtime.tools import set_tool_capability_settings, tool_capability_name
 from app.projects import UNFILED, ProjectStore, ProjectStoreError
+from app.settings import LoomSettingsStore
 from app.attachments import (
     MAX_ATTACHMENTS,
     MAX_FILE_BYTES,
@@ -432,16 +434,17 @@ class LoomAppServerService:
         # it to decide what the composer may accept, so a user learns a model is
         # text-only before sending rather than from a failed turn.
         self.vision = bool(vision)
-        # Projects live beside the rest of the durable Loom home, and the App
-        # Server owns them for the same reason it owns threads: a client must
-        # not be the thing that decides what is real.
-        # store.root is <home>/agent_runtime/sessions; projects.json belongs in
+        # Projects and app-wide settings live beside the durable runtime home.
+        # store.root is <home>/agent_runtime/sessions; both registries belong in
         # the Loom home itself, beside models.json.
-        self.projects = ProjectStore(self.store.root.parents[1])
+        runtime_home = self.store.root.parents[1]
+        self.projects = ProjectStore(runtime_home)
+        self.settings = LoomSettingsStore(runtime_home)
         self._guard = threading.RLock()
         self._active_sessions: set[str] = set()
         self._task_errors: dict[str, str] = {}
         self._notification_listeners: list[NotificationListener] = []
+        self._sync_runtime_settings()
         self.runtime.subscribe(self._on_runtime_event)
 
     def _record(self, session: Any, *, active: bool = False) -> dict[str, Any]:
@@ -502,7 +505,67 @@ class LoomAppServerService:
         sessions.sort(key=lambda item: item.updated_at, reverse=True)
         return sessions
 
+    def _sync_runtime_settings(self, snapshot: dict[str, Any] | None = None) -> dict[str, Any]:
+        current = snapshot or self.settings.snapshot()
+        capabilities = dict(current.get("capabilities") or {})
+        set_tool_capability_settings(capabilities)
+        return current
+
+    def _status_owner_session_id(self) -> str:
+        with self._guard:
+            active = next(iter(sorted(self._active_sessions)), "")
+        if active:
+            return active
+        sessions = self._list_session_objects()
+        return sessions[0].session_id if sessions else ""
+
+    def _runtime_status_call(self, method_name: str, *args: object) -> dict[str, object]:
+        method = getattr(self.runtime, method_name, None)
+        if not callable(method):
+            return {"enabled": False, "error": f"{method_name} is not available on this runtime"}
+        try:
+            result = method(*args)
+        except TypeError:
+            if not args:
+                raise
+            result = method()
+        except Exception as exc:
+            return {"enabled": False, "error": f"{type(exc).__name__}: {exc}"}
+        return dict(result) if isinstance(result, dict) else {"enabled": bool(result), "value": result}
+
+    def _capability_status(self) -> dict[str, dict[str, object]]:
+        owner = self._status_owner_session_id()
+        tools = self.runtime.tools
+        skills_status = (
+            self._runtime_status_call("skills_status", owner)
+            if owner
+            else {"enabled": tools.get("skill_search") is not None, "count": 0, "errors": [], "reason": "no session workspace yet"}
+        )
+        return {
+            "computerUse": self._runtime_status_call("computer_status", owner),
+            "browserUse": self._runtime_status_call("browser_status", owner),
+            "webSearch": self._runtime_status_call("web_search_status"),
+            "mcp": self._runtime_status_call("mcp_status"),
+            "skills": skills_status,
+            "toolSearch": {"enabled": tools.get("tool_search") is not None, "registered": tools.get("tool_search") is not None},
+            "codeMode": {"enabled": tools.get("code_mode") is not None, "registered": tools.get("code_mode") is not None},
+            "attachments": {"enabled": True, "images": self.vision, "files": True, "maxCount": MAX_ATTACHMENTS},
+            "stickers": {"enabled": True},
+        }
+
+    def _tool_counts(self) -> tuple[int, int, dict[str, int]]:
+        tools = self.runtime.tools
+        registered_tools = tools.all()
+        exposed_tools = tools.router().all()
+        by_capability: dict[str, int] = {}
+        for tool in exposed_tools:
+            capability = tool_capability_name(tool.name) or "core"
+            by_capability[capability] = by_capability.get(capability, 0) + 1
+        return len(registered_tools), len(exposed_tools), by_capability
+
     def runtime_status(self) -> dict[str, Any]:
+        settings = self._sync_runtime_settings()
+        registered_tools, exposed_tools, exposed_by_capability = self._tool_counts()
         with self._guard:
             active = sorted(self._active_sessions)
             task_errors = dict(self._task_errors)
@@ -513,15 +576,38 @@ class LoomAppServerService:
             "defaultPermissionMode": self.default_permission_mode.value,
             "permissionModes": [mode.value for mode in PermissionMode],
             "attachments": {
-                "images": self.vision,
-                "files": True,
+                "images": self.vision and settings.get("capabilities", {}).get("attachments", True) is not False,
+                "files": settings.get("capabilities", {}).get("attachments", True) is not False,
                 "maxCount": MAX_ATTACHMENTS,
                 "maxImageBytes": MAX_IMAGE_BYTES,
                 "maxFileBytes": MAX_FILE_BYTES,
             },
+            "settings": settings,
+            "capabilityStatus": self._capability_status(),
+            "registeredToolCount": registered_tools,
+            "exposedToolCount": exposed_tools,
+            "exposedToolsByCapability": exposed_by_capability,
             "activeThreadIds": active,
             "taskErrors": task_errors,
         }
+
+    def settings_get(self, params: dict[str, Any]) -> dict[str, Any]:
+        _ = params
+        return {"settings": self._sync_runtime_settings(), "runtime": self.runtime_status()}
+
+    def settings_set(self, params: dict[str, Any]) -> dict[str, Any]:
+        with self._guard:
+            if self._active_sessions:
+                raise RuntimeError("finish active turns before changing capabilities")
+        capability = str(params.get("capability") or params.get("name") or "").strip()
+        enabled = params.get("enabled")
+        if not isinstance(enabled, bool):
+            raise ValueError("settings/set enabled must be a boolean")
+        snapshot = self.settings.set_capability(capability, enabled)
+        self._sync_runtime_settings(snapshot)
+        status = self.runtime_status()
+        self._notify("runtime/updated", {"runtime": status})
+        return {"settings": snapshot, "runtime": status}
 
     def plugins_list(self, params: dict[str, Any]) -> dict[str, Any]:
         from app.plugin_manager import PluginManager
@@ -1211,10 +1297,12 @@ class LoomRpcController:
                     "remove": True,
                     "threadStart": True,
                 },
+                "settings": {"get": True, "set": True},
                 "turns": {"start": True, "interrupt": True},
                 "approvals": True,
                 "notifications": [
                     "thread/started",
+                    "runtime/updated",
                     "turn/started",
                     "item/started",
                     "item/delta",
@@ -1230,6 +1318,8 @@ class LoomRpcController:
     def _dispatch(self, method: str, params: dict[str, Any]) -> Any:
         handlers: dict[str, Callable[[dict[str, Any]], Any]] = {
             "runtime/status": lambda value: self.service.runtime_status(),
+            "settings/get": self.service.settings_get,
+            "settings/set": self.service.settings_set,
             "project/list": self.service.project_list,
             "project/create": self.service.project_create,
             "project/rename": self.service.project_rename,
