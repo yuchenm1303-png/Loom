@@ -171,7 +171,10 @@
   }
 }
 
-html[data-loom-reduced-motion="true"] .codex-sidebar .recent-thread-list .compact-thread-row.active::before,
+html[data-loom-reduced-motion="true"] .codex-sidebar .recent-thread-list .compact-thread-row.active::before {
+  box-shadow: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .codex-sidebar .recent-thread-list .compact-thread-row.active::before {
     box-shadow: none;
