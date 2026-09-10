@@ -1,13 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from app.ai import AIMessage, MessageRole, ModelResponse, ModelUsage
-from app.agent_runtime.context_budget import (
-    _finish_reason_is_incomplete,
-    _summary_response_is_complete,
-    prepare_context,
-)
+from app.agent_runtime.context_budget import _trim_compaction_input_to_budget, prepare_context
 
 
 class ScriptedExecutor:
@@ -38,8 +34,8 @@ class InstructionLoader:
 
 @dataclass
 class Limits:
-    context_window_tokens: int = 2200
-    output_reserve_tokens: int = 400
+    context_window_tokens: int = 2600
+    output_reserve_tokens: int = 700
     max_messages: int = 160
     max_tool_result_chars: int = 20_000
 
@@ -59,7 +55,7 @@ class Session:
     messages: list[AIMessage]
     workspace_dir: str = "/tmp/project"
     profile_id: str = "agent.fast"
-    usage: ModelUsage = ModelUsage()
+    usage: ModelUsage = field(default_factory=ModelUsage)
 
 
 class FakeRuntime:
@@ -125,90 +121,98 @@ def _long_history(*, pairs: int = 8, chars: int = 420) -> list[AIMessage]:
     return messages
 
 
-def test_finish_reason_classifier_accepts_provider_specific_success_values() -> None:
-    assert _finish_reason_is_incomplete("length") is True
-    assert _finish_reason_is_incomplete("max_tokens") is True
-    assert _finish_reason_is_incomplete("tool_calls") is True
-    assert _finish_reason_is_incomplete("content_filter") is True
-    assert _finish_reason_is_incomplete("eos_token") is False
-    assert _finish_reason_is_incomplete("finished") is False
-    assert _summary_response_is_complete(
-        ModelResponse(text="summary", finish_reason="eos_token")
-    ) is True
+def test_completed_model_response_is_usable_even_when_provider_reports_length() -> None:
+    """Regression for RuntimeError: compaction did not produce a complete summary.
 
-
-def test_auto_compaction_retries_truncated_summary_and_accepts_provider_eos() -> None:
+    Codex waits for the model response to complete and uses the resulting assistant
+    message; it does not reject the turn with a provider-specific finish-reason
+    allow-list. Loom should do the same at its ModelResponse abstraction boundary.
+    """
     runtime = FakeRuntime(
         [
             ModelResponse(
-                text="partial summary that hit its output ceiling",
+                text="Earlier work established the implementation plan and the current blocker.",
                 finish_reason="length",
-                usage=ModelUsage(input_tokens=100, output_tokens=400, total_tokens=500),
-            ),
-            ModelResponse(
-                text="Complete compact summary preserving the earlier task and unresolved work.",
-                finish_reason="eos_token",
-                usage=ModelUsage(input_tokens=100, output_tokens=40, total_tokens=140),
-            ),
+                usage=ModelUsage(input_tokens=100, output_tokens=80, total_tokens=180),
+            )
         ]
     )
     session = Session(_long_history())
 
     messages, metadata = prepare_context(runtime, session, Step(), Token())
 
-    assert len(runtime.model_executor.requests) == 2
-    assert runtime.commits[-1]["summary_source"] == "auto_retry"
-    assert runtime.commits[-1]["summary"].startswith("Complete compact summary")
-    assert runtime.commits[-1]["summary_usage"].total_tokens == 640
+    assert len(runtime.model_executor.requests) == 1
+    assert runtime.commits[-1]["summary_source"] == "auto"
+    assert runtime.commits[-1]["summary"].startswith("Earlier work established")
     assert metadata["auto_compacted"] is True
-    assert metadata["compaction_attempts"] == 2
-    assert metadata["compaction_fallback"] is False
+    assert metadata["compaction_attempts"] == 1
     assert messages[1].name == "loom_compaction"
-    retry_prompt = runtime.model_executor.requests[1][1].messages[0].content
-    assert "prior compaction response was incomplete" in retry_prompt
-    assert "Finish the summary completely" in retry_prompt
 
 
-def test_repeated_length_responses_fall_back_without_killing_turn() -> None:
+def test_provider_specific_success_finish_reason_is_not_rejected() -> None:
     runtime = FakeRuntime(
-        [
-            ModelResponse(text="partial one", finish_reason="length", usage=ModelUsage(50, 30, 80)),
-            ModelResponse(text="partial two", finish_reason="max_tokens", usage=ModelUsage(50, 30, 80)),
-            ModelResponse(text="partial three", finish_reason="truncated", usage=ModelUsage(50, 30, 80)),
-        ]
+        [ModelResponse(text="Compact handoff summary.", finish_reason="eos_token")]
     )
     session = Session(_long_history())
-
-    messages, metadata = prepare_context(runtime, session, Step(), Token())
-
-    assert len(runtime.model_executor.requests) == 3
-    commit = runtime.commits[-1]
-    assert commit["summary_source"] == "auto_fallback"
-    assert commit["summary_usage"].total_tokens == 240
-    assert "Full archived messages remain preserved" in commit["summary"]
-    assert metadata["compaction_fallback"] is True
-    assert metadata["compaction_attempts"] == 3
-    assert metadata["compaction_fallback_reason"].startswith("incomplete_finish:")
-    assert messages[1].name == "loom_compaction"
-
-
-def test_oversized_archive_uses_extract_fallback_without_invalid_model_request() -> None:
-    history = [
-        AIMessage(role=MessageRole.USER, content="old user " + ("x" * 5000)),
-        AIMessage(role=MessageRole.ASSISTANT, content="old answer " + ("y" * 5000)),
-        AIMessage(role=MessageRole.USER, content="middle user"),
-        AIMessage(role=MessageRole.ASSISTANT, content="middle answer"),
-        AIMessage(role=MessageRole.USER, content="latest user"),
-        AIMessage(role=MessageRole.ASSISTANT, content="latest answer"),
-    ]
-    runtime = FakeRuntime([], limits=Limits(context_window_tokens=1800, output_reserve_tokens=300))
-    session = Session(history)
 
     _messages, metadata = prepare_context(runtime, session, Step(), Token())
 
-    assert runtime.model_executor.requests == []
-    assert runtime.commits[-1]["summary_source"] == "auto_fallback"
-    assert runtime.commits[-1]["summary_usage"] is None
-    assert metadata["compaction_fallback"] is True
-    assert metadata["compaction_attempts"] == 0
-    assert metadata["compaction_fallback_reason"] == "summary_request_input_exceeded_budget"
+    assert runtime.commits[-1]["summary"] == "Compact handoff summary."
+    assert metadata["compaction_attempts"] == 1
+
+
+def test_empty_compaction_output_retries_without_failing_main_turn_immediately() -> None:
+    runtime = FakeRuntime(
+        [
+            ModelResponse(text="", finish_reason="stop"),
+            ModelResponse(text="Retry produced a usable compact handoff.", finish_reason="stop"),
+        ]
+    )
+    session = Session(_long_history())
+
+    _messages, metadata = prepare_context(runtime, session, Step(), Token())
+
+    assert len(runtime.model_executor.requests) == 2
+    assert runtime.commits[-1]["summary_source"] == "auto_retry"
+    assert runtime.commits[-1]["summary"] == "Retry produced a usable compact handoff."
+    assert metadata["compaction_attempts"] == 2
+
+
+def test_compaction_helper_uses_full_reserved_output_budget() -> None:
+    limits = Limits(
+        context_window_tokens=10_000,
+        output_reserve_tokens=4096,
+        max_messages=160,
+        max_tool_result_chars=20_000,
+    )
+    runtime = FakeRuntime(
+        [ModelResponse(text="A concise summary.", finish_reason="stop")],
+        limits=limits,
+    )
+    session = Session(_long_history(pairs=12, chars=900))
+
+    prepare_context(runtime, session, Step(), Token())
+
+    request = runtime.model_executor.requests[0][1]
+    assert request.max_output_tokens == 4096
+
+
+def test_oversized_compaction_input_drops_oldest_safe_history_like_codex() -> None:
+    messages = (
+        AIMessage(role=MessageRole.USER, content="oldest-user " + ("x" * 3000)),
+        AIMessage(role=MessageRole.ASSISTANT, content="oldest-answer " + ("y" * 3000)),
+        AIMessage(role=MessageRole.USER, content="recent-user " + ("r" * 500)),
+        AIMessage(role=MessageRole.ASSISTANT, content="recent-answer " + ("s" * 500)),
+    )
+
+    request = _trim_compaction_input_to_budget(
+        messages,
+        budget=900,
+        max_output_tokens=400,
+    )
+    request_text = "\n".join(str(message.content) for message in request.messages)
+
+    assert "oldest-user" not in request_text
+    assert "oldest-answer" not in request_text
+    assert "recent-user" in request_text
+    assert "recent-answer" in request_text
