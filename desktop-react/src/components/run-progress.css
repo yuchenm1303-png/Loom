@@ -26,7 +26,7 @@
   position: relative;
   z-index: 7;
   min-width: 0;
-  padding-inline: 26px;
+  padding-inline: 22px;
   pointer-events: none;
 }
 
@@ -47,10 +47,10 @@
 }
 
 .run-progress-inline {
-  width: min(var(--content-width), 100%);
+  width: 100%;
   min-width: 0;
   min-height: 22px;
-  margin: 0 auto;
+  margin: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
