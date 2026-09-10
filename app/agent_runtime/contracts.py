@@ -67,8 +67,12 @@ class PermissionMode(str, Enum):
 
 @dataclass(frozen=True, slots=True)
 class AgentLimits:
-    max_model_steps: int = 16
-    max_tool_calls: int = 32
+    # A zero execution budget means "unlimited". Loom should not terminate a
+    # legitimate long-running agent/computer-use task merely because it crossed
+    # an arbitrary number of model/tool iterations. Callers can still opt into a
+    # finite cap by supplying a positive value.
+    max_model_steps: int = 0
+    max_tool_calls: int = 0
     max_messages: int = 160
     max_tool_result_chars: int = 20_000
     context_window_tokens: int = 32_768
@@ -80,9 +84,12 @@ class AgentLimits:
             raise ValueError("model_retries must be within 0..5")
         if self.output_reserve_tokens >= self.context_window_tokens:
             raise ValueError("output reserve must be smaller than the context window")
+        for name in ("max_model_steps", "max_tool_calls"):
+            value = int(getattr(self, name))
+            if value < 0:
+                raise ValueError(f"{name} must be non-negative; 0 means unlimited")
+            object.__setattr__(self, name, value)
         for name in (
-            "max_model_steps",
-            "max_tool_calls",
             "max_messages",
             "max_tool_result_chars",
             "context_window_tokens",
