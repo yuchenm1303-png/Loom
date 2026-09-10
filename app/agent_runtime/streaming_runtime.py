@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import threading
 from contextvars import ContextVar
 from dataclasses import dataclass, field, replace
@@ -28,6 +29,66 @@ from .stickers import (
     reconcile_stream_reply,
 )
 from .storage import utc_now
+
+
+_INLINE_STICKER_CONTROL_PREFIX = "[[AI_LEDGER_INLINE_STICKER:"
+_COMPLETE_INLINE_STICKER_RE = re.compile(
+    r"\[\[AI_LEDGER_INLINE_STICKER:[a-z0-9_]{2,48}\]\]",
+    re.I,
+)
+
+
+def _strip_incomplete_sticker_control_fragments(text: str) -> str:
+    """Remove truncated canonical sticker control data without touching valid markers."""
+
+    source = str(text or "")
+    if "[[" not in source:
+        return source
+
+    prefix = _INLINE_STICKER_CONTROL_PREFIX
+    prefix_upper = prefix.upper()
+    source_upper = source.upper()
+    output: list[str] = []
+    cursor = 0
+
+    while True:
+        start = source_upper.find(prefix_upper, cursor)
+        if start < 0:
+            break
+
+        complete = _COMPLETE_INLINE_STICKER_RE.match(source, start)
+        if complete is not None:
+            output.append(source[cursor:complete.end()])
+            cursor = complete.end()
+            continue
+
+        output.append(source[cursor:start])
+        end = start + len(prefix)
+        key_chars = 0
+        while end < len(source) and key_chars < 96:
+            char = source[end]
+            if not (char.isascii() and (char.isalnum() or char == "_")):
+                break
+            end += 1
+            key_chars += 1
+        closing = 0
+        while end < len(source) and source[end] == "]" and closing < 2:
+            end += 1
+            closing += 1
+        cursor = end
+
+    output.append(source[cursor:])
+    cleaned = "".join(output)
+
+    # A provider can stop in the middle of the control prefix itself. That only
+    # occurs at the reply boundary, so remove a trailing prefix fragment too.
+    cleaned_upper = cleaned.upper()
+    max_width = min(len(prefix_upper) - 1, len(cleaned_upper))
+    for width in range(max_width, 1, -1):
+        if cleaned_upper.endswith(prefix_upper[:width]):
+            cleaned = cleaned[:-width]
+            break
+    return cleaned
 
 
 class AgentStreamEventKind(str, Enum):
@@ -322,7 +383,8 @@ class StreamingAgentRuntime(CodeModeRuntime):
             session,
             streaming=self.provider_streaming_enabled,
         )
-        provider_result = finalize_reply(raw_text, preferences, context)
+        clean_raw_text = _strip_incomplete_sticker_control_fragments(raw_text)
+        provider_result = finalize_reply(clean_raw_text, preferences, context)
         key = (session.session_id, session.current_turn_id, step_id)
         streamed_text = ""
         with self._sticker_guard:
@@ -351,6 +413,8 @@ class StreamingAgentRuntime(CodeModeRuntime):
         )
         with self._sticker_guard:
             diagnostics = dict(finalized.diagnostics)
+            if clean_raw_text != raw_text:
+                diagnostics["incompleteControlMarkerSuppressed"] = True
             if key in self._sticker_diagnostics:
                 diagnostics["stream"] = dict(self._sticker_diagnostics[key])
             self._sticker_diagnostics[key] = diagnostics
