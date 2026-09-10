@@ -14,10 +14,25 @@ from .memory_store import redact_secrets
 from .permissions import PermissionDecision
 from .skills_runtime import SkillRuntime
 from .step import StepContext
-from .tools import AgentTool, ToolContext, ToolExposure, ToolResult, ToolRouter
+from .tools import (
+    AgentTool,
+    ToolContext,
+    ToolExposure,
+    ToolResult,
+    ToolRouter,
+    get_tool_capability_settings,
+    tool_capability_name,
+)
 
 
 _CODE_MODE_TOOL_NAME = "code_mode"
+
+
+def _nested_capability_allows(tool: AgentTool) -> bool:
+    capability = tool_capability_name(tool.name)
+    if not capability:
+        return True
+    return get_tool_capability_settings().get(capability) is not False
 
 
 class CodeModeRuntime(SkillRuntime):
@@ -183,6 +198,8 @@ class CodeModeRuntime(SkillRuntime):
         for tool in self.tools.all():
             if tool.name == _CODE_MODE_TOOL_NAME:
                 continue
+            if not _nested_capability_allows(tool):
+                continue
             if tool.exposure in {ToolExposure.DIRECT, ToolExposure.CODE_MODE_ONLY}:
                 visible.append(tool)
             elif tool.exposure is ToolExposure.DEFERRED and tool.name in activated:
@@ -202,7 +219,7 @@ class CodeModeRuntime(SkillRuntime):
         if self._cancel_if_requested(session, token):
             raise RuntimeError("code_mode execution cancelled")
         session.tool_calls += 1
-        if session.tool_calls > self.limits.max_tool_calls:
+        if self.limits.max_tool_calls > 0 and session.tool_calls > self.limits.max_tool_calls:
             return {
                 "ok": False,
                 "content": "Nested tool call blocked because the turn tool-call limit was reached.",
