@@ -1,1 +1,0 @@
-These 19 chat sticker WebP assets are copied from the original AI Ledger Android asset pack by the repository workflow. Runtime rendering must use bundled local assets only; no sticker CDN/FC dependency is allowed.
