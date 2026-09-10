@@ -8,7 +8,8 @@ export type ChatStickerSegment =
   | { kind: "text"; text: string }
   | { kind: "sticker"; asset: ChatStickerAsset };
 
-const CHAT_STICKER_ASSET_BASE_URL = "https://ai-ledger-parser.552078638.workers.dev/chat-stickers/v1";
+// Keep this aligned with the deployed AI Ledger endpoint in ai-ledger/config.js.
+const CHAT_STICKER_ASSET_BASE_URL = "https://ai-ledger-parser.yuchenm1303.workers.dev/chat-stickers/v1";
 const assetUrl = (name: string) => `${CHAT_STICKER_ASSET_BASE_URL}/${encodeURIComponent(name)}.webp`;
 
 export const CHAT_STICKER_ASSETS: Record<string, ChatStickerAsset> = Object.freeze({
@@ -33,7 +34,10 @@ export const CHAT_STICKER_ASSETS: Record<string, ChatStickerAsset> = Object.free
   reject_no: { key: "reject_no", alt: "明确否定", url: assetUrl("reject_no") },
 });
 
-const INLINE_STICKER_MARKER_RE = /\[\[AI_LEDGER_INLINE_STICKER:([a-z0-9_]{2,48})\]\]/gi;
+// The current protocol closes with ]]. A few providers occasionally truncate the
+// final character at an output boundary, so accept one or two closing brackets.
+// This is protocol recovery only; it does not introduce compact aliases.
+const INLINE_STICKER_MARKER_RE = /\[\[AI_LEDGER_INLINE_STICKER:([a-z0-9_]{2,48})\]\]?/gi;
 
 export function splitInlineStickerText(text: string): ChatStickerSegment[] {
   const value = String(text ?? "");
@@ -49,9 +53,9 @@ export function splitInlineStickerText(text: string): ChatStickerSegment[] {
     const asset = CHAT_STICKER_ASSETS[key];
     if (asset) {
       segments.push({ kind: "sticker", asset });
-    } else {
-      segments.push({ kind: "text", text: match[0] });
     }
+    // Protocol-looking tokens with an unknown asset key are control data, not
+    // user-facing copy. Drop them instead of leaking the raw marker into chat.
     cursor = match.index + match[0].length;
   }
 
