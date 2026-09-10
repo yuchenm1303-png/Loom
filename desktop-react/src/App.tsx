@@ -10,6 +10,7 @@ import { Sidebar } from "./components/Sidebar";
 import { ThreadHeader } from "./components/ThreadHeader";
 import { Transcript } from "./components/Transcript";
 import "./components/inline-thinking.css";
+import "./components/sidebar-codex-polish.css";
 import { useI18n } from "./i18n";
 import { useLoom } from "./state/useLoom";
 import type { TranscriptItem } from "./types/loom";
