@@ -10,6 +10,7 @@ const REPO_ROOT = path.resolve(DESKTOP_ROOT, "..");
 const VENV_PYTHON = process.platform === "win32"
   ? path.join(REPO_ROOT, ".venv", "Scripts", "python.exe")
   : path.join(REPO_ROOT, ".venv", "bin", "python");
+const NPM = process.platform === "win32" ? "npm.cmd" : "npm";
 
 function run(command, args, options = {}) {
   console.log(`[dev-ready] ${command} ${args.join(" ")}`);
@@ -32,4 +33,4 @@ if (!fs.existsSync(VENV_PYTHON)) {
   run(process.execPath, [path.join(DESKTOP_ROOT, "scripts", "setup-python.mjs")]);
 }
 
-run(process.execPath, [path.join(DESKTOP_ROOT, "node_modules", "npm", "bin", "npm-cli.js"), "run", "dev"]);
+run(NPM, ["run", "dev"]);
