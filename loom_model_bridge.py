@@ -21,7 +21,7 @@ PRIMARY_SELECTION = "builtin:minimax"
 CQU_SELECTION = "builtin:cqu"
 MANAGED_SELECTION_PREFIX = "managed:"
 MANAGED_RELAY_BASE_URL = "https://relay.smirel.com/v1"
-MINIMAX_BASE_URL = "https://api.minimaxi.com/v1"
+MINIMAX_BASE_URL = "https://api.minimax.io/v1"
 MINIMAX_DEFAULT_MODEL = "MiniMax-M3"
 CQU_DEFAULT_MODEL = "cqu-default"
 _KEYRING_SERVICE = "loom-agent"
@@ -35,6 +35,7 @@ _MANAGED_RELAY_KEY_ENV = (
     "CQU_API_KEY",
 )
 _PRIMARY_MINIMAX_KEY_ENV = ("MINIMAX_API_KEY", "LOOM_PRIMARY_API_KEY", "LOOM_API_KEY")
+_LEGACY_MINIMAX_BASE_URL_ENV = ("LOOM_MINIMAX_BASE_URL", "MINIMAX_BASE_URL")
 _PROVISIONING_FILE_ENV = "LOOM_RELAY_PROVISIONING_FILE"
 _MANAGED_MODEL_DISPLAY_NAMES = {
     MINIMAX_DEFAULT_MODEL.casefold(): "MiniMax",
@@ -62,6 +63,12 @@ def _key_from_env(names: tuple[str, ...], environ: Mapping[str, str] | None = No
 
 def _primary_minimax_key(environ: Mapping[str, str] | None = None) -> str:
     return _key_from_env(_PRIMARY_MINIMAX_KEY_ENV, environ)
+
+
+def _legacy_minimax_base_url(environ: Mapping[str, str] | None = None) -> str:
+    return str(
+        _key_from_env(_LEGACY_MINIMAX_BASE_URL_ENV, environ) or MINIMAX_BASE_URL
+    ).strip().rstrip("/")
 
 
 def _credential_get(alias: str) -> str | None:
@@ -314,9 +321,9 @@ def _safe_cqu() -> dict[str, Any]:
     return _safe_managed(CQU_DEFAULT_MODEL)
 
 
-def _safe_legacy_minimax() -> dict[str, Any]:
+def _safe_legacy_minimax(environ: Mapping[str, str] | None = None) -> dict[str, Any]:
     profile = _safe_managed(MINIMAX_DEFAULT_MODEL)
-    profile["baseUrl"] = MINIMAX_BASE_URL
+    profile["baseUrl"] = _legacy_minimax_base_url(environ)
     return profile
 
 
@@ -387,7 +394,7 @@ def _managed_profiles(store: ModelConfigStore, environ: Mapping[str, str] | None
             continue
         seen.add(folded)
         if not api_key and folded == MINIMAX_DEFAULT_MODEL.casefold() and _primary_minimax_key(environ):
-            profiles.append(_safe_legacy_minimax())
+            profiles.append(_safe_legacy_minimax(environ))
         else:
             profiles.append(_safe_managed(model_id, environ))
     return profiles
