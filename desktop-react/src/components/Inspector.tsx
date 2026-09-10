@@ -3,6 +3,7 @@ import {
   CheckCircle2,
   ChevronDown,
   CircleAlert,
+  Download,
   FileDiff,
   Files,
   MousePointer2,
@@ -14,6 +15,7 @@ import { useMemo, useState } from "react";
 import type { TranscriptItem } from "../types/loom";
 import "./Inspector.css";
 import "./InspectorMark.css";
+import "./ComputerLogExport.css";
 
 interface InspectorProps {
   items: TranscriptItem[];
@@ -101,6 +103,14 @@ function safeJson(value: unknown): string {
 function recordValue(value: unknown, key: string): unknown {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
   return (value as Record<string, unknown>)[key];
+}
+
+function humanBytes(value: unknown): string {
+  const bytes = Number(value || 0);
+  if (!Number.isFinite(bytes) || bytes <= 0) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
 }
 
 function computerDetailOf(item: TranscriptItem): string {
@@ -226,6 +236,9 @@ function sectionTitle(tab: Tab): string {
 export function Inspector({ items, onClose }: InspectorProps) {
   const [tab, setTab] = useState<Tab>("activity");
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [exportingLogs, setExportingLogs] = useState(false);
+  const [exportResult, setExportResult] = useState<Window["loom"] extends { exportComputerLogs(): Promise<infer T> } ? T | null : unknown>(null);
+  const [exportError, setExportError] = useState("");
 
   const toolItems = useMemo(
     () => items.filter((item) => ["tool_call", "process", "approval", "error"].includes(item.type)),
@@ -239,6 +252,33 @@ export function Inspector({ items, onClose }: InspectorProps) {
   const tabIndex = tabs.findIndex((entry) => entry.id === tab);
   const busy = items.some((item) => isRunningStatus(statusOf(item)));
   const failed = items.some((item) => ["failed", "error"].includes(statusOf(item)));
+
+  async function handleExportComputerLogs() {
+    setExportingLogs(true);
+    setExportError("");
+    try {
+      const result = await window.loom.exportComputerLogs();
+      if (result.cancelled) return;
+      setExportResult(result);
+      if (result.archivePath) {
+        await window.loom.revealPath(result.archivePath);
+      }
+    } catch (error) {
+      setExportError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setExportingLogs(false);
+    }
+  }
+
+  const exportArchivePath = exportResult && typeof exportResult === "object" && "archivePath" in exportResult
+    ? String(exportResult.archivePath || "")
+    : "";
+  const exportFileCount = exportResult && typeof exportResult === "object" && "fileCount" in exportResult
+    ? Number(exportResult.fileCount || 0)
+    : 0;
+  const exportSize = exportResult && typeof exportResult === "object" && "sizeBytes" in exportResult
+    ? humanBytes(exportResult.sizeBytes)
+    : "";
 
   return (
     <aside className="inspector runtime-inspector">
@@ -288,11 +328,27 @@ export function Inspector({ items, onClose }: InspectorProps) {
       <div className="runtime-body">
         <div className="runtime-section-bar">
           <span>{sectionTitle(tab)}</span>
-          <span>{visible.length ? `${visible.length} ${visible.length === 1 ? "event" : "events"}` : "Waiting"}</span>
+          <span className="runtime-section-actions">
+            {tab === "computer" ? (
+              <button className="computer-log-export-button" onClick={handleExportComputerLogs} disabled={exportingLogs}>
+                <Download size={12} strokeWidth={1.8} />
+                <span>{exportingLogs ? "Exporting" : "Export logs"}</span>
+              </button>
+            ) : null}
+            <span>{visible.length ? `${visible.length} ${visible.length === 1 ? "event" : "events"}` : "Waiting"}</span>
+          </span>
         </div>
 
         <div className="runtime-scroll">
           <div className="runtime-pane" key={tab}>
+            {tab === "computer" && (exportArchivePath || exportError) ? (
+              <div className={`computer-log-export-note ${exportError ? "error" : "success"}`}>
+                <strong>{exportError ? "Export failed" : "Logs exported"}</strong>
+                <span>
+                  {exportError || `${exportArchivePath}${exportFileCount ? ` · ${exportFileCount} files` : ""}${exportSize ? ` · ${exportSize}` : ""}`}
+                </span>
+              </div>
+            ) : null}
             {!visible.length ? (
               <EmptyState tab={tab} />
             ) : (
