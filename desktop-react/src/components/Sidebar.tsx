@@ -27,7 +27,6 @@ import "./sidebar.css";
 type ThreadView = "active" | "archived";
 type Notice = { kind: "success" | "error"; text: string };
 type ContextMenuState = { threadId: string; x: number; y: number };
-type GroupMenuState = { projectId: string; x: number; y: number };
 
 interface SidebarProps {
   threads: ThreadRecord[];
@@ -101,8 +100,23 @@ function persistIds(key: string, values: Set<string>): void {
   try {
     window.localStorage.setItem(key, JSON.stringify([...values]));
   } catch {
-    // Sidebar state still works for this process when storage is unavailable.
+    // Keep the in-memory sidebar state usable when localStorage is unavailable.
   }
+}
+
+function updateStoredSet(
+  key: string,
+  setter: Dispatch<SetStateAction<Set<string>>>,
+  id: string,
+  enabled: boolean,
+): void {
+  setter((current) => {
+    const next = new Set(current);
+    if (enabled) next.add(id);
+    else next.delete(id);
+    persistIds(key, next);
+    return next;
+  });
 }
 
 async function writeClipboard(value: string): Promise<void> {
@@ -167,7 +181,6 @@ export function Sidebar({
   const [unreadIds, setUnreadIds] = useState<Set<string>>(() => readStoredIds(UNREAD_STORAGE_KEY));
   const [collapsedProjectIds, setCollapsedProjectIds] = useState<Set<string>>(() => readStoredIds(COLLAPSED_PROJECTS_STORAGE_KEY));
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
-  const [groupMenu, setGroupMenu] = useState<GroupMenuState | null>(null);
   const [renamingProjectId, setRenamingProjectId] = useState("");
   const [projectRenameValue, setProjectRenameValue] = useState("");
   const [copyExpanded, setCopyExpanded] = useState(false);
@@ -189,11 +202,6 @@ export function Sidebar({
   const menuThread = useMemo(
     () => contextMenu ? threads.find((thread) => thread.id === contextMenu.threadId) ?? null : null,
     [contextMenu, threads],
-  );
-
-  const menuProject = useMemo(
-    () => groupMenu ? projects.find((project) => project.id === groupMenu.projectId) ?? null : null,
-    [groupMenu, projects],
   );
 
   const filtered = useMemo(() => filterThreads(threads, query), [query, threads]);
@@ -251,27 +259,12 @@ export function Sidebar({
     setSearchOpen(false);
   };
 
-  const updateStoredId = (
-    key: string,
-    setter: Dispatch<SetStateAction<Set<string>>>,
-    threadId: string,
-    enabled: boolean,
-  ) => {
-    setter((current) => {
-      const next = new Set(current);
-      if (enabled) next.add(threadId);
-      else next.delete(threadId);
-      persistIds(key, next);
-      return next;
-    });
-  };
-
   const togglePinned = (threadId: string) => {
-    updateStoredId(PINNED_STORAGE_KEY, setPinnedIds, threadId, !pinnedIds.has(threadId));
+    updateStoredSet(PINNED_STORAGE_KEY, setPinnedIds, threadId, !pinnedIds.has(threadId));
   };
 
   const toggleUnread = (threadId: string) => {
-    updateStoredId(UNREAD_STORAGE_KEY, setUnreadIds, threadId, !unreadIds.has(threadId));
+    updateStoredSet(UNREAD_STORAGE_KEY, setUnreadIds, threadId, !unreadIds.has(threadId));
   };
 
   const toggleProjectCollapsed = (projectId: string) => {
@@ -305,7 +298,7 @@ export function Sidebar({
   }, [activeThread?.projectId, collapsedProjectIds]);
 
   const markRead = (threadId: string) => {
-    if (unreadIds.has(threadId)) updateStoredId(UNREAD_STORAGE_KEY, setUnreadIds, threadId, false);
+    if (unreadIds.has(threadId)) updateStoredSet(UNREAD_STORAGE_KEY, setUnreadIds, threadId, false);
   };
 
   const openThread = async (thread: ThreadRecord) => {
@@ -382,8 +375,8 @@ export function Sidebar({
     "会话已删除",
     async () => {
       await onDelete(thread.id);
-      updateStoredId(PINNED_STORAGE_KEY, setPinnedIds, thread.id, false);
-      updateStoredId(UNREAD_STORAGE_KEY, setUnreadIds, thread.id, false);
+      updateStoredSet(PINNED_STORAGE_KEY, setPinnedIds, thread.id, false);
+      updateStoredSet(UNREAD_STORAGE_KEY, setUnreadIds, thread.id, false);
     },
   );
 
@@ -403,7 +396,7 @@ export function Sidebar({
     if (!picked) return;
     try {
       await onAddProject(picked);
-      setNotice({ kind: "success", text: "Project added." });
+      setNotice({ kind: "success", text: "项目已添加" });
     } catch (cause) {
       setNotice({ kind: "error", text: cause instanceof Error ? cause.message : "Could not add the project." });
     }
@@ -412,7 +405,6 @@ export function Sidebar({
   const beginProjectRename = (projectId: string) => {
     const project = projects.find((entry) => entry.id === projectId);
     if (!project) return;
-    setGroupMenu(null);
     setRenamingProjectId(projectId);
     setProjectRenameValue(project.name);
   };
@@ -434,15 +426,12 @@ export function Sidebar({
   const confirmRemoveProject = async (projectId: string) => {
     const project = projects.find((entry) => entry.id === projectId);
     if (!project) return;
-    setGroupMenu(null);
     const count = project.threadCount;
     const lines = [
       `Remove ${project.name} from Loom's project list?`,
       "The folder and its files are not touched.",
     ];
-    if (count) {
-      lines.push(`${count} conversation${count === 1 ? "" : "s"} stay in Loom and become unfiled.`);
-    }
+    if (count) lines.push(`${count} conversation${count === 1 ? "" : "s"} stay in Loom and become unfiled.`);
     if (!window.confirm(lines.join("\n\n"))) return;
     try {
       await onRemoveProject(projectId);
@@ -631,10 +620,101 @@ export function Sidebar({
     );
   };
 
+  const renderProjects = () => {
+    if (!projectsSupported || threadView === "archived") return null;
+    if (!projectSections.length) return null;
+
+    return (
+      <section className="sidebar-section project-section" aria-label="Projects">
+        <div className="sidebar-section-title">
+          <span>项目</span>
+          <button type="button" onClick={() => void addProject()} title="Add project" aria-label="Add project">
+            <Plus size={13} strokeWidth={1.8} />
+          </button>
+        </div>
+
+        <div className="project-list">
+          {projectSections.map(({ project, threads: projectThreads }) => {
+            const collapsed = collapsedProjectIds.has(project.id);
+            const visibleCount = projectThreads.length || project.threadCount || 0;
+            return (
+              <section className={`project-group ${collapsed ? "is-collapsed" : ""}`} key={project.id}>
+                <div className="project-group-row">
+                  {renamingProjectId === project.id ? (
+                    <input
+                      className="project-rename-input"
+                      autoFocus
+                      value={projectRenameValue}
+                      maxLength={60}
+                      onChange={(event) => setProjectRenameValue(event.target.value)}
+                      onBlur={() => void commitProjectRename()}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          event.currentTarget.blur();
+                        } else if (event.key === "Escape") {
+                          setRenamingProjectId("");
+                        }
+                      }}
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      className="project-group-main"
+                      onClick={() => toggleProjectCollapsed(project.id)}
+                      title={`${collapsed ? "展开" : "折叠"} ${project.name} · ${project.root}`}
+                      aria-expanded={!collapsed}
+                    >
+                      <ChevronRight className="project-disclosure-chevron" size={14} strokeWidth={1.9} aria-hidden="true" />
+                      <Folder size={15} strokeWidth={1.75} aria-hidden="true" />
+                      <span>{project.name}</span>
+                      {visibleCount ? <small>{visibleCount}</small> : null}
+                    </button>
+                  )}
+
+                  <div className="project-group-actions" aria-label="Project actions">
+                    <button type="button" onClick={() => void onNew(project.root || undefined, project.id)} title={`New conversation in ${project.name}`} aria-label={`New conversation in ${project.name}`}>
+                      <Plus size={14} strokeWidth={1.8} />
+                    </button>
+                    <button type="button" onClick={() => beginProjectRename(project.id)} title={`Rename ${project.name}`} aria-label={`Rename ${project.name}`}>
+                      <Pencil size={13.5} strokeWidth={1.8} />
+                    </button>
+                    <button type="button" className="danger" onClick={() => void confirmRemoveProject(project.id)} title={`Remove ${project.name}`} aria-label={`Remove ${project.name}`}>
+                      <Trash2 size={13.5} strokeWidth={1.8} />
+                    </button>
+                  </div>
+                </div>
+
+                {projectThreads.length && !collapsed ? (
+                  <div className="project-thread-list">
+                    {projectThreads.map(renderThreadRow)}
+                  </div>
+                ) : null}
+              </section>
+            );
+          })}
+        </div>
+      </section>
+    );
+  };
+
+  const renderRecent = () => {
+    if (!projectsSupported || threadView === "archived") return null;
+    if (!normalThreads.length) return null;
+    return (
+      <section className="sidebar-section recent-section" aria-label="Recent conversations">
+        <div className="sidebar-section-title"><span>最近</span></div>
+        <div className="workspace-thread-list recent-thread-list">
+          {normalThreads.map(renderThreadRow)}
+        </div>
+      </section>
+    );
+  };
+
   return (
     <aside className="sidebar compact-sidebar codex-sidebar">
       <div className="codex-sidebar-topbar">
-        <button type="button" className="codex-sidebar-brand" title="Loom workspace menu" aria-label="Loom workspace menu">
+        <button type="button" className="codex-sidebar-brand" title="Loom" aria-label="Loom">
           <span>{threadView === "archived" ? "Archive" : "Loom"}</span>
           <ChevronDown size={14} strokeWidth={1.8} />
         </button>
@@ -648,11 +728,6 @@ export function Sidebar({
           >
             <Search size={16} strokeWidth={1.85} />
           </button>
-          {projectsSupported && threadView !== "archived" ? (
-            <button type="button" onClick={() => void addProject()} title="Add project folder" aria-label="Add project folder">
-              <FolderPlus size={16} strokeWidth={1.8} />
-            </button>
-          ) : null}
         </div>
       </div>
 
@@ -695,88 +770,13 @@ export function Sidebar({
       </div>
 
       <div className="compact-thread-scroll" aria-label={threadView === "archived" ? "Archived conversations" : "Conversations"}>
-        {projectsSupported && threadView !== "archived" ? (
-          <>
-            <div className="sidebar-section-title">
-              <span>项目</span>
-              <button type="button" onClick={() => void addProject()} title="Add project" aria-label="Add project"><Plus size={13} /></button>
-            </div>
-
-            <div className="project-list">
-              {projectSections.map(({ project, threads: projectThreads }) => {
-                const collapsed = collapsedProjectIds.has(project.id);
-                const visibleCount = projectThreads.length || project.threadCount || 0;
-                return (
-                  <section className={`workspace-group project-group ${projectThreads.length ? "" : "is-empty"} ${collapsed ? "is-collapsed" : ""}`} key={project.id}>
-                    <div className="project-group-row">
-                      {renamingProjectId === project.id ? (
-                        <input
-                          className="workspace-group-rename project-rename-input"
-                          autoFocus
-                          value={projectRenameValue}
-                          maxLength={60}
-                          onChange={(event) => setProjectRenameValue(event.target.value)}
-                          onBlur={() => void commitProjectRename()}
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter") {
-                              event.preventDefault();
-                              event.currentTarget.blur();
-                            } else if (event.key === "Escape") {
-                              setRenamingProjectId("");
-                            }
-                          }}
-                        />
-                      ) : (
-                        <button
-                          type="button"
-                          className="project-group-main"
-                          onClick={() => toggleProjectCollapsed(project.id)}
-                          title={`${collapsed ? "展开" : "折叠"} ${project.name} · ${project.root}`}
-                          aria-expanded={!collapsed}
-                        >
-                          <ChevronRight className="project-disclosure-chevron" size={14} strokeWidth={1.9} aria-hidden="true" />
-                          <Folder size={16} strokeWidth={1.75} aria-hidden="true" />
-                          <span>{project.name}</span>
-                          {visibleCount ? <small>{visibleCount}</small> : null}
-                        </button>
-                      )}
-
-                      <div className="project-group-actions" aria-label="Project actions">
-                        <button type="button" onClick={() => void onNew(project.root || undefined, project.id)} title={`New conversation in ${project.name}`} aria-label={`New conversation in ${project.name}`}>
-                          <Plus size={14} strokeWidth={1.8} />
-                        </button>
-                        <button type="button" onClick={() => beginProjectRename(project.id)} title={`Rename ${project.name}`} aria-label={`Rename ${project.name}`}>
-                          <Pencil size={13.5} strokeWidth={1.8} />
-                        </button>
-                        <button type="button" className="danger" onClick={() => void confirmRemoveProject(project.id)} title={`Remove ${project.name}`} aria-label={`Remove ${project.name}`}>
-                          <Trash2 size={13.5} strokeWidth={1.8} />
-                        </button>
-                      </div>
-                    </div>
-
-                    {projectThreads.length && !collapsed ? (
-                      <div className="workspace-thread-list project-thread-list">
-                        {projectThreads.map(renderThreadRow)}
-                      </div>
-                    ) : null}
-                  </section>
-                );
-              })}
-            </div>
-
-            <div className="sidebar-section-title recent-title">
-              <span>最近</span>
-            </div>
-            <div className="workspace-thread-list recent-thread-list">
-              {normalThreads.map(renderThreadRow)}
-            </div>
-          </>
-        ) : null}
+        {renderRecent()}
+        {renderProjects()}
 
         {(!projectsSupported || threadView === "archived") ? (
           <>
             {legacyWorkspaceGroups.map((group) => (
-              <section className={`workspace-group ${group.threads.length ? "" : "is-empty"}`} key={group.key}>
+              <section className="workspace-group" key={group.key}>
                 <div className="workspace-group-header">
                   <span className="workspace-group-label" title={group.workspace || group.displayLabel}>{group.displayLabel}</span>
                   {group.threads.length ? <span className="workspace-group-count">{group.threads.length}</span> : null}
@@ -834,27 +834,6 @@ export function Sidebar({
           {threadView === "active" && archivedCount > 0 ? <span className="archive-count">{archivedCount}</span> : null}
         </button>
       </div>
-
-      {groupMenu && menuProject ? createPortal(
-        <>
-          <div className="workspace-group-menu-scrim" onClick={() => setGroupMenu(null)} />
-          <div className="workspace-group-menu" style={{ left: groupMenu.x, top: groupMenu.y }} role="menu">
-            <button type="button" onClick={() => void onNew(menuProject.root || undefined, menuProject.id)}>
-              <Plus size={14} strokeWidth={1.7} />
-              <span>New conversation</span>
-            </button>
-            <button type="button" onClick={() => beginProjectRename(menuProject.id)}>
-              <Pencil size={14} strokeWidth={1.7} />
-              <span>Rename project</span>
-            </button>
-            <button type="button" className="danger" onClick={() => void confirmRemoveProject(menuProject.id)}>
-              <Trash2 size={14} strokeWidth={1.7} />
-              <span>Remove from Loom</span>
-            </button>
-          </div>
-        </>,
-        document.body,
-      ) : null}
 
       {contextMenu && menuThread ? createPortal(
         <div
