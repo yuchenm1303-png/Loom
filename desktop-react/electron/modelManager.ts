@@ -115,6 +115,14 @@ export class DesktopModelManager {
     return this.runBridge<ModelProfile>("save", input as unknown as Record<string, unknown>);
   }
 
+  delete(selection: string): RegistrySnapshot {
+    const value = String(selection || "").trim();
+    if (!value) throw new Error("Model profile is required");
+    const registry = this.runBridge<RegistrySnapshot>("delete", { selection: value });
+    if (this.currentSpec?.selection === value) this.currentSpec = null;
+    return registry;
+  }
+
   setActive(selection: string): void {
     this.runBridge<RegistrySnapshot>("set-active", { selection });
   }
@@ -168,7 +176,7 @@ export class DesktopModelManager {
   }
 
   private runBridge<T>(
-    command: "list" | "resolve" | "describe-model" | "save" | "set-active" | "set-reasoning",
+    command: "list" | "resolve" | "describe-model" | "save" | "delete" | "set-active" | "set-reasoning",
     payload: Record<string, unknown>,
   ): T {
     const python = process.env.LOOM_PYTHON || (process.platform === "win32" ? "python" : "python3");
