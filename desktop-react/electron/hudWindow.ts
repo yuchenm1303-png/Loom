@@ -5,9 +5,15 @@ import { fileURLToPath } from "node:url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+const HIDE_AFTER_MS = 220;
+const DESTROY_AFTER_IDLE_MS = 5000;
+
 let hudWindow: BrowserWindow | null = null;
 let lastBounds = { x: 0, y: 0, width: 1440, height: 900 };
 let pendingPayload: Record<string, unknown> | null = null;
+let hideTimer: NodeJS.Timeout | null = null;
+let destroyTimer: NodeJS.Timeout | null = null;
+let displayListenersRegistered = false;
 
 function virtualDesktopBounds(): Electron.Rectangle {
   const displays = screen.getAllDisplays();
@@ -25,8 +31,29 @@ function virtualDesktopBounds(): Electron.Rectangle {
   return { x: left, y: top, width: right - left, height: bottom - top };
 }
 
-function escapeHtml(value: string): string {
-  return value.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char] ?? char);
+function isVisiblePayload(payload: Record<string, unknown> | null): payload is Record<string, unknown> {
+  return Boolean(payload && payload.visible !== false);
+}
+
+function asNumber(value: unknown, fallback: number): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function terminalPayload(payload: Record<string, unknown>): boolean {
+  return payload.terminal === true || asNumber(payload.phase, 0) >= 4;
+}
+
+function clearTimer(timer: NodeJS.Timeout | null): void {
+  if (timer) clearTimeout(timer);
+}
+
+function registerDisplayListeners(): void {
+  if (displayListenersRegistered) return;
+  displayListenersRegistered = true;
+  screen.on("display-added", resizeHudWindow);
+  screen.on("display-removed", resizeHudWindow);
+  screen.on("display-metrics-changed", resizeHudWindow);
 }
 
 function hudDocument(): string {
@@ -38,7 +65,7 @@ function hudDocument(): string {
 <meta name="color-scheme" content="dark" />
 <title>Loom Automation HUD</title>
 <style>
-html,body{margin:0;width:100%;height:100%;background:transparent;overflow:hidden;font-family:Inter,Segoe UI,system-ui,sans-serif;user-select:none;cursor:none;}
+html,body{margin:0;width:100%;height:100%;background:transparent;overflow:hidden;font-family:Inter,Segoe UI,system-ui,sans-serif;user-select:none;cursor:default;}
 #hud{--x:50vw;--y:50vh;--bubble-x:calc(50vw + 54px);--bubble-y:calc(50vh + 24px);--bubble-width:420px;--accent:#66d9ff;position:fixed;inset:0;opacity:0;visibility:hidden;pointer-events:none;overflow:hidden;transition:opacity .16s ease,visibility .16s ease;}
 #hud.live{opacity:1;visibility:visible;}#hud.browser{--accent:#a994ff;}#hud.capture-safe .cursor,#hud.capture-safe .bubble,#hud.capture-safe .timeline,#hud.capture-safe .pill{opacity:0!important;}
 .edge{position:absolute;inset:0;overflow:hidden;isolation:isolate}.edge::before,.edge::after{content:"";position:absolute;inset:0;background:conic-gradient(from var(--angle,0deg) at 50% 50%,#62f3ff 0deg,#58c7ff 34deg,#7779ff 72deg,#ba62ff 112deg,#ff4ab8 156deg,#ff4979 198deg,#ff9e4d 234deg,#ffe55a 268deg,#abf15f 302deg,#48eacb 336deg,#62f3ff 360deg);animation:orbit 7.5s linear infinite,breath 1.55s ease-in-out infinite;}
@@ -82,65 +109,54 @@ html,body{margin:0;width:100%;height:100%;background:transparent;overflow:hidden
   function place(payload){
     const w=Math.max(1,innerWidth),h=Math.max(1,innerHeight);
     let x=Number(payload.hudX),y=Number(payload.hudY);
-    if(!Number.isFinite(x)||!Number.isFinite(y)){
-      x=clamp(payload.xNorm,0,1)*w; y=clamp(payload.yNorm,0,1)*h;
-    }
-    x=clamp(x,0,w); y=clamp(y,0,h);
+    if(!Number.isFinite(x)) x=clamp(Number(payload.xNorm),0,1)*w;
+    if(!Number.isFinite(y)) y=clamp(Number(payload.yNorm),0,1)*h;
     const bw=Math.min(420,Math.max(320,w-48));
-    const bh=142,gap=52;
-    const bx=clamp(x>w*.58?x-bw-gap:x+gap,18,Math.max(18,w-bw-18));
-    const by=clamp(y>h*.58?y-bh-30:y+26,18,Math.max(18,h-bh-18));
-    hud.style.setProperty('--x',x+'px'); hud.style.setProperty('--y',y+'px');
-    hud.style.setProperty('--bubble-x',bx+'px'); hud.style.setProperty('--bubble-y',by+'px');
+    const bx=clamp(x>w*.58?x-bw-52:x+52,18,Math.max(18,w-bw-18));
+    const by=clamp(y>h*.58?y-172:y+26,18,Math.max(18,h-160));
+    hud.style.setProperty('--x',x+'px');
+    hud.style.setProperty('--y',y+'px');
+    hud.style.setProperty('--bubble-x',bx+'px');
+    hud.style.setProperty('--bubble-y',by+'px');
     hud.style.setProperty('--bubble-width',bw+'px');
     point.textContent=Math.round(x)+', '+Math.round(y);
   }
-  function drawTimeline(phase){
-    phase=Math.max(0,Math.min(4,Math.round(Number(phase)||0)));
-    timeline.innerHTML='';
+  function renderTimeline(active){
+    timeline.textContent='';
     phases.forEach(function(label,index){
-      const item=document.createElement('div');
-      item.className='phase '+(index<phase?'done ':'')+(index===phase?'active':'');
-      item.innerHTML='<i></i>'+label;
+      const item=document.createElement('span');
+      item.className='phase '+(index<active?'done':index===active?'active':'');
+      item.innerHTML='<i></i><span></span>';
+      item.lastChild.textContent=label;
       timeline.appendChild(item);
     });
   }
-  function holdForNext(payload){
-    clearTimeout(settleTimer);
-    settleTimer=setTimeout(function(){
-      if(!hud.classList.contains('live')) return;
-      title.textContent=payload.source==='browser'?'Loom 等待下一步浏览器规划':'Loom 等待下一步桌面规划';
-      thought.textContent='上一动作已经完成，HUD 保持显示，等待模型继续规划下一步。';
-      drawTimeline(1);
-    },900);
-  }
-  function update(raw){
-    raw=raw||{};
-    if(raw.visible===false){
-      clearTimeout(settleTimer);
+  function render(payload){
+    if(!payload || payload.visible===false){
       hud.classList.remove('live');
       return;
     }
-    const family=raw.source==='browser'?'browser':'computer';
-    hud.classList.toggle('browser',family==='browser');
-    hud.classList.toggle('computer',family!=='browser');
-    hud.classList.toggle('capture-safe',raw.captureSafe===true);
-    title.textContent=text(raw.title,family==='browser'?'Loom 正在控制浏览器':'Loom 正在控制桌面');
-    meta.textContent=text(raw.meta,family==='browser'?'Browser Use':'Computer Use');
-    bubbleTitle.textContent=text(raw.bubbleTitle || raw.currentAction,'准备视觉自动化');
-    confidence.textContent=text(raw.confidence,'—');
-    source.textContent=text(raw.actionSource,family==='browser'?'browser-use + DOM/CDP':'截图 + UIA + Win32 输入');
-    thought.textContent=text(raw.thought || raw.result,'等待下一步浏览器或桌面动作。');
-    place(raw); drawTimeline(raw.phase);
-    hud.classList.add('live');
-    const click=String(raw.clickRevision||'');
-    if(click && click!==lastClick){
-      lastClick=click; cursor.classList.remove('clicking'); void cursor.offsetWidth; cursor.classList.add('clicking');
+    const phase=clamp(Math.round(Number(payload.phase)||0),0,4);
+    hud.className=(payload.source==='browser'?'browser':'computer')+(payload.captureSafe===true?' capture-safe':'')+' live';
+    title.textContent=text(payload.title,payload.source==='browser'?'Loom 正在控制浏览器':'Loom 正在控制桌面');
+    meta.textContent=text(payload.meta,payload.source==='browser'?'Browser Use':'Computer Use');
+    bubbleTitle.textContent=text(payload.bubbleTitle||payload.currentAction,'准备视觉自动化');
+    confidence.textContent=text(payload.confidence,'—');
+    source.textContent=text(payload.actionSource,payload.source==='browser'?'browser-use + DOM':'screenshot + UIA');
+    thought.textContent=text(payload.thought||payload.result,'等待下一步浏览器或桌面动作。');
+    place(payload);
+    renderTimeline(phase);
+    if(payload.clickRevision && payload.clickRevision!==lastClick){
+      lastClick=String(payload.clickRevision);
+      cursor.classList.remove('clicking');
+      void cursor.offsetWidth;
+      cursor.classList.add('clicking');
+      clearTimeout(settleTimer);
+      settleTimer=setTimeout(function(){cursor.classList.remove('clicking');},620);
     }
-    if(raw.terminal===true) holdForNext(raw); else clearTimeout(settleTimer);
   }
-  drawTimeline(0);
-  window.loomHud && window.loomHud.onUpdate(update);
+  if(window.loomHud && window.loomHud.onUpdate) window.loomHud.onUpdate(render);
+  renderTimeline(0);
 })();
 </script>
 </body>
@@ -162,12 +178,49 @@ function resizeHudWindow(): void {
   if (!hudWindow || hudWindow.isDestroyed()) return;
   lastBounds = virtualDesktopBounds();
   hudWindow.setBounds(lastBounds, false);
-  hudWindow.setAlwaysOnTop(true, "screen-saver");
-  hudWindow.moveTop();
+  if (hudWindow.isVisible()) {
+    hudWindow.setAlwaysOnTop(true, "screen-saver");
+    hudWindow.moveTop();
+  }
 }
 
-export function createHudOverlayWindow(): BrowserWindow {
+function showHudWindow(window: BrowserWindow): void {
+  clearTimer(hideTimer);
+  clearTimer(destroyTimer);
+  hideTimer = null;
+  destroyTimer = null;
+  resizeHudWindow();
+  if (!window.isVisible()) {
+    window.setAlwaysOnTop(true, "screen-saver");
+    window.showInactive();
+    window.moveTop();
+  }
+}
+
+function scheduleDestroy(): void {
+  clearTimer(destroyTimer);
+  destroyTimer = setTimeout(() => {
+    if (!hudWindow || hudWindow.isDestroyed() || hudWindow.isVisible()) return;
+    hudWindow.destroy();
+    hudWindow = null;
+  }, DESTROY_AFTER_IDLE_MS);
+}
+
+function hideHudWindow(delayMs = HIDE_AFTER_MS): void {
+  clearTimer(hideTimer);
+  if (!hudWindow || hudWindow.isDestroyed()) return;
+  hideTimer = setTimeout(() => {
+    if (!hudWindow || hudWindow.isDestroyed()) return;
+    hudWindow.hide();
+    scheduleDestroy();
+  }, delayMs);
+}
+
+export function createHudOverlayWindow(force = false): BrowserWindow | null {
   if (hudWindow && !hudWindow.isDestroyed()) return hudWindow;
+  if (!force && !isVisiblePayload(pendingPayload)) return null;
+
+  registerDisplayListeners();
   lastBounds = virtualDesktopBounds();
   hudWindow = new BrowserWindow({
     ...lastBounds,
@@ -182,7 +235,7 @@ export function createHudOverlayWindow(): BrowserWindow {
     closable: false,
     focusable: false,
     skipTaskbar: true,
-    alwaysOnTop: true,
+    alwaysOnTop: false,
     show: false,
     title: "Loom HUD Overlay",
     webPreferences: {
@@ -193,37 +246,49 @@ export function createHudOverlayWindow(): BrowserWindow {
       backgroundThrottling: false,
     },
   });
-  hudWindow.setIgnoreMouseEvents(true, { forward: true });
+
+  // The HUD is display-only. Do not forward mouse movement through the overlay:
+  // on Windows, a transparent always-on-top window with forwarded mouse events
+  // can force repeated cursor hit-testing/repainting over the main Loom window.
+  hudWindow.setIgnoreMouseEvents(true);
   hudWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   hudWindow.once("ready-to-show", () => {
-    if (!hudWindow || hudWindow.isDestroyed()) return;
-    hudWindow.showInactive();
-    resizeHudWindow();
-    if (pendingPayload) sendHudUpdate(pendingPayload);
+    if (!hudWindow || hudWindow.isDestroyed() || !isVisiblePayload(pendingPayload)) return;
+    sendHudUpdate(pendingPayload);
   });
-  hudWindow.on("closed", () => { hudWindow = null; });
+  hudWindow.on("closed", () => {
+    hudWindow = null;
+  });
   void hudWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(hudDocument())}`);
-
-  screen.on("display-added", resizeHudWindow);
-  screen.on("display-removed", resizeHudWindow);
-  screen.on("display-metrics-changed", resizeHudWindow);
   return hudWindow;
 }
 
 export function sendHudUpdate(payload: Record<string, unknown>): void {
-  pendingPayload = payload;
-  const window = hudWindow && !hudWindow.isDestroyed() ? hudWindow : createHudOverlayWindow();
-  const translated = translatePayload(payload);
-  if (window.webContents.isLoading()) return;
-  window.webContents.send("loom:hud-update", translated);
-  if (payload.visible !== false) {
-    window.setAlwaysOnTop(true, "screen-saver");
-    window.showInactive();
-    window.moveTop();
+  if (!isVisiblePayload(payload)) {
+    pendingPayload = null;
+    const existing = hudWindow && !hudWindow.isDestroyed() ? hudWindow : null;
+    if (existing && !existing.webContents.isLoading()) {
+      existing.webContents.send("loom:hud-update", { ...payload, visible: false });
+    }
+    hideHudWindow();
+    return;
   }
+
+  pendingPayload = payload;
+  const window = hudWindow && !hudWindow.isDestroyed() ? hudWindow : createHudOverlayWindow(true);
+  if (!window) return;
+  showHudWindow(window);
+  if (window.webContents.isLoading()) return;
+
+  window.webContents.send("loom:hud-update", translatePayload(payload));
+  if (terminalPayload(payload)) hideHudWindow(2300);
 }
 
 export function closeHudOverlayWindow(): void {
+  clearTimer(hideTimer);
+  clearTimer(destroyTimer);
+  hideTimer = null;
+  destroyTimer = null;
   if (!hudWindow || hudWindow.isDestroyed()) return;
   hudWindow.destroy();
   hudWindow = null;
