@@ -1,0 +1,354 @@
+.computer-use-hud{
+  --hud-x:50vw;
+  --hud-y:50vh;
+  --hud-bubble-x:calc(50vw + 54px);
+  --hud-bubble-y:calc(50vh + 24px);
+  --hud-bubble-width:420px;
+  --hud-accent:#66d9ff;
+  --hud-success:#6ce6b5;
+  position:fixed;
+  inset:0;
+  z-index:90;
+  pointer-events:none;
+  opacity:0;
+  visibility:hidden;
+  overflow:hidden;
+  contain:layout paint style;
+  transition:opacity .18s ease,visibility .18s ease;
+}
+.computer-use-hud.hud-live{
+  opacity:1;
+  visibility:visible;
+}
+.computer-use-hud.source-browser{
+  --hud-accent:#9f8cff;
+}
+.hud-edge-aurora{
+  position:absolute;
+  inset:0;
+  overflow:hidden;
+  pointer-events:none;
+  isolation:isolate;
+}
+@property --loom-hud-edge-angle{
+  syntax:"<angle>";
+  inherits:false;
+  initial-value:0deg;
+}
+.hud-edge-layer{
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  background:conic-gradient(
+    from var(--loom-hud-edge-angle) at 50% 50%,
+    #62f3ff 0deg,
+    #58c7ff 34deg,
+    #7779ff 72deg,
+    #ba62ff 112deg,
+    #ff4ab8 156deg,
+    #ff4979 198deg,
+    #ff9e4d 234deg,
+    #ffe55a 268deg,
+    #abf15f 302deg,
+    #48eacb 336deg,
+    #62f3ff 360deg
+  );
+  animation:loomHudEdgeOrbit 7.5s linear infinite,loomHudEdgeBreath 1.5s ease-in-out infinite;
+  will-change:opacity,filter;
+}
+.hud-edge-cast{
+  --hud-layer-opacity:.58;
+  filter:blur(14px) saturate(1.16);
+  -webkit-mask:
+    linear-gradient(to bottom,#000 0%,rgba(0,0,0,.74) 18%,rgba(0,0,0,.28) 55%,transparent 100%) top / 100% 34px no-repeat,
+    linear-gradient(to top,#000 0%,rgba(0,0,0,.74) 18%,rgba(0,0,0,.28) 55%,transparent 100%) bottom / 100% 34px no-repeat,
+    linear-gradient(to right,#000 0%,rgba(0,0,0,.72) 18%,rgba(0,0,0,.30) 55%,transparent 100%) left / 34px 100% no-repeat,
+    linear-gradient(to left,#000 0%,rgba(0,0,0,.72) 18%,rgba(0,0,0,.30) 55%,transparent 100%) right / 34px 100% no-repeat;
+  mask:
+    linear-gradient(to bottom,#000 0%,rgba(0,0,0,.74) 18%,rgba(0,0,0,.28) 55%,transparent 100%) top / 100% 34px no-repeat,
+    linear-gradient(to top,#000 0%,rgba(0,0,0,.74) 18%,rgba(0,0,0,.28) 55%,transparent 100%) bottom / 100% 34px no-repeat,
+    linear-gradient(to right,#000 0%,rgba(0,0,0,.72) 18%,rgba(0,0,0,.30) 55%,transparent 100%) left / 34px 100% no-repeat,
+    linear-gradient(to left,#000 0%,rgba(0,0,0,.72) 18%,rgba(0,0,0,.30) 55%,transparent 100%) right / 34px 100% no-repeat;
+  animation-delay:-2.4s,-1.1s;
+}
+.hud-edge-halo{
+  --hud-layer-opacity:.74;
+  filter:blur(9px) saturate(1.30);
+  -webkit-mask:
+    linear-gradient(to bottom,#000 0%,rgba(0,0,0,.86) 28%,rgba(0,0,0,.34) 68%,transparent 100%) top / 100% 16px no-repeat,
+    linear-gradient(to top,#000 0%,rgba(0,0,0,.84) 28%,rgba(0,0,0,.32) 68%,transparent 100%) bottom / 100% 16px no-repeat,
+    linear-gradient(to right,#000 0%,rgba(0,0,0,.85) 28%,rgba(0,0,0,.33) 68%,transparent 100%) left / 16px 100% no-repeat,
+    linear-gradient(to left,#000 0%,rgba(0,0,0,.85) 28%,rgba(0,0,0,.33) 68%,transparent 100%) right / 16px 100% no-repeat;
+  mask:
+    linear-gradient(to bottom,#000 0%,rgba(0,0,0,.86) 28%,rgba(0,0,0,.34) 68%,transparent 100%) top / 100% 16px no-repeat,
+    linear-gradient(to top,#000 0%,rgba(0,0,0,.84) 28%,rgba(0,0,0,.32) 68%,transparent 100%) bottom / 100% 16px no-repeat,
+    linear-gradient(to right,#000 0%,rgba(0,0,0,.85) 28%,rgba(0,0,0,.33) 68%,transparent 100%) left / 16px 100% no-repeat,
+    linear-gradient(to left,#000 0%,rgba(0,0,0,.85) 28%,rgba(0,0,0,.33) 68%,transparent 100%) right / 16px 100% no-repeat;
+  animation-delay:-1.1s,-.45s;
+}
+.hud-edge-vignette{
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  box-shadow:inset 0 0 34px rgba(4,8,16,.18),inset 0 0 8px rgba(0,0,0,.15);
+}
+@keyframes loomHudEdgeOrbit{to{--loom-hud-edge-angle:360deg}}
+@keyframes loomHudEdgeBreath{
+  0%,100%{opacity:calc(var(--hud-layer-opacity) * .72)}
+  50%{opacity:var(--hud-layer-opacity)}
+}
+.hud-top-pill{
+  position:absolute;
+  top:20px;
+  left:50%;
+  transform:translateX(-50%);
+  display:flex;
+  align-items:center;
+  gap:11px;
+  max-width:min(720px,calc(100vw - 40px));
+  padding:10px 15px;
+  border-radius:999px;
+  background:rgba(12,14,22,.78);
+  border:1px solid color-mix(in srgb,var(--hud-accent) 30%,transparent);
+  backdrop-filter:blur(18px) saturate(1.2);
+  box-shadow:0 14px 34px rgba(0,0,0,.30),0 0 28px color-mix(in srgb,var(--hud-accent) 12%,transparent);
+}
+.hud-status-dot{
+  width:8px;
+  height:8px;
+  border-radius:50%;
+  background:var(--hud-accent);
+  box-shadow:0 0 0 0 color-mix(in srgb,var(--hud-accent) 50%,transparent);
+  animation:loomHudPulse 1.45s infinite;
+  flex:0 0 auto;
+}
+.hud-top-pill strong{
+  color:#f8fbff;
+  font-size:13px;
+  font-weight:760;
+  white-space:nowrap;
+}
+.hud-top-pill span:last-child{
+  color:#aeb8cc;
+  font-size:12px;
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+@keyframes loomHudPulse{
+  70%{box-shadow:0 0 0 9px color-mix(in srgb,var(--hud-accent) 0%,transparent)}
+  100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--hud-accent) 0%,transparent)}
+}
+.hud-cursor-wrap{
+  position:absolute;
+  left:0;
+  top:0;
+  width:82px;
+  height:82px;
+  transform:translate3d(var(--hud-x),var(--hud-y),0) translate(-10px,-10px);
+  transition:transform 210ms cubic-bezier(.18,.78,.18,1);
+  will-change:transform;
+  pointer-events:none;
+}
+.hud-cursor-aura{
+  position:absolute;
+  left:34px;
+  top:34px;
+  width:72px;
+  height:72px;
+  border-radius:50%;
+  transform:translate(-50%,-50%);
+  background:radial-gradient(ellipse at 34% 28%,rgba(70,238,255,.18) 0%,rgba(102,224,255,.10) 32%,rgba(150,122,255,.06) 54%,rgba(255,156,216,.04) 64%,transparent 78%);
+  filter:blur(8px);
+  opacity:.54;
+  animation:loomHudCursorAura 2.2s ease-in-out infinite;
+}
+.hud-cursor-icon{
+  position:absolute;
+  left:0;
+  top:0;
+  width:36.1px;
+  height:36.1px;
+  overflow:visible;
+  transform-origin:10px 10.5px;
+  animation:loomHudCursorFloat 2.15s ease-in-out infinite;
+  filter:drop-shadow(0 0 5px rgba(90,236,255,.20)) drop-shadow(0 6px 10px rgba(52,35,120,.18));
+}
+@keyframes loomHudCursorFloat{
+  0%,100%{transform:translate(-.5px,-.5px) rotate(-2.5deg) scale(1,.95)}
+  50%{transform:translate(-.5px,-1.5px) rotate(-2.5deg) scale(1.009,.958)}
+}
+@keyframes loomHudCursorAura{
+  0%,100%{transform:translate(-50%,-50%) scale(.97);opacity:.44}
+  50%{transform:translate(-50%,-50%) scale(1.07);opacity:.64}
+}
+.hud-cursor-hotspot{
+  position:absolute;
+  left:10px;
+  top:10.5px;
+  width:4px;
+  height:4px;
+  transform:translate(-50%,-50%);
+  border-radius:50%;
+  opacity:0;
+}
+.hud-click-wave{
+  position:absolute;
+  left:10px;
+  top:10.5px;
+  width:24px;
+  height:24px;
+  border-radius:50%;
+  border:1.5px solid rgba(112,235,255,.95);
+  box-shadow:0 0 18px rgba(120,105,255,.20);
+  transform:translate(-50%,-50%) scale(.25);
+  opacity:0;
+}
+.hud-cursor-wrap.clicking .hud-cursor-icon{
+  animation:loomHudCursorPress .34s cubic-bezier(.2,.8,.2,1);
+}
+.hud-cursor-wrap.clicking .hud-click-wave{
+  animation:loomHudClickWave .6s ease-out;
+}
+@keyframes loomHudCursorPress{
+  0%{transform:translate(-.5px,-.5px) rotate(-2.5deg) scale(1,.95)}
+  45%{transform:translate(-.5px,-.5px) rotate(-2.5deg) scale(.94,.90)}
+  100%{transform:translate(-.5px,-.5px) rotate(-2.5deg) scale(1,.95)}
+}
+@keyframes loomHudClickWave{
+  0%{opacity:1;transform:translate(-50%,-50%) scale(.35)}
+  100%{opacity:0;transform:translate(-50%,-50%) scale(3.8)}
+}
+.hud-info-bubble{
+  position:absolute;
+  left:0;
+  top:0;
+  width:var(--hud-bubble-width);
+  min-height:112px;
+  padding:14px 15px 13px;
+  border-radius:17px;
+  background:rgba(8,17,27,.86);
+  border:1px solid color-mix(in srgb,var(--hud-accent) 24%,transparent);
+  backdrop-filter:blur(18px) saturate(1.18);
+  box-shadow:0 16px 45px rgba(0,0,0,.40),0 0 26px color-mix(in srgb,var(--hud-accent) 9%,transparent);
+  transform:translate3d(var(--hud-bubble-x),var(--hud-bubble-y),0) scale(.78);
+  transform-origin:left top;
+  transition:transform 210ms cubic-bezier(.18,.78,.18,1),opacity .18s ease,filter .18s ease;
+  will-change:transform,opacity,filter;
+  contain:layout style;
+}
+.hud-bubble-title{
+  min-height:17px;
+  margin-bottom:7px;
+  color:#f8fbff;
+  font-size:13px;
+  font-weight:780;
+}
+.hud-bubble-line{
+  display:flex;
+  justify-content:space-between;
+  gap:12px;
+  color:#9fb0c1;
+  font-size:12px;
+  line-height:1.7;
+}
+.hud-bubble-line b{
+  max-width:58%;
+  color:#e7f8ff;
+  font-family:var(--loom-code-font,ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace);
+  font-weight:650;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.hud-bubble-thought{
+  margin-top:9px;
+  padding-top:9px;
+  border-top:1px solid rgba(255,255,255,.07);
+  min-height:29px;
+  color:#c3d7e4;
+  font-size:12px;
+  line-height:1.65;
+}
+.hud-bottom-timeline{
+  position:absolute;
+  left:50%;
+  bottom:32px;
+  transform:translateX(-50%);
+  display:flex;
+  align-items:center;
+  gap:8px;
+  max-width:calc(100vw - 40px);
+  padding:9px 13px;
+  border-radius:999px;
+  background:rgba(12,14,22,.76);
+  border:1px solid rgba(255,255,255,.08);
+  backdrop-filter:blur(16px) saturate(1.12);
+  box-shadow:0 12px 34px rgba(0,0,0,.26);
+}
+.hud-phase{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  color:#7f91a2;
+  font-size:12px;
+  white-space:nowrap;
+}
+.hud-phase::after{
+  content:"";
+  width:18px;
+  height:1px;
+  background:rgba(255,255,255,.13);
+}
+.hud-phase:last-child::after{display:none}
+.hud-phase.active{color:#dff8ff}
+.hud-phase.done{color:var(--hud-success)}
+.hud-phase i{
+  width:6px;
+  height:6px;
+  flex:0 0 auto;
+  border-radius:50%;
+  background:currentColor;
+  box-shadow:0 0 10px currentColor;
+}
+.computer-use-hud.capture-safe .hud-top-pill,
+.computer-use-hud.capture-safe .hud-cursor-wrap,
+.computer-use-hud.capture-safe .hud-info-bubble,
+.computer-use-hud.capture-safe .hud-bottom-timeline{
+  opacity:0;
+  visibility:hidden;
+}
+@media (max-width:760px){
+  .hud-top-pill{top:14px;max-width:calc(100vw - 24px);padding:8px 12px}
+  .hud-top-pill strong{font-size:12px}
+  .hud-top-pill span:last-child{font-size:11px}
+  .hud-info-bubble{transform:translate3d(var(--hud-bubble-x),var(--hud-bubble-y),0) scale(.68)}
+  .hud-bottom-timeline{bottom:20px;gap:5px;padding:8px 10px}
+  .hud-phase{gap:5px;font-size:10.5px}
+  .hud-phase::after{width:10px}
+}
+@media (prefers-reduced-motion:reduce){
+  .hud-edge-layer,
+  .hud-status-dot,
+  .hud-cursor-aura,
+  .hud-cursor-icon,
+  .hud-click-wave{
+    animation:none !important;
+  }
+  .hud-cursor-wrap,
+  .hud-info-bubble{
+    transition-duration:0ms;
+  }
+}
+html[data-loom-reduced-motion="true"] .hud-edge-layer,
+html[data-loom-reduced-motion="true"] .hud-status-dot,
+html[data-loom-reduced-motion="true"] .hud-cursor-aura,
+html[data-loom-reduced-motion="true"] .hud-cursor-icon,
+html[data-loom-reduced-motion="true"] .hud-click-wave{
+  animation:none !important;
+}
+html[data-loom-reduced-motion="true"] .hud-cursor-wrap,
+html[data-loom-reduced-motion="true"] .hud-info-bubble{
+  transition-duration:0ms;
+}
