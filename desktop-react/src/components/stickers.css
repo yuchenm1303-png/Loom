@@ -1,10 +1,7 @@
-.assistant-copy.has-inline-stickers {
-  white-space: pre-wrap;
-}
-
-/* AI Ledger's production inline defaults are 35dp, -5dp vertical offset and
- * zero horizontal gap. Keep the image genuinely inline and override the
- * generic Markdown image block styling without changing normal images. */
+/* Inline stickers intentionally keep their 35px visual size and -5px offset.
+ * The vertical margin only controls line-box participation, so sticker
+ * placement/triggering stays unchanged while surrounding text keeps a stable
+ * inherited line height. */
 .markdown-body img.assistant-inline-sticker {
   --inline-sticker-size: 35px;
 
@@ -17,9 +14,6 @@
   vertical-align: middle;
   transform: translateY(-5px);
 
-  /* Keep the sticker's visual size/offset unchanged, but collapse its inline
-   * layout contribution back to the surrounding text line height so it does
-   * not stretch one line and make the following lines appear glued together. */
   margin-inline: 0;
   margin-block: calc((1lh - var(--inline-sticker-size)) / 2);
 
@@ -30,10 +24,6 @@
   box-shadow: none;
   user-select: none;
   -webkit-user-drag: none;
-}
-
-.markdown-body p:has(> img.assistant-inline-sticker:first-child) {
-  text-align: left;
 }
 
 .sticker-popover {
