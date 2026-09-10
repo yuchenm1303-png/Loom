@@ -6,7 +6,7 @@
   overflow: hidden;
 }
 
-/* Keep the transcript in a stable row while run progress mounts/unmounts. */
+/* Keep the transcript pinned while the transient run strip mounts above it. */
 .conversation-stage > .transcript-scroll {
   grid-row: 2;
   min-height: 0;
@@ -26,30 +26,33 @@
   position: relative;
   z-index: 7;
   min-width: 0;
-  padding-inline: 24px;
+  padding-inline: 26px;
   pointer-events: none;
 }
 
 .run-progress-frame.top {
-  padding-top: 8px;
-  padding-bottom: 7px;
-  border-bottom: 1px solid rgba(255,255,255,.038);
-  background:
-    linear-gradient(180deg, rgba(11,12,15,.92), rgba(11,12,15,.70));
+  padding-top: 9px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255,255,255,.035);
+  background: linear-gradient(180deg, rgba(12,13,16,.88), rgba(12,13,16,.62));
   backdrop-filter: blur(10px);
 }
 
 .run-progress-frame.bottom {
   padding-top: 5px;
   padding-bottom: 0;
-  background: linear-gradient(180deg, rgba(13,14,17,0), rgba(13,14,17,.70) 72%);
+  background: linear-gradient(180deg, rgba(13,14,17,0), rgba(13,14,17,.62));
 }
 
 .run-progress-inline {
   width: min(var(--content-width), 100%);
+  min-width: 0;
+  min-height: 24px;
   margin: 0 auto;
-  display: grid;
-  gap: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
   animation: run-progress-enter 170ms cubic-bezier(.2,.78,.2,1) both;
 }
 
@@ -59,24 +62,32 @@
   display: flex;
   align-items: center;
   white-space: nowrap;
-  overflow: hidden;
 }
 
 .run-progress-primary {
-  min-height: 20px;
+  flex: 1 1 auto;
   gap: 8px;
+  overflow: hidden;
 }
 
 .run-progress-live-dot {
+  position: relative;
   width: 7px;
   height: 7px;
   flex: none;
   border-radius: 50%;
-  background: #9b92ec;
-  box-shadow:
-    0 0 0 3px rgba(139,124,246,.08),
-    0 0 10px rgba(139,124,246,.24);
-  animation: run-progress-pulse 1.8s ease-in-out infinite;
+  background: #a79df3;
+  box-shadow: 0 0 0 3px rgba(139,124,246,.075), 0 0 9px rgba(139,124,246,.2);
+  animation: run-progress-pulse 1.9s ease-in-out infinite;
+}
+
+.run-progress-live-dot::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border: 1px solid rgba(167,157,243,.12);
+  border-radius: 50%;
+  animation: run-progress-ring 1.9s ease-out infinite;
 }
 
 .run-progress-brand {
@@ -84,40 +95,43 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  color: #858d9a;
+  color: #7f8793;
   font-size: 10.8px;
   font-weight: 620;
-  letter-spacing: .008em;
+  letter-spacing: .006em;
 }
 
 .run-progress-brand svg {
-  color: #9a90e9;
-  opacity: .9;
+  color: #978deb;
+  opacity: .86;
 }
 
 .run-progress-divider {
   width: 1px;
   height: 13px;
   flex: none;
-  background: rgba(255,255,255,.07);
+  background: linear-gradient(180deg, transparent, rgba(255,255,255,.105), transparent);
 }
 
 .run-progress-phase {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: #d6dae2;
-  font-size: 12.4px;
-  font-weight: 670;
+  color: #d7dbe3;
+  font-size: 12.2px;
+  font-weight: 660;
   line-height: 1.15;
 }
 
 .run-progress-meta {
+  flex: 0 1 auto;
+  justify-content: flex-end;
   gap: 7px;
-  padding-left: 15px;
-  color: #747c88;
-  font-size: 10.4px;
-  line-height: 1.15;
+  overflow: hidden;
+  color: #707884;
+  font-size: 10.3px;
+  font-weight: 540;
+  line-height: 1;
   font-variant-numeric: tabular-nums;
 }
 
@@ -130,13 +144,21 @@
   text-overflow: ellipsis;
 }
 
+.run-progress-meta-item:first-child {
+  color: #858d99;
+}
+
 .run-progress-meta-item svg {
   flex: none;
-  color: #666e7a;
+  color: #626a76;
 }
 
 .run-progress-meta-item.subtle {
-  color: #67707c;
+  color: #636b77;
+}
+
+.run-progress-meta-item.subtle svg {
+  color: #59616d;
 }
 
 .run-progress-meta-dot {
@@ -144,49 +166,50 @@
   height: 3px;
   flex: none;
   border-radius: 50%;
-  background: #454c56;
+  background: #434a54;
 }
 
 .run-progress-track {
   position: relative;
   width: min(var(--content-width), 100%);
   height: 1px;
-  margin: 2px auto 0;
+  margin: 7px auto 0;
   overflow: hidden;
   border-radius: 999px;
-  background: linear-gradient(90deg, rgba(255,255,255,.04), rgba(255,255,255,.018));
+  background: linear-gradient(90deg, rgba(139,124,246,.075), rgba(255,255,255,.038) 26%, rgba(255,255,255,.02) 78%, transparent);
 }
 
 .run-progress-track > span {
   position: absolute;
   inset-block: 0;
-  left: -22%;
-  width: 22%;
+  left: -18%;
+  width: 18%;
   border-radius: inherit;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    rgba(139,124,246,.16) 18%,
-    rgba(171,159,255,.48) 55%,
-    transparent
-  );
-  animation: run-progress-sweep 1.9s cubic-bezier(.45,.05,.55,.95) infinite;
+  background: linear-gradient(90deg, transparent, rgba(154,143,239,.20) 20%, rgba(190,181,255,.58) 54%, transparent);
+  filter: blur(.1px);
+  animation: run-progress-sweep 1.8s cubic-bezier(.45,.05,.55,.95) infinite;
 }
 
 .run-progress-frame.bottom .run-progress-inline {
-  gap: 4px;
+  min-height: 20px;
+  gap: 12px;
 }
 
 .run-progress-frame.bottom .run-progress-brand,
-.run-progress-frame.bottom .run-progress-meta {
-  font-size: 10px;
-}
-
 .run-progress-frame.bottom .run-progress-phase {
-  font-size: 11.8px;
+  font-size: 10.4px;
 }
 
-/* The global run status already communicates the active turn. */
+.run-progress-frame.bottom .run-progress-meta {
+  font-size: 9.5px;
+}
+
+.run-progress-frame.bottom .run-progress-track {
+  margin-top: 5px;
+  opacity: .72;
+}
+
+/* The global strip replaces the old duplicate assistant streaming placeholder. */
 .entry-assistant_message:has(.streaming-placeholder) {
   display: none !important;
 }
@@ -199,67 +222,95 @@
 @keyframes run-progress-pulse {
   0%, 100% {
     transform: scale(.9);
-    opacity: .72;
-    box-shadow: 0 0 0 2px rgba(139,124,246,.06), 0 0 7px rgba(139,124,246,.16);
+    opacity: .74;
+    box-shadow: 0 0 0 2px rgba(139,124,246,.055), 0 0 6px rgba(139,124,246,.14);
   }
   50% {
     transform: scale(1.08);
     opacity: 1;
-    box-shadow: 0 0 0 4px rgba(139,124,246,.10), 0 0 11px rgba(139,124,246,.27);
+    box-shadow: 0 0 0 4px rgba(139,124,246,.09), 0 0 10px rgba(139,124,246,.24);
   }
+}
+
+@keyframes run-progress-ring {
+  0% { transform: scale(.72); opacity: 0; }
+  28% { opacity: .58; }
+  100% { transform: scale(1.42); opacity: 0; }
 }
 
 @keyframes run-progress-sweep {
   0% { transform: translateX(0); opacity: 0; }
-  12% { opacity: .82; }
-  78% { opacity: .66; }
-  100% { transform: translateX(560%); opacity: 0; }
+  12% { opacity: .8; }
+  76% { opacity: .64; }
+  100% { transform: translateX(650%); opacity: 0; }
+}
+
+@media (max-width: 1050px) {
+  .run-progress-meta-item.subtle {
+    display: none;
+  }
 }
 
 @media (max-width: 760px) {
   .run-progress-frame {
-    padding-inline: 16px;
+    padding-inline: 18px;
   }
 
-  .run-progress-primary {
-    gap: 6px;
+  .run-progress-frame.top {
+    padding-top: 8px;
+    padding-bottom: 7px;
   }
 
-  .run-progress-brand {
-    font-size: 10.2px;
+  .run-progress-inline {
+    min-height: 0;
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 5px;
   }
 
-  .run-progress-phase {
-    font-size: 12px;
+  .run-progress-primary,
+  .run-progress-meta {
+    width: 100%;
   }
 
   .run-progress-meta {
-    gap: 6px;
-    padding-left: 13px;
+    justify-content: flex-start;
+    padding-left: 15px;
     font-size: 9.8px;
-    overflow-x: auto;
-    scrollbar-width: none;
   }
 
-  .run-progress-meta::-webkit-scrollbar {
-    display: none;
+  .run-progress-brand {
+    font-size: 10.3px;
+  }
+
+  .run-progress-phase {
+    font-size: 11.7px;
+  }
+
+  .run-progress-track {
+    margin-top: 6px;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .run-progress-inline,
   .run-progress-live-dot,
+  .run-progress-live-dot::after,
   .run-progress-track > span {
     animation: none !important;
   }
 
   .run-progress-live-dot {
-    opacity: .9;
+    opacity: .92;
+  }
+
+  .run-progress-live-dot::after {
+    opacity: .18;
   }
 
   .run-progress-track > span {
     left: 0;
-    width: 36%;
-    opacity: .35;
+    width: 34%;
+    opacity: .36;
   }
 }
