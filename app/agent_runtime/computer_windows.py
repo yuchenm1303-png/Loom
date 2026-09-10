@@ -120,6 +120,7 @@ class PyWinAutoWindowsOperator:
         from PIL import ImageGrab
 
         with self._lock:
+            observe_started = time.perf_counter()
             hwnd = int(win32gui.GetForegroundWindow())
             if not hwnd or not win32gui.IsWindow(hwnd):
                 raise RuntimeError("Windows foreground window is unavailable")
@@ -148,12 +149,17 @@ class PyWinAutoWindowsOperator:
                 dpi_x=dpi,
                 dpi_y=dpi,
             )
+            geometry_ms = round((time.perf_counter() - observe_started) * 1000.0, 3)
+            capture_started = time.perf_counter()
             image = ImageGrab.grab(bbox=(left, top, right, bottom), all_screens=True)
             output = io.BytesIO()
             image.save(output, format="PNG")
             screenshot = output.getvalue()
+            capture_ms = round((time.perf_counter() - capture_started) * 1000.0, 3)
 
+            windows_started = time.perf_counter()
             windows = self._enumerate_windows(hwnd)
+            window_enumeration_ms = round((time.perf_counter() - windows_started) * 1000.0, 3)
             active = next((item for item in windows if item.foreground), None)
             if active is None:
                 active = ComputerWindow(
@@ -164,7 +170,9 @@ class PyWinAutoWindowsOperator:
                 )
 
             observation_id = uuid.uuid4().hex
+            uia_started = time.perf_counter()
             controls, mapping = self._collect_uia_controls(hwnd, observation_id)
+            uia_enumeration_ms = round((time.perf_counter() - uia_started) * 1000.0, 3)
             self._control_maps[observation_id] = mapping
             while len(self._control_maps) > 4:
                 self._control_maps.popitem(last=False)
@@ -179,6 +187,19 @@ class PyWinAutoWindowsOperator:
                 metadata={
                     "dpi_awareness": self.dpi_awareness,
                     "control_backend": "uia",
+                    "timings_ms": {
+                        "geometry": geometry_ms,
+                        "screenshot_capture_and_png_encode": capture_ms,
+                        "window_enumeration": window_enumeration_ms,
+                        "uia_enumeration": uia_enumeration_ms,
+                        "total": round((time.perf_counter() - observe_started) * 1000.0, 3),
+                    },
+                    "capture": {
+                        "image_mode": str(image.mode),
+                        "image_width": int(image.width),
+                        "image_height": int(image.height),
+                        "png_bytes": len(screenshot),
+                    },
                 },
             )
 
@@ -383,16 +404,51 @@ class PyWinAutoWindowsOperator:
             return None
 
     def _switch_window(self, action: ComputerAction) -> ComputerExecution:
+        import pywintypes
+        import win32api
         import win32con
         import win32gui
+        import win32process
 
         hwnd = self._parse_window_id(action.window_id)
         if not win32gui.IsWindow(hwnd):
             raise RuntimeError(f"Windows window no longer exists: {action.window_id}")
         if win32gui.IsIconic(hwnd):
             win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
-        win32gui.SetForegroundWindow(hwnd)
-        return ComputerExecution(ok=True, message="window switched", action=action, native=True)
+        methods: list[str] = []
+        try:
+            win32gui.SetForegroundWindow(hwnd)
+            methods.append("SetForegroundWindow")
+        except pywintypes.error:
+            win32gui.ShowWindow(hwnd, win32con.SW_SHOW)
+            win32gui.SetWindowPos(
+                hwnd,
+                win32con.HWND_TOP,
+                0,
+                0,
+                0,
+                0,
+                win32con.SWP_NOMOVE | win32con.SWP_NOSIZE | win32con.SWP_SHOWWINDOW,
+            )
+            methods.append("SetWindowPos")
+
+        if int(win32gui.GetForegroundWindow()) != hwnd:
+            current_thread = int(win32api.GetCurrentThreadId())
+            target_thread = int(win32process.GetWindowThreadProcessId(hwnd)[0])
+            attached = current_thread != target_thread
+            try:
+                if attached:
+                    win32process.AttachThreadInput(current_thread, target_thread, True)
+                win32gui.BringWindowToTop(hwnd)
+                win32gui.SetForegroundWindow(hwnd)
+                methods.append("AttachThreadInput")
+            finally:
+                if attached:
+                    win32process.AttachThreadInput(current_thread, target_thread, False)
+
+        if int(win32gui.GetForegroundWindow()) != hwnd:
+            raise RuntimeError(f"Windows refused to activate window: {action.window_id}")
+        return ComputerExecution(ok=True, message=f"window switched via {methods[-1]}", action=action, native=True)
 
     def _collect_uia_controls(self, hwnd: int, observation_id: str) -> tuple[tuple[ComputerControl, ...], dict[str, object]]:
         from pywinauto import Desktop

@@ -9,6 +9,7 @@ from typing import Sequence
 
 from .browser_runtime_v1 import BrowserRuntime
 from .computer_alibaba import AlibabaGUIPlusGroundingBackend, GUI_PLUS_GROUNDER_ALIASES
+from .computer_diagnostics import ComputerDiagnostics
 from .computer_grounding import ComputerGroundingBackend, UITarsGroundingBackend
 from .computer_transient import ComputerTransientInputPlatform
 from .computer_types import (
@@ -73,11 +74,13 @@ class ComputerSessionStore:
         *,
         trajectory_limit: int = 16,
         settle_delay: float = 0.25,
+        diagnostics: ComputerDiagnostics | None = None,
     ) -> None:
         self.operator = operator
         self.grounder = grounder
         self.trajectory_limit = max(1, int(trajectory_limit))
         self.settle_delay = max(0.0, float(settle_delay))
+        self.diagnostics = diagnostics or ComputerDiagnostics()
         self._lock = threading.RLock()
         self._revision = 0
         self._latest_owner = ""
@@ -88,9 +91,18 @@ class ComputerSessionStore:
 
     def observe(self, owner_session_id: str) -> ComputerStateSnapshot:
         owner = self._owner(owner_session_id)
+        operation_id = self.diagnostics.operation_id()
+        started = time.perf_counter()
         with self._lock:
-            observation = self.operator.observe()
-            return self._publish(owner, observation)
+            self.diagnostics.emit("observe.started", operation_id=operation_id, owner=owner)
+            try:
+                observation = self.operator.observe()
+                snapshot = self._publish(owner, observation)
+                self._log_observation(operation_id, "observed", snapshot, started)
+                return snapshot
+            except Exception as exc:
+                self._log_failure("observe.failed", operation_id, started, exc)
+                raise
 
     def latest(self, owner_session_id: str) -> ComputerStateSnapshot:
         owner = self._owner(owner_session_id)
@@ -115,8 +127,21 @@ class ComputerSessionStore:
         action: ComputerAction,
     ) -> ComputerStepOutcome:
         owner = self._owner(owner_session_id)
+        operation_id = self.diagnostics.operation_id()
+        started = time.perf_counter()
         with self._lock:
-            before = self.ensure_revision(owner, expected_revision)
+            self.diagnostics.emit("action.started", operation_id=operation_id, owner=owner, expected_revision=expected_revision, action=action.safe_dict())
+            try:
+                before = self.ensure_revision(owner, expected_revision)
+                outcome = self._execute_locked(owner, before, action)
+                self.diagnostics.emit("action.completed", operation_id=operation_id, duration_ms=_elapsed_ms(started), outcome=outcome.to_safe_dict())
+                self._log_observation(operation_id, "after", outcome.after, started)
+                return outcome
+            except Exception as exc:
+                self._log_failure("action.failed", operation_id, started, exc)
+                raise
+
+    def _execute_locked(self, owner: str, before: ComputerStateSnapshot, action: ComputerAction) -> ComputerStepOutcome:
             execution = self.operator.execute(action, before.observation)
             if self.settle_delay and action.type not in {
                 ComputerActionType.WAIT,
@@ -147,10 +172,24 @@ class ComputerSessionStore:
             raise ValueError("computer_step instruction must not be empty")
         if self.grounder is None:
             raise RuntimeError("Computer Use visual grounding backend is not configured")
+        operation_id = self.diagnostics.operation_id()
+        started = time.perf_counter()
         with self._lock:
+            self.diagnostics.emit("step.started", operation_id=operation_id, owner=owner, instruction=(instruction if self.diagnostics.raw else {"length": len(instruction)}))
+            try:
+                return self._step_locked(owner, instruction, operation_id, started)
+            except Exception as exc:
+                self._log_failure("step.failed", operation_id, started, exc)
+                raise
+
+    def _step_locked(self, owner: str, instruction: str, operation_id: str, started: float) -> ComputerStepOutcome:
             before = self._publish(owner, self.operator.observe())
+            self._log_observation(operation_id, "before", before, started)
             trajectory: Sequence[ComputerTrajectoryEntry] = tuple(self._trajectory[owner])
-            prediction = self.grounder.predict(instruction, before.observation, trajectory)
+            grounder_started = time.perf_counter()
+            with self.diagnostics.bind(operation_id):
+                prediction = self.grounder.predict(instruction, before.observation, trajectory)
+            self.diagnostics.emit("grounding.completed", operation_id=operation_id, duration_ms=_elapsed_ms(grounder_started), action=prediction.action.safe_dict(), thought=(prediction.thought if self.diagnostics.raw else {"length": len(prediction.thought)}))
             action = self._promote_click_to_uia(prediction.action, before.observation)
             if action != prediction.action:
                 prediction = ComputerPrediction(action=action, thought=prediction.thought)
@@ -175,7 +214,9 @@ class ComputerSessionStore:
                         execution_ok=True,
                     )
                 )
-                return ComputerStepOutcome(before, prediction, None, before, verification)
+                outcome = ComputerStepOutcome(before, prediction, None, before, verification)
+                self.diagnostics.emit("step.completed", operation_id=operation_id, duration_ms=_elapsed_ms(started), outcome=outcome.to_safe_dict())
+                return outcome
 
             execution = self.operator.execute(action, before.observation)
             if self.settle_delay and action.type is not ComputerActionType.WAIT:
@@ -191,7 +232,21 @@ class ComputerSessionStore:
                     execution_ok=bool(execution.ok),
                 )
             )
-            return ComputerStepOutcome(before, prediction, execution, after, verification)
+            outcome = ComputerStepOutcome(before, prediction, execution, after, verification)
+            self._log_observation(operation_id, "after", after, started)
+            self.diagnostics.emit("step.completed", operation_id=operation_id, duration_ms=_elapsed_ms(started), outcome=outcome.to_safe_dict())
+            return outcome
+
+    def _log_observation(self, operation_id: str, phase: str, snapshot: ComputerStateSnapshot | None, started: float) -> None:
+        if snapshot is None:
+            return
+        observation = snapshot.observation
+        screenshot_path = self.diagnostics.save_screenshot(observation, operation_id=operation_id, phase=phase)
+        payload = observation.to_safe_dict(control_limit=(len(observation.controls) if self.diagnostics.raw else 0), redactor=redact_secrets)
+        self.diagnostics.emit("observation.captured", operation_id=operation_id, phase=phase, duration_ms=_elapsed_ms(started), state_revision=snapshot.state_revision, screenshot_path=screenshot_path, observation=payload)
+
+    def _log_failure(self, event: str, operation_id: str, started: float, exc: Exception) -> None:
+        self.diagnostics.emit(event, operation_id=operation_id, duration_ms=_elapsed_ms(started), error_type=type(exc).__name__, error=redact_secrets(str(exc)))
 
     @staticmethod
     def _promote_click_to_uia(action: ComputerAction, observation: ComputerObservation) -> ComputerAction:
@@ -362,11 +417,16 @@ class ComputerUseRuntime(BrowserRuntime):
         self.computer_model_profile = profile
         self.computer_grounder_name = str(getattr(grounder, "name", "") or "disabled")
         self.computer_grounder_kind = selected_grounder or requested_grounder or "disabled"
+        diagnostics = ComputerDiagnostics()
+        if isinstance(grounder, AlibabaGUIPlusGroundingBackend):
+            grounder.diagnostics = diagnostics
+        self.computer_diagnostics = diagnostics
         self.computer_sessions = (
             ComputerSessionStore(
                 operator,
                 grounder,
                 settle_delay=computer_settle_delay,
+                diagnostics=diagnostics,
             )
             if operator is not None
             else None
@@ -401,6 +461,7 @@ class ComputerUseRuntime(BrowserRuntime):
             "credential_persistence": "runtime environment only; not stored in Loom session state",
             "observation_mode": "screenshot + UIA hybrid when Windows backend is enabled",
             "verification": "post-action re-observation; deterministic foreground-window check for switch_window",
+            "diagnostics": {"mode": self.computer_diagnostics.mode, "log_dir": str(self.computer_diagnostics.root)},
             **operator_status,
         }
 
@@ -436,3 +497,7 @@ __all__ = [
     "ComputerStepOutcome",
     "ComputerUseRuntime",
 ]
+
+
+def _elapsed_ms(started: float) -> float:
+    return round((time.perf_counter() - started) * 1000.0, 3)

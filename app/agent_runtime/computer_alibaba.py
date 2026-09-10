@@ -3,8 +3,9 @@ from __future__ import annotations
 import json
 import os
 import re
-from collections.abc import Mapping
-from typing import Any, Sequence
+import time
+from collections.abc import Mapping, Sequence
+from typing import Any
 
 from .computer_types import (
     ComputerAction,
@@ -14,7 +15,6 @@ from .computer_types import (
     ComputerPrediction,
     ComputerTrajectoryEntry,
 )
-
 
 GUI_PLUS_DEFAULT_MODEL = "gui-plus-2026-02-26"
 GUI_PLUS_DEFAULT_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
@@ -109,6 +109,7 @@ class AlibabaGUIPlusGroundingBackend:
         self.system_prompt = str(system_prompt or "").strip()
         self.high_resolution_images = bool(high_resolution_images)
         self.enable_thinking = bool(enable_thinking)
+        self.diagnostics = None
 
     @classmethod
     def from_environment(
@@ -116,7 +117,7 @@ class AlibabaGUIPlusGroundingBackend:
         environ: Mapping[str, str] | None = None,
         *,
         client: Any | None = None,
-    ) -> "AlibabaGUIPlusGroundingBackend | None":
+    ) -> AlibabaGUIPlusGroundingBackend | None:
         env = os.environ if environ is None else environ
         api_key = _first_env(env, "LOOM_COMPUTER_API_KEY", "DASHSCOPE_API_KEY")
         if not api_key:
@@ -171,6 +172,7 @@ class AlibabaGUIPlusGroundingBackend:
             "vl_high_resolution_images": self.high_resolution_images,
             "enable_thinking": self.enable_thinking,
         }
+        started = time.perf_counter()
         try:
             response = self.client.chat.completions.create(
                 model=self.model,
@@ -201,9 +203,20 @@ class AlibabaGUIPlusGroundingBackend:
         if not choices:
             raise RuntimeError("Alibaba GUI-Plus returned no choices")
         message = getattr(choices[0], "message", None)
-        text = str(getattr(message, "content", "") or "").strip() if message is not None else ""
+        text = _message_prediction_text(message)
         if not text:
             raise RuntimeError("Alibaba GUI-Plus returned an empty prediction")
+        diagnostics = self.diagnostics
+        if diagnostics is not None:
+            diagnostics.emit(
+                "provider.response",
+                duration_ms=round((time.perf_counter() - started) * 1000.0, 3),
+                provider=self.name,
+                model=self.model,
+                choices=len(choices),
+                response=(text if diagnostics.raw else {"length": len(text)}),
+                usage=getattr(response, "usage", None),
+            )
         return parse_gui_plus_prediction(text)
 
     def safe_config(self) -> dict[str, object]:
@@ -222,16 +235,12 @@ def parse_gui_plus_prediction(text: str) -> ComputerPrediction:
     if not raw:
         raise ValueError("GUI-Plus prediction must not be empty")
 
-    match = re.search(r"<tool_call>\s*(\{.*?\})\s*</tool_call>", raw, flags=re.DOTALL | re.IGNORECASE)
-    if match is None:
-        raise ValueError("GUI-Plus prediction is missing <tool_call>")
-    try:
-        payload = json.loads(match.group(1))
-    except json.JSONDecodeError as exc:
-        raise ValueError("GUI-Plus tool call contains invalid JSON") from exc
+    payload = _extract_gui_plus_payload(raw)
     if not isinstance(payload, dict):
         raise ValueError("GUI-Plus tool call must be a JSON object")
-    if str(payload.get("name") or "").strip() != "computer_use":
+    if "arguments" not in payload and "action" in payload:
+        payload = {"name": "computer_use", "arguments": payload}
+    if str(payload.get("name") or "").strip() not in {"computer_use", "computer"}:
         raise ValueError("GUI-Plus tool call must target computer_use")
     arguments = payload.get("arguments")
     if not isinstance(arguments, dict):
@@ -308,6 +317,59 @@ def parse_gui_plus_prediction(text: str) -> ComputerPrediction:
     return ComputerPrediction(action=action, thought=thought)
 
 
+def _message_prediction_text(message: Any) -> str:
+    if message is None:
+        return ""
+    content = getattr(message, "content", "") or ""
+    if isinstance(content, str) and content.strip():
+        return content.strip()
+    if isinstance(content, Sequence) and not isinstance(content, (str, bytes, bytearray)):
+        parts: list[str] = []
+        for part in content:
+            if isinstance(part, Mapping):
+                value = part.get("text") or part.get("content")
+            else:
+                value = getattr(part, "text", None) or getattr(part, "content", None)
+            if value:
+                parts.append(str(value))
+        if parts:
+            return "\n".join(parts).strip()
+    tool_calls = getattr(message, "tool_calls", None) or ()
+    for call in tool_calls:
+        function = getattr(call, "function", None)
+        if function is None and isinstance(call, Mapping):
+            function = call.get("function")
+        name = getattr(function, "name", None) if function is not None else None
+        arguments = getattr(function, "arguments", None) if function is not None else None
+        if isinstance(function, Mapping):
+            name = function.get("name")
+            arguments = function.get("arguments")
+        if name and arguments:
+            return json.dumps({"name": name, "arguments": json.loads(arguments) if isinstance(arguments, str) else arguments})
+    return ""
+
+
+def _extract_gui_plus_payload(raw: str) -> dict[str, Any]:
+    tagged = re.search(r"<tool_call>\s*(.*?)\s*</tool_call>", raw, flags=re.DOTALL | re.IGNORECASE)
+    candidates = [tagged.group(1)] if tagged else []
+    candidates.extend(match.group(1) for match in re.finditer(r"```(?:json)?\s*(.*?)```", raw, flags=re.DOTALL | re.IGNORECASE))
+    candidates.append(raw)
+    decoder = json.JSONDecoder()
+    invalid_json = bool(tagged)
+    for candidate in candidates:
+        for match in re.finditer(r"\{", candidate):
+            try:
+                value, _ = decoder.raw_decode(candidate[match.start():])
+            except json.JSONDecodeError:
+                continue
+            if isinstance(value, dict) and ("arguments" in value or "action" in value):
+                return value
+        invalid_json = invalid_json or candidate is not raw
+    if invalid_json:
+        raise ValueError("GUI-Plus tool call contains invalid JSON")
+    raise ValueError("GUI-Plus prediction does not contain a supported tool call")
+
+
 def _gui_plus_point(
     arguments: Mapping[str, object],
     key: str,
@@ -363,9 +425,9 @@ def _env_bool(env: Mapping[str, str], name: str, *, default: bool) -> bool:
 
 
 __all__ = [
-    "AlibabaGUIPlusGroundingBackend",
     "GUI_PLUS_DEFAULT_BASE_URL",
     "GUI_PLUS_DEFAULT_MODEL",
     "GUI_PLUS_GROUNDER_ALIASES",
+    "AlibabaGUIPlusGroundingBackend",
     "parse_gui_plus_prediction",
 ]
