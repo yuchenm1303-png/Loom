@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import threading
 from types import SimpleNamespace
 
@@ -90,6 +91,7 @@ def test_stream_prompt_uses_existing_candidate_marker_protocol() -> None:
     assert "AI_LEDGER_INLINE_STICKER" in prompt
     assert "joy_burst" in prompt
     assert "候选" in prompt
+    assert "前部、中部和后部" in prompt
 
 
 def test_stream_sanitizer_buffers_marker_across_provider_chunks() -> None:
@@ -114,6 +116,26 @@ def test_stream_sanitizer_drops_truncated_marker_at_finish() -> None:
     visible += sanitizer.finish()
     assert "[[AI_LEDGER_INLINE_STICKER" not in visible
     assert "[[AI_LEDGER_INLINE_STICKER" not in sanitizer.value()
+
+
+def test_stream_sanitizer_does_not_front_load_close_candidates() -> None:
+    sanitizer = StickerStreamSanitizer(
+        StickerPreferences(frequency=50, intensity=50, max_per_reply=4, repeat_count=1),
+        StickerContext(user_text="请给我详细分析", streaming=True),
+    )
+    first = "第一部分先说明当前状态和最重要的判断依据，这里已经形成一个完整结论。"
+    close = "第二部分紧接着补充一个很短的说明。"
+    later = "后面继续展开更多细节和验证步骤，" * 6 + "现在来到中后段，可以给出新的完整结论。"
+    visible = sanitizer.push(first + "[[AI_LEDGER_INLINE_STICKER:soft_smile]]")
+    visible += sanitizer.push(close + "[[AI_LEDGER_INLINE_STICKER:confirm_yes]]")
+    visible += sanitizer.push(later + "[[AI_LEDGER_INLINE_STICKER:idea_drawing]] 继续收尾。")
+    visible += sanitizer.finish()
+    keys = extract_keys(sanitizer.value())
+    assert len(keys) >= 2
+    assert len(keys) < 3
+    assert "[[AI_LEDGER_INLINE_STICKER" not in re.sub(
+        r"\[\[AI_LEDGER_INLINE_STICKER:[a-z0-9_]+\]\]", "", visible, flags=re.I
+    )
 
 
 def test_nonstream_truncated_control_marker_is_removed_before_persisting() -> None:
@@ -150,6 +172,54 @@ def test_nonstream_sidecar_is_removed_before_user_visible_text() -> None:
     assert INLINE_STICKER_STRUCTURED_PLAN_END not in result.text
     assert result.diagnostics["structuredPlanFound"] is True
     assert len(result.keys) >= 1
+
+
+def test_long_reply_supplements_and_spreads_front_loaded_candidates() -> None:
+    lines = [
+        "第一部分先确认当前现象并说明最主要的判断依据，这里可以形成一个完整结论。",
+        "第二部分继续补充前置检查结果，并说明为什么这个方向值得优先处理。",
+        "第三部分把目前已经确认的信息整理清楚，避免后面的判断受到干扰。",
+        "第四部分开始进入中段分析，逐项说明实际影响和可能出现的边界情况。",
+        "第五部分继续检查中间环节，并给出一个相对稳妥的处理建议供后续执行。",
+        "第六部分验证前面的判断是否成立，同时排除一个常见但不相关的可能原因。",
+        "第七部分进入后半段，说明剩余风险以及后续执行时需要注意的关键条件。",
+        "第八部分继续给出后续步骤，让整个方案从诊断自然过渡到实际处理阶段。",
+        "第九部分检查处理后的预期结果，并说明如何判断这次调整是否已经真正生效。",
+        "第十部分补充一个容易忽略的细节，避免以后相同问题再次集中出现在前半段。",
+        "第十一部分接近收尾，总结最值得保留的设置以及不建议继续改动的部分。",
+        "第十二部分给出最终结论和下一步建议，整个回答到这里已经完整闭环。",
+    ]
+    reply = "\n".join(lines)
+    body = (
+        reply
+        + "\n"
+        + INLINE_STICKER_STRUCTURED_PLAN_BEGIN
+        + json.dumps(
+            {
+                "schema": "ai_ledger_inline_sticker_plan_v1",
+                "candidates": [
+                    {"anchor": lines[0], "assetKey": "soft_smile", "score": 0.99},
+                    {"anchor": lines[1], "assetKey": "confirm_yes", "score": 0.98},
+                    {"anchor": lines[2], "assetKey": "idea_drawing", "score": 0.97},
+                ],
+            },
+            ensure_ascii=False,
+        )
+        + INLINE_STICKER_STRUCTURED_PLAN_END
+    )
+    result = finalize_reply(
+        body,
+        StickerPreferences(frequency=50, intensity=50, max_per_reply=4, repeat_count=1),
+        StickerContext(user_text="继续", streaming=False),
+    )
+    positions = [
+        match.start()
+        for match in re.finditer(r"\[\[AI_LEDGER_INLINE_STICKER:[a-z0-9_]+\]\]", result.text, re.I)
+    ]
+    assert result.diagnostics["distributionSupplemented"] is True
+    assert len(positions) == 4
+    assert positions[0] < len(reply) * 0.35
+    assert positions[-1] > len(reply) * 0.65
 
 
 def test_repeat_and_max_are_mechanical_hard_limits() -> None:
