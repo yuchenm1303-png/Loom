@@ -14,6 +14,7 @@ const api = {
   switchModelProfile: (selection: string) => ipcRenderer.invoke("loom:model-switch", selection),
   switchCurrentModel: (model: string) => ipcRenderer.invoke("loom:model-switch-current", model),
   addModel: (input: Record<string, unknown>) => ipcRenderer.invoke("loom:model-add", input),
+  deleteModel: (selection: string) => ipcRenderer.invoke("loom:model-delete", selection),
   setReasoning: (kind: string, value: string) => ipcRenderer.invoke("loom:reasoning-set", kind, value),
   pickDirectory: () => ipcRenderer.invoke("loom:pick-directory"),
   pickFiles: () => ipcRenderer.invoke("loom:pick-files"),
