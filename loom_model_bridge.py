@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import json
-import os
 import sys
-from typing import Any, Mapping
+from typing import Any
 
+from app.ai.managed_relay import MANAGED_RELAY_BASE_URL, ManagedRelay, ManagedRelayError
 from app.ai.model_selection_store import ModelSelectionStore
 from app.ai.model_store import ModelConfigStore, StoredModel
 from app.ai.reasoning import ReasoningRequest
@@ -14,29 +14,11 @@ from app.ai.reasoning_store import ReasoningConfigStore
 
 PRIMARY_SELECTION = "builtin:minimax"
 CQU_SELECTION = "builtin:cqu"
-MINIMAX_BASE_URL = "https://api.minimaxi.com/v1"
+MINIMAX_BASE_URL = MANAGED_RELAY_BASE_URL
 MINIMAX_DEFAULT_MODEL = "MiniMax-M3"
-CQU_BASE_URL = "https://relay.smirel.com/v1"
+CQU_BASE_URL = MANAGED_RELAY_BASE_URL
 CQU_DEFAULT_MODEL = "cqu-default"
-_PRIMARY_MINIMAX_KEY_ENV = ("MINIMAX_API_KEY", "LOOM_PRIMARY_API_KEY", "LOOM_API_KEY")
-_CQU_KEY_ENV = ("CQU_API_KEY", "LOOM_CQU_API_KEY")
-
-
-def _key_from_env(names: tuple[str, ...], environ: Mapping[str, str] | None = None) -> str:
-    env = os.environ if environ is None else environ
-    for name in names:
-        value = str(env.get(name) or "").strip()
-        if value:
-            return value
-    return ""
-
-
-def _primary_minimax_key(environ: Mapping[str, str] | None = None) -> str:
-    return _key_from_env(_PRIMARY_MINIMAX_KEY_ENV, environ)
-
-
-def _cqu_key(environ: Mapping[str, str] | None = None) -> str:
-    return _key_from_env(_CQU_KEY_ENV, environ)
+_BUILTIN_SELECTIONS = {PRIMARY_SELECTION, CQU_SELECTION}
 
 
 def _safe_saved(entry: StoredModel) -> dict[str, Any]:
@@ -48,6 +30,9 @@ def _safe_saved(entry: StoredModel) -> dict[str, Any]:
         "adapter": entry.adapter.value,
         "baseUrl": entry.base_url,
         "model": entry.model,
+        "managed": False,
+        "available": True,
+        "availabilityReason": "",
     }
 
 
@@ -60,6 +45,7 @@ def _safe_primary() -> dict[str, Any]:
         "adapter": "openai-compatible",
         "baseUrl": MINIMAX_BASE_URL,
         "model": MINIMAX_DEFAULT_MODEL,
+        "managed": True,
     }
 
 
@@ -72,6 +58,7 @@ def _safe_cqu() -> dict[str, Any]:
         "adapter": "openai-compatible",
         "baseUrl": CQU_BASE_URL,
         "model": CQU_DEFAULT_MODEL,
+        "managed": True,
     }
 
 
@@ -150,13 +137,44 @@ def _describe_model(
     return _with_reasoning(profile, reasoning_store)
 
 
+def _managed_catalog(relay: ManagedRelay) -> tuple[set[str], str]:
+    try:
+        if not relay.credential(required=False):
+            return set(), "Managed access is not provisioned on this device."
+        return set(relay.available_models()), ""
+    except ManagedRelayError as exc:
+        return set(), str(exc)
+
+
+def _with_managed_availability(
+    profile: dict[str, Any],
+    allowed_models: set[str],
+    catalog_error: str,
+) -> dict[str, Any]:
+    payload = dict(profile)
+    model = str(payload.get("model") or "").strip()
+    available = model in allowed_models
+    payload["available"] = available
+    payload["availabilityReason"] = "" if available else (
+        catalog_error or f"{model} is not enabled for this Loom account."
+    )
+    return payload
+
+
 def _snapshot(
     store: ModelConfigStore,
     reasoning_store: ReasoningConfigStore,
     selection_store: ModelSelectionStore,
+    relay: ManagedRelay | None = None,
 ) -> dict[str, Any]:
-    primary = _with_reasoning(_safe_primary(), reasoning_store)
-    cqu = _with_reasoning(_safe_cqu(), reasoning_store)
+    managed_relay = relay or ManagedRelay()
+    allowed_models, catalog_error = _managed_catalog(managed_relay)
+    primary = _with_managed_availability(
+        _with_reasoning(_safe_primary(), reasoning_store), allowed_models, catalog_error
+    )
+    cqu = _with_managed_availability(
+        _with_reasoning(_safe_cqu(), reasoning_store), allowed_models, catalog_error
+    )
     saved = [_with_reasoning(_safe_saved(entry), reasoning_store) for entry in store.list_models()]
     profiles = [primary, cqu, *saved]
     active_selection = _active_selection(store, selection_store)
@@ -165,6 +183,7 @@ def _snapshot(
         "primary": primary,
         "profiles": profiles,
         "activeModelId": str(active_profile.get("id") or "") or None,
+        "managedCatalogError": catalog_error,
     }
 
 
@@ -173,26 +192,25 @@ def _resolve(
     reasoning_store: ReasoningConfigStore,
     selection_store: ModelSelectionStore,
     selection: str | None,
+    relay: ManagedRelay | None = None,
 ) -> dict[str, Any]:
     requested = str(selection or "").strip() or _active_selection(store, selection_store)
     profile = _with_reasoning(_base_profile_for_selection(store, requested), reasoning_store)
 
-    if requested == PRIMARY_SELECTION:
-        api_key = _primary_minimax_key()
-        if not api_key:
-            raise RuntimeError(
-                "MiniMax primary API key is not configured. Set MINIMAX_API_KEY or "
-                "LOOM_PRIMARY_API_KEY, or add a saved model connection."
-            )
-        return {**profile, "provider": "openai-compatible", "apiKey": api_key}
-
-    if requested == CQU_SELECTION:
-        api_key = _cqu_key()
-        if not api_key:
-            raise RuntimeError(
-                "CQU built-in API key is not configured. Set CQU_API_KEY or LOOM_CQU_API_KEY."
-            )
-        return {**profile, "provider": "openai-compatible", "apiKey": api_key}
+    if requested in _BUILTIN_SELECTIONS:
+        managed_relay = relay or ManagedRelay()
+        credential = managed_relay.credential(required=True)
+        allowed_models = set(managed_relay.available_models())
+        model = str(profile.get("model") or "").strip()
+        if model not in allowed_models:
+            raise ManagedRelayError(f"{model} is not enabled for this Loom account")
+        return {
+            **profile,
+            "available": True,
+            "availabilityReason": "",
+            "provider": "openai-compatible",
+            "apiKey": credential,
+        }
 
     saved = store.model_for_selection(requested)
     if saved is None:
@@ -236,9 +254,12 @@ def _set_active(
     reasoning_store: ReasoningConfigStore,
     selection_store: ModelSelectionStore,
     payload: dict[str, Any],
+    relay: ManagedRelay | None = None,
 ) -> dict[str, Any]:
     selection = str(payload.get("selection") or "").strip() or PRIMARY_SELECTION
-    if selection in {PRIMARY_SELECTION, CQU_SELECTION}:
+    if selection in _BUILTIN_SELECTIONS:
+        # Validate the server entitlement before persisting the built-in choice.
+        _resolve(store, reasoning_store, selection_store, selection, relay=relay)
         store.set_active(None)
     else:
         saved = store.model_for_selection(selection)
@@ -246,7 +267,7 @@ def _set_active(
             raise ValueError(f"unknown model selection: {selection!r}")
         store.set_active(saved.model_id)
     selection_store.set(selection)
-    return _snapshot(store, reasoning_store, selection_store)
+    return _snapshot(store, reasoning_store, selection_store, relay=relay)
 
 
 def _set_reasoning(
@@ -278,12 +299,28 @@ def _set_reasoning(
     return _describe_model(store, reasoning_store, selection, model)
 
 
+def _provision_managed_relay(payload: dict[str, Any], relay: ManagedRelay | None = None) -> dict[str, bool]:
+    credential = str(payload.get("credential") or payload.get("apiKey") or "").strip()
+    if not credential:
+        raise ValueError("managed relay credential is required")
+    (relay or ManagedRelay()).provision(credential)
+    return {"provisioned": True}
+
+
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
-    commands = {"list", "resolve", "describe-model", "save", "set-active", "set-reasoning"}
+    commands = {
+        "list",
+        "resolve",
+        "describe-model",
+        "save",
+        "set-active",
+        "set-reasoning",
+        "provision-managed-relay",
+    }
     if len(args) != 1 or args[0] not in commands:
         sys.stderr.write(
-            "usage: loom_model_bridge.py {list|resolve|describe-model|save|set-active|set-reasoning}\n"
+            "usage: loom_model_bridge.py {list|resolve|describe-model|save|set-active|set-reasoning|provision-managed-relay}\n"
         )
         return 2
 
@@ -313,8 +350,10 @@ def main(argv: list[str] | None = None) -> int:
             result = _save(store, payload)
         elif command == "set-active":
             result = _set_active(store, reasoning_store, selection_store, payload)
-        else:
+        elif command == "set-reasoning":
             result = _set_reasoning(store, reasoning_store, payload)
+        else:
+            result = _provision_managed_relay(payload)
         _write({"ok": True, "result": result})
         return 0
     except Exception as exc:
