@@ -146,8 +146,26 @@ export function Composer({
   const [openPanel, setOpenPanel] = useState<OpenPanel>(null);
   const [pendingSelection, setPendingSelection] = useState("");
   const [panelError, setPanelError] = useState("");
+  const [stopping, setStopping] = useState(false);
+  const [stopError, setStopError] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const composerRootRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!running) setStopping(false);
+  }, [running]);
+
+  async function handleInterrupt(): Promise<void> {
+    if (stopping) return;
+    setStopping(true);
+    setStopError("");
+    try {
+      await onInterrupt();
+    } catch (cause) {
+      setStopping(false);
+      setStopError(cause instanceof Error ? cause.message : String(cause));
+    }
+  }
 
   const availablePermissionModes = useMemo(() => {
     const values = permissionModes?.length ? permissionModes : ["read-only", "approval", "workspace", "full-access"];
@@ -367,6 +385,7 @@ export function Composer({
         ) : null}
 
         {attachError ? <p className="composer-attach-error">{attachError}</p> : null}
+        {stopError ? <p className="composer-attach-error">Could not stop: {stopError}</p> : null}
         {!imagesAllowed && attachments.some((item) => item.isImage) ? (
           <p className="composer-attach-error">
             This model is not set up to read images. Other files still work — they are saved into the workspace for the agent to read.
@@ -563,9 +582,9 @@ export function Composer({
           </div>
 
           <div className="composer-right">
-            {!running ? <span className="composer-keycap">Enter ↵</span> : <span className="composer-running-label"><i /> Working</span>}
+            {!running ? <span className="composer-keycap">Enter ↵</span> : <span className="composer-running-label"><i /> {stopping ? "Stopping…" : "Working"}</span>}
             {running ? (
-              <button type="button" className="send-button stop" onClick={() => void onInterrupt()} title="Stop current turn" aria-label="Stop current turn">
+              <button type="button" className="send-button stop" disabled={stopping} onClick={() => void handleInterrupt()} title="Stop current turn" aria-label="Stop current turn">
                 <Square size={12} fill="currentColor" />
               </button>
             ) : (

@@ -224,7 +224,17 @@ export function useLoom() {
     try {
       const params: Record<string, unknown> = { threadId: active.thread.id, input: input.trim() };
       if (attachments.length) params.attachments = attachments;
-      await requireBridge().call("turn/start", params);
+      const result = await requireBridge().call<{ turn: TurnRecord }>("turn/start", params);
+      const turn = result.turn;
+      setActive((current) => current && current.thread.id === active.thread.id
+        ? {
+            ...current,
+            thread: {
+              ...current.thread,
+              currentTurnId: turn.id,
+            },
+          }
+        : current);
     } catch (cause) {
       setTurnActive(false);
       setTurnStartedAt(null);
@@ -236,9 +246,8 @@ export function useLoom() {
     if (!active?.thread.id) return;
     await requireBridge().call("turn/interrupt", {
       threadId: active.thread.id,
-      turnId: active.thread.currentTurnId || undefined,
     });
-  }, [active?.thread.currentTurnId, active?.thread.id]);
+  }, [active?.thread.id]);
 
   const setPermissionMode = useCallback(async (permissionMode: string) => {
     if (!active?.thread.id || active.thread.archived) return;
@@ -361,6 +370,25 @@ export function useLoom() {
         if (deletedId && deletedId === activeId) clearActive();
         return;
       }
+      if (message.method === "turn/started") {
+        const turn = params.turn as TurnRecord | undefined;
+        if (turn && threadId === activeId) {
+          setActive((current) => current && current.thread.id === activeId
+            ? {
+                ...current,
+                thread: {
+                  ...current.thread,
+                  status: "running",
+                  currentTurnId: turn.id,
+                },
+              }
+            : current);
+          setTurnActive(true);
+          const stamp = Date.parse(String(turn.startedAt ?? ""));
+          setTurnStartedAt(Number.isFinite(stamp) ? stamp : Date.now());
+        }
+        return;
+      }
       if (message.method === "thread/started" && threadViewRef.current === "active") void refreshThreads("active");
       if (!activeId || threadId !== activeId) return;
 
@@ -388,9 +416,26 @@ export function useLoom() {
         }
       } else if (message.method === "thread/resync") {
         void openThread(activeId);
+      } else if (message.method === "approval/requested") {
+        setActive((current) => current && current.thread.id === activeId
+          ? { ...current, thread: { ...current.thread, status: "waiting_approval" } }
+          : current);
       } else if (message.method === "turn/completed") {
+        const turn = params.turn as TurnRecord | undefined;
         setTurnActive(false);
         setTurnStartedAt(null);
+        if (turn) {
+          setActive((current) => current && current.thread.id === activeId
+            ? {
+                ...current,
+                thread: {
+                  ...current.thread,
+                  status: turn.status as ThreadRecord["status"],
+                  currentTurnId: turn.id,
+                },
+              }
+            : current);
+        }
         void refreshThreads();
       }
     });
