@@ -36,7 +36,7 @@ const EXPECTED_KEYS = Object.freeze([
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const desktopRoot = join(scriptDir, "..");
-const outputDir = join(desktopRoot, "src", "assets", "chat-stickers", "generated");
+const outputDir = join(desktopRoot, "public", "chat-stickers");
 const sourceCacheDir = join(desktopRoot, ".cache", "chat-stickers");
 const sourceCachePath = join(sourceCacheDir, `inline_stickers_v1-${SOURCE_BLOB_SHA}.zip`);
 const manifestPath = join(outputDir, ".source.json");
@@ -46,6 +46,10 @@ function gitBlobSha(buffer) {
     .update(`blob ${buffer.length}\0`)
     .update(buffer)
     .digest("hex");
+}
+
+function sha256(buffer) {
+  return createHash("sha256").update(buffer).digest("hex");
 }
 
 function isWebP(buffer) {
@@ -101,7 +105,7 @@ function unzipEntries(buffer) {
     const nameEnd = nameStart + fileNameLength;
     if (nameEnd > buffer.length) throw new Error("Sticker pack entry name is out of bounds");
 
-    const entryName = buffer.subarray(nameStart, nameEnd).toString("utf8");
+    const entryName = buffer.subarray(nameStart, nameEnd).toString(flags & 0x0800 ? "utf8" : "latin1");
     offset = nameEnd + extraLength + commentLength;
     if (entryName.endsWith("/")) continue;
     if (flags & 0x0001) throw new Error(`Encrypted sticker ZIP entry is not supported: ${entryName}`);
@@ -136,9 +140,10 @@ async function validatePreparedDirectory() {
   try {
     const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
     if (manifest.sourceBlobSha !== SOURCE_BLOB_SHA || manifest.count !== EXPECTED_KEYS.length) return false;
+    if (!manifest.files || typeof manifest.files !== "object") return false;
     for (const key of EXPECTED_KEYS) {
       const file = await readFile(join(outputDir, `${key}.webp`));
-      if (!isWebP(file)) return false;
+      if (!isWebP(file) || manifest.files[key] !== sha256(file)) return false;
     }
     return true;
   } catch {
@@ -203,6 +208,7 @@ async function prepare() {
   await mkdir(stagingDir, { recursive: true });
 
   let totalBytes = 0;
+  const fileHashes = {};
   for (const key of EXPECTED_KEYS) {
     const fileName = `${key}.webp`;
     const data = byBaseName.get(fileName);
@@ -212,6 +218,7 @@ async function prepare() {
       throw new Error(`Unexpected sticker size for ${fileName}: ${data.length} bytes`);
     }
     totalBytes += data.length;
+    fileHashes[key] = sha256(data);
     await writeFile(join(stagingDir, fileName), data);
   }
 
@@ -224,6 +231,7 @@ async function prepare() {
       sourcePath: "ai-ledger-android/app/src/main/assets/inline_stickers_v1.zip",
       sourceBlobSha: SOURCE_BLOB_SHA,
       count: EXPECTED_KEYS.length,
+      files: fileHashes,
     }, null, 2)}\n`,
     "utf8",
   );
