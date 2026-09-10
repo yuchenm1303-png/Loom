@@ -1,4 +1,5 @@
 import {
+  Activity,
   ArrowLeft,
   Blocks,
   Bot,
@@ -8,21 +9,27 @@ import {
   ChevronRight,
   CircleAlert,
   Code2,
+  Copy,
   Cpu,
+  Gauge,
   Globe2,
   Info,
   Monitor,
+  Moon,
   Plug,
+  RotateCcw,
   Search,
   Settings2,
   ShieldCheck,
   Sparkles,
+  Type,
   Wrench,
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { InitializeResult, ModelSnapshot } from "../types/loom";
 import "./settings-page.css";
+import "./settings-general-polish.css";
 
 type PageKey =
   | "general"
@@ -68,6 +75,13 @@ type PluginRecord = {
   description?: string;
 };
 
+type UiScale = "100" | "110" | "120";
+
+type GeneralUiPreferences = {
+  scale: UiScale;
+  reducedMotion: boolean;
+};
+
 interface SettingsPageProps {
   runtime: RuntimeView;
   models: ModelSnapshot | null;
@@ -82,6 +96,12 @@ interface NavItem {
 }
 
 const LOCAL_CAPABILITY_STORAGE_KEY = "loom.settings.capabilities";
+const GENERAL_UI_STORAGE_KEY = "loom.settings.generalUi";
+
+const DEFAULT_GENERAL_UI: GeneralUiPreferences = {
+  scale: "100",
+  reducedMotion: false,
+};
 
 const DEFAULT_CAPABILITIES: Record<CapabilityKey, boolean> = {
   computerUse: true,
@@ -204,6 +224,35 @@ function persistLocalCapabilities(capabilities: Record<CapabilityKey, boolean>):
   } catch {
     // A locked-down renderer still keeps the in-memory switch state for this session.
   }
+}
+
+function readGeneralUiPreferences(): GeneralUiPreferences {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(GENERAL_UI_STORAGE_KEY) || "{}");
+    const scale = parsed?.scale === "110" || parsed?.scale === "120" ? parsed.scale : "100";
+    return {
+      scale,
+      reducedMotion: parsed?.reducedMotion === true,
+    };
+  } catch {
+    return DEFAULT_GENERAL_UI;
+  }
+}
+
+function applyGeneralUiPreferences(preferences: GeneralUiPreferences): void {
+  const zoom = Number(preferences.scale) / 100;
+  document.documentElement.style.setProperty("zoom", String(zoom));
+  document.documentElement.dataset.loomReducedMotion = String(preferences.reducedMotion);
+}
+
+function persistGeneralUiPreferences(preferences: GeneralUiPreferences): void {
+  try {
+    window.localStorage.setItem(GENERAL_UI_STORAGE_KEY, JSON.stringify(preferences));
+  } catch {
+    // The current renderer can still apply the preference even if persistence is blocked.
+  }
+  applyGeneralUiPreferences(preferences);
+  window.dispatchEvent(new CustomEvent("loom:interface-updated", { detail: preferences }));
 }
 
 function bool(value: unknown): boolean {
@@ -329,6 +378,7 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
   const [query, setQuery] = useState("");
   const [busyCapability, setBusyCapability] = useState<CapabilityKey | null>(null);
   const [localCapabilities, setLocalCapabilities] = useState<Record<CapabilityKey, boolean>>(() => mergedCapabilities(runtime));
+  const [generalUi, setGeneralUi] = useState<GeneralUiPreferences>(() => readGeneralUiPreferences());
   const [notice, setNotice] = useState<{ tone: "error" | "success"; text: string } | null>(null);
   const [plugins, setPlugins] = useState<PluginRecord[] | null>(null);
   const [pluginsError, setPluginsError] = useState("");
@@ -336,6 +386,10 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
   useEffect(() => {
     setLocalCapabilities(mergedCapabilities(runtime));
   }, [runtime.settings]);
+
+  useEffect(() => {
+    applyGeneralUiPreferences(generalUi);
+  }, [generalUi]);
 
   useEffect(() => {
     if (!notice) return;
@@ -388,6 +442,29 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
       setNotice({ tone: "success", text: `${CAPABILITIES.find((item) => item.key === key)?.title || key} preference saved locally.` });
     } finally {
       setBusyCapability(null);
+    }
+  };
+
+  const updateGeneralUi = (patch: Partial<GeneralUiPreferences>) => {
+    const next = { ...generalUi, ...patch };
+    setGeneralUi(next);
+    persistGeneralUiPreferences(next);
+  };
+
+  const resetGeneralUi = () => {
+    setGeneralUi(DEFAULT_GENERAL_UI);
+    persistGeneralUiPreferences(DEFAULT_GENERAL_UI);
+    setNotice({ tone: "success", text: "Interface preferences reset." });
+  };
+
+  const copyWorkspace = async () => {
+    const value = text(runtime.defaultWorkspace, "");
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(value);
+      setNotice({ tone: "success", text: "Workspace path copied." });
+    } catch {
+      setNotice({ tone: "error", text: "Could not copy the workspace path." });
     }
   };
 
@@ -444,39 +521,122 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
     </>
   );
 
-  const renderGeneral = () => (
-    <>
-      <div className="settings-page-heading">
-        <div>
-          <span className="settings-eyebrow">Loom desktop</span>
-          <h1>General</h1>
-          <p>Core defaults for the local agent workspace. Capability-specific controls now live in Settings instead of crowding the chat composer.</p>
-        </div>
-      </div>
+  const renderGeneral = () => {
+    const modelLabel = currentModel?.name || currentModel?.model || text(runtime.model);
+    const permissionLabel = titleCase(text(runtime.defaultPermissionMode, "approval"));
+    const enabledCapabilities = Object.values(localCapabilities).filter(Boolean).length;
+    const toolLabel = `${runtime.exposedToolCount ?? "—"} / ${runtime.registeredToolCount ?? "—"}`;
+    const attachmentLabel = runtime.attachments?.images === false && runtime.attachments?.files === false
+      ? "Off"
+      : `${runtime.attachments?.maxCount ?? "—"} max`;
 
-      <Section title="Runtime defaults">
-        <div className="settings-card settings-detail-list">
-          <DetailRow label="Default workspace" value={text(runtime.defaultWorkspace)} detail="Used when a new conversation starts without an explicit project." />
-          <DetailRow label="Default permission" value={titleCase(text(runtime.defaultPermissionMode, "approval"))} detail="The initial permission profile for new conversations." />
-          <DetailRow label="Current model" value={currentModel?.name || currentModel?.model || text(runtime.model)} detail="The active model for new agent steps." />
-        </div>
-      </Section>
-
-      <Section title="Interface" caption="Loom keeps a restrained desktop theme so agent activity remains easy to scan.">
-        <div className="settings-card settings-option-grid">
-          <div className="settings-option-card selected">
-            <div className="theme-preview dark"><span /><span /><span /></div>
-            <div><strong>Loom Dark</strong><span>Current interface</span></div>
-            <Check size={15} />
+    return (
+      <>
+        <div className="settings-page-heading general-page-heading">
+          <div>
+            <span className="settings-eyebrow">Loom desktop</span>
+            <h1>General</h1>
+            <p>Manage the defaults and presentation of your local agent workspace from one place.</p>
           </div>
-          <div className="settings-option-card muted-card">
-            <div className="theme-preview system"><span /><span /><span /></div>
-            <div><strong>System</strong><span>Planned</span></div>
+          <div className={`general-heading-status ${running ? "running" : ""}`}>
+            <i />
+            <span>{running ? "Agent turn active" : "Runtime ready"}</span>
           </div>
         </div>
-      </Section>
-    </>
-  );
+
+        <div className="general-overview-card">
+          <div className="general-overview-copy">
+            <div className="general-overview-icon"><Activity size={19} strokeWidth={1.8} /></div>
+            <strong>{running ? "Loom is working" : "Your local runtime is ready"}</strong>
+            <p>One view of the model, permission boundary, exposed tools, and interface preferences currently shaping new agent work.</p>
+          </div>
+          <div className="general-stat-grid">
+            <div className="general-stat"><Cpu size={17} /><div><span>Model</span><strong title={modelLabel}>{modelLabel}</strong></div></div>
+            <div className="general-stat"><ShieldCheck size={17} /><div><span>Permission</span><strong>{permissionLabel}</strong></div></div>
+            <div className="general-stat"><Wrench size={17} /><div><span>Tools exposed</span><strong>{toolLabel}</strong></div></div>
+            <div className="general-stat"><Blocks size={17} /><div><span>Capabilities</span><strong>{enabledCapabilities} / {CAPABILITIES.length} enabled · {attachmentLabel}</strong></div></div>
+          </div>
+        </div>
+
+        <Section title="Runtime defaults" caption="The values Loom starts with when you create a new conversation.">
+          <div className="general-default-grid">
+            <div className="general-default-card">
+              <div className="general-default-card-head"><span className="general-default-card-icon"><Gauge size={16} /></span></div>
+              <label>Default workspace</label>
+              <strong title={text(runtime.defaultWorkspace)}>{text(runtime.defaultWorkspace)}</strong>
+              <p>New conversations begin here when no project is selected.</p>
+              <div className="general-workspace-actions">
+                <button type="button" className="general-copy-button" onClick={() => void copyWorkspace()}><Copy size={13} />Copy path</button>
+              </div>
+            </div>
+
+            <button type="button" className="general-default-card" onClick={() => setPage("permissions")}>
+              <div className="general-default-card-head"><span className="general-default-card-icon"><ShieldCheck size={16} /></span><ChevronRight size={15} /></div>
+              <label>Default permission</label>
+              <strong>{permissionLabel}</strong>
+              <p>Review the execution boundary used for sensitive actions.</p>
+            </button>
+
+            <button type="button" className="general-default-card" onClick={() => setPage("models")}>
+              <div className="general-default-card-head"><span className="general-default-card-icon"><Cpu size={16} /></span><ChevronRight size={15} /></div>
+              <label>Current model</label>
+              <strong title={modelLabel}>{modelLabel}</strong>
+              <p>Open model profiles and inspect the active inference route.</p>
+            </button>
+          </div>
+        </Section>
+
+        <Section title="Interface" caption="Tune Loom for your screen without changing agent behavior.">
+          <div className="settings-card general-interface-card">
+            <div className="general-theme-row">
+              <div className="general-theme-card selected">
+                <div className="general-theme-swatch" />
+                <div><strong>Loom Dark</strong><span>Current desktop theme</span></div>
+                <Check size={16} />
+              </div>
+              <div className="general-theme-card">
+                <div className="general-theme-swatch system" />
+                <div><strong>System theme</strong><span>Follow the operating system</span></div>
+                <span className="general-soon-badge">Soon</span>
+              </div>
+            </div>
+
+            <div className="general-preference-list">
+              <div className="general-preference-row">
+                <Type size={17} />
+                <div className="general-preference-copy"><strong>Interface scale</strong><span>Scale the entire desktop surface for more comfortable reading.</span></div>
+                <div className="general-scale-control" role="group" aria-label="Interface scale">
+                  {(["100", "110", "120"] as UiScale[]).map((scale) => (
+                    <button type="button" key={scale} className={generalUi.scale === scale ? "active" : ""} onClick={() => updateGeneralUi({ scale })}>{scale}%</button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="general-preference-row">
+                <Moon size={17} />
+                <div className="general-preference-copy"><strong>Reduce motion</strong><span>Minimize decorative transitions, pulses, and animated status effects.</span></div>
+                <SettingSwitch checked={generalUi.reducedMotion} label="Reduce interface motion" onChange={(value) => updateGeneralUi({ reducedMotion: value })} />
+              </div>
+
+              <div className="general-preference-row">
+                <RotateCcw size={17} />
+                <div className="general-preference-copy"><strong>Reset presentation</strong><span>Return scale and motion preferences to the Loom defaults.</span></div>
+                <button type="button" className="general-reset-button" onClick={resetGeneralUi}><RotateCcw size={13} />Reset</button>
+              </div>
+            </div>
+          </div>
+        </Section>
+
+        <Section title="Quick access" caption="Jump straight to the settings that most often affect an agent run.">
+          <div className="general-quick-grid">
+            <button type="button" className="general-quick-card" onClick={() => setPage("capabilities")}><Blocks size={18} /><div><strong>Capabilities</strong><span>Choose the tool families Loom can expose</span></div><ChevronRight size={15} /></button>
+            <button type="button" className="general-quick-card" onClick={() => setPage("models")}><BrainCircuit size={18} /><div><strong>Models</strong><span>Inspect active inference and saved profiles</span></div><ChevronRight size={15} /></button>
+            <button type="button" className="general-quick-card" onClick={() => setPage("developer")}><Wrench size={18} /><div><strong>Runtime diagnostics</strong><span>Inspect tools, attachments, and integrations</span></div><ChevronRight size={15} /></button>
+          </div>
+        </Section>
+      </>
+    );
+  };
 
   const renderModels = () => (
     <>
