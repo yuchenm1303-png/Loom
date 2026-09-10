@@ -218,7 +218,13 @@ def natural_node_count(text: str) -> int:
             continue
         clauses = [part.strip() for part in re.split(r"[，,、：:]", sentence) if len(part.strip()) >= 6]
         count += max(0, min(2, len(clauses) - 1))
-    return max(1, min(8, count))
+    # Long answers used to saturate at eight nodes, so the first few candidate
+    # positions could consume the entire default budget while the back half of
+    # the reply stayed visually empty. Keep sentence semantics as the primary
+    # signal, but give long prose a modest length-derived floor and a larger cap.
+    compact_len = len(re.sub(r"\s+", "", plain))
+    count = max(count, math.ceil(compact_len / 180))
+    return max(1, min(14, count))
 
 
 def target_location_count(preferences: StickerPreferences, reply: str, scene: Mapping[str, Any]) -> int:
@@ -247,6 +253,18 @@ def target_location_count(preferences: StickerPreferences, reply: str, scene: Ma
         target = 2
     elif preferences.frequency >= 100 and nodes >= 4 and target < 3:
         target = 3
+
+    # Default-and-higher frequency should scale gently with long answers even
+    # when punctuation/Markdown makes the semantic node counter conservative.
+    # These are floors, not extra stickers beyond max/repeat limits.
+    if not scene.get("catalogOrTestRequest") and preferences.frequency >= 45:
+        if plain_len >= 900:
+            target = max(target, 4)
+        elif plain_len >= 520:
+            target = max(target, 3)
+        elif plain_len >= 240:
+            target = max(target, 2)
+
     capacity = max(0, limit // max(1, preferences.repeat_count))
     return max(0, min(target, nodes, capacity, limit))
 
@@ -275,6 +293,7 @@ def build_sticker_system_prompt(preferences: StickerPreferences, context: Sticke
         f"目标密度={freq['nodeIntervalText']}；{freq['shortRule']}；最终硬上限 {limit} 张。",
         "自然表达节点定义：一个完整句子、一个列表项、一个短段落、一个独立说明点都算 1 个节点；标题、代码、表格、公式、引用结构不算候选锚点。",
         "生成时先写纯净正文，再根据最终正文长度和节点数提供 candidates；回复越长，候选锚点越多，并尽量分散在不同语义块。",
+        "长回复不要在开头连续消耗候选位：预计有多个候选时，至少覆盖前部、中部和后部；内容足够长时优先让候选落在全文约 25%、50%、75% 附近的自然语义节点，而不是扎堆前半段。",
         "禁止把发送频率理解为‘只在本条回复末尾象征性给 1 个候选’。",
     ] if preferences.frequency > 0 else [
         "发送频率=关闭：普通回复不得输出候选侧栏，也不得输出正式表情 marker；只有用户明确要求展示或测试表情目录时例外。"
@@ -302,6 +321,7 @@ def build_sticker_system_prompt(preferences: StickerPreferences, context: Sticke
             "当前是流式回复。为了让 App 表情随文字自然出现，不输出结构化候选侧栏 JSON。",
             "在可见正文中，你可以把 [[AI_LEDGER_INLINE_STICKER:asset_key]] 当作‘候选锚点 marker’写在自然候选位置；它不是最终数量承诺，后端会实时按用户频率/强度放行或丢弃。",
             "回复越长、自然表达节点越多，候选 marker 可以越多；短回复可以没有。不要只在末尾象征性放 1 个候选。",
+            "如果回复明显会继续展开，不要在开头连续输出多个候选 marker；给中段和后段保留自然候选位置，让整条回复前后都有表情机会。",
             "多个候选位可以直接复用同一个合法 assetKey；位置自然性比 key 名称重要，最终丰富度由后端轮换器执行。",
             *shared,
             "输出前无声检查：正文是否正常连续流式；候选 marker 是否贴在完整语义块末尾；是否避免未完句中间突然出现；是否没有输出侧栏 JSON。",
@@ -539,7 +559,13 @@ def _candidate_quality(group: Mapping[str, Any], index: int, total: int) -> floa
     return max(0.0, model_score * 0.52 + line_score * 0.16 + semantic_score * 0.24 + length_score * 0.08 - fallback_penalty - edge_penalty)
 
 
-def _choose_candidate_indexes(groups: Sequence[Mapping[str, Any]], desired: int, preferences: StickerPreferences) -> list[int]:
+def _choose_candidate_indexes(
+    groups: Sequence[Mapping[str, Any]],
+    desired: int,
+    preferences: StickerPreferences,
+    *,
+    source_length: int | None = None,
+) -> list[int]:
     total = len(groups)
     desired = max(0, min(total, int(desired)))
     if desired <= 0:
@@ -552,7 +578,46 @@ def _choose_candidate_indexes(groups: Sequence[Mapping[str, Any]], desired: int,
     selected: list[int] = []
     used_keys: set[str] = set()
     prefer_unique = preferences.intensity >= 55
-    spread_strength = 0.22 if desired >= 3 else 0.16 if desired == 2 else 0.06
+
+    # For long replies, reserve one selection opportunity for each longitudinal
+    # region of the answer. This prevents three excellent early candidates from
+    # winning all three slots while equally safe middle/end anchors are ignored.
+    long_reply = bool(source_length and source_length >= 240 and desired >= 2)
+    if long_reply:
+        extent = max(1, int(source_length or 0))
+        normalized = [max(0.0, min(1.0, position / extent)) for position in positions]
+        for slot in range(desired):
+            center = (slot + 0.5) / desired
+            slot_low = slot / desired
+            slot_high = (slot + 1) / desired
+            in_slot = [
+                index for index, position in enumerate(normalized)
+                if index not in selected and slot_low <= position <= slot_high
+            ]
+            pool = in_slot or [index for index in range(total) if index not in selected]
+            best_index = -1
+            best_score = float("-inf")
+            for index in pool:
+                group = groups[index]
+                score = _candidate_quality(group, index, total)
+                distance = abs(normalized[index] - center)
+                score -= distance * 0.34
+                if in_slot:
+                    score += 0.08
+                key = str(group.get("key") or "")
+                if prefer_unique and key in used_keys:
+                    score -= 0.18
+                if group.get("syntheticFallback"):
+                    score -= 0.025
+                if score > best_score:
+                    best_score, best_index = score, index
+            if best_index >= 0:
+                selected.append(best_index)
+                used_keys.add(str(groups[best_index].get("key") or ""))
+        if len(selected) >= desired:
+            return sorted(selected[:desired])
+
+    spread_strength = 0.38 if desired >= 3 else 0.26 if desired == 2 else 0.06
     while len(selected) < desired:
         best_index = -1
         best_score = float("-inf")
@@ -590,15 +655,43 @@ def _insert_groups(source: str, groups: Sequence[Mapping[str, Any]], preferences
     target = target_location_count(preferences, source, scene)
     capacity = max(0, limit // max(1, preferences.repeat_count))
     model_groups = [dict(group) for group in groups if str(group.get("key") or "").casefold() in CHAT_STICKER_CATALOG]
+    plain_len = len(re.sub(r"\s+", "", _plain_reply(source)))
     needed = max(0, min(target, capacity) - len(model_groups))
+    supplement_distribution = (
+        target >= 2
+        and plain_len >= 240
+        and not scene.get("catalogOrTestRequest")
+    )
     fallback_groups: list[dict[str, Any]] = []
-    if needed > 0:
+    fallback_quota = needed
+    if supplement_distribution:
+        # Even when the model already supplied enough candidates, add a small
+        # backend-only safety pool spanning the full reply. Final selection can
+        # then choose a natural middle/end anchor instead of being trapped by a
+        # front-loaded model candidate set.
+        fallback_quota = max(fallback_quota, target * 3)
+    if fallback_quota > 0:
         anchors = _safe_fallback_anchors(source, [int(group.get("start", 0)) for group in model_groups])
-        pseudo = [{"key": "soft_smile", "start": item["offset"], "structuredScore": min(1.0, item["score"] / 10), "lineScore": item["score"], "semanticRoleScore": item["semanticRoleScore"], "anchorText": item["text"], "syntheticFallback": True} for item in anchors]
-        for index in _choose_candidate_indexes(pseudo, min(needed, len(pseudo)), StickerPreferences(intensity=50)):
-            item = pseudo[index]
-            item["key"] = choose_rotated_asset("", [g.get("key", "") for g in [*model_groups, *fallback_groups]], preferences, context)
-            fallback_groups.append(item)
+        pool = _rotation_pool()
+        pseudo = [
+            {
+                "key": pool[index % len(pool)] if pool else "soft_smile",
+                "start": item["offset"],
+                "structuredScore": min(1.0, item["score"] / 10),
+                "lineScore": item["score"],
+                "semanticRoleScore": item["semanticRoleScore"],
+                "anchorText": item["text"],
+                "syntheticFallback": True,
+            }
+            for index, item in enumerate(anchors)
+        ]
+        for index in _choose_candidate_indexes(
+            pseudo,
+            min(fallback_quota, len(pseudo)),
+            StickerPreferences(intensity=50),
+            source_length=len(source),
+        ):
+            fallback_groups.append(pseudo[index])
     all_groups = sorted([*model_groups, *fallback_groups], key=lambda item: int(item.get("start", 0)))
     if not all_groups or not scene.get("allowOutput"):
         clean = INLINE_STICKER_VISIBLE_MARKER_RE.sub("", source) if not scene.get("allowOutput") else source
@@ -614,7 +707,7 @@ def _insert_groups(source: str, groups: Sequence[Mapping[str, Any]], preferences
     if scene.get("catalogOrTestRequest"):
         desired = max(desired, len(all_groups))
     desired = min(desired, len(all_groups), capacity)
-    selected = set(_choose_candidate_indexes(all_groups, desired, preferences))
+    selected = set(_choose_candidate_indexes(all_groups, desired, preferences, source_length=len(source)))
     emitted_keys: list[str] = []
     output: list[str] = []
     cursor = 0
@@ -638,6 +731,7 @@ def _insert_groups(source: str, groups: Sequence[Mapping[str, Any]], preferences
         "preferences": preferences.to_dict(), "scene": dict(scene), "effectiveLimit": limit,
         "targetLocationCount": target, "candidateLocationCount": len(all_groups),
         "syntheticFallbackLocationCount": len(fallback_groups), "selectedCandidateLocationCount": len(selected),
+        "distributionSupplemented": supplement_distribution,
         "selectedAssetKeysAfterRotation": _unique(emitted_keys), "outputMarkerCount": marker_count,
         "assetRotationMode": diversity_spec(preferences)["poolMode"],
     })
@@ -706,6 +800,7 @@ class StickerStreamSanitizer:
         self.candidate_count = 0
         self.invalid_count = 0
         self.structured_plan_suppressed = False
+        self.last_emission_plain_len = 0
 
     def _budget(self) -> int:
         capacity = max(0, self.limit // max(1, self.preferences.repeat_count))
@@ -725,12 +820,26 @@ class StickerStreamSanitizer:
             target = max(target, 1)
         return max(0, min(capacity, target))
 
+    def _stream_spacing_allows_emit(self) -> bool:
+        if self.emitted_locations <= 0:
+            return True
+        visible = f"{self.output}{self.pending_gap}{self.pending}"
+        plain_len = len(re.sub(r"\s+", "", _plain_reply(visible)))
+        frequency = self.preferences.frequency
+        min_gap = 120 if frequency <= 55 else 88 if frequency < 75 else 58 if frequency < 90 else 34 if frequency < 100 else 24
+        return plain_len - self.last_emission_plain_len >= min_gap
+
     def _flush_marker(self) -> str:
         if not self.pending_key:
             return ""
         self.model_locations += 1
         marker_text = ""
-        if self.scene.get("allowOutput") and self.emitted_locations < self._budget() and self.marker_count < self.limit:
+        if (
+            self.scene.get("allowOutput")
+            and self.emitted_locations < self._budget()
+            and self.marker_count < self.limit
+            and self._stream_spacing_allows_emit()
+        ):
             remaining = max(0, self.limit - self.marker_count)
             count = min(self.preferences.repeat_count, remaining)
             if count > 0:
@@ -739,6 +848,8 @@ class StickerStreamSanitizer:
                 self.emitted_keys.append(key)
                 self.marker_count += count
                 self.emitted_locations += 1
+                visible = f"{self.output}{self.pending_gap}{self.pending}"
+                self.last_emission_plain_len = len(re.sub(r"\s+", "", _plain_reply(visible)))
         trailing = self.pending_gap
         self.pending_key = ""
         self.pending_gap = ""
@@ -831,6 +942,7 @@ class StickerStreamSanitizer:
             "selectedAssetKeysAfterRotation": _unique(self.emitted_keys),
             "assetRotationMode": diversity_spec(self.preferences)["poolMode"],
             "streamStructuredPlanSuppressed": self.structured_plan_suppressed,
+            "streamMinimumSpacingEnabled": True,
             "preferences": self.preferences.to_dict(),
             "scene": dict(self.scene),
             "effectiveLimit": self.limit,
