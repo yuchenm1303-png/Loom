@@ -17,6 +17,14 @@ def _store(tmp_path: Path) -> ModelConfigStore:
     )
 
 
+def _store_with_secrets(tmp_path: Path, secrets: dict[str, str]) -> ModelConfigStore:
+    return ModelConfigStore(
+        tmp_path,
+        secret_getter=secrets.get,
+        secret_setter=lambda alias, value: secrets.__setitem__(alias, value),
+    )
+
+
 def test_relay_provisioning_file_is_stored_and_deleted(tmp_path, monkeypatch):
     provision = tmp_path / "relay-credential.json"
     provision.write_text(json.dumps({"apiKey": "relay-secret"}), encoding="utf-8")
@@ -30,6 +38,25 @@ def test_relay_provisioning_file_is_stored_and_deleted(tmp_path, monkeypatch):
     assert bridge._managed_relay_key(store, {bridge._PROVISIONING_FILE_ENV: str(provision)}) == "relay-secret"
     assert saved[bridge._MANAGED_RELAY_CREDENTIAL_ALIAS] == "relay-secret"
     assert not provision.exists()
+
+
+def test_saved_relay_connection_is_promoted_to_managed_credential(tmp_path, monkeypatch):
+    model_secrets: dict[str, str] = {}
+    managed_secrets: dict[str, str] = {}
+    store = _store_with_secrets(tmp_path, model_secrets)
+    store.save_model(
+        display_name="CQU-弘深深",
+        adapter="openai-compatible",
+        base_url=bridge.MANAGED_RELAY_BASE_URL,
+        model=bridge.CQU_DEFAULT_MODEL,
+        api_key="relay-secret",
+    )
+
+    monkeypatch.setattr(bridge, "_credential_get", lambda alias: managed_secrets.get(alias))
+    monkeypatch.setattr(bridge, "_credential_set", lambda alias, value: managed_secrets.__setitem__(alias, value))
+
+    assert bridge._managed_relay_key(store) == "relay-secret"
+    assert managed_secrets[bridge._MANAGED_RELAY_CREDENTIAL_ALIAS] == "relay-secret"
 
 
 def test_managed_profiles_follow_remote_models(tmp_path, monkeypatch):
@@ -49,6 +76,17 @@ def test_managed_profiles_follow_remote_models(tmp_path, monkeypatch):
     assert by_model["cqu-default"]["name"] == "CQU-弘深深"
     assert by_model["MiniMax-M3"]["selection"] == bridge.PRIMARY_SELECTION
     assert by_model["custom-agent"]["selection"] == "managed:custom-agent"
+
+
+def test_unprovisioned_managed_profiles_hide_cqu_when_only_legacy_minimax_exists(tmp_path, monkeypatch):
+    store = _store(tmp_path)
+    monkeypatch.setattr(bridge, "_credential_get", lambda _alias: None)
+    monkeypatch.setattr(bridge, "_credential_set", lambda _alias, _value: None)
+
+    profiles = bridge._managed_profiles(store, {"MINIMAX_API_KEY": "minimax-secret"})
+
+    assert [profile["model"] for profile in profiles] == [bridge.MINIMAX_DEFAULT_MODEL]
+    assert profiles[0]["baseUrl"] == bridge.MINIMAX_BASE_URL
 
 
 def test_resolve_cqu_uses_managed_relay_credential(tmp_path, monkeypatch):
