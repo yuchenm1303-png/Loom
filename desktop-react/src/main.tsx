@@ -12,6 +12,16 @@ import "./components/composer-stability.css";
 import "./typography-scale.css";
 import "./components/model-card-alignment-fix.css";
 
+try {
+  const saved = JSON.parse(window.localStorage.getItem("loom.settings.generalUi") || "{}");
+  const scale = saved?.scale === "110" || saved?.scale === "120" ? Number(saved.scale) / 100 : 1;
+  document.documentElement.style.setProperty("zoom", String(scale));
+  document.documentElement.dataset.loomReducedMotion = String(saved?.reducedMotion === true);
+} catch {
+  document.documentElement.style.setProperty("zoom", "1");
+  document.documentElement.dataset.loomReducedMotion = "false";
+}
+
 const rootElement = document.getElementById("root");
 if (!rootElement) throw new Error("Loom renderer root element is missing");
 
