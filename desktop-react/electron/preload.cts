@@ -16,6 +16,8 @@ const api = {
   addModel: (input: Record<string, unknown>) => ipcRenderer.invoke("loom:model-add", input),
   deleteModel: (selection: string) => ipcRenderer.invoke("loom:model-delete", selection),
   setReasoning: (kind: string, value: string) => ipcRenderer.invoke("loom:reasoning-set", kind, value),
+  exportComputerLogs: () => ipcRenderer.invoke("loom:export-computer-logs"),
+  revealPath: (targetPath: string) => ipcRenderer.invoke("loom:reveal-path", targetPath),
   pickDirectory: () => ipcRenderer.invoke("loom:pick-directory"),
   pickFiles: () => ipcRenderer.invoke("loom:pick-files"),
   // Electron 32 removed File.path, so the real path has to come from webUtils
