@@ -36,7 +36,7 @@ const EXPECTED_KEYS = Object.freeze([
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const desktopRoot = join(scriptDir, "..");
-const outputDir = join(desktopRoot, "public", "chat-stickers");
+const outputDir = join(desktopRoot, "src", "assets", "chat-stickers", "generated");
 const sourceCacheDir = join(desktopRoot, ".cache", "chat-stickers");
 const sourceCachePath = join(sourceCacheDir, `inline_stickers_v1-${SOURCE_BLOB_SHA}.zip`);
 const manifestPath = join(outputDir, ".source.json");
