@@ -165,6 +165,7 @@ export default function App() {
             onModelProfileChange={loom.switchModelProfile}
             onCustomModelChange={loom.switchCurrentModel}
             onAddModel={loom.addModel}
+            onDeleteModel={loom.deleteModel}
             onReasoningChange={loom.setReasoning}
             onStickerPreferencesChange={async (preferences) => {
               await window.loom.call("sticker/preferences/set", { preferences });
