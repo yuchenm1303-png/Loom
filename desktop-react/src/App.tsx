@@ -129,7 +129,6 @@ export default function App() {
         </div>
 
         <div className="composer-stage">
-          {running ? <RunProgress {...progressProps} placement="bottom" /> : null}
           <Composer
             disabled={!thread || loom.connection !== "ready" || archived}
             running={running}
