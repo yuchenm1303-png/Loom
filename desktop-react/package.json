@@ -13,9 +13,15 @@
     "start": "npm run build && electron dist-electron/main.js"
   },
   "dependencies": {
+    "katex": "^0.16.22",
     "lucide-react": "^0.468.0",
     "react": "^19.1.1",
-    "react-dom": "^19.1.1"
+    "react-dom": "^19.1.1",
+    "react-markdown": "^10.1.0",
+    "rehype-highlight": "^7.0.2",
+    "rehype-katex": "^7.0.1",
+    "remark-gfm": "^4.0.1",
+    "remark-math": "^6.0.0"
   },
   "devDependencies": {
     "@types/node": "^22.15.0",
