@@ -7,8 +7,6 @@ import "./styles.css";
 import "./shell-fix.css";
 import "./components/model-panel-overrides.css";
 import "./components/reasoning-control.css";
-import "./components/sidebar-brand-polish.css";
-import "./components/sidebar-recent-polish.css";
 import "./components/inline-thinking-orb.css";
 import "./components/composer-stability.css";
 import "./typography-scale.css";
