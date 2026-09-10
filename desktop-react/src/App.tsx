@@ -10,6 +10,7 @@ import { ThreadHeader } from "./components/ThreadHeader";
 import { Transcript } from "./components/Transcript";
 import "./components/inline-thinking.css";
 import "./components/sidebar-codex-polish.css";
+import "./components/scroll-cursor-guard.css";
 import { useI18n } from "./i18n";
 import { useLoom } from "./state/useLoom";
 import type { TranscriptItem } from "./types/loom";
@@ -40,6 +41,38 @@ function readCollapsedProjects(): Set<string> {
   }
 }
 
+function useScrollingCursorGuard(): void {
+  useEffect(() => {
+    let timer: number | undefined;
+    const root = document.documentElement;
+    const options: AddEventListenerOptions = { capture: true, passive: true };
+    const removeOptions: EventListenerOptions = { capture: true };
+
+    const clearScrolling = () => {
+      delete root.dataset.loomScrolling;
+      timer = undefined;
+    };
+
+    const markScrolling = () => {
+      root.dataset.loomScrolling = "true";
+      if (timer !== undefined) window.clearTimeout(timer);
+      timer = window.setTimeout(clearScrolling, 180);
+    };
+
+    window.addEventListener("wheel", markScrolling, options);
+    window.addEventListener("touchmove", markScrolling, options);
+    document.addEventListener("scroll", markScrolling, options);
+
+    return () => {
+      window.removeEventListener("wheel", markScrolling, removeOptions);
+      window.removeEventListener("touchmove", markScrolling, removeOptions);
+      document.removeEventListener("scroll", markScrolling, removeOptions);
+      if (timer !== undefined) window.clearTimeout(timer);
+      clearScrolling();
+    };
+  }, []);
+}
+
 export default function App() {
   const loom = useLoom();
   const { t } = useI18n();
@@ -57,6 +90,8 @@ export default function App() {
   const capabilitySettings = loom.runtime.settings?.capabilities ?? {};
   const attachmentsEnabled = capabilitySettings.attachments !== false;
   const stickersEnabled = capabilitySettings.stickers !== false;
+
+  useScrollingCursorGuard();
 
   useEffect(() => {
     setDismissedApprovalIds(new Set());
