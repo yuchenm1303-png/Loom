@@ -7,6 +7,7 @@ import {
   MessageSquareText,
   PanelRightClose,
   PanelRightOpen,
+  Settings,
   ShieldCheck,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -22,6 +23,7 @@ interface ThreadHeaderProps {
   model?: string;
   permissionMode?: string;
   inspectorOpen: boolean;
+  onOpenSettings(): void;
   onToggleInspector(): void;
 }
 
@@ -65,6 +67,7 @@ export function ThreadHeader({
   model,
   permissionMode,
   inspectorOpen,
+  onOpenSettings,
   onToggleInspector,
 }: ThreadHeaderProps) {
   const [copied, setCopied] = useState(false);
@@ -141,6 +144,16 @@ export function ThreadHeader({
         </div>
 
         <span className="thread-header-divider" aria-hidden="true" />
+
+        <button
+          type="button"
+          className="thread-header-icon-button"
+          onClick={onOpenSettings}
+          title="Open Loom settings"
+          aria-label="Open Loom settings"
+        >
+          <Settings size={16} strokeWidth={1.75} />
+        </button>
 
         <button
           type="button"
