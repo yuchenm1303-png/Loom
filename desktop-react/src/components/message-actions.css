@@ -38,6 +38,17 @@
   color: #9097a5;
 }
 
+/*
+  Assistant messages can arrive in several chunks while a turn is still doing
+  tool work. Those chunks live inside the task-process area and are not final
+  replies, so they should not each grow their own timestamp/copy/feedback bar.
+  The final answer is rendered outside `.turn-process-content`, keeping one
+  clean toolbar at the end of the completed response.
+*/
+.turn-process-content .message-meta {
+  display: none !important;
+}
+
 .user-message-meta {
   justify-content: flex-end;
   padding-right: 2px;
