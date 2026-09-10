@@ -4,7 +4,12 @@ from pathlib import Path
 
 from app.ai import ModelResponse
 from app.agent_runtime import DurableAgentRuntime, FileAgentSessionStore, PermissionMode, ToolRegistry
-from app.app_server_thread_management import ManagedStreamingLoomAppServerService
+from app import app_server_thread_management as thread_management
+from app.ordinary_conversations import patch as patch_ordinary_conversations
+
+
+patch_ordinary_conversations(thread_management)
+ManagedStreamingLoomAppServerService = thread_management.ManagedStreamingLoomAppServerService
 
 
 class RecordingPlatform:
