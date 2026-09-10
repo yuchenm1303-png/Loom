@@ -1,7 +1,6 @@
 import { RotateCcw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Composer } from "./components/Composer";
-import { ComputerUseHudOverlay } from "./components/ComputerUseHudOverlay";
 import { Inspector } from "./components/Inspector";
 import { LanguageSettingsDock } from "./components/LanguageSettingsDock";
 import { RunProgress } from "./components/RunProgress";
@@ -156,17 +155,14 @@ export default function App() {
 
   if (loom.connection === "error") {
     return (
-      <>
-        <div className="boot-error">
-          <div className="boot-error-card">
-            <div className="brand-mark large">L</div>
-            <h1>{t("app.serverDidNotStart")}</h1>
-            <p>{loom.error || t("app.unknownConnectionError")}</p>
-            <button className="button primary" onClick={() => window.location.reload()}><RotateCcw size={15} /> {t("app.retry")}</button>
-          </div>
+      <div className="boot-error">
+        <div className="boot-error-card">
+          <div className="brand-mark large">L</div>
+          <h1>{t("app.serverDidNotStart")}</h1>
+          <p>{loom.error || t("app.unknownConnectionError")}</p>
+          <button className="button primary" onClick={() => window.location.reload()}><RotateCcw size={15} /> {t("app.retry")}</button>
         </div>
-        <ComputerUseHudOverlay />
-      </>
+      </div>
     );
   }
 
@@ -180,91 +176,87 @@ export default function App() {
           onClose={() => setSettingsOpen(false)}
         />
         <LanguageSettingsDock />
-        <ComputerUseHudOverlay />
       </>
     );
   }
 
   return (
-    <>
-      <div className={`app-shell ${inspectorOpen ? "with-inspector" : ""}`}>
-        <Sidebar
-          threads={loom.threads}
-          activeId={thread?.id}
-          threadView={loom.threadView}
-          archivedCount={loom.threadCounts.archived}
-          onOpen={loom.openThread}
-          onNew={loom.newThread}
-          projects={loom.projects}
-          projectsSupported={loom.projectsSupported}
-          onAddProject={loom.createProject}
-          onRenameProject={loom.renameProject}
-          onRemoveProject={loom.removeProject}
-          onRename={loom.renameThread}
-          onArchive={loom.archiveThread}
-          onDelete={loom.deleteThread}
-          onFork={loom.forkThread}
-          onViewChange={loom.setThreadView}
+    <div className={`app-shell ${inspectorOpen ? "with-inspector" : ""}`}>
+      <Sidebar
+        threads={loom.threads}
+        activeId={thread?.id}
+        threadView={loom.threadView}
+        archivedCount={loom.threadCounts.archived}
+        onOpen={loom.openThread}
+        onNew={loom.newThread}
+        projects={loom.projects}
+        projectsSupported={loom.projectsSupported}
+        onAddProject={loom.createProject}
+        onRenameProject={loom.renameProject}
+        onRemoveProject={loom.removeProject}
+        onRename={loom.renameThread}
+        onArchive={loom.archiveThread}
+        onDelete={loom.deleteThread}
+        onFork={loom.forkThread}
+        onViewChange={loom.setThreadView}
+      />
+
+      <section className="workspace">
+        <ThreadHeader
+          title={threadTitle}
+          workspace={workspace}
+          connection={loom.connection}
+          status={thread?.status}
+          running={running}
+          archived={archived}
+          model={currentModel}
+          permissionMode={permissionMode}
+          inspectorOpen={inspectorOpen}
+          onOpenSettings={() => setSettingsOpen(true)}
+          onToggleInspector={() => setInspectorOpen((open) => !open)}
         />
 
-        <section className="workspace">
-          <ThreadHeader
-            title={threadTitle}
-            workspace={workspace}
-            connection={loom.connection}
-            status={thread?.status}
+        <div className={`conversation-stage ${running ? "is-running" : ""}`}>
+          {running ? <RunProgress {...progressProps} placement="top" /> : null}
+          <Transcript
+            items={transcriptItems}
             running={running}
-            archived={archived}
-            model={currentModel}
-            permissionMode={permissionMode}
-            inspectorOpen={inspectorOpen}
-            onOpenSettings={() => setSettingsOpen(true)}
-            onToggleInspector={() => setInspectorOpen((open) => !open)}
+            currentTurnId={thread?.currentTurnId}
+            promptDisabled={conversationDisabled}
+            onPrompt={(prompt) => void loom.send(prompt)}
+            onApproval={handleApproval}
           />
+        </div>
 
-          <div className={`conversation-stage ${running ? "is-running" : ""}`}>
-            {running ? <RunProgress {...progressProps} placement="top" /> : null}
-            <Transcript
-              items={transcriptItems}
-              running={running}
-              currentTurnId={thread?.currentTurnId}
-              promptDisabled={conversationDisabled}
-              onPrompt={(prompt) => void loom.send(prompt)}
-              onApproval={handleApproval}
-            />
-          </div>
+        <div className="composer-stage">
+          <Composer
+            disabled={!thread || loom.connection !== "ready" || archived}
+            running={running}
+            model={loom.runtime.model}
+            modelSnapshot={loom.models}
+            modelBusy={loom.modelBusy}
+            permissionMode={permissionMode}
+            permissionModes={loom.runtime.permissionModes}
+            stickerPreferences={stickersEnabled ? loom.runtime.stickerPreferences : null}
+            onPermissionModeChange={loom.setPermissionMode}
+            onModelProfileChange={loom.switchModelProfile}
+            onCustomModelChange={loom.switchCurrentModel}
+            onAddModel={loom.addModel}
+            onDeleteModel={loom.deleteModel}
+            onReasoningChange={loom.setReasoning}
+            onStickerPreferencesChange={async (preferences) => {
+              await window.loom.call("sticker/preferences/set", { preferences });
+            }}
+            imagesAllowed={
+              attachmentsEnabled && loom.runtime.attachments?.images !== false
+            }
+            onSend={loom.send}
+            onInterrupt={loom.interrupt}
+          />
+        </div>
+      </section>
 
-          <div className="composer-stage">
-            <Composer
-              disabled={!thread || loom.connection !== "ready" || archived}
-              running={running}
-              model={loom.runtime.model}
-              modelSnapshot={loom.models}
-              modelBusy={loom.modelBusy}
-              permissionMode={permissionMode}
-              permissionModes={loom.runtime.permissionModes}
-              stickerPreferences={stickersEnabled ? loom.runtime.stickerPreferences : null}
-              onPermissionModeChange={loom.setPermissionMode}
-              onModelProfileChange={loom.switchModelProfile}
-              onCustomModelChange={loom.switchCurrentModel}
-              onAddModel={loom.addModel}
-              onDeleteModel={loom.deleteModel}
-              onReasoningChange={loom.setReasoning}
-              onStickerPreferencesChange={async (preferences) => {
-                await window.loom.call("sticker/preferences/set", { preferences });
-              }}
-              imagesAllowed={
-                attachmentsEnabled && loom.runtime.attachments?.images !== false
-              }
-              onSend={loom.send}
-              onInterrupt={loom.interrupt}
-            />
-          </div>
-        </section>
-
-        {inspectorOpen ? <Inspector items={loom.items} onClose={() => setInspectorOpen(false)} /> : null}
-      </div>
-      <ComputerUseHudOverlay />
-    </>
+      {inspectorOpen ? <Inspector items={loom.items} onClose={() => setInspectorOpen(false)} /> : null}
+    </div>
   );
 }
