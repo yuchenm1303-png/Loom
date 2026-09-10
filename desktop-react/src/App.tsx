@@ -100,7 +100,6 @@ export default function App() {
         activeId={settingsOpen ? undefined : thread?.id}
         threadView={loom.threadView}
         archivedCount={loom.threadCounts.archived}
-        settingsActive={settingsOpen}
         onOpen={async (threadId) => {
           setSettingsOpen(false);
           await loom.openThread(threadId);
@@ -109,7 +108,6 @@ export default function App() {
           setSettingsOpen(false);
           await loom.newThread(nextWorkspace, projectId);
         }}
-        onOpenSettings={() => setSettingsOpen(true)}
         projects={loom.projects}
         projectsSupported={loom.projectsSupported}
         onAddProject={loom.createProject}
@@ -144,6 +142,7 @@ export default function App() {
               model={currentModel}
               permissionMode={permissionMode}
               inspectorOpen={inspectorOpen}
+              onOpenSettings={() => setSettingsOpen(true)}
               onToggleInspector={() => setInspectorOpen((open) => !open)}
             />
 
