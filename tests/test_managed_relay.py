@@ -51,8 +51,33 @@ def test_managed_relay_provision_writes_only_the_managed_keyring_slot():
     ]
 
 
-def test_managed_relay_missing_credential_has_product_level_error():
-    relay = ManagedRelay(environ={}, secret_getter=lambda _service, _alias: None)
+def test_customer_installer_file_is_imported_once_then_deleted(tmp_path):
+    provision_file = tmp_path / "managed-relay.provision.json"
+    provision_file.write_text(
+        json.dumps({"credential": "installer-device-secret"}),
+        encoding="utf-8",
+    )
+    saved: list[tuple[str, str, str]] = []
+    relay = ManagedRelay(
+        environ={},
+        provision_path=provision_file,
+        secret_getter=lambda _service, _alias: None,
+        secret_setter=lambda service, alias, value: saved.append((service, alias, value)),
+    )
+
+    assert relay.credential() == "installer-device-secret"
+    assert saved == [
+        (MANAGED_RELAY_KEYRING_SERVICE, MANAGED_RELAY_CREDENTIAL_ALIAS, "installer-device-secret")
+    ]
+    assert not provision_file.exists()
+
+
+def test_managed_relay_missing_credential_has_product_level_error(tmp_path):
+    relay = ManagedRelay(
+        environ={},
+        provision_path=tmp_path / "missing.json",
+        secret_getter=lambda _service, _alias: None,
+    )
 
     with pytest.raises(ManagedRelayError, match="managed access is not provisioned"):
         relay.credential()
