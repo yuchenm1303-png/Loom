@@ -1,0 +1,74 @@
+.runtime-section-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.computer-log-export-button {
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 8px;
+  border: 1px solid rgba(139, 124, 246, .22);
+  border-radius: 999px;
+  background: rgba(139, 124, 246, .09);
+  color: #b9b2ff;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: transform 140ms ease, border-color 140ms ease, background 140ms ease, color 140ms ease;
+}
+
+.computer-log-export-button:hover:not(:disabled) {
+  border-color: rgba(139, 124, 246, .38);
+  background: rgba(139, 124, 246, .14);
+  color: #d6d1ff;
+  transform: translateY(-1px);
+}
+
+.computer-log-export-button:active:not(:disabled) {
+  transform: translateY(0) scale(.97);
+}
+
+.computer-log-export-button:disabled {
+  cursor: wait;
+  opacity: .62;
+}
+
+.computer-log-export-note {
+  margin: 10px 10px 0;
+  padding: 9px 10px;
+  border: 1px solid rgba(139, 124, 246, .16);
+  border-radius: 10px;
+  background: rgba(139, 124, 246, .055);
+  display: grid;
+  gap: 4px;
+  overflow: hidden;
+}
+
+.computer-log-export-note strong {
+  color: #d7d2ff;
+  font-size: 10px;
+  font-weight: 720;
+}
+
+.computer-log-export-note span {
+  color: #7f8796;
+  font-size: 9px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.computer-log-export-note.error {
+  border-color: rgba(220, 124, 134, .22);
+  background: rgba(220, 124, 134, .06);
+}
+
+.computer-log-export-note.error strong {
+  color: #e1a1aa;
+}
