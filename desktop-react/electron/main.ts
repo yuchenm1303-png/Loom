@@ -3,6 +3,7 @@ import { ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import fs from "node:fs/promises";
+import fsSync from "node:fs";
 import crypto from "node:crypto";
 import readline from "node:readline";
 import {
@@ -15,6 +16,22 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const DESKTOP_ROOT = path.resolve(__dirname, "..");
 const REPO_ROOT = path.resolve(DESKTOP_ROOT, "..");
+const REPO_VENV_PYTHON = process.platform === "win32"
+  ? path.join(REPO_ROOT, ".venv", "Scripts", "python.exe")
+  : path.join(REPO_ROOT, ".venv", "bin", "python");
+
+function resolvePythonExecutable(): string {
+  const configured = process.env.LOOM_PYTHON?.trim();
+  if (configured) return configured;
+  if (fsSync.existsSync(REPO_VENV_PYTHON)) return REPO_VENV_PYTHON;
+  return process.platform === "win32" ? "python" : "python3";
+}
+
+function appendPythonPath(existing: string | undefined): string {
+  return [REPO_ROOT, existing]
+    .filter((value): value is string => Boolean(value && value.trim()))
+    .join(path.delimiter);
+}
 
 interface JsonRpcResponse {
   jsonrpc: "2.0";
@@ -158,7 +175,7 @@ class LoomRpcProcess {
 
   private startProcess(): void {
     const spec = this.models.current ?? this.models.ensureInitial();
-    const python = process.env.LOOM_PYTHON || (process.platform === "win32" ? "python" : "python3");
+    const python = resolvePythonExecutable();
     const script = path.join(REPO_ROOT, "loom_app_server.py");
     const args = [
       script,
@@ -175,11 +192,14 @@ class LoomRpcProcess {
       args.push("--reasoning-value", spec.reasoning.value);
     }
 
+    console.log(`[loom-app-server] launching ${python}`);
     const child = spawn(python, args, {
       cwd: REPO_ROOT,
       env: {
         ...process.env,
         PYTHONUTF8: "1",
+        PYTHONPATH: appendPythonPath(process.env.PYTHONPATH),
+        LOOM_DESKTOP_PYTHON: python,
         LOOM_API_KEY: spec.apiKey,
       },
       stdio: ["pipe", "pipe", "pipe"],
