@@ -49,8 +49,16 @@ function adapterLabel(adapter: string): string {
 }
 
 function profileSubtitle(profile: ModelProfile): string {
-  if (profile.kind === "builtin") return "Built-in primary · MiniMax API";
+  if (profile.kind === "builtin") {
+    if (profile.baseUrl.includes("relay.smirel.com")) return "Built-in managed · Smirel Relay";
+    return `Built-in · ${endpointLabel(profile.baseUrl)}`;
+  }
   return `${adapterLabel(profile.adapter)} · ${endpointLabel(profile.baseUrl)}`;
+}
+
+function builtinBadge(profile: ModelProfile): string | null {
+  if (profile.kind !== "builtin") return null;
+  return profile.selection === "builtin:minimax" ? "Primary" : "Managed";
 }
 
 function activeReasoningOption(reasoning: ModelReasoningState): ModelReasoningOption | undefined {
@@ -367,6 +375,7 @@ export function ModelPanel({
           {profiles.map((profile) => {
             const exactActive = profile.selection === currentSelection && profile.model === currentModel;
             const profileReasoning = profile.reasoning ? activeReasoningOption(profile.reasoning) : null;
+            const badge = builtinBadge(profile);
             return (
               <button
                 key={profile.selection}
@@ -379,7 +388,7 @@ export function ModelPanel({
                 <span className="model-profile-copy">
                   <span className="model-profile-title-row">
                     <strong>{profile.name}</strong>
-                    {profile.kind === "builtin" ? <em>Primary</em> : null}
+                    {badge ? <em>{badge}</em> : null}
                     {profileReasoning ? <em className="model-reasoning-badge">{profileReasoning.label}</em> : null}
                   </span>
                   <span>{profile.model}</span>
