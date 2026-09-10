@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   bundle-stickers:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     steps:
       - name: Checkout fix branch
         uses: actions/checkout@v4
@@ -56,7 +56,7 @@ jobs:
             exit 1
           fi
 
-          python - <<'PY'
+          python3 - <<'PY'
           from pathlib import Path
           root = Path('desktop-react/src/assets/chat-stickers')
           files = sorted(root.glob('*.webp'))
@@ -73,7 +73,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if git diff --quiet -- desktop-react/src/assets/chat-stickers; then
+          if git diff --quiet -- desktop-react/src/assets/chat-stickers && [[ -z "$(git status --porcelain -- desktop-react/src/assets/chat-stickers)" ]]; then
             echo "Sticker assets already up to date"
             exit 0
           fi
