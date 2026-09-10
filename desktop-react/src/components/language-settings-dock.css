@@ -90,6 +90,46 @@
     0 4px 12px rgba(80,68,176,.10);
 }
 
+.settings-sidebar-top > .language-settings-dock {
+  min-height: 50px;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  gap: 9px;
+  margin-top: 10px;
+  padding: 9px 10px;
+  border: 1px solid rgba(255,255,255,.065);
+  border-radius: 11px;
+  background: rgba(255,255,255,.024);
+}
+
+.settings-sidebar-top > .language-settings-dock .language-settings-icon {
+  width: 24px;
+  height: 24px;
+  padding: 4px;
+  border-radius: 7px;
+  color: #aaa0ec;
+  background: rgba(136,113,234,.10);
+}
+
+.settings-sidebar-top > .language-settings-dock .language-settings-copy strong {
+  font-size: 12.5px;
+}
+
+.settings-sidebar-top > .language-settings-dock .language-settings-copy span {
+  max-width: 112px;
+  font-size: 10.5px;
+}
+
+.settings-sidebar-top > .language-settings-dock .language-settings-options {
+  height: 28px;
+}
+
+.settings-sidebar-top > .language-settings-dock .language-settings-options button {
+  min-width: 30px;
+  height: 22px;
+  padding-inline: 7px;
+  font-size: 10.5px;
+}
+
 @media (max-width: 760px) {
   .language-settings-dock {
     grid-template-columns: 26px minmax(0,1fr) auto;
