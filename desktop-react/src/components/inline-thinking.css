@@ -6,6 +6,13 @@
   display: none !important;
 }
 
+/* Composer owns no thinking copy while a turn is running. The live run status
+   already exists above the transcript and in the toolbar, so hide the whole
+   disabled input row instead of leaving a duplicate Loom-is-working prompt. */
+.composer.is-running .composer-input-row {
+  display: none !important;
+}
+
 .inline-thinking,
 .live-reasoning {
   align-self: flex-start;
