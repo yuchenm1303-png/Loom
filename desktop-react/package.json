@@ -6,6 +6,9 @@
   "main": "dist-electron/main.js",
   "scripts": {
     "clean:electron": "node -e \"const fs=require('node:fs'); for (const dir of ['dist-electron','dist']) fs.rmSync(dir,{recursive:true,force:true})\"",
+    "prepare:stickers": "node scripts/prepare-chat-stickers.mjs",
+    "predev": "npm run prepare:stickers",
+    "prebuild": "npm run prepare:stickers",
     "build:electron": "tsc -p tsconfig.electron.json",
     "dev": "npm run clean:electron && npm run build:electron && concurrently -k \"vite --host 127.0.0.1\" \"tsc -p tsconfig.electron.json --watch --preserveWatchOutput\" \"wait-on http://127.0.0.1:5173 && electron dist-electron/main.js --dev-url=http://127.0.0.1:5173\"",
     "build": "npm run clean:electron && npm run build:electron && tsc --noEmit && vite build",
@@ -21,7 +24,7 @@
     "rehype-highlight": "^7.0.2",
     "rehype-katex": "^7.0.1",
     "remark-gfm": "^4.0.1",
-    "remark-math": "^6.0.0"
+    "remark-math": "^6.0.1"
   },
   "devDependencies": {
     "@types/node": "^22.15.0",
