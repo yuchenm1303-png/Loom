@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   import-assets:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
       - name: Check out hotfix branch
         uses: actions/checkout@v4
@@ -22,9 +22,9 @@ jobs:
           fetch-depth: 0
 
       - name: Import exact AI Ledger sticker pack
-        shell: bash
+        shell: pwsh
         run: |
-          python3 - <<'PY'
+          @'
           from pathlib import Path
           from urllib.request import urlopen
           from zipfile import ZipFile
@@ -32,25 +32,11 @@ jobs:
 
           source = "https://raw.githubusercontent.com/yuchenm1303-png/yuchen1303.github.io/dev-update-1/ai-ledger-android/app/src/main/assets/inline_stickers_v1.zip"
           expected = {
-              "joy_burst.webp",
-              "affection_hug.webp",
-              "health_check.webp",
-              "thinking_soft.webp",
-              "cheer_power.webp",
-              "pout_no.webp",
-              "comfort_friend.webp",
-              "red_packet_congrats.webp",
-              "gift_for_you.webp",
-              "sparkle_excited.webp",
-              "soft_smile.webp",
-              "got_it_point.webp",
-              "heart_thanks.webp",
-              "confident_ready.webp",
-              "playful_wink.webp",
-              "confused_study.webp",
-              "confirm_yes.webp",
-              "idea_drawing.webp",
-              "reject_no.webp",
+              "joy_burst.webp", "affection_hug.webp", "health_check.webp", "thinking_soft.webp",
+              "cheer_power.webp", "pout_no.webp", "comfort_friend.webp", "red_packet_congrats.webp",
+              "gift_for_you.webp", "sparkle_excited.webp", "soft_smile.webp", "got_it_point.webp",
+              "heart_thanks.webp", "confident_ready.webp", "playful_wink.webp", "confused_study.webp",
+              "confirm_yes.webp", "idea_drawing.webp", "reject_no.webp",
           }
 
           payload = urlopen(source, timeout=30).read()
@@ -58,16 +44,10 @@ jobs:
           out.mkdir(parents=True, exist_ok=True)
 
           with ZipFile(BytesIO(payload)) as archive:
-              entries = {
-                  Path(name).name: name
-                  for name in archive.namelist()
-                  if name and not name.endswith("/")
-              }
+              entries = {Path(name).name: name for name in archive.namelist() if name and not name.endswith("/")}
               actual = set(entries)
               if actual != expected:
-                  missing = sorted(expected - actual)
-                  extra = sorted(actual - expected)
-                  raise SystemExit(f"Sticker pack mismatch; missing={missing}, extra={extra}")
+                  raise SystemExit(f"Sticker pack mismatch; missing={sorted(expected-actual)}, extra={sorted(actual-expected)}")
               for filename in sorted(expected):
                   data = archive.read(entries[filename])
                   if not (len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP"):
@@ -75,15 +55,16 @@ jobs:
                   (out / filename).write_bytes(data)
 
           print(f"Imported {len(expected)} exact WebP assets ({len(payload)} byte source zip)")
-          PY
+          '@ | python -
 
       - name: Commit imported assets
-        shell: bash
+        shell: pwsh
         run: |
-          if git diff --quiet -- desktop-react/src/assets/chat-stickers && [ -z "$(git status --porcelain -- desktop-react/src/assets/chat-stickers)" ]; then
-            echo "Sticker assets already match source pack."
+          $changes = git status --porcelain -- desktop-react/src/assets/chat-stickers
+          if (-not $changes) {
+            Write-Host "Sticker assets already match source pack."
             exit 0
-          fi
+          }
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add desktop-react/src/assets/chat-stickers
