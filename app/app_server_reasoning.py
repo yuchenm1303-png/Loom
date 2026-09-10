@@ -5,8 +5,9 @@ from pathlib import Path
 from typing import Any, Callable, TextIO
 
 from app.ai import ReasoningRequest
-from app.agent_runtime import PermissionMode
+from app.agent_runtime import AgentStatus, PermissionMode
 from app.agent_runtime.tools import ToolExposure, ToolRegistry
+from app.runtime_model_switch import build_runtime_model_platform, validate_runtime_reasoning
 from app.settings import LoomSettingsStore
 
 from .app_server_thread_management import (
@@ -129,6 +130,79 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
         status["exposedToolCount"] = len(self.runtime.tools.router().all())
         return status
 
+    def _model_change_blockers(self) -> list[str]:
+        with self._guard:
+            blockers = set(self._active_sessions)
+        for session in self._list_session_objects():
+            if session.status in {AgentStatus.RUNNING, AgentStatus.WAITING_APPROVAL}:
+                blockers.add(session.session_id)
+        return sorted(blockers)
+
+    def _install_runtime_platform(self, platform: Any) -> None:
+        self.runtime.platform = platform
+        setattr(self.runtime, "_provider_streaming_enabled", False)
+        enable = getattr(platform, "enable_streaming", None)
+        subscribe = getattr(platform, "subscribe_stream", None)
+        provider_listener = getattr(self.runtime, "_on_provider_stream", None)
+        if callable(enable) and callable(subscribe) and callable(provider_listener):
+            enable()
+            subscribe(provider_listener)
+            setattr(self.runtime, "_provider_streaming_enabled", True)
+
+    def runtime_set_model(self, params: dict[str, Any]) -> dict[str, Any]:
+        blockers = self._model_change_blockers()
+        if blockers:
+            raise RuntimeError("finish or stop the current turn before changing model settings")
+
+        provider = str(params.get("provider") or "").strip()
+        base_url = str(params.get("baseUrl") or params.get("base_url") or "").strip()
+        model = str(params.get("model") or "").strip()
+        api_key = str(params.get("apiKey") or params.get("api_key") or "").strip()
+        if not provider:
+            raise ValueError("provider is required")
+        if not model:
+            raise ValueError("model is required")
+        if not api_key:
+            raise ValueError("API key is required")
+        reasoning = ReasoningRequest.from_values(
+            params.get("reasoningKind") or params.get("reasoning_kind"),
+            params.get("reasoningValue") or params.get("reasoning_value"),
+        )
+        vision = bool(params.get("vision", True))
+        timeout = float(params.get("timeout") or 120.0)
+        capability = validate_runtime_reasoning(
+            model=model,
+            provider=provider,
+            base_url=base_url,
+            reasoning=reasoning,
+        )
+        platform = build_runtime_model_platform(
+            provider=provider,
+            base_url=base_url,
+            model=model,
+            api_key=api_key,
+            vision=vision,
+            request_timeout_seconds=timeout,
+        )
+
+        with self._guard:
+            self._install_runtime_platform(platform)
+            self.model = model
+            self.vision = vision
+            setattr(self.runtime, "supports_vision", vision)
+            self.runtime.reasoning = reasoning
+            self.runtime.reasoning_capability = capability
+
+        updated = self.runtime_status()
+        self._notify(
+            "runtime/updated",
+            {
+                "reason": "model_changed",
+                "runtime": updated,
+            },
+        )
+        return updated
+
     def runtime_set_reasoning(self, params: dict[str, Any]) -> dict[str, Any]:
         status = super().runtime_status()
         active = list(status.get("activeThreadIds") or [])
@@ -232,6 +306,10 @@ class ReasoningManagedLoomRpcController(ManagedStreamingLoomRpcController):
             "update": True,
             "modelSpecific": True,
         }
+        result["capabilities"]["modelSwitch"] = {
+            "hot": True,
+            "requiresIdleTurn": True,
+        }
         result["capabilities"]["stickerPreferences"] = {
             "read": True,
             "update": True,
@@ -248,6 +326,8 @@ class ReasoningManagedLoomRpcController(ManagedStreamingLoomRpcController):
         return result
 
     def _dispatch(self, method: str, params: dict[str, Any]) -> Any:
+        if method == "runtime/set_model":
+            return self.service.runtime_set_model(params)
         if method == "runtime/set_reasoning":
             return self.service.runtime_set_reasoning(params)
         if method == "sticker/preferences/get":
