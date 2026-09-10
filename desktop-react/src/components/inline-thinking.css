@@ -43,26 +43,40 @@
 }
 
 .thinking-shimmer {
+  position: relative;
   display: inline-block;
   font-size: 12.5px;
   font-weight: 560;
   line-height: 1.45;
   letter-spacing: .01em;
+  white-space: nowrap;
+  color: #8f95a1;
+  isolation: isolate;
+  contain: paint;
+}
+
+.thinking-shimmer::after {
+  content: "正在思考…";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
   color: transparent;
+  pointer-events: none;
   background-image: linear-gradient(
     102deg,
-    #777e8b 0%,
-    #8e95a2 28%,
-    #e7e9ee 46%,
-    #b9aff4 56%,
-    #8c93a0 72%,
-    #777e8b 100%
+    transparent 0%,
+    transparent 30%,
+    rgba(231,233,238,.95) 45%,
+    #b9aff4 54%,
+    transparent 70%,
+    transparent 100%
   );
-  background-size: 230% 100%;
-  background-position: 125% 0;
+  background-size: 260% 100%;
+  background-position: 150% 0;
   -webkit-background-clip: text;
   background-clip: text;
-  animation: thinking-text-shimmer 1.7s cubic-bezier(.42,0,.58,1) infinite;
+  will-change: background-position, opacity;
+  animation: thinking-text-shimmer 2.25s linear infinite;
 }
 
 .live-reasoning {
@@ -162,9 +176,23 @@
 }
 
 @keyframes thinking-text-shimmer {
-  0% { background-position: 125% 0; opacity: .78; }
-  45% { opacity: 1; }
-  100% { background-position: -125% 0; opacity: .78; }
+  0%, 10% {
+    background-position: 150% 0;
+    opacity: 0;
+  }
+  16% {
+    opacity: .86;
+  }
+  50% {
+    opacity: 1;
+  }
+  84% {
+    opacity: .86;
+  }
+  90%, 100% {
+    background-position: -150% 0;
+    opacity: 0;
+  }
 }
 
 @keyframes thinking-symbol-breathe {
@@ -185,7 +213,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .thinking-symbol,
-  .thinking-shimmer,
+  .thinking-shimmer::after,
   .live-reasoning-copy::before,
   .inline-thinking,
   .live-reasoning {
@@ -195,5 +223,9 @@
   .thinking-shimmer {
     color: #9298a3;
     background: none;
+  }
+
+  .thinking-shimmer::after {
+    content: none;
   }
 }
