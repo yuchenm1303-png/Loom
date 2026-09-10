@@ -153,7 +153,15 @@ class OpenAIChatBackend:
                 "max_retries": 0,
             }
             if connection.adapter is ProviderAdapter.OPENAI_COMPATIBLE:
-                kwargs["base_url"] = connection.base_url
+                # OpenAI-compatible relays expect an ``/v1`` base path. If the
+                # user entered a bare origin (``https://relay.example.com``)
+                # the SDK would otherwise send ``/chat/completions`` to the
+                # root and the relay would 404. Auto-append ``/v1`` only when
+                # the operator did not already include it.
+                base_url = (connection.base_url or "").rstrip("/")
+                if base_url and not base_url.endswith("/v1"):
+                    base_url = base_url + "/v1"
+                kwargs["base_url"] = base_url
             client = OpenAI(**kwargs)
         self.connection = connection
         self.profile = profile
@@ -170,6 +178,18 @@ class OpenAIChatBackend:
             "messages": [_message_payload(message) for message in request.messages],
             "timeout": self.request_timeout_seconds,
         }
+        # The CQU relay rejects whitespace-only system messages outright. Drop
+        # them rather than 400-ing the whole turn; real prompts still go
+        # through.
+        if self.profile.model.startswith("cqu-"):
+            kwargs["messages"] = [
+                msg
+                for msg in kwargs["messages"]
+                if not (
+                    msg.get("role") == "system"
+                    and not str(msg.get("content") or "").strip()
+                )
+            ]
         if request.tools:
             kwargs["tools"] = [_tool_payload(tool) for tool in request.tools]
             kwargs["tool_choice"] = request.tool_choice.value
