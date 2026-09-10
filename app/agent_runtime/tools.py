@@ -22,6 +22,7 @@ ToolHandler = Callable[["ToolContext", dict[str, Any]], "ToolResult"]
 CancelCheck = Callable[[], bool]
 EventEmitter = Callable[[AgentEventKind, dict[str, object]], None]
 CapabilitySettings = Mapping[str, bool] | None
+_GLOBAL_CAPABILITY_SETTINGS: dict[str, bool] = {}
 
 
 def _never_cancelled() -> bool:
@@ -32,7 +33,7 @@ def _search_tokens(value: str) -> tuple[str, ...]:
     return tuple(_SEARCH_TOKEN_RE.findall(str(value or "").casefold()))
 
 
-def _tool_capability_name(tool_name: str) -> str:
+def tool_capability_name(tool_name: str) -> str:
     name = str(tool_name or "").strip()
     if name.startswith("computer_"):
         return "computerUse"
@@ -51,10 +52,28 @@ def _tool_capability_name(tool_name: str) -> str:
     return ""
 
 
+def set_tool_capability_settings(settings: Mapping[str, bool] | None) -> None:
+    global _GLOBAL_CAPABILITY_SETTINGS
+    if not settings:
+        _GLOBAL_CAPABILITY_SETTINGS = {}
+        return
+    _GLOBAL_CAPABILITY_SETTINGS = {
+        str(key): bool(value)
+        for key, value in dict(settings).items()
+        if isinstance(key, str)
+    }
+
+
+def get_tool_capability_settings() -> dict[str, bool]:
+    return dict(_GLOBAL_CAPABILITY_SETTINGS)
+
+
 def _capability_allows(tool: "AgentTool", capability_settings: CapabilitySettings) -> bool:
+    if capability_settings is None:
+        capability_settings = _GLOBAL_CAPABILITY_SETTINGS
     if not capability_settings:
         return True
-    capability = _tool_capability_name(tool.name)
+    capability = tool_capability_name(tool.name)
     if not capability:
         return True
     return capability_settings.get(capability) is not False
@@ -369,5 +388,8 @@ __all__ = [
     "ToolRegistry",
     "ToolResult",
     "ToolRouter",
+    "get_tool_capability_settings",
+    "set_tool_capability_settings",
+    "tool_capability_name",
     "validate_tool_arguments",
 ]
