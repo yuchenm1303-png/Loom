@@ -2,12 +2,14 @@ import {
   Archive,
   ArchiveRestore,
   ArrowLeft,
+  ChevronDown,
   ChevronRight,
   Copy,
   Ellipsis,
   Eye,
-  FolderPlus,
   EyeOff,
+  Folder,
+  FolderPlus,
   GitFork,
   Pencil,
   Pin,
@@ -17,7 +19,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { createPortal } from "react-dom";
 import type { ProjectRecord, ThreadRecord } from "../types/loom";
 import "./sidebar.css";
@@ -25,7 +27,6 @@ import "./sidebar.css";
 type ThreadView = "active" | "archived";
 type Notice = { kind: "success" | "error"; text: string };
 type ContextMenuState = { threadId: string; x: number; y: number };
-
 type GroupMenuState = { projectId: string; x: number; y: number };
 
 interface SidebarProps {
@@ -122,6 +123,25 @@ function errorText(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
 }
 
+function sortThreads(rows: ThreadRecord[], pinnedIds: Set<string>): ThreadRecord[] {
+  return [...rows].sort((left, right) => {
+    const pinDelta = Number(pinnedIds.has(right.id)) - Number(pinnedIds.has(left.id));
+    if (pinDelta) return pinDelta;
+    return Date.parse(right.updatedAt || "") - Date.parse(left.updatedAt || "");
+  });
+}
+
+function filterThreads(threads: ThreadRecord[], query: string): ThreadRecord[] {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return threads;
+  return threads.filter((thread) => `${thread.title} ${thread.workspace}`.toLowerCase().includes(needle));
+}
+
+function threadBelongsToProject(thread: ThreadRecord, projectIds: Set<string>): boolean {
+  const projectId = (thread.projectId || "").trim();
+  return Boolean(projectId && projectIds.has(projectId));
+}
+
 export function Sidebar({
   threads,
   activeId,
@@ -169,94 +189,47 @@ export function Sidebar({
     [contextMenu, threads],
   );
 
-  const filtered = useMemo(() => {
+  const filtered = useMemo(() => filterThreads(threads, query), [query, threads]);
+  const projectIds = useMemo(() => new Set(projects.map((project) => project.id)), [projects]);
+
+  const projectSections = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    if (!needle) return threads;
-    return threads.filter((thread) => `${thread.title} ${thread.workspace}`.toLowerCase().includes(needle));
-  }, [query, threads]);
-
-  const groups = useMemo(() => {
-    const sortThreads = (rows: ThreadRecord[]) =>
-      [...rows].sort((left, right) => {
-        const pinDelta = Number(pinnedIds.has(right.id)) - Number(pinnedIds.has(left.id));
-        if (pinDelta) return pinDelta;
-        return Date.parse(right.updatedAt || "") - Date.parse(left.updatedAt || "");
+    return projects
+      .map((project) => {
+        const rows = filtered.filter((thread) => thread.projectId === project.id);
+        return { project, threads: sortThreads(rows, pinnedIds) };
+      })
+      .filter(({ project, threads: rows }) => {
+        if (!needle) return true;
+        return project.name.toLowerCase().includes(needle) || project.root.toLowerCase().includes(needle) || rows.length > 0;
       });
+  }, [filtered, pinnedIds, projects, query]);
 
-    // Without server projects the only thing to group by is the workspace path,
-    // which is what this sidebar did before projects were durable. Keeping that
-    // path means an older App Server still gets a grouped list rather than an
-    // empty one.
-    if (!projectsSupported) {
-      const byWorkspace = new Map<string, { key: string; label: string; workspace: string; threads: ThreadRecord[] }>();
-      for (const thread of filtered) {
-        const normalized = normalizeWorkspace(thread.workspace);
-        const key = normalized || "__other__";
-        const existing = byWorkspace.get(key);
-        if (existing) existing.threads.push(thread);
-        else
-          byWorkspace.set(key, {
-            key,
-            label: workspaceLabel(thread.workspace),
-            workspace: thread.workspace || "",
-            threads: [thread],
-          });
-      }
-      const derived = [...byWorkspace.values()];
-      const labelCounts = new Map<string, number>();
-      for (const group of derived) labelCounts.set(group.label, (labelCounts.get(group.label) ?? 0) + 1);
-      return derived.map((group) => ({
-        ...group,
-        projectId: "",
-        displayLabel:
-          (labelCounts.get(group.label) ?? 0) > 1
-            ? `${group.label} · ${workspaceParentLabel(group.workspace) || "workspace"}`
-            : group.label,
-        threads: sortThreads(group.threads),
-      }));
-    }
+  const normalThreads = useMemo(() => (
+    sortThreads(filtered.filter((thread) => !threadBelongsToProject(thread, projectIds)), pinnedIds)
+  ), [filtered, pinnedIds, projectIds]);
 
-    // A project is an entity, so it gets a heading whether or not anything has
-    // been said in it yet. That is the whole difference between a project and a
-    // label derived from the rows underneath it -- an empty project is somewhere
-    // you can start.
-    const known = new Set(projects.map((project) => project.id));
-    const byProject = new Map<string, ThreadRecord[]>();
-    const unfiled: ThreadRecord[] = [];
+  const legacyWorkspaceGroups = useMemo(() => {
+    if (projectsSupported) return [];
+    const byWorkspace = new Map<string, { key: string; label: string; workspace: string; threads: ThreadRecord[] }>();
     for (const thread of filtered) {
-      const projectId = (thread.projectId || "").trim();
-      if (projectId && known.has(projectId)) {
-        const rows = byProject.get(projectId);
-        if (rows) rows.push(thread);
-        else byProject.set(projectId, [thread]);
-      } else {
-        unfiled.push(thread);
-      }
+      const normalized = normalizeWorkspace(thread.workspace);
+      const key = normalized || "__other__";
+      const existing = byWorkspace.get(key);
+      if (existing) existing.threads.push(thread);
+      else byWorkspace.set(key, { key, label: workspaceLabel(thread.workspace), workspace: thread.workspace || "", threads: [thread] });
     }
-
-    const result = projects.map((project) => ({
-      key: project.id,
-      projectId: project.id,
-      label: project.name,
-      displayLabel: project.name,
-      workspace: project.root,
-      threads: sortThreads(byProject.get(project.id) ?? []),
+    const derived = [...byWorkspace.values()];
+    const labelCounts = new Map<string, number>();
+    for (const group of derived) labelCounts.set(group.label, (labelCounts.get(group.label) ?? 0) + 1);
+    return derived.map((group) => ({
+      ...group,
+      displayLabel: (labelCounts.get(group.label) ?? 0) > 1
+        ? `${group.label} · ${workspaceParentLabel(group.workspace) || "workspace"}`
+        : group.label,
+      threads: sortThreads(group.threads, pinnedIds),
     }));
-
-    if (unfiled.length) {
-      // Not a project: no id, so it offers no project controls. There is
-      // nothing here to rename and nothing to remove.
-      result.push({
-        key: "__unfiled__",
-        projectId: "",
-        label: "No project",
-        displayLabel: "No project",
-        workspace: "",
-        threads: sortThreads(unfiled),
-      });
-    }
-    return result;
-  }, [filtered, pinnedIds, projects, projectsSupported]);
+  }, [filtered, pinnedIds, projectsSupported]);
 
   const focusSearch = () => {
     setSearchOpen(true);
@@ -273,7 +246,7 @@ export function Sidebar({
 
   const updateStoredId = (
     key: string,
-    setter: React.Dispatch<React.SetStateAction<Set<string>>>,
+    setter: Dispatch<SetStateAction<Set<string>>>,
     threadId: string,
     enabled: boolean,
   ) => {
@@ -415,6 +388,7 @@ export function Sidebar({
     if (!project || !next || next === project.name) return;
     try {
       await onRenameProject(projectId, next);
+      setNotice({ kind: "success", text: "项目已重命名" });
     } catch (cause) {
       setNotice({ kind: "error", text: cause instanceof Error ? cause.message : "Could not rename the project." });
     }
@@ -424,8 +398,6 @@ export function Sidebar({
     const project = projects.find((entry) => entry.id === projectId);
     if (!project) return;
     setGroupMenu(null);
-    // "Remove" next to a folder full of work has to be unambiguous about which
-    // of the two it means, so the prompt names what survives.
     const count = project.threadCount;
     const lines = [
       `Remove ${project.name} from Loom's project list?`,
@@ -524,21 +496,106 @@ export function Sidebar({
     return () => window.removeEventListener("keydown", handleShortcut);
   }, [activeThread, contextMenu, onNew, pinnedIds, unreadIds]);
 
-  return (
-    <aside className="sidebar compact-sidebar">
-      <div className="compact-sidebar-header">
-        <strong>{threadView === "archived" ? "Archived" : "Loom"}</strong>
-        <div className="compact-sidebar-actions">
-          <button type="button" onClick={() => void onNew()} title="New thread" aria-label="New thread">
-            <Plus size={17} strokeWidth={1.8} />
+  const renderThreadRow = (thread: ThreadRecord) => {
+    const active = thread.id === activeId;
+    const running = threadIsBusy(thread);
+    const pinned = pinnedIds.has(thread.id);
+    const unread = unreadIds.has(thread.id);
+    const busy = busyThreadId === thread.id;
+    const time = relativeTime(thread.updatedAt);
+    const renaming = renamingId === thread.id;
+
+    return (
+      <div
+        key={thread.id}
+        className={`compact-thread-row ${active ? "active" : ""} ${pinned ? "pinned" : ""} ${unread ? "unread" : ""} ${renaming ? "renaming" : ""}`}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          openContextMenu(thread, event.clientX, event.clientY);
+        }}
+      >
+        {renaming ? (
+          <div className="compact-thread-main rename-main">
+            <span className={`compact-thread-dot ${running ? "running" : unread ? "unread" : ""}`} aria-hidden="true" />
+            <input
+              ref={renameRef}
+              className="compact-thread-rename"
+              value={renameValue}
+              maxLength={120}
+              onChange={(event) => setRenameValue(event.target.value)}
+              onBlur={() => void commitRename(thread)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  event.currentTarget.blur();
+                } else if (event.key === "Escape") {
+                  event.preventDefault();
+                  setRenamingId(null);
+                }
+              }}
+              aria-label="Rename conversation"
+            />
+          </div>
+        ) : (
+          <button
+            className="compact-thread-main"
+            onClick={() => void openThread(thread)}
+            type="button"
+            title={`${thread.title || "New conversation"}${time ? ` · ${time}` : ""}${pinned ? " · pinned" : ""}`}
+            aria-current={active ? "page" : undefined}
+          >
+            <span className={`compact-thread-dot ${running ? "running" : unread ? "unread" : ""}`} aria-hidden="true" />
+            <span className="compact-thread-title">{thread.title || "New conversation"}</span>
+            {running ? <span className="sr-only">Running</span> : null}
+            {unread ? <span className="sr-only">Unread</span> : null}
           </button>
-          {/* Adding a project is a different act from starting a conversation:
-              it puts a folder in the list without opening anything in it. */}
-          {projectsSupported && threadView !== "archived" ? (
-            <button type="button" onClick={() => void addProject()} title="Add project folder" aria-label="Add project folder">
-              <FolderPlus size={16} strokeWidth={1.8} />
-            </button>
-          ) : null}
+        )}
+
+        <div className="thread-quick-actions" aria-label="Conversation quick actions">
+          <button
+            type="button"
+            className={pinned ? "is-active" : ""}
+            onClick={() => togglePinned(thread.id)}
+            title={pinned ? "Unpin" : "Pin"}
+            aria-label={pinned ? "Unpin conversation" : "Pin conversation"}
+            disabled={busy}
+          >
+            {pinned ? <PinOff size={13} strokeWidth={1.8} /> : <Pin size={13} strokeWidth={1.8} />}
+          </button>
+          <button
+            type="button"
+            onClick={() => void archiveThread(thread)}
+            title={thread.archived ? "Restore" : "Archive"}
+            aria-label={thread.archived ? "Restore conversation" : "Archive conversation"}
+            disabled={busy || running}
+          >
+            {thread.archived ? <ArchiveRestore size={13} strokeWidth={1.8} /> : <Archive size={13} strokeWidth={1.8} />}
+          </button>
+          <button
+            type="button"
+            onClick={(event) => {
+              const rect = event.currentTarget.getBoundingClientRect();
+              openContextMenu(thread, rect.right + 7, rect.top - 5);
+            }}
+            title="More actions"
+            aria-label="More conversation actions"
+            disabled={busy}
+          >
+            <Ellipsis size={14} strokeWidth={1.9} />
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <aside className="sidebar compact-sidebar codex-sidebar">
+      <div className="codex-sidebar-topbar">
+        <button type="button" className="codex-sidebar-brand" title="Loom workspace menu" aria-label="Loom workspace menu">
+          <span>{threadView === "archived" ? "Archive" : "Loom"}</span>
+          <ChevronDown size={14} strokeWidth={1.8} />
+        </button>
+        <div className="compact-sidebar-actions">
           <button
             type="button"
             onClick={searchOpen ? closeSearch : focusSearch}
@@ -546,10 +603,30 @@ export function Sidebar({
             title="Search conversations"
             aria-label="Search conversations"
           >
-            <Search size={15} strokeWidth={1.8} />
+            <Search size={16} strokeWidth={1.85} />
           </button>
+          {projectsSupported && threadView !== "archived" ? (
+            <button type="button" onClick={() => void addProject()} title="Add project folder" aria-label="Add project folder">
+              <FolderPlus size={16} strokeWidth={1.8} />
+            </button>
+          ) : null}
         </div>
       </div>
+
+      {threadView !== "archived" ? (
+        <div className="codex-sidebar-primary">
+          <button type="button" className="sidebar-new-conversation" onClick={() => void onNew()}>
+            <Plus size={17} strokeWidth={1.9} />
+            <span>新对话</span>
+          </button>
+          {projectsSupported ? (
+            <button type="button" className="sidebar-secondary-action" onClick={() => void addProject()}>
+              <FolderPlus size={16} strokeWidth={1.75} />
+              <span>添加项目</span>
+            </button>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className={`compact-search ${searchOpen ? "open" : ""}`} aria-hidden={!searchOpen}>
         <Search size={14} strokeWidth={1.8} aria-hidden="true" />
@@ -575,164 +652,121 @@ export function Sidebar({
       </div>
 
       <div className="compact-thread-scroll" aria-label={threadView === "archived" ? "Archived conversations" : "Conversations"}>
-        {groups.map((group) => (
-          <section
-            className={`workspace-group ${group.threads.length ? "" : "is-empty"} ${groupMenu?.projectId && groupMenu.projectId === group.projectId ? "has-menu" : ""}`}
-            key={group.key}
-          >
-            <div className="workspace-group-header">
-              {renamingProjectId === group.projectId && group.projectId ? (
-                <input
-                  className="workspace-group-rename"
-                  autoFocus
-                  value={projectRenameValue}
-                  maxLength={60}
-                  onChange={(event) => setProjectRenameValue(event.target.value)}
-                  onBlur={() => void commitProjectRename()}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      event.preventDefault();
-                      event.currentTarget.blur();
-                    } else if (event.key === "Escape") {
-                      setRenamingProjectId("");
-                    }
-                  }}
-                />
-              ) : (
-                <span className="workspace-group-label" title={group.workspace || group.displayLabel}>{group.displayLabel}</span>
-              )}
-              {group.threads.length ? (
-                <span className="workspace-group-count">{group.threads.length}</span>
-              ) : null}
-              <button
-                type="button"
-                onClick={() => void onNew(group.workspace || undefined, group.projectId || undefined)}
-                title={`New thread in ${group.displayLabel}`}
-                aria-label={`New thread in ${group.displayLabel}`}
-              >
-                <Plus size={15} strokeWidth={1.7} />
-              </button>
-              {/* Unfiled is not a project: nothing to rename, nothing to remove. */}
-              {group.projectId ? (
-                <button
-                  type="button"
-                  className="workspace-group-menu-button"
-                  onClick={(event) => {
-                    const rect = event.currentTarget.getBoundingClientRect();
-                    setGroupMenu({ projectId: group.projectId, x: rect.left, y: rect.bottom + 4 });
-                  }}
-                  title={`Rename or remove ${group.displayLabel}`}
-                  aria-label={`Project actions for ${group.displayLabel}`}
-                >
-                  <Ellipsis size={15} strokeWidth={1.7} />
-                </button>
-              ) : null}
+        {projectsSupported && threadView !== "archived" ? (
+          <>
+            <div className="sidebar-section-title">
+              <span>项目</span>
+              <button type="button" onClick={() => void addProject()} title="Add project" aria-label="Add project"><Plus size={13} /></button>
             </div>
 
-            <div className="workspace-thread-list">
-              {group.threads.map((thread) => {
-                const active = thread.id === activeId;
-                const running = threadIsBusy(thread);
-                const pinned = pinnedIds.has(thread.id);
-                const unread = unreadIds.has(thread.id);
-                const busy = busyThreadId === thread.id;
-                const time = relativeTime(thread.updatedAt);
-                const renaming = renamingId === thread.id;
-
-                return (
-                  <div
-                    key={thread.id}
-                    className={`compact-thread-row ${active ? "active" : ""} ${pinned ? "pinned" : ""} ${unread ? "unread" : ""} ${renaming ? "renaming" : ""}`}
-                    onContextMenu={(event) => {
-                      event.preventDefault();
-                      openContextMenu(thread, event.clientX, event.clientY);
-                    }}
-                  >
-                    {renaming ? (
-                      <div className="compact-thread-main rename-main">
-                        <span className={`compact-thread-dot ${running ? "running" : unread ? "unread" : ""}`} aria-hidden="true" />
-                        <input
-                          ref={renameRef}
-                          className="compact-thread-rename"
-                          value={renameValue}
-                          maxLength={120}
-                          onChange={(event) => setRenameValue(event.target.value)}
-                          onBlur={() => void commitRename(thread)}
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter") {
-                              event.preventDefault();
-                              event.currentTarget.blur();
-                            } else if (event.key === "Escape") {
-                              event.preventDefault();
-                              setRenamingId(null);
-                            }
-                          }}
-                          aria-label="Rename conversation"
-                        />
-                      </div>
+            <div className="project-list">
+              {projectSections.map(({ project, threads: projectThreads }) => (
+                <section className={`workspace-group project-group ${projectThreads.length ? "" : "is-empty"}`} key={project.id}>
+                  <div className="project-group-row">
+                    {renamingProjectId === project.id ? (
+                      <input
+                        className="workspace-group-rename project-rename-input"
+                        autoFocus
+                        value={projectRenameValue}
+                        maxLength={60}
+                        onChange={(event) => setProjectRenameValue(event.target.value)}
+                        onBlur={() => void commitProjectRename()}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            event.currentTarget.blur();
+                          } else if (event.key === "Escape") {
+                            setRenamingProjectId("");
+                          }
+                        }}
+                      />
                     ) : (
                       <button
-                        className="compact-thread-main"
-                        onClick={() => void openThread(thread)}
                         type="button"
-                        title={`${thread.title || "New conversation"}${time ? ` · ${time}` : ""}${pinned ? " · pinned" : ""}`}
-                        aria-current={active ? "page" : undefined}
+                        className="project-group-main"
+                        onClick={() => void onNew(project.root || undefined, project.id)}
+                        title={`${project.name} · ${project.root}`}
                       >
-                        <span className={`compact-thread-dot ${running ? "running" : unread ? "unread" : ""}`} aria-hidden="true" />
-                        <span className="compact-thread-title">{thread.title || "New conversation"}</span>
-                        {running ? <span className="sr-only">Running</span> : null}
-                        {unread ? <span className="sr-only">Unread</span> : null}
+                        <Folder size={16} strokeWidth={1.75} />
+                        <span>{project.name}</span>
+                        <small>{projectThreads.length || project.threadCount || ""}</small>
                       </button>
                     )}
 
-                    <div className="thread-quick-actions" aria-label="Conversation quick actions">
-                      <button
-                        type="button"
-                        className={pinned ? "is-active" : ""}
-                        onClick={() => togglePinned(thread.id)}
-                        title={pinned ? "Unpin" : "Pin"}
-                        aria-label={pinned ? "Unpin conversation" : "Pin conversation"}
-                        disabled={busy}
-                      >
-                        {pinned ? <PinOff size={13} strokeWidth={1.8} /> : <Pin size={13} strokeWidth={1.8} />}
+                    <div className="project-group-actions" aria-label="Project actions">
+                      <button type="button" onClick={() => void onNew(project.root || undefined, project.id)} title={`New conversation in ${project.name}`} aria-label={`New conversation in ${project.name}`}>
+                        <Plus size={14} strokeWidth={1.8} />
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => void archiveThread(thread)}
-                        title={thread.archived ? "Restore" : "Archive"}
-                        aria-label={thread.archived ? "Restore conversation" : "Archive conversation"}
-                        disabled={busy || running}
-                      >
-                        {thread.archived ? <ArchiveRestore size={13} strokeWidth={1.8} /> : <Archive size={13} strokeWidth={1.8} />}
+                      <button type="button" onClick={() => beginProjectRename(project.id)} title={`Rename ${project.name}`} aria-label={`Rename ${project.name}`}>
+                        <Pencil size={13.5} strokeWidth={1.8} />
                       </button>
-                      <button
-                        type="button"
-                        onClick={(event) => {
-                          const rect = event.currentTarget.getBoundingClientRect();
-                          openContextMenu(thread, rect.right + 7, rect.top - 5);
-                        }}
-                        title="More actions"
-                        aria-label="More conversation actions"
-                        disabled={busy}
-                      >
-                        <Ellipsis size={14} strokeWidth={1.9} />
+                      <button type="button" className="danger" onClick={() => void confirmRemoveProject(project.id)} title={`Remove ${project.name}`} aria-label={`Remove ${project.name}`}>
+                        <Trash2 size={13.5} strokeWidth={1.8} />
                       </button>
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          </section>
-        ))}
 
-        {!groups.length ? (
+                  {projectThreads.length ? (
+                    <div className="workspace-thread-list project-thread-list">
+                      {projectThreads.map(renderThreadRow)}
+                    </div>
+                  ) : null}
+                </section>
+              ))}
+            </div>
+
+            <div className="sidebar-section-title recent-title">
+              <span>最近</span>
+            </div>
+            <div className="workspace-thread-list recent-thread-list">
+              {normalThreads.map(renderThreadRow)}
+            </div>
+          </>
+        ) : null}
+
+        {(!projectsSupported || threadView === "archived") ? (
+          <>
+            {legacyWorkspaceGroups.map((group) => (
+              <section className={`workspace-group ${group.threads.length ? "" : "is-empty"}`} key={group.key}>
+                <div className="workspace-group-header">
+                  <span className="workspace-group-label" title={group.workspace || group.displayLabel}>{group.displayLabel}</span>
+                  {group.threads.length ? <span className="workspace-group-count">{group.threads.length}</span> : null}
+                  {threadView !== "archived" ? (
+                    <button
+                      type="button"
+                      onClick={() => void onNew(group.workspace || undefined)}
+                      title={`New thread in ${group.displayLabel}`}
+                      aria-label={`New thread in ${group.displayLabel}`}
+                    >
+                      <Plus size={15} strokeWidth={1.7} />
+                    </button>
+                  ) : null}
+                </div>
+                <div className="workspace-thread-list">
+                  {group.threads.map(renderThreadRow)}
+                </div>
+              </section>
+            ))}
+          </>
+        ) : null}
+
+        {projectsSupported && threadView !== "archived" && !projectSections.length && !normalThreads.length ? (
+          <div className="compact-sidebar-empty">
+            <span>{query ? "No matching conversations" : "No conversations yet"}</span>
+            <button type="button" onClick={query ? () => setQuery("") : () => void onNew()}>
+              {query ? "Clear search" : "New conversation"}
+            </button>
+          </div>
+        ) : null}
+
+        {(!projectsSupported || threadView === "archived") && !legacyWorkspaceGroups.length ? (
           <div className="compact-sidebar-empty">
             <span>{query ? "No matching conversations" : threadView === "archived" ? "Archive is empty" : "No conversations yet"}</span>
             <button
               type="button"
               onClick={query ? () => setQuery("") : threadView === "archived" ? () => void onViewChange("active") : () => void onNew()}
             >
-              {query ? "Clear search" : threadView === "archived" ? "Back to conversations" : "New thread"}
+              {query ? "Clear search" : threadView === "archived" ? "Back to conversations" : "New conversation"}
             </button>
           </div>
         ) : null}
