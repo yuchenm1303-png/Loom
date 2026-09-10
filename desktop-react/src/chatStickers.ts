@@ -8,8 +8,9 @@ export type ChatStickerSegment =
   | { kind: "text"; text: string }
   | { kind: "sticker"; asset: ChatStickerAsset };
 
-// Keep this aligned with the deployed AI Ledger endpoint in ai-ledger/config.js.
-const CHAT_STICKER_ASSET_BASE_URL = "https://ai-ledger-parser.yuchenm1303.workers.dev/chat-stickers/v1";
+// AI Ledger's current backend is the Alibaba Cloud FC custom runtime. Keep the
+// asset path aligned with its /chat-stickers/v1/{assetKey}.webp route.
+const CHAT_STICKER_ASSET_BASE_URL = "https://fc-9f3e1a2b.cn-hangzhou.fc.aliyuncs.com/chat-stickers/v1";
 const assetUrl = (name: string) => `${CHAT_STICKER_ASSET_BASE_URL}/${encodeURIComponent(name)}.webp`;
 
 export const CHAT_STICKER_ASSETS: Record<string, ChatStickerAsset> = Object.freeze({
@@ -34,10 +35,26 @@ export const CHAT_STICKER_ASSETS: Record<string, ChatStickerAsset> = Object.free
   reject_no: { key: "reject_no", alt: "明确否定", url: assetUrl("reject_no") },
 });
 
-// The current protocol closes with ]]. A few providers occasionally truncate the
-// final character at an output boundary, so accept one or two closing brackets.
-// This is protocol recovery only; it does not introduce compact aliases.
-const INLINE_STICKER_MARKER_RE = /\[\[AI_LEDGER_INLINE_STICKER:([a-z0-9_]{2,48})\]\]?/gi;
+const INLINE_STICKER_CONTROL_PREFIX = "[[AI_LEDGER_INLINE_STICKER:";
+
+// Rendering is the final safety net. Accept complete markers and provider-
+// truncated variants with zero, one, or two closing brackets. Unknown keys are
+// still control data and are dropped rather than rendered as ordinary text.
+const INLINE_STICKER_MARKER_RE = /\[\[AI_LEDGER_INLINE_STICKER:([a-z0-9_]{0,96})\]{0,2}/gi;
+
+function stripTrailingStickerControlFragment(text: string): string {
+  const value = String(text ?? "");
+  const upper = value.toUpperCase();
+  const prefix = INLINE_STICKER_CONTROL_PREFIX.toUpperCase();
+  const markerStart = upper.lastIndexOf("[[");
+  if (markerStart < 0) return value;
+
+  const tail = upper.slice(markerStart);
+  if (prefix.startsWith(tail) || tail.startsWith(prefix)) {
+    return value.slice(0, markerStart);
+  }
+  return value;
+}
 
 export function splitInlineStickerText(text: string): ChatStickerSegment[] {
   const value = String(text ?? "");
@@ -49,23 +66,32 @@ export function splitInlineStickerText(text: string): ChatStickerSegment[] {
   for (let match = INLINE_STICKER_MARKER_RE.exec(value); match; match = INLINE_STICKER_MARKER_RE.exec(value)) {
     matchedControlToken = true;
     if (match.index > cursor) {
-      segments.push({ kind: "text", text: value.slice(cursor, match.index) });
+      const prefix = stripTrailingStickerControlFragment(value.slice(cursor, match.index));
+      if (prefix) {
+        segments.push({ kind: "text", text: prefix });
+      }
     }
     const key = String(match[1] ?? "").toLowerCase();
     const asset = CHAT_STICKER_ASSETS[key];
     if (asset) {
       segments.push({ kind: "sticker", asset });
     }
-    // Protocol-looking tokens with an unknown asset key are control data, not
-    // user-facing copy. Drop them instead of leaking the raw marker into chat.
     cursor = match.index + match[0].length;
   }
 
   if (cursor < value.length) {
-    segments.push({ kind: "text", text: value.slice(cursor) });
+    const suffix = stripTrailingStickerControlFragment(value.slice(cursor));
+    if (suffix) {
+      segments.push({ kind: "text", text: suffix });
+    } else if (value.slice(cursor)) {
+      matchedControlToken = true;
+    }
   }
   if (!segments.length && value && !matchedControlToken) {
-    segments.push({ kind: "text", text: value });
+    const clean = stripTrailingStickerControlFragment(value);
+    if (clean) {
+      segments.push({ kind: "text", text: clean });
+    }
   }
   return segments;
 }
