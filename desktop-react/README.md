@@ -1,6 +1,6 @@
 # Loom React Desktop
 
-This is the replacement desktop shell for Loom. It is intentionally isolated from the legacy PySide6/Qt Widgets desktop while migration is in progress.
+This is Loom's desktop shell. It replaced the original PySide6/Qt Widgets client, which was removed once the migration finished; both spoke the same App Server JSON-RPC protocol, so nothing below the UI changed.
 
 ## Stack
 

@@ -109,7 +109,7 @@ This milestone turns the current Web UI live feedback into genuine streaming whe
 
 ## Milestone 2.3 — Native Windows Desktop shell
 
-Build a real local desktop client, initially with PySide6, that launches/connects to `loom-app-server` instead of embedding a second runtime.
+Build a real local desktop client that launches/connects to `loom-app-server` instead of embedding a second runtime. Shipped first on PySide6; that client was replaced by the Electron/React shell in `desktop-react/` and removed.
 
 First desktop surface:
 
