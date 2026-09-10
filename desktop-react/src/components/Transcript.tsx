@@ -6,10 +6,14 @@ import {
   ChevronRight,
   CircleAlert,
   Code2,
+  Copy,
   FileDiff,
+  Pencil,
   Search,
   Sparkles,
   Terminal,
+  ThumbsDown,
+  ThumbsUp,
   Wrench,
   Zap,
 } from "lucide-react";
@@ -17,6 +21,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { TranscriptItem } from "../types/loom";
 import { MarkdownMessage } from "./MarkdownMessage";
 import "./activity-flow.css";
+import "./message-actions.css";
 import "./task-flow-folding.css";
 import "./turn-flow.css";
 
@@ -38,6 +43,7 @@ type TurnBlock =
   | { kind: "loose"; item: TranscriptItem };
 
 type ReasoningState = "none" | "streaming" | "closed";
+type MessageFeedback = "up" | "down" | null;
 
 interface ReasoningSplit {
   reasoning: string;
@@ -483,8 +489,164 @@ function ActivityFlow({ items, keepOpen = false }: { items: TranscriptItem[]; ke
   );
 }
 
-function ItemView({ item, onApproval }: { item: TranscriptItem; onApproval(item: TranscriptItem, approved: boolean): void }) {
-  if (item.type === "user_message") return <div className="user-message">{item.text}</div>;
+function messageTimestamp(item: TranscriptItem): string {
+  const value = item.createdAt || item.updatedAt;
+  if (!value) return "";
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) return "";
+  return new Intl.DateTimeFormat(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(new Date(parsed));
+}
+
+async function copyMessageText(value: string): Promise<void> {
+  if (!value) return;
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(value);
+    return;
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = value;
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.select();
+  document.execCommand("copy");
+  textarea.remove();
+}
+
+function placeTextInComposer(value: string): boolean {
+  const text = value.trim();
+  if (!text) return false;
+  const textarea = document.querySelector<HTMLTextAreaElement>(".composer textarea");
+  if (!textarea || textarea.disabled) return false;
+
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")?.set;
+  if (setter) setter.call(textarea, text);
+  else textarea.value = text;
+  textarea.dispatchEvent(new Event("input", { bubbles: true }));
+  textarea.focus();
+  requestAnimationFrame(() => {
+    textarea.selectionStart = text.length;
+    textarea.selectionEnd = text.length;
+  });
+  return true;
+}
+
+function MessageToolbar({
+  kind,
+  item,
+  text,
+  editable = false,
+  disabled = false,
+}: {
+  kind: "user" | "assistant";
+  item: TranscriptItem;
+  text: string;
+  editable?: boolean;
+  disabled?: boolean;
+}) {
+  const [copied, setCopied] = useState(false);
+  const [feedback, setFeedback] = useState<MessageFeedback>(null);
+  const time = messageTimestamp(item);
+  const canCopy = Boolean(text.trim());
+
+  useEffect(() => {
+    if (!copied) return;
+    const timer = window.setTimeout(() => setCopied(false), 1200);
+    return () => window.clearTimeout(timer);
+  }, [copied]);
+
+  const copy = async () => {
+    if (!canCopy) return;
+    try {
+      await copyMessageText(text);
+      setCopied(true);
+    } catch {
+      setCopied(false);
+    }
+  };
+
+  const edit = () => {
+    if (!editable || disabled || !canCopy) return;
+    if (!placeTextInComposer(text)) void copyMessageText(text);
+  };
+
+  return (
+    <div className={`message-meta ${kind}-message-meta`}>
+      {time ? <span className="message-time">{time}</span> : null}
+      <span className="message-actions" aria-label={kind === "user" ? "User message actions" : "Assistant message actions"}>
+        <button
+          type="button"
+          className={`message-action-button ${copied ? "is-copied" : ""}`}
+          onClick={() => void copy()}
+          disabled={!canCopy}
+          title={copied ? "已复制" : "复制"}
+          aria-label={copied ? "已复制" : "复制消息"}
+        >
+          {copied ? <Check size={14} strokeWidth={2.1} /> : <Copy size={14} strokeWidth={1.75} />}
+        </button>
+
+        {kind === "user" ? (
+          <button
+            type="button"
+            className="message-action-button"
+            onClick={edit}
+            disabled={!editable || disabled || !canCopy}
+            title="放到输入框里编辑"
+            aria-label="编辑这条消息"
+          >
+            <Pencil size={14} strokeWidth={1.75} />
+          </button>
+        ) : (
+          <>
+            <button
+              type="button"
+              className={`message-action-button ${feedback === "up" ? "active" : ""}`}
+              onClick={() => setFeedback((current) => (current === "up" ? null : "up"))}
+              title="有帮助"
+              aria-label="标记回复有帮助"
+              aria-pressed={feedback === "up"}
+            >
+              <ThumbsUp size={14} strokeWidth={1.75} />
+            </button>
+            <button
+              type="button"
+              className={`message-action-button ${feedback === "down" ? "active" : ""}`}
+              onClick={() => setFeedback((current) => (current === "down" ? null : "down"))}
+              title="没帮助"
+              aria-label="标记回复没帮助"
+              aria-pressed={feedback === "down"}
+            >
+              <ThumbsDown size={14} strokeWidth={1.75} />
+            </button>
+          </>
+        )}
+      </span>
+    </div>
+  );
+}
+
+function ItemView({
+  item,
+  onApproval,
+  promptDisabled,
+}: {
+  item: TranscriptItem;
+  onApproval(item: TranscriptItem, approved: boolean): void;
+  promptDisabled?: boolean;
+}) {
+  if (item.type === "user_message") {
+    const text = String(item.text ?? "");
+    return (
+      <div className="message-shell user-message-shell" data-message-id={item.id}>
+        <div className="user-message">{text}</div>
+        <MessageToolbar kind="user" item={item} text={text} editable disabled={promptDisabled} />
+      </div>
+    );
+  }
 
   if (item.type === "assistant_message") {
     const parsed = splitReasoning(item.text ?? "");
@@ -495,16 +657,20 @@ function ItemView({ item, onApproval }: { item: TranscriptItem; onApproval(item:
 
     if (!parsed.reasoning && !parsed.answer.trim()) return null;
 
+    const answer = parsed.answer.trim();
     return (
-      <div className="assistant-message">
-        {parsed.reasoning ? (
-          <Disclosure label="Thought process">
-            <div className="reasoning-copy">
-              <MarkdownMessage content={parsed.reasoning} compact />
-            </div>
-          </Disclosure>
-        ) : null}
-        {parsed.answer.trim() ? <MarkdownMessage content={parsed.answer} /> : null}
+      <div className="message-shell assistant-message-shell" data-message-id={item.id}>
+        <div className="assistant-message">
+          {parsed.reasoning ? (
+            <Disclosure label="Thought process">
+              <div className="reasoning-copy">
+                <MarkdownMessage content={parsed.reasoning} compact />
+              </div>
+            </Disclosure>
+          ) : null}
+          {answer ? <MarkdownMessage content={parsed.answer} /> : null}
+        </div>
+        <MessageToolbar kind="assistant" item={item} text={answer || parsed.reasoning} />
       </div>
     );
   }
@@ -534,10 +700,12 @@ function Sequence({
   items,
   onApproval,
   keepActivityOpen = false,
+  promptDisabled,
 }: {
   items: TranscriptItem[];
   onApproval(item: TranscriptItem, approved: boolean): void;
   keepActivityOpen?: boolean;
+  promptDisabled?: boolean;
 }) {
   const blocks = groupTranscript(items);
   return (
@@ -549,7 +717,7 @@ function Sequence({
           </div>
         ) : (
           <div className={`transcript-entry entry-${block.item.type}`} key={block.item.id}>
-            <ItemView item={block.item} onApproval={onApproval} />
+            <ItemView item={block.item} onApproval={onApproval} promptDisabled={promptDisabled} />
           </div>
         )
       ))}
@@ -608,6 +776,7 @@ function TurnProcess({
   open,
   onOpenChange,
   onApproval,
+  promptDisabled,
 }: {
   items: TranscriptItem[];
   allItems: TranscriptItem[];
@@ -615,6 +784,7 @@ function TurnProcess({
   open: boolean;
   onOpenChange(open: boolean): void;
   onApproval(item: TranscriptItem, approved: boolean): void;
+  promptDisabled?: boolean;
 }) {
   const summary = activitySummary(items);
   const intermediateMessages = items.filter((item) => item.type === "assistant_message").length;
@@ -641,7 +811,7 @@ function TurnProcess({
       <div className="turn-process-grid">
         <div className="turn-process-inner">
           <div className="turn-process-content">
-            <Sequence items={items} onApproval={onApproval} keepActivityOpen />
+            <Sequence items={items} onApproval={onApproval} keepActivityOpen promptDisabled={promptDisabled} />
           </div>
         </div>
       </div>
@@ -709,11 +879,13 @@ function TurnView({
   items,
   active,
   onApproval,
+  promptDisabled,
 }: {
   turnId: string;
   items: TranscriptItem[];
   active: boolean;
   onApproval(item: TranscriptItem, approved: boolean): void;
+  promptDisabled?: boolean;
 }) {
   const userItems = items.filter((item) => item.type === "user_message");
   const finalAssistant = active ? null : finalAssistantForTurn(items);
@@ -750,7 +922,7 @@ function TurnView({
     <section className={`turn-block ${active ? "is-active" : "is-complete"}`} data-turn-id={turnId}>
       {userItems.map((item) => (
         <div className="transcript-entry entry-user_message" key={item.id}>
-          <ItemView item={item} onApproval={onApproval} />
+          <ItemView item={item} onApproval={onApproval} promptDisabled={promptDisabled} />
         </div>
       ))}
 
@@ -762,18 +934,19 @@ function TurnView({
           open={processOpen}
           onOpenChange={setProcessOpen}
           onApproval={onApproval}
+          promptDisabled={promptDisabled}
         />
       ) : null}
 
       {!active && finalAssistant ? (
         <div className="transcript-entry entry-assistant_message turn-final-answer" key={finalAssistant.id}>
-          <ItemView item={finalAssistant} onApproval={onApproval} />
+          <ItemView item={finalAssistant} onApproval={onApproval} promptDisabled={promptDisabled} />
         </div>
       ) : null}
 
       {!active ? errorItems.map((item) => (
         <div className="transcript-entry entry-error" key={item.id}>
-          <ItemView item={item} onApproval={onApproval} />
+          <ItemView item={item} onApproval={onApproval} promptDisabled={promptDisabled} />
         </div>
       )) : null}
 
@@ -859,10 +1032,11 @@ export function Transcript({ items, running, currentTurnId, promptDisabled, onPr
               items={block.items}
               active={Boolean(running && block.id === activeTurnId)}
               onApproval={onApproval}
+              promptDisabled={promptDisabled}
             />
           ) : (
             <div className={`transcript-entry entry-${block.item.type}`} key={block.item.id || `loose-${index}`}>
-              <ItemView item={block.item} onApproval={onApproval} />
+              <ItemView item={block.item} onApproval={onApproval} promptDisabled={promptDisabled} />
             </div>
           )
         ))}
