@@ -18,6 +18,10 @@ venv/
 # where any new file would have been silently untracked.
 /agent_runtime/
 
+# Local one-time Smirel Relay provisioning files contain customer credentials.
+/loom-relay-credential.json
+/relay-credential.json
+
 # Original AI Ledger sticker assets are materialized and verified at dev/build
 # time, then copied into Vite's dist output. Do not commit generated binaries.
 /desktop-react/.cache/chat-stickers/
