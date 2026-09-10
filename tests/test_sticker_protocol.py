@@ -15,7 +15,10 @@ from app.agent_runtime.stickers import (
     extract_keys,
     finalize_reply,
 )
-from app.agent_runtime.streaming_runtime import StreamingAgentRuntime
+from app.agent_runtime.streaming_runtime import (
+    StreamingAgentRuntime,
+    _strip_incomplete_sticker_control_fragments,
+)
 
 
 def test_catalog_keeps_all_current_ai_ledger_assets() -> None:
@@ -100,6 +103,31 @@ def test_stream_sanitizer_buffers_marker_across_provider_chunks() -> None:
     visible += sanitizer.finish()
     assert "[[AI_LEDGER_INLI" not in visible
     assert len(extract_keys(sanitizer.value())) <= 4
+
+
+def test_stream_sanitizer_drops_truncated_marker_at_finish() -> None:
+    sanitizer = StickerStreamSanitizer(
+        StickerPreferences(frequency=100, intensity=0, max_per_reply=4, repeat_count=1),
+        StickerContext(user_text="继续", streaming=True),
+    )
+    visible = sanitizer.push("已经完成。[[AI_LEDGER_INLINE_STICKER:soft_smile]")
+    visible += sanitizer.finish()
+    assert "[[AI_LEDGER_INLINE_STICKER" not in visible
+    assert "[[AI_LEDGER_INLINE_STICKER" not in sanitizer.value()
+
+
+def test_nonstream_truncated_control_marker_is_removed_before_persisting() -> None:
+    assert _strip_incomplete_sticker_control_fragments(
+        "已经完成。[[AI_LEDGER_INLINE_STICKER:soft_smile]"
+    ) == "已经完成。"
+    assert _strip_incomplete_sticker_control_fragments(
+        "已经完成。[[AI_LEDGER_INLINE_STICKER:soft_smile"
+    ) == "已经完成。"
+    assert _strip_incomplete_sticker_control_fragments(
+        "已经完成。[[AI_LEDGER_INLI"
+    ) == "已经完成。"
+    complete = "已经完成。[[AI_LEDGER_INLINE_STICKER:soft_smile]]"
+    assert _strip_incomplete_sticker_control_fragments(complete) == complete
 
 
 def test_nonstream_sidecar_is_removed_before_user_visible_text() -> None:

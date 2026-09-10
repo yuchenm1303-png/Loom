@@ -1,0 +1,93 @@
+.thinking-symbol {
+  position: relative;
+  width: 15px;
+  height: 15px;
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  color: transparent;
+  filter: drop-shadow(0 0 6px rgba(150, 134, 255, .14));
+}
+
+.thinking-symbol > svg {
+  display: none !important;
+}
+
+.thinking-symbol::before {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 50% 0%, #eeeaff 0 1.2px, transparent 1.55px),
+    conic-gradient(
+      from 18deg,
+      rgba(205, 195, 255, .9),
+      rgba(139, 124, 246, .16) 24%,
+      rgba(139, 124, 246, .08) 48%,
+      rgba(174, 158, 255, .44) 72%,
+      rgba(205, 195, 255, .9)
+    );
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 1.2px), #000 0);
+  mask: radial-gradient(farthest-side, transparent calc(100% - 1.2px), #000 0);
+  opacity: .9;
+  animation: inline-thinking-orbit-spin 1.75s linear infinite;
+}
+
+.thinking-symbol::after {
+  content: "";
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: linear-gradient(180deg, #d7ceff, #8f80ea);
+  box-shadow:
+    0 0 0 2px rgba(139, 124, 246, .07),
+    0 0 7px rgba(139, 124, 246, .3);
+  animation: inline-thinking-core-pulse 1.9s ease-in-out infinite;
+}
+
+.inline-thinking .thinking-symbol,
+.live-reasoning-trigger .thinking-symbol {
+  transform: translateY(.25px);
+}
+
+@keyframes inline-thinking-orbit-spin {
+  0% {
+    transform: rotate(0deg);
+    opacity: .68;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    transform: rotate(360deg);
+    opacity: .68;
+  }
+}
+
+@keyframes inline-thinking-core-pulse {
+  0%, 100% {
+    transform: scale(.8);
+    opacity: .68;
+  }
+  50% {
+    transform: scale(1.12);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .thinking-symbol::before,
+  .thinking-symbol::after {
+    animation: none !important;
+  }
+
+  .thinking-symbol::before {
+    opacity: .78;
+  }
+
+  .thinking-symbol::after {
+    opacity: .92;
+  }
+}

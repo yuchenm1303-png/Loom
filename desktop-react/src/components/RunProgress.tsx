@@ -1,4 +1,3 @@
-import { LoaderCircle } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { TranscriptItem } from "../types/loom";
 import "./run-progress.css";
@@ -69,6 +68,15 @@ function formatTokens(tokens?: number): string | null {
   return `${tokens} tokens`;
 }
 
+function ThinkingOrb() {
+  return (
+    <span className="run-progress-thinking" aria-hidden="true">
+      <span className="run-progress-thinking-orbit"><i /></span>
+      <span className="run-progress-thinking-core" />
+    </span>
+  );
+}
+
 export function RunProgress({ items, startedAt, threadStatus, currentTurnId, totalTokens, placement }: RunProgressProps) {
   const [now, setNow] = useState(() => Date.now());
   const runItems = useMemo(() => currentRunItems(items, currentTurnId), [currentTurnId, items]);
@@ -87,7 +95,7 @@ export function RunProgress({ items, startedAt, threadStatus, currentTurnId, tot
     <div className={`run-progress-frame ${placement}`} role="status" aria-live="polite">
       <div className="run-progress-content">
         <div className="run-progress-copy">
-          <span className="run-progress-spinner" aria-hidden="true"><LoaderCircle size={14} /></span>
+          <ThinkingOrb />
           <span className="run-progress-time">{formatElapsed(elapsedSeconds)}</span>
           {tokenLabel ? <><span className="run-progress-separator">·</span><span>{tokenLabel}</span></> : null}
           <span className="run-progress-separator">·</span>

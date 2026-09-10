@@ -14,10 +14,9 @@ import {
   Zap,
 } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { splitInlineStickerText } from "../chatStickers";
 import type { TranscriptItem } from "../types/loom";
+import { MarkdownMessage } from "./MarkdownMessage";
 import "./activity-flow.css";
-import "./stickers.css";
 
 interface TranscriptProps {
   items: TranscriptItem[];
@@ -106,29 +105,6 @@ function splitReasoning(text: string): ReasoningSplit {
   return { reasoning: "", answer: raw, state: "none" };
 }
 
-function AssistantCopy({ text }: { text: string }) {
-  const segments = splitInlineStickerText(text);
-  const hasStickers = segments.some((segment) => segment.kind === "sticker");
-  return (
-    <div className={`assistant-copy ${hasStickers ? "has-inline-stickers" : ""}`}>
-      {segments.map((segment, index) => segment.kind === "text" ? (
-        <span key={`text-${index}`}>{segment.text}</span>
-      ) : (
-        <img
-          key={`sticker-${segment.asset.key}-${index}`}
-          className="assistant-inline-sticker"
-          src={segment.asset.url}
-          alt={segment.asset.alt}
-          title={segment.asset.alt}
-          width={96}
-          height={96}
-          draggable={false}
-        />
-      ))}
-    </div>
-  );
-}
-
 function Disclosure({ label, children, openByDefault = false }: { label: string; children: ReactNode; openByDefault?: boolean }) {
   const [open, setOpen] = useState(openByDefault);
   return (
@@ -165,7 +141,9 @@ function LiveReasoning({ reasoning }: { reasoning: string }) {
       {hasReasoning ? (
         <div className="live-reasoning-grid">
           <div className="live-reasoning-inner">
-            <div className="live-reasoning-copy">{reasoning}</div>
+            <div className="live-reasoning-copy">
+              <MarkdownMessage content={reasoning} compact />
+            </div>
           </div>
         </div>
       ) : null}
@@ -226,7 +204,7 @@ function itemStatus(item: TranscriptItem): string {
 }
 
 function statusLabel(status: string): string {
-  if (status === "started") return "Running";
+  if (status === "started" || status === "running") return "Running";
   if (status === "completed") return "Completed";
   if (status === "changed") return "Changed";
   if (status === "failed") return "Failed";
@@ -313,12 +291,12 @@ function ActivityRow({ item }: { item: TranscriptItem }) {
         <span className="task-flow-row-main">
           {item.type === "process" ? (
             <>
-              <span className="task-flow-verb">Ran</span>
+              <span className="task-flow-verb">已运行</span>
               <span className="task-flow-primary code">{processCommand(item)}</span>
             </>
           ) : item.type === "file_edit" ? (
             <>
-              <span className="task-flow-verb">Edited</span>
+              <span className="task-flow-verb">已编辑</span>
               <span className="task-flow-primary task-flow-path">{fileLabel(item)}</span>
               {stats && (stats.added > 0 || stats.removed > 0) ? (
                 <span className="task-flow-diffstat">
@@ -329,7 +307,7 @@ function ActivityRow({ item }: { item: TranscriptItem }) {
             </>
           ) : (
             <>
-              <span className="task-flow-verb">Used</span>
+              <span className="task-flow-verb">已使用</span>
               <span className="task-flow-primary">{item.toolName || "Tool"}</span>
             </>
           )}
@@ -350,11 +328,85 @@ function ActivityRow({ item }: { item: TranscriptItem }) {
   );
 }
 
+function isFailureStatus(status: string): boolean {
+  return status === "failed" || status === "denied" || status === "cancelled" || status === "interrupted";
+}
+
+function isRedundantToolWrapper(item: TranscriptItem, siblings: TranscriptItem[]): boolean {
+  if (item.type !== "tool_call") return false;
+  if (isFailureStatus(itemStatus(item))) return false;
+
+  const name = String(item.toolName ?? "").trim().toLowerCase();
+  const hasProcess = siblings.some((candidate) => candidate.type === "process");
+  const hasFileEdit = siblings.some((candidate) => candidate.type === "file_edit");
+
+  if (hasProcess && /^(exec|execute|shell|run_command|run-command|command|powershell|bash|cmd)$/.test(name)) {
+    return true;
+  }
+
+  if (
+    hasFileEdit &&
+    /^(write_workspace_text|write_file|write-file|edit_file|edit-file|apply_patch|apply-patch|patch_file|patch-file|replace_text|replace-text)$/.test(name)
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+function compactActivityItems(items: TranscriptItem[]): TranscriptItem[] {
+  const compact = items.filter((item) => !isRedundantToolWrapper(item, items));
+  return compact.length ? compact : items;
+}
+
+function activityGroupTitle(items: TranscriptItem[]): string {
+  const hasProcess = items.some((item) => item.type === "process");
+  const hasEdit = items.some((item) => item.type === "file_edit");
+  const hasTool = items.some((item) => item.type === "tool_call");
+
+  if (hasEdit && hasProcess && hasTool) return "编辑了文件、运行了命令并使用了工具";
+  if (hasEdit && hasProcess) return "编辑了文件并运行了命令";
+  if (hasProcess && hasTool) return "运行了命令并使用了工具";
+  if (hasEdit && hasTool) return "编辑了文件并使用了工具";
+  if (hasProcess) return "运行了命令";
+  if (hasEdit) return "编辑了文件";
+  return "使用了工具";
+}
+
+function ActivityGroupIcon({ items }: { items: TranscriptItem[] }) {
+  const hasProcess = items.some((item) => item.type === "process");
+  const hasEdit = items.some((item) => item.type === "file_edit");
+  if (hasProcess) return <Terminal size={14} />;
+  if (hasEdit) return <FileDiff size={14} />;
+  return <Wrench size={14} />;
+}
+
 function ActivityFlow({ items }: { items: TranscriptItem[] }) {
+  const compactItems = compactActivityItems(items);
+  const [open, setOpen] = useState(true);
+  const running = compactItems.some((item) => itemStatus(item) === "running" || itemStatus(item) === "started");
+  const failed = compactItems.some((item) => isFailureStatus(itemStatus(item)));
+
   return (
-    <section className="task-flow" aria-label="Task activity">
-      <div className="task-flow-list">
-        {items.map((item) => <ActivityRow key={item.id} item={item} />)}
+    <section className={`task-flow task-flow-group ${open ? "is-open" : ""} ${running ? "is-running" : ""}`} aria-label="Task activity">
+      <button
+        type="button"
+        className="task-flow-group-header"
+        onClick={() => setOpen((value) => !value)}
+        aria-expanded={open}
+      >
+        <span className="task-flow-group-icon" aria-hidden="true"><ActivityGroupIcon items={compactItems} /></span>
+        <span className="task-flow-group-title">{activityGroupTitle(compactItems)}</span>
+        {failed ? <span className="task-flow-group-failed">部分失败</span> : null}
+        <ChevronRight size={13} className="task-flow-group-chevron" aria-hidden="true" />
+      </button>
+
+      <div className="task-flow-group-grid">
+        <div className="task-flow-group-inner">
+          <div className="task-flow-list">
+            {compactItems.map((item) => <ActivityRow key={item.id} item={item} />)}
+          </div>
+        </div>
       </div>
     </section>
   );
@@ -362,6 +414,7 @@ function ActivityFlow({ items }: { items: TranscriptItem[] }) {
 
 function ItemView({ item, onApproval }: { item: TranscriptItem; onApproval(item: TranscriptItem, approved: boolean): void }) {
   if (item.type === "user_message") return <div className="user-message">{item.text}</div>;
+
   if (item.type === "assistant_message") {
     const parsed = splitReasoning(item.text ?? "");
 
@@ -373,11 +426,18 @@ function ItemView({ item, onApproval }: { item: TranscriptItem; onApproval(item:
 
     return (
       <div className="assistant-message">
-        {parsed.reasoning ? <Disclosure label="Thought process"><div className="reasoning-copy">{parsed.reasoning}</div></Disclosure> : null}
-        {parsed.answer.trim() ? <AssistantCopy text={parsed.answer} /> : null}
+        {parsed.reasoning ? (
+          <Disclosure label="Thought process">
+            <div className="reasoning-copy">
+              <MarkdownMessage content={parsed.reasoning} compact />
+            </div>
+          </Disclosure>
+        ) : null}
+        {parsed.answer.trim() ? <MarkdownMessage content={parsed.answer} /> : null}
       </div>
     );
   }
+
   if (item.type === "approval") return (
     <div className="approval-card">
       <div className="approval-icon"><CircleAlert size={16} /></div>
@@ -391,7 +451,11 @@ function ItemView({ item, onApproval }: { item: TranscriptItem; onApproval(item:
       </div>
     </div>
   );
-  if (item.type === "error") return <div className="error-row"><span className="error-icon"><CircleAlert size={14} /></span><span>{item.error || "Turn failed"}</span></div>;
+
+  if (item.type === "error") {
+    return <div className="error-row"><span className="error-icon"><CircleAlert size={14} /></span><span>{item.error || "Turn failed"}</span></div>;
+  }
+
   return null;
 }
 
@@ -436,6 +500,7 @@ export function Transcript({ items, running, promptDisabled, onPrompt, onApprova
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const previousCount = useRef(0);
   const blocks = groupTranscript(items);
+
   let lastUserIndex = -1;
   for (let index = items.length - 1; index >= 0; index -= 1) {
     if (items[index].type === "user_message") {
@@ -443,6 +508,7 @@ export function Transcript({ items, running, promptDisabled, onPrompt, onApprova
       break;
     }
   }
+
   const currentTurnItems = lastUserIndex >= 0 ? items.slice(lastUserIndex + 1) : items;
   const latestAssistant = [...currentTurnItems].reverse().find((item) => item.type === "assistant_message");
   const latestAssistantState = latestAssistant ? splitReasoning(latestAssistant.text ?? "") : null;
