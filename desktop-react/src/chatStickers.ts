@@ -8,7 +8,7 @@ export type ChatStickerSegment =
   | { kind: "text"; text: string }
   | { kind: "sticker"; asset: ChatStickerAsset };
 
-const stickerUrl = (name: string) => new URL(`./assets/chat-stickers/${name}.webp`, import.meta.url).href;
+const stickerUrl = (name: string) => new URL(`./assets/chat-stickers/generated/${name}.webp`, import.meta.url).href;
 
 export const CHAT_STICKER_ASSETS: Record<string, ChatStickerAsset> = Object.freeze({
   joy_burst: { key: "joy_burst", alt: "开心庆祝", url: stickerUrl("joy_burst") },
