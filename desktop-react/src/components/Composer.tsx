@@ -15,6 +15,7 @@ import { FormEvent, KeyboardEvent as ReactKeyboardEvent, useEffect, useMemo, use
 import type { AddModelInput, ModelSnapshot } from "../types/loom";
 import { ModelPanel } from "./ModelPanel";
 import "./composer.css";
+import "./composer-stability.css";
 
 interface ComposerProps {
   disabled?: boolean;
