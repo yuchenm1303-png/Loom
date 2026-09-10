@@ -43,9 +43,11 @@ export function splitInlineStickerText(text: string): ChatStickerSegment[] {
   const value = String(text ?? "");
   const segments: ChatStickerSegment[] = [];
   let cursor = 0;
+  let matchedControlToken = false;
   INLINE_STICKER_MARKER_RE.lastIndex = 0;
 
   for (let match = INLINE_STICKER_MARKER_RE.exec(value); match; match = INLINE_STICKER_MARKER_RE.exec(value)) {
+    matchedControlToken = true;
     if (match.index > cursor) {
       segments.push({ kind: "text", text: value.slice(cursor, match.index) });
     }
@@ -62,7 +64,7 @@ export function splitInlineStickerText(text: string): ChatStickerSegment[] {
   if (cursor < value.length) {
     segments.push({ kind: "text", text: value.slice(cursor) });
   }
-  if (!segments.length && value) {
+  if (!segments.length && value && !matchedControlToken) {
     segments.push({ kind: "text", text: value });
   }
   return segments;
