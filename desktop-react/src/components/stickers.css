@@ -1,9 +1,11 @@
-/* Inline stickers intentionally keep their 35px visual size and -5px offset.
- * The vertical margin only controls line-box participation, so sticker
- * placement/triggering stays unchanged while surrounding text keeps a stable
- * inherited line height. */
+/* Inline stickers keep their 35px visual size, but reserve a tiny amount of
+ * real line-box clearance so transparent/painted pixels never crowd the line
+ * above. The visual lift is intentionally mild: enough to align with text
+ * without letting a 35px asset bleed into the previous line. */
 .markdown-body img.assistant-inline-sticker {
   --inline-sticker-size: 35px;
+  --inline-sticker-offset-y: -2px;
+  --inline-sticker-clearance: 1px;
 
   display: inline-block;
   width: var(--inline-sticker-size);
@@ -12,10 +14,10 @@
   max-height: var(--inline-sticker-size);
   object-fit: contain;
   vertical-align: middle;
-  transform: translateY(-5px);
+  transform: translateY(var(--inline-sticker-offset-y));
 
   margin-inline: 0;
-  margin-block: calc((1lh - var(--inline-sticker-size)) / 2);
+  margin-block: calc((1lh - var(--inline-sticker-size)) / 2 + var(--inline-sticker-clearance));
 
   padding: 0;
   border: 0;
