@@ -33,11 +33,34 @@ interface RuntimeStatus {
 interface ModelRestartResult {
   initialization: unknown;
   models: ReturnType<DesktopModelManager["snapshot"]>;
+  hotSwitch?: boolean;
 }
 
 interface ReasoningUpdateResult {
   runtime: unknown;
   models: ReturnType<DesktopModelManager["snapshot"]>;
+}
+
+function initializationFromRuntime(payload: unknown): unknown {
+  if (payload && typeof payload === "object" && "runtime" in payload) return payload;
+  return { runtime: payload };
+}
+
+function runtimeModelParams(spec: ModelLaunchSpec): Record<string, unknown> {
+  return {
+    provider: spec.provider,
+    baseUrl: spec.baseUrl,
+    model: spec.model,
+    apiKey: spec.apiKey,
+    vision: true,
+    reasoningKind: spec.reasoning?.kind ?? "",
+    reasoningValue: spec.reasoning?.value ?? "",
+  };
+}
+
+function missingHotSwitchMethod(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes("Method not found: runtime/set_model");
 }
 
 class LoomRpcProcess {
@@ -52,6 +75,10 @@ class LoomRpcProcess {
     private readonly notify: (payload: JsonRpcResponse) => void,
     private readonly models: DesktopModelManager,
   ) {}
+
+  get ready(): boolean {
+    return Boolean(this.child && this.initialized);
+  }
 
   async connect(): Promise<unknown> {
     if (this.child && this.initialized) return this.initializeResult;
@@ -93,6 +120,19 @@ class LoomRpcProcess {
     if (Array.isArray(status.activeThreadIds) && status.activeThreadIds.length > 0) {
       throw new Error("Finish or stop the current turn before changing model settings.");
     }
+  }
+
+  async setModel(spec: ModelLaunchSpec): Promise<unknown> {
+    if (!this.child || !this.initialized) return this.connect();
+    const runtime = await this.call("runtime/set_model", runtimeModelParams(spec));
+    this.initializeResult = initializationFromRuntime(runtime);
+    return this.initializeResult;
+  }
+
+  async currentInitialization(): Promise<unknown> {
+    if (!this.child || !this.initialized) return this.connect();
+    const runtime = await this.call("runtime/status", {});
+    return initializationFromRuntime(runtime);
   }
 
   async restart(): Promise<unknown> {
@@ -203,19 +243,29 @@ async function changeModel(
 ): Promise<ModelRestartResult> {
   await rpc.assertRestartSafe();
   const previous = modelManager.current ?? modelManager.ensureInitial();
-  apply();
+  const next = apply();
+  const hadRunningServer = rpc.ready;
   try {
-    const initialization = await rpc.restart();
+    const initialization = await rpc.setModel(next);
     if (options.persistSelection) modelManager.setActive(options.persistSelection);
-    return { initialization, models: modelManager.snapshot() };
+    return { initialization, models: modelManager.snapshot(), hotSwitch: hadRunningServer };
   } catch (error) {
     modelManager.restore(previous);
+    if (!missingHotSwitchMethod(error)) throw error;
+    modelManager.restore(next);
     try {
-      await rpc.restart();
-    } catch (rollbackError) {
-      console.error("Could not restore previous Loom model after failed switch", rollbackError);
+      const initialization = await rpc.restart();
+      if (options.persistSelection) modelManager.setActive(options.persistSelection);
+      return { initialization, models: modelManager.snapshot(), hotSwitch: false };
+    } catch (fallbackError) {
+      modelManager.restore(previous);
+      try {
+        await rpc.restart();
+      } catch (rollbackError) {
+        console.error("Could not restore previous Loom model after failed switch", rollbackError);
+      }
+      throw fallbackError;
     }
-    throw error;
   }
 }
 
@@ -228,23 +278,32 @@ async function deleteModel(selection: string): Promise<ModelRestartResult> {
   modelManager.delete(value);
 
   if (!deletesCurrent) {
-    const initialization = await rpc.connect();
-    return { initialization, models: modelManager.snapshot() };
+    const initialization = await rpc.currentInitialization();
+    return { initialization, models: modelManager.snapshot(), hotSwitch: true };
   }
 
+  const next = modelManager.ensureInitial();
   try {
-    const next = modelManager.ensureInitial();
-    const initialization = await rpc.restart();
+    const initialization = await rpc.setModel(next);
     modelManager.setActive(next.selection);
-    return { initialization, models: modelManager.snapshot() };
+    return { initialization, models: modelManager.snapshot(), hotSwitch: true };
   } catch (error) {
     modelManager.restore(previous);
+    if (!missingHotSwitchMethod(error)) throw error;
+    modelManager.restore(next);
     try {
-      await rpc.restart();
-    } catch (rollbackError) {
-      console.error("Could not restore previous Loom model after failed delete fallback", rollbackError);
+      const initialization = await rpc.restart();
+      modelManager.setActive(next.selection);
+      return { initialization, models: modelManager.snapshot(), hotSwitch: false };
+    } catch (fallbackError) {
+      modelManager.restore(previous);
+      try {
+        await rpc.restart();
+      } catch (rollbackError) {
+        console.error("Could not restore previous Loom model after failed delete fallback", rollbackError);
+      }
+      throw fallbackError;
     }
-    throw error;
   }
 }
 
