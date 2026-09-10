@@ -151,6 +151,41 @@ def _consume_provisioned_relay_key(
     return ""
 
 
+def _normalize_url(value: str) -> str:
+    return str(value or "").strip().rstrip("/")
+
+
+def _is_managed_relay_endpoint(value: str, environ: Mapping[str, str] | None = None) -> bool:
+    return _normalize_url(value) == _normalize_url(_managed_relay_base_url(environ))
+
+
+def _looks_like_managed_relay_connection(entry: StoredModel, environ: Mapping[str, str] | None = None) -> bool:
+    if not isinstance(entry, StoredModel):
+        return False
+    if _is_managed_relay_endpoint(entry.base_url, environ):
+        return True
+    return str(entry.model or "").strip().casefold() == CQU_DEFAULT_MODEL.casefold()
+
+
+def _promote_saved_relay_key(
+    store: ModelConfigStore,
+    environ: Mapping[str, str] | None = None,
+) -> str:
+    for entry in store.list_models():
+        if not _looks_like_managed_relay_connection(entry, environ):
+            continue
+        try:
+            api_key = store.secret_for(entry)
+        except Exception:
+            continue
+        api_key = str(api_key or "").strip()
+        if not api_key:
+            continue
+        _credential_set(_MANAGED_RELAY_CREDENTIAL_ALIAS, api_key)
+        return api_key
+    return ""
+
+
 def _managed_relay_key(
     store: ModelConfigStore,
     environ: Mapping[str, str] | None = None,
@@ -162,7 +197,17 @@ def _managed_relay_key(
     secret = str(_credential_get(_MANAGED_RELAY_CREDENTIAL_ALIAS) or "").strip()
     if secret:
         return secret
-    return _key_from_env(_MANAGED_RELAY_KEY_ENV, environ)
+    promoted = _promote_saved_relay_key(store, environ)
+    if promoted:
+        return promoted
+    env_key = _key_from_env(_MANAGED_RELAY_KEY_ENV, environ)
+    if env_key:
+        try:
+            _credential_set(_MANAGED_RELAY_CREDENTIAL_ALIAS, env_key)
+        except RuntimeError:
+            pass
+        return env_key
+    return ""
 
 
 def _managed_models_url(environ: Mapping[str, str] | None = None) -> str:
@@ -326,9 +371,14 @@ def _with_reasoning(profile: dict[str, Any], reasoning_store: ReasoningConfigSto
 
 def _managed_profiles(store: ModelConfigStore, environ: Mapping[str, str] | None = None) -> list[dict[str, Any]]:
     api_key = _managed_relay_key(store, environ, Path(__file__).resolve().parent)
-    model_ids = _fetch_managed_model_ids(api_key, environ) if api_key else []
-    if not model_ids:
-        model_ids = [MINIMAX_DEFAULT_MODEL, CQU_DEFAULT_MODEL]
+    if api_key:
+        model_ids = _fetch_managed_model_ids(api_key, environ)
+        if not model_ids:
+            model_ids = [MINIMAX_DEFAULT_MODEL, CQU_DEFAULT_MODEL]
+    elif _primary_minimax_key(environ):
+        model_ids = [MINIMAX_DEFAULT_MODEL]
+    else:
+        model_ids = [MINIMAX_DEFAULT_MODEL]
     profiles: list[dict[str, Any]] = []
     seen: set[str] = set()
     for model_id in model_ids:
@@ -336,7 +386,10 @@ def _managed_profiles(store: ModelConfigStore, environ: Mapping[str, str] | None
         if not folded or folded in seen:
             continue
         seen.add(folded)
-        profiles.append(_safe_managed(model_id, environ))
+        if not api_key and folded == MINIMAX_DEFAULT_MODEL.casefold() and _primary_minimax_key(environ):
+            profiles.append(_safe_legacy_minimax())
+        else:
+            profiles.append(_safe_managed(model_id, environ))
     return profiles
 
 
@@ -406,7 +459,8 @@ def _resolve(
     selection_store: ModelSelectionStore,
     selection: str | None,
 ) -> dict[str, Any]:
-    requested = str(selection or "").strip() or _active_selection(store, selection_store)
+    explicit_selection = str(selection or "").strip()
+    requested = explicit_selection or _active_selection(store, selection_store)
     profile = _with_reasoning(_base_profile_for_selection(store, requested), reasoning_store)
 
     if _managed_model_from_selection(requested):
@@ -418,9 +472,14 @@ def _resolve(
             if legacy_key:
                 legacy_profile = _with_reasoning(_safe_legacy_minimax(), reasoning_store)
                 return {**legacy_profile, "provider": "openai-compatible", "apiKey": legacy_key}
+        if not explicit_selection:
+            legacy_key = _primary_minimax_key()
+            if legacy_key:
+                legacy_profile = _with_reasoning(_safe_legacy_minimax(), reasoning_store)
+                return {**legacy_profile, "provider": "openai-compatible", "apiKey": legacy_key}
         raise RuntimeError(
-            "Smirel Relay credential is not provisioned. Install Loom from a provisioned package "
-            "or set LOOM_RELAY_API_KEY for development."
+            "Smirel Relay credential is not provisioned. Build or install Loom with "
+            "loom-relay-credential.json, or set LOOM_RELAY_API_KEY for development."
         )
 
     saved = store.model_for_selection(requested)
@@ -456,6 +515,7 @@ def _save(store: ModelConfigStore, payload: dict[str, Any]) -> dict[str, Any]:
         base_url=str(payload.get("baseUrl") or ""),
         model=str(payload.get("model") or ""),
         api_key=str(payload.get("apiKey") or ""),
+        vision=bool(payload.get("vision", True)),
     )
     return _safe_saved(entry)
 
