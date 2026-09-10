@@ -1,5 +1,15 @@
-/* Final polish for the Codex-style sidebar shell. Keep this layer focused on
-   hierarchy and project disclosure so the base sidebar remains reusable. */
+/* Codex-style sidebar polish.
+   This file is intentionally the only late sidebar override. Keep disclosure,
+   recent/project hierarchy, and hover affordances here so the sidebar does not
+   rely on stacked legacy patch files or DOM mutation guards. */
+
+:root {
+  --sidebar-width: 280px;
+}
+
+.codex-sidebar {
+  padding-top: 10px;
+}
 
 .codex-sidebar .codex-sidebar-topbar {
   min-height: 43px;
@@ -30,12 +40,6 @@
 .codex-sidebar .codex-sidebar-brand svg {
   margin-left: 1px;
   color: #737b87;
-}
-
-/* Add project has a dedicated row below; repeating it beside search made the
-   top-right controls look like an unexplained icon capsule. */
-.codex-sidebar .codex-sidebar-topbar .compact-sidebar-actions button[aria-label="Add project folder"] {
-  display: none;
 }
 
 .codex-sidebar .codex-sidebar-topbar .compact-sidebar-actions {
@@ -83,10 +87,13 @@
 
 .codex-sidebar .sidebar-new-conversation {
   color: #e2e5ea;
+  background: rgba(255,255,255,.026);
+  border: 1px solid rgba(255,255,255,.045);
 }
 
 .codex-sidebar .sidebar-new-conversation:hover {
-  background: rgba(255,255,255,.055);
+  background: rgba(139,124,246,.09);
+  border-color: rgba(139,124,246,.16);
   color: #fff;
 }
 
@@ -113,68 +120,115 @@
   font-weight: 575;
 }
 
+.codex-sidebar .compact-thread-scroll {
+  display: block;
+}
+
+.codex-sidebar .sidebar-section {
+  display: grid;
+  gap: 2px;
+}
+
+.codex-sidebar .project-section {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255,255,255,.045);
+}
+
+.codex-sidebar .recent-section {
+  margin-top: 2px;
+}
+
 .codex-sidebar .sidebar-section-title {
   min-height: 28px;
-  margin-top: 2px;
-  padding: 10px 8px 4px;
+  margin: 0;
+  padding: 9px 8px 4px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   color: #686f7b;
   font-size: 10.5px;
   font-weight: 690;
   letter-spacing: .055em;
+  text-transform: uppercase;
 }
 
-/* The explicit 添加项目 row above is the primary entry point. */
-.codex-sidebar .sidebar-section-title:not(.recent-title) button {
+.codex-sidebar .recent-section .sidebar-section-title {
+  min-height: 30px;
+  padding: 8px 7px 4px;
+  color: #aeb4c1;
+  font-size: 13.5px;
+  font-weight: 720;
+  letter-spacing: -.01em;
+  text-transform: none;
+}
+
+.codex-sidebar .recent-section .sidebar-section-title span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.codex-sidebar .recent-section .sidebar-section-title span::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(157,148,246,.82);
+  box-shadow: 0 0 0 4px rgba(139,124,246,.055);
+}
+
+.codex-sidebar .sidebar-section-title button {
   display: none;
 }
 
-.codex-sidebar .recent-title {
-  margin-top: 11px;
-  padding-top: 9px;
-}
-
-.codex-sidebar .project-list {
+.codex-sidebar .project-list,
+.codex-sidebar .workspace-thread-list,
+.codex-sidebar .recent-thread-list {
+  display: grid;
   gap: 2px;
 }
 
+.codex-sidebar .recent-thread-list {
+  padding: 0 2px 8px 0;
+}
+
 .codex-sidebar .project-group {
+  display: grid;
+  gap: 2px;
   margin-bottom: 3px;
 }
 
 .codex-sidebar .project-group-row {
   min-height: 35px;
+  display: grid;
+  grid-template-columns: minmax(0,1fr) auto;
+  align-items: center;
+  gap: 4px;
   border-radius: 9px;
 }
 
 .codex-sidebar .project-group-main {
   min-height: 35px;
-  grid-template-columns: 11px 23px minmax(0,1fr) auto;
+  grid-template-columns: 18px 22px minmax(0,1fr) auto;
   gap: 7px;
   padding: 0 7px 0 7px;
   border-radius: 9px;
   color: #c7cbd2;
 }
 
-/* Disclosure chevron is deliberately drawn in CSS so the project row remains
-   a single semantic button. Down = expanded, right = collapsed. */
-.codex-sidebar .project-group-main::before {
-  content: "";
-  width: 5.5px;
-  height: 5.5px;
+.codex-sidebar .project-disclosure-chevron {
   justify-self: center;
-  border-right: 1.35px solid currentColor;
-  border-bottom: 1.35px solid currentColor;
   color: #626a76;
-  transform: translateY(-1px) rotate(45deg);
-  transform-origin: 55% 55%;
+  transform: rotate(90deg);
   transition: transform 150ms cubic-bezier(.2,.78,.2,1), color 120ms ease;
 }
 
-.codex-sidebar .project-group.is-collapsed .project-group-main::before {
-  transform: translateX(-1px) rotate(-45deg);
+.codex-sidebar .project-group.is-collapsed .project-disclosure-chevron {
+  transform: rotate(0deg);
 }
 
-.codex-sidebar .project-group-main > svg {
+.codex-sidebar .project-group-main > svg:not(.project-disclosure-chevron) {
   width: 15px;
   height: 15px;
   color: #9da4af;
@@ -191,6 +245,9 @@
   margin-right: 1px;
   color: #5f6671;
   font-size: 10px;
+  line-height: 1;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 .codex-sidebar .project-group-main:hover,
@@ -199,81 +256,164 @@
   color: #f2f3f6;
 }
 
-.codex-sidebar .project-group-main:hover::before,
-.codex-sidebar .project-group-row:focus-within .project-group-main::before {
+.codex-sidebar .project-group-main:hover .project-disclosure-chevron,
+.codex-sidebar .project-group-row:focus-within .project-disclosure-chevron {
   color: #aaa2ef;
-}
-
-.codex-sidebar .project-group:has(.compact-thread-row.active) .project-group-main {
-  color: #e5e7ec;
-}
-
-.codex-sidebar .project-group:has(.compact-thread-row.active) .project-group-main > svg {
-  color: #aaa2ef;
-}
-
-.codex-sidebar .project-group-actions {
-  right: 3px;
-  top: 4px;
-  height: 27px;
-  padding-left: 20px;
-  background: linear-gradient(90deg, transparent, #111214 24%, #111214 100%);
-}
-
-.codex-sidebar .project-group-actions button {
-  width: 24px;
-  height: 24px;
-  border-radius: 6px;
-}
-
-.codex-sidebar .project-thread-list {
-  max-height: 1200px;
-  margin-top: 1px;
-  margin-left: 20px;
-  padding-left: 7px;
-  overflow: hidden;
-  opacity: 1;
-  border-left-color: rgba(255,255,255,.045);
-  transform: translateY(0);
-  transition:
-    max-height 210ms cubic-bezier(.2,.72,.2,1),
-    opacity 140ms ease,
-    transform 180ms cubic-bezier(.2,.72,.2,1),
-    margin 180ms ease,
-    border-color 150ms ease;
-}
-
-.codex-sidebar .project-group.is-collapsed .project-thread-list {
-  max-height: 0;
-  margin-top: 0;
-  opacity: 0;
-  border-left-color: transparent;
-  transform: translateY(-3px);
-  pointer-events: none;
-}
-
-.codex-sidebar .project-group.is-collapsed {
-  margin-bottom: 2px;
 }
 
 .codex-sidebar .project-group.is-collapsed .project-group-main {
   color: #aeb4be;
 }
 
-.codex-sidebar .project-group.is-empty .project-group-main {
-  color: #9299a4;
+.codex-sidebar .project-group-actions,
+.codex-sidebar .thread-quick-actions {
+  position: static;
+  z-index: auto;
+  height: 27px;
+  min-width: max-content;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  padding-left: 0;
+  opacity: 0;
+  pointer-events: none;
+  background: transparent;
+  transition: opacity 110ms ease;
+}
+
+.codex-sidebar .project-group-row:hover .project-group-actions,
+.codex-sidebar .project-group-row:focus-within .project-group-actions,
+.codex-sidebar .compact-thread-row:hover .thread-quick-actions,
+.codex-sidebar .compact-thread-row:focus-within .thread-quick-actions,
+.codex-sidebar .compact-thread-row.active .thread-quick-actions,
+.codex-sidebar .compact-thread-row.pinned .thread-quick-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.codex-sidebar .project-group-actions button,
+.codex-sidebar .thread-quick-actions button {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+}
+
+.codex-sidebar .project-thread-list {
+  display: grid;
+  gap: 1px;
+  margin-top: 1px;
+  margin-left: 20px;
+  padding-left: 7px;
+  border-left: 1px solid rgba(255,255,255,.045);
+}
+
+.codex-sidebar .compact-thread-row {
+  min-height: 35px;
+  border-radius: 8px;
+  display: grid;
+  grid-template-columns: minmax(0,1fr) auto;
+  align-items: center;
+}
+
+.codex-sidebar .compact-thread-main {
+  min-height: 33px;
+  padding: 0 8px 0 6px;
+  grid-template-columns: 16px minmax(0,1fr);
+  gap: 8px;
+}
+
+.codex-sidebar .compact-thread-title {
+  font-size: 13.5px;
+  line-height: 1.2;
+  font-weight: 520;
+  letter-spacing: -.008em;
+  color: #cfd2d8;
+}
+
+.codex-sidebar .compact-thread-row:hover .compact-thread-title,
+.codex-sidebar .compact-thread-row.active .compact-thread-title {
+  color: #f3f4f6;
+}
+
+.codex-sidebar .compact-thread-row.active {
+  background: #373739;
+  border-color: rgba(255,255,255,.065);
+  box-shadow:
+    inset 0 1px rgba(255,255,255,.03),
+    0 8px 22px rgba(0,0,0,.12);
+}
+
+.codex-sidebar .compact-thread-row.active::before {
+  content: "";
+  position: absolute;
+  inset: 7px auto 7px 0;
+  width: 2px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #aaa2ff, #7666f1);
+  box-shadow: 0 0 12px rgba(139,124,246,.28);
+}
+
+.codex-sidebar .compact-thread-dot {
+  width: 6px;
+  height: 6px;
+  border-color: #464b53;
+}
+
+.codex-sidebar .compact-thread-row.active .compact-thread-dot {
+  border-color: #a4a7ae;
+  background: #a4a7ae;
+}
+
+.codex-sidebar .recent-thread-list:empty {
+  min-height: 86px;
+  margin: 1px 4px 8px 0;
+  border: 1px dashed rgba(255,255,255,.055);
+  border-radius: 12px;
+  background:
+    radial-gradient(120px 80px at 18% 0%, rgba(139,124,246,.055), transparent 70%),
+    rgba(255,255,255,.012);
 }
 
 .codex-sidebar .recent-thread-list:empty::after {
-  padding: 7px 9px 5px;
-  color: #515864;
-  font-size: 10.8px;
+  content: "普通会话会显示在这里";
+  display: flex;
+  align-items: flex-start;
+  height: 100%;
+  padding: 17px 14px;
+  color: #656c77;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: -.01em;
+}
+
+@media (max-width: 1180px) {
+  :root {
+    --sidebar-width: 268px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .codex-sidebar .project-group-main::before,
-  .codex-sidebar .project-thread-list,
+  .codex-sidebar .project-disclosure-chevron,
+  .codex-sidebar .project-group-main > svg:not(.project-disclosure-chevron),
+  .codex-sidebar .project-group-actions,
+  .codex-sidebar .thread-quick-actions,
   .codex-sidebar .codex-sidebar-brand {
     transition: none !important;
   }
+
+  .codex-sidebar .compact-thread-row.active::before {
+    box-shadow: none;
+  }
+}
+
+html[data-loom-reduced-motion="true"] .codex-sidebar .project-disclosure-chevron,
+html[data-loom-reduced-motion="true"] .codex-sidebar .project-group-main > svg:not(.project-disclosure-chevron),
+html[data-loom-reduced-motion="true"] .codex-sidebar .project-group-actions,
+html[data-loom-reduced-motion="true"] .codex-sidebar .thread-quick-actions,
+html[data-loom-reduced-motion="true"] .codex-sidebar .codex-sidebar-brand {
+  transition: none !important;
+}
+
+html[data-loom-reduced-motion="true"] .codex-sidebar .compact-thread-row.active::before {
+  box-shadow: none;
 }
