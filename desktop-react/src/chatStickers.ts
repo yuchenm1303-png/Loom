@@ -8,7 +8,10 @@ export type ChatStickerSegment =
   | { kind: "text"; text: string }
   | { kind: "sticker"; asset: ChatStickerAsset };
 
-const stickerUrl = (name: string) => new URL(`./assets/chat-stickers/generated/${name}.webp`, import.meta.url).href;
+// The original AI Ledger production pack is materialized into Vite's public
+// directory before dev/build. Loom builds with base "./", so the packaged app
+// resolves these files locally beside dist/index.html with no runtime network.
+const stickerUrl = (name: string) => `${import.meta.env.BASE_URL}chat-stickers/${encodeURIComponent(name)}.webp`;
 
 export const CHAT_STICKER_ASSETS: Record<string, ChatStickerAsset> = Object.freeze({
   joy_burst: { key: "joy_burst", alt: "开心庆祝", url: stickerUrl("joy_burst") },
@@ -33,7 +36,17 @@ export const CHAT_STICKER_ASSETS: Record<string, ChatStickerAsset> = Object.free
 });
 
 const INLINE_STICKER_CONTROL_PREFIX = "[[AI_LEDGER_INLINE_STICKER:";
+const LOCAL_STICKER_URL_RE = /(?:^|\/)chat-stickers\/([a-z0-9_]{2,48})\.webp(?:[?#].*)?$/i;
 
+export function isChatStickerAssetUrl(src: string | undefined): boolean {
+  const normalized = String(src ?? "").replace(/\\/g, "/");
+  const match = normalized.match(LOCAL_STICKER_URL_RE);
+  return Boolean(match && CHAT_STICKER_ASSETS[match[1].toLowerCase()]);
+}
+
+// Rendering is the final safety net. Accept complete markers and provider-
+// truncated variants with zero, one, or two closing brackets. Unknown keys are
+// still control data and are dropped rather than rendered as ordinary text.
 const INLINE_STICKER_MARKER_RE = /\[\[AI_LEDGER_INLINE_STICKER:([a-z0-9_]{0,96})\]{0,2}/gi;
 
 function stripTrailingStickerControlFragment(text: string): string {
@@ -88,9 +101,4 @@ export function splitInlineStickerText(text: string): ChatStickerSegment[] {
     }
   }
   return segments;
-}
-
-export function isChatStickerAssetUrl(src: string | undefined): boolean {
-  if (!src) return false;
-  return Object.values(CHAT_STICKER_ASSETS).some((asset) => asset.url === src);
 }
