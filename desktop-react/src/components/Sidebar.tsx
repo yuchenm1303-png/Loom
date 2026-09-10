@@ -50,6 +50,7 @@ interface SidebarProps {
 
 const PINNED_STORAGE_KEY = "loom.sidebar.pinnedThreads";
 const UNREAD_STORAGE_KEY = "loom.sidebar.unreadThreads";
+const COLLAPSED_PROJECTS_STORAGE_KEY = "loom.sidebar.collapsedProjects";
 
 function relativeTime(value: string): string {
   const stamp = Date.parse(value);
@@ -164,6 +165,7 @@ export function Sidebar({
   const [searchOpen, setSearchOpen] = useState(false);
   const [pinnedIds, setPinnedIds] = useState<Set<string>>(() => readStoredIds(PINNED_STORAGE_KEY));
   const [unreadIds, setUnreadIds] = useState<Set<string>>(() => readStoredIds(UNREAD_STORAGE_KEY));
+  const [collapsedProjectIds, setCollapsedProjectIds] = useState<Set<string>>(() => readStoredIds(COLLAPSED_PROJECTS_STORAGE_KEY));
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [groupMenu, setGroupMenu] = useState<GroupMenuState | null>(null);
   const [renamingProjectId, setRenamingProjectId] = useState("");
@@ -187,6 +189,11 @@ export function Sidebar({
   const menuThread = useMemo(
     () => contextMenu ? threads.find((thread) => thread.id === contextMenu.threadId) ?? null : null,
     [contextMenu, threads],
+  );
+
+  const menuProject = useMemo(
+    () => groupMenu ? projects.find((project) => project.id === groupMenu.projectId) ?? null : null,
+    [groupMenu, projects],
   );
 
   const filtered = useMemo(() => filterThreads(threads, query), [query, threads]);
@@ -266,6 +273,36 @@ export function Sidebar({
   const toggleUnread = (threadId: string) => {
     updateStoredId(UNREAD_STORAGE_KEY, setUnreadIds, threadId, !unreadIds.has(threadId));
   };
+
+  const toggleProjectCollapsed = (projectId: string) => {
+    setCollapsedProjectIds((current) => {
+      const next = new Set(current);
+      if (next.has(projectId)) next.delete(projectId);
+      else next.add(projectId);
+      persistIds(COLLAPSED_PROJECTS_STORAGE_KEY, next);
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    setCollapsedProjectIds((current) => {
+      const next = new Set([...current].filter((projectId) => projectIds.has(projectId)));
+      if (next.size === current.size) return current;
+      persistIds(COLLAPSED_PROJECTS_STORAGE_KEY, next);
+      return next;
+    });
+  }, [projectIds]);
+
+  useEffect(() => {
+    const activeProjectId = (activeThread?.projectId || "").trim();
+    if (!activeProjectId || !collapsedProjectIds.has(activeProjectId)) return;
+    setCollapsedProjectIds((current) => {
+      const next = new Set(current);
+      next.delete(activeProjectId);
+      persistIds(COLLAPSED_PROJECTS_STORAGE_KEY, next);
+      return next;
+    });
+  }, [activeThread?.projectId, collapsedProjectIds]);
 
   const markRead = (threadId: string) => {
     if (unreadIds.has(threadId)) updateStoredId(UNREAD_STORAGE_KEY, setUnreadIds, threadId, false);
@@ -410,6 +447,12 @@ export function Sidebar({
     try {
       await onRemoveProject(projectId);
       setNotice({ kind: "success", text: `${project.name} removed from the list.` });
+      setCollapsedProjectIds((current) => {
+        const next = new Set(current);
+        next.delete(projectId);
+        persistIds(COLLAPSED_PROJECTS_STORAGE_KEY, next);
+        return next;
+      });
     } catch (cause) {
       setNotice({ kind: "error", text: cause instanceof Error ? cause.message : "Could not remove the project." });
     }
@@ -660,59 +703,65 @@ export function Sidebar({
             </div>
 
             <div className="project-list">
-              {projectSections.map(({ project, threads: projectThreads }) => (
-                <section className={`workspace-group project-group ${projectThreads.length ? "" : "is-empty"}`} key={project.id}>
-                  <div className="project-group-row">
-                    {renamingProjectId === project.id ? (
-                      <input
-                        className="workspace-group-rename project-rename-input"
-                        autoFocus
-                        value={projectRenameValue}
-                        maxLength={60}
-                        onChange={(event) => setProjectRenameValue(event.target.value)}
-                        onBlur={() => void commitProjectRename()}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") {
-                            event.preventDefault();
-                            event.currentTarget.blur();
-                          } else if (event.key === "Escape") {
-                            setRenamingProjectId("");
-                          }
-                        }}
-                      />
-                    ) : (
-                      <button
-                        type="button"
-                        className="project-group-main"
-                        onClick={() => void onNew(project.root || undefined, project.id)}
-                        title={`${project.name} · ${project.root}`}
-                      >
-                        <Folder size={16} strokeWidth={1.75} />
-                        <span>{project.name}</span>
-                        <small>{projectThreads.length || project.threadCount || ""}</small>
-                      </button>
-                    )}
+              {projectSections.map(({ project, threads: projectThreads }) => {
+                const collapsed = collapsedProjectIds.has(project.id);
+                const visibleCount = projectThreads.length || project.threadCount || 0;
+                return (
+                  <section className={`workspace-group project-group ${projectThreads.length ? "" : "is-empty"} ${collapsed ? "is-collapsed" : ""}`} key={project.id}>
+                    <div className="project-group-row">
+                      {renamingProjectId === project.id ? (
+                        <input
+                          className="workspace-group-rename project-rename-input"
+                          autoFocus
+                          value={projectRenameValue}
+                          maxLength={60}
+                          onChange={(event) => setProjectRenameValue(event.target.value)}
+                          onBlur={() => void commitProjectRename()}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                              event.preventDefault();
+                              event.currentTarget.blur();
+                            } else if (event.key === "Escape") {
+                              setRenamingProjectId("");
+                            }
+                          }}
+                        />
+                      ) : (
+                        <button
+                          type="button"
+                          className="project-group-main"
+                          onClick={() => toggleProjectCollapsed(project.id)}
+                          title={`${collapsed ? "展开" : "折叠"} ${project.name} · ${project.root}`}
+                          aria-expanded={!collapsed}
+                        >
+                          <ChevronRight className="project-disclosure-chevron" size={14} strokeWidth={1.9} aria-hidden="true" />
+                          <Folder size={16} strokeWidth={1.75} aria-hidden="true" />
+                          <span>{project.name}</span>
+                          {visibleCount ? <small>{visibleCount}</small> : null}
+                        </button>
+                      )}
 
-                    <div className="project-group-actions" aria-label="Project actions">
-                      <button type="button" onClick={() => void onNew(project.root || undefined, project.id)} title={`New conversation in ${project.name}`} aria-label={`New conversation in ${project.name}`}>
-                        <Plus size={14} strokeWidth={1.8} />
-                      </button>
-                      <button type="button" onClick={() => beginProjectRename(project.id)} title={`Rename ${project.name}`} aria-label={`Rename ${project.name}`}>
-                        <Pencil size={13.5} strokeWidth={1.8} />
-                      </button>
-                      <button type="button" className="danger" onClick={() => void confirmRemoveProject(project.id)} title={`Remove ${project.name}`} aria-label={`Remove ${project.name}`}>
-                        <Trash2 size={13.5} strokeWidth={1.8} />
-                      </button>
+                      <div className="project-group-actions" aria-label="Project actions">
+                        <button type="button" onClick={() => void onNew(project.root || undefined, project.id)} title={`New conversation in ${project.name}`} aria-label={`New conversation in ${project.name}`}>
+                          <Plus size={14} strokeWidth={1.8} />
+                        </button>
+                        <button type="button" onClick={() => beginProjectRename(project.id)} title={`Rename ${project.name}`} aria-label={`Rename ${project.name}`}>
+                          <Pencil size={13.5} strokeWidth={1.8} />
+                        </button>
+                        <button type="button" className="danger" onClick={() => void confirmRemoveProject(project.id)} title={`Remove ${project.name}`} aria-label={`Remove ${project.name}`}>
+                          <Trash2 size={13.5} strokeWidth={1.8} />
+                        </button>
+                      </div>
                     </div>
-                  </div>
 
-                  {projectThreads.length ? (
-                    <div className="workspace-thread-list project-thread-list">
-                      {projectThreads.map(renderThreadRow)}
-                    </div>
-                  ) : null}
-                </section>
-              ))}
+                    {projectThreads.length && !collapsed ? (
+                      <div className="workspace-thread-list project-thread-list">
+                        {projectThreads.map(renderThreadRow)}
+                      </div>
+                    ) : null}
+                  </section>
+                );
+              })}
             </div>
 
             <div className="sidebar-section-title recent-title">
@@ -786,19 +835,19 @@ export function Sidebar({
         </button>
       </div>
 
-      {groupMenu ? createPortal(
+      {groupMenu && menuProject ? createPortal(
         <>
           <div className="workspace-group-menu-scrim" onClick={() => setGroupMenu(null)} />
           <div className="workspace-group-menu" style={{ left: groupMenu.x, top: groupMenu.y }} role="menu">
-            <button type="button" onClick={() => void onNew(undefined, groupMenu.projectId)}>
+            <button type="button" onClick={() => void onNew(menuProject.root || undefined, menuProject.id)}>
               <Plus size={14} strokeWidth={1.7} />
               <span>New conversation</span>
             </button>
-            <button type="button" onClick={() => beginProjectRename(groupMenu.projectId)}>
+            <button type="button" onClick={() => beginProjectRename(menuProject.id)}>
               <Pencil size={14} strokeWidth={1.7} />
               <span>Rename project</span>
             </button>
-            <button type="button" className="danger" onClick={() => void confirmRemoveProject(groupMenu.projectId)}>
+            <button type="button" className="danger" onClick={() => void confirmRemoveProject(menuProject.id)}>
               <Trash2 size={14} strokeWidth={1.7} />
               <span>Remove from Loom</span>
             </button>
