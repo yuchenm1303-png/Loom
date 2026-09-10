@@ -13,6 +13,11 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "capabilities": {
         "computerUse": True,
         "browserUse": True,
+        "webSearch": True,
+        "mcp": True,
+        "skills": True,
+        "toolSearch": True,
+        "codeMode": True,
     },
 }
 
