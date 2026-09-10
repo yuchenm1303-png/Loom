@@ -1,34 +1,87 @@
-/* Keep Electron/Chromium from repainting the pointer shape while content is
-   moving under it. Without this guard, scrolling across transcript text,
-   message actions, sidebar rows, and resize/hover affordances can make the
-   Windows cursor rapidly alternate between arrow, text, and hand states. */
-html[data-loom-scrolling="true"],
-html[data-loom-scrolling="true"] * {
-  cursor: default !important;
+/* Cursor stability ----------------------------------------------------------
+   Keep the pointer shape predictable without mutating DOM during scroll or
+   mouse movement. The previous version toggled html[data-loom-scrolling] on
+   every wheel/scroll event, which forced broad style recalculation and could
+   make Electron/Chromium repaint the Windows cursor repeatedly. */
+
+.app-shell,
+.workspace,
+.conversation-stage,
+.transcript-scroll,
+.transcript,
+.sidebar,
+.compact-thread-scroll,
+.assistant-message,
+.user-message,
+.markdown-message,
+.message-shell,
+.turn-block,
+.turn-process,
+.task-flow,
+.settings-shell {
+  cursor: default;
 }
 
-html[data-loom-scrolling="true"] .message-actions,
-html[data-loom-scrolling="true"] .thread-quick-actions,
-html[data-loom-scrolling="true"] .project-group-actions,
-html[data-loom-scrolling="true"] .compact-sidebar-actions,
-html[data-loom-scrolling="true"] .workspace-group-menu,
-html[data-loom-scrolling="true"] .thread-context-menu {
-  pointer-events: none !important;
+button,
+[role="button"],
+summary,
+a[href],
+.message-action-button,
+.thread-quick-actions button,
+.project-group-actions button,
+.compact-sidebar-actions button,
+.sidebar-new-conversation,
+.sidebar-secondary-action,
+.project-group-main,
+.compact-thread-main,
+.turn-process-header,
+.task-flow-row,
+.disclosure-trigger,
+.live-reasoning-trigger {
+  cursor: pointer;
 }
 
-html[data-loom-scrolling="true"] .message-action-button,
-html[data-loom-scrolling="true"] .compact-thread-row,
-html[data-loom-scrolling="true"] .project-group-main,
-html[data-loom-scrolling="true"] .sidebar-new-conversation,
-html[data-loom-scrolling="true"] .sidebar-secondary-action,
-html[data-loom-scrolling="true"] .task-flow-row,
-html[data-loom-scrolling="true"] .turn-process-header {
-  transition-duration: .001ms !important;
-  transform: none !important;
+button:disabled,
+[aria-disabled="true"],
+.compact-thread-main.rename-main {
+  cursor: default;
 }
 
-html[data-loom-scrolling="true"] .message-shell:hover .message-meta,
-html[data-loom-scrolling="true"] .compact-thread-row:hover .thread-quick-actions,
-html[data-loom-scrolling="true"] .project-group-row:hover .project-group-actions {
-  opacity: inherit;
+input,
+textarea,
+[contenteditable="true"],
+.compact-thread-rename,
+.workspace-group-rename,
+.composer-input,
+pre,
+code {
+  cursor: text;
+}
+
+/* Hover action strips fade in visually, but they should not create a separate
+   invisible hit target before they are shown. That keeps pointer hit-testing
+   stable when moving across rows. */
+.thread-quick-actions,
+.project-group-actions,
+.message-actions {
+  pointer-events: none;
+}
+
+.compact-thread-row:hover .thread-quick-actions,
+.compact-thread-row:focus-within .thread-quick-actions,
+.compact-thread-row.active .thread-quick-actions,
+.compact-thread-row.pinned .thread-quick-actions,
+.project-group-row:hover .project-group-actions,
+.project-group-row:focus-within .project-group-actions,
+.message-shell:hover .message-actions,
+.message-meta:focus-within .message-actions {
+  pointer-events: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .thread-quick-actions,
+  .project-group-actions,
+  .message-actions {
+    transition: none !important;
+  }
 }
