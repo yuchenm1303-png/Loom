@@ -32,9 +32,17 @@ desktop = [
 ]
 computer = [
     "Pillow>=11,<13",
-    "pyautogui>=0.9.54,<0.10",
-    "pywinauto>=0.6.9,<0.7",
-    "pywin32>=306,<400",
+    "pyautogui>=0.9.54,<0.10; platform_system == 'Windows'",
+    "pywinauto>=0.6.9,<0.7; platform_system == 'Windows'",
+    "pywin32>=306,<400; platform_system == 'Windows'",
+]
+desktop-agent = [
+    "browser-use>=0.13.10,<0.14",
+    "PySide6>=6.7,<7",
+    "Pillow>=11,<13",
+    "pyautogui>=0.9.54,<0.10; platform_system == 'Windows'",
+    "pywinauto>=0.6.9,<0.7; platform_system == 'Windows'",
+    "pywin32>=306,<400; platform_system == 'Windows'",
 ]
 
 [project.scripts]
