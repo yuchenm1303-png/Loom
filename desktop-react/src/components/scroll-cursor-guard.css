@@ -1,0 +1,34 @@
+/* Keep Electron/Chromium from repainting the pointer shape while content is
+   moving under it. Without this guard, scrolling across transcript text,
+   message actions, sidebar rows, and resize/hover affordances can make the
+   Windows cursor rapidly alternate between arrow, text, and hand states. */
+html[data-loom-scrolling="true"],
+html[data-loom-scrolling="true"] * {
+  cursor: default !important;
+}
+
+html[data-loom-scrolling="true"] .message-actions,
+html[data-loom-scrolling="true"] .thread-quick-actions,
+html[data-loom-scrolling="true"] .project-group-actions,
+html[data-loom-scrolling="true"] .compact-sidebar-actions,
+html[data-loom-scrolling="true"] .workspace-group-menu,
+html[data-loom-scrolling="true"] .thread-context-menu {
+  pointer-events: none !important;
+}
+
+html[data-loom-scrolling="true"] .message-action-button,
+html[data-loom-scrolling="true"] .compact-thread-row,
+html[data-loom-scrolling="true"] .project-group-main,
+html[data-loom-scrolling="true"] .sidebar-new-conversation,
+html[data-loom-scrolling="true"] .sidebar-secondary-action,
+html[data-loom-scrolling="true"] .task-flow-row,
+html[data-loom-scrolling="true"] .turn-process-header {
+  transition-duration: .001ms !important;
+  transform: none !important;
+}
+
+html[data-loom-scrolling="true"] .message-shell:hover .message-meta,
+html[data-loom-scrolling="true"] .compact-thread-row:hover .thread-quick-actions,
+html[data-loom-scrolling="true"] .project-group-row:hover .project-group-actions {
+  opacity: inherit;
+}
