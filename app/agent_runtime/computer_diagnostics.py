@@ -13,11 +13,12 @@ from typing import Any, Mapping
 
 
 class ComputerDiagnostics:
-    """Process-local structured diagnostics for Computer Use.
+    """Structured diagnostics and replay traces for Computer Use.
 
-    ``detailed`` records structured metadata. ``raw`` additionally persists
-    screenshots, full observations, instructions and provider responses.
-    Credentials and typed action text must never be passed to this boundary.
+    ``detailed`` records safe structured metadata, per-turn traces and screenshot
+    manifests. ``raw`` additionally persists screenshots, full observations,
+    instructions and provider responses. Credentials and transient typed text must
+    never be passed to this boundary.
     """
 
     def __init__(self, environ: Mapping[str, str] | None = None) -> None:
@@ -44,6 +45,19 @@ class ComputerDiagnostics:
     def raw(self) -> bool:
         return self.mode == "raw"
 
+    def status(self) -> dict[str, object]:
+        return {
+            "mode": self.mode,
+            "run_id": self.run_id,
+            "log_dir": str(self.root),
+            "events_path": str(self.root / "events.jsonl"),
+            "trace_root": str(self.root / "traces"),
+            "snapshot_manifest": str(self.root / "computer-snapshots" / "manifest.jsonl"),
+            "raw_screenshot_dir": str(self.root / "computer-snapshots" / "images"),
+            "raw_screenshots_enabled": self.raw,
+            "rotation": {"max_bytes": self.max_bytes, "backups": self.backups},
+        }
+
     def operation_id(self) -> str:
         return uuid.uuid4().hex[:16]
 
@@ -58,10 +72,90 @@ class ComputerDiagnostics:
     def emit(self, event: str, *, operation_id: str = "", **data: Any) -> None:
         if not self.enabled:
             return
+        operation_id = str(operation_id or self._operation.get())
+        record = self._record(event, operation_id=operation_id, **data)
+        self._append_jsonl(self.root / "events.jsonl", record)
+
+    def trace_path(self, session_id: str, turn_id: str) -> Path:
+        session = _safe_path_id(session_id, fallback="no-session")
+        turn = _safe_path_id(turn_id, fallback="no-turn")
+        return self.root / "traces" / session / turn / "computer-trace.jsonl"
+
+    def trace(self, session_id: str, turn_id: str, event: str, *, operation_id: str = "", **data: Any) -> str:
+        """Append a per-turn replayable Computer Use trace record.
+
+        The global event stream is useful for coarse debugging; this file is the
+        ordered, turn-scoped trace used to replay a GUI task without digging
+        through unrelated tool calls.
+        """
+
+        if not self.enabled:
+            return ""
+        operation_id = str(operation_id or self._operation.get())
+        record = self._record(
+            event,
+            operation_id=operation_id,
+            session_id=str(session_id or ""),
+            turn_id=str(turn_id or ""),
+            **data,
+        )
+        target = self.trace_path(session_id, turn_id)
+        self._append_jsonl(target, record)
+        return str(target)
+
+    def save_screenshot(self, observation: Any, *, operation_id: str, phase: str) -> str:
+        screenshot_path = ""
+        if self.raw:
+            name = f"{self._sequence + 1:06d}-{operation_id}-{phase}-{observation.observation_id}.png"
+            target = self.root / "computer-snapshots" / "images" / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(observation.image_png)
+            screenshot_path = str(target)
+        self.record_snapshot_manifest(
+            observation,
+            operation_id=operation_id,
+            phase=phase,
+            screenshot_path=screenshot_path,
+        )
+        return screenshot_path
+
+    def record_snapshot_manifest(
+        self,
+        observation: Any,
+        *,
+        operation_id: str,
+        phase: str,
+        screenshot_path: str = "",
+        session_id: str = "",
+        turn_id: str = "",
+    ) -> str:
+        if not self.enabled:
+            return ""
+        frame = getattr(observation, "frame", None)
+        active_window = getattr(observation, "active_window", None)
+        record = self._record(
+            "snapshot.manifest",
+            operation_id=operation_id,
+            session_id=str(session_id or ""),
+            turn_id=str(turn_id or ""),
+            phase=str(phase or ""),
+            observation_id=str(getattr(observation, "observation_id", "") or ""),
+            image_sha256=str(getattr(observation, "image_sha256", "") or ""),
+            image_bytes=len(bytes(getattr(observation, "image_png", b"") or b"")),
+            screenshot_path=str(screenshot_path or ""),
+            frame=_call_dict(frame),
+            active_window=_call_dict(active_window),
+            controls_total=len(tuple(getattr(observation, "controls", ()) or ())),
+            windows_total=len(tuple(getattr(observation, "windows", ()) or ())),
+        )
+        target = self.root / "computer-snapshots" / "manifest.jsonl"
+        self._append_jsonl(target, record)
+        return str(target)
+
+    def _record(self, event: str, *, operation_id: str = "", **data: Any) -> dict[str, Any]:
         with self._lock:
             self._sequence += 1
-            operation_id = str(operation_id or self._operation.get())
-            record = {
+            return {
                 "timestamp": datetime.now(timezone.utc).isoformat(timespec="milliseconds"),
                 "monotonic_ns": time.monotonic_ns(),
                 "run_id": self.run_id,
@@ -70,10 +164,20 @@ class ComputerDiagnostics:
                 "operation_id": str(operation_id),
                 **_json_safe(data),
             }
-            target = self.root / "events.jsonl"
+
+    def _append_jsonl(self, target: Path, record: Mapping[str, Any]) -> None:
+        if not self.enabled:
+            return
+        with self._lock:
+            target.parent.mkdir(parents=True, exist_ok=True)
             self._rotate_if_needed(target)
-            with target.open("a", encoding="utf-8") as stream:
-                stream.write(json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\n")
+            with target.open("a", encoding="utf-8", newline="\n") as stream:
+                stream.write(json.dumps(dict(record), ensure_ascii=False, separators=(",", ":")) + "\n")
+                stream.flush()
+                try:
+                    os.fsync(stream.fileno())
+                except OSError:
+                    pass
 
     def _rotate_if_needed(self, target: Path) -> None:
         if not target.exists() or target.stat().st_size < self.max_bytes:
@@ -87,14 +191,17 @@ class ComputerDiagnostics:
                 source.replace(target.with_name(f"{target.name}.{index + 1}"))
         target.replace(target.with_name(f"{target.name}.1"))
 
-    def save_screenshot(self, observation: Any, *, operation_id: str, phase: str) -> str:
-        if not self.raw:
-            return ""
-        name = f"{self._sequence + 1:06d}-{operation_id}-{phase}-{observation.observation_id}.png"
-        target = self.root / "screenshots" / name
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(observation.image_png)
-        return str(target)
+
+def _call_dict(value: Any) -> Any:
+    if value is None:
+        return None
+    method = getattr(value, "to_dict", None)
+    if callable(method):
+        try:
+            return _json_safe(method())
+        except Exception:
+            return repr(value)
+    return _json_safe(value)
 
 
 def _json_safe(value: Any) -> Any:
@@ -105,6 +212,14 @@ def _json_safe(value: Any) -> Any:
     if value is None or isinstance(value, (str, bool, int, float)):
         return value
     return repr(value)
+
+
+def _safe_path_id(value: str, *, fallback: str) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return fallback
+    safe = "".join(char if char.isalnum() or char in {"-", "_", "."} else "_" for char in text)
+    return safe[:96] or fallback
 
 
 __all__ = ["ComputerDiagnostics"]
