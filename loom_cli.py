@@ -22,6 +22,7 @@ from app.ai import (
     CredentialRef,
     CredentialResolver,
     ModelBinding,
+    ModelCapability,
     ProviderAdapter,
     ProviderConnection,
     build_ai_platform,
@@ -95,13 +96,27 @@ def _resolve_connection(args: argparse.Namespace) -> tuple[ProviderConnection, s
     return connection, model, secret
 
 
+def _vision_enabled(args: argparse.Namespace) -> bool:
+    """Whether this launch declares the bound model able to read images.
+
+    Capability here is a claim about the endpoint, not about Loom. Only the
+    caller who chose the model knows the answer, so a launcher that never asks
+    gets the permissive default: attaching an image is an explicit user action,
+    and no image is sent unless one is attached.
+    """
+    return bool(getattr(args, "vision", True))
+
+
 def _build_runtime(args: argparse.Namespace) -> tuple[AgentRuntime, FileAgentSessionStore, str]:
     connection, model, secret = _resolve_connection(args)
+    capabilities = set(AGENT_FAST_ROLE.required_capabilities)
+    if _vision_enabled(args):
+        capabilities.add(ModelCapability.VISION)
     binding = ModelBinding(
         role_id=AGENT_FAST_ROLE.role_id,
         provider_id=connection.provider_id,
         model=model,
-        capabilities=AGENT_FAST_ROLE.required_capabilities,
+        capabilities=frozenset(capabilities),
     )
     configuration = AIConfiguration.build(
         roles=(AGENT_FAST_ROLE,),
@@ -551,6 +566,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="permission preset for a new session, or explicit override when resuming",
     )
     parser.add_argument("--timeout", type=float, default=120.0)
+    parser.add_argument(
+        "--vision",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="declare that the selected model can read attached images",
+    )
     parser.add_argument("--quiet-events", action="store_true")
     return parser
 

@@ -14,8 +14,24 @@ export interface Usage {
   totalTokens: number;
 }
 
+export interface ProjectRecord {
+  id: string;
+  name: string;
+  root: string;
+  threadCount: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ProjectListResult {
+  projects: ProjectRecord[];
+  unfiledThreadCount: number;
+}
+
 export interface ThreadRecord {
   id: string;
+  /** Empty when no project claims this thread's workspace. */
+  projectId?: string;
   title: string;
   workspace: string;
   permissionMode: string;

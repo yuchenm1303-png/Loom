@@ -13,6 +13,15 @@ from typing import Any, Callable, TextIO
 
 from app.ai import AGENT_FAST_ROLE, ImagePart, MessageRole, TextPart
 from app.agent_runtime import AgentEvent, AgentEventKind, AgentStatus, PermissionMode
+from app.agent_runtime.storage import utc_now
+from app.projects import UNFILED, ProjectStore, ProjectStoreError
+from app.attachments import (
+    MAX_ATTACHMENTS,
+    MAX_FILE_BYTES,
+    MAX_IMAGE_BYTES,
+    build_turn_content,
+    stage_attachments,
+)
 
 
 PROTOCOL_NAME = "loom-app-server"
@@ -40,15 +49,25 @@ NotificationListener = Callable[[str, dict[str, Any]], None]
 
 
 def _message_text(message: Any) -> str:
+    """Plain-text rendering of a message for the client protocol.
+
+    Image parts carry a base64 data URL that is often larger than the entire
+    rest of the thread. Sending that back to a client that only wants to draw a
+    transcript would be pure waste, so an image reduces to a marker; the
+    attachment manifest in the accompanying text is what names it.
+    """
     content = message.content
     if isinstance(content, str):
         return content
     parts: list[str] = []
+    images = 0
     for part in content:
         if isinstance(part, TextPart):
             parts.append(part.text)
         elif isinstance(part, ImagePart):
-            parts.append("[image]")
+            images += 1
+    if images:
+        parts.append(f"[{images} image{'s' if images != 1 else ''} attached]")
     return "\n".join(parts)
 
 
@@ -99,9 +118,15 @@ def _thread_title(session: Any) -> str:
     return workspace.name or "New thread"
 
 
-def _thread_record(session: Any, *, active: bool = False) -> dict[str, Any]:
+def _thread_record(
+    session: Any,
+    *,
+    active: bool = False,
+    project_id: str = "",
+) -> dict[str, Any]:
     return {
         "id": session.session_id,
+        "projectId": project_id,
         "title": _thread_title(session),
         "profileId": session.profile_id,
         "workspace": session.workspace_dir,
@@ -395,17 +420,46 @@ class LoomAppServerService:
         model: str,
         default_workspace: str | Path,
         default_permission_mode: PermissionMode | str = PermissionMode.APPROVAL,
+        vision: bool = False,
     ) -> None:
         self.runtime = runtime
         self.store = store
         self.model = str(model or "").strip()
         self.default_workspace = Path(default_workspace).expanduser().resolve()
         self.default_permission_mode = PermissionMode(default_permission_mode)
+        # Whether the bound model was declared able to read images. Clients use
+        # it to decide what the composer may accept, so a user learns a model is
+        # text-only before sending rather than from a failed turn.
+        self.vision = bool(vision)
+        # Projects live beside the rest of the durable Loom home, and the App
+        # Server owns them for the same reason it owns threads: a client must
+        # not be the thing that decides what is real.
+        # store.root is <home>/agent_runtime/sessions; projects.json belongs in
+        # the Loom home itself, beside models.json.
+        self.projects = ProjectStore(self.store.root.parents[1])
         self._guard = threading.RLock()
         self._active_sessions: set[str] = set()
         self._task_errors: dict[str, str] = {}
         self._notification_listeners: list[NotificationListener] = []
         self.runtime.subscribe(self._on_runtime_event)
+
+    def _record(self, session: Any, *, active: bool = False) -> dict[str, Any]:
+        """A thread record with its project resolved.
+
+        Resolution lives here rather than in ``_thread_record`` so that every
+        record a client can receive answers "which project?" the same way, and
+        a registry that cannot be read degrades to unfiled instead of failing
+        a thread listing.
+        """
+        try:
+            project = self.projects.for_workspace(session.workspace_dir)
+        except ProjectStoreError:
+            project = None
+        return _thread_record(
+            session,
+            active=active,
+            project_id=project.project_id if project is not None else UNFILED,
+        )
 
     def subscribe_notifications(self, listener: NotificationListener) -> None:
         if not callable(listener):
@@ -457,12 +511,121 @@ class LoomAppServerService:
             "defaultWorkspace": str(self.default_workspace),
             "defaultPermissionMode": self.default_permission_mode.value,
             "permissionModes": [mode.value for mode in PermissionMode],
+            "attachments": {
+                "images": self.vision,
+                "files": True,
+                "maxCount": MAX_ATTACHMENTS,
+                "maxImageBytes": MAX_IMAGE_BYTES,
+                "maxFileBytes": MAX_FILE_BYTES,
+            },
             "activeThreadIds": active,
             "taskErrors": task_errors,
         }
 
+    def plugins_list(self, params: dict[str, Any]) -> dict[str, Any]:
+        from app.plugin_manager import PluginManager
+        manager = PluginManager(self.store.root.parents[1])
+        return {"plugins": manager.list(), "activation": "runtime-restart"}
+
+    def plugins_manage(self, params: dict[str, Any]) -> dict[str, Any]:
+        from app.plugin_manager import PluginManager
+        with self._guard:
+            if self._active_sessions:
+                raise RuntimeError("finish active turns before changing plugins")
+            manager = PluginManager(self.store.root.parents[1])
+            action = self._required_text(params, "action")
+            if action in {"install", "upgrade"}:
+                return manager.install(self._required_text(params, "source"), upgrade=action == "upgrade", enabled=not bool(params.get("disabled", False)))
+            return manager.change(self._required_text(params, "name"), action, release=str(params.get("version", "")))
+
+    # ---- projects --------------------------------------------------------
+
+    def project_list(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Every project, with how many conversations each one holds.
+
+        Listing is also where an unfiled workspace becomes a project. Loom
+        grouped the conversation list by workspace long before projects were
+        durable, so adopting those roots here is what makes the feature appear
+        already populated instead of demanding a setup step.
+        """
+        sessions = self._list_session_objects()
+        if bool(params.get("adopt", True)):
+            self.projects.adopt(
+                dict.fromkeys(session.workspace_dir for session in sessions),
+                now=utc_now(),
+            )
+
+        counts: dict[str, int] = {}
+        unfiled = 0
+        for session in sessions:
+            project = self.projects.for_workspace(session.workspace_dir)
+            if project is None:
+                unfiled += 1
+            else:
+                counts[project.project_id] = counts.get(project.project_id, 0) + 1
+
+        return {
+            "projects": [
+                dict(project.as_dict(), threadCount=counts.get(project.project_id, 0))
+                for project in self.projects.list()
+            ],
+            "unfiledThreadCount": unfiled,
+        }
+
+    def project_create(self, params: dict[str, Any]) -> dict[str, Any]:
+        root = self._required_text(params, "root")
+        project = self.projects.create(
+            root, name=str(params.get("name") or ""), now=utc_now()
+        )
+        return {"project": dict(project.as_dict(), threadCount=self._project_thread_count(project))}
+
+    def project_rename(self, params: dict[str, Any]) -> dict[str, Any]:
+        project = self.projects.rename(
+            self._required_text(params, "projectId"),
+            self._required_text(params, "name"),
+            now=utc_now(),
+        )
+        return {"project": dict(project.as_dict(), threadCount=self._project_thread_count(project))}
+
+    def project_remove(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Unregister a project.
+
+        Conversations are not deleted and files are not touched: the threads
+        keep their workspace and become unfiled. Saying so in the response is
+        what lets a client word its confirmation honestly.
+        """
+        project = self.projects.remove(self._required_text(params, "projectId"))
+        return {
+            "projectId": project.project_id,
+            "removed": True,
+            "unfiledThreadCount": self._project_thread_count(project),
+            "deletedThreads": False,
+            "deletedFiles": False,
+        }
+
+    def _project_thread_count(self, project: Any) -> int:
+        return sum(
+            1
+            for session in self._list_session_objects()
+            if project.contains(session.workspace_dir)
+        )
+
+    def _requested_workspace(self, params: dict[str, Any]) -> Path:
+        """The workspace for a new thread, by project or by raw path.
+
+        A project id is the preferred form because it survives the folder being
+        renamed in the registry, but the raw workspace path stays supported so
+        an older client keeps working unchanged.
+        """
+        project_id = str(params.get("projectId") or "").strip()
+        if project_id:
+            if params.get("workspace"):
+                raise ValueError("pass either projectId or workspace, not both")
+            return Path(self.projects.get(project_id).root)
+        return Path(params.get("workspace") or self.default_workspace)
+
     def thread_start(self, params: dict[str, Any]) -> dict[str, Any]:
-        root = Path(params.get("workspace") or self.default_workspace).expanduser().resolve()
+        root = self._requested_workspace(params).expanduser().resolve()
         if not root.exists():
             raise ValueError(f"Workspace does not exist: {root}")
         if not root.is_dir():
@@ -475,12 +638,12 @@ class LoomAppServerService:
             workspace_dir=root,
             permission_mode=mode,
         )
-        return {"thread": _thread_record(session, active=False)}
+        return {"thread": self._record(session, active=False)}
 
     def thread_resume(self, params: dict[str, Any]) -> dict[str, Any]:
         session_id = self._required_text(params, "threadId")
         session = self._load(session_id)
-        record = _thread_record(session, active=self._is_active(session_id))
+        record = self._record(session, active=self._is_active(session_id))
         self._notify("thread/started", {"thread": record, "resumed": True})
         return self.thread_read({"threadId": session_id})
 
@@ -491,7 +654,7 @@ class LoomAppServerService:
         sessions = self._list_session_objects()[:limit]
         return {
             "threads": [
-                _thread_record(session, active=self._is_active(session.session_id))
+                self._record(session, active=self._is_active(session.session_id))
                 for session in sessions
             ],
             "nextCursor": None,
@@ -502,7 +665,7 @@ class LoomAppServerService:
         session = self._load(session_id)
         events = self.store.events(session_id)
         return {
-            "thread": _thread_record(session, active=self._is_active(session_id)),
+            "thread": self._record(session, active=self._is_active(session_id)),
             "turns": _turn_records(session, events),
             "messages": [_message_record(message) for message in session.messages],
             "pendingApproval": _approval_record(session.pending_approval),
@@ -538,21 +701,37 @@ class LoomAppServerService:
         fork.final_text = ""
         fork.error = ""
         self.store.save(fork)
-        record = _thread_record(fork, active=False)
+        record = self._record(fork, active=False)
         return {"thread": record, "forkedFromId": source.session_id}
 
     def turn_start(self, params: dict[str, Any]) -> dict[str, Any]:
         session_id = self._required_text(params, "threadId")
-        text = self._required_text(params, "input")
+        attachments = params.get("attachments") or ()
+        # Text is required only when nothing is attached: "look at this" with a
+        # screenshot and no words is a complete request.
+        text = str(params.get("input") or "").strip()
+        if not text and not attachments:
+            raise ValueError("turn/start requires input")
         session = self._load(session_id)
         if session.status is AgentStatus.WAITING_APPROVAL:
             raise RuntimeError("resolve the pending approval before starting another turn")
         if self._is_active(session_id):
             raise RuntimeError("thread already has an active turn")
         turn_id = str(uuid.uuid4())
+
+        # Staging happens on the calling thread so a rejected attachment fails
+        # the request instead of surfacing later as a mid-turn error.
+        staged = stage_attachments(
+            attachments,
+            workspace=session.workspace_dir,
+            turn_id=turn_id,
+            allow_images=self.vision,
+        )
+        content = build_turn_content(text, staged)
+
         self._launch(
             session_id,
-            lambda: self.runtime.start_turn(session_id, text, turn_id=turn_id),
+            lambda: self.runtime.start_turn(session_id, content, turn_id=turn_id),
         )
         return {
             "turn": {
@@ -563,6 +742,7 @@ class LoomAppServerService:
                 "completedAt": None,
                 "items": [],
                 "usage": {"inputTokens": 0, "outputTokens": 0, "totalTokens": 0},
+                "attachments": [item.as_record() for item in staged],
             }
         }
 
@@ -657,7 +837,7 @@ class LoomAppServerService:
                 return
             self._notify(
                 "thread/started",
-                {"thread": _thread_record(session, active=self._is_active(event.session_id))},
+                {"thread": self._record(session, active=self._is_active(event.session_id))},
             )
             return
 
@@ -1020,6 +1200,13 @@ class LoomRpcController:
                     "read": True,
                     "fork": True,
                 },
+                "projects": {
+                    "list": True,
+                    "create": True,
+                    "rename": True,
+                    "remove": True,
+                    "threadStart": True,
+                },
                 "turns": {"start": True, "interrupt": True},
                 "approvals": True,
                 "notifications": [
@@ -1039,6 +1226,12 @@ class LoomRpcController:
     def _dispatch(self, method: str, params: dict[str, Any]) -> Any:
         handlers: dict[str, Callable[[dict[str, Any]], Any]] = {
             "runtime/status": lambda value: self.service.runtime_status(),
+            "project/list": self.service.project_list,
+            "project/create": self.service.project_create,
+            "project/rename": self.service.project_rename,
+            "project/remove": self.service.project_remove,
+            "plugin/list": self.service.plugins_list,
+            "plugin/manage": self.service.plugins_manage,
             "thread/start": self.service.thread_start,
             "thread/resume": self.service.thread_resume,
             "thread/list": self.service.thread_list,

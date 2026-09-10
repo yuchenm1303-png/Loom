@@ -51,6 +51,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="default permission mode for new threads",
     )
     parser.add_argument("--timeout", type=float, default=120.0)
+    parser.add_argument(
+        "--vision",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="declare that the selected model can read attached images",
+    )
     return parser
 
 
@@ -119,6 +125,7 @@ def main(argv: list[str] | None = None) -> int:
         model=model,
         default_workspace=workspace,
         default_permission_mode=permission_mode,
+        vision=bool(args.vision),
     )
 
 

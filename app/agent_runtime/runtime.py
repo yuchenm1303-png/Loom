@@ -31,6 +31,7 @@ from .permissions import PermissionDecision
 from .process_runtime import ProcessStore
 from .step import StepContext
 from .storage import FileAgentSessionStore, utc_now
+from .turn_input import TurnInput, normalize_turn_input
 from .tools import ToolContext, ToolPolicy, ToolRegistry, ToolResult
 
 
@@ -207,10 +208,8 @@ class AgentRuntime:
             )
             return session
 
-    def start_turn(self, session_id: str, user_text: str) -> AgentRunResult:
-        text = str(user_text or "").strip()
-        if not text:
-            raise ValueError("agent turn input must not be empty")
+    def start_turn(self, session_id: str, user_text: TurnInput) -> AgentRunResult:
+        content, text = normalize_turn_input(user_text)
         lock = self._session_lock(session_id)
         with lock:
             session = self.store.load(session_id)
@@ -227,7 +226,7 @@ class AgentRuntime:
             session.final_text = ""
             session.error = ""
             self.diff_trackers.for_turn(session.session_id, turn_id)
-            session.messages.append(AIMessage(role=MessageRole.USER, content=text))
+            session.messages.append(AIMessage(role=MessageRole.USER, content=content))
             self._record(
                 session,
                 AgentEventKind.TURN_STARTED,

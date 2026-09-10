@@ -13,6 +13,8 @@ export interface LoomBridge {
   switchCurrentModel<T = unknown>(model: string): Promise<T>;
   addModel<T = unknown>(input: Record<string, unknown>): Promise<T>;
   setReasoning<T = unknown>(kind: string, value: string): Promise<T>;
+  /** Native folder picker. Resolves to "" when the user cancels. */
+  pickDirectory(): Promise<string>;
   onNotification(listener: (payload: LoomNotification) => void): () => void;
 }
 

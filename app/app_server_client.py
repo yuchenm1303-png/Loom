@@ -9,7 +9,7 @@ import threading
 from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 
 NotificationListener = Callable[[str, dict[str, Any]], None]
@@ -40,6 +40,10 @@ class AppServerProcessConfig:
     permission_mode: str | None = None
     timeout_seconds: float = 120.0
     app_server_executable: str | Path | None = None
+    # Tri-state on purpose: ``None`` leaves the App Server's own default alone,
+    # so a launcher that knows nothing about the endpoint does not have to
+    # invent an answer about whether it can read images.
+    vision: bool | None = None
 
     def command(self) -> list[str]:
         if self.app_server_executable:
@@ -64,6 +68,8 @@ class AppServerProcessConfig:
             command.extend(["--home", str(Path(self.home).expanduser().resolve())])
         if self.permission_mode:
             command.extend(["--permission-mode", str(self.permission_mode)])
+        if self.vision is not None:
+            command.append("--vision" if self.vision else "--no-vision")
         return command
 
 
@@ -249,12 +255,18 @@ class LoomAppServerClient:
     def thread_start(
         self,
         *,
-        workspace: str | Path,
+        workspace: str | Path | None = None,
+        project_id: str = "",
         permission_mode: str | None = None,
     ) -> dict[str, Any]:
-        params: dict[str, Any] = {
-            "workspace": str(Path(workspace).expanduser().resolve()),
-        }
+        """Start a thread in a workspace, or in a registered project."""
+        if bool(workspace) == bool(project_id):
+            raise ValueError("pass exactly one of workspace or project_id")
+        params: dict[str, Any] = (
+            {"projectId": str(project_id)}
+            if project_id
+            else {"workspace": str(Path(workspace).expanduser().resolve())}
+        )
         if permission_mode:
             params["permissionMode"] = str(permission_mode)
         return dict(self.request("thread/start", params))
@@ -268,8 +280,44 @@ class LoomAppServerClient:
     def thread_fork(self, thread_id: str) -> dict[str, Any]:
         return dict(self.request("thread/fork", {"threadId": str(thread_id)}))
 
-    def turn_start(self, thread_id: str, text: str) -> dict[str, Any]:
-        return dict(self.request("turn/start", {"threadId": str(thread_id), "input": str(text)}))
+    def project_list(self) -> dict[str, Any]:
+        return dict(self.request("project/list", {}))
+
+    def project_create(self, root: str | Path, *, name: str = "") -> dict[str, Any]:
+        params: dict[str, Any] = {"root": str(root)}
+        if name:
+            params["name"] = str(name)
+        return dict(self.request("project/create", params))
+
+    def project_rename(self, project_id: str, name: str) -> dict[str, Any]:
+        return dict(
+            self.request(
+                "project/rename", {"projectId": str(project_id), "name": str(name)}
+            )
+        )
+
+    def project_remove(self, project_id: str) -> dict[str, Any]:
+        return dict(self.request("project/remove", {"projectId": str(project_id)}))
+
+    def turn_start(
+        self,
+        thread_id: str,
+        text: str,
+        attachments: Sequence[Mapping[str, Any]] = (),
+    ) -> dict[str, Any]:
+        """Start a turn, optionally with files the user attached.
+
+        Attachments travel as local source paths rather than inline bytes: the
+        App Server runs on this machine, and a base64 screenshot would exceed
+        the transport's per-message limit long before it reached the model.
+        """
+        params: dict[str, Any] = {"threadId": str(thread_id), "input": str(text)}
+        if attachments:
+            params["attachments"] = [
+                {"path": str(item["path"]), "name": str(item.get("name") or "")}
+                for item in attachments
+            ]
+        return dict(self.request("turn/start", params))
 
     def turn_interrupt(self, thread_id: str, turn_id: str | None = None) -> dict[str, Any]:
         params: dict[str, Any] = {"threadId": str(thread_id)}

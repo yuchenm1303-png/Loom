@@ -6,6 +6,7 @@ import {
   Copy,
   Ellipsis,
   Eye,
+  FolderPlus,
   EyeOff,
   GitFork,
   Pencil,
@@ -18,20 +19,27 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import type { ThreadRecord } from "../types/loom";
+import type { ProjectRecord, ThreadRecord } from "../types/loom";
 import "./sidebar.css";
 
 type ThreadView = "active" | "archived";
 type Notice = { kind: "success" | "error"; text: string };
 type ContextMenuState = { threadId: string; x: number; y: number };
 
+type GroupMenuState = { projectId: string; x: number; y: number };
+
 interface SidebarProps {
   threads: ThreadRecord[];
+  projects: ProjectRecord[];
+  projectsSupported: boolean;
   activeId?: string;
   threadView: ThreadView;
   archivedCount: number;
   onOpen(threadId: string): Promise<void> | void;
-  onNew(workspace?: string): Promise<void> | void;
+  onNew(workspace?: string, projectId?: string): Promise<void> | void;
+  onAddProject(root: string): Promise<ProjectRecord | void>;
+  onRenameProject(projectId: string, name: string): Promise<void>;
+  onRemoveProject(projectId: string): Promise<void>;
   onRename(threadId: string, title: string): Promise<void>;
   onArchive(threadId: string, archived: boolean): Promise<void>;
   onDelete(threadId: string): Promise<void>;
@@ -121,6 +129,11 @@ export function Sidebar({
   archivedCount,
   onOpen,
   onNew,
+  projects,
+  projectsSupported,
+  onAddProject,
+  onRenameProject,
+  onRemoveProject,
   onRename,
   onArchive,
   onDelete,
@@ -132,6 +145,9 @@ export function Sidebar({
   const [pinnedIds, setPinnedIds] = useState<Set<string>>(() => readStoredIds(PINNED_STORAGE_KEY));
   const [unreadIds, setUnreadIds] = useState<Set<string>>(() => readStoredIds(UNREAD_STORAGE_KEY));
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const [groupMenu, setGroupMenu] = useState<GroupMenuState | null>(null);
+  const [renamingProjectId, setRenamingProjectId] = useState("");
+  const [projectRenameValue, setProjectRenameValue] = useState("");
   const [copyExpanded, setCopyExpanded] = useState(false);
   const [deleteArmed, setDeleteArmed] = useState(false);
   const [busyThreadId, setBusyThreadId] = useState<string | null>(null);
@@ -160,40 +176,87 @@ export function Sidebar({
   }, [query, threads]);
 
   const groups = useMemo(() => {
-    const byWorkspace = new Map<string, { key: string; label: string; workspace: string; threads: ThreadRecord[] }>();
-
-    for (const thread of filtered) {
-      const normalized = normalizeWorkspace(thread.workspace);
-      const key = normalized || "__other__";
-      const existing = byWorkspace.get(key);
-      if (existing) {
-        existing.threads.push(thread);
-      } else {
-        byWorkspace.set(key, {
-          key,
-          label: workspaceLabel(thread.workspace),
-          workspace: thread.workspace || "",
-          threads: [thread],
-        });
-      }
-    }
-
-    const result = [...byWorkspace.values()];
-    const labelCounts = new Map<string, number>();
-    for (const group of result) labelCounts.set(group.label, (labelCounts.get(group.label) ?? 0) + 1);
-
-    return result.map((group) => ({
-      ...group,
-      displayLabel: (labelCounts.get(group.label) ?? 0) > 1
-        ? `${group.label} · ${workspaceParentLabel(group.workspace) || "workspace"}`
-        : group.label,
-      threads: [...group.threads].sort((left, right) => {
+    const sortThreads = (rows: ThreadRecord[]) =>
+      [...rows].sort((left, right) => {
         const pinDelta = Number(pinnedIds.has(right.id)) - Number(pinnedIds.has(left.id));
         if (pinDelta) return pinDelta;
         return Date.parse(right.updatedAt || "") - Date.parse(left.updatedAt || "");
-      }),
+      });
+
+    // Without server projects the only thing to group by is the workspace path,
+    // which is what this sidebar did before projects were durable. Keeping that
+    // path means an older App Server still gets a grouped list rather than an
+    // empty one.
+    if (!projectsSupported) {
+      const byWorkspace = new Map<string, { key: string; label: string; workspace: string; threads: ThreadRecord[] }>();
+      for (const thread of filtered) {
+        const normalized = normalizeWorkspace(thread.workspace);
+        const key = normalized || "__other__";
+        const existing = byWorkspace.get(key);
+        if (existing) existing.threads.push(thread);
+        else
+          byWorkspace.set(key, {
+            key,
+            label: workspaceLabel(thread.workspace),
+            workspace: thread.workspace || "",
+            threads: [thread],
+          });
+      }
+      const derived = [...byWorkspace.values()];
+      const labelCounts = new Map<string, number>();
+      for (const group of derived) labelCounts.set(group.label, (labelCounts.get(group.label) ?? 0) + 1);
+      return derived.map((group) => ({
+        ...group,
+        projectId: "",
+        displayLabel:
+          (labelCounts.get(group.label) ?? 0) > 1
+            ? `${group.label} · ${workspaceParentLabel(group.workspace) || "workspace"}`
+            : group.label,
+        threads: sortThreads(group.threads),
+      }));
+    }
+
+    // A project is an entity, so it gets a heading whether or not anything has
+    // been said in it yet. That is the whole difference between a project and a
+    // label derived from the rows underneath it -- an empty project is somewhere
+    // you can start.
+    const known = new Set(projects.map((project) => project.id));
+    const byProject = new Map<string, ThreadRecord[]>();
+    const unfiled: ThreadRecord[] = [];
+    for (const thread of filtered) {
+      const projectId = (thread.projectId || "").trim();
+      if (projectId && known.has(projectId)) {
+        const rows = byProject.get(projectId);
+        if (rows) rows.push(thread);
+        else byProject.set(projectId, [thread]);
+      } else {
+        unfiled.push(thread);
+      }
+    }
+
+    const result = projects.map((project) => ({
+      key: project.id,
+      projectId: project.id,
+      label: project.name,
+      displayLabel: project.name,
+      workspace: project.root,
+      threads: sortThreads(byProject.get(project.id) ?? []),
     }));
-  }, [filtered, pinnedIds]);
+
+    if (unfiled.length) {
+      // Not a project: no id, so it offers no project controls. There is
+      // nothing here to rename and nothing to remove.
+      result.push({
+        key: "__unfiled__",
+        projectId: "",
+        label: "No project",
+        displayLabel: "No project",
+        workspace: "",
+        threads: sortThreads(unfiled),
+      });
+    }
+    return result;
+  }, [filtered, pinnedIds, projects, projectsSupported]);
 
   const focusSearch = () => {
     setSearchOpen(true);
@@ -325,6 +388,61 @@ export function Sidebar({
     }
   };
 
+  const addProject = async () => {
+    const picked = await window.loom?.pickDirectory?.();
+    if (!picked) return;
+    try {
+      await onAddProject(picked);
+      setNotice({ kind: "success", text: "Project added." });
+    } catch (cause) {
+      setNotice({ kind: "error", text: cause instanceof Error ? cause.message : "Could not add the project." });
+    }
+  };
+
+  const beginProjectRename = (projectId: string) => {
+    const project = projects.find((entry) => entry.id === projectId);
+    if (!project) return;
+    setGroupMenu(null);
+    setRenamingProjectId(projectId);
+    setProjectRenameValue(project.name);
+  };
+
+  const commitProjectRename = async () => {
+    const projectId = renamingProjectId;
+    const next = projectRenameValue.trim();
+    const project = projects.find((entry) => entry.id === projectId);
+    setRenamingProjectId("");
+    if (!project || !next || next === project.name) return;
+    try {
+      await onRenameProject(projectId, next);
+    } catch (cause) {
+      setNotice({ kind: "error", text: cause instanceof Error ? cause.message : "Could not rename the project." });
+    }
+  };
+
+  const confirmRemoveProject = async (projectId: string) => {
+    const project = projects.find((entry) => entry.id === projectId);
+    if (!project) return;
+    setGroupMenu(null);
+    // "Remove" next to a folder full of work has to be unambiguous about which
+    // of the two it means, so the prompt names what survives.
+    const count = project.threadCount;
+    const lines = [
+      `Remove ${project.name} from Loom's project list?`,
+      "The folder and its files are not touched.",
+    ];
+    if (count) {
+      lines.push(`${count} conversation${count === 1 ? "" : "s"} stay in Loom and become unfiled.`);
+    }
+    if (!window.confirm(lines.join("\n\n"))) return;
+    try {
+      await onRemoveProject(projectId);
+      setNotice({ kind: "success", text: `${project.name} removed from the list.` });
+    } catch (cause) {
+      setNotice({ kind: "error", text: cause instanceof Error ? cause.message : "Could not remove the project." });
+    }
+  };
+
   const openContextMenu = (thread: ThreadRecord, x: number, y: number) => {
     const width = 264;
     const height = 352;
@@ -414,6 +532,13 @@ export function Sidebar({
           <button type="button" onClick={() => void onNew()} title="New thread" aria-label="New thread">
             <Plus size={17} strokeWidth={1.8} />
           </button>
+          {/* Adding a project is a different act from starting a conversation:
+              it puts a folder in the list without opening anything in it. */}
+          {projectsSupported && threadView !== "archived" ? (
+            <button type="button" onClick={() => void addProject()} title="Add project folder" aria-label="Add project folder">
+              <FolderPlus size={16} strokeWidth={1.8} />
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={searchOpen ? closeSearch : focusSearch}
@@ -453,16 +578,57 @@ export function Sidebar({
         {groups.map((group) => (
           <section className="workspace-group" key={group.key}>
             <div className="workspace-group-header">
-              <span title={group.workspace || group.displayLabel}>{group.displayLabel}</span>
+              {renamingProjectId === group.projectId && group.projectId ? (
+                <input
+                  className="workspace-group-rename"
+                  autoFocus
+                  value={projectRenameValue}
+                  maxLength={60}
+                  onChange={(event) => setProjectRenameValue(event.target.value)}
+                  onBlur={() => void commitProjectRename()}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      event.currentTarget.blur();
+                    } else if (event.key === "Escape") {
+                      setRenamingProjectId("");
+                    }
+                  }}
+                />
+              ) : (
+                <span className="workspace-group-label" title={group.workspace || group.displayLabel}>{group.displayLabel}</span>
+              )}
+              {group.threads.length ? (
+                <span className="workspace-group-count">{group.threads.length}</span>
+              ) : null}
               <button
                 type="button"
-                onClick={() => void onNew(group.workspace || undefined)}
+                onClick={() => void onNew(group.workspace || undefined, group.projectId || undefined)}
                 title={`New thread in ${group.displayLabel}`}
                 aria-label={`New thread in ${group.displayLabel}`}
               >
                 <Plus size={15} strokeWidth={1.7} />
               </button>
+              {/* Unfiled is not a project: nothing to rename, nothing to remove. */}
+              {group.projectId ? (
+                <button
+                  type="button"
+                  className="workspace-group-menu-button"
+                  onClick={(event) => {
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    setGroupMenu({ projectId: group.projectId, x: rect.left, y: rect.bottom + 4 });
+                  }}
+                  title={`Rename or remove ${group.displayLabel}`}
+                  aria-label={`Project actions for ${group.displayLabel}`}
+                >
+                  <Ellipsis size={15} strokeWidth={1.7} />
+                </button>
+              ) : null}
             </div>
+
+            {group.projectId && !group.threads.length ? (
+              <p className="workspace-group-empty">No conversations yet</p>
+            ) : null}
 
             <div className="workspace-thread-list">
               {group.threads.map((thread) => {
@@ -586,6 +752,27 @@ export function Sidebar({
           {threadView === "active" && archivedCount > 0 ? <span className="archive-count">{archivedCount}</span> : null}
         </button>
       </div>
+
+      {groupMenu ? createPortal(
+        <>
+          <div className="workspace-group-menu-scrim" onClick={() => setGroupMenu(null)} />
+          <div className="workspace-group-menu" style={{ left: groupMenu.x, top: groupMenu.y }} role="menu">
+            <button type="button" onClick={() => void onNew(undefined, groupMenu.projectId)}>
+              <Plus size={14} strokeWidth={1.7} />
+              <span>New conversation</span>
+            </button>
+            <button type="button" onClick={() => beginProjectRename(groupMenu.projectId)}>
+              <Pencil size={14} strokeWidth={1.7} />
+              <span>Rename project</span>
+            </button>
+            <button type="button" className="danger" onClick={() => void confirmRemoveProject(groupMenu.projectId)}>
+              <Trash2 size={14} strokeWidth={1.7} />
+              <span>Remove from Loom</span>
+            </button>
+          </div>
+        </>,
+        document.body,
+      ) : null}
 
       {contextMenu && menuThread ? createPortal(
         <div

@@ -151,6 +151,7 @@ from .tools import (
     ToolRouter,
     validate_tool_arguments,
 )
+from .turn_input import TurnInput, normalize_turn_input, turn_input_text
 from .web_search import (
     BraveWebSearchProvider,
     JSONTransport,
@@ -292,6 +293,7 @@ __all__ = [
     "ToolRouter",
     "ToolSearchRuntime",
     "TurnDiffTracker",
+    "TurnInput",
     "WebSearchError",
     "WebSearchProvider",
     "WebSearchResponse",
@@ -310,12 +312,14 @@ __all__ = [
     "mcp_sdk_available",
     "memory_tools",
     "multi_agent_tools",
+    "normalize_turn_input",
     "parse_skill_document",
     "permission_preset",
     "redact_browser_text",
     "redact_browser_url",
     "redact_secrets",
     "repair_tool_history",
+    "turn_input_text",
     "validate_tool_arguments",
     "web_search_provider_from_env",
     "web_search_tools",

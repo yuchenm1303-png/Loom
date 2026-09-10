@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, dialog, ipcMain } from "electron";
 import { ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -302,6 +302,15 @@ function createWindow(): void {
 ipcMain.handle("loom:connect", () => rpc.connect());
 ipcMain.handle("loom:call", (_event, method: string, params?: Record<string, unknown>) => rpc.call(method, params ?? {}));
 ipcMain.handle("loom:disconnect", () => rpc.stop());
+ipcMain.handle("loom:pick-directory", async () => {
+  // Adding a project is choosing a folder, which only the main process can ask
+  // for. Cancelling resolves to "" so the caller never has to read a flag.
+  const result = await dialog.showOpenDialog({
+    title: "Add project folder",
+    properties: ["openDirectory", "createDirectory"],
+  });
+  return result.canceled || !result.filePaths.length ? "" : result.filePaths[0];
+});
 ipcMain.handle("loom:model-list", () => modelManager.snapshot());
 ipcMain.handle("loom:model-switch", async (_event, selection: string) => {
   const value = String(selection || "").trim();

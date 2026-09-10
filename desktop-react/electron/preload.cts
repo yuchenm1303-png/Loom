@@ -15,6 +15,7 @@ const api = {
   switchCurrentModel: (model: string) => ipcRenderer.invoke("loom:model-switch-current", model),
   addModel: (input: Record<string, unknown>) => ipcRenderer.invoke("loom:model-add", input),
   setReasoning: (kind: string, value: string) => ipcRenderer.invoke("loom:reasoning-set", kind, value),
+  pickDirectory: () => ipcRenderer.invoke("loom:pick-directory"),
   onNotification: (listener: (payload: LoomNotification) => void) => {
     const wrapped = (_event: Electron.IpcRendererEvent, payload: LoomNotification) => listener(payload);
     ipcRenderer.on("loom:notification", wrapped);
