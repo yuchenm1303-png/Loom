@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useI18n } from "../i18n";
 
 type LoomNotification = {
@@ -188,7 +188,7 @@ export function ComputerUseHudOverlay() {
     "--hud-bubble-x": `${geometry.bubbleX}px`,
     "--hud-bubble-y": `${geometry.bubbleY}px`,
     "--hud-bubble-width": `${geometry.bubbleWidth}px`,
-  } as React.CSSProperties;
+  } as CSSProperties;
 
   return (
     <div
