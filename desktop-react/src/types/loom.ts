@@ -149,6 +149,36 @@ export interface StickerPreferences {
   repeatCount: number;
 }
 
+export interface LoomAppearanceSettings {
+  scale?: "100" | "110" | "120";
+  density?: "compact" | "comfortable";
+  reducedMotion?: boolean;
+  codeFont?: string;
+  codeFontSize?: number;
+}
+
+export interface LoomTerminalSettings {
+  shell?: "powershell" | "cmd" | "git-bash" | "wsl";
+  encoding?: "utf-8" | "system";
+  commandTimeoutSeconds?: number;
+  preserveBackgroundProcesses?: boolean;
+}
+
+export interface LoomBrowserSettings {
+  preferredEngine?: "edge" | "chrome" | "system";
+  persistSessions?: boolean;
+}
+
+export interface LoomComputerSettings {
+  verifyActions?: boolean;
+  screenshotQuality?: "fast" | "balanced" | "high";
+}
+
+export interface LoomPrivacySettings {
+  telemetry?: boolean;
+  crashReports?: boolean;
+}
+
 export interface LoomSettings {
   schemaVersion: number;
   capabilities: {
@@ -164,6 +194,11 @@ export interface LoomSettings {
     stickers?: boolean;
     [key: string]: boolean | undefined;
   };
+  appearance?: LoomAppearanceSettings;
+  terminal?: LoomTerminalSettings;
+  browser?: LoomBrowserSettings;
+  computer?: LoomComputerSettings;
+  privacy?: LoomPrivacySettings;
 }
 
 export interface ModelRestartResult {
