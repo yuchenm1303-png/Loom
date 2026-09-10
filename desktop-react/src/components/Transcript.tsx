@@ -18,10 +18,12 @@ import type { TranscriptItem } from "../types/loom";
 import { MarkdownMessage } from "./MarkdownMessage";
 import "./activity-flow.css";
 import "./task-flow-folding.css";
+import "./turn-flow.css";
 
 interface TranscriptProps {
   items: TranscriptItem[];
   running?: boolean;
+  currentTurnId?: string | null;
   promptDisabled?: boolean;
   onPrompt?(prompt: string): void;
   onApproval(item: TranscriptItem, approved: boolean): void;
@@ -30,6 +32,10 @@ interface TranscriptProps {
 type TranscriptBlock =
   | { kind: "item"; item: TranscriptItem }
   | { kind: "activity"; items: TranscriptItem[] };
+
+type TurnBlock =
+  | { kind: "turn"; id: string; items: TranscriptItem[] }
+  | { kind: "loose"; item: TranscriptItem };
 
 type ReasoningState = "none" | "streaming" | "closed";
 
@@ -204,6 +210,27 @@ function groupTranscript(items: TranscriptItem[]): TranscriptBlock[] {
   return blocks;
 }
 
+function groupTurns(items: TranscriptItem[]): TurnBlock[] {
+  const blocks: TurnBlock[] = [];
+
+  for (const item of items) {
+    const turnId = String(item.turnId ?? "");
+    if (!turnId) {
+      blocks.push({ kind: "loose", item });
+      continue;
+    }
+
+    const last = blocks[blocks.length - 1];
+    if (last?.kind === "turn" && last.id === turnId) {
+      last.items.push(item);
+    } else {
+      blocks.push({ kind: "turn", id: turnId, items: [item] });
+    }
+  }
+
+  return blocks;
+}
+
 function processCommand(item: TranscriptItem): string {
   if (Array.isArray(item.argv)) return item.argv.map(String).join(" ");
   return String(item.command ?? item.toolName ?? "Process");
@@ -375,66 +402,30 @@ function compactActivityItems(items: TranscriptItem[]): TranscriptItem[] {
 }
 
 function activitySummary(items: TranscriptItem[]): ActivitySummaryData {
+  const activity = compactActivityItems(items.filter(isActivityItem));
+  const fileEdits = items.filter((item) => item.type === "file_edit");
+  const latestDiff = [...fileEdits].reverse().find((item) => String(item.diff ?? "").trim()) ?? fileEdits[fileEdits.length - 1];
   const files: string[] = [];
-  let added = 0;
-  let removed = 0;
 
-  for (const item of items) {
-    if (item.type !== "file_edit") continue;
+  for (const item of fileEdits) {
     for (const path of item.paths ?? []) {
       if (!files.includes(path)) files.push(path);
     }
-    const stats = diffStats(item.diff);
-    added += stats.added;
-    removed += stats.removed;
   }
 
+  const stats = diffStats(latestDiff?.diff);
   return {
-    steps: items.length,
-    tools: items.filter((item) => item.type === "tool_call").length,
-    commands: items.filter((item) => item.type === "process").length,
+    steps: activity.length,
+    tools: activity.filter((item) => item.type === "tool_call").length,
+    commands: activity.filter((item) => item.type === "process").length,
     files,
-    added,
-    removed,
-    failed: items.some((item) => isFailureStatus(itemStatus(item))),
+    added: stats.added,
+    removed: stats.removed,
+    failed: items.some((item) => isFailureStatus(itemStatus(item)) || item.type === "error"),
   };
 }
 
-function activitySummaryText(summary: ActivitySummaryData): string {
-  const parts = [`${summary.steps} 步`];
-  if (summary.commands) parts.push(`${summary.commands} 个命令`);
-  if (summary.tools) parts.push(`${summary.tools} 个工具`);
-  if (summary.files.length) parts.push(`${summary.files.length} 个文件`);
-  return parts.join(" · ");
-}
-
-function ActivityFoldSummary({ summary }: { summary: ActivitySummaryData }) {
-  if (!summary.files.length && summary.steps <= 1 && !summary.failed) return null;
-  const visibleFiles = summary.files.slice(0, 3);
-  const extraFiles = Math.max(0, summary.files.length - visibleFiles.length);
-
-  return (
-    <div className="task-flow-compact-summary" aria-label="Task summary">
-      <span className={`task-flow-summary-pill ${summary.failed ? "failed" : ""}`}>{summary.steps} 步</span>
-      {summary.commands ? <span className="task-flow-summary-pill">{summary.commands} 个命令</span> : null}
-      {summary.tools ? <span className="task-flow-summary-pill">{summary.tools} 个工具</span> : null}
-      {summary.files.length ? <span className="task-flow-summary-pill changed">{summary.files.length} 个文件</span> : null}
-      {summary.added || summary.removed ? (
-        <span className="task-flow-summary-pill changed">+{summary.added} -{summary.removed}</span>
-      ) : null}
-      {visibleFiles.length ? (
-        <span className="task-flow-summary-files">
-          {visibleFiles.map((path) => <span className="task-flow-summary-file" title={path} key={path}>{path}</span>)}
-          {extraFiles ? <span className="task-flow-summary-more">+{extraFiles}</span> : null}
-        </span>
-      ) : null}
-    </div>
-  );
-}
-
-function activityGroupTitle(items: TranscriptItem[], settled: boolean): string {
-  if (settled) return "任务过程";
-
+function activityGroupTitle(items: TranscriptItem[]): string {
   const hasProcess = items.some((item) => item.type === "process");
   const hasEdit = items.some((item) => item.type === "file_edit");
   const hasTool = items.some((item) => item.type === "tool_call");
@@ -456,20 +447,18 @@ function ActivityGroupIcon({ items }: { items: TranscriptItem[] }) {
   return <Wrench size={14} />;
 }
 
-function ActivityFlow({ items }: { items: TranscriptItem[] }) {
+function ActivityFlow({ items, keepOpen = false }: { items: TranscriptItem[]; keepOpen?: boolean }) {
   const compactItems = compactActivityItems(items);
   const running = compactItems.some((item) => isActiveActivityStatus(itemStatus(item)));
-  const settled = !running;
-  const [open, setOpen] = useState(running);
-  const summary = activitySummary(compactItems);
+  const [open, setOpen] = useState(true);
 
   useEffect(() => {
-    setOpen(running);
-  }, [running]);
+    if (keepOpen || running) setOpen(true);
+  }, [keepOpen, running]);
 
   return (
     <section
-      className={`task-flow task-flow-group ${open ? "is-open" : ""} ${running ? "is-running" : ""} ${settled ? "is-settled" : ""}`}
+      className={`task-flow task-flow-group ${open ? "is-open" : ""} ${running ? "is-running" : ""}`}
       aria-label="Task activity"
     >
       <button
@@ -477,16 +466,11 @@ function ActivityFlow({ items }: { items: TranscriptItem[] }) {
         className="task-flow-group-header"
         onClick={() => setOpen((value) => !value)}
         aria-expanded={open}
-        title={open ? "折叠任务过程" : "展开任务过程"}
       >
         <span className="task-flow-group-icon" aria-hidden="true"><ActivityGroupIcon items={compactItems} /></span>
-        <span className="task-flow-group-title">{activityGroupTitle(compactItems, settled)}</span>
-        {settled ? <span className="task-flow-group-summary">{activitySummaryText(summary)}</span> : null}
-        {summary.failed ? <span className="task-flow-group-failed">部分失败</span> : null}
+        <span className="task-flow-group-title">{activityGroupTitle(compactItems)}</span>
         <ChevronRight size={13} className="task-flow-group-chevron" aria-hidden="true" />
       </button>
-
-      {settled && !open ? <ActivityFoldSummary summary={summary} /> : null}
 
       <div className="task-flow-group-grid">
         <div className="task-flow-group-inner">
@@ -546,6 +530,259 @@ function ItemView({ item, onApproval }: { item: TranscriptItem; onApproval(item:
   return null;
 }
 
+function Sequence({
+  items,
+  onApproval,
+  keepActivityOpen = false,
+}: {
+  items: TranscriptItem[];
+  onApproval(item: TranscriptItem, approved: boolean): void;
+  keepActivityOpen?: boolean;
+}) {
+  const blocks = groupTranscript(items);
+  return (
+    <>
+      {blocks.map((block, index) => (
+        block.kind === "activity" ? (
+          <div className="transcript-entry entry-activity" key={`activity-${block.items[0]?.id ?? index}`}>
+            <ActivityFlow items={block.items} keepOpen={keepActivityOpen} />
+          </div>
+        ) : (
+          <div className={`transcript-entry entry-${block.item.type}`} key={block.item.id}>
+            <ItemView item={block.item} onApproval={onApproval} />
+          </div>
+        )
+      ))}
+    </>
+  );
+}
+
+function parseTimestamp(value: unknown): number | null {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function elapsedLabel(items: TranscriptItem[]): string {
+  const starts = items.map((item) => parseTimestamp(item.createdAt)).filter((value): value is number => value !== null);
+  const ends = items.map((item) => parseTimestamp(item.updatedAt) ?? parseTimestamp(item.createdAt)).filter((value): value is number => value !== null);
+  if (!starts.length || !ends.length) return "任务过程";
+
+  const seconds = Math.max(1, Math.round((Math.max(...ends) - Math.min(...starts)) / 1000));
+  if (seconds < 60) return `用时 ${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  if (minutes < 60) return `用时 ${minutes}m${remainingSeconds ? ` ${remainingSeconds}s` : ""}`;
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  return `用时 ${hours}h${remainingMinutes ? ` ${remainingMinutes}m` : ""}`;
+}
+
+function finalAssistantForTurn(items: TranscriptItem[]): TranscriptItem | null {
+  const assistants = items.filter((item) => item.type === "assistant_message");
+  if (!assistants.length) return null;
+  return [...assistants].reverse().find((item) => splitReasoning(item.text ?? "").answer.trim()) ?? assistants[assistants.length - 1];
+}
+
+function latestFileEdit(items: TranscriptItem[]): TranscriptItem | null {
+  const edits = items.filter((item) => item.type === "file_edit");
+  if (!edits.length) return null;
+  return [...edits].reverse().find((item) => String(item.diff ?? "").trim()) ?? edits[edits.length - 1];
+}
+
+function changedPaths(items: TranscriptItem[]): string[] {
+  const paths: string[] = [];
+  for (const item of items) {
+    if (item.type !== "file_edit") continue;
+    for (const path of item.paths ?? []) {
+      if (!paths.includes(path)) paths.push(path);
+    }
+  }
+  return paths;
+}
+
+function TurnProcess({
+  items,
+  allItems,
+  active,
+  open,
+  onOpenChange,
+  onApproval,
+}: {
+  items: TranscriptItem[];
+  allItems: TranscriptItem[];
+  active: boolean;
+  open: boolean;
+  onOpenChange(open: boolean): void;
+  onApproval(item: TranscriptItem, approved: boolean): void;
+}) {
+  const summary = activitySummary(items);
+  const intermediateMessages = items.filter((item) => item.type === "assistant_message").length;
+  const operationCount = summary.steps + intermediateMessages;
+
+  return (
+    <section className={`turn-process ${active ? "is-live" : "is-settled"} ${open ? "is-open" : ""}`}>
+      {!active ? (
+        <button
+          type="button"
+          className="turn-process-header"
+          onClick={() => onOpenChange(!open)}
+          aria-expanded={open}
+          title={open ? "折叠任务过程" : "展开完整任务过程"}
+        >
+          <span className="turn-process-time">{elapsedLabel(allItems)}</span>
+          {operationCount ? <span className="turn-process-meta">{operationCount} 个过程项</span> : null}
+          {summary.failed ? <span className="turn-process-failed">部分失败</span> : null}
+          <ChevronRight size={14} className="turn-process-chevron" aria-hidden="true" />
+          <span className="turn-process-rule" aria-hidden="true" />
+        </button>
+      ) : null}
+
+      <div className="turn-process-grid">
+        <div className="turn-process-inner">
+          <div className="turn-process-content">
+            <Sequence items={items} onApproval={onApproval} keepActivityOpen />
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function TurnArtifacts({ items }: { items: TranscriptItem[] }) {
+  const edit = latestFileEdit(items);
+  const paths = changedPaths(items);
+  const diff = String(edit?.diff ?? "").trim();
+  const stats = diffStats(diff);
+  const [open, setOpen] = useState(false);
+  if (!paths.length && !diff) return null;
+
+  const canExpand = Boolean(diff) || paths.length > 4;
+  const visiblePaths = open ? paths : paths.slice(0, 4);
+  const hiddenCount = Math.max(0, paths.length - visiblePaths.length);
+  const title = paths.length === 1 ? `已编辑 ${paths[0]}` : `已修改 ${paths.length || 1} 个文件`;
+
+  return (
+    <section className={`turn-artifacts ${open ? "is-open" : ""}`} aria-label="Changed files">
+      <button
+        type="button"
+        className="turn-artifacts-header"
+        onClick={() => canExpand && setOpen((value) => !value)}
+        disabled={!canExpand}
+        aria-expanded={canExpand ? open : undefined}
+      >
+        <span className="turn-artifacts-icon" aria-hidden="true"><FileDiff size={15} /></span>
+        <span className="turn-artifacts-copy">
+          <strong>{title}</strong>
+          {(stats.added || stats.removed) ? (
+            <span className="turn-artifacts-stats"><b>+{stats.added}</b><i>-{stats.removed}</i></span>
+          ) : null}
+        </span>
+        {canExpand ? (
+          <span className="turn-artifacts-action">
+            <span>{open ? "收起" : "查看更改"}</span>
+            <ChevronRight size={14} />
+          </span>
+        ) : null}
+      </button>
+
+      {paths.length > 1 ? (
+        <div className="turn-artifacts-files">
+          {visiblePaths.map((path) => <code key={path} title={path}>{path}</code>)}
+          {hiddenCount ? <span className="turn-artifacts-more">+{hiddenCount}</span> : null}
+        </div>
+      ) : null}
+
+      {diff ? (
+        <div className="turn-artifacts-grid">
+          <div className="turn-artifacts-inner">
+            <pre>{diff}</pre>
+          </div>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function TurnView({
+  turnId,
+  items,
+  active,
+  onApproval,
+}: {
+  turnId: string;
+  items: TranscriptItem[];
+  active: boolean;
+  onApproval(item: TranscriptItem, approved: boolean): void;
+}) {
+  const userItems = items.filter((item) => item.type === "user_message");
+  const finalAssistant = active ? null : finalAssistantForTurn(items);
+  const errorItems = active ? [] : items.filter((item) => item.type === "error");
+  const processItems = items.filter((item) => (
+    item.type !== "user_message" &&
+    item.id !== finalAssistant?.id &&
+    !errorItems.some((error) => error.id === item.id)
+  ));
+  const hasProcess = processItems.some((item) => isActivityItem(item) || item.type === "assistant_message" || item.type === "approval");
+  const [processOpen, setProcessOpen] = useState(active);
+  const wasActiveRef = useRef(active);
+
+  useEffect(() => {
+    if (active) {
+      setProcessOpen(true);
+    } else if (wasActiveRef.current) {
+      const timer = window.setTimeout(() => setProcessOpen(false), 90);
+      wasActiveRef.current = active;
+      return () => window.clearTimeout(timer);
+    }
+    wasActiveRef.current = active;
+  }, [active]);
+
+  const latestAssistant = [...items].reverse().find((item) => item.type === "assistant_message");
+  const latestAssistantState = latestAssistant ? splitReasoning(latestAssistant.text ?? "") : null;
+  const showPendingThinking = Boolean(
+    active &&
+    latestAssistantState?.state !== "streaming" &&
+    !latestAssistantState?.answer.trim(),
+  );
+
+  return (
+    <section className={`turn-block ${active ? "is-active" : "is-complete"}`} data-turn-id={turnId}>
+      {userItems.map((item) => (
+        <div className="transcript-entry entry-user_message" key={item.id}>
+          <ItemView item={item} onApproval={onApproval} />
+        </div>
+      ))}
+
+      {hasProcess ? (
+        <TurnProcess
+          items={processItems}
+          allItems={items}
+          active={active}
+          open={processOpen}
+          onOpenChange={setProcessOpen}
+          onApproval={onApproval}
+        />
+      ) : null}
+
+      {!active && finalAssistant ? (
+        <div className="transcript-entry entry-assistant_message turn-final-answer" key={finalAssistant.id}>
+          <ItemView item={finalAssistant} onApproval={onApproval} />
+        </div>
+      ) : null}
+
+      {!active ? errorItems.map((item) => (
+        <div className="transcript-entry entry-error" key={item.id}>
+          <ItemView item={item} onApproval={onApproval} />
+        </div>
+      )) : null}
+
+      {!active ? <TurnArtifacts items={items} /> : null}
+      {showPendingThinking ? <PendingThinking /> : null}
+    </section>
+  );
+}
+
 function EmptyState({ disabled, onPrompt }: { disabled?: boolean; onPrompt?(prompt: string): void }) {
   return (
     <section className="empty-state">
@@ -583,27 +820,14 @@ function EmptyState({ disabled, onPrompt }: { disabled?: boolean; onPrompt?(prom
   );
 }
 
-export function Transcript({ items, running, promptDisabled, onPrompt, onApproval }: TranscriptProps) {
+export function Transcript({ items, running, currentTurnId, promptDisabled, onPrompt, onApproval }: TranscriptProps) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const previousCount = useRef(0);
-  const blocks = groupTranscript(items);
-
-  let lastUserIndex = -1;
-  for (let index = items.length - 1; index >= 0; index -= 1) {
-    if (items[index].type === "user_message") {
-      lastUserIndex = index;
-      break;
-    }
-  }
-
-  const currentTurnItems = lastUserIndex >= 0 ? items.slice(lastUserIndex + 1) : items;
-  const latestAssistant = [...currentTurnItems].reverse().find((item) => item.type === "assistant_message");
-  const latestAssistantState = latestAssistant ? splitReasoning(latestAssistant.text ?? "") : null;
-  const showPendingThinking = Boolean(
-    running &&
-    latestAssistantState?.state !== "streaming" &&
-    !latestAssistantState?.answer.trim(),
-  );
+  const turnBlocks = groupTurns(items);
+  const fallbackActiveTurnId = running
+    ? [...turnBlocks].reverse().find((block): block is Extract<TurnBlock, { kind: "turn" }> => block.kind === "turn")?.id
+    : undefined;
+  const activeTurnId = String(currentTurnId || fallbackActiveTurnId || "");
 
   useEffect(() => {
     if (items.length > previousCount.current) {
@@ -627,18 +851,21 @@ export function Transcript({ items, running, promptDisabled, onPrompt, onApprova
       <main className="transcript" aria-live="polite">
         {!items.length ? (
           <EmptyState disabled={promptDisabled} onPrompt={onPrompt} />
-        ) : blocks.map((block, index) => (
-          block.kind === "activity" ? (
-            <div className="transcript-entry entry-activity" key={`activity-${block.items[0]?.id ?? index}`}>
-              <ActivityFlow items={block.items} />
-            </div>
+        ) : turnBlocks.map((block, index) => (
+          block.kind === "turn" ? (
+            <TurnView
+              key={block.id}
+              turnId={block.id}
+              items={block.items}
+              active={Boolean(running && block.id === activeTurnId)}
+              onApproval={onApproval}
+            />
           ) : (
-            <div className={`transcript-entry entry-${block.item.type}`} key={block.item.id}>
+            <div className={`transcript-entry entry-${block.item.type}`} key={block.item.id || `loose-${index}`}>
               <ItemView item={block.item} onApproval={onApproval} />
             </div>
           )
         ))}
-        {showPendingThinking ? <PendingThinking /> : null}
       </main>
     </div>
   );
