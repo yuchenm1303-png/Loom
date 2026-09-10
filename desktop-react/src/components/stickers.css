@@ -2,17 +2,31 @@
   white-space: pre-wrap;
 }
 
-.assistant-inline-sticker {
+.markdown-body img.assistant-inline-sticker {
   display: inline-block;
   width: 96px;
   height: 96px;
   max-width: min(30vw, 112px);
   max-height: min(30vw, 112px);
   object-fit: contain;
-  vertical-align: middle;
-  margin: 4px 5px 4px 2px;
+  vertical-align: -0.22em;
+  margin: 2px 6px 2px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
   user-select: none;
   -webkit-user-drag: none;
+}
+
+.markdown-body p:has(> img.assistant-inline-sticker:first-child) {
+  text-align: left;
+}
+
+.markdown-body p:has(> img.assistant-inline-sticker:only-child) {
+  margin-top: 2px;
+  margin-bottom: 2px;
+  line-height: 1;
 }
 
 .sticker-popover {
