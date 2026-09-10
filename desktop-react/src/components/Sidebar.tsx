@@ -576,7 +576,10 @@ export function Sidebar({
 
       <div className="compact-thread-scroll" aria-label={threadView === "archived" ? "Archived conversations" : "Conversations"}>
         {groups.map((group) => (
-          <section className="workspace-group" key={group.key}>
+          <section
+            className={`workspace-group ${group.threads.length ? "" : "is-empty"} ${groupMenu?.projectId && groupMenu.projectId === group.projectId ? "has-menu" : ""}`}
+            key={group.key}
+          >
             <div className="workspace-group-header">
               {renamingProjectId === group.projectId && group.projectId ? (
                 <input
@@ -625,10 +628,6 @@ export function Sidebar({
                 </button>
               ) : null}
             </div>
-
-            {group.projectId && !group.threads.length ? (
-              <p className="workspace-group-empty">No conversations yet</p>
-            ) : null}
 
             <div className="workspace-thread-list">
               {group.threads.map((thread) => {

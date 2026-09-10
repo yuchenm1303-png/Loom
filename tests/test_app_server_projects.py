@@ -197,3 +197,41 @@ def test_project_methods_are_dispatchable(service, tmp_path):
         }
     )
     assert unknown["error"]["code"] == -32004
+
+
+def test_the_managed_service_also_reports_the_project(tmp_path: Path) -> None:
+    """The desktop clients talk to the managed service, not the base one.
+
+    Building records through the bare module helper there dropped ``projectId``
+    from every listed thread, so every project rendered as empty while its
+    conversations piled up under "No project".
+    """
+    from app.agent_runtime import FileAgentSessionStore
+    from app.app_server_thread_management import ManagedStreamingLoomAppServerService
+
+    workspace = _folder(tmp_path, "loom")
+    store = FileAgentSessionStore(tmp_path / "home")
+    runtime = DurableAgentRuntime(
+        platform=SilentPlatform(),
+        store=store,
+        tools=ToolRegistry(()),
+        default_permission_mode=PermissionMode.WORKSPACE,
+        auto_drain_queue=False,
+    )
+    managed = ManagedStreamingLoomAppServerService(
+        runtime=runtime,
+        store=store,
+        model="test-model",
+        default_workspace=workspace,
+        default_permission_mode=PermissionMode.WORKSPACE,
+    )
+    try:
+        project = managed.project_create({"root": str(workspace)})["project"]
+        managed.thread_start({"workspace": str(workspace)})
+
+        listed = managed.thread_list({})["threads"]
+
+        assert [thread["projectId"] for thread in listed] == [project["id"]]
+        assert managed.project_list({})["projects"][0]["threadCount"] == 1
+    finally:
+        runtime.close()

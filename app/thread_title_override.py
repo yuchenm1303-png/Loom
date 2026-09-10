@@ -519,7 +519,9 @@ def _patch_service(module: ModuleType) -> None:
     original_thread_read = service_cls.thread_read
 
     def managed_record(self: Any, session: Any) -> dict[str, Any]:
-        record = module._thread_record(session, active=self._is_active(session.session_id))
+        # Through the service's own helper: the bare module function cannot
+        # resolve a thread's project, and this override is what actually runs.
+        record = self._record(session, active=self._is_active(session.session_id))
         metadata = self.thread_library.read(session.session_id)
         custom_title, title_source = _metadata_display_title(metadata)
         archived_at = str(metadata.get("archivedAt") or "").strip()
