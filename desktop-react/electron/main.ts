@@ -21,120 +21,6 @@ const REPO_VENV_PYTHON = process.platform === "win32"
   ? path.join(REPO_ROOT, ".venv", "Scripts", "python.exe")
   : path.join(REPO_ROOT, ".venv", "bin", "python");
 
-function resolvePythonExecutable(): string {
-  const configured = process.env.LOOM_PYTHON?.trim();
-  if (configured) return configured;
-  if (fsSync.existsSync(REPO_VENV_PYTHON)) return REPO_VENV_PYTHON;
-  return process.platform === "win32" ? "python" : "python3";
-}
-
-function appendPythonPath(existing: string | undefined): string {
-  return [REPO_ROOT, existing]
-    .filter((value): value is string => Boolean(value && value.trim()))
-    .join(path.delimiter);
-}
-
-function computerLogRoot(): string {
-  const configured = process.env.LOOM_COMPUTER_LOG_DIR?.trim();
-  return configured ? path.resolve(configured) : path.join(REPO_ROOT, ".loom", "logs", "computer-use");
-}
-
-function timestampSlug(): string {
-  return new Date().toISOString().replace(/[:.]/g, "-").replace("T", "_").replace("Z", "");
-}
-
-function parseLastJsonLine(stdout: string): Record<string, unknown> {
-  const lines = String(stdout || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  const last = lines.at(-1) || "{}";
-  const parsed = JSON.parse(last);
-  return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
-}
-
-async function exportComputerLogs(): Promise<Record<string, unknown>> {
-  const logDir = computerLogRoot();
-  const defaultPath = path.join(app.getPath("desktop"), `loom-computer-use-logs-${timestampSlug()}.zip`);
-  const selection = await dialog.showSaveDialog({
-    title: "Export Computer Use logs",
-    defaultPath,
-    filters: [{ name: "Zip archive", extensions: ["zip"] }],
-  });
-  if (selection.canceled || !selection.filePath) {
-    return { ok: false, cancelled: true, logDir };
-  }
-  const archivePath = selection.filePath.endsWith(".zip") ? selection.filePath : `${selection.filePath}.zip`;
-  const script = String.raw`
-import json
-import os
-import sys
-import zipfile
-from pathlib import Path
-
-source = Path(sys.argv[1]).expanduser().resolve()
-target = Path(sys.argv[2]).expanduser().resolve()
-if not source.exists():
-    raise SystemExit(f"Computer Use log directory does not exist: {source}")
-if not source.is_dir():
-    raise SystemExit(f"Computer Use log path is not a directory: {source}")
-target.parent.mkdir(parents=True, exist_ok=True)
-if target.exists():
-    target.unlink()
-count = 0
-with zipfile.ZipFile(target, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
-    for item in sorted(source.rglob("*")):
-        if not item.is_file():
-            continue
-        rel = item.relative_to(source.parent).as_posix()
-        archive.write(item, rel)
-        count += 1
-print(json.dumps({"fileCount": count, "sizeBytes": target.stat().st_size}, ensure_ascii=False))
-`;
-  const python = resolvePythonExecutable();
-  const result = spawnSync(python, ["-c", script, logDir, archivePath], {
-    cwd: REPO_ROOT,
-    env: {
-      ...process.env,
-      PYTHONUTF8: "1",
-      PYTHONPATH: appendPythonPath(process.env.PYTHONPATH),
-    },
-    encoding: "utf8",
-    windowsHide: true,
-  });
-  if (result.error) throw result.error;
-  if (result.status !== 0) {
-    const stderr = String(result.stderr || "").trim();
-    const stdout = String(result.stdout || "").trim();
-    throw new Error(stderr || stdout || `Computer Use log export failed with status ${result.status}`);
-  }
-  const summary = parseLastJsonLine(String(result.stdout || ""));
-  return {
-    ok: true,
-    archivePath,
-    logDir,
-    python,
-    ...summary,
-  };
-}
-
-async function revealPath(targetPath: string): Promise<boolean> {
-  const target = path.resolve(String(targetPath || ""));
-  if (!target) return false;
-  try {
-    const stat = await fs.stat(target);
-    if (stat.isFile()) {
-      shell.showItemInFolder(target);
-      return true;
-    }
-    const error = await shell.openPath(target);
-    if (error) throw new Error(error);
-    return true;
-  } catch {
-    const parent = path.dirname(target);
-    const error = await shell.openPath(parent);
-    if (error) throw new Error(error);
-    return true;
-  }
-}
-
 interface JsonRpcResponse {
   jsonrpc: "2.0";
   id?: number | string | null;
@@ -160,6 +46,19 @@ interface ReasoningUpdateResult {
   models: ReturnType<DesktopModelManager["snapshot"]>;
 }
 
+function resolvePythonExecutable(): string {
+  const configured = process.env.LOOM_PYTHON?.trim();
+  if (configured) return configured;
+  if (fsSync.existsSync(REPO_VENV_PYTHON)) return REPO_VENV_PYTHON;
+  return process.platform === "win32" ? "python" : "python3";
+}
+
+function appendPythonPath(existing: string | undefined): string {
+  return [REPO_ROOT, existing]
+    .filter((value): value is string => Boolean(value && value.trim()))
+    .join(path.delimiter);
+}
+
 function initializationFromRuntime(payload: unknown): unknown {
   if (payload && typeof payload === "object" && "runtime" in payload) return payload;
   return { runtime: payload };
@@ -180,6 +79,89 @@ function runtimeModelParams(spec: ModelLaunchSpec): Record<string, unknown> {
 function missingHotSwitchMethod(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
   return message.includes("Method not found: runtime/set_model");
+}
+
+function computerLogRoot(): string {
+  const configured = process.env.LOOM_COMPUTER_LOG_DIR?.trim();
+  return configured ? path.resolve(configured) : path.join(REPO_ROOT, ".loom", "logs", "computer-use");
+}
+
+function timestampSlug(): string {
+  return new Date().toISOString().replace(/[:.]/g, "-").replace("T", "_").replace("Z", "");
+}
+
+function parseLastJsonLine(stdout: string): Record<string, unknown> {
+  const lines = String(stdout || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const last = lines.length ? lines[lines.length - 1] : "{}";
+  const parsed = JSON.parse(last);
+  return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
+}
+
+async function exportComputerLogs(): Promise<Record<string, unknown>> {
+  const logDir = computerLogRoot();
+  const defaultPath = path.join(app.getPath("desktop"), `loom-computer-use-logs-${timestampSlug()}.zip`);
+  const selection = await dialog.showSaveDialog({
+    title: "Export Computer Use logs",
+    defaultPath,
+    filters: [{ name: "Zip archive", extensions: ["zip"] }],
+  });
+  if (selection.canceled || !selection.filePath) return { ok: false, cancelled: true, logDir };
+  const archivePath = selection.filePath.endsWith(".zip") ? selection.filePath : `${selection.filePath}.zip`;
+  const script = String.raw`
+import json
+import sys
+import zipfile
+from pathlib import Path
+source = Path(sys.argv[1]).expanduser().resolve()
+target = Path(sys.argv[2]).expanduser().resolve()
+if not source.exists():
+    raise SystemExit(f"Computer Use log directory does not exist: {source}")
+if not source.is_dir():
+    raise SystemExit(f"Computer Use log path is not a directory: {source}")
+target.parent.mkdir(parents=True, exist_ok=True)
+if target.exists():
+    target.unlink()
+count = 0
+with zipfile.ZipFile(target, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
+    for item in sorted(source.rglob("*")):
+        if item.is_file():
+            archive.write(item, item.relative_to(source.parent).as_posix())
+            count += 1
+print(json.dumps({"fileCount": count, "sizeBytes": target.stat().st_size}, ensure_ascii=False))
+`;
+  const python = resolvePythonExecutable();
+  const result = spawnSync(python, ["-c", script, logDir, archivePath], {
+    cwd: REPO_ROOT,
+    env: { ...process.env, PYTHONUTF8: "1", PYTHONPATH: appendPythonPath(process.env.PYTHONPATH) },
+    encoding: "utf8",
+    windowsHide: true,
+  });
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    const stderr = String(result.stderr || "").trim();
+    const stdout = String(result.stdout || "").trim();
+    throw new Error(stderr || stdout || `Computer Use log export failed with status ${result.status}`);
+  }
+  return { ok: true, archivePath, logDir, python, ...parseLastJsonLine(String(result.stdout || "")) };
+}
+
+async function revealPath(targetPath: string): Promise<boolean> {
+  const target = path.resolve(String(targetPath || ""));
+  if (!targetPath) return false;
+  try {
+    const stat = await fs.stat(target);
+    if (stat.isFile()) {
+      shell.showItemInFolder(target);
+      return true;
+    }
+    const error = await shell.openPath(target);
+    if (error) throw new Error(error);
+    return true;
+  } catch {
+    const error = await shell.openPath(path.dirname(target));
+    if (error) throw new Error(error);
+    return true;
+  }
 }
 
 class LoomRpcProcess {
@@ -203,7 +185,6 @@ class LoomRpcProcess {
     if (this.child && this.initialized) return this.initializeResult;
     if (this.connectPromise) return this.connectPromise;
     if (!this.child) this.startProcess();
-
     this.connectPromise = (async () => {
       const result = await this.call("initialize", {
         protocolVersion: 1,
@@ -214,7 +195,6 @@ class LoomRpcProcess {
       this.initialized = true;
       return result;
     })();
-
     try {
       return await this.connectPromise;
     } finally {
@@ -225,11 +205,8 @@ class LoomRpcProcess {
   async call(method: string, params: Record<string, unknown> = {}): Promise<unknown> {
     if (!this.child) throw new Error("Loom App Server is not running");
     const id = this.nextId++;
-    const payload = JSON.stringify({ jsonrpc: "2.0", id, method, params });
-    const promise = new Promise<unknown>((resolve, reject) => {
-      this.pending.set(id, { resolve, reject });
-    });
-    this.child.stdin.write(`${payload}\n`, "utf8");
+    const promise = new Promise<unknown>((resolve, reject) => this.pending.set(id, { resolve, reject }));
+    this.child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id, method, params })}\n`, "utf8");
     return promise;
   }
 
@@ -271,29 +248,16 @@ class LoomRpcProcess {
   }
 
   private sendNotification(method: string, params: Record<string, unknown>): void {
-    if (!this.child) return;
-    this.child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", method, params })}\n`, "utf8");
+    this.child?.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", method, params })}\n`, "utf8");
   }
 
   private startProcess(): void {
     const spec = this.models.current ?? this.models.ensureInitial();
     const python = resolvePythonExecutable();
     const script = path.join(REPO_ROOT, "loom_app_server.py");
-    const args = [
-      script,
-      "--workspace",
-      REPO_ROOT,
-      "--provider",
-      spec.provider,
-      "--model",
-      spec.model,
-    ];
+    const args = [script, "--workspace", REPO_ROOT, "--provider", spec.provider, "--model", spec.model];
     if (spec.baseUrl) args.push("--base-url", spec.baseUrl);
-    if (spec.reasoning) {
-      args.push("--reasoning-kind", spec.reasoning.kind);
-      args.push("--reasoning-value", spec.reasoning.value);
-    }
-
+    if (spec.reasoning) args.push("--reasoning-kind", spec.reasoning.kind, "--reasoning-value", spec.reasoning.value);
     console.log(`[loom-app-server] launching ${python}`);
     const child = spawn(python, args, {
       cwd: REPO_ROOT,
@@ -308,9 +272,7 @@ class LoomRpcProcess {
       windowsHide: true,
     });
     this.child = child;
-
-    const stdout = readline.createInterface({ input: child.stdout });
-    stdout.on("line", (line) => this.handleLine(line));
+    readline.createInterface({ input: child.stdout }).on("line", (line) => this.handleLine(line));
     child.stderr.setEncoding("utf8");
     child.stderr.on("data", (chunk) => console.error(`[loom-app-server] ${String(chunk).trimEnd()}`));
     child.on("error", (error) => {
@@ -356,9 +318,7 @@ let mainWindow: BrowserWindow | null = null;
 const modelManager = new DesktopModelManager(REPO_ROOT);
 function handleRuntimeNotification(payload: JsonRpcResponse): void {
   mainWindow?.webContents.send("loom:notification", payload);
-  if (payload.method === "hud/update") {
-    sendHudUpdate(payload.params ?? {});
-  }
+  if (payload.method === "hud/update") sendHudUpdate(payload.params ?? {});
 }
 const rpc = new LoomRpcProcess(handleRuntimeNotification, modelManager);
 
@@ -401,12 +361,7 @@ async function deleteModel(selection: string): Promise<ModelRestartResult> {
   const previous = modelManager.current ?? modelManager.ensureInitial();
   const deletesCurrent = previous.selection === value;
   modelManager.delete(value);
-
-  if (!deletesCurrent) {
-    const initialization = await rpc.currentInitialization();
-    return { initialization, models: modelManager.snapshot(), hotSwitch: true };
-  }
-
+  if (!deletesCurrent) return { initialization: await rpc.currentInitialization(), models: modelManager.snapshot(), hotSwitch: true };
   const next = modelManager.ensureInitial();
   try {
     const initialization = await rpc.setModel(next);
@@ -432,24 +387,24 @@ async function deleteModel(selection: string): Promise<ModelRestartResult> {
   }
 }
 
+function htmlEscape(value: string): string {
+  return value.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char] ?? char);
+}
+
 function rendererFailureDocument(title: string, detail: string): string {
-  const safeTitle = title.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char] ?? char);
-  const safeDetail = detail.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char] ?? char);
-  return `<!doctype html><html><head><meta charset="utf-8"><meta name="color-scheme" content="dark"><title>Loom startup error</title><style>html,body{height:100%;margin:0;background:#0d0e11;color:#eceef2;font-family:Segoe UI,sans-serif}.wrap{height:100%;display:grid;place-items:center;padding:32px;box-sizing:border-box}.card{width:min(680px,100%);padding:22px;border:1px solid #303440;border-radius:14px;background:#15171d;box-shadow:0 18px 60px rgba(0,0,0,.28)}h1{font-size:18px;margin:0 0 10px}p{color:#a5abb6;font-size:13px;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere;margin:0}</style></head><body><div class="wrap"><div class="card"><h1>${safeTitle}</h1><p>${safeDetail}</p></div></div></body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="color-scheme" content="dark"><title>Loom startup error</title><style>html,body{height:100%;margin:0;background:#0d0e11;color:#eceef2;font-family:Segoe UI,sans-serif}.wrap{height:100%;display:grid;place-items:center;padding:32px;box-sizing:border-box}.card{width:min(680px,100%);padding:22px;border:1px solid #303440;border-radius:14px;background:#15171d;box-shadow:0 18px 60px rgba(0,0,0,.28)}h1{font-size:18px;margin:0 0 10px}p{color:#a5abb6;font-size:13px;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere;margin:0}</style></head><body><div class="wrap"><div class="card"><h1>${htmlEscape(title)}</h1><p>${htmlEscape(detail)}</p></div></div></body></html>`;
 }
 
 function showRendererFailure(title: string, detail: string): void {
   const window = mainWindow;
   if (!window || window.isDestroyed()) return;
-  const html = rendererFailureDocument(title, detail);
-  void window.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+  void window.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(rendererFailureDocument(title, detail))}`);
 }
 
 function devServerUrlFromArgs(): string | null {
   const prefix = "--dev-url=";
   const arg = process.argv.find((value) => value.startsWith(prefix));
-  const value = arg?.slice(prefix.length).trim();
-  return value || null;
+  return arg?.slice(prefix.length).trim() || null;
 }
 
 async function loadRenderer(window: BrowserWindow): Promise<void> {
@@ -460,7 +415,6 @@ async function loadRenderer(window: BrowserWindow): Promise<void> {
       await window.loadURL(devUrl);
       return;
     }
-
     const builtIndex = path.join(DESKTOP_ROOT, "dist", "index.html");
     console.log(`[loom-desktop] loading built renderer ${builtIndex}`);
     await window.loadFile(builtIndex);
@@ -487,7 +441,6 @@ function createWindow(): void {
       sandbox: true,
     },
   });
-
   const window = mainWindow;
   window.once("ready-to-show", () => window.show());
   window.webContents.on("did-fail-load", (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
@@ -504,4 +457,84 @@ function createWindow(): void {
   window.webContents.on("render-process-gone", (_event, details) => {
     const detail = `reason=${details.reason}, exitCode=${details.exitCode}`;
     console.error("Loom renderer process exited", detail);
-    showRendererFailure("Loom renderer process exited",
+    showRendererFailure("Loom renderer process exited", detail);
+  });
+  void loadRenderer(window);
+  window.on("closed", () => {
+    if (mainWindow === window) mainWindow = null;
+    if (process.platform !== "darwin") app.quit();
+  });
+}
+
+ipcMain.handle("loom:connect", () => rpc.connect());
+ipcMain.handle("loom:call", (_event, method: string, params?: Record<string, unknown>) => rpc.call(method, params ?? {}));
+ipcMain.handle("loom:disconnect", () => rpc.stop());
+ipcMain.handle("loom:export-computer-logs", () => exportComputerLogs());
+ipcMain.handle("loom:reveal-path", (_event, targetPath: string) => revealPath(targetPath));
+ipcMain.handle("loom:pick-files", async () => {
+  const result = await dialog.showOpenDialog({ title: "Attach files", properties: ["openFile", "multiSelections"] });
+  return result.canceled ? [] : result.filePaths;
+});
+ipcMain.handle("loom:stage-temp-file", async (_event, name: string, bytes: Uint8Array) => {
+  const safe = (name || "pasted.png").replace(/[^A-Za-z0-9._-]+/g, "_").slice(-80) || "pasted.png";
+  const folder = path.join(app.getPath("temp"), "loom-attachments");
+  await fs.mkdir(folder, { recursive: true });
+  const target = path.join(folder, `${crypto.randomUUID().slice(0, 8)}-${safe}`);
+  await fs.writeFile(target, Buffer.from(bytes));
+  return target;
+});
+ipcMain.handle("loom:pick-directory", async () => {
+  const result = await dialog.showOpenDialog({ title: "Add project folder", properties: ["openDirectory", "createDirectory"] });
+  return result.canceled || !result.filePaths.length ? "" : result.filePaths[0];
+});
+ipcMain.handle("loom:model-list", () => modelManager.snapshot());
+ipcMain.handle("loom:model-switch", async (_event, selection: string) => {
+  const value = String(selection || "").trim();
+  if (!value) throw new Error("Model profile is required");
+  return changeModel(() => modelManager.useProfile(value), { persistSelection: value });
+});
+ipcMain.handle("loom:model-switch-current", async (_event, model: string) => {
+  const value = String(model || "").trim();
+  if (!value) throw new Error("Model ID is required");
+  return changeModel(() => modelManager.useModelName(value));
+});
+ipcMain.handle("loom:model-add", async (_event, input: AddModelInput) => {
+  await rpc.assertRestartSafe();
+  const profile = modelManager.add(input);
+  return changeModel(() => modelManager.useProfile(profile.selection), { persistSelection: profile.selection });
+});
+ipcMain.handle("loom:model-delete", async (_event, selection: string) => deleteModel(selection));
+ipcMain.handle("loom:reasoning-set", async (_event, kind: string, value: string): Promise<ReasoningUpdateResult> => {
+  await rpc.assertRestartSafe();
+  const current = modelManager.current ?? modelManager.ensureInitial();
+  const previous = current.reasoning ?? null;
+  const next = modelManager.setReasoning(String(kind || "").trim(), String(value || "").trim());
+  try {
+    const runtime = await rpc.call("runtime/set_reasoning", { kind: next.kind, value: next.value });
+    return { runtime, models: modelManager.snapshot() };
+  } catch (error) {
+    if (previous) {
+      try {
+        modelManager.setReasoning(previous.kind, previous.value);
+      } catch (rollbackError) {
+        console.error("Could not restore previous reasoning setting", rollbackError);
+      }
+    }
+    throw error;
+  }
+});
+
+app.whenReady().then(() => {
+  createWindow();
+  createHudOverlayWindow();
+});
+app.on("activate", () => {
+  if (!mainWindow) createWindow();
+});
+app.on("window-all-closed", () => {
+  if (process.platform !== "darwin") app.quit();
+});
+app.on("before-quit", () => {
+  rpc.stop();
+  closeHudOverlayWindow();
+});
