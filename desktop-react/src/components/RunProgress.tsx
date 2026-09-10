@@ -1,5 +1,6 @@
 import { Activity, Clock3, FileDiff, Terminal, Wrench } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { useI18n, type LoomLanguage } from "../i18n";
 import type { TranscriptItem } from "../types/loom";
 import "./run-progress.css";
 
@@ -59,27 +60,28 @@ function runStats(items: TranscriptItem[]): RunStats {
   };
 }
 
-function phaseFor(items: TranscriptItem[], threadStatus?: string): string {
-  if (threadStatus === "waiting_approval") return "等待权限确认";
+function phaseFor(items: TranscriptItem[], threadStatus: string | undefined, language: LoomLanguage): string {
+  const zh = language === "zh-CN";
+  if (threadStatus === "waiting_approval") return zh ? "等待权限确认" : "Waiting for approval";
 
   const runningActivity = [...items].reverse().find((item) =>
     ["tool_call", "process", "file_edit", "approval"].includes(item.type) && isRunningStatus(item.status),
   );
 
-  if (runningActivity?.type === "approval") return "等待权限确认";
-  if (runningActivity?.type === "process") return "正在运行命令";
-  if (runningActivity?.type === "file_edit") return "正在编辑文件";
-  if (runningActivity?.type === "tool_call") return "正在使用工具";
+  if (runningActivity?.type === "approval") return zh ? "等待权限确认" : "Waiting for approval";
+  if (runningActivity?.type === "process") return zh ? "正在运行命令" : "Running command";
+  if (runningActivity?.type === "file_edit") return zh ? "正在编辑文件" : "Editing files";
+  if (runningActivity?.type === "tool_call") return zh ? "正在使用工具" : "Using tools";
 
   const latestAssistant = [...items].reverse().find((item) => item.type === "assistant_message");
-  if (latestAssistant && String(latestAssistant.text ?? "").trim()) return "正在整理回复";
+  if (latestAssistant && String(latestAssistant.text ?? "").trim()) return zh ? "正在整理回复" : "Preparing response";
 
   const hasFinishedActivity = items.some((item) =>
     ["tool_call", "process", "file_edit"].includes(item.type) && !isRunningStatus(item.status),
   );
-  if (hasFinishedActivity) return "正在分析结果";
+  if (hasFinishedActivity) return zh ? "正在分析结果" : "Analyzing results";
 
-  return "正在思考";
+  return zh ? "正在思考" : "Thinking";
 }
 
 function formatElapsed(seconds: number): string {
@@ -89,21 +91,24 @@ function formatElapsed(seconds: number): string {
   return minutes > 0 ? `${minutes}m ${remaining}s` : `${remaining}s`;
 }
 
-function formatTokens(tokens?: number): string | null {
+function formatTokens(tokens: number | undefined, language: LoomLanguage): string | null {
   if (!tokens || tokens <= 0) return null;
+  const suffix = language === "zh-CN" ? "tokens" : "tokens";
   if (tokens >= 1000) {
     const value = tokens >= 10000 ? (tokens / 1000).toFixed(1) : (tokens / 1000).toFixed(2);
-    return `${value.replace(/\.0$/, "")}k tokens`;
+    return `${value.replace(/\.0$/, "")}k ${suffix}`;
   }
-  return `${tokens} tokens`;
+  return `${tokens} ${suffix}`;
 }
 
 export function RunProgress({ items, startedAt, threadStatus, currentTurnId, totalTokens, placement }: RunProgressProps) {
+  const { language } = useI18n();
   const [now, setNow] = useState(() => Date.now());
   const runItems = useMemo(() => currentRunItems(items, currentTurnId), [currentTurnId, items]);
-  const phase = useMemo(() => phaseFor(runItems, threadStatus), [runItems, threadStatus]);
+  const phase = useMemo(() => phaseFor(runItems, threadStatus, language), [language, runItems, threadStatus]);
   const stats = useMemo(() => runStats(runItems), [runItems]);
-  const tokenLabel = formatTokens(totalTokens);
+  const tokenLabel = formatTokens(totalTokens, language);
+  const zh = language === "zh-CN";
 
   useEffect(() => {
     setNow(Date.now());
@@ -120,16 +125,16 @@ export function RunProgress({ items, startedAt, threadStatus, currentTurnId, tot
           <span className="run-progress-live-dot" aria-hidden="true" />
           <span className="run-progress-brand">
             <Activity size={12} strokeWidth={1.9} />
-            Loom 正在工作
+            {zh ? "Loom 正在工作" : "Loom is working"}
           </span>
           <span className="run-progress-divider" aria-hidden="true" />
           <span className="run-progress-phase">{phase}</span>
         </div>
 
         <div className="run-progress-meta">
-          <span className="run-progress-meta-item"><Clock3 size={12} strokeWidth={1.8} />用时 {formatElapsed(elapsedSeconds)}</span>
+          <span className="run-progress-meta-item"><Clock3 size={12} strokeWidth={1.8} />{zh ? "用时" : "Elapsed"} {formatElapsed(elapsedSeconds)}</span>
           <span className="run-progress-meta-dot" aria-hidden="true" />
-          <span className="run-progress-meta-item">{stats.activity ? `${stats.activity} 个过程项` : "准备中"}</span>
+          <span className="run-progress-meta-item">{stats.activity ? (zh ? `${stats.activity} 个过程项` : `${stats.activity} steps`) : (zh ? "准备中" : "Preparing")}</span>
           {stats.commands ? <><span className="run-progress-meta-dot" aria-hidden="true" /><span className="run-progress-meta-item subtle"><Terminal size={11} />{stats.commands}</span></> : null}
           {stats.tools ? <><span className="run-progress-meta-dot" aria-hidden="true" /><span className="run-progress-meta-item subtle"><Wrench size={11} />{stats.tools}</span></> : null}
           {stats.files ? <><span className="run-progress-meta-dot" aria-hidden="true" /><span className="run-progress-meta-item subtle"><FileDiff size={11} />{stats.files}</span></> : null}
