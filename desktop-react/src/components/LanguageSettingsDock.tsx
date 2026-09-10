@@ -1,6 +1,7 @@
 import { Globe2 } from "lucide-react";
-import { useEffect } from "react";
-import { LOOM_LANGUAGES, currentLanguageLabel, useI18n, type LoomLanguage } from "../i18n";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
+import { LOOM_LANGUAGES, useI18n, type LoomLanguage } from "../i18n";
 import "./language-settings-dock.css";
 
 const STATIC_SETTING_TRANSLATIONS: Record<string, string> = {
@@ -25,12 +26,14 @@ const STATIC_SETTING_TRANSLATIONS: Record<string, string> = {
   "Loom desktop": "Loom 桌面端",
   "Manage the defaults and presentation of your local agent workspace from one place.": "统一管理本地 Agent 工作区的默认行为和界面显示。",
   "Runtime ready": "运行时就绪",
+  "Agent turn active": "Agent 任务运行中",
   "Loom is working": "Loom 正在工作",
   "Your local runtime is ready": "本地运行时已就绪",
   "One view of the model, permission boundary, exposed tools, and interface preferences currently shaping new agent work.": "集中查看当前影响新任务的模型、权限边界、暴露工具和界面偏好。",
   "Model": "模型",
   "Permission": "权限",
   "Tools exposed": "暴露工具",
+  "Capabilities": "能力",
   "Runtime defaults": "运行默认值",
   "The values Loom starts with when you create a new conversation.": "新建对话时 Loom 默认采用的配置。",
   "Default workspace": "默认工作区",
@@ -49,6 +52,8 @@ const STATIC_SETTING_TRANSLATIONS: Record<string, string> = {
   "Soon": "稍后支持",
   "Interface scale": "界面缩放",
   "Scale the entire desktop surface for more comfortable reading.": "缩放整个桌面界面，方便阅读。",
+  "Language": "语言",
+  "Switch the display language used across Loom Desktop.": "切换 Loom 桌面端的显示语言。",
   "Reduce motion": "减少动画",
   "Minimize decorative transitions, pulses, and animated status effects.": "减少装饰性过渡、脉冲和状态动画。",
   "Reset presentation": "重置显示",
@@ -153,8 +158,13 @@ function applyStaticSettingsLanguage(language: LoomLanguage): void {
   }
 }
 
+function resolveLanguageMount(): HTMLElement | null {
+  return document.querySelector<HTMLElement>(".general-preference-list");
+}
+
 export function LanguageSettingsDock() {
   const { language, setLanguage, t } = useI18n();
+  const [mount, setMount] = useState<HTMLElement | null>(() => resolveLanguageMount());
 
   useEffect(() => {
     applyStaticSettingsLanguage(language);
@@ -165,6 +175,18 @@ export function LanguageSettingsDock() {
     return () => observer.disconnect();
   }, [language]);
 
+  useEffect(() => {
+    const syncMount = () => setMount((current) => {
+      const next = resolveLanguageMount();
+      return current === next ? current : next;
+    });
+
+    syncMount();
+    const observer = new MutationObserver(syncMount);
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, []);
+
   const chooseLanguage = (next: LoomLanguage) => {
     if (next === language) return;
     setLanguage(next);
@@ -173,16 +195,12 @@ export function LanguageSettingsDock() {
     }));
   };
 
-  return (
+  const control = (
     <section className="language-settings-dock" aria-label={t("settings.general.language")}>
-      <div className="language-settings-dock-copy">
-        <span className="language-settings-dock-icon" aria-hidden="true">
-          <Globe2 size={16} strokeWidth={1.8} />
-        </span>
-        <div>
-          <strong>{t("settings.general.language")}</strong>
-          <span>{t("settings.general.languageDesc")}</span>
-        </div>
+      <Globe2 className="language-settings-icon" size={17} strokeWidth={1.7} aria-hidden="true" />
+      <div className="language-settings-copy">
+        <strong>{t("settings.general.language")}</strong>
+        <span>{t("settings.general.languageDesc")}</span>
       </div>
 
       <div className="language-settings-options" role="group" aria-label={t("settings.general.language")}>
@@ -195,12 +213,12 @@ export function LanguageSettingsDock() {
             aria-pressed={item.value === language}
             title={item.label}
           >
-            {item.nativeLabel}
+            {item.value === "en" ? "EN" : "中"}
           </button>
         ))}
       </div>
-
-      <span className="language-settings-current">{currentLanguageLabel(language)}</span>
     </section>
   );
+
+  return mount ? createPortal(control, mount) : null;
 }
