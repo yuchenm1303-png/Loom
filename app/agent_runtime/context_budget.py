@@ -3,16 +3,29 @@ from __future__ import annotations
 
 import json
 import math
+import time
 
-from app.ai import AIMessage, ChatRequest, MessageRole, ModelResponse, ToolChoice
+from app.ai import AIMessage, ChatRequest, MessageRole, ModelResponse, ModelUsage, ToolChoice
+from app.ai.errors import AITransportError
+from app.ai.execution_control import ModelCancelled
 from .history import repair_tool_history
 
 
-# Codex treats compaction as a normal model turn and considers it successful once
-# the provider completes the response. It does not maintain an allow-list of
-# provider-specific finish-reason strings. Keep the same boundary here: a
-# non-empty assistant response with no tool call is usable compaction output.
-_COMPACTION_RETRIES = 2
+# Open-source Codex treats compaction as a normal model turn. It retries transient
+# stream failures, trims the oldest compact-input history when the provider says
+# the context window is too large, and succeeds once the model response completes.
+# Loom uses Chat Completions rather than Codex's Responses stream, so these are the
+# equivalent provider-neutral controls at our ModelResponse boundary.
+_COMPACTION_STREAM_RETRIES = 2
+_COMPACTION_FIT_MARGIN = 256
+_CONTEXT_WINDOW_ERROR_MARKERS = (
+    "context_length_exceeded",
+    "maximum context length",
+    "context window exceeded",
+    "context window is too large",
+    "too many tokens",
+    "max context",
+)
 
 
 def estimate_tokens(messages, tools=()) -> int:
@@ -41,7 +54,7 @@ def safe_split(messages, keep=12):
 
 
 def _safe_front_boundary(messages) -> int:
-    """Return the first front-trim boundary that preserves tool call/result groups."""
+    """Return the first trim boundary that does not split a tool call/result group."""
     pending = set()
     for i, message in enumerate(messages):
         pending.update(call.call_id for call in message.tool_calls)
@@ -52,55 +65,146 @@ def _safe_front_boundary(messages) -> int:
     return 0
 
 
-def _trim_compaction_input_to_budget(messages, *, budget: int, max_output_tokens: int):
-    """Mirror Codex's recovery: drop oldest compact-input items until it fits.
+def _drop_oldest_safe_group(messages):
+    boundary = _safe_front_boundary(messages)
+    if boundary <= 0 or boundary >= len(messages):
+        return ()
+    return tuple(messages[boundary:])
 
-    Open-source Codex retries a compaction request after removing the oldest
-    history item when that request exceeds the model context window. Loom uses
-    Chat Completions, so we additionally trim only at a complete tool boundary.
-    The canonical messages being removed from the summarizer are still archived
-    in Loom's checkpoint; this only bounds the helper request sent to the model.
-    """
-    from .context_runtime import _COMPACTION_SYSTEM_PROMPT
 
-    compact_input = tuple(messages)
-    while compact_input:
-        request = ChatRequest(
-            messages=(
-                AIMessage(role=MessageRole.SYSTEM, content=_COMPACTION_SYSTEM_PROMPT),
-                *compact_input,
-            ),
-            tools=(),
-            tool_choice=ToolChoice.NONE,
-            max_output_tokens=max_output_tokens,
-        )
-        if estimate_tokens(request.messages) <= budget:
-            return request
-        boundary = _safe_front_boundary(compact_input)
-        if boundary <= 0 or boundary >= len(compact_input):
-            break
-        compact_input = compact_input[boundary:]
-    raise RuntimeError("context compaction input exceeds request budget after trimming oldest history")
+def _is_context_window_error(exc: BaseException) -> bool:
+    text = str(exc or "").casefold()
+    return any(marker in text for marker in _CONTEXT_WINDOW_ERROR_MARKERS)
+
+
+def _add_usage(left: ModelUsage, right: ModelUsage) -> ModelUsage:
+    return ModelUsage(
+        input_tokens=left.input_tokens + right.input_tokens,
+        output_tokens=left.output_tokens + right.output_tokens,
+        total_tokens=left.total_tokens + right.total_tokens,
+    )
+
+
+def _record_failed_compaction_usage(session, usage: ModelUsage) -> None:
+    if not (usage.input_tokens or usage.output_tokens or usage.total_tokens):
+        return
+    from .runtime import _add_usage as runtime_add_usage
+    session.usage = runtime_add_usage(session.usage, usage)
 
 
 def _partition_candidates(history):
-    """Yield increasingly aggressive safe partitions, keeping recent work intact."""
-    keeps = []
-    initial = min(12, max(2, len(history) // 3))
-    for keep in (initial, max(2, initial // 2), 2):
-        if keep in keeps:
+    """Yield safe partitions from least to most aggressive compaction."""
+    seen = set()
+    initial_keep = min(12, max(2, len(history) // 3))
+    for keep in (initial_keep, max(2, initial_keep // 2), 2):
+        if keep in seen:
             continue
-        keeps.append(keep)
+        seen.add(keep)
         split, last_user = safe_split(history, keep=keep)
         if not split:
             continue
         archived = tuple(history[:split])
         retained = tuple(history[split:])
-        # Preserve the active user instruction verbatim even if a long tool turn
-        # forces its canonical copy onto the archived side of the boundary.
+        # Preserve the active user instruction verbatim even during a long turn.
         if 0 <= last_user < split:
             retained = (history[last_user], *retained)
         yield archived, retained
+
+
+def _summary_request(compact_input, *, max_output_tokens: int) -> ChatRequest:
+    from .context_runtime import _COMPACTION_SYSTEM_PROMPT
+    return ChatRequest(
+        messages=(
+            AIMessage(role=MessageRole.SYSTEM, content=_COMPACTION_SYSTEM_PROMPT),
+            *compact_input,
+        ),
+        tools=(),
+        tool_choice=ToolChoice.NONE,
+        max_output_tokens=max_output_tokens,
+    )
+
+
+def _fit_compaction_input(compact_input, *, budget: int, max_output_tokens: int):
+    """Codex-style oldest-first trimming before the helper request is sent."""
+    compact_input = tuple(compact_input)
+    while compact_input:
+        request = _summary_request(compact_input, max_output_tokens=max_output_tokens)
+        if estimate_tokens(request.messages) <= budget:
+            return compact_input, request
+        compact_input = _drop_oldest_safe_group(compact_input)
+    raise RuntimeError("context compaction input exceeds request budget after trimming oldest history")
+
+
+def _run_compaction_turn(rt, session, compact_input, *, budget: int, max_output_tokens: int, token):
+    """Run one compact turn using the recovery loop used by open-source Codex.
+
+    Codex waits for response.completed rather than interpreting provider-specific
+    finish-reason strings. OpenAI-compatible Chat Completions already returns a
+    final ModelResponse object, so non-empty text with no tool call is our matching
+    success boundary. This intentionally accepts values such as ``length`` and
+    ``eos_token`` instead of throwing the old false-negative RuntimeError.
+    """
+    compact_input, request = _fit_compaction_input(
+        compact_input,
+        budget=budget,
+        max_output_tokens=max_output_tokens,
+    )
+    retries = 0
+    usage = ModelUsage()
+
+    while True:
+        try:
+            response = rt.model_executor.execute(rt.platform, session.profile_id, request, token)
+        except ModelCancelled:
+            _record_failed_compaction_usage(session, usage)
+            raise
+        except (AITransportError, TimeoutError) as exc:
+            # Codex handles context-window failure separately by removing the
+            # oldest history item and immediately retrying the compact turn.
+            if _is_context_window_error(exc):
+                trimmed = _drop_oldest_safe_group(compact_input)
+                if not trimmed:
+                    _record_failed_compaction_usage(session, usage)
+                    raise RuntimeError(
+                        "context window exceeded while compacting after oldest-history trimming"
+                    ) from exc
+                compact_input = trimmed
+                compact_input, request = _fit_compaction_input(
+                    compact_input,
+                    budget=budget,
+                    max_output_tokens=max_output_tokens,
+                )
+                retries = 0
+                continue
+
+            if retries < _COMPACTION_STREAM_RETRIES:
+                retries += 1
+                time.sleep(0.15 * (2 ** (retries - 1)))
+                continue
+            _record_failed_compaction_usage(session, usage)
+            raise
+
+        if not isinstance(response, ModelResponse):
+            _record_failed_compaction_usage(session, usage)
+            raise TypeError("compaction model must return ModelResponse")
+        usage = _add_usage(usage, response.usage)
+
+        summary = str(response.text or "").strip()
+        if summary and not response.tool_calls:
+            return summary, usage, retries + 1
+
+        # A no-tools compaction request should not normally produce tool calls or
+        # empty text. Retry it like Codex retries a failed compact stream instead
+        # of failing the user's main turn on the first malformed helper response.
+        if retries < _COMPACTION_STREAM_RETRIES:
+            retries += 1
+            time.sleep(0.15 * (2 ** (retries - 1)))
+            continue
+
+        _record_failed_compaction_usage(session, usage)
+        if response.tool_calls:
+            raise RuntimeError("context compaction model returned unexpected tool calls")
+        raise RuntimeError("context compaction model returned an empty summary")
 
 
 def prepare_context(rt, session, step, token):
@@ -121,78 +225,62 @@ def prepare_context(rt, session, step, token):
     if not partitions:
         raise RuntimeError("context budget exceeded with no safely compactable history")
 
-    # The old implementation capped compaction at 2048 output tokens and then
-    # rejected provider values such as `length` or `eos_token`. Codex instead
-    # waits for the provider's completed response and uses the resulting assistant
-    # message. Give the helper turn the normal reserved output budget and do not
-    # reinterpret provider-specific finish-reason vocabulary here.
+    # The previous 2048-token helper cap was a local Loom choice and was one way
+    # a valid summary could end with finish_reason=length. Codex does not impose
+    # that extra small cap, so use Loom's already-reserved output budget here.
     max_output_tokens = max(1, rt.limits.output_reserve_tokens)
-    last_error = "context compaction failed"
+    last_error = "compacted context still exceeds request budget"
 
     for archived, retained in partitions:
-        candidate_without_summary = [
+        # Before spending another model request, make sure this retained suffix
+        # leaves meaningful room for a summary in the normal agent request.
+        probe = [
             *transient,
             AIMessage(role=MessageRole.SYSTEM, content="context summary"),
             *retained,
         ]
-        if estimate_tokens(candidate_without_summary, tools) + 256 > budget:
-            last_error = "compacted context still exceeds request budget"
+        if estimate_tokens(probe, tools) + _COMPACTION_FIT_MARGIN > budget:
             continue
-        if len(candidate_without_summary) > rt.limits.max_messages:
+        if len(probe) > rt.limits.max_messages:
             last_error = "compacted context still exceeds message limit"
             continue
 
-        summary_request = _trim_compaction_input_to_budget(
+        summary, usage, attempts = _run_compaction_turn(
+            rt,
+            session,
             archived,
             budget=budget,
             max_output_tokens=max_output_tokens,
+            token=token,
         )
-
-        for attempt in range(_COMPACTION_RETRIES + 1):
-            response = rt.model_executor.execute(rt.platform, session.profile_id, summary_request, token)
-            if not isinstance(response, ModelResponse):
-                raise TypeError("compaction model must return ModelResponse")
-
-            # Match the Codex completion boundary: once the model request itself
-            # completed, finish_reason is provider metadata rather than a second
-            # protocol gate. In particular, a useful non-empty summary returned
-            # with `length`, `eos_token`, `finished`, etc. must not kill the turn.
-            summary = str(response.text or "").strip()
-            if summary and not response.tool_calls:
-                candidate = [
-                    *transient,
-                    AIMessage(role=MessageRole.SYSTEM, content=summary),
-                    *retained,
-                ]
-                if (
-                    estimate_tokens(candidate, tools) + 256 <= budget
-                    and len(candidate) <= rt.limits.max_messages
-                ):
-                    rt._commit_compaction_locked(
-                        session,
-                        summary=summary,
-                        repaired=repair,
-                        archived=archived,
-                        retained=retained,
-                        summary_source="auto" if attempt == 0 else "auto_retry",
-                        summary_usage=response.usage,
-                    )
-                    return [*transient, *session.messages], {
-                        "context_digest": envelope.digest,
-                        "auto_compacted": True,
-                        "compaction_attempts": attempt + 1,
-                    }
-                last_error = "compacted context still exceeds request budget"
-                break
-
-            last_error = (
-                "context compaction model returned unexpected tool calls"
-                if response.tool_calls
-                else "context compaction model returned an empty summary"
+        candidate = [
+            *transient,
+            AIMessage(role=MessageRole.SYSTEM, content=summary),
+            *retained,
+        ]
+        if (
+            estimate_tokens(candidate, tools) + _COMPACTION_FIT_MARGIN <= budget
+            and len(candidate) <= rt.limits.max_messages
+        ):
+            rt._commit_compaction_locked(
+                session,
+                summary=summary,
+                repaired=repair,
+                archived=archived,
+                retained=retained,
+                summary_source="auto" if attempts == 1 else "auto_retry",
+                summary_usage=usage,
             )
+            return [*transient, *session.messages], {
+                "context_digest": envelope.digest,
+                "auto_compacted": True,
+                "compaction_attempts": attempts,
+            }
 
-        # If a valid summary cannot fit with this retained suffix, try the next
-        # more aggressive safe split. This is the Chat-Completions equivalent of
-        # Codex trimming old history and retrying its compact turn.
+        # The summary completed but was too large for this retained suffix. Try
+        # the next safe, more aggressive partition rather than rejecting a valid
+        # provider response because of local sizing.
+        _record_failed_compaction_usage(session, usage)
+        last_error = "compacted context still exceeds request budget"
 
     raise RuntimeError(last_error)
