@@ -136,9 +136,15 @@ def serve_reasoning_managed_streaming_stdio(
     model: str,
     default_workspace: str | Path,
     default_permission_mode: PermissionMode | str,
+    vision: bool = True,
     reader: TextIO | None = None,
     writer: TextIO | None = None,
 ) -> int:
+    # The launcher passes the active model's vision capability so downstream
+    # request handlers can refuse attachments when the model is text-only.
+    # Older callers omit it; default to ``True`` so the capability is opt-out,
+    # not opt-in.
+    setattr(runtime, "supports_vision", bool(vision))
     service = ReasoningManagedLoomAppServerService(
         runtime=runtime,
         store=store,
