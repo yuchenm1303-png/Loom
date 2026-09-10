@@ -34,7 +34,7 @@ if (!fs.existsSync(VENV_PYTHON)) {
 }
 
 run(VENV_PYTHON, ["-m", "pip", "install", "--upgrade", "pip"]);
-run(VENV_PYTHON, ["-m", "pip", "install", "-e", ".[browser,computer,desktop]"]);
+run(VENV_PYTHON, ["-m", "pip", "install", "-e", ".[desktop-agent]"]);
 
 console.log(`[setup-python] Ready: ${VENV_PYTHON}`);
-console.log("[setup-python] Set LOOM_PYTHON to this interpreter before launching Electron.");
+console.log("[setup-python] npm run dev:ready will launch Electron with this interpreter.");
