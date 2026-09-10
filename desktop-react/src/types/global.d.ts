@@ -4,6 +4,16 @@ export interface LoomNotification {
   params?: Record<string, unknown>;
 }
 
+export interface ComputerLogExportResult {
+  ok: boolean;
+  cancelled?: boolean;
+  archivePath?: string;
+  logDir?: string;
+  python?: string;
+  fileCount?: number;
+  sizeBytes?: number;
+}
+
 export interface LoomBridge {
   connect(): Promise<unknown>;
   call<T = unknown>(method: string, params?: Record<string, unknown>): Promise<T>;
@@ -14,6 +24,10 @@ export interface LoomBridge {
   addModel<T = unknown>(input: Record<string, unknown>): Promise<T>;
   deleteModel<T = unknown>(selection: string): Promise<T>;
   setReasoning<T = unknown>(kind: string, value: string): Promise<T>;
+  /** Create a zip archive containing local Computer Use diagnostics and traces. */
+  exportComputerLogs(): Promise<ComputerLogExportResult>;
+  /** Open a folder or reveal a file in the native file manager. */
+  revealPath(targetPath: string): Promise<boolean>;
   /** Native folder picker. Resolves to "" when the user cancels. */
   pickDirectory(): Promise<string>;
   /** Native file picker. Resolves to [] when the user cancels. */
