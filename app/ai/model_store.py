@@ -19,6 +19,7 @@ _MODEL_ID_RE = re.compile(r"^m[a-z0-9]{12}$")
 
 SecretGetter = Callable[[str], str | None]
 SecretSetter = Callable[[str, str], None]
+SecretDeleter = Callable[[str], None]
 
 
 class ModelStoreError(RuntimeError):
@@ -147,11 +148,13 @@ class ModelConfigStore:
         *,
         secret_getter: SecretGetter | None = None,
         secret_setter: SecretSetter | None = None,
+        secret_deleter: SecretDeleter | None = None,
     ) -> None:
         self.home = Path(home).expanduser().resolve() if home is not None else _default_home()
         self.path = self.home / "models.json"
         self._secret_getter = secret_getter
         self._secret_setter = secret_setter
+        self._secret_deleter = secret_deleter
 
     def _read_payload(self) -> dict[str, object]:
         if not self.path.is_file():
@@ -264,6 +267,26 @@ class ModelConfigStore:
         self._write_payload(payload)
         return entry
 
+    def delete_model(self, model_id: str) -> StoredModel:
+        entry = self.get(model_id)
+        payload = self._read_payload()
+        remaining: list[object] = []
+        removed = False
+        for raw in payload.get("models") or []:
+            if isinstance(raw, dict) and str(raw.get("id") or "").strip().casefold() == entry.model_id:
+                removed = True
+                continue
+            remaining.append(raw)
+        if not removed:
+            raise KeyError(f"unknown stored model: {entry.model_id!r}")
+        payload["version"] = _CONFIG_VERSION
+        payload["models"] = remaining
+        if str(payload.get("active_model_id") or "").strip().casefold() == entry.model_id:
+            payload["active_model_id"] = None
+        self._write_payload(payload)
+        self._delete_secret(entry.credential_alias)
+        return entry
+
     def set_active(self, model_id: str | None) -> None:
         payload = self._read_payload()
         if model_id is None:
@@ -304,6 +327,20 @@ class ModelConfigStore:
             keyring.set_password(_KEYRING_SERVICE, alias, value)
         except Exception as exc:
             raise ModelStoreError(f"could not save the API key in the OS credential store: {exc}") from exc
+
+    def _delete_secret(self, alias: str) -> None:
+        if self._secret_deleter is not None:
+            self._secret_deleter(alias)
+            return
+        try:
+            import keyring
+
+            keyring.delete_password(_KEYRING_SERVICE, alias)
+        except Exception:
+            # Metadata deletion is the source of truth. A stale OS credential is
+            # unreachable without the deleted model metadata, so deletion should
+            # not fail just because the platform keychain reports "not found".
+            return
 
 
 __all__ = [
