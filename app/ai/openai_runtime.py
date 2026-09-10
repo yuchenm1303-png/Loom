@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 from collections.abc import Iterator
 from typing import Any
 
@@ -21,6 +22,20 @@ from .errors import AIResponseError, AITransportError
 from .profiles import ModelProfile
 from .provider_catalog import ProviderAdapter, ProviderConnection
 from .reasoning import ReasoningKind
+
+
+_RETRYABLE_STATUS_CODES = {408, 409, 425, 429, 500, 502, 503, 504}
+_RETRYABLE_ERROR_FRAGMENTS = (
+    "temporarily unavailable",
+    "service unavailable",
+    "upstream request failed",
+    "gateway timeout",
+    "bad gateway",
+    "rate limit",
+    "too many requests",
+    "timeout",
+)
+_PROVIDER_RETRY_DELAYS_SECONDS = (0.35, 0.9)
 
 
 def _message_payload(message: AIMessage) -> dict[str, Any]:
@@ -117,6 +132,27 @@ def _parse_tool_calls(message: Any) -> tuple[ToolCall, ...]:
     return tuple(parsed)
 
 
+def _provider_status_code(exc: BaseException) -> int | None:
+    for name in ("status_code", "status"):
+        value = getattr(exc, name, None)
+        if isinstance(value, int):
+            return value
+    response = getattr(exc, "response", None)
+    for name in ("status_code", "status"):
+        value = getattr(response, name, None)
+        if isinstance(value, int):
+            return value
+    return None
+
+
+def _retryable_provider_error(exc: BaseException) -> bool:
+    status = _provider_status_code(exc)
+    if status in _RETRYABLE_STATUS_CODES:
+        return True
+    message = str(exc).casefold()
+    return any(fragment in message for fragment in _RETRYABLE_ERROR_FRAGMENTS)
+
+
 class OpenAIChatBackend:
     """Unified Chat Completions runtime for OpenAI and OpenAI-compatible endpoints."""
 
@@ -190,12 +226,21 @@ class OpenAIChatBackend:
         return kwargs
 
     def _create(self, kwargs: dict[str, Any]) -> Any:
-        try:
-            return self.client.chat.completions.create(**kwargs)
-        except Exception as exc:
-            raise AITransportError(
-                f"AI request failed via provider {self.connection.provider_id!r}: {type(exc).__name__}: {exc}"
-            ) from exc
+        attempts = len(_PROVIDER_RETRY_DELAYS_SECONDS) + 1
+        last_error: BaseException | None = None
+        for attempt in range(attempts):
+            try:
+                return self.client.chat.completions.create(**kwargs)
+            except Exception as exc:
+                last_error = exc
+                if attempt >= attempts - 1 or not _retryable_provider_error(exc):
+                    break
+                time.sleep(_PROVIDER_RETRY_DELAYS_SECONDS[attempt])
+        assert last_error is not None
+        raise AITransportError(
+            f"AI request failed via provider {self.connection.provider_id!r}: "
+            f"{type(last_error).__name__}: {last_error}"
+        ) from last_error
 
     def complete(self, request: ChatRequest) -> ModelResponse:
         if not isinstance(request, ChatRequest):
