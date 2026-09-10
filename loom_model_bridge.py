@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import sys
+import urllib.error
+import urllib.parse
+import urllib.request
+from pathlib import Path
 from typing import Any, Mapping
 
 from app.ai.model_selection_store import ModelSelectionStore
@@ -14,12 +19,36 @@ from app.ai.reasoning_store import ReasoningConfigStore
 
 PRIMARY_SELECTION = "builtin:minimax"
 CQU_SELECTION = "builtin:cqu"
+MANAGED_SELECTION_PREFIX = "managed:"
+MANAGED_RELAY_BASE_URL = "https://relay.smirel.com/v1"
 MINIMAX_BASE_URL = "https://api.minimaxi.com/v1"
 MINIMAX_DEFAULT_MODEL = "MiniMax-M3"
-CQU_BASE_URL = "https://relay.smirel.com/v1"
 CQU_DEFAULT_MODEL = "cqu-default"
+_KEYRING_SERVICE = "loom-agent"
+_MANAGED_RELAY_CREDENTIAL_ALIAS = "managed/relay"
+_MANAGED_RELAY_KEY_ENV = (
+    "LOOM_RELAY_API_KEY",
+    "SMIREL_RELAY_API_KEY",
+    # Backwards-compatible aliases from the first CQU prototype. They now mean
+    # "Smirel Relay customer credential", not a CQU upstream credential.
+    "LOOM_CQU_API_KEY",
+    "CQU_API_KEY",
+)
 _PRIMARY_MINIMAX_KEY_ENV = ("MINIMAX_API_KEY", "LOOM_PRIMARY_API_KEY", "LOOM_API_KEY")
-_CQU_KEY_ENV = ("CQU_API_KEY", "LOOM_CQU_API_KEY")
+_PROVISIONING_FILE_ENV = "LOOM_RELAY_PROVISIONING_FILE"
+_MANAGED_MODEL_DISPLAY_NAMES = {
+    MINIMAX_DEFAULT_MODEL.casefold(): "MiniMax",
+    CQU_DEFAULT_MODEL.casefold(): "CQU-弘深深",
+}
+_MANAGED_MODEL_IDS = {
+    MINIMAX_DEFAULT_MODEL.casefold(): "minimax-primary",
+    CQU_DEFAULT_MODEL.casefold(): "cqu-builtin",
+}
+
+
+def _managed_relay_base_url(environ: Mapping[str, str] | None = None) -> str:
+    env = os.environ if environ is None else environ
+    return str(env.get("LOOM_RELAY_BASE_URL") or MANAGED_RELAY_BASE_URL).strip().rstrip("/")
 
 
 def _key_from_env(names: tuple[str, ...], environ: Mapping[str, str] | None = None) -> str:
@@ -35,8 +64,215 @@ def _primary_minimax_key(environ: Mapping[str, str] | None = None) -> str:
     return _key_from_env(_PRIMARY_MINIMAX_KEY_ENV, environ)
 
 
-def _cqu_key(environ: Mapping[str, str] | None = None) -> str:
-    return _key_from_env(_CQU_KEY_ENV, environ)
+def _credential_get(alias: str) -> str | None:
+    try:
+        import keyring
+
+        return keyring.get_password(_KEYRING_SERVICE, alias)
+    except Exception:
+        return None
+
+
+def _credential_set(alias: str, value: str) -> None:
+    try:
+        import keyring
+
+        keyring.set_password(_KEYRING_SERVICE, alias, value)
+    except Exception as exc:
+        raise RuntimeError(f"could not save the Relay credential in the OS credential store: {exc}") from exc
+
+
+def _provisioning_paths(
+    home: Path,
+    environ: Mapping[str, str] | None = None,
+    repo_root: Path | None = None,
+) -> list[Path]:
+    env = os.environ if environ is None else environ
+    paths: list[Path] = []
+    explicit = str(env.get(_PROVISIONING_FILE_ENV) or "").strip()
+    if explicit:
+        paths.append(Path(explicit).expanduser())
+    paths.extend([
+        home / "relay-credential.json",
+        home / "managed-relay.json",
+    ])
+    if repo_root is not None:
+        paths.extend([
+            repo_root / "loom-relay-credential.json",
+            repo_root / "relay-credential.json",
+        ])
+    seen: set[Path] = set()
+    unique: list[Path] = []
+    for path in paths:
+        resolved = path.expanduser()
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        unique.append(resolved)
+    return unique
+
+
+def _read_provisioning_file(path: Path) -> str:
+    raw = path.read_text(encoding="utf-8").strip()
+    if not raw:
+        return ""
+    if not raw.startswith("{"):
+        return raw
+    payload = json.loads(raw)
+    if not isinstance(payload, dict):
+        raise ValueError("Relay provisioning file must contain a JSON object")
+    return str(
+        payload.get("apiKey")
+        or payload.get("api_key")
+        or payload.get("relayApiKey")
+        or payload.get("relay_api_key")
+        or payload.get("key")
+        or ""
+    ).strip()
+
+
+def _consume_provisioned_relay_key(
+    home: Path,
+    environ: Mapping[str, str] | None = None,
+    repo_root: Path | None = None,
+) -> str:
+    for path in _provisioning_paths(home, environ, repo_root):
+        if not path.is_file():
+            continue
+        api_key = _read_provisioning_file(path)
+        if not api_key:
+            continue
+        _credential_set(_MANAGED_RELAY_CREDENTIAL_ALIAS, api_key)
+        try:
+            path.unlink()
+        except OSError:
+            pass
+        return api_key
+    return ""
+
+
+def _managed_relay_key(
+    store: ModelConfigStore,
+    environ: Mapping[str, str] | None = None,
+    repo_root: Path | None = None,
+) -> str:
+    provisioned = _consume_provisioned_relay_key(store.home, environ, repo_root)
+    if provisioned:
+        return provisioned
+    secret = str(_credential_get(_MANAGED_RELAY_CREDENTIAL_ALIAS) or "").strip()
+    if secret:
+        return secret
+    return _key_from_env(_MANAGED_RELAY_KEY_ENV, environ)
+
+
+def _managed_models_url(environ: Mapping[str, str] | None = None) -> str:
+    return f"{_managed_relay_base_url(environ)}/models"
+
+
+def _fetch_managed_model_ids(
+    api_key: str,
+    environ: Mapping[str, str] | None = None,
+    timeout: float = 3.5,
+) -> list[str]:
+    api_key = str(api_key or "").strip()
+    if not api_key:
+        return []
+    request = urllib.request.Request(
+        _managed_models_url(environ),
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Accept": "application/json",
+            "User-Agent": "Loom/managed-relay",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except (OSError, urllib.error.URLError, json.JSONDecodeError):
+        return []
+    if not isinstance(payload, dict):
+        return []
+    data = payload.get("data")
+    if not isinstance(data, list):
+        return []
+    models: list[str] = []
+    seen: set[str] = set()
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        model_id = str(item.get("id") or "").strip()
+        if not model_id:
+            continue
+        key = model_id.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        models.append(model_id)
+    return models
+
+
+def _managed_selection_for_model(model: str) -> str:
+    normalized = str(model or "").strip()
+    folded = normalized.casefold()
+    if folded == MINIMAX_DEFAULT_MODEL.casefold():
+        return PRIMARY_SELECTION
+    if folded == CQU_DEFAULT_MODEL.casefold():
+        return CQU_SELECTION
+    return f"{MANAGED_SELECTION_PREFIX}{urllib.parse.quote(normalized, safe='')}"
+
+
+def _managed_model_from_selection(selection: str) -> str | None:
+    value = str(selection or "").strip()
+    if value == PRIMARY_SELECTION:
+        return MINIMAX_DEFAULT_MODEL
+    if value == CQU_SELECTION:
+        return CQU_DEFAULT_MODEL
+    if value.startswith(MANAGED_SELECTION_PREFIX):
+        model = urllib.parse.unquote(value[len(MANAGED_SELECTION_PREFIX) :]).strip()
+        return model or None
+    return None
+
+
+def _managed_profile_id(model: str) -> str:
+    folded = str(model or "").strip().casefold()
+    if folded in _MANAGED_MODEL_IDS:
+        return _MANAGED_MODEL_IDS[folded]
+    digest = hashlib.sha256(folded.encode("utf-8")).hexdigest()[:12]
+    return f"managed-{digest}"
+
+
+def _managed_display_name(model: str) -> str:
+    value = str(model or "").strip()
+    return _MANAGED_MODEL_DISPLAY_NAMES.get(value.casefold(), value)
+
+
+def _safe_managed(model: str, environ: Mapping[str, str] | None = None) -> dict[str, Any]:
+    model = str(model or "").strip()
+    if not model:
+        raise ValueError("managed model id must not be empty")
+    return {
+        "selection": _managed_selection_for_model(model),
+        "id": _managed_profile_id(model),
+        "kind": "builtin",
+        "name": _managed_display_name(model),
+        "adapter": "openai-compatible",
+        "baseUrl": _managed_relay_base_url(environ),
+        "model": model,
+    }
+
+
+def _safe_primary() -> dict[str, Any]:
+    return _safe_managed(MINIMAX_DEFAULT_MODEL)
+
+
+def _safe_cqu() -> dict[str, Any]:
+    return _safe_managed(CQU_DEFAULT_MODEL)
+
+
+def _safe_legacy_minimax() -> dict[str, Any]:
+    profile = _safe_managed(MINIMAX_DEFAULT_MODEL)
+    profile["baseUrl"] = MINIMAX_BASE_URL
+    return profile
 
 
 def _safe_saved(entry: StoredModel) -> dict[str, Any]:
@@ -48,30 +284,6 @@ def _safe_saved(entry: StoredModel) -> dict[str, Any]:
         "adapter": entry.adapter.value,
         "baseUrl": entry.base_url,
         "model": entry.model,
-    }
-
-
-def _safe_primary() -> dict[str, Any]:
-    return {
-        "selection": PRIMARY_SELECTION,
-        "id": "minimax-primary",
-        "kind": "builtin",
-        "name": "MiniMax",
-        "adapter": "openai-compatible",
-        "baseUrl": MINIMAX_BASE_URL,
-        "model": MINIMAX_DEFAULT_MODEL,
-    }
-
-
-def _safe_cqu() -> dict[str, Any]:
-    return {
-        "selection": CQU_SELECTION,
-        "id": "cqu-builtin",
-        "kind": "builtin",
-        "name": "CQU-弘深深",
-        "adapter": "openai-compatible",
-        "baseUrl": CQU_BASE_URL,
-        "model": CQU_DEFAULT_MODEL,
     }
 
 
@@ -112,12 +324,27 @@ def _with_reasoning(profile: dict[str, Any], reasoning_store: ReasoningConfigSto
     return payload
 
 
+def _managed_profiles(store: ModelConfigStore, environ: Mapping[str, str] | None = None) -> list[dict[str, Any]]:
+    api_key = _managed_relay_key(store, environ, Path(__file__).resolve().parent)
+    model_ids = _fetch_managed_model_ids(api_key, environ) if api_key else []
+    if not model_ids:
+        model_ids = [MINIMAX_DEFAULT_MODEL, CQU_DEFAULT_MODEL]
+    profiles: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for model_id in model_ids:
+        folded = str(model_id or "").strip().casefold()
+        if not folded or folded in seen:
+            continue
+        seen.add(folded)
+        profiles.append(_safe_managed(model_id, environ))
+    return profiles
+
+
 def _base_profile_for_selection(store: ModelConfigStore, selection: str) -> dict[str, Any]:
     requested = str(selection or "").strip()
-    if requested == PRIMARY_SELECTION:
-        return _safe_primary()
-    if requested == CQU_SELECTION:
-        return _safe_cqu()
+    managed_model = _managed_model_from_selection(requested)
+    if managed_model:
+        return _safe_managed(managed_model)
     saved = store.model_for_selection(requested)
     if saved is None:
         raise ValueError(f"unknown model selection: {requested!r}")
@@ -155,15 +382,20 @@ def _snapshot(
     reasoning_store: ReasoningConfigStore,
     selection_store: ModelSelectionStore,
 ) -> dict[str, Any]:
-    primary = _with_reasoning(_safe_primary(), reasoning_store)
-    cqu = _with_reasoning(_safe_cqu(), reasoning_store)
+    managed = [_with_reasoning(profile, reasoning_store) for profile in _managed_profiles(store)]
     saved = [_with_reasoning(_safe_saved(entry), reasoning_store) for entry in store.list_models()]
-    profiles = [primary, cqu, *saved]
+    profiles = [*managed, *saved]
+    primary = next(
+        (profile for profile in profiles if profile.get("selection") == PRIMARY_SELECTION),
+        _with_reasoning(_safe_primary(), reasoning_store),
+    )
     active_selection = _active_selection(store, selection_store)
-    active_profile = next((profile for profile in profiles if profile.get("selection") == active_selection), primary)
+    active_profile = next((profile for profile in profiles if profile.get("selection") == active_selection), None)
+    if active_profile is None:
+        active_profile = primary if primary in profiles else (profiles[0] if profiles else primary)
     return {
         "primary": primary,
-        "profiles": profiles,
+        "profiles": profiles or [primary],
         "activeModelId": str(active_profile.get("id") or "") or None,
     }
 
@@ -177,22 +409,19 @@ def _resolve(
     requested = str(selection or "").strip() or _active_selection(store, selection_store)
     profile = _with_reasoning(_base_profile_for_selection(store, requested), reasoning_store)
 
-    if requested == PRIMARY_SELECTION:
-        api_key = _primary_minimax_key()
-        if not api_key:
-            raise RuntimeError(
-                "MiniMax primary API key is not configured. Set MINIMAX_API_KEY or "
-                "LOOM_PRIMARY_API_KEY, or add a saved model connection."
-            )
-        return {**profile, "provider": "openai-compatible", "apiKey": api_key}
-
-    if requested == CQU_SELECTION:
-        api_key = _cqu_key()
-        if not api_key:
-            raise RuntimeError(
-                "CQU built-in API key is not configured. Set CQU_API_KEY or LOOM_CQU_API_KEY."
-            )
-        return {**profile, "provider": "openai-compatible", "apiKey": api_key}
+    if _managed_model_from_selection(requested):
+        api_key = _managed_relay_key(store, repo_root=Path(__file__).resolve().parent)
+        if api_key:
+            return {**profile, "provider": "openai-compatible", "apiKey": api_key}
+        if requested == PRIMARY_SELECTION:
+            legacy_key = _primary_minimax_key()
+            if legacy_key:
+                legacy_profile = _with_reasoning(_safe_legacy_minimax(), reasoning_store)
+                return {**legacy_profile, "provider": "openai-compatible", "apiKey": legacy_key}
+        raise RuntimeError(
+            "Smirel Relay credential is not provisioned. Install Loom from a provisioned package "
+            "or set LOOM_RELAY_API_KEY for development."
+        )
 
     saved = store.model_for_selection(requested)
     if saved is None:
@@ -238,7 +467,7 @@ def _set_active(
     payload: dict[str, Any],
 ) -> dict[str, Any]:
     selection = str(payload.get("selection") or "").strip() or PRIMARY_SELECTION
-    if selection in {PRIMARY_SELECTION, CQU_SELECTION}:
+    if _managed_model_from_selection(selection):
         store.set_active(None)
     else:
         saved = store.model_for_selection(selection)
