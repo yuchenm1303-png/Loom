@@ -133,21 +133,23 @@
 
 .model-profile-row {
   width: 100%;
+  min-width: 0;
   display: grid;
-  grid-template-columns: 32px minmax(0, 1fr) 22px;
-  gap: 9px;
-  align-items: center;
-  padding: 9px;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
   border: 1px solid rgba(255,255,255,.05);
   border-radius: 11px;
   background: rgba(255,255,255,.014);
   color: inherit;
-  text-align: left;
-  cursor: pointer;
+  overflow: hidden;
   transition: background 150ms ease, border-color 150ms ease, transform 140ms ease;
 }
 
-.model-profile-row:hover:not(:disabled) {
+.model-profile-row.deletable {
+  grid-template-columns: minmax(0, 1fr) 30px;
+}
+
+.model-profile-row:hover {
   transform: translateY(-1px);
   border-color: rgba(112,119,136,.38);
   background: rgba(255,255,255,.028);
@@ -158,8 +160,56 @@
   background: rgba(139,124,246,.045);
 }
 
-.model-profile-row:disabled {
+.model-profile-row.confirm-delete {
+  border-color: rgba(248,113,113,.22);
+  background: linear-gradient(90deg, rgba(139,124,246,.045), rgba(248,113,113,.035));
+}
+
+.model-profile-main {
+  width: 100%;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) 22px;
+  gap: 9px;
+  align-items: center;
+  padding: 9px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.model-profile-main:disabled {
   cursor: default;
+}
+
+.model-profile-delete {
+  align-self: stretch;
+  width: 24px;
+  margin: 6px 6px 6px 0;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255,255,255,.045);
+  border-radius: 8px;
+  background: rgba(255,255,255,.012);
+  color: #6d7480;
+  cursor: pointer;
+  opacity: .72;
+  transition: background 150ms ease, border-color 150ms ease, color 150ms ease, opacity 150ms ease;
+}
+
+.model-profile-delete:hover:not(:disabled),
+.model-profile-delete.confirm {
+  border-color: rgba(248,113,113,.22);
+  background: rgba(248,113,113,.075);
+  color: #fca5a5;
+  opacity: 1;
+}
+
+.model-profile-delete:disabled {
+  cursor: default;
+  opacity: .38;
 }
 
 .model-profile-icon {
@@ -238,6 +288,16 @@
 
 .model-profile-row.active .model-profile-action {
   color: #a79fe8;
+}
+
+.model-delete-note {
+  padding: 7px 9px;
+  border: 1px solid rgba(248,113,113,.13);
+  border-radius: 9px;
+  background: rgba(248,113,113,.045);
+  color: #c99191;
+  font-size: 8.9px;
+  line-height: 1.4;
 }
 
 .model-back {
@@ -507,6 +567,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .model-profile-row,
+  .model-profile-delete,
   .model-manager-actions > button,
   .model-wide-action,
   .model-primary-button,
