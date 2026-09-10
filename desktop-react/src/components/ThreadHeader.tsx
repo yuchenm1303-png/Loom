@@ -11,6 +11,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { useI18n } from "../i18n";
 import "./thread-header.css";
 
 interface ThreadHeaderProps {
@@ -27,14 +28,14 @@ interface ThreadHeaderProps {
   onToggleInspector(): void;
 }
 
-function workspaceName(workspace: string): string {
+function workspaceName(workspace: string, fallback: string): string {
   const normalized = workspace.replaceAll("\\", "/").replace(/\/+$/, "");
   const parts = normalized.split("/").filter(Boolean);
-  return parts.at(-1) || "Workspace";
+  return parts.at(-1) || fallback;
 }
 
-function formatPermission(value?: string): string {
-  if (!value) return "Default access";
+function formatPermission(value: string | undefined, fallback: string): string {
+  if (!value) return fallback;
   return value
     .replaceAll("_", " ")
     .replaceAll("-", " ")
@@ -70,15 +71,16 @@ export function ThreadHeader({
   onOpenSettings,
   onToggleInspector,
 }: ThreadHeaderProps) {
+  const { t } = useI18n();
   const [copied, setCopied] = useState(false);
 
   const state = useMemo(() => {
-    if (archived) return { label: "Archived", tone: "archived" };
-    if (status === "waiting_approval") return { label: "Approval", tone: "approval" };
-    if (running) return { label: "Working", tone: "working" };
-    if (connection === "connecting") return { label: "Connecting", tone: "connecting" };
-    return { label: "Ready", tone: "ready" };
-  }, [archived, connection, running, status]);
+    if (archived) return { label: t("common.archived"), tone: "archived" };
+    if (status === "waiting_approval") return { label: t("common.approval"), tone: "approval" };
+    if (running) return { label: t("common.working"), tone: "working" };
+    if (connection === "connecting") return { label: t("common.connecting"), tone: "connecting" };
+    return { label: t("common.ready"), tone: "ready" };
+  }, [archived, connection, running, status, t]);
 
   useEffect(() => {
     if (!copied) return;
@@ -95,6 +97,13 @@ export function ThreadHeader({
       setCopied(false);
     }
   };
+
+  const workspaceFallback = t("common.workspace");
+  const localWorkspace = t("common.localWorkspace");
+  const modelLabel = model || t("common.defaultModel");
+  const permissionLabel = formatPermission(permissionMode, t("common.defaultAccess"));
+  const settingsLabel = t("common.openSettings");
+  const inspectorLabel = inspectorOpen ? t("common.hideInspector") : t("common.openInspector");
 
   return (
     <header className="thread-header polished-thread-header">
@@ -113,11 +122,11 @@ export function ThreadHeader({
             type="button"
             className={`workspace-path-button ${copied ? "copied" : ""}`}
             onClick={() => void copyWorkspace()}
-            title={workspace ? `Copy workspace path: ${workspace}` : "Local workspace"}
+            title={workspace ? t("common.copyWorkspacePath", { path: workspace }) : localWorkspace}
             disabled={!workspace}
           >
             <Folder size={12.5} strokeWidth={1.75} aria-hidden="true" />
-            <span className="workspace-leaf">{workspace ? workspaceName(workspace) : "Local workspace"}</span>
+            <span className="workspace-leaf">{workspace ? workspaceName(workspace, workspaceFallback) : localWorkspace}</span>
             {workspace ? <span className="workspace-full-path">{workspace}</span> : null}
             <span className="workspace-copy-icon" aria-hidden="true">
               {copied ? <Check size={11.5} strokeWidth={2.1} /> : <Copy size={11.5} strokeWidth={1.8} />}
@@ -133,13 +142,13 @@ export function ThreadHeader({
         </span>
 
         <div className="thread-header-meta">
-          <span className="thread-meta-chip model-chip" title={model || "Default model"}>
+          <span className="thread-meta-chip model-chip" title={modelLabel}>
             <Cpu size={12.5} strokeWidth={1.75} />
-            <span>{model || "Default model"}</span>
+            <span>{modelLabel}</span>
           </span>
-          <span className="thread-meta-chip permission-chip" title={`Permission: ${formatPermission(permissionMode)}`}>
+          <span className="thread-meta-chip permission-chip" title={`${t("common.permission")}: ${permissionLabel}`}>
             <ShieldCheck size={12.5} strokeWidth={1.75} />
-            <span>{formatPermission(permissionMode)}</span>
+            <span>{permissionLabel}</span>
           </span>
         </div>
 
@@ -149,8 +158,8 @@ export function ThreadHeader({
           type="button"
           className="thread-header-icon-button"
           onClick={onOpenSettings}
-          title="Open Loom settings"
-          aria-label="Open Loom settings"
+          title={settingsLabel}
+          aria-label={settingsLabel}
         >
           <Settings size={16} strokeWidth={1.75} />
         </button>
@@ -159,8 +168,8 @@ export function ThreadHeader({
           type="button"
           className={`thread-header-icon-button ${inspectorOpen ? "active" : ""}`}
           onClick={onToggleInspector}
-          title={inspectorOpen ? "Hide runtime inspector" : "Open runtime inspector"}
-          aria-label={inspectorOpen ? "Hide runtime inspector" : "Open runtime inspector"}
+          title={inspectorLabel}
+          aria-label={inspectorLabel}
           aria-pressed={inspectorOpen}
         >
           {inspectorOpen
