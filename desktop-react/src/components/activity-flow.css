@@ -63,9 +63,6 @@
   outline-offset: 1px;
 }
 
-/* Running actions get one restrained sweep across the whole compact row.
-   The selector keys off the existing semantic status, so every process/tool
-   row in running or started state participates without extra markup. */
 .task-flow-row:has(.task-flow-status.running),
 .task-flow-row:has(.task-flow-status.started) {
   background: linear-gradient(90deg, rgba(139,124,246,.018), rgba(139,124,246,.006) 48%, transparent 78%);
@@ -287,6 +284,142 @@
   border-radius: 999px;
 }
 
+/* Group contiguous runtime activity into one compact, collapsible block. */
+.task-flow-group {
+  width: min(720px, 100%);
+  padding: 0;
+}
+
+.task-flow-group-header {
+  position: relative;
+  width: fit-content;
+  max-width: 100%;
+  min-height: 30px;
+  padding: 2px 4px 2px 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #9aa1ad;
+  cursor: pointer;
+  text-align: left;
+  transition: color 140ms ease, background 140ms ease;
+}
+
+.task-flow-group-header:hover {
+  color: #c4c9d1;
+}
+
+.task-flow-group-header:focus-visible {
+  outline: 1px solid rgba(139,124,246,.38);
+  outline-offset: 2px;
+}
+
+.task-flow-group-icon {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border: 1px solid #2a2f39;
+  border-radius: 6px;
+  background: linear-gradient(180deg, rgba(22,25,31,.82), rgba(17,19,24,.82));
+  color: #8d95a2;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.022);
+}
+
+.task-flow-group-title {
+  min-width: 0;
+  color: #b8bdc6;
+  font-size: 11.8px;
+  font-weight: 640;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.task-flow-group-chevron {
+  flex: none;
+  color: #646c78;
+  transition: transform 160ms cubic-bezier(.2,.8,.2,1), color 140ms ease;
+}
+
+.task-flow-group.is-open .task-flow-group-chevron {
+  transform: rotate(90deg);
+  color: #8c939e;
+}
+
+.task-flow-group-failed {
+  flex: none;
+  color: #c27a83;
+  font-size: 9px;
+  font-weight: 590;
+}
+
+.task-flow-group-grid {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: .28;
+  transition: grid-template-rows 190ms cubic-bezier(.22,.74,.18,1), opacity 150ms ease;
+}
+
+.task-flow-group.is-open .task-flow-group-grid {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+.task-flow-group-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.task-flow-group .task-flow-list {
+  gap: 0;
+  margin-top: 1px;
+  padding-left: 6px;
+}
+
+.task-flow-group .task-flow-row {
+  min-height: 27px;
+  grid-template-columns: 10px 20px minmax(0, 1fr) 8px;
+  gap: 6px;
+  padding-block: 0;
+}
+
+.task-flow-group .task-flow-row-icon {
+  width: 19px;
+  height: 19px;
+  border-radius: 5px;
+  color: #7f8794;
+  background: rgba(18,20,25,.68);
+}
+
+.task-flow-group .task-flow-chevron {
+  width: 10px;
+}
+
+.task-flow-group .task-flow-verb,
+.task-flow-group .task-flow-primary {
+  font-size: 11px;
+}
+
+.task-flow-group .task-flow-primary.code {
+  font-size: 10.5px;
+}
+
+.task-flow-group .task-flow-inline-detail-grid {
+  margin-left: 36px;
+}
+
+.task-flow-group.is-running .task-flow-group-icon {
+  color: #aaa1ef;
+  border-color: rgba(139,124,246,.22);
+  animation: task-flow-group-breathe 1.8s ease-in-out infinite;
+}
+
 @keyframes task-flow-enter {
   from { opacity: 0; transform: translateY(3px); }
   to { opacity: 1; transform: translateY(0); }
@@ -311,6 +444,11 @@
   }
 }
 
+@keyframes task-flow-group-breathe {
+  0%, 100% { box-shadow: inset 0 1px 0 rgba(255,255,255,.022), 0 0 0 rgba(139,124,246,0); }
+  50% { box-shadow: inset 0 1px 0 rgba(255,255,255,.035), 0 0 16px rgba(139,124,246,.07); }
+}
+
 @media (max-width: 760px) {
   .task-flow {
     width: 100%;
@@ -330,6 +468,10 @@
   .task-flow-inline-detail-grid {
     margin-left: 38px;
   }
+
+  .task-flow-group .task-flow-row {
+    grid-template-columns: 9px 19px minmax(0, 1fr) 7px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -337,13 +479,16 @@
   .task-flow-status.running .task-flow-status-dot,
   .task-flow-status.started .task-flow-status-dot,
   .task-flow-row:has(.task-flow-status.running)::after,
-  .task-flow-row:has(.task-flow-status.started)::after {
+  .task-flow-row:has(.task-flow-status.started)::after,
+  .task-flow-group.is-running .task-flow-group-icon {
     animation: none !important;
   }
 
   .task-flow-row,
   .task-flow-chevron,
-  .task-flow-inline-detail-grid {
+  .task-flow-inline-detail-grid,
+  .task-flow-group-grid,
+  .task-flow-group-chevron {
     transition: none !important;
   }
 }
