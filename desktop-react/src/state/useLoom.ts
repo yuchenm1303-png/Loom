@@ -4,6 +4,8 @@ import type {
   InitializeResult,
   ModelRestartResult,
   ModelSnapshot,
+  ProjectListResult,
+  ProjectRecord,
   ReasoningUpdateResult,
   ThreadReadResult,
   ThreadRecord,
@@ -63,6 +65,10 @@ export function useLoom() {
   const [models, setModels] = useState<ModelSnapshot | null>(null);
   const [modelBusy, setModelBusy] = useState(false);
   const [threads, setThreads] = useState<ThreadRecord[]>([]);
+  // Projects come from the server. The client never invents one, so a project
+  // exists exactly as long as the registry says it does.
+  const [projects, setProjects] = useState<ProjectRecord[]>([]);
+  const [projectsSupported, setProjectsSupported] = useState(false);
   const [threadView, setThreadViewState] = useState<ThreadView>("active");
   const [threadCounts, setThreadCounts] = useState<ThreadCounts>({ active: 0, archived: 0, all: 0 });
   const [active, setActive] = useState<ThreadReadResult | null>(null);
@@ -99,6 +105,41 @@ export function useLoom() {
     return next;
   }, []);
 
+  const refreshProjects = useCallback(async () => {
+    try {
+      const result = await requireBridge().call<ProjectListResult>("project/list", {});
+      setProjects(result.projects ?? []);
+      setProjectsSupported(true);
+      return result.projects ?? [];
+    } catch {
+      // An App Server without the project methods still serves threads. Falling
+      // back is what keeps the sidebar working instead of emptying it.
+      setProjectsSupported(false);
+      setProjects([]);
+      return [];
+    }
+  }, []);
+
+  const createProject = useCallback(async (root: string, name?: string) => {
+    const params: Record<string, unknown> = { root };
+    if (name?.trim()) params.name = name.trim();
+    const result = await requireBridge().call<{ project: ProjectRecord }>("project/create", params);
+    await refreshProjects();
+    return result.project;
+  }, [refreshProjects]);
+
+  const renameProject = useCallback(async (projectId: string, name: string) => {
+    await requireBridge().call("project/rename", { projectId, name });
+    await refreshProjects();
+  }, [refreshProjects]);
+
+  const removeProject = useCallback(async (projectId: string) => {
+    // Unregisters only: the folder and its conversations are untouched.
+    await requireBridge().call("project/remove", { projectId });
+    await refreshProjects();
+    await refreshThreads();
+  }, [refreshProjects, refreshThreads]);
+
   const refreshModels = useCallback(async () => {
     const snapshot = await requireBridge().listModels<ModelSnapshot>();
     setModels(snapshot);
@@ -131,8 +172,14 @@ export function useLoom() {
     await ensureSelection(list);
   }, [ensureSelection, refreshThreads]);
 
-  const newThread = useCallback(async (workspace?: string) => {
-    const params = workspace?.trim() ? { workspace: workspace.trim() } : {};
+  const newThread = useCallback(async (workspace?: string, projectId?: string) => {
+    // A project id survives the folder being renamed in the registry, so it is
+    // preferred when the caller knows one.
+    const params: Record<string, unknown> = projectId?.trim()
+      ? { projectId: projectId.trim() }
+      : workspace?.trim()
+        ? { workspace: workspace.trim() }
+        : {};
     const result = await requireBridge().call<{ thread: ThreadRecord }>("thread/start", params);
     threadViewRef.current = "active";
     setThreadViewState("active");
@@ -167,12 +214,17 @@ export function useLoom() {
     await openThread(result.thread.id);
   }, [openThread, refreshThreads]);
 
-  const send = useCallback(async (input: string) => {
-    if (!active?.thread.id || active.thread.archived || !input.trim()) return;
+  const send = useCallback(async (input: string, attachments: { path: string; name: string }[] = []) => {
+    // An attachment on its own is a complete message: "look at this" with a
+    // screenshot needs no words.
+    if (!active?.thread.id || active.thread.archived) return;
+    if (!input.trim() && !attachments.length) return;
     setTurnActive(true);
     setTurnStartedAt(Date.now());
     try {
-      await requireBridge().call("turn/start", { threadId: active.thread.id, input: input.trim() });
+      const params: Record<string, unknown> = { threadId: active.thread.id, input: input.trim() };
+      if (attachments.length) params.attachments = attachments;
+      await requireBridge().call("turn/start", params);
     } catch (cause) {
       setTurnActive(false);
       setTurnStartedAt(null);
@@ -358,6 +410,10 @@ export function useLoom() {
         setRuntime(initialized.runtime ?? {});
         await refreshModels();
         if (disposed) return;
+        // Listing projects is also what adopts existing workspaces, so the
+        // sidebar arrives already grouped instead of demanding a setup step.
+        await refreshProjects();
+        if (disposed) return;
         threadViewRef.current = "active";
         setThreadViewState("active");
         const list = await refreshThreads("active");
@@ -373,7 +429,7 @@ export function useLoom() {
     return () => {
       disposed = true;
     };
-  }, [openThread, refreshModels, refreshThreads]);
+  }, [openThread, refreshModels, refreshProjects, refreshThreads]);
 
   return useMemo(() => ({
     connection,
@@ -382,6 +438,8 @@ export function useLoom() {
     models,
     modelBusy,
     threads,
+    projects,
+    projectsSupported,
     threadView,
     threadCounts,
     active,
@@ -395,6 +453,10 @@ export function useLoom() {
     deleteThread,
     forkThread,
     setThreadView,
+    refreshProjects,
+    createProject,
+    renameProject,
+    removeProject,
     send,
     interrupt,
     setPermissionMode,
@@ -417,6 +479,12 @@ export function useLoom() {
     models,
     newThread,
     openThread,
+    projects,
+    projectsSupported,
+    createProject,
+    refreshProjects,
+    removeProject,
+    renameProject,
     renameThread,
     respondApproval,
     runtime,

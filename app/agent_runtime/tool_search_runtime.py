@@ -153,7 +153,7 @@ class ToolSearchRuntime(ConfiguredMCPRuntime):
     def start_turn(
         self,
         session_id: str,
-        user_text: str,
+        user_text,
         *,
         turn_id: str | None = None,
     ):

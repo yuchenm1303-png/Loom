@@ -408,6 +408,7 @@ def serve_streaming_stdio(
     model: str,
     default_workspace: str | Path,
     default_permission_mode: PermissionMode | str,
+    vision: bool = False,
     reader: TextIO | None = None,
     writer: TextIO | None = None,
 ) -> int:
@@ -417,6 +418,7 @@ def serve_streaming_stdio(
         model=model,
         default_workspace=default_workspace,
         default_permission_mode=default_permission_mode,
+        vision=vision,
     )
     server = StreamingJsonRpcStdioServer(service)
     try:

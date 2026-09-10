@@ -96,6 +96,11 @@ export default function App() {
         archivedCount={loom.threadCounts.archived}
         onOpen={loom.openThread}
         onNew={loom.newThread}
+        projects={loom.projects}
+        projectsSupported={loom.projectsSupported}
+        onAddProject={loom.createProject}
+        onRenameProject={loom.renameProject}
+        onRemoveProject={loom.removeProject}
         onRename={loom.renameThread}
         onArchive={loom.archiveThread}
         onDelete={loom.deleteThread}
@@ -146,6 +151,9 @@ export default function App() {
             onStickerPreferencesChange={async (preferences) => {
               await window.loom.call("sticker/preferences/set", { preferences });
             }}
+            imagesAllowed={
+              (loom.runtime as { attachments?: { images?: boolean } } | undefined)?.attachments?.images !== false
+            }
             onSend={loom.send}
             onInterrupt={loom.interrupt}
           />

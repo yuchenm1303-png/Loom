@@ -55,6 +55,12 @@ class StoredModel:
     base_url: str
     model: str
     credential_alias: str
+    # Declared, not detected. An OpenAI-compatible base URL says nothing about
+    # whether the model behind it accepts image parts, and guessing from the
+    # model name is wrong for exactly the self-hosted endpoints this field
+    # exists to serve. Default on, because the common case is a modern model
+    # and the cost of being wrong is one clear provider error.
+    vision: bool = True
 
     def __post_init__(self) -> None:
         model_id = str(self.model_id or "").strip().casefold()
@@ -89,6 +95,7 @@ class StoredModel:
         object.__setattr__(self, "base_url", connection.base_url)
         object.__setattr__(self, "model", model)
         object.__setattr__(self, "credential_alias", credential_alias)
+        object.__setattr__(self, "vision", bool(self.vision))
 
     @property
     def selection(self) -> str:
@@ -103,7 +110,7 @@ class StoredModel:
             display_name=self.display_name,
         )
 
-    def as_safe_dict(self) -> dict[str, str]:
+    def as_safe_dict(self) -> dict[str, object]:
         return {
             "id": self.model_id,
             "name": self.display_name,
@@ -111,10 +118,15 @@ class StoredModel:
             "base_url": self.base_url,
             "model": self.model,
             "credential_alias": self.credential_alias,
+            "vision": self.vision,
         }
 
     @classmethod
     def from_dict(cls, payload: dict[str, object]) -> "StoredModel":
+        # Entries written before attachments existed have no "vision" key. They
+        # adopt the default rather than being treated as text-only, so an
+        # upgrade does not silently take image support away from a user.
+        vision = payload.get("vision")
         return cls(
             model_id=str(payload.get("id") or ""),
             display_name=str(payload.get("name") or ""),
@@ -122,6 +134,7 @@ class StoredModel:
             base_url=str(payload.get("base_url") or ""),
             model=str(payload.get("model") or ""),
             credential_alias=str(payload.get("credential_alias") or ""),
+            vision=True if vision is None else bool(vision),
         )
 
 
@@ -221,6 +234,7 @@ class ModelConfigStore:
         base_url: str,
         model: str,
         api_key: str,
+        vision: bool = True,
     ) -> StoredModel:
         display_name = " ".join(str(display_name or "").split())
         api_key = str(api_key or "").strip()
@@ -239,6 +253,7 @@ class ModelConfigStore:
             base_url=base_url,
             model=model,
             credential_alias=f"model/{model_id}",
+            vision=bool(vision),
         )
         self._set_secret(entry.credential_alias, api_key)
         payload = self._read_payload()

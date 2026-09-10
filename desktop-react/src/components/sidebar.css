@@ -169,9 +169,93 @@
   padding: 0 3px 0 8px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 9px;
+  gap: 6px;
   color: #999fa8;
+}
+
+/* The label takes the slack so the controls stay pinned to the right edge no
+   matter how many of them a group has. */
+/* Scoped past `.workspace-group-header > span`, which is more specific than a
+   bare class and would otherwise keep the label's size on the count. */
+.workspace-group-header > span.workspace-group-count {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: #6b7079;
+}
+
+.workspace-group-header > span.workspace-group-label {
+  flex: 1 1 auto;
+}
+
+/* A project you have not talked in yet is still a place, so its heading stays.
+   Saying it is empty is friendlier than a heading with nothing under it. */
+.workspace-group-empty {
+  margin: 0 0 4px;
+  padding: 0 8px 2px;
+  font-size: 11.5px;
+  color: #6b7079;
+}
+
+.workspace-group-rename {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.14);
+  border-radius: 5px;
+  padding: 2px 6px;
+  color: #e1e3e7;
+  font: inherit;
+  font-size: 12.5px;
+  outline: none;
+}
+
+.workspace-group-menu-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+}
+
+.workspace-group-menu {
+  position: fixed;
+  z-index: 41;
+  min-width: 186px;
+  padding: 5px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: #1b1d22;
+  border: 1px solid rgba(255,255,255,.09);
+  border-radius: 9px;
+  box-shadow: 0 14px 34px rgba(0,0,0,.42);
+}
+
+.workspace-group-menu button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #d3d6dc;
+  font-size: 12.5px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.workspace-group-menu button:hover {
+  background: rgba(255,255,255,.06);
+}
+
+.workspace-group-menu button.danger {
+  color: #e08e97;
+}
+
+.workspace-group-menu button.danger:hover {
+  background: rgba(224,142,151,.12);
 }
 
 .workspace-group-header > span {

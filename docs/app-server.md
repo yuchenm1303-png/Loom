@@ -60,6 +60,10 @@ Items never expose private model chain-of-thought.
 The stable v1 methods are:
 
 - `runtime/status`
+- `project/list`
+- `project/create`
+- `project/rename`
+- `project/remove`
 - `thread/start`
 - `thread/resume`
 - `thread/list`
@@ -74,6 +78,83 @@ The stable v1 methods are:
 `thread/fork` currently forks the latest inactive durable boundary. Historical partial-turn fork boundaries remain part of the Project/Worktree milestone.
 
 All approved tools still execute through the existing Loom `ToolOrchestrator`, PermissionEngine, sandbox/process, and tool-handler path.
+
+## Projects
+
+A Project is a named place conversations happen. Its **identity is its root
+directory**: one root belongs to exactly one project, which is what keeps
+"which project is this thread in?" a question with a single answer. Registering
+a root that is already a project returns the existing one rather than failing.
+
+The registry lives in `<loom home>/projects.json`, beside `models.json`. The App
+Server owns it for the same reason it owns threads: a client must not be the
+thing that decides what is real.
+
+`project/list` returns every project with a `threadCount`, plus
+`unfiledThreadCount` for threads no project claims. Listing is also where
+adoption happens: any workspace that already has threads but no project is
+registered on the spot, so the feature arrives already populated instead of
+demanding a setup step. Pass `{"adopt": false}` to inspect without registering.
+
+`thread/start` accepts `projectId` as an alternative to `workspace` — passing
+both is an error. Every thread record now carries `projectId`, empty when the
+thread is unfiled.
+
+`project/remove` **unregisters** a project. It deletes no files and no threads;
+the threads keep their workspace and become unfiled. The response says so
+explicitly, so a client can word its confirmation honestly:
+
+```json
+{"projectId": "p…", "removed": true, "unfiledThreadCount": 2,
+ "deletedThreads": false, "deletedFiles": false}
+```
+
+The roadmap's multi-root project is deliberately not built. A thread has exactly
+one workspace, so multi-root immediately raises "which root does a new thread
+get?" — better answered with worktrees in hand than guessed at now. Managed
+worktrees and fork boundaries remain Milestone 2.5.
+
+## Attachments
+
+`turn/start` accepts an optional `attachments` array alongside `input`:
+
+```json
+{
+  "threadId": "…",
+  "input": "what changed in this screenshot?",
+  "attachments": [{"path": "C:/Users/me/Pictures/shot.png", "name": "shot.png"}]
+}
+```
+
+Attachments are **local source paths**, not inline bytes. The App Server runs on
+the same machine as its client, and a base64 screenshot would exceed the
+transport's per-message limit long before it reached a model. A client with no
+file behind its data — a clipboard image — writes a temporary file first.
+
+The server copies each source into `<workspace>/.loom/attachments/<turn>/` and
+then splits by kind:
+
+- **images** become `ImagePart` content on the user message, so the model sees
+  them;
+- **every other file** is referenced only by its workspace-relative path, listed
+  in a manifest appended to the user's text. The agent reads it with the file
+  tools it already has. Nothing is inlined, so a 40 MB CSV costs no context.
+
+Either kind alone is a valid turn: `input` is required only when `attachments`
+is empty. The response echoes what was staged under `turn.attachments`.
+
+Whether images are accepted is a property of the launch, not of the request.
+`runtime/status` reports it, so a client can refuse an image in its composer
+rather than discovering the problem as a failed turn:
+
+```json
+"attachments": {"images": true, "files": true, "maxCount": 10,
+                "maxImageBytes": 8388608, "maxFileBytes": 134217728}
+```
+
+`images` follows `--vision/--no-vision`, which declares whether the bound model
+can read them. Reading back a thread never returns image bytes; a message with
+images renders as `[N images attached]` beside its text.
 
 ## Notifications
 

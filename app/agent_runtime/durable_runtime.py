@@ -12,6 +12,7 @@ from .history import HistoryRepair, repair_tool_history
 from .runtime import AgentRuntime as CoreAgentRuntime
 from .storage import utc_now
 from .thread_state_tools import durable_thread_tools
+from .turn_input import TurnInput, normalize_turn_input
 
 
 class DurableAgentRuntime(CoreAgentRuntime):
@@ -129,7 +130,7 @@ class DurableAgentRuntime(CoreAgentRuntime):
     def start_turn(
         self,
         session_id: str,
-        user_text: str,
+        user_text: TurnInput,
         *,
         turn_id: str | None = None,
     ) -> AgentRunResult:
@@ -264,15 +265,13 @@ class DurableAgentRuntime(CoreAgentRuntime):
     def _start_turn_once(
         self,
         session_id: str,
-        user_text: str,
+        user_text: TurnInput,
         *,
         turn_id: str | None = None,
         source: str = "user",
         queue_item: QueuedTurn | None = None,
     ) -> AgentRunResult:
-        text = str(user_text or "").strip()
-        if not text:
-            raise ValueError("agent turn input must not be empty")
+        content, text = normalize_turn_input(user_text)
         lock = self._session_lock(session_id)
         with lock:
             session = self.store.load(session_id)
@@ -294,7 +293,7 @@ class DurableAgentRuntime(CoreAgentRuntime):
             session.final_text = ""
             session.error = ""
             self.diff_trackers.for_turn(session.session_id, resolved_turn_id)
-            session.messages.append(AIMessage(role=MessageRole.USER, content=text))
+            session.messages.append(AIMessage(role=MessageRole.USER, content=content))
             start_data: dict[str, object] = {
                 "permission_mode": session.permission_mode.value,
                 "source": source,
