@@ -5,6 +5,7 @@ import {
   CircleAlert,
   FileDiff,
   Files,
+  MousePointer2,
   PanelRightClose,
   Terminal,
   Wrench,
@@ -19,11 +20,12 @@ interface InspectorProps {
   onClose(): void;
 }
 
-type Tab = "activity" | "changes" | "terminal";
+type Tab = "activity" | "computer" | "changes" | "terminal";
 type IconComponent = typeof Activity;
 
 const tabs: Array<{ id: Tab; label: string; icon: IconComponent }> = [
   { id: "activity", label: "Activity", icon: Activity },
+  { id: "computer", label: "Computer", icon: MousePointer2 },
   { id: "changes", label: "Changes", icon: Files },
   { id: "terminal", label: "Shell", icon: Terminal },
 ];
@@ -34,6 +36,12 @@ const emptyCopy: Record<Tab, { title: string; body: string; chips: string[]; ico
     body: "Tool calls, approvals and execution events will appear here as Loom works.",
     chips: ["Tools", "Approvals", "Errors"],
     icon: Activity,
+  },
+  computer: {
+    title: "No Computer Use trace yet",
+    body: "Desktop observations, actions, visual grounding steps, resolved coordinates and trace paths will appear here.",
+    chips: ["Observe", "Action", "Verify"],
+    icon: MousePointer2,
   },
   changes: {
     title: "No workspace changes",
@@ -78,6 +86,40 @@ function commandOf(item: TranscriptItem): string {
   return typeof item.command === "string" ? item.command : "";
 }
 
+function isComputerItem(item: TranscriptItem): boolean {
+  return String(item.toolName || "").startsWith("computer_");
+}
+
+function safeJson(value: unknown): string {
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
+function recordValue(value: unknown, key: string): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  return (value as Record<string, unknown>)[key];
+}
+
+function computerDetailOf(item: TranscriptItem): string {
+  const result = item.result;
+  const trace = recordValue(result, "trace");
+  const tracePath = recordValue(trace, "trace_path");
+  const geometry = recordValue(result, "geometry");
+  const verification = recordValue(result, "verification");
+  const parts = [
+    item.content ? `Result: ${item.content}` : "",
+    tracePath ? `Trace file: ${String(tracePath)}` : "",
+    geometry ? `Geometry:\n${safeJson(geometry)}` : "",
+    verification ? `Verification:\n${safeJson(verification)}` : "",
+    result !== undefined ? `Raw result:\n${safeJson(result)}` : "",
+    item.arguments !== undefined ? `Arguments:\n${safeJson(item.arguments)}` : "",
+  ];
+  return parts.filter(Boolean).join("\n\n");
+}
+
 function titleOf(item: TranscriptItem): string {
   if (item.toolName) return item.toolName;
   if (item.type === "file_edit") {
@@ -93,6 +135,7 @@ function titleOf(item: TranscriptItem): string {
 }
 
 function detailOf(item: TranscriptItem): string {
+  if (isComputerItem(item)) return computerDetailOf(item);
   if (item.type === "file_edit") return item.diff || (item.paths ?? []).join("\n");
   if (item.type === "process") {
     const command = commandOf(item);
@@ -101,19 +144,16 @@ function detailOf(item: TranscriptItem): string {
   }
   if (item.type === "approval") return item.reason || "Loom is waiting for permission to continue.";
   if (item.type === "error") return item.error || "The runtime reported an error.";
+  if (item.content && item.result !== undefined) return `${item.content}\n\n${safeJson(item.result)}`;
   if (item.content) return item.content;
+  if (item.result !== undefined) return safeJson(item.result);
   if (item.stdout || item.stderr) return `${item.stdout ?? ""}${item.stderr ? `${item.stdout ? "\n" : ""}${item.stderr}` : ""}`;
-  if (item.arguments !== undefined) {
-    try {
-      return JSON.stringify(item.arguments, null, 2);
-    } catch {
-      return String(item.arguments);
-    }
-  }
+  if (item.arguments !== undefined) return safeJson(item.arguments);
   return "";
 }
 
 function iconOf(item: TranscriptItem): IconComponent {
+  if (isComputerItem(item)) return MousePointer2;
   if (item.type === "file_edit") return FileDiff;
   if (item.type === "process") return Terminal;
   if (item.type === "approval" || item.type === "error") return CircleAlert;
@@ -176,6 +216,13 @@ function RuntimeEvent({ item, expanded, onToggle }: { item: TranscriptItem; expa
   );
 }
 
+function sectionTitle(tab: Tab): string {
+  if (tab === "activity") return "Execution stream";
+  if (tab === "computer") return "Computer Use trace";
+  if (tab === "changes") return "Workspace edits";
+  return "Process output";
+}
+
 export function Inspector({ items, onClose }: InspectorProps) {
   const [tab, setTab] = useState<Tab>("activity");
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -184,10 +231,11 @@ export function Inspector({ items, onClose }: InspectorProps) {
     () => items.filter((item) => ["tool_call", "process", "approval", "error"].includes(item.type)),
     [items],
   );
+  const computerItems = useMemo(() => items.filter(isComputerItem), [items]);
   const changes = useMemo(() => items.filter((item) => item.type === "file_edit"), [items]);
   const processes = useMemo(() => items.filter((item) => item.type === "process"), [items]);
-  const visible = tab === "changes" ? changes : tab === "terminal" ? processes : toolItems;
-  const counts: Record<Tab, number> = { activity: toolItems.length, changes: changes.length, terminal: processes.length };
+  const visible = tab === "computer" ? computerItems : tab === "changes" ? changes : tab === "terminal" ? processes : toolItems;
+  const counts: Record<Tab, number> = { activity: toolItems.length, computer: computerItems.length, changes: changes.length, terminal: processes.length };
   const tabIndex = tabs.findIndex((entry) => entry.id === tab);
   const busy = items.some((item) => isRunningStatus(statusOf(item)));
   const failed = items.some((item) => ["failed", "error"].includes(statusOf(item)));
@@ -210,8 +258,15 @@ export function Inspector({ items, onClose }: InspectorProps) {
         </button>
       </header>
 
-      <div className="runtime-tabs" role="tablist" aria-label="Runtime views">
-        <span className="runtime-tab-glider" style={{ transform: `translateX(${tabIndex * 100}%)` }} aria-hidden="true" />
+      <div className="runtime-tabs" role="tablist" aria-label="Runtime views" style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}>
+        <span
+          className="runtime-tab-glider"
+          style={{
+            width: `calc((100% - 16px) / ${tabs.length})`,
+            transform: `translateX(${tabIndex * 100}%)`,
+          }}
+          aria-hidden="true"
+        />
         {tabs.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
@@ -232,7 +287,7 @@ export function Inspector({ items, onClose }: InspectorProps) {
 
       <div className="runtime-body">
         <div className="runtime-section-bar">
-          <span>{tab === "activity" ? "Execution stream" : tab === "changes" ? "Workspace edits" : "Process output"}</span>
+          <span>{sectionTitle(tab)}</span>
           <span>{visible.length ? `${visible.length} ${visible.length === 1 ? "event" : "events"}` : "Waiting"}</span>
         </div>
 
