@@ -36,12 +36,6 @@
   text-align: left;
 }
 
-.markdown-body p:has(> img.assistant-inline-sticker:only-child) {
-  margin-top: 0;
-  margin-bottom: 0;
-  line-height: 1;
-}
-
 .sticker-popover {
   width: min(430px, calc(100vw - 48px));
 }
