@@ -5,12 +5,12 @@ import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from .computer_types import ComputerAction, ComputerActionType, ComputerStepOutcome
+from .computer_types import ComputerAction, ComputerActionType
 from .contracts import ToolEffect
 from .tools import AgentTool, ToolContext, ToolResult
 
 if TYPE_CHECKING:
-    from .computer_runtime import ComputerSessionStore, ComputerUseRuntime
+    from .computer_runtime import ComputerSessionStore, ComputerStepOutcome, ComputerUseRuntime
 
 
 def _schema(properties: dict[str, Any], required: tuple[str, ...] = ()) -> dict[str, Any]:
@@ -178,7 +178,7 @@ def _observation_summary(snapshot: Any) -> dict[str, object]:
     }
 
 
-def _point_geometry(outcome: ComputerStepOutcome) -> dict[str, object]:
+def _point_geometry(outcome: "ComputerStepOutcome") -> dict[str, object]:
     action = outcome.prediction.action
     frame = outcome.before.observation.frame
     payload: dict[str, object] = {}
@@ -193,7 +193,7 @@ def _point_geometry(outcome: ComputerStepOutcome) -> dict[str, object]:
     return payload
 
 
-def _outcome_summary(outcome: ComputerStepOutcome) -> dict[str, object]:
+def _outcome_summary(outcome: "ComputerStepOutcome") -> dict[str, object]:
     execution = outcome.execution.to_safe_dict() if outcome.execution is not None else None
     return {
         "before": _observation_summary(outcome.before),
@@ -209,7 +209,7 @@ def _outcome_summary(outcome: ComputerStepOutcome) -> dict[str, object]:
 def _enrich_outcome_payload(
     runtime: "ComputerUseRuntime",
     context: ToolContext,
-    outcome: ComputerStepOutcome,
+    outcome: "ComputerStepOutcome",
 ) -> dict[str, object]:
     payload = outcome.to_safe_dict()
     payload["geometry"] = _point_geometry(outcome)
