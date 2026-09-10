@@ -263,6 +263,7 @@ export function useLoom() {
   const applyModelRestart = useCallback(async (result: ModelRestartResult) => {
     setRuntime(result.initialization.runtime ?? {});
     setModels(result.models);
+    if (result.hotSwitch) return;
     const preferredId = activeIdRef.current;
     const list = await refreshThreads();
     if (preferredId && list.some((thread) => thread.id === preferredId)) {
