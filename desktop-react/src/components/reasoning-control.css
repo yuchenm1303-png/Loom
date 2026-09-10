@@ -92,8 +92,11 @@
   --reasoning-fill-c: #746a91;
   --reasoning-glow: rgba(128, 101, 220, 0);
   --reasoning-particle-opacity: 0;
+  --reasoning-particle-dim-opacity: 0;
   --reasoning-particle-glow: 2px;
   --reasoning-particle-speed: 4.2s;
+  --reasoning-stardust-opacity: 0;
+  --reasoning-stardust-speed: 8s;
   --reasoning-sweep-opacity: 0;
   --reasoning-sweep-speed: 7.6s;
   position: relative;
@@ -108,8 +111,11 @@
   --reasoning-fill-c: #7d66d8;
   --reasoning-glow: rgba(104, 81, 202, .12);
   --reasoning-particle-opacity: .24;
+  --reasoning-particle-dim-opacity: .08;
   --reasoning-particle-glow: 3px;
   --reasoning-particle-speed: 3.8s;
+  --reasoning-stardust-opacity: .07;
+  --reasoning-stardust-speed: 7.2s;
   --reasoning-sweep-opacity: .055;
   --reasoning-sweep-speed: 7.1s;
 }
@@ -120,8 +126,11 @@
   --reasoning-fill-c: #9465eb;
   --reasoning-glow: rgba(126, 82, 224, .17);
   --reasoning-particle-opacity: .38;
+  --reasoning-particle-dim-opacity: .13;
   --reasoning-particle-glow: 4px;
   --reasoning-particle-speed: 3.45s;
+  --reasoning-stardust-opacity: .11;
+  --reasoning-stardust-speed: 6.5s;
   --reasoning-sweep-opacity: .085;
   --reasoning-sweep-speed: 6.6s;
 }
@@ -132,8 +141,11 @@
   --reasoning-fill-c: #aa60f4;
   --reasoning-glow: rgba(145, 80, 234, .22);
   --reasoning-particle-opacity: .56;
+  --reasoning-particle-dim-opacity: .19;
   --reasoning-particle-glow: 5px;
   --reasoning-particle-speed: 3.05s;
+  --reasoning-stardust-opacity: .16;
+  --reasoning-stardust-speed: 5.9s;
   --reasoning-sweep-opacity: .115;
   --reasoning-sweep-speed: 6.05s;
 }
@@ -144,8 +156,11 @@
   --reasoning-fill-c: #c56af9;
   --reasoning-glow: rgba(164, 82, 242, .29);
   --reasoning-particle-opacity: .75;
+  --reasoning-particle-dim-opacity: .25;
   --reasoning-particle-glow: 6px;
   --reasoning-particle-speed: 2.72s;
+  --reasoning-stardust-opacity: .21;
+  --reasoning-stardust-speed: 5.25s;
   --reasoning-sweep-opacity: .15;
   --reasoning-sweep-speed: 5.45s;
 }
@@ -156,8 +171,11 @@
   --reasoning-fill-c: #dc84ff;
   --reasoning-glow: rgba(186, 94, 255, .38);
   --reasoning-particle-opacity: .94;
+  --reasoning-particle-dim-opacity: .32;
   --reasoning-particle-glow: 8px;
   --reasoning-particle-speed: 2.35s;
+  --reasoning-stardust-opacity: .27;
+  --reasoning-stardust-speed: 4.5s;
   --reasoning-sweep-opacity: .21;
   --reasoning-sweep-speed: 4.85s;
 }
@@ -178,8 +196,7 @@
   z-index: 0;
   overflow: hidden;
   border: 1px solid rgba(255,255,255,.055);
-  background:
-    linear-gradient(180deg, rgba(44,46,55,.95), rgba(30,32,40,.98));
+  background: linear-gradient(180deg, rgba(44,46,55,.95), rgba(30,32,40,.98));
   box-shadow:
     inset 0 1px 3px rgba(0,0,0,.42),
     inset 0 1px 0 rgba(255,255,255,.025),
@@ -253,13 +270,13 @@
   content: "";
   position: absolute;
   inset: 0;
-  opacity: calc(var(--reasoning-particle-opacity) * .28);
+  opacity: var(--reasoning-stardust-opacity);
   background:
     radial-gradient(circle at 18% 42%, rgba(255,255,255,.7) 0 1px, transparent 1.4px),
     radial-gradient(circle at 38% 66%, rgba(255,255,255,.55) 0 .8px, transparent 1.2px),
     radial-gradient(circle at 61% 31%, rgba(255,255,255,.72) 0 .9px, transparent 1.4px),
     radial-gradient(circle at 82% 58%, rgba(255,255,255,.5) 0 .8px, transparent 1.3px);
-  animation: reasoning-stardust-drift calc(var(--reasoning-particle-speed) * 1.8) ease-in-out infinite alternate;
+  animation: reasoning-stardust-drift var(--reasoning-stardust-speed) ease-in-out infinite alternate;
 }
 
 .reasoning-particle {
@@ -341,8 +358,7 @@
   border-radius: 50%;
   transform: translate(-50%, -50%);
   pointer-events: none;
-  background:
-    radial-gradient(circle at 36% 28%, #ffffff 0 26%, #f7f7fa 54%, #eeeeF3 100%);
+  background: radial-gradient(circle at 36% 28%, #ffffff 0 26%, #f7f7fa 54%, #eeeef3 100%);
   box-shadow:
     0 5px 14px rgba(0,0,0,.36),
     0 0 0 1px rgba(255,255,255,.48),
@@ -435,7 +451,7 @@
 }
 
 @keyframes reasoning-particle-pulse {
-  0%, 100% { opacity: calc(var(--reasoning-particle-opacity) * .34); transform: scale(.78); }
+  0%, 100% { opacity: var(--reasoning-particle-dim-opacity); transform: scale(.78); }
   50% { opacity: var(--reasoning-particle-opacity); transform: scale(1.28); }
 }
 
