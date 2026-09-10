@@ -219,6 +219,35 @@ async function changeModel(
   }
 }
 
+async function deleteModel(selection: string): Promise<ModelRestartResult> {
+  const value = String(selection || "").trim();
+  if (!value) throw new Error("Model profile is required");
+  await rpc.assertRestartSafe();
+  const previous = modelManager.current ?? modelManager.ensureInitial();
+  const deletesCurrent = previous.selection === value;
+  modelManager.delete(value);
+
+  if (!deletesCurrent) {
+    const initialization = await rpc.connect();
+    return { initialization, models: modelManager.snapshot() };
+  }
+
+  try {
+    const next = modelManager.ensureInitial();
+    const initialization = await rpc.restart();
+    modelManager.setActive(next.selection);
+    return { initialization, models: modelManager.snapshot() };
+  } catch (error) {
+    modelManager.restore(previous);
+    try {
+      await rpc.restart();
+    } catch (rollbackError) {
+      console.error("Could not restore previous Loom model after failed delete fallback", rollbackError);
+    }
+    throw error;
+  }
+}
+
 function rendererFailureDocument(title: string, detail: string): string {
   const safeTitle = title.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char] ?? char);
   const safeDetail = detail.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char] ?? char);
@@ -349,6 +378,7 @@ ipcMain.handle("loom:model-add", async (_event, input: AddModelInput) => {
   const profile = modelManager.add(input);
   return changeModel(() => modelManager.useProfile(profile.selection), { persistSelection: profile.selection });
 });
+ipcMain.handle("loom:model-delete", async (_event, selection: string) => deleteModel(selection));
 ipcMain.handle("loom:reasoning-set", async (_event, kind: string, value: string): Promise<ReasoningUpdateResult> => {
   await rpc.assertRestartSafe();
   const current = modelManager.current ?? modelManager.ensureInitial();
