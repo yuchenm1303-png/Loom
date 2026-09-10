@@ -1,5 +1,5 @@
-import { app, BrowserWindow, dialog, ipcMain } from "electron";
-import { ChildProcessWithoutNullStreams, spawn } from "node:child_process";
+import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
+import { ChildProcessWithoutNullStreams, spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import fs from "node:fs/promises";
@@ -32,6 +32,107 @@ function appendPythonPath(existing: string | undefined): string {
   return [REPO_ROOT, existing]
     .filter((value): value is string => Boolean(value && value.trim()))
     .join(path.delimiter);
+}
+
+function computerLogRoot(): string {
+  const configured = process.env.LOOM_COMPUTER_LOG_DIR?.trim();
+  return configured ? path.resolve(configured) : path.join(REPO_ROOT, ".loom", "logs", "computer-use");
+}
+
+function timestampSlug(): string {
+  return new Date().toISOString().replace(/[:.]/g, "-").replace("T", "_").replace("Z", "");
+}
+
+function parseLastJsonLine(stdout: string): Record<string, unknown> {
+  const lines = String(stdout || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const last = lines.at(-1) || "{}";
+  const parsed = JSON.parse(last);
+  return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
+}
+
+async function exportComputerLogs(): Promise<Record<string, unknown>> {
+  const logDir = computerLogRoot();
+  const defaultPath = path.join(app.getPath("desktop"), `loom-computer-use-logs-${timestampSlug()}.zip`);
+  const selection = await dialog.showSaveDialog({
+    title: "Export Computer Use logs",
+    defaultPath,
+    filters: [{ name: "Zip archive", extensions: ["zip"] }],
+  });
+  if (selection.canceled || !selection.filePath) {
+    return { ok: false, cancelled: true, logDir };
+  }
+  const archivePath = selection.filePath.endsWith(".zip") ? selection.filePath : `${selection.filePath}.zip`;
+  const script = String.raw`
+import json
+import os
+import sys
+import zipfile
+from pathlib import Path
+
+source = Path(sys.argv[1]).expanduser().resolve()
+target = Path(sys.argv[2]).expanduser().resolve()
+if not source.exists():
+    raise SystemExit(f"Computer Use log directory does not exist: {source}")
+if not source.is_dir():
+    raise SystemExit(f"Computer Use log path is not a directory: {source}")
+target.parent.mkdir(parents=True, exist_ok=True)
+if target.exists():
+    target.unlink()
+count = 0
+with zipfile.ZipFile(target, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
+    for item in sorted(source.rglob("*")):
+        if not item.is_file():
+            continue
+        rel = item.relative_to(source.parent).as_posix()
+        archive.write(item, rel)
+        count += 1
+print(json.dumps({"fileCount": count, "sizeBytes": target.stat().st_size}, ensure_ascii=False))
+`;
+  const python = resolvePythonExecutable();
+  const result = spawnSync(python, ["-c", script, logDir, archivePath], {
+    cwd: REPO_ROOT,
+    env: {
+      ...process.env,
+      PYTHONUTF8: "1",
+      PYTHONPATH: appendPythonPath(process.env.PYTHONPATH),
+    },
+    encoding: "utf8",
+    windowsHide: true,
+  });
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    const stderr = String(result.stderr || "").trim();
+    const stdout = String(result.stdout || "").trim();
+    throw new Error(stderr || stdout || `Computer Use log export failed with status ${result.status}`);
+  }
+  const summary = parseLastJsonLine(result.stdout || "");
+  return {
+    ok: true,
+    archivePath,
+    logDir,
+    python,
+    ...summary,
+  };
+}
+
+async function revealPath(targetPath: string): Promise<boolean> {
+  const target = path.resolve(String(targetPath || ""));
+  if (!target) return false;
+  try {
+    const stat = await fs.stat(target);
+    if (stat.isFile()) {
+      shell.showItemInFolder(target);
+      return true;
+    }
+    const error = await shell.openPath(target);
+    if (error) throw new Error(error);
+    return true;
+  } catch {
+    const parent = path.dirname(target);
+    const error = await shell.openPath(parent);
+    if (error) throw new Error(error);
+    return true;
+  }
 }
 
 interface JsonRpcResponse {
@@ -417,6 +518,8 @@ function createWindow(): void {
 ipcMain.handle("loom:connect", () => rpc.connect());
 ipcMain.handle("loom:call", (_event, method: string, params?: Record<string, unknown>) => rpc.call(method, params ?? {}));
 ipcMain.handle("loom:disconnect", () => rpc.stop());
+ipcMain.handle("loom:export-computer-logs", () => exportComputerLogs());
+ipcMain.handle("loom:reveal-path", (_event, targetPath: string) => revealPath(targetPath));
 ipcMain.handle("loom:pick-files", async () => {
   const result = await dialog.showOpenDialog({
     title: "Attach files",
