@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import { BootErrorBoundary } from "./components/BootErrorBoundary";
+import { I18nProvider, bootstrapDocumentLanguage } from "./i18n";
 import "./styles.css";
 import "./shell-fix.css";
 import "./components/model-panel-overrides.css";
@@ -22,13 +23,17 @@ try {
   document.documentElement.dataset.loomReducedMotion = "false";
 }
 
+bootstrapDocumentLanguage();
+
 const rootElement = document.getElementById("root");
 if (!rootElement) throw new Error("Loom renderer root element is missing");
 
 createRoot(rootElement).render(
   <StrictMode>
     <BootErrorBoundary>
-      <App />
+      <I18nProvider>
+        <App />
+      </I18nProvider>
     </BootErrorBoundary>
   </StrictMode>,
 );
