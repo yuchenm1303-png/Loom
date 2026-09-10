@@ -100,6 +100,13 @@ def _add_usage(left: ModelUsage, right: ModelUsage) -> ModelUsage:
     )
 
 
+def _charge_uncommitted_usage(session, usage: ModelUsage) -> None:
+    if not (usage.input_tokens or usage.output_tokens or usage.total_tokens):
+        return
+    from .runtime import _add_usage as runtime_add_usage
+    session.usage = runtime_add_usage(session.usage, usage)
+
+
 def _retained_for_split(history, split: int, last_user: int):
     retained = tuple(history[split:])
     # Preserve the verbatim active user instruction even during a single long turn.
@@ -218,7 +225,7 @@ def prepare_context(rt, session, step, token):
 
         # Mirror Codex's ContextWindowExceeded handling: remove oldest cloned
         # history and retry, preserving recent context and the canonical archive.
-        while estimate_tokens(summary_request.messages) > budget and compaction_input:
+        while estimate_tokens(summary_request.messages) > budget and len(compaction_input) > 1:
             previous_len = len(compaction_input)
             compaction_input = _trim_oldest_compaction_unit(compaction_input)
             trimmed_messages += previous_len - len(compaction_input)
@@ -227,8 +234,8 @@ def prepare_context(rt, session, step, token):
                 max_output_tokens=max_summary_output,
             )
 
-        if not compaction_input:
-            raise RuntimeError("context compaction request cannot fit even after trimming old history")
+        if estimate_tokens(summary_request.messages) > budget:
+            raise RuntimeError("context compaction request cannot fit after trimming old history")
 
         try:
             response = rt.model_executor.execute(
@@ -240,20 +247,28 @@ def prepare_context(rt, session, step, token):
         except ModelCancelled:
             raise
         except (AITransportError, AIResponseError, TimeoutError) as exc:
-            if _looks_like_context_window_error(exc) and compaction_input:
-                previous_len = len(compaction_input)
-                compaction_input = _trim_oldest_compaction_unit(compaction_input)
-                trimmed_messages += previous_len - len(compaction_input)
-                last_failure = "provider_context_window_exceeded"
-                continue
+            if _looks_like_context_window_error(exc):
+                # Codex only drops more history while there is more than one
+                # request item left; otherwise it returns the context-window error.
+                if len(compaction_input) > 1:
+                    previous_len = len(compaction_input)
+                    compaction_input = _trim_oldest_compaction_unit(compaction_input)
+                    trimmed_messages += previous_len - len(compaction_input)
+                    last_failure = "provider_context_window_exceeded"
+                    continue
+                _charge_uncommitted_usage(session, total_usage)
+                raise
+
             model_attempts += 1
             last_failure = type(exc).__name__
             if model_attempts >= _COMPACTION_RETRY_LIMIT:
+                _charge_uncommitted_usage(session, total_usage)
                 raise
             time.sleep(0.15 * (2 ** (model_attempts - 1)))
             continue
 
         if not isinstance(response, ModelResponse):
+            _charge_uncommitted_usage(session, total_usage)
             raise TypeError("compaction model must return ModelResponse")
 
         model_attempts += 1
@@ -269,16 +284,15 @@ def prepare_context(rt, session, step, token):
 
             if model_attempts < _COMPACTION_RETRY_LIMIT:
                 # A length/incomplete completion often means the compaction task
-                # is still too large. Codex makes the same retry cheaper by
-                # removing the oldest cloned history item before sampling again.
-                if compaction_input:
+                # is still too large. Retry after dropping the oldest cloned item,
+                # as Codex does for an oversized compaction request.
+                if len(compaction_input) > 1:
                     previous_len = len(compaction_input)
                     compaction_input = _trim_oldest_compaction_unit(compaction_input)
                     trimmed_messages += previous_len - len(compaction_input)
                 continue
 
-            from .runtime import _add_usage as runtime_add_usage
-            session.usage = runtime_add_usage(session.usage, total_usage)
+            _charge_uncommitted_usage(session, total_usage)
             raise RuntimeError(
                 f"context compaction did not produce a complete summary after {model_attempts} attempts ({last_failure})"
             )
@@ -294,13 +308,13 @@ def prepare_context(rt, session, step, token):
             or len(candidate) > rt.limits.max_messages
         ):
             last_failure = "compacted_context_still_exceeds_budget"
-            if model_attempts < _COMPACTION_RETRY_LIMIT and compaction_input:
-                previous_len = len(compaction_input)
-                compaction_input = _trim_oldest_compaction_unit(compaction_input)
-                trimmed_messages += previous_len - len(compaction_input)
+            if model_attempts < _COMPACTION_RETRY_LIMIT:
+                if len(compaction_input) > 1:
+                    previous_len = len(compaction_input)
+                    compaction_input = _trim_oldest_compaction_unit(compaction_input)
+                    trimmed_messages += previous_len - len(compaction_input)
                 continue
-            from .runtime import _add_usage as runtime_add_usage
-            session.usage = runtime_add_usage(session.usage, total_usage)
+            _charge_uncommitted_usage(session, total_usage)
             raise RuntimeError("compacted context still exceeds request budget after retries")
 
         rt._commit_compaction_locked(
@@ -319,4 +333,5 @@ def prepare_context(rt, session, step, token):
             "compaction_trimmed_messages": trimmed_messages,
         }
 
+    _charge_uncommitted_usage(session, total_usage)
     raise RuntimeError(f"context compaction failed ({last_failure or 'unknown'})")
