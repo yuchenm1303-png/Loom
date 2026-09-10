@@ -11,6 +11,7 @@ import {
   type AddModelInput,
   type ModelLaunchSpec,
 } from "./modelManager.js";
+import { closeHudOverlayWindow, createHudOverlayWindow, sendHudUpdate } from "./hudWindow.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -252,10 +253,13 @@ class LoomRpcProcess {
 
 let mainWindow: BrowserWindow | null = null;
 const modelManager = new DesktopModelManager(REPO_ROOT);
-const rpc = new LoomRpcProcess(
-  (payload) => mainWindow?.webContents.send("loom:notification", payload),
-  modelManager,
-);
+function handleRuntimeNotification(payload: JsonRpcResponse): void {
+  mainWindow?.webContents.send("loom:notification", payload);
+  if (payload.method === "hud/update") {
+    sendHudUpdate(payload.params ?? {});
+  }
+}
+const rpc = new LoomRpcProcess(handleRuntimeNotification, modelManager);
 
 async function changeModel(
   apply: () => ModelLaunchSpec,
@@ -406,6 +410,7 @@ function createWindow(): void {
 
   window.on("closed", () => {
     if (mainWindow === window) mainWindow = null;
+    if (process.platform !== "darwin") app.quit();
   });
 }
 
@@ -478,11 +483,17 @@ ipcMain.handle("loom:reasoning-set", async (_event, kind: string, value: string)
   }
 });
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  createWindow();
+  createHudOverlayWindow();
+});
 app.on("activate", () => {
-  if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  if (!mainWindow) createWindow();
 });
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
-app.on("before-quit", () => rpc.stop());
+app.on("before-quit", () => {
+  rpc.stop();
+  closeHudOverlayWindow();
+});
