@@ -1,0 +1,276 @@
+.markdown-body {
+  min-width: 0;
+  color: #d9dde5;
+  font-size: 13px;
+  line-height: 1.72;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  animation: copy-reveal 220ms ease both;
+}
+
+.markdown-body > :first-child { margin-top: 0 !important; }
+.markdown-body > :last-child { margin-bottom: 0 !important; }
+
+.markdown-body p {
+  margin: 0 0 12px;
+}
+
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4,
+.markdown-body h5,
+.markdown-body h6 {
+  margin: 22px 0 9px;
+  color: #f1f2f5;
+  line-height: 1.34;
+  letter-spacing: -.018em;
+  font-weight: 690;
+}
+
+.markdown-body h1 { font-size: 20px; }
+.markdown-body h2 { font-size: 17px; }
+.markdown-body h3 { font-size: 15px; }
+.markdown-body h4,
+.markdown-body h5,
+.markdown-body h6 { font-size: 13.5px; }
+
+.markdown-body strong {
+  color: #f0f1f4;
+  font-weight: 690;
+}
+
+.markdown-body em { color: #d4d7df; }
+.markdown-body del { color: #777f8c; }
+
+.markdown-body a {
+  color: #aaa2f4;
+  text-decoration: none;
+  border-bottom: 1px solid rgba(170,162,244,.3);
+  transition: color 140ms ease, border-color 140ms ease;
+}
+
+.markdown-body a:hover {
+  color: #c7c1ff;
+  border-bottom-color: rgba(199,193,255,.7);
+}
+
+.markdown-body ul,
+.markdown-body ol {
+  margin: 8px 0 13px;
+  padding-left: 23px;
+}
+
+.markdown-body li {
+  margin: 4px 0;
+  padding-left: 2px;
+}
+
+.markdown-body li::marker {
+  color: #8d86c9;
+  font-weight: 650;
+}
+
+.markdown-body li > p { margin: 4px 0; }
+.markdown-body ul.contains-task-list {
+  padding-left: 4px;
+  list-style: none;
+}
+
+.markdown-body .task-list-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.markdown-body input[type="checkbox"] {
+  margin: 5px 0 0;
+  accent-color: #8b7cf6;
+}
+
+.markdown-body blockquote {
+  margin: 12px 0;
+  padding: 7px 0 7px 13px;
+  border-left: 2px solid rgba(150,138,233,.48);
+  color: #aeb4bf;
+  background: linear-gradient(90deg, rgba(139,124,246,.045), transparent 72%);
+}
+
+.markdown-body blockquote > :last-child { margin-bottom: 0; }
+
+.markdown-body hr {
+  height: 1px;
+  margin: 19px 0;
+  border: 0;
+  background: linear-gradient(90deg, #2a2e37, #363a46 45%, transparent 100%);
+}
+
+.markdown-body :not(pre) > code {
+  padding: 2px 5px;
+  border: 1px solid rgba(255,255,255,.055);
+  border-radius: 5px;
+  background: #15171d;
+  color: #d4cffa;
+  font: 11.5px/1.5 "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  white-space: break-spaces;
+}
+
+.markdown-code-block {
+  position: relative;
+  margin: 12px 0 14px;
+  overflow: hidden;
+  border: 1px solid #282d37;
+  border-radius: 10px;
+  background: #0e1014;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.018), 0 8px 24px rgba(0,0,0,.08);
+}
+
+.markdown-code-head {
+  height: 30px;
+  padding: 0 8px 0 11px;
+  border-bottom: 1px solid #232730;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #646c78;
+  background: rgba(18,20,25,.9);
+  font: 9.5px/1 "SFMono-Regular", Consolas, monospace;
+  text-transform: lowercase;
+}
+
+.markdown-code-head button {
+  height: 22px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 5px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: transparent;
+  color: #747c88;
+  cursor: pointer;
+  font: 9px/1 ui-sans-serif, system-ui, sans-serif;
+  transition: color 130ms ease, background 130ms ease;
+}
+
+.markdown-code-head button:hover {
+  color: #c4c9d1;
+  background: rgba(255,255,255,.035);
+}
+
+.markdown-code-block pre {
+  margin: 0;
+  padding: 12px 13px 13px;
+  max-height: 440px;
+  overflow: auto;
+  background: transparent;
+  color: #bec4ce;
+  font: 10.8px/1.62 "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  tab-size: 2;
+}
+
+.markdown-code-block pre code {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  white-space: pre;
+}
+
+.markdown-code-block .hljs-keyword,
+.markdown-code-block .hljs-selector-tag,
+.markdown-code-block .hljs-literal { color: #b8adff; }
+.markdown-code-block .hljs-string,
+.markdown-code-block .hljs-attr { color: #a7c7ae; }
+.markdown-code-block .hljs-number,
+.markdown-code-block .hljs-symbol { color: #d3ad83; }
+.markdown-code-block .hljs-comment,
+.markdown-code-block .hljs-quote { color: #69727f; font-style: italic; }
+.markdown-code-block .hljs-title,
+.markdown-code-block .hljs-function,
+.markdown-code-block .hljs-section { color: #9db9e0; }
+.markdown-code-block .hljs-built_in,
+.markdown-code-block .hljs-type { color: #d0a6c9; }
+.markdown-code-block .hljs-variable,
+.markdown-code-block .hljs-template-variable { color: #c5c9d2; }
+
+.markdown-body table {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  margin: 13px 0 15px;
+  overflow-x: auto;
+  border-spacing: 0;
+  border-collapse: separate;
+  border: 1px solid #2b3039;
+  border-radius: 9px;
+  background: rgba(15,17,22,.72);
+}
+
+.markdown-body th,
+.markdown-body td {
+  min-width: 90px;
+  padding: 7px 10px;
+  border-right: 1px solid #282c34;
+  border-bottom: 1px solid #282c34;
+  text-align: left;
+  vertical-align: top;
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+.markdown-body th {
+  color: #dfe2e8;
+  background: #15181e;
+  font-weight: 650;
+}
+
+.markdown-body td { color: #b7bdc7; }
+.markdown-body tr > :last-child { border-right: 0; }
+.markdown-body tbody tr:last-child > td { border-bottom: 0; }
+
+.markdown-body .katex-display {
+  margin: 14px 0;
+  padding: 10px 12px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border: 1px solid rgba(139,124,246,.08);
+  border-radius: 8px;
+  background: rgba(139,124,246,.025);
+}
+
+.markdown-body .katex {
+  color: #e4e2ee;
+  font-size: 1.02em;
+}
+
+.markdown-compact {
+  color: #949ba8;
+  font-size: 11.5px;
+  line-height: 1.65;
+}
+
+.markdown-compact p { margin-bottom: 7px; }
+.markdown-compact h1,
+.markdown-compact h2,
+.markdown-compact h3,
+.markdown-compact h4,
+.markdown-compact h5,
+.markdown-compact h6 {
+  margin-top: 12px;
+  font-size: 12px;
+  color: #bfc4cc;
+}
+
+.markdown-compact .markdown-code-block { margin: 8px 0; }
+.markdown-compact .markdown-code-block pre { max-height: 280px; font-size: 10px; }
+.markdown-compact .markdown-code-head { height: 27px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .markdown-body,
+  .markdown-code-head button {
+    animation: none !important;
+    transition: none !important;
+  }
+}
