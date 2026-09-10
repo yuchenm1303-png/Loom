@@ -17,11 +17,16 @@ def _store(tmp_path: Path) -> ModelConfigStore:
     )
 
 
-def _store_with_secrets(tmp_path: Path, secrets: dict[str, str]) -> ModelConfigStore:
+def _store_with_secrets(
+    tmp_path: Path,
+    secrets: dict[str, str],
+    deleted: list[str] | None = None,
+) -> ModelConfigStore:
     return ModelConfigStore(
         tmp_path,
         secret_getter=secrets.get,
         secret_setter=lambda alias, value: secrets.__setitem__(alias, value),
+        secret_deleter=(lambda alias: deleted.append(alias)) if deleted is not None else None,
     )
 
 
@@ -103,3 +108,51 @@ def test_resolve_cqu_uses_managed_relay_credential(tmp_path, monkeypatch):
     assert resolved["baseUrl"] == bridge.MANAGED_RELAY_BASE_URL
     assert resolved["apiKey"] == "relay-secret"
     assert resolved["provider"] == "openai-compatible"
+
+
+def test_delete_saved_model_removes_metadata_and_credential(tmp_path):
+    secrets: dict[str, str] = {}
+    deleted: list[str] = []
+    store = _store_with_secrets(tmp_path, secrets, deleted)
+    entry = store.save_model(
+        display_name="DeepSeek",
+        adapter="openai-compatible",
+        base_url="https://api.deepseek.com",
+        model="deepseek-flash",
+        api_key="deepseek-secret",
+    )
+    store.set_active(entry.model_id)
+
+    removed = store.delete_model(entry.model_id)
+
+    assert removed.model_id == entry.model_id
+    assert store.list_models() == ()
+    assert store.active_model() is None
+    assert deleted == [entry.credential_alias]
+
+
+def test_bridge_delete_saved_model_resets_selection(tmp_path, monkeypatch):
+    secrets: dict[str, str] = {}
+    deleted: list[str] = []
+    store = _store_with_secrets(tmp_path, secrets, deleted)
+    entry = store.save_model(
+        display_name="DeepSeek",
+        adapter="openai-compatible",
+        base_url="https://api.deepseek.com",
+        model="deepseek-flash",
+        api_key="deepseek-secret",
+    )
+    store.set_active(entry.model_id)
+    reasoning_store = ReasoningConfigStore(tmp_path)
+    selection_store = ModelSelectionStore(tmp_path)
+    selection_store.set(entry.selection)
+
+    monkeypatch.setattr(bridge, "_managed_relay_key", lambda _store, environ=None, repo_root=None: "")
+    monkeypatch.setattr(bridge, "_primary_minimax_key", lambda environ=None: "minimax-secret")
+
+    snapshot = bridge._delete(store, reasoning_store, selection_store, {"selection": entry.selection})
+
+    assert store.list_models() == ()
+    assert selection_store.get() == bridge.PRIMARY_SELECTION
+    assert snapshot["activeModelId"] == "minimax-primary"
+    assert deleted == [entry.credential_alias]
