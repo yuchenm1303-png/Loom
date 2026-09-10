@@ -11,7 +11,7 @@ import {
   SlidersHorizontal,
   Zap,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import type {
   AddModelInput,
   ModelProfile,
@@ -76,6 +76,14 @@ function ReasoningControl({
   const locked = Boolean(busy || running);
   const displayOption = reasoning.options[displayIndex] ?? reasoning.options[selectedIndex] ?? reasoning.options[0];
   const canReset = reasoning.value !== reasoning.defaultValue;
+  const denominator = Math.max(1, reasoning.options.length - 1);
+  const progress = reasoning.options.length <= 1 ? 0 : displayIndex / denominator;
+  const progressPercent = Math.max(0, Math.min(100, progress * 100));
+  const strengthLevel = Math.max(0, Math.min(5, Math.round(progress * 5)));
+  const sliderStyle = {
+    "--reasoning-progress": `${progressPercent}%`,
+    "--reasoning-unfilled": `${100 - progressPercent}%`,
+  } as CSSProperties;
 
   useEffect(() => {
     setDisplayIndex(selectedIndex);
@@ -119,7 +127,12 @@ function ReasoningControl({
         </button>
       </div>
 
-      <div className="reasoning-slider-shell">
+      <div
+        className="reasoning-slider-shell"
+        data-strength={strengthLevel}
+        style={sliderStyle}
+      >
+        <div className="reasoning-track-base" aria-hidden="true" />
         <div className="reasoning-energy-track" aria-hidden="true">
           <span className="reasoning-particle p1" />
           <span className="reasoning-particle p2" />
@@ -148,6 +161,7 @@ function ReasoningControl({
             }
           }}
         />
+        <span className="reasoning-thumb" aria-hidden="true" />
       </div>
 
       {running ? <div className="reasoning-locked-note">Stop the active turn to change reasoning.</div> : null}
