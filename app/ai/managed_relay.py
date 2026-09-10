@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Callable, Mapping
 from urllib import error as urlerror
 from urllib import request as urlrequest
@@ -12,6 +13,7 @@ MANAGED_RELAY_BASE_URL = "https://relay.smirel.com/v1"
 MANAGED_RELAY_KEYRING_SERVICE = "loom-agent"
 MANAGED_RELAY_CREDENTIAL_ALIAS = "managed-relay/default"
 MANAGED_RELAY_KEY_ENV = "LOOM_MANAGED_RELAY_KEY"
+MANAGED_RELAY_PROVISION_FILENAME = "managed-relay.provision.json"
 
 
 class ManagedRelayError(RuntimeError):
@@ -21,6 +23,11 @@ class ManagedRelayError(RuntimeError):
 SecretGetter = Callable[[str, str], str | None]
 SecretSetter = Callable[[str, str, str], None]
 Fetcher = Callable[[urlrequest.Request, float], bytes]
+
+
+def _default_home() -> Path:
+    raw = str(os.environ.get("LOOM_HOME") or "").strip()
+    return Path(raw).expanduser().resolve() if raw else (Path.home() / ".loom").resolve()
 
 
 def _default_secret_getter(service: str, alias: str) -> str | None:
@@ -48,28 +55,73 @@ def _default_fetcher(req: urlrequest.Request, timeout: float) -> bytes:
 
 @dataclass(slots=True)
 class ManagedRelay:
-    """Smirel-managed model access used by Loom's official built-in models.
+    """Smirel-managed access used by Loom's official built-in models.
 
-    The credential stored here is a Loom/customer relay credential, not an
-    upstream provider key. The server remains authoritative for model access,
-    quotas and revocation through `/v1/models` and the gateway allowlist.
+    This credential identifies one Loom customer/device at the Smirel relay. It
+    is intentionally different from every upstream provider secret. The relay
+    remains authoritative for model visibility, quotas and revocation.
+
+    A customer-specific installer may place `managed-relay.provision.json` in
+    LOOM_HOME before first launch. Loom imports it into the OS credential store
+    and removes the plaintext file immediately after a successful import, so
+    the customer never sees an API-key setup screen.
     """
 
     base_url: str = MANAGED_RELAY_BASE_URL
     timeout_seconds: float = 5.0
     environ: Mapping[str, str] | None = None
+    provision_path: Path | None = None
     secret_getter: SecretGetter = _default_secret_getter
     secret_setter: SecretSetter = _default_secret_setter
     fetcher: Fetcher = _default_fetcher
 
+    def _provision_file(self) -> Path:
+        if self.provision_path is not None:
+            return Path(self.provision_path).expanduser().resolve()
+        return _default_home() / MANAGED_RELAY_PROVISION_FILENAME
+
+    def _consume_provision_file(self) -> str:
+        path = self._provision_file()
+        if not path.is_file():
+            return ""
+        try:
+            if path.stat().st_size > 64 * 1024:
+                raise ManagedRelayError("managed provisioning file is unexpectedly large")
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except ManagedRelayError:
+            raise
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ManagedRelayError("could not read the Loom managed provisioning file") from exc
+        if not isinstance(payload, dict):
+            raise ManagedRelayError("managed provisioning file must contain a JSON object")
+        credential = str(payload.get("credential") or payload.get("apiKey") or "").strip()
+        if not credential:
+            raise ManagedRelayError("managed provisioning file does not contain a credential")
+        self.provision(credential)
+        try:
+            path.unlink()
+        except OSError as exc:
+            raise ManagedRelayError(
+                "managed access was saved, but the one-time provisioning file could not be removed"
+            ) from exc
+        return credential
+
     def credential(self, *, required: bool = True) -> str:
-        value = str(
-            self.secret_getter(MANAGED_RELAY_KEYRING_SERVICE, MANAGED_RELAY_CREDENTIAL_ALIAS)
-            or ""
-        ).strip()
+        env = os.environ if self.environ is None else self.environ
+        env_value = str(env.get(MANAGED_RELAY_KEY_ENV) or "").strip()
+        try:
+            value = str(
+                self.secret_getter(MANAGED_RELAY_KEYRING_SERVICE, MANAGED_RELAY_CREDENTIAL_ALIAS)
+                or ""
+            ).strip()
+        except ManagedRelayError:
+            if env_value:
+                return env_value
+            raise
         if not value:
-            env = os.environ if self.environ is None else self.environ
-            value = str(env.get(MANAGED_RELAY_KEY_ENV) or "").strip()
+            value = self._consume_provision_file()
+        if not value:
+            value = env_value
         if required and not value:
             raise ManagedRelayError(
                 "Loom managed access is not provisioned on this device. "
@@ -133,6 +185,7 @@ __all__ = [
     "MANAGED_RELAY_CREDENTIAL_ALIAS",
     "MANAGED_RELAY_KEYRING_SERVICE",
     "MANAGED_RELAY_KEY_ENV",
+    "MANAGED_RELAY_PROVISION_FILENAME",
     "ManagedRelay",
     "ManagedRelayError",
 ]
