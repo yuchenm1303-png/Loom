@@ -138,11 +138,15 @@ export default function App() {
             modelBusy={loom.modelBusy}
             permissionMode={permissionMode}
             permissionModes={loom.runtime.permissionModes}
+            stickerPreferences={loom.runtime.stickerPreferences}
             onPermissionModeChange={loom.setPermissionMode}
             onModelProfileChange={loom.switchModelProfile}
             onCustomModelChange={loom.switchCurrentModel}
             onAddModel={loom.addModel}
             onReasoningChange={loom.setReasoning}
+            onStickerPreferencesChange={async (preferences) => {
+              await window.loom.call("sticker/preferences/set", { preferences });
+            }}
             onSend={loom.send}
             onInterrupt={loom.interrupt}
           />

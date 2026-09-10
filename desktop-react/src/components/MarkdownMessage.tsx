@@ -5,8 +5,10 @@ import rehypeHighlight from "rehype-highlight";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
+import { splitInlineStickerText } from "../chatStickers";
 import "katex/dist/katex.min.css";
 import "./markdown-message.css";
+import "./stickers.css";
 
 interface MarkdownMessageProps {
   content: string;
@@ -28,6 +30,16 @@ function languageLabel(children: ReactNode): string {
   const className = String((child.props as { className?: string }).className ?? "");
   const match = className.match(/language-([\w+-]+)/i);
   return match?.[1] || "code";
+}
+
+function stickerAwareMarkdown(content: string): string {
+  return splitInlineStickerText(content)
+    .map((segment) => {
+      if (segment.kind === "text") return segment.text;
+      const alt = segment.asset.alt.replace(/\\/g, "\\\\").replace(/\]/g, "\\]");
+      return `![${alt}](${segment.asset.url})`;
+    })
+    .join("");
 }
 
 function CodeBlock({ children }: { children?: ReactNode }) {
@@ -73,6 +85,11 @@ const markdownComponents: Components = {
       </a>
     );
   },
+  img({ src, alt, className, ...props }) {
+    const sticker = Boolean(src && src.includes("/chat-stickers/v1/"));
+    const classes = [className, sticker ? "assistant-inline-sticker" : ""].filter(Boolean).join(" ");
+    return <img {...props} src={src} alt={alt || ""} className={classes || undefined} draggable={sticker ? false : undefined} />;
+  },
   pre({ children }) {
     return <CodeBlock>{children}</CodeBlock>;
   },
@@ -90,7 +107,7 @@ export function MarkdownMessage({ content, compact = false }: MarkdownMessagePro
         components={markdownComponents}
         skipHtml
       >
-        {content}
+        {stickerAwareMarkdown(content)}
       </ReactMarkdown>
     </div>
   );

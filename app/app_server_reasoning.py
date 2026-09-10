@@ -14,7 +14,7 @@ from .app_server_thread_management import (
 
 
 class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService):
-    """Managed App Server with Codex-style live reasoning selection."""
+    """Managed App Server with Codex-style reasoning and chat-expression controls."""
 
     def runtime_status(self) -> dict[str, Any]:
         status = super().runtime_status()
@@ -22,6 +22,8 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
         capability = getattr(self.runtime, "reasoning_capability", None)
         status["reasoning"] = reasoning.as_safe_dict() if reasoning is not None else None
         status["reasoningCapability"] = dict(capability) if isinstance(capability, dict) else None
+        getter = getattr(self.runtime, "get_sticker_preferences", None)
+        status["stickerPreferences"] = getter() if callable(getter) else None
         return status
 
     def runtime_set_reasoning(self, params: dict[str, Any]) -> dict[str, Any]:
@@ -61,6 +63,35 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
         )
         return updated
 
+    def sticker_preferences_get(self, _params: dict[str, Any]) -> dict[str, Any]:
+        getter = getattr(self.runtime, "get_sticker_preferences", None)
+        if not callable(getter):
+            raise ValueError("the current runtime does not expose sticker preferences")
+        return {"preferences": getter()}
+
+    def sticker_preferences_set(self, params: dict[str, Any]) -> dict[str, Any]:
+        status = super().runtime_status()
+        active = list(status.get("activeThreadIds") or [])
+        if active:
+            raise RuntimeError("finish or stop the current turn before changing sticker preferences")
+
+        setter = getattr(self.runtime, "set_sticker_preferences", None)
+        if not callable(setter):
+            raise ValueError("the current runtime does not expose sticker preferences")
+        raw = params.get("preferences", params)
+        if not isinstance(raw, dict):
+            raise ValueError("sticker preferences must be an object")
+        preferences = setter(raw)
+        updated = self.runtime_status()
+        self._notify(
+            "runtime/updated",
+            {
+                "reason": "sticker_preferences_changed",
+                "runtime": updated,
+            },
+        )
+        return {"preferences": preferences, "runtime": updated}
+
 
 class ReasoningManagedLoomRpcController(ManagedStreamingLoomRpcController):
     service: ReasoningManagedLoomAppServerService
@@ -72,6 +103,11 @@ class ReasoningManagedLoomRpcController(ManagedStreamingLoomRpcController):
             "update": True,
             "modelSpecific": True,
         }
+        result["capabilities"]["stickerPreferences"] = {
+            "read": True,
+            "update": True,
+            "schema": "ai_ledger_chat_expression_preferences_v2",
+        }
         notifications = result["capabilities"].setdefault("notifications", [])
         if "runtime/updated" not in notifications:
             notifications.append("runtime/updated")
@@ -80,6 +116,10 @@ class ReasoningManagedLoomRpcController(ManagedStreamingLoomRpcController):
     def _dispatch(self, method: str, params: dict[str, Any]) -> Any:
         if method == "runtime/set_reasoning":
             return self.service.runtime_set_reasoning(params)
+        if method == "sticker/preferences/get":
+            return self.service.sticker_preferences_get(params)
+        if method == "sticker/preferences/set":
+            return self.service.sticker_preferences_set(params)
         return super()._dispatch(method, params)
 
 

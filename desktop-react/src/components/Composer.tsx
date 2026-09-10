@@ -8,14 +8,15 @@ import {
   KeyRound,
   Paperclip,
   ShieldCheck,
+  Smile,
   Sparkles,
   Square,
 } from "lucide-react";
 import { FormEvent, KeyboardEvent as ReactKeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
-import type { AddModelInput, ModelSnapshot } from "../types/loom";
+import type { AddModelInput, ModelSnapshot, StickerPreferences } from "../types/loom";
 import { ModelPanel } from "./ModelPanel";
+import { StickerPanel } from "./StickerPanel";
 import "./composer.css";
-import "./composer-stability.css";
 
 interface ComposerProps {
   disabled?: boolean;
@@ -25,16 +26,18 @@ interface ComposerProps {
   modelBusy?: boolean;
   permissionMode?: string;
   permissionModes?: string[];
+  stickerPreferences?: StickerPreferences | null;
   onPermissionModeChange?(mode: string): Promise<void> | void;
   onModelProfileChange?(selection: string): Promise<void> | void;
   onCustomModelChange?(model: string): Promise<void> | void;
   onAddModel?(input: AddModelInput): Promise<void> | void;
   onReasoningChange?(kind: string, value: string): Promise<void> | void;
+  onStickerPreferencesChange?(preferences: StickerPreferences): Promise<void> | void;
   onSend(input: string): Promise<void> | void;
   onInterrupt(): Promise<void> | void;
 }
 
-type OpenPanel = "permission" | "model" | null;
+type OpenPanel = "permission" | "model" | "sticker" | null;
 
 type PermissionPresentation = {
   label: string;
@@ -100,11 +103,13 @@ export function Composer({
   modelBusy,
   permissionMode,
   permissionModes,
+  stickerPreferences,
   onPermissionModeChange,
   onModelProfileChange,
   onCustomModelChange,
   onAddModel,
   onReasoningChange,
+  onStickerPreferencesChange,
   onSend,
   onInterrupt,
 }: ComposerProps) {
@@ -193,6 +198,7 @@ export function Composer({
 
   const currentPermission = permissionPresentation(permissionMode || "approval");
   const currentModel = modelSnapshot?.current?.model || model || "Model";
+  const stickersOff = stickerPreferences?.frequency === 0;
 
   return (
     <div className="composer-wrap" ref={composerRootRef}>
@@ -336,6 +342,44 @@ export function Composer({
                       await onReasoningChange(kind, nextValue);
                     }}
                     onClose={() => setOpenPanel(null)}
+                  />
+                </div>
+              ) : null}
+            </div>
+
+            <div className="composer-control-anchor sticker-control-anchor">
+              <button
+                type="button"
+                className={`composer-chip sticker-chip ${openPanel === "sticker" ? "is-open" : ""}`}
+                title="Chat expression settings"
+                aria-haspopup="dialog"
+                aria-expanded={openPanel === "sticker"}
+                onClick={() => togglePanel("sticker")}
+              >
+                <Smile size={13} />
+                <span>{stickersOff ? "Stickers off" : "Stickers"}</span>
+                <ChevronDown size={13} className="composer-chip-chevron" />
+              </button>
+
+              {openPanel === "sticker" ? (
+                <div className="composer-popover sticker-popover" role="dialog" aria-label="Chat expression settings">
+                  <div className="composer-popover-head">
+                    <div className="composer-popover-heading">
+                      <span className="composer-popover-icon model"><Smile size={16} /></span>
+                      <div>
+                        <strong>Stickers</strong>
+                        <span>Tune inline expression without changing the message protocol.</span>
+                      </div>
+                    </div>
+                    <span className="composer-popover-context">Runtime</span>
+                  </div>
+                  <StickerPanel
+                    preferences={stickerPreferences}
+                    disabled={running || !onStickerPreferencesChange}
+                    onSave={async (preferences) => {
+                      if (!onStickerPreferencesChange) throw new Error("Sticker settings are unavailable.");
+                      await onStickerPreferencesChange(preferences);
+                    }}
                   />
                 </div>
               ) : null}
