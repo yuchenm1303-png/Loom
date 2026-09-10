@@ -1,5 +1,4 @@
 import { spawnSync } from "node:child_process";
-import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -29,8 +28,5 @@ function run(command, args, options = {}) {
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
 
-if (!fs.existsSync(VENV_PYTHON)) {
-  run(process.execPath, [path.join(DESKTOP_ROOT, "scripts", "setup-python.mjs")]);
-}
-
+run(process.execPath, [path.join(DESKTOP_ROOT, "scripts", "setup-python.mjs")]);
 run(NPM, ["run", "dev"]);
