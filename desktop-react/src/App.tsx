@@ -2,6 +2,7 @@ import { RotateCcw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Composer } from "./components/Composer";
 import { Inspector } from "./components/Inspector";
+import { LanguageSettingsDock } from "./components/LanguageSettingsDock";
 import { RunProgress } from "./components/RunProgress";
 import { SettingsPage } from "./components/SettingsPage";
 import { Sidebar } from "./components/Sidebar";
@@ -96,12 +97,15 @@ export default function App() {
 
   if (settingsOpen) {
     return (
-      <SettingsPage
-        runtime={loom.runtime}
-        models={loom.models}
-        running={Boolean(running)}
-        onClose={() => setSettingsOpen(false)}
-      />
+      <>
+        <SettingsPage
+          runtime={loom.runtime}
+          models={loom.models}
+          running={Boolean(running)}
+          onClose={() => setSettingsOpen(false)}
+        />
+        <LanguageSettingsDock />
+      </>
     );
   }
 
