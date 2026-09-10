@@ -22,7 +22,7 @@ class TurnRunner:
                 if session.pending_tool_calls and not rt._process_pending_tools(session, token):
                     return rt._result(session)
                 rt._consume_steering(session)
-                if session.model_steps >= rt.limits.max_model_steps:
+                if rt.limits.max_model_steps > 0 and session.model_steps >= rt.limits.max_model_steps:
                     return rt._limit(session, "model step limit reached")
                 for attempt in range(rt.limits.model_retries + 1):
                     step = rt._build_step_context(session, next_model_step=True)
@@ -74,7 +74,7 @@ class TurnRunner:
                     raise RuntimeError(f"model response did not complete: {reason}")
                 if calls:
                     session.tool_calls += len(calls)
-                    if session.tool_calls > rt.limits.max_tool_calls:
+                    if rt.limits.max_tool_calls > 0 and session.tool_calls > rt.limits.max_tool_calls:
                         session.messages = list(repair_tool_history(session.messages,
                             max_tool_result_chars=rt.limits.max_tool_result_chars).messages)
                         return rt._limit(session, "tool call limit reached")
