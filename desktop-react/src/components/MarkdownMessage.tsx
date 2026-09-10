@@ -5,7 +5,7 @@ import rehypeHighlight from "rehype-highlight";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
-import { splitInlineStickerText } from "../chatStickers";
+import { isChatStickerAssetUrl, splitInlineStickerText } from "../chatStickers";
 import "katex/dist/katex.min.css";
 import "./markdown-message.css";
 import "./stickers.css";
@@ -39,7 +39,9 @@ function stickerAwareMarkdown(content: string): string {
       const alt = segment.asset.alt.replace(/\\/g, "\\\\").replace(/\]/g, "\\]");
       return `![${alt}](${segment.asset.url})`;
     })
-    .join("");
+    .join("")
+    .replace(/(!\[[^\]]*\]\([^\n)]+\))[\t ]*\n(?!\n)/g, "$1 ")
+    .replace(/(?<!\n)\n[\t ]*(!\[[^\]]*\]\([^\n)]+\))/g, " $1");
 }
 
 function CodeBlock({ children }: { children?: ReactNode }) {
@@ -86,7 +88,7 @@ const markdownComponents: Components = {
     );
   },
   img({ src, alt, className, ...props }) {
-    const sticker = Boolean(src && src.includes("/chat-stickers/v1/"));
+    const sticker = isChatStickerAssetUrl(src);
     const classes = [className, sticker ? "assistant-inline-sticker" : ""].filter(Boolean).join(" ");
     return <img {...props} src={src} alt={alt || ""} className={classes || undefined} draggable={sticker ? false : undefined} />;
   },
