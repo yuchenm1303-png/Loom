@@ -10,6 +10,7 @@ import "./components/sidebar-brand-polish.css";
 import "./components/inline-thinking-orb.css";
 import "./components/composer-stability.css";
 import "./typography-scale.css";
+import "./components/model-card-alignment-fix.css";
 
 const rootElement = document.getElementById("root");
 if (!rootElement) throw new Error("Loom renderer root element is missing");
