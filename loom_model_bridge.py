@@ -23,6 +23,7 @@ MANAGED_SELECTION_PREFIX = "managed:"
 MANAGED_RELAY_BASE_URL = "https://relay.smirel.com/v1"
 MINIMAX_BASE_URL = "https://api.minimax.io/v1"
 MINIMAX_DEFAULT_MODEL = "MiniMax-M3"
+MINIMAX_MODEL_IDS = ("MiniMax-M3", "MiniMax-M2.7", "MiniMax-M2.5")
 CQU_DEFAULT_MODEL = "cqu-default"
 _KEYRING_SERVICE = "loom-agent"
 _MANAGED_RELAY_CREDENTIAL_ALIAS = "managed/relay"
@@ -39,12 +40,17 @@ _LEGACY_MINIMAX_BASE_URL_ENV = ("LOOM_MINIMAX_BASE_URL", "MINIMAX_BASE_URL")
 _PROVISIONING_FILE_ENV = "LOOM_RELAY_PROVISIONING_FILE"
 _MANAGED_MODEL_DISPLAY_NAMES = {
     MINIMAX_DEFAULT_MODEL.casefold(): "MiniMax",
+    "minimax-m2.7": "MiniMax M2.7",
+    "minimax-m2.5": "MiniMax M2.5",
     CQU_DEFAULT_MODEL.casefold(): "CQU-弘深深",
 }
 _MANAGED_MODEL_IDS = {
     MINIMAX_DEFAULT_MODEL.casefold(): "minimax-primary",
+    "minimax-m2.7": "minimax-m27",
+    "minimax-m2.5": "minimax-m25",
     CQU_DEFAULT_MODEL.casefold(): "cqu-builtin",
 }
+_MINIMAX_MODEL_KEYS = frozenset(model.casefold() for model in MINIMAX_MODEL_IDS)
 
 
 def _managed_relay_base_url(environ: Mapping[str, str] | None = None) -> str:
@@ -160,6 +166,10 @@ def _consume_provisioned_relay_key(
 
 def _normalize_url(value: str) -> str:
     return str(value or "").strip().rstrip("/")
+
+
+def _is_minimax_model(model: str) -> bool:
+    return str(model or "").strip().casefold() in _MINIMAX_MODEL_KEYS
 
 
 def _is_managed_relay_endpoint(value: str, environ: Mapping[str, str] | None = None) -> bool:
@@ -321,8 +331,11 @@ def _safe_cqu() -> dict[str, Any]:
     return _safe_managed(CQU_DEFAULT_MODEL)
 
 
-def _safe_legacy_minimax(environ: Mapping[str, str] | None = None) -> dict[str, Any]:
-    profile = _safe_managed(MINIMAX_DEFAULT_MODEL)
+def _safe_legacy_minimax(
+    model: str = MINIMAX_DEFAULT_MODEL,
+    environ: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
+    profile = _safe_managed(model)
     profile["baseUrl"] = _legacy_minimax_base_url(environ)
     return profile
 
@@ -378,12 +391,13 @@ def _with_reasoning(profile: dict[str, Any], reasoning_store: ReasoningConfigSto
 
 def _managed_profiles(store: ModelConfigStore, environ: Mapping[str, str] | None = None) -> list[dict[str, Any]]:
     api_key = _managed_relay_key(store, environ, Path(__file__).resolve().parent)
+    legacy_minimax_key = _primary_minimax_key(environ)
     if api_key:
         model_ids = _fetch_managed_model_ids(api_key, environ)
         if not model_ids:
-            model_ids = [MINIMAX_DEFAULT_MODEL, CQU_DEFAULT_MODEL]
-    elif _primary_minimax_key(environ):
-        model_ids = [MINIMAX_DEFAULT_MODEL]
+            model_ids = [*MINIMAX_MODEL_IDS, CQU_DEFAULT_MODEL]
+    elif legacy_minimax_key:
+        model_ids = list(MINIMAX_MODEL_IDS)
     else:
         model_ids = [MINIMAX_DEFAULT_MODEL]
     profiles: list[dict[str, Any]] = []
@@ -393,8 +407,8 @@ def _managed_profiles(store: ModelConfigStore, environ: Mapping[str, str] | None
         if not folded or folded in seen:
             continue
         seen.add(folded)
-        if not api_key and folded == MINIMAX_DEFAULT_MODEL.casefold() and _primary_minimax_key(environ):
-            profiles.append(_safe_legacy_minimax(environ))
+        if not api_key and legacy_minimax_key and _is_minimax_model(model_id):
+            profiles.append(_safe_legacy_minimax(model_id, environ))
         else:
             profiles.append(_safe_managed(model_id, environ))
     return profiles
@@ -470,14 +484,15 @@ def _resolve(
     requested = explicit_selection or _active_selection(store, selection_store)
     profile = _with_reasoning(_base_profile_for_selection(store, requested), reasoning_store)
 
-    if _managed_model_from_selection(requested):
+    managed_model = _managed_model_from_selection(requested)
+    if managed_model:
         api_key = _managed_relay_key(store, repo_root=Path(__file__).resolve().parent)
         if api_key:
             return {**profile, "provider": "openai-compatible", "apiKey": api_key}
-        if requested == PRIMARY_SELECTION:
+        if _is_minimax_model(managed_model):
             legacy_key = _primary_minimax_key()
             if legacy_key:
-                legacy_profile = _with_reasoning(_safe_legacy_minimax(), reasoning_store)
+                legacy_profile = _with_reasoning(_safe_legacy_minimax(managed_model), reasoning_store)
                 return {**legacy_profile, "provider": "openai-compatible", "apiKey": legacy_key}
         if not explicit_selection:
             legacy_key = _primary_minimax_key()
