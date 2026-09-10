@@ -6,15 +6,23 @@
  * zero horizontal gap. Keep the image genuinely inline and override the
  * generic Markdown image block styling without changing normal images. */
 .markdown-body img.assistant-inline-sticker {
+  --inline-sticker-size: 35px;
+
   display: inline-block;
-  width: 35px;
-  height: 35px;
-  max-width: 35px;
-  max-height: 35px;
+  width: var(--inline-sticker-size);
+  height: var(--inline-sticker-size);
+  max-width: var(--inline-sticker-size);
+  max-height: var(--inline-sticker-size);
   object-fit: contain;
   vertical-align: middle;
   transform: translateY(-5px);
-  margin: 0;
+
+  /* Keep the sticker's visual size/offset unchanged, but collapse its inline
+   * layout contribution back to the surrounding text line height so it does
+   * not stretch one line and make the following lines appear glued together. */
+  margin-inline: 0;
+  margin-block: calc((1lh - var(--inline-sticker-size)) / 2);
+
   padding: 0;
   border: 0;
   border-radius: 0;
