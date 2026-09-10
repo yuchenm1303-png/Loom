@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { TranscriptItem } from "../types/loom";
+import { MarkdownMessage } from "./MarkdownMessage";
 import "./activity-flow.css";
 
 interface TranscriptProps {
@@ -140,7 +141,9 @@ function LiveReasoning({ reasoning }: { reasoning: string }) {
       {hasReasoning ? (
         <div className="live-reasoning-grid">
           <div className="live-reasoning-inner">
-            <div className="live-reasoning-copy">{reasoning}</div>
+            <div className="live-reasoning-copy">
+              <MarkdownMessage content={reasoning} compact />
+            </div>
           </div>
         </div>
       ) : null}
@@ -201,7 +204,7 @@ function itemStatus(item: TranscriptItem): string {
 }
 
 function statusLabel(status: string): string {
-  if (status === "started") return "Running";
+  if (status === "started" || status === "running") return "Running";
   if (status === "completed") return "Completed";
   if (status === "changed") return "Changed";
   if (status === "failed") return "Failed";
@@ -411,6 +414,7 @@ function ActivityFlow({ items }: { items: TranscriptItem[] }) {
 
 function ItemView({ item, onApproval }: { item: TranscriptItem; onApproval(item: TranscriptItem, approved: boolean): void }) {
   if (item.type === "user_message") return <div className="user-message">{item.text}</div>;
+
   if (item.type === "assistant_message") {
     const parsed = splitReasoning(item.text ?? "");
 
@@ -422,11 +426,18 @@ function ItemView({ item, onApproval }: { item: TranscriptItem; onApproval(item:
 
     return (
       <div className="assistant-message">
-        {parsed.reasoning ? <Disclosure label="Thought process"><div className="reasoning-copy">{parsed.reasoning}</div></Disclosure> : null}
-        {parsed.answer.trim() ? <div className="assistant-copy">{parsed.answer}</div> : null}
+        {parsed.reasoning ? (
+          <Disclosure label="Thought process">
+            <div className="reasoning-copy">
+              <MarkdownMessage content={parsed.reasoning} compact />
+            </div>
+          </Disclosure>
+        ) : null}
+        {parsed.answer.trim() ? <MarkdownMessage content={parsed.answer} /> : null}
       </div>
     );
   }
+
   if (item.type === "approval") return (
     <div className="approval-card">
       <div className="approval-icon"><CircleAlert size={16} /></div>
@@ -440,7 +451,11 @@ function ItemView({ item, onApproval }: { item: TranscriptItem; onApproval(item:
       </div>
     </div>
   );
-  if (item.type === "error") return <div className="error-row"><span className="error-icon"><CircleAlert size={14} /></span><span>{item.error || "Turn failed"}</span></div>;
+
+  if (item.type === "error") {
+    return <div className="error-row"><span className="error-icon"><CircleAlert size={14} /></span><span>{item.error || "Turn failed"}</span></div>;
+  }
+
   return null;
 }
 
@@ -485,6 +500,7 @@ export function Transcript({ items, running, promptDisabled, onPrompt, onApprova
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const previousCount = useRef(0);
   const blocks = groupTranscript(items);
+
   let lastUserIndex = -1;
   for (let index = items.length - 1; index >= 0; index -= 1) {
     if (items[index].type === "user_message") {
@@ -492,6 +508,7 @@ export function Transcript({ items, running, promptDisabled, onPrompt, onApprova
       break;
     }
   }
+
   const currentTurnItems = lastUserIndex >= 0 ? items.slice(lastUserIndex + 1) : items;
   const latestAssistant = [...currentTurnItems].reverse().find((item) => item.type === "assistant_message");
   const latestAssistantState = latestAssistant ? splitReasoning(latestAssistant.text ?? "") : null;
