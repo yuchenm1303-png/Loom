@@ -5,6 +5,7 @@ import os
 import sys
 from typing import Any, Mapping
 
+from app.ai.model_selection_store import ModelSelectionStore
 from app.ai.model_store import ModelConfigStore, StoredModel
 from app.ai.reasoning import ReasoningRequest
 from app.ai.reasoning_catalog import resolved_reasoning
@@ -12,18 +13,30 @@ from app.ai.reasoning_store import ReasoningConfigStore
 
 
 PRIMARY_SELECTION = "builtin:minimax"
+CQU_SELECTION = "builtin:cqu"
 MINIMAX_BASE_URL = "https://api.minimaxi.com/v1"
 MINIMAX_DEFAULT_MODEL = "MiniMax-M3"
+CQU_BASE_URL = "https://relay.smirel.com/v1"
+CQU_DEFAULT_MODEL = "cqu-default"
 _PRIMARY_MINIMAX_KEY_ENV = ("MINIMAX_API_KEY", "LOOM_PRIMARY_API_KEY", "LOOM_API_KEY")
+_CQU_KEY_ENV = ("CQU_API_KEY", "LOOM_CQU_API_KEY")
 
 
-def _primary_minimax_key(environ: Mapping[str, str] | None = None) -> str:
+def _key_from_env(names: tuple[str, ...], environ: Mapping[str, str] | None = None) -> str:
     env = os.environ if environ is None else environ
-    for name in _PRIMARY_MINIMAX_KEY_ENV:
+    for name in names:
         value = str(env.get(name) or "").strip()
         if value:
             return value
     return ""
+
+
+def _primary_minimax_key(environ: Mapping[str, str] | None = None) -> str:
+    return _key_from_env(_PRIMARY_MINIMAX_KEY_ENV, environ)
+
+
+def _cqu_key(environ: Mapping[str, str] | None = None) -> str:
+    return _key_from_env(_CQU_KEY_ENV, environ)
 
 
 def _safe_saved(entry: StoredModel) -> dict[str, Any]:
@@ -50,6 +63,18 @@ def _safe_primary() -> dict[str, Any]:
     }
 
 
+def _safe_cqu() -> dict[str, Any]:
+    return {
+        "selection": CQU_SELECTION,
+        "id": "cqu-builtin",
+        "kind": "builtin",
+        "name": "CQU-弘深深",
+        "adapter": "openai-compatible",
+        "baseUrl": CQU_BASE_URL,
+        "model": CQU_DEFAULT_MODEL,
+    }
+
+
 def _reasoning_key(selection: str, model: str) -> str:
     selection_key = str(selection or "").strip()
     model_key = str(model or "").strip().casefold()
@@ -66,8 +91,6 @@ def _saved_reasoning(profile: dict[str, Any], reasoning_store: ReasoningConfigSt
     saved = reasoning_store.get(_reasoning_key(selection, model))
     if saved is not None:
         return saved
-    # Backward-compatible migration path for the first implementation, which
-    # stored one preference per connection rather than per connection+model.
     return reasoning_store.get(selection)
 
 
@@ -93,10 +116,24 @@ def _base_profile_for_selection(store: ModelConfigStore, selection: str) -> dict
     requested = str(selection or "").strip()
     if requested == PRIMARY_SELECTION:
         return _safe_primary()
+    if requested == CQU_SELECTION:
+        return _safe_cqu()
     saved = store.model_for_selection(requested)
     if saved is None:
         raise ValueError(f"unknown model selection: {requested!r}")
     return _safe_saved(saved)
+
+
+def _active_selection(store: ModelConfigStore, selection_store: ModelSelectionStore) -> str:
+    saved_selection = selection_store.get()
+    if saved_selection:
+        try:
+            _base_profile_for_selection(store, saved_selection)
+            return saved_selection
+        except (KeyError, ValueError):
+            pass
+    active = store.active_model()
+    return active.selection if active is not None else PRIMARY_SELECTION
 
 
 def _describe_model(
@@ -113,27 +150,33 @@ def _describe_model(
     return _with_reasoning(profile, reasoning_store)
 
 
-def _snapshot(store: ModelConfigStore, reasoning_store: ReasoningConfigStore) -> dict[str, Any]:
+def _snapshot(
+    store: ModelConfigStore,
+    reasoning_store: ReasoningConfigStore,
+    selection_store: ModelSelectionStore,
+) -> dict[str, Any]:
     primary = _with_reasoning(_safe_primary(), reasoning_store)
+    cqu = _with_reasoning(_safe_cqu(), reasoning_store)
     saved = [_with_reasoning(_safe_saved(entry), reasoning_store) for entry in store.list_models()]
+    profiles = [primary, cqu, *saved]
+    active_selection = _active_selection(store, selection_store)
+    active_profile = next((profile for profile in profiles if profile.get("selection") == active_selection), primary)
     return {
         "primary": primary,
-        "profiles": [primary, *saved],
-        "activeModelId": store.active_model_id,
+        "profiles": profiles,
+        "activeModelId": str(active_profile.get("id") or "") or None,
     }
 
 
 def _resolve(
     store: ModelConfigStore,
     reasoning_store: ReasoningConfigStore,
+    selection_store: ModelSelectionStore,
     selection: str | None,
 ) -> dict[str, Any]:
-    requested = str(selection or "").strip()
-    if not requested:
-        active = store.active_model()
-        requested = active.selection if active is not None else PRIMARY_SELECTION
-
+    requested = str(selection or "").strip() or _active_selection(store, selection_store)
     profile = _with_reasoning(_base_profile_for_selection(store, requested), reasoning_store)
+
     if requested == PRIMARY_SELECTION:
         api_key = _primary_minimax_key()
         if not api_key:
@@ -141,14 +184,18 @@ def _resolve(
                 "MiniMax primary API key is not configured. Set MINIMAX_API_KEY or "
                 "LOOM_PRIMARY_API_KEY, or add a saved model connection."
             )
-        return {
-            **profile,
-            "provider": "openai-compatible",
-            "apiKey": api_key,
-        }
+        return {**profile, "provider": "openai-compatible", "apiKey": api_key}
+
+    if requested == CQU_SELECTION:
+        api_key = _cqu_key()
+        if not api_key:
+            raise RuntimeError(
+                "CQU built-in API key is not configured. Set CQU_API_KEY or LOOM_CQU_API_KEY."
+            )
+        return {**profile, "provider": "openai-compatible", "apiKey": api_key}
 
     saved = store.model_for_selection(requested)
-    if saved is None:  # defensive: _base_profile_for_selection already validates this
+    if saved is None:
         raise ValueError(f"unknown model selection: {requested!r}")
     return {
         **profile,
@@ -187,17 +234,19 @@ def _save(store: ModelConfigStore, payload: dict[str, Any]) -> dict[str, Any]:
 def _set_active(
     store: ModelConfigStore,
     reasoning_store: ReasoningConfigStore,
+    selection_store: ModelSelectionStore,
     payload: dict[str, Any],
 ) -> dict[str, Any]:
-    selection = str(payload.get("selection") or "").strip()
-    if not selection or selection == PRIMARY_SELECTION:
+    selection = str(payload.get("selection") or "").strip() or PRIMARY_SELECTION
+    if selection in {PRIMARY_SELECTION, CQU_SELECTION}:
         store.set_active(None)
     else:
         saved = store.model_for_selection(selection)
         if saved is None:
             raise ValueError(f"unknown model selection: {selection!r}")
         store.set_active(saved.model_id)
-    return _snapshot(store, reasoning_store)
+    selection_store.set(selection)
+    return _snapshot(store, reasoning_store, selection_store)
 
 
 def _set_reasoning(
@@ -242,11 +291,17 @@ def main(argv: list[str] | None = None) -> int:
     try:
         store = ModelConfigStore()
         reasoning_store = ReasoningConfigStore(store.home)
+        selection_store = ModelSelectionStore(store.home)
         payload = _read_stdin_object()
         if command == "list":
-            result = _snapshot(store, reasoning_store)
+            result = _snapshot(store, reasoning_store, selection_store)
         elif command == "resolve":
-            result = _resolve(store, reasoning_store, str(payload.get("selection") or "") or None)
+            result = _resolve(
+                store,
+                reasoning_store,
+                selection_store,
+                str(payload.get("selection") or "") or None,
+            )
         elif command == "describe-model":
             result = _describe_model(
                 store,
@@ -257,7 +312,7 @@ def main(argv: list[str] | None = None) -> int:
         elif command == "save":
             result = _save(store, payload)
         elif command == "set-active":
-            result = _set_active(store, reasoning_store, payload)
+            result = _set_active(store, reasoning_store, selection_store, payload)
         else:
             result = _set_reasoning(store, reasoning_store, payload)
         _write({"ok": True, "result": result})
