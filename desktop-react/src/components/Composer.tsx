@@ -33,6 +33,7 @@ interface ComposerProps {
   onModelProfileChange?(selection: string): Promise<void> | void;
   onCustomModelChange?(model: string): Promise<void> | void;
   onAddModel?(input: AddModelInput): Promise<void> | void;
+  onDeleteModel?(selection: string): Promise<void> | void;
   onReasoningChange?(kind: string, value: string): Promise<void> | void;
   onStickerPreferencesChange?(preferences: StickerPreferences): Promise<void> | void;
   /** True when the bound model was declared able to read images. */
@@ -132,6 +133,7 @@ export function Composer({
   onModelProfileChange,
   onCustomModelChange,
   onAddModel,
+  onDeleteModel,
   onReasoningChange,
   onStickerPreferencesChange,
   imagesAllowed = true,
@@ -531,6 +533,10 @@ export function Composer({
                     onAddModel={async (input) => {
                       if (!onAddModel) throw new Error("Adding model APIs is unavailable.");
                       await onAddModel(input);
+                    }}
+                    onDeleteModel={async (selection) => {
+                      if (!onDeleteModel) throw new Error("Deleting model APIs is unavailable.");
+                      await onDeleteModel(selection);
                     }}
                     onReasoningChange={async (kind, nextValue) => {
                       if (!onReasoningChange) throw new Error("Reasoning control is unavailable.");
