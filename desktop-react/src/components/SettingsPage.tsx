@@ -10,7 +10,6 @@ import {
   Code2,
   Cpu,
   Globe2,
-  HardDrive,
   Info,
   Monitor,
   Plug,
@@ -18,7 +17,6 @@ import {
   Settings2,
   ShieldCheck,
   Sparkles,
-  Terminal,
   Wrench,
   type LucideIcon,
 } from "lucide-react";
@@ -132,14 +130,14 @@ const CAPABILITIES: {
   {
     key: "computerUse",
     title: "Computer Use",
-    description: "Allow Loom to observe and operate desktop applications with screenshots, UIA, and grounded mouse/keyboard actions.",
+    description: "Allow Loom to expose desktop control tools for screenshots, UIA, mouse, and keyboard actions.",
     icon: Monitor,
     detailPage: "computer",
   },
   {
     key: "browserUse",
     title: "Browser Use",
-    description: "Allow Loom to launch or attach to Chrome/Edge and interact with web pages.",
+    description: "Allow Loom to expose browser automation tools for Chrome/Edge sessions and local CDP attachment.",
     icon: Globe2,
     detailPage: "browser",
   },
@@ -224,18 +222,27 @@ function titleCase(value: string): string {
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-function capabilityAvailable(status?: Record<string, unknown>): boolean {
-  if (!status) return false;
+function runtimeAvailable(status?: Record<string, unknown>): boolean | null {
+  if (!status) return null;
   if (typeof status.enabled === "boolean") return status.enabled;
-  return status.available !== false;
+  if (typeof status.available === "boolean") return status.available;
+  if (status.error) return false;
+  return true;
 }
 
 function capabilityLabel(status: Record<string, unknown> | undefined, userEnabled: boolean): { text: string; tone: string } {
-  if (!userEnabled) return { text: "Off", tone: "off" };
-  if (!status) return { text: "Enabled", tone: "ready" };
-  if (!capabilityAvailable(status)) return { text: "Not configured", tone: "warning" };
-  if (status.error) return { text: "Needs attention", tone: "warning" };
+  if (!userEnabled) return { text: "Preference off", tone: "off" };
+  const available = runtimeAvailable(status);
+  if (available === null) return { text: "Preference on", tone: "ready" };
+  if (!available) return { text: "Preference on · runtime missing", tone: "warning" };
   return { text: "Ready", tone: "ready" };
+}
+
+function capabilityStatusText(status: Record<string, unknown> | undefined): string {
+  const available = runtimeAvailable(status);
+  if (available === null) return "Runtime status not reported";
+  if (!available) return "Runtime backend missing";
+  return "Runtime backend ready";
 }
 
 function SettingSwitch({
@@ -288,6 +295,31 @@ function DetailRow({ label, value, detail }: { label: string; value: string; det
         {detail ? <span>{detail}</span> : null}
       </div>
       <code title={value}>{value}</code>
+    </div>
+  );
+}
+
+function CapabilityCallout({ status, kind }: { status: Record<string, unknown> | undefined; kind: "computer" | "browser" }) {
+  const available = runtimeAvailable(status);
+  if (available === true) return null;
+  if (available === null) {
+    return (
+      <div className="settings-callout warning">
+        <Info size={16} />
+        <div>
+          <strong>Runtime status is not wired yet.</strong>
+          <span>The switch is enabled, but the App Server has not reported whether the {kind === "computer" ? "Windows operator" : "browser backend"} is actually ready.</span>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="settings-callout warning">
+      <CircleAlert size={16} />
+      <div>
+        <strong>{kind === "computer" ? "Computer Use" : "Browser Use"} runtime is missing.</strong>
+        <span>The preference switch is on, but Loom still needs the backend dependency before this capability can run.</span>
+      </div>
     </div>
   );
 }
@@ -351,9 +383,9 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
     persistLocalCapabilities(nextCapabilities);
     try {
       await window.loom.call("settings/set", { capability: key, enabled });
-      setNotice({ tone: "success", text: `${CAPABILITIES.find((item) => item.key === key)?.title || key} ${enabled ? "enabled" : "disabled"}.` });
+      setNotice({ tone: "success", text: `${CAPABILITIES.find((item) => item.key === key)?.title || key} preference saved.` });
     } catch {
-      setNotice({ tone: "success", text: `${CAPABILITIES.find((item) => item.key === key)?.title || key} saved locally.` });
+      setNotice({ tone: "success", text: `${CAPABILITIES.find((item) => item.key === key)?.title || key} preference saved locally.` });
     } finally {
       setBusyCapability(null);
     }
@@ -365,7 +397,7 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
         <div>
           <span className="settings-eyebrow">Agent runtime</span>
           <h1>Capabilities</h1>
-          <p>Choose which major tool families Loom should expose. These switches give Computer Use, Browser Use, plugins, skills, search, and code execution a clear control surface.</p>
+          <p>Choose which major tool families Loom should expose. Preference switches and backend readiness are shown separately so disabled dependencies are not confused with a closed switch.</p>
         </div>
         <span className="settings-tool-count">{runtime.exposedToolCount ?? "—"} / {runtime.registeredToolCount ?? "—"} tools exposed</span>
       </div>
@@ -377,7 +409,7 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
         </div>
       ) : null}
 
-      <Section title="Agent capabilities" caption="This first pass persists the user's capability preference and gives every major integration an obvious switch and status row.">
+      <Section title="Agent capabilities" caption="The switch is the user's preference. The status badge reports whether the runtime is known to be ready.">
         <div className="settings-card capability-list">
           {CAPABILITIES.map((item) => {
             const Icon = item.icon;
@@ -480,23 +512,22 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
           <div><span className="settings-eyebrow">Desktop integration</span><h1>Computer Use</h1><p>Screenshot-driven Windows control with UI Automation assistance and post-action verification.</p></div>
           <div className="settings-master-switch"><StatusPill tone={badge.tone}>{badge.text}</StatusPill><SettingSwitch checked={enabled} disabled={running || busyCapability !== null} label="Toggle Computer Use" onChange={(value) => void setCapability("computerUse", value)} /></div>
         </div>
-        {!capabilityAvailable(computerStatus) ? (
-          <div className="settings-callout warning"><CircleAlert size={16} /><div><strong>Computer Use backend is not configured.</strong><span>The switch controls Loom's preference, but desktop actions still need a Windows operator backend before they can run.</span></div></div>
-        ) : null}
+        {enabled ? <CapabilityCallout status={computerStatus} kind="computer" /> : null}
         <Section title="Runtime status">
           <div className="settings-card settings-detail-list">
-            <DetailRow label="Operator" value={text(computerStatus?.operator, "Not configured")} detail="Backend responsible for screenshot capture, UIA discovery, and physical input." />
-            <DetailRow label="Grounder" value={text(computerStatus?.grounder, "Not configured")} detail="Visual policy used for screenshot-based target selection." />
-            <DetailRow label="Policy step" value={bool(computerStatus?.policy_step_enabled) ? "Enabled" : "Unavailable"} detail="Whether computer_step can plan and execute one grounded GUI action." />
-            <DetailRow label="Observation" value={text(computerStatus?.observation_mode)} />
-            <DetailRow label="Verification" value={text(computerStatus?.verification)} />
-            <DetailRow label="State persistence" value={text(computerStatus?.state_persistence)} />
+            <DetailRow label="Preference" value={enabled ? "On" : "Off"} detail="Controls whether Loom should expose Computer Use tools." />
+            <DetailRow label="Backend status" value={capabilityStatusText(computerStatus)} detail="This must be ready before Loom can actually click, type, or observe desktop apps." />
+            <DetailRow label="Operator" value={text(computerStatus?.operator, "Not reported")} detail="Backend responsible for screenshot capture, UIA discovery, and physical input." />
+            <DetailRow label="Grounder" value={text(computerStatus?.grounder, "Not reported")} detail="Visual policy used for screenshot-based target selection." />
+            <DetailRow label="Policy step" value={bool(computerStatus?.policy_step_enabled) ? "Enabled" : "Not reported"} detail="Whether computer_step can plan and execute one grounded GUI action." />
+            <DetailRow label="Observation" value={text(computerStatus?.observation_mode, "Not reported")} />
+            <DetailRow label="Verification" value={text(computerStatus?.verification, "Not reported")} />
           </div>
         </Section>
         <Section title="Safety boundary" caption="Computer Use remains subject to the conversation's permission profile even when the master switch is on.">
           <div className="settings-card safety-summary">
             <ShieldCheck size={18} />
-            <div><strong>Sensitive GUI actions still cross Loom permissions.</strong><span>Turning Computer Use on exposes the preference; it does not bypass Approval, Workspace, or Full Access policy.</span></div>
+            <div><strong>Sensitive GUI actions still cross Loom permissions.</strong><span>Turning Computer Use on only allows exposure; it does not bypass Approval, Workspace, or Full Access policy.</span></div>
           </div>
         </Section>
       </>
@@ -512,14 +543,16 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
           <div><span className="settings-eyebrow">Web interaction</span><h1>Browser</h1><p>Control Loom's browser-use session or attach to a local Chrome/Edge instance through loopback-only CDP.</p></div>
           <div className="settings-master-switch"><StatusPill tone={badge.tone}>{badge.text}</StatusPill><SettingSwitch checked={enabled} disabled={running || busyCapability !== null} label="Toggle Browser Use" onChange={(value) => void setCapability("browserUse", value)} /></div>
         </div>
+        {enabled ? <CapabilityCallout status={browserStatus} kind="browser" /> : null}
         <Section title="Browser runtime">
           <div className="settings-card settings-detail-list">
-            <DetailRow label="Backend" value={text(browserStatus?.backend, "Not configured")} />
-            <DetailRow label="Connection" value={text(browserStatus?.browser_connection, "disabled")} detail="local-launch starts Loom's browser; cdp-attach controls an existing local Chrome/Edge process." />
-            <DetailRow label="External browser" value={bool(browserStatus?.external_browser) ? "Attached" : "No"} />
-            <DetailRow label="Session persistence" value={text(browserStatus?.session_persistence)} />
-            <DetailRow label="Active sessions" value={String(browserStatus?.active_sessions ?? 0)} />
-            <DetailRow label="Downloads" value={bool(browserStatus?.downloads) ? "Allowed" : "Disabled"} />
+            <DetailRow label="Preference" value={enabled ? "On" : "Off"} detail="Controls whether Loom should expose Browser Use tools." />
+            <DetailRow label="Backend status" value={capabilityStatusText(browserStatus)} detail="This must be ready before Loom can open, attach, or operate browser pages." />
+            <DetailRow label="Backend" value={text(browserStatus?.backend, "Not reported")} />
+            <DetailRow label="Connection" value={text(browserStatus?.browser_connection, "Not reported")} detail="local-launch starts Loom's browser; cdp-attach controls an existing local Chrome/Edge process." />
+            <DetailRow label="External browser" value={bool(browserStatus?.external_browser) ? "Attached" : "Not reported"} />
+            <DetailRow label="Session persistence" value={text(browserStatus?.session_persistence, "Not reported")} />
+            <DetailRow label="Active sessions" value={String(browserStatus?.active_sessions ?? "Not reported")} />
           </div>
         </Section>
       </>
@@ -556,9 +589,9 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
         </div>
         <Section title="Discovery">
           <div className="settings-card settings-detail-list">
-            <DetailRow label="Discovered skills" value={String(skillsStatus?.count ?? 0)} />
-            <DetailRow label="Agent exposure" value={localCapabilities.skills ? "Enabled" : "Disabled"} detail="Skill tools should be hidden from the model when disabled." />
-            <DetailRow label="Discovery health" value={skillErrors.length ? `${skillErrors.length} issue(s)` : "Healthy"} />
+            <DetailRow label="Preference" value={localCapabilities.skills ? "On" : "Off"} />
+            <DetailRow label="Discovered skills" value={String(skillsStatus?.count ?? "Not reported")} />
+            <DetailRow label="Discovery health" value={skillErrors.length ? `${skillErrors.length} issue(s)` : "Not reported"} />
           </div>
         </Section>
       </>
@@ -596,11 +629,11 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
       </Section>
       <Section title="Integration summary">
         <div className="settings-card settings-detail-list">
-          <DetailRow label="Web Search" value={text(webStatus?.provider, capabilityAvailable(webStatus) ? "Configured" : "Not configured")} />
-          <DetailRow label="MCP servers" value={String(mcpStatus?.connected_servers ?? 0)} />
-          <DetailRow label="MCP tools" value={String(mcpStatus?.tool_count ?? 0)} />
-          <DetailRow label="Computer grounder" value={text(computerStatus?.grounder, "Not configured")} />
-          <DetailRow label="Browser backend" value={text(browserStatus?.backend, "Not configured")} />
+          <DetailRow label="Web Search" value={text(webStatus?.provider, capabilityStatusText(webStatus))} />
+          <DetailRow label="MCP servers" value={String(mcpStatus?.connected_servers ?? "Not reported")} />
+          <DetailRow label="MCP tools" value={String(mcpStatus?.tool_count ?? "Not reported")} />
+          <DetailRow label="Computer Use" value={capabilityStatusText(computerStatus)} />
+          <DetailRow label="Browser Use" value={capabilityStatusText(browserStatus)} />
         </div>
       </Section>
     </>
