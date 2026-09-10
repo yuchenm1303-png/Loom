@@ -38,8 +38,12 @@ function stickerAwareMarkdown(content: string): string {
     .map((segment, index) => {
       if (segment.kind === "text") {
         let text = segment.text;
-        if (segments[index - 1]?.kind === "sticker") text = text.replace(/^[\t ]*\n(?!\n)/, " ");
-        if (segments[index + 1]?.kind === "sticker") text = text.replace(/(?<!\n)\n[\t ]*$/, " ");
+        if (segments[index - 1]?.kind === "sticker" && /^\s*\n(?!\n)/.test(text)) {
+          text = text.replace(/^[\t ]*\n[\t ]*/, " ");
+        }
+        if (segments[index + 1]?.kind === "sticker" && /\n[\t ]*$/.test(text) && !/\n\n[\t ]*$/.test(text)) {
+          text = text.replace(/\n[\t ]*$/, " ");
+        }
         return text;
       }
       const alt = segment.asset.alt.replace(/\\/g, "\\\\").replace(/\]/g, "\\]");
@@ -72,7 +76,7 @@ function CodeBlock({ children }: { children?: ReactNode }) {
           <span>{copied ? "Copied" : "Copy"}</span>
         </button>
       </div>
-      <pre>{children}</CodeBlock>
+      <pre>{children}</pre>
     </div>
   );
 }
