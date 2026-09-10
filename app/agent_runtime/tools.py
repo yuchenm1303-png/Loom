@@ -21,6 +21,7 @@ _SEARCH_TOKEN_RE = re.compile(r"[^\W_]+", flags=re.UNICODE)
 ToolHandler = Callable[["ToolContext", dict[str, Any]], "ToolResult"]
 CancelCheck = Callable[[], bool]
 EventEmitter = Callable[[AgentEventKind, dict[str, object]], None]
+CapabilitySettings = Mapping[str, bool] | None
 
 
 def _never_cancelled() -> bool:
@@ -29,6 +30,34 @@ def _never_cancelled() -> bool:
 
 def _search_tokens(value: str) -> tuple[str, ...]:
     return tuple(_SEARCH_TOKEN_RE.findall(str(value or "").casefold()))
+
+
+def _tool_capability_name(tool_name: str) -> str:
+    name = str(tool_name or "").strip()
+    if name.startswith("computer_"):
+        return "computerUse"
+    if name.startswith("browser_"):
+        return "browserUse"
+    if name.startswith("web_search"):
+        return "webSearch"
+    if name.startswith("mcp."):
+        return "mcp"
+    if name in {"skill_search", "skill_load"}:
+        return "skills"
+    if name == "tool_search":
+        return "toolSearch"
+    if name == "code_mode":
+        return "codeMode"
+    return ""
+
+
+def _capability_allows(tool: "AgentTool", capability_settings: CapabilitySettings) -> bool:
+    if not capability_settings:
+        return True
+    capability = _tool_capability_name(tool.name)
+    if not capability:
+        return True
+    return capability_settings.get(capability) is not False
 
 
 class ToolExposure(str, Enum):
@@ -215,10 +244,20 @@ class ToolRegistry:
     def all(self) -> tuple[AgentTool, ...]:
         return tuple(self._tools[name] for name in sorted(self._tools))
 
-    def deferred(self) -> tuple[AgentTool, ...]:
-        return tuple(tool for tool in self.all() if tool.exposure is ToolExposure.DEFERRED)
+    def deferred(self, *, capability_settings: CapabilitySettings = None) -> tuple[AgentTool, ...]:
+        return tuple(
+            tool
+            for tool in self.all()
+            if tool.exposure is ToolExposure.DEFERRED and _capability_allows(tool, capability_settings)
+        )
 
-    def search_deferred(self, query: str, *, limit: int = 5) -> tuple[AgentTool, ...]:
+    def search_deferred(
+        self,
+        query: str,
+        *,
+        limit: int = 5,
+        capability_settings: CapabilitySettings = None,
+    ) -> tuple[AgentTool, ...]:
         raw_query = str(query or "").strip()
         if not raw_query:
             raise ValueError("tool search query must not be empty")
@@ -227,7 +266,7 @@ class ToolRegistry:
         query_tokens = _search_tokens(raw_query)
         scored: list[tuple[int, str, AgentTool]] = []
 
-        for tool in self.deferred():
+        for tool in self.deferred(capability_settings=capability_settings):
             name_folded = tool.name.casefold()
             description_folded = tool.description.casefold()
             name_tokens = set(_search_tokens(tool.name))
@@ -257,10 +296,17 @@ class ToolRegistry:
         scored.sort(key=lambda item: (-item[0], item[1]))
         return tuple(item[2] for item in scored[:resolved_limit])
 
-    def router(self, *, activated_names: Sequence[str] = ()) -> ToolRouter:
+    def router(
+        self,
+        *,
+        activated_names: Sequence[str] = (),
+        capability_settings: CapabilitySettings = None,
+    ) -> ToolRouter:
         activated = {str(name or "").strip() for name in activated_names if str(name or "").strip()}
         visible: list[AgentTool] = []
         for tool in self.all():
+            if not _capability_allows(tool, capability_settings):
+                continue
             if tool.exposure is ToolExposure.DIRECT:
                 visible.append(tool)
             elif tool.exposure is ToolExposure.DEFERRED and tool.name in activated:
