@@ -5,6 +5,11 @@
   transform: none;
 }
 
+/* Keep prompt guidance quieter than the user's actual typed text. */
+.composer textarea::placeholder {
+  font-size: 14px !important;
+}
+
 /* Toolbar/popover focus should not make the input surface look focused. */
 .composer:focus-within:not(.is-focused) {
   border-color: rgba(67,72,86,.84);
