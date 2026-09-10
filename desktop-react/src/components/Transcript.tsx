@@ -17,6 +17,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { TranscriptItem } from "../types/loom";
 import { MarkdownMessage } from "./MarkdownMessage";
 import "./activity-flow.css";
+import "./task-flow-folding.css";
 
 interface TranscriptProps {
   items: TranscriptItem[];
@@ -36,6 +37,16 @@ interface ReasoningSplit {
   reasoning: string;
   answer: string;
   state: ReasoningState;
+}
+
+interface ActivitySummaryData {
+  steps: number;
+  tools: number;
+  commands: number;
+  files: string[];
+  added: number;
+  removed: number;
+  failed: boolean;
 }
 
 const starterPrompts = [
@@ -214,6 +225,10 @@ function statusLabel(status: string): string {
   return status;
 }
 
+function isActiveActivityStatus(status: string): boolean {
+  return status === "started" || status === "running" || status === "waiting" || status === "waiting_approval" || status === "pending";
+}
+
 function ActivityStatus({ status }: { status: string }) {
   const quiet = status === "completed" || status === "changed";
   const label = statusLabel(status);
@@ -359,7 +374,67 @@ function compactActivityItems(items: TranscriptItem[]): TranscriptItem[] {
   return compact.length ? compact : items;
 }
 
-function activityGroupTitle(items: TranscriptItem[]): string {
+function activitySummary(items: TranscriptItem[]): ActivitySummaryData {
+  const files: string[] = [];
+  let added = 0;
+  let removed = 0;
+
+  for (const item of items) {
+    if (item.type !== "file_edit") continue;
+    for (const path of item.paths ?? []) {
+      if (!files.includes(path)) files.push(path);
+    }
+    const stats = diffStats(item.diff);
+    added += stats.added;
+    removed += stats.removed;
+  }
+
+  return {
+    steps: items.length,
+    tools: items.filter((item) => item.type === "tool_call").length,
+    commands: items.filter((item) => item.type === "process").length,
+    files,
+    added,
+    removed,
+    failed: items.some((item) => isFailureStatus(itemStatus(item))),
+  };
+}
+
+function activitySummaryText(summary: ActivitySummaryData): string {
+  const parts = [`${summary.steps} 步`];
+  if (summary.commands) parts.push(`${summary.commands} 个命令`);
+  if (summary.tools) parts.push(`${summary.tools} 个工具`);
+  if (summary.files.length) parts.push(`${summary.files.length} 个文件`);
+  return parts.join(" · ");
+}
+
+function ActivityFoldSummary({ summary }: { summary: ActivitySummaryData }) {
+  if (!summary.files.length && summary.steps <= 1 && !summary.failed) return null;
+  const visibleFiles = summary.files.slice(0, 3);
+  const extraFiles = Math.max(0, summary.files.length - visibleFiles.length);
+
+  return (
+    <div className="task-flow-compact-summary" aria-label="Task summary">
+      <span className={`task-flow-summary-pill ${summary.failed ? "failed" : ""}`}>{summary.steps} 步</span>
+      {summary.commands ? <span className="task-flow-summary-pill">{summary.commands} 个命令</span> : null}
+      {summary.tools ? <span className="task-flow-summary-pill">{summary.tools} 个工具</span> : null}
+      {summary.files.length ? <span className="task-flow-summary-pill changed">{summary.files.length} 个文件</span> : null}
+      {summary.added || summary.removed ? (
+        <span className="task-flow-summary-pill changed">+{summary.added} -{summary.removed}</span>
+      ) : null}
+      {visibleFiles.length ? (
+        <span className="task-flow-summary-files">
+          {visibleFiles.map((path) => <span className="task-flow-summary-file" title={path} key={path}>{path}</span>)}
+          {extraFiles ? <span className="task-flow-summary-more">+{extraFiles}</span> : null}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+function activityGroupTitle(items: TranscriptItem[], settled: boolean): string {
+  if (settled) return "任务过程";
+
   const hasProcess = items.some((item) => item.type === "process");
   const hasEdit = items.some((item) => item.type === "file_edit");
   const hasTool = items.some((item) => item.type === "tool_call");
@@ -383,23 +458,35 @@ function ActivityGroupIcon({ items }: { items: TranscriptItem[] }) {
 
 function ActivityFlow({ items }: { items: TranscriptItem[] }) {
   const compactItems = compactActivityItems(items);
-  const [open, setOpen] = useState(true);
-  const running = compactItems.some((item) => itemStatus(item) === "running" || itemStatus(item) === "started");
-  const failed = compactItems.some((item) => isFailureStatus(itemStatus(item)));
+  const running = compactItems.some((item) => isActiveActivityStatus(itemStatus(item)));
+  const settled = !running;
+  const [open, setOpen] = useState(running);
+  const summary = activitySummary(compactItems);
+
+  useEffect(() => {
+    setOpen(running);
+  }, [running]);
 
   return (
-    <section className={`task-flow task-flow-group ${open ? "is-open" : ""} ${running ? "is-running" : ""}`} aria-label="Task activity">
+    <section
+      className={`task-flow task-flow-group ${open ? "is-open" : ""} ${running ? "is-running" : ""} ${settled ? "is-settled" : ""}`}
+      aria-label="Task activity"
+    >
       <button
         type="button"
         className="task-flow-group-header"
         onClick={() => setOpen((value) => !value)}
         aria-expanded={open}
+        title={open ? "折叠任务过程" : "展开任务过程"}
       >
         <span className="task-flow-group-icon" aria-hidden="true"><ActivityGroupIcon items={compactItems} /></span>
-        <span className="task-flow-group-title">{activityGroupTitle(compactItems)}</span>
-        {failed ? <span className="task-flow-group-failed">部分失败</span> : null}
+        <span className="task-flow-group-title">{activityGroupTitle(compactItems, settled)}</span>
+        {settled ? <span className="task-flow-group-summary">{activitySummaryText(summary)}</span> : null}
+        {summary.failed ? <span className="task-flow-group-failed">部分失败</span> : null}
         <ChevronRight size={13} className="task-flow-group-chevron" aria-hidden="true" />
       </button>
+
+      {settled && !open ? <ActivityFoldSummary summary={summary} /> : null}
 
       <div className="task-flow-group-grid">
         <div className="task-flow-group-inner">
