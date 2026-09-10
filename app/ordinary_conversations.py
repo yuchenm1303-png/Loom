@@ -8,8 +8,8 @@ matches a registered project root. This patch stores that intent beside the
 thread metadata instead of trying to infer it from the filesystem path.
 """
 
-import importlib
 import json
+import sys
 from typing import Any
 
 
@@ -199,8 +199,9 @@ def install() -> None:
     global _INSTALLED
     if _INSTALLED:
         return
-    module = importlib.import_module(_TARGET_MODULE)
-    patch(module)
+    existing = sys.modules.get(_TARGET_MODULE)
+    if existing is not None:
+        patch(existing)
     _INSTALLED = True
 
 
