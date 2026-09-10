@@ -17,8 +17,3 @@ venv/
 # Anchored: unanchored, this also matched the source tree at app/agent_runtime/,
 # where any new file would have been silently untracked.
 /agent_runtime/
-
-# Original AI Ledger sticker assets are materialized and verified at dev/build
-# time, then copied into Vite's dist output. Do not commit generated binaries.
-/desktop-react/.cache/chat-stickers/
-/desktop-react/public/chat-stickers/

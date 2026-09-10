@@ -1,0 +1,10 @@
+{
+  "schema": "loom_chat_stickers_v1",
+  "sourceRepository": "yuchenm1303-png/yuchen1303.github.io",
+  "sourceCommit": "e04ffe3bee59a376eb61286fb3d0da2d2e3c7fe3",
+  "sourceBase64Path": "ai-ledger-android/app/src/main/assets/inline_sticker_source.js",
+  "sourceBase64BlobSha": "002ef80734145f1659958c6475114eaecc4aee59",
+  "sourceArchivePath": "ai-ledger-android/app/src/main/assets/inline_stickers_v1.zip",
+  "sourceArchiveBlobSha": "a316dba7246c03e280101b683f2ae9f1434b5fd9",
+  "count": 19
+}
