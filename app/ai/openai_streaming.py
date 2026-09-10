@@ -37,13 +37,26 @@ class OpenAIStreamingChatBackend(OpenAIChatBackend):
         try:
             return self._create(stream_kwargs)
         except AITransportError as exc:
-            # Some nominally OpenAI-compatible endpoints have not implemented
-            # stream_options yet. A rejection mentioning the unsupported field
-            # happens before generation, so one retry without usage metadata is
-            # safe and preserves streaming instead of silently disabling it.
+            # Some OpenAI-compatible endpoints reject ``stream_options`` with an
+            # ordinary provider error instead of a precise unsupported-field
+            # response. Retry once without usage metadata before failing the
+            # whole turn so MiniMax/relays are not taken down by fragile
+            # compatibility around optional stream accounting.
             message = str(exc).casefold()
-            unsupported = "stream_options" in message or "include_usage" in message
-            if self.connection.adapter is not ProviderAdapter.OPENAI_COMPATIBLE or not unsupported:
+            compatible = self.connection.adapter is ProviderAdapter.OPENAI_COMPATIBLE
+            retry_without_usage = any(
+                marker in message
+                for marker in (
+                    "stream_options",
+                    "include_usage",
+                    "service temporarily unavailable",
+                    "temporarily unavailable",
+                    "503",
+                    "502",
+                    "504",
+                )
+            )
+            if not compatible or not retry_without_usage:
                 raise
             stream_kwargs.pop("stream_options", None)
             return self._create(stream_kwargs)
