@@ -25,6 +25,9 @@ export interface ModelProfile {
   baseUrl: string;
   model: string;
   reasoning?: ModelReasoningState | null;
+  managed?: boolean;
+  available?: boolean;
+  availabilityReason?: string;
 }
 
 export interface ModelLaunchSpec extends ModelProfile {
@@ -38,6 +41,7 @@ export interface ModelSnapshot {
   activeModelId: string | null;
   current: Omit<ModelLaunchSpec, "apiKey"> | null;
   recentModels: string[];
+  managedCatalogError?: string;
 }
 
 export interface AddModelInput {
@@ -58,6 +62,7 @@ interface RegistrySnapshot {
   primary: ModelProfile;
   profiles: ModelProfile[];
   activeModelId: string | null;
+  managedCatalogError?: string;
 }
 
 export const PRIMARY_SELECTION = "builtin:minimax";
@@ -98,6 +103,9 @@ export class DesktopModelManager {
           model: this.currentSpec.model,
           provider: this.currentSpec.provider,
           reasoning: this.currentSpec.reasoning ?? null,
+          managed: this.currentSpec.managed,
+          available: this.currentSpec.available,
+          availabilityReason: this.currentSpec.availabilityReason,
         }
       : null;
     return {
@@ -143,6 +151,9 @@ export class DesktopModelManager {
     const value = String(model || "").trim();
     if (!value) throw new Error("Model ID must not be empty");
     const current = this.currentSpec ?? this.ensureInitial();
+    if (current.managed) {
+      throw new Error("Managed models must be selected from the server-controlled model list.");
+    }
     if (value !== current.model) this.rememberCurrentModel(current.model);
     const described = this.runBridge<ModelProfile>("describe-model", {
       selection: current.selection,
@@ -161,6 +172,12 @@ export class DesktopModelManager {
     this.currentSpec = spec;
   }
 
+  provisionManagedRelay(credential: string): void {
+    const value = String(credential || "").trim();
+    if (!value) throw new Error("Managed relay credential must not be empty");
+    this.runBridge<{ provisioned: boolean }>("provision-managed-relay", { credential: value });
+  }
+
   private rememberCurrentModel(model: string): void {
     const value = String(model || "").trim();
     if (!value) return;
@@ -168,7 +185,7 @@ export class DesktopModelManager {
   }
 
   private runBridge<T>(
-    command: "list" | "resolve" | "describe-model" | "save" | "set-active" | "set-reasoning",
+    command: "list" | "resolve" | "describe-model" | "save" | "set-active" | "set-reasoning" | "provision-managed-relay",
     payload: Record<string, unknown>,
   ): T {
     const python = process.env.LOOM_PYTHON || (process.platform === "win32" ? "python" : "python3");
