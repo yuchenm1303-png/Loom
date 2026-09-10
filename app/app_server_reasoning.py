@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any, Callable, TextIO
 
 from app.ai import ReasoningRequest
-from app.agent_runtime import AgentStatus, PermissionMode
+from app.agent_runtime import AgentEvent, AgentEventKind, AgentStatus, PermissionMode
 from app.agent_runtime.tools import ToolExposure, ToolRegistry
 from app.runtime_model_switch import build_runtime_model_platform, validate_runtime_reasoning
 from app.settings import LoomSettingsStore
@@ -117,6 +117,218 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
             payload["userEnabled"] = user_enabled
             payload["active"] = bool(user_enabled and backend_enabled)
         return statuses
+
+    @staticmethod
+    def _hud_tool_family(tool_name: str) -> str:
+        name = str(tool_name or "").strip()
+        if name.startswith("computer_"):
+            return "computer"
+        if name.startswith("browser_"):
+            return "browser"
+        return ""
+
+    @staticmethod
+    def _hud_call_args(event: AgentEvent) -> dict[str, Any]:
+        raw = event.data.get("arguments")
+        return dict(raw) if isinstance(raw, dict) else {}
+
+    @staticmethod
+    def _hud_result_data(event: AgentEvent) -> dict[str, Any]:
+        raw = event.data.get("data")
+        return dict(raw) if isinstance(raw, dict) else {}
+
+    @staticmethod
+    def _hud_float(value: Any, fallback: float) -> float:
+        try:
+            parsed = float(value)
+        except (TypeError, ValueError):
+            return fallback
+        if parsed != parsed:
+            return fallback
+        return max(0.0, min(1.0, parsed))
+
+    @classmethod
+    def _hud_action_from_payload(cls, args: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
+        raw = args.get("action")
+        if isinstance(raw, dict):
+            return dict(raw)
+        raw = result.get("action")
+        if isinstance(raw, dict):
+            return dict(raw)
+        execution = result.get("execution")
+        if isinstance(execution, dict) and isinstance(execution.get("action"), dict):
+            return dict(execution["action"])
+        return {}
+
+    @classmethod
+    def _hud_point(cls, tool_name: str, args: dict[str, Any], result: dict[str, Any]) -> tuple[float, float] | None:
+        name = str(tool_name or "")
+        if name.startswith("computer_"):
+            action = cls._hud_action_from_payload(args, result)
+            point = action.get("point")
+            if isinstance(point, dict):
+                return cls._hud_float(point.get("x"), 0.52), cls._hud_float(point.get("y"), 0.46)
+            end_point = action.get("end_point")
+            if isinstance(end_point, dict):
+                return cls._hud_float(end_point.get("x"), 0.52), cls._hud_float(end_point.get("y"), 0.46)
+            return None
+        if not name.startswith("browser_"):
+            return None
+        raw_index = args.get("index", args.get("target_index", args.get("source_index")))
+        try:
+            index = int(raw_index)
+        except (TypeError, ValueError):
+            index = -1
+        if index >= 0:
+            return (
+                max(0.12, min(0.88, 0.22 + ((index * 37) % 55) / 100)),
+                max(0.16, min(0.84, 0.25 + ((index * 53) % 48) / 100)),
+            )
+        if name in {"browser_open", "browser_navigate"}:
+            return 0.50, 0.18
+        if name in {"browser_state", "browser_refresh", "browser_tabs"}:
+            return 0.50, 0.42
+        if name == "browser_scroll":
+            direction = str(args.get("direction") or "down").casefold()
+            return 0.50, 0.28 if direction == "up" else 0.68
+        if name in {"browser_back", "browser_switch_tab", "browser_close_tab"}:
+            return 0.18, 0.12
+        if name == "browser_screenshot":
+            return 0.78, 0.18
+        return None
+
+    @staticmethod
+    def _hud_tool_label(tool_name: str, args: dict[str, Any], result: dict[str, Any]) -> str:
+        name = str(tool_name or "")
+        action = ReasoningManagedLoomAppServerService._hud_action_from_payload(args, result)
+        computer_action = str(action.get("type") or "").replace("_", " ")
+        labels = {
+            "computer_status": "检查 Computer Use 状态",
+            "computer_observe": "观察桌面窗口",
+            "computer_action": f"执行桌面动作：{computer_action or 'action'}",
+            "computer_step": "执行视觉定位步骤",
+            "browser_status": "检查 Browser Use 状态",
+            "browser_open": "打开浏览器会话",
+            "browser_state": "刷新浏览器状态",
+            "browser_navigate": "导航浏览器页面",
+            "browser_click": "点击浏览器元素",
+            "browser_type": "输入浏览器文本",
+            "browser_hover": "悬停浏览器元素",
+            "browser_press": "发送浏览器按键",
+            "browser_select": "选择下拉选项",
+            "browser_drag": "拖拽浏览器元素",
+            "browser_scroll": "滚动浏览器页面",
+            "browser_back": "浏览器后退",
+            "browser_refresh": "刷新页面",
+            "browser_tabs": "读取浏览器标签页",
+            "browser_switch_tab": "切换浏览器标签页",
+            "browser_close_tab": "关闭浏览器标签页",
+            "browser_screenshot": "保存浏览器截图",
+            "browser_close": "关闭浏览器会话",
+        }
+        return labels.get(name, name or "执行自动化工具")
+
+    @staticmethod
+    def _hud_status_for_event(kind: AgentEventKind, source: str, tool_name: str) -> tuple[int, str, str]:
+        label = "Browser Use" if source == "browser" else "Computer Use"
+        if kind is AgentEventKind.TOOL_REQUESTED:
+            return 1, f"Loom 正在规划 {label}", "模型已选择工具，正在准备执行。"
+        if kind is AgentEventKind.TOOL_APPROVAL_REQUIRED:
+            return 1, f"Loom 等待批准 {label}", "敏感自动化动作正在等待用户批准。"
+        if kind is AgentEventKind.TOOL_APPROVED:
+            return 2, f"Loom 已批准 {label}", "用户已批准，准备执行自动化动作。"
+        if kind is AgentEventKind.TOOL_STARTED:
+            return 2, f"Loom 正在执行 {label}", "工具已经开始执行，HUD 仅同步显示当前动作。"
+        if kind is AgentEventKind.TOOL_COMPLETED:
+            return 4, f"Loom 正在验证 {label}", "动作已完成，正在同步最新状态。"
+        if kind is AgentEventKind.TOOL_FAILED:
+            return 4, "Loom 自动化失败", "工具执行失败，等待模型根据错误重新规划。"
+        if kind is AgentEventKind.TOOL_DENIED:
+            return 4, "Loom 自动化被拦截", "动作被权限策略或用户拒绝。"
+        return 0, f"Loom 正在运行 {label}", str(tool_name or label)
+
+    def _emit_automation_hud(self, event: AgentEvent) -> None:
+        terminal_kinds = {
+            AgentEventKind.TURN_COMPLETED,
+            AgentEventKind.TURN_FAILED,
+            AgentEventKind.TURN_CANCELLED,
+            AgentEventKind.TURN_INTERRUPTED,
+            AgentEventKind.LIMIT_REACHED,
+        }
+        if event.kind in terminal_kinds:
+            self._notify(
+                "hud/update",
+                {
+                    "threadId": event.session_id,
+                    "turnId": event.turn_id,
+                    "visible": False,
+                    "terminal": True,
+                },
+            )
+            return
+
+        tool_name = str(event.data.get("tool") or "").strip()
+        source = self._hud_tool_family(tool_name)
+        if not source:
+            return
+        if event.kind not in {
+            AgentEventKind.TOOL_REQUESTED,
+            AgentEventKind.TOOL_APPROVAL_REQUIRED,
+            AgentEventKind.TOOL_APPROVED,
+            AgentEventKind.TOOL_STARTED,
+            AgentEventKind.TOOL_COMPLETED,
+            AgentEventKind.TOOL_FAILED,
+            AgentEventKind.TOOL_DENIED,
+        }:
+            return
+
+        args = self._hud_call_args(event)
+        result = self._hud_result_data(event)
+        point = self._hud_point(tool_name, args, result)
+        phase, title, thought = self._hud_status_for_event(event.kind, source, tool_name)
+        bubble_title = self._hud_tool_label(tool_name, args, result)
+        if event.kind is AgentEventKind.TOOL_FAILED:
+            error = str(event.data.get("content") or event.data.get("error") or "").strip()
+            if error:
+                thought = error[:180]
+
+        payload: dict[str, Any] = {
+            "threadId": event.session_id,
+            "turnId": event.turn_id,
+            "callId": str(event.data.get("call_id") or ""),
+            "toolName": tool_name,
+            "source": source,
+            "visible": True,
+            "phase": phase,
+            "title": title,
+            "meta": tool_name,
+            "bubbleTitle": bubble_title,
+            "thought": thought,
+            "confidence": "已定位" if point is not None else "—",
+            "actionSource": "browser-use + DOM/CDP" if source == "browser" else "截图 + UIA + Win32 输入",
+            "terminal": event.kind in {
+                AgentEventKind.TOOL_COMPLETED,
+                AgentEventKind.TOOL_FAILED,
+                AgentEventKind.TOOL_DENIED,
+            },
+        }
+        if point is not None:
+            payload["xNorm"], payload["yNorm"] = point
+        if event.kind is AgentEventKind.TOOL_COMPLETED and tool_name not in {
+            "computer_status",
+            "browser_status",
+            "browser_state",
+            "browser_tabs",
+        }:
+            payload["clickRevision"] = event.event_id
+        self._notify("hud/update", payload)
+
+    def _on_runtime_event(self, event: AgentEvent) -> None:
+        try:
+            self._emit_automation_hud(event)
+        except Exception:
+            pass
+        super()._on_runtime_event(event)
 
     def runtime_status(self) -> dict[str, Any]:
         status = super().runtime_status()
@@ -323,9 +535,16 @@ class ReasoningManagedLoomRpcController(ManagedStreamingLoomRpcController):
             "updateCapabilities": True,
             "requiresIdleTurn": True,
         }
+        result["capabilities"]["automationHud"] = {
+            "notifications": ["hud/update"],
+            "presentationOnly": True,
+            "sources": ["browser", "computer"],
+        }
         notifications = result["capabilities"].setdefault("notifications", [])
         if "runtime/updated" not in notifications:
             notifications.append("runtime/updated")
+        if "hud/update" not in notifications:
+            notifications.append("hud/update")
         return result
 
     def _dispatch(self, method: str, params: dict[str, Any]) -> Any:
