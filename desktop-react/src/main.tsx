@@ -12,6 +12,7 @@ import "./components/inline-thinking-orb.css";
 import "./components/composer-stability.css";
 import "./typography-scale.css";
 import "./components/model-card-alignment-fix.css";
+import "./components/settings-simple.css";
 
 try {
   const desktop = JSON.parse(window.localStorage.getItem("loom.settings.desktop.v2") || "{}");
