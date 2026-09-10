@@ -15,6 +15,12 @@ export interface LoomBridge {
   setReasoning<T = unknown>(kind: string, value: string): Promise<T>;
   /** Native folder picker. Resolves to "" when the user cancels. */
   pickDirectory(): Promise<string>;
+  /** Native file picker. Resolves to [] when the user cancels. */
+  pickFiles(): Promise<string[]>;
+  /** Absolute path of a dropped/picked File, or "" when unavailable. */
+  filePathFor(file: File): string;
+  /** Write bytes to a temp file and return its path. */
+  stageTempFile(name: string, bytes: Uint8Array): Promise<string>;
   onNotification(listener: (payload: LoomNotification) => void): () => void;
 }
 

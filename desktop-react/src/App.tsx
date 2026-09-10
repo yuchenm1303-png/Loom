@@ -151,6 +151,9 @@ export default function App() {
             onStickerPreferencesChange={async (preferences) => {
               await window.loom.call("sticker/preferences/set", { preferences });
             }}
+            imagesAllowed={
+              (loom.runtime as { attachments?: { images?: boolean } } | undefined)?.attachments?.images !== false
+            }
             onSend={loom.send}
             onInterrupt={loom.interrupt}
           />

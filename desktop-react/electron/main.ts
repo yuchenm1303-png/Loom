@@ -2,6 +2,8 @@ import { app, BrowserWindow, dialog, ipcMain } from "electron";
 import { ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import fs from "node:fs/promises";
+import crypto from "node:crypto";
 import readline from "node:readline";
 import {
   DesktopModelManager,
@@ -302,6 +304,26 @@ function createWindow(): void {
 ipcMain.handle("loom:connect", () => rpc.connect());
 ipcMain.handle("loom:call", (_event, method: string, params?: Record<string, unknown>) => rpc.call(method, params ?? {}));
 ipcMain.handle("loom:disconnect", () => rpc.stop());
+ipcMain.handle("loom:pick-files", async () => {
+  const result = await dialog.showOpenDialog({
+    title: "Attach files",
+    properties: ["openFile", "multiSelections"],
+  });
+  return result.canceled ? [] : result.filePaths;
+});
+
+ipcMain.handle("loom:stage-temp-file", async (_event, name: string, bytes: Uint8Array) => {
+  // Only the main process can write to disk. The name is sanitised because it
+  // reaches the filesystem; the App Server sanitises again when it stages the
+  // file into the workspace, and neither side trusts the other's cleaning.
+  const safe = (name || "pasted.png").replace(/[^A-Za-z0-9._-]+/g, "_").slice(-80) || "pasted.png";
+  const folder = path.join(app.getPath("temp"), "loom-attachments");
+  await fs.mkdir(folder, { recursive: true });
+  const target = path.join(folder, `${crypto.randomUUID().slice(0, 8)}-${safe}`);
+  await fs.writeFile(target, Buffer.from(bytes));
+  return target;
+});
+
 ipcMain.handle("loom:pick-directory", async () => {
   // Adding a project is choosing a folder, which only the main process can ask
   // for. Cancelling resolves to "" so the caller never has to read a flag.

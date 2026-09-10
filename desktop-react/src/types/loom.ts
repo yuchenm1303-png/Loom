@@ -28,6 +28,16 @@ export interface ProjectListResult {
   unfiledThreadCount: number;
 }
 
+/** One file staged for the next message, as the composer knows it. */
+export interface Attachment {
+  id: string;
+  name: string;
+  path: string;
+  size: number;
+  isImage: boolean;
+  previewUrl?: string;
+}
+
 export interface ThreadRecord {
   id: string;
   /** Empty when no project claims this thread's workspace. */

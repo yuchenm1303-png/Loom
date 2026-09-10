@@ -214,12 +214,17 @@ export function useLoom() {
     await openThread(result.thread.id);
   }, [openThread, refreshThreads]);
 
-  const send = useCallback(async (input: string) => {
-    if (!active?.thread.id || active.thread.archived || !input.trim()) return;
+  const send = useCallback(async (input: string, attachments: { path: string; name: string }[] = []) => {
+    // An attachment on its own is a complete message: "look at this" with a
+    // screenshot needs no words.
+    if (!active?.thread.id || active.thread.archived) return;
+    if (!input.trim() && !attachments.length) return;
     setTurnActive(true);
     setTurnStartedAt(Date.now());
     try {
-      await requireBridge().call("turn/start", { threadId: active.thread.id, input: input.trim() });
+      const params: Record<string, unknown> = { threadId: active.thread.id, input: input.trim() };
+      if (attachments.length) params.attachments = attachments;
+      await requireBridge().call("turn/start", params);
     } catch (cause) {
       setTurnActive(false);
       setTurnStartedAt(null);

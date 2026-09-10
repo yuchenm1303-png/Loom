@@ -829,3 +829,90 @@
     transition: none;
   }
 }
+
+
+/* ---- attachments ---------------------------------------------------------
+   Attachments read as objects held above the prompt, not as text inside it. */
+
+.composer.is-dragging {
+  outline: 1px dashed rgba(140, 160, 255, .55);
+  outline-offset: -3px;
+}
+
+.composer-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 9px 12px 0;
+}
+
+.composer-attachment {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 240px;
+  padding: 3px 4px 3px 7px;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 8px;
+  background: rgba(255,255,255,.045);
+  color: #d3d6dc;
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+/* An attachment the model cannot read stays visible and explains itself: a
+   chip that vanishes on drop reads as a bug. */
+.composer-attachment.is-blocked {
+  border-color: rgba(224,142,151,.4);
+  background: rgba(224,142,151,.1);
+  color: #e08e97;
+}
+
+.composer-attachment.is-blocked .composer-attachment-name {
+  text-decoration: line-through;
+}
+
+.composer-attachment-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  object-fit: cover;
+}
+
+.composer-attachment-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer-attachment-size {
+  flex: 0 0 auto;
+  color: #7b818b;
+  font-variant-numeric: tabular-nums;
+}
+
+.composer-attachment button {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 17px;
+  height: 17px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #868c96;
+  cursor: pointer;
+}
+
+.composer-attachment button:hover {
+  background: rgba(255,255,255,.09);
+  color: #e08e97;
+}
+
+.composer-attach-error {
+  margin: 6px 12px 0;
+  color: #e08e97;
+  font-size: 11.5px;
+}

@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webUtils } from "electron";
 
 export interface LoomNotification {
   jsonrpc: "2.0";
@@ -16,6 +16,20 @@ const api = {
   addModel: (input: Record<string, unknown>) => ipcRenderer.invoke("loom:model-add", input),
   setReasoning: (kind: string, value: string) => ipcRenderer.invoke("loom:reasoning-set", kind, value),
   pickDirectory: () => ipcRenderer.invoke("loom:pick-directory"),
+  pickFiles: () => ipcRenderer.invoke("loom:pick-files"),
+  // Electron 32 removed File.path, so the real path has to come from webUtils
+  // in the preload. Attachments travel as paths, never as bytes over the RPC.
+  filePathFor: (file: File) => {
+    try {
+      return webUtils.getPathForFile(file);
+    } catch {
+      return "";
+    }
+  },
+  // A pasted image has no file behind it, so it gets written to a temp file
+  // first rather than becoming the one input with its own transport.
+  stageTempFile: (name: string, bytes: Uint8Array) =>
+    ipcRenderer.invoke("loom:stage-temp-file", name, bytes),
   onNotification: (listener: (payload: LoomNotification) => void) => {
     const wrapped = (_event: Electron.IpcRendererEvent, payload: LoomNotification) => listener(payload);
     ipcRenderer.on("loom:notification", wrapped);
