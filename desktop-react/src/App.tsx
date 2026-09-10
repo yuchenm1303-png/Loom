@@ -8,6 +8,7 @@ import { Sidebar } from "./components/Sidebar";
 import { ThreadHeader } from "./components/ThreadHeader";
 import { Transcript } from "./components/Transcript";
 import "./components/inline-thinking.css";
+import { useI18n } from "./i18n";
 import { useLoom } from "./state/useLoom";
 import type { TranscriptItem } from "./types/loom";
 
@@ -27,6 +28,7 @@ function isResolvedApproval(item: TranscriptItem): boolean {
 
 export default function App() {
   const loom = useLoom();
+  const { t } = useI18n();
   const [inspectorOpen, setInspectorOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [dismissedApprovalIds, setDismissedApprovalIds] = useState<Set<string>>(() => new Set());
@@ -34,7 +36,7 @@ export default function App() {
   const running = loom.turnActive || thread?.status === "running" || thread?.status === "waiting_approval";
   const archived = Boolean(thread?.archived);
   const conversationDisabled = !thread || loom.connection !== "ready" || running || archived;
-  const threadTitle = thread?.title || (loom.connection === "connecting" ? "Starting Loom…" : "New conversation");
+  const threadTitle = thread?.title || (loom.connection === "connecting" ? t("app.startingLoom") : t("app.newConversation"));
   const workspace = thread?.workspace || loom.runtime.defaultWorkspace || "";
   const currentModel = loom.models?.current?.name || loom.models?.current?.model || loom.runtime.model;
   const permissionMode = thread?.permissionMode || loom.runtime.defaultPermissionMode;
@@ -84,9 +86,9 @@ export default function App() {
       <div className="boot-error">
         <div className="boot-error-card">
           <div className="brand-mark large">L</div>
-          <h1>Loom App Server did not start</h1>
-          <p>{loom.error || "Unknown connection error"}</p>
-          <button className="button primary" onClick={() => window.location.reload()}><RotateCcw size={15} /> Retry</button>
+          <h1>{t("app.serverDidNotStart")}</h1>
+          <p>{loom.error || t("app.unknownConnectionError")}</p>
+          <button className="button primary" onClick={() => window.location.reload()}><RotateCcw size={15} /> {t("app.retry")}</button>
         </div>
       </div>
     );
