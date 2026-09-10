@@ -23,11 +23,6 @@ export interface ProjectRecord {
   updatedAt?: string;
 }
 
-export interface ProjectListResult {
-  projects: ProjectRecord[];
-  unfiledThreadCount: number;
-}
-
 /** One file staged for the next message, as the composer knows it. */
 export interface Attachment {
   id: string;
@@ -119,6 +114,11 @@ export interface ModelProfile {
   baseUrl: string;
   model: string;
   reasoning?: ModelReasoningState | null;
+  /** Official built-ins whose credentials and availability are controlled by Smirel Relay. */
+  managed?: boolean;
+  /** False when the authenticated Relay account has this model disabled. */
+  available?: boolean;
+  availabilityReason?: string;
 }
 
 export interface CurrentModel extends ModelProfile {
@@ -131,6 +131,7 @@ export interface ModelSnapshot {
   activeModelId: string | null;
   current: CurrentModel | null;
   recentModels: string[];
+  managedCatalogError?: string;
 }
 
 export interface AddModelInput {
