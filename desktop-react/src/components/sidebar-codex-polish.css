@@ -1,0 +1,279 @@
+/* Final polish for the Codex-style sidebar shell. Keep this layer focused on
+   hierarchy and project disclosure so the base sidebar remains reusable. */
+
+.codex-sidebar .codex-sidebar-topbar {
+  min-height: 43px;
+  padding: 1px 5px 7px 8px;
+  border-bottom: 1px solid rgba(255,255,255,.035);
+}
+
+.codex-sidebar .codex-sidebar-brand {
+  height: 32px;
+  margin-left: -4px;
+  padding: 0 7px;
+  border-radius: 8px;
+  color: #eceef2;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.codex-sidebar .codex-sidebar-brand:hover {
+  background: rgba(255,255,255,.035);
+  color: #fff;
+}
+
+.codex-sidebar .codex-sidebar-brand span {
+  font-size: 16px;
+  font-weight: 690;
+  letter-spacing: -.022em;
+}
+
+.codex-sidebar .codex-sidebar-brand svg {
+  margin-left: 1px;
+  color: #737b87;
+}
+
+/* Add project has a dedicated row below; repeating it beside search made the
+   top-right controls look like an unexplained icon capsule. */
+.codex-sidebar .codex-sidebar-topbar .compact-sidebar-actions button[aria-label="Add project folder"] {
+  display: none;
+}
+
+.codex-sidebar .codex-sidebar-topbar .compact-sidebar-actions {
+  padding: 2px;
+  border: 1px solid rgba(255,255,255,.045);
+  border-radius: 9px;
+  background: rgba(255,255,255,.018);
+}
+
+.codex-sidebar .codex-sidebar-topbar .compact-sidebar-actions button {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+}
+
+.codex-sidebar .codex-sidebar-primary {
+  position: relative;
+  gap: 2px;
+  padding: 8px 2px 12px;
+}
+
+.codex-sidebar .codex-sidebar-primary::after {
+  content: "";
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 2px;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(255,255,255,.045), rgba(255,255,255,.018), transparent);
+  pointer-events: none;
+}
+
+.codex-sidebar .sidebar-new-conversation,
+.codex-sidebar .sidebar-secondary-action {
+  min-height: 36px;
+  grid-template-columns: 26px minmax(0,1fr);
+  gap: 8px;
+  padding: 0 9px;
+  border-radius: 9px;
+}
+
+.codex-sidebar .sidebar-new-conversation::after {
+  display: none;
+}
+
+.codex-sidebar .sidebar-new-conversation {
+  color: #e2e5ea;
+}
+
+.codex-sidebar .sidebar-new-conversation:hover {
+  background: rgba(255,255,255,.055);
+  color: #fff;
+}
+
+.codex-sidebar .sidebar-secondary-action {
+  color: #9ea5b0;
+}
+
+.codex-sidebar .sidebar-secondary-action:hover {
+  color: #e4e6ea;
+  background: rgba(255,255,255,.04);
+}
+
+.codex-sidebar .sidebar-new-conversation > svg {
+  color: #d7dbe2;
+}
+
+.codex-sidebar .sidebar-secondary-action > svg {
+  color: #858d99;
+}
+
+.codex-sidebar .sidebar-new-conversation span,
+.codex-sidebar .sidebar-secondary-action span {
+  font-size: 13.2px;
+  font-weight: 575;
+}
+
+.codex-sidebar .sidebar-section-title {
+  min-height: 28px;
+  margin-top: 2px;
+  padding: 10px 8px 4px;
+  color: #686f7b;
+  font-size: 10.5px;
+  font-weight: 690;
+  letter-spacing: .055em;
+}
+
+/* The explicit 添加项目 row above is the primary entry point. */
+.codex-sidebar .sidebar-section-title:not(.recent-title) button {
+  display: none;
+}
+
+.codex-sidebar .recent-title {
+  margin-top: 11px;
+  padding-top: 9px;
+}
+
+.codex-sidebar .project-list {
+  gap: 2px;
+}
+
+.codex-sidebar .project-group {
+  margin-bottom: 3px;
+}
+
+.codex-sidebar .project-group-row {
+  min-height: 35px;
+  border-radius: 9px;
+}
+
+.codex-sidebar .project-group-main {
+  min-height: 35px;
+  grid-template-columns: 11px 23px minmax(0,1fr) auto;
+  gap: 7px;
+  padding: 0 7px 0 7px;
+  border-radius: 9px;
+  color: #c7cbd2;
+}
+
+/* Disclosure chevron is deliberately drawn in CSS so the project row remains
+   a single semantic button. Down = expanded, right = collapsed. */
+.codex-sidebar .project-group-main::before {
+  content: "";
+  width: 5.5px;
+  height: 5.5px;
+  justify-self: center;
+  border-right: 1.35px solid currentColor;
+  border-bottom: 1.35px solid currentColor;
+  color: #626a76;
+  transform: translateY(-1px) rotate(45deg);
+  transform-origin: 55% 55%;
+  transition: transform 150ms cubic-bezier(.2,.78,.2,1), color 120ms ease;
+}
+
+.codex-sidebar .project-group.is-collapsed .project-group-main::before {
+  transform: translateX(-1px) rotate(-45deg);
+}
+
+.codex-sidebar .project-group-main > svg {
+  width: 15px;
+  height: 15px;
+  color: #9da4af;
+  transition: color 120ms ease;
+}
+
+.codex-sidebar .project-group-main span {
+  font-size: 13px;
+  font-weight: 540;
+}
+
+.codex-sidebar .project-group-main small {
+  min-width: 14px;
+  margin-right: 1px;
+  color: #5f6671;
+  font-size: 10px;
+}
+
+.codex-sidebar .project-group-main:hover,
+.codex-sidebar .project-group-row:focus-within .project-group-main {
+  background: rgba(255,255,255,.045);
+  color: #f2f3f6;
+}
+
+.codex-sidebar .project-group-main:hover::before,
+.codex-sidebar .project-group-row:focus-within .project-group-main::before {
+  color: #aaa2ef;
+}
+
+.codex-sidebar .project-group:has(.compact-thread-row.active) .project-group-main {
+  color: #e5e7ec;
+}
+
+.codex-sidebar .project-group:has(.compact-thread-row.active) .project-group-main > svg {
+  color: #aaa2ef;
+}
+
+.codex-sidebar .project-group-actions {
+  right: 3px;
+  top: 4px;
+  height: 27px;
+  padding-left: 20px;
+  background: linear-gradient(90deg, transparent, #111214 24%, #111214 100%);
+}
+
+.codex-sidebar .project-group-actions button {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+}
+
+.codex-sidebar .project-thread-list {
+  max-height: 1200px;
+  margin-top: 1px;
+  margin-left: 20px;
+  padding-left: 7px;
+  overflow: hidden;
+  opacity: 1;
+  border-left-color: rgba(255,255,255,.045);
+  transform: translateY(0);
+  transition:
+    max-height 210ms cubic-bezier(.2,.72,.2,1),
+    opacity 140ms ease,
+    transform 180ms cubic-bezier(.2,.72,.2,1),
+    margin 180ms ease,
+    border-color 150ms ease;
+}
+
+.codex-sidebar .project-group.is-collapsed .project-thread-list {
+  max-height: 0;
+  margin-top: 0;
+  opacity: 0;
+  border-left-color: transparent;
+  transform: translateY(-3px);
+  pointer-events: none;
+}
+
+.codex-sidebar .project-group.is-collapsed {
+  margin-bottom: 2px;
+}
+
+.codex-sidebar .project-group.is-collapsed .project-group-main {
+  color: #aeb4be;
+}
+
+.codex-sidebar .project-group.is-empty .project-group-main {
+  color: #9299a4;
+}
+
+.codex-sidebar .recent-thread-list:empty::after {
+  padding: 7px 9px 5px;
+  color: #515864;
+  font-size: 10.8px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .codex-sidebar .project-group-main::before,
+  .codex-sidebar .project-thread-list,
+  .codex-sidebar .codex-sidebar-brand {
+    transition: none !important;
+  }
+}
