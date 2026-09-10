@@ -304,6 +304,16 @@ export function useLoom() {
     }
   }, [applyModelRestart]);
 
+  const deleteModel = useCallback(async (selection: string) => {
+    setModelBusy(true);
+    try {
+      const result = await requireBridge().deleteModel<ModelRestartResult>(selection);
+      await applyModelRestart(result);
+    } finally {
+      setModelBusy(false);
+    }
+  }, [applyModelRestart]);
+
   const setReasoning = useCallback(async (kind: string, value: string) => {
     setModelBusy(true);
     try {
@@ -508,6 +518,7 @@ export function useLoom() {
     switchModelProfile,
     switchCurrentModel,
     addModel,
+    deleteModel,
     setReasoning,
     respondApproval,
   }), [
@@ -515,6 +526,7 @@ export function useLoom() {
     addModel,
     archiveThread,
     connection,
+    deleteModel,
     deleteThread,
     error,
     forkThread,
