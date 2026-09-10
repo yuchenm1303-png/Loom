@@ -520,6 +520,22 @@ def _save(store: ModelConfigStore, payload: dict[str, Any]) -> dict[str, Any]:
     return _safe_saved(entry)
 
 
+def _delete(
+    store: ModelConfigStore,
+    reasoning_store: ReasoningConfigStore,
+    selection_store: ModelSelectionStore,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    selection = str(payload.get("selection") or "").strip()
+    saved = store.model_for_selection(selection)
+    if saved is None:
+        raise ValueError("only saved model connections can be deleted")
+    removed = store.delete_model(saved.model_id)
+    if selection_store.get() == removed.selection:
+        selection_store.set(PRIMARY_SELECTION)
+    return _snapshot(store, reasoning_store, selection_store)
+
+
 def _set_active(
     store: ModelConfigStore,
     reasoning_store: ReasoningConfigStore,
@@ -569,10 +585,10 @@ def _set_reasoning(
 
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
-    commands = {"list", "resolve", "describe-model", "save", "set-active", "set-reasoning"}
+    commands = {"list", "resolve", "describe-model", "save", "delete", "set-active", "set-reasoning"}
     if len(args) != 1 or args[0] not in commands:
         sys.stderr.write(
-            "usage: loom_model_bridge.py {list|resolve|describe-model|save|set-active|set-reasoning}\n"
+            "usage: loom_model_bridge.py {list|resolve|describe-model|save|delete|set-active|set-reasoning}\n"
         )
         return 2
 
@@ -600,6 +616,8 @@ def main(argv: list[str] | None = None) -> int:
             )
         elif command == "save":
             result = _save(store, payload)
+        elif command == "delete":
+            result = _delete(store, reasoning_store, selection_store, payload)
         elif command == "set-active":
             result = _set_active(store, reasoning_store, selection_store, payload)
         else:
