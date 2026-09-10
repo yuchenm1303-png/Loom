@@ -13,12 +13,7 @@
   object-fit: contain;
   vertical-align: middle;
 
-  /*
-   * Keep the sticker visually large without letting its 96px image box expand
-   * the surrounding text line. The negative block margin collapses the
-   * sticker's layout contribution back to one inherited text line while the
-   * image itself continues to render at the same size and inline position.
-   */
+  /* Keep the sticker's visual size, but stop it from stretching the text line. */
   margin-inline: 2px 5px;
   margin-block: calc((1lh - var(--inline-sticker-size)) / 2);
 
