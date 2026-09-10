@@ -149,6 +149,23 @@ export interface StickerPreferences {
   repeatCount: number;
 }
 
+export interface LoomSettings {
+  schemaVersion: number;
+  capabilities: {
+    computerUse?: boolean;
+    browserUse?: boolean;
+    webSearch?: boolean;
+    mcp?: boolean;
+    skills?: boolean;
+    toolSearch?: boolean;
+    codeMode?: boolean;
+    processRuntime?: boolean;
+    attachments?: boolean;
+    stickers?: boolean;
+    [key: string]: boolean | undefined;
+  };
+}
+
 export interface ModelRestartResult {
   initialization: InitializeResult;
   models: ModelSnapshot;
@@ -170,5 +187,18 @@ export interface InitializeResult {
     permissionModes?: string[];
     reasoning?: { kind: string; value: string } | null;
     stickerPreferences?: StickerPreferences | null;
+    settings?: LoomSettings;
+    capabilityStatus?: Record<string, Record<string, unknown>>;
+    registeredToolCount?: number;
+    exposedToolCount?: number;
+    attachments?: {
+      images?: boolean;
+      files?: boolean;
+      maxCount?: number;
+      maxImageBytes?: number;
+      maxFileBytes?: number;
+    };
+    activeThreadIds?: string[];
+    taskErrors?: Record<string, string>;
   };
 }
