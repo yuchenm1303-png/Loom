@@ -7,6 +7,8 @@
   "scripts": {
     "clean:electron": "node -e \"const fs=require('node:fs'); for (const dir of ['dist-electron','dist']) fs.rmSync(dir,{recursive:true,force:true})\"",
     "prepare:stickers": "node scripts/prepare-chat-stickers.mjs",
+    "setup:python": "node scripts/setup-python.mjs",
+    "dev:ready": "node scripts/dev-ready.mjs",
     "predev": "npm run prepare:stickers",
     "prebuild": "npm run prepare:stickers",
     "build:electron": "tsc -p tsconfig.electron.json",
