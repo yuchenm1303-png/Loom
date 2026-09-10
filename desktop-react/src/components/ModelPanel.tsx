@@ -9,6 +9,7 @@ import {
   RotateCcw,
   Server,
   SlidersHorizontal,
+  Trash2,
   Zap,
 } from "lucide-react";
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
@@ -31,6 +32,7 @@ interface ModelPanelProps {
   onSwitchProfile(selection: string): Promise<void> | void;
   onSwitchCurrent(model: string): Promise<void> | void;
   onAddModel(input: AddModelInput): Promise<void> | void;
+  onDeleteModel(selection: string): Promise<void> | void;
   onReasoningChange(kind: string, value: string): Promise<void> | void;
   onClose(): void;
 }
@@ -186,6 +188,7 @@ export function ModelPanel({
   onSwitchProfile,
   onSwitchCurrent,
   onAddModel,
+  onDeleteModel,
   onReasoningChange,
   onClose,
 }: ModelPanelProps) {
@@ -197,6 +200,8 @@ export function ModelPanel({
   const [baseUrl, setBaseUrl] = useState("");
   const [model, setModel] = useState("");
   const [apiKey, setApiKey] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState("");
+  const [pendingDelete, setPendingDelete] = useState("");
 
   const currentModel = snapshot?.current?.model || runtimeModel || "MiniMax-M3";
   const currentName = snapshot?.current?.name || (currentModel.toLowerCase().includes("minimax") ? "MiniMax" : "Current API");
@@ -210,6 +215,11 @@ export function ModelPanel({
     [currentModel, snapshot?.recentModels],
   );
   const locked = Boolean(busy || running);
+
+  useEffect(() => {
+    if (!confirmDelete) return;
+    if (!profiles.some((profile) => profile.selection === confirmDelete)) setConfirmDelete("");
+  }, [confirmDelete, profiles]);
 
   async function run(action: () => Promise<void> | void) {
     setError("");
@@ -249,6 +259,25 @@ export function ModelPanel({
       return;
     }
     await run(() => onAddModel(input));
+  }
+
+  async function deleteProfile(profile: ModelProfile) {
+    if (profile.kind !== "saved" || locked || pendingDelete) return;
+    if (confirmDelete !== profile.selection) {
+      setError("");
+      setConfirmDelete(profile.selection);
+      return;
+    }
+    setError("");
+    setPendingDelete(profile.selection);
+    try {
+      await onDeleteModel(profile.selection);
+      setConfirmDelete("");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setPendingDelete("");
+    }
   }
 
   if (view === "add") {
@@ -376,28 +405,47 @@ export function ModelPanel({
             const exactActive = profile.selection === currentSelection && profile.model === currentModel;
             const profileReasoning = profile.reasoning ? activeReasoningOption(profile.reasoning) : null;
             const badge = builtinBadge(profile);
+            const deletable = profile.kind === "saved";
+            const deleting = pendingDelete === profile.selection;
+            const confirming = confirmDelete === profile.selection;
             return (
-              <button
+              <div
                 key={profile.selection}
-                type="button"
-                className={`model-profile-row ${exactActive ? "active" : ""}`}
-                disabled={locked || exactActive}
-                onClick={() => void run(() => onSwitchProfile(profile.selection))}
+                className={`model-profile-row ${exactActive ? "active" : ""} ${deletable ? "deletable" : ""} ${confirming ? "confirm-delete" : ""}`}
               >
-                <span className={`model-profile-icon ${profile.kind}`}><Server size={15} /></span>
-                <span className="model-profile-copy">
-                  <span className="model-profile-title-row">
-                    <strong>{profile.name}</strong>
-                    {badge ? <em>{badge}</em> : null}
-                    {profileReasoning ? <em className="model-reasoning-badge">{profileReasoning.label}</em> : null}
+                <button
+                  type="button"
+                  className="model-profile-main"
+                  disabled={locked || exactActive || deleting}
+                  onClick={() => void run(() => onSwitchProfile(profile.selection))}
+                >
+                  <span className={`model-profile-icon ${profile.kind}`}><Server size={15} /></span>
+                  <span className="model-profile-copy">
+                    <span className="model-profile-title-row">
+                      <strong>{profile.name}</strong>
+                      {badge ? <em>{badge}</em> : null}
+                      {profileReasoning ? <em className="model-reasoning-badge">{profileReasoning.label}</em> : null}
+                    </span>
+                    <span>{profile.model}</span>
+                    <small>{profileSubtitle(profile)}</small>
                   </span>
-                  <span>{profile.model}</span>
-                  <small>{profileSubtitle(profile)}</small>
-                </span>
-                <span className="model-profile-action">
-                  {exactActive ? <Check size={14} /> : busy ? <RefreshCw size={13} className="model-spin" /> : <ChevronRight size={14} />}
-                </span>
-              </button>
+                  <span className="model-profile-action">
+                    {exactActive ? <Check size={14} /> : busy ? <RefreshCw size={13} className="model-spin" /> : <ChevronRight size={14} />}
+                  </span>
+                </button>
+                {deletable ? (
+                  <button
+                    type="button"
+                    className={`model-profile-delete ${confirming ? "confirm" : ""}`}
+                    disabled={locked || Boolean(pendingDelete)}
+                    title={confirming ? `Click again to delete ${profile.name}` : `Delete ${profile.name}`}
+                    aria-label={confirming ? `Confirm delete ${profile.name}` : `Delete ${profile.name}`}
+                    onClick={() => void deleteProfile(profile)}
+                  >
+                    {deleting ? <RefreshCw size={13} className="model-spin" /> : <Trash2 size={13} />}
+                  </button>
+                ) : null}
+              </div>
             );
           })}
         </div>
@@ -407,6 +455,7 @@ export function ModelPanel({
           <span><strong>Other model ID</strong><small>Same API connection</small></span>
           <ChevronRight size={14} />
         </button>
+        {confirmDelete ? <div className="model-delete-note">Click the trash icon again to delete this saved API connection.</div> : null}
         {error ? <div className="composer-popover-error">{error}</div> : null}
       </div>
     );
