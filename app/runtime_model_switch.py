@@ -14,6 +14,7 @@ from app.ai import (
     ReasoningRequest,
     build_ai_platform,
 )
+from app.ai.model_context import model_context_limits_from_env
 from app.ai.reasoning_catalog import reasoning_capability
 from app.agent_runtime.computer_transient import ComputerTransientInputPlatform
 
@@ -97,11 +98,13 @@ def build_runtime_model_platform(
     capabilities = set(AGENT_FAST_ROLE.required_capabilities)
     if bool(vision):
         capabilities.add(ModelCapability.VISION)
+    context_limits = model_context_limits_from_env()
     binding = ModelBinding(
         role_id=AGENT_FAST_ROLE.role_id,
         provider_id=connection.provider_id,
         model=selected_model,
         capabilities=frozenset(capabilities),
+        context_limits=context_limits,
     )
     configuration = AIConfiguration.build(
         roles=(AGENT_FAST_ROLE,),
@@ -130,6 +133,7 @@ def build_runtime_model_platform(
             "model": selected_model,
             "api_key": secret,
             "vision": bool(vision),
+            "context_limits": context_limits.as_safe_dict(),
         },
     )
     return wrapped
