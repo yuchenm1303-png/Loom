@@ -1,13 +1,13 @@
 import {
   Check,
   CircleAlert,
-  FileText,
   FolderOpen,
   Globe2,
   Info,
   Monitor,
   ShieldCheck,
   Terminal,
+  type LucideIcon,
 } from "lucide-react";
 import "./settings-permissions.css";
 
@@ -88,7 +88,7 @@ function BoundaryRow({
   enabled = true,
   onOpen,
 }: {
-  icon: typeof Monitor;
+  icon: LucideIcon;
   title: string;
   detail: string;
   value: string;
