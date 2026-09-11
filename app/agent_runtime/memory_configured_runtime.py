@@ -23,7 +23,8 @@ class ConfiguredSemanticMemoryRuntime(SemanticMemoryRuntime):
 
     Workers remain lightweight and durable settings gate whether they may do
     model work. Re-enabling a feature scans its durable backlog so toggling a
-    setting never loses completed turns or pending semantic jobs.
+    setting never loses completed turns or pending semantic jobs. App-server
+    management remains available even when model-side memory use is disabled.
     """
 
     def __init__(
@@ -38,6 +39,7 @@ class ConfiguredSemanticMemoryRuntime(SemanticMemoryRuntime):
             else bool(memory_enabled)
         )
         super().__init__(*args, **kwargs)
+        self.memory_store.model_access_enabled = bool(self.memory_enabled)
 
     def configure_memory(
         self,
@@ -62,6 +64,7 @@ class ConfiguredSemanticMemoryRuntime(SemanticMemoryRuntime):
             if pipeline is not None:
                 pipeline.idle_seconds = self.memory_idle_seconds
 
+        self.memory_store.model_access_enabled = bool(self.memory_enabled)
         extract_active = bool(self.memory_enabled and self.memory_auto_extract)
         semantic_active = bool(self.memory_enabled and self.memory_semantic_auto)
 
