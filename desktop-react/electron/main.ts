@@ -189,11 +189,93 @@ class LoomRpcProcess {
 }
 
 let mainWindow: BrowserWindow | null = null;
+const STREAM_DELTA_BATCH_MS = 32;
+const APPEND_DELTA_FIELDS = new Set(["text", "stdout", "stderr"]);
+const rendererDeltaQueue = new Map<string, JsonRpcResponse>();
+let rendererDeltaTimer: ReturnType<typeof setTimeout> | null = null;
+
+function mergeRendererDelta(target: Record<string, unknown>, incoming: Record<string, unknown>): void {
+  for (const [key, value] of Object.entries(incoming)) {
+    if (APPEND_DELTA_FIELDS.has(key) && typeof value === "string") {
+      target[key] = `${String(target[key] ?? "")}${value}`;
+    } else {
+      target[key] = value;
+    }
+  }
+}
+
+function clearRendererDeltaTimer(): void {
+  if (rendererDeltaTimer !== null) {
+    clearTimeout(rendererDeltaTimer);
+    rendererDeltaTimer = null;
+  }
+}
+
+function flushRendererDeltas(): void {
+  clearRendererDeltaTimer();
+  if (!rendererDeltaQueue.size) return;
+
+  const pending = [...rendererDeltaQueue.values()];
+  rendererDeltaQueue.clear();
+  const window = mainWindow;
+  if (!window || window.isDestroyed()) return;
+
+  for (const payload of pending) {
+    window.webContents.send("loom:notification", payload);
+  }
+}
+
+function discardRendererDeltas(): void {
+  clearRendererDeltaTimer();
+  rendererDeltaQueue.clear();
+}
+
+function sendRendererNotification(payload: JsonRpcResponse): void {
+  const window = mainWindow;
+  if (!window || window.isDestroyed()) return;
+
+  if (payload.method !== "item/delta") {
+    // Preserve runtime ordering: a completion/start/resync must never overtake
+    // text that is still waiting in the short render batch.
+    flushRendererDeltas();
+    window.webContents.send("loom:notification", payload);
+    return;
+  }
+
+  const params = payload.params ?? {};
+  const incomingDelta = params.delta;
+  const itemId = String(params.itemId ?? "");
+  if (!itemId || !incomingDelta || typeof incomingDelta !== "object" || Array.isArray(incomingDelta)) {
+    flushRendererDeltas();
+    window.webContents.send("loom:notification", payload);
+    return;
+  }
+
+  const key = `${String(params.threadId ?? "")}\u0000${String(params.turnId ?? "")}\u0000${itemId}`;
+  let buffered = rendererDeltaQueue.get(key);
+  if (!buffered) {
+    buffered = {
+      ...payload,
+      params: {
+        ...params,
+        delta: {},
+      },
+    };
+    rendererDeltaQueue.set(key, buffered);
+  }
+
+  mergeRendererDelta(
+    buffered.params?.delta as Record<string, unknown>,
+    incomingDelta as Record<string, unknown>,
+  );
+
+  if (rendererDeltaTimer === null) {
+    rendererDeltaTimer = setTimeout(flushRendererDeltas, STREAM_DELTA_BATCH_MS);
+  }
+}
+
 const modelManager = new DesktopModelManager(REPO_ROOT);
-const rpc = new LoomRpcProcess(
-  (payload) => mainWindow?.webContents.send("loom:notification", payload),
-  modelManager,
-);
+const rpc = new LoomRpcProcess(sendRendererNotification, modelManager);
 
 async function changeModel(
   apply: () => ModelLaunchSpec,
@@ -295,7 +377,10 @@ function createWindow(): void {
   void loadRenderer(window);
 
   window.on("closed", () => {
-    if (mainWindow === window) mainWindow = null;
+    if (mainWindow === window) {
+      mainWindow = null;
+      discardRendererDeltas();
+    }
   });
 }
 
@@ -345,4 +430,7 @@ app.on("activate", () => {
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
-app.on("before-quit", () => rpc.stop());
+app.on("before-quit", () => {
+  discardRendererDeltas();
+  rpc.stop();
+});
