@@ -10,7 +10,7 @@ from .history import repair_tool_history
 
 
 def _exposed_tool_names(step) -> tuple[str, ...]:
-    return tuple(tool.name for tool in step.tool_router.all())
+    return tuple(sorted(tool.name for tool in step.tool_router.all()))
 
 
 class TurnRunner:
@@ -99,22 +99,17 @@ class TurnRunner:
                     # Stop accepting steering before committing the terminal state.
                     rt._active_tokens.pop(session.session_id, None)
                 session.status = AgentStatus.COMPLETED
-                session.final_text = response.text
-                session.error = ""
-                diff = rt.diff_trackers.snapshot(session.session_id, session.current_turn_id)
-                rt._record(session, Event.TURN_COMPLETED, data={"text": response.text,
-                    "diff_revision": diff.revision, "changed_paths": list(diff.paths)})
+                rt.store.save(session)
+                rt._record(session, Event.TURN_COMPLETED, data={"text": session.final_text})
                 return rt._result(session)
         except ModelCancelled:
-            token.cancel()
-            rt._cancel_if_requested(session, token)
+            session.status = AgentStatus.CANCELLED
+            rt.store.save(session)
+            rt._record(session, Event.TURN_CANCELLED, data={})
+            return rt._result(session)
         except Exception as exc:
-            if token.cancelled:
-                rt._cancel_if_requested(session, token)
-            else:
-                session.status = AgentStatus.FAILED
-                session.error = f"{type(exc).__name__}: {exc}"
-                session.messages = list(repair_tool_history(session.messages,
-                    max_tool_result_chars=rt.limits.max_tool_result_chars).messages)
-                rt._record(session, Event.TURN_FAILED, data={"error": session.error})
-        return rt._result(session)
+            session.status = AgentStatus.FAILED
+            session.error = str(exc)
+            rt.store.save(session)
+            rt._record(session, Event.TURN_FAILED, data={"error": str(exc)})
+            return rt._result(session)
