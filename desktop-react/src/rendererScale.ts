@@ -6,43 +6,53 @@ function clampZoom(value: number): number {
   return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, value));
 }
 
-function parseCssZoom(value: string): number {
-  const numeric = Number.parseFloat(String(value || "1"));
+function parseZoom(value: string | number): number {
+  const numeric = typeof value === "number" ? value : Number.parseFloat(String(value || "1"));
   return clampZoom(Number.isFinite(numeric) ? numeric : 1);
+}
+
+/**
+ * Apply interface scale through Chromium's native page zoom whenever Electron
+ * is available. This keeps text/vector UI on the browser's normal raster path
+ * instead of scaling a pre-rasterized CSS surface.
+ */
+export function applyRendererScale(value: string | number): number {
+  const factor = parseZoom(value);
+  const root = document.documentElement;
+  const bridge = window.loom;
+
+  if (bridge?.setZoomFactor) {
+    try {
+      const applied = bridge.setZoomFactor(factor);
+      root.dataset.loomScale = String(Math.round(applied * 100));
+      root.style.removeProperty("zoom");
+      return applied;
+    } catch {
+      // Browser/dev fallback below.
+    }
+  }
+
+  root.style.setProperty("zoom", String(factor));
+  root.dataset.loomScale = String(Math.round(factor * 100));
+  return factor;
 }
 
 function applyNativeZoomFromCss(): boolean {
   const root = document.documentElement;
   const cssZoom = root.style.getPropertyValue("zoom");
-  if (!cssZoom) return false;
-
-  const bridge = window.loom;
-  if (!bridge?.setZoomFactor) return false;
-
-  try {
-    const factor = bridge.setZoomFactor(parseCssZoom(cssZoom));
-    root.dataset.loomScale = String(Math.round(factor * 100));
-    // CSS zoom rasterizes the complete renderer surface and is noticeably
-    // softer on Windows at non-100% DPI. Native page zoom keeps Chromium's text
-    // and 1px geometry on the device-pixel rendering path instead.
-    root.style.removeProperty("zoom");
-    return true;
-  } catch {
-    // Browser/dev previews may not expose the Electron bridge. In that case the
-    // existing CSS zoom remains as a compatibility fallback.
-    return false;
-  }
+  if (!cssZoom || !window.loom?.setZoomFactor) return false;
+  applyRendererScale(cssZoom);
+  return !root.style.getPropertyValue("zoom");
 }
 
 /**
- * Converts the existing Appearance scale setting from CSS zoom to Electron's
- * native page zoom. SettingsPage still writes the legacy CSS property; this
- * observer consumes it immediately so old settings code and persisted values
- * keep working without rendering the application through a scaled bitmap.
+ * SettingsPage still writes the legacy CSS zoom property. Consume that write
+ * before the next render and convert it to native page zoom, while initial
+ * startup can call applyRendererScale directly and never touch CSS zoom.
  */
 export function installNativeRendererScaleSync(): () => void {
   const root = document.documentElement;
-  applyNativeZoomFromCss();
+  if (root.style.getPropertyValue("zoom")) applyNativeZoomFromCss();
 
   const observer = new MutationObserver(() => {
     if (!root.style.getPropertyValue("zoom")) return;
