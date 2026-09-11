@@ -1,12 +1,11 @@
-/* Roomier Runtime inspector tabs.
-   The inspector is narrow, so inactive counts collapse into subtle dots while
-   the active tab keeps the full badge. This keeps the four tabs readable
-   without changing the React structure. */
+/* Readable compact Runtime inspector tabs.
+   The inspector rail is narrow, so each tab uses a short visual label while
+   counts collapse to subtle dots. Avoid ellipsis states such as A... / C... . */
 
 .runtime-tabs {
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 6px;
-  padding: 6px 8px;
+  gap: 4px;
+  padding: 6px 7px;
 }
 
 .runtime-tab-glider {
@@ -14,20 +13,22 @@
 }
 
 .runtime-tab {
+  position: relative;
   min-width: 0;
   height: 36px;
   overflow: hidden;
   display: grid;
-  grid-template-columns: 14px minmax(0, 1fr) auto;
+  grid-template-columns: 14px minmax(0, 1fr) 7px;
   align-items: center;
   justify-content: stretch;
-  column-gap: 7px;
-  padding-inline: 9px;
+  column-gap: 5px;
+  padding-inline: 8px 7px;
   border: 1px solid transparent;
   border-radius: 10px;
   font-size: 10px;
-  font-weight: 560;
+  font-weight: 575;
   line-height: 1;
+  letter-spacing: -.012em;
 }
 
 .runtime-tab:hover {
@@ -46,89 +47,99 @@
 }
 
 .runtime-tab > svg {
+  grid-column: 1;
+  grid-row: 1;
   width: 14px;
   height: 14px;
   min-width: 14px;
   flex: none;
   justify-self: center;
+  color: inherit;
 }
 
 .runtime-tab > span:not(.runtime-tab-count) {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  display: none;
 }
+
+.runtime-tab::after {
+  grid-column: 2;
+  grid-row: 1;
+  min-width: 0;
+  overflow: visible;
+  white-space: nowrap;
+  color: inherit;
+}
+
+.runtime-tabs > .runtime-tab:nth-of-type(1)::after { content: "Trace"; }
+.runtime-tabs > .runtime-tab:nth-of-type(2)::after { content: "Use"; }
+.runtime-tabs > .runtime-tab:nth-of-type(3)::after { content: "Files"; }
+.runtime-tabs > .runtime-tab:nth-of-type(4)::after { content: "Shell"; }
 
 .runtime-tab-count {
+  grid-column: 3;
+  grid-row: 1;
   justify-self: end;
+  align-self: center;
   flex: none;
-  min-width: 18px;
-  height: 18px;
+  min-width: 5.5px;
+  width: 5.5px;
+  height: 5.5px;
   margin: 0;
-  padding: 0 5px;
-  display: inline-grid;
-  place-items: center;
+  padding: 0;
+  display: block;
+  border: 0;
   border-radius: 999px;
-  line-height: 1;
-  font-size: 8.5px;
-  font-weight: 680;
-  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  color: transparent;
+  background: rgba(139, 124, 246, .62);
+  box-shadow: 0 0 0 3px rgba(139, 124, 246, .07);
+  font-size: 0;
+  line-height: 0;
 }
 
-.runtime-tab:not(.active) .runtime-tab-count {
-  min-width: 6px;
+.runtime-tab.active .runtime-tab-count {
   width: 6px;
   height: 6px;
-  padding: 0;
-  color: transparent;
-  font-size: 0;
-  overflow: hidden;
-  background: rgba(139, 124, 246, .62);
-  border: 0;
-  box-shadow: 0 0 0 3px rgba(139, 124, 246, .07);
+  background: rgba(169, 158, 255, .88);
+  box-shadow: 0 0 0 3px rgba(139, 124, 246, .105);
 }
 
 @media (max-width: 1180px) {
   .runtime-tabs {
-    gap: 5px;
-    padding-inline: 7px;
+    gap: 3px;
+    padding-inline: 6px;
   }
 
   .runtime-tab {
     height: 35px;
-    column-gap: 6px;
-    padding-inline: 8px;
+    grid-template-columns: 13px minmax(0, 1fr) 6px;
+    column-gap: 4px;
+    padding-inline: 7px 6px;
     font-size: 9.5px;
-  }
-
-  .runtime-tab-count {
-    min-width: 17px;
-    height: 17px;
-    padding-inline: 4px;
-    font-size: 8px;
-  }
-
-  .runtime-tab:not(.active) .runtime-tab-count {
-    min-width: 5.5px;
-    width: 5.5px;
-    height: 5.5px;
-    padding: 0;
-    font-size: 0;
-  }
-}
-
-@media (max-width: 900px) {
-  .runtime-tab {
-    grid-template-columns: 13px minmax(0, 1fr) auto;
-    column-gap: 5px;
-    padding-inline: 7px;
-    font-size: 9px;
   }
 
   .runtime-tab > svg {
     width: 13px;
     height: 13px;
     min-width: 13px;
+  }
+
+  .runtime-tab-count {
+    width: 5px;
+    min-width: 5px;
+    height: 5px;
+  }
+}
+
+@media (max-width: 900px) {
+  .runtime-tab {
+    grid-template-columns: 13px minmax(0, 1fr);
+    padding-inline: 8px;
+  }
+
+  .runtime-tab-count {
+    position: absolute;
+    right: 6px;
+    top: 8px;
   }
 }
