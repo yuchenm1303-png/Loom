@@ -18,8 +18,8 @@ function warn(message) {
   console.warn(`[browser-cdp] ${message}`);
 }
 
-function envText(name) {
-  return String(process.env[name] || "").trim();
+function envText(name, fallback = "") {
+  return String(process.env[name] || fallback).trim();
 }
 
 function flagDisabled(name) {
@@ -131,6 +131,10 @@ function defaultProfileDir() {
   return path.join(REPO_ROOT, ".loom", "browser", "cdp-profile");
 }
 
+function defaultLogDir() {
+  return path.join(REPO_ROOT, ".loom", "logs", "browser-use");
+}
+
 function ensureCdpEndpoint({ dryRun = false } = {}) {
   const configured = envText("LOOM_BROWSER_CDP_URL");
   if (configured) {
@@ -214,6 +218,8 @@ Environment:
   LOOM_BROWSER_CDP_PORT         CDP port, default 9222
   LOOM_BROWSER_CDP_PROFILE_DIR  Dedicated CDP browser profile directory
   LOOM_BROWSER_CDP_URL          Existing local CDP endpoint to reuse
+  LOOM_BROWSER_LOG_DIR          Browser diagnostic log folder, default <repo>/.loom/logs/browser-use
+  LOOM_BROWSER_DIAGNOSTICS=0    Disable Browser Use diagnostics
   LOOM_DESKTOP_BROWSER_CDP=0    Disable this bootstrap helper
 `);
 }
@@ -222,6 +228,7 @@ const args = process.argv.slice(2);
 const dryRun = args.includes("--dry-run");
 const noRun = args.includes("--no-run") || dryRun;
 const scriptName = args.find((item) => !item.startsWith("--"));
+const logDir = envText("LOOM_BROWSER_LOG_DIR", defaultLogDir());
 
 if (args.includes("--help") || args.includes("-h")) {
   usage();
@@ -230,7 +237,13 @@ if (args.includes("--help") || args.includes("-h")) {
 
 try {
   const info = ensureCdpEndpoint({ dryRun });
-  const env = { ...process.env, LOOM_BROWSER_CDP_URL: info.cdpUrl };
+  const env = {
+    ...process.env,
+    LOOM_BROWSER_CDP_URL: info.cdpUrl,
+    LOOM_BROWSER_LOG_DIR: logDir,
+    LOOM_BROWSER_DIAGNOSTICS: flagDisabled("LOOM_BROWSER_DIAGNOSTICS") ? "0" : "1",
+  };
+  log(`diagnostics: ${logDir}`);
   if (noRun || !scriptName) {
     log(`LOOM_BROWSER_CDP_URL=${info.cdpUrl}`);
     log("start Loom from this helper so Electron and Python inherit the CDP endpoint.");
