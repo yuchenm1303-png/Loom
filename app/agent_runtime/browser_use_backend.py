@@ -300,7 +300,12 @@ class BrowserUseBackend(BrowserBackend):
         session = await self._ensure_session()
         event_name = type(event).__name__
         started = time.monotonic()
-        self._log("browser_use.event.dispatch.started", event=event_name)
+        # The diagnostics field cannot be called "event": _log and the diagnostics
+        # sink both take the record name as their first positional parameter, so a
+        # keyword of that name raises TypeError before either body runs. Every
+        # browser action dispatches through here, so that mistake made navigate,
+        # click, type, scroll, back, refresh and tab switching fail identically.
+        self._log("browser_use.event.dispatch.started", browser_event=event_name)
         try:
             dispatched = session.event_bus.dispatch(event)
             await dispatched
@@ -308,12 +313,16 @@ class BrowserUseBackend(BrowserBackend):
         except Exception as exc:
             self._log(
                 "browser_use.event.dispatch.failed",
-                event=event_name,
+                browser_event=event_name,
                 elapsed_ms=int((time.monotonic() - started) * 1000),
                 error=f"{type(exc).__name__}: {exc}",
             )
             raise
-        self._log("browser_use.event.dispatch.completed", event=event_name, elapsed_ms=int((time.monotonic() - started) * 1000))
+        self._log(
+            "browser_use.event.dispatch.completed",
+            browser_event=event_name,
+            elapsed_ms=int((time.monotonic() - started) * 1000),
+        )
 
     async def _navigate_async(self, url: str, *, new_tab: bool) -> BrowserPageState:
         from browser_use.browser.events import NavigateToUrlEvent
