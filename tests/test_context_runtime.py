@@ -186,7 +186,7 @@ def test_context_checkpoint_archives_old_history_before_replacing_active_transcr
         event for event in events if event.kind is AgentEventKind.CONTEXT_CHECKPOINTED
     ]
     assert checkpoint_events[-1].data["archived_messages"] == 4
-    assert checkpoint_events[-1].data["communication_language"] == "latin"
+    assert checkpoint_events[-1].data["communication_language"] == "auto"
     runtime.close()
 
 
