@@ -13,7 +13,7 @@ function parseCssZoom(value: string): number {
 
 function applyNativeZoomFromCss(): boolean {
   const root = document.documentElement;
-  const cssZoom = root.style.zoom;
+  const cssZoom = root.style.getPropertyValue("zoom");
   if (!cssZoom) return false;
 
   const bridge = window.loom;
@@ -45,7 +45,7 @@ export function installNativeRendererScaleSync(): () => void {
   applyNativeZoomFromCss();
 
   const observer = new MutationObserver(() => {
-    if (!root.style.zoom) return;
+    if (!root.style.getPropertyValue("zoom")) return;
     applyNativeZoomFromCss();
   });
   observer.observe(root, { attributes: true, attributeFilter: ["style"] });
