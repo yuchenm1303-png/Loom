@@ -1,263 +1,180 @@
 /* Capabilities page -------------------------------------------------------
-   This layer turns the flat capability preference list into a clearer
-   runtime control surface without changing any capability behavior. */
+   Keep this page quiet and operational: one vertical list, restrained chrome,
+   no hero treatment, gradients, floating cards, or decorative motion. */
 
 .settings-content:has(.capability-list) {
-  gap: 22px;
+  gap: 18px;
 }
 
 .settings-content:has(.capability-list) > .settings-page-heading {
-  position: relative;
-  min-height: 144px;
-  padding: 24px 26px;
-  border: 1px solid rgba(255,255,255,.075);
-  border-radius: 16px;
-  overflow: hidden;
-  align-items: center;
-  background:
-    radial-gradient(circle at 83% 14%, rgba(139,124,246,.14), transparent 34%),
-    linear-gradient(135deg, rgba(139,124,246,.075), transparent 44%),
-    #111318;
-  box-shadow:
-    0 18px 44px rgba(0,0,0,.16),
-    inset 0 1px 0 rgba(255,255,255,.035);
-}
-
-.settings-content:has(.capability-list) > .settings-page-heading::before {
-  content: "";
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 3px;
-  background: linear-gradient(180deg, #a99cff, #7769e8 65%, rgba(119,105,232,.12));
-  box-shadow: 0 0 24px rgba(139,124,246,.28);
-}
-
-.settings-content:has(.capability-list) > .settings-page-heading::after {
-  content: "";
-  position: absolute;
-  width: 240px;
-  height: 240px;
-  right: -86px;
-  top: -122px;
-  border-radius: 50%;
-  border: 1px solid rgba(167,154,244,.08);
-  box-shadow:
-    0 0 0 34px rgba(139,124,246,.018),
-    0 0 0 72px rgba(139,124,246,.012);
-  pointer-events: none;
-}
-
-.settings-content:has(.capability-list) > .settings-page-heading > div,
-.settings-content:has(.capability-list) > .settings-page-heading > .settings-tool-count {
-  position: relative;
-  z-index: 1;
-}
-
-.settings-content:has(.capability-list) > .settings-page-heading h1 {
-  margin-top: 6px;
-  margin-bottom: 10px;
-  font-size: 30px;
-}
-
-.settings-content:has(.capability-list) > .settings-page-heading p {
-  max-width: 660px;
-  color: #929aa7;
-  line-height: 1.62;
-}
-
-.settings-content:has(.capability-list) .settings-tool-count {
-  min-width: 142px;
-  min-height: 66px;
-  margin-top: 0;
-  padding: 10px 14px;
-  border-color: rgba(167,154,244,.14);
-  border-radius: 12px;
-  display: grid;
-  align-content: center;
-  justify-items: start;
-  gap: 6px;
-  background: rgba(11,13,18,.58);
-  color: #ddd9ff;
-  font-size: 13px;
-  font-weight: 650;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.025);
-}
-
-.settings-content:has(.capability-list) .settings-tool-count::before {
-  content: "Tool surface";
-  color: #737b88;
-  font-size: 9.5px;
-  font-weight: 700;
-  letter-spacing: .09em;
-  text-transform: uppercase;
-}
-
-html[data-loom-language="zh-CN"] .settings-content:has(.capability-list) .settings-tool-count::before {
-  content: "工具暴露";
-}
-
-.settings-content:has(.capability-list) .settings-callout.warning {
-  margin-top: -8px;
-  border-radius: 12px;
-  box-shadow: none;
-}
-
-.settings-content:has(.capability-list) .settings-section:has(.capability-list) {
-  gap: 14px;
-}
-
-.settings-content:has(.capability-list) .settings-section:has(.capability-list) > .settings-section-heading {
-  padding: 0 2px;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: end;
-}
-
-.settings-content:has(.capability-list) .settings-section:has(.capability-list) > .settings-section-heading h2 {
-  font-size: 15.5px;
-}
-
-.settings-content:has(.capability-list) .settings-section:has(.capability-list) > .settings-section-heading p {
-  max-width: 620px;
-}
-
-.capability-list.settings-card {
-  position: relative;
-  overflow: visible;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 11px;
-  padding: 26px 0 0;
+  position: static;
+  min-height: 0;
+  margin-bottom: 6px;
+  padding: 0;
   border: 0;
   border-radius: 0;
+  overflow: visible;
+  align-items: flex-start;
   background: transparent;
   box-shadow: none;
 }
 
-.capability-list.settings-card::before {
-  content: "Core interaction";
-  position: absolute;
-  left: 2px;
-  top: 0;
-  color: #737b88;
-  font-size: 10px;
-  font-weight: 720;
-  letter-spacing: .085em;
-  text-transform: uppercase;
+.settings-content:has(.capability-list) > .settings-page-heading::before,
+.settings-content:has(.capability-list) > .settings-page-heading::after {
+  content: none;
 }
 
-html[data-loom-language="zh-CN"] .capability-list.settings-card::before {
-  content: "核心交互";
+.settings-content:has(.capability-list) > .settings-page-heading > div,
+.settings-content:has(.capability-list) > .settings-page-heading > .settings-tool-count {
+  position: static;
 }
 
-.capability-list .capability-row {
-  position: relative;
-  min-height: 108px;
-  padding: 16px 15px;
-  border: 1px solid rgba(255,255,255,.07);
-  border-radius: 14px;
+.settings-content:has(.capability-list) > .settings-page-heading h1 {
+  margin-top: 4px;
+  margin-bottom: 8px;
+  font-size: 27px;
+  letter-spacing: -.025em;
+}
+
+.settings-content:has(.capability-list) > .settings-page-heading p {
+  max-width: 700px;
+  color: #8b929e;
+  line-height: 1.55;
+}
+
+.settings-content:has(.capability-list) .settings-tool-count {
+  min-width: 0;
+  min-height: 30px;
+  margin-top: 2px;
+  padding: 0 10px;
+  border: 1px solid rgba(255,255,255,.075);
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  background: #121419;
+  color: #aeb4bf;
+  font-size: 11.5px;
+  font-weight: 560;
+  box-shadow: none;
+}
+
+.settings-content:has(.capability-list) .settings-tool-count::before {
+  content: none;
+}
+
+.settings-content:has(.capability-list) .settings-callout.warning {
+  margin-top: 0;
+  border-radius: 10px;
+  box-shadow: none;
+}
+
+.settings-content:has(.capability-list) .settings-section:has(.capability-list) {
+  margin-top: 10px;
+  gap: 10px;
+}
+
+.settings-content:has(.capability-list) .settings-section:has(.capability-list) > .settings-section-heading {
+  padding: 0;
+  margin-bottom: 2px;
   display: grid;
-  grid-template-columns: 42px minmax(0, 1fr) 30px auto;
+  grid-template-columns: 1fr;
+  align-items: start;
+  gap: 4px;
+}
+
+.settings-content:has(.capability-list) .settings-section:has(.capability-list) > .settings-section-heading h2 {
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.settings-content:has(.capability-list) .settings-section:has(.capability-list) > .settings-section-heading p {
+  max-width: 700px;
+  color: #7f8793;
+}
+
+.capability-list.settings-card {
+  position: static;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0;
+  padding: 0;
+  border: 1px solid rgba(255,255,255,.075);
+  border-radius: 11px;
+  background: #111318;
+  box-shadow: none;
+}
+
+.capability-list.settings-card::before {
+  content: none;
+}
+
+.capability-list .capability-row,
+.capability-list .capability-row:nth-child(1),
+.capability-list .capability-row:nth-child(2),
+.capability-list .capability-row:nth-child(3),
+.capability-list .capability-row:nth-child(4),
+.capability-list .capability-row:nth-child(7) {
+  position: static;
+  min-height: 78px;
+  margin: 0;
+  padding: 12px 14px;
+  border: 0;
+  border-bottom: 1px solid rgba(255,255,255,.055);
+  border-radius: 0;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) 30px auto;
   align-items: center;
   gap: 12px;
-  background:
-    linear-gradient(180deg, rgba(255,255,255,.027), transparent 72%),
-    #121419;
-  box-shadow:
-    0 10px 28px rgba(0,0,0,.10),
-    inset 0 1px 0 rgba(255,255,255,.02);
-  transition:
-    border-color 140ms ease,
-    background 140ms ease,
-    transform 140ms ease,
-    box-shadow 140ms ease;
+  background: transparent;
+  box-shadow: none;
+  transform: none;
+  transition: background 110ms ease;
 }
 
-.capability-list .capability-row:last-child {
-  border-bottom: 1px solid rgba(255,255,255,.07);
-}
-
-.capability-list .capability-row:nth-child(1),
-.capability-list .capability-row:nth-child(2) {
-  min-height: 122px;
-  border-color: rgba(153,140,244,.12);
-  background:
-    radial-gradient(circle at 0 0, rgba(139,124,246,.075), transparent 42%),
-    linear-gradient(180deg, rgba(255,255,255,.03), transparent 72%),
-    #121419;
-}
-
-.capability-list .capability-row:nth-child(3),
-.capability-list .capability-row:nth-child(4) {
-  margin-top: 29px;
+.capability-list .capability-row:last-child,
+.capability-list .capability-row:nth-child(7) {
+  border-bottom: 0;
 }
 
 .capability-list .capability-row:nth-child(3)::before {
-  content: "Agent extensions";
-  position: absolute;
-  left: 2px;
-  top: -25px;
-  color: #737b88;
-  font-size: 10px;
-  font-weight: 720;
-  letter-spacing: .085em;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-html[data-loom-language="zh-CN"] .capability-list .capability-row:nth-child(3)::before {
-  content: "Agent 扩展";
-}
-
-.capability-list .capability-row:nth-child(7) {
-  grid-column: 1 / -1;
-  min-height: 94px;
+  content: none;
 }
 
 .capability-list .capability-row:hover {
-  transform: translateY(-1px);
-  border-color: rgba(255,255,255,.11);
-  background:
-    linear-gradient(180deg, rgba(255,255,255,.038), transparent 74%),
-    #13151a;
-  box-shadow:
-    0 14px 34px rgba(0,0,0,.14),
-    inset 0 1px 0 rgba(255,255,255,.028);
+  transform: none;
+  border-color: transparent;
+  background: rgba(255,255,255,.025);
+  box-shadow: none;
 }
 
-.capability-list .capability-row:has(.settings-switch.on) {
-  border-color: rgba(139,124,246,.18);
-}
-
+.capability-list .capability-row:has(.settings-switch.on),
 .capability-list .capability-row:has(.settings-switch:not(.on)) {
-  background: #101217;
+  border-left: 0;
+  background-color: transparent;
 }
 
 .capability-list .capability-row:has(.settings-switch:not(.on)) .capability-icon,
 .capability-list .capability-row:has(.settings-switch:not(.on)) .capability-copy {
-  opacity: .66;
+  opacity: .58;
 }
 
-.capability-list .capability-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: 12px;
-  color: #bdb5ff;
-  background:
-    linear-gradient(145deg, rgba(139,124,246,.16), rgba(139,124,246,.07));
-  border-color: rgba(154,140,255,.16);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.025);
-}
-
+.capability-list .capability-icon,
 .capability-list .capability-row:nth-child(1) .capability-icon,
 .capability-list .capability-row:nth-child(2) .capability-icon {
-  color: #d2ccff;
-  background:
-    radial-gradient(circle at 28% 24%, rgba(255,255,255,.09), transparent 32%),
-    rgba(139,124,246,.13);
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  color: #aaa2e6;
+  background: #191923;
+  border: 1px solid rgba(154,140,255,.11);
+  box-shadow: none;
 }
 
 .capability-list .capability-copy {
-  gap: 7px;
+  gap: 4px;
   align-self: center;
 }
 
@@ -267,30 +184,33 @@ html[data-loom-language="zh-CN"] .capability-list .capability-row:nth-child(3)::
 }
 
 .capability-list .capability-title-line strong {
+  color: #eceef2;
   font-size: 13.5px;
-  font-weight: 690;
-  letter-spacing: -.01em;
+  font-weight: 640;
+  letter-spacing: -.006em;
 }
 
 .capability-list .capability-copy > span {
-  max-width: 480px;
-  color: #858d9a;
+  max-width: 720px;
+  color: #7f8793;
   font-size: 12px;
-  line-height: 1.54;
+  line-height: 1.45;
 }
 
 .capability-list .settings-status-pill {
-  height: 21px;
+  height: 20px;
   padding: 0 7px;
   gap: 5px;
   border-radius: 6px;
   font-size: 10.5px;
-  font-weight: 620;
+  font-weight: 580;
+  box-shadow: none;
 }
 
 .capability-list .settings-status-dot {
   width: 5px;
   height: 5px;
+  box-shadow: none;
 }
 
 .capability-list .settings-row-link,
@@ -300,42 +220,39 @@ html[data-loom-language="zh-CN"] .capability-list .capability-row:nth-child(3)::
 }
 
 .capability-list .settings-row-link {
-  border: 1px solid transparent;
-  color: #747c89;
+  border: 0;
+  border-radius: 7px;
+  color: #686f7a;
+  background: transparent;
+  box-shadow: none;
 }
 
 .capability-list .settings-row-link:hover {
-  border-color: rgba(255,255,255,.06);
-  color: #d9dce3;
+  border-color: transparent;
+  color: #c8ccd4;
   background: rgba(255,255,255,.04);
 }
 
 .capability-list .settings-switch {
-  width: 42px;
-  height: 24px;
   justify-self: end;
-  box-shadow: inset 0 1px 1px rgba(0,0,0,.16);
+  box-shadow: none;
 }
 
 .capability-list .settings-switch.on {
-  box-shadow:
-    inset 0 1px 1px rgba(255,255,255,.08),
-    0 0 0 1px rgba(139,124,246,.04),
-    0 7px 18px rgba(93,75,213,.12);
+  box-shadow: none;
 }
 
-/* The legacy SettingsPage still renders English copy for these rows. The
-   document language is authoritative, so keep the capability surface fully
-   localized until this page is migrated to direct t(...) calls. */
+/* The legacy SettingsPage still renders English copy for these rows. Keep the
+   Chinese renderer copy while presenting the page in the simplified layout. */
 html[data-loom-language="zh-CN"] .capability-list .capability-copy > span {
   font-size: 0;
 }
 
 html[data-loom-language="zh-CN"] .capability-list .capability-copy > span::after {
   display: block;
-  color: #858d9a;
+  color: #7f8793;
   font-size: 12px;
-  line-height: 1.54;
+  line-height: 1.45;
 }
 
 html[data-loom-language="zh-CN"] .capability-list .capability-row:nth-child(1) .capability-copy > span::after {
@@ -377,10 +294,10 @@ html[data-loom-language="zh-CN"] .capability-list .capability-row:nth-child(2) .
 html[data-loom-language="zh-CN"] .capability-list .capability-row:nth-child(3) .capability-title-line > strong::after,
 html[data-loom-language="zh-CN"] .capability-list .capability-row:nth-child(6) .capability-title-line > strong::after,
 html[data-loom-language="zh-CN"] .capability-list .capability-row:nth-child(7) .capability-title-line > strong::after {
-  color: #f1f2f5;
+  color: #eceef2;
   font-size: 13.5px;
-  font-weight: 690;
-  letter-spacing: -.01em;
+  font-weight: 640;
+  letter-spacing: -.006em;
 }
 
 html[data-loom-language="zh-CN"] .capability-list .capability-row:nth-child(2) .capability-title-line > strong::after { content: "浏览器控制"; }
@@ -388,45 +305,18 @@ html[data-loom-language="zh-CN"] .capability-list .capability-row:nth-child(3) .
 html[data-loom-language="zh-CN"] .capability-list .capability-row:nth-child(6) .capability-title-line > strong::after { content: "工具搜索"; }
 html[data-loom-language="zh-CN"] .capability-list .capability-row:nth-child(7) .capability-title-line > strong::after { content: "代码模式"; }
 
-@media (max-width: 1040px) {
-  .settings-content:has(.capability-list) > .settings-page-heading {
-    min-height: 132px;
-    padding: 20px;
-  }
-
-  .capability-list.settings-card {
-    grid-template-columns: 1fr;
-  }
-
-  .capability-list .capability-row:nth-child(3) {
-    margin-top: 29px;
-  }
-
-  .capability-list .capability-row:nth-child(4) {
-    margin-top: 0;
-  }
-
-  .capability-list .capability-row:nth-child(7) {
-    grid-column: auto;
-  }
-}
-
 @media (max-width: 760px) {
   .settings-content:has(.capability-list) > .settings-page-heading {
-    min-height: 0;
-    padding: 18px;
-    align-items: flex-start;
     flex-direction: column;
+    gap: 12px;
   }
 
   .settings-content:has(.capability-list) .settings-tool-count {
-    min-width: 0;
-    width: 100%;
-    min-height: 54px;
+    align-self: flex-start;
   }
 
   .capability-list .capability-row {
-    grid-template-columns: 40px minmax(0, 1fr) auto;
+    grid-template-columns: 32px minmax(0, 1fr) auto;
     gap: 10px;
   }
 
