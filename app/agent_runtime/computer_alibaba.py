@@ -26,13 +26,43 @@ GUI_PLUS_GROUNDER_ALIASES = frozenset(
         "gui-plus",
     }
 )
+GUI_PLUS_ACTION_NAMES = frozenset(
+    {
+        "left_click",
+        "click",
+        "double_click",
+        "triple_click",
+        "right_click",
+        "mouse_move",
+        "move",
+        "left_click_drag",
+        "drag",
+        "key",
+        "type",
+        "scroll",
+        "wait",
+        "terminate",
+        "interact",
+        "answer",
+    }
+)
+GUI_PLUS_COMPUTER_TOOL_NAMES = frozenset(
+    {
+        "computer_use",
+        "computer",
+        "computer_action",
+        "computer_use_preview",
+        "computer-use",
+    }
+)
 
 
 _GUI_PLUS_SYSTEM_PROMPT = """You are Loom's visual GUI grounding policy. Choose exactly one next desktop action from the current screenshot.
 
 The screenshot is represented to you in a model coordinate space of 1000x1000. Coordinates are frame-local: (0,0) is the top-left and (1000,1000) is the bottom-right. Click visible targets near their centers.
 
-Return exactly two things: one short `Action:` line and one `<tool_call>` block. The block must contain one JSON object with name `computer_use` and an `arguments` object.
+Return one next action. Prefer this shape, but Loom will also normalize native tool-call variants from compatible GUI models:
+<tool_call>{"name":"computer_use","arguments":{"action":"left_click","coordinate":[x,y]}}</tool_call>
 
 Supported actions and arguments:
 - left_click, double_click, right_click, mouse_move: `coordinate: [x, y]`
@@ -44,19 +74,18 @@ Supported actions and arguments:
 - terminate: `status: success|failure`
 - interact or answer: `text: string`
 
-Do not emit middle_click, triple_click, hscroll, shell commands, file operations, or multiple actions. Loom owns the outer agent loop, permissions, retries, and task completion. Use terminate only when the screenshot shows that the GUI task is complete or cannot proceed.
+Do not emit middle_click, hscroll, shell commands, file operations, or multiple actions. Loom owns the outer agent loop, permissions, retries, and task completion. Use terminate only when the screenshot shows that the GUI task is complete or cannot proceed.
 """
 
 
 class AlibabaGUIPlusGroundingBackend:
     """Alibaba GUI-Plus one-step grounding adapter for Loom Computer Use.
 
-    Provider-specific prompt syntax, XML tool-call parsing and request options stay
-    at this boundary. The rest of Loom only receives ``ComputerPrediction`` and
-    therefore remains independent from GUI-Plus protocol details.
-
-    Credentials are consumed while constructing the OpenAI-compatible client and
-    are deliberately not retained on this object or exposed through status data.
+    Provider-specific prompt syntax, tool-call parsing and request options stay at
+    this boundary. The parser is intentionally tolerant because GUI models often
+    return native tool-call names, action-named calls, fenced JSON, or XML-style
+    blocks depending on serving configuration. Loom normalizes those variants to
+    one ``ComputerPrediction`` instead of failing the whole desktop turn.
     """
 
     name = "alibaba-gui-plus"
@@ -217,7 +246,19 @@ class AlibabaGUIPlusGroundingBackend:
                 response=(text if diagnostics.raw else {"length": len(text)}),
                 usage=getattr(response, "usage", None),
             )
-        return parse_gui_plus_prediction(text)
+        try:
+            return parse_gui_plus_prediction(text)
+        except Exception as exc:
+            if diagnostics is not None:
+                diagnostics.emit(
+                    "provider.normalization_failed",
+                    provider=self.name,
+                    model=self.model,
+                    error_type=type(exc).__name__,
+                    error=str(exc),
+                    response_sample=text[:2000] if diagnostics.raw else {"length": len(text)},
+                )
+            raise
 
     def safe_config(self) -> dict[str, object]:
         """Return non-secret diagnostics suitable for Computer Use status."""
@@ -235,18 +276,12 @@ def parse_gui_plus_prediction(text: str) -> ComputerPrediction:
     if not raw:
         raise ValueError("GUI-Plus prediction must not be empty")
 
-    payload = _extract_gui_plus_payload(raw)
-    if not isinstance(payload, dict):
-        raise ValueError("GUI-Plus tool call must be a JSON object")
-    if "arguments" not in payload and "action" in payload:
-        payload = {"name": "computer_use", "arguments": payload}
-    if str(payload.get("name") or "").strip() not in {"computer_use", "computer"}:
-        raise ValueError("GUI-Plus tool call must target computer_use")
+    payload = _normalize_gui_plus_payload(_extract_gui_plus_payload(raw))
     arguments = payload.get("arguments")
     if not isinstance(arguments, dict):
         raise ValueError("GUI-Plus computer_use arguments must be a JSON object")
 
-    action_name = str(arguments.get("action") or "").strip().casefold()
+    action_name = str(arguments.get("action") or arguments.get("type") or "").strip().casefold()
     thought_match = re.search(r"(?:^|\n)\s*Action:\s*(.*?)(?=\n\s*<tool_call>|$)", raw, flags=re.DOTALL)
     thought = thought_match.group(1).strip() if thought_match else ""
 
@@ -262,7 +297,7 @@ def parse_gui_plus_prediction(text: str) -> ComputerPrediction:
             type=ComputerActionType.RIGHT_CLICK,
             point=_gui_plus_point(arguments, "coordinate"),
         )
-    elif action_name == "mouse_move":
+    elif action_name in {"mouse_move", "move"}:
         action = ComputerAction(type=ComputerActionType.MOVE, point=_gui_plus_point(arguments, "coordinate"))
     elif action_name in {"left_click_drag", "drag"}:
         action = ComputerAction(
@@ -271,7 +306,7 @@ def parse_gui_plus_prediction(text: str) -> ComputerPrediction:
             end_point=_gui_plus_point(arguments, "coordinate2"),
         )
     elif action_name == "key":
-        keys = _gui_plus_keys(arguments.get("keys"))
+        keys = _gui_plus_keys(arguments.get("keys") or arguments.get("key"))
         action = ComputerAction(
             type=ComputerActionType.HOTKEY if len(keys) > 1 else ComputerActionType.KEY,
             keys=keys,
@@ -279,7 +314,7 @@ def parse_gui_plus_prediction(text: str) -> ComputerPrediction:
     elif action_name == "type":
         action = ComputerAction(type=ComputerActionType.TYPE, text=str(arguments.get("text") or ""))
     elif action_name == "scroll":
-        pixels = float(arguments.get("pixels", 0.0))
+        pixels = float(arguments.get("pixels", arguments.get("amount", 0.0)))
         if pixels == 0:
             raise ValueError("GUI-Plus scroll requires non-zero pixels")
         point = _gui_plus_point(arguments, "coordinate", required=False)
@@ -290,7 +325,7 @@ def parse_gui_plus_prediction(text: str) -> ComputerPrediction:
             amount=max(120, min(3600, round(abs(pixels) * 120))),
         )
     elif action_name == "wait":
-        seconds = float(arguments.get("time", 1.0))
+        seconds = float(arguments.get("time", arguments.get("seconds", 1.0)))
         if seconds < 0:
             raise ValueError("GUI-Plus wait time must not be negative")
         action = ComputerAction(
@@ -315,6 +350,66 @@ def parse_gui_plus_prediction(text: str) -> ComputerPrediction:
         raise ValueError(f"unsupported GUI-Plus action: {action_name or '<empty>'}")
 
     return ComputerPrediction(action=action, thought=thought)
+
+
+def _normalize_gui_plus_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
+    value: dict[str, Any] = dict(payload)
+    if "function" in value and isinstance(value["function"], Mapping):
+        function = dict(value["function"])
+        value = {
+            "name": function.get("name") or value.get("name"),
+            "arguments": function.get("arguments") or value.get("arguments"),
+        }
+    name = str(value.get("name") or "").strip().casefold()
+    arguments = value.get("arguments")
+    if isinstance(arguments, str):
+        arguments = _json_object_or_text(arguments)
+    if arguments is None and "action" in value:
+        arguments = dict(value)
+        name = "computer_use"
+    if isinstance(arguments, Mapping):
+        args = dict(arguments)
+    else:
+        args = {}
+
+    if name in GUI_PLUS_ACTION_NAMES and "action" not in args:
+        args["action"] = name
+        name = "computer_use"
+    if not name and str(args.get("action") or args.get("type") or "").strip().casefold() in GUI_PLUS_ACTION_NAMES:
+        name = "computer_use"
+    if "type" in args and "action" not in args:
+        args["action"] = args["type"]
+    if "coordinate" not in args:
+        if "point" in args:
+            args["coordinate"] = _point_like_to_gui_coordinate(args["point"])
+        elif "x" in args and "y" in args:
+            args["coordinate"] = [args["x"], args["y"]]
+    if "coordinate2" not in args and "end_point" in args:
+        args["coordinate2"] = _point_like_to_gui_coordinate(args["end_point"])
+
+    normalized_name = name or "computer_use"
+    if normalized_name not in GUI_PLUS_COMPUTER_TOOL_NAMES:
+        action_hint = str(args.get("action") or args.get("type") or "").strip().casefold()
+        if action_hint not in GUI_PLUS_ACTION_NAMES:
+            raise ValueError(f"unsupported GUI-Plus tool call name: {normalized_name}")
+    return {"name": "computer_use", "arguments": args}
+
+
+def _json_object_or_text(value: str) -> dict[str, Any] | str:
+    raw = str(value or "").strip()
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return raw
+    return parsed if isinstance(parsed, dict) else raw
+
+
+def _point_like_to_gui_coordinate(value: object) -> object:
+    if isinstance(value, Mapping):
+        return [value.get("x"), value.get("y")]
+    return value
 
 
 def _message_prediction_text(message: Any) -> str:
@@ -344,8 +439,9 @@ def _message_prediction_text(message: Any) -> str:
         if isinstance(function, Mapping):
             name = function.get("name")
             arguments = function.get("arguments")
-        if name and arguments:
-            return json.dumps({"name": name, "arguments": json.loads(arguments) if isinstance(arguments, str) else arguments})
+        parsed_arguments = _json_object_or_text(arguments) if isinstance(arguments, str) else arguments
+        if name or parsed_arguments:
+            return json.dumps({"name": name or "computer_use", "arguments": parsed_arguments or {}})
     return ""
 
 
@@ -362,12 +458,21 @@ def _extract_gui_plus_payload(raw: str) -> dict[str, Any]:
                 value, _ = decoder.raw_decode(candidate[match.start():])
             except json.JSONDecodeError:
                 continue
-            if isinstance(value, dict) and ("arguments" in value or "action" in value):
+            if isinstance(value, dict) and _looks_like_gui_plus_payload(value):
                 return value
         invalid_json = invalid_json or candidate is not raw
     if invalid_json:
         raise ValueError("GUI-Plus tool call contains invalid JSON")
     raise ValueError("GUI-Plus prediction does not contain a supported tool call")
+
+
+def _looks_like_gui_plus_payload(value: Mapping[str, Any]) -> bool:
+    if "function" in value and isinstance(value.get("function"), Mapping):
+        return True
+    if "arguments" in value or "action" in value or "type" in value:
+        return True
+    name = str(value.get("name") or "").strip().casefold()
+    return name in GUI_PLUS_ACTION_NAMES or name in GUI_PLUS_COMPUTER_TOOL_NAMES
 
 
 def _gui_plus_point(
@@ -388,6 +493,8 @@ def _gui_plus_point(
         y = float(value[1])
     except (TypeError, ValueError) as exc:
         raise ValueError(f"GUI-Plus {key} values must be numbers") from exc
+    if 0.0 <= x <= 1.0 and 0.0 <= y <= 1.0:
+        return ComputerPoint(x=x, y=y)
     if not 0.0 <= x <= 1000.0 or not 0.0 <= y <= 1000.0:
         raise ValueError(f"GUI-Plus {key} values must be within 0..1000")
     return ComputerPoint(x=x / 1000.0, y=y / 1000.0)
