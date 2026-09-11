@@ -12,6 +12,14 @@ from app.agent_runtime.browser_use_backend import BrowserUseBackend
 
 class FakeBrowserUseDiagnosticsBackend(BrowserUseBackend):
     async def _start_async(self) -> BrowserPageState:
+        self._log(
+            "browser_use.session.creating",
+            cdp_attached=True,
+            cdp_endpoint_exposed=False,
+            profile_path_exposed=False,
+            has_user_data_dir=False,
+        )
+        self._log("browser_use.session.started", session_id="fake-session")
         return self._with_backend_page_info(
             BrowserPageState(
                 url="https://example.com/?access_token=start-secret",
