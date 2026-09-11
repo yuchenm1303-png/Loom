@@ -9,6 +9,7 @@ import { SettingsPage } from "./components/SettingsPage";
 import { Sidebar } from "./components/Sidebar";
 import { ThreadHeader } from "./components/ThreadHeader";
 import { Transcript } from "./components/Transcript";
+import { TranscriptScrollController } from "./components/TranscriptScrollController";
 import "./components/inline-thinking.css";
 import "./components/sidebar-codex-polish.css";
 import "./components/shortcut-runtime.css";
@@ -53,7 +54,8 @@ export default function App() {
   const [shortcuts, setShortcuts] = useState<ShortcutSettings>(() => readShortcutSettings());
   const [dismissedApprovalIds, setDismissedApprovalIds] = useState<Set<string>>(() => new Set());
   const thread = loom.active?.thread;
-  const running = loom.turnActive || thread?.status === "running" || thread?.status === "waiting_approval";
+  const runtimeTurnRunning = thread?.status === "running" || thread?.status === "waiting_approval";
+  const running = loom.turnActive || runtimeTurnRunning;
   const archived = Boolean(thread?.archived);
   const conversationDisabled = !thread || loom.connection !== "ready" || running || archived;
   const threadTitle = thread?.title || (loom.connection === "connecting" ? t("app.startingLoom") : t("app.newConversation"));
@@ -167,6 +169,16 @@ export default function App() {
     if (isResolvedApproval(item)) return false;
     return !dismissedApprovalIds.has(item.id);
   });
+  // turnActive is optimistic so the composer locks immediately after Send. It
+  // must not decide which transcript turn is live: before turn/started arrives
+  // currentTurnId can still point at the previous completed turn, which used to
+  // make that whole turn reflow and visibly jump. Only server-confirmed runtime
+  // state may mark an existing transcript turn active.
+  const transcriptRunning = Boolean(
+    runtimeTurnRunning
+    && thread?.currentTurnId
+    && transcriptItems.some((item) => item.turnId === thread.currentTurnId),
+  );
 
   async function handleApproval(item: TranscriptItem, approved: boolean): Promise<void> {
     setDismissedApprovalIds((current) => {
@@ -305,11 +317,17 @@ export default function App() {
           {running ? <RunProgress {...progressProps} placement="top" /> : null}
           <Transcript
             items={transcriptItems}
-            running={running}
+            running={transcriptRunning}
             currentTurnId={thread?.currentTurnId}
             promptDisabled={conversationDisabled}
             onPrompt={(prompt) => void loom.send(prompt)}
             onApproval={handleApproval}
+          />
+          <TranscriptScrollController
+            items={transcriptItems}
+            threadId={thread?.id}
+            currentTurnId={thread?.currentTurnId}
+            running={running}
           />
         </div>
 
