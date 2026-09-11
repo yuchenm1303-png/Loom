@@ -4,7 +4,7 @@ from __future__ import annotations
 import re
 
 from app.ai import AIMessage, ChatRequest, MessageRole, ModelResponse, ModelUsage, ToolChoice
-from app.ai.errors import AIEmptyResponseError, AITransportError
+from app.ai.errors import AIEmptyResponseError, AIResponseError, AITransportError
 from app.ai.execution_control import ModelCancelled
 
 from .contracts import AgentEventKind as Event
@@ -21,8 +21,9 @@ _COMPLETE_FINISH_REASONS = {"", "stop", "tool_calls", "function_call", "complete
 _COMPLETE_THINK_BLOCK_RE = re.compile(r"<think>.*?</think>", re.IGNORECASE | re.DOTALL)
 _DANGLING_TERMINAL_RE = re.compile(r"(?:\[|\{|<tool_call>|```(?:json)?)\s*$", re.IGNORECASE)
 _TERMINAL_RECOVERY_INSTRUCTION = (
-    "Your previous response was rejected because it declared completion but was empty, ended with an incomplete "
-    "serialized structure, or contained reasoning without a user-visible answer. Continue the same task now. "
+    "Your previous response was rejected because it was empty, malformed (including invalid native tool-call "
+    "arguments), ended with an incomplete serialized structure, or contained reasoning without a user-visible "
+    "answer. Continue the same task now. "
     "If an available tool is needed, emit a native structured tool call through the tool-calling protocol; "
     "do not print JSON, '[' or a tool-call prefix in assistant text. Otherwise return a complete final answer."
 )
@@ -121,6 +122,31 @@ class TurnRunner:
                                 "model repeatedly completed without public text or tool calls"
                             ) from exc
                         recovery_instruction = "empty_response"
+                        continue
+                    except AIResponseError as exc:
+                        # Provider response-shape failures happen before a model
+                        # response is committed and before any tool can execute,
+                        # so retrying is side-effect safe.  Treat the whole
+                        # response-error family consistently instead of allowing
+                        # each new malformed provider shape to kill the turn.
+                        session.model_steps += 1
+                        rt._record(session, Event.MODEL_RESPONSE_REJECTED, data={
+                            "step_id": step.step_id,
+                            "reason": "invalid_provider_response",
+                            "error_type": type(exc).__name__,
+                            "error": str(exc),
+                            "attempt": attempt,
+                            "usage": {
+                                "input_tokens": 0,
+                                "output_tokens": 0,
+                                "total_tokens": 0,
+                            },
+                        })
+                        if attempt >= rt.limits.model_retries:
+                            raise RuntimeError(
+                                f"model repeatedly returned malformed responses: {exc}"
+                            ) from exc
+                        recovery_instruction = "invalid_provider_response"
                         continue
                     except AITransportError:
                         if attempt >= rt.limits.model_retries:

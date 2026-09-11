@@ -154,6 +154,41 @@ def test_repeated_empty_completed_response_fails_diagnostically(tmp_path):
     runtime.close()
 
 
+@pytest.mark.parametrize("message", [
+    "tool call 'exec' arguments must be a JSON object",
+    "tool call 'exec' returned invalid JSON arguments",
+    "streamed tool call is missing id or function name",
+])
+def test_malformed_provider_response_is_retried_as_one_error_family(tmp_path, message):
+    from app.ai.errors import AIResponseError
+
+    class MalformedThenComplete:
+        def __init__(self):
+            self.requests = []
+
+        def execute_chat(self, profile, request):
+            self.requests.append(request)
+            if len(self.requests) == 1:
+                raise AIResponseError(message)
+            return ModelResponse(text="recovered", finish_reason="stop")
+
+    platform = MalformedThenComplete()
+    runtime = make_runtime(tmp_path, platform)
+    session = runtime.create_session("agent.fast")
+
+    result = runtime.start_turn(session.session_id, "continue")
+
+    assert result.status is AgentStatus.COMPLETED
+    assert result.final_text == "recovered"
+    assert platform.requests[-1].messages[-1].name == "loom_terminal_recovery"
+    rejected = [e for e in runtime.store.events(session.session_id)
+                if e.kind.value == "model_response_rejected"]
+    assert rejected[-1].data["reason"] == "invalid_provider_response"
+    assert rejected[-1].data["error"] == message
+    assert not any(message in str(m.content) for m in runtime.store.load(session.session_id).messages)
+    runtime.close()
+
+
 def test_cancel_returns_turn_without_waiting_for_blocked_model(tmp_path):
     entered, release = threading.Event(), threading.Event()
     class Blocked:
