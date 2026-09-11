@@ -18,22 +18,13 @@
   will-change: transform, opacity;
 }
 
-/* The live group is forced open by the runtime. Avoid carrying an unnecessary
-   grid-row transition while new children are appended; it can make the browser
-   repeatedly reconsider the height of the whole group. Manual expand/collapse
-   on settled history keeps the original transition. */
-.turn-process.is-live .task-flow-group-grid,
-.turn-process.is-live .task-flow-inline-detail-grid:not(.open) {
-  transition-property: opacity;
-}
-
 .turn-process.is-live .task-flow-list {
   contain: layout paint;
 }
 
-/* Relational status styling already animates the pseudo layer with transform.
-   Dropping the tiny blur avoids an extra filtered paint surface every time a
-   running row is created or updated. */
+/* The status shimmer already moves with transform. A filtered pseudo-element
+   creates a separate paint surface for every running command, so keep it on the
+   compositor without the tiny blur. */
 .task-flow-row::after {
   filter: none !important;
 }
