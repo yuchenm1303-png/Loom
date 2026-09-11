@@ -30,6 +30,15 @@ _PROTOCOL_STDOUT = sys.stdout
 _EMIT_LOCK = asyncio.Lock()
 _ACTIVE_CONTROLLER: "TaskController | None" = None
 _PATCHED = False
+_SENSITIVE_PARAMETER_KEYS = {
+    "content",
+    "instruction",
+    "message",
+    "prompt",
+    "request",
+    "text",
+    "value_text",
+}
 
 
 def _json_default(value: Any) -> Any:
@@ -58,33 +67,58 @@ def _safe_mapping(value: Any) -> dict[str, Any]:
     return {}
 
 
+def _text_length(value: Any) -> int:
+    if isinstance(value, str):
+        return len(value)
+    try:
+        return len(json.dumps(value, ensure_ascii=False, default=_json_default))
+    except Exception:
+        return len(str(value or ""))
+
+
+def _safe_parameter_value(tool_name: str, key: str, value: Any) -> tuple[Any, int | None]:
+    lower_key = str(key or "").casefold()
+    lower_name = str(tool_name or "").casefold()
+    if lower_key in _SENSITIVE_PARAMETER_KEYS:
+        return "[TRANSIENT_TEXT]", _text_length(value)
+    if lower_key in {"keys", "clipboard", "clipboard_text"} and any(
+        token in lower_name for token in ("type", "text", "keyboard", "clipboard")
+    ):
+        return "[TRANSIENT_KEYS]", _text_length(value)
+    if isinstance(value, dict):
+        return _safe_parameters(tool_name, value), None
+    if isinstance(value, (list, tuple)):
+        scrubbed: list[Any] = []
+        for item in value:
+            if isinstance(item, dict):
+                scrubbed.append(_safe_parameters(tool_name, item))
+            else:
+                scrubbed.append(item)
+        return scrubbed, None
+    return value, None
+
+
 def _safe_parameters(tool_name: str, parameters: Any) -> dict[str, Any]:
     values = _safe_mapping(parameters)
-    lower_name = str(tool_name or "").casefold()
-    for key in tuple(values):
-        lower_key = str(key).casefold()
-        if lower_key in {"text", "content", "prompt", "instruction", "request"}:
-            raw = str(values.get(key) or "")
-            values[key] = "[TRANSIENT_TEXT]"
-            values[f"{key}_length"] = len(raw)
-        elif lower_key in {"keys"} and any(token in lower_name for token in ("type", "text", "keyboard")):
-            raw = values.get(key)
-            text = raw if isinstance(raw, str) else json.dumps(raw, ensure_ascii=False, default=_json_default)
-            values[key] = "[TRANSIENT_KEYS]"
-            values[f"{key}_length"] = len(text)
-    return values
+    safe: dict[str, Any] = {}
+    for key, value in values.items():
+        scrubbed, length = _safe_parameter_value(tool_name, str(key), value)
+        safe[str(key)] = scrubbed
+        if length is not None:
+            safe[f"{key}_length"] = length
+    return safe
 
 
 def _result_status(value: Any) -> dict[str, Any]:
     if value is None:
-        return {"status": "unknown", "ok": False}
+        return {"status": "unknown", "ok": False, "has_error": False}
     status = getattr(value, "status", None)
     error = getattr(value, "error", None)
     status_text = str(getattr(status, "value", status) or "")
     return {
         "status": status_text or "unknown",
         "ok": status_text.casefold() in {"success", "completed", "ok"},
-        "error": str(error or "")[:500],
+        "has_error": bool(error),
     }
 
 
@@ -96,7 +130,7 @@ def _extract_result_payload(value: Any) -> Any:
             try:
                 return json.loads(stripped)
             except Exception:
-                return raw
+                return None
     return raw
 
 
@@ -352,7 +386,7 @@ async def _run_task(root: Path, request: dict[str, Any], controller: TaskControl
     stop_when = str(request.get("stop_when") or "").strip()
     max_steps_raw = request.get("max_steps")
     if not task:
-        await emit({"type": "error", "request_id": request_id, "task_id": task_id, "error": "task must not be empty"})
+        await emit({"type": "error", "request_id": request_id, "task_id": task_id, "error_type": "InvalidTask"})
         return
 
     task_name = f"loom_{task_id.replace('-', '')[:20]}"
@@ -414,7 +448,7 @@ async def _run_task(root: Path, request: dict[str, Any], controller: TaskControl
         )
     except asyncio.CancelledError:
         controller.cancelled = True
-        await controller.event("task.cancelled", {"reason": controller.cancel_reason or "cancelled"})
+        await controller.event("task.cancelled", {"reason": "cancelled"})
         await emit(
             {
                 "type": "result",
@@ -427,8 +461,13 @@ async def _run_task(root: Path, request: dict[str, Any], controller: TaskControl
             }
         )
     except Exception as exc:
-        traceback.print_exc(file=sys.stderr)
-        await controller.event("task.failed", {"error_type": type(exc).__name__, "error": str(exc)[:1000]})
+        # UFO/provider exceptions may echo prompts or typed text. Keep frame-level
+        # debugging on stderr, but never emit exception messages across the NDJSON
+        # boundary or into Loom's durable driver trace.
+        traceback.print_tb(exc.__traceback__, file=sys.stderr)
+        print(f"{type(exc).__name__}: [REDACTED_EXCEPTION_MESSAGE]", file=sys.stderr)
+        error_type = type(exc).__name__
+        await controller.event("task.failed", {"error_type": error_type})
         await emit(
             {
                 "type": "result",
@@ -436,8 +475,8 @@ async def _run_task(root: Path, request: dict[str, Any], controller: TaskControl
                 "task_id": task_id,
                 "status": "failed",
                 "ok": False,
-                "summary": f"UFO desktop task failed: {type(exc).__name__}",
-                "data": {"engine": "ufo2", "error": str(exc)[:1000], "event_count": controller.sequence},
+                "summary": f"UFO desktop task failed: {error_type}",
+                "data": {"engine": "ufo2", "error_type": error_type, "event_count": controller.sequence},
             }
         )
     finally:
@@ -478,11 +517,11 @@ async def main_async(root: Path) -> int:
             return 0
         try:
             message = json.loads(line)
-        except Exception as exc:
-            await emit({"type": "error", "request_id": "", "error": f"invalid JSON: {exc}"})
+        except Exception:
+            await emit({"type": "error", "request_id": "", "error_type": "InvalidJSON"})
             continue
         if not isinstance(message, dict):
-            await emit({"type": "error", "request_id": "", "error": "command must be an object"})
+            await emit({"type": "error", "request_id": "", "error_type": "InvalidCommand"})
             continue
 
         command = str(message.get("command") or "").strip().casefold()
@@ -510,7 +549,7 @@ async def main_async(root: Path) -> int:
             return 0
         if command == "run_task":
             if active is not None and not active.done():
-                await emit({"type": "error", "request_id": request_id, "error": "another desktop task is already running"})
+                await emit({"type": "error", "request_id": request_id, "error_type": "TaskAlreadyRunning"})
                 continue
             task_id = str(message.get("task_id") or uuid.uuid4())
             controller = TaskController(request_id, task_id)
@@ -542,7 +581,7 @@ async def main_async(root: Path) -> int:
                 await emit({"type": "state", "request_id": request_id, "task_id": controller.task_id, "state": "cancelling", "ok": True})
             continue
 
-        await emit({"type": "error", "request_id": request_id, "error": f"unsupported command: {command}"})
+        await emit({"type": "error", "request_id": request_id, "error_type": "UnsupportedCommand"})
 
 
 def main() -> int:
