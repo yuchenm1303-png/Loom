@@ -207,8 +207,6 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
             "computer_observe": "观察桌面窗口",
             "computer_action": f"执行桌面动作：{computer_action or 'action'}",
             "computer_step": "执行视觉定位步骤",
-            "computer_run_task": "执行桌面自动化任务",
-            "computer_driver_action": f"UFO² 桌面动作：{computer_action or 'action'}",
             "browser_status": "检查 Browser Use 状态",
             "browser_open": "打开浏览器会话",
             "browser_state": "刷新浏览器状态",
@@ -289,35 +287,10 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
         point = self._hud_point(tool_name, args, result)
         phase, title, thought = self._hud_status_for_event(event.kind, source, tool_name)
         bubble_title = self._hud_tool_label(tool_name, args, result)
-        hud_continuous = bool(event.data.get("hud_continuous"))
-        if hud_continuous and event.kind is AgentEventKind.TOOL_COMPLETED:
-            phase = 2
-            title = "Loom 正在继续 Computer Use"
-            thought = "UFO² 已完成当前动作，继续在已锁定的目标应用中执行。"
-        elif hud_continuous and event.kind is AgentEventKind.TOOL_FAILED:
-            phase = 2
-            title = "Loom 正在恢复 Computer Use"
-            thought = "当前动作未成功，UFO² 将根据最新界面继续规划。"
-        elif event.kind is AgentEventKind.TOOL_FAILED:
+        if event.kind is AgentEventKind.TOOL_FAILED:
             error = str(event.data.get("content") or event.data.get("error") or "").strip()
             if error:
                 thought = error[:180]
-
-        terminal = (
-            event.kind
-            in {
-                AgentEventKind.TOOL_COMPLETED,
-                AgentEventKind.TOOL_FAILED,
-                AgentEventKind.TOOL_DENIED,
-            }
-            and not hud_continuous
-        )
-        if source == "browser":
-            action_source = "browser-use + DOM/CDP"
-        elif tool_name == "computer_driver_action":
-            action_source = "Microsoft UFO² + 目标窗口 UIA/视觉坐标"
-        else:
-            action_source = "截图 + UIA + Win32 输入"
 
         payload: dict[str, Any] = {
             "threadId": event.session_id,
@@ -332,8 +305,12 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
             "bubbleTitle": bubble_title,
             "thought": thought,
             "confidence": "已定位" if point is not None else "—",
-            "actionSource": action_source,
-            "terminal": terminal,
+            "actionSource": "browser-use + DOM/CDP" if source == "browser" else "截图 + UIA + Win32 输入",
+            "terminal": event.kind in {
+                AgentEventKind.TOOL_COMPLETED,
+                AgentEventKind.TOOL_FAILED,
+                AgentEventKind.TOOL_DENIED,
+            },
         }
         if point is not None:
             payload["xNorm"], payload["yNorm"] = point
@@ -464,7 +441,7 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
         }
         if reasoning.value not in supported:
             raise ValueError(
-                f"reasoning value {reasoning.value!r} is not supported by model {model!r}"
+                f"reasoning value {reasoning.value!r} is not supported by the current model"
             )
 
         self.runtime.reasoning = reasoning
