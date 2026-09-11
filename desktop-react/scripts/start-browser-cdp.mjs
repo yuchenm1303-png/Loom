@@ -135,6 +135,10 @@ function defaultLogDir() {
   return path.join(REPO_ROOT, ".loom", "logs", "browser-use");
 }
 
+function ensureLogDir(logDir) {
+  fs.mkdirSync(logDir, { recursive: true });
+}
+
 function ensureCdpEndpoint({ dryRun = false } = {}) {
   const configured = envText("LOOM_BROWSER_CDP_URL");
   if (configured) {
@@ -236,6 +240,7 @@ if (args.includes("--help") || args.includes("-h")) {
 }
 
 try {
+  ensureLogDir(logDir);
   const info = ensureCdpEndpoint({ dryRun });
   const env = {
     ...process.env,
