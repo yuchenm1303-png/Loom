@@ -34,10 +34,12 @@ interface SidebarProps {
   projects: ProjectRecord[];
   projectsSupported: boolean;
   activeId?: string;
+  activeProjectId?: string;
   threadView: ThreadView;
   archivedCount: number;
   onOpen(threadId: string): Promise<void> | void;
   onNew(workspace?: string, projectId?: string): Promise<void> | void;
+  onOpenProject(projectId: string): Promise<void> | void;
   onAddProject(root: string): Promise<ProjectRecord | void>;
   onRenameProject(projectId: string, name: string): Promise<void>;
   onRemoveProject(projectId: string): Promise<void>;
@@ -137,7 +139,11 @@ async function writeClipboard(value: string): Promise<void> {
 }
 
 function errorText(cause: unknown): string {
-  return cause instanceof Error ? cause.message : String(cause);
+  const text = cause instanceof Error ? cause.message : String(cause);
+  if (text.includes("cannot move a running thread between projects")) {
+    return "当前任务运行中，结束后才能移动这个对话到项目。";
+  }
+  return text;
 }
 
 function sortThreads(rows: ThreadRecord[], pinnedIds: Set<string>): ThreadRecord[] {
@@ -162,10 +168,12 @@ function threadBelongsToProject(thread: ThreadRecord, projectIds: Set<string>): 
 export function Sidebar({
   threads,
   activeId,
+  activeProjectId,
   threadView,
   archivedCount,
   onOpen,
   onNew,
+  onOpenProject,
   projects,
   projectsSupported,
   onAddProject,
@@ -220,7 +228,7 @@ export function Sidebar({
       })
       .filter(({ project, threads: rows }) => {
         if (!needle) return true;
-        return project.name.toLowerCase().includes(needle) || project.root.toLowerCase().includes(needle) || rows.length > 0;
+        return project.name.toLowerCase().includes(needle) || (project.root || "").toLowerCase().includes(needle) || rows.length > 0;
       });
   }, [filtered, pinnedIds, projects, query]);
 
@@ -229,7 +237,7 @@ export function Sidebar({
   ), [filtered, pinnedIds, projectIds]);
 
   const legacyWorkspaceGroups = useMemo(() => {
-    if (projectsSupported) return [];
+    if (projectsSupported && threadView !== "archived") return [];
     const byWorkspace = new Map<string, { key: string; label: string; workspace: string; threads: ThreadRecord[] }>();
     for (const thread of filtered) {
       const normalized = normalizeWorkspace(thread.workspace);
@@ -248,7 +256,7 @@ export function Sidebar({
         : group.label,
       threads: sortThreads(group.threads, pinnedIds),
     }));
-  }, [filtered, pinnedIds, projectsSupported]);
+  }, [filtered, pinnedIds, projectsSupported, threadView]);
 
   const focusSearch = () => {
     setSearchOpen(true);
@@ -291,11 +299,11 @@ export function Sidebar({
   }, [projectIds]);
 
   useEffect(() => {
-    const activeProjectId = (activeThread?.projectId || "").trim();
-    if (!activeProjectId || !collapsedProjectIds.has(activeProjectId)) return;
+    const activeProjectIdFromThread = (activeThread?.projectId || "").trim();
+    if (!activeProjectIdFromThread || !collapsedProjectIds.has(activeProjectIdFromThread)) return;
     setCollapsedProjectIds((current) => {
       const next = new Set(current);
-      next.delete(activeProjectId);
+      next.delete(activeProjectIdFromThread);
       persistIds(COLLAPSED_PROJECTS_STORAGE_KEY, next);
       return next;
     });
@@ -386,6 +394,12 @@ export function Sidebar({
   );
 
   const moveThreadProject = (thread: ThreadRecord, projectId: string) => {
+    if (threadIsBusy(thread)) {
+      setContextMenu(null);
+      setProjectExpanded(false);
+      setNotice({ kind: "error", text: "当前任务运行中，结束后才能移动这个对话到项目。" });
+      return Promise.resolve();
+    }
     const currentProjectId = (thread.projectId || "").trim();
     if (projectId === currentProjectId) {
       setContextMenu(null);
@@ -657,9 +671,10 @@ export function Sidebar({
         <div className="project-list">
           {projectSections.map(({ project, threads: projectThreads }) => {
             const collapsed = collapsedProjectIds.has(project.id);
+            const selected = activeProjectId === project.id;
             const visibleCount = projectThreads.length || project.threadCount || 0;
             return (
-              <section className={`project-group ${collapsed ? "is-collapsed" : ""}`} key={project.id}>
+              <section className={`project-group ${collapsed ? "is-collapsed" : ""} ${selected ? "is-selected" : ""}`} key={project.id}>
                 <div className="project-group-row">
                   {renamingProjectId === project.id ? (
                     <input
@@ -679,18 +694,29 @@ export function Sidebar({
                       }}
                     />
                   ) : (
-                    <button
-                      type="button"
-                      className="project-group-main"
-                      onClick={() => toggleProjectCollapsed(project.id)}
-                      title={`${collapsed ? "展开" : "折叠"} ${project.name} · ${project.root}`}
-                      aria-expanded={!collapsed}
-                    >
-                      <ChevronRight className="project-disclosure-chevron" size={14} strokeWidth={1.9} aria-hidden="true" />
-                      <Folder size={15} strokeWidth={1.75} aria-hidden="true" />
-                      <span>{project.name}</span>
-                      {visibleCount ? <small>{visibleCount}</small> : null}
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        className="project-disclosure-button"
+                        onClick={() => toggleProjectCollapsed(project.id)}
+                        title={`${collapsed ? "展开" : "折叠"} ${project.name}`}
+                        aria-label={`${collapsed ? "展开" : "折叠"} ${project.name}`}
+                        aria-expanded={!collapsed}
+                      >
+                        <ChevronRight className="project-disclosure-chevron" size={14} strokeWidth={1.9} aria-hidden="true" />
+                      </button>
+                      <button
+                        type="button"
+                        className="project-group-main"
+                        onClick={() => void onOpenProject(project.id)}
+                        title={`打开项目详情 · ${project.root}`}
+                        aria-current={selected ? "page" : undefined}
+                      >
+                        <Folder size={15} strokeWidth={1.75} aria-hidden="true" />
+                        <span>{project.name}</span>
+                        {visibleCount ? <small>{visibleCount}</small> : null}
+                      </button>
+                    </>
                   )}
 
                   <div className="project-group-actions" aria-label="Project actions">
@@ -901,6 +927,7 @@ export function Sidebar({
                 role="menuitem"
                 className={projectExpanded ? "submenu-open" : ""}
                 disabled={threadIsBusy(menuThread)}
+                title={threadIsBusy(menuThread) ? "当前任务运行中，结束后才能移动这个对话到项目。" : undefined}
                 onClick={() => {
                   setProjectExpanded((current) => !current);
                   setCopyExpanded(false);
