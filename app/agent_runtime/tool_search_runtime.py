@@ -276,6 +276,19 @@ class ToolSearchRuntime(ConfiguredMCPRuntime):
             ),
         )
 
+    def _prepare_model_request(self, session, step, token):
+        messages, extra = super()._prepare_model_request(session, step, token)
+        plan = self.tool_schema_plan(
+            session.session_id,
+            session.current_turn_id,
+            step.step_id,
+        )
+        if plan is None:
+            return messages, extra
+        metadata = dict(extra)
+        metadata["tool_schema_plan"] = plan
+        return messages, metadata
+
     def start_turn(
         self,
         session_id: str,
