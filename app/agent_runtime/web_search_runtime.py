@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from .memory_runtime import MemoryRuntime
+from .memory_semantic import SemanticMemoryRuntime
 from .web_search import WebSearchProvider, web_search_provider_from_env
 from .web_search_tools import web_search_tools
 
 
-class WebSearchRuntime(MemoryRuntime):
+class WebSearchRuntime(SemanticMemoryRuntime):
     """Runtime v2 layer that conditionally exposes credential-backed web search.
 
     Search credentials stay inside the provider object and are never added to
