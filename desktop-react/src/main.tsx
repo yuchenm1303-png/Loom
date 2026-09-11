@@ -12,6 +12,7 @@ import "./components/composer-stability.css";
 import "./typography-scale.css";
 import "./components/model-card-alignment-fix.css";
 import "./components/settings-simple.css";
+import "./components/settings-icon-alignment.css";
 import "./components/computer-use-hud.css";
 
 try {
