@@ -153,8 +153,6 @@ body.loom-panel-resizing * {
   user-select: none !important;
 }
 
-/* Runtime timelines can contain hundreds of rows. Offscreen entries should not
-   be laid out or painted while the inspector is resizing. */
 .runtime-inspector {
   container-type: inline-size;
 }
@@ -164,130 +162,55 @@ body.loom-panel-resizing * {
   contain-intrinsic-size: 52px;
 }
 
-/* Header compaction follows the width of the center conversation column rather
-   than the outer BrowserWindow. This prevents the model/access/review controls
-   from piling up when a side panel opens or gets widened. */
 @container loom-workspace (max-width: 940px) {
-  .thread-meta-chip.permission-chip {
-    display: none;
-  }
-
-  .thread-meta-chip.model-chip {
-    max-width: 128px;
-  }
-
-  .thread-title-line strong {
-    max-width: 38cqw;
-  }
-
-  .workspace-path-button {
-    max-width: 42cqw;
-  }
+  .thread-meta-chip.permission-chip { display: none; }
+  .thread-meta-chip.model-chip { max-width: 128px; }
+  .thread-title-line strong { max-width: 38cqw; }
+  .workspace-path-button { max-width: 42cqw; }
 }
 
 @container loom-workspace (max-width: 800px) {
-  .workspace-full-path {
-    display: none;
-  }
-
-  .workspace-path-button {
-    max-width: 230px;
-  }
-
-  .thread-header.polished-thread-header {
-    gap: 9px;
-    padding-inline: 10px;
-  }
-
-  .thread-header-main {
-    gap: 8px;
-  }
-
-  .thread-review-button {
-    min-width: 32px;
-    width: 32px;
-    padding: 0;
-  }
-
+  .workspace-full-path { display: none; }
+  .workspace-path-button { max-width: 230px; }
+  .thread-header.polished-thread-header { gap: 9px; padding-inline: 10px; }
+  .thread-header-main { gap: 8px; }
+  .thread-review-button { min-width: 32px; width: 32px; padding: 0; }
   .thread-review-label,
-  .thread-review-count {
-    display: none;
-  }
+  .thread-review-count { display: none; }
 }
 
 @container loom-workspace (max-width: 680px) {
-  .thread-header-meta {
-    display: none;
-  }
-
-  .thread-status-chip {
-    width: 27px;
-    padding: 0;
-    justify-content: center;
-  }
-
-  .thread-status-label {
-    display: none;
-  }
-
-  .thread-header-divider {
-    margin-inline: 0;
-  }
-
-  .thread-title-line strong {
-    max-width: 47cqw;
-  }
-
-  .thread-header-mark {
-    width: 30px;
-    height: 30px;
-  }
+  .thread-header-meta { display: none; }
+  .thread-status-chip { width: 27px; padding: 0; justify-content: center; }
+  .thread-status-label { display: none; }
+  .thread-header-divider { margin-inline: 0; }
+  .thread-title-line strong { max-width: 47cqw; }
+  .thread-header-mark { width: 30px; height: 30px; }
 }
 
 @container loom-workspace (max-width: 560px) {
   .thread-header-mark,
   .thread-status-chip,
-  .thread-header-divider {
-    display: none;
-  }
-
-  .thread-header-leading {
-    margin-right: -2px;
-  }
-
-  .thread-title-line strong {
-    max-width: 58cqw;
-    font-size: 13.4px;
-  }
-
-  .workspace-path-button {
-    max-width: 50cqw;
-  }
-
-  .polished-thread-header-actions {
-    gap: 2px;
-  }
+  .thread-header-divider { display: none; }
+  .thread-header-leading { margin-right: -2px; }
+  .thread-title-line strong { max-width: 58cqw; font-size: 13.4px; }
+  .workspace-path-button { max-width: 50cqw; }
+  .polished-thread-header-actions { gap: 2px; }
 }
 
 @container (max-width: 330px) {
-  .runtime-tab > span:not(.runtime-tab-count) {
-    display: none;
-  }
-
-  .runtime-tab {
-    gap: 3px;
-    padding-inline: 3px;
-  }
-
-  .runtime-header {
-    padding-inline: 10px;
-  }
+  .runtime-tab > span:not(.runtime-tab-count) { display: none; }
+  .runtime-tab { gap: 3px; padding-inline: 3px; }
+  .runtime-header { padding-inline: 10px; }
 }
 
 html[data-loom-reduced-motion="true"] .app-shell.workspace-panels,
 html[data-loom-reduced-motion="true"] .workspace-panels > .sidebar,
 html[data-loom-reduced-motion="true"] .workspace-panels > .inspector,
-html[data-loom-reduced-motion="true"] .workspace-panel-resizer,
+html[data-loom-reduced-motion="true"] .workspace-panel-resizer {
+  transition-duration: .001ms !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .app-shell.workspace-panels,
   .workspace-panels > .sidebar,
