@@ -14,6 +14,7 @@ import "./components/model-card-alignment-fix.css";
 import "./components/settings-simple.css";
 import "./components/settings-icon-alignment.css";
 import "./components/computer-use-hud.css";
+import "./components/inspector-tabs.css";
 
 try {
   const desktop = JSON.parse(window.localStorage.getItem("loom.settings.desktop.v2") || "{}");
