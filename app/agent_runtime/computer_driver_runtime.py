@@ -9,10 +9,15 @@ from .computer_driver import ComputerDriverEvent, ComputerTaskDriver
 from .computer_runtime import ComputerUseRuntime
 from .computer_ufo_driver import UfoWindowsDriver
 from .contracts import AgentEventKind, ToolEffect
-from .tools import AgentTool, ToolContext, ToolRegistry, ToolResult
+from .tools import AgentTool, ToolContext, ToolExposure, ToolRegistry, ToolResult
 
 
 _DRIVER_MODES = {"auto", "ufo", "legacy"}
+_LOW_LEVEL_COMPUTER_TOOLS = {
+    "computer_observe",
+    "computer_action",
+    "computer_step",
+}
 _SENSITIVE_DRIVER_KEYS = {
     "content",
     "error",
@@ -55,7 +60,10 @@ def _safe_driver_data(value: Any, *, key: str = "") -> Any:
             return value
         return "[REDACTED_DRIVER_DATA]"
     if isinstance(value, dict):
-        return {str(name): _safe_driver_data(item, key=str(name)) for name, item in value.items()}
+        return {
+            str(name): _safe_driver_data(item, key=str(name))
+            for name, item in value.items()
+        }
     if isinstance(value, (list, tuple)):
         return [_safe_driver_data(item) for item in value]
     if value is None or isinstance(value, (str, bool, int, float)):
@@ -66,12 +74,11 @@ def _safe_driver_data(value: Any, *, key: str = "") -> Any:
 class ComputerDriverRuntime(ComputerUseRuntime):
     """Computer Use runtime that delegates full desktop tasks to a mature driver.
 
-    Legacy Loom observe/action/step tools stay available as low-level fallback and
-    diagnostics. The high-level ``computer_run_task`` boundary is replaced with a
-    provider-neutral driver call. On Windows, ``auto`` prefers the isolated
-    Microsoft UFO² sidecar when it is installed and configured; otherwise the
-    historical Loom runner remains available without silently changing behaviour.
-    ``LOOM_COMPUTER_DRIVER=ufo`` makes UFO strict and disables legacy task fallback.
+    When the mature driver layer is active, normal model-facing desktop work has one
+    canonical entrypoint: ``computer_run_task``. The historical observe/action/step
+    tools stay installed as deferred diagnostics/fallback primitives instead of
+    competing with UFO for every model decision. Explicit ``legacy`` mode preserves
+    the historical direct exposure unchanged.
     """
 
     def __init__(
@@ -85,7 +92,11 @@ class ComputerDriverRuntime(ComputerUseRuntime):
         mode = str(computer_driver_mode or _driver_mode()).strip().casefold()
         self.computer_driver_mode = mode if mode in _DRIVER_MODES else "auto"
         self.computer_driver: ComputerTaskDriver | None = computer_driver
-        if self.computer_driver is None and os.name == "nt" and self.computer_driver_mode != "legacy":
+        if (
+            self.computer_driver is None
+            and os.name == "nt"
+            and self.computer_driver_mode != "legacy"
+        ):
             self.computer_driver = UfoWindowsDriver.from_environment(
                 strict=self.computer_driver_mode == "ufo"
             )
@@ -95,21 +106,13 @@ class ComputerDriverRuntime(ComputerUseRuntime):
         self._sync_driver_model_from_platform()
 
     def _sync_driver_model_from_platform(self) -> None:
-        """Reuse the currently selected Loom vision model without persisting its key.
-
-        Hot model switching constructs a platform with private in-memory connection
-        metadata. UFO runs in a separate process, so copy that connection into the
-        driver's in-memory config and restart an idle sidecar when it changes. Raw
-        credentials are never exposed by status or diagnostics.
-        """
+        """Reuse the current Loom vision connection in the isolated UFO process."""
 
         driver = self.computer_driver
         if not isinstance(driver, UfoWindowsDriver):
             return
         platform = getattr(self, "platform", None)
         metadata = None
-        # Be tolerant of an embedding that already wrapped the platform before
-        # ComputerUseRuntime added its own transient boundary.
         for _ in range(3):
             candidate = getattr(platform, "_loom_model_connection", None)
             if isinstance(candidate, dict):
@@ -138,22 +141,23 @@ class ComputerDriverRuntime(ComputerUseRuntime):
         if updated == driver.config:
             return
         # Model switches are only allowed while Loom has no active turn. Closing an
-        # already-started idle sidecar guarantees UFO's cached LLM services cannot
-        # continue using the previous provider connection.
+        # idle sidecar prevents cached UFO LLM services from retaining old routing.
         driver.close()
         driver.config = updated
 
     def _install_driver_task_tool(self) -> None:
         if self.computer_driver_mode == "legacy" or self.computer_driver is None:
             return
+
         replacement = AgentTool(
             name="computer_run_task",
             description=(
-                "Run a multi-step Windows desktop task through Loom's mature Computer Driver. "
-                "On Windows the preferred driver is Microsoft UFO², which anchors work to a selected "
-                "application window and keeps UIA controls separate from visual coordinate actions. "
-                "Use this for normal multi-step desktop work; low-level computer_observe/action/step "
-                "remain diagnostic or legacy fallback tools."
+                "Run a normal multi-step Windows desktop task through Loom's mature "
+                "Computer Driver. On Windows the preferred engine is Microsoft UFO²: "
+                "it selects and anchors the target application, keeps UIA actions "
+                "separate from visual coordinate actions, and owns the continuous GUI "
+                "agent loop. Prefer this tool for desktop work. Low-level "
+                "computer_observe/action/step are deferred diagnostics only."
             ),
             input_schema={
                 "type": "object",
@@ -167,13 +171,18 @@ class ComputerDriverRuntime(ComputerUseRuntime):
                     "stop_when": {
                         "type": "string",
                         "maxLength": 4000,
-                        "description": "Optional explicit stop condition. Do not include secrets that are not required by the task.",
+                        "description": (
+                            "Optional explicit stop condition. Do not include secrets "
+                            "that are not required by the task."
+                        ),
                     },
                     "max_steps": {
                         "type": "integer",
                         "minimum": 1,
                         "maximum": 100,
-                        "description": "Optional task step ceiling forwarded to the selected driver.",
+                        "description": (
+                            "Optional task step ceiling forwarded to the selected driver."
+                        ),
                     },
                 },
                 "required": ["task"],
@@ -182,15 +191,19 @@ class ComputerDriverRuntime(ComputerUseRuntime):
             handler=self._handle_driver_task,
             effect=ToolEffect.SENSITIVE,
         )
+
         rebuilt: list[AgentTool] = []
-        replaced = False
+        replaced_run_task = False
         for tool in self.tools.all():
             if tool.name == "computer_run_task":
                 rebuilt.append(replacement)
-                replaced = True
-            else:
-                rebuilt.append(tool)
-        if not replaced:
+                replaced_run_task = True
+                continue
+            if tool.name in _LOW_LEVEL_COMPUTER_TOOLS:
+                rebuilt.append(replace(tool, exposure=ToolExposure.DEFERRED))
+                continue
+            rebuilt.append(tool)
+        if not replaced_run_task:
             rebuilt.append(replacement)
         self.tools = ToolRegistry(tuple(rebuilt))
 
@@ -205,7 +218,11 @@ class ComputerDriverRuntime(ComputerUseRuntime):
             return False
         return bool(status.get("ready"))
 
-    def _trace_driver_event(self, context: ToolContext, event: ComputerDriverEvent) -> str:
+    def _trace_driver_event(
+        self,
+        context: ToolContext,
+        event: ComputerDriverEvent,
+    ) -> str:
         diagnostics = getattr(self, "computer_diagnostics", None)
         if diagnostics is None:
             return ""
@@ -215,7 +232,9 @@ class ComputerDriverRuntime(ComputerUseRuntime):
                 context.turn_id,
                 f"driver.{event.kind}",
                 operation_id=event.task_id,
-                driver=str(getattr(self.computer_driver, "name", "computer-driver")),
+                driver=str(
+                    getattr(self.computer_driver, "name", "computer-driver")
+                ),
                 driver_event=event.to_safe_dict(),
             )
         except Exception:
@@ -233,7 +252,11 @@ class ComputerDriverRuntime(ComputerUseRuntime):
             call_id = f"driver:{event.task_id}:{event.sequence}"
             pending[0] = call_id
             action_name = str(data.get("action") or "action")
-            hud = data.get("hud_point") if isinstance(data.get("hud_point"), dict) else {}
+            hud = (
+                data.get("hud_point")
+                if isinstance(data.get("hud_point"), dict)
+                else {}
+            )
             action: dict[str, Any] = {"type": action_name}
             if hud:
                 action["point"] = {
@@ -258,16 +281,15 @@ class ComputerDriverRuntime(ComputerUseRuntime):
             context.emit(AgentEventKind.TOOL_REQUESTED, base)
             context.emit(AgentEventKind.TOOL_STARTED, base)
             return
+
         if kind == "action.completed" and pending[0]:
             call_id = pending[0]
             pending[0] = None
             result = dict(data.get("result") or {})
             ok = bool(result.get("ok"))
-            # Close the nested transcript/Inspector item with the same call id,
-            # but use a non-computer tool identity for the terminal event. The
-            # App Server HUD only subscribes to computer_* tools, so this closes
-            # the event ledger without hiding the task-level HUD between UFO OS
-            # actions. The outer computer_run_task remains the only HUD terminal.
+            # Close the nested transcript/Inspector lifecycle by call id while using
+            # a non-computer terminal identity. HUD subscribes to computer_* only,
+            # so individual UFO actions cannot hide the task-level HUD.
             context.emit(
                 AgentEventKind.TOOL_COMPLETED if ok else AgentEventKind.TOOL_FAILED,
                 {
@@ -278,7 +300,9 @@ class ComputerDriverRuntime(ComputerUseRuntime):
                     "driver": "ufo2-sidecar",
                     "driver_progress": True,
                     "ok": ok,
-                    "content": "driver action completed" if ok else "driver action failed",
+                    "content": (
+                        "driver action completed" if ok else "driver action failed"
+                    ),
                     "data": {
                         "driver": "ufo2-sidecar",
                         "action_name": str(data.get("action") or "action"),
@@ -287,27 +311,48 @@ class ComputerDriverRuntime(ComputerUseRuntime):
                 },
             )
 
-    def _handle_driver_task(self, context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
+    def _handle_driver_task(
+        self,
+        context: ToolContext,
+        arguments: dict[str, Any],
+    ) -> ToolResult:
         self._sync_driver_model_from_platform()
         driver = self.computer_driver
-        driver_status = dict(driver.status()) if driver is not None else {"ready": False, "reason": "driver is disabled"}
+        driver_status = (
+            dict(driver.status())
+            if driver is not None
+            else {"ready": False, "reason": "driver is disabled"}
+        )
 
         if driver is None or not bool(driver_status.get("ready")):
-            if self.computer_driver_mode == "auto" and self._legacy_computer_run_task is not None:
+            if (
+                self.computer_driver_mode == "auto"
+                and self._legacy_computer_run_task is not None
+            ):
+                # Auto mode has one model-facing task tool even before UFO is
+                # installed. Its handler can temporarily use the historical runner,
+                # so the outer model never needs to learn or choose the legacy
+                # observe/action/step plumbing.
                 return self._legacy_computer_run_task.handler(context, arguments)
-            reason = str(driver_status.get("reason") or "Computer Driver is not ready")
+            reason = str(
+                driver_status.get("reason") or "Computer Driver is not ready"
+            )
             return ToolResult(
                 False,
                 reason,
                 {
                     "driver": driver_status,
                     "mode": self.computer_driver_mode,
-                    "setup": "Run `cd desktop-react && npm run setup:ufo`, then restart Loom.",
+                    "setup": (
+                        "Run `cd desktop-react && npm run setup:ufo`, then restart Loom."
+                    ),
                 },
             )
 
         task = self.consume_computer_transient(str(arguments.get("task") or ""))
-        stop_when = self.consume_computer_transient(str(arguments.get("stop_when") or ""))
+        stop_when = self.consume_computer_transient(
+            str(arguments.get("stop_when") or "")
+        )
         max_steps_raw = arguments.get("max_steps")
         max_steps = int(max_steps_raw) if max_steps_raw is not None else None
         recent_events: deque[dict[str, Any]] = deque(maxlen=40)
@@ -340,7 +385,10 @@ class ComputerDriverRuntime(ComputerUseRuntime):
         except Exception as exc:
             return ToolResult(
                 False,
-                f"Computer Driver failed before returning a task result: {type(exc).__name__}",
+                (
+                    "Computer Driver failed before returning a task result: "
+                    f"{type(exc).__name__}"
+                ),
                 {
                     "driver": dict(driver.status()),
                     "mode": self.computer_driver_mode,
@@ -356,7 +404,9 @@ class ComputerDriverRuntime(ComputerUseRuntime):
             "summary": result.summary,
             "data": _safe_driver_data(dict(result.data)),
             "driver": dict(driver.status()),
-            "driver_name": str(getattr(driver, "name", "computer-driver")),
+            "driver_name": str(
+                getattr(driver, "name", "computer-driver")
+            ),
             "mode": self.computer_driver_mode,
             "trace_file": trace_file,
             "recent_events": list(recent_events),
@@ -368,28 +418,49 @@ class ComputerDriverRuntime(ComputerUseRuntime):
         )
         return ToolResult(bool(result.ok), content, payload)
 
-    def computer_status(self, session_id: str | None = None) -> dict[str, object]:
+    def computer_status(
+        self,
+        session_id: str | None = None,
+    ) -> dict[str, object]:
         self._sync_driver_model_from_platform()
         status = dict(super().computer_status(session_id))
         driver = self.computer_driver
         driver_status: dict[str, Any]
         if driver is None:
-            driver_status = {"name": "legacy", "ready": False, "reason": "mature driver disabled"}
+            driver_status = {
+                "name": "legacy",
+                "ready": False,
+                "reason": "mature driver disabled",
+            }
         else:
             try:
                 driver_status = dict(driver.status())
             except Exception as exc:
-                driver_status = {"name": getattr(driver, "name", "computer-driver"), "ready": False, "reason": str(exc)}
+                driver_status = {
+                    "name": getattr(driver, "name", "computer-driver"),
+                    "ready": False,
+                    "reason": str(exc),
+                }
         status["driver_mode"] = self.computer_driver_mode
         status["task_driver"] = driver_status
         if bool(driver_status.get("ready")):
             task_runner = str(driver_status.get("name") or "computer-driver")
-        elif self._legacy_computer_run_task is not None and self.computer_driver_mode != "ufo":
+        elif (
+            self._legacy_computer_run_task is not None
+            and self.computer_driver_mode != "ufo"
+        ):
             task_runner = "legacy-loom"
         else:
             task_runner = "unavailable"
         status["task_runner"] = task_runner
-        status["legacy_task_runner_available"] = self._legacy_computer_run_task is not None
+        status["legacy_task_runner_available"] = (
+            self._legacy_computer_run_task is not None
+        )
+        status["low_level_tools"] = (
+            "direct"
+            if self.computer_driver_mode == "legacy" or self.computer_driver is None
+            else "deferred"
+        )
         if self.computer_driver_mode == "ufo":
             status["enabled"] = bool(driver_status.get("ready"))
         return status
@@ -401,7 +472,10 @@ class ComputerDriverRuntime(ComputerUseRuntime):
         return bool(self.computer_driver and self.computer_driver.resume())
 
     def cancel_computer_driver(self, *, reason: str = "user_requested") -> bool:
-        return bool(self.computer_driver and self.computer_driver.cancel(reason=reason))
+        return bool(
+            self.computer_driver
+            and self.computer_driver.cancel(reason=reason)
+        )
 
     def close(self) -> None:
         driver = self.computer_driver
