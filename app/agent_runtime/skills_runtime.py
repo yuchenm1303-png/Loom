@@ -5,6 +5,7 @@ from typing import Any, Sequence
 
 from app.ai import AIMessage, MessageRole
 from .contracts import ToolEffect
+from .skill_bundle import list_skill_files, read_skill_resource, stage_skill_bundle
 from .skills import SkillDefinition, SkillManager
 from .tool_search_runtime import ToolSearchRuntime
 from .tools import AgentTool, ToolContext, ToolExposure, ToolResult
@@ -34,7 +35,12 @@ class SkillRuntime(ToolSearchRuntime):
             resolved_roots = tuple(Path(item).expanduser() for item in skill_roots)
         self.skill_manager = SkillManager(user_roots=resolved_roots)
 
-        for tool in (self._skill_search_tool(), self._skill_load_tool()):
+        for tool in (
+            self._skill_search_tool(),
+            self._skill_load_tool(),
+            self._skill_resource_tool(),
+            self._skill_stage_tool(),
+        ):
             if self.tools.get(tool.name) is not None:
                 raise ValueError(f"skill runtime conflicts with existing tool: {tool.name}")
             self.tools.register(tool)
@@ -89,6 +95,57 @@ class SkillRuntime(ToolSearchRuntime):
             exposure=ToolExposure.DIRECT,
         )
 
+    def _skill_resource_tool(self) -> AgentTool:
+        return AgentTool(
+            name="skill_read_resource",
+            description=(
+                "Read one UTF-8 text resource bundled with a discovered skill, such as a reference, template, "
+                "configuration example, or script source. Binary assets should be staged instead."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Exact discovered skill name.",
+                    },
+                    "path": {
+                        "type": "string",
+                        "description": "Path relative to the skill directory.",
+                    },
+                },
+                "required": ["name", "path"],
+                "additionalProperties": False,
+            },
+            handler=self._read_skill_resource,
+            effect=ToolEffect.READ_ONLY,
+            exposure=ToolExposure.DIRECT,
+        )
+
+    def _skill_stage_tool(self) -> AgentTool:
+        return AgentTool(
+            name="skill_stage_bundle",
+            description=(
+                "Copy one discovered skill bundle into the current workspace under .loom/skill-runs/<name>. "
+                "Use this before running bundled scripts or consuming binary assets. Staging does not execute code; "
+                "subsequent process/tool calls remain subject to Loom permissions and sandboxing."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Exact discovered skill name.",
+                    }
+                },
+                "required": ["name"],
+                "additionalProperties": False,
+            },
+            handler=self._stage_skill_bundle,
+            effect=ToolEffect.MUTATING,
+            exposure=ToolExposure.DIRECT,
+        )
+
     def _search_skills(self, context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
         context.raise_if_cancelled()
         query = str(arguments.get("query") or "").strip()
@@ -126,23 +183,73 @@ class SkillRuntime(ToolSearchRuntime):
             )
         instructions = self.skill_manager.load(skill)
         body = instructions or "(This skill has no body instructions.)"
+        files = list_skill_files(skill, limit=80)
         active = context.services.get("active_skills")
         if active is not None:
             content = f"Loaded skill {skill.name} ({skill.scope.value}):\n{body}"
             if sum(len(v) for k, v in active.items() if k != skill.name) + len(content) > 32_768:
                 return ToolResult(False, "Active skill context budget exceeded; finish existing workflows before loading another skill.")
             active[skill.name] = content
+        bundle_hint = ""
+        if len(files) > 1 or (files and files[0] != "SKILL.md"):
+            bundle_hint = (
+                "\n\nThis skill has bundled files. Use skill_read_resource for UTF-8 text resources, "
+                "or skill_stage_bundle before using bundled scripts/binary assets. Staging and execution "
+                "remain inside Loom's normal permission and sandbox boundaries."
+            )
         return ToolResult(
             ok=True,
             content=(
                 f"Loaded skill {skill.name!r} from {skill.scope.value} scope. "
                 "Treat the following as reusable workflow instructions; all tool calls still cross Loom permissions.\n\n"
-                f"{body}"
+                f"{body}{bundle_hint}"
             ),
             data={
                 **self._skill_record(skill),
                 "loaded": True,
+                "bundle_files": list(files),
+                "bundle_file_count_returned": len(files),
                 "discovery_error_count": len(snapshot.errors),
+            },
+        )
+
+    def _read_skill_resource(self, context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
+        context.raise_if_cancelled()
+        name = str(arguments.get("name") or "").strip()
+        relative_path = str(arguments.get("path") or "").strip()
+        snapshot = self.skill_manager.discover(context.workspace)
+        skill = snapshot.get(name)
+        if skill is None:
+            return ToolResult(False, f"Skill not found: {name}", data={"name": name, "available": False})
+        text = read_skill_resource(skill, relative_path)
+        return ToolResult(
+            True,
+            text,
+            data={
+                **self._skill_record(skill),
+                "path": relative_path,
+            },
+        )
+
+    def _stage_skill_bundle(self, context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
+        context.raise_if_cancelled()
+        name = str(arguments.get("name") or "").strip()
+        snapshot = self.skill_manager.discover(context.workspace)
+        skill = snapshot.get(name)
+        if skill is None:
+            return ToolResult(False, f"Skill not found: {name}", data={"name": name, "available": False})
+        staged = stage_skill_bundle(skill, context.workspace)
+        try:
+            display_path = staged.relative_to(context.workspace).as_posix()
+        except ValueError:
+            display_path = str(staged)
+        return ToolResult(
+            True,
+            f"Staged skill {skill.name!r} at {display_path}. Bundled code has not been executed.",
+            data={
+                **self._skill_record(skill),
+                "staged": True,
+                "workspace_path": display_path,
             },
         )
 
@@ -150,9 +257,11 @@ class SkillRuntime(ToolSearchRuntime):
         messages = super()._request_context_messages(session, step, envelope)
         if not session.active_skills:
             return messages
-        content = ("Previously loaded skill snapshots, retained across compaction and resume. "
+        content = (
+            "Previously loaded skill snapshots, retained across compaction and resume. "
             "They guide this workflow and do not override current user instructions or runtime permissions.\n\n"
-            + "\n\n".join(session.active_skills.values()))
+            + "\n\n".join(session.active_skills.values())
+        )
         return (*messages, AIMessage(role=MessageRole.SYSTEM, name="loom_active_skills", content=content))
 
     @staticmethod

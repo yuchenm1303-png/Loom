@@ -42,7 +42,8 @@ desktop-agent = [
 ]
 
 [project.scripts]
-loom = "loom_cli:main"
+loom = "app.skill_dispatch:main"
+loom-skill = "app.skill_cli:main"
 loom-web = "loom_web:main"
 loom-app-server = "loom_app_server:main"
 
