@@ -59,7 +59,7 @@ class FakeExtensionBridge:
             "title": "Example",
             "dom": "[0] <button> text=\"Continue\"",
             "tabs": [{"tab_id": "7", "url": "https://example.com/", "title": "Example"}],
-            "page_info": {"element_count": 1},
+            "page_info": {"element_count": 1, "tab_id": "7"},
         }
 
 
@@ -78,7 +78,8 @@ def test_extension_backend_maps_browser_actions_to_bridge_commands():
     assert data.startswith(b"\x89PNG")
 
     assert [action for action, _args in bridge.calls] == ["state", "click", "type_text", "scroll", "screenshot"]
-    assert bridge.calls[2][1] == {"index": 0, "text": "hello", "clear": False}
+    assert bridge.calls[1][1] == {"index": 0, "tab_id": "7"}
+    assert bridge.calls[2][1] == {"index": 0, "text": "hello", "clear": False, "tab_id": "7"}
 
 
 def test_extension_bridge_serves_long_poll_commands_and_results():
