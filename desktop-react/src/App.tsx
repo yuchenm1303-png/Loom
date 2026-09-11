@@ -64,6 +64,11 @@ type ResizeSession = {
   startX: number;
   startWidth: number;
   currentWidth: number;
+  minWidth: number;
+  maxWidth: number;
+  pendingDelta: number;
+  frame: number | null;
+  handle: HTMLDivElement;
 };
 
 function isResolvedApproval(item: TranscriptItem): boolean {
@@ -146,6 +151,7 @@ export default function App() {
   const { t } = useI18n();
   const shellRef = useRef<HTMLDivElement | null>(null);
   const resizeRef = useRef<ResizeSession | null>(null);
+  const resizeReleaseFrameRef = useRef<number | null>(null);
   const [inspectorOpen, setInspectorOpen] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -222,6 +228,9 @@ export default function App() {
   }, []);
 
   useEffect(() => () => {
+    const session = resizeRef.current;
+    if (session?.frame !== null && session?.frame !== undefined) cancelAnimationFrame(session.frame);
+    if (resizeReleaseFrameRef.current !== null) cancelAnimationFrame(resizeReleaseFrameRef.current);
     document.body.classList.remove("loom-panel-resizing");
   }, []);
 
@@ -375,20 +384,12 @@ export default function App() {
     return Math.max(minimum, Math.min(hardMax, viewport - oppositeWidth - MIN_WORKSPACE_WIDTH));
   };
 
-  const writePanelCssWidth = (panel: ResizePanel, value: number) => {
-    shellRef.current?.style.setProperty(
-      panel === "sidebar" ? "--loom-sidebar-panel-size" : "--loom-inspector-panel-size",
-      `${Math.round(value)}px`,
-    );
-  };
-
-  const commitPanelWidth = (panel: ResizePanel, value: number) => {
+  const commitPanelWidth = (panel: ResizePanel, value: number, maximum = panelMaximum(panel)) => {
     const normalized = Math.round(clamp(
       value,
       panel === "sidebar" ? SIDEBAR_MIN : INSPECTOR_MIN,
-      panelMaximum(panel),
+      maximum,
     ));
-    writePanelCssWidth(panel, normalized);
     if (panel === "sidebar") {
       setSidebarWidth(normalized);
       persistPanelWidth(SIDEBAR_WIDTH_KEY, normalized);
@@ -408,13 +409,25 @@ export default function App() {
 
   const startResize = (panel: ResizePanel, event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
+    if (resizeReleaseFrameRef.current !== null) {
+      cancelAnimationFrame(resizeReleaseFrameRef.current);
+      resizeReleaseFrameRef.current = null;
+    }
+
     const startWidth = panel === "sidebar" ? sidebarWidth : inspectorWidth;
+    const minWidth = panel === "sidebar" ? SIDEBAR_MIN : INSPECTOR_MIN;
+    const maxWidth = panelMaximum(panel);
     resizeRef.current = {
       panel,
       pointerId: event.pointerId,
       startX: event.clientX,
       startWidth,
       currentWidth: startWidth,
+      minWidth,
+      maxWidth,
+      pendingDelta: 0,
+      frame: null,
+      handle: event.currentTarget,
     };
     event.currentTarget.setPointerCapture(event.pointerId);
     setResizingPanel(panel);
@@ -425,29 +438,55 @@ export default function App() {
   const moveResize = (event: ReactPointerEvent<HTMLDivElement>) => {
     const session = resizeRef.current;
     if (!session || session.pointerId !== event.pointerId) return;
-    const delta = event.clientX - session.startX;
+
+    const pointerDelta = event.clientX - session.startX;
     const requested = session.panel === "sidebar"
-      ? session.startWidth + delta
-      : session.startWidth - delta;
-    const next = clamp(
-      requested,
-      session.panel === "sidebar" ? SIDEBAR_MIN : INSPECTOR_MIN,
-      panelMaximum(session.panel),
-    );
+      ? session.startWidth + pointerDelta
+      : session.startWidth - pointerDelta;
+    const next = clamp(requested, session.minWidth, session.maxWidth);
     session.currentWidth = next;
-    writePanelCssWidth(session.panel, next);
+    session.pendingDelta = session.panel === "sidebar"
+      ? next - session.startWidth
+      : session.startWidth - next;
+
+    if (session.frame === null) {
+      session.frame = requestAnimationFrame(() => {
+        const current = resizeRef.current;
+        if (!current || current !== session) return;
+        current.frame = null;
+        const base = current.panel === "sidebar" ? -50 : 50;
+        current.handle.style.transform = `translateX(calc(${base}% + ${current.pendingDelta}px))`;
+        current.handle.setAttribute("aria-valuenow", String(Math.round(current.currentWidth)));
+      });
+    }
+    event.preventDefault();
   };
 
   const finishResize = (event: ReactPointerEvent<HTMLDivElement>) => {
     const session = resizeRef.current;
     if (!session || session.pointerId !== event.pointerId) return;
     resizeRef.current = null;
+
+    if (session.frame !== null) cancelAnimationFrame(session.frame);
+    session.handle.style.transform = "";
+    session.handle.setAttribute("aria-valuenow", String(Math.round(session.currentWidth)));
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
-    commitPanelWidth(session.panel, session.currentWidth);
-    setResizingPanel(null);
-    document.body.classList.remove("loom-panel-resizing");
+
+    // Keep the shell in its no-transition resizing state while React commits the
+    // final width. The nested rAF guarantees one paint at the settled geometry,
+    // so the expensive transcript reflow happens once instead of animating over
+    // ~240 ms of intermediate grid widths.
+    commitPanelWidth(session.panel, session.currentWidth, session.maxWidth);
+    resizeReleaseFrameRef.current = requestAnimationFrame(() => {
+      resizeReleaseFrameRef.current = requestAnimationFrame(() => {
+        resizeReleaseFrameRef.current = null;
+        setResizingPanel(null);
+        document.body.classList.remove("loom-panel-resizing");
+        window.dispatchEvent(new Event("loom:panel-resize-end"));
+      });
+    });
   };
 
   const resizeWithKeyboard = (panel: ResizePanel, event: ReactKeyboardEvent<HTMLDivElement>) => {
