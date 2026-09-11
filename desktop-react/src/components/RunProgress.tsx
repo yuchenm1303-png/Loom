@@ -17,8 +17,17 @@ function isRunningStatus(status?: string): boolean {
 
 function currentRunItems(items: TranscriptItem[], currentTurnId?: string | null): TranscriptItem[] {
   if (currentTurnId) {
-    const matching = items.filter((item) => item.turnId === currentTurnId);
-    if (matching.length) return matching;
+    let first = -1;
+    let last = -1;
+    for (let index = items.length - 1; index >= 0; index -= 1) {
+      if (String(items[index]?.turnId ?? "") === currentTurnId) {
+        if (last < 0) last = index;
+        first = index;
+      } else if (last >= 0) {
+        break;
+      }
+    }
+    if (first >= 0) return items.slice(first, last + 1);
   }
 
   let lastUserIndex = -1;
@@ -34,21 +43,28 @@ function currentRunItems(items: TranscriptItem[], currentTurnId?: string | null)
 function phaseFor(items: TranscriptItem[], threadStatus?: string): string {
   if (threadStatus === "waiting_approval") return "Waiting for approval…";
 
-  const runningActivity = [...items].reverse().find((item) =>
-    ["tool_call", "process", "file_edit"].includes(item.type) && isRunningStatus(item.status),
-  );
-  if (runningActivity?.type === "process") return "Running command…";
-  if (runningActivity?.type === "file_edit") return "Editing files…";
-  if (runningActivity?.type === "tool_call") return "Running tools…";
+  let latestAssistantHasText = false;
+  let hasFinishedActivity = false;
 
-  const latestAssistant = [...items].reverse().find((item) => item.type === "assistant_message");
-  if (latestAssistant && String(latestAssistant.text ?? "").trim()) return "正在跟进…";
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index];
+    if (["tool_call", "process", "file_edit"].includes(item.type)) {
+      if (isRunningStatus(item.status)) {
+        if (item.type === "process") return "Running command…";
+        if (item.type === "file_edit") return "Editing files…";
+        return "Running tools…";
+      }
+      hasFinishedActivity = true;
+      continue;
+    }
 
-  const hasFinishedActivity = items.some((item) =>
-    ["tool_call", "process", "file_edit"].includes(item.type) && !isRunningStatus(item.status),
-  );
+    if (!latestAssistantHasText && item.type === "assistant_message" && String(item.text ?? "").trim()) {
+      latestAssistantHasText = true;
+    }
+  }
+
+  if (latestAssistantHasText) return "正在跟进…";
   if (hasFinishedActivity) return "Thinking about the results…";
-
   return "Thinking…";
 }
 
