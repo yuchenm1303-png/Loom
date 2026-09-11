@@ -152,6 +152,16 @@ export function useLoom() {
     await refreshProjects();
   }, [refreshProjects]);
 
+  const setProjectInstructions = useCallback(async (projectId: string, instructions: string) => {
+    const result = await requireBridge().call<{ project: ProjectRecord }>("project/set_instructions", {
+      projectId,
+      instructions,
+    });
+    const updated = result.project;
+    setProjects((current) => current.map((project) => (project.id === updated.id ? updated : project)));
+    return updated;
+  }, []);
+
   const removeProject = useCallback(async (projectId: string) => {
     await requireBridge().call("project/remove", { projectId });
     await refreshProjects();
@@ -538,6 +548,7 @@ export function useLoom() {
     refreshProjects,
     createProject,
     renameProject,
+    setProjectInstructions,
     removeProject,
     send,
     interrupt,
@@ -569,6 +580,7 @@ export function useLoom() {
     refreshProjects,
     removeProject,
     renameProject,
+    setProjectInstructions,
     renameThread,
     respondApproval,
     runtime,
