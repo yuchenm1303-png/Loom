@@ -32,32 +32,35 @@ const tabs: Array<{ id: Tab; label: string; icon: IconComponent }> = [
   { id: "terminal", label: "Shell", icon: Terminal },
 ];
 
-const emptyCopy: Record<Tab, { title: string; body: string; chips: string[]; icon: IconComponent }> = {
+const emptyCopy: Record<Tab, { title: string; body: string; chips: string[] }> = {
   activity: {
     title: "Runtime is ready",
     body: "Tool calls, approvals and execution events will appear here as Loom works.",
     chips: ["Tools", "Approvals", "Errors"],
-    icon: Activity,
   },
   computer: {
     title: "No Computer Use trace yet",
     body: "Desktop observations, actions, visual grounding steps, resolved coordinates and trace paths will appear here.",
     chips: ["Observe", "Action", "Verify"],
-    icon: MousePointer2,
   },
   changes: {
     title: "No workspace changes",
     body: "File edits and diffs will collect here without interrupting the conversation.",
     chips: ["Files", "Diffs", "Paths"],
-    icon: FileDiff,
   },
   terminal: {
     title: "Shell is quiet",
     body: "Commands and process output will appear here when Loom uses the terminal.",
     chips: ["Commands", "stdout", "stderr"],
-    icon: Terminal,
   },
 };
+
+const emptyIcons: Array<{ id: Tab; icon: IconComponent }> = [
+  { id: "activity", icon: Activity },
+  { id: "computer", icon: MousePointer2 },
+  { id: "changes", icon: FileDiff },
+  { id: "terminal", icon: Terminal },
+];
 
 function statusOf(item: TranscriptItem): string {
   if (item.type === "error") return "failed";
@@ -144,6 +147,22 @@ function titleOf(item: TranscriptItem): string {
   return item.type.replaceAll("_", " ");
 }
 
+function hasDetail(item: TranscriptItem): boolean {
+  if (isComputerItem(item)) {
+    return Boolean(item.content || item.result !== undefined || item.arguments !== undefined);
+  }
+  if (item.type === "file_edit") return Boolean(item.diff || (item.paths ?? []).length);
+  if (item.type === "process") return Boolean(commandOf(item) || item.stdout || item.stderr);
+  if (item.type === "approval" || item.type === "error") return true;
+  return Boolean(
+    item.content
+    || item.result !== undefined
+    || item.stdout
+    || item.stderr
+    || item.arguments !== undefined,
+  );
+}
+
 function detailOf(item: TranscriptItem): string {
   if (isComputerItem(item)) return computerDetailOf(item);
   if (item.type === "file_edit") return item.diff || (item.paths ?? []).join("\n");
@@ -172,14 +191,22 @@ function iconOf(item: TranscriptItem): IconComponent {
 
 function EmptyState({ tab }: { tab: Tab }) {
   const copy = emptyCopy[tab];
-  const EmptyIcon = copy.icon;
   return (
     <div className="runtime-empty">
       <div className="runtime-empty-visual" aria-hidden="true">
         <span className="runtime-orbit runtime-orbit-one" />
         <span className="runtime-orbit runtime-orbit-two" />
         <span className="runtime-orbit-dot" />
-        <span className="runtime-empty-icon"><EmptyIcon size={20} strokeWidth={1.75} /></span>
+        <span className="runtime-empty-icon">
+          {emptyIcons.map(({ id, icon: Icon }) => (
+            <Icon
+              key={id}
+              className={`runtime-empty-glyph ${tab === id ? "active" : ""}`}
+              size={20}
+              strokeWidth={1.75}
+            />
+          ))}
+        </span>
       </div>
       <strong>{copy.title}</strong>
       <p>{copy.body}</p>
@@ -193,7 +220,8 @@ function EmptyState({ tab }: { tab: Tab }) {
 function RuntimeEvent({ item, expanded, onToggle }: { item: TranscriptItem; expanded: boolean; onToggle(): void }) {
   const Icon = iconOf(item);
   const status = statusOf(item);
-  const detail = detailOf(item);
+  const expandable = hasDetail(item);
+  const detail = expanded && expandable ? detailOf(item) : "";
   const timestamp = timeLabel(item);
   const running = isRunningStatus(status);
   const success = ["completed", "success", "succeeded"].includes(status);
@@ -201,7 +229,7 @@ function RuntimeEvent({ item, expanded, onToggle }: { item: TranscriptItem; expa
 
   return (
     <div className={`runtime-event ${running ? "is-running" : ""} ${failed ? "is-failed" : ""}`}>
-      <button className="runtime-event-main" onClick={onToggle} aria-expanded={expanded} disabled={!detail}>
+      <button className="runtime-event-main" onClick={onToggle} aria-expanded={expanded} disabled={!expandable}>
         <span className="runtime-event-icon" aria-hidden="true">
           {success ? <CheckCircle2 size={15} strokeWidth={1.8} /> : <Icon size={15} strokeWidth={1.8} />}
         </span>
@@ -213,12 +241,12 @@ function RuntimeEvent({ item, expanded, onToggle }: { item: TranscriptItem; expa
             {timestamp ? <><span className="runtime-meta-separator" /> <span>{timestamp}</span></> : null}
           </span>
         </span>
-        {detail ? <ChevronDown size={14} className={`runtime-event-chevron ${expanded ? "open" : ""}`} /> : null}
+        {expandable ? <ChevronDown size={14} className={`runtime-event-chevron ${expanded ? "open" : ""}`} /> : null}
       </button>
-      {detail ? (
+      {expandable ? (
         <div className={`runtime-event-detail ${expanded ? "open" : ""}`}>
           <div className="runtime-event-detail-inner">
-            <pre>{detail}</pre>
+            {expanded ? <pre>{detail}</pre> : null}
           </div>
         </div>
       ) : null}
