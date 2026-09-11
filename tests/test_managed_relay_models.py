@@ -64,7 +64,7 @@ def test_saved_relay_connection_is_promoted_to_managed_credential(tmp_path, monk
     assert managed_secrets[bridge._MANAGED_RELAY_CREDENTIAL_ALIAS] == "relay-secret"
 
 
-def test_managed_profiles_follow_remote_models(tmp_path, monkeypatch):
+def test_managed_profiles_keep_minimax_official_and_relay_separate(tmp_path, monkeypatch):
     store = _store(tmp_path)
 
     monkeypatch.setattr(bridge, "_managed_relay_key", lambda _store, environ=None, repo_root=None: "relay-secret")
@@ -77,21 +77,43 @@ def test_managed_profiles_follow_remote_models(tmp_path, monkeypatch):
     profiles = bridge._managed_profiles(store)
     by_model = {profile["model"]: profile for profile in profiles}
 
+    assert by_model["MiniMax-M3"]["selection"] == bridge.PRIMARY_SELECTION
+    assert by_model["MiniMax-M3"]["baseUrl"] == bridge.MINIMAX_BASE_URL
+    assert by_model["MiniMax-M2.7"]["baseUrl"] == bridge.MINIMAX_BASE_URL
+    assert by_model["MiniMax-M2.5"]["baseUrl"] == bridge.MINIMAX_BASE_URL
     assert by_model["cqu-default"]["selection"] == bridge.CQU_SELECTION
     assert by_model["cqu-default"]["name"] == "CQU-弘深深"
-    assert by_model["MiniMax-M3"]["selection"] == bridge.PRIMARY_SELECTION
+    assert by_model["cqu-default"]["baseUrl"] == bridge.MANAGED_RELAY_BASE_URL
     assert by_model["custom-agent"]["selection"] == "managed:custom-agent"
+    assert by_model["custom-agent"]["baseUrl"] == bridge.MANAGED_RELAY_BASE_URL
 
 
-def test_unprovisioned_managed_profiles_hide_cqu_when_only_legacy_minimax_exists(tmp_path, monkeypatch):
+def test_unprovisioned_profiles_show_official_minimax_models_only(tmp_path, monkeypatch):
     store = _store(tmp_path)
     monkeypatch.setattr(bridge, "_credential_get", lambda _alias: None)
     monkeypatch.setattr(bridge, "_credential_set", lambda _alias, _value: None)
 
     profiles = bridge._managed_profiles(store, {"MINIMAX_API_KEY": "minimax-secret"})
 
-    assert [profile["model"] for profile in profiles] == [bridge.MINIMAX_DEFAULT_MODEL]
-    assert profiles[0]["baseUrl"] == bridge.MINIMAX_BASE_URL
+    assert [profile["model"] for profile in profiles] == list(bridge.MINIMAX_MODEL_IDS)
+    assert all(profile["baseUrl"] == bridge.MINIMAX_BASE_URL for profile in profiles)
+
+
+def test_resolve_minimax_uses_official_key_even_when_relay_exists(tmp_path, monkeypatch):
+    store = _store(tmp_path)
+    reasoning_store = ReasoningConfigStore(tmp_path)
+    selection_store = ModelSelectionStore(tmp_path)
+
+    monkeypatch.setattr(bridge, "_managed_relay_key", lambda _store, environ=None, repo_root=None: "relay-secret")
+    monkeypatch.setattr(bridge, "_primary_minimax_key", lambda environ=None: "minimax-secret")
+
+    resolved = bridge._resolve(store, reasoning_store, selection_store, bridge.PRIMARY_SELECTION)
+
+    assert resolved["name"] == "MiniMax"
+    assert resolved["model"] == bridge.MINIMAX_DEFAULT_MODEL
+    assert resolved["baseUrl"] == bridge.MINIMAX_BASE_URL
+    assert resolved["apiKey"] == "minimax-secret"
+    assert resolved["provider"] == "openai-compatible"
 
 
 def test_resolve_cqu_uses_managed_relay_credential(tmp_path, monkeypatch):
