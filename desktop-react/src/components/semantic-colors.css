@@ -1,40 +1,91 @@
 /* Unified semantic colors ---------------------------------------------------
    Keep Loom's purple product accent, but make success/error/info signals
-   clearer against the dark UI. Loaded late so legacy muted values converge on
-   one shared palette without changing component behavior. */
+   crisp and unmistakable against the dark UI. Loaded late so legacy muted
+   values converge on one shared palette without changing component behavior. */
 
 :root {
-  --success: #55d995;
-  --danger: #ff7182;
-  --warning: #f1ba57;
-  --info: #70a9ff;
+  --success: #35ed91;
+  --danger: #ff526b;
+  --warning: #f7c85d;
+  --info: #73b4ff;
 
-  --semantic-success: #55d995;
-  --semantic-success-text: #7ee7ad;
-  --semantic-success-soft: rgba(85, 217, 149, 0.12);
-  --semantic-success-border: rgba(85, 217, 149, 0.28);
+  --semantic-success: #35ed91;
+  --semantic-success-text: #8affbd;
+  --semantic-success-strong: #21ff87;
+  --semantic-success-soft: rgba(53, 237, 145, 0.14);
+  --semantic-success-fill: rgba(37, 210, 124, 0.18);
+  --semantic-success-border: rgba(53, 237, 145, 0.40);
+  --semantic-success-glow: rgba(53, 237, 145, 0.22);
 
-  --semantic-danger: #ff7182;
-  --semantic-danger-text: #ff92a0;
-  --semantic-danger-soft: rgba(255, 113, 130, 0.11);
-  --semantic-danger-border: rgba(255, 113, 130, 0.27);
+  --semantic-danger: #ff526b;
+  --semantic-danger-text: #ff9aaa;
+  --semantic-danger-strong: #ff405d;
+  --semantic-danger-soft: rgba(255, 82, 107, 0.14);
+  --semantic-danger-fill: rgba(235, 55, 82, 0.19);
+  --semantic-danger-border: rgba(255, 82, 107, 0.40);
+  --semantic-danger-glow: rgba(255, 82, 107, 0.21);
 
-  --semantic-info: #70a9ff;
-  --semantic-info-text: #92beff;
-  --semantic-info-soft: rgba(112, 169, 255, 0.11);
-  --semantic-info-border: rgba(112, 169, 255, 0.26);
+  --semantic-info: #73b4ff;
+  --semantic-info-text: #9ac9ff;
+  --semantic-info-soft: rgba(115, 180, 255, 0.12);
+  --semantic-info-border: rgba(115, 180, 255, 0.30);
 }
 
 /* Diff / file-change counters. */
 .turn-artifacts-stats b,
-.task-flow-plus {
-  color: var(--semantic-success);
+.turn-artifacts-file-strip small b,
+.task-flow-plus,
+.review-additions,
+.review-file-stats b,
+.review-tree-stats b,
+.inline-diff-tool .diff-added {
+  color: var(--semantic-success-strong) !important;
 }
 
 .turn-artifacts-stats i,
+.turn-artifacts-file-strip small i,
 .task-flow-minus,
-.task-flow-group-failed {
-  color: var(--semantic-danger);
+.task-flow-group-failed,
+.review-deletions,
+.review-file-stats em,
+.review-tree-stats em,
+.inline-diff-tool .diff-removed {
+  color: var(--semantic-danger-strong) !important;
+}
+
+/* Full review diff: stronger fills and brighter line furniture. */
+.review-code-row.is-add,
+.inline-diff-row.is-add {
+  background: var(--semantic-success-fill) !important;
+  color: #e5fff0 !important;
+}
+
+.review-code-row.is-delete,
+.inline-diff-row.is-delete {
+  background: var(--semantic-danger-fill) !important;
+  color: #ffe7eb !important;
+}
+
+.review-code-row.is-add .review-line-number,
+.inline-diff-row.is-add .inline-diff-number {
+  color: rgba(92, 247, 160, 0.82) !important;
+}
+
+.review-code-row.is-delete .review-line-number,
+.inline-diff-row.is-delete .inline-diff-number {
+  color: rgba(255, 112, 133, 0.84) !important;
+}
+
+.review-code-row.is-add .review-line-marker,
+.inline-diff-row.is-add .inline-diff-marker {
+  color: var(--semantic-success-strong) !important;
+  text-shadow: 0 0 12px var(--semantic-success-glow);
+}
+
+.review-code-row.is-delete .review-line-marker,
+.inline-diff-row.is-delete .inline-diff-marker {
+  color: var(--semantic-danger-strong) !important;
+  text-shadow: 0 0 12px var(--semantic-danger-glow);
 }
 
 /* Compact activity status dots. */
@@ -43,8 +94,8 @@
 .runtime-status-dot.status-completed,
 .runtime-status-dot.status-success,
 .runtime-status-dot.status-succeeded {
-  background: var(--semantic-success);
-  box-shadow: 0 0 0 3px var(--semantic-success-soft);
+  background: var(--semantic-success-strong) !important;
+  box-shadow: 0 0 0 3px var(--semantic-success-soft), 0 0 10px var(--semantic-success-glow) !important;
 }
 
 .task-flow-status.failed .task-flow-status-dot,
@@ -52,50 +103,65 @@
 .runtime-status-dot.status-failed,
 .runtime-status-dot.status-error,
 .runtime-status-dot.status-denied {
-  background: var(--semantic-danger);
-  box-shadow: 0 0 0 3px var(--semantic-danger-soft);
+  background: var(--semantic-danger-strong) !important;
+  box-shadow: 0 0 0 3px var(--semantic-danger-soft), 0 0 10px var(--semantic-danger-glow) !important;
 }
 
 /* Runtime inspector failure states. */
 .runtime-health.warning {
-  color: var(--semantic-danger-text);
-  border-color: var(--semantic-danger-border);
-  background: var(--semantic-danger-soft);
+  color: var(--semantic-danger-text) !important;
+  border-color: var(--semantic-danger-border) !important;
+  background: var(--semantic-danger-soft) !important;
 }
 
 .runtime-health.warning .runtime-health-dot {
-  background: var(--semantic-danger);
-  box-shadow: 0 0 0 3px var(--semantic-danger-soft);
+  background: var(--semantic-danger-strong) !important;
+  box-shadow: 0 0 0 3px var(--semantic-danger-soft), 0 0 10px var(--semantic-danger-glow) !important;
 }
 
 .runtime-event.is-failed {
-  background: linear-gradient(90deg, var(--semantic-danger-soft), transparent 72%);
+  background: linear-gradient(90deg, rgba(255, 82, 107, .17), transparent 74%) !important;
 }
 
 .runtime-event.is-failed .runtime-event-icon {
-  color: var(--semantic-danger-text);
-  border-color: var(--semantic-danger-border);
-  background: var(--semantic-danger-soft);
+  color: var(--semantic-danger-text) !important;
+  border-color: var(--semantic-danger-border) !important;
+  background: var(--semantic-danger-soft) !important;
+}
+
+/* Chat / turn level failures. */
+.error-row {
+  color: var(--semantic-danger-text) !important;
+  border-color: rgba(255, 82, 107, .24) !important;
+  background: linear-gradient(90deg, rgba(255, 82, 107, .105), rgba(255, 82, 107, .035)) !important;
+}
+
+.error-row .error-icon,
+.error-icon {
+  color: var(--semantic-danger-text) !important;
+  border-color: var(--semantic-danger-border) !important;
+  background: var(--semantic-danger-soft) !important;
 }
 
 /* Settings status surfaces use the same success/error language. */
 .settings-status-pill.ready {
-  color: var(--semantic-success-text);
-  border-color: var(--semantic-success-border);
-  background: var(--semantic-success-soft);
+  color: var(--semantic-success-text) !important;
+  border-color: var(--semantic-success-border) !important;
+  background: var(--semantic-success-soft) !important;
 }
 
 .settings-status-pill.ready .settings-status-dot {
-  color: var(--semantic-success);
+  color: var(--semantic-success-strong) !important;
 }
 
 .settings-toast.success {
-  border-color: var(--semantic-success-border);
+  border-color: var(--semantic-success-border) !important;
+  color: var(--semantic-success-text) !important;
 }
 
 .settings-toast.error {
-  border-color: var(--semantic-danger-border);
-  color: var(--semantic-danger-text);
+  border-color: var(--semantic-danger-border) !important;
+  color: var(--semantic-danger-text) !important;
 }
 
 /* Generic semantic utility hooks for current and future components. */
@@ -103,7 +169,7 @@
 .text-success,
 .diff-added,
 .added {
-  color: var(--semantic-success);
+  color: var(--semantic-success-strong) !important;
 }
 
 .status-danger,
@@ -112,10 +178,10 @@
 .text-error,
 .diff-removed,
 .removed {
-  color: var(--semantic-danger);
+  color: var(--semantic-danger-strong) !important;
 }
 
 .status-info,
 .text-info {
-  color: var(--semantic-info);
+  color: var(--semantic-info) !important;
 }
