@@ -78,8 +78,6 @@ const api = {
 
     const wrapped = (_event: Electron.IpcRendererEvent, payload: LoomNotification) => {
       if (!BATCHED_ITEM_METHODS.has(payload.method)) {
-        // Preserve server ordering: a turn/thread lifecycle event must never
-        // overtake item notifications that arrived immediately before it.
         flush();
         listener(payload);
         return;
@@ -112,7 +110,9 @@ const api = {
     ipcRenderer.on("loom:notification", wrapped);
     return () => {
       ipcRenderer.removeListener("loom:notification", wrapped);
-      flush();
+      if (timer !== null) clearTimeout(timer);
+      timer = null;
+      queue = [];
     };
   },
 };
