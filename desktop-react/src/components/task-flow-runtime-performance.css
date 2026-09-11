@@ -1,0 +1,73 @@
+/* Live task-flow rendering --------------------------------------------------
+   Runtime activity grows one row at a time. Keep that growth cheap: the row
+   already occupies its final layout box, while only opacity/transform animate
+   on the compositor. Historical task flows never replay these entrance effects. */
+
+.turn-process.is-live .entry-activity {
+  animation: loom-task-flow-shell-in 170ms cubic-bezier(.2,.78,.2,1) both;
+  transform-origin: left top;
+}
+
+.turn-process.is-live .task-flow-row-wrap {
+  contain: layout paint style;
+  animation: loom-task-flow-row-in 155ms cubic-bezier(.2,.78,.2,1) both;
+  transform-origin: left center;
+}
+
+.turn-process.is-live .task-flow-row-wrap:nth-last-child(1) {
+  will-change: transform, opacity;
+}
+
+/* The live group is forced open by the runtime. Avoid carrying an unnecessary
+   grid-row transition while new children are appended; it can make the browser
+   repeatedly reconsider the height of the whole group. Manual expand/collapse
+   on settled history keeps the original transition. */
+.turn-process.is-live .task-flow-group-grid,
+.turn-process.is-live .task-flow-inline-detail-grid:not(.open) {
+  transition-property: opacity;
+}
+
+.turn-process.is-live .task-flow-list {
+  contain: layout paint;
+}
+
+/* Relational status styling already animates the pseudo layer with transform.
+   Dropping the tiny blur avoids an extra filtered paint surface every time a
+   running row is created or updated. */
+.task-flow-row::after {
+  filter: none !important;
+}
+
+@keyframes loom-task-flow-shell-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes loom-task-flow-row-in {
+  from {
+    opacity: 0;
+    transform: translate3d(-5px, 2px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+html[data-loom-reduced-motion="true"] .turn-process.is-live .entry-activity,
+html[data-loom-reduced-motion="true"] .turn-process.is-live .task-flow-row-wrap {
+  animation: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .turn-process.is-live .entry-activity,
+  .turn-process.is-live .task-flow-row-wrap {
+    animation: none !important;
+  }
+}
