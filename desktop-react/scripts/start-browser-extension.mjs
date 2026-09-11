@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -20,6 +21,10 @@ function envText(name, fallback = "") {
 
 function npmExecutable() {
   return process.platform === "win32" ? "npm.cmd" : "npm";
+}
+
+function ensureLogDir(logDir) {
+  fs.mkdirSync(logDir, { recursive: true });
 }
 
 function usage() {
@@ -69,6 +74,8 @@ const token = envText("LOOM_BROWSER_EXTENSION_TOKEN", DEFAULT_TOKEN);
 const logDir = envText("LOOM_BROWSER_LOG_DIR", path.join(REPO_ROOT, ".loom", "logs", "browser-use"));
 const extensionDir = path.join(REPO_ROOT, "extensions", "browser-current-tab");
 const bridgeUrl = `http://127.0.0.1:${port}`;
+
+ensureLogDir(logDir);
 
 const env = {
   ...process.env,
