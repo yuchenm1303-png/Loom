@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Mapping
 
 from app.ai import (
     AGENT_FAST_ROLE,
@@ -9,12 +9,13 @@ from app.ai import (
     CredentialResolver,
     ModelBinding,
     ModelCapability,
+    ModelContextLimits,
     ProviderAdapter,
     ProviderConnection,
     ReasoningRequest,
     build_ai_platform,
 )
-from app.ai.model_context import model_context_limits_from_env
+from app.ai.model_context import model_context_limits_from_env, model_context_limits_from_mapping
 from app.ai.reasoning_catalog import reasoning_capability
 from app.agent_runtime.computer_transient import ComputerTransientInputPlatform
 
@@ -66,6 +67,7 @@ def build_runtime_model_platform(
     api_key: str,
     vision: bool = True,
     request_timeout_seconds: float = 120.0,
+    context_limits: ModelContextLimits | Mapping[str, object] | None = None,
 ):
     provider_text = _text(provider).casefold()
     if not provider_text:
@@ -98,13 +100,24 @@ def build_runtime_model_platform(
     capabilities = set(AGENT_FAST_ROLE.required_capabilities)
     if bool(vision):
         capabilities.add(ModelCapability.VISION)
-    context_limits = model_context_limits_from_env()
+
+    env_limits = model_context_limits_from_env()
+    if isinstance(context_limits, ModelContextLimits):
+        resolved_context_limits = context_limits
+    elif isinstance(context_limits, Mapping):
+        resolved_context_limits = model_context_limits_from_mapping(
+            context_limits,
+            fallback=env_limits,
+        )
+    else:
+        resolved_context_limits = env_limits
+
     binding = ModelBinding(
         role_id=AGENT_FAST_ROLE.role_id,
         provider_id=connection.provider_id,
         model=selected_model,
         capabilities=frozenset(capabilities),
-        context_limits=context_limits,
+        context_limits=resolved_context_limits,
     )
     configuration = AIConfiguration.build(
         roles=(AGENT_FAST_ROLE,),
@@ -133,7 +146,7 @@ def build_runtime_model_platform(
             "model": selected_model,
             "api_key": secret,
             "vision": bool(vision),
-            "context_limits": context_limits.as_safe_dict(),
+            "context_limits": resolved_context_limits.as_safe_dict(),
         },
     )
     return wrapped
