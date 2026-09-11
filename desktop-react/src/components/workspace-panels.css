@@ -14,6 +14,8 @@
   --loom-inspector-track: 0px;
 }
 
+/* During pointer resize the grid stays frozen. Only the separator is translated
+   on the compositor. The real track width is committed once on pointer release. */
 .app-shell.workspace-panels.is-resizing {
   transition: none;
 }
@@ -145,12 +147,28 @@
 
 .workspace-panels.is-resizing .workspace-panel-resizer {
   transition: none;
+  will-change: transform;
+}
+
+/* Make the preview line easier to track without touching the expensive panel
+   or transcript layout while the pointer is moving. */
+.workspace-panels.is-resizing .workspace-panel-resizer::before {
+  width: 2px;
+  background: rgba(166,154,255,.86);
+  box-shadow: 0 0 14px rgba(139,124,246,.24);
 }
 
 body.loom-panel-resizing,
 body.loom-panel-resizing * {
   cursor: col-resize !important;
   user-select: none !important;
+}
+
+/* Completed turns can be skipped entirely while they are outside the viewport.
+   This matters for the single final reflow after a resize on very long chats. */
+.workspace-panels .turn-block.is-complete {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 240px;
 }
 
 .runtime-inspector {
