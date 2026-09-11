@@ -1,0 +1,298 @@
+.app-shell.workspace-panels {
+  --loom-sidebar-track: var(--loom-sidebar-panel-size, var(--sidebar-width, 252px));
+  --loom-inspector-track: var(--loom-inspector-panel-size, var(--inspector-width, 316px));
+  position: relative;
+  grid-template-columns: var(--loom-sidebar-track) minmax(0, 1fr) var(--loom-inspector-track);
+  transition: grid-template-columns 240ms cubic-bezier(.2,.78,.2,1);
+}
+
+.app-shell.workspace-panels.sidebar-closed {
+  --loom-sidebar-track: 0px;
+}
+
+.app-shell.workspace-panels.inspector-closed {
+  --loom-inspector-track: 0px;
+}
+
+.app-shell.workspace-panels.is-resizing {
+  transition: none;
+}
+
+.workspace-panels .workspace {
+  min-width: 0;
+  container-type: inline-size;
+  container-name: loom-workspace;
+}
+
+.thread-header-leading {
+  flex: none;
+  display: flex;
+  align-items: center;
+}
+
+.panel-toggle-button {
+  flex: none;
+}
+
+.workspace-panels > .sidebar,
+.workspace-panels > .inspector {
+  min-width: 0;
+  width: 100%;
+  will-change: opacity, transform;
+  transition:
+    opacity 165ms ease,
+    transform 230ms cubic-bezier(.2,.78,.2,1),
+    visibility 0s linear 0s;
+}
+
+.workspace-panels.sidebar-open > .sidebar {
+  opacity: 1;
+  transform: translateX(0);
+  visibility: visible;
+}
+
+.workspace-panels.sidebar-closed > .sidebar {
+  opacity: 0;
+  transform: translateX(-12px);
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity 130ms ease,
+    transform 210ms cubic-bezier(.4,0,.8,.2),
+    visibility 0s linear 220ms;
+}
+
+.workspace-panels.inspector-open > .inspector {
+  opacity: 1;
+  transform: translateX(0);
+  visibility: visible;
+}
+
+.workspace-panels.inspector-closed > .inspector {
+  opacity: 0;
+  transform: translateX(12px);
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity 130ms ease,
+    transform 210ms cubic-bezier(.4,0,.8,.2),
+    visibility 0s linear 220ms;
+}
+
+.workspace-panel-resizer {
+  position: absolute;
+  z-index: 45;
+  top: 0;
+  bottom: 0;
+  width: 9px;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  cursor: col-resize;
+  touch-action: none;
+  opacity: .32;
+  transition:
+    opacity 130ms ease,
+    left 240ms cubic-bezier(.2,.78,.2,1),
+    right 240ms cubic-bezier(.2,.78,.2,1);
+}
+
+.workspace-panel-resizer::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  transform: translateX(-50%);
+  background: rgba(255,255,255,.055);
+  box-shadow: 0 0 0 rgba(139,124,246,0);
+  transition: background 130ms ease, box-shadow 130ms ease;
+}
+
+.workspace-panel-resizer:hover,
+.workspace-panel-resizer:focus-visible,
+.workspace-panels.is-resizing .workspace-panel-resizer {
+  opacity: 1;
+}
+
+.workspace-panel-resizer:hover::before,
+.workspace-panel-resizer:focus-visible::before,
+.workspace-panels.is-resizing .workspace-panel-resizer::before {
+  background: rgba(157,145,247,.62);
+  box-shadow: 0 0 12px rgba(139,124,246,.18);
+}
+
+.workspace-panel-resizer:focus-visible {
+  outline: none;
+}
+
+.workspace-panel-resizer-left {
+  left: var(--loom-sidebar-track);
+  transform: translateX(-50%);
+}
+
+.workspace-panel-resizer-right {
+  right: var(--loom-inspector-track);
+  transform: translateX(50%);
+}
+
+.workspace-panels.sidebar-closed .workspace-panel-resizer-left,
+.workspace-panels.inspector-closed .workspace-panel-resizer-right {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.workspace-panels.is-resizing .workspace-panel-resizer {
+  transition: none;
+}
+
+body.loom-panel-resizing,
+body.loom-panel-resizing * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+
+/* Runtime timelines can contain hundreds of rows. Offscreen entries should not
+   be laid out or painted while the inspector is resizing. */
+.runtime-inspector {
+  container-type: inline-size;
+}
+
+.runtime-event {
+  content-visibility: auto;
+  contain-intrinsic-size: 52px;
+}
+
+/* Header compaction follows the width of the center conversation column rather
+   than the outer BrowserWindow. This prevents the model/access/review controls
+   from piling up when a side panel opens or gets widened. */
+@container loom-workspace (max-width: 940px) {
+  .thread-meta-chip.permission-chip {
+    display: none;
+  }
+
+  .thread-meta-chip.model-chip {
+    max-width: 128px;
+  }
+
+  .thread-title-line strong {
+    max-width: 38cqw;
+  }
+
+  .workspace-path-button {
+    max-width: 42cqw;
+  }
+}
+
+@container loom-workspace (max-width: 800px) {
+  .workspace-full-path {
+    display: none;
+  }
+
+  .workspace-path-button {
+    max-width: 230px;
+  }
+
+  .thread-header.polished-thread-header {
+    gap: 9px;
+    padding-inline: 10px;
+  }
+
+  .thread-header-main {
+    gap: 8px;
+  }
+
+  .thread-review-button {
+    min-width: 32px;
+    width: 32px;
+    padding: 0;
+  }
+
+  .thread-review-label,
+  .thread-review-count {
+    display: none;
+  }
+}
+
+@container loom-workspace (max-width: 680px) {
+  .thread-header-meta {
+    display: none;
+  }
+
+  .thread-status-chip {
+    width: 27px;
+    padding: 0;
+    justify-content: center;
+  }
+
+  .thread-status-label {
+    display: none;
+  }
+
+  .thread-header-divider {
+    margin-inline: 0;
+  }
+
+  .thread-title-line strong {
+    max-width: 47cqw;
+  }
+
+  .thread-header-mark {
+    width: 30px;
+    height: 30px;
+  }
+}
+
+@container loom-workspace (max-width: 560px) {
+  .thread-header-mark,
+  .thread-status-chip,
+  .thread-header-divider {
+    display: none;
+  }
+
+  .thread-header-leading {
+    margin-right: -2px;
+  }
+
+  .thread-title-line strong {
+    max-width: 58cqw;
+    font-size: 13.4px;
+  }
+
+  .workspace-path-button {
+    max-width: 50cqw;
+  }
+
+  .polished-thread-header-actions {
+    gap: 2px;
+  }
+}
+
+@container (max-width: 330px) {
+  .runtime-tab > span:not(.runtime-tab-count) {
+    display: none;
+  }
+
+  .runtime-tab {
+    gap: 3px;
+    padding-inline: 3px;
+  }
+
+  .runtime-header {
+    padding-inline: 10px;
+  }
+}
+
+html[data-loom-reduced-motion="true"] .app-shell.workspace-panels,
+html[data-loom-reduced-motion="true"] .workspace-panels > .sidebar,
+html[data-loom-reduced-motion="true"] .workspace-panels > .inspector,
+html[data-loom-reduced-motion="true"] .workspace-panel-resizer,
+@media (prefers-reduced-motion: reduce) {
+  .app-shell.workspace-panels,
+  .workspace-panels > .sidebar,
+  .workspace-panels > .inspector,
+  .workspace-panel-resizer {
+    transition-duration: .001ms !important;
+  }
+}
