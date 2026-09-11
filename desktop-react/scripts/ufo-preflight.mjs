@@ -8,6 +8,36 @@ const UFO_VERSION = "3.0.8";
 const UFO_COMMIT = "96983c73ed09e884a5f1d7ff8936c953b234b684";
 const PROTOCOL = "loom-ufo-sidecar";
 const PROTOCOL_VERSION = 1;
+const SAFE_ENV_NAMES = [
+  "PATH",
+  "PATHEXT",
+  "SYSTEMROOT",
+  "WINDIR",
+  "COMSPEC",
+  "TEMP",
+  "TMP",
+  "USERPROFILE",
+  "HOMEDRIVE",
+  "HOMEPATH",
+  "APPDATA",
+  "LOCALAPPDATA",
+  "PROGRAMDATA",
+  "PROGRAMFILES",
+  "PROGRAMFILES(X86)",
+  "PROGRAMW6432",
+  "USERNAME",
+  "NUMBER_OF_PROCESSORS",
+  "PROCESSOR_ARCHITECTURE",
+  "PROCESSOR_IDENTIFIER",
+  "LANG",
+  "LC_ALL",
+  "HTTP_PROXY",
+  "HTTPS_PROXY",
+  "NO_PROXY",
+  "REQUESTS_CA_BUNDLE",
+  "SSL_CERT_FILE",
+  "CURL_CA_BUNDLE",
+];
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -44,6 +74,17 @@ function requireFile(target, label) {
   }
 }
 
+function sidecarEnvironment() {
+  const env = {};
+  for (const name of SAFE_ENV_NAMES) {
+    if (process.env[name] !== undefined) env[name] = process.env[name];
+  }
+  env.PYTHONUTF8 = "1";
+  env.PYTHONUNBUFFERED = "1";
+  env.UFO_ENV = "loom";
+  return env;
+}
+
 if (process.platform !== "win32") {
   fail("Microsoft UFO² desktop execution is Windows-only.");
 }
@@ -59,12 +100,7 @@ const result = spawnSync(
   [sidecar, "--ufo-root", sourceRoot],
   {
     cwd: sourceRoot,
-    env: {
-      ...process.env,
-      PYTHONUTF8: "1",
-      PYTHONUNBUFFERED: "1",
-      UFO_ENV: "loom",
-    },
+    env: sidecarEnvironment(),
     input,
     encoding: "utf8",
     stdio: ["pipe", "pipe", "pipe"],
@@ -124,5 +160,6 @@ const envKeyConfigured = Boolean(
 console.log(`[ufo-preflight] OK: ${PROTOCOL} v${PROTOCOL_VERSION}`);
 console.log(`[ufo-preflight] UFO revision: ${String(ready.git_head).slice(0, 12)}`);
 console.log(`[ufo-preflight] Transport: stdio NDJSON; no network listener`);
+console.log(`[ufo-preflight] Preflight child env: OS/network allowlist only; no provider secrets forwarded`);
 console.log(`[ufo-preflight] Model env configured: ${envModelConfigured ? "yes" : "no (Loom can inject the active vision model in memory)"}`);
 console.log(`[ufo-preflight] Provider key env configured: ${envKeyConfigured ? "yes" : "no (Loom can inject the active provider key in memory)"}`);
