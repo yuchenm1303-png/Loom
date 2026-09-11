@@ -150,11 +150,19 @@ export interface StickerPreferences {
 }
 
 export interface LoomAppearanceSettings {
-  scale?: "100" | "110" | "120";
-  density?: "compact" | "comfortable";
+  scale?: "90" | "100" | "110" | "120" | "130";
+  density?: "compact" | "comfortable" | "spacious";
   reducedMotion?: boolean;
+  conversationWidth?: "focused" | "balanced" | "wide";
+  sidebarWidth?: "compact" | "standard" | "wide";
+  inspectorWidth?: "compact" | "standard" | "wide";
+  chatFontSize?: number;
+  messageLineHeight?: "compact" | "comfortable" | "relaxed";
+  ambientEffects?: boolean;
   codeFont?: string;
   codeFontSize?: number;
+  codeLineHeight?: "compact" | "comfortable" | "relaxed";
+  codeWrap?: boolean;
 }
 
 export interface LoomTerminalSettings {
