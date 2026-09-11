@@ -129,6 +129,13 @@ class ProjectMovableLoomAppServerService(ReasoningManagedLoomAppServerService):
         record["projectId"] = self._resolved_project_id(session)
         return record
 
+    def _project_thread_count(self, project_id: str) -> int:
+        count = 0
+        for session in self._list_session_objects():
+            if self._resolved_project_id(session) == project_id:
+                count += 1
+        return count
+
     def project_list(self, params: dict[str, Any]) -> dict[str, Any]:
         sessions = self._list_session_objects()
 
@@ -160,13 +167,26 @@ class ProjectMovableLoomAppServerService(ReasoningManagedLoomAppServerService):
             "unfiledThreadCount": unfiled,
         }
 
+    def project_set_instructions(self, params: dict[str, Any]) -> dict[str, Any]:
+        project_id = self._required_text(params, "projectId")
+        instructions = str(params.get("instructions") or "")
+        try:
+            project = self.projects.set_instructions(project_id, instructions, now=utc_now())
+        except KeyError as exc:
+            raise JsonRpcError(-32004, "project not found") from exc
+        except (ProjectStoreError, ValueError) as exc:
+            raise JsonRpcError(-32031, f"could not save project instructions: {exc}") from exc
+        payload = dict(project.as_dict(), threadCount=self._project_thread_count(project.project_id))
+        self._notify("project/updated", {"project": payload, "reason": "instructions_changed"})
+        return {"project": payload}
+
     def thread_move_project(self, params: dict[str, Any]) -> dict[str, Any]:
         session = self._session_or_rpc_error(params.get("threadId"))
         if self._is_active(session.session_id) or session.status in {
             AgentStatus.RUNNING,
             AgentStatus.WAITING_APPROVAL,
         }:
-            raise JsonRpcError(-32027, "cannot move a running thread between projects")
+            raise JsonRpcError(-32027, "当前任务运行中，结束后才能移动这个对话到项目。")
 
         project_id = str(params.get("projectId") or "").strip()
         target_workspace: str | None = None
@@ -234,6 +254,14 @@ class ProjectMovableLoomRpcController(ReasoningManagedLoomRpcController):
     def _initialize(self, params: dict[str, Any]) -> dict[str, Any]:
         result = super()._initialize(params)
         capabilities = dict(result.get("capabilities") or {})
+        capabilities["projects"] = {
+            "list": True,
+            "create": True,
+            "rename": True,
+            "remove": True,
+            "moveThread": True,
+            "instructions": True,
+        }
         capabilities["memory"] = {
             "status": True,
             "list": True,
@@ -248,6 +276,8 @@ class ProjectMovableLoomRpcController(ReasoningManagedLoomRpcController):
     def _dispatch(self, method: str, params: dict[str, Any]) -> Any:
         if method == "thread/move_project":
             return self.service.thread_move_project(params)
+        if method == "project/set_instructions":
+            return self.service.project_set_instructions(params)
         if method == "memory/status":
             return self.service.memory_status(params)
         if method == "memory/list":
