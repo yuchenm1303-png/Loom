@@ -1,16 +1,52 @@
 """The single model/tool state machine used by both core and extended runtimes."""
 from __future__ import annotations
 
+import re
+
 from app.ai import AIMessage, ChatRequest, MessageRole, ModelResponse, ToolChoice
 from app.ai.errors import AITransportError
 from app.ai.execution_control import ModelCancelled
-from .contracts import AgentEventKind as Event, AgentStatus
+
+from .contracts import AgentEventKind as Event
+from .contracts import AgentStatus
 from .execution_binding import binding_digest
 from .history import repair_tool_history
 
 
 def _exposed_tool_names(step) -> tuple[str, ...]:
     return tuple(sorted(tool.name for tool in step.tool_router.all()))
+
+
+_COMPLETE_FINISH_REASONS = {"", "stop", "tool_calls", "function_call", "completed", "end_turn"}
+_COMPLETE_THINK_BLOCK_RE = re.compile(r"<think>.*?</think>", re.IGNORECASE | re.DOTALL)
+_DANGLING_TERMINAL_RE = re.compile(r"(?:\[|\{|<tool_call>|```(?:json)?)\s*$", re.IGNORECASE)
+_TERMINAL_RECOVERY_INSTRUCTION = (
+    "Your previous response was rejected because it declared completion but ended with an incomplete "
+    "serialized structure or contained reasoning without a user-visible answer. Continue the same task now. "
+    "If an available tool is needed, emit a native structured tool call through the tool-calling protocol; "
+    "do not print JSON, '[' or a tool-call prefix in assistant text. Otherwise return a complete final answer."
+)
+
+
+def _invalid_terminal_response(response: ModelResponse) -> str:
+    """Reject provider 'stop' responses that cannot be valid terminal output.
+
+    OpenAI-compatible relays occasionally terminate while beginning a textual
+    serialization of a tool call. Such text must never become canonical history:
+    it poisons the next turn and makes the model repeat the same fragment.
+    """
+    reason = str(response.finish_reason or "").strip().casefold()
+    if response.tool_calls or reason not in _COMPLETE_FINISH_REASONS:
+        return ""
+    raw = str(response.text or "")
+    visible = _COMPLETE_THINK_BLOCK_RE.sub("", raw).strip()
+    if raw.strip() and not visible:
+        return "reasoning_without_visible_answer"
+    if _DANGLING_TERMINAL_RE.search(visible):
+        return "dangling_serialized_structure"
+    if visible.count("```") % 2:
+        return "unterminated_code_fence"
+    return ""
 
 
 class TurnRunner:
@@ -28,6 +64,7 @@ class TurnRunner:
                 rt._consume_steering(session)
                 if rt.limits.max_model_steps > 0 and session.model_steps >= rt.limits.max_model_steps:
                     return rt._limit(session, "model step limit reached")
+                recovery_instruction = ""
                 for attempt in range(rt.limits.model_retries + 1):
                     step = rt._build_step_context(session, next_model_step=True)
                     messages, extra = rt._prepare_model_request(session, step, token)
@@ -43,17 +80,53 @@ class TurnRunner:
                         "reasoning": reasoning.as_safe_dict() if reasoning is not None else None,
                         "attempt": attempt, **extra,
                     })
+                    request_messages = list(messages)
+                    if recovery_instruction:
+                        request_messages.append(AIMessage(
+                            role=MessageRole.SYSTEM,
+                            name="loom_terminal_recovery",
+                            content=_TERMINAL_RECOVERY_INSTRUCTION,
+                        ))
                     try:
                         response = rt.model_executor.execute(rt.platform, session.profile_id,
-                            ChatRequest(messages=tuple(messages), tools=step.tool_router.definitions(),
+                            ChatRequest(messages=tuple(request_messages), tools=step.tool_router.definitions(),
                                 tool_choice=ToolChoice.AUTO, max_output_tokens=rt.limits.output_reserve_tokens,
                                 reasoning=reasoning), token)
-                        break
                     except AITransportError:
                         if attempt >= rt.limits.model_retries:
                             raise
                         if token._event.wait(min(2.0, 0.25 * 2 ** attempt)):
                             raise ModelCancelled()
+                        continue
+
+                    if not isinstance(response, ModelResponse):
+                        raise TypeError("agent model platform must return ModelResponse")
+                    invalid_terminal = _invalid_terminal_response(response)
+                    if not invalid_terminal:
+                        break
+
+                    from .runtime import _add_usage
+
+                    session.model_steps += 1
+                    session.usage = _add_usage(session.usage, response.usage)
+                    rt._record(session, Event.MODEL_RESPONSE_REJECTED, data={
+                        "step_id": step.step_id,
+                        "reason": invalid_terminal,
+                        "finish_reason": response.finish_reason,
+                        "response_id": response.response_id,
+                        "text_preview": str(response.text or "")[-240:],
+                        "attempt": attempt,
+                        "usage": {
+                            "input_tokens": response.usage.input_tokens,
+                            "output_tokens": response.usage.output_tokens,
+                            "total_tokens": response.usage.total_tokens,
+                        },
+                    })
+                    if attempt >= rt.limits.model_retries:
+                        raise RuntimeError(
+                            f"model repeatedly returned an invalid terminal response ({invalid_terminal})"
+                        )
+                    recovery_instruction = invalid_terminal
                 if rt._cancel_if_requested(session, token):
                     return rt._result(session)
                 if not isinstance(response, ModelResponse):

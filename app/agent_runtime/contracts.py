@@ -33,6 +33,7 @@ class AgentEventKind(str, Enum):
     TURN_STARTED = "turn_started"
     USER_MESSAGE = "user_message"
     MODEL_REQUESTED = "model_requested"
+    MODEL_RESPONSE_REJECTED = "model_response_rejected"
     MODEL_RESPONSE = "model_response"
     TOOL_REQUESTED = "tool_requested"
     TOOL_APPROVAL_REQUIRED = "tool_approval_required"

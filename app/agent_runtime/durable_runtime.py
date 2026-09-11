@@ -382,7 +382,10 @@ class DurableAgentRuntime(CoreAgentRuntime):
                 if event.kind is AgentEventKind.TURN_STARTED and "usage_start" in event.data:
                     turn_total = max(0, after - int(event.data["usage_start"]))
                     break
-                if event.kind is AgentEventKind.MODEL_RESPONSE:
+                if event.kind in {
+                    AgentEventKind.MODEL_RESPONSE,
+                    AgentEventKind.MODEL_RESPONSE_REJECTED,
+                }:
                     usage = event.data.get("usage")
                 elif event.kind is AgentEventKind.CONTEXT_CHECKPOINTED:
                     usage = event.data.get("summary_usage")
