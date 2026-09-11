@@ -20,7 +20,7 @@ import {
   type ShortcutSettings,
 } from "./keyboardShortcuts";
 import { useLoom } from "./state/useLoom";
-import type { TranscriptItem } from "./types/loom";
+import type { ThreadRecord, TranscriptItem } from "./types/loom";
 
 const RESOLVED_APPROVAL_STATUSES = new Set([
   "approved",
@@ -38,6 +38,10 @@ function isResolvedApproval(item: TranscriptItem): boolean {
 
 function afterPaint(callback: () => void): void {
   requestAnimationFrame(() => requestAnimationFrame(callback));
+}
+
+function errorMessage(cause: unknown): string {
+  return cause instanceof Error ? cause.message : String(cause);
 }
 
 export default function App() {
@@ -185,13 +189,38 @@ export default function App() {
 
   async function handleMoveProject(threadId: string, projectId: string): Promise<void> {
     const movingThread = loom.threads.find((entry) => entry.id === threadId);
-    if (!movingThread || movingThread.status === "running" || movingThread.status === "waiting_approval") return;
+    if (!movingThread) throw new Error("Conversation not found. Refresh the sidebar and try again.");
+    if (movingThread.status === "running" || movingThread.status === "waiting_approval") {
+      throw new Error("Stop the active task before moving this conversation to another project.");
+    }
 
-    await window.loom.call("thread/move_project", {
+    const move = () => window.loom.call<{ thread: ThreadRecord }>("thread/move_project", {
       threadId,
       projectId,
     });
 
+    let result: { thread: ThreadRecord };
+    try {
+      result = await move();
+    } catch (cause) {
+      const message = errorMessage(cause);
+      // During renderer hot-reload the Python App Server can still be an older
+      // process that predates thread/move_project. Restart it once and retry so
+      // project moves do not silently fail until the whole desktop app is quit.
+      if (!message.includes("Method not found: thread/move_project")) throw cause;
+      await window.loom.disconnect();
+      await window.loom.connect();
+      result = await move();
+    }
+
+    const actualProjectId = String(result.thread?.projectId || "");
+    if (actualProjectId !== projectId) {
+      throw new Error("Loom did not persist the selected project. The conversation was left unchanged.");
+    }
+
+    // Reconcile both registries after the server has persisted the move. The
+    // returned thread is verified above, so a UI refresh can no longer look
+    // successful while the project assignment actually failed.
     await loom.refreshProjects();
     await loom.setThreadView(loom.threadView);
     if (thread?.id === threadId) await loom.openThread(threadId);
