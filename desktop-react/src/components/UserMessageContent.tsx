@@ -86,7 +86,6 @@ function iconFor(attachment: DisplayAttachment): LucideIcon {
 }
 
 function typeLabel(attachment: DisplayAttachment): string {
-  if (attachment.kind === "image") return "图片";
   return attachment.extension ? attachment.extension.toUpperCase() : "文件";
 }
 
@@ -95,6 +94,57 @@ function isLongUserMessage(text: string): boolean {
   if (!normalized) return false;
   if (normalized.length > LONG_MESSAGE_CHAR_THRESHOLD) return true;
   return normalized.split("\n").length >= LONG_MESSAGE_LINE_THRESHOLD;
+}
+
+function workspacePathFromHeader(): string {
+  return String(document.querySelector<HTMLElement>(".workspace-full-path")?.textContent || "").trim();
+}
+
+function attachmentFileUrl(attachment: DisplayAttachment): string {
+  const workspace = workspacePathFromHeader();
+  if (!workspace) return "";
+  const root = workspace.replaceAll("\\", "/").replace(/\/+$/, "");
+  const relative = attachment.path.replaceAll("\\", "/").replace(/^\.\//, "").replace(/^\/+/, "");
+  if (!relative.startsWith(".loom/attachments/")) return "";
+  const absolute = `${root}/${relative}`;
+  const encoded = encodeURI(absolute).replaceAll("#", "%23").replaceAll("?", "%3F");
+  return /^[A-Za-z]:\//.test(absolute) ? `file:///${encoded}` : `file://${encoded}`;
+}
+
+function FileAttachmentCard({ attachment }: { attachment: DisplayAttachment }) {
+  const Icon = iconFor(attachment);
+  return (
+    <div className="user-message-attachment-card" title={attachment.name}>
+      <span className="user-message-file-icon" aria-hidden="true"><Icon size={18} strokeWidth={1.65} /></span>
+      <span className="user-message-file-copy">
+        <strong>{attachment.name}</strong>
+        <span>{attachment.kind === "image" ? "图片" : typeLabel(attachment)}</span>
+      </span>
+    </div>
+  );
+}
+
+function ImageAttachmentPreview({ attachment }: { attachment: DisplayAttachment }) {
+  const [failed, setFailed] = useState(false);
+  const source = useMemo(() => attachmentFileUrl(attachment), [attachment.path]);
+
+  useEffect(() => {
+    setFailed(false);
+  }, [source]);
+
+  if (!source || failed) return <FileAttachmentCard attachment={attachment} />;
+
+  return (
+    <figure className="user-message-image-preview" title={attachment.name}>
+      <img
+        src={source}
+        alt={attachment.name}
+        loading="lazy"
+        decoding="async"
+        onError={() => setFailed(true)}
+      />
+    </figure>
+  );
 }
 
 export function UserMessageContent({ parsed }: { parsed: ParsedUserMessage }) {
@@ -128,18 +178,11 @@ export function UserMessageContent({ parsed }: { parsed: ParsedUserMessage }) {
       ) : null}
       {parsed.attachments.length ? (
         <div className="user-message-attachment-list" aria-label="Attached files">
-          {parsed.attachments.map((attachment, index) => {
-            const Icon = iconFor(attachment);
-            return (
-              <div className="user-message-attachment-card" key={`${attachment.path}-${index}`} title={attachment.name}>
-                <span className="user-message-file-icon" aria-hidden="true"><Icon size={18} strokeWidth={1.65} /></span>
-                <span className="user-message-file-copy">
-                  <strong>{attachment.name}</strong>
-                  <span>{typeLabel(attachment)}</span>
-                </span>
-              </div>
-            );
-          })}
+          {parsed.attachments.map((attachment, index) => (
+            attachment.kind === "image"
+              ? <ImageAttachmentPreview attachment={attachment} key={`${attachment.path}-${index}`} />
+              : <FileAttachmentCard attachment={attachment} key={`${attachment.path}-${index}`} />
+          ))}
         </div>
       ) : null}
     </div>
