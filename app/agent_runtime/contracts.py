@@ -136,6 +136,7 @@ class AgentSession:
     status: AgentStatus = AgentStatus.IDLE
     current_turn_id: str = ""
     forked_from_id: str = ""
+    communication_language: str = "auto"
     messages: list[AIMessage] = field(default_factory=list)
     pending_tool_calls: list[ToolCall] = field(default_factory=list)
     pending_step_id: str = ""
@@ -155,6 +156,10 @@ class AgentSession:
         self.system_prompt = str(self.system_prompt or "").strip()
         self.workspace_dir = str(self.workspace_dir or "").strip()
         self.forked_from_id = str(self.forked_from_id or "").strip()
+        language = str(self.communication_language or "auto").strip().casefold()
+        self.communication_language = language if language in {
+            "auto", "zh", "ja", "ko", "cyrillic", "arabic", "latin"
+        } else "auto"
         self.permission_mode = PermissionMode(self.permission_mode)
         self.status = AgentStatus(self.status)
         self.messages = list(self.messages)
