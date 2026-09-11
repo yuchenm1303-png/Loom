@@ -9,7 +9,7 @@ from app.ai import AIMessage, ChatRequest, MessageRole, ModelResponse, ModelUsag
 from app.ai.errors import AIResponseError, AITransportError
 from app.ai.execution_control import ModelCancelled
 from .history import repair_tool_history
-from .response_language import communication_language_message
+from .response_language import communication_language_message, infer_user_language
 
 
 _COMPACTION_RETRY_LIMIT = 3
@@ -201,15 +201,29 @@ def _build_summary_request(
 
 def prepare_context(rt, session, step, token):
     envelope = rt._context_envelope(session, step)
-    transient = list(rt._request_context_messages(session, step, envelope))
+    # Some runtime layers append advisory system context after ContextAgentRuntime.
+    # Normalize the language anchor here, after all of those layers and project
+    # instructions, so it is always the final transient instruction before canonical
+    # conversation history. This prevents later English runtime text from diluting it.
+    transient = [
+        message
+        for message in rt._request_context_messages(session, step, envelope)
+        if message.name != "loom_communication_language"
+    ]
     instructions = rt.instruction_loader.load(session.workspace_dir)
     if instructions:
         transient.append(AIMessage(role=MessageRole.SYSTEM, name="loom_project_instructions", content=instructions))
+    communication_language = infer_user_language(session.messages)
+    transient.append(communication_language_message(session.messages))
+
     tools = step.tool_router.definitions()
     budget = rt.limits.context_window_tokens - rt.limits.output_reserve_tokens
     messages = [*transient, *session.messages]
     if estimate_tokens(messages, tools) <= budget and len(messages) <= rt.limits.max_messages:
-        return messages, {"context_digest": envelope.digest}
+        return messages, {
+            "context_digest": envelope.digest,
+            "communication_language": communication_language,
+        }
 
     repair = repair_tool_history(session.messages, max_tool_result_chars=rt.limits.max_tool_result_chars)
     history = tuple(repair.messages)
@@ -363,6 +377,7 @@ def prepare_context(rt, session, step, token):
         )
         return [*transient, *session.messages], {
             "context_digest": envelope.digest,
+            "communication_language": communication_language,
             "auto_compacted": True,
             "compaction_attempts": model_attempts,
             "compaction_trimmed_messages": trimmed_messages,
