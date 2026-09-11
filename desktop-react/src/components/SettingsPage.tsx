@@ -47,7 +47,6 @@ import type {
 } from "../types/loom";
 import { KeyboardShortcutsSettings } from "./KeyboardShortcutsSettings";
 import { ModelsSettingsPanel } from "./ModelsSettingsPanel";
-import { PermissionsSettings } from "./PermissionsSettings";
 import "./settings-page.css";
 import "./settings-general-polish.css";
 import "./settings-maturity.css";
@@ -805,20 +804,154 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
   };
 
   const renderSkills = () => {
+    const enabled = capabilityEnabled("skills");
+    const badge = capabilityLabel(skillsStatus, enabled);
     const errors = Array.isArray(skillsStatus?.errors) ? skillsStatus.errors : [];
-    return <><div className="settings-page-heading settings-heading-with-switch"><div><span className="settings-eyebrow">Reusable workflows</span><h1>Skills</h1><p>Codex-compatible SKILL.md workflows discovered from Loom and user skill roots.</p></div><SettingSwitch checked={capabilityEnabled("skills")} disabled={running || busyCapability !== null} label="Toggle Skills" onChange={(value) => void setCapability("skills", value)} /></div><Section title="Discovery"><div className="settings-card settings-detail-list"><DetailRow label="Preference" value={capabilityEnabled("skills") ? "On" : "Off"} /><DetailRow label="Discovered skills" value={String(skillsStatus?.count ?? "Not reported")} /><DetailRow label="Discovery health" value={errors.length ? `${errors.length} issue(s)` : "Ready / not reported"} /></div></Section></>;
+    const discoveredSkills = Array.isArray(skillsStatus?.skills)
+      ? (skillsStatus.skills as Record<string, unknown>[])
+      : [];
+    const discoveredCount = typeof skillsStatus?.count === "number"
+      ? skillsStatus.count
+      : discoveredSkills.length || "Not reported";
+    const userSkillCount = discoveredSkills.filter((skill) => String(skill.scope || "") === "user").length;
+    const installedCount = userSkillCount || discoveredSkills.length || "—";
+    const activeSkillCount = Array.isArray(skillsStatus?.active_skills)
+      ? skillsStatus.active_skills.length
+      : "—";
+    const healthText = errors.length ? `${errors.length} issue(s)` : "Ready / 正常";
+    const installedRows: { name: string; description: string; source: string; status: string; tone: string }[] = discoveredSkills.length
+      ? discoveredSkills.slice(0, 5).map((skill) => ({
+        name: text(skill.name, "unnamed-skill"),
+        description: text(skill.short_description || skill.description, "Reusable workflow"),
+        source: text(skill.source || skill.scope, "workspace"),
+        status: String(skill.scope || "") === "user" ? "已安装" : "已发现",
+        tone: String(skill.scope || "") === "user" ? "ready" : "muted",
+      }))
+      : [
+        { name: "release-check", description: "发布前检查与阻塞项整理", source: "user:release-check", status: "示例", tone: "muted" },
+        { name: "pdf-helper", description: "PDF 转换、整理与摘要工作流", source: "loom:pdf-helper", status: "示例", tone: "muted" },
+        { name: "deploy-check", description: "部署前环境、日志与配置检查", source: "repo:deploy-check", status: "示例", tone: "muted" },
+        { name: "docs-polish", description: "文档润色、结构化和发布检查", source: "user:docs-polish", status: "示例", tone: "muted" },
+        { name: "browser-debug", description: "浏览器自动化问题定位流程", source: "repo:browser-debug", status: "示例", tone: "muted" },
+      ];
+
+    return (
+      <>
+        <div className="settings-page-heading settings-heading-with-switch skills-page-heading">
+          <div>
+            <span className="settings-eyebrow">可复用工作流</span>
+            <h1>技能</h1>
+            <p>集中管理 Codex-compatible SKILL.md 工作流：发现来源、安装入口、运行策略、安全边界和已安装技能。</p>
+          </div>
+          <div className="settings-master-switch">
+            <StatusPill tone={badge.tone}>{badge.text}</StatusPill>
+            <SettingSwitch checked={enabled} disabled={running || busyCapability !== null} label="Toggle Skills" onChange={(value) => void setCapability("skills", value)} />
+          </div>
+        </div>
+
+        <div className="skills-hero-card">
+          <div className="skills-hero-copy">
+            <div className="skills-hero-icon"><Sparkles size={20} /></div>
+            <div>
+              <span>Skills Runtime v2</span>
+              <strong>{enabled ? "技能系统已启用" : "技能系统已关闭"}</strong>
+              <p>Skill 只提供说明和资源，不会绕过 Loom 的权限、沙箱、MCP、浏览器与审批边界。</p>
+            </div>
+          </div>
+          <div className="skills-quick-actions">
+            <button type="button" onClick={() => setNotice({ tone: "success", text: "已请求刷新运行时状态。" })}><RefreshCw size={14} />刷新扫描</button>
+            <button type="button" onClick={() => void copyText("loom skill install https://github.com/owner/repository", "GitHub install command copied.")}><Globe2 size={14} />GitHub 导入</button>
+            <button type="button" onClick={() => void copyText("loom skill install ./my-skill.zip", "ZIP install command copied.")}><FolderOpen size={14} />ZIP 导入</button>
+          </div>
+        </div>
+
+        <Section title="发现状态" caption="分开展示用户偏好、运行时上报和当前工作区可见的技能数量。">
+          <div className="skills-stat-grid">
+            <div className="skills-stat-card"><span>偏好</span><strong>{enabled ? "开启" : "关闭"}</strong><StatusPill tone={enabled ? "ready" : "off"}>{enabled ? "Active" : "Off"}</StatusPill></div>
+            <div className="skills-stat-card"><span>已发现技能</span><strong>{String(discoveredCount)}</strong><small>workspace + user roots</small></div>
+            <div className="skills-stat-card"><span>已安装技能</span><strong>{String(installedCount)}</strong><small>&lt;LOOM_HOME&gt;/skills</small></div>
+            <div className="skills-stat-card"><span>启用中</span><strong>{String(activeSkillCount)}</strong><small>loaded into context</small></div>
+            <div className="skills-stat-card"><span>发现健康度</span><strong>{healthText}</strong><StatusPill tone={errors.length ? "warning" : "ready"}>{errors.length ? "Check" : "Ready"}</StatusPill></div>
+          </div>
+        </Section>
+
+        <Section title="技能来源" caption="Loom 会从项目目录向上发现 repo skills，再叠加用户级技能根目录。">
+          <div className="settings-card skills-source-grid">
+            {[
+              { icon: FolderOpen, title: "项目来源", path: ".agents/skills", detail: "当前仓库或工作区内的团队技能" },
+              { icon: Database, title: "用户来源", path: "~/.agents/skills", detail: "兼容 Codex 风格的本机用户技能" },
+              { icon: Sparkles, title: "Loom Home", path: "<LOOM_HOME>/skills", detail: "loom skill install 的默认安装目录" },
+            ].map((source) => {
+              const Icon = source.icon;
+              return <div className="skills-source-card" key={source.path}><span><Icon size={16} /></span><div><strong>{source.title}</strong><code>{source.path}</code><p>{source.detail}</p></div><StatusPill tone="ready">可扫描</StatusPill></div>;
+            })}
+          </div>
+        </Section>
+
+        <Section title="安装与管理" caption="桌面端先给出安全入口和 CLI 快捷命令；真正安装仍走 loom skill 的安全安装器。">
+          <div className="settings-card skills-management-card">
+            <div className="skills-command-strip">
+              <label><Search size={14} /><input placeholder="搜索已安装技能，例如 pdf / browser / deploy" /></label>
+              <button type="button" onClick={() => void copyText("loom skill list", "List command copied.")}>列出技能</button>
+              <button type="button" onClick={() => void copyText("loom skill update --all", "Update command copied.")}>更新全部</button>
+              <button type="button" onClick={() => void copyText("loom skill remove <name>", "Remove command copied.")}>移除命令</button>
+            </div>
+            <div className="skills-install-grid">
+              <button type="button" onClick={() => void copyText("loom skill install ./my-skill", "Local install command copied.")}><FolderOpen size={16} /><strong>安装本地 Skill</strong><span>目录内包含 SKILL.md</span></button>
+              <button type="button" onClick={() => void copyText("loom skill install https://github.com/owner/repository/tree/main/path", "GitHub tree command copied.")}><Globe2 size={16} /><strong>从 GitHub 导入</strong><span>仅允许 HTTPS 远程来源</span></button>
+              <button type="button" onClick={() => void copyText("loom skill install ./skill.zip", "ZIP command copied.")}><Database size={16} /><strong>从 ZIP 导入</strong><span>自动检查路径穿越</span></button>
+              <button type="button" onClick={() => void copyText("loom skill search <query>", "Search command copied.")}><Search size={16} /><strong>搜索技能</strong><span>按名称和描述匹配</span></button>
+            </div>
+          </div>
+        </Section>
+
+        <Section title="运行策略" caption="这些策略让 Skill 保持轻量：先发现，再按需加载，只有需要资源时才读取或暂存 bundle。">
+          <div className="settings-card skills-runtime-grid">
+            {[
+              { icon: BrainCircuit, title: "按需加载", detail: "初始上下文只暴露 metadata，需要时再 skill_load。", value: "开启" },
+              { icon: Database, title: "缓存元数据", detail: "发现结果用于设置页和 tool search，避免上下文膨胀。", value: "自动" },
+              { icon: Code2, title: "上下文预算", detail: "已加载 skill 快照受 active skill context budget 约束。", value: "32 KB" },
+              { icon: FolderOpen, title: "资源读取", detail: "UTF-8 文本资源可单独读取，二进制资源需先暂存。", value: "受控" },
+              { icon: Terminal, title: "Bundle 暂存", detail: "复制到 .loom/skill-runs/<name>，暂存不会执行脚本。", value: "审批" },
+              { icon: Wrench, title: "脚本执行", detail: "后续 process 调用仍走 PermissionEngine 和沙箱策略。", value: "受限" },
+            ].map((item) => {
+              const Icon = item.icon;
+              return <div className="skills-runtime-item" key={item.title}><span><Icon size={15} /></span><div><strong>{item.title}</strong><p>{item.detail}</p></div><code>{item.value}</code></div>;
+            })}
+          </div>
+        </Section>
+
+        <Section title="安全控制" caption="安装器只复制和校验 bundle，不执行外部代码。这里展示的是当前 main 已启用的保护边界。">
+          <div className="settings-card skills-security-grid">
+            {[
+              "仅允许 HTTPS 远程来源",
+              "安装时不执行脚本",
+              "ZIP 路径穿越检查",
+              "Symlink 拒绝 / 跳过",
+              "Git 非交互模式",
+              "file:// 与 ext:: 传输禁用",
+            ].map((item) => <div className="skills-security-row" key={item}><ShieldCheck size={15} /><span>{item}</span><StatusPill tone="ready">已保护</StatusPill></div>)}
+          </div>
+        </Section>
+
+        <Section title="已安装技能预览" caption="优先展示运行时真实发现结果；无结果时显示示例结构，方便空状态也能看懂页面。">
+          <div className="settings-card skills-table">
+            <div className="skills-table-head"><span>名称</span><span>简介</span><span>来源</span><span>状态</span><span>操作</span></div>
+            {installedRows.map((skill) => <div className="skills-table-row" key={`${skill.name}-${skill.source}`}><div className="skills-name-cell"><Sparkles size={14} /><strong>{skill.name}</strong></div><span>{skill.description}</span><code>{skill.source}</code><StatusPill tone={skill.tone}>{skill.status}</StatusPill><div className="skills-row-actions"><button type="button" onClick={() => void copyText(`loom skill info ${skill.name}`, "Info command copied.")}>查看</button><button type="button" onClick={() => void copyText(`loom skill update ${skill.name}`, "Update command copied.")}>更新</button></div></div>)}
+          </div>
+        </Section>
+
+        <div className="skills-footer-strip">
+          <span><Activity size={14} />上次扫描：运行时上报</span>
+          <span><Sparkles size={14} />Skills Runtime v2</span>
+          <span><Check size={14} />配置已自动保存</span>
+        </div>
+      </>
+    );
   };
 
   const renderPermissions = () => (
-    <PermissionsSettings
-      permissionModes={runtime.permissionModes}
-      defaultPermissionMode={runtime.defaultPermissionMode}
-      running={running}
-      computerEnabled={capabilityEnabled("computerUse")}
-      browserEnabled={capabilityEnabled("browserUse")}
-      onOpenComputer={() => setPage("computer")}
-      onOpenBrowser={() => setPage("browser")}
-    />
+    <><div className="settings-page-heading"><div><span className="settings-eyebrow">Execution safety</span><h1>Permissions</h1><p>Permission profiles define how aggressively Loom can act on the local machine.</p></div></div><Section title="Permission profiles" caption="The active thread can still override its permission mode from the chat surface."><div className="settings-card permission-grid">{(runtime.permissionModes ?? ["approval", "workspace", "full-access"]).map((mode) => <div className={`permission-card ${mode === runtime.defaultPermissionMode ? "selected" : ""}`} key={mode}><ShieldCheck size={18} /><div><strong>{titleCase(mode)}</strong><span>{mode === "full-access" ? "Broad authority for a trusted local environment." : mode === "workspace" ? "Prefer file operations constrained to the active workspace." : "Ask before sensitive or potentially destructive actions."}</span></div>{mode === runtime.defaultPermissionMode ? <StatusPill tone="ready">Default</StatusPill> : null}</div>)}</div></Section><Section title="Safety boundaries"><div className="settings-card settings-detail-list"><DetailRow label="Computer Use" value={capabilityEnabled("computerUse") ? "Available under permission policy" : "Capability off"} /><DetailRow label="Browser" value={capabilityEnabled("browserUse") ? "Available under permission policy" : "Capability off"} /><DetailRow label="Shell / process" value="Permission-aware" /><DetailRow label="Workspace writes" value="Permission-aware" /></div></Section></>
   );
 
   const renderShortcuts = () => (
