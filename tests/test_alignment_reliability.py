@@ -94,6 +94,66 @@ def test_repeated_invalid_terminal_response_fails_with_diagnostic(tmp_path):
     runtime.close()
 
 
+def test_empty_completed_response_is_retried_without_poisoning_history(tmp_path):
+    from app.ai.errors import AIEmptyResponseError
+
+    class EmptyThenComplete:
+        def __init__(self):
+            self.requests = []
+
+        def execute_chat(self, profile, request):
+            self.requests.append(request)
+            if len(self.requests) == 1:
+                raise AIEmptyResponseError(
+                    "reasoning-only",
+                    finish_reason="stop",
+                    response_id="empty-1",
+                    reasoning_char_count=17,
+                    chunk_count=3,
+                    input_tokens=8,
+                    output_tokens=2,
+                    total_tokens=10,
+                )
+            return ModelResponse(text="诊断继续完成。", finish_reason="stop")
+
+    platform = EmptyThenComplete()
+    runtime = make_runtime(tmp_path, platform)
+    session = runtime.create_session("agent.fast")
+
+    result = runtime.start_turn(session.session_id, "继续诊断")
+
+    assert result.status is AgentStatus.COMPLETED
+    assert result.final_text == "诊断继续完成。"
+    assert platform.requests[-1].messages[-1].name == "loom_terminal_recovery"
+    stored = runtime.store.load(session.session_id)
+    assert stored.usage.total_tokens == 10
+    rejected = [e for e in runtime.store.events(session.session_id)
+                if e.kind.value == "model_response_rejected"]
+    assert rejected[-1].data["reason"] == "reasoning_only_response"
+    assert rejected[-1].data["reasoning_char_count"] == 17
+    assert rejected[-1].data["stream_chunk_count"] == 3
+    runtime.close()
+
+
+def test_repeated_empty_completed_response_fails_diagnostically(tmp_path):
+    from app.ai.errors import AIEmptyResponseError
+
+    class AlwaysEmpty:
+        def execute_chat(self, profile, request):
+            raise AIEmptyResponseError("empty", finish_reason="stop", chunk_count=1)
+
+    runtime = make_runtime(tmp_path, AlwaysEmpty())
+    session = runtime.create_session("agent.fast")
+
+    result = runtime.start_turn(session.session_id, "继续")
+
+    assert result.status is AgentStatus.FAILED
+    assert "repeatedly completed without public text or tool calls" in result.error
+    assert len([e for e in runtime.store.events(session.session_id)
+                if e.kind.value == "model_response_rejected"]) == 3
+    runtime.close()
+
+
 def test_cancel_returns_turn_without_waiting_for_blocked_model(tmp_path):
     entered, release = threading.Event(), threading.Event()
     class Blocked:

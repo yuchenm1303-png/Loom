@@ -75,9 +75,12 @@ class OpenAIStreamingChatBackend(OpenAIChatBackend):
         usage = ModelUsage()
         finish_reason = ""
         response_id = ""
+        chunk_count = 0
+        reasoning_char_count = 0
         try:
             for chunk in stream:
                 check_cancelled()
+                chunk_count += 1
                 chunk_id = str(getattr(chunk, "id", "") or "").strip()
                 if chunk_id:
                     response_id = chunk_id
@@ -93,7 +96,12 @@ class OpenAIStreamingChatBackend(OpenAIChatBackend):
                 delta = getattr(choice, "delta", None)
                 if delta is not None:
                     # Deliberately expose only public assistant content. Provider
-                    # reasoning_content / hidden reasoning fields are ignored.
+                    # reasoning_content / hidden reasoning fields are ignored,
+                    # but retain a length-only diagnostic so a reasoning-only
+                    # completion can be distinguished from a truly empty stream.
+                    reasoning = getattr(delta, "reasoning_content", None)
+                    if reasoning is not None:
+                        reasoning_char_count += len(str(reasoning))
                     text = str(getattr(delta, "content", "") or "")
                     if text:
                         yield StreamEvent(kind=StreamEventKind.TEXT_DELTA, text_delta=text)
@@ -117,6 +125,8 @@ class OpenAIStreamingChatBackend(OpenAIChatBackend):
                 "usage": usage,
                 "finish_reason": finish_reason,
                 "response_id": response_id,
+                "reasoning_char_count": reasoning_char_count,
+                "chunk_count": chunk_count,
             }
             yield StreamEvent(
                 kind=StreamEventKind.COMPLETED,

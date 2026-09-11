@@ -32,6 +32,7 @@ from app.ai import (
     ToolDefinition,
 )
 from app.ai.openai_streaming import OpenAIStreamingChatBackend
+from app.ai.errors import AIEmptyResponseError
 from app.ai.streaming_platform import (
     ProviderStreamEvent,
     ProviderStreamEventKind,
@@ -282,6 +283,50 @@ def test_openai_streaming_backend_requests_usage_and_never_emits_reasoning_conte
     assert metadata["usage"].total_tokens == 10
     assert metadata["response_id"] == "resp-openai"
     assert metadata["finish_reason"] == "stop"
+
+
+def test_reasoning_only_stream_is_classified_without_exposing_reasoning():
+    chunks = [
+        SimpleNamespace(
+            id="resp-reasoning-only",
+            usage=None,
+            choices=[SimpleNamespace(
+                delta=SimpleNamespace(content=None, reasoning_content="private chain", tool_calls=[]),
+                finish_reason="stop",
+            )],
+        ),
+        SimpleNamespace(
+            id="resp-reasoning-only",
+            choices=[],
+            usage=SimpleNamespace(prompt_tokens=9, completion_tokens=3, total_tokens=12),
+        ),
+    ]
+    completions = RecordingCompletions(chunks)
+    backend = OpenAIStreamingChatBackend(
+        connection=ProviderConnection(
+            provider_id="test-provider",
+            adapter=ProviderAdapter.OPENAI_COMPATIBLE,
+            credential_ref=CredentialRef.runtime("test-key"),
+            base_url="https://example.invalid/v1",
+        ),
+        profile=_profile(),
+        api_key="secret-for-test-only",
+        client=SimpleNamespace(chat=SimpleNamespace(completions=completions)),
+    )
+    platform = StreamingAIPlatform(prefer_streaming=True)
+    platform.register(_profile(), backend)
+
+    try:
+        platform.execute_chat(AGENT_FAST_ROLE.role_id, _request())
+    except AIEmptyResponseError as exc:
+        assert exc.reasoning_char_count == len("private chain")
+        assert exc.chunk_count == 2
+        assert exc.finish_reason == "stop"
+        assert exc.response_id == "resp-reasoning-only"
+        assert exc.total_tokens == 12
+        assert "private chain" not in str(exc)
+    else:  # pragma: no cover - protects the privacy boundary explicitly
+        raise AssertionError("reasoning-only completion must not become a public response")
 
 
 def test_runtime_stream_bus_is_transient_and_final_message_is_atomic(tmp_path: Path):

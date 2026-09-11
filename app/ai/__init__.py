@@ -29,6 +29,7 @@ from .credentials import CredentialRef, CredentialSource
 from .errors import (
     AIConfigurationError,
     AICredentialError,
+    AIEmptyResponseError,
     AIPlatformError,
     AIResponseError,
     AITransportError,
@@ -65,6 +66,7 @@ __all__ = [
     "AIConfiguration",
     "AIConfigurationError",
     "AICredentialError",
+    "AIEmptyResponseError",
     "AIMessage",
     "AIPlatform",
     "AIPlatformError",

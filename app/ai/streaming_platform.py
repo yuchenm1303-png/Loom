@@ -9,7 +9,7 @@ from enum import Enum
 from typing import Any, Callable
 
 from .contracts import ChatRequest, ModelResponse, ModelUsage, StreamEvent, StreamEventKind, ToolCall
-from .errors import AIResponseError, AITransportError
+from .errors import AIEmptyResponseError, AIResponseError, AITransportError
 from .platform import AIPlatform
 
 
@@ -103,6 +103,8 @@ class _StreamAccumulator:
         usage: ModelUsage | None = None,
         response_id: str = "",
         finish_reason: str = "",
+        reasoning_char_count: int = 0,
+        chunk_count: int = 0,
     ) -> ModelResponse:
         if not self.completed:
             raise AITransportError("model stream ended without a completion marker")
@@ -126,7 +128,17 @@ class _StreamAccumulator:
 
         text = "".join(self.text_parts)
         if not text and not calls:
-            raise AIResponseError("AI stream contained neither text nor tool calls")
+            reason = "reasoning-only" if reasoning_char_count else "empty"
+            raise AIEmptyResponseError(
+                f"AI stream completed with a {reason} response; it contained neither public text nor tool calls",
+                finish_reason=str(finish_reason or self.finish_reason or ""),
+                response_id=response_id,
+                reasoning_char_count=reasoning_char_count,
+                chunk_count=chunk_count,
+                input_tokens=(usage or ModelUsage()).input_tokens,
+                output_tokens=(usage or ModelUsage()).output_tokens,
+                total_tokens=(usage or ModelUsage()).total_tokens,
+            )
         return ModelResponse(
             text=text,
             tool_calls=tuple(calls),
@@ -224,6 +236,8 @@ class StreamingAIPlatform(AIPlatform):
             usage=usage,
             response_id=str(metadata.get("response_id") or ""),
             finish_reason=str(metadata.get("finish_reason") or ""),
+            reasoning_char_count=int(metadata.get("reasoning_char_count") or 0),
+            chunk_count=int(metadata.get("chunk_count") or 0),
         )
         self._publish(
             ProviderStreamEvent(

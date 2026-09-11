@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import re
 
-from app.ai import AIMessage, ChatRequest, MessageRole, ModelResponse, ToolChoice
-from app.ai.errors import AITransportError
+from app.ai import AIMessage, ChatRequest, MessageRole, ModelResponse, ModelUsage, ToolChoice
+from app.ai.errors import AIEmptyResponseError, AITransportError
 from app.ai.execution_control import ModelCancelled
 
 from .contracts import AgentEventKind as Event
@@ -21,8 +21,8 @@ _COMPLETE_FINISH_REASONS = {"", "stop", "tool_calls", "function_call", "complete
 _COMPLETE_THINK_BLOCK_RE = re.compile(r"<think>.*?</think>", re.IGNORECASE | re.DOTALL)
 _DANGLING_TERMINAL_RE = re.compile(r"(?:\[|\{|<tool_call>|```(?:json)?)\s*$", re.IGNORECASE)
 _TERMINAL_RECOVERY_INSTRUCTION = (
-    "Your previous response was rejected because it declared completion but ended with an incomplete "
-    "serialized structure or contained reasoning without a user-visible answer. Continue the same task now. "
+    "Your previous response was rejected because it declared completion but was empty, ended with an incomplete "
+    "serialized structure, or contained reasoning without a user-visible answer. Continue the same task now. "
     "If an available tool is needed, emit a native structured tool call through the tool-calling protocol; "
     "do not print JSON, '[' or a tool-call prefix in assistant text. Otherwise return a complete final answer."
 )
@@ -92,6 +92,36 @@ class TurnRunner:
                             ChatRequest(messages=tuple(request_messages), tools=step.tool_router.definitions(),
                                 tool_choice=ToolChoice.AUTO, max_output_tokens=rt.limits.output_reserve_tokens,
                                 reasoning=reasoning), token)
+                    except AIEmptyResponseError as exc:
+                        from .runtime import _add_usage
+
+                        session.model_steps += 1
+                        rejected_usage = ModelUsage(
+                            input_tokens=exc.input_tokens,
+                            output_tokens=exc.output_tokens,
+                            total_tokens=exc.total_tokens,
+                        )
+                        session.usage = _add_usage(session.usage, rejected_usage)
+                        rt._record(session, Event.MODEL_RESPONSE_REJECTED, data={
+                            "step_id": step.step_id,
+                            "reason": "reasoning_only_response" if exc.reasoning_char_count else "empty_response",
+                            "finish_reason": exc.finish_reason,
+                            "response_id": exc.response_id,
+                            "reasoning_char_count": exc.reasoning_char_count,
+                            "stream_chunk_count": exc.chunk_count,
+                            "attempt": attempt,
+                            "usage": {
+                                "input_tokens": exc.input_tokens,
+                                "output_tokens": exc.output_tokens,
+                                "total_tokens": exc.total_tokens,
+                            },
+                        })
+                        if attempt >= rt.limits.model_retries:
+                            raise RuntimeError(
+                                "model repeatedly completed without public text or tool calls"
+                            ) from exc
+                        recovery_instruction = "empty_response"
+                        continue
                     except AITransportError:
                         if attempt >= rt.limits.model_retries:
                             raise

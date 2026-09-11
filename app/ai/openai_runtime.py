@@ -18,7 +18,7 @@ from .contracts import (
     TextPart,
     ToolCall,
 )
-from .errors import AIResponseError, AITransportError
+from .errors import AIEmptyResponseError, AIResponseError, AITransportError
 from .profiles import ModelProfile
 from .provider_catalog import ProviderAdapter, ProviderConnection
 from .reasoning import ReasoningKind
@@ -256,7 +256,17 @@ class OpenAIChatBackend:
         text = str(getattr(message, "content", "") or "")
         tool_calls = _parse_tool_calls(message)
         if not text and not tool_calls:
-            raise AIResponseError("AI response contained neither text nor tool calls")
+            reasoning = getattr(message, "reasoning_content", None)
+            usage = _usage_from(response)
+            raise AIEmptyResponseError(
+                "AI response completed without public text or tool calls",
+                finish_reason=str(getattr(choice, "finish_reason", "") or ""),
+                response_id=str(getattr(response, "id", "") or ""),
+                reasoning_char_count=len(str(reasoning)) if reasoning is not None else 0,
+                input_tokens=usage.input_tokens,
+                output_tokens=usage.output_tokens,
+                total_tokens=usage.total_tokens,
+            )
         return ModelResponse(
             text=text,
             tool_calls=tool_calls,
