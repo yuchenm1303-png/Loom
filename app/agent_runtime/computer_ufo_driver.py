@@ -67,6 +67,9 @@ _PASSTHROUGH_ENV = (
     "REQUESTS_CA_BUNDLE",
     "SSL_CERT_FILE",
     "CURL_CA_BUNDLE",
+    # Explicit, opt-in diagnostics switch. It contains no credential and is the
+    # only extra Loom setting allowed through the sidecar process boundary.
+    "LOOM_UFO_KEEP_RAW_LOGS",
 )
 
 
@@ -359,7 +362,10 @@ class UfoWindowsDriver:
             try:
                 payload = json.loads(line)
             except Exception:
-                payload = {"type": "protocol_error", "error_type": "NonJSONSidecarOutput"}
+                payload = {
+                    "type": "protocol_error",
+                    "error_type": "NonJSONSidecarOutput",
+                }
             if isinstance(payload, dict):
                 self._messages.put(payload)
 
