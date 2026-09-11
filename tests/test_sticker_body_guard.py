@@ -79,10 +79,31 @@ def test_reasoning_sticker_is_preserved_and_body_still_gets_coverage() -> None:
     assert guarded.diagnostics["visibleBodyStickerCount"] >= 1
 
 
-def test_substantive_reasoning_gets_a_sticker_when_body_already_has_one() -> None:
+def test_default_frequency_does_not_force_an_extra_reasoning_sticker() -> None:
+    text = (
+        "<think>这里先检查输入条件，再比较两个实现方向，最后确认哪个方案更稳妥。"
+        "还需要验证边界情况，但这只是普通长度的思考过程。</think>\n"
+        "已经确认可以继续。[[AI_LEDGER_INLINE_STICKER:confirm_yes]]\n"
+        "下一步直接执行即可。"
+    )
+    guarded = ensure_balanced_sticker_coverage(
+        _result(text),
+        StickerPreferences(frequency=50, intensity=50, max_per_reply=4, repeat_count=1),
+        StickerContext(user_text="继续", streaming=True),
+    )
+
+    assert INLINE_STICKER_VISIBLE_MARKER_RE.search(_reasoning(guarded.text)) is None
+    assert extract_keys(_visible_answer(guarded.text)) == ["confirm_yes"]
+    assert guarded.diagnostics["reasoningGuaranteeEligible"] is False
+    assert guarded.diagnostics.get("reasoningStickerGuaranteeApplied") is not True
+
+
+def test_long_reasoning_gets_a_sticker_at_high_frequency() -> None:
     text = (
         "<think>这里先检查输入条件，再比较两个实现方向，最后确认哪个方案最稳妥。"
-        "还需要继续验证边界情况，避免只看表面现象就下结论。</think>\n"
+        "还需要继续验证边界情况，避免只看表面现象就下结论。"
+        "接着检查工具调用顺序、状态同步、异常恢复和最终输出的一致性，确保长任务运行时不会因为某一个中间步骤失败就误判整个结果。"
+        "最后再把发现的问题和可执行修复方案按优先级整理出来。</think>\n"
         "已经确认可以继续。[[AI_LEDGER_INLINE_STICKER:confirm_yes]]\n"
         "下一步直接执行即可。"
     )
@@ -94,6 +115,7 @@ def test_substantive_reasoning_gets_a_sticker_when_body_already_has_one() -> Non
 
     assert INLINE_STICKER_VISIBLE_MARKER_RE.search(_reasoning(guarded.text)) is not None
     assert extract_keys(_visible_answer(guarded.text)) == ["confirm_yes"]
+    assert guarded.diagnostics["reasoningGuaranteeEligible"] is True
     assert guarded.diagnostics["reasoningStickerGuaranteeApplied"] is True
 
 
