@@ -41,6 +41,7 @@ import type {
 import "./settings-page.css";
 import "./settings-general-polish.css";
 import "./settings-maturity.css";
+import "./settings-appearance.css";
 
 type PageKey =
   | "general"
@@ -68,11 +69,19 @@ type CapabilityKey =
   | "codeMode";
 
 type AppearanceSettings = {
-  scale: "100" | "110" | "120";
-  density: "compact" | "comfortable";
+  scale: "90" | "100" | "110" | "120" | "130";
+  density: "compact" | "comfortable" | "spacious";
   reducedMotion: boolean;
+  conversationWidth: "focused" | "balanced" | "wide";
+  sidebarWidth: "compact" | "standard" | "wide";
+  inspectorWidth: "compact" | "standard" | "wide";
+  chatFontSize: number;
+  messageLineHeight: "compact" | "comfortable" | "relaxed";
+  ambientEffects: boolean;
   codeFont: string;
   codeFontSize: number;
+  codeLineHeight: "compact" | "comfortable" | "relaxed";
+  codeWrap: boolean;
 };
 
 type TerminalSettings = {
@@ -151,8 +160,46 @@ const DEFAULT_APPEARANCE: AppearanceSettings = {
   scale: "100",
   density: "comfortable",
   reducedMotion: false,
+  conversationWidth: "balanced",
+  sidebarWidth: "standard",
+  inspectorWidth: "standard",
+  chatFontSize: 13,
+  messageLineHeight: "comfortable",
+  ambientEffects: true,
   codeFont: "system",
   codeFontSize: 12,
+  codeLineHeight: "comfortable",
+  codeWrap: false,
+};
+
+const CONVERSATION_WIDTH_VALUES: Record<AppearanceSettings["conversationWidth"], string> = {
+  focused: "740px",
+  balanced: "860px",
+  wide: "1040px",
+};
+
+const SIDEBAR_WIDTH_VALUES: Record<AppearanceSettings["sidebarWidth"], string> = {
+  compact: "220px",
+  standard: "252px",
+  wide: "292px",
+};
+
+const INSPECTOR_WIDTH_VALUES: Record<AppearanceSettings["inspectorWidth"], string> = {
+  compact: "280px",
+  standard: "316px",
+  wide: "360px",
+};
+
+const MESSAGE_LINE_HEIGHT_VALUES: Record<AppearanceSettings["messageLineHeight"], string> = {
+  compact: "1.54",
+  comfortable: "1.72",
+  relaxed: "1.90",
+};
+
+const CODE_LINE_HEIGHT_VALUES: Record<AppearanceSettings["codeLineHeight"], string> = {
+  compact: "1.46",
+  comfortable: "1.62",
+  relaxed: "1.80",
 };
 
 const DEFAULT_TERMINAL: TerminalSettings = {
@@ -327,15 +374,23 @@ function setNestedSetting(settings: DesktopSettings, path: string, value: unknow
 }
 
 function applyAppearance(settings: DesktopSettings): void {
-  const appearance = { ...DEFAULT_APPEARANCE, ...(settings.appearance ?? {}) };
+  const appearance = { ...DEFAULT_APPEARANCE, ...(settings.appearance ?? {}) } as AppearanceSettings;
   document.documentElement.style.setProperty("zoom", String(Number(appearance.scale) / 100));
   document.documentElement.dataset.loomReducedMotion = String(appearance.reducedMotion);
   document.documentElement.dataset.loomDensity = appearance.density;
+  document.documentElement.dataset.loomAmbientEffects = String(appearance.ambientEffects);
+  document.documentElement.dataset.loomCodeWrap = String(appearance.codeWrap);
+  document.documentElement.style.setProperty("--content-width", CONVERSATION_WIDTH_VALUES[appearance.conversationWidth] ?? CONVERSATION_WIDTH_VALUES.balanced);
+  document.documentElement.style.setProperty("--sidebar-width", SIDEBAR_WIDTH_VALUES[appearance.sidebarWidth] ?? SIDEBAR_WIDTH_VALUES.standard);
+  document.documentElement.style.setProperty("--inspector-width", INSPECTOR_WIDTH_VALUES[appearance.inspectorWidth] ?? INSPECTOR_WIDTH_VALUES.standard);
+  document.documentElement.style.setProperty("--loom-chat-font-size", `${appearance.chatFontSize}px`);
+  document.documentElement.style.setProperty("--loom-message-line-height", MESSAGE_LINE_HEIGHT_VALUES[appearance.messageLineHeight] ?? MESSAGE_LINE_HEIGHT_VALUES.comfortable);
   const mono = appearance.codeFont === "system"
     ? "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace"
     : `${appearance.codeFont}, ui-monospace, monospace`;
   document.documentElement.style.setProperty("--loom-code-font", mono);
   document.documentElement.style.setProperty("--loom-code-font-size", `${appearance.codeFontSize}px`);
+  document.documentElement.style.setProperty("--loom-code-line-height", CODE_LINE_HEIGHT_VALUES[appearance.codeLineHeight] ?? CODE_LINE_HEIGHT_VALUES.comfortable);
 }
 
 function SettingSwitch({ checked, disabled, label, onChange }: { checked: boolean; disabled?: boolean; label: string; onChange(value: boolean): void }) {
@@ -477,6 +532,24 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
     }
   };
 
+  const resetAppearance = async () => {
+    const next: DesktopSettings = { ...settings, appearance: { ...DEFAULT_APPEARANCE } };
+    setSettings(next);
+    writeLocalSettings(next);
+    applyAppearance(next);
+    const writes = Object.entries(DEFAULT_APPEARANCE).map(([key, value]) => {
+      const path = `appearance.${key}`;
+      const envelope = `${SETTINGS_UPDATE_PREFIX}${JSON.stringify({ path, value })}`;
+      return window.loom.call("settings/set", { capability: envelope, enabled: true });
+    });
+    const results = await Promise.allSettled(writes);
+    const persisted = results.every((result) => result.status === "fulfilled");
+    setNotice({
+      tone: "success",
+      text: persisted ? "Appearance restored to defaults." : "Appearance restored locally; server persistence will catch up later.",
+    });
+  };
+
   const setCapability = async (key: CapabilityKey, enabled: boolean) => {
     if (running || busyCapability) return;
     const previous = settings;
@@ -562,7 +635,7 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
 
         <Section title="Quick access" caption="The controls most likely to change how Loom behaves.">
           <div className="general-quick-grid">
-            <button type="button" className="general-quick-card" onClick={() => setPage("appearance")}><Palette size={18} /><div><strong>Appearance</strong><span>Scale, density, motion, and code typography</span></div><ChevronRight size={15} /></button>
+            <button type="button" className="general-quick-card" onClick={() => setPage("appearance")}><Palette size={18} /><div><strong>Appearance</strong><span>Scale, layout, reading rhythm, motion, and code typography</span></div><ChevronRight size={15} /></button>
             <button type="button" className="general-quick-card" onClick={() => setPage("capabilities")}><Blocks size={18} /><div><strong>Capabilities</strong><span>Choose the tool families Loom can expose</span></div><ChevronRight size={15} /></button>
             <button type="button" className="general-quick-card" onClick={() => setPage("developer")}><Wrench size={18} /><div><strong>Diagnostics</strong><span>Runtime, integrations, and raw health snapshot</span></div><ChevronRight size={15} /></button>
           </div>
@@ -573,22 +646,66 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
 
   const renderAppearance = () => {
     const appearance = { ...DEFAULT_APPEARANCE, ...(settings.appearance ?? {}) } as AppearanceSettings;
+    const densityLabel = titleCase(appearance.density);
+    const widthLabel = titleCase(appearance.conversationWidth);
     return (
       <>
-        <div className="settings-page-heading"><div><span className="settings-eyebrow">Presentation</span><h1>Appearance</h1><p>Make Loom comfortable on your display without changing agent behavior.</p></div></div>
-        <Section title="Interface" caption="Changes apply immediately and persist across restarts.">
+        <div className="settings-page-heading settings-heading-with-action">
+          <div><span className="settings-eyebrow">Presentation</span><h1>Appearance</h1><p>Tune Loom for long reading sessions, dense agent work, or a wider desktop layout without changing Agent behavior.</p></div>
+          <button className="mature-action-button" type="button" onClick={() => void resetAppearance()}><RefreshCw size={14} />Reset appearance</button>
+        </div>
+
+        <div className="appearance-overview-card">
+          <div className="appearance-overview-copy">
+            <span className="settings-eyebrow">Live workspace</span>
+            <strong>{appearance.scale}% scale · {densityLabel} density</strong>
+            <p>Layout, message typography, motion, and code preferences update immediately. The preview reflects the current reading profile.</p>
+            <div className="appearance-overview-meta"><span>{widthLabel} conversation</span><span>{appearance.chatFontSize}px chat text</span><span>{appearance.ambientEffects ? "Ambient on" : "Ambient off"}</span></div>
+          </div>
+          <div className="appearance-workspace-preview" aria-hidden="true">
+            <div className="appearance-preview-sidebar" />
+            <div className="appearance-preview-main"><span /><span /><span /></div>
+            <div className="appearance-preview-inspector" />
+          </div>
+        </div>
+
+        <Section title="Interface" caption="Global sizing and motion preferences. Changes apply immediately and persist across restarts.">
           <div className="settings-card mature-preference-list">
-            <PreferenceRow icon={Type} title="Interface scale" detail="Scale the complete desktop UI for comfortable reading."><div className="general-scale-control">{(["100", "110", "120"] as const).map((scale) => <button type="button" key={scale} className={appearance.scale === scale ? "active" : ""} onClick={() => void saveSetting("appearance.scale", scale, `Interface scale set to ${scale}%.`)}>{scale}%</button>)}</div></PreferenceRow>
-            <PreferenceRow icon={Gauge} title="Content density" detail="Choose tighter activity rows or roomier spacing."><SelectControl label="Content density" value={appearance.density} options={[{ value: "comfortable", label: "Comfortable" }, { value: "compact", label: "Compact" }]} onChange={(value) => void saveSetting("appearance.density", value)} /></PreferenceRow>
+            <PreferenceRow icon={Type} title="Interface scale" detail="Scale the complete desktop UI for comfortable reading on small or high-DPI displays."><div className="appearance-segmented">{(["90", "100", "110", "120", "130"] as const).map((scale) => <button type="button" key={scale} className={appearance.scale === scale ? "active" : ""} onClick={() => void saveSetting("appearance.scale", scale, `Interface scale set to ${scale}%.`)}>{scale}%</button>)}</div></PreferenceRow>
+            <PreferenceRow icon={Gauge} title="Content density" detail="Control spacing across conversation, activity, tool, and settings rows."><SelectControl label="Content density" value={appearance.density} options={[{ value: "compact", label: "Compact" }, { value: "comfortable", label: "Comfortable" }, { value: "spacious", label: "Spacious" }]} onChange={(value) => void saveSetting("appearance.density", value)} /></PreferenceRow>
             <PreferenceRow icon={Moon} title="Reduce motion" detail="Minimize decorative transitions, pulses, and status animation."><SettingSwitch checked={appearance.reducedMotion} label="Reduce motion" onChange={(value) => void saveSetting("appearance.reducedMotion", value)} /></PreferenceRow>
+            <PreferenceRow icon={Sparkles} title="Ambient effects" detail="Show the subtle conversation glow and background atmosphere behind messages."><SettingSwitch checked={appearance.ambientEffects} label="Ambient conversation effects" onChange={(value) => void saveSetting("appearance.ambientEffects", value)} /></PreferenceRow>
           </div>
         </Section>
-        <Section title="Code appearance" caption="Monospace settings affect code, terminal output, and technical values.">
+
+        <Section title="Workspace layout" caption="Shape the three-column desktop workspace without changing any project or conversation data.">
+          <div className="settings-card mature-preference-list">
+            <PreferenceRow icon={Monitor} title="Conversation width" detail="Set the maximum width of the central reading column."><SelectControl label="Conversation width" value={appearance.conversationWidth} options={[{ value: "focused", label: "Focused · 740px" }, { value: "balanced", label: "Balanced · 860px" }, { value: "wide", label: "Wide · 1040px" }]} onChange={(value) => void saveSetting("appearance.conversationWidth", value)} /></PreferenceRow>
+            <PreferenceRow icon={Monitor} title="Sidebar width" detail="Choose how much room projects and conversation titles receive."><SelectControl label="Sidebar width" value={appearance.sidebarWidth} options={[{ value: "compact", label: "Compact · 220px" }, { value: "standard", label: "Standard · 252px" }, { value: "wide", label: "Wide · 292px" }]} onChange={(value) => void saveSetting("appearance.sidebarWidth", value)} /></PreferenceRow>
+            <PreferenceRow icon={Monitor} title="Inspector width" detail="Control the space reserved for runtime details and tool activity."><SelectControl label="Inspector width" value={appearance.inspectorWidth} options={[{ value: "compact", label: "Compact · 280px" }, { value: "standard", label: "Standard · 316px" }, { value: "wide", label: "Wide · 360px" }]} onChange={(value) => void saveSetting("appearance.inspectorWidth", value)} /></PreferenceRow>
+          </div>
+        </Section>
+
+        <Section title="Conversation reading" caption="Tune message typography independently from the rest of the desktop UI.">
+          <div className="settings-card mature-preference-list">
+            <PreferenceRow icon={Type} title="Chat text size" detail="Adjust user and assistant message text without scaling the surrounding controls."><SelectControl label="Chat text size" value={String(appearance.chatFontSize)} options={[12, 13, 14, 15, 16, 17].map((value) => ({ value: String(value), label: `${value}px` }))} onChange={(value) => void saveSetting("appearance.chatFontSize", Number(value))} /></PreferenceRow>
+            <PreferenceRow icon={Gauge} title="Message line spacing" detail="Control vertical rhythm for long assistant responses and Markdown paragraphs."><SelectControl label="Message line spacing" value={appearance.messageLineHeight} options={[{ value: "compact", label: "Compact" }, { value: "comfortable", label: "Comfortable" }, { value: "relaxed", label: "Relaxed" }]} onChange={(value) => void saveSetting("appearance.messageLineHeight", value)} /></PreferenceRow>
+          </div>
+          <div className="appearance-reading-preview">
+            <span className="appearance-reading-preview-label">Message preview</span>
+            <div className="appearance-reading-preview-message"><strong>Loom</strong> keeps the response column readable while preserving the same Agent behavior. This preview uses your current chat text size and line spacing, so you can tune long-form answers before returning to the conversation.</div>
+          </div>
+        </Section>
+
+        <Section title="Code appearance" caption="Monospace settings affect code blocks, terminal-style previews, and technical values.">
           <div className="settings-card mature-preference-list">
             <PreferenceRow icon={Code2} title="Code font" detail="Use the system monospace stack or a font installed on this machine."><input className="mature-input" value={appearance.codeFont} onChange={(event) => setSettings(setNestedSetting(settings, "appearance.codeFont", event.target.value))} onBlur={(event) => void saveSetting("appearance.codeFont", event.target.value.trim() || "system")} placeholder="system or JetBrains Mono" /></PreferenceRow>
-            <PreferenceRow icon={Type} title="Code font size" detail="Adjust terminal and code readability independently."><SelectControl label="Code font size" value={String(appearance.codeFontSize)} options={[11, 12, 13, 14, 15, 16].map((value) => ({ value: String(value), label: `${value}px` }))} onChange={(value) => void saveSetting("appearance.codeFontSize", Number(value))} /></PreferenceRow>
+            <PreferenceRow icon={Type} title="Code font size" detail="Adjust code and terminal-style output independently from conversation text."><SelectControl label="Code font size" value={String(appearance.codeFontSize)} options={[10, 11, 12, 13, 14, 15, 16, 17, 18].map((value) => ({ value: String(value), label: `${value}px` }))} onChange={(value) => void saveSetting("appearance.codeFontSize", Number(value))} /></PreferenceRow>
+            <PreferenceRow icon={Gauge} title="Code line spacing" detail="Choose a tighter terminal feel or more room between long source lines."><SelectControl label="Code line spacing" value={appearance.codeLineHeight} options={[{ value: "compact", label: "Compact" }, { value: "comfortable", label: "Comfortable" }, { value: "relaxed", label: "Relaxed" }]} onChange={(value) => void saveSetting("appearance.codeLineHeight", value)} /></PreferenceRow>
+            <PreferenceRow icon={Code2} title="Wrap long code" detail="Wrap long code lines instead of requiring horizontal scrolling in message code blocks."><SettingSwitch checked={appearance.codeWrap} label="Wrap long code lines" onChange={(value) => void saveSetting("appearance.codeWrap", value)} /></PreferenceRow>
           </div>
-          <div className="mature-code-preview"><span>PS C:\Loom&gt;</span> <strong>git status</strong><br /><span>On branch main · working tree clean</span></div>
+          <div className="appearance-code-preview-head"><span>Live code preview</span><span>{appearance.codeFont === "system" ? "System monospace" : appearance.codeFont} · {appearance.codeFontSize}px</span></div>
+          <div className="mature-code-preview"><span>PS C:\Loom&gt;</span> <strong>git status</strong><br /><span>On branch main · working tree clean</span><br /><span>const layout = &#123; width: "{appearance.conversationWidth}", density: "{appearance.density}" &#125;;</span></div>
         </Section>
       </>
     );
