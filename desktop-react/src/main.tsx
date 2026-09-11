@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import App from "./App";
 import { BootErrorBoundary } from "./components/BootErrorBoundary";
 import { I18nProvider, bootstrapDocumentLanguage } from "./i18n";
+import { installNativeRendererScaleSync } from "./rendererScale";
 import "./styles.css";
 import "./shell-fix.css";
 import "./components/model-panel-overrides.css";
@@ -22,6 +23,7 @@ import "./components/settings-models-polish.css";
 import "./components/settings-capabilities-polish.css";
 import "./components/runtime-live-feedback.css";
 import "./components/review-motion.css";
+import "./components/sidebar-clarity-fix.css";
 
 const CONVERSATION_WIDTHS: Record<string, string> = {
   focused: "740px",
@@ -97,6 +99,9 @@ try {
     : "comfortable";
   const codeWrap = appearance.codeWrap === true;
 
+  // The persisted setting still writes CSS zoom first. The renderer-scale
+  // bridge immediately converts it to native Chromium page zoom below so old
+  // settings remain compatible while text stays sharp on Windows.
   document.documentElement.style.setProperty("zoom", String(Number(scaleValue) / 100));
   document.documentElement.dataset.loomReducedMotion = String(reducedMotion);
   document.documentElement.dataset.loomDensity = density;
@@ -132,6 +137,7 @@ try {
   document.documentElement.style.setProperty("--loom-code-line-height", "1.62");
 }
 
+installNativeRendererScaleSync();
 bootstrapDocumentLanguage();
 
 const rootElement = document.getElementById("root");
