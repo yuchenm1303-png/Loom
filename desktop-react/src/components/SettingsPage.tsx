@@ -32,12 +32,20 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  DEFAULT_SHORTCUTS,
+  SHORTCUTS_CHANGED_EVENT,
+  mergeShortcutSettings,
+  type ShortcutCommandId,
+  type ShortcutSettings,
+} from "../keyboardShortcuts";
 import type {
   InitializeResult,
   LoomSettings,
   ModelRestartResult,
   ModelSnapshot,
 } from "../types/loom";
+import { KeyboardShortcutsSettings } from "./KeyboardShortcutsSettings";
 import { ModelsSettingsPanel } from "./ModelsSettingsPanel";
 import "./settings-page.css";
 import "./settings-general-polish.css";
@@ -109,6 +117,7 @@ type PrivacySettings = {
 
 type DesktopSettings = LoomSettings & {
   appearance?: Partial<AppearanceSettings>;
+  shortcuts?: Partial<ShortcutSettings>;
   terminal?: Partial<TerminalSettings>;
   browser?: Partial<BrowserSettings>;
   computer?: Partial<ComputerSettings>;
@@ -273,17 +282,6 @@ const CAPABILITIES: {
   { key: "codeMode", title: "Code Mode", description: "Allow bounded multi-tool composition in Loom's execution language.", icon: Code2 },
 ];
 
-const SHORTCUTS = [
-  ["New conversation", "Ctrl + N"],
-  ["Search conversations", "Ctrl + K"],
-  ["Open settings", "Ctrl + ,"],
-  ["Focus composer", "Ctrl + L"],
-  ["Send message", "Enter"],
-  ["New line", "Shift + Enter"],
-  ["Stop active turn", "Esc"],
-  ["Toggle sidebar", "Ctrl + B"],
-];
-
 function titleCase(value: string): string {
   return value
     .replaceAll("_", " ")
@@ -345,6 +343,7 @@ function mergedSettings(runtime: RuntimeView): DesktopSettings {
       ...(local.capabilities ?? {}),
     },
     appearance: { ...DEFAULT_APPEARANCE, ...(server.appearance ?? {}), ...(local.appearance ?? {}) },
+    shortcuts: mergeShortcutSettings({ ...(server.shortcuts ?? {}), ...(local.shortcuts ?? {}) }),
     terminal: { ...DEFAULT_TERMINAL, ...(server.terminal ?? {}), ...(local.terminal ?? {}) },
     browser: { ...DEFAULT_BROWSER, ...(server.browser ?? {}), ...(local.browser ?? {}) },
     computer: { ...DEFAULT_COMPUTER, ...(server.computer ?? {}), ...(local.computer ?? {}) },
@@ -476,6 +475,7 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
           ...local,
           capabilities: { ...DEFAULT_CAPABILITIES, ...(result.settings.capabilities ?? {}), ...(local.capabilities ?? {}) },
           appearance: { ...DEFAULT_APPEARANCE, ...(result.settings.appearance ?? {}), ...(local.appearance ?? {}) },
+          shortcuts: mergeShortcutSettings({ ...(result.settings.shortcuts ?? {}), ...(local.shortcuts ?? {}) }),
           terminal: { ...DEFAULT_TERMINAL, ...(result.settings.terminal ?? {}), ...(local.terminal ?? {}) },
           browser: { ...DEFAULT_BROWSER, ...(result.settings.browser ?? {}), ...(local.browser ?? {}) },
           computer: { ...DEFAULT_COMPUTER, ...(result.settings.computer ?? {}), ...(local.computer ?? {}) },
@@ -548,6 +548,33 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
     setNotice({
       tone: "success",
       text: persisted ? "Appearance restored to defaults." : "Appearance restored locally; server persistence will catch up later.",
+    });
+  };
+
+  const saveShortcut = async (id: ShortcutCommandId, value: string) => {
+    await saveSetting(`shortcuts.${id}`, value, "Shortcut updated.");
+    window.dispatchEvent(new Event(SHORTCUTS_CHANGED_EVENT));
+  };
+
+  const resetShortcut = async (id: ShortcutCommandId) => {
+    await saveShortcut(id, DEFAULT_SHORTCUTS[id]);
+  };
+
+  const resetShortcuts = async () => {
+    const next: DesktopSettings = { ...settings, shortcuts: { ...DEFAULT_SHORTCUTS } };
+    setSettings(next);
+    writeLocalSettings(next);
+    const writes = (Object.entries(DEFAULT_SHORTCUTS) as [ShortcutCommandId, string][]).map(([id, value]) => {
+      const envelope = `${SETTINGS_UPDATE_PREFIX}${JSON.stringify({ path: `shortcuts.${id}`, value })}`;
+      return window.loom.call("settings/set", { capability: envelope, enabled: true });
+    });
+    const results = await Promise.allSettled(writes);
+    window.dispatchEvent(new Event(SHORTCUTS_CHANGED_EVENT));
+    setNotice({
+      tone: "success",
+      text: results.every((result) => result.status === "fulfilled")
+        ? "Keyboard shortcuts restored to defaults."
+        : "Keyboard shortcuts restored locally; server persistence will catch up later.",
     });
   };
 
@@ -786,7 +813,12 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
   );
 
   const renderShortcuts = () => (
-    <><div className="settings-page-heading"><div><span className="settings-eyebrow">Productivity</span><h1>Keyboard shortcuts</h1><p>A single reference for the core desktop commands that keep agent work fast.</p></div></div><Section title="Loom desktop"><div className="settings-card mature-shortcut-list">{SHORTCUTS.map(([label, keys]) => <div className="mature-shortcut-row" key={label}><span>{label}</span><kbd>{keys}</kbd></div>)}</div></Section><div className="settings-callout"><Keyboard size={16} /><div><strong>Shortcut customization is intentionally separated from the command map.</strong><span>This page establishes the stable command vocabulary before custom bindings are introduced.</span></div></div></>
+    <KeyboardShortcutsSettings
+      shortcuts={mergeShortcutSettings(settings.shortcuts)}
+      onChange={saveShortcut}
+      onReset={resetShortcut}
+      onResetAll={resetShortcuts}
+    />
   );
 
   const renderPrivacy = () => {
