@@ -4,6 +4,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { Composer } from "./components/Composer";
@@ -33,7 +34,8 @@ const SIDEBAR_MIN = 210;
 const SIDEBAR_MAX = 420;
 const INSPECTOR_MIN = 280;
 const INSPECTOR_MAX = 520;
-const MIN_WORKSPACE_WIDTH = 480;
+const MIN_WORKSPACE_WIDTH = 520;
+const EMPTY_TRANSCRIPT_ITEMS: TranscriptItem[] = [];
 
 type ResizePanel = "sidebar" | "inspector";
 type LayoutStyle = CSSProperties & {
@@ -105,6 +107,51 @@ export default function App() {
   useEffect(() => () => {
     document.body.classList.remove("loom-panel-resizing");
   }, []);
+
+  useEffect(() => {
+    const reconcile = () => {
+      const viewport = shellRef.current?.clientWidth || window.innerWidth;
+      let nextSidebar = sidebarWidth;
+      let nextInspector = inspectorWidth;
+
+      if (sidebarOpen && inspectorOpen) {
+        const minimumPanels = SIDEBAR_MIN + INSPECTOR_MIN;
+        const availableForPanels = Math.max(minimumPanels, viewport - MIN_WORKSPACE_WIDTH);
+        let excess = nextSidebar + nextInspector - availableForPanels;
+        if (excess > 0) {
+          const inspectorReduction = Math.min(excess, nextInspector - INSPECTOR_MIN);
+          nextInspector -= inspectorReduction;
+          excess -= inspectorReduction;
+        }
+        if (excess > 0) {
+          nextSidebar -= Math.min(excess, nextSidebar - SIDEBAR_MIN);
+        }
+      } else if (sidebarOpen) {
+        nextSidebar = clamp(nextSidebar, SIDEBAR_MIN, Math.min(SIDEBAR_MAX, viewport - MIN_WORKSPACE_WIDTH));
+      } else if (inspectorOpen) {
+        nextInspector = clamp(nextInspector, INSPECTOR_MIN, Math.min(INSPECTOR_MAX, viewport - MIN_WORKSPACE_WIDTH));
+      }
+
+      nextSidebar = Math.round(nextSidebar);
+      nextInspector = Math.round(nextInspector);
+
+      if (nextSidebar !== sidebarWidth) {
+        setSidebarWidth(nextSidebar);
+        persistPanelWidth(SIDEBAR_WIDTH_KEY, nextSidebar);
+      }
+      if (nextInspector !== inspectorWidth) {
+        setInspectorWidth(nextInspector);
+        persistPanelWidth(INSPECTOR_WIDTH_KEY, nextInspector);
+      }
+    };
+
+    const frame = window.requestAnimationFrame(reconcile);
+    window.addEventListener("resize", reconcile);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("resize", reconcile);
+    };
+  }, [inspectorOpen, inspectorWidth, sidebarOpen, sidebarWidth]);
 
   const transcriptItems = loom.items.filter((item) => {
     if (item.type !== "approval") return true;
@@ -189,7 +236,7 @@ export default function App() {
     document.body.classList.remove("loom-panel-resizing");
   };
 
-  const resizeWithKeyboard = (panel: ResizePanel, event: React.KeyboardEvent<HTMLDivElement>) => {
+  const resizeWithKeyboard = (panel: ResizePanel, event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
     event.preventDefault();
     const amount = event.shiftKey ? 32 : 12;
@@ -352,7 +399,7 @@ export default function App() {
         onDoubleClick={() => commitPanelWidth("inspector", DEFAULT_INSPECTOR_WIDTH)}
       />
 
-      <Inspector items={loom.items} onClose={() => setInspectorOpen(false)} />
+      <Inspector items={inspectorOpen ? loom.items : EMPTY_TRANSCRIPT_ITEMS} onClose={() => setInspectorOpen(false)} />
     </div>
   );
 }
