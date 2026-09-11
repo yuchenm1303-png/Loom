@@ -8,6 +8,13 @@
   transform-origin: left top;
 }
 
+/* activity-flow.css also animates .task-flow itself. The live shell already
+   owns that entrance here, so disable the nested duplicate transform/opacity
+   animation and keep one compositor animation instead of two. */
+.turn-process.is-live .task-flow {
+  animation: none;
+}
+
 .turn-process.is-live .task-flow-row-wrap {
   contain: layout paint style;
   animation: loom-task-flow-row-in 155ms cubic-bezier(.2,.78,.2,1) both;
