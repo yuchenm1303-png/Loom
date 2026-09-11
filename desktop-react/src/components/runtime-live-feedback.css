@@ -1,0 +1,129 @@
+/* Persistent live feedback for an active turn.
+   Completed rows stay completed; the current turn itself owns the motion and
+   live-tail affordance so gaps between runtime events never look frozen. */
+
+.turn-block.is-active .turn-process-content {
+  position: relative;
+  padding-bottom: 42px;
+}
+
+.turn-block.is-active .turn-process-content::after {
+  content: "正在分析结果，准备下一步…";
+  position: relative;
+  align-self: flex-start;
+  min-height: 28px;
+  max-width: min(520px, 100%);
+  display: inline-flex;
+  align-items: center;
+  margin-top: 2px;
+  padding: 0 12px 0 29px;
+  border: 1px solid rgba(139, 124, 246, .13);
+  border-radius: 9px;
+  color: #9da5b2;
+  background:
+    radial-gradient(circle at 13px 50%, rgba(173, 163, 247, .98) 0 2.5px, transparent 3px),
+    linear-gradient(105deg, rgba(139,124,246,.028), rgba(255,255,255,.018) 42%, rgba(139,124,246,.055) 52%, rgba(255,255,255,.014) 62%, rgba(139,124,246,.022));
+  background-size: auto, 230% 100%;
+  background-position: 0 0, 100% 0;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.025),
+    0 6px 18px rgba(0,0,0,.055);
+  font-size: 10.8px;
+  font-weight: 590;
+  line-height: 1;
+  letter-spacing: .002em;
+  pointer-events: none;
+  animation:
+    runtime-live-tail-enter 160ms cubic-bezier(.2,.78,.2,1) both,
+    runtime-live-tail-sweep 1.7s ease-in-out 160ms infinite;
+}
+
+.turn-block.is-active .turn-process-content:has(.task-flow-status.running)::after,
+.turn-block.is-active .turn-process-content:has(.task-flow-status.started)::after {
+  content: "正在执行当前步骤…";
+}
+
+.turn-block.is-active .turn-process-content:has(.task-flow-status.waiting)::after {
+  content: "正在等待当前步骤返回…";
+}
+
+.turn-block.is-active .turn-process-content:has(.task-flow-status.waiting_approval)::after {
+  content: "正在等待权限确认…";
+}
+
+/* Give the whole live process a quiet heartbeat even when the latest concrete
+   item has already completed and the model is deciding what to do next. */
+.turn-block.is-active .turn-process-content::before {
+  content: "";
+  position: absolute;
+  left: 10px;
+  bottom: 15px;
+  width: 6px;
+  height: 6px;
+  z-index: 1;
+  border-radius: 50%;
+  background: #a79df3;
+  box-shadow: 0 0 0 0 rgba(167,157,243,.24);
+  pointer-events: none;
+  animation: runtime-live-tail-pulse 1.45s ease-out infinite;
+}
+
+.turn-block.is-active .task-flow-group-icon {
+  border-color: rgba(139,124,246,.18);
+  color: #9d95df;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.028),
+    0 0 12px rgba(139,124,246,.035);
+}
+
+/* When the backend gives us an explicit running status, make it unmistakable.
+   Completed rows retain their green status dot and do not get falsified. */
+.turn-block.is-active .task-flow-row:has(.task-flow-status.running),
+.turn-block.is-active .task-flow-row:has(.task-flow-status.started) {
+  background: linear-gradient(90deg, rgba(139,124,246,.035), rgba(139,124,246,.012) 54%, transparent 88%);
+}
+
+.turn-block.is-active .task-flow-row:has(.task-flow-status.running)::after,
+.turn-block.is-active .task-flow-row:has(.task-flow-status.started)::after {
+  opacity: 1;
+}
+
+@keyframes runtime-live-tail-enter {
+  from { opacity: 0; transform: translateY(3px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes runtime-live-tail-sweep {
+  0% { background-position: 0 0, 100% 0; }
+  50% { background-position: 0 0, 0 0; }
+  100% { background-position: 0 0, -100% 0; }
+}
+
+@keyframes runtime-live-tail-pulse {
+  0% { transform: scale(.9); box-shadow: 0 0 0 0 rgba(167,157,243,.25); opacity: .72; }
+  55% { transform: scale(1.06); opacity: 1; }
+  100% { transform: scale(.9); box-shadow: 0 0 0 6px rgba(167,157,243,0); opacity: .72; }
+}
+
+@media (max-width: 760px) {
+  .turn-block.is-active .turn-process-content {
+    padding-bottom: 39px;
+  }
+
+  .turn-block.is-active .turn-process-content::after {
+    max-width: 100%;
+    font-size: 10.4px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .turn-block.is-active .turn-process-content::after,
+  .turn-block.is-active .turn-process-content::before {
+    animation: none !important;
+  }
+}
+
+:root[data-loom-reduced-motion="true"] .turn-block.is-active .turn-process-content::after,
+:root[data-loom-reduced-motion="true"] .turn-block.is-active .turn-process-content::before {
+  animation: none !important;
+}
