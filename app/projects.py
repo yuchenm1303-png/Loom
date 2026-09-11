@@ -32,6 +32,7 @@ _CONFIG_VERSION = 1
 _PROJECT_ID_RE = re.compile(r"^p[a-z0-9]{12}$")
 
 MAX_NAME_LENGTH = 60
+MAX_INSTRUCTIONS_LENGTH = 12_000
 
 # The bucket for threads whose workspace no project claims. It is not a
 # project: it has no id, cannot be renamed, and cannot be removed.
@@ -78,6 +79,12 @@ def clean_name(value: str) -> str:
     return " ".join(str(value or "").split())[:MAX_NAME_LENGTH]
 
 
+def clean_instructions(value: str) -> str:
+    """Normalize project instructions without changing the user's wording."""
+    text = str(value or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    return text[:MAX_INSTRUCTIONS_LENGTH]
+
+
 @dataclass(frozen=True, slots=True)
 class Project:
     """One named place conversations happen."""
@@ -87,6 +94,7 @@ class Project:
     root: str
     created_at: str = ""
     updated_at: str = ""
+    instructions: str = ""
 
     def __post_init__(self) -> None:
         project_id = str(self.project_id or "").strip().casefold()
@@ -97,6 +105,7 @@ class Project:
         object.__setattr__(self, "project_id", project_id)
         object.__setattr__(self, "name", name)
         object.__setattr__(self, "root", root)
+        object.__setattr__(self, "instructions", clean_instructions(self.instructions))
 
     @property
     def root_key(self) -> str:
@@ -112,6 +121,7 @@ class Project:
             "id": self.project_id,
             "name": self.name,
             "root": self.root,
+            "instructions": self.instructions,
             "createdAt": self.created_at,
             "updatedAt": self.updated_at,
         }
@@ -124,6 +134,7 @@ class Project:
             root=str(payload.get("root") or ""),
             created_at=str(payload.get("createdAt") or ""),
             updated_at=str(payload.get("updatedAt") or ""),
+            instructions=str(payload.get("instructions") or ""),
         )
 
 
@@ -201,7 +212,7 @@ class ProjectStore:
 
     # ---- writes ----------------------------------------------------------
 
-    def create(self, root: str | Path, *, name: str = "", now: str = "") -> Project:
+    def create(self, root: str | Path, *, name: str = "", instructions: str = "", now: str = "") -> Project:
         """Register a directory as a project.
 
         Registering a root that is already a project returns the existing one
@@ -224,6 +235,7 @@ class ProjectStore:
             root=str(resolved),
             created_at=now,
             updated_at=now,
+            instructions=clean_instructions(instructions),
         )
         self._write([*self.list(), project])
         return project
@@ -241,10 +253,28 @@ class ProjectStore:
                     root=project.root,
                     created_at=project.created_at,
                     updated_at=now or project.updated_at,
+                    instructions=project.instructions,
                 )
                 projects[index] = renamed
                 self._write(projects)
                 return renamed
+        raise KeyError(f"unknown project: {project_id!r}")
+
+    def set_instructions(self, project_id: str, instructions: str, *, now: str = "") -> Project:
+        projects = list(self.list())
+        for index, project in enumerate(projects):
+            if project.project_id == str(project_id or "").strip().casefold():
+                updated = Project(
+                    project_id=project.project_id,
+                    name=project.name,
+                    root=project.root,
+                    created_at=project.created_at,
+                    updated_at=now or project.updated_at,
+                    instructions=clean_instructions(instructions),
+                )
+                projects[index] = updated
+                self._write(projects)
+                return updated
         raise KeyError(f"unknown project: {project_id!r}")
 
     def remove(self, project_id: str) -> Project:
@@ -293,12 +323,14 @@ class ProjectStore:
 
 
 __all__ = [
+    "MAX_INSTRUCTIONS_LENGTH",
     "MAX_NAME_LENGTH",
     "UNFILED",
     "UNFILED_LABEL",
     "Project",
     "ProjectStore",
     "ProjectStoreError",
+    "clean_instructions",
     "clean_name",
     "default_name",
     "normalize_root",
