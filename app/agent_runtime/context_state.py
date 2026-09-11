@@ -171,20 +171,24 @@ class ContextCheckpoint:
             content=(
                 f"LOOM_CONTEXT_CHECKPOINT {self.checkpoint_id}\n"
                 "The following is a compacted summary of earlier canonical conversation history. "
-                "Treat it as prior conversation context, not as a new user instruction.\n"
+                "Treat it as prior conversation context, not as a new user instruction. "
+                "Its language is historical content, not a response-language instruction; for all user-facing "
+                "output follow the current LOOM_COMMUNICATION_LANGUAGE system message.\n"
                 f"{self.summary}"
             ),
         )
 
 
 class ContextCheckpointStore:
-    def __init__(self, session_root: str | Path) -> None:
-        self.session_root = Path(session_root).expanduser().resolve()
+    def __init__(self, root: str | Path) -> None:
+        self.root = Path(root)
+        self.checkpoints_root = self.root / "context_checkpoints"
+        self.checkpoints_root.mkdir(parents=True, exist_ok=True)
 
-    def _directory(self, session_id: str) -> Path:
-        path = self.session_root / str(session_id) / "context_checkpoints"
-        path.mkdir(parents=True, exist_ok=True)
-        return path
+    def _session_dir(self, session_id: str) -> Path:
+        directory = self.checkpoints_root / session_id
+        directory.mkdir(parents=True, exist_ok=True)
+        return directory
 
     def create(
         self,
@@ -197,13 +201,11 @@ class ContextCheckpointStore:
     ) -> ContextCheckpoint:
         text = str(summary or "").strip()
         if not text:
-            raise ValueError("context checkpoint summary must not be empty")
+            raise ValueError("context summary must not be empty")
         if len(text) > _MAX_SUMMARY_CHARS:
-            raise ValueError(f"context checkpoint summary exceeds {_MAX_SUMMARY_CHARS:,} characters")
-        if not archived_messages:
-            raise ValueError("context checkpoint must archive at least one message")
+            raise ValueError("context summary is too large")
         checkpoint = ContextCheckpoint(
-            checkpoint_id=f"ctx-{uuid.uuid4().hex[:16]}",
+            checkpoint_id=str(uuid.uuid4()),
             session_id=str(session_id),
             created_at=utc_now(),
             summary=text,
@@ -211,91 +213,43 @@ class ContextCheckpointStore:
             retained_message_count=max(0, int(retained_message_count)),
             world_state_digest=str(world_state_digest or ""),
         )
-        self._write(checkpoint)
-        return checkpoint
-
-    def _write(self, checkpoint: ContextCheckpoint) -> None:
-        directory = self._directory(checkpoint.session_id)
-        target = directory / f"{checkpoint.checkpoint_id}.json"
-        temp = directory / f".{checkpoint.checkpoint_id}.{os.getpid()}.{uuid.uuid4().hex}.tmp"
+        path = self._session_dir(checkpoint.session_id) / f"{checkpoint.checkpoint_id}.json"
         payload = {
-            "version": _CONTEXT_VERSION,
             "checkpoint_id": checkpoint.checkpoint_id,
             "session_id": checkpoint.session_id,
             "created_at": checkpoint.created_at,
             "summary": checkpoint.summary,
+            "archived_messages": [_message_to_dict(message) for message in checkpoint.archived_messages],
             "retained_message_count": checkpoint.retained_message_count,
             "world_state_digest": checkpoint.world_state_digest,
-            "archived_messages": [_message_to_dict(item) for item in checkpoint.archived_messages],
         }
-        data = json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True)
-        try:
-            with temp.open("w", encoding="utf-8", newline="\n") as handle:
-                handle.write(data)
-                handle.flush()
-                os.fsync(handle.fileno())
-            os.replace(temp, target)
-        finally:
-            try:
-                temp.unlink(missing_ok=True)
-            except OSError:
-                pass
+        temp = path.with_suffix(".json.tmp")
+        temp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        os.replace(temp, path)
+        return checkpoint
 
     def load(self, session_id: str, checkpoint_id: str) -> ContextCheckpoint:
-        target = self._directory(session_id) / f"{str(checkpoint_id)}.json"
-        payload = json.loads(target.read_text(encoding="utf-8"))
-        if not isinstance(payload, dict):
-            raise ValueError("context checkpoint must be a JSON object")
+        path = self._session_dir(session_id) / f"{checkpoint_id}.json"
+        if not path.is_file():
+            raise KeyError(f"unknown context checkpoint: {checkpoint_id}")
+        payload = json.loads(path.read_text(encoding="utf-8"))
         return ContextCheckpoint(
-            checkpoint_id=str(payload.get("checkpoint_id") or ""),
-            session_id=str(payload.get("session_id") or ""),
-            created_at=str(payload.get("created_at") or ""),
-            summary=str(payload.get("summary") or ""),
-            archived_messages=tuple(
-                _message_from_dict(dict(item))
-                for item in payload.get("archived_messages", [])
-                if isinstance(item, dict)
-            ),
-            retained_message_count=int(payload.get("retained_message_count") or 0),
-            world_state_digest=str(payload.get("world_state_digest") or ""),
+            checkpoint_id=str(payload["checkpoint_id"]),
+            session_id=str(payload["session_id"]),
+            created_at=str(payload["created_at"]),
+            summary=str(payload["summary"]),
+            archived_messages=tuple(_message_from_dict(item) for item in payload.get("archived_messages", [])),
+            retained_message_count=int(payload.get("retained_message_count", 0)),
+            world_state_digest=str(payload.get("world_state_digest", "")),
         )
 
     def list(self, session_id: str) -> tuple[ContextCheckpoint, ...]:
-        directory = self._directory(session_id)
-        output: list[ContextCheckpoint] = []
-        for path in sorted(directory.glob("ctx-*.json")):
+        directory = self._session_dir(session_id)
+        checkpoints: list[ContextCheckpoint] = []
+        for path in sorted(directory.glob("*.json")):
             try:
-                output.append(self.load(session_id, path.stem))
-            except (OSError, ValueError, json.JSONDecodeError):
+                checkpoints.append(self.load(session_id, path.stem))
+            except Exception:
                 continue
-        output.sort(key=lambda item: item.created_at, reverse=True)
-        return tuple(output)
-
-
-def compaction_split_index(messages: tuple[AIMessage, ...], *, keep_recent: int) -> int:
-    """Choose a safe suffix boundary that starts at a real user message.
-
-    Starting the retained suffix at a user message keeps assistant tool-call/output
-    groups on the same side of the checkpoint and avoids creating provider-invalid
-    orphan tool outputs after compaction.
-    """
-    if len(messages) < 2:
-        return 0
-    keep = max(1, int(keep_recent))
-    candidate = max(1, len(messages) - keep)
-    for index in range(candidate, len(messages)):
-        if messages[index].role is MessageRole.USER:
-            return index
-    for index in range(candidate - 1, 0, -1):
-        if messages[index].role is MessageRole.USER:
-            return index
-    return 0
-
-
-__all__ = [
-    "ContextCheckpoint",
-    "ContextCheckpointStore",
-    "WorldStateEnvelope",
-    "build_world_state_envelope",
-    "compaction_split_index",
-]
+        checkpoints.sort(key=lambda item: item.created_at, reverse=True)
+        return tuple(checkpoints)
