@@ -43,7 +43,7 @@ def tool_capability_name(tool_name: str) -> str:
         return "webSearch"
     if name.startswith("mcp."):
         return "mcp"
-    if name in {"skill_search", "skill_load"}:
+    if name.startswith("skill_"):
         return "skills"
     if name == "tool_search":
         return "toolSearch"
