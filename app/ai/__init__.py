@@ -37,7 +37,7 @@ from .errors import (
 from .openai_runtime import OpenAIChatBackend
 from .openai_streaming import OpenAIStreamingChatBackend
 from .platform import AIPlatform, ChatModelBackend, StructuredModelBackend
-from .profiles import ModelProfile, ModelRegistry
+from .profiles import ModelContextLimits, ModelProfile, ModelRegistry
 from .provider_catalog import (
     BaseUrlPolicy,
     ProviderAdapter,
@@ -83,6 +83,7 @@ __all__ = [
     "MessageRole",
     "ModelBinding",
     "ModelCapability",
+    "ModelContextLimits",
     "ModelProfile",
     "ModelRegistry",
     "ModelResponse",
