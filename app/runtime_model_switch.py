@@ -15,6 +15,7 @@ from app.ai import (
     build_ai_platform,
 )
 from app.ai.reasoning_catalog import reasoning_capability
+from app.agent_runtime.computer_transient import ComputerTransientInputPlatform
 
 _RUNTIME_KEY_ALIAS = "loom-api-key"
 _PROVIDER_ID = "loom-primary"
@@ -115,7 +116,7 @@ def build_runtime_model_platform(
         credential_resolver=resolver,
         request_timeout_seconds=float(request_timeout_seconds),
     )
-    return platform
+    return ComputerTransientInputPlatform(platform)
 
 
 __all__ = [
