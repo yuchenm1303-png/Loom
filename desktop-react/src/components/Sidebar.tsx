@@ -23,6 +23,7 @@ import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateActio
 import { createPortal } from "react-dom";
 import type { ProjectRecord, ThreadRecord } from "../types/loom";
 import "./sidebar.css";
+import "./sidebar-project-actions.css";
 
 type ThreadView = "active" | "archived";
 type Notice = { kind: "success" | "error"; text: string };
@@ -40,6 +41,7 @@ interface SidebarProps {
   onAddProject(root: string): Promise<ProjectRecord | void>;
   onRenameProject(projectId: string, name: string): Promise<void>;
   onRemoveProject(projectId: string): Promise<void>;
+  onMoveProject(threadId: string, projectId: string): Promise<void>;
   onRename(threadId: string, title: string): Promise<void>;
   onArchive(threadId: string, archived: boolean): Promise<void>;
   onDelete(threadId: string): Promise<void>;
@@ -169,6 +171,7 @@ export function Sidebar({
   onAddProject,
   onRenameProject,
   onRemoveProject,
+  onMoveProject,
   onRename,
   onArchive,
   onDelete,
@@ -184,6 +187,7 @@ export function Sidebar({
   const [renamingProjectId, setRenamingProjectId] = useState("");
   const [projectRenameValue, setProjectRenameValue] = useState("");
   const [copyExpanded, setCopyExpanded] = useState(false);
+  const [projectExpanded, setProjectExpanded] = useState(false);
   const [deleteArmed, setDeleteArmed] = useState(false);
   const [busyThreadId, setBusyThreadId] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -343,6 +347,7 @@ export function Sidebar({
   ) => {
     setContextMenu(null);
     setCopyExpanded(false);
+    setProjectExpanded(false);
     setDeleteArmed(false);
     setBusyThreadId(thread.id);
     try {
@@ -380,12 +385,27 @@ export function Sidebar({
     },
   );
 
+  const moveThreadProject = (thread: ThreadRecord, projectId: string) => {
+    const currentProjectId = (thread.projectId || "").trim();
+    if (projectId === currentProjectId) {
+      setContextMenu(null);
+      setProjectExpanded(false);
+      return Promise.resolve();
+    }
+    const targetProject = projects.find((project) => project.id === projectId);
+    const successText = projectId
+      ? `已放入项目「${targetProject?.name || "项目"}」`
+      : "已移出项目";
+    return runRemoteAction(thread, successText, () => onMoveProject(thread.id, projectId));
+  };
+
   const copyThreadValue = async (thread: ThreadRecord, label: string, value: string) => {
     try {
       await writeClipboard(value);
       setNotice({ kind: "success", text: `${label}已复制` });
       setContextMenu(null);
       setCopyExpanded(false);
+      setProjectExpanded(false);
     } catch (cause) {
       setNotice({ kind: "error", text: `复制失败：${errorText(cause)}` });
     }
@@ -449,8 +469,9 @@ export function Sidebar({
 
   const openContextMenu = (thread: ThreadRecord, x: number, y: number) => {
     const width = 264;
-    const height = 352;
+    const height = 430;
     setCopyExpanded(false);
+    setProjectExpanded(false);
     setDeleteArmed(false);
     setContextMenu({
       threadId: thread.id,
@@ -872,6 +893,60 @@ export function Sidebar({
             <span>{unreadIds.has(menuThread.id) ? "标记为已读" : "标记为未读"}</span>
             <kbd>Ctrl+Shift+U</kbd>
           </button>
+
+          {projectsSupported && (projects.length > 0 || Boolean(menuThread.projectId)) ? (
+            <>
+              <button
+                type="button"
+                role="menuitem"
+                className={projectExpanded ? "submenu-open" : ""}
+                disabled={threadIsBusy(menuThread)}
+                onClick={() => {
+                  setProjectExpanded((current) => !current);
+                  setCopyExpanded(false);
+                }}
+              >
+                {menuThread.projectId ? <Folder size={16} strokeWidth={1.75} /> : <FolderPlus size={16} strokeWidth={1.75} />}
+                <span>{menuThread.projectId ? "移动到项目" : "放入项目"}</span>
+                <ChevronRight className="menu-chevron" size={15} strokeWidth={1.75} />
+              </button>
+              {projectExpanded ? (
+                <div className="thread-project-submenu" role="group" aria-label="Project actions">
+                  {menuThread.projectId ? (
+                    <button
+                      type="button"
+                      className="thread-project-remove-option"
+                      onClick={() => void moveThreadProject(menuThread, "")}
+                      disabled={threadIsBusy(menuThread)}
+                    >
+                      <X size={14} strokeWidth={1.8} />
+                      <span>移出项目</span>
+                    </button>
+                  ) : null}
+                  {menuThread.projectId && projects.length ? <div className="thread-project-submenu-separator" /> : null}
+                  {projects.map((project) => {
+                    const selected = project.id === menuThread.projectId;
+                    return (
+                      <button
+                        type="button"
+                        key={project.id}
+                        className={selected ? "selected" : ""}
+                        onClick={() => void moveThreadProject(menuThread, project.id)}
+                        disabled={selected || threadIsBusy(menuThread)}
+                        title={project.root}
+                      >
+                        <Folder size={14} strokeWidth={1.75} />
+                        <span>{project.name}</span>
+                        {selected ? <small>当前</small> : null}
+                      </button>
+                    );
+                  })}
+                  {!projects.length && !menuThread.projectId ? <div className="thread-project-submenu-empty">暂无项目</div> : null}
+                </div>
+              ) : null}
+            </>
+          ) : null}
+
           <button
             type="button"
             role="menuitem"
@@ -889,7 +964,10 @@ export function Sidebar({
             type="button"
             role="menuitem"
             className={copyExpanded ? "submenu-open" : ""}
-            onClick={() => setCopyExpanded((current) => !current)}
+            onClick={() => {
+              setCopyExpanded((current) => !current);
+              setProjectExpanded(false);
+            }}
           >
             <Copy size={16} strokeWidth={1.75} />
             <span>复制</span>
