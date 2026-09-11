@@ -34,6 +34,41 @@ _EXCEPTION_RE = re.compile(
     r"^(?P<name>[A-Za-z_][A-Za-z0-9_.]*(?:Error|Exception|Warning|Interrupt|Exit))(?::.*)?$"
 )
 
+# Keep the UFO child deliberately narrow. Passing all of os.environ would hand a
+# third-party automation engine every unrelated connector/provider credential that
+# Loom happens to have. These are the OS/network variables a normal Windows Python
+# child needs; the selected UFO provider configuration is injected separately below.
+_PASSTHROUGH_ENV = (
+    "PATH",
+    "PATHEXT",
+    "SYSTEMROOT",
+    "WINDIR",
+    "COMSPEC",
+    "TEMP",
+    "TMP",
+    "USERPROFILE",
+    "HOMEDRIVE",
+    "HOMEPATH",
+    "APPDATA",
+    "LOCALAPPDATA",
+    "PROGRAMDATA",
+    "PROGRAMFILES",
+    "PROGRAMFILES(X86)",
+    "PROGRAMW6432",
+    "USERNAME",
+    "NUMBER_OF_PROCESSORS",
+    "PROCESSOR_ARCHITECTURE",
+    "PROCESSOR_IDENTIFIER",
+    "LANG",
+    "LC_ALL",
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "NO_PROXY",
+    "REQUESTS_CA_BUNDLE",
+    "SSL_CERT_FILE",
+    "CURL_CA_BUNDLE",
+)
+
 
 def _truthy(value: str | None) -> bool:
     return str(value or "").strip().casefold() in {"1", "true", "yes", "on"}
@@ -104,7 +139,11 @@ def _safe_stderr_line(value: str) -> str:
     if exception_match:
         return f"{exception_match.group('name')}: [REDACTED_EXCEPTION_MESSAGE]"
 
-    level_match = re.match(r"^(DEBUG|INFO|WARNING|ERROR|CRITICAL)(?:\s*[:|-].*)?$", stripped, re.IGNORECASE)
+    level_match = re.match(
+        r"^(DEBUG|INFO|WARNING|ERROR|CRITICAL)(?:\s*[:|-].*)?$",
+        stripped,
+        re.IGNORECASE,
+    )
     if level_match:
         return f"{level_match.group(1).upper()}: [REDACTED_UFO_STDERR]"
     return "[REDACTED_UFO_STDERR]"
@@ -126,10 +165,18 @@ class UfoDriverConfig:
 
     @classmethod
     def from_environment(cls, *, strict: bool = False) -> "UfoDriverConfig":
-        install_root = Path(_first_env("LOOM_UFO_INSTALL_ROOT") or _default_install_root()).expanduser().resolve()
-        source_root = Path(_first_env("LOOM_UFO_ROOT") or _default_source_root(install_root)).expanduser().resolve()
-        python = Path(_first_env("LOOM_UFO_PYTHON") or _default_python(install_root)).expanduser().resolve()
-        sidecar = Path(_first_env("LOOM_UFO_SIDECAR") or _sidecar_path()).expanduser().resolve()
+        install_root = Path(
+            _first_env("LOOM_UFO_INSTALL_ROOT") or _default_install_root()
+        ).expanduser().resolve()
+        source_root = Path(
+            _first_env("LOOM_UFO_ROOT") or _default_source_root(install_root)
+        ).expanduser().resolve()
+        python = Path(
+            _first_env("LOOM_UFO_PYTHON") or _default_python(install_root)
+        ).expanduser().resolve()
+        sidecar = Path(
+            _first_env("LOOM_UFO_SIDECAR") or _sidecar_path()
+        ).expanduser().resolve()
 
         explicit_type = _first_env("LOOM_UFO_API_TYPE").casefold()
         explicit_base = _first_env("LOOM_UFO_API_BASE", "LOOM_BASE_URL")
@@ -169,8 +216,12 @@ class UfoDriverConfig:
             api_key=api_key,
             api_model=api_model,
             strict=bool(strict),
-            startup_timeout_seconds=float(_first_env("LOOM_UFO_STARTUP_TIMEOUT") or 45.0),
-            cancel_timeout_seconds=float(_first_env("LOOM_UFO_CANCEL_TIMEOUT") or 2.0),
+            startup_timeout_seconds=float(
+                _first_env("LOOM_UFO_STARTUP_TIMEOUT") or 45.0
+            ),
+            cancel_timeout_seconds=float(
+                _first_env("LOOM_UFO_CANCEL_TIMEOUT") or 2.0
+            ),
         )
 
     def readiness(self) -> tuple[bool, str]:
@@ -181,7 +232,7 @@ class UfoDriverConfig:
         if not self.source_root.is_dir() or not (self.source_root / "ufo").is_dir():
             return False, f"UFO {UFO_TAG} is not installed; run npm run setup:ufo"
         if not self.python.is_file():
-            return False, f"UFO isolated Python is missing; run npm run setup:ufo"
+            return False, "UFO isolated Python is missing; run npm run setup:ufo"
         if not (self.source_root / "config" / "ufo" / "agents.yaml").is_file():
             return False, "UFO Loom agent configuration is missing; run npm run setup:ufo"
         if not (self.source_root / "config" / "ufo" / "system_loom.yaml").is_file():
@@ -189,15 +240,24 @@ class UfoDriverConfig:
         if not (self.source_root / "config" / "ufo" / "mcp_loom.yaml").is_file():
             return False, "UFO Loom MCP allowlist is missing; run npm run setup:ufo"
         if not self.api_key:
-            return False, "UFO model API key is not configured (set LOOM_UFO_API_KEY or a supported provider key)"
+            return False, (
+                "UFO model API key is not configured "
+                "(set LOOM_UFO_API_KEY or a supported provider key)"
+            )
         if not self.api_model:
-            return False, "UFO vision model is not configured (set LOOM_UFO_API_MODEL)"
+            return False, (
+                "UFO vision model is not configured (set LOOM_UFO_API_MODEL)"
+            )
         if not self.api_base and self.api_type == "openai":
             return False, "UFO OpenAI-compatible API base is not configured"
         return True, ""
 
     def process_environment(self) -> dict[str, str]:
-        env = dict(os.environ)
+        env: dict[str, str] = {}
+        for name in _PASSTHROUGH_ENV:
+            value = os.environ.get(name)
+            if value is not None:
+                env[name] = value
         env.update(
             {
                 "PYTHONUTF8": "1",
@@ -227,6 +287,7 @@ class UfoWindowsDriver:
         self.config = config or UfoDriverConfig.from_environment()
         self._process: subprocess.Popen[str] | None = None
         self._messages: queue.Queue[dict[str, Any]] = queue.Queue()
+        # stderr is bounded and scrubbed line-by-line before it reaches this deque.
         self._stderr: deque[str] = deque(maxlen=100)
         self._reader: threading.Thread | None = None
         self._stderr_reader: threading.Thread | None = None
@@ -280,6 +341,13 @@ class UfoWindowsDriver:
             return 0
         return int(getattr(subprocess, "CREATE_NO_WINDOW", 0) or 0)
 
+    def _drain_messages(self) -> None:
+        while True:
+            try:
+                self._messages.get_nowait()
+            except queue.Empty:
+                return
+
     def _stdout_loop(self, process: subprocess.Popen[str]) -> None:
         stream = process.stdout
         if stream is None:
@@ -307,18 +375,19 @@ class UfoWindowsDriver:
     def _hard_stop(self) -> None:
         process = self._process
         self._process = None
-        if process is None:
-            return
-        try:
-            if process.poll() is None:
-                process.terminate()
-                try:
-                    process.wait(timeout=1.0)
-                except subprocess.TimeoutExpired:
-                    process.kill()
-                    process.wait(timeout=1.0)
-        except Exception:
-            pass
+        if process is not None:
+            try:
+                if process.poll() is None:
+                    process.terminate()
+                    try:
+                        process.wait(timeout=1.0)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        process.wait(timeout=1.0)
+            except Exception:
+                pass
+        self._reader = None
+        self._stderr_reader = None
         with self._state_lock:
             self._active_task_id = ""
             self._paused = False
@@ -328,6 +397,10 @@ class UfoWindowsDriver:
         if process is not None and process.poll() is None:
             return
         self._hard_stop()
+        self._drain_messages()
+        self._stderr.clear()
+        self._verified_commit = ""
+
         ready, reason = self.config.readiness()
         if not ready:
             raise ComputerDriverUnavailableError(reason)
@@ -352,8 +425,18 @@ class UfoWindowsDriver:
             creationflags=self._creationflags(),
         )
         self._process = process
-        self._reader = threading.Thread(target=self._stdout_loop, args=(process,), daemon=True, name="loom-ufo-stdout")
-        self._stderr_reader = threading.Thread(target=self._stderr_loop, args=(process,), daemon=True, name="loom-ufo-stderr")
+        self._reader = threading.Thread(
+            target=self._stdout_loop,
+            args=(process,),
+            daemon=True,
+            name="loom-ufo-stdout",
+        )
+        self._stderr_reader = threading.Thread(
+            target=self._stderr_loop,
+            args=(process,),
+            daemon=True,
+            name="loom-ufo-stderr",
+        )
         self._reader.start()
         self._stderr_reader.start()
 
@@ -370,9 +453,14 @@ class UfoWindowsDriver:
             except queue.Empty:
                 continue
             if message.get("type") == "ready":
-                if message.get("protocol") != PROTOCOL or int(message.get("protocol_version") or 0) != PROTOCOL_VERSION:
+                if (
+                    message.get("protocol") != PROTOCOL
+                    or int(message.get("protocol_version") or 0) != PROTOCOL_VERSION
+                ):
                     self._hard_stop()
-                    raise ComputerDriverUnavailableError("UFO sidecar protocol version mismatch")
+                    raise ComputerDriverUnavailableError(
+                        "UFO sidecar protocol version mismatch"
+                    )
                 head = str(message.get("git_head") or "")
                 self._verified_commit = head
                 if head and head != UFO_COMMIT:
@@ -384,9 +472,13 @@ class UfoWindowsDriver:
             if message.get("type") in {"error", "protocol_error"}:
                 error_type = str(message.get("error_type") or "SidecarStartupError")
                 self._hard_stop()
-                raise ComputerDriverUnavailableError(f"UFO sidecar startup failed ({error_type})")
+                raise ComputerDriverUnavailableError(
+                    f"UFO sidecar startup failed ({error_type})"
+                )
         self._hard_stop()
-        raise ComputerDriverUnavailableError("UFO sidecar did not become ready before the startup timeout")
+        raise ComputerDriverUnavailableError(
+            "UFO sidecar did not become ready before the startup timeout"
+        )
 
     def _send(self, payload: dict[str, Any]) -> None:
         process = self._process
@@ -398,9 +490,15 @@ class UfoWindowsDriver:
             process.stdin.flush()
 
     def _send_control(self, command: str, **extra: Any) -> bool:
+        # Pause/resume/cancel refer to an existing task and therefore must never
+        # start a fresh sidecar with a stale task id.
+        process = self._process
+        if process is None or process.poll() is not None:
+            return False
         try:
-            self._start()
-            self._send({"command": command, "request_id": uuid.uuid4().hex, **extra})
+            self._send(
+                {"command": command, "request_id": uuid.uuid4().hex, **extra}
+            )
             return True
         except Exception:
             return False
@@ -424,7 +522,9 @@ class UfoWindowsDriver:
             raise ValueError("UFO computer stop condition exceeds 4,000 characters")
 
         if not self._run_lock.acquire(blocking=False):
-            raise ComputerDriverUnavailableError("another UFO desktop task is already running")
+            raise ComputerDriverUnavailableError(
+                "another UFO desktop task is already running"
+            )
         try:
             self._start()
             task_id = str(uuid.uuid4())
@@ -454,12 +554,20 @@ class UfoWindowsDriver:
                         status="failed",
                         ok=False,
                         summary="UFO sidecar exited before returning a task result.",
-                        data={"engine": "ufo2", "stderr_tail": detail[-4000:]},
+                        data={
+                            "engine": "ufo2",
+                            "stderr_tail": detail[-4000:],
+                            "sidecar_exit_code": (
+                                process.poll() if process is not None else None
+                            ),
+                        },
                     )
 
                 if is_cancelled() and not cancel_sent:
                     cancel_sent = True
-                    cancel_deadline = time.monotonic() + max(0.5, self.config.cancel_timeout_seconds)
+                    cancel_deadline = time.monotonic() + max(
+                        0.5, self.config.cancel_timeout_seconds
+                    )
                     self._send(
                         {
                             "command": "cancel",
@@ -474,7 +582,10 @@ class UfoWindowsDriver:
                         task_id=task_id,
                         status="cancelled",
                         ok=False,
-                        summary="UFO desktop task was hard-cancelled after the cooperative timeout.",
+                        summary=(
+                            "UFO desktop task was hard-cancelled after the "
+                            "cooperative timeout."
+                        ),
                         data={"engine": "ufo2", "hard_cancelled": True},
                     )
 
@@ -504,7 +615,9 @@ class UfoWindowsDriver:
                         data=dict(message.get("data") or {}),
                     )
                 if message_type in {"error", "protocol_error"}:
-                    error_type = str(message.get("error_type") or "SidecarProtocolError")
+                    error_type = str(
+                        message.get("error_type") or "SidecarProtocolError"
+                    )
                     return ComputerDriverResult(
                         task_id=task_id,
                         status="failed",
@@ -520,38 +633,56 @@ class UfoWindowsDriver:
 
     def pause(self) -> bool:
         with self._state_lock:
-            if not self._active_task_id:
-                return False
-            self._paused = True
-        return self._send_control("pause", task_id=self._active_task_id)
+            task_id = self._active_task_id
+        if not task_id:
+            return False
+        sent = self._send_control("pause", task_id=task_id)
+        if sent:
+            with self._state_lock:
+                if self._active_task_id == task_id:
+                    self._paused = True
+        return sent
 
     def resume(self) -> bool:
         with self._state_lock:
-            if not self._active_task_id:
-                return False
-            self._paused = False
-        return self._send_control("resume", task_id=self._active_task_id)
+            task_id = self._active_task_id
+        if not task_id:
+            return False
+        sent = self._send_control("resume", task_id=task_id)
+        if sent:
+            with self._state_lock:
+                if self._active_task_id == task_id:
+                    self._paused = False
+        return sent
 
     def cancel(self, *, reason: str = "user_requested") -> bool:
         with self._state_lock:
             task_id = self._active_task_id
         if not task_id:
             return False
-        return self._send_control("cancel", task_id=task_id, reason=str(reason or "user_requested"))
+        return self._send_control(
+            "cancel", task_id=task_id, reason=str(reason or "user_requested")
+        )
 
     def close(self) -> None:
         process = self._process
         if process is None:
+            self._drain_messages()
+            self._stderr.clear()
             return
         try:
             if process.poll() is None:
-                self._send({"command": "shutdown", "request_id": uuid.uuid4().hex})
+                self._send(
+                    {"command": "shutdown", "request_id": uuid.uuid4().hex}
+                )
                 try:
                     process.wait(timeout=1.5)
                 except subprocess.TimeoutExpired:
                     pass
         finally:
             self._hard_stop()
+            self._drain_messages()
+            self._stderr.clear()
 
 
 __all__ = [
