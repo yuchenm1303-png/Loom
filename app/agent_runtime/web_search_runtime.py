@@ -1,16 +1,21 @@
 from __future__ import annotations
 
-from .memory_semantic import SemanticMemoryRuntime
+from .memory_configured_runtime import ConfiguredSemanticMemoryRuntime
 from .web_search import WebSearchProvider, web_search_provider_from_env
 from .web_search_tools import web_search_tools
 
 
-class _DefaultSemanticMemoryRuntime(SemanticMemoryRuntime):
+class _DefaultSemanticMemoryRuntime(ConfiguredSemanticMemoryRuntime):
     """Cost-aware Memory v2-B policy for Loom's default runtime stack."""
 
     def _queue_semantic_result(self, result) -> None:
         pipeline = self._semantic_pipeline
-        if pipeline is None or not result.consolidated:
+        if (
+            pipeline is None
+            or not self.memory_enabled
+            or not self.memory_semantic_auto
+            or not result.consolidated
+        ):
             return
         extraction_id = result.extraction.extraction_id
         if not self.memory_semantic_store.has_extraction_memories(extraction_id):
