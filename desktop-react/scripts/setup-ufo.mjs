@@ -233,4 +233,5 @@ console.log(`[setup-ufo] Ready: Microsoft UFO ${UFO_TAG} (${UFO_COMMIT.slice(0, 
 console.log(`[setup-ufo] Source: ${sourceRoot}`);
 console.log(`[setup-ufo] Python: ${venvPython}`);
 console.log("[setup-ufo] No API secret was written to disk.");
-console.log("[setup-ufo] Configure LOOM_UFO_API_MODEL and a provider key before starting Loom.");
+console.log("[setup-ufo] Loom will inject the active vision model/key into UFO at runtime.");
+console.log("[setup-ufo] Set LOOM_UFO_API_* only when you intentionally want a separate UFO model.");
