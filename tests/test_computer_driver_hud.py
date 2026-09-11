@@ -5,7 +5,22 @@ from pathlib import Path
 from app.agent_runtime.computer_driver import ComputerDriverEvent
 from app.agent_runtime.computer_driver_runtime import ComputerDriverRuntime, _safe_driver_data
 from app.agent_runtime.contracts import AgentEventKind
-from app.agent_runtime.tools import ToolContext
+from app.agent_runtime.tools import (
+    AgentTool,
+    ToolContext,
+    ToolExposure,
+    ToolRegistry,
+    ToolResult,
+)
+
+
+def _stub_tool(name: str) -> AgentTool:
+    return AgentTool(
+        name=name,
+        description=f"stub {name}",
+        input_schema={"type": "object", "properties": {}, "additionalProperties": False},
+        handler=lambda _context, _arguments: ToolResult(True, "ok", {}),
+    )
 
 
 def test_driver_result_redacts_stderr_and_provider_payloads():
@@ -28,6 +43,68 @@ def test_driver_result_redacts_stderr_and_provider_payloads():
     assert safe["nested"]["status"] == "failed"
     assert "secret task text" not in repr(safe)
     assert "typed secret" not in repr(safe)
+
+
+def test_mature_driver_keeps_low_level_computer_tools_deferred():
+    runtime = object.__new__(ComputerDriverRuntime)
+    runtime.computer_driver_mode = "ufo"
+    runtime.computer_driver = object()
+    runtime.tools = ToolRegistry(
+        tuple(
+            _stub_tool(name)
+            for name in (
+                "computer_status",
+                "computer_observe",
+                "computer_action",
+                "computer_step",
+                "computer_run_task",
+            )
+        )
+    )
+
+    runtime._install_driver_task_tool()
+
+    direct_names = {tool.name for tool in runtime.tools.router().all()}
+    deferred = {tool.name: tool.exposure for tool in runtime.tools.deferred()}
+    assert "computer_status" in direct_names
+    assert "computer_run_task" in direct_names
+    assert "computer_observe" not in direct_names
+    assert "computer_action" not in direct_names
+    assert "computer_step" not in direct_names
+    assert deferred == {
+        "computer_action": ToolExposure.DEFERRED,
+        "computer_observe": ToolExposure.DEFERRED,
+        "computer_step": ToolExposure.DEFERRED,
+    }
+
+
+def test_legacy_mode_preserves_direct_low_level_computer_tools():
+    runtime = object.__new__(ComputerDriverRuntime)
+    runtime.computer_driver_mode = "legacy"
+    runtime.computer_driver = None
+    runtime.tools = ToolRegistry(
+        tuple(
+            _stub_tool(name)
+            for name in (
+                "computer_status",
+                "computer_observe",
+                "computer_action",
+                "computer_step",
+                "computer_run_task",
+            )
+        )
+    )
+
+    runtime._install_driver_task_tool()
+
+    direct_names = {tool.name for tool in runtime.tools.router().all()}
+    assert {
+        "computer_status",
+        "computer_observe",
+        "computer_action",
+        "computer_step",
+        "computer_run_task",
+    }.issubset(direct_names)
 
 
 def test_driver_action_has_balanced_transcript_lifecycle_without_terminal_hud_identity(tmp_path: Path):
