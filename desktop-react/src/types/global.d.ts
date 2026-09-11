@@ -26,6 +26,8 @@ export interface LoomBridge {
   switchModelProfile<T = unknown>(selection: string): Promise<T>;
   switchCurrentModel<T = unknown>(model: string): Promise<T>;
   addModel<T = unknown>(input: Record<string, unknown>): Promise<T>;
+  updateModel<T = unknown>(input: Record<string, unknown>): Promise<T>;
+  testModel<T = unknown>(selection: string): Promise<T>;
   deleteModel<T = unknown>(selection: string): Promise<T>;
   setReasoning<T = unknown>(kind: string, value: string): Promise<T>;
   /** Create a zip archive containing local Computer Use diagnostics and traces. */
