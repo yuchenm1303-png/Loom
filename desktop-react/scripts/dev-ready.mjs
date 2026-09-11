@@ -32,6 +32,10 @@ const ufoPython = path.resolve(
     ),
 );
 
+function driverMode() {
+  return String(process.env.LOOM_COMPUTER_DRIVER || "auto").trim().toLowerCase();
+}
+
 function run(command, args, options = {}) {
   console.log(`[dev-ready] ${command} ${args.join(" ")}`);
   const result = spawnSync(command, args, {
@@ -97,27 +101,40 @@ function ufoLooksInstalled() {
 
 function ensureUfoDriver() {
   if (process.platform !== "win32") return;
-  const mode = String(process.env.LOOM_COMPUTER_DRIVER || "auto").trim().toLowerCase();
+  const mode = driverMode();
   if (mode === "legacy") return;
   if (ufoLooksInstalled()) {
     console.log(`[dev-ready] UFO driver already installed at ${ufoSourceRoot}`);
     return;
   }
 
-  console.log("[dev-ready] Microsoft UFO² driver is missing; provisioning it now.");
+  console.log("[dev-ready] Microsoft UFO² driver is missing or incomplete; provisioning it now.");
   const setup = runOptional(process.execPath, [path.join(DESKTOP_ROOT, "scripts", "setup-ufo.mjs")]);
   if (setup.ok) return;
 
   if (mode === "ufo") {
     console.error(`[dev-ready] UFO setup failed in strict ufo mode (${setup.reason}).`);
+    console.error("[dev-ready] Electron was not started, so this run cannot be mistaken for legacy Computer Use.");
     process.exit(1);
   }
 
   console.warn(`[dev-ready] UFO setup failed (${setup.reason}).`);
   console.warn("[dev-ready] Continuing because LOOM_COMPUTER_DRIVER=auto can fall back to legacy Computer Use.");
-  console.warn("[dev-ready] For UFO acceptance testing, install Python 3.10/Git and start with LOOM_COMPUTER_DRIVER=ufo.");
+  console.warn("[dev-ready] For UFO acceptance testing, fix the setup error and start with LOOM_COMPUTER_DRIVER=ufo.");
+}
+
+function preflightUfoIfStrict() {
+  if (process.platform !== "win32") return;
+  if (driverMode() !== "ufo") return;
+  console.log("[dev-ready] Strict UFO mode: running sidecar preflight before Electron startup.");
+  const preflight = runOptional(process.execPath, [path.join(DESKTOP_ROOT, "scripts", "ufo-preflight.mjs")]);
+  if (preflight.ok) return;
+  console.error(`[dev-ready] UFO preflight failed in strict ufo mode (${preflight.reason}).`);
+  console.error("[dev-ready] Electron was not started; inspect the preflight output above.");
+  process.exit(1);
 }
 
 run(process.execPath, [path.join(DESKTOP_ROOT, "scripts", "setup-python.mjs")]);
 ensureUfoDriver();
+preflightUfoIfStrict();
 run(NPM, ["run", "dev"]);
