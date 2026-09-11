@@ -1,49 +1,131 @@
-/* Settings icon geometry ----------------------------------------------------
-   Normalize SVG layout first, then apply tiny optical corrections only where
-   an asymmetric Lucide glyph still looks off-center to the eye. */
+/* Icon geometry -------------------------------------------------------------
+   Lucide glyphs are SVGs with their own 24x24 viewBox. Keep them out of text
+   baselines and give every icon-bearing control one predictable centering rule.
+   This file loads late so older component CSS cannot reintroduce baseline drift. */
 
+/* Global SVG hygiene for the desktop controls that render Lucide icons. */
+.settings-shell svg,
+.sidebar svg,
+.composer-wrap svg,
+.thread-header svg,
+.transcript svg,
+.inspector svg,
+.run-progress-frame svg,
+.model-manager-popover svg,
+.sticker-panel svg {
+  display: block;
+  flex: 0 0 auto;
+  margin: 0;
+  vertical-align: middle;
+}
+
+/* Settings icon tiles: use the same centering model everywhere. */
 .settings-shell .mature-preference-icon,
 .settings-shell .general-default-card-icon,
 .settings-shell .general-overview-icon,
 .settings-shell .capability-icon,
 .settings-shell .model-summary-icon,
 .settings-shell .settings-brand-orb {
+  box-sizing: border-box;
   display: grid;
   place-items: center;
   align-self: center;
   justify-self: center;
   flex: 0 0 auto;
+  padding: 0;
   line-height: 0;
+  font-size: 0;
 }
 
+/* Direct icons in rows/buttons should share the row's optical center instead of
+   inheriting a text baseline. */
+.settings-shell .settings-back,
+.settings-shell .settings-search,
+.settings-shell .settings-nav button,
+.settings-shell .mature-action-button,
+.settings-shell .general-copy-button,
+.settings-shell .general-reset-button,
+.settings-shell .general-quick-card,
+.settings-shell .general-stat,
+.settings-shell .settings-callout,
+.settings-shell .settings-callout-inline,
+.settings-shell .permission-card,
+.settings-shell .plugin-row,
+.settings-shell .capability-row,
+.settings-shell .model-summary-card,
+.settings-shell .mature-model-card-head,
+.settings-shell .mature-shortcut-row {
+  align-items: center;
+}
+
+.settings-shell .settings-back > svg,
+.settings-shell .settings-search > svg,
+.settings-shell .settings-nav button > svg,
+.settings-shell .mature-action-button > svg,
+.settings-shell .general-copy-button > svg,
+.settings-shell .general-reset-button > svg,
+.settings-shell .general-quick-card > svg,
+.settings-shell .general-stat > svg,
+.settings-shell .settings-callout > svg,
+.settings-shell .settings-callout-inline > svg,
+.settings-shell .permission-card > svg,
+.settings-shell .settings-row-link > svg,
 .settings-shell .mature-preference-icon > svg,
 .settings-shell .general-default-card-icon > svg,
 .settings-shell .general-overview-icon > svg,
 .settings-shell .capability-icon > svg,
 .settings-shell .model-summary-icon > svg,
-.settings-shell .settings-brand-orb > svg,
-.settings-shell .settings-nav button > svg,
-.settings-shell .settings-row-link > svg {
+.settings-shell .settings-brand-orb > svg {
   display: block;
+  align-self: center;
+  justify-self: center;
   flex: 0 0 auto;
   margin: 0;
-  vertical-align: middle;
   transform-origin: 50% 50%;
 }
 
+/* Stable tile and glyph sizes. Different tile sizes are intentional, but the
+   glyph-to-tile ratio is now consistent. */
 .settings-shell .mature-preference-icon {
   width: 30px;
   height: 30px;
 }
 
-.settings-shell .mature-preference-icon > svg,
+.settings-shell .general-default-card-icon,
+.settings-shell .capability-icon {
+  width: 34px;
+  height: 34px;
+}
+
+.settings-shell .general-overview-icon {
+  width: 34px;
+  height: 34px;
+}
+
+.settings-shell .model-summary-icon {
+  width: 48px;
+  height: 48px;
+}
+
+.settings-shell .settings-brand-orb {
+  width: 34px;
+  height: 34px;
+}
+
+.settings-shell .mature-preference-icon > svg {
+  width: 17px;
+  height: 17px;
+}
+
 .settings-shell .general-default-card-icon > svg,
 .settings-shell .capability-icon > svg {
   width: 17px;
   height: 17px;
 }
 
-.settings-shell .general-overview-icon > svg {
+.settings-shell .general-overview-icon > svg,
+.settings-shell .general-stat > svg,
+.settings-shell .general-quick-card > svg:first-child {
   width: 18px;
   height: 18px;
 }
@@ -55,31 +137,52 @@
 
 .settings-shell .settings-brand-orb > svg,
 .settings-shell .settings-nav button > svg,
-.settings-shell .settings-row-link > svg {
+.settings-shell .settings-row-link > svg,
+.settings-shell .settings-back > svg,
+.settings-shell .settings-search > svg,
+.settings-shell .mature-action-button > svg,
+.settings-shell .general-copy-button > svg,
+.settings-shell .general-reset-button > svg,
+.settings-shell .settings-callout > svg,
+.settings-shell .settings-callout-inline > svg,
+.settings-shell .permission-card > svg {
   width: 16px;
   height: 16px;
 }
 
-/* Optical centering for asymmetric glyphs. Keep these sub-pixel only. */
+/* Ensure icon columns themselves are centered. */
+.settings-shell .settings-nav button > svg,
+.settings-shell .general-stat > svg,
+.settings-shell .general-quick-card > svg:first-child,
+.settings-shell .permission-card > svg,
+.settings-shell .settings-callout > svg,
+.settings-shell .settings-callout-inline > svg {
+  justify-self: center;
+  align-self: center;
+}
+
+/* Keep chevrons centered without changing their hover animation. */
+.settings-shell .general-default-card-head > svg:last-child,
+.settings-shell .general-quick-card > svg:last-child,
+.settings-shell .settings-row-link > svg {
+  align-self: center;
+  justify-self: center;
+}
+
+/* Sub-pixel optical corrections only for glyphs whose visible stroke mass is
+   asymmetric inside Lucide's mathematically centered viewBox. */
 .settings-shell .mature-preference-icon > .lucide-type {
-  transform: translateY(0.5px);
+  transform: translateY(0.35px);
 }
 
 .settings-shell .mature-preference-icon > .lucide-gauge {
-  transform: translateY(0.5px);
+  transform: translateY(0.35px);
 }
 
 .settings-shell .mature-preference-icon > .lucide-moon {
-  transform: translateX(0.5px);
+  transform: translateX(0.35px);
 }
 
 .settings-shell .mature-preference-icon > .lucide-code-2 {
-  transform: translateX(-0.25px);
-}
-
-.settings-shell .mature-preference-row,
-.settings-shell .capability-row,
-.settings-shell .plugin-row,
-.settings-shell .model-summary-card {
-  align-items: center;
+  transform: translateX(-0.2px);
 }
