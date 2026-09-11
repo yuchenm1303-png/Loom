@@ -56,8 +56,7 @@ const sourceRoot = path.resolve(
 const python = path.resolve(
   process.env.LOOM_UFO_PYTHON?.trim() ||
     path.join(
-      installRoot,
-      ".venv",
+      `${installRoot}.venv`,
       process.platform === "win32" ? path.join("Scripts", "python.exe") : path.join("bin", "python"),
     ),
 );
@@ -93,6 +92,25 @@ requireFile(sidecar, "Loom UFO sidecar");
 requireFile(path.join(sourceRoot, "config", "ufo", "agents.yaml"), "UFO Loom agent config");
 requireFile(path.join(sourceRoot, "config", "ufo", "system_loom.yaml"), "UFO Loom system override");
 requireFile(path.join(sourceRoot, "config", "ufo", "mcp_loom.yaml"), "UFO Loom MCP allowlist");
+
+const pythonVersion = spawnSync(python, ["-c", "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"], {
+  encoding: "utf8",
+  windowsHide: true,
+  shell: false,
+});
+if (pythonVersion.status !== 0 || String(pythonVersion.stdout || "").trim() !== "3.10") {
+  fail(`UFO isolated Python must be 3.10; got ${String(pythonVersion.stdout || "unknown").trim() || "unknown"}.`);
+}
+
+const gitHead = spawnSync("git", ["rev-parse", "HEAD"], {
+  cwd: sourceRoot,
+  encoding: "utf8",
+  windowsHide: true,
+  shell: false,
+});
+if (gitHead.status !== 0 || String(gitHead.stdout || "").trim() !== UFO_COMMIT) {
+  fail(`UFO revision mismatch; expected ${UFO_COMMIT}, got ${String(gitHead.stdout || "unknown").trim() || "unknown"}.`);
+}
 
 const input = JSON.stringify({ command: "shutdown", request_id: "loom-preflight" }) + "\n";
 const result = spawnSync(
@@ -143,6 +161,21 @@ const shutdown = messages.find(
 if (!shutdown || shutdown.ok !== true) {
   fail("UFO sidecar did not complete a clean shutdown handshake.");
 }
+
+fs.writeFileSync(
+  path.join(installRoot, "loom-ufo-preflight.json"),
+  JSON.stringify({
+    protocol: PROTOCOL,
+    protocolVersion: PROTOCOL_VERSION,
+    commit: UFO_COMMIT,
+    python: "3.10",
+    pythonPath: python,
+    sourceRoot,
+    ready: true,
+    checkedAt: new Date().toISOString(),
+  }, null, 2) + "\n",
+  "utf8",
+);
 
 const envModelConfigured = Boolean(
   process.env.LOOM_UFO_API_MODEL?.trim() ||

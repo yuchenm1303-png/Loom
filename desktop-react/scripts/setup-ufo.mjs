@@ -4,6 +4,7 @@ import fs from "node:fs";
 import https from "node:https";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const UFO_VERSION = "3.0.8";
 const UFO_TAG = "v3.0.8";
@@ -31,7 +32,9 @@ const installRoot = path.resolve(
 const sourceRoot = path.resolve(
   process.env.LOOM_UFO_ROOT?.trim() || path.join(installRoot, "src"),
 );
-const venvRoot = path.join(installRoot, ".venv");
+export const venvRoot = path.resolve(
+  process.env.LOOM_UFO_VENV_ROOT?.trim() || `${installRoot}.venv`,
+);
 const venvPython =
   process.platform === "win32"
     ? path.join(venvRoot, "Scripts", "python.exe")
@@ -121,6 +124,10 @@ function md5OfFile(target) {
   return crypto.createHash("md5").update(fs.readFileSync(target)).digest("hex");
 }
 
+function sha256OfFile(target) {
+  return crypto.createHash("sha256").update(fs.readFileSync(target)).digest("hex");
+}
+
 function addCandidate(list, command, prefix = []) {
   const text = String(command || "").trim();
   if (!text) return;
@@ -165,25 +172,23 @@ function addPyLauncherMatches(list) {
   }
 }
 
-function python310Candidates(explicit) {
+export function python310Candidates(explicit, platform = process.platform) {
   const candidates = [];
   if (explicit) {
     addCandidate(candidates, explicit);
     return candidates;
   }
 
-  if (process.platform === "win32") {
-    addCandidate(candidates, runtimePython);
+  if (platform === "win32") {
     addCandidate(candidates, "py", ["-3.10"]);
     addCandidate(candidates, "python3.10");
     addCandidate(candidates, "python");
-    addCandidate(candidates, path.join(windowsAppsPath(), "python3.10.exe"));
-    addCandidate(candidates, path.join(windowsAppsPath(), "python.exe"));
 
     const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local");
     const programFiles = process.env.PROGRAMFILES || "C:\\Program Files";
     const programFilesX86 = process.env["PROGRAMFILES(X86)"] || "C:\\Program Files (x86)";
     for (const pythonPath of [
+      runtimePython,
       path.join(localAppData, "Programs", "Python", "Python310", "python.exe"),
       path.join(localAppData, "Programs", "Python", "Python310-32", "python.exe"),
       path.join(programFiles, "Python310", "python.exe"),
@@ -198,9 +203,11 @@ function python310Candidates(explicit) {
       candidates,
       path.join(os.homedir(), ".pyenv", "pyenv-win", "versions"),
     );
+    addPyLauncherMatches(candidates);
     addWhereMatches(candidates, "python3.10.exe");
     addWhereMatches(candidates, "python.exe");
-    addPyLauncherMatches(candidates);
+    addCandidate(candidates, path.join(windowsAppsPath(), "python3.10.exe"));
+    addCandidate(candidates, path.join(windowsAppsPath(), "python.exe"));
   } else {
     addCandidate(candidates, "python3.10");
     addCandidate(candidates, "python");
@@ -327,13 +334,13 @@ async function ensurePythonInstallerDownloaded() {
   try {
     await fetchUrl(PYTHON_INSTALLER_URL, installerPath);
   } catch (error) {
-    console.warn(`[setup-ufo] Python installer download failed: ${error instanceof Error ? error.message : String(error)}`);
+    console.warn(`[setup-ufo] python.org download blocked: ${error instanceof Error ? error.message : String(error)}`);
     fs.rmSync(installerPath, { force: true });
     return false;
   }
   const digest = md5OfFile(installerPath);
   if (digest !== PYTHON_INSTALLER_MD5) {
-    console.warn(`[setup-ufo] Python installer checksum mismatch after download: ${digest}`);
+    console.warn(`[setup-ufo] installer checksum mismatch: expected MD5 ${PYTHON_INSTALLER_MD5}, got ${digest}`);
     fs.rmSync(installerPath, { force: true });
     return false;
   }
@@ -367,7 +374,7 @@ async function installPrivatePythonRuntime() {
     { timeout: 15 * 60 * 1000 },
   );
   if (!install.ok) {
-    console.warn(`[setup-ufo] Private Python installer failed (${install.error?.code || install.status || "unknown status"}).`);
+    console.warn(`[setup-ufo] private Python install failed (${install.error?.code || install.status || "unknown status"}).`);
     return false;
   }
   return Boolean(probePython310([{ command: runtimePython, prefix: [] }], { verbose: true }));
@@ -406,18 +413,22 @@ function installPythonWithWinget() {
   return false;
 }
 
-async function resolveBootstrapPython() {
+export async function resolveBootstrapPython(overrides = {}) {
+  const candidateFactory = overrides.candidateFactory || python310Candidates;
+  const probe = overrides.probe || probePython310;
+  const privateInstall = overrides.privateInstall || installPrivatePythonRuntime;
+  const wingetInstall = overrides.wingetInstall || installPythonWithWinget;
   const explicit = process.env.LOOM_UFO_BOOTSTRAP_PYTHON?.trim();
-  const found = probePython310(python310Candidates(explicit), { verbose: true });
+  const found = probe(candidateFactory(explicit), { verbose: true });
   if (found) return found;
 
-  if (!explicit && await installPrivatePythonRuntime()) {
-    const privateRuntime = probePython310(python310Candidates(""), { verbose: true });
+  if (!explicit && await privateInstall()) {
+    const privateRuntime = probe(candidateFactory(""), { verbose: true });
     if (privateRuntime) return privateRuntime;
   }
 
-  if (!explicit && installPythonWithWinget()) {
-    const afterInstall = probePython310(python310Candidates(""), { verbose: true });
+  if (!explicit && wingetInstall()) {
+    const afterInstall = probe(candidateFactory(""), { verbose: true });
     if (afterInstall) return afterInstall;
   }
 
@@ -464,26 +475,27 @@ function ensureUfoSourceTree() {
   }
 }
 
-function verifyVenvPython() {
-  if (!fileExists(venvPython)) return false;
-  const pyVersion = run(
-    venvPython,
+export function verifyVenvPython(targetPython = venvPython, targetRoot = venvRoot, runner = run) {
+  if (!fileExists(targetPython)) return false;
+  const pyVersion = runner(
+    targetPython,
     ["-c", "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"],
     { quiet: true, timeout: 30000 },
   );
   if (pyVersion.ok && pyVersion.stdout === "3.10") return true;
   console.warn(`[setup-ufo] Existing UFO virtual environment is invalid (${pyVersion.stdout || pyVersion.error?.code || "unknown"}); recreating it.`);
-  fs.rmSync(venvRoot, { recursive: true, force: true });
+  fs.rmSync(targetRoot, { recursive: true, force: true });
   return false;
 }
 
 function ensureUfoVenv(bootstrap) {
   if (verifyVenvPython()) return;
+  fs.rmSync(path.join(installRoot, "loom-ufo-install.json"), { force: true });
   fs.mkdirSync(path.dirname(venvRoot), { recursive: true });
   const create = run(bootstrap.command, [...bootstrap.prefix, "-m", "venv", venvRoot], {
     timeout: 5 * 60 * 1000,
   });
-  if (!create.ok) fail("Failed to create the isolated UFO Python environment.");
+  if (!create.ok) fail("UFO venv creation failed.");
   if (!verifyVenvPython()) fail("Created UFO virtual environment, but it is not Python 3.10.");
 }
 
@@ -570,6 +582,7 @@ function writeInstallMarker() {
     sourceRoot,
     python: venvPython,
     privatePythonRuntime: runtimePython,
+    requirementsSha256: sha256OfFile(path.join(sourceRoot, "requirements.txt")),
     installedAt: new Date().toISOString(),
   };
   fs.writeFileSync(
@@ -577,6 +590,29 @@ function writeInstallMarker() {
     JSON.stringify(marker, null, 2) + "\n",
     "utf8",
   );
+  fs.writeFileSync(
+    path.join(venvRoot, "loom-ufo-dependencies.json"),
+    JSON.stringify({ commit: UFO_COMMIT, requirementsSha256: marker.requirementsSha256 }, null, 2) + "\n",
+    "utf8",
+  );
+}
+
+function dependenciesAreCurrent() {
+  try {
+    const marker = JSON.parse(fs.readFileSync(path.join(installRoot, "loom-ufo-install.json"), "utf8"));
+    const venvMarker = JSON.parse(fs.readFileSync(path.join(venvRoot, "loom-ufo-dependencies.json"), "utf8"));
+    const requirementsSha256 = sha256OfFile(path.join(sourceRoot, "requirements.txt"));
+    if (
+      marker.commit !== UFO_COMMIT ||
+      path.resolve(String(marker.python || "")) !== venvPython ||
+      marker.requirementsSha256 !== requirementsSha256 ||
+      venvMarker.commit !== UFO_COMMIT ||
+      venvMarker.requirementsSha256 !== requirementsSha256
+    ) return false;
+    return run(venvPython, ["-m", "pip", "check"], { quiet: true, timeout: 5 * 60 * 1000 }).ok;
+  } catch {
+    return false;
+  }
 }
 
 async function main() {
@@ -587,14 +623,18 @@ async function main() {
     fail("Git is required to install the pinned Microsoft UFO source tree.");
   }
 
-  console.log(`[setup-ufo] Target UFO: ${UFO_TAG} ${UFO_COMMIT.slice(0, 12)}`);
-  console.log(`[setup-ufo] Install root: ${installRoot}`);
-  console.log(`[setup-ufo] Private Python runtime: ${runtimeRoot}`);
+  fs.rmSync(path.join(installRoot, "loom-ufo-preflight.json"), { force: true });
+
+  console.log(`[setup-ufo] source: target ${UFO_TAG} ${UFO_COMMIT.slice(0, 12)}`);
   ensureUfoSourceTree();
+  console.log(`[setup-ufo] python-runtime: resolving Python ${PYTHON_VERSION}`);
   const bootstrap = await resolveBootstrapPython();
+  console.log(`[setup-ufo] venv: ${venvRoot}`);
   ensureUfoVenv(bootstrap);
 
-  const install = run(venvPython, [
+  const dependenciesReady = dependenciesAreCurrent();
+  console.log(`[setup-ufo] dependencies: ${dependenciesReady ? "installed and validated" : "installing and validating requirements"}`);
+  const install = dependenciesReady ? { ok: true } : run(venvPython, [
     "-m",
     "pip",
     "install",
@@ -602,8 +642,11 @@ async function main() {
     "-r",
     path.join(sourceRoot, "requirements.txt"),
   ], { timeout: 30 * 60 * 1000 });
-  if (!install.ok) fail("Failed to install UFO's pinned dependencies.");
+  if (!install.ok) fail(`pip install requirements failed (requirements: ${path.join(sourceRoot, "requirements.txt")}; exit: ${install.error?.code || install.status || "unknown"}).`);
+  const pipCheck = dependenciesReady ? { ok: true } : run(venvPython, ["-m", "pip", "check"], { quiet: true, timeout: 5 * 60 * 1000 });
+  if (!pipCheck.ok) fail(`UFO dependency validation failed: ${pipCheck.stderr || pipCheck.stdout || `exit ${pipCheck.status}`}`);
 
+  console.log("[setup-ufo] config: writing Loom UFO configuration");
   writeLoomUfoConfig();
   writeInstallMarker();
 
@@ -617,4 +660,7 @@ async function main() {
   console.log("[setup-ufo] Set LOOM_UFO_API_* only when you intentionally want a separate UFO model.");
 }
 
-await main();
+const invokedPath = process.argv[1] ? path.resolve(process.argv[1]) : "";
+if (invokedPath === fileURLToPath(import.meta.url)) {
+  await main();
+}

@@ -1,6 +1,4 @@
 import { spawnSync } from "node:child_process";
-import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -12,28 +10,10 @@ const VENV_PYTHON = process.platform === "win32"
   ? path.join(REPO_ROOT, ".venv", "Scripts", "python.exe")
   : path.join(REPO_ROOT, ".venv", "bin", "python");
 const NPM = process.platform === "win32" ? "npm.cmd" : "npm";
-const UFO_VERSION = "3.0.8";
-const loomHome = path.resolve(
-  process.env.LOOM_HOME?.trim() || path.join(os.homedir(), ".loom"),
-);
-const ufoInstallRoot = path.resolve(
-  process.env.LOOM_UFO_INSTALL_ROOT?.trim() ||
-    path.join(loomHome, "drivers", "ufo", UFO_VERSION),
-);
-const ufoSourceRoot = path.resolve(
-  process.env.LOOM_UFO_ROOT?.trim() || path.join(ufoInstallRoot, "src"),
-);
-const ufoPython = path.resolve(
-  process.env.LOOM_UFO_PYTHON?.trim() ||
-    path.join(
-      ufoInstallRoot,
-      ".venv",
-      process.platform === "win32" ? path.join("Scripts", "python.exe") : path.join("bin", "python"),
-    ),
-);
-
-function driverMode() {
-  return String(process.env.LOOM_COMPUTER_DRIVER || "auto").trim().toLowerCase();
+export function requestedDriverMode(argv = process.argv.slice(2)) {
+  const option = argv.find((value) => value.startsWith("--mode="));
+  const mode = option?.slice("--mode=".length).trim().toLowerCase() || "ufo";
+  return mode === "auto" ? "auto" : "ufo";
 }
 
 function run(command, args, options = {}) {
@@ -72,69 +52,60 @@ function runOptional(command, args) {
   };
 }
 
-function fileExists(target) {
-  try {
-    return fs.statSync(target).isFile();
-  } catch {
-    return false;
+function ensureUfoDriver(mode) {
+  if (process.platform !== "win32") {
+    if (mode === "ufo") {
+      console.error("[dev-ready] strict UFO startup requires Windows; Electron was not started");
+      return false;
+    }
+    return true;
   }
-}
-
-function dirExists(target) {
-  try {
-    return fs.statSync(target).isDirectory();
-  } catch {
-    return false;
-  }
-}
-
-function ufoLooksInstalled() {
-  return (
-    process.platform === "win32" &&
-    dirExists(path.join(ufoSourceRoot, "ufo")) &&
-    fileExists(ufoPython) &&
-    fileExists(path.join(ufoSourceRoot, "config", "ufo", "agents.yaml")) &&
-    fileExists(path.join(ufoSourceRoot, "config", "ufo", "system_loom.yaml")) &&
-    fileExists(path.join(ufoSourceRoot, "config", "ufo", "mcp_loom.yaml"))
-  );
-}
-
-function ensureUfoDriver() {
-  if (process.platform !== "win32") return;
-  const mode = driverMode();
-  if (mode === "legacy") return;
-  if (ufoLooksInstalled()) {
-    console.log(`[dev-ready] UFO driver already installed at ${ufoSourceRoot}`);
-    return;
-  }
-
-  console.log("[dev-ready] Microsoft UFO² driver is missing or incomplete; provisioning it now.");
+  console.log("[dev-ready] provisioning and repairing Microsoft UFO²");
   const setup = runOptional(process.execPath, [path.join(DESKTOP_ROOT, "scripts", "setup-ufo.mjs")]);
-  if (setup.ok) return;
+  if (setup.ok) return true;
 
   if (mode === "ufo") {
     console.error(`[dev-ready] UFO setup failed in strict ufo mode (${setup.reason}).`);
     console.error("[dev-ready] Electron was not started, so this run cannot be mistaken for legacy Computer Use.");
-    process.exit(1);
+    return false;
   }
 
   console.warn(`[dev-ready] UFO setup failed (${setup.reason}).`);
   console.warn("[dev-ready] Continuing because LOOM_COMPUTER_DRIVER=auto can fall back to legacy Computer Use.");
   console.warn("[dev-ready] For UFO acceptance testing, fix the setup error and start with LOOM_COMPUTER_DRIVER=ufo.");
+  return true;
 }
 
-function preflightUfoIfStrict() {
-  if (process.platform !== "win32") return;
-  if (driverMode() !== "ufo") return;
+function preflightUfoIfStrict(mode) {
+  if (mode !== "ufo") return true;
   console.log("[dev-ready] Strict UFO mode: running sidecar preflight before Electron startup.");
   const preflight = runOptional(process.execPath, [path.join(DESKTOP_ROOT, "scripts", "ufo-preflight.mjs")]);
-  if (preflight.ok) return;
+  if (preflight.ok) return true;
   console.error(`[dev-ready] UFO preflight failed in strict ufo mode (${preflight.reason}).`);
   console.error("[dev-ready] Electron was not started; inspect the preflight output above.");
-  process.exit(1);
+  return false;
 }
 
-run(process.execPath, [path.join(DESKTOP_ROOT, "scripts", "setup-python.mjs")]);
-ensureUfoDriver();
-preflightUfoIfStrict();
-run(NPM, ["run", "dev"]);
+export function main(argv = process.argv.slice(2)) {
+  const mode = requestedDriverMode(argv);
+  process.env.LOOM_COMPUTER_DRIVER = mode;
+  console.log(`[dev-ready] driver-mode=${mode}`);
+  console.log("[dev-ready] Loom Python environment");
+  const ok = orchestrate(mode, {
+    setupPython: () => run(process.execPath, [path.join(DESKTOP_ROOT, "scripts", "setup-python.mjs")]),
+    setupUfo: () => ensureUfoDriver(mode),
+    preflight: () => preflightUfoIfStrict(mode),
+    startElectron: () => run(NPM, ["run", "dev"]),
+  });
+  if (!ok) process.exitCode = 1;
+}
+
+export function orchestrate(mode, actions) {
+  actions.setupPython();
+  if (!actions.setupUfo()) return false;
+  if (mode === "ufo" && !actions.preflight()) return false;
+  actions.startElectron();
+  return true;
+}
+
+if (path.resolve(process.argv[1] || "") === __filename) main();

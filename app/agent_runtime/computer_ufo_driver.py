@@ -98,9 +98,10 @@ def _default_source_root(install_root: Path) -> Path:
 
 
 def _default_python(install_root: Path) -> Path:
+    venv_root = Path(f"{install_root}.venv")
     if os.name == "nt":
-        return install_root / ".venv" / "Scripts" / "python.exe"
-    return install_root / ".venv" / "bin" / "python"
+        return venv_root / "Scripts" / "python.exe"
+    return venv_root / "bin" / "python"
 
 
 def _sidecar_path() -> Path:
@@ -181,7 +182,9 @@ class UfoDriverConfig:
             _first_env("LOOM_UFO_SIDECAR") or _sidecar_path()
         ).expanduser().resolve()
 
-        explicit_type = _first_env("LOOM_UFO_API_TYPE").casefold()
+        explicit_type = _first_env("LOOM_UFO_API_TYPE").casefold().replace("_", "-")
+        if explicit_type in {"openai", "openai-compatible"}:
+            explicit_type = "openai"
         explicit_base = _first_env("LOOM_UFO_API_BASE", "LOOM_BASE_URL")
         explicit_key = _first_env("LOOM_UFO_API_KEY")
         explicit_model = _first_env("LOOM_UFO_API_MODEL")
@@ -227,21 +230,66 @@ class UfoDriverConfig:
             ),
         )
 
+    def installation_status(self) -> dict[str, Any]:
+        config_root = self.source_root / "config" / "ufo"
+        source_installed = self.source_root.is_dir() and (self.source_root / "ufo").is_dir()
+        venv_installed = self.python.is_file()
+        config_installed = all(
+            (config_root / name).is_file()
+            for name in ("agents.yaml", "system_loom.yaml", "mcp_loom.yaml")
+        )
+        install_marker: dict[str, Any] = {}
+        preflight_marker: dict[str, Any] = {}
+        for target, destination in (
+            (self.install_root / "loom-ufo-install.json", install_marker),
+            (self.install_root / "loom-ufo-preflight.json", preflight_marker),
+        ):
+            try:
+                value = json.loads(target.read_text(encoding="utf-8"))
+                if isinstance(value, dict):
+                    destination.update(value)
+            except (OSError, json.JSONDecodeError, TypeError, ValueError):
+                pass
+        dependencies_installed = bool(
+            venv_installed
+            and install_marker.get("commit") == UFO_COMMIT
+            and install_marker.get("requirementsSha256")
+            and Path(str(install_marker.get("python") or "")).resolve() == self.python
+        )
+        preflight_ready = bool(
+            preflight_marker.get("ready") is True
+            and preflight_marker.get("commit") == UFO_COMMIT
+            and preflight_marker.get("python") == "3.10"
+            and Path(str(preflight_marker.get("pythonPath") or "")).resolve()
+            == self.python
+            and Path(str(preflight_marker.get("sourceRoot") or "")).resolve()
+            == self.source_root
+            and int(preflight_marker.get("protocolVersion") or 0) == PROTOCOL_VERSION
+        )
+        return {
+            "source_installed": source_installed,
+            "venv_installed": venv_installed,
+            "dependencies_installed": dependencies_installed,
+            "config_installed": config_installed,
+            "preflight_ready": preflight_ready,
+        }
+
     def readiness(self) -> tuple[bool, str]:
+        installation = self.installation_status()
         if os.name != "nt":
             return False, "UFO Windows driver requires Windows"
         if not self.sidecar.is_file():
             return False, f"Loom UFO sidecar is missing: {self.sidecar}"
-        if not self.source_root.is_dir() or not (self.source_root / "ufo").is_dir():
-            return False, f"UFO {UFO_TAG} is not installed; run npm run setup:ufo"
-        if not self.python.is_file():
-            return False, "UFO isolated Python is missing; run npm run setup:ufo"
-        if not (self.source_root / "config" / "ufo" / "agents.yaml").is_file():
-            return False, "UFO Loom agent configuration is missing; run npm run setup:ufo"
-        if not (self.source_root / "config" / "ufo" / "system_loom.yaml").is_file():
-            return False, "UFO Loom safety override is missing; run npm run setup:ufo"
-        if not (self.source_root / "config" / "ufo" / "mcp_loom.yaml").is_file():
-            return False, "UFO Loom MCP allowlist is missing; run npm run setup:ufo"
+        if not installation["source_installed"]:
+            return False, f"UFO source is missing or invalid: {self.source_root}"
+        if not installation["venv_installed"]:
+            return False, f"UFO Python 3.10 venv is missing: {self.python}"
+        if not installation["dependencies_installed"]:
+            return False, "UFO dependencies are not installed or their install marker is invalid"
+        if not installation["config_installed"]:
+            return False, "One or more Loom UFO config files are missing"
+        if not installation["preflight_ready"]:
+            return False, "UFO sidecar preflight has not passed for the pinned runtime"
         if not self.api_key:
             return False, (
                 "UFO model API key is not configured "
@@ -249,7 +297,7 @@ class UfoDriverConfig:
             )
         if not self.api_model:
             return False, (
-                "UFO vision model is not configured (set LOOM_UFO_API_MODEL)"
+                "No compatible vision model is configured in Loom for strict UFO Computer Use"
             )
         if not self.api_base and self.api_type == "openai":
             return False, "UFO OpenAI-compatible API base is not configured"
@@ -312,6 +360,7 @@ class UfoWindowsDriver:
 
     def status(self) -> Mapping[str, Any]:
         ready, reason = self.config.readiness()
+        installation = self.config.installation_status()
         process = self._process
         alive = bool(process is not None and process.poll() is None)
         return {
@@ -321,7 +370,15 @@ class UfoWindowsDriver:
             "tag": UFO_TAG,
             "expected_commit": UFO_COMMIT,
             "verified_commit": self._verified_commit,
-            "installed": self.config.source_root.is_dir(),
+            "installed": all(
+                (
+                    installation["source_installed"],
+                    installation["venv_installed"],
+                    installation["dependencies_installed"],
+                    installation["config_installed"],
+                )
+            ),
+            **installation,
             "ready": ready,
             "reason": reason,
             "sidecar_alive": alive,

@@ -352,8 +352,10 @@ class ComputerDriverRuntime(ComputerUseRuntime):
                     "mode": self.computer_driver_mode,
                     "setup": (
                         "Restart Loom with the built-in Computer Use driver enabled. "
-                        "The development launcher provisions UFO automatically; if it "
-                        "fails, install Git and Python 3.10, then run npm run dev:ready again."
+                        "The strict development launcher provisions the pinned UFO source, "
+                        "a private Python 3.10 runtime, its isolated venv, dependencies, "
+                        "configuration, and preflight automatically. Inspect the named "
+                        "dev:ready stage if provisioning failed."
                     ),
                 },
             )

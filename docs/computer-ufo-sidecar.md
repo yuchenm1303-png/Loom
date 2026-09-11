@@ -101,7 +101,7 @@ The installer:
    a private Python runtime into `~/.loom/runtimes/python/3.10.11`;
 5. falls back to `winget install Python.Python.3.10` only if the private runtime
    bootstrap is unavailable or blocked;
-6. creates `~/.loom/drivers/ufo/3.0.8/.venv` from the resolved Python 3.10;
+6. creates `~/.loom/drivers/ufo/3.0.8.venv` from the resolved Python 3.10;
 7. installs UFO's pinned requirements there;
 8. creates an `agents.yaml` that references runtime environment variables instead of
    storing secrets;
@@ -116,9 +116,21 @@ The installer:
 first production baseline. They can be evaluated later as explicit capabilities.
 
 `ufo:preflight` starts the isolated sidecar, verifies the NDJSON protocol and exact
-UFO commit, and performs a clean shutdown without starting a desktop task. The
+UFO commit, verifies Python 3.10 and all three Loom config files, and performs a
+clean shutdown without starting a desktop task. The
 preflight child gets only an OS/network environment allowlist; provider secrets are
 not forwarded for this handshake.
+
+Startup output is deliberately staged as `source`, `python-runtime`, `venv`,
+`dependencies`, `config`, `ufo-preflight`, and `dev-ready`. A failure exits before
+Electron and names the failed boundary (for example `python.org download blocked`,
+`installer checksum mismatch`, `private Python install failed`, `UFO venv creation
+failed`, `pip install requirements failed`, or `sidecar preflight failed`).
+
+`computer_status.task_driver` exposes `source_installed`, `venv_installed`,
+`dependencies_installed`, `config_installed`, `preflight_ready`, `ready`, and a
+specific `reason`, so an incomplete installation is never reduced to one ambiguous
+`installed: false` flag.
 
 ## Model configuration
 

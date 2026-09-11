@@ -42,11 +42,13 @@ def test_openai_compatible_base_url_is_normalized():
 
 def test_ufo_status_is_side_effect_free_when_not_installed(tmp_path: Path):
     install = tmp_path / "ufo"
+    sidecar = tmp_path / "ufo_sidecar.py"
+    sidecar.write_text("# test sidecar\n", encoding="utf-8")
     config = UfoDriverConfig(
         install_root=install,
         source_root=install / "src",
         python=install / ".venv" / "Scripts" / "python.exe",
-        sidecar=tmp_path / "ufo_sidecar.py",
+        sidecar=sidecar,
         api_type="openai",
         api_base="https://api.openai.com/v1",
         api_key="secret",
@@ -57,6 +59,12 @@ def test_ufo_status_is_side_effect_free_when_not_installed(tmp_path: Path):
 
     assert status["sidecar_alive"] is False
     assert status["running"] is False
+    assert status["source_installed"] is False
+    assert status["venv_installed"] is False
+    assert status["dependencies_installed"] is False
+    assert status["config_installed"] is False
+    assert status["preflight_ready"] is False
+    assert "source" in status["reason"].lower()
     assert status["api_key_configured"] is True
     assert "api_key" not in status
 
