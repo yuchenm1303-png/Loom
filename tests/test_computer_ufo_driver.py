@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from app.agent_runtime.computer_driver_runtime import ComputerDriverRuntime
+from app.agent_runtime.computer_driver_runtime import ComputerDriverRuntime, _safe_driver_data
 from app.agent_runtime.computer_ufo_driver import (
     UFO_COMMIT,
     UFO_TAG,
@@ -57,6 +57,20 @@ def test_sidecar_redacts_text_before_driver_events():
     assert safe["text"] == "[TRANSIENT_TEXT]"
     assert safe["text_length"] == len("super secret text")
     assert "super secret text" not in repr(safe)
+
+
+def test_runtime_redacts_provider_errors_and_text_before_persistence():
+    safe = _safe_driver_data(
+        {
+            "result": {"status": "failure", "error": "typed secret leaked in exception"},
+            "parameters": {"text": "typed secret", "text_length": 12},
+            "window": {"title": "WeChat", "rectangle": {"x": 10}},
+        }
+    )
+    assert safe["result"]["error"] == "[REDACTED_DRIVER_DATA]"
+    assert safe["parameters"]["text"] == "[REDACTED_DRIVER_DATA]"
+    assert safe["parameters"]["text_length"] == 12
+    assert safe["window"]["title"] == "WeChat"
 
 
 def test_hud_point_uses_selected_application_window_not_whole_screen(monkeypatch):
