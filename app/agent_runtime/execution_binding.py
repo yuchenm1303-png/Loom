@@ -5,34 +5,7 @@ import hashlib
 import json
 import marshal
 
-
-# These JSON Schema keywords are annotations only. Context Runtime v2 may remove
-# or shorten them when fixed tool-schema overhead is high. Approval identity must
-# therefore be based on validating/executable semantics rather than prompt prose.
-_BINDING_SCHEMA_ANNOTATIONS = frozenset(
-    {
-        "description",
-        "title",
-        "examples",
-        "example",
-        "$comment",
-        "deprecated",
-        "readOnly",
-        "writeOnly",
-    }
-)
-
-
-def _binding_schema(value):
-    if isinstance(value, dict):
-        return {
-            key: _binding_schema(item)
-            for key, item in value.items()
-            if key not in _BINDING_SCHEMA_ANNOTATIONS
-        }
-    if isinstance(value, list):
-        return [_binding_schema(item) for item in value]
-    return value
+from .json_schema_semantics import validating_schema
 
 
 def binding_digest(step, tool, platform) -> str:
@@ -64,7 +37,7 @@ def binding_digest(step, tool, platform) -> str:
         "tool": tool.name,
         "binding_key": tool.binding_key,
         "defaults": repr(getattr(function, "__kwdefaults__", None)),
-        "schema": _binding_schema(tool.input_schema),
+        "schema": validating_schema(tool.input_schema),
         "effect": tool.effect.value,
         "handler": f"{getattr(function, '__module__', '')}:{getattr(function, '__qualname__', '')}",
         "code": hashlib.sha256(marshal.dumps(code)).hexdigest() if code else str(type(handler)),
