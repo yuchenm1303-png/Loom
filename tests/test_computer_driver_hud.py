@@ -30,7 +30,7 @@ def test_driver_result_redacts_stderr_and_provider_payloads():
     assert "typed secret" not in repr(safe)
 
 
-def test_driver_action_is_hud_progress_not_nested_terminal_tool(tmp_path: Path):
+def test_driver_action_has_balanced_transcript_lifecycle_without_terminal_hud_identity(tmp_path: Path):
     emitted: list[tuple[AgentEventKind, dict[str, object]]] = []
     context = ToolContext(
         session_id="session-1",
@@ -56,13 +56,18 @@ def test_driver_action_is_hud_progress_not_nested_terminal_tool(tmp_path: Path):
         pending,
     )
 
-    assert len(emitted) == 1
-    kind, progress = emitted[0]
-    assert kind is AgentEventKind.TOOL_STARTED
-    assert progress["tool"] == "computer_action"
-    assert progress["nested"] is True
-    assert progress["driver_progress"] is True
-    assert progress["arguments"]["action"]["point"] == {"x": 0.65, "y": 0.4}
+    assert [kind for kind, _ in emitted] == [
+        AgentEventKind.TOOL_REQUESTED,
+        AgentEventKind.TOOL_STARTED,
+    ]
+    requested = emitted[0][1]
+    started = emitted[1][1]
+    assert requested["tool"] == "computer_action"
+    assert started["tool"] == "computer_action"
+    assert requested["call_id"] == started["call_id"]
+    assert requested["nested"] is True
+    assert requested["driver_progress"] is True
+    assert requested["arguments"]["action"]["point"] == {"x": 0.65, "y": 0.4}
     assert pending[0] is not None
 
     ComputerDriverRuntime._emit_action_event(
@@ -80,8 +85,13 @@ def test_driver_action_is_hud_progress_not_nested_terminal_tool(tmp_path: Path):
         pending,
     )
 
-    # The completion stays in driver diagnostics/trace; it must not become a
-    # nested TOOL_COMPLETED event because the HUD treats tool completion as
-    # terminal. Only the outer computer_run_task owns task terminal lifecycle.
-    assert len(emitted) == 1
+    assert len(emitted) == 3
+    kind, completed = emitted[-1]
+    assert kind is AgentEventKind.TOOL_COMPLETED
+    assert completed["call_id"] == requested["call_id"]
+    # app_server.py closes tool transcript items by call_id, so the completion
+    # can use a non-computer identity. The HUD ignores it because only
+    # computer_* tool names drive Computer Use presentation.
+    assert completed["tool"] == "driver_action_result"
+    assert completed["driver_progress"] is True
     assert pending[0] is None
