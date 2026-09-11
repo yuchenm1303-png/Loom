@@ -4,9 +4,10 @@ from pathlib import Path
 from typing import Any, TextIO
 
 from app.agent_runtime import AgentStatus, PermissionMode
+from app.agent_runtime.storage import utc_now
 from app.projects import ProjectStoreError
 
-from .app_server import JsonRpcError, utc_now
+from .app_server import JsonRpcError
 from .app_server_reasoning import (
     ReasoningManagedJsonRpcStdioServer,
     ReasoningManagedLoomAppServerService,
