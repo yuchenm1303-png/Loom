@@ -1,4 +1,5 @@
 from __future__ import annotations
+from conftest import without_stickers
 
 import json
 import sys
@@ -90,7 +91,7 @@ def test_agent_can_start_write_and_poll_background_process_across_steps(tmp_path
     result = runtime.start_turn(session.session_id, "Run the interactive process.")
 
     assert result.status is AgentStatus.COMPLETED
-    assert result.final_text == "background process interaction completed"
+    assert without_stickers(result.final_text) == "background process interaction completed"
     assert platform.process_id.startswith("proc-")
     assert platform.polls <= 20
 

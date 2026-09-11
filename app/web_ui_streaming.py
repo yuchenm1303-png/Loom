@@ -13,6 +13,9 @@ from .web_ui import LoomWebService, create_web_server
 _MAX_LIVE_TEXT = 1_000_000
 
 
+from app.web_ui import plain_reply_text
+
+
 class StreamingLoomWebService(LoomWebService):
     """Existing local Web UI adapter plus transient assistant stream state.
 
@@ -83,7 +86,7 @@ class StreamingLoomWebService(LoomWebService):
         payload = super().snapshot(session_id)
         with self._guard:
             current = dict(self._live_streams.get(session_id) or {})
-        text = str(current.get("text") or "")
+        text = plain_reply_text(str(current.get("text") or ""))
         revision = int(current.get("revision") or 0)
         if text and payload.get("active"):
             payload["messages"] = [

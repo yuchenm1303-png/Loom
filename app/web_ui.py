@@ -12,6 +12,7 @@ from urllib.parse import urlsplit
 
 from app.ai import AGENT_FAST_ROLE, ImagePart, MessageRole, TextPart
 from app.agent_runtime import AgentStatus, PermissionMode
+from app.agent_runtime.stickers import INLINE_STICKER_VISIBLE_MARKER_RE
 
 
 _STATIC_DIR = Path(__file__).with_name("web_static")
@@ -80,6 +81,17 @@ def _session_title(session: Any) -> str:
     workspace = Path(session.workspace_dir)
     return workspace.name or "New session"
 
+
+
+def plain_reply_text(value: str) -> str:
+    """Drop inline sticker markers for clients that cannot render them.
+
+    The desktop transcript parses [[AI_LEDGER_INLINE_STICKER:key]] and draws the
+    image. This web client has no such renderer, so forwarding the raw marker
+    would show protocol text inside the reply.
+    """
+
+    return INLINE_STICKER_VISIBLE_MARKER_RE.sub("", str(value or ""))
 
 class LoomWebService:
     """Thin same-process adapter from the local web UI to the real Loom runtime."""
@@ -184,7 +196,7 @@ class LoomWebService:
                     "total_tokens": int(session.usage.total_tokens),
                 },
                 "error": session.error or task_error,
-                "final_text": session.final_text,
+                "final_text": plain_reply_text(session.final_text),
                 "active": active,
             }
 

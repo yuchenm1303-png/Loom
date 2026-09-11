@@ -202,6 +202,23 @@ class StreamingAgentRuntime(CodeModeRuntime):
             self._sticker_preferences = preferences
         return preferences.to_dict()
 
+    def _is_spawned_agent_session(self, session: AgentSession) -> bool:
+        """Report whether this session is a spawned child rather than the user's chat.
+
+        Stickers decorate a reply the user reads. A child agent's reply is consumed
+        by its parent as data, so decorating it puts protocol markers into another
+        agent's context instead of in front of a renderer.
+        """
+
+        graph = getattr(self, "agent_graph", None)
+        if graph is None:
+            return False
+        try:
+            node = graph.get(session.session_id)
+        except Exception:
+            return False
+        return node is not None and bool(getattr(node, "parent_session_id", ""))
+
     def _sticker_context_for_session(self, session: AgentSession, *, streaming: bool) -> StickerContext:
         user_text = ""
         assistant_history: list[str] = []
@@ -232,7 +249,11 @@ class StreamingAgentRuntime(CodeModeRuntime):
         )
         with self._sticker_guard:
             preferences = self._sticker_preferences
-        allow_stickers = not custom_opt_out and preferences.frequency > 0
+        allow_stickers = (
+            not custom_opt_out
+            and preferences.frequency > 0
+            and not self._is_spawned_agent_session(session)
+        )
 
         return StickerContext(
             user_text=user_text,

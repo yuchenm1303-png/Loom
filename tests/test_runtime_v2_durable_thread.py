@@ -1,4 +1,5 @@
 from __future__ import annotations
+from conftest import without_stickers
 
 from app.agent_runtime import (
     AgentEventKind,
@@ -198,7 +199,7 @@ def test_active_goal_can_continue_after_runtime_restart(tmp_path):
     result = restarted.continue_goal(session.session_id)
 
     assert result.status is AgentStatus.COMPLETED
-    assert result.final_text == "continued successfully"
+    assert without_stickers(result.final_text) == "continued successfully"
     request = platform.requests[0][1]
     user_messages = [message for message in request.messages if message.role is MessageRole.USER]
     assert "implement durable recovery" in str(user_messages[-1].content)

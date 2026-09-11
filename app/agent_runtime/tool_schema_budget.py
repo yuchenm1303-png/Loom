@@ -20,6 +20,24 @@ _CORE_TOOL_NAMES = frozenset(
     }
 )
 
+# A capability is unusable without its own verbs. Ranking shedding purely by
+# schema size dropped browser_click and browser_type, leaving a browser the model
+# could open and inspect but never interact with, and dropped spawn_agent, the
+# only entry point to delegation. These stay resident so shedding falls on tools
+# whose absence costs a lookup rather than a capability.
+_CAPABILITY_ACTION_NAMES = frozenset(
+    {
+        "browser_open",
+        "browser_state",
+        "browser_navigate",
+        "browser_click",
+        "browser_type",
+        "computer_run_task",
+        "spawn_agent",
+        "wait_agent",
+    }
+)
+
 
 @dataclass(frozen=True, slots=True)
 class ToolSchemaPlan:
@@ -122,11 +140,13 @@ def _priority(name: str, pinned: set[str]) -> int:
         return 1
     if name in _CORE_TOOL_NAMES:
         return 2
-    if name.startswith("exec_"):
+    if name in _CAPABILITY_ACTION_NAMES:
         return 3
-    if name.startswith(("read_", "list_", "get_", "search_")):
+    if name.startswith("exec_"):
         return 4
-    return 5
+    if name.startswith(("read_", "list_", "get_", "search_")):
+        return 5
+    return 6
 
 
 def plan_tool_schema_pressure(

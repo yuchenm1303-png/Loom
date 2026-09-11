@@ -169,7 +169,7 @@ def test_context_shed_direct_tool_can_be_searched_pinned_and_executed(tmp_path: 
 
         first_step_plan = next(
             event.data.get("tool_schema_plan")
-            for event in runtime.events(session.session_id)
+            for event in runtime.store.events(session.session_id)
             if event.kind.value == "model_requested" and event.data.get("tool_schema_plan")
         )
         assert first_step_plan["omitted_count"] >= 1

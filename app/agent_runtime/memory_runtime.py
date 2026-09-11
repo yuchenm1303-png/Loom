@@ -25,6 +25,7 @@ from .memory_store import (
 )
 from .memory_tools import memory_tools
 from .multi_agent_runtime import MultiAgentRuntime
+from .stickers import INLINE_STICKER_VISIBLE_MARKER_RE
 from .storage import utc_now
 
 
@@ -579,7 +580,10 @@ def _memory_event_transcript(
             body = str(data.get("text") or "")
         elif event.kind is AgentEventKind.MODEL_RESPONSE:
             label = "ASSISTANT"
-            body = str(data.get("text") or "")
+            # Recorded assistant text carries inline sticker markers for the chat
+            # client to render. They say nothing about what the user told us, so
+            # they must not reach the extractor or be stored as remembered text.
+            body = INLINE_STICKER_VISIBLE_MARKER_RE.sub("", str(data.get("text") or ""))
             calls = data.get("tool_calls")
             if isinstance(calls, list) and calls:
                 body = (
