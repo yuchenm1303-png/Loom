@@ -34,6 +34,7 @@ _SENSITIVE_DRIVER_KEYS = {
     "text",
     "traceback",
 }
+_UFO_COMPATIBLE_PROVIDERS = {"openai", "openai-compatible", "openai_compatible"}
 
 
 def _driver_mode() -> str:
@@ -106,7 +107,13 @@ class ComputerDriverRuntime(ComputerUseRuntime):
         self._sync_driver_model_from_platform()
 
     def _sync_driver_model_from_platform(self) -> None:
-        """Reuse the current Loom vision connection in the isolated UFO process."""
+        """Reuse the current Loom vision connection in the isolated UFO process.
+
+        Users should not need to provide separate LOOM_UFO_API_* values for the
+        normal desktop driver. Loom already knows the active provider/model/key;
+        this bridge copies that RAM-only connection into the UFO sidecar config
+        before status checks or task execution.
+        """
 
         driver = self.computer_driver
         if not isinstance(driver, UfoWindowsDriver):
@@ -123,8 +130,8 @@ class ComputerDriverRuntime(ComputerUseRuntime):
                 break
         if not isinstance(metadata, dict) or not bool(metadata.get("vision", True)):
             return
-        provider = str(metadata.get("provider") or "").strip().casefold()
-        if provider not in {"openai", "openai_compatible"}:
+        provider = str(metadata.get("provider") or "").strip().casefold().replace("_", "-")
+        if provider not in _UFO_COMPATIBLE_PROVIDERS:
             return
         api_key = str(metadata.get("api_key") or "").strip()
         api_model = str(metadata.get("model") or "").strip()
@@ -344,7 +351,9 @@ class ComputerDriverRuntime(ComputerUseRuntime):
                     "driver": driver_status,
                     "mode": self.computer_driver_mode,
                     "setup": (
-                        "Run `cd desktop-react && npm run setup:ufo`, then restart Loom."
+                        "Restart Loom with the built-in Computer Use driver enabled. "
+                        "The development launcher provisions UFO automatically; if it "
+                        "fails, install Git and Python 3.10, then run npm run dev:ready again."
                     ),
                 },
             )
