@@ -188,6 +188,17 @@ export interface LoomAppearanceSettings {
   codeWrap?: boolean;
 }
 
+export interface LoomShortcutSettings {
+  newConversation?: string;
+  searchConversations?: string;
+  openSettings?: string;
+  focusComposer?: string;
+  toggleSidebar?: string;
+  toggleInspector?: string;
+  attachFiles?: string;
+  stopTask?: string;
+}
+
 export interface LoomTerminalSettings {
   shell?: "powershell" | "cmd" | "git-bash" | "wsl";
   encoding?: "utf-8" | "system";
@@ -226,6 +237,7 @@ export interface LoomSettings {
     [key: string]: boolean | undefined;
   };
   appearance?: LoomAppearanceSettings;
+  shortcuts?: LoomShortcutSettings;
   terminal?: LoomTerminalSettings;
   browser?: LoomBrowserSettings;
   computer?: LoomComputerSettings;
