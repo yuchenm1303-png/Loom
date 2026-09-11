@@ -4,11 +4,12 @@ import json
 import os
 import re
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
 from .credentials import CredentialRef
+from .profiles import ModelContextLimits
 from .provider_catalog import ProviderAdapter, ProviderConnection, provider_descriptor
 
 
@@ -46,6 +47,25 @@ def model_id_from_selection(value: str | None) -> str | None:
     return model_id if _MODEL_ID_RE.fullmatch(model_id) else None
 
 
+def _optional_int(payload: dict[str, object], key: str) -> int | None:
+    value = payload.get(key)
+    if value is None or value == "":
+        return None
+    return int(value)
+
+
+def _context_limits_from_dict(payload: object) -> ModelContextLimits:
+    if not isinstance(payload, dict):
+        return ModelContextLimits()
+    return ModelContextLimits(
+        context_window_tokens=_optional_int(payload, "context_window_tokens"),
+        effective_context_percent=int(payload.get("effective_context_percent") or 95),
+        auto_compact_token_limit=_optional_int(payload, "auto_compact_token_limit"),
+        output_reserve_tokens=_optional_int(payload, "output_reserve_tokens"),
+        tool_output_token_limit=_optional_int(payload, "tool_output_token_limit"),
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class StoredModel:
     """Secret-free metadata for one user-configured Agent model endpoint."""
@@ -62,6 +82,10 @@ class StoredModel:
     # exists to serve. Default on, because the common case is a modern model
     # and the cost of being wrong is one clear provider error.
     vision: bool = True
+    # Context limits are endpoint/model metadata, not provider-name guesses.
+    # Old model records omit this field and therefore retain conservative runtime
+    # defaults until the user or managed catalog supplies authoritative values.
+    context_limits: ModelContextLimits = field(default_factory=ModelContextLimits)
 
     def __post_init__(self) -> None:
         model_id = str(self.model_id or "").strip().casefold()
@@ -80,6 +104,8 @@ class StoredModel:
             raise ValueError(f"provider adapter is not executable: {adapter.value}")
         if adapter not in {ProviderAdapter.OPENAI, ProviderAdapter.OPENAI_COMPATIBLE}:
             raise ValueError(f"unsupported saved model adapter: {adapter.value}")
+        if not isinstance(self.context_limits, ModelContextLimits):
+            raise TypeError("context_limits must be ModelContextLimits")
 
         # Reuse ProviderConnection validation so saved endpoints follow exactly
         # the same URL and credential-reference rules as the runtime.
@@ -120,13 +146,13 @@ class StoredModel:
             "model": self.model,
             "credential_alias": self.credential_alias,
             "vision": self.vision,
+            "context_limits": self.context_limits.as_safe_dict(),
         }
 
     @classmethod
     def from_dict(cls, payload: dict[str, object]) -> "StoredModel":
-        # Entries written before attachments existed have no "vision" key. They
-        # adopt the default rather than being treated as text-only, so an
-        # upgrade does not silently take image support away from a user.
+        # Entries written before attachments/context metadata existed omit these
+        # fields. Additive parsing keeps v1 files forward-compatible.
         vision = payload.get("vision")
         return cls(
             model_id=str(payload.get("id") or ""),
@@ -136,6 +162,7 @@ class StoredModel:
             model=str(payload.get("model") or ""),
             credential_alias=str(payload.get("credential_alias") or ""),
             vision=True if vision is None else bool(vision),
+            context_limits=_context_limits_from_dict(payload.get("context_limits")),
         )
 
 
@@ -238,6 +265,7 @@ class ModelConfigStore:
         model: str,
         api_key: str,
         vision: bool = True,
+        context_limits: ModelContextLimits | None = None,
     ) -> StoredModel:
         display_name = " ".join(str(display_name or "").split())
         api_key = str(api_key or "").strip()
@@ -257,6 +285,7 @@ class ModelConfigStore:
             model=model,
             credential_alias=f"model/{model_id}",
             vision=bool(vision),
+            context_limits=context_limits or ModelContextLimits(),
         )
         self._set_secret(entry.credential_alias, api_key)
         payload = self._read_payload()
@@ -277,6 +306,7 @@ class ModelConfigStore:
         model: str,
         api_key: str | None = None,
         vision: bool = True,
+        context_limits: ModelContextLimits | None = None,
     ) -> StoredModel:
         """Update one saved connection without changing its stable selection id.
 
@@ -301,6 +331,7 @@ class ModelConfigStore:
             model=model,
             credential_alias=current.credential_alias,
             vision=bool(vision),
+            context_limits=context_limits if context_limits is not None else current.context_limits,
         )
         next_key = str(api_key or "").strip()
         if next_key:
