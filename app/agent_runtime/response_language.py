@@ -1,10 +1,10 @@
 """Stable user-language anchoring for long-running agent turns.
 
 Tool output, project instructions, and compaction summaries are often English even
-when the user is not.  Loom therefore derives a communication-language signal only
+when the user is not. Loom therefore derives a communication-language signal only
 from user-authored messages and injects it as transient system context on every
-model sample.  The signal is deliberately small and deterministic: it is not a
-translation system and it never treats tool/log text as evidence of user language.
+model sample. A persisted fallback lets that signal survive compaction even when
+recent user turns are too short to identify a language on their own.
 """
 from __future__ import annotations
 
@@ -18,6 +18,12 @@ _FENCED_CODE_RE = re.compile(r"```.*?```", re.DOTALL)
 _INLINE_CODE_RE = re.compile(r"`[^`]*`")
 _URL_RE = re.compile(r"https?://\S+", re.IGNORECASE)
 _LATIN_WORD_RE = re.compile(r"[A-Za-z]{2,}")
+_COMMUNICATION_LANGUAGES = frozenset({"auto", "zh", "ja", "ko", "cyrillic", "arabic", "latin"})
+
+
+def normalize_communication_language(value: str | None) -> str:
+    candidate = str(value or "auto").strip().casefold()
+    return candidate if candidate in _COMMUNICATION_LANGUAGES else "auto"
 
 
 def _message_text(message: AIMessage) -> str:
@@ -49,7 +55,7 @@ def _script_signal(text: str) -> str | None:
     latin_words = len(_LATIN_WORD_RE.findall(value))
 
     # Kana is a stronger Japanese discriminator than Han because normal Japanese
-    # text mixes both scripts.  Likewise, Hangul is unambiguous for Korean.
+    # text mixes both scripts. Likewise, Hangul is unambiguous for Korean.
     if kana >= 2:
         return "ja"
     if hangul >= 2:
@@ -62,18 +68,24 @@ def _script_signal(text: str) -> str | None:
         return "arabic"
 
     # Do not let terse acknowledgements such as "ok" or technical identifiers
-    # flip a Chinese thread to English.  A Latin-script turn must be substantive.
+    # flip a Chinese thread to English. A Latin-script turn must be substantive.
     if latin_letters >= 12 and latin_words >= 2:
         return "latin"
     return None
 
 
-def infer_user_language(messages: Iterable[AIMessage], *, lookback: int = 8) -> str:
-    """Return the newest substantive user-language signal.
+def infer_user_language(
+    messages: Iterable[AIMessage],
+    *,
+    lookback: int = 24,
+    fallback: str = "auto",
+) -> str:
+    """Return the newest substantive user-language signal or durable fallback.
 
     Scanning backwards makes the language naturally switch when the user actually
-    starts writing in another language, while short acknowledgements inherit the
-    prior conversational language.
+    starts writing in another language. Short acknowledgements inherit the prior
+    persisted language, so compaction cannot silently reset a Chinese thread just
+    because the retained user message is something like ``ok`` or ``继续``.
     """
     seen = 0
     for message in reversed(tuple(messages)):
@@ -85,11 +97,11 @@ def infer_user_language(messages: Iterable[AIMessage], *, lookback: int = 8) -> 
             return signal
         if seen >= max(1, lookback):
             break
-    return "auto"
+    return normalize_communication_language(fallback)
 
 
-def user_language_label(messages: Iterable[AIMessage]) -> str:
-    signal = infer_user_language(messages)
+def user_language_label(messages: Iterable[AIMessage], *, fallback: str = "auto") -> str:
+    signal = infer_user_language(messages, fallback=fallback)
     return {
         "zh": "Chinese",
         "ja": "Japanese",
@@ -101,9 +113,13 @@ def user_language_label(messages: Iterable[AIMessage]) -> str:
     }[signal]
 
 
-def communication_language_message(messages: Iterable[AIMessage]) -> AIMessage:
+def communication_language_message(
+    messages: Iterable[AIMessage],
+    *,
+    fallback: str = "auto",
+) -> AIMessage:
     """Build the transient language anchor injected on every model sample."""
-    label = user_language_label(messages)
+    label = user_language_label(messages, fallback=fallback)
     return AIMessage(
         role=MessageRole.SYSTEM,
         name="loom_communication_language",
@@ -124,5 +140,6 @@ def communication_language_message(messages: Iterable[AIMessage]) -> AIMessage:
 __all__ = [
     "communication_language_message",
     "infer_user_language",
+    "normalize_communication_language",
     "user_language_label",
 ]
