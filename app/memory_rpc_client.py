@@ -13,7 +13,11 @@ class RpcRequester(Protocol):
 
 
 class MemoryRpcClient:
-    """Typed Memory v2 calls over any Loom-compatible RPC client."""
+    """Typed Memory v2 calls over any Loom-compatible RPC client.
+
+    Memory management stays available when model-side memory is disabled so the
+    user can always inspect and forget already stored records.
+    """
 
     def __init__(self, client: RpcRequester) -> None:
         if not callable(getattr(client, "request", None)):
