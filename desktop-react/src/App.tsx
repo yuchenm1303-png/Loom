@@ -11,7 +11,14 @@ import { ThreadHeader } from "./components/ThreadHeader";
 import { Transcript } from "./components/Transcript";
 import "./components/inline-thinking.css";
 import "./components/sidebar-codex-polish.css";
+import "./components/shortcut-runtime.css";
 import { useI18n } from "./i18n";
+import {
+  SHORTCUTS_CHANGED_EVENT,
+  eventMatchesShortcut,
+  readShortcutSettings,
+  type ShortcutSettings,
+} from "./keyboardShortcuts";
 import { useLoom } from "./state/useLoom";
 import type { TranscriptItem } from "./types/loom";
 
@@ -29,11 +36,17 @@ function isResolvedApproval(item: TranscriptItem): boolean {
   return RESOLVED_APPROVAL_STATUSES.has(String(item.status || "").toLowerCase());
 }
 
+function afterPaint(callback: () => void): void {
+  requestAnimationFrame(() => requestAnimationFrame(callback));
+}
+
 export default function App() {
   const loom = useLoom();
   const { t } = useI18n();
   const [inspectorOpen, setInspectorOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [shortcuts, setShortcuts] = useState<ShortcutSettings>(() => readShortcutSettings());
   const [dismissedApprovalIds, setDismissedApprovalIds] = useState<Set<string>>(() => new Set());
   const thread = loom.active?.thread;
   const running = loom.turnActive || thread?.status === "running" || thread?.status === "waiting_approval";
@@ -50,6 +63,100 @@ export default function App() {
   useEffect(() => {
     setDismissedApprovalIds(new Set());
   }, [thread?.id]);
+
+  useEffect(() => {
+    const syncShortcuts = () => setShortcuts(readShortcutSettings());
+    window.addEventListener(SHORTCUTS_CHANGED_EVENT, syncShortcuts);
+    return () => window.removeEventListener(SHORTCUTS_CHANGED_EVENT, syncShortcuts);
+  }, []);
+
+  useEffect(() => {
+    const handleShortcut = (event: KeyboardEvent) => {
+      const target = event.target instanceof HTMLElement ? event.target : null;
+      if (target?.closest(".shortcut-recorder")) return;
+
+      const consume = () => {
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+      };
+
+      if (eventMatchesShortcut(event, shortcuts.openSettings)) {
+        consume();
+        setSettingsOpen((open) => !open);
+        return;
+      }
+
+      if (eventMatchesShortcut(event, shortcuts.stopTask) && running) {
+        consume();
+        void loom.interrupt();
+        return;
+      }
+
+      if (eventMatchesShortcut(event, shortcuts.newConversation)) {
+        consume();
+        setSettingsOpen(false);
+        setSidebarOpen(true);
+        void loom.newThread();
+        return;
+      }
+
+      if (eventMatchesShortcut(event, shortcuts.searchConversations)) {
+        consume();
+        setSettingsOpen(false);
+        setSidebarOpen(true);
+        afterPaint(() => {
+          const input = document.querySelector<HTMLInputElement>(".compact-search.open input");
+          if (input) {
+            input.focus();
+            input.select();
+            return;
+          }
+          document.querySelector<HTMLButtonElement>('button[aria-label="Search conversations"]')?.click();
+        });
+        return;
+      }
+
+      if (eventMatchesShortcut(event, shortcuts.focusComposer)) {
+        consume();
+        setSettingsOpen(false);
+        afterPaint(() => document.querySelector<HTMLTextAreaElement>(".composer textarea")?.focus());
+        return;
+      }
+
+      if (eventMatchesShortcut(event, shortcuts.attachFiles)) {
+        consume();
+        setSettingsOpen(false);
+        afterPaint(() => document.querySelector<HTMLButtonElement>('.composer-tool[title^="Attach files"]')?.click());
+        return;
+      }
+
+      if (eventMatchesShortcut(event, shortcuts.toggleSidebar)) {
+        consume();
+        setSidebarOpen((open) => !open);
+        return;
+      }
+
+      if (eventMatchesShortcut(event, shortcuts.toggleInspector)) {
+        consume();
+        setInspectorOpen((open) => !open);
+        return;
+      }
+
+      // Sidebar historically owned these two defaults. Once customized, block
+      // the legacy handlers so the old binding does not remain active as a
+      // hidden second shortcut.
+      if (
+        (eventMatchesShortcut(event, "Ctrl+N") && shortcuts.newConversation !== "Ctrl+N")
+        || (eventMatchesShortcut(event, "Ctrl+K") && shortcuts.searchConversations !== "Ctrl+K")
+      ) {
+        consume();
+      }
+    };
+
+    window.addEventListener("keydown", handleShortcut, true);
+    return () => window.removeEventListener("keydown", handleShortcut, true);
+  }, [loom, running, shortcuts]);
 
   const transcriptItems = loom.items.filter((item) => {
     if (item.type !== "approval") return true;
@@ -122,25 +229,27 @@ export default function App() {
   }
 
   return (
-    <div className={`app-shell ${inspectorOpen ? "with-inspector" : ""}`}>
-      <Sidebar
-        threads={loom.threads}
-        activeId={thread?.id}
-        threadView={loom.threadView}
-        archivedCount={loom.threadCounts.archived}
-        onOpen={loom.openThread}
-        onNew={loom.newThread}
-        projects={loom.projects}
-        projectsSupported={loom.projectsSupported}
-        onAddProject={loom.createProject}
-        onRenameProject={loom.renameProject}
-        onRemoveProject={loom.removeProject}
-        onRename={loom.renameThread}
-        onArchive={loom.archiveThread}
-        onDelete={loom.deleteThread}
-        onFork={loom.forkThread}
-        onViewChange={loom.setThreadView}
-      />
+    <div className={`app-shell ${inspectorOpen ? "with-inspector" : ""} ${sidebarOpen ? "" : "sidebar-collapsed"}`}>
+      {sidebarOpen ? (
+        <Sidebar
+          threads={loom.threads}
+          activeId={thread?.id}
+          threadView={loom.threadView}
+          archivedCount={loom.threadCounts.archived}
+          onOpen={loom.openThread}
+          onNew={loom.newThread}
+          projects={loom.projects}
+          projectsSupported={loom.projectsSupported}
+          onAddProject={loom.createProject}
+          onRenameProject={loom.renameProject}
+          onRemoveProject={loom.removeProject}
+          onRename={loom.renameThread}
+          onArchive={loom.archiveThread}
+          onDelete={loom.deleteThread}
+          onFork={loom.forkThread}
+          onViewChange={loom.setThreadView}
+        />
+      ) : null}
 
       <section className="workspace">
         <ThreadHeader
