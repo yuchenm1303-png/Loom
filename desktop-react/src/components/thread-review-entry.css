@@ -1,0 +1,82 @@
+.thread-review-button {
+  min-width: 68px;
+  height: 30px;
+  padding: 0 9px;
+  border: 1px solid rgba(255, 255, 255, .052);
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: rgba(22, 24, 30, .58);
+  color: #9299a5;
+  cursor: pointer;
+  font-size: 10.8px;
+  font-weight: 620;
+  line-height: 1;
+  white-space: nowrap;
+  transition: color 130ms ease, background 130ms ease, border-color 130ms ease, transform 130ms ease;
+}
+
+.thread-review-button > svg {
+  flex: none;
+  color: #7f8794;
+}
+
+.thread-review-button:hover {
+  color: #e0e3e8;
+  background: rgba(255, 255, 255, .045);
+  border-color: rgba(255, 255, 255, .075);
+}
+
+.thread-review-button:hover > svg {
+  color: #b5adf4;
+}
+
+.thread-review-button.active {
+  color: #c7c1f7;
+  background: rgba(139, 124, 246, .075);
+  border-color: rgba(139, 124, 246, .16);
+}
+
+.thread-review-button.active > svg {
+  color: #b8aff7;
+}
+
+.thread-review-button:active {
+  transform: scale(.96);
+}
+
+.thread-review-count {
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(89, 211, 143, .10);
+  color: #74d9a1;
+  font-size: 9.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 960px) {
+  .thread-review-button {
+    min-width: 32px;
+    width: 32px;
+    padding: 0;
+  }
+
+  .thread-review-label,
+  .thread-review-count {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .thread-review-button {
+    transition-duration: .001ms !important;
+  }
+}
