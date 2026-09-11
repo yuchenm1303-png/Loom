@@ -1,3 +1,8 @@
+.settings-section:has(.terminal-security-grid),
+.settings-section:has(.skills-security-grid) {
+  display: none;
+}
+
 .terminal-page-heading {
   min-height: 96px;
 }
