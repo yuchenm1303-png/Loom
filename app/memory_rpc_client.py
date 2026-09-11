@@ -1,16 +1,23 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Protocol
 
-from .app_server_client import LoomAppServerClient
+
+class RpcRequester(Protocol):
+    def request(
+        self,
+        method: str,
+        params: dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> Any: ...
 
 
 class MemoryRpcClient:
-    """Typed Memory v2 calls over an existing Loom App Server client."""
+    """Typed Memory v2 calls over any Loom-compatible RPC client."""
 
-    def __init__(self, client: LoomAppServerClient) -> None:
-        if not isinstance(client, LoomAppServerClient):
-            raise TypeError("client must be LoomAppServerClient")
+    def __init__(self, client: RpcRequester) -> None:
+        if not callable(getattr(client, "request", None)):
+            raise TypeError("client must expose request(method, params)")
         self.client = client
 
     def status(self, thread_id: str) -> dict[str, Any]:
@@ -97,4 +104,4 @@ class MemoryRpcClient:
         )
 
 
-__all__ = ["MemoryRpcClient"]
+__all__ = ["MemoryRpcClient", "RpcRequester"]
