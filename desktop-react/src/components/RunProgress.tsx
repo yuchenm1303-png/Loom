@@ -64,8 +64,9 @@ function phaseFor(items: TranscriptItem[], threadStatus: string | undefined, lan
   const zh = language === "zh-CN";
   if (threadStatus === "waiting_approval") return zh ? "等待权限确认" : "Waiting for approval";
 
+  const activityTypes = ["tool_call", "process", "file_edit", "approval"];
   const runningActivity = [...items].reverse().find((item) =>
-    ["tool_call", "process", "file_edit", "approval"].includes(item.type) && isRunningStatus(item.status),
+    activityTypes.includes(item.type) && isRunningStatus(item.status),
   );
 
   if (runningActivity?.type === "approval") return zh ? "等待权限确认" : "Waiting for approval";
@@ -73,15 +74,23 @@ function phaseFor(items: TranscriptItem[], threadStatus: string | undefined, lan
   if (runningActivity?.type === "file_edit") return zh ? "正在编辑文件" : "Editing files";
   if (runningActivity?.type === "tool_call") return zh ? "正在使用工具" : "Using tools";
 
+  // During a live turn there is often a short gap between one completed runtime
+  // item and the next item/assistant delta. Do not call that gap "preparing the
+  // response" just because an earlier assistant message exists: that made long
+  // command/tool sequences look frozen even while Loom was actively deciding
+  // the next step.
+  const latestActivity = [...items].reverse().find((item) =>
+    ["tool_call", "process", "file_edit"].includes(item.type),
+  );
+
+  if (latestActivity?.type === "process") return zh ? "正在分析命令结果" : "Analyzing command result";
+  if (latestActivity?.type === "tool_call") return zh ? "正在处理工具结果" : "Processing tool result";
+  if (latestActivity?.type === "file_edit") return zh ? "正在检查文件修改" : "Reviewing file changes";
+
   const latestAssistant = [...items].reverse().find((item) => item.type === "assistant_message");
   if (latestAssistant && String(latestAssistant.text ?? "").trim()) return zh ? "正在整理回复" : "Preparing response";
 
-  const hasFinishedActivity = items.some((item) =>
-    ["tool_call", "process", "file_edit"].includes(item.type) && !isRunningStatus(item.status),
-  );
-  if (hasFinishedActivity) return zh ? "正在分析结果" : "Analyzing results";
-
-  return zh ? "正在思考" : "Thinking";
+  return zh ? "正在思考下一步" : "Thinking about the next step";
 }
 
 function formatElapsed(seconds: number): string {
