@@ -45,6 +45,8 @@
 .thinking-shimmer {
   position: relative;
   display: inline-block;
+  overflow: hidden;
+  border-radius: 3px;
   font-size: 12.5px;
   font-weight: 560;
   line-height: 1.45;
@@ -52,30 +54,34 @@
   white-space: nowrap;
   color: #8f95a1;
   isolation: isolate;
-  contain: paint;
+  contain: layout paint;
 }
 
+/* The old shimmer animated background-position on clipped text, which forced
+   a repaint every frame. This narrow overlay keeps the same sweep impression
+   while moving only a compositor-friendly transform/opacity layer. */
 .thinking-shimmer::after {
-  content: "正在思考…";
+  content: "";
   position: absolute;
-  inset: 0;
   z-index: 1;
-  color: transparent;
+  top: -18%;
+  bottom: -18%;
+  left: -46%;
+  width: 38%;
+  border-radius: 999px;
   pointer-events: none;
-  background-image: linear-gradient(
+  background: linear-gradient(
     102deg,
     transparent 0%,
-    transparent 30%,
-    rgba(231,233,238,.95) 45%,
-    #b9aff4 54%,
-    transparent 70%,
+    rgba(231,233,238,.08) 22%,
+    rgba(231,233,238,.74) 48%,
+    rgba(185,175,244,.66) 58%,
     transparent 100%
   );
-  background-size: 260% 100%;
-  background-position: 150% 0;
-  -webkit-background-clip: text;
-  background-clip: text;
-  will-change: background-position, opacity;
+  mix-blend-mode: screen;
+  transform: translate3d(0, 0, 0) skewX(-12deg);
+  transform-origin: center;
+  will-change: transform, opacity;
   animation: thinking-text-shimmer 2.25s linear infinite;
 }
 
@@ -154,16 +160,17 @@
   line-height: 1.65;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+  overflow: hidden;
   background: linear-gradient(90deg, rgba(159,145,240,.035), transparent 64%);
 }
 
 .live-reasoning-copy::before {
   content: "";
   position: absolute;
-  top: 0;
-  bottom: 0;
+  top: -42%;
   left: -1px;
   width: 1px;
+  height: 44%;
   background: linear-gradient(
     180deg,
     transparent,
@@ -171,26 +178,27 @@
     rgba(231,139,98,.34),
     transparent
   );
-  background-size: 100% 220%;
+  transform: translate3d(0, 0, 0);
+  will-change: transform, opacity;
   animation: reasoning-rail-sweep 2s ease-in-out infinite;
 }
 
 @keyframes thinking-text-shimmer {
   0%, 10% {
-    background-position: 150% 0;
+    transform: translate3d(0, 0, 0) skewX(-12deg);
     opacity: 0;
   }
   16% {
-    opacity: .86;
+    opacity: .72;
   }
   50% {
-    opacity: 1;
+    opacity: .9;
   }
   84% {
-    opacity: .86;
+    opacity: .72;
   }
   90%, 100% {
-    background-position: -150% 0;
+    transform: translate3d(420%, 0, 0) skewX(-12deg);
     opacity: 0;
   }
 }
@@ -201,9 +209,9 @@
 }
 
 @keyframes reasoning-rail-sweep {
-  0% { background-position: 0 120%; opacity: .35; }
+  0% { transform: translate3d(0, 0, 0); opacity: .35; }
   50% { opacity: .82; }
-  100% { background-position: 0 -120%; opacity: .35; }
+  100% { transform: translate3d(0, 330%, 0); opacity: .35; }
 }
 
 @keyframes inline-thinking-enter {
