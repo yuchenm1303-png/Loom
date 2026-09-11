@@ -20,6 +20,7 @@ from app.ai import (
     AIMessage,
     ChatRequest,
     CredentialRef,
+    ImagePart,
     MessageRole,
     ModelCapability,
     ModelProfile,
@@ -32,6 +33,7 @@ from app.ai import (
     ToolDefinition,
 )
 from app.ai.openai_streaming import OpenAIStreamingChatBackend
+from app.ai.openai_runtime import _message_payload
 from app.ai.errors import AIEmptyResponseError
 from app.ai.streaming_platform import (
     ProviderStreamEvent,
@@ -162,6 +164,50 @@ def _request() -> ChatRequest:
             ),
         ),
     )
+
+
+def test_openai_native_payload_preserves_auto_image_detail():
+    message = AIMessage(
+        role=MessageRole.USER,
+        content=(ImagePart("data:image/png;base64,AA"),),
+    )
+
+    payload = _message_payload(message)
+
+    assert payload["content"][0]["image_url"] == {
+        "url": "data:image/png;base64,AA",
+        "detail": "auto",
+    }
+
+
+def test_compatible_provider_omits_auto_but_preserves_explicit_image_detail():
+    connection = ProviderConnection(
+        provider_id="test-provider",
+        adapter=ProviderAdapter.OPENAI_COMPATIBLE,
+        credential_ref=CredentialRef.runtime("test-key"),
+        base_url="https://example.invalid/v1",
+    )
+    backend = OpenAIStreamingChatBackend(
+        connection=connection,
+        profile=_profile(),
+        api_key="secret-for-test-only",
+        client=SimpleNamespace(chat=SimpleNamespace(completions=RecordingCompletions([]))),
+    )
+    request = ChatRequest(messages=(AIMessage(
+        role=MessageRole.USER,
+        content=(
+            ImagePart("data:image/png;base64,AA"),
+            ImagePart("data:image/png;base64,BB", detail="high"),
+        ),
+    ),))
+
+    payload = backend._request_kwargs(request)["messages"][0]["content"]
+
+    assert payload[0]["image_url"] == {"url": "data:image/png;base64,AA"}
+    assert payload[1]["image_url"] == {
+        "url": "data:image/png;base64,BB",
+        "detail": "high",
+    }
 
 
 def _runtime(tmp_path: Path):

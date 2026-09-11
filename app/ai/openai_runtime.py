@@ -38,7 +38,11 @@ _RETRYABLE_ERROR_FRAGMENTS = (
 _PROVIDER_RETRY_DELAYS_SECONDS = (0.35, 0.9)
 
 
-def _message_payload(message: AIMessage) -> dict[str, Any]:
+def _message_payload(
+    message: AIMessage,
+    *,
+    include_auto_image_detail: bool = True,
+) -> dict[str, Any]:
     payload: dict[str, Any] = {"role": message.role.value}
     if isinstance(message.content, str):
         payload["content"] = message.content
@@ -48,10 +52,16 @@ def _message_payload(message: AIMessage) -> dict[str, Any]:
             if isinstance(part, TextPart):
                 content.append({"type": "text", "text": part.text})
             elif isinstance(part, ImagePart):
+                image_url: dict[str, str] = {"url": part.image_url}
+                # ``detail`` is optional in the OpenAI wire format. Compatible
+                # providers do not consistently accept OpenAI's ``auto`` enum,
+                # so omit only that default while preserving explicit low/high.
+                if part.detail != "auto" or include_auto_image_detail:
+                    image_url["detail"] = part.detail
                 content.append(
                     {
                         "type": "image_url",
-                        "image_url": {"url": part.image_url, "detail": part.detail},
+                        "image_url": image_url,
                     }
                 )
             else:  # pragma: no cover - contracts reject unsupported parts
@@ -203,7 +213,15 @@ class OpenAIChatBackend:
     def _request_kwargs(self, request: ChatRequest) -> dict[str, Any]:
         kwargs: dict[str, Any] = {
             "model": self.profile.model,
-            "messages": [_message_payload(message) for message in request.messages],
+            "messages": [
+                _message_payload(
+                    message,
+                    include_auto_image_detail=(
+                        self.connection.adapter is ProviderAdapter.OPENAI
+                    ),
+                )
+                for message in request.messages
+            ],
             "timeout": self.request_timeout_seconds,
         }
         if request.tools:
