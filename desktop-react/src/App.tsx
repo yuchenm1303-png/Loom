@@ -10,6 +10,7 @@ import {
 import { Composer } from "./components/Composer";
 import { Inspector } from "./components/Inspector";
 import { LanguageSettingsDock } from "./components/LanguageSettingsDock";
+import { ProjectDetailsPanel } from "./components/ProjectDetailsPanel";
 import { ReviewInteractionBridge } from "./components/ReviewInteractionBridge";
 import { ReviewWorkspace } from "./components/ReviewWorkspace";
 import { RunProgress } from "./components/RunProgress";
@@ -157,6 +158,7 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
+  const [selectedProjectId, setSelectedProjectId] = useState("");
   const [sidebarWidth, setSidebarWidth] = useState(() => readPanelWidth(
     SIDEBAR_WIDTH_KEY,
     rootPixelWidth("--sidebar-width", 252),
@@ -185,10 +187,15 @@ export default function App() {
   const attachmentsEnabled = capabilitySettings.attachments !== false;
   const stickersEnabled = capabilitySettings.stickers !== false;
   const changedFileCount = reviewFileCount(loom.items);
-  const inspectorVisible = inspectorOpen && !reviewOpen;
+  const selectedProject = selectedProjectId
+    ? loom.projects.find((project) => project.id === selectedProjectId) ?? null
+    : null;
+  const projectDetailsOpen = Boolean(selectedProject);
+  const inspectorVisible = inspectorOpen && !reviewOpen && !projectDetailsOpen;
 
   function focusReviewFile(path?: string): void {
     const normalized = normalizeReviewPath(path);
+    setSelectedProjectId("");
     setInspectorOpen(false);
     setReviewOpen(true);
     if (!normalized) return;
@@ -204,6 +211,16 @@ export default function App() {
     });
   }
 
+  function openProjectDetails(projectId: string): void {
+    setReviewOpen(false);
+    setInspectorOpen(false);
+    setSelectedProjectId(projectId);
+  }
+
+  function closeProjectDetails(): void {
+    setSelectedProjectId("");
+  }
+
   function toggleReview(): void {
     if (reviewOpen) {
       setReviewOpen(false);
@@ -214,6 +231,7 @@ export default function App() {
 
   function toggleInspector(): void {
     setReviewOpen(false);
+    setSelectedProjectId("");
     setInspectorOpen((open) => !open);
   }
 
@@ -221,6 +239,11 @@ export default function App() {
     setDismissedApprovalIds(new Set());
     setReviewOpen(false);
   }, [thread?.id]);
+
+  useEffect(() => {
+    if (!selectedProjectId) return;
+    if (!loom.projects.some((project) => project.id === selectedProjectId)) setSelectedProjectId("");
+  }, [loom.projects, selectedProjectId]);
 
   useEffect(() => {
     const syncShortcuts = () => setShortcuts(readShortcutSettings());
@@ -521,9 +544,9 @@ export default function App() {
 
   async function handleMoveProject(threadId: string, projectId: string): Promise<void> {
     const movingThread = loom.threads.find((entry) => entry.id === threadId);
-    if (!movingThread) throw new Error("Conversation not found. Refresh the sidebar and try again.");
+    if (!movingThread) throw new Error("找不到这个会话，请刷新侧栏后重试。");
     if (movingThread.status === "running" || movingThread.status === "waiting_approval") {
-      throw new Error("Stop the active task before moving this conversation to another project.");
+      throw new Error("当前任务运行中，结束后才能移动这个对话到项目。");
     }
 
     const move = () => window.loom.call<{ thread: ThreadRecord }>("thread/move_project", {
@@ -544,7 +567,7 @@ export default function App() {
 
     const actualProjectId = String(result.thread?.projectId || "");
     if (actualProjectId !== projectId) {
-      throw new Error("Loom did not persist the selected project. The conversation was left unchanged.");
+      throw new Error("Loom 没有保存项目归属，这个对话保持不变。");
     }
 
     await loom.refreshProjects();
@@ -597,16 +620,18 @@ export default function App() {
   return (
     <div
       ref={shellRef}
-      className={`app-shell workspace-panels ${sidebarOpen ? "sidebar-open" : "sidebar-closed"} ${inspectorVisible ? "inspector-open" : "inspector-closed"} ${reviewOpen ? "with-review" : ""} ${resizingPanel ? "is-resizing" : ""}`}
+      className={`app-shell workspace-panels ${sidebarOpen ? "sidebar-open" : "sidebar-closed"} ${inspectorVisible ? "inspector-open" : "inspector-closed"} ${reviewOpen ? "with-review" : ""} ${projectDetailsOpen ? "with-project-details" : ""} ${resizingPanel ? "is-resizing" : ""}`}
       style={layoutStyle}
     >
       <Sidebar
         threads={loom.threads}
         activeId={thread?.id}
+        activeProjectId={selectedProjectId}
         threadView={loom.threadView}
         archivedCount={loom.threadCounts.archived}
         onOpen={loom.openThread}
         onNew={loom.newThread}
+        onOpenProject={openProjectDetails}
         projects={loom.projects}
         projectsSupported={loom.projectsSupported}
         onAddProject={loom.createProject}
@@ -723,6 +748,16 @@ export default function App() {
       <Inspector
         items={inspectorVisible ? loom.items : EMPTY_TRANSCRIPT_ITEMS}
         onClose={() => setInspectorOpen(false)}
+      />
+      <ProjectDetailsPanel
+        project={selectedProject}
+        open={projectDetailsOpen}
+        threads={loom.threads}
+        activeThreadId={thread?.id}
+        onClose={closeProjectDetails}
+        onNewThread={(project) => loom.newThread(project.root || undefined, project.id)}
+        onOpenThread={loom.openThread}
+        onSetInstructions={loom.setProjectInstructions}
       />
       <ReviewWorkspace items={loom.items} open={reviewOpen} onClose={() => setReviewOpen(false)} />
       <ReviewInteractionBridge onOpen={focusReviewFile} />
