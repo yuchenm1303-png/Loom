@@ -13,6 +13,17 @@ from .tools import AgentTool, ToolContext, ToolRegistry, ToolResult
 
 
 _DRIVER_MODES = {"auto", "ufo", "legacy"}
+_SENSITIVE_DRIVER_KEYS = {
+    "content",
+    "error",
+    "instruction",
+    "keys",
+    "message",
+    "prompt",
+    "request",
+    "task",
+    "text",
+}
 
 
 def _driver_mode() -> str:
@@ -28,6 +39,23 @@ def _ufo_base_url(provider: str, value: str) -> str:
     if not base and provider == "openai":
         return "https://api.openai.com/v1"
     return base
+
+
+def _safe_driver_data(value: Any, *, key: str = "") -> Any:
+    """Keep provider events useful without persisting task/input/error payloads."""
+
+    key_folded = str(key or "").casefold()
+    if key_folded in _SENSITIVE_DRIVER_KEYS:
+        if value in (None, "", [], {}):
+            return value
+        return "[REDACTED_DRIVER_DATA]"
+    if isinstance(value, dict):
+        return {str(name): _safe_driver_data(item, key=str(name)) for name, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_safe_driver_data(item) for item in value]
+    if value is None or isinstance(value, (str, bool, int, float)):
+        return value
+    return repr(value)
 
 
 class ComputerDriverRuntime(ComputerUseRuntime):
@@ -73,7 +101,18 @@ class ComputerDriverRuntime(ComputerUseRuntime):
         driver = self.computer_driver
         if not isinstance(driver, UfoWindowsDriver):
             return
-        metadata = getattr(getattr(self, "platform", None), "_loom_model_connection", None)
+        platform = getattr(self, "platform", None)
+        metadata = None
+        # Be tolerant of an embedding that already wrapped the platform before
+        # ComputerUseRuntime added its own transient boundary.
+        for _ in range(3):
+            candidate = getattr(platform, "_loom_model_connection", None)
+            if isinstance(candidate, dict):
+                metadata = candidate
+                break
+            platform = getattr(platform, "_delegate", None)
+            if platform is None:
+                break
         if not isinstance(metadata, dict) or not bool(metadata.get("vision", True)):
             return
         provider = str(metadata.get("provider") or "").strip().casefold()
@@ -204,7 +243,7 @@ class ComputerDriverRuntime(ComputerUseRuntime):
             }
             base = {
                 "call_id": call_id,
-                "tool": "computer_driver_action",
+                "tool": "computer_action",
                 "arguments": arguments,
                 "nested": True,
                 "parent_call_id": event.task_id,
@@ -215,7 +254,8 @@ class ComputerDriverRuntime(ComputerUseRuntime):
                 AgentEventKind.TOOL_STARTED,
                 {
                     "call_id": call_id,
-                    "tool": "computer_driver_action",
+                    "tool": "computer_action",
+                    "arguments": arguments,
                     "nested": True,
                     "parent_call_id": event.task_id,
                     "driver": "ufo2-sidecar",
@@ -231,14 +271,14 @@ class ComputerDriverRuntime(ComputerUseRuntime):
                 AgentEventKind.TOOL_COMPLETED if ok else AgentEventKind.TOOL_FAILED,
                 {
                     "call_id": call_id,
-                    "tool": "computer_driver_action",
+                    "tool": "computer_action",
                     "nested": True,
                     "parent_call_id": event.task_id,
                     "ok": ok,
-                    "content": str(result.get("error") or result.get("status") or ""),
+                    "content": "driver action completed" if ok else "driver action failed",
                     "data": {
                         "driver": "ufo2-sidecar",
-                        "action": str(data.get("action") or "action"),
+                        "action_name": str(data.get("action") or "action"),
                         "window": dict(data.get("window") or {}),
                     },
                 },
@@ -273,12 +313,18 @@ class ComputerDriverRuntime(ComputerUseRuntime):
 
         def on_event(event: ComputerDriverEvent) -> None:
             nonlocal trace_file
-            safe = event.to_safe_dict()
-            recent_events.append(safe)
-            path = self._trace_driver_event(context, event)
+            safe_event = ComputerDriverEvent(
+                task_id=event.task_id,
+                sequence=event.sequence,
+                kind=event.kind,
+                data=_safe_driver_data(dict(event.data)),
+                created_at=event.created_at,
+            )
+            recent_events.append(safe_event.to_safe_dict())
+            path = self._trace_driver_event(context, safe_event)
             if path:
                 trace_file = path
-            self._emit_action_event(context, event, pending_action)
+            self._emit_action_event(context, safe_event, pending_action)
 
         try:
             result = driver.run_task(
@@ -291,7 +337,7 @@ class ComputerDriverRuntime(ComputerUseRuntime):
         except Exception as exc:
             return ToolResult(
                 False,
-                f"Computer Driver failed before returning a task result: {type(exc).__name__}: {exc}",
+                f"Computer Driver failed before returning a task result: {type(exc).__name__}",
                 {
                     "driver": dict(driver.status()),
                     "mode": self.computer_driver_mode,
@@ -300,16 +346,18 @@ class ComputerDriverRuntime(ComputerUseRuntime):
                 },
             )
 
-        payload = result.to_safe_dict()
-        payload.update(
-            {
-                "driver": dict(driver.status()),
-                "driver_name": str(getattr(driver, "name", "computer-driver")),
-                "mode": self.computer_driver_mode,
-                "trace_file": trace_file,
-                "recent_events": list(recent_events),
-            }
-        )
+        payload = {
+            "task_id": result.task_id,
+            "status": result.status,
+            "ok": bool(result.ok),
+            "summary": result.summary,
+            "data": _safe_driver_data(dict(result.data)),
+            "driver": dict(driver.status()),
+            "driver_name": str(getattr(driver, "name", "computer-driver")),
+            "mode": self.computer_driver_mode,
+            "trace_file": trace_file,
+            "recent_events": list(recent_events),
+        }
         content = result.summary or (
             "Computer Driver completed the desktop task."
             if result.ok
@@ -331,12 +379,16 @@ class ComputerDriverRuntime(ComputerUseRuntime):
                 driver_status = {"name": getattr(driver, "name", "computer-driver"), "ready": False, "reason": str(exc)}
         status["driver_mode"] = self.computer_driver_mode
         status["task_driver"] = driver_status
-        status["task_runner"] = (
-            str(driver_status.get("name") or "computer-driver")
-            if bool(driver_status.get("ready"))
-            else "legacy-loom"
-        )
+        if bool(driver_status.get("ready")):
+            task_runner = str(driver_status.get("name") or "computer-driver")
+        elif self._legacy_computer_run_task is not None and self.computer_driver_mode != "ufo":
+            task_runner = "legacy-loom"
+        else:
+            task_runner = "unavailable"
+        status["task_runner"] = task_runner
         status["legacy_task_runner_available"] = self._legacy_computer_run_task is not None
+        if self.computer_driver_mode == "ufo":
+            status["enabled"] = bool(driver_status.get("ready"))
         return status
 
     def pause_computer_driver(self) -> bool:
