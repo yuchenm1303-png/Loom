@@ -4,9 +4,10 @@ import hashlib
 import math
 import re
 import sqlite3
-from contextlib import contextmanager
 import threading
+import time
 import uuid
+from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -39,6 +40,7 @@ class MemoryCandidate:
     scope: MemoryScope
     category: MemoryCategory
     importance: int = 3
+    evidence: str = ""
 
     def __post_init__(self) -> None:
         text = redact_secrets(str(self.text or "").strip())
@@ -49,10 +51,12 @@ class MemoryCandidate:
         importance = int(self.importance)
         if not 1 <= importance <= 5:
             raise ValueError("memory importance must be within 1..5")
+        evidence = redact_secrets(str(self.evidence or "").strip())[:2000]
         object.__setattr__(self, "text", text)
         object.__setattr__(self, "scope", MemoryScope(self.scope))
         object.__setattr__(self, "category", MemoryCategory(self.category))
         object.__setattr__(self, "importance", importance)
+        object.__setattr__(self, "evidence", evidence)
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,6 +70,11 @@ class MemoryRecord:
     source_count: int
     created_at: str
     updated_at: str
+    usage_count: int = 0
+    last_used_at: str = ""
+    confidence: float = 1.0
+    status: str = "active"
+    last_verified_at: str = ""
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -75,8 +84,35 @@ class MemoryRecord:
             "text": self.text,
             "importance": self.importance,
             "source_count": self.source_count,
+            "usage_count": self.usage_count,
+            "last_used_at": self.last_used_at,
+            "confidence": self.confidence,
+            "status": self.status,
+            "last_verified_at": self.last_verified_at,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class MemoryEvidence:
+    evidence_id: str
+    memory_id: str
+    candidate_id: str
+    extraction_id: str
+    source_session_id: str
+    source_turn_id: str
+    excerpt: str
+    created_at: str
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "evidence_id": self.evidence_id,
+            "memory_id": self.memory_id,
+            "source_session_id": self.source_session_id,
+            "source_turn_id": self.source_turn_id,
+            "excerpt": self.excerpt,
+            "created_at": self.created_at,
         }
 
 
@@ -89,6 +125,20 @@ class MemoryExtraction:
     candidate_count: int
     usage_total_tokens: int
     created_at: str
+    source_start_event_id: str = ""
+    source_end_event_id: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class MemoryThreadState:
+    session_id: str
+    last_event_id: str = ""
+    last_turn_id: str = ""
+    last_success_at: str = ""
+    failure_count: int = 0
+    retry_at: float = 0.0
+    last_error: str = ""
+    updated_at: str = ""
 
 
 _SECRET_ASSIGNMENT_RE = re.compile(
@@ -109,7 +159,10 @@ def redact_secrets(text: str) -> str:
     value = _PEM_RE.sub("[REDACTED_PRIVATE_KEY]", value)
     value = _OPENAI_KEY_RE.sub("[REDACTED_API_KEY]", value)
     value = _BEARER_RE.sub("Bearer [REDACTED_TOKEN]", value)
-    value = _SECRET_ASSIGNMENT_RE.sub(lambda match: f"{match.group(1)}{match.group(2)}[REDACTED]", value)
+    value = _SECRET_ASSIGNMENT_RE.sub(
+        lambda match: f"{match.group(1)}{match.group(2)}[REDACTED]",
+        value,
+    )
     return value
 
 
@@ -119,12 +172,12 @@ def workspace_memory_key(workspace: str | Path) -> str:
 
 
 class MemoryStore:
-    """SQLite-backed candidate and consolidated long-term memory store.
+    """SQLite-backed long-term memory store.
 
-    Extraction and consolidation are deliberately separate. A model may propose
-    candidates, but those candidates are first persisted as pending rows and are
-    only promoted through the consolidation boundary. Exact normalized duplicates
-    collapse into one canonical record with an incrementing source count.
+    V2-A keeps the original candidate -> consolidation boundary, then adds
+    provenance, read-usage accounting, and per-thread extraction checkpoints.
+    SQLite remains the canonical source; model-generated memory is never allowed
+    to mutate the database directly.
     """
 
     def __init__(self, runtime_dir: str | Path) -> None:
@@ -157,7 +210,9 @@ class MemoryStore:
                     summary TEXT NOT NULL,
                     candidate_count INTEGER NOT NULL,
                     usage_total_tokens INTEGER NOT NULL,
-                    created_at TEXT NOT NULL
+                    created_at TEXT NOT NULL,
+                    source_start_event_id TEXT NOT NULL DEFAULT '',
+                    source_end_event_id TEXT NOT NULL DEFAULT ''
                 );
 
                 CREATE TABLE IF NOT EXISTS memory_candidates (
@@ -172,7 +227,8 @@ class MemoryStore:
                     importance INTEGER NOT NULL,
                     fingerprint TEXT NOT NULL,
                     state TEXT NOT NULL,
-                    created_at TEXT NOT NULL
+                    created_at TEXT NOT NULL,
+                    evidence_excerpt TEXT NOT NULL DEFAULT ''
                 );
 
                 CREATE INDEX IF NOT EXISTS idx_memory_candidates_state
@@ -188,11 +244,98 @@ class MemoryStore:
                     fingerprint TEXT NOT NULL UNIQUE,
                     source_count INTEGER NOT NULL,
                     created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL
+                    updated_at TEXT NOT NULL,
+                    usage_count INTEGER NOT NULL DEFAULT 0,
+                    last_used_at TEXT NOT NULL DEFAULT '',
+                    confidence REAL NOT NULL DEFAULT 1.0,
+                    status TEXT NOT NULL DEFAULT 'active',
+                    last_verified_at TEXT NOT NULL DEFAULT ''
                 );
 
                 CREATE INDEX IF NOT EXISTS idx_memories_scope
                 ON memories(scope, scope_key, updated_at);
+
+                CREATE TABLE IF NOT EXISTS memory_evidence (
+                    evidence_id TEXT PRIMARY KEY,
+                    memory_id TEXT NOT NULL,
+                    candidate_id TEXT NOT NULL UNIQUE,
+                    extraction_id TEXT NOT NULL,
+                    source_session_id TEXT NOT NULL,
+                    source_turn_id TEXT NOT NULL,
+                    excerpt TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_memory_evidence_memory
+                ON memory_evidence(memory_id, created_at DESC);
+
+                CREATE TABLE IF NOT EXISTS memory_thread_state (
+                    session_id TEXT PRIMARY KEY,
+                    last_event_id TEXT NOT NULL DEFAULT '',
+                    last_turn_id TEXT NOT NULL DEFAULT '',
+                    last_success_at TEXT NOT NULL DEFAULT '',
+                    failure_count INTEGER NOT NULL DEFAULT 0,
+                    retry_at REAL NOT NULL DEFAULT 0,
+                    last_error TEXT NOT NULL DEFAULT '',
+                    updated_at TEXT NOT NULL
+                );
+                """
+            )
+            _ensure_column(
+                connection,
+                "memory_extractions",
+                "source_start_event_id",
+                "TEXT NOT NULL DEFAULT ''",
+            )
+            _ensure_column(
+                connection,
+                "memory_extractions",
+                "source_end_event_id",
+                "TEXT NOT NULL DEFAULT ''",
+            )
+            _ensure_column(
+                connection,
+                "memory_candidates",
+                "evidence_excerpt",
+                "TEXT NOT NULL DEFAULT ''",
+            )
+            _ensure_column(
+                connection,
+                "memories",
+                "usage_count",
+                "INTEGER NOT NULL DEFAULT 0",
+            )
+            _ensure_column(
+                connection,
+                "memories",
+                "last_used_at",
+                "TEXT NOT NULL DEFAULT ''",
+            )
+            _ensure_column(
+                connection,
+                "memories",
+                "confidence",
+                "REAL NOT NULL DEFAULT 1.0",
+            )
+            _ensure_column(
+                connection,
+                "memories",
+                "status",
+                "TEXT NOT NULL DEFAULT 'active'",
+            )
+            _ensure_column(
+                connection,
+                "memories",
+                "last_verified_at",
+                "TEXT NOT NULL DEFAULT ''",
+            )
+            # This index must be created only after the in-place v1 migration.
+            # Existing databases do not have status/usage_count until the
+            # _ensure_column calls above complete.
+            connection.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_memories_usage
+                ON memories(status, usage_count DESC, updated_at DESC)
                 """
             )
 
@@ -205,6 +348,8 @@ class MemoryStore:
         summary: str,
         candidates: Iterable[MemoryCandidate],
         usage_total_tokens: int = 0,
+        source_start_event_id: str = "",
+        source_end_event_id: str = "",
     ) -> MemoryExtraction:
         session_id = _key(source_session_id, "source_session_id")
         turn_id = str(source_turn_id or "").strip()
@@ -215,6 +360,8 @@ class MemoryStore:
         created_at = utc_now()
         workspace_key = workspace_memory_key(workspace)
         clean_summary = redact_secrets(str(summary or "").strip())[:20_000]
+        start_event_id = str(source_start_event_id or "").strip()
+        end_event_id = str(source_end_event_id or "").strip()
 
         with self._lock, self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
@@ -223,8 +370,9 @@ class MemoryStore:
                     """
                     INSERT INTO memory_extractions(
                         extraction_id, source_session_id, source_turn_id, summary,
-                        candidate_count, usage_total_tokens, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                        candidate_count, usage_total_tokens, created_at,
+                        source_start_event_id, source_end_event_id
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         extraction_id,
@@ -234,10 +382,16 @@ class MemoryStore:
                         len(candidate_values),
                         max(0, int(usage_total_tokens)),
                         created_at,
+                        start_event_id,
+                        end_event_id,
                     ),
                 )
                 for candidate in candidate_values:
-                    scope_key = "global" if candidate.scope is MemoryScope.GLOBAL else workspace_key
+                    scope_key = (
+                        "global"
+                        if candidate.scope is MemoryScope.GLOBAL
+                        else workspace_key
+                    )
                     fingerprint = _fingerprint(
                         candidate.scope,
                         scope_key,
@@ -247,9 +401,11 @@ class MemoryStore:
                     connection.execute(
                         """
                         INSERT INTO memory_candidates(
-                            candidate_id, extraction_id, source_session_id, source_turn_id,
-                            scope, scope_key, category, text, importance, fingerprint, state, created_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            candidate_id, extraction_id, source_session_id,
+                            source_turn_id, scope, scope_key, category, text,
+                            importance, fingerprint, state, created_at,
+                            evidence_excerpt
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
                             str(uuid.uuid4()),
@@ -264,12 +420,14 @@ class MemoryStore:
                             fingerprint,
                             MemoryCandidateState.PENDING.value,
                             created_at,
+                            candidate.evidence,
                         ),
                     )
                 connection.execute("COMMIT")
             except Exception:
                 connection.execute("ROLLBACK")
                 raise
+
         return MemoryExtraction(
             extraction_id=extraction_id,
             source_session_id=session_id,
@@ -278,12 +436,15 @@ class MemoryStore:
             candidate_count=len(candidate_values),
             usage_total_tokens=max(0, int(usage_total_tokens)),
             created_at=created_at,
+            source_start_event_id=start_event_id,
+            source_end_event_id=end_event_id,
         )
 
     def consolidate_pending(self, *, limit: int = 256) -> tuple[MemoryRecord, ...]:
         cap = max(1, min(2048, int(limit)))
         touched_ids: list[str] = []
         now = utc_now()
+
         with self._lock, self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
@@ -296,6 +457,7 @@ class MemoryStore:
                     """,
                     (MemoryCandidateState.PENDING.value, cap),
                 ).fetchall()
+
                 for row in rows:
                     existing = connection.execute(
                         "SELECT * FROM memories WHERE fingerprint = ?",
@@ -306,9 +468,15 @@ class MemoryStore:
                         connection.execute(
                             """
                             INSERT INTO memories(
-                                memory_id, scope, scope_key, category, text, importance,
-                                fingerprint, source_count, created_at, updated_at
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+                                memory_id, scope, scope_key, category, text,
+                                importance, fingerprint, source_count,
+                                created_at, updated_at, usage_count,
+                                last_used_at, confidence, status,
+                                last_verified_at
+                            ) VALUES (
+                                ?, ?, ?, ?, ?, ?, ?, 1, ?, ?,
+                                0, '', 1.0, 'active', ''
+                            )
                             """,
                             (
                                 memory_id,
@@ -328,17 +496,58 @@ class MemoryStore:
                             """
                             UPDATE memories
                             SET source_count = source_count + 1,
-                                importance = CASE WHEN importance < ? THEN ? ELSE importance END,
+                                importance = CASE
+                                    WHEN importance < ? THEN ?
+                                    ELSE importance
+                                END,
+                                status = 'active',
                                 updated_at = ?
                             WHERE memory_id = ?
                             """,
-                            (int(row["importance"]), int(row["importance"]), now, memory_id),
+                            (
+                                int(row["importance"]),
+                                int(row["importance"]),
+                                now,
+                                memory_id,
+                            ),
                         )
+
+                    candidate_id = str(row["candidate_id"])
+                    excerpt = redact_secrets(
+                        str(row["evidence_excerpt"] or row["text"])
+                    ).strip()[:2000]
                     connection.execute(
-                        "UPDATE memory_candidates SET state = ? WHERE candidate_id = ?",
-                        (MemoryCandidateState.CONSOLIDATED.value, str(row["candidate_id"])),
+                        """
+                        INSERT OR IGNORE INTO memory_evidence(
+                            evidence_id, memory_id, candidate_id,
+                            extraction_id, source_session_id,
+                            source_turn_id, excerpt, created_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            str(uuid.uuid4()),
+                            memory_id,
+                            candidate_id,
+                            str(row["extraction_id"]),
+                            str(row["source_session_id"]),
+                            str(row["source_turn_id"]),
+                            excerpt,
+                            now,
+                        ),
+                    )
+                    connection.execute(
+                        """
+                        UPDATE memory_candidates
+                        SET state = ?
+                        WHERE candidate_id = ?
+                        """,
+                        (
+                            MemoryCandidateState.CONSOLIDATED.value,
+                            candidate_id,
+                        ),
                     )
                     touched_ids.append(memory_id)
+
                 connection.execute("COMMIT")
             except Exception:
                 connection.execute("ROLLBACK")
@@ -346,6 +555,7 @@ class MemoryStore:
 
         if not touched_ids:
             return ()
+
         records: list[MemoryRecord] = []
         for memory_id in dict.fromkeys(touched_ids):
             record = self.get(memory_id)
@@ -356,16 +566,80 @@ class MemoryStore:
     def get(self, memory_id: str) -> MemoryRecord | None:
         key = _key(memory_id, "memory_id")
         with self._lock, self._connect() as connection:
-            row = connection.execute("SELECT * FROM memories WHERE memory_id = ?", (key,)).fetchone()
+            row = connection.execute(
+                "SELECT * FROM memories WHERE memory_id = ?",
+                (key,),
+            ).fetchone()
         return _record_from_row(row) if row is not None else None
 
-    def delete(self, memory_id: str) -> bool:
-        """Forget one consolidated memory and its candidate copies.
+    def get_visible(
+        self,
+        memory_id: str,
+        *,
+        workspace: str | Path,
+    ) -> MemoryRecord | None:
+        record = self.get(memory_id)
+        if record is None or record.status != "active":
+            return None
+        if record.scope is MemoryScope.GLOBAL:
+            return record
+        if record.scope_key == workspace_memory_key(workspace):
+            return record
+        return None
 
-        Extraction summary rows remain as audit metadata and are never used for
-        retrieval. Candidate rows sharing the canonical fingerprint are removed so
-        a later consolidation cannot silently recreate the forgotten memory.
-        """
+    def evidence(
+        self,
+        memory_id: str,
+        *,
+        limit: int = 20,
+    ) -> tuple[MemoryEvidence, ...]:
+        key = _key(memory_id, "memory_id")
+        cap = max(1, min(100, int(limit)))
+        with self._lock, self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT * FROM memory_evidence
+                WHERE memory_id = ?
+                ORDER BY created_at DESC, evidence_id ASC
+                LIMIT ?
+                """,
+                (key, cap),
+            ).fetchall()
+        return tuple(_evidence_from_row(row) for row in rows)
+
+    def mark_used(self, memory_ids: Iterable[str]) -> None:
+        identifiers = tuple(
+            dict.fromkeys(
+                str(memory_id or "").strip()
+                for memory_id in memory_ids
+                if str(memory_id or "").strip()
+            )
+        )
+        if not identifiers:
+            return
+
+        now = utc_now()
+        with self._lock, self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                for memory_id in identifiers:
+                    connection.execute(
+                        """
+                        UPDATE memories
+                        SET usage_count = usage_count + 1,
+                            last_used_at = ?
+                        WHERE memory_id = ? AND status = 'active'
+                        """,
+                        (now, memory_id),
+                    )
+                connection.execute("COMMIT")
+            except Exception:
+                connection.execute("ROLLBACK")
+                raise
+
+    def delete(self, memory_id: str) -> bool:
+        """Forget one consolidated memory and its candidate/evidence copies."""
+
         key = _key(memory_id, "memory_id")
         with self._lock, self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
@@ -377,8 +651,16 @@ class MemoryStore:
                 if row is None:
                     connection.execute("ROLLBACK")
                     return False
+
                 fingerprint = str(row["fingerprint"])
-                connection.execute("DELETE FROM memories WHERE memory_id = ?", (key,))
+                connection.execute(
+                    "DELETE FROM memory_evidence WHERE memory_id = ?",
+                    (key,),
+                )
+                connection.execute(
+                    "DELETE FROM memories WHERE memory_id = ?",
+                    (key,),
+                )
                 connection.execute(
                     "DELETE FROM memory_candidates WHERE fingerprint = ?",
                     (fingerprint,),
@@ -400,7 +682,12 @@ class MemoryStore:
         with self._lock, self._connect() as connection:
             if workspace is None:
                 rows = connection.execute(
-                    "SELECT * FROM memories ORDER BY updated_at DESC, memory_id ASC LIMIT ?",
+                    """
+                    SELECT * FROM memories
+                    WHERE status = 'active'
+                    ORDER BY updated_at DESC, memory_id ASC
+                    LIMIT ?
+                    """,
                     (cap,),
                 ).fetchall()
             else:
@@ -409,20 +696,76 @@ class MemoryStore:
                     rows = connection.execute(
                         """
                         SELECT * FROM memories
-                        WHERE scope = ? OR (scope = ? AND scope_key = ?)
-                        ORDER BY updated_at DESC, memory_id ASC LIMIT ?
+                        WHERE status = 'active'
+                          AND (
+                            scope = ?
+                            OR (scope = ? AND scope_key = ?)
+                          )
+                        ORDER BY updated_at DESC, memory_id ASC
+                        LIMIT ?
                         """,
-                        (MemoryScope.GLOBAL.value, MemoryScope.WORKSPACE.value, workspace_key, cap),
+                        (
+                            MemoryScope.GLOBAL.value,
+                            MemoryScope.WORKSPACE.value,
+                            workspace_key,
+                            cap,
+                        ),
                     ).fetchall()
                 else:
                     rows = connection.execute(
                         """
                         SELECT * FROM memories
-                        WHERE scope = ? AND scope_key = ?
-                        ORDER BY updated_at DESC, memory_id ASC LIMIT ?
+                        WHERE status = 'active'
+                          AND scope = ?
+                          AND scope_key = ?
+                        ORDER BY updated_at DESC, memory_id ASC
+                        LIMIT ?
                         """,
-                        (MemoryScope.WORKSPACE.value, workspace_key, cap),
+                        (
+                            MemoryScope.WORKSPACE.value,
+                            workspace_key,
+                            cap,
+                        ),
                     ).fetchall()
+        return tuple(_record_from_row(row) for row in rows)
+
+    def summary_records(
+        self,
+        *,
+        workspace: str | Path,
+        limit: int = 10,
+    ) -> tuple[MemoryRecord, ...]:
+        cap = max(1, min(32, int(limit)))
+        workspace_key = workspace_memory_key(workspace)
+        with self._lock, self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT * FROM memories
+                WHERE status = 'active'
+                  AND (
+                    scope = ?
+                    OR (scope = ? AND scope_key = ?)
+                  )
+                ORDER BY
+                    CASE
+                        WHEN scope = ? AND scope_key = ? THEN 1
+                        ELSE 0
+                    END DESC,
+                    importance DESC,
+                    usage_count DESC,
+                    updated_at DESC,
+                    memory_id ASC
+                LIMIT ?
+                """,
+                (
+                    MemoryScope.GLOBAL.value,
+                    MemoryScope.WORKSPACE.value,
+                    workspace_key,
+                    MemoryScope.WORKSPACE.value,
+                    workspace_key,
+                    cap,
+                ),
+            ).fetchall()
         return tuple(_record_from_row(row) for row in rows)
 
     def search(
@@ -435,9 +778,14 @@ class MemoryStore:
         text = str(query or "").strip()
         if not text:
             return ()
-        records = self.list_records(workspace=workspace, include_global=True, limit=500)
+        records = self.list_records(
+            workspace=workspace,
+            include_global=True,
+            limit=500,
+        )
         if not records:
             return ()
+
         query_norm = _normalize(text)
         query_terms = _terms(text)
         scored: list[tuple[float, MemoryRecord]] = []
@@ -454,20 +802,44 @@ class MemoryStore:
                 score += 0.75
             score += record.importance * 0.35
             score += math.log2(max(1, record.source_count)) * 0.25
+            score += math.log2(max(1, record.usage_count + 1)) * 0.2
             if record.scope is MemoryScope.WORKSPACE:
                 score += 0.5
             if score > 0.0:
                 scored.append((score, record))
-        scored.sort(key=lambda item: (item[0], item[1].updated_at), reverse=True)
-        return tuple(record for _, record in scored[: max(1, min(32, int(limit)))])
 
-    def counts(self, *, workspace: str | Path | None = None) -> dict[str, int]:
+        scored.sort(
+            key=lambda item: (item[0], item[1].updated_at),
+            reverse=True,
+        )
+        return tuple(
+            record
+            for _, record in scored[: max(1, min(32, int(limit)))]
+        )
+
+    def counts(
+        self,
+        *,
+        workspace: str | Path | None = None,
+    ) -> dict[str, int]:
         with self._lock, self._connect() as connection:
-            total = int(connection.execute("SELECT COUNT(*) FROM memories").fetchone()[0])
+            total = int(
+                connection.execute(
+                    "SELECT COUNT(*) FROM memories WHERE status = 'active'"
+                ).fetchone()[0]
+            )
             pending = int(
                 connection.execute(
-                    "SELECT COUNT(*) FROM memory_candidates WHERE state = ?",
+                    """
+                    SELECT COUNT(*) FROM memory_candidates
+                    WHERE state = ?
+                    """,
                     (MemoryCandidateState.PENDING.value,),
+                ).fetchone()[0]
+            )
+            evidence = int(
+                connection.execute(
+                    "SELECT COUNT(*) FROM memory_evidence"
                 ).fetchone()[0]
             )
             if workspace is None:
@@ -478,12 +850,145 @@ class MemoryStore:
                     connection.execute(
                         """
                         SELECT COUNT(*) FROM memories
-                        WHERE scope = ? OR (scope = ? AND scope_key = ?)
+                        WHERE status = 'active'
+                          AND (
+                            scope = ?
+                            OR (scope = ? AND scope_key = ?)
+                          )
                         """,
-                        (MemoryScope.GLOBAL.value, MemoryScope.WORKSPACE.value, key),
+                        (
+                            MemoryScope.GLOBAL.value,
+                            MemoryScope.WORKSPACE.value,
+                            key,
+                        ),
                     ).fetchone()[0]
                 )
-        return {"total": total, "visible": visible, "pending": pending}
+        return {
+            "total": total,
+            "visible": visible,
+            "pending": pending,
+            "evidence": evidence,
+        }
+
+    def thread_state(self, session_id: str) -> MemoryThreadState:
+        key = _key(session_id, "session_id")
+        with self._lock, self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM memory_thread_state
+                WHERE session_id = ?
+                """,
+                (key,),
+            ).fetchone()
+        if row is None:
+            return MemoryThreadState(session_id=key)
+        return MemoryThreadState(
+            session_id=key,
+            last_event_id=str(row["last_event_id"] or ""),
+            last_turn_id=str(row["last_turn_id"] or ""),
+            last_success_at=str(row["last_success_at"] or ""),
+            failure_count=int(row["failure_count"] or 0),
+            retry_at=float(row["retry_at"] or 0.0),
+            last_error=str(row["last_error"] or ""),
+            updated_at=str(row["updated_at"] or ""),
+        )
+
+    def mark_thread_success(
+        self,
+        session_id: str,
+        *,
+        last_event_id: str,
+        last_turn_id: str,
+    ) -> MemoryThreadState:
+        key = _key(session_id, "session_id")
+        now = utc_now()
+        with self._lock, self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO memory_thread_state(
+                    session_id, last_event_id, last_turn_id,
+                    last_success_at, failure_count, retry_at,
+                    last_error, updated_at
+                ) VALUES (?, ?, ?, ?, 0, 0, '', ?)
+                ON CONFLICT(session_id) DO UPDATE SET
+                    last_event_id = excluded.last_event_id,
+                    last_turn_id = excluded.last_turn_id,
+                    last_success_at = excluded.last_success_at,
+                    failure_count = 0,
+                    retry_at = 0,
+                    last_error = '',
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    key,
+                    str(last_event_id or "").strip(),
+                    str(last_turn_id or "").strip(),
+                    now,
+                    now,
+                ),
+            )
+        return self.thread_state(key)
+
+    def mark_thread_failure(self, session_id: str, error: str) -> float:
+        key = _key(session_id, "session_id")
+        now = utc_now()
+        with self._lock, self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT failure_count FROM memory_thread_state
+                WHERE session_id = ?
+                """,
+                (key,),
+            ).fetchone()
+            failure_count = (
+                int(row["failure_count"] or 0) + 1
+                if row is not None
+                else 1
+            )
+            delay = min(
+                300.0,
+                5.0 * (2 ** min(6, failure_count - 1)),
+            )
+            retry_at = time.time() + delay
+            connection.execute(
+                """
+                INSERT INTO memory_thread_state(
+                    session_id, failure_count, retry_at,
+                    last_error, updated_at
+                ) VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(session_id) DO UPDATE SET
+                    failure_count = excluded.failure_count,
+                    retry_at = excluded.retry_at,
+                    last_error = excluded.last_error,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    key,
+                    failure_count,
+                    retry_at,
+                    redact_secrets(str(error or ""))[:2000],
+                    now,
+                ),
+            )
+        return delay
+
+
+def _ensure_column(
+    connection: sqlite3.Connection,
+    table: str,
+    column: str,
+    definition: str,
+) -> None:
+    names = {
+        str(row["name"])
+        for row in connection.execute(
+            f"PRAGMA table_info({table})"
+        ).fetchall()
+    }
+    if column not in names:
+        connection.execute(
+            f"ALTER TABLE {table} ADD COLUMN {column} {definition}"
+        )
 
 
 def _key(value: str, name: str) -> str:
@@ -498,15 +1003,31 @@ def _normalize(text: str) -> str:
 
 
 def _terms(text: str) -> set[str]:
-    return {match.group(0).casefold() for match in _TERM_RE.finditer(str(text or ""))}
+    return {
+        match.group(0).casefold()
+        for match in _TERM_RE.finditer(str(text or ""))
+    }
 
 
-def _fingerprint(scope: MemoryScope, scope_key: str, category: MemoryCategory, text: str) -> str:
-    canonical = "\n".join((scope.value, scope_key, category.value, _normalize(text)))
+def _fingerprint(
+    scope: MemoryScope,
+    scope_key: str,
+    category: MemoryCategory,
+    text: str,
+) -> str:
+    canonical = "\n".join(
+        (
+            scope.value,
+            scope_key,
+            category.value,
+            _normalize(text),
+        )
+    )
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def _record_from_row(row: sqlite3.Row) -> MemoryRecord:
+    keys = set(row.keys())
     return MemoryRecord(
         memory_id=str(row["memory_id"]),
         scope=MemoryScope(str(row["scope"])),
@@ -517,6 +1038,44 @@ def _record_from_row(row: sqlite3.Row) -> MemoryRecord:
         source_count=int(row["source_count"]),
         created_at=str(row["created_at"]),
         updated_at=str(row["updated_at"]),
+        usage_count=(
+            int(row["usage_count"] or 0)
+            if "usage_count" in keys
+            else 0
+        ),
+        last_used_at=(
+            str(row["last_used_at"] or "")
+            if "last_used_at" in keys
+            else ""
+        ),
+        confidence=(
+            float(row["confidence"] or 1.0)
+            if "confidence" in keys
+            else 1.0
+        ),
+        status=(
+            str(row["status"] or "active")
+            if "status" in keys
+            else "active"
+        ),
+        last_verified_at=(
+            str(row["last_verified_at"] or "")
+            if "last_verified_at" in keys
+            else ""
+        ),
+    )
+
+
+def _evidence_from_row(row: sqlite3.Row) -> MemoryEvidence:
+    return MemoryEvidence(
+        evidence_id=str(row["evidence_id"]),
+        memory_id=str(row["memory_id"]),
+        candidate_id=str(row["candidate_id"]),
+        extraction_id=str(row["extraction_id"]),
+        source_session_id=str(row["source_session_id"]),
+        source_turn_id=str(row["source_turn_id"]),
+        excerpt=str(row["excerpt"]),
+        created_at=str(row["created_at"]),
     )
 
 
@@ -524,10 +1083,12 @@ __all__ = [
     "MemoryCandidate",
     "MemoryCandidateState",
     "MemoryCategory",
+    "MemoryEvidence",
     "MemoryExtraction",
     "MemoryRecord",
     "MemoryScope",
     "MemoryStore",
+    "MemoryThreadState",
     "redact_secrets",
     "workspace_memory_key",
 ]

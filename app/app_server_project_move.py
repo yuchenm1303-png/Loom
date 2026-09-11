@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, TextIO
+from typing import Any, Callable, TextIO
 
 from app.agent_runtime import AgentStatus, PermissionMode
 from app.agent_runtime.storage import utc_now
@@ -16,13 +16,90 @@ from .app_server_reasoning import (
 
 
 class ProjectMovableLoomAppServerService(ReasoningManagedLoomAppServerService):
-    """Adds explicit per-thread project placement on top of workspace grouping.
+    """Project placement plus product-facing Memory v2 management."""
 
-    Historically a thread belonged to a project only when its workspace matched
-    the project's root. That is useful as a migration fallback, but it makes an
-    explicit "move to project" impossible and causes an unfiled thread to be
-    auto-adopted again. A sidecar ``projectId`` now wins when it is present.
-    """
+    def _sync_runtime_settings(self, snapshot: dict[str, Any] | None = None) -> dict[str, Any]:
+        current = super()._sync_runtime_settings(snapshot)
+        memory = dict(current.get("memory") or {})
+        configure = getattr(self.runtime, "configure_memory", None)
+        if callable(configure):
+            configure(
+                memory_enabled=bool(memory.get("enabled", True)),
+                auto_extract=bool(memory.get("autoExtract", True)),
+                semantic_auto=bool(memory.get("semanticAuto", True)),
+                idle_seconds=int(memory.get("idleSeconds", 45) or 0),
+            )
+        return current
+
+    def settings_set(self, params: dict[str, Any]) -> dict[str, Any]:
+        # Protocol-v1 clients still send capability/enabled. Newer clients may
+        # set a typed durable path directly without the legacy envelope hack.
+        if "path" not in params:
+            return super().settings_set(params)
+        with self._guard:
+            if self._active_sessions:
+                raise RuntimeError("finish active turns before changing settings")
+        path = self._required_text(params, "path")
+        snapshot = self.settings.set_value(path, params.get("value"))
+        self._sync_runtime_settings(snapshot)
+        status = self.runtime_status()
+        self._notify("runtime/updated", {"runtime": status})
+        return {"settings": snapshot, "runtime": status}
+
+    def _memory_call(self, name: str) -> Callable[..., Any]:
+        method = getattr(self.runtime, name, None)
+        if not callable(method):
+            raise JsonRpcError(-32040, "memory is not available on this runtime")
+        return method
+
+    def memory_status(self, params: dict[str, Any]) -> dict[str, Any]:
+        thread_id = self._required_text(params, "threadId")
+        self._load(thread_id)
+        result = self._memory_call("memory_status")(thread_id)
+        return {"memory": dict(result) if isinstance(result, dict) else result}
+
+    def memory_list(self, params: dict[str, Any]) -> dict[str, Any]:
+        thread_id = self._required_text(params, "threadId")
+        self._load(thread_id)
+        limit = max(1, min(500, int(params.get("limit") or 100)))
+        records = self._memory_call("list_memory")(thread_id, limit=limit)
+        return {"memories": [record.to_dict() for record in records]}
+
+    def memory_search(self, params: dict[str, Any]) -> dict[str, Any]:
+        thread_id = self._required_text(params, "threadId")
+        self._load(thread_id)
+        query = self._required_text(params, "query")
+        limit = max(1, min(32, int(params.get("limit") or 8)))
+        records = self._memory_call("search_memory")(thread_id, query, limit=limit)
+        return {
+            "query": query,
+            "memories": [record.to_dict() for record in records],
+        }
+
+    def memory_read(self, params: dict[str, Any]) -> dict[str, Any]:
+        thread_id = self._required_text(params, "threadId")
+        self._load(thread_id)
+        memory_id = self._required_text(params, "memoryId")
+        evidence_limit = max(1, min(100, int(params.get("evidenceLimit") or 20)))
+        result = self._memory_call("read_memory")(
+            thread_id,
+            memory_id,
+            evidence_limit=evidence_limit,
+        )
+        if result is None:
+            raise JsonRpcError(-32044, "memory not found or not visible to this thread")
+        record, evidence = result
+        return {
+            "memory": record.to_dict(),
+            "evidence": [item.to_dict() for item in evidence],
+        }
+
+    def memory_forget(self, params: dict[str, Any]) -> dict[str, Any]:
+        thread_id = self._required_text(params, "threadId")
+        self._load(thread_id)
+        memory_id = self._required_text(params, "memoryId")
+        forgotten = bool(self._memory_call("forget_memory")(thread_id, memory_id))
+        return {"memoryId": memory_id, "forgotten": forgotten}
 
     def _explicit_project_id(self, session: Any) -> str | None:
         metadata = self.thread_library.read(session.session_id)
@@ -154,9 +231,33 @@ class ProjectMovableLoomAppServerService(ReasoningManagedLoomAppServerService):
 
 
 class ProjectMovableLoomRpcController(ReasoningManagedLoomRpcController):
+    def _initialize(self, params: dict[str, Any]) -> dict[str, Any]:
+        result = super()._initialize(params)
+        capabilities = dict(result.get("capabilities") or {})
+        capabilities["memory"] = {
+            "status": True,
+            "list": True,
+            "search": True,
+            "read": True,
+            "forget": True,
+            "settings": True,
+        }
+        result["capabilities"] = capabilities
+        return result
+
     def _dispatch(self, method: str, params: dict[str, Any]) -> Any:
         if method == "thread/move_project":
             return self.service.thread_move_project(params)
+        if method == "memory/status":
+            return self.service.memory_status(params)
+        if method == "memory/list":
+            return self.service.memory_list(params)
+        if method == "memory/search":
+            return self.service.memory_search(params)
+        if method == "memory/read":
+            return self.service.memory_read(params)
+        if method == "memory/forget":
+            return self.service.memory_forget(params)
         return super()._dispatch(method, params)
 
 

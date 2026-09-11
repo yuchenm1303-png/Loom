@@ -62,6 +62,12 @@ DEFAULT_SETTINGS: dict[str, Any] = {
         "verifyActions": True,
         "screenshotQuality": "balanced",
     },
+    "memory": {
+        "enabled": True,
+        "autoExtract": True,
+        "semanticAuto": True,
+        "idleSeconds": 45,
+    },
     "privacy": {
         "telemetry": False,
         "crashReports": False,
@@ -98,6 +104,10 @@ _ALLOWED_SETTING_PATHS: dict[str, tuple[type, Any]] = {
     "browser.persistSessions": (bool, None),
     "computer.verifyActions": (bool, None),
     "computer.screenshotQuality": (str, {"fast", "balanced", "high"}),
+    "memory.enabled": (bool, None),
+    "memory.autoExtract": (bool, None),
+    "memory.semanticAuto": (bool, None),
+    "memory.idleSeconds": (int, range(0, 601)),
     "privacy.telemetry": (bool, None),
     "privacy.crashReports": (bool, None),
 }
@@ -107,10 +117,8 @@ class LoomSettingsStore:
     """Durable application settings shared by Loom desktop sessions.
 
     ``settings/set`` historically accepted only capability booleans. The
-    ``__setting__:`` envelope lets newer desktop builds persist typed settings
-    through that stable RPC until a protocol-v2 generic settings method lands.
-    Older clients remain fully compatible because normal capability names still
-    take the original path.
+    ``__setting__:`` envelope remains supported for older desktop builds, while
+    ``set_value`` is the typed path used by newer protocol clients.
     """
 
     def __init__(self, runtime_home: str | Path) -> None:
@@ -134,6 +142,19 @@ class LoomSettingsStore:
         self._write(data)
         return self.snapshot()
 
+    def set_value(self, path: str, value: Any) -> dict[str, Any]:
+        key_path = str(path or "").strip()
+        if key_path not in _ALLOWED_SETTING_PATHS:
+            raise ValueError(f"unsupported setting path: {key_path}")
+        normalized_value = self._validate_setting(key_path, value)
+        section, key = key_path.split(".", 1)
+        data = self.snapshot()
+        bucket = dict(data.get(section) or {})
+        bucket[key] = normalized_value
+        data[section] = bucket
+        self._write(data)
+        return self.snapshot()
+
     def _set_enveloped_setting(self, payload_text: str) -> dict[str, Any]:
         try:
             payload = json.loads(payload_text)
@@ -141,17 +162,10 @@ class LoomSettingsStore:
             raise ValueError("invalid settings update envelope") from exc
         if not isinstance(payload, dict):
             raise ValueError("invalid settings update envelope")
-        path = str(payload.get("path") or "").strip()
-        if path not in _ALLOWED_SETTING_PATHS:
-            raise ValueError(f"unsupported setting path: {path}")
-        value = self._validate_setting(path, payload.get("value"))
-        section, key = path.split(".", 1)
-        data = self.snapshot()
-        bucket = dict(data.get(section) or {})
-        bucket[key] = value
-        data[section] = bucket
-        self._write(data)
-        return self.snapshot()
+        return self.set_value(
+            str(payload.get("path") or "").strip(),
+            payload.get("value"),
+        )
 
     @staticmethod
     def _validate_setting(path: str, value: Any) -> Any:
