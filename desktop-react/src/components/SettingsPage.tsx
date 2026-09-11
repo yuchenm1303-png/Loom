@@ -47,6 +47,7 @@ import type {
 } from "../types/loom";
 import { KeyboardShortcutsSettings } from "./KeyboardShortcutsSettings";
 import { ModelsSettingsPanel } from "./ModelsSettingsPanel";
+import { PermissionsSettings } from "./PermissionsSettings";
 import "./settings-page.css";
 import "./settings-general-polish.css";
 import "./settings-maturity.css";
@@ -809,7 +810,15 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
   };
 
   const renderPermissions = () => (
-    <><div className="settings-page-heading"><div><span className="settings-eyebrow">Execution safety</span><h1>Permissions</h1><p>Permission profiles define how aggressively Loom can act on the local machine.</p></div></div><Section title="Permission profiles" caption="The active thread can still override its permission mode from the chat surface."><div className="settings-card permission-grid">{(runtime.permissionModes ?? ["approval", "workspace", "full-access"]).map((mode) => <div className={`permission-card ${mode === runtime.defaultPermissionMode ? "selected" : ""}`} key={mode}><ShieldCheck size={18} /><div><strong>{titleCase(mode)}</strong><span>{mode === "full-access" ? "Broad authority for a trusted local environment." : mode === "workspace" ? "Prefer file operations constrained to the active workspace." : "Ask before sensitive or potentially destructive actions."}</span></div>{mode === runtime.defaultPermissionMode ? <StatusPill tone="ready">Default</StatusPill> : null}</div>)}</div></Section><Section title="Safety boundaries"><div className="settings-card settings-detail-list"><DetailRow label="Computer Use" value={capabilityEnabled("computerUse") ? "Available under permission policy" : "Capability off"} /><DetailRow label="Browser" value={capabilityEnabled("browserUse") ? "Available under permission policy" : "Capability off"} /><DetailRow label="Shell / process" value="Permission-aware" /><DetailRow label="Workspace writes" value="Permission-aware" /></div></Section></>
+    <PermissionsSettings
+      permissionModes={runtime.permissionModes}
+      defaultPermissionMode={runtime.defaultPermissionMode}
+      running={running}
+      computerEnabled={capabilityEnabled("computerUse")}
+      browserEnabled={capabilityEnabled("browserUse")}
+      onOpenComputer={() => setPage("computer")}
+      onOpenBrowser={() => setPage("browser")}
+    />
   );
 
   const renderShortcuts = () => (
