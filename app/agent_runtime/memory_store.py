@@ -255,9 +255,6 @@ class MemoryStore:
                 CREATE INDEX IF NOT EXISTS idx_memories_scope
                 ON memories(scope, scope_key, updated_at);
 
-                CREATE INDEX IF NOT EXISTS idx_memories_usage
-                ON memories(status, usage_count DESC, updated_at DESC);
-
                 CREATE TABLE IF NOT EXISTS memory_evidence (
                     evidence_id TEXT PRIMARY KEY,
                     memory_id TEXT NOT NULL,
@@ -302,15 +299,44 @@ class MemoryStore:
                 "evidence_excerpt",
                 "TEXT NOT NULL DEFAULT ''",
             )
-            _ensure_column(connection, "memories", "usage_count", "INTEGER NOT NULL DEFAULT 0")
-            _ensure_column(connection, "memories", "last_used_at", "TEXT NOT NULL DEFAULT ''")
-            _ensure_column(connection, "memories", "confidence", "REAL NOT NULL DEFAULT 1.0")
-            _ensure_column(connection, "memories", "status", "TEXT NOT NULL DEFAULT 'active'")
+            _ensure_column(
+                connection,
+                "memories",
+                "usage_count",
+                "INTEGER NOT NULL DEFAULT 0",
+            )
+            _ensure_column(
+                connection,
+                "memories",
+                "last_used_at",
+                "TEXT NOT NULL DEFAULT ''",
+            )
+            _ensure_column(
+                connection,
+                "memories",
+                "confidence",
+                "REAL NOT NULL DEFAULT 1.0",
+            )
+            _ensure_column(
+                connection,
+                "memories",
+                "status",
+                "TEXT NOT NULL DEFAULT 'active'",
+            )
             _ensure_column(
                 connection,
                 "memories",
                 "last_verified_at",
                 "TEXT NOT NULL DEFAULT ''",
+            )
+            # This index must be created only after the in-place v1 migration.
+            # Existing databases do not have status/usage_count until the
+            # _ensure_column calls above complete.
+            connection.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_memories_usage
+                ON memories(status, usage_count DESC, updated_at DESC)
+                """
             )
 
     def add_extraction(
@@ -361,7 +387,11 @@ class MemoryStore:
                     ),
                 )
                 for candidate in candidate_values:
-                    scope_key = "global" if candidate.scope is MemoryScope.GLOBAL else workspace_key
+                    scope_key = (
+                        "global"
+                        if candidate.scope is MemoryScope.GLOBAL
+                        else workspace_key
+                    )
                     fingerprint = _fingerprint(
                         candidate.scope,
                         scope_key,
@@ -371,9 +401,10 @@ class MemoryStore:
                     connection.execute(
                         """
                         INSERT INTO memory_candidates(
-                            candidate_id, extraction_id, source_session_id, source_turn_id,
-                            scope, scope_key, category, text, importance, fingerprint,
-                            state, created_at, evidence_excerpt
+                            candidate_id, extraction_id, source_session_id,
+                            source_turn_id, scope, scope_key, category, text,
+                            importance, fingerprint, state, created_at,
+                            evidence_excerpt
                         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
@@ -437,10 +468,15 @@ class MemoryStore:
                         connection.execute(
                             """
                             INSERT INTO memories(
-                                memory_id, scope, scope_key, category, text, importance,
-                                fingerprint, source_count, created_at, updated_at,
-                                usage_count, last_used_at, confidence, status, last_verified_at
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, 0, '', 1.0, 'active', '')
+                                memory_id, scope, scope_key, category, text,
+                                importance, fingerprint, source_count,
+                                created_at, updated_at, usage_count,
+                                last_used_at, confidence, status,
+                                last_verified_at
+                            ) VALUES (
+                                ?, ?, ?, ?, ?, ?, ?, 1, ?, ?,
+                                0, '', 1.0, 'active', ''
+                            )
                             """,
                             (
                                 memory_id,
@@ -460,12 +496,20 @@ class MemoryStore:
                             """
                             UPDATE memories
                             SET source_count = source_count + 1,
-                                importance = CASE WHEN importance < ? THEN ? ELSE importance END,
+                                importance = CASE
+                                    WHEN importance < ? THEN ?
+                                    ELSE importance
+                                END,
                                 status = 'active',
                                 updated_at = ?
                             WHERE memory_id = ?
                             """,
-                            (int(row["importance"]), int(row["importance"]), now, memory_id),
+                            (
+                                int(row["importance"]),
+                                int(row["importance"]),
+                                now,
+                                memory_id,
+                            ),
                         )
 
                     candidate_id = str(row["candidate_id"])
@@ -475,8 +519,9 @@ class MemoryStore:
                     connection.execute(
                         """
                         INSERT OR IGNORE INTO memory_evidence(
-                            evidence_id, memory_id, candidate_id, extraction_id,
-                            source_session_id, source_turn_id, excerpt, created_at
+                            evidence_id, memory_id, candidate_id,
+                            extraction_id, source_session_id,
+                            source_turn_id, excerpt, created_at
                         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
@@ -491,8 +536,15 @@ class MemoryStore:
                         ),
                     )
                     connection.execute(
-                        "UPDATE memory_candidates SET state = ? WHERE candidate_id = ?",
-                        (MemoryCandidateState.CONSOLIDATED.value, candidate_id),
+                        """
+                        UPDATE memory_candidates
+                        SET state = ?
+                        WHERE candidate_id = ?
+                        """,
+                        (
+                            MemoryCandidateState.CONSOLIDATED.value,
+                            candidate_id,
+                        ),
                     )
                     touched_ids.append(memory_id)
 
@@ -503,6 +555,7 @@ class MemoryStore:
 
         if not touched_ids:
             return ()
+
         records: list[MemoryRecord] = []
         for memory_id in dict.fromkeys(touched_ids):
             record = self.get(memory_id)
@@ -519,7 +572,12 @@ class MemoryStore:
             ).fetchone()
         return _record_from_row(row) if row is not None else None
 
-    def get_visible(self, memory_id: str, *, workspace: str | Path) -> MemoryRecord | None:
+    def get_visible(
+        self,
+        memory_id: str,
+        *,
+        workspace: str | Path,
+    ) -> MemoryRecord | None:
         record = self.get(memory_id)
         if record is None or record.status != "active":
             return None
@@ -529,7 +587,12 @@ class MemoryStore:
             return record
         return None
 
-    def evidence(self, memory_id: str, *, limit: int = 20) -> tuple[MemoryEvidence, ...]:
+    def evidence(
+        self,
+        memory_id: str,
+        *,
+        limit: int = 20,
+    ) -> tuple[MemoryEvidence, ...]:
         key = _key(memory_id, "memory_id")
         cap = max(1, min(100, int(limit)))
         with self._lock, self._connect() as connection:
@@ -554,6 +617,7 @@ class MemoryStore:
         )
         if not identifiers:
             return
+
         now = utc_now()
         with self._lock, self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
@@ -574,7 +638,7 @@ class MemoryStore:
                 raise
 
     def delete(self, memory_id: str) -> bool:
-        """Forget one consolidated memory and every candidate/evidence copy."""
+        """Forget one consolidated memory and its candidate/evidence copies."""
 
         key = _key(memory_id, "memory_id")
         with self._lock, self._connect() as connection:
@@ -587,9 +651,16 @@ class MemoryStore:
                 if row is None:
                     connection.execute("ROLLBACK")
                     return False
+
                 fingerprint = str(row["fingerprint"])
-                connection.execute("DELETE FROM memory_evidence WHERE memory_id = ?", (key,))
-                connection.execute("DELETE FROM memories WHERE memory_id = ?", (key,))
+                connection.execute(
+                    "DELETE FROM memory_evidence WHERE memory_id = ?",
+                    (key,),
+                )
+                connection.execute(
+                    "DELETE FROM memories WHERE memory_id = ?",
+                    (key,),
+                )
                 connection.execute(
                     "DELETE FROM memory_candidates WHERE fingerprint = ?",
                     (fingerprint,),
@@ -626,7 +697,10 @@ class MemoryStore:
                         """
                         SELECT * FROM memories
                         WHERE status = 'active'
-                          AND (scope = ? OR (scope = ? AND scope_key = ?))
+                          AND (
+                            scope = ?
+                            OR (scope = ? AND scope_key = ?)
+                          )
                         ORDER BY updated_at DESC, memory_id ASC
                         LIMIT ?
                         """,
@@ -641,11 +715,17 @@ class MemoryStore:
                     rows = connection.execute(
                         """
                         SELECT * FROM memories
-                        WHERE status = 'active' AND scope = ? AND scope_key = ?
+                        WHERE status = 'active'
+                          AND scope = ?
+                          AND scope_key = ?
                         ORDER BY updated_at DESC, memory_id ASC
                         LIMIT ?
                         """,
-                        (MemoryScope.WORKSPACE.value, workspace_key, cap),
+                        (
+                            MemoryScope.WORKSPACE.value,
+                            workspace_key,
+                            cap,
+                        ),
                     ).fetchall()
         return tuple(_record_from_row(row) for row in rows)
 
@@ -662,9 +742,15 @@ class MemoryStore:
                 """
                 SELECT * FROM memories
                 WHERE status = 'active'
-                  AND (scope = ? OR (scope = ? AND scope_key = ?))
+                  AND (
+                    scope = ?
+                    OR (scope = ? AND scope_key = ?)
+                  )
                 ORDER BY
-                    CASE WHEN scope = ? AND scope_key = ? THEN 1 ELSE 0 END DESC,
+                    CASE
+                        WHEN scope = ? AND scope_key = ? THEN 1
+                        ELSE 0
+                    END DESC,
                     importance DESC,
                     usage_count DESC,
                     updated_at DESC,
@@ -692,7 +778,11 @@ class MemoryStore:
         text = str(query or "").strip()
         if not text:
             return ()
-        records = self.list_records(workspace=workspace, include_global=True, limit=500)
+        records = self.list_records(
+            workspace=workspace,
+            include_global=True,
+            limit=500,
+        )
         if not records:
             return ()
 
@@ -717,10 +807,21 @@ class MemoryStore:
                 score += 0.5
             if score > 0.0:
                 scored.append((score, record))
-        scored.sort(key=lambda item: (item[0], item[1].updated_at), reverse=True)
-        return tuple(record for _, record in scored[: max(1, min(32, int(limit)))])
 
-    def counts(self, *, workspace: str | Path | None = None) -> dict[str, int]:
+        scored.sort(
+            key=lambda item: (item[0], item[1].updated_at),
+            reverse=True,
+        )
+        return tuple(
+            record
+            for _, record in scored[: max(1, min(32, int(limit)))]
+        )
+
+    def counts(
+        self,
+        *,
+        workspace: str | Path | None = None,
+    ) -> dict[str, int]:
         with self._lock, self._connect() as connection:
             total = int(
                 connection.execute(
@@ -729,11 +830,18 @@ class MemoryStore:
             )
             pending = int(
                 connection.execute(
-                    "SELECT COUNT(*) FROM memory_candidates WHERE state = ?",
+                    """
+                    SELECT COUNT(*) FROM memory_candidates
+                    WHERE state = ?
+                    """,
                     (MemoryCandidateState.PENDING.value,),
                 ).fetchone()[0]
             )
-            evidence = int(connection.execute("SELECT COUNT(*) FROM memory_evidence").fetchone()[0])
+            evidence = int(
+                connection.execute(
+                    "SELECT COUNT(*) FROM memory_evidence"
+                ).fetchone()[0]
+            )
             if workspace is None:
                 visible = total
             else:
@@ -743,7 +851,10 @@ class MemoryStore:
                         """
                         SELECT COUNT(*) FROM memories
                         WHERE status = 'active'
-                          AND (scope = ? OR (scope = ? AND scope_key = ?))
+                          AND (
+                            scope = ?
+                            OR (scope = ? AND scope_key = ?)
+                          )
                         """,
                         (
                             MemoryScope.GLOBAL.value,
@@ -763,7 +874,10 @@ class MemoryStore:
         key = _key(session_id, "session_id")
         with self._lock, self._connect() as connection:
             row = connection.execute(
-                "SELECT * FROM memory_thread_state WHERE session_id = ?",
+                """
+                SELECT * FROM memory_thread_state
+                WHERE session_id = ?
+                """,
                 (key,),
             ).fetchone()
         if row is None:
@@ -792,8 +906,9 @@ class MemoryStore:
             connection.execute(
                 """
                 INSERT INTO memory_thread_state(
-                    session_id, last_event_id, last_turn_id, last_success_at,
-                    failure_count, retry_at, last_error, updated_at
+                    session_id, last_event_id, last_turn_id,
+                    last_success_at, failure_count, retry_at,
+                    last_error, updated_at
                 ) VALUES (?, ?, ?, ?, 0, 0, '', ?)
                 ON CONFLICT(session_id) DO UPDATE SET
                     last_event_id = excluded.last_event_id,
@@ -819,16 +934,27 @@ class MemoryStore:
         now = utc_now()
         with self._lock, self._connect() as connection:
             row = connection.execute(
-                "SELECT failure_count FROM memory_thread_state WHERE session_id = ?",
+                """
+                SELECT failure_count FROM memory_thread_state
+                WHERE session_id = ?
+                """,
                 (key,),
             ).fetchone()
-            failure_count = int(row["failure_count"] or 0) + 1 if row is not None else 1
-            delay = min(300.0, 5.0 * (2 ** min(6, failure_count - 1)))
+            failure_count = (
+                int(row["failure_count"] or 0) + 1
+                if row is not None
+                else 1
+            )
+            delay = min(
+                300.0,
+                5.0 * (2 ** min(6, failure_count - 1)),
+            )
             retry_at = time.time() + delay
             connection.execute(
                 """
                 INSERT INTO memory_thread_state(
-                    session_id, failure_count, retry_at, last_error, updated_at
+                    session_id, failure_count, retry_at,
+                    last_error, updated_at
                 ) VALUES (?, ?, ?, ?, ?)
                 ON CONFLICT(session_id) DO UPDATE SET
                     failure_count = excluded.failure_count,
@@ -855,10 +981,14 @@ def _ensure_column(
 ) -> None:
     names = {
         str(row["name"])
-        for row in connection.execute(f"PRAGMA table_info({table})").fetchall()
+        for row in connection.execute(
+            f"PRAGMA table_info({table})"
+        ).fetchall()
     }
     if column not in names:
-        connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+        connection.execute(
+            f"ALTER TABLE {table} ADD COLUMN {column} {definition}"
+        )
 
 
 def _key(value: str, name: str) -> str:
@@ -873,7 +1003,10 @@ def _normalize(text: str) -> str:
 
 
 def _terms(text: str) -> set[str]:
-    return {match.group(0).casefold() for match in _TERM_RE.finditer(str(text or ""))}
+    return {
+        match.group(0).casefold()
+        for match in _TERM_RE.finditer(str(text or ""))
+    }
 
 
 def _fingerprint(
@@ -882,7 +1015,14 @@ def _fingerprint(
     category: MemoryCategory,
     text: str,
 ) -> str:
-    canonical = "\n".join((scope.value, scope_key, category.value, _normalize(text)))
+    canonical = "\n".join(
+        (
+            scope.value,
+            scope_key,
+            category.value,
+            _normalize(text),
+        )
+    )
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
@@ -898,12 +1038,30 @@ def _record_from_row(row: sqlite3.Row) -> MemoryRecord:
         source_count=int(row["source_count"]),
         created_at=str(row["created_at"]),
         updated_at=str(row["updated_at"]),
-        usage_count=int(row["usage_count"] or 0) if "usage_count" in keys else 0,
-        last_used_at=str(row["last_used_at"] or "") if "last_used_at" in keys else "",
-        confidence=float(row["confidence"] or 1.0) if "confidence" in keys else 1.0,
-        status=str(row["status"] or "active") if "status" in keys else "active",
+        usage_count=(
+            int(row["usage_count"] or 0)
+            if "usage_count" in keys
+            else 0
+        ),
+        last_used_at=(
+            str(row["last_used_at"] or "")
+            if "last_used_at" in keys
+            else ""
+        ),
+        confidence=(
+            float(row["confidence"] or 1.0)
+            if "confidence" in keys
+            else 1.0
+        ),
+        status=(
+            str(row["status"] or "active")
+            if "status" in keys
+            else "active"
+        ),
         last_verified_at=(
-            str(row["last_verified_at"] or "") if "last_verified_at" in keys else ""
+            str(row["last_verified_at"] or "")
+            if "last_verified_at" in keys
+            else ""
         ),
     )
 
