@@ -35,7 +35,7 @@ For a production-style local start:
 npm run start:browser
 ```
 
-The helper searches for Microsoft Edge first, then Google Chrome. It launches a separate browser profile under `.loom/browser/cdp-profile`, binds CDP only to `127.0.0.1`, sets `LOOM_BROWSER_CDP_URL=http://127.0.0.1:9222`, and then starts the requested npm script with that environment.
+The helper searches for Microsoft Edge first, then Google Chrome. It launches a separate browser profile under `.loom/browser/cdp-profile`, binds CDP only to `127.0.0.1`, sets `LOOM_BROWSER_CDP_URL=http://127.0.0.1:9222`, enables Browser Use diagnostics, and then starts the requested npm script with that environment.
 
 To only launch the browser and print the endpoint:
 
@@ -60,6 +60,8 @@ The helper accepts these environment variables:
 | `LOOM_BROWSER_CDP_PORT` | Local CDP port. Defaults to `9222`. |
 | `LOOM_BROWSER_CDP_PROFILE_DIR` | Dedicated browser profile directory. Defaults to `.loom/browser/cdp-profile`. |
 | `LOOM_BROWSER_CDP_URL` | Existing local CDP endpoint to reuse instead of launching a browser. |
+| `LOOM_BROWSER_LOG_DIR` | Browser diagnostic log folder. Defaults to `.loom/logs/browser-use`. |
+| `LOOM_BROWSER_DIAGNOSTICS=0` | Disable Browser Use diagnostics. Enabled by default. |
 | `LOOM_DESKTOP_BROWSER_CDP=0` | Disable the helper. |
 
 On Windows, a manual Edge launch equivalent is:
@@ -67,6 +69,8 @@ On Windows, a manual Edge launch equivalent is:
 ```powershell
 msedge.exe --remote-debugging-address=127.0.0.1 --remote-debugging-port=9222 --user-data-dir="$PWD\.loom\browser\cdp-profile" --new-window about:blank
 $env:LOOM_BROWSER_CDP_URL = "http://127.0.0.1:9222"
+$env:LOOM_BROWSER_LOG_DIR = "$PWD\.loom\logs\browser-use"
+$env:LOOM_BROWSER_DIAGNOSTICS = "1"
 ```
 
 ## Runtime behavior
@@ -86,6 +90,20 @@ Use `browser_status` inside Loom to confirm the result. In the attached mode the
 }
 ```
 
+## Browser Use diagnostics
+
+Local launch and CDP attach now write the same Browser Use JSONL diagnostics as the extension bridge:
+
+```text
+.loom/logs/browser-use/browser-<timestamp>-<pid>.jsonl
+```
+
+The browser-use backend records session creation, local-vs-CDP mode, profile/CDP exposure flags, browser-use start/stop strategy, event dispatch timing, state capture timing, selector map count, tab count, state revision, node lookup success/failure, screenshot byte counts, and action failure summaries.
+
+Sensitive data is intentionally bounded: screenshot bytes are never written, CDP endpoint/profile path are represented only by exposure booleans, secret-shaped keys are redacted, URL query/fragment tokens are redacted, and `browser_type` records text length/presence instead of the typed text. Post-type state summaries omit DOM excerpts so newly typed text is not copied back into the diagnostics through the refreshed page DOM.
+
+To export logs, open Settings → Browser and click **Export browser logs**. The export packages `.loom/logs/browser-use` into a zip and reveals it in the native file manager.
+
 ## Smoke check
 
 After starting with `npm run dev:browser`, ask Loom:
@@ -94,4 +112,4 @@ After starting with `npm run dev:browser`, ask Loom:
 Use browser_status, then open https://example.com and take a browser screenshot.
 ```
 
-A healthy run should expose `browser_open`, attach to the local browser, navigate the work tab, and save a PNG under the active workspace's `browser-screenshots/` folder.
+A healthy run should expose `browser_open`, attach to the local browser, navigate the work tab, save a PNG under the active workspace's `browser-screenshots/` folder, and produce JSONL diagnostic events under `.loom/logs/browser-use/`.
