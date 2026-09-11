@@ -20,12 +20,19 @@ function selectionIsActive(): boolean {
  * Connects transcript affordances to the persistent review pane without
  * threading review callbacks through every message/activity component.
  *
- * File edit rows and changed-file artifacts open the matching file. Clicking a
- * code block opens the review pane without stealing text selection or copy
- * button interactions.
+ * Structured change cards own their local expand/collapse interaction. They
+ * explicitly request the review pane through loom:review-open when the user
+ * clicks the Review action. Historical file path chips and task rows still open
+ * the matching review file directly.
  */
 export function ReviewInteractionBridge({ onOpen }: ReviewInteractionBridgeProps) {
   useEffect(() => {
+    const handleOpenEvent = (event: Event) => {
+      const detail = (event as CustomEvent<{ path?: string }>).detail;
+      const path = cleanPath(detail?.path);
+      onOpen(path || undefined);
+    };
+
     const handleClick = (event: MouseEvent) => {
       const target = event.target instanceof Element ? event.target : null;
       if (!target || target.closest(".review-workspace")) return;
@@ -33,14 +40,6 @@ export function ReviewInteractionBridge({ onOpen }: ReviewInteractionBridgeProps
       const artifactPath = target.closest<HTMLElement>(".turn-artifacts-files code[title]");
       if (artifactPath) {
         onOpen(cleanPath(artifactPath.getAttribute("title") || artifactPath.textContent));
-        return;
-      }
-
-      const artifactHeader = target.closest<HTMLElement>(".turn-artifacts-header");
-      if (artifactHeader) {
-        const artifact = artifactHeader.closest<HTMLElement>(".turn-artifacts");
-        const pathNode = artifact?.querySelector<HTMLElement>(".turn-artifacts-files code[title]");
-        onOpen(cleanPath(pathNode?.getAttribute("title") || pathNode?.textContent));
         return;
       }
 
@@ -58,8 +57,12 @@ export function ReviewInteractionBridge({ onOpen }: ReviewInteractionBridgeProps
       }
     };
 
+    window.addEventListener("loom:review-open", handleOpenEvent);
     document.addEventListener("click", handleClick);
-    return () => document.removeEventListener("click", handleClick);
+    return () => {
+      window.removeEventListener("loom:review-open", handleOpenEvent);
+      document.removeEventListener("click", handleClick);
+    };
   }, [onOpen]);
 
   return null;
