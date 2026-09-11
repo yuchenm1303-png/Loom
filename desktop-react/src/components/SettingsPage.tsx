@@ -38,6 +38,7 @@ import type {
   ModelRestartResult,
   ModelSnapshot,
 } from "../types/loom";
+import { ModelsSettingsPanel } from "./ModelsSettingsPanel";
 import "./settings-page.css";
 import "./settings-general-polish.css";
 import "./settings-maturity.css";
@@ -712,21 +713,12 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
   };
 
   const renderModels = () => (
-    <>
-      <div className="settings-page-heading settings-heading-with-action"><div><span className="settings-eyebrow">Inference</span><h1>Models</h1><p>Inspect and switch the active model profile used for new agent steps.</p></div><button className="mature-action-button" type="button" onClick={() => void refreshModels()} disabled={Boolean(modelBusy)}><RefreshCw size={14} />Refresh</button></div>
-      <Section title="Active model">
-        <div className="settings-card model-summary-card"><div className="model-summary-icon"><BrainCircuit size={22} /></div><div className="model-summary-copy"><span className="settings-eyebrow">Current</span><strong>{currentModel?.name || currentModel?.model || text(runtime.model)}</strong><span>{currentModel ? `${titleCase(currentModel.provider || currentModel.adapter)} · ${currentModel.model}` : "Runtime model"}</span></div><StatusPill tone="ready">Ready</StatusPill></div>
-      </Section>
-      <Section title="Saved profiles" caption="Switching is disabled while an agent turn is running.">
-        <div className="mature-model-grid">
-          {(modelState?.profiles ?? []).map((profile) => {
-            const active = profile.selection === currentModel?.selection;
-            return <div className={`mature-model-card ${active ? "active" : ""}`} key={profile.selection}><div className="mature-model-card-head"><span className="capability-icon"><Cpu size={17} /></span><div><strong>{profile.name}</strong><span>{titleCase(profile.adapter)}</span></div>{active ? <StatusPill tone="ready">Active</StatusPill> : null}</div><code>{profile.model}</code><span className="mature-model-endpoint" title={profile.baseUrl}>{profile.baseUrl || "Default endpoint"}</span><button type="button" disabled={running || Boolean(modelBusy) || active} onClick={() => void activateModel(profile.selection)}>{modelBusy === profile.selection ? "Switching…" : active ? "Current model" : "Set active"}</button></div>;
-          })}
-          {!modelState?.profiles?.length ? <div className="settings-empty-state">No saved model profiles.</div> : null}
-        </div>
-      </Section>
-    </>
+    <ModelsSettingsPanel
+      initialSnapshot={modelState}
+      runtimeModel={runtime.model}
+      running={running}
+      onSnapshot={setModelState}
+    />
   );
 
   const renderCapabilities = () => (
