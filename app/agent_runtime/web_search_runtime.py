@@ -5,7 +5,32 @@ from .web_search import WebSearchProvider, web_search_provider_from_env
 from .web_search_tools import web_search_tools
 
 
-class WebSearchRuntime(SemanticMemoryRuntime):
+class _DefaultSemanticMemoryRuntime(SemanticMemoryRuntime):
+    """Cost-aware semantic memory policy for Loom's default runtime stack."""
+
+    def _queue_semantic_result(self, result) -> None:
+        pipeline = self._semantic_pipeline
+        if pipeline is None or not result.consolidated:
+            return
+        extraction_id = result.extraction.extraction_id
+        if not self.memory_semantic_store.has_extraction_memories(extraction_id):
+            return
+
+        # A single first memory has nothing to reconcile. Avoid paying for a
+        # second model request until the extraction has either multiple new
+        # memories or at least one existing same-scope memory to compare with.
+        bundle = self.memory_semantic_store.bundle(extraction_id, related_limit=4)
+        if len(bundle.new_memories) + len(bundle.related_memories) < 2:
+            return
+
+        self.memory_semantic_store.enqueue(
+            extraction_id,
+            result.extraction.source_session_id,
+        )
+        pipeline.schedule(extraction_id, delay=0.0)
+
+
+class WebSearchRuntime(_DefaultSemanticMemoryRuntime):
     """Runtime v2 layer that conditionally exposes credential-backed web search.
 
     Search credentials stay inside the provider object and are never added to
