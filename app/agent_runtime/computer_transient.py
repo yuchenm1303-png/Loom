@@ -9,6 +9,10 @@ from app.ai import ModelResponse, ToolCall
 
 
 _TRANSIENT_PREFIX = "loom-transient-computer:"
+_TEXT_FIELDS_BY_TOOL: dict[str, tuple[str, ...]] = {
+    "computer_step": ("instruction",),
+    "computer_run_task": ("task", "stop_when"),
+}
 
 
 class ComputerTransientInputPlatform:
@@ -40,9 +44,10 @@ class ComputerTransientInputPlatform:
             arguments = dict(call.arguments)
             call_changed = False
 
-            if call.name == "computer_step" and "instruction" in arguments:
-                arguments["instruction"] = self._stash(str(arguments.get("instruction") or ""))
-                call_changed = True
+            for field in _TEXT_FIELDS_BY_TOOL.get(call.name, ()): 
+                if field in arguments:
+                    arguments[field] = self._stash(str(arguments.get(field) or ""))
+                    call_changed = True
 
             if call.name == "computer_action":
                 action = arguments.get("action")
