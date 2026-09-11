@@ -9,6 +9,7 @@ import readline from "node:readline";
 import {
   DesktopModelManager,
   type AddModelInput,
+  type EditModelInput,
   type ModelLaunchSpec,
 } from "./modelManager.js";
 import { closeHudOverlayWindow, createHudOverlayWindow, sendHudUpdate } from "./hudWindow.js";
@@ -73,7 +74,7 @@ function runtimeModelParams(spec: ModelLaunchSpec): Record<string, unknown> {
     baseUrl: spec.baseUrl,
     model: spec.model,
     apiKey: spec.apiKey,
-    vision: true,
+    vision: spec.vision !== false,
     reasoningKind: spec.reasoning?.kind ?? "",
     reasoningValue: spec.reasoning?.value ?? "",
   };
@@ -534,6 +535,17 @@ ipcMain.handle("loom:model-add", async (_event, input: AddModelInput) => {
   const profile = modelManager.add(input);
   return changeModel(() => modelManager.useProfile(profile.selection), { persistSelection: profile.selection });
 });
+ipcMain.handle("loom:model-update", async (_event, input: EditModelInput) => {
+  await rpc.assertRestartSafe();
+  const selection = String(input?.selection || "").trim();
+  if (!selection) throw new Error("Model profile is required");
+  if ((modelManager.current ?? modelManager.ensureInitial()).selection === selection) {
+    throw new Error("Switch to another model before editing the active connection.");
+  }
+  modelManager.update(input);
+  return modelManager.snapshot();
+});
+ipcMain.handle("loom:model-test", async (_event, selection: string) => modelManager.test(selection));
 ipcMain.handle("loom:model-delete", async (_event, selection: string) => deleteModel(selection));
 ipcMain.handle("loom:reasoning-set", async (_event, kind: string, value: string): Promise<ReasoningUpdateResult> => {
   await rpc.assertRestartSafe();
