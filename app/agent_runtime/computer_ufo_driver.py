@@ -34,15 +34,22 @@ _EXCEPTION_RE = re.compile(
     r"^(?P<name>[A-Za-z_][A-Za-z0-9_.]*(?:Error|Exception|Warning|Interrupt|Exit))(?::.*)?$"
 )
 
-# Events that prove UFO has moved past task acceptance into command, desktop
-# observation, action execution, or terminal result. task.started/task.accepted
-# alone are deliberately not enough; the current failure mode hangs right after
-# those events during import/config/session setup.
+# Events that prove UFO has moved past the cold-start window. Early lifecycle
+# events are accepted so that heavy Session / config / SDK import does not
+# starve the first-progress watchdog; dispatcher- and UI-level events remain
+# accepted for live-progress updates; terminal events short-circuit the wait.
 _FIRST_PROGRESS_EVENTS = {
+    # Early lifecycle (release first-progress watchdog before Session import).
+    "task.started",
+    "task.accepted",
+    "ufo.imports.started",
+    "ufo.imports.completed",
+    # Live progress from dispatcher and observer loops.
     "dispatcher.commands.started",
     "window.selected",
     "observation.completed",
     "action.started",
+    # Terminal events short-circuit the wait.
     "task.completed",
     "task.failed",
     "task.cancelled",
@@ -452,10 +459,10 @@ class UfoWindowsDriver:
             try:
                 payload = json.loads(line)
             except Exception:
-                payload = {
-                    "type": "protocol_error",
-                    "error_type": "NonJSONSidecarOutput",
-                }
+                # The sidecar reserves this stream for NDJSON, so anything else is
+                # stray third-party output. Treating it as a protocol error used to
+                # fail startup outright; dropping it keeps the session usable.
+                continue
             if isinstance(payload, dict):
                 self._messages.put(payload)
 

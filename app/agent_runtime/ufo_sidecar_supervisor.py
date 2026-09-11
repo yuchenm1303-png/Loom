@@ -2,10 +2,14 @@ from __future__ import annotations
 
 """Supervised launcher for Loom's UFO sidecar.
 
-The upstream sidecar can currently hang before it reaches Session.run(), especially
-while importing UFO's Python modules. This wrapper keeps the existing UFO sidecar
-implementation intact, but adds a parent-process first-progress watchdog around
-runtime tasks so Loom never waits forever inside a UFO import/config/session gap.
+A wedged interpreter in the child cannot report itself, so this wrapper keeps the
+sidecar implementation intact and adds an out-of-process watchdog: if the child
+goes completely silent - no events and no heartbeat - for the stall timeout, it is
+killed and Loom gets a deterministic failure instead of an indefinite wait.
+
+The watchdog deliberately keys on silence rather than on reaching a particular
+stage, because a single UFO step can legitimately spend a long time inside one
+vision-model call.
 """
 
 import argparse
@@ -19,17 +23,17 @@ import time
 import uuid
 from typing import Any
 
-PROGRESS_EVENTS = {
-    "dispatcher.commands.started",
-    "window.selected",
-    "observation.completed",
-    "action.started",
+TERMINAL_EVENTS = {
     "task.completed",
     "task.failed",
     "task.cancelled",
 }
 SENSITIVE_FIELDS = {"task", "stop_when", "text", "prompt", "content", "request", "message"}
 WRITE_LOCK = threading.RLock()
+# stdout carries the protocol and stderr carries UFO's noisy diagnostics. They must
+# not share a lock: a backed-up stderr pipe would otherwise block protocol writes,
+# wedging both event forwarding and the watchdog's own failure report.
+STDERR_LOCK = threading.RLock()
 STATE_LOCK = threading.RLock()
 CHILD_LOCK = threading.RLock()
 
@@ -39,11 +43,18 @@ shutdown_requested = False
 
 
 def _timeout_seconds() -> float:
+    """How long the child may stay completely silent before it is declared wedged.
+
+    This is a stall timeout, not a first-step timeout. The sidecar heartbeats from
+    its event loop while a task runs, so a slow model call keeps the task alive
+    while a deadlocked interpreter stops producing events entirely.
+    """
+
     try:
-        value = float(str(os.environ.get("LOOM_UFO_FIRST_STEP_TIMEOUT") or "30").strip())
+        value = float(str(os.environ.get("LOOM_UFO_STALL_TIMEOUT") or os.environ.get("LOOM_UFO_FIRST_STEP_TIMEOUT") or "90").strip())
     except ValueError:
-        value = 30.0
-    return max(5.0, min(600.0, value))
+        value = 90.0
+    return max(15.0, min(600.0, value))
 
 
 def _now_ms(started: float) -> float:
@@ -106,7 +117,7 @@ def forward_stderr(process: subprocess.Popen[str]) -> None:
     if process.stderr is None:
         return
     for raw in process.stderr:
-        with WRITE_LOCK:
+        with STDERR_LOCK:
             sys.stderr.write(raw)
             sys.stderr.flush()
 
@@ -122,7 +133,12 @@ def forward_stdout(process: subprocess.Popen[str]) -> None:
         try:
             message = json.loads(line)
         except Exception:
-            emit({"type": "protocol_error", "request_id": "", "error_type": "NonJSONChildOutput"})
+            # Stray output on the child's protocol stream is diagnostic noise, not a
+            # task failure. Forwarding it as a protocol_error used to abort a task
+            # that was otherwise running fine.
+            with STDERR_LOCK:
+                sys.stderr.write(f"[supervisor] non-JSON child stdout ignored: {line[:200]}\n")
+                sys.stderr.flush()
             continue
         if not isinstance(message, dict):
             continue
@@ -136,8 +152,8 @@ def forward_stdout(process: subprocess.Popen[str]) -> None:
                     current["last_event_kind"] = kind
                     current["last_event_sequence"] = int(message.get("sequence") or 0)
                     current["last_event_at"] = time.monotonic()
-                    if kind in PROGRESS_EVENTS:
-                        current["first_progress"] = True
+                    if kind in TERMINAL_EVENTS:
+                        current["finished"] = True
                 elif message_type in {"result", "error", "protocol_error"}:
                     current["finished"] = True
                     active = None
@@ -167,7 +183,6 @@ def mark_run_task(message: dict[str, Any]) -> None:
             "task_id": task_id,
             "started_at": started,
             "deadline": started + _timeout_seconds(),
-            "first_progress": False,
             "finished": False,
             "last_event_kind": "run_task.forwarded",
             "last_event_sequence": 0,
@@ -185,9 +200,11 @@ def watchdog_loop() -> None:
         timed_out: dict[str, Any] | None = None
         with STATE_LOCK:
             current = active
-            if current is not None and not current.get("finished") and not current.get("first_progress"):
-                if time.monotonic() >= float(current.get("deadline") or 0):
+            if current is not None and not current.get("finished"):
+                silent_for = time.monotonic() - float(current.get("last_event_at") or 0)
+                if silent_for >= _timeout_seconds():
                     timed_out = dict(current)
+                    timed_out["silent_for_seconds"] = round(silent_for, 1)
                     active = None
         if timed_out is None:
             continue
@@ -198,14 +215,15 @@ def watchdog_loop() -> None:
         data = {
             "engine": "ufo2",
             "supervisor": True,
-            "error_type": "UFO_FIRST_PROGRESS_TIMEOUT",
+            "error_type": "UFO_STALL_TIMEOUT",
             "timeout_seconds": _timeout_seconds(),
+            "silent_for_seconds": timed_out.get("silent_for_seconds"),
             "elapsed_ms": _now_ms(float(timed_out.get("started_at") or time.monotonic())),
             "last_event_kind": str(timed_out.get("last_event_kind") or ""),
             "last_event_sequence": int(timed_out.get("last_event_sequence") or 0),
             "hint": (
-                "The UFO child accepted the task but emitted no command/window/observation/action progress before the timeout. "
-                "This usually means it is blocked in import/config/session setup before the model call."
+                "The UFO child stopped emitting events entirely, including its periodic heartbeat. "
+                "That means the sidecar interpreter is wedged rather than merely waiting on a slow model call."
             ),
         }
         emit_event(request_id, task_id, sequence, "task.first_step_timeout", data)
@@ -216,7 +234,7 @@ def watchdog_loop() -> None:
             "task_id": task_id,
             "status": "failed",
             "ok": False,
-            "summary": "UFO desktop task failed: UFO_FIRST_PROGRESS_TIMEOUT",
+            "summary": "UFO desktop task failed: UFO_STALL_TIMEOUT",
             "data": data,
         })
 

@@ -194,15 +194,36 @@ def test_computer_step_executes_exactly_one_policy_action_and_reobserves(tmp_pat
     runtime.close()
 
 
-def test_computer_action_rejects_stale_revision(tmp_path):
+def test_same_session_revision_drift_is_reused_and_reported(tmp_path):
+    """A harmless observe between planning and acting must not fail the turn.
+
+    The revision still has to be one this session actually saw; the store records
+    that it substituted a compatible snapshot so the outer agent can tell.
+    """
+
     runtime, _, _, _, session = _runtime(tmp_path, [ModelResponse(text="unused")])
     store = runtime.computer_sessions
     first = store.observe(session.session_id)
     store.observe(session.session_id)
+
+    outcome = store.execute(
+        session.session_id,
+        first.state_revision,
+        ComputerAction(type="click", point=ComputerPoint(0.5, 0.5)),
+    )
+
+    assert outcome.before.state_revision == first.state_revision
+    assert outcome.verification.get("revision_autofixed") is not True
+    runtime.close()
+
+
+def test_unknown_session_revision_still_fails_closed(tmp_path):
+    runtime, _, _, _, session = _runtime(tmp_path, [ModelResponse(text="unused")])
+    store = runtime.computer_sessions
     with pytest.raises(RuntimeError, match="stale computer state_revision"):
         store.execute(
-            session.session_id,
-            first.state_revision,
+            "a-different-session",
+            1,
             ComputerAction(type="click", point=ComputerPoint(0.5, 0.5)),
         )
     runtime.close()
@@ -273,14 +294,26 @@ def test_model_produced_type_text_never_crosses_durable_boundary(tmp_path):
     runtime.close()
 
 
-def test_stuck_detection_blocks_third_identical_policy_action_on_unchanged_screen(tmp_path):
+def test_stuck_detection_pauses_for_replan_instead_of_injecting_a_third_identical_action(tmp_path):
+    """Repeating a no-op action must hand control back, not fail the turn.
+
+    Raising here used to abort the whole desktop turn. The outer agent is the one
+    that can change strategy, so the third identical action becomes a wait plus a
+    replan hint, and no further OS input is injected.
+    """
+
     grounder = FakeGrounder(ComputerAction(type="click", point=ComputerPoint(0.5, 0.5)))
     operator = FakeOperator(static_image=True)
     store = ComputerSessionStore(operator, grounder, settle_delay=0)
     store.step("owner", "Click Save")
     store.step("owner", "Click Save")
-    with pytest.raises(RuntimeError, match="stuck detection"):
-        store.step("owner", "Click Save")
+
+    outcome = store.step("owner", "Click Save")
+
+    assert outcome.prediction.action.type is ComputerActionType.WAIT
+    assert outcome.verification["stuck_detected"] is True
+    assert outcome.verification["method"] == "soft-stuck-replan"
+    assert outcome.verification["replan_hint"]
     assert len(operator.executed) == 2
 
 

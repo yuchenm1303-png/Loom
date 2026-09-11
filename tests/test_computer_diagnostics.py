@@ -33,4 +33,4 @@ def test_raw_diagnostics_persist_original_screenshot(tmp_path):
 
     saved = Path(diagnostics.save_screenshot(Observation(), operation_id="op-1", phase="before"))
     assert saved.read_bytes() == b"original-png-bytes"
-    assert saved.parent == tmp_path / "screenshots"
+    assert saved.parent == tmp_path / "computer-snapshots" / "images"

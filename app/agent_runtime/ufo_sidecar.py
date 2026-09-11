@@ -14,6 +14,7 @@ import ctypes
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -29,10 +30,42 @@ PROTOCOL = "loom-ufo-sidecar"
 PROTOCOL_VERSION = 1
 EXPECTED_UFO_TAG = "v3.0.8"
 EXPECTED_UFO_COMMIT = "96983c73ed09e884a5f1d7ff8936c953b234b684"
+def _claim_protocol_stdout() -> None:
+    """Take exclusive ownership of stdout for the NDJSON protocol.
+
+    contextlib.redirect_stdout only rebinds sys.stdout, so it cannot stop UFO's
+    own logging, a third-party library, or a C extension from writing to file
+    descriptor 1 and corrupting the protocol stream. Duplicating the descriptor
+    and pointing fd 1 at stderr means anything that writes to "stdout" lands in
+    the diagnostic stream, and only emit_sync can reach Loom.
+
+    Called from main() rather than at import time: rebinding a descriptor is a
+    process-wide side effect that must not fire just because a test or tool
+    imports this module.
+    """
+
+    global _PROTOCOL_STDOUT
+    try:
+        sys.stdout.flush()
+        protocol_fd = os.dup(sys.stdout.fileno())
+        os.dup2(sys.stderr.fileno(), sys.stdout.fileno())
+        _PROTOCOL_STDOUT = os.fdopen(
+            protocol_fd, "w", encoding="utf-8", newline="\n", buffering=1
+        )
+    except (OSError, ValueError, AttributeError):
+        # No real descriptors available; keep writing to the inherited stream.
+        _PROTOCOL_STDOUT = sys.stdout
+
+
 _PROTOCOL_STDOUT = sys.stdout
 _PROTOCOL_WRITE_LOCK = threading.RLock()
 _ACTIVE_CONTROLLER: "TaskController | None" = None
 _PATCHED = False
+_LLM_PATCHED = False
+_PROBE_PATCHED = False
+# UFO's entrypoints, imported once on the main thread during startup. See
+# _preload_ufo_modules for why this must not happen inside the event loop.
+_UFO_MODULES: dict[str, Any] = {}
 _SENSITIVE_PARAMETER_KEYS = {
     "content",
     "instruction",
@@ -42,6 +75,9 @@ _SENSITIVE_PARAMETER_KEYS = {
     "text",
     "value_text",
 }
+# Introspection and window focusing are how UFO orients itself; neither changes
+# the desktop on the user's behalf, so they must not count as work done.
+_NON_MUTATING_ACTIONS = frozenset({"list_tools", "select_application_window"})
 _SCRATCH_PREFIX = "loom-ufo-private-"
 _SCRATCH_STALE_SECONDS = 24 * 60 * 60
 _FIRST_STEP_PROGRESS_EVENTS = {
@@ -338,8 +374,13 @@ class TaskController:
         self.cancelled = False
         self.cancel_reason = ""
         self.selected_window: dict[str, Any] = {}
+        self.mutating_actions = 0
         self.started_at = time.monotonic()
         self.last_event_at = self.started_at
+        # Heartbeats deliberately do not count as activity here, so diagnostics can
+        # still show how long UFO has been inside one opaque step.
+        self.last_substantive_at = self.started_at
+        self.last_event_kind = ""
         self.first_progress_kind = ""
         self.first_progress_at = 0.0
         self._lock = threading.RLock()
@@ -355,6 +396,9 @@ class TaskController:
                 self.first_progress_at = now
                 payload["first_progress"] = True
             self.last_event_at = now
+            if kind != "task.heartbeat":
+                self.last_substantive_at = now
+                self.last_event_kind = kind
             self.sequence += 1
             sequence = self.sequence
         emit_sync(
@@ -377,6 +421,24 @@ class TaskController:
     def has_first_progress(self) -> bool:
         with self._lock:
             return bool(self.first_progress_kind)
+
+    async def heartbeat(self, interval: float) -> None:
+        """Prove the event loop is still scheduling while a task runs.
+
+        UFO can legitimately spend a long time inside one model call, so silence
+        alone cannot distinguish "slow" from "wedged". A heartbeat that stops only
+        when the loop itself stops gives the supervisor an unambiguous signal.
+        """
+
+        while True:
+            await asyncio.sleep(interval)
+            with self._lock:
+                last = self.last_event_kind
+                since = round((time.monotonic() - self.last_substantive_at) * 1000.0, 3)
+            await self.event(
+                "task.heartbeat",
+                {"last_event_kind": last, "since_last_event_ms": since},
+            )
 
     async def before_commands(self, commands: list[Any]) -> None:
         while self.paused and not self.cancelled:
@@ -460,11 +522,17 @@ class TaskController:
                             },
                         )
             if tool_type == "action":
+                status = _result_status(result)
+                if tool_name not in _NON_MUTATING_ACTIONS and status["ok"]:
+                    # Counts only actions that could have changed the desktop, so
+                    # the outcome can distinguish "did nothing" from "did work but
+                    # never declared itself done".
+                    self.mutating_actions += 1
                 await self.event(
                     "action.completed",
                     {
                         "action": tool_name,
-                        "result": _result_status(result),
+                        "result": status,
                         "window": dict(self.selected_window),
                     },
                 )
@@ -508,6 +576,153 @@ async def _patched_execute_commands(self, commands, timeout=6000):
         )
         await controller.after_commands(command_list, results)
     return results
+
+
+_REASONING_BLOCK_RE = re.compile(
+    r"<\s*(think|thinking|reasoning)\b[^>]*>.*?<\s*/\s*\1\s*>",
+    re.DOTALL | re.IGNORECASE,
+)
+_UNCLOSED_REASONING_RE = re.compile(
+    r"^\s*<\s*(?:think|thinking|reasoning)\b[^>]*>",
+    re.IGNORECASE,
+)
+
+
+def _strip_reasoning_wrapper(text: str) -> str:
+    """Remove inline chain-of-thought blocks from a model response.
+
+    UFO parses agent responses as strict JSON. Reasoning models emit a
+    <think>...</think> preamble before that JSON, which makes json.loads fail on
+    column 1 and burns all of UFO's retries. Loom lets users point Computer Use at
+    whichever chat model they have selected, so this normalization belongs at the
+    boundary rather than in a per-model allowlist.
+    """
+
+    raw = str(text or "")
+    cleaned = _REASONING_BLOCK_RE.sub("", raw)
+    if _UNCLOSED_REASONING_RE.match(cleaned):
+        # Truncated or streamed-away closing tag: keep only what follows the last
+        # closing tag if there is one, otherwise fall back to the first JSON-ish
+        # character so a partial preamble cannot shadow a usable payload.
+        tail = re.split(r"<\s*/\s*(?:think|thinking|reasoning)\s*>", cleaned, maxsplit=1)
+        cleaned = tail[-1] if len(tail) > 1 else cleaned
+        if _UNCLOSED_REASONING_RE.match(cleaned):
+            start = min(
+                (pos for pos in (cleaned.find("{"), cleaned.find("[")) if pos >= 0),
+                default=-1,
+            )
+            if start >= 0:
+                cleaned = cleaned[start:]
+    return cleaned.strip() or raw
+
+
+def _sanitize_llm_response(value: Any) -> Any:
+    if isinstance(value, str):
+        return _strip_reasoning_wrapper(value)
+    if isinstance(value, list):
+        return [_sanitize_llm_response(item) for item in value]
+    return value
+
+
+def _install_structured_output_probe_fallback() -> None:
+    """Let UFO fall back to text mode when a provider fakes json_schema support.
+
+    On startup UFO probes the endpoint with response_format=<pydantic model> and
+    downgrades to text mode if the provider answers BadRequest. Most
+    OpenAI-compatible endpoints instead accept the parameter and ignore it,
+    returning prose; the SDK then raises a pydantic ValidationError that UFO does
+    not catch, so constructing the service fails and every agent turn dies before
+    the first screenshot. Translating that into the BadRequest the probe already
+    understands routes it into UFO's own intended fallback.
+
+    Only the probe calls .parse(); live turns use .create(), so this does not
+    affect providers that genuinely implement structured output.
+    """
+
+    global _PROBE_PATCHED
+    if _PROBE_PATCHED:
+        return
+    import httpx
+    import openai
+    from openai.resources.beta.chat.completions import Completions as BetaChatCompletions
+    from pydantic import ValidationError
+
+    if not hasattr(BetaChatCompletions, "_loom_original_parse"):
+        original = BetaChatCompletions.parse
+
+        def _patched_parse(self, *args: Any, **kwargs: Any):
+            try:
+                return original(self, *args, **kwargs)
+            except ValidationError as exc:
+                raise openai.BadRequestError(
+                    "'response_format' of type 'json_schema' is not supported: the "
+                    "endpoint accepted the schema but returned unstructured text.",
+                    response=httpx.Response(
+                        400,
+                        request=httpx.Request(
+                            "POST", "https://loom.invalid/structured-output-probe"
+                        ),
+                    ),
+                    body=None,
+                ) from exc
+
+        BetaChatCompletions._loom_original_parse = original
+        BetaChatCompletions.parse = _patched_parse
+    _PROBE_PATCHED = True
+
+
+def _thinking_override(model: str) -> dict[str, Any] | None:
+    """Request a non-reasoning response for a UFO agent turn, when supported.
+
+    A UFO turn is a single structured decision, not an open reasoning problem.
+    Long chain-of-thought costs seconds per step and is then discarded, because
+    UFO only consumes the JSON that follows it. LOOM_UFO_THINKING=default opts
+    back out; the payload shape is provider-specific, so only providers whose
+    switch is known are touched.
+    """
+
+    mode = str(os.environ.get("LOOM_UFO_THINKING") or "auto").strip().casefold()
+    if mode == "default":
+        return None
+    name = str(model or "").casefold()
+    if "minimax" in name:
+        return {"thinking": {"type": "disabled"}}
+    return None
+
+
+def _install_llm_response_hook() -> None:
+    """Normalize UFO's OpenAI-compatible responses before UFO parses them."""
+
+    global _LLM_PATCHED
+    if _LLM_PATCHED:
+        return
+    from ufo.llm.openai import OpenAIService
+
+    if not hasattr(OpenAIService, "_loom_original_chat_completion"):
+        original = OpenAIService.chat_completion
+
+        def _patched_chat_completion(self, *args, **kwargs):
+            override = _thinking_override(str(getattr(self, "model", "") or ""))
+            if override is not None:
+                extra_body = dict(kwargs.get("extra_body") or {})
+                extra_body.update(override)
+                kwargs["extra_body"] = extra_body
+            responses, cost = original(self, *args, **kwargs)
+            cleaned = _sanitize_llm_response(responses)
+            controller = _ACTIVE_CONTROLLER
+            if controller is not None and cleaned != responses:
+                controller.event_sync(
+                    "llm.response.normalized",
+                    {
+                        "agent_type": str(getattr(self, "agent_type", "") or ""),
+                        "removed_reasoning_wrapper": True,
+                    },
+                )
+            return cleaned, cost
+
+        OpenAIService._loom_original_chat_completion = original
+        OpenAIService.chat_completion = _patched_chat_completion
+    _LLM_PATCHED = True
 
 
 def _install_dispatcher_hook() -> None:
@@ -575,6 +790,8 @@ def _bootstrap_ufo(root: Path) -> dict[str, Any]:
     sys.path.insert(0, str(root))
     _cleanup_stale_scratch()
     _install_dispatcher_hook()
+    _install_structured_output_probe_fallback()
+    _install_llm_response_hook()
     return {
         "root": str(root),
         "git_head": _git_head(root),
@@ -583,6 +800,79 @@ def _bootstrap_ufo(root: Path) -> dict[str, Any]:
         "python": sys.version.split()[0],
         "python_executable": sys.executable,
         "pid": os.getpid(),
+    }
+
+
+def _round_state(session: Any) -> str:
+    """Read the agent's own verdict for the round UFO just finished.
+
+    Loom drives one non-interactive round, so the session-level _finish flag is
+    never set and cannot be used. AgentStatus on the round is what the agent
+    actually concluded: FINISH, FAIL, ERROR, or a mid-flight state if the loop
+    stopped for an external reason such as the step ceiling.
+    """
+
+    current_round = getattr(session, "current_round", None)
+    state = getattr(current_round, "state", None)
+    name = getattr(state, "name", None)
+    try:
+        return str(name() or "") if callable(name) else str(name or "")
+    except Exception:
+        return ""
+
+
+def _outcome_summary(reason: str) -> str:
+    if reason == "session_error":
+        return "UFO desktop task ended in an error state."
+    if reason == "agent_reported_failure":
+        return (
+            "UFO reported that it could not complete the desktop task. The screen "
+            "may hold partial changes."
+        )
+    if reason == "step_budget_exhausted":
+        return (
+            "UFO desktop task ran out of steps before finishing. Raise max_steps, or "
+            "split the request into smaller desktop tasks."
+        )
+    if reason == "unconfirmed_partial_progress":
+        return (
+            "UFO executed desktop actions but never reported the task as done, so "
+            "the result is unconfirmed. Check the current screen before retrying: "
+            "some of the requested changes may already have been applied."
+        )
+    if reason == "no_effective_action":
+        return (
+            "UFO ended without performing any desktop action. The usual cause is "
+            "that the configured vision model rejected or failed every request; "
+            "check the Computer Use model configuration."
+        )
+    return "UFO desktop task completed."
+
+
+def _preload_ufo_modules() -> dict[str, Any]:
+    """Import UFO's entrypoints once, on the main thread, before the event loop.
+
+    UFO pulls in numpy/faiss/langchain transitively. Loading those native
+    extensions from inside an asyncio callback deadlocks the Windows DLL loader
+    against the worker thread asyncio uses for blocking stdin reads: the loader
+    lock is held across DllMain while OpenBLAS starts its own threads. Doing the
+    import here - single-threaded, before asyncio.run - keeps the loader
+    uncontended. It also means the ready handshake reports a sidecar that can
+    actually start a task, instead of one that still owes several seconds of
+    import work to whichever task arrives first.
+    """
+
+    started = time.monotonic()
+    from config.config_loader import get_ufo_config
+    from ufo.module.sessions.session import Session
+
+    _UFO_MODULES["get_ufo_config"] = get_ufo_config
+    _UFO_MODULES["Session"] = Session
+    return {
+        "preloaded": True,
+        "duration_ms": _elapsed_ms(started),
+        "get_ufo_config": _module_summary(get_ufo_config),
+        "Session": _module_summary(Session),
     }
 
 
@@ -726,13 +1016,27 @@ async def _run_task(
     config = None
     scratch_dir: Path | None = None
     hard_timeout_timer: threading.Timer | None = None
+    heartbeat_task = asyncio.create_task(
+        controller.heartbeat(_float_env("LOOM_UFO_HEARTBEAT_INTERVAL", 5.0, 1.0, 60.0))
+    )
     try:
         await controller.stage("ufo.imports.started")
-        with contextlib.redirect_stdout(sys.stderr):
-            from config.config_loader import get_ufo_config
-            from ufo.module.sessions.session import Session
+        preloaded = bool(_UFO_MODULES)
+        if not preloaded:
+            # Startup preload failed or this module was driven directly. Fall back
+            # to importing here so a task still runs, accepting the loader-lock
+            # risk that _preload_ufo_modules exists to avoid.
+            with contextlib.redirect_stdout(sys.stderr):
+                from config.config_loader import get_ufo_config
+                from ufo.module.sessions.session import Session
+
+            _UFO_MODULES["get_ufo_config"] = get_ufo_config
+            _UFO_MODULES["Session"] = Session
+        get_ufo_config = _UFO_MODULES["get_ufo_config"]
+        Session = _UFO_MODULES["Session"]
         await controller.stage(
             "ufo.imports.completed",
+            preloaded=preloaded,
             get_ufo_config=_module_summary(get_ufo_config),
             Session=_module_summary(Session),
         )
@@ -815,11 +1119,49 @@ async def _run_task(
                 await watchdog_task
         hard_timeout_timer.cancel()
         results = await session_task
-        failed = bool(session.is_error())
+        result_count = len(results or [])
+        session_error = bool(session.is_error())
+        # A session that ran out of steps, or whose every model call was rejected,
+        # still unwinds "cleanly", so Loom cannot treat "the coroutine returned" as
+        # success. The agent's own verdict lives on the round state.
+        #
+        # Note session._finish is NOT that verdict: UFO only sets it for
+        # interactive and plan-file sessions. Loom drives a single non-interactive
+        # round, so _finish is always False here and keying on it would fail every
+        # successful task.
+        round_state = _round_state(session)
+        steps_used = int(getattr(session, "step", 0) or 0)
+        step_ceiling = int(
+            max_steps_raw
+            if max_steps_raw is not None
+            else getattr(getattr(config, "system", None), "max_step", 0) or 0
+        )
+        mutating_actions = int(controller.mutating_actions)
+        if session_error or round_state == "ERROR":
+            reason = "session_error"
+        elif round_state == "FINISH":
+            reason = ""
+        elif round_state == "FAIL":
+            reason = "agent_reported_failure"
+        elif step_ceiling and steps_used >= step_ceiling:
+            reason = "step_budget_exhausted"
+        elif mutating_actions == 0:
+            reason = "no_effective_action"
+        else:
+            # Acted, but the round ended in some other state. Loom must not claim
+            # success, and must not imply nothing happened either: a blind retry
+            # would repeat the actions that already landed.
+            reason = "unconfirmed_partial_progress"
+        failed = bool(reason)
         await controller.stage(
             "ufo.session.run.completed",
-            result_count=len(results or []),
-            session_error=failed,
+            result_count=result_count,
+            session_error=session_error,
+            round_state=round_state,
+            mutating_actions=mutating_actions,
+            steps_used=steps_used,
+            step_ceiling=step_ceiling,
+            outcome_reason=reason,
             first_progress_kind=controller.first_progress_kind,
         )
 
@@ -828,7 +1170,8 @@ async def _run_task(
             f"task.{status}",
             {
                 "engine": "ufo2",
-                "result_count": len(results or []),
+                "result_count": result_count,
+                "outcome_reason": reason,
                 "selected_window": dict(controller.selected_window),
             },
         )
@@ -839,14 +1182,16 @@ async def _run_task(
                 "task_id": task_id,
                 "status": status,
                 "ok": not failed,
-                "summary": (
-                    "UFO desktop task completed."
-                    if not failed
-                    else "UFO desktop task ended in an error state."
-                ),
+                "summary": _outcome_summary(reason),
                 "data": {
                     "engine": "ufo2",
                     "event_count": controller.sequence,
+                    "result_count": result_count,
+                    "outcome_reason": reason,
+                    "mutating_actions": mutating_actions,
+                    "steps_used": steps_used,
+                    "step_ceiling": step_ceiling,
+                    "round_state": round_state,
                     "selected_window": dict(controller.selected_window),
                     "raw_logs_persisted": _keep_raw_logs(),
                     "first_progress_kind": controller.first_progress_kind,
@@ -905,6 +1250,9 @@ async def _run_task(
             }
         )
     finally:
+        heartbeat_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError, Exception):
+            await heartbeat_task
         if hard_timeout_timer is not None:
             hard_timeout_timer.cancel()
         if config is not None and previous_max_step is not None:
@@ -918,9 +1266,7 @@ async def _run_task(
         _cleanup_task_logs(root, task_name)
 
 
-async def main_async(root: Path) -> int:
-    with contextlib.redirect_stdout(sys.stderr):
-        bootstrap = _bootstrap_ufo(root)
+async def main_async(root: Path, bootstrap: dict[str, Any]) -> int:
     await emit(
         {
             "type": "ready",
@@ -1090,7 +1436,24 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--ufo-root", required=True)
     args = parser.parse_args()
-    return asyncio.run(main_async(Path(args.ufo_root)))
+    root = Path(args.ufo_root)
+    _claim_protocol_stdout()
+    try:
+        with contextlib.redirect_stdout(sys.stderr):
+            bootstrap = _bootstrap_ufo(root)
+            bootstrap["imports"] = _preload_ufo_modules()
+    except Exception as exc:
+        emit_sync(
+            {
+                "type": "error",
+                "request_id": "",
+                "error_type": type(exc).__name__,
+                "stage": "startup",
+            }
+        )
+        traceback.print_exc(file=sys.stderr)
+        return 1
+    return asyncio.run(main_async(root, bootstrap))
 
 
 if __name__ == "__main__":

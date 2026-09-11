@@ -106,14 +106,39 @@ The installer:
 8. creates an `agents.yaml` that references runtime environment variables instead of
    storing secrets;
 9. creates a Loom safety override;
-10. uses a GUI-only UFO MCP allowlist (UICollector, HostUIExecutor and AppUIExecutor).
+10. writes the UFO MCP allowlist (UICollector, HostUIExecutor, AppUIExecutor and
+    CommandLineExecutor) into `config/ufo/mcp.yaml`, keeping the upstream file as
+    `mcp.yaml.ufo-original`.
 
 `LOOM_UFO_AUTO_INSTALL_PYTHON=0` disables automatic Python installation, and
 `LOOM_UFO_BOOTSTRAP_PYTHON` can point to a specific Python 3.10 executable.
 `LOOM_PYTHON_RUNTIME_ROOT` can override the private Python runtime directory.
 
-`CommandLineExecutor` and Office COM executors are intentionally excluded from the
-first production baseline. They can be evaluated later as explicit capabilities.
+### Why the allowlist has to overwrite `mcp.yaml`
+
+UFO v3.0.8 declares `MCP_SERVERS_CONFIG` but never reads it, and its `UFO_ENV`
+override loader merges `mcp_loom.yaml` at the top level instead of nesting it under
+the `mcp` key the way it nests the base file. Both routes therefore leave the stock
+server list in force. Loom writes the allowlist into `config/ufo/mcp.yaml` because
+that is the file UFO actually loads.
+
+### What the allowlist does and does not bound
+
+`CommandLineExecutor` is included. Its `run_shell` tool name is misleading: UFO
+validates the base command against a fixed allow-list of application launchers
+(notepad, calc, explorer, browsers, Office, code), rejects roughly twenty dangerous
+patterns, and spawns without `shell=True`. Launching a target application
+deterministically is faster and more reliable than making the visual agent find it
+in the Start menu, which is the point of combining deterministic actions with
+vision rather than insisting on vision alone.
+
+Office and PDF COM executors stay excluded. Driving document object models is a
+different capability class and deserves its own evaluation.
+
+None of this is an execution boundary. A computer-use agent that can see a terminal
+window can type into it, and the permitted browser and explorer launchers accept
+arbitrary URLs and paths. Treat the allowlist as capability shaping, not as a
+sandbox.
 
 `ufo:preflight` starts the isolated sidecar, verifies the NDJSON protocol and exact
 UFO commit, verifies Python 3.10 and all three Loom config files, and performs a

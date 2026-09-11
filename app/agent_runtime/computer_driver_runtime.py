@@ -93,6 +93,8 @@ class ComputerDriverRuntime(ComputerUseRuntime):
         mode = str(computer_driver_mode or _driver_mode()).strip().casefold()
         self.computer_driver_mode = mode if mode in _DRIVER_MODES else "auto"
         self.computer_driver: ComputerTaskDriver | None = computer_driver
+        # None = the active model profile never declared a vision capability.
+        self.computer_model_vision: bool | None = None
         if (
             self.computer_driver is None
             and os.name == "nt"
@@ -128,7 +130,19 @@ class ComputerDriverRuntime(ComputerUseRuntime):
             platform = getattr(platform, "_delegate", None)
             if platform is None:
                 break
-        if not isinstance(metadata, dict) or not bool(metadata.get("vision", True)):
+        if not isinstance(metadata, dict):
+            return
+        declared_vision = metadata.get("vision")
+        self.computer_model_vision = (
+            None if declared_vision is None else bool(declared_vision)
+        )
+        if self.computer_model_vision is False:
+            # A desktop agent that cannot see the screen produces a confusing pile
+            # of downstream parse/step failures. Drop the model instead, so
+            # readiness reports one clear reason before any task starts.
+            if driver.config.api_model:
+                driver.close()
+                driver.config = replace(driver.config, api_model="")
             return
         provider = str(metadata.get("provider") or "").strip().casefold().replace("_", "-")
         if provider not in _UFO_COMPATIBLE_PROVIDERS:
@@ -344,12 +358,18 @@ class ComputerDriverRuntime(ComputerUseRuntime):
             reason = str(
                 driver_status.get("reason") or "Computer Driver is not ready"
             )
+            if self.computer_model_vision is False:
+                reason = (
+                    "The active Loom model cannot see images, so it cannot operate the "
+                    "desktop. Select a vision-capable model before using Computer Use."
+                )
             return ToolResult(
                 False,
                 reason,
                 {
                     "driver": driver_status,
                     "mode": self.computer_driver_mode,
+                    "model_vision": self.computer_model_vision,
                     "setup": (
                         "Restart Loom with the built-in Computer Use driver enabled. "
                         "The strict development launcher provisions the pinned UFO source, "
@@ -453,6 +473,7 @@ class ComputerDriverRuntime(ComputerUseRuntime):
                     "reason": str(exc),
                 }
         status["driver_mode"] = self.computer_driver_mode
+        status["model_vision"] = self.computer_model_vision
         status["task_driver"] = driver_status
         if bool(driver_status.get("ready")):
             task_runner = str(driver_status.get("name") or "computer-driver")

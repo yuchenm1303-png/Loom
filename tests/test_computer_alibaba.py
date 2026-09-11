@@ -154,11 +154,26 @@ def test_gui_plus_wait_and_terminal_actions_are_bounded_and_safe():
     assert interact.type is ComputerActionType.CALL_USER
 
 
+def test_gui_plus_parser_accepts_an_unexpected_tool_name_with_a_supported_action():
+    """Serving stacks rename the tool; the action is what has to be valid.
+
+    Rejecting on the wrapper name alone threw away otherwise usable predictions,
+    so normalization keys on the action and only fails when that is unsupported.
+    """
+
+    prediction = parse_gui_plus_prediction(
+        '<tool_call>{"name":"other","arguments":{"action":"left_click","coordinate":[500,500]}}</tool_call>'
+    )
+    assert prediction.action.type is ComputerActionType.CLICK
+    assert prediction.action.point.x == pytest.approx(0.5)
+    assert prediction.action.point.y == pytest.approx(0.5)
+
+
 @pytest.mark.parametrize(
     "text",
     [
         "Action: click only",
-        '<tool_call>{"name":"other","arguments":{"action":"left_click","coordinate":[1,2]}}</tool_call>',
+        '<tool_call>{"name":"other","arguments":{"action":"fly_to_moon","coordinate":[1,2]}}</tool_call>',
         '<tool_call>{"name":"computer_use","arguments":{"action":"middle_click","coordinate":[1,2]}}</tool_call>',
         '<tool_call>{"name":"computer_use","arguments":{"action":"left_click","coordinate":[1001,2]}}</tool_call>',
         '<tool_call>{not-json}</tool_call>',

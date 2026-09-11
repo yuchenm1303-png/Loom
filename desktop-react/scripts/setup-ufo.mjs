@@ -544,8 +544,20 @@ function writeLoomUfoConfig() {
   `MCP_SERVERS_CONFIG: "config/ufo/mcp_loom.yaml"\n`;
   fs.writeFileSync(path.join(configDir, "system_loom.yaml"), systemOverride, "utf8");
 
-  const mcpAllowlist = `# Loom UFO² GUI-only local MCP allowlist.\n` +
-  `# CommandLineExecutor and app COM executors are intentionally excluded from the first baseline.\n` +
+  const mcpAllowlist = `# Loom UFO² local MCP allowlist.\n` +
+  `#\n` +
+  `# CommandLineExecutor is included: despite its run_shell tool name it is an\n` +
+  `# application launcher, not a shell. UFO validates the base command against a\n` +
+  `# fixed allow-list (notepad/calc/explorer/browsers/Office/code), rejects ~20\n` +
+  `# dangerous patterns, and spawns without shell=True. Launching a target app\n` +
+  `# deterministically beats making the agent hunt for it in the Start menu.\n` +
+  `#\n` +
+  `# Office/PDF COM executors stay excluded: driving document object models is a\n` +
+  `# separate capability class that should be evaluated on its own.\n` +
+  `#\n` +
+  `# This allow-list is not an execution boundary. An agent that can see a\n` +
+  `# terminal window can type into it, and the permitted browser/explorer\n` +
+  `# launchers accept arbitrary URLs and paths.\n` +
   `HostAgent:\n` +
   `  default:\n` +
   `    data_collection:\n` +
@@ -555,6 +567,10 @@ function writeLoomUfoConfig() {
   `        reset: false\n` +
   `    action:\n` +
   `      - namespace: HostUIExecutor\n` +
+  `        type: local\n` +
+  `        start_args: []\n` +
+  `        reset: false\n` +
+  `      - namespace: CommandLineExecutor\n` +
   `        type: local\n` +
   `        start_args: []\n` +
   `        reset: false\n` +
@@ -569,8 +585,25 @@ function writeLoomUfoConfig() {
   `      - namespace: AppUIExecutor\n` +
   `        type: local\n` +
   `        start_args: []\n` +
+  `        reset: false\n` +
+  `      - namespace: CommandLineExecutor\n` +
+  `        type: local\n` +
+  `        start_args: []\n` +
   `        reset: false\n`;
   fs.writeFileSync(path.join(configDir, "mcp_loom.yaml"), mcpAllowlist, "utf8");
+
+  // UFO v3.0.8 declares MCP_SERVERS_CONFIG but never reads it, and its UFO_ENV
+  // override loader merges mcp_loom.yaml at the top level instead of nesting it
+  // under the "mcp" key the way it nests the base file. Both paths therefore
+  // leave the stock server list in force, which exposes CommandLineExecutor
+  // (run_shell) and the Office COM executors to the GUI agent. The allowlist has
+  // to land in the file UFO actually loads.
+  const stockMcpPath = path.join(configDir, "mcp.yaml");
+  const backupPath = path.join(configDir, "mcp.yaml.ufo-original");
+  if (fs.existsSync(stockMcpPath) && !fs.existsSync(backupPath)) {
+    fs.copyFileSync(stockMcpPath, backupPath);
+  }
+  fs.writeFileSync(stockMcpPath, mcpAllowlist, "utf8");
 }
 
 function writeInstallMarker() {
