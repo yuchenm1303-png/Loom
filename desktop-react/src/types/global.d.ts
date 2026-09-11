@@ -40,6 +40,8 @@ export interface LoomBridge {
   pickDirectory(): Promise<string>;
   /** Native file picker. Resolves to [] when the user cancels. */
   pickFiles(): Promise<string[]>;
+  /** Apply Chromium's native page zoom and return the clamped factor. */
+  setZoomFactor(factor: number): number;
   /** Absolute path of a dropped/picked File, or "" when unavailable. */
   filePathFor(file: File): string;
   /** Write bytes to a temp file and return its path. */
