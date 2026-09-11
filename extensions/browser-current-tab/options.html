@@ -1,0 +1,36 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Loom Browser Bridge</title>
+  <style>
+    body { margin: 0; padding: 24px; color: #111827; background: #f8fafc; font: 14px/1.5 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    main { max-width: 640px; margin: 0 auto; background: white; border: 1px solid #e5e7eb; border-radius: 16px; padding: 22px; box-shadow: 0 18px 45px rgba(15, 23, 42, .08); }
+    h1 { margin: 0 0 6px; font-size: 20px; }
+    p { margin: 0 0 18px; color: #64748b; }
+    label { display: block; margin: 14px 0 6px; font-weight: 650; }
+    input { width: 100%; box-sizing: border-box; border: 1px solid #cbd5e1; border-radius: 10px; padding: 10px 12px; font: inherit; }
+    button { margin-top: 18px; border: 0; border-radius: 999px; background: #111827; color: white; padding: 10px 16px; font-weight: 650; cursor: pointer; }
+    code { background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 8px; padding: 2px 5px; }
+    #status { margin-top: 12px; min-height: 20px; color: #047857; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Loom Browser Bridge</h1>
+    <p>Keep these values aligned with the Loom desktop extension bridge. Defaults work for local development.</p>
+
+    <label for="bridgeUrl">Bridge URL</label>
+    <input id="bridgeUrl" spellcheck="false" placeholder="http://127.0.0.1:39222">
+
+    <label for="token">Token</label>
+    <input id="token" spellcheck="false" placeholder="loom-dev-browser-extension">
+
+    <button id="save">Save</button>
+    <div id="status"></div>
+
+    <p style="margin-top:22px">Start Loom with <code>npm run dev:extension</code>, then click the extension icon once if Chrome suspended the service worker.</p>
+  </main>
+  <script src="options.js"></script>
+</body>
+</html>

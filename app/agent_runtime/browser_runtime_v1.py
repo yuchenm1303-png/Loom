@@ -32,9 +32,12 @@ class BrowserRuntime(_BrowserRuntime):
     def browser_status(self, owner_session_id: str | None = None) -> dict[str, object]:
         status = dict(super().browser_status(owner_session_id))
         status["typed_text_persistence"] = "transient_only"
-        status["url_policy"] = (
-            "execution-layer pre/post navigation; browser-use backend also enforces redirect/popup navigation"
-        )
+        if status.get("backend") == "browser-use":
+            status["url_policy"] = (
+                "execution-layer pre/post navigation; browser-use backend also enforces redirect/popup navigation"
+            )
+        else:
+            status["url_policy"] = "execution-layer pre/post navigation and background-tab filtering"
         return status
 
     def close(self) -> None:
