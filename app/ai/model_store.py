@@ -267,6 +267,61 @@ class ModelConfigStore:
         self._write_payload(payload)
         return entry
 
+    def update_model(
+        self,
+        model_id: str,
+        *,
+        display_name: str,
+        adapter: ProviderAdapter | str,
+        base_url: str,
+        model: str,
+        api_key: str | None = None,
+        vision: bool = True,
+    ) -> StoredModel:
+        """Update one saved connection without changing its stable selection id.
+
+        A blank/omitted API key preserves the existing keychain secret. Supplying
+        a non-empty key replaces it only after all metadata validation succeeds.
+        """
+        current = self.get(model_id)
+        display_name = " ".join(str(display_name or "").split())
+        if not display_name:
+            raise ValueError("connection name must not be empty")
+        if any(
+            entry.model_id != current.model_id and entry.display_name.casefold() == display_name.casefold()
+            for entry in self.list_models()
+        ):
+            raise ValueError(f"a model connection named {display_name!r} already exists")
+
+        updated = StoredModel(
+            model_id=current.model_id,
+            display_name=display_name,
+            adapter=ProviderAdapter(adapter),
+            base_url=base_url,
+            model=model,
+            credential_alias=current.credential_alias,
+            vision=bool(vision),
+        )
+        next_key = str(api_key or "").strip()
+        if next_key:
+            self._set_secret(updated.credential_alias, next_key)
+
+        payload = self._read_payload()
+        models: list[object] = []
+        replaced = False
+        for raw in payload.get("models") or []:
+            if isinstance(raw, dict) and str(raw.get("id") or "").strip().casefold() == current.model_id:
+                models.append(updated.as_safe_dict())
+                replaced = True
+            else:
+                models.append(raw)
+        if not replaced:
+            raise KeyError(f"unknown stored model: {current.model_id!r}")
+        payload["version"] = _CONFIG_VERSION
+        payload["models"] = models
+        self._write_payload(payload)
+        return updated
+
     def delete_model(self, model_id: str) -> StoredModel:
         entry = self.get(model_id)
         payload = self._read_payload()
