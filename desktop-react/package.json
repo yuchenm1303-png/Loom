@@ -8,6 +8,7 @@
     "clean:electron": "node -e \"const fs=require('node:fs'); for (const dir of ['dist-electron','dist']) fs.rmSync(dir,{recursive:true,force:true})\"",
     "prepare:stickers": "node scripts/prepare-chat-stickers.mjs",
     "setup:python": "node scripts/setup-python.mjs",
+    "setup:ufo": "node scripts/setup-ufo.mjs",
     "browser:cdp": "node scripts/start-browser-cdp.mjs --no-run",
     "browser:cdp:dry-run": "node scripts/start-browser-cdp.mjs --dry-run",
     "dev:browser": "node scripts/start-browser-cdp.mjs dev",
@@ -16,6 +17,7 @@
     "dev:extension": "node scripts/start-browser-extension.mjs dev",
     "start:extension": "node scripts/start-browser-extension.mjs start",
     "dev:ready": "node scripts/dev-ready.mjs",
+    "dev:ready:ufo": "npm run setup:ufo && node scripts/dev-ready.mjs",
     "predev": "npm run prepare:stickers",
     "prebuild": "npm run prepare:stickers",
     "build:electron": "tsc -p tsconfig.electron.json",
@@ -44,6 +46,6 @@
     "electron": "^36.4.0",
     "typescript": "^5.9.2",
     "vite": "^7.1.0",
-    "wait-on": "^8.0.4"
+    "wait-on": "^8.2.0"
   }
 }
