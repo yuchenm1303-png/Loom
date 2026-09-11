@@ -1,48 +1,35 @@
 .workspace {
-  grid-template-rows: 70px minmax(0, 1fr) auto;
+  grid-template-rows: 68px minmax(0, 1fr) auto;
 }
 
 .thread-header.polished-thread-header {
   position: relative;
   z-index: 7;
   min-width: 0;
-  height: 70px;
+  height: 68px;
   padding: 0 14px 0 18px;
   gap: 18px;
   overflow: hidden;
-  border-bottom: 1px solid rgba(255, 255, 255, .07);
+  border-bottom: 1px solid rgba(255, 255, 255, .055);
   background:
-    radial-gradient(360px 108px at 4% -30%, rgba(139, 124, 246, .115), transparent 72%),
-    radial-gradient(280px 82px at 34% -36%, rgba(255, 255, 255, .035), transparent 70%),
-    linear-gradient(180deg, rgba(16, 17, 22, .975), rgba(10, 11, 14, .965));
-  box-shadow:
-    inset 0 1px rgba(255, 255, 255, .02),
-    0 7px 28px rgba(0, 0, 0, .13);
-  backdrop-filter: blur(20px) saturate(125%);
+    linear-gradient(180deg, rgba(16, 17, 21, .985), rgba(11, 12, 15, .97));
+  box-shadow: inset 0 1px rgba(255, 255, 255, .018);
 }
 
 .thread-header.polished-thread-header::before {
   content: "";
   position: absolute;
-  left: 0;
-  top: 0;
+  left: 18px;
+  right: 18px;
   bottom: 0;
-  width: 2px;
-  background: linear-gradient(180deg, transparent 8%, rgba(146, 132, 246, .72) 47%, transparent 92%);
-  opacity: .58;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(139, 124, 246, .18), rgba(255, 255, 255, .055) 26%, transparent 72%);
+  opacity: .72;
   pointer-events: none;
 }
 
 .thread-header.polished-thread-header::after {
-  content: "";
-  position: absolute;
-  left: 82px;
-  right: 9%;
-  bottom: -1px;
-  height: 1px;
-  opacity: .34;
-  background: linear-gradient(90deg, rgba(139, 124, 246, .32), rgba(255, 255, 255, .13) 18%, rgba(139, 124, 246, .18) 46%, transparent 92%);
-  pointer-events: none;
+  content: none;
 }
 
 .thread-header-main {
@@ -50,51 +37,54 @@
   flex: 1 1 auto;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 11px;
 }
 
 .thread-header-mark {
   position: relative;
   flex: none;
-  width: 38px;
-  height: 38px;
+  width: 34px;
+  height: 34px;
   display: grid;
   place-items: center;
-  border: 1px solid rgba(156, 145, 235, .22);
-  border-radius: 12px;
-  color: #c1bbff;
+  border: 1px solid rgba(164, 154, 255, .20);
+  border-radius: 11px;
+  color: #b8b0ff;
   background:
-    radial-gradient(circle at 34% 22%, rgba(255, 255, 255, .08), transparent 33%),
-    linear-gradient(145deg, rgba(139, 124, 246, .16), rgba(139, 124, 246, .045)),
-    #14161c;
+    linear-gradient(180deg, rgba(255, 255, 255, .045), rgba(255, 255, 255, .012)),
+    rgba(139, 124, 246, .075);
   box-shadow:
     inset 0 1px rgba(255, 255, 255, .045),
-    0 10px 24px rgba(0, 0, 0, .16),
-    0 0 28px rgba(103, 87, 211, .07);
+    0 8px 20px rgba(0, 0, 0, .12);
 }
 
 .thread-header-mark::before {
   content: "";
   position: absolute;
-  inset: -1px;
-  border-radius: inherit;
-  background: linear-gradient(145deg, rgba(255,255,255,.06), transparent 42%, rgba(139,124,246,.12));
-  opacity: .72;
+  inset: 5px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, .035);
   pointer-events: none;
-  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  padding: 1px;
-  mask-composite: exclude;
-  -webkit-mask-composite: xor;
 }
 
 .thread-header-mark::after {
   content: "";
   position: absolute;
-  inset: 7px;
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, .03);
+  right: 6px;
+  top: 6px;
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(168, 158, 255, .9);
+  box-shadow: 0 0 8px rgba(139, 124, 246, .35);
   pointer-events: none;
+}
+
+.thread-header-mark > svg {
+  position: relative;
+  z-index: 1;
+  width: 15px;
+  height: 15px;
 }
 
 .thread-header-copy {
@@ -102,86 +92,78 @@
   display: grid;
   grid-template-rows: auto auto;
   align-content: center;
-  gap: 6px;
+  gap: 4px;
   transform: translateY(-1px);
 }
 
 .thread-title-line {
   min-width: 0;
-  height: 20px;
+  height: 21px;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
 }
 
 .thread-title-line strong {
   min-width: 0;
-  max-width: min(560px, 46vw);
+  max-width: min(600px, 48vw);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #f3f4f8;
-  font-size: 15px;
-  line-height: 20px;
+  color: #f0f2f6;
+  font-size: 14.6px;
+  line-height: 21px;
   font-weight: 720;
-  letter-spacing: -.014em;
-  text-shadow: 0 1px rgba(0, 0, 0, .18);
+  letter-spacing: -.018em;
+  text-shadow: none;
 }
 
 .thread-state-dot {
   position: relative;
   top: 1px;
   flex: none;
-  width: 6px;
-  height: 6px;
+  width: 5.5px;
+  height: 5.5px;
   border-radius: 999px;
   background: #717783;
-  box-shadow: 0 0 0 3px rgba(113, 119, 131, .055);
+  box-shadow: 0 0 0 3px rgba(113, 119, 131, .045);
 }
 
-.thread-state-dot.ready { background: #76b092; box-shadow: 0 0 0 3px rgba(118, 176, 146, .07); }
-.thread-state-dot.working { background: #aaa0ff; box-shadow: 0 0 0 3px rgba(139, 124, 246, .085), 0 0 12px rgba(139, 124, 246, .22); animation: header-state-breathe 1.8s ease-in-out infinite; }
-.thread-state-dot.approval { background: #d9ae6e; box-shadow: 0 0 0 3px rgba(217, 174, 110, .075); }
-.thread-state-dot.connecting { background: #98a0b2; box-shadow: 0 0 0 3px rgba(152, 160, 178, .07); animation: header-state-breathe 1.8s ease-in-out infinite; }
+.thread-state-dot.ready { background: #77b394; box-shadow: 0 0 0 3px rgba(118, 176, 146, .06); }
+.thread-state-dot.working { background: #aaa0ff; box-shadow: 0 0 0 3px rgba(139, 124, 246, .075), 0 0 10px rgba(139, 124, 246, .18); animation: header-state-breathe 1.8s ease-in-out infinite; }
+.thread-state-dot.approval { background: #d9ae6e; box-shadow: 0 0 0 3px rgba(217, 174, 110, .065); }
+.thread-state-dot.connecting { background: #98a0b2; box-shadow: 0 0 0 3px rgba(152, 160, 178, .06); animation: header-state-breathe 1.8s ease-in-out infinite; }
 .thread-state-dot.archived { background: #777d87; }
 
 .workspace-path-button {
   position: relative;
   min-width: 0;
-  max-width: min(660px, 53vw);
-  height: 22px;
-  margin-left: -2px;
+  max-width: min(680px, 54vw);
+  height: 21px;
+  margin-left: -1px;
   padding: 0 7px 0 6px;
-  border: 1px solid rgba(255, 255, 255, .035);
-  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, .032);
+  border-radius: 7px;
   display: inline-flex;
   align-items: center;
   justify-self: start;
   gap: 6px;
-  background:
-    linear-gradient(180deg, rgba(255,255,255,.020), rgba(255,255,255,.008)),
-    rgba(13, 15, 19, .34);
+  background: rgba(255, 255, 255, .014);
   color: #747c89;
   cursor: pointer;
   text-align: left;
-  box-shadow: inset 0 1px rgba(255,255,255,.014);
+  box-shadow: none;
   transition:
     color 130ms ease,
     background 130ms ease,
     border-color 130ms ease,
-    transform 130ms ease,
-    box-shadow 130ms ease;
+    transform 130ms ease;
 }
 
 .workspace-path-button:not(:disabled):hover {
   color: #aeb5c0;
-  background:
-    linear-gradient(180deg, rgba(255,255,255,.032), rgba(255,255,255,.012)),
-    rgba(18, 20, 26, .56);
-  border-color: rgba(139, 124, 246, .13);
-  box-shadow:
-    inset 0 1px rgba(255,255,255,.024),
-    0 0 0 1px rgba(139,124,246,.026);
+  background: rgba(255, 255, 255, .026);
+  border-color: rgba(139, 124, 246, .12);
 }
 
 .workspace-path-button:not(:disabled):active {
@@ -190,22 +172,24 @@
 
 .workspace-path-button:disabled {
   cursor: default;
-  opacity: .78;
+  opacity: .76;
 }
 
 .workspace-path-button > svg {
   flex: none;
-  color: #707887;
+  width: 12px;
+  height: 12px;
+  color: #77808e;
   transform: translateY(.2px);
 }
 
 .workspace-leaf {
   flex: none;
-  color: #9ca3af;
-  font-size: 11px;
+  color: #a3aab5;
+  font-size: 10.8px;
   line-height: 1;
-  font-weight: 630;
-  letter-spacing: -.003em;
+  font-weight: 650;
+  letter-spacing: -.004em;
 }
 
 .workspace-full-path {
@@ -213,11 +197,11 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #68707d;
-  font-size: 10.5px;
+  color: #626b78;
+  font-size: 10.2px;
   line-height: 1;
   font-weight: 500;
-  letter-spacing: -.006em;
+  letter-spacing: -.008em;
 }
 
 .workspace-full-path::before {
@@ -227,7 +211,7 @@
   height: 3px;
   margin: 0 7px 2px 1px;
   border-radius: 50%;
-  background: #46505c;
+  background: #424a55;
 }
 
 .workspace-copy-icon {
@@ -269,10 +253,10 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  border: 1px solid rgba(255, 255, 255, .055);
+  border: 1px solid rgba(255, 255, 255, .052);
   border-radius: 7px;
-  background: rgba(22, 24, 30, .72);
-  box-shadow: inset 0 1px rgba(255, 255, 255, .018);
+  background: rgba(22, 24, 30, .62);
+  box-shadow: inset 0 1px rgba(255, 255, 255, .015);
   color: #858d99;
   font-size: 10px;
   line-height: 1;
@@ -287,24 +271,24 @@
 .thread-status-chip.ready {
   color: #91b9a4;
   border-color: rgba(118, 176, 146, .1);
-  background: rgba(69, 108, 86, .08);
+  background: rgba(69, 108, 86, .07);
 }
 
 .thread-status-chip.working {
   color: #c0baf7;
   border-color: rgba(139, 124, 246, .13);
-  background: rgba(139, 124, 246, .065);
+  background: rgba(139, 124, 246, .058);
 }
 
 .thread-status-chip.approval {
   color: #d9b77f;
   border-color: rgba(217, 174, 110, .13);
-  background: rgba(123, 88, 41, .08);
+  background: rgba(123, 88, 41, .07);
 }
 
 .thread-status-chip.archived {
   color: #9299a5;
-  background: rgba(255, 255, 255, .025);
+  background: rgba(255, 255, 255, .022);
 }
 
 .thread-status-chip.connecting { color: #9aa0ad; }
@@ -347,15 +331,15 @@
 
 .thread-meta-chip:hover {
   color: #aeb4be;
-  border-color: rgba(255, 255, 255, .08);
-  background: rgba(26, 28, 35, .88);
+  border-color: rgba(255, 255, 255, .075);
+  background: rgba(26, 28, 35, .76);
 }
 
 .thread-header-divider {
   width: 1px;
   height: 19px;
   margin: 0 1px;
-  background: linear-gradient(180deg, transparent, rgba(255, 255, 255, .09), transparent);
+  background: linear-gradient(180deg, transparent, rgba(255, 255, 255, .085), transparent);
 }
 
 .thread-header-icon-button {
@@ -375,13 +359,13 @@
 
 .thread-header-icon-button:hover {
   color: #d0d4dc;
-  background: rgba(255, 255, 255, .045);
-  border-color: rgba(255, 255, 255, .04);
+  background: rgba(255, 255, 255, .042);
+  border-color: rgba(255, 255, 255, .038);
 }
 
 .thread-header-icon-button.active {
   color: #ada5ef;
-  background: rgba(139, 124, 246, .065);
+  background: rgba(139, 124, 246, .06);
   border-color: rgba(139, 124, 246, .1);
 }
 
@@ -407,10 +391,10 @@
 @media (max-width: 760px) {
   .workspace { grid-template-rows: 64px minmax(0, 1fr) auto; }
   .thread-header.polished-thread-header { height: 64px; gap: 10px; padding-left: 14px; }
-  .thread-header-mark { width: 34px; height: 34px; border-radius: 11px; }
-  .thread-header-copy { gap: 5px; }
+  .thread-header-mark { width: 32px; height: 32px; border-radius: 10px; }
+  .thread-header-copy { gap: 4px; }
   .thread-title-line strong { max-width: 44vw; font-size: 13.5px; line-height: 18px; }
-  .workspace-path-button { height: 21px; max-width: 235px; }
+  .workspace-path-button { height: 20px; max-width: 235px; }
   .workspace-leaf { font-size: 10.5px; }
   .thread-status-chip { display: none; }
   .thread-header-divider { display: none; }
