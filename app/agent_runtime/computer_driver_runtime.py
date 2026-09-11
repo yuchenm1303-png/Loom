@@ -19,10 +19,15 @@ _SENSITIVE_DRIVER_KEYS = {
     "instruction",
     "keys",
     "message",
+    "preview",
     "prompt",
+    "raw",
     "request",
+    "response",
+    "stderr_tail",
     "task",
     "text",
+    "traceback",
 }
 
 
@@ -243,22 +248,24 @@ class ComputerDriverRuntime(ComputerUseRuntime):
             }
             base = {
                 "call_id": call_id,
-                "tool": "computer_action",
+                "tool": "computer_driver_action",
                 "arguments": arguments,
                 "nested": True,
                 "parent_call_id": event.task_id,
                 "driver": "ufo2-sidecar",
+                "hud_continuous": True,
             }
             context.emit(AgentEventKind.TOOL_REQUESTED, base)
             context.emit(
                 AgentEventKind.TOOL_STARTED,
                 {
                     "call_id": call_id,
-                    "tool": "computer_action",
+                    "tool": "computer_driver_action",
                     "arguments": arguments,
                     "nested": True,
                     "parent_call_id": event.task_id,
                     "driver": "ufo2-sidecar",
+                    "hud_continuous": True,
                 },
             )
             return
@@ -271,9 +278,11 @@ class ComputerDriverRuntime(ComputerUseRuntime):
                 AgentEventKind.TOOL_COMPLETED if ok else AgentEventKind.TOOL_FAILED,
                 {
                     "call_id": call_id,
-                    "tool": "computer_action",
+                    "tool": "computer_driver_action",
                     "nested": True,
                     "parent_call_id": event.task_id,
+                    "driver": "ufo2-sidecar",
+                    "hud_continuous": True,
                     "ok": ok,
                     "content": "driver action completed" if ok else "driver action failed",
                     "data": {
