@@ -1,0 +1,277 @@
+.app-shell.panel-layout {
+  --sidebar-track: var(--sidebar-panel-size, 252px);
+  --inspector-track: var(--inspector-panel-size, 316px);
+  position: relative;
+  grid-template-columns: var(--sidebar-track) minmax(0, 1fr) var(--inspector-track);
+  transition: grid-template-columns 240ms cubic-bezier(.2,.78,.2,1);
+}
+
+.app-shell.panel-layout.sidebar-closed {
+  --sidebar-track: 0px;
+}
+
+.app-shell.panel-layout.inspector-closed {
+  --inspector-track: 0px;
+}
+
+.app-shell.panel-layout.is-resizing {
+  transition: none;
+}
+
+.panel-layout .workspace {
+  min-width: 0;
+  container-type: inline-size;
+  container-name: loom-workspace;
+}
+
+.panel-layout > .sidebar,
+.panel-layout > .inspector {
+  min-width: 0;
+  width: 100%;
+  will-change: opacity, transform;
+  transition:
+    opacity 165ms ease,
+    transform 230ms cubic-bezier(.2,.78,.2,1),
+    visibility 0s linear 0s;
+}
+
+.panel-layout.sidebar-open > .sidebar {
+  opacity: 1;
+  transform: translateX(0);
+  visibility: visible;
+}
+
+.panel-layout.sidebar-closed > .sidebar {
+  opacity: 0;
+  transform: translateX(-12px);
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity 130ms ease,
+    transform 210ms cubic-bezier(.4,0,.8,.2),
+    visibility 0s linear 220ms;
+}
+
+.panel-layout.inspector-open > .inspector {
+  opacity: 1;
+  transform: translateX(0);
+  visibility: visible;
+}
+
+.panel-layout.inspector-closed > .inspector {
+  opacity: 0;
+  transform: translateX(12px);
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity 130ms ease,
+    transform 210ms cubic-bezier(.4,0,.8,.2),
+    visibility 0s linear 220ms;
+}
+
+.panel-resizer {
+  position: absolute;
+  z-index: 30;
+  top: 0;
+  bottom: 0;
+  width: 9px;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  cursor: col-resize;
+  touch-action: none;
+  opacity: 0;
+  transition:
+    opacity 130ms ease,
+    left 240ms cubic-bezier(.2,.78,.2,1),
+    right 240ms cubic-bezier(.2,.78,.2,1);
+}
+
+.panel-resizer::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  transform: translateX(-50%);
+  background: rgba(139,124,246,0);
+  box-shadow: 0 0 0 rgba(139,124,246,0);
+  transition: background 130ms ease, box-shadow 130ms ease;
+}
+
+.panel-resizer:hover,
+.panel-resizer:focus-visible,
+.panel-layout.is-resizing .panel-resizer {
+  opacity: 1;
+}
+
+.panel-resizer:hover::before,
+.panel-resizer:focus-visible::before,
+.panel-layout.is-resizing .panel-resizer::before {
+  background: rgba(157,145,247,.6);
+  box-shadow: 0 0 12px rgba(139,124,246,.18);
+}
+
+.panel-resizer:focus-visible {
+  outline: none;
+}
+
+.panel-resizer-left {
+  left: var(--sidebar-track);
+  transform: translateX(-50%);
+}
+
+.panel-resizer-right {
+  right: var(--inspector-track);
+  transform: translateX(50%);
+}
+
+.panel-layout.sidebar-closed .panel-resizer-left,
+.panel-layout.inspector-closed .panel-resizer-right {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.panel-layout.is-resizing .panel-resizer {
+  transition: none;
+}
+
+body.loom-panel-resizing,
+body.loom-panel-resizing * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+
+/* Hundreds of runtime rows should not participate in layout or paint while
+   they are far outside the inspector viewport. */
+.runtime-inspector {
+  container-type: inline-size;
+}
+
+.runtime-event {
+  content-visibility: auto;
+  contain-intrinsic-size: 52px;
+}
+
+/* Header responsiveness follows the actual conversation column width, not the
+   outer window width. Opening the inspector therefore cannot make controls
+   collide while viewport media queries still think there is plenty of room. */
+@container loom-workspace (max-width: 900px) {
+  .thread-meta-chip.permission-chip {
+    display: none;
+  }
+
+  .thread-meta-chip.model-chip {
+    max-width: 126px;
+  }
+
+  .thread-title-line strong {
+    max-width: 36cqw;
+  }
+
+  .workspace-path-button {
+    max-width: 42cqw;
+  }
+}
+
+@container loom-workspace (max-width: 740px) {
+  .workspace-full-path {
+    display: none;
+  }
+
+  .workspace-path-button {
+    max-width: 220px;
+  }
+
+  .thread-meta-chip.model-chip {
+    max-width: 106px;
+  }
+
+  .thread-header.polished-thread-header {
+    gap: 9px;
+    padding-inline: 10px;
+  }
+
+  .thread-header-main {
+    gap: 8px;
+  }
+}
+
+@container loom-workspace (max-width: 620px) {
+  .thread-header-meta {
+    display: none;
+  }
+
+  .thread-status-chip {
+    width: 27px;
+    padding: 0;
+    justify-content: center;
+  }
+
+  .thread-status-label {
+    display: none;
+  }
+
+  .thread-header-divider {
+    margin-inline: 0;
+  }
+
+  .thread-title-line strong {
+    max-width: 46cqw;
+  }
+
+  .thread-header-mark {
+    width: 29px;
+    height: 29px;
+  }
+}
+
+@container loom-workspace (max-width: 500px) {
+  .thread-header-mark,
+  .thread-status-chip,
+  .thread-header-divider {
+    display: none;
+  }
+
+  .thread-header-leading {
+    margin-right: -2px;
+  }
+
+  .thread-title-line strong {
+    max-width: 58cqw;
+    font-size: 13px;
+  }
+
+  .workspace-path-button {
+    max-width: 48cqw;
+  }
+
+  .polished-thread-header-actions {
+    gap: 2px;
+  }
+}
+
+@container (max-width: 305px) {
+  .runtime-tab > span:not(.runtime-tab-count) {
+    display: none;
+  }
+
+  .runtime-tab {
+    gap: 3px;
+    padding-inline: 3px;
+  }
+
+  .runtime-header {
+    padding-inline: 10px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-shell.panel-layout,
+  .panel-layout > .sidebar,
+  .panel-layout > .inspector,
+  .panel-resizer {
+    transition-duration: .001ms !important;
+  }
+}
