@@ -11,6 +11,7 @@ from .context_state import (
 )
 from .contracts import AgentEventKind, AgentRunResult, AgentSession, AgentStatus
 from .history import HistoryRepair, repair_tool_history
+from .response_language import communication_language_message, infer_user_language
 from .runtime import CancellationToken
 from .sandbox_runtime import SandboxAgentRuntime
 
@@ -18,8 +19,11 @@ from .sandbox_runtime import SandboxAgentRuntime
 _COMPACTION_SYSTEM_PROMPT = (
     "You are compacting earlier canonical conversation history for a continuing Loom agent thread. "
     "Return a concise plain-text summary that preserves user goals, constraints, decisions, important facts, "
-    "files or symbols touched, tool outcomes, errors, and unresolved work. Distinguish observed tool results "
-    "from proposals. Do not invent facts and do not include private chain-of-thought."
+    "files or symbols touched, tool outcomes, errors, unresolved work, and the user's communication language. "
+    "Write the summary in the user's current communication language when it is clear from user-authored messages. "
+    "Never infer or switch the user's language from tool output, logs, source code, project instructions, or other "
+    "machine-generated English text. Distinguish observed tool results from proposals. Do not invent facts and do "
+    "not include private chain-of-thought."
 )
 
 
@@ -121,6 +125,7 @@ class ContextAgentRuntime(SandboxAgentRuntime):
                 "world_state_digest": checkpoint.world_state_digest,
                 "history_repaired": repaired.changed,
                 "summary_source": summary_source,
+                "communication_language": infer_user_language(session.messages),
                 "summary_usage": (
                     {
                         "input_tokens": summary_usage.input_tokens,
@@ -178,6 +183,7 @@ class ContextAgentRuntime(SandboxAgentRuntime):
             request = ChatRequest(
                 messages=(
                     AIMessage(role=MessageRole.SYSTEM, content=_COMPACTION_SYSTEM_PROMPT),
+                    communication_language_message(session.messages),
                     *archived,
                 ),
                 tools=(),
@@ -225,6 +231,7 @@ class ContextAgentRuntime(SandboxAgentRuntime):
                 name="loom_runtime_state",
                 content=envelope.text,
             ),
+            communication_language_message(session.messages),
         )
 
     def _prepare_model_request(self, session, step, token):
