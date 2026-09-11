@@ -13,7 +13,7 @@ import {
   Type,
   type LucideIcon,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import {
   DEFAULT_SHORTCUTS,
   findShortcutConflict,
@@ -96,7 +96,7 @@ export function KeyboardShortcutsSettings({
     setError("");
   };
 
-  const handleRecord = async (event: React.KeyboardEvent<HTMLButtonElement>, command: ShortcutCommand) => {
+  const handleRecord = async (event: ReactKeyboardEvent<HTMLButtonElement>, command: ShortcutCommand) => {
     if (recording !== command.id) return;
     event.preventDefault();
     event.stopPropagation();
