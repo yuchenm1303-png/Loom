@@ -10,6 +10,14 @@ export type ShortcutCommandId =
 
 export type ShortcutSettings = Record<ShortcutCommandId, string>;
 
+type KeyboardLikeEvent = {
+  key: string;
+  ctrlKey: boolean;
+  altKey: boolean;
+  shiftKey: boolean;
+  metaKey: boolean;
+};
+
 export const DEFAULT_SHORTCUTS: ShortcutSettings = {
   newConversation: "Ctrl+N",
   searchConversations: "Ctrl+K",
@@ -85,7 +93,7 @@ export function formatShortcut(value: string): string {
   return normalized ? normalized.split("+").join(" + ") : "Unassigned";
 }
 
-export function shortcutFromKeyboardEvent(event: KeyboardEvent | React.KeyboardEvent): string {
+export function shortcutFromKeyboardEvent(event: KeyboardLikeEvent): string {
   const modifiers: string[] = [];
   if (event.ctrlKey) modifiers.push("Ctrl");
   if (event.altKey) modifiers.push("Alt");
