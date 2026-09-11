@@ -5,23 +5,14 @@ const EXTENSION_VERSION = chrome.runtime.getManifest().version;
 const CLIENT_ID_KEY = "loomBrowserBridgeClientId";
 
 let polling = false;
-let stopped = false;
-let lastElementsByTab = new Map();
+const lastElementsByTab = new Map();
 
-function delay(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function randomId() {
-  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
-  return `loom-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const randomId = () => globalThis.crypto?.randomUUID?.() || `loom-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
 async function getClientId() {
   const stored = await chrome.storage.local.get(CLIENT_ID_KEY);
-  if (typeof stored[CLIENT_ID_KEY] === "string" && stored[CLIENT_ID_KEY]) {
-    return stored[CLIENT_ID_KEY];
-  }
+  if (typeof stored[CLIENT_ID_KEY] === "string" && stored[CLIENT_ID_KEY]) return stored[CLIENT_ID_KEY];
   const next = randomId();
   await chrome.storage.local.set({ [CLIENT_ID_KEY]: next });
   return next;
@@ -39,17 +30,18 @@ async function bridgeFetch(path, options = {}) {
   const config = await getConfig();
   const headers = new Headers(options.headers || {});
   headers.set("X-Loom-Token", config.token);
-  if (options.body && !headers.has("Content-Type")) {
-    headers.set("Content-Type", "application/json");
-  }
+  if (options.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
   return fetch(`${config.bridgeUrl}${path}`, { ...options, headers });
 }
 
 async function register() {
-  const clientId = await getClientId();
   await bridgeFetch("/browser-extension/v1/register", {
     method: "POST",
-    body: JSON.stringify({ client_id: clientId, version: EXTENSION_VERSION, protocol_version: PROTOCOL_VERSION }),
+    body: JSON.stringify({
+      client_id: await getClientId(),
+      version: EXTENSION_VERSION,
+      protocol_version: PROTOCOL_VERSION,
+    }),
   });
 }
 
@@ -57,9 +49,7 @@ async function pollOnce() {
   const clientId = encodeURIComponent(await getClientId());
   const version = encodeURIComponent(EXTENSION_VERSION);
   const response = await bridgeFetch(`/browser-extension/v1/poll?client_id=${clientId}&version=${version}`);
-  if (!response.ok) {
-    throw new Error(`poll failed: HTTP ${response.status}`);
-  }
+  if (!response.ok) throw new Error(`poll failed: HTTP ${response.status}`);
   const payload = await response.json();
   if (!payload.command) return;
   const command = payload.command;
@@ -81,73 +71,63 @@ async function pollOnce() {
 async function startPolling() {
   if (polling) return;
   polling = true;
-  stopped = false;
   let backoff = 500;
-  while (!stopped) {
+  for (;;) {
     try {
       await register();
       await pollOnce();
       backoff = 500;
     } catch (cause) {
       console.warn("[loom-browser-bridge]", cause);
-      await delay(backoff);
-      backoff = Math.min(backoff * 1.6, 10000);
+      await sleep(backoff);
+      backoff = Math.min(Math.round(backoff * 1.6), 10000);
     }
   }
-  polling = false;
 }
 
-function activeTabQuery() {
+function queryActiveTab() {
   return new Promise((resolve, reject) => {
     chrome.tabs.query({ active: true, lastFocusedWindow: true }, (tabs) => {
       const error = chrome.runtime.lastError;
-      if (error) {
-        reject(new Error(error.message));
-        return;
-      }
-      if (tabs && tabs.length) {
-        resolve(tabs[0]);
-        return;
-      }
+      if (error) return reject(new Error(error.message));
+      if (tabs?.length) return resolve(tabs[0]);
       chrome.tabs.query({ active: true, currentWindow: true }, (fallback) => {
         const fallbackError = chrome.runtime.lastError;
         if (fallbackError) reject(new Error(fallbackError.message));
-        else if (fallback && fallback.length) resolve(fallback[0]);
+        else if (fallback?.length) resolve(fallback[0]);
         else reject(new Error("No active browser tab is available"));
       });
     });
   });
 }
 
-async function getActiveTab() {
-  const tab = await activeTabQuery();
+async function tabFromArgs(args = {}) {
+  const raw = String(args.tab_id || "").trim();
+  if (raw) {
+    const tabId = Number.parseInt(raw, 10);
+    if (!Number.isInteger(tabId)) throw new Error("tab_id must be numeric for the extension backend");
+    return chrome.tabs.get(tabId);
+  }
+  const tab = await queryActiveTab();
   if (!tab || typeof tab.id !== "number") throw new Error("Active browser tab has no tab id");
   return tab;
 }
 
-async function allTabs() {
-  const active = await activeTabQuery().catch(() => null);
-  const tabs = await chrome.tabs.query({ currentWindow: true });
-  return tabs.map((tab) => ({
-    tab_id: String(tab.id ?? ""),
-    url: tab.url || "",
-    title: tab.title || "",
-    active: Boolean(active && tab.id === active.id),
+async function tabsForWindow(tab) {
+  const tabs = await chrome.tabs.query(typeof tab.windowId === "number" ? { windowId: tab.windowId } : { currentWindow: true });
+  return tabs.map((item) => ({
+    tab_id: String(item.id ?? ""),
+    url: item.url || "",
+    title: item.title || "",
+    active: item.id === tab.id,
   }));
 }
 
-async function injectFunction(tabId, func, args = []) {
-  const results = await chrome.scripting.executeScript({
-    target: { tabId },
-    func,
-    args,
-  });
-  if (!results || !results.length) return {};
-  return results[0].result || {};
-}
+const isInjectableUrl = (url) => /^https?:\/\//i.test(String(url || ""));
 
-function isInjectableUrl(url) {
-  return /^https?:\/\//i.test(String(url || ""));
+async function inject(tabId, func, args = []) {
+  const results = await chrome.scripting.executeScript({ target: { tabId }, func, args });
+  return results?.[0]?.result || {};
 }
 
 async function collectStateForTab(tab) {
@@ -155,7 +135,7 @@ async function collectStateForTab(tab) {
     url: tab.url || "about:blank",
     title: tab.title || "",
     dom: "",
-    tabs: await allTabs(),
+    tabs: await tabsForWindow(tab),
     page_info: {
       extension_version: EXTENSION_VERSION,
       tab_id: String(tab.id),
@@ -168,7 +148,7 @@ async function collectStateForTab(tab) {
     return base;
   }
   try {
-    const page = await injectFunction(tab.id, collectPageState);
+    const page = await inject(tab.id, collectPageState);
     lastElementsByTab.set(tab.id, Array.isArray(page.elements) ? page.elements : []);
     return {
       ...base,
@@ -179,27 +159,27 @@ async function collectStateForTab(tab) {
       errors: Array.isArray(page.errors) ? page.errors : [],
     };
   } catch (cause) {
-    return {
-      ...base,
-      errors: [cause instanceof Error ? cause.message : String(cause)],
-    };
+    return { ...base, errors: [cause instanceof Error ? cause.message : String(cause)] };
   }
 }
 
-async function state() {
-  return collectStateForTab(await getActiveTab());
+function elementRefFor(tabId, index) {
+  const item = (lastElementsByTab.get(tabId) || [])[Number(index)];
+  if (!item?.loom_id) throw new Error("Element index is not available. Refresh browser_state and retry.");
+  return item.loom_id;
+}
+
+async function afterTabAction(tab, waitMs = 200) {
+  await sleep(waitMs);
+  return collectStateForTab(await chrome.tabs.get(tab.id));
 }
 
 async function navigate(args) {
   const url = String(args.url || "");
   if (!url) throw new Error("url is required");
-  let tab;
-  if (args.new_tab) {
-    tab = await chrome.tabs.create({ url, active: true });
-  } else {
-    const active = await getActiveTab();
-    tab = await chrome.tabs.update(active.id, { url, active: true });
-  }
+  const tab = args.new_tab
+    ? await chrome.tabs.create({ url, active: true })
+    : await chrome.tabs.update((await tabFromArgs(args)).id, { url, active: true });
   await waitForTabComplete(tab.id);
   return collectStateForTab(await chrome.tabs.get(tab.id));
 }
@@ -209,123 +189,100 @@ async function waitForTabComplete(tabId) {
   while (Date.now() - started < 15000) {
     const tab = await chrome.tabs.get(tabId);
     if (tab.status === "complete") return;
-    await delay(250);
+    await sleep(250);
   }
 }
 
-function elementRefFor(tabId, index) {
-  const elements = lastElementsByTab.get(tabId) || [];
-  const item = elements[Number(index)];
-  if (!item || !item.loom_id) {
-    throw new Error("Element index is not available. Refresh browser_state and retry.");
-  }
-  return item.loom_id;
+async function withElement(args, action, waitMs = 200) {
+  const tab = await tabFromArgs(args);
+  const loomId = elementRefFor(tab.id, args.index);
+  await inject(tab.id, action, [loomId, args]);
+  return afterTabAction(tab, waitMs);
 }
 
 async function click(args) {
-  const tab = await getActiveTab();
-  const loomId = elementRefFor(tab.id, args.index);
-  await injectFunction(tab.id, clickElementByLoomId, [loomId]);
-  await delay(250);
-  return collectStateForTab(await chrome.tabs.get(tab.id));
+  return withElement(args, (loomId) => clickElementByLoomId(loomId), 250);
 }
 
 async function hover(args) {
-  const tab = await getActiveTab();
-  const loomId = elementRefFor(tab.id, args.index);
-  await injectFunction(tab.id, hoverElementByLoomId, [loomId]);
-  await delay(150);
-  return collectStateForTab(await chrome.tabs.get(tab.id));
+  return withElement(args, (loomId) => hoverElementByLoomId(loomId), 150);
 }
 
 async function typeText(args) {
-  const tab = await getActiveTab();
+  const tab = await tabFromArgs(args);
   const loomId = elementRefFor(tab.id, args.index);
-  await injectFunction(tab.id, typeElementByLoomId, [loomId, String(args.text || ""), args.clear !== false]);
-  await delay(200);
-  return collectStateForTab(await chrome.tabs.get(tab.id));
+  await inject(tab.id, typeElementByLoomId, [loomId, String(args.text || ""), args.clear !== false]);
+  return afterTabAction(tab, 200);
 }
 
 async function selectOption(args) {
-  const tab = await getActiveTab();
+  const tab = await tabFromArgs(args);
   const loomId = elementRefFor(tab.id, args.index);
-  await injectFunction(tab.id, selectElementByLoomId, [loomId, String(args.value || "")]);
-  await delay(200);
-  return collectStateForTab(await chrome.tabs.get(tab.id));
+  await inject(tab.id, selectElementByLoomId, [loomId, String(args.value || "")]);
+  return afterTabAction(tab, 200);
 }
 
 async function drag(args) {
-  const tab = await getActiveTab();
-  const source = elementRefFor(tab.id, args.source_index);
-  const target = elementRefFor(tab.id, args.target_index);
-  await injectFunction(tab.id, dragElementByLoomId, [source, target]);
-  await delay(250);
-  return collectStateForTab(await chrome.tabs.get(tab.id));
+  const tab = await tabFromArgs(args);
+  await inject(tab.id, dragElementByLoomId, [
+    elementRefFor(tab.id, args.source_index),
+    elementRefFor(tab.id, args.target_index),
+  ]);
+  return afterTabAction(tab, 250);
 }
 
 async function pressKey(args) {
-  const tab = await getActiveTab();
-  await injectFunction(tab.id, pressKeyInPage, [String(args.key || "")]);
-  await delay(150);
-  return collectStateForTab(await chrome.tabs.get(tab.id));
+  const tab = await tabFromArgs(args);
+  await inject(tab.id, pressKeyInPage, [String(args.key || "")]);
+  return afterTabAction(tab, 150);
 }
 
 async function scroll(args) {
-  const tab = await getActiveTab();
-  await injectFunction(tab.id, scrollPage, [String(args.direction || "down"), Number(args.amount || 700)]);
-  await delay(150);
-  return collectStateForTab(await chrome.tabs.get(tab.id));
+  const tab = await tabFromArgs(args);
+  await inject(tab.id, scrollPage, [String(args.direction || "down"), Number(args.amount || 700)]);
+  return afterTabAction(tab, 150);
 }
 
-async function goBack() {
-  const tab = await getActiveTab();
-  if (isInjectableUrl(tab.url || "")) {
-    await injectFunction(tab.id, () => { history.back(); return true; });
-  } else {
-    await chrome.tabs.goBack(tab.id);
-  }
-  await delay(500);
-  return collectStateForTab(await chrome.tabs.get(tab.id));
+async function goBack(args) {
+  const tab = await tabFromArgs(args);
+  if (!isInjectableUrl(tab.url || "")) throw new Error("Cannot go back from a privileged browser page");
+  await inject(tab.id, () => { history.back(); return true; });
+  return afterTabAction(tab, 500);
 }
 
-async function refresh() {
-  const tab = await getActiveTab();
+async function refresh(args) {
+  const tab = await tabFromArgs(args);
   await chrome.tabs.reload(tab.id);
   await waitForTabComplete(tab.id);
   return collectStateForTab(await chrome.tabs.get(tab.id));
-}
-
-async function tabsState() {
-  return collectStateForTab(await getActiveTab());
 }
 
 async function switchTab(args) {
   const tabId = Number.parseInt(String(args.tab_id || ""), 10);
   if (!Number.isInteger(tabId)) throw new Error("tab_id must be numeric for the extension backend");
   await chrome.tabs.update(tabId, { active: true });
-  const tab = await chrome.tabs.get(tabId);
-  return collectStateForTab(tab);
+  return collectStateForTab(await chrome.tabs.get(tabId));
 }
 
 async function closeTab(args) {
   const tabId = Number.parseInt(String(args.tab_id || ""), 10);
   if (!Number.isInteger(tabId)) throw new Error("tab_id must be numeric for the extension backend");
   await chrome.tabs.remove(tabId);
-  return collectStateForTab(await getActiveTab());
+  return collectStateForTab(await tabFromArgs({}));
 }
 
 async function screenshot(args) {
-  const tab = await getActiveTab();
+  const tab = await tabFromArgs(args);
   const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "png" });
-  const prefix = "base64,";
-  const index = dataUrl.indexOf(prefix);
-  if (index < 0) throw new Error("captureVisibleTab did not return base64 PNG data");
-  return { png_base64: dataUrl.slice(index + prefix.length), full_page: false };
+  const marker = "base64,";
+  const offset = dataUrl.indexOf(marker);
+  if (offset < 0) throw new Error("captureVisibleTab did not return base64 PNG data");
+  return { png_base64: dataUrl.slice(offset + marker.length), full_page: false };
 }
 
 async function dispatchCommand(action, args) {
   switch (action) {
-    case "state": return state();
+    case "state": return collectStateForTab(await tabFromArgs(args));
     case "navigate": return navigate(args);
     case "click": return click(args);
     case "hover": return hover(args);
@@ -334,9 +291,9 @@ async function dispatchCommand(action, args) {
     case "drag": return drag(args);
     case "press_key": return pressKey(args);
     case "scroll": return scroll(args);
-    case "go_back": return goBack();
-    case "refresh": return refresh();
-    case "tabs": return tabsState();
+    case "go_back": return goBack(args);
+    case "refresh": return refresh(args);
+    case "tabs": return collectStateForTab(await tabFromArgs(args));
     case "switch_tab": return switchTab(args);
     case "close_tab": return closeTab(args);
     case "screenshot": return screenshot(args);
@@ -362,55 +319,34 @@ function collectPageState() {
     const role = (el.getAttribute("role") || "").toLowerCase();
     if (["a", "button", "input", "textarea", "select", "summary"].includes(tag)) return true;
     if (["button", "link", "menuitem", "option", "tab", "checkbox", "radio", "switch", "textbox"].includes(role)) return true;
-    if (el.isContentEditable) return true;
-    if (typeof el.onclick === "function") return true;
+    if (el.isContentEditable || typeof el.onclick === "function") return true;
     const tabindex = el.getAttribute("tabindex");
     return tabindex !== null && tabindex !== "-1";
   }
 
-  function ensureId(el) {
-    if (!el.dataset.loomBridgeId) {
-      el.dataset.loomBridgeId = crypto.randomUUID ? crypto.randomUUID() : `loom-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    }
+  const clean = (value, limit = 160) => String(value || "").replace(/\s+/g, " ").trim().slice(0, limit);
+  const ensureId = (el) => {
+    if (!el.dataset.loomBridgeId) el.dataset.loomBridgeId = crypto.randomUUID ? crypto.randomUUID() : `loom-${Date.now()}-${Math.random().toString(16).slice(2)}`;
     return el.dataset.loomBridgeId;
-  }
+  };
 
-  function clean(value, limit = 160) {
-    return String(value || "").replace(/\s+/g, " ").trim().slice(0, limit);
-  }
-
-  function elementLine(item) {
-    const attrs = [];
-    if (item.text) attrs.push(`text="${item.text}"`);
-    if (item.aria) attrs.push(`aria="${item.aria}"`);
-    if (item.placeholder) attrs.push(`placeholder="${item.placeholder}"`);
-    if (item.type) attrs.push(`type="${item.type}"`);
-    if (item.value) attrs.push(`value="${item.value}"`);
-    attrs.push(`rect=${item.rect.x},${item.rect.y},${item.rect.width}x${item.rect.height}`);
-    return `[${item.index}] <${item.tag}> ${attrs.join(" ")}`;
-  }
-
-  let elements = [];
+  const elements = [];
   try {
-    const candidates = Array.from(document.querySelectorAll("a,button,input,textarea,select,summary,[role],[tabindex],[contenteditable='true']"));
-    for (const el of candidates) {
+    for (const el of Array.from(document.querySelectorAll("a,button,input,textarea,select,summary,[role],[tabindex],[contenteditable='true']"))) {
       if (!(el instanceof HTMLElement) || !isCandidate(el) || !visible(el)) continue;
       const rect = el.getBoundingClientRect();
+      const tag = el.tagName.toLowerCase();
+      const type = clean(el.getAttribute("type") || "");
       const item = {
         index: elements.length,
         loom_id: ensureId(el),
-        tag: el.tagName.toLowerCase(),
+        tag,
         text: clean(el.innerText || el.textContent || el.getAttribute("title") || ""),
         aria: clean(el.getAttribute("aria-label") || el.getAttribute("alt") || ""),
         placeholder: clean(el.getAttribute("placeholder") || ""),
-        type: clean(el.getAttribute("type") || ""),
-        value: clean(["input", "textarea", "select"].includes(el.tagName.toLowerCase()) ? el.value : ""),
-        rect: {
-          x: Math.round(rect.left),
-          y: Math.round(rect.top),
-          width: Math.round(rect.width),
-          height: Math.round(rect.height),
-        },
+        type,
+        value: clean(["input", "textarea", "select"].includes(tag) && type !== "password" ? el.value : ""),
+        rect: { x: Math.round(rect.left), y: Math.round(rect.top), width: Math.round(rect.width), height: Math.round(rect.height) },
       };
       elements.push(item);
       if (elements.length >= MAX_ELEMENTS) break;
@@ -419,23 +355,31 @@ function collectPageState() {
     errors.push(cause instanceof Error ? cause.message : String(cause));
   }
 
-  const pageText = clean(document.body?.innerText || "", MAX_TEXT);
-  const lines = [
-    `URL: ${location.href}`,
-    `Title: ${document.title}`,
-    `Viewport: ${window.innerWidth}x${window.innerHeight} scroll=${Math.round(window.scrollX)},${Math.round(window.scrollY)}`,
-    "",
-    "Interactive elements:",
-    ...elements.map(elementLine),
-    "",
-    "Visible page text:",
-    pageText,
-  ];
+  const elementLines = elements.map((item) => {
+    const attrs = [];
+    if (item.text) attrs.push(`text="${item.text}"`);
+    if (item.aria) attrs.push(`aria="${item.aria}"`);
+    if (item.placeholder) attrs.push(`placeholder="${item.placeholder}"`);
+    if (item.type) attrs.push(`type="${item.type}"`);
+    if (item.value) attrs.push(`value="${item.value}"`);
+    attrs.push(`rect=${item.rect.x},${item.rect.y},${item.rect.width}x${item.rect.height}`);
+    return `[${item.index}] <${item.tag}> ${attrs.join(" ")}`;
+  });
 
   return {
     url: location.href,
     title: document.title,
-    dom: lines.join("\n"),
+    dom: [
+      `URL: ${location.href}`,
+      `Title: ${document.title}`,
+      `Viewport: ${window.innerWidth}x${window.innerHeight} scroll=${Math.round(window.scrollX)},${Math.round(window.scrollY)}`,
+      "",
+      "Interactive elements:",
+      ...elementLines,
+      "",
+      "Visible page text:",
+      clean(document.body?.innerText || "", MAX_TEXT),
+    ].join("\n"),
     elements,
     page_info: {
       element_count: elements.length,
@@ -451,7 +395,7 @@ function collectPageState() {
 function targetById(loomId) {
   const el = document.querySelector(`[data-loom-bridge-id="${CSS.escape(loomId)}"]`);
   if (!(el instanceof HTMLElement)) throw new Error("Element is no longer available. Refresh browser_state and retry.");
-  el.scrollIntoView({ block: "center", inline: "center", behavior: "instant" });
+  el.scrollIntoView({ block: "center", inline: "center", behavior: "auto" });
   return el;
 }
 
@@ -513,9 +457,8 @@ function dragElementByLoomId(sourceId, targetId) {
 
 function pressKeyInPage(key) {
   const active = document.activeElement instanceof HTMLElement ? document.activeElement : document.body;
-  const normalized = String(key || "");
-  const parts = normalized.split("+").map((part) => part.trim()).filter(Boolean);
-  const main = parts.pop() || normalized;
+  const parts = String(key || "").split("+").map((part) => part.trim()).filter(Boolean);
+  const main = parts.pop() || String(key || "");
   const init = {
     key: main,
     code: main.length === 1 ? `Key${main.toUpperCase()}` : main,
@@ -535,7 +478,7 @@ function scrollPage(direction, amount) {
   const value = Math.max(1, Math.min(Number(amount || 700), 20000));
   const dx = direction === "left" ? -value : direction === "right" ? value : 0;
   const dy = direction === "up" ? -value : direction === "down" ? value : 0;
-  window.scrollBy({ left: dx, top: dy, behavior: "instant" });
+  window.scrollBy({ left: dx, top: dy, behavior: "auto" });
   return true;
 }
 
@@ -543,13 +486,6 @@ chrome.runtime.onInstalled.addListener(() => {
   chrome.storage.local.set({ bridgeUrl: DEFAULT_BRIDGE_URL, token: DEFAULT_TOKEN }).catch(() => {});
   startPolling().catch((cause) => console.warn("[loom-browser-bridge]", cause));
 });
-
-chrome.runtime.onStartup.addListener(() => {
-  startPolling().catch((cause) => console.warn("[loom-browser-bridge]", cause));
-});
-
-chrome.action.onClicked.addListener(() => {
-  startPolling().catch((cause) => console.warn("[loom-browser-bridge]", cause));
-});
-
+chrome.runtime.onStartup.addListener(() => startPolling().catch((cause) => console.warn("[loom-browser-bridge]", cause)));
+chrome.action.onClicked.addListener(() => startPolling().catch((cause) => console.warn("[loom-browser-bridge]", cause)));
 startPolling().catch((cause) => console.warn("[loom-browser-bridge]", cause));
