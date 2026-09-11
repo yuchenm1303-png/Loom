@@ -54,3 +54,32 @@ def test_single_runtime_binding_exposes_ram_only_connection_for_local_drivers():
         "vision": True,
     }
     assert "runtime-secret" not in repr(configuration)
+
+
+def test_hot_switched_openai_metadata_uses_effective_provider_base(monkeypatch):
+    import app.runtime_model_switch as model_switch
+
+    class FakePlatform:
+        pass
+
+    monkeypatch.setattr(
+        model_switch,
+        "build_ai_platform",
+        lambda *_args, **_kwargs: FakePlatform(),
+    )
+
+    platform = model_switch.build_runtime_model_platform(
+        provider="openai",
+        base_url="https://stale-compatible-endpoint.example/v1",
+        model="vision-model",
+        api_key="runtime-secret",
+        vision=True,
+    )
+    metadata = getattr(platform, "_loom_model_connection")
+
+    # The OpenAI adapter ignores custom baseUrl, so the local Computer Driver
+    # must not resurrect a stale settings value and route UFO somewhere else.
+    assert metadata["provider"] == "openai"
+    assert metadata["base_url"] == ""
+    assert metadata["model"] == "vision-model"
+    assert metadata["api_key"] == "runtime-secret"
