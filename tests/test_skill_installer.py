@@ -12,7 +12,8 @@ from app.agent_runtime.skill_bundle import (
     stage_skill_bundle,
 )
 from app.agent_runtime.skill_installer import SkillInstallError, SkillInstaller
-from app.agent_runtime.skills import SkillManager
+from app.agent_runtime.skills import SkillError, SkillManager
+from app.agent_runtime.tools import tool_capability_name
 from app.skill_dispatch import main as dispatch_main
 
 
@@ -115,12 +116,25 @@ def test_bundle_resources_can_be_read_and_staged_into_workspace(tmp_path: Path):
     skill = snapshot.get("bundle-demo")
     assert skill is not None
 
-    assert "reference.md" in list_skill_files(skill)
+    files = list_skill_files(skill)
+    assert "reference.md" in files
+    assert ".loom-skill.json" not in files
     assert read_skill_resource(skill, "reference.md") == "REFERENCE TEXT\n"
+    with pytest.raises(SkillError, match="internal skill metadata"):
+        read_skill_resource(skill, ".loom-skill.json")
+
     staged = stage_skill_bundle(skill, workspace)
     assert staged == workspace / ".loom" / "skill-runs" / "bundle-demo"
     assert (staged / "scripts" / "run.py").read_text(encoding="utf-8") == "print('bundle')\n"
+    assert not (staged / ".loom-skill.json").exists()
     assert (staged / ".loom-staged-skill.json").is_file()
+
+
+def test_all_skill_runtime_tools_share_the_skills_capability():
+    assert tool_capability_name("skill_search") == "skills"
+    assert tool_capability_name("skill_load") == "skills"
+    assert tool_capability_name("skill_read_resource") == "skills"
+    assert tool_capability_name("skill_stage_bundle") == "skills"
 
 
 def test_loom_skill_dispatch_does_not_require_model_credentials(tmp_path: Path, capsys):
