@@ -64,26 +64,24 @@ must not be installed into Loom's main `.venv`. The sidecar provides:
 
 The sidecar uses local UFO `Session`, not UFO's remote WebSocket service.
 
-## Install and preflight
+## Main development startup
 
-Development startup now auto-provisions the driver on Windows unless Computer Use is
-explicitly forced to `legacy`:
+`main` is the active test/development line for the Windows Computer Driver. The normal
+startup command now uses the strict UFO driver path by default:
 
 ```powershell
 npm run dev:ready
 ```
 
-The launcher checks the expected UFO source tree, isolated Python and Loom UFO config.
-When any required part is missing, it runs `scripts/setup-ufo.mjs` automatically. The
-setup script now also tries to bootstrap Python 3.10 with `winget` when no usable
-Python 3.10 interpreter is found. If `winget` is unavailable or blocked by policy,
-setup fails with a single actionable message instead of silently returning to legacy.
+That command auto-provisions the driver on Windows, runs the UFO preflight before
+Electron starts, and refuses to fall back to the old legacy GUI loop when UFO setup is
+broken. This prevents a failed UFO setup from being mistaken for a successful legacy
+Computer Use run.
 
-In strict UFO mode, setup failure stops the launch instead of falling back to legacy:
+For debugging only, the old auto/fallback launcher is still available as:
 
 ```powershell
-$env:LOOM_COMPUTER_DRIVER="ufo"
-npm run dev:ready
+npm run dev:ready:auto
 ```
 
 Manual setup remains available for debugging:
@@ -162,14 +160,14 @@ It is opt-in and contains no credential.
 
 `LOOM_COMPUTER_DRIVER` accepts:
 
-- `auto` (default): expose the mature task boundary; prefer UFO when ready and let
-  that task handler temporarily fall back to the legacy runner if UFO is unavailable.
 - `ufo`: require UFO; do not silently fall back when installation/model configuration
   is missing.
+- `auto`: expose the mature task boundary, prefer UFO when ready and let that task
+  handler temporarily fall back to the legacy runner if UFO is unavailable.
 - `legacy`: do not create the UFO driver and keep historical low-level tool exposure.
 
-Use `ufo` mode for acceptance testing so a failed UFO setup can never be mistaken for
-a successful legacy run.
+On `main`, `npm run dev:ready` forces `ufo`. Use `dev:ready:auto` only when debugging
+legacy fallback behavior.
 
 ## Window anchoring and action semantics
 
@@ -243,22 +241,22 @@ Cancellation is cooperative first. If the sidecar does not return within the con
 cancel timeout, Loom terminates the isolated sidecar process. A hard sidecar kill does
 not terminate Loom Desktop.
 
-## Acceptance test
+## Acceptance scenario
 
-The first strict Windows acceptance scenario intentionally starts with Edge in the
-foreground while WeChat is already running:
+The first Windows scenario intentionally starts with Edge in the foreground while
+WeChat is already running:
 
-1. set `LOOM_COMPUTER_DRIVER=ufo`;
+1. start main with `npm run dev:ready`;
 2. ask Loom to find the existing WeChat window;
 3. search for `妈妈`;
 4. open that conversation;
 5. type `你好` into the message box;
 6. stop without pressing Enter or clicking Send.
 
-Acceptance requires that UFO refreshes/selects the current WeChat window instead of
-using a stale HWND, remains anchored to WeChat even if Loom/Edge had foreground focus,
-and reports selected-window-relative HUD coordinates. No raw typed text should appear
-in the exported Loom Computer trace.
+Success requires that UFO refreshes/selects the current WeChat window instead of using
+a stale HWND, remains anchored to WeChat even if Loom/Edge had foreground focus, and
+reports selected-window-relative HUD coordinates. No raw typed text should appear in
+the exported Loom Computer trace.
 
 ## Upgrade rule
 
