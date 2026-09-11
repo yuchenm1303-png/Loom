@@ -11,6 +11,7 @@ import "./components/sidebar-brand-polish.css";
 import "./components/inline-thinking-orb.css";
 import "./components/composer-stability.css";
 import "./components/stream-performance.css";
+import "./components/panel-layout.css";
 
 const rootElement = document.getElementById("root");
 if (!rootElement) throw new Error("Loom renderer root element is missing");
