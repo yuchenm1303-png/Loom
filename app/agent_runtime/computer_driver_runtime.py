@@ -246,27 +246,46 @@ class ComputerDriverRuntime(ComputerUseRuntime):
                 "parameters": dict(data.get("parameters") or {}),
                 "window": dict(data.get("window") or {}),
             }
-            # Driver actions are progress events inside one canonical
-            # computer_run_task call. Only emit STARTED so the existing HUD can
-            # show the real cursor/target without treating each OS action as a
-            # separate terminal tool lifecycle.
+            base = {
+                "call_id": call_id,
+                "tool": "computer_action",
+                "arguments": arguments,
+                "nested": True,
+                "parent_call_id": event.task_id,
+                "driver": "ufo2-sidecar",
+                "driver_progress": True,
+            }
+            context.emit(AgentEventKind.TOOL_REQUESTED, base)
+            context.emit(AgentEventKind.TOOL_STARTED, base)
+            return
+        if kind == "action.completed" and pending[0]:
+            call_id = pending[0]
+            pending[0] = None
+            result = dict(data.get("result") or {})
+            ok = bool(result.get("ok"))
+            # Close the nested transcript/Inspector item with the same call id,
+            # but use a non-computer tool identity for the terminal event. The
+            # App Server HUD only subscribes to computer_* tools, so this closes
+            # the event ledger without hiding the task-level HUD between UFO OS
+            # actions. The outer computer_run_task remains the only HUD terminal.
             context.emit(
-                AgentEventKind.TOOL_STARTED,
+                AgentEventKind.TOOL_COMPLETED if ok else AgentEventKind.TOOL_FAILED,
                 {
                     "call_id": call_id,
-                    "tool": "computer_action",
-                    "arguments": arguments,
+                    "tool": "driver_action_result",
                     "nested": True,
                     "parent_call_id": event.task_id,
                     "driver": "ufo2-sidecar",
                     "driver_progress": True,
+                    "ok": ok,
+                    "content": "driver action completed" if ok else "driver action failed",
+                    "data": {
+                        "driver": "ufo2-sidecar",
+                        "action_name": str(data.get("action") or "action"),
+                        "window": dict(data.get("window") or {}),
+                    },
                 },
             )
-            return
-        if kind == "action.completed" and pending[0]:
-            # Completion remains in the driver trace. The outer
-            # computer_run_task ToolResult owns terminal HUD lifecycle.
-            pending[0] = None
 
     def _handle_driver_task(self, context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
         self._sync_driver_model_from_platform()
