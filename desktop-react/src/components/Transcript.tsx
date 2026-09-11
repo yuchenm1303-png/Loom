@@ -17,7 +17,7 @@ import {
   Wrench,
   Zap,
 } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { TranscriptItem } from "../types/loom";
 import { MarkdownMessage } from "./MarkdownMessage";
 import { TurnArtifactsPreview } from "./TurnArtifactsPreview";
@@ -55,11 +55,6 @@ interface ReasoningSplit {
 
 interface ActivitySummaryData {
   steps: number;
-  tools: number;
-  commands: number;
-  files: string[];
-  added: number;
-  removed: number;
   failed: boolean;
 }
 
@@ -239,6 +234,40 @@ function groupTurns(items: TranscriptItem[]): TurnBlock[] {
   return blocks;
 }
 
+function sameItemReferences(previous: TranscriptItem[] | undefined, next: TranscriptItem[]): boolean {
+  if (!previous || previous.length !== next.length) return false;
+  for (let index = 0; index < next.length; index += 1) {
+    if (previous[index] !== next[index]) return false;
+  }
+  return true;
+}
+
+/**
+ * groupTurns must inspect the canonical item stream, but completed turns should
+ * not become new React subtrees just because the active turn received one more
+ * tool event. Reuse the exact item-array reference for unchanged turns so the
+ * memoized TurnView stays cold on long conversations.
+ */
+function useStableTurnBlocks(items: TranscriptItem[]): TurnBlock[] {
+  const turnCacheRef = useRef<Map<string, TranscriptItem[]>>(new Map());
+
+  return useMemo(() => {
+    const grouped = groupTurns(items);
+    const previous = turnCacheRef.current;
+    const nextCache = new Map<string, TranscriptItem[]>();
+
+    for (const block of grouped) {
+      if (block.kind !== "turn") continue;
+      const cached = previous.get(block.id);
+      if (sameItemReferences(cached, block.items)) block.items = cached!;
+      nextCache.set(block.id, block.items);
+    }
+
+    turnCacheRef.current = nextCache;
+    return grouped;
+  }, [items]);
+}
+
 function processCommand(item: TranscriptItem): string {
   if (Array.isArray(item.argv)) return item.argv.map(String).join(" ");
   return String(item.command ?? item.toolName ?? "Process");
@@ -294,6 +323,14 @@ function fileLabel(item: TranscriptItem): string {
   return `${paths[0]}, ${paths[1]} +${paths.length - 2}`;
 }
 
+function hasActivityDetail(item: TranscriptItem): boolean {
+  if (item.type === "process") return Boolean(String(item.stdout ?? "").trim() || String(item.stderr ?? "").trim());
+  if (item.type === "file_edit") return Boolean(String(item.diff ?? "").trim());
+  if (String(item.content ?? "").trim()) return true;
+  if (String(item.stdout ?? "").trim() || String(item.stderr ?? "").trim()) return true;
+  return item.arguments !== undefined;
+}
+
 function activityDetail(item: TranscriptItem): string {
   if (item.type === "process") {
     const stdout = String(item.stdout ?? "");
@@ -319,12 +356,12 @@ function ActivityGlyph({ item, size = 13 }: { item: TranscriptItem; size?: numbe
   return <Wrench size={size} />;
 }
 
-function ActivityRow({ item }: { item: TranscriptItem }) {
+const ActivityRow = memo(function ActivityRow({ item }: { item: TranscriptItem }) {
   const [open, setOpen] = useState(false);
   const status = itemStatus(item);
-  const stats = item.type === "file_edit" ? diffStats(item.diff) : null;
-  const detail = activityDetail(item);
-  const expandable = Boolean(detail);
+  const stats = useMemo(() => item.type === "file_edit" ? diffStats(item.diff) : null, [item.diff, item.type]);
+  const expandable = hasActivityDetail(item);
+  const detail = useMemo(() => open ? activityDetail(item) : "", [item, open]);
 
   return (
     <div className={`task-flow-row-wrap ${open ? "is-open" : ""}`}>
@@ -376,67 +413,60 @@ function ActivityRow({ item }: { item: TranscriptItem }) {
       ) : null}
     </div>
   );
-}
+});
 
 function isFailureStatus(status: string): boolean {
   return status === "failed" || status === "denied" || status === "cancelled" || status === "interrupted";
 }
 
-function isRedundantToolWrapper(item: TranscriptItem, siblings: TranscriptItem[]): boolean {
-  if (item.type !== "tool_call") return false;
-  if (isFailureStatus(itemStatus(item))) return false;
-
+function isRedundantToolWrapper(item: TranscriptItem, hasProcess: boolean, hasFileEdit: boolean): boolean {
+  if (item.type !== "tool_call" || isFailureStatus(itemStatus(item))) return false;
   const name = String(item.toolName ?? "").trim().toLowerCase();
-  const hasProcess = siblings.some((candidate) => candidate.type === "process");
-  const hasFileEdit = siblings.some((candidate) => candidate.type === "file_edit");
 
-  if (hasProcess && /^(exec|execute|shell|run_command|run-command|command|powershell|bash|cmd)$/.test(name)) {
-    return true;
-  }
-
+  if (hasProcess && /^(exec|execute|shell|run_command|run-command|command|powershell|bash|cmd)$/.test(name)) return true;
   if (
-    hasFileEdit &&
-    /^(write_workspace_text|write_file|write-file|edit_file|edit-file|apply_patch|apply-patch|patch_file|patch-file|replace_text|replace-text)$/.test(name)
-  ) {
-    return true;
-  }
-
+    hasFileEdit
+    && /^(write_workspace_text|write_file|write-file|edit_file|edit-file|apply_patch|apply-patch|patch_file|patch-file|replace_text|replace-text)$/.test(name)
+  ) return true;
   return false;
 }
 
 function compactActivityItems(items: TranscriptItem[]): TranscriptItem[] {
-  const compact = items.filter((item) => !isRedundantToolWrapper(item, items));
+  let hasProcess = false;
+  let hasFileEdit = false;
+  for (const item of items) {
+    if (item.type === "process") hasProcess = true;
+    else if (item.type === "file_edit") hasFileEdit = true;
+  }
+
+  const compact = items.filter((item) => !isRedundantToolWrapper(item, hasProcess, hasFileEdit));
   return compact.length ? compact : items;
 }
 
 function activitySummary(items: TranscriptItem[]): ActivitySummaryData {
-  const activity = compactActivityItems(items.filter(isActivityItem));
-  const fileEdits = items.filter((item) => item.type === "file_edit");
-  const latestDiff = [...fileEdits].reverse().find((item) => String(item.diff ?? "").trim()) ?? fileEdits[fileEdits.length - 1];
-  const files: string[] = [];
+  const activityItems: TranscriptItem[] = [];
+  let failed = false;
 
-  for (const item of fileEdits) {
-    for (const path of item.paths ?? []) {
-      if (!files.includes(path)) files.push(path);
-    }
+  for (const item of items) {
+    if (isActivityItem(item)) activityItems.push(item);
+    if (!failed && (item.type === "error" || isFailureStatus(itemStatus(item)))) failed = true;
   }
 
-  const stats = diffStats(latestDiff?.diff);
   return {
-    steps: activity.length,
-    tools: activity.filter((item) => item.type === "tool_call").length,
-    commands: activity.filter((item) => item.type === "process").length,
-    files,
-    added: stats.added,
-    removed: stats.removed,
-    failed: items.some((item) => isFailureStatus(itemStatus(item)) || item.type === "error"),
+    steps: compactActivityItems(activityItems).length,
+    failed,
   };
 }
 
 function activityGroupTitle(items: TranscriptItem[]): string {
-  const hasProcess = items.some((item) => item.type === "process");
-  const hasEdit = items.some((item) => item.type === "file_edit");
-  const hasTool = items.some((item) => item.type === "tool_call");
+  let hasProcess = false;
+  let hasEdit = false;
+  let hasTool = false;
+  for (const item of items) {
+    if (item.type === "process") hasProcess = true;
+    else if (item.type === "file_edit") hasEdit = true;
+    else if (item.type === "tool_call") hasTool = true;
+  }
 
   if (hasEdit && hasProcess && hasTool) return "编辑了文件、运行了命令并使用了工具";
   if (hasEdit && hasProcess) return "编辑了文件并运行了命令";
@@ -448,16 +478,21 @@ function activityGroupTitle(items: TranscriptItem[]): string {
 }
 
 function ActivityGroupIcon({ items }: { items: TranscriptItem[] }) {
-  const hasProcess = items.some((item) => item.type === "process");
-  const hasEdit = items.some((item) => item.type === "file_edit");
-  if (hasProcess) return <Terminal size={14} />;
+  let hasEdit = false;
+  for (const item of items) {
+    if (item.type === "process") return <Terminal size={14} />;
+    if (item.type === "file_edit") hasEdit = true;
+  }
   if (hasEdit) return <FileDiff size={14} />;
   return <Wrench size={14} />;
 }
 
 function ActivityFlow({ items, keepOpen = false }: { items: TranscriptItem[]; keepOpen?: boolean }) {
-  const compactItems = compactActivityItems(items);
-  const running = compactItems.some((item) => isActiveActivityStatus(itemStatus(item)));
+  const compactItems = useMemo(() => compactActivityItems(items), [items]);
+  const running = useMemo(
+    () => compactItems.some((item) => isActiveActivityStatus(itemStatus(item))),
+    [compactItems],
+  );
   const [open, setOpen] = useState(true);
 
   useEffect(() => {
@@ -710,7 +745,7 @@ function Sequence({
   keepActivityOpen?: boolean;
   promptDisabled?: boolean;
 }) {
-  const blocks = groupTranscript(items);
+  const blocks = useMemo(() => groupTranscript(items), [items]);
   return (
     <>
       {blocks.map((block, index) => (
@@ -735,11 +770,18 @@ function parseTimestamp(value: unknown): number | null {
 }
 
 function elapsedLabel(items: TranscriptItem[]): string {
-  const starts = items.map((item) => parseTimestamp(item.createdAt)).filter((value): value is number => value !== null);
-  const ends = items.map((item) => parseTimestamp(item.updatedAt) ?? parseTimestamp(item.createdAt)).filter((value): value is number => value !== null);
-  if (!starts.length || !ends.length) return "任务过程";
+  let earliest = Number.POSITIVE_INFINITY;
+  let latest = Number.NEGATIVE_INFINITY;
 
-  const seconds = Math.max(1, Math.round((Math.max(...ends) - Math.min(...starts)) / 1000));
+  for (const item of items) {
+    const start = parseTimestamp(item.createdAt);
+    const end = parseTimestamp(item.updatedAt) ?? start;
+    if (start !== null) earliest = Math.min(earliest, start);
+    if (end !== null) latest = Math.max(latest, end);
+  }
+
+  if (!Number.isFinite(earliest) || !Number.isFinite(latest)) return "任务过程";
+  const seconds = Math.max(1, Math.round((latest - earliest) / 1000));
   if (seconds < 60) return `用时 ${seconds}s`;
   const minutes = Math.floor(seconds / 60);
   const remainingSeconds = seconds % 60;
@@ -750,26 +792,34 @@ function elapsedLabel(items: TranscriptItem[]): string {
 }
 
 function finalAssistantForTurn(items: TranscriptItem[]): TranscriptItem | null {
-  const assistants = items.filter((item) => item.type === "assistant_message");
-  if (!assistants.length) return null;
-  return [...assistants].reverse().find((item) => splitReasoning(item.text ?? "").answer.trim()) ?? assistants[assistants.length - 1];
+  let fallback: TranscriptItem | null = null;
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index];
+    if (item.type !== "assistant_message") continue;
+    fallback ??= item;
+    if (splitReasoning(item.text ?? "").answer.trim()) return item;
+  }
+  return fallback;
 }
 
 function latestFileEdit(items: TranscriptItem[]): TranscriptItem | null {
-  const edits = items.filter((item) => item.type === "file_edit");
-  if (!edits.length) return null;
-  return [...edits].reverse().find((item) => String(item.diff ?? "").trim()) ?? edits[edits.length - 1];
+  let fallback: TranscriptItem | null = null;
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index];
+    if (item.type !== "file_edit") continue;
+    fallback ??= item;
+    if (String(item.diff ?? "").trim()) return item;
+  }
+  return fallback;
 }
 
 function changedPaths(items: TranscriptItem[]): string[] {
-  const paths: string[] = [];
+  const paths = new Set<string>();
   for (const item of items) {
     if (item.type !== "file_edit") continue;
-    for (const path of item.paths ?? []) {
-      if (!paths.includes(path)) paths.push(path);
-    }
+    for (const path of item.paths ?? []) paths.add(path);
   }
-  return paths;
+  return [...paths];
 }
 
 function TurnProcess({
@@ -789,8 +839,11 @@ function TurnProcess({
   onApproval(item: TranscriptItem, approved: boolean): void;
   promptDisabled?: boolean;
 }) {
-  const summary = activitySummary(items);
-  const intermediateMessages = items.filter((item) => item.type === "assistant_message").length;
+  const summary = useMemo(() => activitySummary(items), [items]);
+  const intermediateMessages = useMemo(
+    () => items.reduce((count, item) => count + (item.type === "assistant_message" ? 1 : 0), 0),
+    [items],
+  );
   const operationCount = summary.steps + intermediateMessages;
 
   return (
@@ -830,28 +883,46 @@ function TurnArtifacts({ items }: { items: TranscriptItem[] }) {
   return <TurnArtifactsPreview items={items} />;
 }
 
-function TurnView({
-  turnId,
-  items,
-  active,
-  onApproval,
-  promptDisabled,
-}: {
+interface TurnViewProps {
   turnId: string;
   items: TranscriptItem[];
   active: boolean;
   onApproval(item: TranscriptItem, approved: boolean): void;
   promptDisabled?: boolean;
-}) {
-  const userItems = items.filter((item) => item.type === "user_message");
-  const finalAssistant = active ? null : finalAssistantForTurn(items);
-  const errorItems = active ? [] : items.filter((item) => item.type === "error");
-  const processItems = items.filter((item) => (
-    item.type !== "user_message" &&
-    item.id !== finalAssistant?.id &&
-    !errorItems.some((error) => error.id === item.id)
-  ));
-  const hasProcess = processItems.some((item) => isActivityItem(item) || item.type === "assistant_message" || item.type === "approval");
+}
+
+const TurnView = memo(function TurnView({
+  turnId,
+  items,
+  active,
+  onApproval,
+  promptDisabled,
+}: TurnViewProps) {
+  const derived = useMemo(() => {
+    const userItems: TranscriptItem[] = [];
+    const errorItems: TranscriptItem[] = [];
+    let latestAssistant: TranscriptItem | null = null;
+
+    for (const item of items) {
+      if (item.type === "user_message") userItems.push(item);
+      if (!active && item.type === "error") errorItems.push(item);
+      if (item.type === "assistant_message") latestAssistant = item;
+    }
+
+    const finalAssistant = active ? null : finalAssistantForTurn(items);
+    const errorIds = new Set(errorItems.map((item) => item.id));
+    const processItems = items.filter((item) => (
+      item.type !== "user_message"
+      && item.id !== finalAssistant?.id
+      && !errorIds.has(item.id)
+    ));
+    const hasProcess = processItems.some((item) => (
+      isActivityItem(item) || item.type === "assistant_message" || item.type === "approval"
+    ));
+
+    return { userItems, errorItems, latestAssistant, finalAssistant, processItems, hasProcess };
+  }, [active, items]);
+
   const [processOpen, setProcessOpen] = useState(active);
   const wasActiveRef = useRef(active);
 
@@ -866,25 +937,24 @@ function TurnView({
     wasActiveRef.current = active;
   }, [active]);
 
-  const latestAssistant = [...items].reverse().find((item) => item.type === "assistant_message");
-  const latestAssistantState = latestAssistant ? splitReasoning(latestAssistant.text ?? "") : null;
+  const latestAssistantState = derived.latestAssistant ? splitReasoning(derived.latestAssistant.text ?? "") : null;
   const showPendingThinking = Boolean(
-    active &&
-    latestAssistantState?.state !== "streaming" &&
-    !latestAssistantState?.answer.trim(),
+    active
+    && latestAssistantState?.state !== "streaming"
+    && !latestAssistantState?.answer.trim(),
   );
 
   return (
     <section className={`turn-block ${active ? "is-active" : "is-complete"}`} data-turn-id={turnId}>
-      {userItems.map((item) => (
+      {derived.userItems.map((item) => (
         <div className="transcript-entry entry-user_message" key={item.id}>
           <ItemView item={item} onApproval={onApproval} promptDisabled={promptDisabled} />
         </div>
       ))}
 
-      {hasProcess ? (
+      {derived.hasProcess ? (
         <TurnProcess
-          items={processItems}
+          items={derived.processItems}
           allItems={items}
           active={active}
           open={processOpen}
@@ -894,13 +964,13 @@ function TurnView({
         />
       ) : null}
 
-      {!active && finalAssistant ? (
-        <div className="transcript-entry entry-assistant_message turn-final-answer" key={finalAssistant.id}>
-          <ItemView item={finalAssistant} onApproval={onApproval} promptDisabled={promptDisabled} />
+      {!active && derived.finalAssistant ? (
+        <div className="transcript-entry entry-assistant_message turn-final-answer" key={derived.finalAssistant.id}>
+          <ItemView item={derived.finalAssistant} onApproval={onApproval} promptDisabled={promptDisabled} />
         </div>
       ) : null}
 
-      {!active ? errorItems.map((item) => (
+      {!active ? derived.errorItems.map((item) => (
         <div className="transcript-entry entry-error" key={item.id}>
           <ItemView item={item} onApproval={onApproval} promptDisabled={promptDisabled} />
         </div>
@@ -910,7 +980,12 @@ function TurnView({
       {showPendingThinking ? <PendingThinking /> : null}
     </section>
   );
-}
+}, (previous, next) => (
+  previous.turnId === next.turnId
+  && previous.items === next.items
+  && previous.active === next.active
+  && previous.promptDisabled === next.promptDisabled
+));
 
 function EmptyState({ disabled, onPrompt }: { disabled?: boolean; onPrompt?(prompt: string): void }) {
   return (
@@ -950,11 +1025,7 @@ function EmptyState({ disabled, onPrompt }: { disabled?: boolean; onPrompt?(prom
 }
 
 export function Transcript({ items, running, currentTurnId, promptDisabled, onPrompt, onApproval }: TranscriptProps) {
-  const turnBlocks = groupTurns(items);
-  // The caller only marks a turn live after the server has confirmed its
-  // currentTurnId. Never guess by taking the latest historical turn: during the
-  // optimistic send window that guess used to reactivate the previous turn and
-  // collapse/re-expand large parts of the transcript.
+  const turnBlocks = useStableTurnBlocks(items);
   const activeTurnId = running && currentTurnId ? String(currentTurnId) : "";
 
   return (

@@ -1,0 +1,71 @@
+/* Live task-flow rendering --------------------------------------------------
+   Runtime activity grows one row at a time. Keep that growth cheap: the row
+   already occupies its final layout box, while only opacity/transform animate
+   on the compositor. Historical task flows never replay these entrance effects. */
+
+.turn-process.is-live .entry-activity {
+  animation: loom-task-flow-shell-in 170ms cubic-bezier(.2,.78,.2,1) both;
+  transform-origin: left top;
+}
+
+/* activity-flow.css also animates .task-flow itself. The live shell already
+   owns that entrance here, so disable the nested duplicate transform/opacity
+   animation and keep one compositor animation instead of two. */
+.turn-process.is-live .task-flow {
+  animation: none;
+}
+
+.turn-process.is-live .task-flow-row-wrap {
+  contain: layout paint style;
+  animation: loom-task-flow-row-in 155ms cubic-bezier(.2,.78,.2,1) both;
+  transform-origin: left center;
+}
+
+.turn-process.is-live .task-flow-row-wrap:nth-last-child(1) {
+  will-change: transform, opacity;
+}
+
+.turn-process.is-live .task-flow-list {
+  contain: layout paint;
+}
+
+/* The status shimmer already moves with transform. A filtered pseudo-element
+   creates a separate paint surface for every running command, so keep it on the
+   compositor without the tiny blur. */
+.task-flow-row::after {
+  filter: none !important;
+}
+
+@keyframes loom-task-flow-shell-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes loom-task-flow-row-in {
+  from {
+    opacity: 0;
+    transform: translate3d(-5px, 2px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+html[data-loom-reduced-motion="true"] .turn-process.is-live .entry-activity,
+html[data-loom-reduced-motion="true"] .turn-process.is-live .task-flow-row-wrap {
+  animation: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .turn-process.is-live .entry-activity,
+  .turn-process.is-live .task-flow-row-wrap {
+    animation: none !important;
+  }
+}

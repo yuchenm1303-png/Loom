@@ -6,6 +6,24 @@ export interface LoomNotification {
   params?: Record<string, unknown>;
 }
 
+const FRAME_BATCH_MS = 16;
+const BATCHED_ITEM_METHODS = new Set(["item/started", "item/delta", "item/completed"]);
+
+function mergeDeltaParams(
+  previous: Record<string, unknown> | undefined,
+  incoming: Record<string, unknown> | undefined,
+): Record<string, unknown> {
+  const next = { ...(previous ?? {}) };
+  for (const [key, value] of Object.entries(incoming ?? {})) {
+    if (["text", "stdout", "stderr"].includes(key) && typeof value === "string") {
+      next[key] = `${String(next[key] ?? "")}${value}`;
+    } else {
+      next[key] = value;
+    }
+  }
+  return next;
+}
+
 const api = {
   connect: () => ipcRenderer.invoke("loom:connect"),
   call: (method: string, params: Record<string, unknown> = {}) => ipcRenderer.invoke("loom:call", method, params),
@@ -23,16 +41,12 @@ const api = {
   revealPath: (targetPath: string) => ipcRenderer.invoke("loom:reveal-path", targetPath),
   pickDirectory: () => ipcRenderer.invoke("loom:pick-directory"),
   pickFiles: () => ipcRenderer.invoke("loom:pick-files"),
-  // Native Chromium page zoom keeps text and 1px UI geometry crisp on Windows
-  // display scaling, unlike CSS zoom which rasterizes the renderer surface.
   setZoomFactor: (factor: number) => {
     const numeric = Number(factor);
     const safe = Number.isFinite(numeric) ? Math.min(1.3, Math.max(0.9, numeric)) : 1;
     webFrame.setZoomFactor(safe);
     return safe;
   },
-  // Electron 32 removed File.path, so the real path has to come from webUtils
-  // in the preload. Attachments travel as paths, never as bytes over the RPC.
   filePathFor: (file: File) => {
     try {
       return webUtils.getPathForFile(file);
@@ -40,14 +54,66 @@ const api = {
       return "";
     }
   },
-  // A pasted image has no file behind it, so it gets written to a temp file
-  // first rather than becoming the one input with its own transport.
   stageTempFile: (name: string, bytes: Uint8Array) =>
     ipcRenderer.invoke("loom:stage-temp-file", name, bytes),
   onNotification: (listener: (payload: LoomNotification) => void) => {
-    const wrapped = (_event: Electron.IpcRendererEvent, payload: LoomNotification) => listener(payload);
+    let queue: LoomNotification[] = [];
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const flush = () => {
+      if (timer !== null) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      if (!queue.length) return;
+      const pending = queue;
+      queue = [];
+      for (const payload of pending) listener(payload);
+    };
+
+    const schedule = () => {
+      if (timer !== null) return;
+      timer = setTimeout(flush, FRAME_BATCH_MS);
+    };
+
+    const wrapped = (_event: Electron.IpcRendererEvent, payload: LoomNotification) => {
+      if (!BATCHED_ITEM_METHODS.has(payload.method)) {
+        flush();
+        listener(payload);
+        return;
+      }
+
+      if (payload.method === "item/delta") {
+        const itemId = String(payload.params?.itemId ?? "");
+        const last = queue[queue.length - 1];
+        if (
+          last?.method === "item/delta"
+          && String(last.params?.itemId ?? "") === itemId
+        ) {
+          last.params = {
+            ...(last.params ?? {}),
+            ...(payload.params ?? {}),
+            delta: mergeDeltaParams(
+              last.params?.delta as Record<string, unknown> | undefined,
+              payload.params?.delta as Record<string, unknown> | undefined,
+            ),
+          };
+          schedule();
+          return;
+        }
+      }
+
+      queue.push(payload);
+      schedule();
+    };
+
     ipcRenderer.on("loom:notification", wrapped);
-    return () => ipcRenderer.removeListener("loom:notification", wrapped);
+    return () => {
+      ipcRenderer.removeListener("loom:notification", wrapped);
+      if (timer !== null) clearTimeout(timer);
+      timer = null;
+      queue = [];
+    };
   },
 };
 

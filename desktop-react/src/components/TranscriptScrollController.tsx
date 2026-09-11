@@ -36,10 +36,11 @@ function latestUserMessageId(items: TranscriptItem[]): string {
 /**
  * Owns the conversation viewport policy without coupling it to message layout.
  *
- * Panel resizing intentionally suspends bottom-sync work. The resize preview is
- * compositor-only, then the final panel width is committed once on release.
- * Waiting until that commit settles prevents ResizeObserver from turning one
- * horizontal resize into repeated scrollHeight/layout reads on long threads.
+ * Important performance rule: item updates never synchronously read scrollHeight.
+ * Tool/process events often arrive in small bursts, and forcing layout directly
+ * after every React commit made the newly inserted task-flow row feel like a UI
+ * hitch. All follow-to-bottom work is now coalesced to at most one rAF callback
+ * per frame; ResizeObserver and transcript updates share that same callback.
  */
 export function TranscriptScrollController({
   items,
@@ -62,8 +63,7 @@ export function TranscriptScrollController({
   };
 
   const scheduleBottomSync = (scroller: HTMLDivElement) => {
-    if (isPanelResizeActive()) return;
-    cancelScheduledScroll();
+    if (isPanelResizeActive() || frameRef.current !== null) return;
     frameRef.current = requestAnimationFrame(() => {
       frameRef.current = null;
       if (!stickToBottomRef.current || isPanelResizeActive()) return;
@@ -89,12 +89,9 @@ export function TranscriptScrollController({
     lastTurnIdRef.current = nextTurnId;
     lastUserMessageIdRef.current = latestUserId;
 
-    if (stickToBottomRef.current && !isPanelResizeActive()) {
-      scroller.scrollTop = scroller.scrollHeight;
-      scheduleBottomSync(scroller);
-    }
-
-    return cancelScheduledScroll;
+    if (stickToBottomRef.current) scheduleBottomSync(scroller);
+    // Deliberately no per-update cleanup here. Rapid item commits should share
+    // the already queued frame instead of repeatedly cancelling and restarting it.
   }, [items, latestUserId, threadId, currentTurnId, running]);
 
   useLayoutEffect(() => {
@@ -103,7 +100,7 @@ export function TranscriptScrollController({
     if (!scroller || !content) return;
 
     stickToBottomRef.current = true;
-    scroller.scrollTop = scroller.scrollHeight;
+    scheduleBottomSync(scroller);
 
     const onScroll = () => {
       if (isPanelResizeActive()) return;
@@ -118,12 +115,10 @@ export function TranscriptScrollController({
     const observer = typeof ResizeObserver === "undefined"
       ? null
       : new ResizeObserver(() => {
-          if (stickToBottomRef.current && !isPanelResizeActive()) scheduleBottomSync(scroller);
+          if (stickToBottomRef.current) scheduleBottomSync(scroller);
         });
     observer?.observe(scroller);
     observer?.observe(content);
-
-    scheduleBottomSync(scroller);
 
     return () => {
       scroller.removeEventListener("scroll", onScroll);

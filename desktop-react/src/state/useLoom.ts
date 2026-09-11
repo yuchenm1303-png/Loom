@@ -21,6 +21,23 @@ function flattenItems(turns: TurnRecord[]): TranscriptItem[] {
   return turns.flatMap((turn) => turn.items ?? []);
 }
 
+function buildItemIndex(items: TranscriptItem[]): Map<string, number> {
+  const index = new Map<string, number>();
+  for (let position = 0; position < items.length; position += 1) {
+    index.set(items[position].id, position);
+  }
+  return index;
+}
+
+function indexedItemPosition(index: Map<string, number>, items: TranscriptItem[], itemId: string): number {
+  const cached = index.get(itemId);
+  if (cached !== undefined && items[cached]?.id === itemId) return cached;
+  const repaired = items.findIndex((item) => item.id === itemId);
+  if (repaired >= 0) index.set(itemId, repaired);
+  else index.delete(itemId);
+  return repaired;
+}
+
 function mergeDelta(item: TranscriptItem, delta: Record<string, unknown>): TranscriptItem {
   const next: TranscriptItem = { ...item };
   for (const [key, value] of Object.entries(delta)) {
@@ -65,8 +82,6 @@ export function useLoom() {
   const [models, setModels] = useState<ModelSnapshot | null>(null);
   const [modelBusy, setModelBusy] = useState(false);
   const [threads, setThreads] = useState<ThreadRecord[]>([]);
-  // Projects come from the server. The client never invents one, so a project
-  // exists exactly as long as the registry says it does.
   const [projects, setProjects] = useState<ProjectRecord[]>([]);
   const [projectsSupported, setProjectsSupported] = useState(false);
   const [threadView, setThreadViewState] = useState<ThreadView>("active");
@@ -77,18 +92,24 @@ export function useLoom() {
   const [turnStartedAt, setTurnStartedAt] = useState<number | null>(null);
   const activeIdRef = useRef("");
   const threadViewRef = useRef<ThreadView>("active");
+  const itemIndexRef = useRef<Map<string, number>>(new Map());
 
   useEffect(() => {
     activeIdRef.current = active?.thread.id ?? "";
   }, [active?.thread.id]);
 
+  const installItems = useCallback((next: TranscriptItem[]) => {
+    itemIndexRef.current = buildItemIndex(next);
+    setItems(next);
+  }, []);
+
   const clearActive = useCallback(() => {
     activeIdRef.current = "";
     setActive(null);
-    setItems([]);
+    installItems([]);
     setTurnActive(false);
     setTurnStartedAt(null);
-  }, []);
+  }, [installItems]);
 
   const refreshThreads = useCallback(async (viewOverride?: ThreadView) => {
     const view = viewOverride ?? threadViewRef.current;
@@ -112,8 +133,6 @@ export function useLoom() {
       setProjectsSupported(true);
       return result.projects ?? [];
     } catch {
-      // An App Server without the project methods still serves threads. Falling
-      // back is what keeps the sidebar working instead of emptying it.
       setProjectsSupported(false);
       setProjects([]);
       return [];
@@ -134,7 +153,6 @@ export function useLoom() {
   }, [refreshProjects]);
 
   const removeProject = useCallback(async (projectId: string) => {
-    // Unregisters only: the folder and its conversations are untouched.
     await requireBridge().call("project/remove", { projectId });
     await refreshProjects();
     await refreshThreads();
@@ -150,11 +168,11 @@ export function useLoom() {
     const result = await requireBridge().call<ThreadReadResult>("thread/read", { threadId });
     activeIdRef.current = result.thread.id;
     setActive(result);
-    setItems(flattenItems(result.turns ?? []));
+    installItems(flattenItems(result.turns ?? []));
     const running = threadIsRunning(result.thread);
     setTurnActive(running);
     setTurnStartedAt(running ? turnStartFromRead(result) : null);
-  }, []);
+  }, [installItems]);
 
   const ensureSelection = useCallback(async (list: ThreadRecord[], preferredId = activeIdRef.current) => {
     if (preferredId && list.some((thread) => thread.id === preferredId)) return;
@@ -173,8 +191,6 @@ export function useLoom() {
   }, [ensureSelection, refreshThreads]);
 
   const newThread = useCallback(async (workspace?: string, projectId?: string) => {
-    // A project id survives the folder being renamed in the registry, so it is
-    // preferred when the caller knows one.
     const params: Record<string, unknown> = projectId?.trim()
       ? { projectId: projectId.trim() }
       : workspace?.trim()
@@ -215,8 +231,6 @@ export function useLoom() {
   }, [openThread, refreshThreads]);
 
   const send = useCallback(async (input: string, attachments: { path: string; name: string }[] = []) => {
-    // An attachment on its own is a complete message: "look at this" with a
-    // screenshot needs no words.
     if (!active?.thread.id || active.thread.archived) return;
     if (!input.trim() && !attachments.length) return;
     setTurnActive(true);
@@ -408,18 +422,32 @@ export function useLoom() {
         if (item) {
           setTurnActive(true);
           setTurnStartedAt((current) => current ?? Date.now());
-          setItems((current) => current.some((entry) => entry.id === item.id) ? current : [...current, item]);
+          setItems((current) => {
+            const existing = indexedItemPosition(itemIndexRef.current, current, item.id);
+            if (existing >= 0) return current;
+            itemIndexRef.current.set(item.id, current.length);
+            return [...current, item];
+          });
         }
       } else if (message.method === "item/delta") {
         const itemId = String(params.itemId ?? "");
         const delta = (params.delta ?? {}) as Record<string, unknown>;
-        setItems((current) => current.map((item) => item.id === itemId ? mergeDelta(item, delta) : item));
+        setItems((current) => {
+          const index = indexedItemPosition(itemIndexRef.current, current, itemId);
+          if (index < 0) return current;
+          const next = [...current];
+          next[index] = mergeDelta(current[index], delta);
+          return next;
+        });
       } else if (message.method === "item/completed") {
         const completed = params.item as TranscriptItem | undefined;
         if (completed) {
           setItems((current) => {
-            const index = current.findIndex((item) => item.id === completed.id);
-            if (index < 0) return [...current, completed];
+            const index = indexedItemPosition(itemIndexRef.current, current, completed.id);
+            if (index < 0) {
+              itemIndexRef.current.set(completed.id, current.length);
+              return [...current, completed];
+            }
             const next = [...current];
             next[index] = { ...current[index], ...completed };
             return next;
@@ -466,8 +494,6 @@ export function useLoom() {
         setRuntime(initialized.runtime ?? {});
         await refreshModels();
         if (disposed) return;
-        // Listing projects is also what adopts existing workspaces, so the
-        // sidebar arrives already grouped instead of demanding a setup step.
         await refreshProjects();
         if (disposed) return;
         threadViewRef.current = "active";
