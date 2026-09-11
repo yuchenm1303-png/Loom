@@ -139,57 +139,60 @@ function useSmoothedMarkdownContent(content: string): string {
   const targetRef = useRef(content);
   const timerRef = useRef<number | null>(null);
 
+  const cancelTimer = () => {
+    if (timerRef.current !== null) {
+      window.clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+  };
+
+  const commit = (value: string) => {
+    visibleRef.current = value;
+    setVisible(value);
+  };
+
+  const schedule = () => {
+    if (timerRef.current !== null) return;
+    timerRef.current = window.setTimeout(function tick() {
+      timerRef.current = null;
+      const target = targetRef.current;
+      const current = visibleRef.current;
+      if (current === target) return;
+
+      if (!target.startsWith(current)) {
+        commit(target);
+        return;
+      }
+
+      const backlog = target.length - current.length;
+      const step = Math.min(STREAM_MAX_STEP, streamStep(backlog));
+      commit(target.slice(0, current.length + step));
+      if (visibleRef.current !== targetRef.current) schedule();
+    }, STREAM_FRAME_MS);
+  };
+
   useEffect(() => {
     targetRef.current = content;
 
-    const cancel = () => {
-      if (timerRef.current !== null) {
-        window.clearTimeout(timerRef.current);
-        timerRef.current = null;
-      }
-    };
-
-    const commit = (value: string) => {
-      visibleRef.current = value;
-      setVisible(value);
-    };
-
-    const schedule = () => {
-      if (timerRef.current !== null) return;
-      timerRef.current = window.setTimeout(function tick() {
-        timerRef.current = null;
-        const target = targetRef.current;
-        const current = visibleRef.current;
-        if (current === target) return;
-
-        if (!target.startsWith(current)) {
-          commit(target);
-          return;
-        }
-
-        const backlog = target.length - current.length;
-        const step = Math.min(STREAM_MAX_STEP, streamStep(backlog));
-        commit(target.slice(0, current.length + step));
-        if (visibleRef.current !== targetRef.current) schedule();
-      }, STREAM_FRAME_MS);
-    };
-
     if (prefersReducedMotion()) {
-      cancel();
+      cancelTimer();
       commit(content);
-    } else if (!content.startsWith(visibleRef.current)) {
-      cancel();
-      commit(content);
-    } else if (content !== visibleRef.current) {
-      schedule();
+      return;
     }
 
-    return cancel;
+    if (!content.startsWith(visibleRef.current)) {
+      cancelTimer();
+      commit(content);
+      return;
+    }
+
+    if (content !== visibleRef.current) schedule();
+    // Do not cancel the scheduled frame when a denser delta arrives. The live
+    // timer reads targetRef, so it naturally chases the newest authoritative
+    // text instead of repeatedly restarting before it can paint.
   }, [content]);
 
-  useEffect(() => () => {
-    if (timerRef.current !== null) window.clearTimeout(timerRef.current);
-  }, []);
+  useEffect(() => () => cancelTimer(), []);
 
   return visible;
 }
