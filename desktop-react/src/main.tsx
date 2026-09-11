@@ -9,6 +9,7 @@ import "./components/model-panel-overrides.css";
 import "./components/reasoning-control.css";
 import "./components/inline-thinking-orb.css";
 import "./components/composer-stability.css";
+import "./components/composer-attachment-polish.css";
 import "./typography-scale.css";
 import "./components/model-card-alignment-fix.css";
 import "./components/settings-simple.css";
