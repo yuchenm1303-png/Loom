@@ -196,15 +196,15 @@ def test_proactive_compaction_uses_model_threshold_before_hard_limit(monkeypatch
         context_window_tokens=9000,
         effective_context_percent=100,
         output_reserve_tokens=1000,
-        auto_compact_token_limit=1400,
+        auto_compact_token_limit=800,
         tool_output_token_limit=1200,
     )
     history = []
     for index in range(7):
         history.extend(
             [
-                AIMessage(role=MessageRole.USER, content=f"user-{index} " + ("u" * 260)),
-                AIMessage(role=MessageRole.ASSISTANT, content=f"answer-{index} " + ("a" * 260)),
+                AIMessage(role=MessageRole.USER, content=f"user-{index} " + ("u" * 500)),
+                AIMessage(role=MessageRole.ASSISTANT, content=f"answer-{index} " + ("a" * 500)),
             ]
         )
     session = Session(history)
