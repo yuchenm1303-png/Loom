@@ -268,7 +268,7 @@ export function sendHudUpdate(payload: Record<string, unknown>): void {
     pendingPayload = null;
     const existing = hudWindow && !hudWindow.isDestroyed() ? hudWindow : null;
     if (existing && !existing.webContents.isLoading()) {
-      existing.webContents.send("loom:hud-update", { ...payload, visible: false });
+      existing.webContents.send("loom:hud-update", { ...(payload as Record<string, unknown>), visible: false });
     }
     hideHudWindow();
     return;
