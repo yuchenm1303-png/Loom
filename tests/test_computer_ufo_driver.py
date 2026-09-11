@@ -9,6 +9,7 @@ from app.agent_runtime.computer_ufo_driver import (
     UfoDriverConfig,
     UfoWindowsDriver,
     _normalize_base_url,
+    _safe_stderr_line,
 )
 from app.agent_runtime.mcp_configured_runtime import ConfiguredMCPRuntime
 from app.agent_runtime.ufo_sidecar import _hud_point, _safe_parameters
@@ -52,11 +53,19 @@ def test_ufo_status_is_side_effect_free_when_not_installed(tmp_path: Path):
 def test_sidecar_redacts_text_before_driver_events():
     safe = _safe_parameters(
         "set_edit_text",
-        {"id": "4", "name": "Message", "text": "super secret text"},
+        {
+            "id": "4",
+            "name": "Message",
+            "text": "super secret text",
+            "nested": {"instruction": "another secret"},
+        },
     )
     assert safe["text"] == "[TRANSIENT_TEXT]"
     assert safe["text_length"] == len("super secret text")
+    assert safe["nested"]["instruction"] == "[TRANSIENT_TEXT]"
+    assert safe["nested"]["instruction_length"] == len("another secret")
     assert "super secret text" not in repr(safe)
+    assert "another secret" not in repr(safe)
 
 
 def test_runtime_redacts_provider_errors_and_text_before_persistence():
@@ -65,12 +74,27 @@ def test_runtime_redacts_provider_errors_and_text_before_persistence():
             "result": {"status": "failure", "error": "typed secret leaked in exception"},
             "parameters": {"text": "typed secret", "text_length": 12},
             "window": {"title": "WeChat", "rectangle": {"x": 10}},
+            "stderr_tail": "provider echoed task text",
         }
     )
     assert safe["result"]["error"] == "[REDACTED_DRIVER_DATA]"
     assert safe["parameters"]["text"] == "[REDACTED_DRIVER_DATA]"
     assert safe["parameters"]["text_length"] == 12
+    assert safe["stderr_tail"] == "[REDACTED_DRIVER_DATA]"
     assert safe["window"]["title"] == "WeChat"
+
+
+def test_ufo_stderr_preserves_structure_but_drops_message_and_user_paths():
+    assert _safe_stderr_line("Traceback (most recent call last):") == "Traceback (most recent call last):"
+    frame = _safe_stderr_line('  File "C:\\Users\\Alice\\secret-project\\worker.py", line 42, in run_task')
+    assert frame == '  File "worker.py", line 42, in run_task'
+    error = _safe_stderr_line("ValueError: prompt contained super secret task text")
+    assert error == "ValueError: [REDACTED_EXCEPTION_MESSAGE]"
+    generic = _safe_stderr_line("provider request body: super secret task text")
+    assert generic == "[REDACTED_UFO_STDERR]"
+    combined = "\n".join((frame, error, generic))
+    assert "Alice" not in combined
+    assert "super secret" not in combined
 
 
 def test_hud_point_uses_selected_application_window_not_whole_screen(monkeypatch):
