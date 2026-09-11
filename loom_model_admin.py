@@ -5,7 +5,6 @@ import sys
 import time
 import urllib.error
 import urllib.request
-from pathlib import Path
 from typing import Any
 
 from app.ai.model_selection_store import ModelSelectionStore
@@ -39,6 +38,12 @@ def _profile_payload(entry: Any) -> dict[str, Any]:
         "baseUrl": entry.base_url,
         "model": entry.model,
         "vision": bool(entry.vision),
+    }
+
+
+def _metadata(store: ModelConfigStore) -> dict[str, Any]:
+    return {
+        "profiles": [_profile_payload(entry) for entry in store.list_models()],
     }
 
 
@@ -140,13 +145,15 @@ def _test(
 
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
-    if len(args) != 1 or args[0] not in {"update", "test"}:
-        sys.stderr.write("usage: loom_model_admin.py {update|test}\n")
+    if len(args) != 1 or args[0] not in {"metadata", "update", "test"}:
+        sys.stderr.write("usage: loom_model_admin.py {metadata|update|test}\n")
         return 2
     try:
         store = ModelConfigStore()
         payload = _read()
-        if args[0] == "update":
+        if args[0] == "metadata":
+            result = _metadata(store)
+        elif args[0] == "update":
             result = _update(store, payload)
         else:
             result = _test(
