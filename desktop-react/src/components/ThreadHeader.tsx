@@ -5,6 +5,8 @@ import {
   Cpu,
   Folder,
   MessageSquareText,
+  PanelLeftClose,
+  PanelLeftOpen,
   PanelRightClose,
   PanelRightOpen,
   ShieldCheck,
@@ -21,7 +23,9 @@ interface ThreadHeaderProps {
   archived: boolean;
   model?: string;
   permissionMode?: string;
+  sidebarOpen: boolean;
   inspectorOpen: boolean;
+  onToggleSidebar(): void;
   onToggleInspector(): void;
 }
 
@@ -64,7 +68,9 @@ export function ThreadHeader({
   archived,
   model,
   permissionMode,
+  sidebarOpen,
   inspectorOpen,
+  onToggleSidebar,
   onToggleInspector,
 }: ThreadHeaderProps) {
   const [copied, setCopied] = useState(false);
@@ -95,6 +101,21 @@ export function ThreadHeader({
 
   return (
     <header className="thread-header polished-thread-header">
+      <div className="thread-header-leading">
+        <button
+          type="button"
+          className={`thread-header-icon-button panel-toggle-button ${sidebarOpen ? "active" : ""}`}
+          onClick={onToggleSidebar}
+          title={sidebarOpen ? "Hide conversation sidebar" : "Open conversation sidebar"}
+          aria-label={sidebarOpen ? "Hide conversation sidebar" : "Open conversation sidebar"}
+          aria-pressed={sidebarOpen}
+        >
+          {sidebarOpen
+            ? <PanelLeftClose size={16} strokeWidth={1.75} />
+            : <PanelLeftOpen size={16} strokeWidth={1.75} />}
+        </button>
+      </div>
+
       <div className="thread-header-main">
         <div className="thread-header-mark" aria-hidden="true">
           <MessageSquareText size={15} strokeWidth={1.8} />
@@ -126,7 +147,7 @@ export function ThreadHeader({
       <div className="thread-header-actions polished-thread-header-actions">
         <span className={`thread-status-chip ${state.tone}`} title={`Conversation status: ${state.label}`}>
           {archived ? <Archive size={12.5} strokeWidth={1.8} /> : <span className="thread-status-orb" aria-hidden="true" />}
-          <span>{state.label}</span>
+          <span className="thread-status-label">{state.label}</span>
         </span>
 
         <div className="thread-header-meta">
@@ -144,7 +165,7 @@ export function ThreadHeader({
 
         <button
           type="button"
-          className={`thread-header-icon-button ${inspectorOpen ? "active" : ""}`}
+          className={`thread-header-icon-button panel-toggle-button ${inspectorOpen ? "active" : ""}`}
           onClick={onToggleInspector}
           title={inspectorOpen ? "Hide runtime inspector" : "Open runtime inspector"}
           aria-label={inspectorOpen ? "Hide runtime inspector" : "Open runtime inspector"}
