@@ -11,7 +11,7 @@ from typing import Any
 SETTINGS_UPDATE_PREFIX = "__setting__:"
 
 DEFAULT_SETTINGS: dict[str, Any] = {
-    "schemaVersion": 3,
+    "schemaVersion": 2,
     "capabilities": {
         "computerUse": True,
         "browserUse": True,
