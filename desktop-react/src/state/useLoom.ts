@@ -31,6 +31,14 @@ function mergeDelta(item: TranscriptItem, delta: Record<string, unknown>): Trans
   return next;
 }
 
+function buildItemIndex(items: TranscriptItem[]): Map<string, number> {
+  const index = new Map<string, number>();
+  for (let position = 0; position < items.length; position += 1) {
+    index.set(items[position].id, position);
+  }
+  return index;
+}
+
 function getBridge(): Window["loom"] | null {
   return Reflect.get(window, "loom") as Window["loom"] | null;
 }
@@ -71,18 +79,71 @@ export function useLoom() {
   const [turnStartedAt, setTurnStartedAt] = useState<number | null>(null);
   const activeIdRef = useRef("");
   const threadViewRef = useRef<ThreadView>("active");
+  const itemsRef = useRef<TranscriptItem[]>([]);
+  const itemIndexRef = useRef<Map<string, number>>(new Map());
 
   useEffect(() => {
     activeIdRef.current = active?.thread.id ?? "";
   }, [active?.thread.id]);
 
+  const replaceItems = useCallback((nextItems: TranscriptItem[]) => {
+    itemsRef.current = nextItems;
+    itemIndexRef.current = buildItemIndex(nextItems);
+    setItems(nextItems);
+  }, []);
+
+  const locateItemIndex = useCallback((itemId: string): number => {
+    const indexed = itemIndexRef.current.get(itemId);
+    if (indexed !== undefined && itemsRef.current[indexed]?.id === itemId) return indexed;
+
+    const fallback = itemsRef.current.findIndex((item) => item.id === itemId);
+    if (fallback >= 0) itemIndexRef.current.set(itemId, fallback);
+    else itemIndexRef.current.delete(itemId);
+    return fallback;
+  }, []);
+
+  const appendItem = useCallback((item: TranscriptItem) => {
+    if (locateItemIndex(item.id) >= 0) return;
+    const next = [...itemsRef.current, item];
+    itemIndexRef.current.set(item.id, next.length - 1);
+    itemsRef.current = next;
+    setItems(next);
+  }, [locateItemIndex]);
+
+  const applyItemDelta = useCallback((itemId: string, delta: Record<string, unknown>) => {
+    const index = locateItemIndex(itemId);
+    if (index < 0) return;
+    const current = itemsRef.current;
+    const next = [...current];
+    next[index] = mergeDelta(current[index], delta);
+    itemsRef.current = next;
+    setItems(next);
+  }, [locateItemIndex]);
+
+  const completeItem = useCallback((completed: TranscriptItem) => {
+    const index = locateItemIndex(completed.id);
+    if (index < 0) {
+      const next = [...itemsRef.current, completed];
+      itemIndexRef.current.set(completed.id, next.length - 1);
+      itemsRef.current = next;
+      setItems(next);
+      return;
+    }
+
+    const current = itemsRef.current;
+    const next = [...current];
+    next[index] = { ...current[index], ...completed };
+    itemsRef.current = next;
+    setItems(next);
+  }, [locateItemIndex]);
+
   const clearActive = useCallback(() => {
     activeIdRef.current = "";
     setActive(null);
-    setItems([]);
+    replaceItems([]);
     setTurnActive(false);
     setTurnStartedAt(null);
-  }, []);
+  }, [replaceItems]);
 
   const refreshThreads = useCallback(async (viewOverride?: ThreadView) => {
     const view = viewOverride ?? threadViewRef.current;
@@ -109,11 +170,11 @@ export function useLoom() {
     const result = await requireBridge().call<ThreadReadResult>("thread/read", { threadId });
     activeIdRef.current = result.thread.id;
     setActive(result);
-    setItems(flattenItems(result.turns ?? []));
+    replaceItems(flattenItems(result.turns ?? []));
     const running = threadIsRunning(result.thread);
     setTurnActive(running);
     setTurnStartedAt(running ? turnStartFromRead(result) : null);
-  }, []);
+  }, [replaceItems]);
 
   const ensureSelection = useCallback(async (list: ThreadRecord[], preferredId = activeIdRef.current) => {
     if (preferredId && list.some((thread) => thread.id === preferredId)) return;
@@ -317,23 +378,15 @@ export function useLoom() {
         if (item) {
           setTurnActive(true);
           setTurnStartedAt((current) => current ?? Date.now());
-          setItems((current) => current.some((entry) => entry.id === item.id) ? current : [...current, item]);
+          appendItem(item);
         }
       } else if (message.method === "item/delta") {
         const itemId = String(params.itemId ?? "");
         const delta = (params.delta ?? {}) as Record<string, unknown>;
-        setItems((current) => current.map((item) => item.id === itemId ? mergeDelta(item, delta) : item));
+        applyItemDelta(itemId, delta);
       } else if (message.method === "item/completed") {
         const completed = params.item as TranscriptItem | undefined;
-        if (completed) {
-          setItems((current) => {
-            const index = current.findIndex((item) => item.id === completed.id);
-            if (index < 0) return [...current, completed];
-            const next = [...current];
-            next[index] = { ...current[index], ...completed };
-            return next;
-          });
-        }
+        if (completed) completeItem(completed);
       } else if (message.method === "thread/resync") {
         void openThread(activeId);
       } else if (message.method === "turn/completed") {
@@ -343,7 +396,7 @@ export function useLoom() {
       }
     });
     return unsubscribe;
-  }, [clearActive, openThread, refreshThreads]);
+  }, [appendItem, applyItemDelta, clearActive, completeItem, openThread, refreshThreads]);
 
   useEffect(() => {
     let disposed = false;
