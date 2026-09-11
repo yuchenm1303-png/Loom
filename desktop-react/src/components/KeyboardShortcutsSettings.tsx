@@ -52,7 +52,8 @@ function isSafeGlobalShortcut(value: string, command: ShortcutCommandId): boolea
   if (!normalized) return false;
   if (command === "stopTask" && normalized === "Escape") return true;
   const pieces = normalized.split("+");
-  if (pieces.some((piece) => ["Ctrl", "Alt", "Shift", "Meta"].includes(piece))) return true;
+  const hasStrongModifier = pieces.some((piece) => ["Ctrl", "Alt", "Meta"].includes(piece));
+  if (hasStrongModifier) return true;
   return /^F\d{1,2}$/.test(pieces.at(-1) || "");
 }
 
@@ -117,7 +118,7 @@ export function KeyboardShortcutsSettings({
 
     setPreview(formatShortcut(candidate));
     if (!isSafeGlobalShortcut(candidate, command.id)) {
-      setError("Global shortcuts need Ctrl, Alt, Shift, Meta, or an F-key so normal typing stays safe.");
+      setError("Global shortcuts need Ctrl, Alt, Meta, or an F-key so normal typing stays safe.");
       return;
     }
 
@@ -215,7 +216,7 @@ export function KeyboardShortcutsSettings({
         </div>
       </section>
 
-      <div className="settings-callout shortcuts-callout"><Keyboard size={16} /><div><strong>Global shortcut customization is live.</strong><span>Bindings are checked for conflicts before they are saved. Loom ignores custom global bindings while you type normally unless the shortcut includes a modifier.</span></div></div>
+      <div className="settings-callout shortcuts-callout"><Keyboard size={16} /><div><strong>Global shortcut customization is live.</strong><span>Bindings are checked for conflicts before they are saved. Loom ignores custom global bindings while you type normally unless the shortcut includes a control modifier or function key.</span></div></div>
     </>
   );
 }
