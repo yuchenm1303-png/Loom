@@ -1,15 +1,19 @@
 import {
   ChevronDown,
   ChevronUp,
+  ExternalLink,
   File,
   FileArchive,
   FileCode2,
   FileImage,
   FileSpreadsheet,
   FileText,
+  Maximize2,
+  X,
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import "./user-message-attachments.css";
 
 export interface DisplayAttachment {
@@ -29,6 +33,11 @@ const IMAGE_MARKER = /^\[\d+ images? attached\]$/i;
 const MANIFEST_LINE = /^-\s+(.+?)\s+—\s+(\.loom\/attachments\/.+?)\s+\((image, shown above|read it with the file tools)\)$/i;
 const LONG_MESSAGE_CHAR_THRESHOLD = 420;
 const LONG_MESSAGE_LINE_THRESHOLD = 9;
+const INLINE_VIEW_EXTENSIONS = new Set([
+  "pdf", "txt", "md", "log", "json", "xml", "csv", "html", "htm", "css", "scss", "js", "jsx", "ts", "tsx",
+  "py", "java", "kt", "kts", "go", "rs", "c", "h", "cpp", "hpp", "cs", "php", "rb", "swift", "vue", "svelte",
+  "yaml", "yml", "toml", "sh", "ps1", "sql",
+]);
 
 function extensionOf(name: string): string {
   const clean = String(name || "").trim();
@@ -100,50 +109,138 @@ function workspacePathFromHeader(): string {
   return String(document.querySelector<HTMLElement>(".workspace-full-path")?.textContent || "").trim();
 }
 
-function attachmentFileUrl(attachment: DisplayAttachment): string {
+function attachmentAbsolutePath(attachment: DisplayAttachment): string {
   const workspace = workspacePathFromHeader();
   if (!workspace) return "";
   const root = workspace.replaceAll("\\", "/").replace(/\/+$/, "");
   const relative = attachment.path.replaceAll("\\", "/").replace(/^\.\//, "").replace(/^\/+/, "");
   if (!relative.startsWith(".loom/attachments/")) return "";
-  const absolute = `${root}/${relative}`;
+  return `${root}/${relative}`;
+}
+
+function attachmentFileUrl(attachment: DisplayAttachment): string {
+  const absolute = attachmentAbsolutePath(attachment);
+  if (!absolute) return "";
   const encoded = encodeURI(absolute).replaceAll("#", "%23").replaceAll("?", "%3F");
   return /^[A-Za-z]:\//.test(absolute) ? `file:///${encoded}` : `file://${encoded}`;
 }
 
+async function revealAttachment(attachment: DisplayAttachment): Promise<void> {
+  const absolute = attachmentAbsolutePath(attachment);
+  if (!absolute) return;
+  try {
+    await window.loom.revealPath(absolute);
+  } catch {
+    // The attachment remains visible in the transcript even if its staged copy
+    // was removed from disk later.
+  }
+}
+
+function viewAttachment(attachment: DisplayAttachment): void {
+  const source = attachmentFileUrl(attachment);
+  if (source && (attachment.kind === "image" || INLINE_VIEW_EXTENSIONS.has(attachment.extension))) {
+    window.open(source, "_blank", "noopener,noreferrer");
+    return;
+  }
+  void revealAttachment(attachment);
+}
+
 function FileAttachmentCard({ attachment }: { attachment: DisplayAttachment }) {
   const Icon = iconFor(attachment);
+  const inlineView = INLINE_VIEW_EXTENSIONS.has(attachment.extension);
+  const actionLabel = inlineView ? "点击查看附件" : "点击在系统中查看附件";
+
   return (
-    <div className="user-message-attachment-card" title={attachment.name}>
+    <button
+      type="button"
+      className="user-message-attachment-card is-clickable"
+      title={`${attachment.name} · ${actionLabel}`}
+      onClick={() => viewAttachment(attachment)}
+      aria-label={`${actionLabel}：${attachment.name}`}
+    >
       <span className="user-message-file-icon" aria-hidden="true"><Icon size={18} strokeWidth={1.65} /></span>
       <span className="user-message-file-copy">
         <strong>{attachment.name}</strong>
         <span>{attachment.kind === "image" ? "图片" : typeLabel(attachment)}</span>
       </span>
-    </div>
+      <span className="user-message-file-open" aria-hidden="true"><ExternalLink size={14} strokeWidth={1.8} /></span>
+    </button>
   );
 }
 
 function ImageAttachmentPreview({ attachment }: { attachment: DisplayAttachment }) {
   const [failed, setFailed] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
   const source = useMemo(() => attachmentFileUrl(attachment), [attachment.path]);
 
   useEffect(() => {
     setFailed(false);
+    setPreviewing(false);
   }, [source]);
+
+  useEffect(() => {
+    if (!previewing) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setPreviewing(false);
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [previewing]);
 
   if (!source || failed) return <FileAttachmentCard attachment={attachment} />;
 
+  const lightbox = previewing ? createPortal(
+    <div
+      className="user-message-image-lightbox"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) setPreviewing(false);
+      }}
+    >
+      <div className="user-message-image-lightbox-panel" role="dialog" aria-modal="true" aria-label={`查看图片 ${attachment.name}`}>
+        <div className="user-message-image-lightbox-toolbar">
+          <strong title={attachment.name}>{attachment.name}</strong>
+          <div className="user-message-image-lightbox-actions">
+            <button type="button" onClick={() => void revealAttachment(attachment)} title="在文件夹中查看">
+              <ExternalLink size={15} strokeWidth={1.8} />
+              <span>原文件</span>
+            </button>
+            <button type="button" className="icon-only" onClick={() => setPreviewing(false)} title="关闭图片预览" aria-label="关闭图片预览">
+              <X size={17} strokeWidth={1.9} />
+            </button>
+          </div>
+        </div>
+        <div className="user-message-image-lightbox-canvas">
+          <img src={source} alt={attachment.name} draggable={false} />
+        </div>
+      </div>
+    </div>,
+    document.body,
+  ) : null;
+
   return (
-    <figure className="user-message-image-preview" title={attachment.name}>
-      <img
-        src={source}
-        alt={attachment.name}
-        loading="lazy"
-        decoding="async"
-        onError={() => setFailed(true)}
-      />
-    </figure>
+    <>
+      <button
+        type="button"
+        className="user-message-image-preview"
+        title={`${attachment.name} · 点击放大`}
+        onClick={() => setPreviewing(true)}
+        aria-label={`放大查看图片：${attachment.name}`}
+      >
+        <img
+          src={source}
+          alt={attachment.name}
+          loading="lazy"
+          decoding="async"
+          onError={() => setFailed(true)}
+        />
+        <span className="user-message-image-open-hint" aria-hidden="true">
+          <Maximize2 size={14} strokeWidth={1.8} />
+          <span>查看</span>
+        </span>
+      </button>
+      {lightbox}
+    </>
   );
 }
 
