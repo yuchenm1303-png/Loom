@@ -18,6 +18,7 @@ export interface ProjectRecord {
   id: string;
   name: string;
   root: string;
+  instructions?: string;
   threadCount: number;
   createdAt?: string;
   updatedAt?: string;
