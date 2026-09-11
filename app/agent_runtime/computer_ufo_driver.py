@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import queue
+import re
 import subprocess
 import threading
 import time
@@ -26,6 +27,12 @@ UFO_TAG = "v3.0.8"
 UFO_COMMIT = "96983c73ed09e884a5f1d7ff8936c953b234b684"
 PROTOCOL = "loom-ufo-sidecar"
 PROTOCOL_VERSION = 1
+_TRACEBACK_FILE_RE = re.compile(
+    r'^\s*File\s+["\'](?P<path>.*?)["\'],\s+line\s+(?P<line>\d+)(?:,\s+in\s+(?P<func>[^\r\n]+))?\s*$'
+)
+_EXCEPTION_RE = re.compile(
+    r"^(?P<name>[A-Za-z_][A-Za-z0-9_.]*(?:Error|Exception|Warning|Interrupt|Exit))(?::.*)?$"
+)
 
 
 def _truthy(value: str | None) -> bool:
@@ -68,6 +75,39 @@ def _normalize_base_url(value: str) -> str:
         if base.casefold().endswith(suffix):
             base = base[: -len(suffix)].rstrip("/")
     return base
+
+
+def _safe_stderr_line(value: str) -> str:
+    """Preserve traceback structure while dropping provider/user-controlled text."""
+
+    line = str(value or "").rstrip()
+    stripped = line.strip()
+    if not stripped:
+        return ""
+    if stripped in {
+        "Traceback (most recent call last):",
+        "During handling of the above exception, another exception occurred:",
+        "The above exception was the direct cause of the following exception:",
+    }:
+        return stripped
+
+    file_match = _TRACEBACK_FILE_RE.match(line)
+    if file_match:
+        raw_path = str(file_match.group("path") or "").replace("\\", "/")
+        filename = raw_path.rsplit("/", 1)[-1] or "<unknown>"
+        line_number = str(file_match.group("line") or "0")
+        function_name = str(file_match.group("func") or "").strip()
+        suffix = f", in {function_name}" if function_name else ""
+        return f'  File "{filename}", line {line_number}{suffix}'
+
+    exception_match = _EXCEPTION_RE.match(stripped)
+    if exception_match:
+        return f"{exception_match.group('name')}: [REDACTED_EXCEPTION_MESSAGE]"
+
+    level_match = re.match(r"^(DEBUG|INFO|WARNING|ERROR|CRITICAL)(?:\s*[:|-].*)?$", stripped, re.IGNORECASE)
+    if level_match:
+        return f"{level_match.group(1).upper()}: [REDACTED_UFO_STDERR]"
+    return "[REDACTED_UFO_STDERR]"
 
 
 @dataclass(frozen=True, slots=True)
@@ -251,7 +291,7 @@ class UfoWindowsDriver:
             try:
                 payload = json.loads(line)
             except Exception:
-                payload = {"type": "protocol_error", "error": "non-JSON sidecar stdout", "preview": line[:500]}
+                payload = {"type": "protocol_error", "error_type": "NonJSONSidecarOutput"}
             if isinstance(payload, dict):
                 self._messages.put(payload)
 
@@ -260,9 +300,9 @@ class UfoWindowsDriver:
         if stream is None:
             return
         for raw in stream:
-            line = raw.rstrip()
-            if line:
-                self._stderr.append(line[-2000:])
+            safe = _safe_stderr_line(raw)
+            if safe:
+                self._stderr.append(safe[-2000:])
 
     def _hard_stop(self) -> None:
         process = self._process
@@ -342,8 +382,9 @@ class UfoWindowsDriver:
                     )
                 return
             if message.get("type") in {"error", "protocol_error"}:
+                error_type = str(message.get("error_type") or "SidecarStartupError")
                 self._hard_stop()
-                raise ComputerDriverUnavailableError(str(message.get("error") or "UFO sidecar startup failed"))
+                raise ComputerDriverUnavailableError(f"UFO sidecar startup failed ({error_type})")
         self._hard_stop()
         raise ComputerDriverUnavailableError("UFO sidecar did not become ready before the startup timeout")
 
@@ -463,12 +504,13 @@ class UfoWindowsDriver:
                         data=dict(message.get("data") or {}),
                     )
                 if message_type in {"error", "protocol_error"}:
+                    error_type = str(message.get("error_type") or "SidecarProtocolError")
                     return ComputerDriverResult(
                         task_id=task_id,
                         status="failed",
                         ok=False,
-                        summary="UFO sidecar protocol task failed.",
-                        data={"engine": "ufo2", "error": str(message.get("error") or "unknown error")[:1000]},
+                        summary=f"UFO sidecar protocol task failed: {error_type}.",
+                        data={"engine": "ufo2", "error_type": error_type},
                     )
         finally:
             with self._state_lock:
