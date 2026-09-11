@@ -7,16 +7,28 @@
 }
 
 .thread-project-submenu {
+  position: relative;
   margin: 3px 7px 5px 39px;
   padding: 5px;
+  max-height: min(252px, 42vh);
   display: grid;
   gap: 2px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: #363942 transparent;
   border: 1px solid rgba(255,255,255,.075);
   border-radius: 9px;
-  background: rgba(255,255,255,.025);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.018), transparent 34%),
+    rgba(255,255,255,.022);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.018);
+  transform-origin: top center;
+  animation: thread-project-submenu-in 145ms cubic-bezier(.2,.78,.2,1) both;
 }
 
 .thread-project-submenu > button {
+  position: relative;
   width: 100%;
   min-height: 34px;
   border: 0;
@@ -30,12 +42,25 @@
   color: #d6d9df;
   text-align: left;
   cursor: pointer;
-  transition: background 90ms ease, color 90ms ease;
+  transition:
+    background 90ms ease,
+    color 90ms ease,
+    transform 90ms ease,
+    opacity 90ms ease;
+  animation: thread-project-option-in 135ms cubic-bezier(.2,.74,.2,1) both;
 }
+
+.thread-project-submenu > button:nth-of-type(2) { animation-delay: 10ms; }
+.thread-project-submenu > button:nth-of-type(3) { animation-delay: 18ms; }
+.thread-project-submenu > button:nth-of-type(n+4) { animation-delay: 24ms; }
 
 .thread-project-submenu > button:hover:not(:disabled) {
   background: rgba(255,255,255,.065);
   color: #fff;
+}
+
+.thread-project-submenu > button:active:not(:disabled) {
+  transform: scale(.985);
 }
 
 .thread-project-submenu > button:disabled {
@@ -46,6 +71,17 @@
 .thread-project-submenu > button.selected {
   color: #d9d4ff;
   background: rgba(139,124,246,.075);
+}
+
+.thread-project-submenu > button.selected::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 9px;
+  bottom: 9px;
+  width: 2px;
+  border-radius: 999px;
+  background: rgba(157,145,247,.82);
 }
 
 .thread-project-submenu > button > svg {
@@ -80,6 +116,15 @@
   color: #8f96a1;
 }
 
+.thread-project-submenu > button.thread-project-remove-option:hover:not(:disabled) {
+  color: #efb0b7;
+  background: rgba(222,116,129,.075);
+}
+
+.thread-project-submenu > button.thread-project-remove-option:hover:not(:disabled) > svg {
+  color: #df8e98;
+}
+
 .thread-project-submenu-separator {
   height: 1px;
   margin: 3px 1px;
@@ -93,4 +138,140 @@
   align-items: center;
   color: #727984;
   font-size: 11.5px;
+}
+
+/* While a remote conversation action is pending, all quick actions on that row
+   are disabled. Use that stable signal for restrained progress feedback rather
+   than adding another permanent badge to every conversation. */
+.compact-thread-row:has(.thread-quick-actions > button:first-child:disabled) {
+  opacity: .58;
+  transform: translateX(3px);
+  transition:
+    opacity 130ms ease,
+    transform 150ms cubic-bezier(.2,.78,.2,1),
+    background 110ms ease,
+    border-color 110ms ease;
+}
+
+.compact-thread-row:has(.thread-quick-actions > button:first-child:disabled) .compact-thread-dot {
+  width: 7px;
+  height: 7px;
+  border-color: rgba(157,145,247,.34);
+  border-top-color: #a99ff7;
+  background: transparent;
+  box-shadow: none;
+  animation: thread-project-busy-spin 620ms linear infinite;
+}
+
+/* A moved row is remounted in its destination list. Give that arrival a tiny
+   directional cue so moving between Recent and a project reads as one action,
+   not as a hard refresh. */
+.project-thread-list > .compact-thread-row {
+  animation: thread-project-arrive 175ms cubic-bezier(.2,.78,.2,1) both;
+}
+
+.recent-thread-list > .compact-thread-row {
+  animation: thread-recent-arrive 175ms cubic-bezier(.2,.78,.2,1) both;
+}
+
+.sidebar-notice {
+  gap: 8px;
+}
+
+.sidebar-notice::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #7d8490;
+  box-shadow: 0 0 0 3px rgba(125,132,144,.08);
+}
+
+.sidebar-notice.success::before {
+  background: #55d995;
+  box-shadow: 0 0 0 3px rgba(85,217,149,.09);
+}
+
+.sidebar-notice.error::before {
+  background: #ff7182;
+  box-shadow: 0 0 0 3px rgba(255,113,130,.09);
+}
+
+@keyframes thread-project-submenu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes thread-project-option-in {
+  from {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes thread-project-busy-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes thread-project-arrive {
+  from {
+    opacity: 0;
+    transform: translateX(-5px) translateY(1px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) translateY(0);
+  }
+}
+
+@keyframes thread-recent-arrive {
+  from {
+    opacity: 0;
+    transform: translateX(5px) translateY(1px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) translateY(0);
+  }
+}
+
+html[data-loom-reduced-motion="true"] .thread-project-submenu,
+html[data-loom-reduced-motion="true"] .thread-project-submenu > button,
+html[data-loom-reduced-motion="true"] .compact-thread-row,
+html[data-loom-reduced-motion="true"] .compact-thread-dot,
+html[data-loom-reduced-motion="true"] .sidebar-notice,
+html[data-loom-reduced-motion="true"] .thread-context-menu {
+  animation: none !important;
+  transition-duration: .001ms !important;
+}
+
+html[data-loom-reduced-motion="true"] .compact-thread-row:has(.thread-quick-actions > button:first-child:disabled) {
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .thread-project-submenu,
+  .thread-project-submenu > button,
+  .compact-thread-row,
+  .compact-thread-dot,
+  .sidebar-notice,
+  .thread-context-menu {
+    animation: none !important;
+    transition-duration: .001ms !important;
+  }
+
+  .compact-thread-row:has(.thread-quick-actions > button:first-child:disabled) {
+    transform: none;
+  }
 }
