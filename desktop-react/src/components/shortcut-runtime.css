@@ -1,0 +1,7 @@
+.app-shell.sidebar-collapsed {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.app-shell.sidebar-collapsed.with-inspector {
+  grid-template-columns: minmax(0, 1fr) var(--inspector-width);
+}
