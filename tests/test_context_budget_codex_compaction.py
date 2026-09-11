@@ -183,3 +183,23 @@ def test_oversized_compaction_request_trims_only_temporary_old_history():
     archived = runtime.commits[-1]["archived"]
     assert archived
     assert str(archived[0].content).startswith("user-0:")
+
+
+def test_partition_reserves_room_for_summary_before_calling_model():
+    summary = "summary " * 110
+    runtime = FakeRuntime(
+        [ModelResponse(text=summary, finish_reason="stop")],
+        limits=Limits(context_window_tokens=2200, output_reserve_tokens=400),
+    )
+    # With the old placeholder-only partitioning, six recent messages were kept.
+    # This complete (and output-limit-compliant) summary then made the candidate
+    # exceed the request budget on every retry. Reserving summary space selects a
+    # smaller safe suffix before the model call.
+    session = Session(_long_history(pairs=10, chars=700))
+
+    _messages, metadata = prepare_context(runtime, session, Step(), Token())
+
+    assert metadata["compaction_attempts"] == 1
+    assert runtime.commits[-1]["summary"] == summary.strip()
+    request = runtime.model_executor.requests[0][1]
+    assert 0 < request.max_output_tokens <= runtime.limits.output_reserve_tokens

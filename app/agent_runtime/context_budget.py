@@ -115,7 +115,7 @@ def _retained_for_split(history, split: int, last_user: int):
     return retained
 
 
-def _select_partition(rt, history, transient, tools, budget):
+def _select_partition(rt, history, transient, tools, budget, *, summary_reserve: int):
     """Choose a safe recent suffix that still leaves room for a compact summary."""
     initial_keep = min(12, max(2, len(history) // 3))
     keep_candidates = []
@@ -135,7 +135,10 @@ def _select_partition(rt, history, transient, tools, budget):
             *retained,
         ]
         if (
-            estimate_tokens(probe, tools) + _COMPACTION_SAFETY_TOKENS <= budget
+            estimate_tokens(probe, tools)
+            + _COMPACTION_SAFETY_TOKENS
+            + max(1, summary_reserve)
+            <= budget
             and len(probe) <= rt.limits.max_messages
         ):
             return archived, retained
@@ -203,7 +206,15 @@ def prepare_context(rt, session, step, token):
 
     repair = repair_tool_history(session.messages, max_tool_result_chars=rt.limits.max_tool_result_chars)
     history = tuple(repair.messages)
-    archived, retained = _select_partition(rt, history, transient, tools, budget)
+    max_summary_output = max(1, rt.limits.output_reserve_tokens)
+    archived, retained = _select_partition(
+        rt,
+        history,
+        transient,
+        tools,
+        budget,
+        summary_reserve=max_summary_output,
+    )
 
     # Keep the canonical archive intact for Loom's checkpoint. Only the temporary
     # compaction request is trimmed, exactly like Codex trimming its cloned history.
@@ -213,9 +224,23 @@ def prepare_context(rt, session, step, token):
     trimmed_messages = 0
     last_failure = ""
 
-    # The old 2048-token ceiling was an unnecessary truncation source. Codex does
-    # not impose that extra cap, so use Loom's full reserved model-output budget.
-    max_summary_output = max(1, rt.limits.output_reserve_tokens)
+    # A compaction summary becomes input on the next request. Bound its output by
+    # the space that remains after transient context, tool schemas, retained
+    # history, and the safety margin. Previously Loom partitioned with a tiny
+    # placeholder but allowed a full output-reserve-sized summary, so the model
+    # could repeatedly produce a valid summary that could never fit back into the
+    # request being compacted.
+    summary_probe = [
+        *transient,
+        AIMessage(role=MessageRole.SYSTEM, content="Compacted earlier context."),
+        *retained,
+    ]
+    summary_headroom = (
+        budget
+        - estimate_tokens(summary_probe, tools)
+        - _COMPACTION_SAFETY_TOKENS
+    )
+    max_summary_output = max(1, min(max_summary_output, summary_headroom))
 
     while model_attempts < _COMPACTION_RETRY_LIMIT:
         summary_request = _build_summary_request(
