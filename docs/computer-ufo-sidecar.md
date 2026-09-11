@@ -3,10 +3,10 @@
 Loom's Windows Computer Use baseline is Microsoft UFO² `v3.0.8`, pinned to commit
 `96983c73ed09e884a5f1d7ff8936c953b234b684`.
 
-The goal is to stop growing a second hand-written GUI-agent kernel inside Loom.
-Loom owns orchestration, permissions, HUD, Inspector and diagnostics. UFO owns the
-Windows GUI-agent loop: HostAgent application selection, AppAgent execution, UIA,
-window-relative visual actions and recovery.
+The product goal is that users see one built-in Computer Use capability, not a UFO
+setup workflow. Loom owns orchestration, permissions, HUD, Inspector and diagnostics.
+UFO owns the Windows GUI-agent loop: HostAgent application selection, AppAgent
+execution, UIA, window-relative visual actions and recovery.
 
 ## Architecture
 
@@ -37,23 +37,19 @@ UfoWindowsDriver  -- stdin/stdout NDJSON -->  ufo_sidecar.py
 Browser automation remains a separate browser-use path. UFO is for native Windows
 applications such as WeChat, Settings, Office and other desktop software.
 
-## Canonical model-facing path
+## Built-in capability contract
 
-When the mature Computer Driver layer is active, the model gets one direct desktop
-task entrypoint: `computer_run_task`. `computer_status` also stays direct.
+The model-facing desktop API is intentionally small:
 
-The historical Loom primitives:
+- `computer_run_task` is the normal desktop task entrypoint.
+- `computer_status` reports readiness and setup state.
+- `computer_observe`, `computer_action` and `computer_step` remain installed as
+  `deferred` diagnostics, but they no longer compete with UFO during normal task
+  planning.
 
-- `computer_observe`
-- `computer_action`
-- `computer_step`
-
-remain installed, but are `deferred` diagnostics. They can be explicitly discovered
-for debugging without competing with UFO during normal task planning. `legacy` mode
-preserves their historical direct exposure.
-
-This is intentional: installing a mature GUI engine is not useful if the outer model
-can randomly bypass it and re-enter Loom's old GUI-Plus loop.
+This is the product boundary: users ask Loom to operate a desktop app; Loom selects
+and starts the driver. Users should not need to know UFO internals, provide a second
+model name, or choose low-level screenshot/action tools.
 
 ## Why a sidecar
 
@@ -70,13 +66,27 @@ The sidecar uses local UFO `Session`, not UFO's remote WebSocket service.
 
 ## Install and preflight
 
-Windows requires Git and Python 3.10.
+Development startup now auto-provisions the driver on Windows unless Computer Use is
+explicitly forced to `legacy`:
 
-From `desktop-react`:
+```powershell
+npm run dev:ready
+```
+
+The launcher checks the expected UFO source tree, isolated Python and Loom UFO config.
+When any required part is missing, it runs `scripts/setup-ufo.mjs` automatically. In
+strict UFO mode, setup failure stops the launch instead of falling back to legacy:
+
+```powershell
+$env:LOOM_COMPUTER_DRIVER="ufo"
+npm run dev:ready
+```
+
+Manual setup remains available for debugging:
 
 ```powershell
 npm run setup:ufo
-npm run preflight:ufo
+npm run ufo:preflight
 ```
 
 The installer:
@@ -85,32 +95,31 @@ The installer:
 2. verifies the expected commit SHA;
 3. creates `~/.loom/drivers/ufo/3.0.8/.venv`;
 4. installs UFO's pinned requirements there;
-5. creates an `agents.yaml` that references environment variables instead of storing secrets;
+5. creates an `agents.yaml` that references runtime environment variables instead of
+   storing secrets;
 6. creates a Loom safety override;
 7. uses a GUI-only UFO MCP allowlist (UICollector, HostUIExecutor and AppUIExecutor).
 
 `CommandLineExecutor` and Office COM executors are intentionally excluded from the
 first production baseline. They can be evaluated later as explicit capabilities.
 
-`preflight:ufo` starts the isolated sidecar, verifies the NDJSON protocol and exact
+`ufo:preflight` starts the isolated sidecar, verifies the NDJSON protocol and exact
 UFO commit, and performs a clean shutdown without starting a desktop task. The
 preflight child gets only an OS/network environment allowlist; provider secrets are
 not forwarded for this handshake.
 
-For a one-command development start:
-
-```powershell
-npm run dev:ready:ufo
-```
-
 ## Model configuration
 
-When a vision-capable model is selected through Loom's hot model switch, its **effective**
-active connection is copied to the UFO driver in memory only. The API key is not exposed
-by runtime status or Computer diagnostics. For the native OpenAI adapter, stale custom
-`baseUrl` UI values are ignored consistently by both Loom and UFO.
+Normal users should not configure a separate UFO model. Loom attaches RAM-only metadata
+to the active model platform, and `ComputerDriverRuntime` copies that effective
+vision-capable provider/model/key into the UFO driver before every status check or
+desktop task. This includes both the initial app-server model and hot-switched models.
 
-A dedicated UFO model can also be configured with environment variables:
+For the native OpenAI adapter, stale custom `baseUrl` UI values are ignored consistently
+by both Loom and UFO. For OpenAI-compatible providers, `/chat/completions` and
+`/responses` suffixes are normalized back to the provider base URL.
+
+A dedicated UFO override is still available for deliberate debugging or benchmarking:
 
 ```text
 LOOM_UFO_API_TYPE=openai
@@ -119,10 +128,9 @@ LOOM_UFO_API_KEY=...
 LOOM_UFO_API_MODEL=...
 ```
 
-OpenAI-compatible endpoints are supported through `API_TYPE=openai` and their base
-URL. If `DASHSCOPE_API_KEY` is present and no explicit UFO settings are supplied,
-Loom uses DashScope's OpenAI-compatible endpoint with `qwen-vl-max` as a compatibility
-fallback.
+If no active Loom vision model can be inherited and no UFO override is supplied, strict
+`ufo` mode reports the missing model/provider as a setup error instead of silently
+running the legacy GUI loop.
 
 ## Process environment boundary
 
