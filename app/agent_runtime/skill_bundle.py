@@ -13,7 +13,9 @@ from .skills import SkillDefinition, SkillError
 _MAX_RESOURCE_BYTES = 256 * 1024
 _MAX_STAGE_BYTES = 64 * 1024 * 1024
 _MAX_STAGE_FILES = 2048
+_INSTALL_MANIFEST = ".loom-skill.json"
 _STAGE_MARKER = ".loom-staged-skill.json"
+_RESERVED_METADATA_FILES = frozenset({_INSTALL_MANIFEST, _STAGE_MARKER})
 
 
 def list_skill_files(skill: SkillDefinition, *, limit: int = 200) -> tuple[str, ...]:
@@ -27,6 +29,8 @@ def list_skill_files(skill: SkillDefinition, *, limit: int = 200) -> tuple[str, 
             if item != ".git" and not (current_path / item).is_symlink()
         ]
         for filename in sorted(files, key=str.casefold):
+            if filename in _RESERVED_METADATA_FILES:
+                continue
             path = current_path / filename
             if path.is_symlink() or not path.is_file():
                 continue
@@ -49,6 +53,8 @@ def read_skill_resource(
     relative = Path(raw)
     if relative.is_absolute() or ".." in relative.parts:
         raise SkillError("skill resource path must remain inside the skill bundle")
+    if relative.name in _RESERVED_METADATA_FILES:
+        raise SkillError("Loom internal skill metadata is not a readable skill resource")
     resolved = (root / relative).resolve(strict=True)
     try:
         resolved.relative_to(root)
@@ -109,6 +115,8 @@ def stage_skill_bundle(
             output_dir = temporary / relative_dir
             output_dir.mkdir(parents=True, exist_ok=True)
             for filename in files:
+                if filename in _RESERVED_METADATA_FILES:
+                    continue
                 src = current_path / filename
                 if src.is_symlink():
                     raise SkillError(f"skill bundle contains a symlink: {src}")
