@@ -9,6 +9,7 @@ from urllib.request import Request, urlopen
 import pytest
 
 import app.agent_runtime.browser_runtime as browser_runtime_module
+from app.agent_runtime.browser_diagnostics import BrowserDiagnosticLog, summarize_bridge_args, summarize_browser_state_payload
 from app.agent_runtime.browser_extension_bridge import BrowserExtensionBridge, BrowserExtensionSessionBackend
 from app.agent_runtime.browser_security import BrowserSecurityPolicy
 from app.agent_runtime.browser_session import BrowserLaunchOptions
@@ -131,6 +132,7 @@ def test_extension_bridge_serves_long_poll_commands_and_results():
         thread.join(timeout=5)
         assert result_holder["value"] == {"url": "https://example.com/", "title": "Example"}
         assert bridge.connected is True
+        assert bridge.diagnostics.status()["entries"] >= 3
     finally:
         bridge.stop()
 
@@ -143,6 +145,33 @@ def test_extension_bridge_rejects_missing_token():
             urlopen(f"{bridge.url}/browser-extension/v1/poll?client_id=test", timeout=2)
     finally:
         bridge.stop()
+
+
+def test_browser_diagnostics_redacts_typed_text(tmp_path):
+    raw_args = {"index": 2, "text": "super secret password", "clear": True}
+    safe_args = summarize_bridge_args("type_text", raw_args)
+    assert safe_args == {
+        "index": 2,
+        "clear": True,
+        "text_length": 21,
+        "text_present": True,
+    }
+
+    state_summary = summarize_browser_state_payload(
+        {"dom": 'Visible page text\n<input value="super secret password">'},
+        include_dom_excerpt=False,
+    )
+    assert state_summary["dom_chars"] > 0
+    assert state_summary["dom_excerpt"] == "[omitted after browser_type]"
+
+    diagnostics = BrowserDiagnosticLog(root=tmp_path)
+    diagnostics.event("browser_type", args=safe_args, api_key="sk-test-123", nested={"token": "abc"}, state=state_summary)
+    data = diagnostics.path.read_text(encoding="utf-8")
+    assert "super secret password" not in data
+    assert "sk-test-123" not in data
+    assert "abc" not in data
+    assert "text_length" in data
+    assert "[REDACTED]" in data
 
 
 def test_runtime_can_select_current_tab_extension_backend(tmp_path, monkeypatch):

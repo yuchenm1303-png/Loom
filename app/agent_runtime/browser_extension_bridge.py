@@ -12,6 +12,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
+from .browser_diagnostics import BrowserDiagnosticLog, summarize_bridge_args, summarize_browser_state_payload
 from .browser_session import BrowserError, BrowserLaunchOptions, BrowserPageState
 
 
@@ -48,6 +49,7 @@ class BrowserExtensionBridge:
         token: str = DEFAULT_EXTENSION_TOKEN,
         command_timeout: float = 45.0,
         poll_timeout: float = 25.0,
+        diagnostics: BrowserDiagnosticLog | None = None,
     ) -> None:
         host = str(host or "").strip()
         if host not in {"127.0.0.1", "::1"}:
@@ -63,6 +65,7 @@ class BrowserExtensionBridge:
         self.token = token
         self.command_timeout = max(1.0, float(command_timeout))
         self.poll_timeout = max(1.0, min(float(poll_timeout), 30.0))
+        self.diagnostics = diagnostics or BrowserDiagnosticLog.from_environment()
 
         self._condition = threading.Condition(threading.RLock())
         self._commands: list[_BridgeCommand] = []
@@ -74,6 +77,7 @@ class BrowserExtensionBridge:
         self._last_client_version = ""
         self._last_poll_at = 0.0
         self._last_result_at = 0.0
+        self._log("bridge.created", host=self.host, port=self.port, command_timeout=self.command_timeout)
 
     @classmethod
     def from_environment(cls) -> "BrowserExtensionBridge":
@@ -106,6 +110,7 @@ class BrowserExtensionBridge:
                 "last_client_version": self._last_client_version,
                 "pending_commands": len(self._pending),
                 "queued_commands": len(self._commands),
+                "diagnostics": self.diagnostics.status(expose_path=False),
             }
 
     def start(self) -> None:
@@ -122,6 +127,7 @@ class BrowserExtensionBridge:
                 daemon=True,
             )
             self._thread.start()
+        self._log("bridge.started", host=self.host, port=self.port, url_exposed=False, token_exposed=False)
 
     def stop(self) -> None:
         with self._condition:
@@ -137,16 +143,25 @@ class BrowserExtensionBridge:
         if server is not None:
             server.shutdown()
             server.server_close()
+        self._log("bridge.stopped")
 
     def call(self, action: str, args: dict[str, Any] | None = None) -> dict[str, Any]:
         self.start()
+        action_name = str(action)
         command = _BridgeCommand(
             command_id=uuid.uuid4().hex,
-            action=str(action),
+            action=action_name,
             args=dict(args or {}),
+        )
+        self._log(
+            "bridge.command.queued",
+            command_id=command.command_id,
+            action=action_name,
+            args=summarize_bridge_args(action_name, command.args),
         )
         with self._condition:
             if self._closed:
+                self._log("bridge.command.rejected", command_id=command.command_id, action=action_name, reason="closed")
                 raise BrowserError("browser extension bridge is closed")
             self._commands.append(command)
             self._pending[command.command_id] = command
@@ -154,16 +169,40 @@ class BrowserExtensionBridge:
         if not command.event.wait(self.command_timeout):
             with self._condition:
                 self._pending.pop(command.command_id, None)
+            self._log(
+                "bridge.command.timeout",
+                command_id=command.command_id,
+                action=action_name,
+                elapsed_ms=int((time.monotonic() - command.created_at) * 1000),
+            )
             raise BrowserError(
                 "browser extension did not respond. Install/enable extensions/browser-current-tab "
                 "and make sure its bridge URL/token match Loom."
             )
+        elapsed_ms = int((time.monotonic() - command.created_at) * 1000)
         if command.error:
+            self._log("bridge.command.failed", command_id=command.command_id, action=action_name, elapsed_ms=elapsed_ms, error=command.error)
             raise BrowserError(command.error)
         result = command.result or {}
         if not isinstance(result, dict):
+            self._log("bridge.command.invalid_result", command_id=command.command_id, action=action_name, elapsed_ms=elapsed_ms)
             raise BrowserError("browser extension returned a non-object result")
+        self._log(
+            "bridge.command.completed",
+            command_id=command.command_id,
+            action=action_name,
+            elapsed_ms=elapsed_ms,
+            result=summarize_browser_state_payload(result, include_dom_excerpt=action_name != "type_text")
+            if action_name != "screenshot"
+            else {"png_base64": "[bytes omitted]"},
+        )
         return result
+
+    def _log(self, event: str, **fields: Any) -> None:
+        try:
+            self.diagnostics.event(event, **fields)
+        except Exception:
+            return
 
     def _make_handler(self):
         bridge = self
@@ -184,6 +223,7 @@ class BrowserExtensionBridge:
                     return
                 if parsed.path == "/browser-extension/v1/poll":
                     if not self._authorized(parsed):
+                        bridge._log("bridge.auth.rejected", endpoint="poll")
                         self._send_json({"ok": False, "error": "unauthorized"}, HTTPStatus.UNAUTHORIZED)
                         return
                     params = parse_qs(parsed.query)
@@ -204,6 +244,14 @@ class BrowserExtensionBridge:
                             self._send_json({"ok": False, "error": "bridge closed"}, HTTPStatus.GONE)
                             return
                         command = bridge._commands.pop(0)
+                    bridge._log(
+                        "bridge.command.dispatched",
+                        command_id=command.command_id,
+                        action=command.action,
+                        client_id=client_id[-12:],
+                        client_version=version,
+                        queued_ms=int((time.monotonic() - command.created_at) * 1000),
+                    )
                     self._send_json(
                         {
                             "ok": True,
@@ -221,6 +269,7 @@ class BrowserExtensionBridge:
                 parsed = urlsplit(self.path)
                 if parsed.path == "/browser-extension/v1/register":
                     if not self._authorized(parsed):
+                        bridge._log("bridge.auth.rejected", endpoint="register")
                         self._send_json({"ok": False, "error": "unauthorized"}, HTTPStatus.UNAUTHORIZED)
                         return
                     body = self._read_json()
@@ -228,10 +277,17 @@ class BrowserExtensionBridge:
                         bridge._last_client_id = str(body.get("client_id") or "")[:128]
                         bridge._last_client_version = str(body.get("version") or "")[:64]
                         bridge._last_poll_at = time.monotonic()
+                    bridge._log(
+                        "bridge.client.registered",
+                        client_id=bridge._last_client_id[-12:],
+                        client_version=bridge._last_client_version,
+                        protocol_version=body.get("protocol_version"),
+                    )
                     self._send_json({"ok": True, "protocol_version": 1})
                     return
                 if parsed.path == "/browser-extension/v1/result":
                     if not self._authorized(parsed):
+                        bridge._log("bridge.auth.rejected", endpoint="result")
                         self._send_json({"ok": False, "error": "unauthorized"}, HTTPStatus.UNAUTHORIZED)
                         return
                     body = self._read_json()
@@ -247,6 +303,16 @@ class BrowserExtensionBridge:
                         else:
                             command.error = str(body.get("error") or "browser extension command failed")
                         command.event.set()
+                        bridge._log(
+                            "bridge.result.received",
+                            command_id=command.command_id,
+                            action=command.action,
+                            ok=ok,
+                            elapsed_ms=int((time.monotonic() - command.created_at) * 1000),
+                            error=command.error,
+                        )
+                    else:
+                        bridge._log("bridge.result.orphaned", command_id=command_id, ok=ok)
                     self._send_json({"ok": True})
                     return
                 self._send_json({"ok": False, "error": "not found"}, HTTPStatus.NOT_FOUND)
@@ -297,6 +363,7 @@ class BrowserExtensionSessionBackend:
     def start(self) -> BrowserPageState:
         self.bridge.start()
         self._started = True
+        self._log("backend.session.started", allowed_domains=list(self.options.allowed_domains), headless=self.options.headless)
         return self.state()
 
     def _target_args(self, extra: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -305,68 +372,101 @@ class BrowserExtensionSessionBackend:
             payload["tab_id"] = self._tab_id
         return payload
 
+    def _call_state(self, action: str, args: dict[str, Any] | None = None) -> BrowserPageState:
+        payload = dict(args or {})
+        self._log(
+            "backend.action.started",
+            action=action,
+            state_revision=self.state_revision,
+            tab_id=self._tab_id,
+            args=summarize_bridge_args(action, payload),
+        )
+        result = self.bridge.call(action, payload)
+        state = self._state_from_result(result)
+        self._log(
+            "backend.action.completed",
+            action=action,
+            state_revision=self.state_revision,
+            tab_id=self._tab_id,
+            state=summarize_browser_state_payload(result, include_dom_excerpt=action != "type_text"),
+        )
+        return state
+
     def state(self) -> BrowserPageState:
-        return self._state_from_result(self.bridge.call("state", self._target_args()))
+        return self._call_state("state", self._target_args())
 
     def navigate(self, url: str, *, new_tab: bool = False) -> BrowserPageState:
-        return self._state_from_result(self.bridge.call("navigate", self._target_args({"url": url, "new_tab": bool(new_tab)})))
+        return self._call_state("navigate", self._target_args({"url": url, "new_tab": bool(new_tab)}))
 
     def click(self, index: int) -> BrowserPageState:
-        return self._state_from_result(self.bridge.call("click", self._target_args({"index": int(index)})))
+        return self._call_state("click", self._target_args({"index": int(index)}))
 
     def type_text(self, index: int, text: str, *, clear: bool = True) -> BrowserPageState:
-        return self._state_from_result(
-            self.bridge.call("type_text", self._target_args({"index": int(index), "text": str(text), "clear": bool(clear)}))
+        return self._call_state(
+            "type_text",
+            self._target_args({"index": int(index), "text": str(text), "clear": bool(clear)}),
         )
 
     def scroll(self, direction: str, amount: int) -> BrowserPageState:
-        return self._state_from_result(
-            self.bridge.call("scroll", self._target_args({"direction": str(direction), "amount": int(amount)}))
-        )
+        return self._call_state("scroll", self._target_args({"direction": str(direction), "amount": int(amount)}))
 
     def go_back(self) -> BrowserPageState:
-        return self._state_from_result(self.bridge.call("go_back", self._target_args()))
+        return self._call_state("go_back", self._target_args())
 
     def refresh(self) -> BrowserPageState:
-        return self._state_from_result(self.bridge.call("refresh", self._target_args()))
+        return self._call_state("refresh", self._target_args())
 
     def tabs(self) -> BrowserPageState:
-        return self._state_from_result(self.bridge.call("tabs", self._target_args()))
+        return self._call_state("tabs", self._target_args())
 
     def switch_tab(self, tab_id: str) -> BrowserPageState:
-        return self._state_from_result(self.bridge.call("switch_tab", {"tab_id": str(tab_id)}))
+        return self._call_state("switch_tab", {"tab_id": str(tab_id)})
 
     def close_tab(self, tab_id: str) -> BrowserPageState:
-        return self._state_from_result(self.bridge.call("close_tab", {"tab_id": str(tab_id)}))
+        return self._call_state("close_tab", {"tab_id": str(tab_id)})
 
     def hover(self, index: int) -> BrowserPageState:
-        return self._state_from_result(self.bridge.call("hover", self._target_args({"index": int(index)})))
+        return self._call_state("hover", self._target_args({"index": int(index)}))
 
     def press_key(self, key: str) -> BrowserPageState:
-        return self._state_from_result(self.bridge.call("press_key", self._target_args({"key": str(key)})))
+        return self._call_state("press_key", self._target_args({"key": str(key)}))
 
     def select_option(self, index: int, value: str) -> BrowserPageState:
-        return self._state_from_result(
-            self.bridge.call("select_option", self._target_args({"index": int(index), "value": str(value)}))
-        )
+        return self._call_state("select_option", self._target_args({"index": int(index), "value": str(value)}))
 
     def drag(self, source_index: int, target_index: int) -> BrowserPageState:
-        return self._state_from_result(
-            self.bridge.call("drag", self._target_args({"source_index": int(source_index), "target_index": int(target_index)}))
+        return self._call_state(
+            "drag",
+            self._target_args({"source_index": int(source_index), "target_index": int(target_index)}),
         )
 
     def screenshot(self, *, full_page: bool = False) -> bytes:
+        self._log("backend.action.started", action="screenshot", state_revision=self.state_revision, tab_id=self._tab_id, full_page=bool(full_page))
         result = self.bridge.call("screenshot", self._target_args({"full_page": bool(full_page)}))
         encoded = str(result.get("png_base64") or "")
         if not encoded:
+            self._log("backend.action.failed", action="screenshot", state_revision=self.state_revision, tab_id=self._tab_id, error="empty screenshot")
             raise BrowserError("browser extension returned an empty screenshot")
         try:
-            return base64.b64decode(encoded, validate=True)
+            data = base64.b64decode(encoded, validate=True)
         except Exception as exc:
+            self._log("backend.action.failed", action="screenshot", state_revision=self.state_revision, tab_id=self._tab_id, error="invalid screenshot data")
             raise BrowserError("browser extension returned invalid screenshot data") from exc
+        self._log("backend.action.completed", action="screenshot", state_revision=self.state_revision, tab_id=self._tab_id, bytes=len(data))
+        return data
 
     def close(self) -> None:
         self._started = False
+        self._log("backend.session.closed", state_revision=self.state_revision, tab_id=self._tab_id)
+
+    def _log(self, event: str, **fields: Any) -> None:
+        diagnostics = getattr(self.bridge, "diagnostics", None)
+        if diagnostics is None:
+            return
+        try:
+            diagnostics.event(event, **fields)
+        except Exception:
+            return
 
     def _state_from_result(self, result: dict[str, Any]) -> BrowserPageState:
         self.state_revision += 1

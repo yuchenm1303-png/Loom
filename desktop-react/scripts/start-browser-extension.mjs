@@ -31,6 +31,7 @@ function usage() {
 Environment:
   LOOM_BROWSER_EXTENSION_PORT   Local bridge port, default 39222
   LOOM_BROWSER_EXTENSION_TOKEN  Shared bridge token, default loom-dev-browser-extension
+  LOOM_BROWSER_LOG_DIR          Browser diagnostic log folder, default <repo>/.loom/logs/browser-use
   LOOM_BROWSER_BACKEND          Set to extension by this helper
 `);
 }
@@ -65,6 +66,7 @@ const noRun = args.includes("--no-run");
 const scriptName = args.find((item) => !item.startsWith("--"));
 const port = envText("LOOM_BROWSER_EXTENSION_PORT", DEFAULT_PORT);
 const token = envText("LOOM_BROWSER_EXTENSION_TOKEN", DEFAULT_TOKEN);
+const logDir = envText("LOOM_BROWSER_LOG_DIR", path.join(REPO_ROOT, ".loom", "logs", "browser-use"));
 const extensionDir = path.join(REPO_ROOT, "extensions", "browser-current-tab");
 const bridgeUrl = `http://127.0.0.1:${port}`;
 
@@ -74,11 +76,14 @@ const env = {
   LOOM_BROWSER_EXTENSION: "1",
   LOOM_BROWSER_EXTENSION_PORT: port,
   LOOM_BROWSER_EXTENSION_TOKEN: token,
+  LOOM_BROWSER_LOG_DIR: logDir,
+  LOOM_BROWSER_DIAGNOSTICS: "1",
 };
 
 log(`backend: extension`);
 log(`bridge: ${bridgeUrl}`);
 log(`extension folder: ${extensionDir}`);
+log(`diagnostics: ${logDir}`);
 log(`token: ${token}`);
 log("load the extension folder as an unpacked Chrome/Edge extension before asking Loom to inspect the current tab.");
 

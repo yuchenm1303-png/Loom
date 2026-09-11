@@ -56,6 +56,8 @@ LOOM_BROWSER_BACKEND=extension
 LOOM_BROWSER_EXTENSION=1
 LOOM_BROWSER_EXTENSION_PORT=39222
 LOOM_BROWSER_EXTENSION_TOKEN=loom-dev-browser-extension
+LOOM_BROWSER_LOG_DIR=<repo>/.loom/logs/browser-use
+LOOM_BROWSER_DIAGNOSTICS=1
 ```
 
 ## Environment overrides
@@ -68,6 +70,8 @@ LOOM_BROWSER_EXTENSION_TOKEN=loom-dev-browser-extension
 | `LOOM_BROWSER_EXTENSION_PORT` | Bridge port. Defaults to `39222`. |
 | `LOOM_BROWSER_EXTENSION_TOKEN` | Shared token that must match the extension options. |
 | `LOOM_BROWSER_EXTENSION_TIMEOUT` | Seconds Loom waits for an extension command result. Defaults to `45`. |
+| `LOOM_BROWSER_LOG_DIR` | Folder for local Browser Use diagnostic JSONL logs. Defaults to `.loom/logs/browser-use`. |
+| `LOOM_BROWSER_DIAGNOSTICS=0` | Disable Browser Use diagnostic logging. Enabled by default for extension mode. |
 
 ## Runtime behavior
 
@@ -89,6 +93,18 @@ When this mode is active, `browser_status` should report:
 ```
 
 The bridge runs only on loopback. The shared token is not exposed to model-visible status or tool descriptions.
+
+## Browser diagnostics and one-click export
+
+The extension bridge writes local JSONL diagnostics to:
+
+```text
+.loom/logs/browser-use/browser-<timestamp>-<pid>.jsonl
+```
+
+Each event records the bridge lifecycle, extension registration, command queue/dispatch/result timings, tab binding, action name, element index, state revision, URL/title, tab count, DOM size/excerpt, page HUD state, and extension errors. Secret-shaped fields are redacted, screenshot bytes are omitted, and `browser_type` stores text length instead of the typed text payload. DOM excerpts are also omitted from post-`browser_type` diagnostic summaries so newly typed text is not copied into the log through the refreshed page state.
+
+To export logs from the desktop UI, open Settings → Browser and click **Export browser logs**. Loom will create a zip archive and reveal it in the native file manager. The same helper respects `LOOM_BROWSER_LOG_DIR`, so custom test runs can keep per-case logs in separate folders.
 
 ## Page-local browser HUD
 
