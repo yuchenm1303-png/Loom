@@ -99,6 +99,18 @@ def test_installer_rejects_zip_path_traversal(tmp_path: Path):
     assert not (tmp_path / "escape.txt").exists()
 
 
+def test_installer_rejects_non_https_remote_sources_by_default(tmp_path: Path):
+    installer = SkillInstaller(tmp_path / "skills")
+
+    for source in (
+        "ssh://git@github.com/owner/repository",
+        "git://github.com/owner/repository",
+        "http://example.com/skill.zip",
+    ):
+        with pytest.raises(SkillInstallError, match="https://"):
+            installer.install(source)
+
+
 def test_bundle_resources_can_be_read_and_staged_into_workspace(tmp_path: Path):
     source = tmp_path / "source"
     skill_dir = _write_skill(source, "bundle-demo")
