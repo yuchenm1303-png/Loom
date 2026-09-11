@@ -13,6 +13,7 @@ from app.agent_runtime import (
     MemoryScope,
     SandboxManager,
     SandboxPolicy,
+    ToolContext,
 )
 from app.agent_runtime.workspace_tools import loom_default_tools
 from app.ai import AGENT_FAST_ROLE, ModelResponse, ModelUsage
@@ -243,7 +244,20 @@ def test_memory_rpc_and_live_settings_manage_existing_memory_when_disabled(tmp_p
     assert disabled["result"]["settings"]["memory"]["enabled"] is False
     assert runtime.memory_enabled is False
 
-    # Disabling use/generation must not hide user-owned memory management.
+    # Model-side tools are blocked, while the management RPC remains available.
+    search_tool = runtime.tools.get("search_memory")
+    assert search_tool is not None
+    model_result = search_tool.handler(
+        ToolContext(
+            session_id=session.session_id,
+            turn_id="test",
+            workspace=workspace,
+        ),
+        {"query": "pytest"},
+    )
+    assert model_result.ok is False
+    assert model_result.data == {"enabled": False}
+
     still_listed = controller.handle(
         {
             "jsonrpc": "2.0",
