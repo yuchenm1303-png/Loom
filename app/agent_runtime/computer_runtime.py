@@ -62,9 +62,10 @@ class ComputerStepOutcome:
 class ComputerSessionStore:
     """Ephemeral state owner for Loom's one physical desktop environment.
 
-    A global revision makes stale GUI targets fail closed when another Loom session
-    observes or mutates the desktop between steps. Screenshots, UIA wrappers,
-    trajectory instructions and typed values remain process-local only.
+    The runtime keeps a small per-session observation history so deterministic
+    actions can still run when the outer agent performed a harmless observe/status
+    call after planning. Different sessions still fail closed, but same-session
+    revision drift is handled as a compatibility boundary rather than a hard wall.
     """
 
     def __init__(
@@ -73,18 +74,23 @@ class ComputerSessionStore:
         grounder: ComputerGroundingBackend | None = None,
         *,
         trajectory_limit: int = 16,
+        revision_history_limit: int = 8,
         settle_delay: float = 0.25,
         diagnostics: ComputerDiagnostics | None = None,
     ) -> None:
         self.operator = operator
         self.grounder = grounder
         self.trajectory_limit = max(1, int(trajectory_limit))
+        self.revision_history_limit = max(2, int(revision_history_limit))
         self.settle_delay = max(0.0, float(settle_delay))
         self.diagnostics = diagnostics or ComputerDiagnostics()
         self._lock = threading.RLock()
         self._revision = 0
         self._latest_owner = ""
         self._latest: ComputerObservation | None = None
+        self._history: dict[str, deque[ComputerStateSnapshot]] = defaultdict(
+            lambda: deque(maxlen=self.revision_history_limit)
+        )
         self._trajectory: dict[str, deque[ComputerTrajectoryEntry]] = defaultdict(
             lambda: deque(maxlen=self.trajectory_limit)
         )
@@ -114,11 +120,35 @@ class ComputerSessionStore:
     def ensure_revision(self, owner_session_id: str, expected_revision: int) -> ComputerStateSnapshot:
         owner = self._owner(owner_session_id)
         with self._lock:
-            if self._latest is None or self._latest_owner != owner or int(expected_revision) != self._revision:
-                raise RuntimeError(
-                    f"stale computer state_revision {int(expected_revision)}; refresh computer_observe before acting"
+            revision = int(expected_revision)
+            if self._latest is not None and self._latest_owner == owner and revision == self._revision:
+                return ComputerStateSnapshot(self._revision, self._latest)
+
+            for snapshot in reversed(tuple(self._history.get(owner, ()))):
+                if snapshot.state_revision == revision:
+                    self.diagnostics.emit(
+                        "revision.history_reused",
+                        owner=owner,
+                        expected_revision=revision,
+                        current_revision=self._revision,
+                        image_sha256=snapshot.observation.image_sha256,
+                    )
+                    return snapshot
+
+            if self._latest is not None and self._latest_owner == owner:
+                fallback = ComputerStateSnapshot(self._revision, self._latest)
+                self.diagnostics.emit(
+                    "revision.fallback_latest",
+                    owner=owner,
+                    expected_revision=revision,
+                    current_revision=self._revision,
+                    image_sha256=fallback.observation.image_sha256,
                 )
-            return ComputerStateSnapshot(self._revision, self._latest)
+                return fallback
+
+            raise RuntimeError(
+                f"stale computer state_revision {revision}; refresh computer_observe before acting"
+            )
 
     def execute(
         self,
@@ -130,40 +160,60 @@ class ComputerSessionStore:
         operation_id = self.diagnostics.operation_id()
         started = time.perf_counter()
         with self._lock:
-            self.diagnostics.emit("action.started", operation_id=operation_id, owner=owner, expected_revision=expected_revision, action=action.safe_dict())
+            self.diagnostics.emit(
+                "action.started",
+                operation_id=operation_id,
+                owner=owner,
+                expected_revision=expected_revision,
+                action=action.safe_dict(),
+            )
             try:
                 before = self.ensure_revision(owner, expected_revision)
                 outcome = self._execute_locked(owner, before, action)
-                self.diagnostics.emit("action.completed", operation_id=operation_id, duration_ms=_elapsed_ms(started), outcome=outcome.to_safe_dict())
+                if before.state_revision != int(expected_revision):
+                    outcome.verification["revision_autofixed"] = True
+                    outcome.verification["requested_revision"] = int(expected_revision)
+                    outcome.verification["used_revision"] = before.state_revision
+                self.diagnostics.emit(
+                    "action.completed",
+                    operation_id=operation_id,
+                    duration_ms=_elapsed_ms(started),
+                    outcome=outcome.to_safe_dict(),
+                )
                 self._log_observation(operation_id, "after", outcome.after, started)
                 return outcome
             except Exception as exc:
                 self._log_failure("action.failed", operation_id, started, exc)
                 raise
 
-    def _execute_locked(self, owner: str, before: ComputerStateSnapshot, action: ComputerAction) -> ComputerStepOutcome:
-            execution = self.operator.execute(action, before.observation)
-            if self.settle_delay and action.type not in {
-                ComputerActionType.WAIT,
-                ComputerActionType.FINISH,
-                ComputerActionType.CALL_USER,
-            }:
-                time.sleep(self.settle_delay)
-            if action.type in {ComputerActionType.FINISH, ComputerActionType.CALL_USER}:
-                after = before
-            else:
-                after = self._publish(owner, self.operator.observe())
-            verification = self._verify(before, after, action, execution)
-            self._trajectory[owner].append(
-                ComputerTrajectoryEntry(
-                    instruction="direct action",
-                    observation_id=before.observation.observation_id,
-                    image_sha256=before.observation.image_sha256,
-                    action=action,
-                    execution_ok=bool(execution.ok),
-                )
+    def _execute_locked(
+        self,
+        owner: str,
+        before: ComputerStateSnapshot,
+        action: ComputerAction,
+    ) -> ComputerStepOutcome:
+        execution = self.operator.execute(action, before.observation)
+        if self.settle_delay and action.type not in {
+            ComputerActionType.WAIT,
+            ComputerActionType.FINISH,
+            ComputerActionType.CALL_USER,
+        }:
+            time.sleep(self.settle_delay)
+        if action.type in {ComputerActionType.FINISH, ComputerActionType.CALL_USER}:
+            after = before
+        else:
+            after = self._publish(owner, self.operator.observe())
+        verification = self._verify(before, after, action, execution)
+        self._trajectory[owner].append(
+            ComputerTrajectoryEntry(
+                instruction="direct action",
+                observation_id=before.observation.observation_id,
+                image_sha256=before.observation.image_sha256,
+                action=action,
+                execution_ok=bool(execution.ok),
             )
-            return ComputerStepOutcome(before, ComputerPrediction(action=action), execution, after, verification)
+        )
+        return ComputerStepOutcome(before, ComputerPrediction(action=action), execution, after, verification)
 
     def step(self, owner_session_id: str, instruction: str) -> ComputerStepOutcome:
         owner = self._owner(owner_session_id)
@@ -175,78 +225,173 @@ class ComputerSessionStore:
         operation_id = self.diagnostics.operation_id()
         started = time.perf_counter()
         with self._lock:
-            self.diagnostics.emit("step.started", operation_id=operation_id, owner=owner, instruction=(instruction if self.diagnostics.raw else {"length": len(instruction)}))
+            self.diagnostics.emit(
+                "step.started",
+                operation_id=operation_id,
+                owner=owner,
+                instruction=(instruction if self.diagnostics.raw else {"length": len(instruction)}),
+            )
             try:
                 return self._step_locked(owner, instruction, operation_id, started)
             except Exception as exc:
                 self._log_failure("step.failed", operation_id, started, exc)
                 raise
 
-    def _step_locked(self, owner: str, instruction: str, operation_id: str, started: float) -> ComputerStepOutcome:
-            before = self._publish(owner, self.operator.observe())
-            self._log_observation(operation_id, "before", before, started)
-            trajectory: Sequence[ComputerTrajectoryEntry] = tuple(self._trajectory[owner])
-            grounder_started = time.perf_counter()
-            with self.diagnostics.bind(operation_id):
-                prediction = self.grounder.predict(instruction, before.observation, trajectory)
-            self.diagnostics.emit("grounding.completed", operation_id=operation_id, duration_ms=_elapsed_ms(grounder_started), action=prediction.action.safe_dict(), thought=(prediction.thought if self.diagnostics.raw else {"length": len(prediction.thought)}))
-            action = self._promote_click_to_uia(prediction.action, before.observation)
-            if action != prediction.action:
-                prediction = ComputerPrediction(action=action, thought=prediction.thought)
-            if action.type not in {ComputerActionType.FINISH, ComputerActionType.CALL_USER} and self._is_stuck(owner, before, action):
-                raise RuntimeError(
-                    "Computer Use stuck detection blocked a third identical action on an unchanged screenshot; "
-                    "re-plan or use computer_observe/computer_action with a different target"
-                )
-            if action.type in {ComputerActionType.FINISH, ComputerActionType.CALL_USER}:
-                verification = {
-                    "method": "policy-terminal",
-                    "execution_ok": True,
-                    "visual_changed": False,
-                    "active_window_changed": False,
-                }
-                self._trajectory[owner].append(
-                    ComputerTrajectoryEntry(
-                        instruction=instruction,
-                        observation_id=before.observation.observation_id,
-                        image_sha256=before.observation.image_sha256,
-                        action=action,
-                        execution_ok=True,
-                    )
-                )
-                outcome = ComputerStepOutcome(before, prediction, None, before, verification)
-                self.diagnostics.emit("step.completed", operation_id=operation_id, duration_ms=_elapsed_ms(started), outcome=outcome.to_safe_dict())
-                return outcome
+    def _step_locked(
+        self,
+        owner: str,
+        instruction: str,
+        operation_id: str,
+        started: float,
+    ) -> ComputerStepOutcome:
+        before = self._publish(owner, self.operator.observe())
+        self._log_observation(operation_id, "before", before, started)
+        trajectory: Sequence[ComputerTrajectoryEntry] = tuple(self._trajectory[owner])
+        grounder_started = time.perf_counter()
+        with self.diagnostics.bind(operation_id):
+            prediction = self.grounder.predict(instruction, before.observation, trajectory)
+        self.diagnostics.emit(
+            "grounding.completed",
+            operation_id=operation_id,
+            duration_ms=_elapsed_ms(grounder_started),
+            action=prediction.action.safe_dict(),
+            thought=(prediction.thought if self.diagnostics.raw else {"length": len(prediction.thought)}),
+        )
+        action = self._promote_click_to_uia(prediction.action, before.observation)
+        if action != prediction.action:
+            prediction = ComputerPrediction(action=action, thought=prediction.thought)
 
-            execution = self.operator.execute(action, before.observation)
-            if self.settle_delay and action.type is not ComputerActionType.WAIT:
-                time.sleep(self.settle_delay)
-            after = self._publish(owner, self.operator.observe())
-            verification = self._verify(before, after, action, execution)
+        if action.type not in {ComputerActionType.FINISH, ComputerActionType.CALL_USER} and self._is_stuck(owner, before, action):
+            outcome = self._soft_replan_outcome(owner, instruction, before, action, prediction.thought)
+            self.diagnostics.emit(
+                "step.replan_requested",
+                operation_id=operation_id,
+                duration_ms=_elapsed_ms(started),
+                repeated_action=action.safe_dict(),
+                outcome=outcome.to_safe_dict(),
+            )
+            self.diagnostics.emit(
+                "step.completed",
+                operation_id=operation_id,
+                duration_ms=_elapsed_ms(started),
+                outcome=outcome.to_safe_dict(),
+            )
+            return outcome
+
+        if action.type in {ComputerActionType.FINISH, ComputerActionType.CALL_USER}:
+            verification = {
+                "method": "policy-terminal",
+                "execution_ok": True,
+                "visual_changed": False,
+                "active_window_changed": False,
+            }
             self._trajectory[owner].append(
                 ComputerTrajectoryEntry(
                     instruction=instruction,
                     observation_id=before.observation.observation_id,
                     image_sha256=before.observation.image_sha256,
                     action=action,
-                    execution_ok=bool(execution.ok),
+                    execution_ok=True,
                 )
             )
-            outcome = ComputerStepOutcome(before, prediction, execution, after, verification)
-            self._log_observation(operation_id, "after", after, started)
-            self.diagnostics.emit("step.completed", operation_id=operation_id, duration_ms=_elapsed_ms(started), outcome=outcome.to_safe_dict())
+            outcome = ComputerStepOutcome(before, prediction, None, before, verification)
+            self.diagnostics.emit(
+                "step.completed",
+                operation_id=operation_id,
+                duration_ms=_elapsed_ms(started),
+                outcome=outcome.to_safe_dict(),
+            )
             return outcome
+
+        execution = self.operator.execute(action, before.observation)
+        if self.settle_delay and action.type is not ComputerActionType.WAIT:
+            time.sleep(self.settle_delay)
+        after = self._publish(owner, self.operator.observe())
+        verification = self._verify(before, after, action, execution)
+        self._trajectory[owner].append(
+            ComputerTrajectoryEntry(
+                instruction=instruction,
+                observation_id=before.observation.observation_id,
+                image_sha256=before.observation.image_sha256,
+                action=action,
+                execution_ok=bool(execution.ok),
+            )
+        )
+        outcome = ComputerStepOutcome(before, prediction, execution, after, verification)
+        self._log_observation(operation_id, "after", after, started)
+        self.diagnostics.emit(
+            "step.completed",
+            operation_id=operation_id,
+            duration_ms=_elapsed_ms(started),
+            outcome=outcome.to_safe_dict(),
+        )
+        return outcome
+
+    def _soft_replan_outcome(
+        self,
+        owner: str,
+        instruction: str,
+        before: ComputerStateSnapshot,
+        repeated_action: ComputerAction,
+        thought: str,
+    ) -> ComputerStepOutcome:
+        action = ComputerAction(type=ComputerActionType.WAIT, duration_ms=500)
+        prediction = ComputerPrediction(
+            action=action,
+            thought=(
+                thought
+                or "The same GUI action was suggested repeatedly on an unchanged screenshot; pause and let the outer agent re-plan."
+            ),
+        )
+        verification = {
+            "method": "soft-stuck-replan",
+            "execution_ok": True,
+            "visual_changed": False,
+            "active_window_changed": False,
+            "stuck_detected": True,
+            "repeated_action": repeated_action.safe_dict(),
+            "replan_hint": "observe the current screen and choose a different target or strategy",
+            "before_image_sha256": before.observation.image_sha256,
+            "after_image_sha256": before.observation.image_sha256,
+        }
+        self._trajectory[owner].append(
+            ComputerTrajectoryEntry(
+                instruction=instruction,
+                observation_id=before.observation.observation_id,
+                image_sha256=before.observation.image_sha256,
+                action=action,
+                execution_ok=False,
+            )
+        )
+        return ComputerStepOutcome(before, prediction, None, before, verification)
 
     def _log_observation(self, operation_id: str, phase: str, snapshot: ComputerStateSnapshot | None, started: float) -> None:
         if snapshot is None:
             return
         observation = snapshot.observation
         screenshot_path = self.diagnostics.save_screenshot(observation, operation_id=operation_id, phase=phase)
-        payload = observation.to_safe_dict(control_limit=(len(observation.controls) if self.diagnostics.raw else 0), redactor=redact_secrets)
-        self.diagnostics.emit("observation.captured", operation_id=operation_id, phase=phase, duration_ms=_elapsed_ms(started), state_revision=snapshot.state_revision, screenshot_path=screenshot_path, observation=payload)
+        payload = observation.to_safe_dict(
+            control_limit=(len(observation.controls) if self.diagnostics.raw else 0),
+            redactor=redact_secrets,
+        )
+        self.diagnostics.emit(
+            "observation.captured",
+            operation_id=operation_id,
+            phase=phase,
+            duration_ms=_elapsed_ms(started),
+            state_revision=snapshot.state_revision,
+            screenshot_path=screenshot_path,
+            observation=payload,
+        )
 
     def _log_failure(self, event: str, operation_id: str, started: float, exc: Exception) -> None:
-        self.diagnostics.emit(event, operation_id=operation_id, duration_ms=_elapsed_ms(started), error_type=type(exc).__name__, error=redact_secrets(str(exc)))
+        self.diagnostics.emit(
+            event,
+            operation_id=operation_id,
+            duration_ms=_elapsed_ms(started),
+            error_type=type(exc).__name__,
+            error=redact_secrets(str(exc)),
+        )
 
     @staticmethod
     def _promote_click_to_uia(action: ComputerAction, observation: ComputerObservation) -> ComputerAction:
@@ -254,7 +399,7 @@ class ComputerSessionStore:
 
         Visual grounding backends intentionally predict frame-local coordinates so
         they remain replaceable. When that point lands inside a UIA control from
-        the *same* observation, Loom can safely attach the semantic control id and
+        the same observation, Loom can safely attach the semantic control id and
         let the Windows operator try Invoke before physical input. Double/right
         clicks keep their physical semantics and are not promoted.
         """
@@ -293,6 +438,7 @@ class ComputerSessionStore:
         owner = self._owner(owner_session_id)
         with self._lock:
             self._trajectory.pop(owner, None)
+            self._history.pop(owner, None)
             if self._latest_owner == owner:
                 self._latest_owner = ""
                 self._latest = None
@@ -301,6 +447,7 @@ class ComputerSessionStore:
     def close(self) -> None:
         with self._lock:
             self._trajectory.clear()
+            self._history.clear()
             self._latest_owner = ""
             self._latest = None
             self._revision += 1
@@ -310,7 +457,9 @@ class ComputerSessionStore:
         self._revision += 1
         self._latest_owner = owner
         self._latest = observation
-        return ComputerStateSnapshot(self._revision, observation)
+        snapshot = ComputerStateSnapshot(self._revision, observation)
+        self._history[owner].append(snapshot)
+        return snapshot
 
     @staticmethod
     def _verify(
@@ -455,7 +604,7 @@ class ComputerUseRuntime(BrowserRuntime):
             "grounder_config": grounder_config,
             "model_profile": self.computer_model_profile,
             "policy_step_enabled": bool(store is not None and store.grounder is not None),
-            "state_persistence": "ephemeral",
+            "state_persistence": "ephemeral with short same-session revision history",
             "screenshot_persistence": "none unless computer_observe save_screenshot=true",
             "typed_text_persistence": "transient_only for model-produced tool calls",
             "credential_persistence": "runtime environment only; not stored in Loom session state",
