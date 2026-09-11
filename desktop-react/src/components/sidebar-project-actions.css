@@ -1,0 +1,96 @@
+.thread-context-menu {
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: #3b3e46 transparent;
+}
+
+.thread-project-submenu {
+  margin: 3px 7px 5px 39px;
+  padding: 5px;
+  display: grid;
+  gap: 2px;
+  border: 1px solid rgba(255,255,255,.075);
+  border-radius: 9px;
+  background: rgba(255,255,255,.025);
+}
+
+.thread-project-submenu > button {
+  width: 100%;
+  min-height: 34px;
+  border: 0;
+  border-radius: 7px;
+  padding: 0 9px;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+  color: #d6d9df;
+  text-align: left;
+  cursor: pointer;
+  transition: background 90ms ease, color 90ms ease;
+}
+
+.thread-project-submenu > button:hover:not(:disabled) {
+  background: rgba(255,255,255,.065);
+  color: #fff;
+}
+
+.thread-project-submenu > button:disabled {
+  opacity: .58;
+  cursor: default;
+}
+
+.thread-project-submenu > button.selected {
+  color: #d9d4ff;
+  background: rgba(139,124,246,.075);
+}
+
+.thread-project-submenu > button > svg {
+  justify-self: center;
+  color: #aab0ba;
+}
+
+.thread-project-submenu > button.selected > svg {
+  color: #aaa0f5;
+}
+
+.thread-project-submenu > button > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.3px;
+  font-weight: 520;
+}
+
+.thread-project-submenu > button > small {
+  color: #9c94e8;
+  font-size: 10.5px;
+  font-weight: 650;
+}
+
+.thread-project-submenu > button.thread-project-remove-option {
+  color: #c9ccd2;
+}
+
+.thread-project-submenu > button.thread-project-remove-option > svg {
+  color: #8f96a1;
+}
+
+.thread-project-submenu-separator {
+  height: 1px;
+  margin: 3px 1px;
+  background: rgba(255,255,255,.065);
+}
+
+.thread-project-submenu-empty {
+  min-height: 32px;
+  padding: 0 9px;
+  display: flex;
+  align-items: center;
+  color: #727984;
+  font-size: 11.5px;
+}
