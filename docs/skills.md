@@ -100,6 +100,9 @@ Installing a skill is deliberately inert. Loom does not execute package-manager 
 
 The installer also applies basic supply-chain boundaries:
 
+- Remote sources must use `https://` by default; `ssh://`, `git://`, and `http://` sources are rejected. Clone/download those manually first if you intentionally want to trust them.
+- Git is run with terminal prompts disabled, and shallow clones use no tags.
+- Git is configured to reject `file://` and `ext::` transport expansion during clone.
 - ZIP path traversal is rejected.
 - ZIP symlinks are rejected.
 - Symlinks inside copied skill bundles are rejected or skipped.
@@ -116,6 +119,6 @@ When a workflow stages and later runs a bundled script, that process execution s
 
 Loom v2 is designed around the common Agent Skills / Codex-style `SKILL.md` bundle model and supports instruction-only skills as well as bundles containing references, templates, scripts, and assets.
 
-The installer currently supports local directories, local ZIP files, remote ZIP files, Git repositories, GitHub repository URLs, and GitHub `/tree/<branch>/<path>` URLs. Git must be available on `PATH` for repository sources.
+The installer currently supports local directories, local ZIP files, HTTPS remote ZIP files, HTTPS Git repositories, GitHub repository URLs, and GitHub `/tree/<branch>/<path>` URLs. Git must be available on `PATH` for repository sources.
 
-Private repository authentication and a hosted remote Skill registry/search marketplace are not part of this version; installing a repository URL currently assumes the local Git environment can clone that source.
+Private repository authentication is non-interactive. It only works when HTTPS Git credentials are already configured and usable without prompts. A hosted remote Skill registry/search marketplace is not part of this version.
