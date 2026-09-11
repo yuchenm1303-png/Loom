@@ -49,10 +49,11 @@ class Token:
 
 
 class Session:
-    def __init__(self, messages):
+    def __init__(self, messages, *, communication_language="auto"):
         self.messages = list(messages)
         self.workspace_dir = "/tmp/project"
         self.profile_id = "agent.fast"
+        self.communication_language = communication_language
         self.usage = ModelUsage()
 
 
@@ -183,6 +184,26 @@ def test_auto_compaction_language_anchor_comes_from_user_history():
     language = request.messages[0]
     assert language.name == "loom_communication_language"
     assert "Current user communication language: Chinese" in language.content
+    assert session.communication_language == "zh"
+
+
+def test_auto_compaction_keeps_persisted_chinese_when_only_short_user_text_remains():
+    runtime = FakeRuntime([ModelResponse(text="继续保持中文的压缩摘要", finish_reason="stop")])
+    history = _long_history(pairs=8, chars=430)
+    history.extend(
+        [
+            AIMessage(role=MessageRole.USER, content="ok"),
+            AIMessage(role=MessageRole.ASSISTANT, content="Now reading another English diagnostic log." + (" log" * 180)),
+        ]
+    )
+    session = Session(history, communication_language="zh")
+
+    _messages, metadata = prepare_context(runtime, session, Step(), Token())
+
+    request = runtime.model_executor.requests[0][1]
+    assert "Current user communication language: Chinese" in request.messages[0].content
+    assert metadata["communication_language"] == "zh"
+    assert session.communication_language == "zh"
 
 
 def test_oversized_compaction_request_trims_only_temporary_old_history():
