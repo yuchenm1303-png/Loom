@@ -27,7 +27,6 @@ from app.ai import (
     ProviderConnection,
     build_ai_platform,
 )
-from app.ai.model_context import model_context_limits_from_env
 
 
 _DASHSCOPE_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
@@ -118,7 +117,6 @@ def _build_runtime(args: argparse.Namespace) -> tuple[AgentRuntime, FileAgentSes
         provider_id=connection.provider_id,
         model=model,
         capabilities=frozenset(capabilities),
-        context_limits=model_context_limits_from_env(),
     )
     configuration = AIConfiguration.build(
         roles=(AGENT_FAST_ROLE,),
@@ -261,61 +259,312 @@ def _show_goal(runtime: AgentRuntime, session_id: str) -> None:
     if goal is None:
         print("No durable goal.")
         return
-    print(json.dumps(goal.to_dict(), ensure_ascii=False, indent=2))
+    budget = "unlimited" if goal.token_budget is None else str(goal.token_budget)
+    print(f"Goal:    {goal.objective}")
+    print(f"Status:  {goal.status.value}")
+    print(f"Tokens:  {goal.tokens_used}/{budget}")
 
 
-def _set_goal(runtime: AgentRuntime, session_id: str, objective: str, token_budget: int | None) -> None:
-    goal = runtime.set_goal(session_id, objective, token_budget=token_budget)
-    print(json.dumps(goal.to_dict(), ensure_ascii=False, indent=2))
-
-
-def _clear_goal(runtime: AgentRuntime, session_id: str) -> None:
-    runtime.clear_goal(session_id)
-    print("Goal cleared.")
-
-
-def _list_queue(runtime: AgentRuntime, session_id: str) -> None:
-    rows = runtime.list_queued_turns(session_id)
-    if not rows:
+def _show_queue(runtime: AgentRuntime, session_id: str) -> None:
+    items = runtime.list_queued_turns(session_id)
+    if not items:
         print("Queue is empty.")
         return
-    for item in rows:
-        print(json.dumps(item.to_dict(), ensure_ascii=False))
+    for index, item in enumerate(items, start=1):
+        preview = item.text.replace("\n", " ")[:100]
+        print(f"{index:>2}. {item.queue_id}  {item.state.value:10}  {preview}")
 
 
-def _enqueue_turn(runtime: AgentRuntime, session_id: str, text: str) -> None:
-    item = runtime.enqueue_turn(session_id, text)
-    print(json.dumps(item.to_dict(), ensure_ascii=False, indent=2))
+def _print_memory_records(records) -> None:
+    if not records:
+        print("No matching long-term memories.")
+        return
+    for record in records:
+        preview = record.text.replace("\n", " ")
+        print(
+            f"{record.memory_id}  {record.scope.value:9}  {record.category.value:10}  "
+            f"importance={record.importance} sources={record.source_count}  {preview}"
+        )
 
 
-def _compact(runtime: AgentRuntime, session_id: str, summary: str, keep_recent: int) -> None:
-    checkpoint = runtime.compact_context(session_id, summary, keep_recent=keep_recent)
-    print(json.dumps(checkpoint.to_dict(), ensure_ascii=False, indent=2))
+def _show_memory_status(runtime: AgentRuntime, session_id: str) -> None:
+    counts = runtime.memory_status(session_id)
+    print(
+        f"Memory: visible={counts['visible']} total={counts['total']} "
+        f"pending={counts['pending']}"
+    )
 
 
-def _extract_memory(runtime: AgentRuntime, session_id: str) -> None:
-    result = runtime.extract_memory_from_thread(session_id)
-    print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
+def _print_help() -> None:
+    print(
+        "Commands:\n"
+        "  /new [path]             create a fresh session, reusing current workspace unless path is given\n"
+        "  /sessions               list saved sessions\n"
+        "  /use <session-id>       switch to a saved session\n"
+        "  /session                show current session id\n"
+        "  /workspace              show current workspace path\n"
+        "  /permissions            show current permission mode\n"
+        "  /permissions <mode>     set read-only / approval / workspace / full-access\n"
+        "  /goal                   show durable goal\n"
+        "  /goal set <objective>   create/replace the active durable goal\n"
+        "  /goal budget <n> <obj>  create goal with a model-token budget\n"
+        "  /goal pause|resume      pause/resume goal continuation\n"
+        "  /goal blocked|complete  mark the goal blocked/complete\n"
+        "  /goal continue [n]      run up to n continuation turns (default 1)\n"
+        "  /goal clear             remove the durable goal\n"
+        "  /queue                  list queued future turns\n"
+        "  /queue add <text>       append a durable future turn\n"
+        "  /queue run [n]          synchronously drain queued turns\n"
+        "  /queue remove <id>      remove one queued turn\n"
+        "  /memory                 show long-term memory status\n"
+        "  /memory extract         extract durable memories from this thread\n"
+        "  /memory consolidate     consolidate pending memory candidates\n"
+        "  /memory list [n]        list memories visible to this workspace\n"
+        "  /memory search <query>  search long-term memory\n"
+        "  /memory forget <id>     forget one visible long-term memory\n"
+        "  /usage                  show current token usage\n"
+        "  /help                   show this help\n"
+        "  /quit                   exit Loom\n"
+        "Ctrl+C stops the active turn; Ctrl+D exits the prompt."
+    )
 
 
-def _forget_memory(runtime: AgentRuntime, memory_id: str, workspace: str | None) -> None:
-    runtime.forget_memory(memory_id, workspace=workspace)
-    print(f"Forgot memory {memory_id}.")
+def _interactive(runtime: AgentRuntime, store: FileAgentSessionStore, session_id: str) -> int:
+    session = runtime.get_session(session_id)
+    print("Loom interactive agent")
+    print(f"Session:     {session_id}")
+    print(f"Workspace:   {session.workspace_dir}")
+    print(f"Permissions: {session.permission_mode.value}")
+    print("Type /help for commands.\n")
+    while True:
+        try:
+            text = input("You> ").strip()
+        except EOFError:
+            print()
+            return 0
+        except KeyboardInterrupt:
+            print()
+            continue
+        if not text:
+            continue
+        if text in {"/quit", "/exit"}:
+            return 0
+        if text == "/help":
+            _print_help()
+            continue
+        if text == "/new" or text.startswith("/new "):
+            supplied = text[4:].strip()
+            current = runtime.get_session(session_id)
+            workspace = supplied or current.workspace_dir
+            try:
+                session = _create_workspace_session(
+                    runtime,
+                    workspace,
+                    current.permission_mode,
+                )
+            except (SystemExit, ValueError) as exc:
+                print(str(exc), file=sys.stderr)
+                continue
+            session_id = session.session_id
+            print(f"New session: {session_id}")
+            print(f"Workspace:   {session.workspace_dir}")
+            print(f"Permissions: {session.permission_mode.value}")
+            continue
+        if text == "/sessions":
+            _list_sessions(store)
+            continue
+        if text.startswith("/use "):
+            candidate = text[5:].strip()
+            try:
+                session = runtime.get_session(candidate)
+                if session.status is AgentStatus.RUNNING:
+                    runtime.recover_interrupted(candidate)
+                    session = runtime.get_session(candidate)
+                session_id = candidate
+                print(f"Using session: {session_id}")
+                print(f"Workspace:     {session.workspace_dir}")
+                print(f"Permissions:   {session.permission_mode.value}")
+            except Exception as exc:
+                print(f"Cannot load session: {exc}", file=sys.stderr)
+            continue
+        if text == "/session":
+            print(session_id)
+            continue
+        if text == "/workspace":
+            print(runtime.get_session(session_id).workspace_dir)
+            continue
+        if text == "/permissions":
+            print(runtime.get_session(session_id).permission_mode.value)
+            continue
+        if text.startswith("/permissions "):
+            value = text[len("/permissions "):].strip()
+            try:
+                session = runtime.set_permission_mode(session_id, PermissionMode(value))
+                print(f"Permissions: {session.permission_mode.value}")
+            except (ValueError, RuntimeError) as exc:
+                print(f"Cannot change permissions: {exc}", file=sys.stderr)
+            continue
+        if text == "/goal":
+            _show_goal(runtime, session_id)
+            continue
+        if text.startswith("/goal set "):
+            objective = text[len("/goal set "):].strip()
+            try:
+                runtime.set_goal(session_id, objective)
+                _show_goal(runtime, session_id)
+            except (ValueError, RuntimeError) as exc:
+                print(f"Cannot set goal: {exc}", file=sys.stderr)
+            continue
+        if text.startswith("/goal budget "):
+            rest = text[len("/goal budget "):].strip()
+            pieces = rest.split(maxsplit=1)
+            if len(pieces) != 2:
+                print("Usage: /goal budget <tokens> <objective>", file=sys.stderr)
+                continue
+            try:
+                budget = int(pieces[0])
+                runtime.set_goal(session_id, pieces[1], token_budget=budget)
+                _show_goal(runtime, session_id)
+            except (ValueError, RuntimeError) as exc:
+                print(f"Cannot set goal: {exc}", file=sys.stderr)
+            continue
+        if text in {"/goal pause", "/goal resume", "/goal blocked", "/goal complete"}:
+            status = {
+                "/goal pause": GoalStatus.PAUSED,
+                "/goal resume": GoalStatus.ACTIVE,
+                "/goal blocked": GoalStatus.BLOCKED,
+                "/goal complete": GoalStatus.COMPLETE,
+            }[text]
+            try:
+                runtime.set_goal_status(session_id, status)
+                _show_goal(runtime, session_id)
+            except (KeyError, ValueError, RuntimeError) as exc:
+                print(f"Cannot update goal: {exc}", file=sys.stderr)
+            continue
+        if text == "/goal clear":
+            runtime.clear_goal(session_id)
+            print("Goal cleared.")
+            continue
+        if text == "/goal continue" or text.startswith("/goal continue "):
+            raw = text[len("/goal continue"):].strip()
+            try:
+                turns = int(raw) if raw else 1
+                result = runtime.continue_goal(session_id, max_turns=turns)
+                result = _finish_result(runtime, result)
+                _print_run_result(result)
+            except (ValueError, RuntimeError) as exc:
+                print(f"Cannot continue goal: {exc}", file=sys.stderr)
+            continue
+        if text == "/queue":
+            _show_queue(runtime, session_id)
+            continue
+        if text.startswith("/queue add "):
+            body = text[len("/queue add "):].strip()
+            try:
+                item = runtime.enqueue_turn(session_id, body)
+                print(f"Queued: {item.queue_id}")
+            except (ValueError, RuntimeError) as exc:
+                print(f"Cannot queue turn: {exc}", file=sys.stderr)
+            continue
+        if text == "/queue run" or text.startswith("/queue run "):
+            raw = text[len("/queue run"):].strip()
+            try:
+                turns = int(raw) if raw else None
+                result = runtime.run_queued(session_id, max_turns=turns)
+                if result is None:
+                    print("Queue is empty.")
+                else:
+                    result = _finish_result(runtime, result)
+                    _print_run_result(result)
+            except (ValueError, RuntimeError) as exc:
+                print(f"Cannot run queue: {exc}", file=sys.stderr)
+            continue
+        if text.startswith("/queue remove "):
+            queue_id = text[len("/queue remove "):].strip()
+            if runtime.remove_queued_turn(session_id, queue_id):
+                print("Queued turn removed.")
+            else:
+                print("Queued turn not found.", file=sys.stderr)
+            continue
+        if text in {"/memory", "/memory status"}:
+            _show_memory_status(runtime, session_id)
+            continue
+        if text == "/memory extract":
+            try:
+                result = runtime.extract_memory_from_thread(session_id)
+                print(
+                    f"Memory extraction: {result.extraction.candidate_count} candidate(s), "
+                    f"{len(result.consolidated)} consolidated record(s), "
+                    f"tokens={result.usage.total_tokens}."
+                )
+            except (ValueError, RuntimeError) as exc:
+                print(f"Cannot extract memory: {exc}", file=sys.stderr)
+            continue
+        if text == "/memory consolidate":
+            try:
+                records = runtime.consolidate_memory(session_id=session_id)
+                print(f"Consolidated {len(records)} memory record(s).")
+            except (ValueError, RuntimeError) as exc:
+                print(f"Cannot consolidate memory: {exc}", file=sys.stderr)
+            continue
+        if text == "/memory list" or text.startswith("/memory list "):
+            raw = text[len("/memory list"):].strip()
+            try:
+                limit = int(raw) if raw else 50
+                _print_memory_records(runtime.list_memory(session_id, limit=limit))
+            except (ValueError, RuntimeError) as exc:
+                print(f"Cannot list memory: {exc}", file=sys.stderr)
+            continue
+        if text.startswith("/memory search "):
+            query = text[len("/memory search "):].strip()
+            if not query:
+                print("Usage: /memory search <query>", file=sys.stderr)
+                continue
+            try:
+                _print_memory_records(runtime.search_memory(session_id, query, limit=20))
+            except (ValueError, RuntimeError) as exc:
+                print(f"Cannot search memory: {exc}", file=sys.stderr)
+            continue
+        if text.startswith("/memory forget "):
+            memory_id = text[len("/memory forget "):].strip()
+            if not memory_id:
+                print("Usage: /memory forget <id>", file=sys.stderr)
+                continue
+            try:
+                if runtime.forget_memory(session_id, memory_id):
+                    print("Memory forgotten.")
+                else:
+                    print("Memory not found.", file=sys.stderr)
+            except (PermissionError, ValueError, RuntimeError) as exc:
+                print(f"Cannot forget memory: {exc}", file=sys.stderr)
+            continue
+        if text == "/usage":
+            usage = runtime.get_session(session_id).usage
+            print(f"input={usage.input_tokens} output={usage.output_tokens} total={usage.total_tokens}")
+            continue
+        if text.startswith("/"):
+            print("Unknown command. Type /help.", file=sys.stderr)
+            continue
+        _run_prompt(runtime, session_id, text)
 
 
-def _memory_status(runtime: AgentRuntime, session_id: str) -> None:
-    print(json.dumps(runtime.memory_status(session_id), ensure_ascii=False, indent=2))
-
-
-def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Loom Agent runtime")
-    parser.add_argument("prompt", nargs="?", help="user prompt")
-    parser.add_argument("--session", help="resume an existing session")
-    parser.add_argument("--workspace", help="agent workspace root")
-    parser.add_argument("--home", help="runtime state root; defaults to ~/.loom")
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Loom — personal general-purpose tool-using AI agent")
+    parser.add_argument("prompt", nargs="*", help="run one prompt non-interactively")
     parser.add_argument("--provider", choices=["openai", "openai-compatible"])
     parser.add_argument("--base-url")
     parser.add_argument("--model")
+    parser.add_argument("--home", help="runtime state root; defaults to ~/.loom")
+    parser.add_argument(
+        "--workspace",
+        help="workspace for a new session; defaults to the current directory",
+    )
+    parser.add_argument("--session", help="resume an existing Loom session")
+    parser.add_argument(
+        "--permission-mode",
+        choices=[mode.value for mode in PermissionMode],
+        help="permission preset for a new session, or explicit override when resuming",
+    )
     parser.add_argument("--timeout", type=float, default=120.0)
     parser.add_argument(
         "--vision",
@@ -323,76 +572,43 @@ def _parser() -> argparse.ArgumentParser:
         default=True,
         help="declare that the selected model can read attached images",
     )
-    parser.add_argument(
-        "--permission-mode",
-        choices=[mode.value for mode in PermissionMode],
-        help="default permission mode for new sessions",
-    )
-    parser.add_argument("--goal", help="set/replace durable thread objective before running")
-    parser.add_argument("--goal-token-budget", type=int)
-    parser.add_argument("--show-goal", action="store_true")
-    parser.add_argument("--clear-goal", action="store_true")
-    parser.add_argument("--enqueue", help="queue a turn for later dispatch")
-    parser.add_argument("--show-queue", action="store_true")
-    parser.add_argument("--compact-summary", help="replace older history with a durable summary")
-    parser.add_argument("--compact-keep-recent", type=int, default=8)
-    parser.add_argument("--extract-memory", action="store_true")
-    parser.add_argument("--memory-status", action="store_true")
-    parser.add_argument("--forget-memory")
+    parser.add_argument("--quiet-events", action="store_true")
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = _parser().parse_args(argv)
-    runtime, store, _model = _build_runtime(args)
-    runtime.subscribe(_event_printer)
-    try:
-        if args.session:
-            session = runtime.get_session(args.session)
-        else:
-            workspace = _resolve_workspace(args.workspace or Path.cwd())
-            session = runtime.create_session(
-                AGENT_FAST_ROLE.role_id,
-                workspace_dir=workspace,
-                permission_mode=_resolve_new_permission_mode(args),
-            )
+    args = build_parser().parse_args(argv)
+    if args.session and args.workspace:
+        raise SystemExit("--workspace cannot be combined with --session; resumed sessions keep their saved workspace.")
 
-        if args.goal:
-            _set_goal(runtime, session.session_id, args.goal, args.goal_token_budget)
-        if args.clear_goal:
-            _clear_goal(runtime, session.session_id)
-        if args.show_goal:
-            _show_goal(runtime, session.session_id)
-        if args.enqueue:
-            _enqueue_turn(runtime, session.session_id, args.enqueue)
-        if args.show_queue:
-            _list_queue(runtime, session.session_id)
-        if args.compact_summary:
-            _compact(runtime, session.session_id, args.compact_summary, args.compact_keep_recent)
-        if args.extract_memory:
-            _extract_memory(runtime, session.session_id)
-        if args.memory_status:
-            _memory_status(runtime, session.session_id)
-        if args.forget_memory:
-            _forget_memory(runtime, args.forget_memory, session.workspace_dir)
-        if args.prompt:
-            _run_prompt(runtime, session.session_id, args.prompt)
-        elif not any(
-            [
-                args.show_goal,
-                args.clear_goal,
-                args.enqueue,
-                args.show_queue,
-                args.compact_summary,
-                args.extract_memory,
-                args.memory_status,
-                args.forget_memory,
-            ]
-        ):
-            print(session.session_id)
-        return 0
-    finally:
-        runtime.close()
+    runtime, store, model = _build_runtime(args)
+    if not args.quiet_events:
+        runtime.subscribe(_event_printer)
+
+    if args.session:
+        session = runtime.get_session(args.session)
+        if session.status is AgentStatus.RUNNING:
+            runtime.recover_interrupted(args.session)
+            session = runtime.get_session(args.session)
+        if args.permission_mode:
+            session = runtime.set_permission_mode(args.session, PermissionMode(args.permission_mode))
+        session_id = args.session
+    else:
+        session = _create_workspace_session(
+            runtime,
+            args.workspace or Path.cwd(),
+            _resolve_new_permission_mode(args),
+        )
+        session_id = session.session_id
+
+    session = runtime.get_session(session_id)
+    print(f"Loom · {model} · session {session_id}")
+    print(f"Workspace · {session.workspace_dir}")
+    print(f"Permissions · {session.permission_mode.value}")
+    if args.prompt:
+        result = _run_prompt(runtime, session_id, " ".join(args.prompt))
+        return 0 if result.status is AgentStatus.COMPLETED else 1
+    return _interactive(runtime, store, session_id)
 
 
 if __name__ == "__main__":
