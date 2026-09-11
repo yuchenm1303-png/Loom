@@ -20,6 +20,7 @@ import {
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { TranscriptItem } from "../types/loom";
 import { MarkdownMessage } from "./MarkdownMessage";
+import { TurnArtifactsPreview } from "./TurnArtifactsPreview";
 import { UserMessageContent, parseUserMessageContent } from "./UserMessageContent";
 import "./activity-flow.css";
 import "./message-actions.css";
@@ -825,55 +826,8 @@ function TurnArtifacts({ items }: { items: TranscriptItem[] }) {
   const edit = latestFileEdit(items);
   const paths = changedPaths(items);
   const diff = String(edit?.diff ?? "").trim();
-  const stats = diffStats(diff);
-  const [open, setOpen] = useState(false);
   if (!paths.length && !diff) return null;
-
-  const canExpand = Boolean(diff) || paths.length > 4;
-  const visiblePaths = open ? paths : paths.slice(0, 4);
-  const hiddenCount = Math.max(0, paths.length - visiblePaths.length);
-  const title = paths.length === 1 ? `已编辑 ${paths[0]}` : `已修改 ${paths.length || 1} 个文件`;
-
-  return (
-    <section className={`turn-artifacts ${open ? "is-open" : ""}`} aria-label="Changed files">
-      <button
-        type="button"
-        className="turn-artifacts-header"
-        onClick={() => canExpand && setOpen((value) => !value)}
-        disabled={!canExpand}
-        aria-expanded={canExpand ? open : undefined}
-      >
-        <span className="turn-artifacts-icon" aria-hidden="true"><FileDiff size={15} /></span>
-        <span className="turn-artifacts-copy">
-          <strong>{title}</strong>
-          {(stats.added || stats.removed) ? (
-            <span className="turn-artifacts-stats"><b>+{stats.added}</b><i>-{stats.removed}</i></span>
-          ) : null}
-        </span>
-        {canExpand ? (
-          <span className="turn-artifacts-action">
-            <span>{open ? "收起" : "查看更改"}</span>
-            <ChevronRight size={14} />
-          </span>
-        ) : null}
-      </button>
-
-      {paths.length > 1 ? (
-        <div className="turn-artifacts-files">
-          {visiblePaths.map((path) => <code key={path} title={path}>{path}</code>)}
-          {hiddenCount ? <span className="turn-artifacts-more">+{hiddenCount}</span> : null}
-        </div>
-      ) : null}
-
-      {diff ? (
-        <div className="turn-artifacts-grid">
-          <div className="turn-artifacts-inner">
-            <pre>{diff}</pre>
-          </div>
-        </div>
-      ) : null}
-    </section>
-  );
+  return <TurnArtifactsPreview items={items} />;
 }
 
 function TurnView({
