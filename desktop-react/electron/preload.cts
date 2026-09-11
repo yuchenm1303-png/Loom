@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer, webUtils } from "electron";
+import { contextBridge, ipcRenderer, webFrame, webUtils } from "electron";
 
 export interface LoomNotification {
   jsonrpc: "2.0";
@@ -23,6 +23,14 @@ const api = {
   revealPath: (targetPath: string) => ipcRenderer.invoke("loom:reveal-path", targetPath),
   pickDirectory: () => ipcRenderer.invoke("loom:pick-directory"),
   pickFiles: () => ipcRenderer.invoke("loom:pick-files"),
+  // Native Chromium page zoom keeps text and 1px UI geometry crisp on Windows
+  // display scaling, unlike CSS zoom which rasterizes the renderer surface.
+  setZoomFactor: (factor: number) => {
+    const numeric = Number(factor);
+    const safe = Number.isFinite(numeric) ? Math.min(1.3, Math.max(0.9, numeric)) : 1;
+    webFrame.setZoomFactor(safe);
+    return safe;
+  },
   // Electron 32 removed File.path, so the real path has to come from webUtils
   // in the preload. Attachments travel as paths, never as bytes over the RPC.
   filePathFor: (file: File) => {
