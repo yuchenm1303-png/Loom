@@ -216,6 +216,8 @@ function MemoryPanel({ threadId, running }: MemorySettingsBridgeProps) {
   };
 
   useEffect(() => {
+    setSelected(null);
+    setForgetTarget("");
     void refresh();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [threadId]);
