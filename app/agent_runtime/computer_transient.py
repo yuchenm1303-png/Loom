@@ -44,7 +44,7 @@ class ComputerTransientInputPlatform:
             arguments = dict(call.arguments)
             call_changed = False
 
-            for field in _TEXT_FIELDS_BY_TOOL.get(call.name, ()): 
+            for field in _TEXT_FIELDS_BY_TOOL.get(call.name, ()):
                 if field in arguments:
                     arguments[field] = self._stash(str(arguments.get(field) or ""))
                     call_changed = True
