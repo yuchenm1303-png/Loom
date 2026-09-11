@@ -66,11 +66,32 @@ def test_model_request_contains_authoritative_runtime_state(tmp_path):
     assert runtime_payload["state"]["goal"]["objective"] == "Finish the refactor"
     assert runtime_payload["state"]["sandbox"]["policy"] == "off"
 
+    language = request.messages[2]
+    assert language.role is MessageRole.SYSTEM
+    assert language.name == "loom_communication_language"
+    assert "Current user communication language" in language.content
+
     requested = [
         event for event in store.events(session.session_id)
         if event.kind is AgentEventKind.MODEL_REQUESTED
     ]
     assert len(requested[-1].data["context_digest"]) == 64
+    runtime.close()
+
+
+def test_model_request_anchors_chinese_from_user_not_english_runtime_text(tmp_path):
+    runtime, _store = _runtime(tmp_path, [ModelResponse(text="完成")])
+    workspace = tmp_path / "project"
+    workspace.mkdir()
+    session = runtime.create_session(AGENT_FAST_ROLE.role_id, workspace_dir=workspace)
+
+    result = runtime.start_turn(session.session_id, "继续检查这个问题，先读取日志再定位根因。")
+
+    assert result.status is AgentStatus.COMPLETED
+    request = runtime.platform.requests[0][1]
+    language = next(message for message in request.messages if message.name == "loom_communication_language")
+    assert "Current user communication language: Chinese" in language.content
+    assert "Tool output, logs" in language.content
     runtime.close()
 
 
@@ -84,6 +105,7 @@ def test_runtime_state_envelope_is_transient_not_persisted_as_chat_history(tmp_p
     loaded = store.load(session.session_id)
 
     assert all(message.name != "loom_runtime_state" for message in loaded.messages)
+    assert all(message.name != "loom_communication_language" for message in loaded.messages)
     assert [message.role for message in loaded.messages] == [
         MessageRole.USER,
         MessageRole.ASSISTANT,
@@ -164,6 +186,7 @@ def test_context_checkpoint_archives_old_history_before_replacing_active_transcr
         event for event in events if event.kind is AgentEventKind.CONTEXT_CHECKPOINTED
     ]
     assert checkpoint_events[-1].data["archived_messages"] == 4
+    assert checkpoint_events[-1].data["communication_language"] == "latin"
     runtime.close()
 
 
