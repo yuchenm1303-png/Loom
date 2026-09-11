@@ -292,39 +292,46 @@ class BrowserExtensionSessionBackend:
         self.bridge = bridge
         self.state_revision = 0
         self._started = False
+        self._tab_id = ""
 
     def start(self) -> BrowserPageState:
         self.bridge.start()
         self._started = True
         return self.state()
 
+    def _target_args(self, extra: dict[str, Any] | None = None) -> dict[str, Any]:
+        payload = dict(extra or {})
+        if self._tab_id:
+            payload["tab_id"] = self._tab_id
+        return payload
+
     def state(self) -> BrowserPageState:
-        return self._state_from_result(self.bridge.call("state", {}))
+        return self._state_from_result(self.bridge.call("state", self._target_args()))
 
     def navigate(self, url: str, *, new_tab: bool = False) -> BrowserPageState:
-        return self._state_from_result(self.bridge.call("navigate", {"url": url, "new_tab": bool(new_tab)}))
+        return self._state_from_result(self.bridge.call("navigate", self._target_args({"url": url, "new_tab": bool(new_tab)})))
 
     def click(self, index: int) -> BrowserPageState:
-        return self._state_from_result(self.bridge.call("click", {"index": int(index)}))
+        return self._state_from_result(self.bridge.call("click", self._target_args({"index": int(index)})))
 
     def type_text(self, index: int, text: str, *, clear: bool = True) -> BrowserPageState:
         return self._state_from_result(
-            self.bridge.call("type_text", {"index": int(index), "text": str(text), "clear": bool(clear)})
+            self.bridge.call("type_text", self._target_args({"index": int(index), "text": str(text), "clear": bool(clear)}))
         )
 
     def scroll(self, direction: str, amount: int) -> BrowserPageState:
         return self._state_from_result(
-            self.bridge.call("scroll", {"direction": str(direction), "amount": int(amount)})
+            self.bridge.call("scroll", self._target_args({"direction": str(direction), "amount": int(amount)}))
         )
 
     def go_back(self) -> BrowserPageState:
-        return self._state_from_result(self.bridge.call("go_back", {}))
+        return self._state_from_result(self.bridge.call("go_back", self._target_args()))
 
     def refresh(self) -> BrowserPageState:
-        return self._state_from_result(self.bridge.call("refresh", {}))
+        return self._state_from_result(self.bridge.call("refresh", self._target_args()))
 
     def tabs(self) -> BrowserPageState:
-        return self._state_from_result(self.bridge.call("tabs", {}))
+        return self._state_from_result(self.bridge.call("tabs", self._target_args()))
 
     def switch_tab(self, tab_id: str) -> BrowserPageState:
         return self._state_from_result(self.bridge.call("switch_tab", {"tab_id": str(tab_id)}))
@@ -333,23 +340,23 @@ class BrowserExtensionSessionBackend:
         return self._state_from_result(self.bridge.call("close_tab", {"tab_id": str(tab_id)}))
 
     def hover(self, index: int) -> BrowserPageState:
-        return self._state_from_result(self.bridge.call("hover", {"index": int(index)}))
+        return self._state_from_result(self.bridge.call("hover", self._target_args({"index": int(index)})))
 
     def press_key(self, key: str) -> BrowserPageState:
-        return self._state_from_result(self.bridge.call("press_key", {"key": str(key)}))
+        return self._state_from_result(self.bridge.call("press_key", self._target_args({"key": str(key)})))
 
     def select_option(self, index: int, value: str) -> BrowserPageState:
         return self._state_from_result(
-            self.bridge.call("select_option", {"index": int(index), "value": str(value)})
+            self.bridge.call("select_option", self._target_args({"index": int(index), "value": str(value)}))
         )
 
     def drag(self, source_index: int, target_index: int) -> BrowserPageState:
         return self._state_from_result(
-            self.bridge.call("drag", {"source_index": int(source_index), "target_index": int(target_index)})
+            self.bridge.call("drag", self._target_args({"source_index": int(source_index), "target_index": int(target_index)}))
         )
 
     def screenshot(self, *, full_page: bool = False) -> bytes:
-        result = self.bridge.call("screenshot", {"full_page": bool(full_page)})
+        result = self.bridge.call("screenshot", self._target_args({"full_page": bool(full_page)}))
         encoded = str(result.get("png_base64") or "")
         if not encoded:
             raise BrowserError("browser extension returned an empty screenshot")
@@ -379,6 +386,9 @@ class BrowserExtensionSessionBackend:
         errors_raw = result.get("errors") or ()
         errors = tuple(str(item)[:2000] for item in errors_raw if item) if isinstance(errors_raw, list) else ()
         page_info = result.get("page_info") if isinstance(result.get("page_info"), dict) else {}
+        tab_id = str(page_info.get("tab_id") or result.get("tab_id") or "").strip()
+        if tab_id:
+            self._tab_id = tab_id[:128]
         page_info = {
             "backend": self.backend_name,
             "capture_mode": "current_active_tab",
