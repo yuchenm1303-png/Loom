@@ -72,3 +72,82 @@
 .computer-log-export-note.error strong {
   color: #e1a1aa;
 }
+
+/* Inspector.tsx imports this file after Inspector.css/InspectorMark.css, so keep
+   the final tab layout guard here to make the override order deterministic. */
+.runtime-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 4px;
+  padding-inline: 8px;
+  box-sizing: border-box;
+}
+
+.runtime-tab-glider {
+  display: none;
+}
+
+.runtime-tab {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+  display: grid !important;
+  grid-template-columns: 13px minmax(0, 1fr) auto;
+  align-items: center;
+  justify-content: stretch;
+  column-gap: 4px;
+  padding: 0 6px;
+  background: transparent;
+}
+
+.runtime-tab.active {
+  border: 1px solid #252a34;
+  background: linear-gradient(180deg, #1a1d24, #171a20);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.025), 0 4px 14px rgba(0,0,0,.13);
+}
+
+.runtime-tab > svg {
+  width: 13px;
+  height: 13px;
+  min-width: 13px;
+  flex: none;
+  justify-self: center;
+}
+
+.runtime-tab > span:not(.runtime-tab-count) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.runtime-tab-count {
+  min-width: 14px;
+  height: 14px;
+  margin: 0;
+  padding: 0 3px;
+  box-sizing: border-box;
+  justify-self: end;
+  display: inline-grid;
+  place-items: center;
+  font-size: 7.5px;
+  line-height: 1;
+  flex: none;
+}
+
+@media (max-width: 1180px) {
+  .runtime-tab {
+    grid-template-columns: 13px minmax(0, 1fr) auto;
+    column-gap: 3px;
+    padding-inline: 5px;
+    font-size: 8.5px;
+  }
+
+  .runtime-tab-count {
+    min-width: 13px;
+    height: 13px;
+    padding-inline: 2px;
+    font-size: 7px;
+  }
+}
