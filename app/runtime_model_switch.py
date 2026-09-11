@@ -117,16 +117,16 @@ def build_runtime_model_platform(
         request_timeout_seconds=float(request_timeout_seconds),
     )
     wrapped = ComputerTransientInputPlatform(platform)
-    # Keep the active model connection in RAM so isolated local drivers such as
-    # UFO can reuse the user's selected vision model without persisting or
-    # duplicating API credentials. This private metadata never crosses Runtime
-    # status, diagnostics, or durable tool-call boundaries.
+    # Keep the effective connection (not stale UI input) in RAM so isolated local
+    # drivers such as UFO use exactly the same provider routing as Loom itself.
+    # This private metadata never crosses Runtime status, diagnostics, or durable
+    # tool-call boundaries.
     setattr(
         wrapped,
         "_loom_model_connection",
         {
             "provider": adapter.value,
-            "base_url": _text(base_url),
+            "base_url": resolved_base_url,
             "model": selected_model,
             "api_key": secret,
             "vision": bool(vision),
