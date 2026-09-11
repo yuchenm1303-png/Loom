@@ -6,7 +6,7 @@ from .web_search_tools import web_search_tools
 
 
 class _DefaultSemanticMemoryRuntime(SemanticMemoryRuntime):
-    """Cost-aware semantic memory policy for Loom's default runtime stack."""
+    """Cost-aware Memory v2-B policy for Loom's default runtime stack."""
 
     def _queue_semantic_result(self, result) -> None:
         pipeline = self._semantic_pipeline
