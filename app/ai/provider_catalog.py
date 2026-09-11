@@ -8,7 +8,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 from .capabilities import ModelCapability
 from .credentials import CredentialRef
-from .profiles import ModelProfile
+from .profiles import ModelContextLimits, ModelProfile
 from .roles import ModelRole
 
 
@@ -51,9 +51,6 @@ _PROVIDER_DESCRIPTORS: dict[ProviderAdapter, ProviderDescriptor] = {
         executable=True,
         base_url_policy=BaseUrlPolicy.REQUIRED,
     ),
-    # Reserved extension slots. They are intentionally non-executable until a
-    # dedicated adapter is implemented and tested; merely naming a provider must
-    # never make the runtime pretend it is supported.
     ProviderAdapter.ANTHROPIC: ProviderDescriptor(
         adapter=ProviderAdapter.ANTHROPIC,
         executable=False,
@@ -134,6 +131,7 @@ class ProviderConnection:
         *,
         model: str,
         capabilities: Iterable[ModelCapability],
+        context_limits: ModelContextLimits | None = None,
     ) -> ModelProfile:
         if not self.executable:
             raise RuntimeError(
@@ -144,6 +142,7 @@ class ProviderConnection:
             model=model,
             capabilities=capabilities,
             credential_ref=self.credential_ref,
+            context_limits=context_limits,
         )
 
 
@@ -181,9 +180,15 @@ class ProviderCatalog:
         provider_id: str,
         model: str,
         capabilities: Iterable[ModelCapability],
+        context_limits: ModelContextLimits | None = None,
     ) -> ModelProfile:
         connection = self.require_executable(provider_id)
-        return connection.bind_role(role, model=model, capabilities=capabilities)
+        return connection.bind_role(
+            role,
+            model=model,
+            capabilities=capabilities,
+            context_limits=context_limits,
+        )
 
     def all(self) -> tuple[ProviderConnection, ...]:
         return tuple(self._connections[key] for key in sorted(self._connections))
