@@ -21,6 +21,9 @@ type ReviewRow =
   | { id: string; kind: "meta"; text: string }
   | { id: string; kind: "context" | "add" | "delete"; text: string; oldLine?: number; newLine?: number };
 
+type WithoutId<T> = T extends { id: string } ? Omit<T, "id"> : never;
+type ReviewRowInput = WithoutId<ReviewRow>;
+
 type ReviewFile = {
   path: string;
   name: string;
@@ -146,7 +149,7 @@ function parseUnifiedDiff(diff: string): { rows: ReviewRow[]; additions: number;
   let deletions = 0;
   let rowIndex = 0;
 
-  const push = (row: Omit<ReviewRow, "id">) => {
+  const push = (row: ReviewRowInput) => {
     rows.push({ ...row, id: `row-${rowIndex++}` } as ReviewRow);
   };
 
@@ -261,7 +264,6 @@ export function ReviewWorkspace({ items, open, onClose }: ReviewWorkspaceProps) 
   }, [files, query]);
 
   const selected = visibleFiles.find((file) => file.path === selectedPath)
-    ?? files.find((file) => file.path === selectedPath)
     ?? visibleFiles[0]
     ?? files[0];
 
