@@ -1,0 +1,441 @@
+/* Capabilities page -------------------------------------------------------
+   This layer turns the flat capability preference list into a clearer
+   runtime control surface without changing any capability behavior. */
+
+.settings-content:has(.capability-list) {
+  gap: 22px;
+}
+
+.settings-content:has(.capability-list) > .settings-page-heading {
+  position: relative;
+  min-height: 144px;
+  padding: 24px 26px;
+  border: 1px solid rgba(255,255,255,.075);
+  border-radius: 16px;
+  overflow: hidden;
+  align-items: center;
+  background:
+    radial-gradient(circle at 83% 14%, rgba(139,124,246,.14), transparent 34%),
+    linear-gradient(135deg, rgba(139,124,246,.075), transparent 44%),
+    #111318;
+  box-shadow:
+    0 18px 44px rgba(0,0,0,.16),
+    inset 0 1px 0 rgba(255,255,255,.035);
+}
+
+.settings-content:has(.capability-list) > .settings-page-heading::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: linear-gradient(180deg, #a99cff, #7769e8 65%, rgba(119,105,232,.12));
+  box-shadow: 0 0 24px rgba(139,124,246,.28);
+}
+
+.settings-content:has(.capability-list) > .settings-page-heading::after {
+  content: "";
+  position: absolute;
+  width: 240px;
+  height: 240px;
+  right: -86px;
+  top: -122px;
+  border-radius: 50%;
+  border: 1px solid rgba(167,154,244,.08);
+  box-shadow:
+    0 0 0 34px rgba(139,124,246,.018),
+    0 0 0 72px rgba(139,124,246,.012);
+  pointer-events: none;
+}
+
+.settings-content:has(.capability-list) > .settings-page-heading > div,
+.settings-content:has(.capability-list) > .settings-page-heading > .settings-tool-count {
+  position: relative;
+  z-index: 1;
+}
+
+.settings-content:has(.capability-list) > .settings-page-heading h1 {
+  margin-top: 6px;
+  margin-bottom: 10px;
+  font-size: 30px;
+}
+
+.settings-content:has(.capability-list) > .settings-page-heading p {
+  max-width: 660px;
+  color: #929aa7;
+  line-height: 1.62;
+}
+
+.settings-content:has(.capability-list) .settings-tool-count {
+  min-width: 142px;
+  min-height: 66px;
+  margin-top: 0;
+  padding: 10px 14px;
+  border-color: rgba(167,154,244,.14);
+  border-radius: 12px;
+  display: grid;
+  align-content: center;
+  justify-items: start;
+  gap: 6px;
+  background: rgba(11,13,18,.58);
+  color: #ddd9ff;
+  font-size: 13px;
+  font-weight: 650;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.025);
+}
+
+.settings-content:has(.capability-list) .settings-tool-count::before {
+  content: "Tool surface";
+  color: #737b88;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+}
+
+html[data-loom-language="zh-CN"] .settings-content:has(.capability-list) .settings-tool-count::before {
+  content: "工具暴露";
+}
+
+.settings-content:has(.capability-list) .settings-callout.warning {
+  margin-top: -8px;
+  border-radius: 12px;
+  box-shadow: none;
+}
+
+.settings-content:has(.capability-list) .settings-section:has(.capability-list) {
+  gap: 14px;
+}
+
+.settings-content:has(.capability-list) .settings-section:has(.capability-list) > .settings-section-heading {
+  padding: 0 2px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+}
+
+.settings-content:has(.capability-list) .settings-section:has(.capability-list) > .settings-section-heading h2 {
+  font-size: 15.5px;
+}
+
+.settings-content:has(.capability-list) .settings-section:has(.capability-list) > .settings-section-heading p {
+  max-width: 620px;
+}
+
+.capability-list.settings-card {
+  position: relative;
+  overflow: visible;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 11px;
+  padding: 26px 0 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.capability-list.settings-card::before {
+  content: "Core interaction";
+  position: absolute;
+  left: 2px;
+  top: 0;
+  color: #737b88;
+  font-size: 10px;
+  font-weight: 720;
+  letter-spacing: .085em;
+  text-transform: uppercase;
+}
+
+html[data-loom-language="zh-CN"] .capability-list.settings-card::before {
+  content: "核心交互";
+}
+
+.capability-list .capability-row {
+  position: relative;
+  min-height: 108px;
+  padding: 16px 15px;
+  border: 1px solid rgba(255,255,255,.07);
+  border-radius: 14px;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) 30px auto;
+  align-items: center;
+  gap: 12px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.027), transparent 72%),
+    #121419;
+  box-shadow:
+    0 10px 28px rgba(0,0,0,.10),
+    inset 0 1px 0 rgba(255,255,255,.02);
+  transition:
+    border-color 140ms ease,
+    background 140ms ease,
+    transform 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.capability-list .capability-row:last-child {
+  border-bottom: 1px solid rgba(255,255,255,.07);
+}
+
+.capability-list .capability-row:nth-child(1),
+.capability-list .capability-row:nth-child(2) {
+  min-height: 122px;
+  border-color: rgba(153,140,244,.12);
+  background:
+    radial-gradient(circle at 0 0, rgba(139,124,246,.075), transparent 42%),
+    linear-gradient(180deg, rgba(255,255,255,.03), transparent 72%),
+    #121419;
+}
+
+.capability-list .capability-row:nth-child(3),
+.capability-list .capability-row:nth-child(4) {
+  margin-top: 29px;
+}
+
+.capability-list .capability-row:nth-child(3)::before {
+  content: "Agent extensions";
+  position: absolute;
+  left: 2px;
+  top: -25px;
+  color: #737b88;
+  font-size: 10px;
+  font-weight: 720;
+  letter-spacing: .085em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+html[data-loom-language="zh-CN"] .capability-list .capability-row:nth-child(3)::before {
+  content: "Agent 扩展";
+}
+
+.capability-list .capability-row:nth-child(7) {
+  grid-column: 1 / -1;
+  min-height: 94px;
+}
+
+.capability-list .capability-row:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255,255,255,.11);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.038), transparent 74%),
+    #13151a;
+  box-shadow:
+    0 14px 34px rgba(0,0,0,.14),
+    inset 0 1px 0 rgba(255,255,255,.028);
+}
+
+.capability-list .capability-row:has(.settings-switch.on) {
+  border-color: rgba(139,124,246,.18);
+}
+
+.capability-list .capability-row:has(.settings-switch:not(.on)) {
+  background: #101217;
+}
+
+.capability-list .capability-row:has(.settings-switch:not(.on)) .capability-icon,
+.capability-list .capability-row:has(.settings-switch:not(.on)) .capability-copy {
+  opacity: .66;
+}
+
+.capability-list .capability-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  color: #bdb5ff;
+  background:
+    linear-gradient(145deg, rgba(139,124,246,.16), rgba(139,124,246,.07));
+  border-color: rgba(154,140,255,.16);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.025);
+}
+
+.capability-list .capability-row:nth-child(1) .capability-icon,
+.capability-list .capability-row:nth-child(2) .capability-icon {
+  color: #d2ccff;
+  background:
+    radial-gradient(circle at 28% 24%, rgba(255,255,255,.09), transparent 32%),
+    rgba(139,124,246,.13);
+}
+
+.capability-list .capability-copy {
+  gap: 7px;
+  align-self: center;
+}
+
+.capability-list .capability-title-line {
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.capability-list .capability-title-line strong {
+  font-size: 13.5px;
+  font-weight: 690;
+  letter-spacing: -.01em;
+}
+
+.capability-list .capability-copy > span {
+  max-width: 480px;
+  color: #858d9a;
+  font-size: 12px;
+  line-height: 1.54;
+}
+
+.capability-list .settings-status-pill {
+  height: 21px;
+  padding: 0 7px;
+  gap: 5px;
+  border-radius: 6px;
+  font-size: 10.5px;
+  font-weight: 620;
+}
+
+.capability-list .settings-status-dot {
+  width: 5px;
+  height: 5px;
+}
+
+.capability-list .settings-row-link,
+.capability-list .settings-row-link-spacer {
+  width: 28px;
+  height: 28px;
+}
+
+.capability-list .settings-row-link {
+  border: 1px solid transparent;
+  color: #747c89;
+}
+
+.capability-list .settings-row-link:hover {
+  border-color: rgba(255,255,255,.06);
+  color: #d9dce3;
+  background: rgba(255,255,255,.04);
+}
+
+.capability-list .settings-switch {
+  width: 42px;
+  height: 24px;
+  justify-self: end;
+  box-shadow: inset 0 1px 1px rgba(0,0,0,.16);
+}
+
+.capability-list .settings-switch.on {
+  box-shadow:
+    inset 0 1px 1px rgba(255,255,255,.08),
+    0 0 0 1px rgba(139,124,246,.04),
+    0 7px 18px rgba(93,75,213,.12);
+}
+
+/* The legacy SettingsPage still renders English copy for these rows. The
+   document language is authoritative, so keep the capability surface fully
+   localized until this page is migrated to direct t(...) calls. */
+html[data-loom-language="zh-CN"] .capability-list .capability-copy > span {
+  font-size: 0;
+}
+
+html[data-loom-language="zh-CN"] .capability-list .capability-copy > span::after {
+  display: block;
+  color: #858d9a;
+  font-size: 12px;
+  line-height: 1.54;
+}
+
+html[data-loom-language="zh-CN"] .capability-list .capability-row:nth-child(1) .capability-copy > span::after {
+  content: "允许 Loom 暴露截图、UIA、鼠标和键盘等桌面控制工具。";
+}
+
+html[data-loom-language="zh-CN"] .capability-list .capability-row:nth-child(2) .capability-copy > span::after {
+  content: "允许 Loom 暴露 Chrome / Edge 会话与本地 CDP 连接相关的浏览器自动化工具。";
+}
+
+html[data-loom-language="zh-CN"] .capability-list .capability-row:nth-child(3) .capability-copy > span::after {
+  content: "向 Agent 暴露已配置的公网搜索提供商。";
+}
+
+html[data-loom-language="zh-CN"] .capability-list .capability-row:nth-child(4) .capability-copy > span::after {
+  content: "暴露从已配置 Model Context Protocol 服务发现到的工具。";
+}
+
+html[data-loom-language="zh-CN"] .capability-list .capability-row:nth-child(5) .capability-copy > span::after {
+  content: "让 Loom 发现并加载当前工作区可用的 SKILL.md 工作流。";
+}
+
+html[data-loom-language="zh-CN"] .capability-list .capability-row:nth-child(6) .capability-copy > span::after {
+  content: "让 Agent 按需发现延迟加载的集成工具，减少一次性注入的上下文。";
+}
+
+html[data-loom-language="zh-CN"] .capability-list .capability-row:nth-child(7) .capability-copy > span::after {
+  content: "允许在 Loom 的受限执行语言中组合多个工具调用。";
+}
+
+html[data-loom-language="zh-CN"] .capability-list .capability-row:nth-child(2) .capability-title-line > strong,
+html[data-loom-language="zh-CN"] .capability-list .capability-row:nth-child(3) .capability-title-line > strong,
+html[data-loom-language="zh-CN"] .capability-list .capability-row:nth-child(6) .capability-title-line > strong,
+html[data-loom-language="zh-CN"] .capability-list .capability-row:nth-child(7) .capability-title-line > strong {
+  font-size: 0;
+}
+
+html[data-loom-language="zh-CN"] .capability-list .capability-row:nth-child(2) .capability-title-line > strong::after,
+html[data-loom-language="zh-CN"] .capability-list .capability-row:nth-child(3) .capability-title-line > strong::after,
+html[data-loom-language="zh-CN"] .capability-list .capability-row:nth-child(6) .capability-title-line > strong::after,
+html[data-loom-language="zh-CN"] .capability-list .capability-row:nth-child(7) .capability-title-line > strong::after {
+  color: #f1f2f5;
+  font-size: 13.5px;
+  font-weight: 690;
+  letter-spacing: -.01em;
+}
+
+html[data-loom-language="zh-CN"] .capability-list .capability-row:nth-child(2) .capability-title-line > strong::after { content: "浏览器控制"; }
+html[data-loom-language="zh-CN"] .capability-list .capability-row:nth-child(3) .capability-title-line > strong::after { content: "网页搜索"; }
+html[data-loom-language="zh-CN"] .capability-list .capability-row:nth-child(6) .capability-title-line > strong::after { content: "工具搜索"; }
+html[data-loom-language="zh-CN"] .capability-list .capability-row:nth-child(7) .capability-title-line > strong::after { content: "代码模式"; }
+
+@media (max-width: 1040px) {
+  .settings-content:has(.capability-list) > .settings-page-heading {
+    min-height: 132px;
+    padding: 20px;
+  }
+
+  .capability-list.settings-card {
+    grid-template-columns: 1fr;
+  }
+
+  .capability-list .capability-row:nth-child(3) {
+    margin-top: 29px;
+  }
+
+  .capability-list .capability-row:nth-child(4) {
+    margin-top: 0;
+  }
+
+  .capability-list .capability-row:nth-child(7) {
+    grid-column: auto;
+  }
+}
+
+@media (max-width: 760px) {
+  .settings-content:has(.capability-list) > .settings-page-heading {
+    min-height: 0;
+    padding: 18px;
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .settings-content:has(.capability-list) .settings-tool-count {
+    min-width: 0;
+    width: 100%;
+    min-height: 54px;
+  }
+
+  .capability-list .capability-row {
+    grid-template-columns: 40px minmax(0, 1fr) auto;
+    gap: 10px;
+  }
+
+  .capability-list .settings-row-link,
+  .capability-list .settings-row-link-spacer {
+    display: none;
+  }
+}
+
+html[data-loom-reduced-motion="true"] .capability-list .capability-row {
+  transition: none;
+}
