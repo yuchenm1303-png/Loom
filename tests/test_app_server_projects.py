@@ -227,7 +227,9 @@ def test_the_managed_service_also_reports_the_project(tmp_path: Path) -> None:
     )
     try:
         project = managed.project_create({"root": str(workspace)})["project"]
-        managed.thread_start({"workspace": str(workspace)})
+        # Filing is explicit: a new conversation started in a project's own
+        # workspace is still an ordinary chat unless it names the project.
+        managed.thread_start({"projectId": project["id"]})
 
         listed = managed.thread_list({})["threads"]
 

@@ -50,6 +50,24 @@ def _invalid_terminal_response(response: ModelResponse) -> str:
     return ""
 
 
+def _history_message_count(messages) -> int:
+    """Count conversation messages, ignoring Loom's own injected guidance.
+
+    Compaction is what has to satisfy max_messages, but it runs partway through
+    request preparation: later layers still append their own system guidance
+    afterwards. Counting those against the same limit let a request that
+    compaction had just fitted tip back over it, reported as "no safe compaction
+    boundary" even though a boundary had been found.
+    """
+
+    total = 0
+    for message in messages:
+        if message.role is MessageRole.SYSTEM and str(getattr(message, "name", "") or "").startswith("loom_"):
+            continue
+        total += 1
+    return total
+
+
 class TurnRunner:
     def __init__(self, runtime):
         self.runtime = runtime
@@ -69,7 +87,7 @@ class TurnRunner:
                 for attempt in range(rt.limits.model_retries + 1):
                     step = rt._build_step_context(session, next_model_step=True)
                     messages, extra = rt._prepare_model_request(session, step, token)
-                    if len(messages) > rt.limits.max_messages:
+                    if _history_message_count(messages) > rt.limits.max_messages:
                         return rt._limit(session, "context message limit reached; no safe compaction boundary")
                     reasoning = getattr(rt, "reasoning", None)
                     tool_names = _exposed_tool_names(step)

@@ -39,6 +39,13 @@ def _explicit_project_id(metadata: dict[str, Any]) -> str:
 
 
 def _is_explicit_ordinary(metadata: dict[str, Any]) -> bool:
+    # An explicit project assignment settles the question. thread_move_project
+    # writes projectId without rewriting conversationKind, so a thread that
+    # started as an ordinary chat kept that marker after being filed into a
+    # project - and this check then blanked the projectId it had just been
+    # given, making the move look like it silently failed.
+    if _explicit_project_id(metadata):
+        return False
     kind = str(metadata.get("conversationKind") or "").strip().casefold()
     if kind == _ORDINARY_KIND:
         return True

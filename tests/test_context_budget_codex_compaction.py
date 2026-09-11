@@ -98,11 +98,11 @@ class FakeRuntime:
         ]
 
 
-def _long_history(*, pairs=8, chars=420):
+def _long_history(*, pairs=8, chars=420, user_filler="u"):
     messages = []
     for index in range(pairs):
         messages.append(
-            AIMessage(role=MessageRole.USER, content=f"user-{index}: " + ("u" * chars))
+            AIMessage(role=MessageRole.USER, content=f"user-{index}: " + (user_filler * chars))
         )
         messages.append(
             AIMessage(role=MessageRole.ASSISTANT, content=f"assistant-{index}: " + ("a" * chars))
@@ -189,7 +189,10 @@ def test_auto_compaction_language_anchor_comes_from_user_history():
 
 def test_auto_compaction_keeps_persisted_chinese_when_only_short_user_text_remains():
     runtime = FakeRuntime([ModelResponse(text="继续保持中文的压缩摘要", finish_reason="stop")])
-    history = _long_history(pairs=8, chars=430)
+    # A Chinese thread: the filler has to read as Chinese, otherwise the history
+    # this test archives is itself a substantive Latin conversation and "stays
+    # Chinese" is not the behaviour being exercised.
+    history = _long_history(pairs=8, chars=430, user_filler="中")
     history.extend(
         [
             AIMessage(role=MessageRole.USER, content="ok"),
