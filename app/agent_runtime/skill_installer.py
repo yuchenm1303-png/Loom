@@ -21,6 +21,7 @@ _MANIFEST_NAME = ".loom-skill.json"
 _MAX_ARCHIVE_BYTES = 64 * 1024 * 1024
 _MAX_BUNDLE_BYTES = 64 * 1024 * 1024
 _MAX_BUNDLE_FILES = 2048
+_ALLOWED_REMOTE_SCHEMES = frozenset({"https"})
 
 
 class SkillInstallError(RuntimeError):
@@ -70,6 +71,8 @@ class SkillInstaller:
 
     Installation is intentionally inert: Loom copies files but never executes
     install hooks, dependency managers, or bundled scripts during installation.
+    Remote acquisition is intentionally conservative: only HTTPS sources are
+    accepted by default, and Git is run with prompts disabled.
     """
 
     def __init__(
@@ -389,10 +392,15 @@ class SkillInstaller:
             raise SkillInstallError(f"unsupported local skill source: {resolved}")
 
         parsed = urllib.parse.urlparse(raw)
-        if parsed.scheme not in {"http", "https", "git", "ssh"}:
+        if not parsed.scheme:
             raise SkillInstallError(f"skill source does not exist: {raw}")
+        if parsed.scheme.casefold() not in _ALLOWED_REMOTE_SCHEMES:
+            raise SkillInstallError(
+                "remote skill sources must use https:// URLs. "
+                "For ssh://, git://, or http:// sources, clone/download them yourself and install the local directory or zip."
+            )
 
-        if parsed.scheme in {"http", "https"} and self._looks_like_zip_url(parsed):
+        if self._looks_like_zip_url(parsed):
             archive = temp_root / "download.zip"
             self._download(raw, archive)
             extracted = temp_root / "archive"
@@ -478,6 +486,8 @@ class SkillInstaller:
     @staticmethod
     def _normalize_git_source(source: str) -> tuple[str, str, str]:
         parsed = urllib.parse.urlparse(source)
+        if parsed.scheme.casefold() != "https":
+            raise SkillInstallError("remote Git skill sources must use https:// URLs")
         if parsed.netloc.casefold() != "github.com":
             return source, "", ""
 
@@ -501,10 +511,24 @@ class SkillInstaller:
 
     @staticmethod
     def _git_clone(repo_url: str, destination: Path, *, branch: str = "") -> None:
-        command = ["git", "clone", "--depth", "1"]
+        command = [
+            "git",
+            "-c",
+            "protocol.file.allow=never",
+            "-c",
+            "protocol.ext.allow=never",
+            "clone",
+            "--depth",
+            "1",
+            "--no-tags",
+        ]
         if branch:
             command.extend(["--branch", branch])
         command.extend(["--", repo_url, str(destination)])
+        env = os.environ.copy()
+        env["GIT_TERMINAL_PROMPT"] = "0"
+        env["GIT_ASKPASS"] = ""
+        env["SSH_ASKPASS"] = ""
         try:
             completed = subprocess.run(
                 command,
@@ -515,6 +539,7 @@ class SkillInstaller:
                 encoding="utf-8",
                 errors="replace",
                 timeout=120,
+                env=env,
             )
         except FileNotFoundError as exc:
             raise SkillInstallError(
