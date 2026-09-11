@@ -19,6 +19,12 @@ type DiffRow =
   | { id: string; kind: "meta"; text: string }
   | { id: string; kind: "context" | "add" | "delete"; text: string; oldLine?: number; newLine?: number };
 
+type DiffRowInput = DiffRow extends infer Row
+  ? Row extends { id: string }
+    ? Omit<Row, "id">
+    : never
+  : never;
+
 type DiffFile = {
   path: string;
   displayPath: string;
@@ -105,7 +111,7 @@ function parseDiff(diff: string): { rows: DiffRow[]; additions: number; deletion
   let deletions = 0;
   let rowIndex = 0;
 
-  const push = (row: Omit<DiffRow, "id">) => {
+  const push = (row: DiffRowInput) => {
     rows.push({ ...row, id: `inline-diff-${rowIndex++}` } as DiffRow);
   };
 
