@@ -104,13 +104,20 @@ html,body{margin:0;width:100%;height:100%;background:transparent;overflow:hidden
   const phases=['观察','分析','移动','点击','验证'];
   let lastClick='';
   let settleTimer=0;
+  let lastX=null,lastY=null;
   function clamp(v,min,max){v=Number(v); if(!Number.isFinite(v)) return min; return Math.min(max,Math.max(min,v));}
   function text(v,f){v=typeof v==='string'?v.trim():''; return v||f;}
   function place(payload){
     const w=Math.max(1,innerWidth),h=Math.max(1,innerHeight);
+    if(lastX===null){lastX=w*.5;lastY=h*.46;}
     let x=Number(payload.hudX),y=Number(payload.hudY);
-    if(!Number.isFinite(x)) x=clamp(Number(payload.xNorm),0,1)*w;
-    if(!Number.isFinite(y)) y=clamp(Number(payload.yNorm),0,1)*h;
+    // Task-level events (computer_run_task) legitimately carry no coordinate;
+    // only the nested actions do. Falling through to clamp() turned those into
+    // 0 and parked the cursor in the top-left corner, which read as a broken
+    // HUD rather than as "no new target yet".
+    if(!Number.isFinite(x)){const n=Number(payload.xNorm); x=Number.isFinite(n)?clamp(n,0,1)*w:lastX;}
+    if(!Number.isFinite(y)){const n=Number(payload.yNorm); y=Number.isFinite(n)?clamp(n,0,1)*h:lastY;}
+    lastX=x;lastY=y;
     const bw=Math.min(420,Math.max(320,w-48));
     const bx=clamp(x>w*.58?x-bw-52:x+52,18,Math.max(18,w-bw-18));
     const by=clamp(y>h*.58?y-172:y+26,18,Math.max(18,h-160));
