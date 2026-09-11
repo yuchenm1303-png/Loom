@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import deque
+from dataclasses import replace
 import os
 from typing import Any
 
@@ -17,6 +18,16 @@ _DRIVER_MODES = {"auto", "ufo", "legacy"}
 def _driver_mode() -> str:
     value = str(os.environ.get("LOOM_COMPUTER_DRIVER") or "auto").strip().casefold()
     return value if value in _DRIVER_MODES else "auto"
+
+
+def _ufo_base_url(provider: str, value: str) -> str:
+    base = str(value or "").strip().rstrip("/")
+    for suffix in ("/chat/completions", "/responses"):
+        if base.casefold().endswith(suffix):
+            base = base[: -len(suffix)].rstrip("/")
+    if not base and provider == "openai":
+        return "https://api.openai.com/v1"
+    return base
 
 
 class ComputerDriverRuntime(ComputerUseRuntime):
@@ -48,6 +59,45 @@ class ComputerDriverRuntime(ComputerUseRuntime):
 
         self._legacy_computer_run_task = self.tools.get("computer_run_task")
         self._install_driver_task_tool()
+        self._sync_driver_model_from_platform()
+
+    def _sync_driver_model_from_platform(self) -> None:
+        """Reuse the currently selected Loom vision model without persisting its key.
+
+        Hot model switching constructs a platform with private in-memory connection
+        metadata. UFO runs in a separate process, so copy that connection into the
+        driver's in-memory config and restart an idle sidecar when it changes. Raw
+        credentials are never exposed by status or diagnostics.
+        """
+
+        driver = self.computer_driver
+        if not isinstance(driver, UfoWindowsDriver):
+            return
+        metadata = getattr(getattr(self, "platform", None), "_loom_model_connection", None)
+        if not isinstance(metadata, dict) or not bool(metadata.get("vision", True)):
+            return
+        provider = str(metadata.get("provider") or "").strip().casefold()
+        if provider not in {"openai", "openai_compatible"}:
+            return
+        api_key = str(metadata.get("api_key") or "").strip()
+        api_model = str(metadata.get("model") or "").strip()
+        if not api_key or not api_model:
+            return
+        api_base = _ufo_base_url(provider, str(metadata.get("base_url") or ""))
+        updated = replace(
+            driver.config,
+            api_type="openai",
+            api_base=api_base,
+            api_key=api_key,
+            api_model=api_model,
+        )
+        if updated == driver.config:
+            return
+        # Model switches are only allowed while Loom has no active turn. Closing an
+        # already-started idle sidecar guarantees UFO's cached LLM services cannot
+        # continue using the previous provider connection.
+        driver.close()
+        driver.config = updated
 
     def _install_driver_task_tool(self) -> None:
         if self.computer_driver_mode == "legacy" or self.computer_driver is None:
@@ -101,6 +151,7 @@ class ComputerDriverRuntime(ComputerUseRuntime):
         self.tools = ToolRegistry(tuple(rebuilt))
 
     def _driver_ready(self) -> bool:
+        self._sync_driver_model_from_platform()
         driver = self.computer_driver
         if driver is None:
             return False
@@ -194,6 +245,7 @@ class ComputerDriverRuntime(ComputerUseRuntime):
             )
 
     def _handle_driver_task(self, context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
+        self._sync_driver_model_from_platform()
         driver = self.computer_driver
         driver_status = dict(driver.status()) if driver is not None else {"ready": False, "reason": "driver is disabled"}
 
@@ -266,6 +318,7 @@ class ComputerDriverRuntime(ComputerUseRuntime):
         return ToolResult(bool(result.ok), content, payload)
 
     def computer_status(self, session_id: str | None = None) -> dict[str, object]:
+        self._sync_driver_model_from_platform()
         status = dict(super().computer_status(session_id))
         driver = self.computer_driver
         driver_status: dict[str, Any]
