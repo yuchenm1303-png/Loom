@@ -116,7 +116,23 @@ def build_runtime_model_platform(
         credential_resolver=resolver,
         request_timeout_seconds=float(request_timeout_seconds),
     )
-    return ComputerTransientInputPlatform(platform)
+    wrapped = ComputerTransientInputPlatform(platform)
+    # Keep the active model connection in RAM so isolated local drivers such as
+    # UFO can reuse the user's selected vision model without persisting or
+    # duplicating API credentials. This private metadata never crosses Runtime
+    # status, diagnostics, or durable tool-call boundaries.
+    setattr(
+        wrapped,
+        "_loom_model_connection",
+        {
+            "provider": adapter.value,
+            "base_url": _text(base_url),
+            "model": selected_model,
+            "api_key": secret,
+            "vision": bool(vision),
+        },
+    )
+    return wrapped
 
 
 __all__ = [
