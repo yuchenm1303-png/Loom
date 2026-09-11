@@ -11,8 +11,11 @@ function humanBytes(value: unknown): string {
 }
 
 function isComputerSettingsPage(): boolean {
-  const heading = document.querySelector(".settings-content h1");
-  return heading?.textContent?.trim() === "Computer Use";
+  const heading = document.querySelector(".settings-content h1")?.textContent?.trim().toLowerCase() || "";
+  if (["computer use", "电脑控制", "计算机控制", "桌面控制"].includes(heading)) return true;
+  const eyebrow = document.querySelector(".settings-content .settings-eyebrow")?.textContent?.trim().toLowerCase() || "";
+  const pageText = document.querySelector(".settings-content")?.textContent?.toLowerCase() || "";
+  return eyebrow.includes("desktop integration") && pageText.includes("screenshot-driven windows control");
 }
 
 export function SettingsComputerLogExport() {
