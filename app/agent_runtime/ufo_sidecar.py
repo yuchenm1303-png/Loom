@@ -17,6 +17,8 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import tempfile
+import time
 import traceback
 import uuid
 from typing import Any
@@ -39,6 +41,18 @@ _SENSITIVE_PARAMETER_KEYS = {
     "text",
     "value_text",
 }
+_SCRATCH_PREFIX = "loom-ufo-private-"
+_SCRATCH_STALE_SECONDS = 24 * 60 * 60
+
+
+class _NullWriter:
+    """UFO logger-compatible sink used when durable raw logs are disabled."""
+
+    file_path = ""
+    mode = "a"
+
+    def write(self, _message: str) -> None:
+        return None
 
 
 def _json_default(value: Any) -> Any:
@@ -52,7 +66,12 @@ def _json_default(value: Any) -> Any:
 
 
 async def emit(message: dict[str, Any]) -> None:
-    payload = json.dumps(message, ensure_ascii=False, separators=(",", ":"), default=_json_default)
+    payload = json.dumps(
+        message,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        default=_json_default,
+    )
     async with _EMIT_LOCK:
         _PROTOCOL_STDOUT.write(payload + "\n")
         _PROTOCOL_STDOUT.flush()
@@ -76,7 +95,11 @@ def _text_length(value: Any) -> int:
         return len(str(value or ""))
 
 
-def _safe_parameter_value(tool_name: str, key: str, value: Any) -> tuple[Any, int | None]:
+def _safe_parameter_value(
+    tool_name: str,
+    key: str,
+    value: Any,
+) -> tuple[Any, int | None]:
     lower_key = str(key or "").casefold()
     lower_name = str(tool_name or "").casefold()
     if lower_key in _SENSITIVE_PARAMETER_KEYS:
@@ -167,8 +190,14 @@ def _rectangle_dict(value: Any) -> dict[str, int]:
         return {}
 
 
-def _hud_point(window: dict[str, Any], tool_name: str, parameters: dict[str, Any]) -> dict[str, float] | None:
-    rect = _rectangle_dict(window.get("rectangle") if isinstance(window, dict) else None)
+def _hud_point(
+    window: dict[str, Any],
+    tool_name: str,
+    parameters: dict[str, Any],
+) -> dict[str, float] | None:
+    rect = _rectangle_dict(
+        window.get("rectangle") if isinstance(window, dict) else None
+    )
     if not rect or rect["width"] <= 0 or rect["height"] <= 0:
         return None
 
@@ -180,7 +209,10 @@ def _hud_point(window: dict[str, Any], tool_name: str, parameters: dict[str, Any
             point = None
     elif tool_name == "drag_on_coordinates":
         try:
-            point = (float(parameters.get("end_x")), float(parameters.get("end_y")))
+            point = (
+                float(parameters.get("end_x")),
+                float(parameters.get("end_y")),
+            )
         except (TypeError, ValueError):
             point = None
 
@@ -190,8 +222,14 @@ def _hud_point(window: dict[str, Any], tool_name: str, parameters: dict[str, Any
     screen_y = rect["y"] + rect["height"] * point[1]
     virtual = _virtual_screen_bounds()
     return {
-        "x_norm": max(0.0, min(1.0, (screen_x - virtual["x"]) / virtual["width"])),
-        "y_norm": max(0.0, min(1.0, (screen_y - virtual["y"]) / virtual["height"])),
+        "x_norm": max(
+            0.0,
+            min(1.0, (screen_x - virtual["x"]) / virtual["width"]),
+        ),
+        "y_norm": max(
+            0.0,
+            min(1.0, (screen_y - virtual["y"]) / virtual["height"]),
+        ),
         "screen_x": round(screen_x, 2),
         "screen_y": round(screen_y, 2),
     }
@@ -215,8 +253,14 @@ def _uia_hud_point(control_id: str) -> dict[str, float] | None:
         screen_y = rect["y"] + rect["height"] / 2
         virtual = _virtual_screen_bounds()
         return {
-            "x_norm": max(0.0, min(1.0, (screen_x - virtual["x"]) / virtual["width"])),
-            "y_norm": max(0.0, min(1.0, (screen_y - virtual["y"]) / virtual["height"])),
+            "x_norm": max(
+                0.0,
+                min(1.0, (screen_x - virtual["x"]) / virtual["width"]),
+            ),
+            "y_norm": max(
+                0.0,
+                min(1.0, (screen_y - virtual["y"]) / virtual["height"]),
+            ),
             "screen_x": round(screen_x, 2),
             "screen_y": round(screen_y, 2),
         }
@@ -256,11 +300,18 @@ class TaskController:
         for command in commands:
             tool_name = str(getattr(command, "tool_name", "") or "")
             tool_type = str(getattr(command, "tool_type", "") or "")
-            params = _safe_parameters(tool_name, getattr(command, "parameters", {}))
+            params = _safe_parameters(
+                tool_name,
+                getattr(command, "parameters", {}),
+            )
             if tool_type != "action":
                 continue
             hud = _hud_point(self.selected_window, tool_name, params)
-            if hud is None and tool_name in {"click_input", "set_edit_text", "keyboard_input"}:
+            if hud is None and tool_name in {
+                "click_input",
+                "set_edit_text",
+                "keyboard_input",
+            }:
                 hud = _uia_hud_point(str(params.get("id") or ""))
             await self.event(
                 "action.started",
@@ -272,7 +323,11 @@ class TaskController:
                 },
             )
 
-    async def after_commands(self, commands: list[Any], results: list[Any] | None) -> None:
+    async def after_commands(
+        self,
+        commands: list[Any],
+        results: list[Any] | None,
+    ) -> None:
         results = list(results or [])
         for index, command in enumerate(commands):
             tool_name = str(getattr(command, "tool_name", "") or "")
@@ -330,7 +385,9 @@ def _install_dispatcher_hook() -> None:
     from ufo.module.dispatcher import LocalCommandDispatcher
 
     if not hasattr(LocalCommandDispatcher, "_loom_original_execute_commands"):
-        LocalCommandDispatcher._loom_original_execute_commands = LocalCommandDispatcher.execute_commands
+        LocalCommandDispatcher._loom_original_execute_commands = (
+            LocalCommandDispatcher.execute_commands
+        )
         LocalCommandDispatcher.execute_commands = _patched_execute_commands
     _PATCHED = True
 
@@ -351,12 +408,40 @@ def _git_head(root: Path) -> str:
         return ""
 
 
+def _keep_raw_logs() -> bool:
+    return str(os.environ.get("LOOM_UFO_KEEP_RAW_LOGS") or "").strip().casefold() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def _cleanup_stale_scratch() -> None:
+    root = Path(tempfile.gettempdir())
+    cutoff = time.time() - _SCRATCH_STALE_SECONDS
+    try:
+        candidates = list(root.glob(f"{_SCRATCH_PREFIX}*"))
+    except Exception:
+        return
+    for candidate in candidates:
+        try:
+            if not candidate.is_dir():
+                continue
+            if candidate.stat().st_mtime >= cutoff:
+                continue
+            shutil.rmtree(candidate, ignore_errors=True)
+        except Exception:
+            continue
+
+
 def _bootstrap_ufo(root: Path) -> dict[str, Any]:
     root = root.expanduser().resolve()
     if not (root / "ufo").is_dir() or not (root / "config" / "ufo").is_dir():
         raise RuntimeError(f"UFO source root is invalid: {root}")
     os.chdir(root)
     sys.path.insert(0, str(root))
+    _cleanup_stale_scratch()
     _install_dispatcher_hook()
     return {
         "root": str(root),
@@ -367,7 +452,7 @@ def _bootstrap_ufo(root: Path) -> dict[str, Any]:
 
 
 def _cleanup_task_logs(root: Path, task_name: str) -> None:
-    if str(os.environ.get("LOOM_UFO_KEEP_RAW_LOGS") or "").strip().casefold() in {"1", "true", "yes", "on"}:
+    if _keep_raw_logs():
         return
     target = (root / "logs" / task_name).resolve()
     logs_root = (root / "logs").resolve()
@@ -378,7 +463,36 @@ def _cleanup_task_logs(root: Path, task_name: str) -> None:
     shutil.rmtree(target, ignore_errors=True)
 
 
-async def _run_task(root: Path, request: dict[str, Any], controller: TaskController) -> None:
+def _bind_ephemeral_session_logs(session: Any) -> Path | None:
+    """Move UFO screenshots to a disposable scratch directory and drop text logs.
+
+    UFO v3.0.8 creates request/response/evaluation logs and saves application
+    screenshots under ``logs/<task>`` even when PRINT_LOG/LOG_TO_MARKDOWN are off.
+    Loom keeps those artifacts only as transient working state by default. Setting
+    LOOM_UFO_KEEP_RAW_LOGS explicitly opts back into upstream UFO persistence.
+    """
+
+    if _keep_raw_logs():
+        return None
+
+    from ufo.module.context import ContextNames
+
+    scratch = Path(tempfile.mkdtemp(prefix=_SCRATCH_PREFIX)).resolve()
+    log_path = str(scratch) + os.sep
+    session.log_path = log_path
+    session.context.set(ContextNames.LOG_PATH, log_path)
+    sink = _NullWriter()
+    session.context.set(ContextNames.LOGGER, sink)
+    session.context.set(ContextNames.REQUEST_LOGGER, sink)
+    session.context.set(ContextNames.EVALUATION_LOGGER, sink)
+    return scratch
+
+
+async def _run_task(
+    root: Path,
+    request: dict[str, Any],
+    controller: TaskController,
+) -> None:
     global _ACTIVE_CONTROLLER
     request_id = controller.request_id
     task_id = controller.task_id
@@ -386,7 +500,14 @@ async def _run_task(root: Path, request: dict[str, Any], controller: TaskControl
     stop_when = str(request.get("stop_when") or "").strip()
     max_steps_raw = request.get("max_steps")
     if not task:
-        await emit({"type": "error", "request_id": request_id, "task_id": task_id, "error_type": "InvalidTask"})
+        await emit(
+            {
+                "type": "error",
+                "request_id": request_id,
+                "task_id": task_id,
+                "error_type": "InvalidTask",
+            }
+        )
         return
 
     task_name = f"loom_{task_id.replace('-', '')[:20]}"
@@ -395,9 +516,13 @@ async def _run_task(root: Path, request: dict[str, Any], controller: TaskControl
         request_text += f"\n\nStop condition: {stop_when}"
 
     _ACTIVE_CONTROLLER = controller
-    await controller.event("task.started", {"engine": "ufo2", "task_name": task_name})
+    await controller.event(
+        "task.started",
+        {"engine": "ufo2", "task_name": task_name},
+    )
     previous_max_step = None
     config = None
+    scratch_dir: Path | None = None
     try:
         with contextlib.redirect_stdout(sys.stderr):
             from config.config_loader import get_ufo_config
@@ -419,6 +544,12 @@ async def _run_task(root: Path, request: dict[str, Any], controller: TaskControl
                 request=request_text,
                 mode="normal",
             )
+            scratch_dir = _bind_ephemeral_session_logs(session)
+            # Session.__init__ has already created the upstream task directory.
+            # Remove those empty/raw constructor artifacts immediately after the
+            # context is rebound to our disposable scratch location.
+            _cleanup_task_logs(root, task_name)
+
             results = await session.run()
             failed = bool(session.is_error())
 
@@ -438,11 +569,16 @@ async def _run_task(root: Path, request: dict[str, Any], controller: TaskControl
                 "task_id": task_id,
                 "status": status,
                 "ok": not failed,
-                "summary": "UFO desktop task completed." if not failed else "UFO desktop task ended in an error state.",
+                "summary": (
+                    "UFO desktop task completed."
+                    if not failed
+                    else "UFO desktop task ended in an error state."
+                ),
                 "data": {
                     "engine": "ufo2",
                     "event_count": controller.sequence,
                     "selected_window": dict(controller.selected_window),
+                    "raw_logs_persisted": _keep_raw_logs(),
                 },
             }
         )
@@ -457,7 +593,11 @@ async def _run_task(root: Path, request: dict[str, Any], controller: TaskControl
                 "status": "cancelled",
                 "ok": False,
                 "summary": "UFO desktop task was cancelled.",
-                "data": {"engine": "ufo2", "event_count": controller.sequence},
+                "data": {
+                    "engine": "ufo2",
+                    "event_count": controller.sequence,
+                    "raw_logs_persisted": _keep_raw_logs(),
+                },
             }
         )
     except Exception as exc:
@@ -465,7 +605,10 @@ async def _run_task(root: Path, request: dict[str, Any], controller: TaskControl
         # debugging on stderr, but never emit exception messages across the NDJSON
         # boundary or into Loom's durable driver trace.
         traceback.print_tb(exc.__traceback__, file=sys.stderr)
-        print(f"{type(exc).__name__}: [REDACTED_EXCEPTION_MESSAGE]", file=sys.stderr)
+        print(
+            f"{type(exc).__name__}: [REDACTED_EXCEPTION_MESSAGE]",
+            file=sys.stderr,
+        )
         error_type = type(exc).__name__
         await controller.event("task.failed", {"error_type": error_type})
         await emit(
@@ -476,7 +619,12 @@ async def _run_task(root: Path, request: dict[str, Any], controller: TaskControl
                 "status": "failed",
                 "ok": False,
                 "summary": f"UFO desktop task failed: {error_type}",
-                "data": {"engine": "ufo2", "error_type": error_type, "event_count": controller.sequence},
+                "data": {
+                    "engine": "ufo2",
+                    "error_type": error_type,
+                    "event_count": controller.sequence,
+                    "raw_logs_persisted": _keep_raw_logs(),
+                },
             }
         )
     finally:
@@ -486,6 +634,8 @@ async def _run_task(root: Path, request: dict[str, Any], controller: TaskControl
             except Exception:
                 pass
         _ACTIVE_CONTROLLER = None
+        if scratch_dir is not None:
+            shutil.rmtree(scratch_dir, ignore_errors=True)
         _cleanup_task_logs(root, task_name)
 
 
@@ -518,10 +668,22 @@ async def main_async(root: Path) -> int:
         try:
             message = json.loads(line)
         except Exception:
-            await emit({"type": "error", "request_id": "", "error_type": "InvalidJSON"})
+            await emit(
+                {
+                    "type": "error",
+                    "request_id": "",
+                    "error_type": "InvalidJSON",
+                }
+            )
             continue
         if not isinstance(message, dict):
-            await emit({"type": "error", "request_id": "", "error_type": "InvalidCommand"})
+            await emit(
+                {
+                    "type": "error",
+                    "request_id": "",
+                    "error_type": "InvalidCommand",
+                }
+            )
             continue
 
         command = str(message.get("command") or "").strip().casefold()
@@ -545,11 +707,19 @@ async def main_async(root: Path) -> int:
                 active.cancel()
                 with contextlib.suppress(asyncio.CancelledError, Exception):
                     await active
-            await emit({"type": "shutdown", "request_id": request_id, "ok": True})
+            await emit(
+                {"type": "shutdown", "request_id": request_id, "ok": True}
+            )
             return 0
         if command == "run_task":
             if active is not None and not active.done():
-                await emit({"type": "error", "request_id": request_id, "error_type": "TaskAlreadyRunning"})
+                await emit(
+                    {
+                        "type": "error",
+                        "request_id": request_id,
+                        "error_type": "TaskAlreadyRunning",
+                    }
+                )
                 continue
             task_id = str(message.get("task_id") or uuid.uuid4())
             controller = TaskController(request_id, task_id)
@@ -557,31 +727,84 @@ async def main_async(root: Path) -> int:
             continue
         if command == "pause":
             if controller is None or active is None or active.done():
-                await emit({"type": "state", "request_id": request_id, "state": "idle", "ok": False})
+                await emit(
+                    {
+                        "type": "state",
+                        "request_id": request_id,
+                        "state": "idle",
+                        "ok": False,
+                    }
+                )
             else:
                 controller.paused = True
                 await controller.event("task.paused")
-                await emit({"type": "state", "request_id": request_id, "task_id": controller.task_id, "state": "paused", "ok": True})
+                await emit(
+                    {
+                        "type": "state",
+                        "request_id": request_id,
+                        "task_id": controller.task_id,
+                        "state": "paused",
+                        "ok": True,
+                    }
+                )
             continue
         if command == "resume":
             if controller is None or active is None or active.done():
-                await emit({"type": "state", "request_id": request_id, "state": "idle", "ok": False})
+                await emit(
+                    {
+                        "type": "state",
+                        "request_id": request_id,
+                        "state": "idle",
+                        "ok": False,
+                    }
+                )
             else:
                 controller.paused = False
                 await controller.event("task.resumed")
-                await emit({"type": "state", "request_id": request_id, "task_id": controller.task_id, "state": "running", "ok": True})
+                await emit(
+                    {
+                        "type": "state",
+                        "request_id": request_id,
+                        "task_id": controller.task_id,
+                        "state": "running",
+                        "ok": True,
+                    }
+                )
             continue
         if command == "cancel":
             if controller is None or active is None or active.done():
-                await emit({"type": "state", "request_id": request_id, "state": "idle", "ok": False})
+                await emit(
+                    {
+                        "type": "state",
+                        "request_id": request_id,
+                        "state": "idle",
+                        "ok": False,
+                    }
+                )
             else:
                 controller.cancelled = True
-                controller.cancel_reason = str(message.get("reason") or "user_requested")
+                controller.cancel_reason = str(
+                    message.get("reason") or "user_requested"
+                )
                 active.cancel()
-                await emit({"type": "state", "request_id": request_id, "task_id": controller.task_id, "state": "cancelling", "ok": True})
+                await emit(
+                    {
+                        "type": "state",
+                        "request_id": request_id,
+                        "task_id": controller.task_id,
+                        "state": "cancelling",
+                        "ok": True,
+                    }
+                )
             continue
 
-        await emit({"type": "error", "request_id": request_id, "error_type": "UnsupportedCommand"})
+        await emit(
+            {
+                "type": "error",
+                "request_id": request_id,
+                "error_type": "UnsupportedCommand",
+            }
+        )
 
 
 def main() -> int:
