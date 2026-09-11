@@ -74,8 +74,12 @@ npm run dev:ready
 ```
 
 The launcher checks the expected UFO source tree, isolated Python and Loom UFO config.
-When any required part is missing, it runs `scripts/setup-ufo.mjs` automatically. In
-strict UFO mode, setup failure stops the launch instead of falling back to legacy:
+When any required part is missing, it runs `scripts/setup-ufo.mjs` automatically. The
+setup script now also tries to bootstrap Python 3.10 with `winget` when no usable
+Python 3.10 interpreter is found. If `winget` is unavailable or blocked by policy,
+setup fails with a single actionable message instead of silently returning to legacy.
+
+In strict UFO mode, setup failure stops the launch instead of falling back to legacy:
 
 ```powershell
 $env:LOOM_COMPUTER_DRIVER="ufo"
@@ -93,12 +97,16 @@ The installer:
 
 1. clones exactly UFO `v3.0.8`;
 2. verifies the expected commit SHA;
-3. creates `~/.loom/drivers/ufo/3.0.8/.venv`;
-4. installs UFO's pinned requirements there;
-5. creates an `agents.yaml` that references runtime environment variables instead of
+3. finds Python 3.10, or auto-installs Python 3.10 through `winget` when possible;
+4. creates `~/.loom/drivers/ufo/3.0.8/.venv`;
+5. installs UFO's pinned requirements there;
+6. creates an `agents.yaml` that references runtime environment variables instead of
    storing secrets;
-6. creates a Loom safety override;
-7. uses a GUI-only UFO MCP allowlist (UICollector, HostUIExecutor and AppUIExecutor).
+7. creates a Loom safety override;
+8. uses a GUI-only UFO MCP allowlist (UICollector, HostUIExecutor and AppUIExecutor).
+
+`LOOM_UFO_AUTO_INSTALL_PYTHON=0` disables the automatic Python installer, and
+`LOOM_UFO_BOOTSTRAP_PYTHON` can point to a specific Python 3.10 executable.
 
 `CommandLineExecutor` and Office COM executors are intentionally excluded from the
 first production baseline. They can be evaluated later as explicit capabilities.
