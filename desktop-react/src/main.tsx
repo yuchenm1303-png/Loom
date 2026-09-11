@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import App from "./App";
 import { BootErrorBoundary } from "./components/BootErrorBoundary";
 import { I18nProvider, bootstrapDocumentLanguage } from "./i18n";
-import { installNativeRendererScaleSync } from "./rendererScale";
+import { applyRendererScale, installNativeRendererScaleSync } from "./rendererScale";
 import "./styles.css";
 import "./shell-fix.css";
 import "./components/model-panel-overrides.css";
@@ -24,6 +24,7 @@ import "./components/settings-capabilities-polish.css";
 import "./components/runtime-live-feedback.css";
 import "./components/review-motion.css";
 import "./components/sidebar-clarity-fix.css";
+import "./components/renderer-crispness.css";
 
 const CONVERSATION_WIDTHS: Record<string, string> = {
   focused: "740px",
@@ -99,10 +100,10 @@ try {
     : "comfortable";
   const codeWrap = appearance.codeWrap === true;
 
-  // The persisted setting still writes CSS zoom first. The renderer-scale
-  // bridge immediately converts it to native Chromium page zoom below so old
-  // settings remain compatible while text stays sharp on Windows.
-  document.documentElement.style.setProperty("zoom", String(Number(scaleValue) / 100));
+  // Never put the initial renderer through CSS zoom. On Windows that can leave
+  // text and thin geometry in a softened compositor raster even after the CSS
+  // property is removed. Apply the persisted scale directly through Chromium.
+  applyRendererScale(Number(scaleValue) / 100);
   document.documentElement.dataset.loomReducedMotion = String(reducedMotion);
   document.documentElement.dataset.loomDensity = density;
   document.documentElement.dataset.loomAmbientEffects = String(ambientEffects);
@@ -119,7 +120,7 @@ try {
   document.documentElement.style.setProperty("--loom-code-font-size", `${codeFontSize}px`);
   document.documentElement.style.setProperty("--loom-code-line-height", CODE_LINE_HEIGHTS[codeLineHeight]);
 } catch {
-  document.documentElement.style.setProperty("zoom", "1");
+  applyRendererScale(1);
   document.documentElement.dataset.loomReducedMotion = "false";
   document.documentElement.dataset.loomDensity = "comfortable";
   document.documentElement.dataset.loomAmbientEffects = "true";
