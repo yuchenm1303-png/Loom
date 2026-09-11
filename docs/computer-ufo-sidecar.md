@@ -95,16 +95,22 @@ The installer:
 
 1. clones exactly UFO `v3.0.8`;
 2. verifies the expected commit SHA;
-3. finds Python 3.10, or auto-installs Python 3.10 through `winget` when possible;
-4. creates `~/.loom/drivers/ufo/3.0.8/.venv`;
-5. installs UFO's pinned requirements there;
-6. creates an `agents.yaml` that references runtime environment variables instead of
+3. finds Python 3.10 if it already exists;
+4. otherwise downloads the official Python `3.10.11` Windows x86-64 installer into
+   `~/.loom/cache/python/3.10.11`, verifies the Python.org MD5 checksum, and installs
+   a private Python runtime into `~/.loom/runtimes/python/3.10.11`;
+5. falls back to `winget install Python.Python.3.10` only if the private runtime
+   bootstrap is unavailable or blocked;
+6. creates `~/.loom/drivers/ufo/3.0.8/.venv` from the resolved Python 3.10;
+7. installs UFO's pinned requirements there;
+8. creates an `agents.yaml` that references runtime environment variables instead of
    storing secrets;
-7. creates a Loom safety override;
-8. uses a GUI-only UFO MCP allowlist (UICollector, HostUIExecutor and AppUIExecutor).
+9. creates a Loom safety override;
+10. uses a GUI-only UFO MCP allowlist (UICollector, HostUIExecutor and AppUIExecutor).
 
-`LOOM_UFO_AUTO_INSTALL_PYTHON=0` disables the automatic Python installer, and
+`LOOM_UFO_AUTO_INSTALL_PYTHON=0` disables automatic Python installation, and
 `LOOM_UFO_BOOTSTRAP_PYTHON` can point to a specific Python 3.10 executable.
+`LOOM_PYTHON_RUNTIME_ROOT` can override the private Python runtime directory.
 
 `CommandLineExecutor` and Office COM executors are intentionally excluded from the
 first production baseline. They can be evaluated later as explicit capabilities.
