@@ -20,6 +20,7 @@ import {
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { TranscriptItem } from "../types/loom";
 import { MarkdownMessage } from "./MarkdownMessage";
+import { UserMessageContent, parseUserMessageContent } from "./UserMessageContent";
 import "./activity-flow.css";
 import "./message-actions.css";
 import "./task-flow-folding.css";
@@ -639,11 +640,12 @@ function ItemView({
   promptDisabled?: boolean;
 }) {
   if (item.type === "user_message") {
-    const text = String(item.text ?? "");
+    const rawText = String(item.text ?? "");
+    const parsed = parseUserMessageContent(rawText);
     return (
       <div className="message-shell user-message-shell" data-message-id={item.id}>
-        <div className="user-message">{text}</div>
-        <MessageToolbar kind="user" item={item} text={text} editable disabled={promptDisabled} />
+        <div className="user-message"><UserMessageContent parsed={parsed} /></div>
+        <MessageToolbar kind="user" item={item} text={parsed.text} editable disabled={promptDisabled} />
       </div>
     );
   }
