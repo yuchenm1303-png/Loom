@@ -1,0 +1,58 @@
+/* Stable four-column layout for the Runtime inspector tabs.
+   Keep icon, label, and count inside each tab cell so narrow inspector widths
+   cannot spill into neighboring tabs. */
+
+.runtime-tabs {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.runtime-tab {
+  min-width: 0;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) auto;
+  align-items: center;
+  justify-content: stretch;
+  column-gap: 5px;
+  padding-inline: 7px;
+}
+
+.runtime-tab > svg {
+  width: 14px;
+  height: 14px;
+  min-width: 14px;
+  flex: none;
+  justify-self: center;
+}
+
+.runtime-tab > span:not(.runtime-tab-count) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.runtime-tab-count {
+  min-width: 15px;
+  height: 15px;
+  margin: 0;
+  padding-inline: 4px;
+  line-height: 1;
+  justify-self: end;
+  flex: none;
+}
+
+@media (max-width: 1180px) {
+  .runtime-tab {
+    column-gap: 4px;
+    padding-inline: 5px;
+    font-size: 8.5px;
+  }
+
+  .runtime-tab-count {
+    min-width: 14px;
+    height: 14px;
+    padding-inline: 3px;
+    font-size: 7.5px;
+  }
+}
