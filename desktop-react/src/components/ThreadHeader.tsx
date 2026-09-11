@@ -6,6 +6,8 @@ import {
   FileDiff,
   Folder,
   MessageSquareText,
+  PanelLeftClose,
+  PanelLeftOpen,
   PanelRightClose,
   PanelRightOpen,
   Settings,
@@ -25,10 +27,12 @@ interface ThreadHeaderProps {
   archived: boolean;
   model?: string;
   permissionMode?: string;
+  sidebarOpen: boolean;
   inspectorOpen: boolean;
   reviewOpen: boolean;
   reviewCount?: number;
   onOpenSettings(): void;
+  onToggleSidebar(): void;
   onToggleInspector(): void;
   onToggleReview(): void;
 }
@@ -72,10 +76,12 @@ export function ThreadHeader({
   archived,
   model,
   permissionMode,
+  sidebarOpen,
   inspectorOpen,
   reviewOpen,
   reviewCount = 0,
   onOpenSettings,
+  onToggleSidebar,
   onToggleInspector,
   onToggleReview,
 }: ThreadHeaderProps) {
@@ -112,11 +118,29 @@ export function ThreadHeader({
   const permissionLabel = formatPermission(permissionMode, t("common.defaultAccess"));
   const settingsLabel = t("common.openSettings");
   const inspectorLabel = inspectorOpen ? t("common.hideInspector") : t("common.openInspector");
+  const sidebarLabel = sidebarOpen
+    ? (language === "zh-CN" ? "收起会话侧栏" : "Hide conversation sidebar")
+    : (language === "zh-CN" ? "展开会话侧栏" : "Open conversation sidebar");
   const reviewLabel = language === "zh-CN" ? "审查" : "Review";
   const reviewTitle = language === "zh-CN" ? "审查当前对话中的文件更改" : "Review file changes from this conversation";
 
   return (
     <header className="thread-header polished-thread-header">
+      <div className="thread-header-leading">
+        <button
+          type="button"
+          className={`thread-header-icon-button panel-toggle-button ${sidebarOpen ? "active" : ""}`}
+          onClick={onToggleSidebar}
+          title={sidebarLabel}
+          aria-label={sidebarLabel}
+          aria-pressed={sidebarOpen}
+        >
+          {sidebarOpen
+            ? <PanelLeftClose size={16} strokeWidth={1.75} />
+            : <PanelLeftOpen size={16} strokeWidth={1.75} />}
+        </button>
+      </div>
+
       <div className="thread-header-main">
         <div className="thread-header-mark" aria-hidden="true">
           <MessageSquareText size={15} strokeWidth={1.8} />
@@ -148,7 +172,7 @@ export function ThreadHeader({
       <div className="thread-header-actions polished-thread-header-actions">
         <span className={`thread-status-chip ${state.tone}`} title={`Conversation status: ${state.label}`}>
           {archived ? <Archive size={12.5} strokeWidth={1.8} /> : <span className="thread-status-orb" aria-hidden="true" />}
-          <span>{state.label}</span>
+          <span className="thread-status-label">{state.label}</span>
         </span>
 
         <div className="thread-header-meta">
@@ -189,7 +213,7 @@ export function ThreadHeader({
 
         <button
           type="button"
-          className={`thread-header-icon-button ${inspectorOpen ? "active" : ""}`}
+          className={`thread-header-icon-button panel-toggle-button ${inspectorOpen ? "active" : ""}`}
           onClick={onToggleInspector}
           title={inspectorLabel}
           aria-label={inspectorLabel}
