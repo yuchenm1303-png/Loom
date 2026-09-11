@@ -269,7 +269,14 @@ class SkillRuntime(ToolSearchRuntime):
         normalized = PurePosixPath(str(relative_path).replace("\\", "/"))
         if normalized.is_absolute() or ".." in normalized.parts:
             raise ValueError("skill resource path must stay inside the bundle")
-        target = bundle_root.joinpath(*normalized.parts).resolve(strict=True)
+        if any(part in _PRIVATE_BUNDLE_FILES or part.startswith(".git") for part in normalized.parts):
+            raise ValueError("private skill metadata is not exposed as a resource")
+        target = bundle_root
+        for part in normalized.parts:
+            target = target / part
+            if target.is_symlink():
+                raise ValueError("skill resource symlinks are not allowed")
+        target = target.resolve(strict=True)
         try:
             target.relative_to(bundle_root)
         except ValueError as exc:
