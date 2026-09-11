@@ -34,6 +34,20 @@ _EXCEPTION_RE = re.compile(
     r"^(?P<name>[A-Za-z_][A-Za-z0-9_.]*(?:Error|Exception|Warning|Interrupt|Exit))(?::.*)?$"
 )
 
+# Events that prove UFO has moved past task acceptance into command, desktop
+# observation, action execution, or terminal result. task.started/task.accepted
+# alone are deliberately not enough; the current failure mode hangs right after
+# those events during import/config/session setup.
+_FIRST_PROGRESS_EVENTS = {
+    "dispatcher.commands.started",
+    "window.selected",
+    "observation.completed",
+    "action.started",
+    "task.completed",
+    "task.failed",
+    "task.cancelled",
+}
+
 # Keep the UFO child deliberately narrow. Passing all of os.environ would hand a
 # third-party automation engine every unrelated connector/provider credential that
 # Loom happens to have. These are the OS/network variables a normal Windows Python
@@ -67,9 +81,10 @@ _PASSTHROUGH_ENV = (
     "REQUESTS_CA_BUNDLE",
     "SSL_CERT_FILE",
     "CURL_CA_BUNDLE",
-    # Explicit, opt-in diagnostics switch. It contains no credential and is the
-    # only extra Loom setting allowed through the sidecar process boundary.
+    # Explicit, opt-in diagnostics switches. They contain no credential and are
+    # the only extra Loom settings allowed through the sidecar process boundary.
     "LOOM_UFO_KEEP_RAW_LOGS",
+    "LOOM_UFO_FIRST_STEP_TIMEOUT",
 )
 
 
@@ -83,6 +98,14 @@ def _first_env(*names: str) -> str:
         if value:
             return value
     return ""
+
+
+def _float_env(name: str, default: float, minimum: float, maximum: float) -> float:
+    try:
+        value = float(str(os.environ.get(name) or "").strip() or default)
+    except (TypeError, ValueError):
+        value = default
+    return max(minimum, min(maximum, value))
 
 
 def _runtime_home() -> Path:
@@ -104,7 +127,13 @@ def _default_python(install_root: Path) -> Path:
     return venv_root / "bin" / "python"
 
 
-def _sidecar_path() -> Path:
+def _default_sidecar_path() -> Path:
+    # Default to the supervised wrapper whenever it exists. This makes the
+    # watchdog effective even if Electron/App Server environment propagation drops
+    # LOOM_UFO_SIDECAR. LOOM_UFO_SIDECAR still remains a manual override.
+    supervisor = Path(__file__).with_name("ufo_sidecar_supervisor.py").resolve()
+    if supervisor.is_file():
+        return supervisor
     return Path(__file__).with_name("ufo_sidecar.py").resolve()
 
 
@@ -112,7 +141,7 @@ def _normalize_base_url(value: str) -> str:
     base = str(value or "").strip().rstrip("/")
     for suffix in ("/chat/completions", "/responses"):
         if base.casefold().endswith(suffix):
-            base = base[: -len(suffix)].rstrip("/")
+            base = base[: -len(suffix)].rstrip("/").rstrip("/")
     return base
 
 
@@ -166,6 +195,7 @@ class UfoDriverConfig:
     strict: bool = False
     startup_timeout_seconds: float = 45.0
     cancel_timeout_seconds: float = 2.0
+    first_progress_timeout_seconds: float = 30.0
 
     @classmethod
     def from_environment(cls, *, strict: bool = False) -> "UfoDriverConfig":
@@ -179,7 +209,7 @@ class UfoDriverConfig:
             _first_env("LOOM_UFO_PYTHON") or _default_python(install_root)
         ).expanduser().resolve()
         sidecar = Path(
-            _first_env("LOOM_UFO_SIDECAR") or _sidecar_path()
+            _first_env("LOOM_UFO_SIDECAR") or _default_sidecar_path()
         ).expanduser().resolve()
 
         explicit_type = _first_env("LOOM_UFO_API_TYPE").casefold().replace("_", "-")
@@ -222,12 +252,9 @@ class UfoDriverConfig:
             api_key=api_key,
             api_model=api_model,
             strict=bool(strict),
-            startup_timeout_seconds=float(
-                _first_env("LOOM_UFO_STARTUP_TIMEOUT") or 45.0
-            ),
-            cancel_timeout_seconds=float(
-                _first_env("LOOM_UFO_CANCEL_TIMEOUT") or 2.0
-            ),
+            startup_timeout_seconds=_float_env("LOOM_UFO_STARTUP_TIMEOUT", 45.0, 5.0, 600.0),
+            cancel_timeout_seconds=_float_env("LOOM_UFO_CANCEL_TIMEOUT", 2.0, 0.5, 60.0),
+            first_progress_timeout_seconds=_float_env("LOOM_UFO_FIRST_STEP_TIMEOUT", 30.0, 5.0, 600.0),
         )
 
     def installation_status(self) -> dict[str, Any]:
@@ -318,6 +345,7 @@ class UfoDriverConfig:
                 "LOOM_UFO_API_BASE": self.api_base,
                 "LOOM_UFO_API_KEY": self.api_key,
                 "LOOM_UFO_API_MODEL": self.api_model,
+                "LOOM_UFO_FIRST_STEP_TIMEOUT": str(self.first_progress_timeout_seconds),
             }
         )
         return env
@@ -363,6 +391,7 @@ class UfoWindowsDriver:
         installation = self.config.installation_status()
         process = self._process
         alive = bool(process is not None and process.poll() is None)
+        sidecar_name = self.config.sidecar.name
         return {
             "name": self.name,
             "engine": "microsoft-ufo2",
@@ -387,6 +416,9 @@ class UfoWindowsDriver:
             "paused": self._paused,
             "source_root": str(self.config.source_root),
             "python": str(self.config.python),
+            "sidecar": str(self.config.sidecar),
+            "sidecar_name": sidecar_name,
+            "supervised": sidecar_name == "ufo_sidecar_supervisor.py",
             "api_type": self.config.api_type,
             "api_base_configured": bool(self.config.api_base),
             "api_key_configured": bool(self.config.api_key),
@@ -394,6 +426,7 @@ class UfoWindowsDriver:
             "transport": "stdio-ndjson",
             "network_listener": False,
             "strict": self.config.strict,
+            "first_progress_timeout_seconds": self.config.first_progress_timeout_seconds,
         }
 
     def _creationflags(self) -> int:
@@ -566,6 +599,36 @@ class UfoWindowsDriver:
         except Exception:
             return False
 
+    def _timeout_result(
+        self,
+        *,
+        task_id: str,
+        started_at: float,
+        last_event_kind: str,
+        last_event_sequence: int,
+    ) -> ComputerDriverResult:
+        detail = "\n".join(list(self._stderr)[-12:])
+        data = {
+            "engine": "ufo2",
+            "error_type": "UFO_FIRST_PROGRESS_TIMEOUT",
+            "timeout_seconds": self.config.first_progress_timeout_seconds,
+            "elapsed_ms": round((time.monotonic() - started_at) * 1000.0, 3),
+            "last_event_kind": last_event_kind,
+            "last_event_sequence": last_event_sequence,
+            "stderr_tail": detail[-4000:],
+            "sidecar": str(self.config.sidecar),
+            "sidecar_name": self.config.sidecar.name,
+            "supervised": self.config.sidecar.name == "ufo_sidecar_supervisor.py",
+        }
+        self._hard_stop()
+        return ComputerDriverResult(
+            task_id=task_id,
+            status="failed",
+            ok=False,
+            summary="UFO desktop task failed: UFO_FIRST_PROGRESS_TIMEOUT.",
+            data=data,
+        )
+
     def run_task(
         self,
         task: str,
@@ -606,8 +669,16 @@ class UfoWindowsDriver:
                 payload["max_steps"] = max(1, min(100, int(max_steps)))
             self._send(payload)
 
+            task_started_at = time.monotonic()
+            first_progress_deadline = (
+                task_started_at + max(5.0, self.config.first_progress_timeout_seconds)
+            )
+            first_progress_seen = False
+            last_event_kind = "run_task.sent"
+            last_event_sequence = 0
             cancel_sent = False
             cancel_deadline = 0.0
+
             while True:
                 process = self._process
                 if process is None or process.poll() is not None:
@@ -623,7 +694,20 @@ class UfoWindowsDriver:
                             "sidecar_exit_code": (
                                 process.poll() if process is not None else None
                             ),
+                            "last_event_kind": last_event_kind,
+                            "last_event_sequence": last_event_sequence,
+                            "sidecar": str(self.config.sidecar),
+                            "sidecar_name": self.config.sidecar.name,
+                            "supervised": self.config.sidecar.name == "ufo_sidecar_supervisor.py",
                         },
+                    )
+
+                if not first_progress_seen and time.monotonic() >= first_progress_deadline:
+                    return self._timeout_result(
+                        task_id=task_id,
+                        started_at=task_started_at,
+                        last_event_kind=last_event_kind,
+                        last_event_sequence=last_event_sequence,
                     )
 
                 if is_cancelled() and not cancel_sent:
@@ -666,6 +750,10 @@ class UfoWindowsDriver:
                         kind=str(message.get("kind") or "event"),
                         data=dict(message.get("data") or {}),
                     )
+                    last_event_kind = event.kind
+                    last_event_sequence = event.sequence
+                    if event.kind in _FIRST_PROGRESS_EVENTS:
+                        first_progress_seen = True
                     if on_event is not None:
                         on_event(event)
                     continue
@@ -686,7 +774,13 @@ class UfoWindowsDriver:
                         status="failed",
                         ok=False,
                         summary=f"UFO sidecar protocol task failed: {error_type}.",
-                        data={"engine": "ufo2", "error_type": error_type},
+                        data={
+                            "engine": "ufo2",
+                            "error_type": error_type,
+                            "sidecar": str(self.config.sidecar),
+                            "sidecar_name": self.config.sidecar.name,
+                            "supervised": self.config.sidecar.name == "ufo_sidecar_supervisor.py",
+                        },
                     )
         finally:
             with self._state_lock:
