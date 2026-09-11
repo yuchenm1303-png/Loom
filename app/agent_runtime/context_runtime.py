@@ -103,6 +103,11 @@ class ContextAgentRuntime(SandboxAgentRuntime):
         text = str(summary or "").strip()
         if not text:
             raise ValueError("context summary must not be empty")
+        communication_language = infer_user_language(
+            (*archived, *retained),
+            fallback=session.communication_language,
+        )
+        session.communication_language = communication_language
         step = self._build_step_context(session, next_model_step=False)
         envelope = self._context_envelope(session, step)
         checkpoint = self.checkpoint_store.create(
@@ -125,7 +130,7 @@ class ContextAgentRuntime(SandboxAgentRuntime):
                 "world_state_digest": checkpoint.world_state_digest,
                 "history_repaired": repaired.changed,
                 "summary_source": summary_source,
-                "communication_language": infer_user_language(session.messages),
+                "communication_language": communication_language,
                 "summary_usage": (
                     {
                         "input_tokens": summary_usage.input_tokens,
@@ -180,10 +185,18 @@ class ContextAgentRuntime(SandboxAgentRuntime):
                 session,
                 keep_recent=keep_recent,
             )
+            communication_language = infer_user_language(
+                session.messages,
+                fallback=session.communication_language,
+            )
+            session.communication_language = communication_language
             request = ChatRequest(
                 messages=(
                     AIMessage(role=MessageRole.SYSTEM, content=_COMPACTION_SYSTEM_PROMPT),
-                    communication_language_message(session.messages),
+                    communication_language_message(
+                        session.messages,
+                        fallback=communication_language,
+                    ),
                     *archived,
                 ),
                 tools=(),
@@ -231,7 +244,10 @@ class ContextAgentRuntime(SandboxAgentRuntime):
                 name="loom_runtime_state",
                 content=envelope.text,
             ),
-            communication_language_message(session.messages),
+            communication_language_message(
+                session.messages,
+                fallback=session.communication_language,
+            ),
         )
 
     def _prepare_model_request(self, session, step, token):

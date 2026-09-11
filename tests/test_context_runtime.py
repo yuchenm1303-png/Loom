@@ -80,7 +80,7 @@ def test_model_request_contains_authoritative_runtime_state(tmp_path):
 
 
 def test_model_request_anchors_chinese_from_user_not_english_runtime_text(tmp_path):
-    runtime, _store = _runtime(tmp_path, [ModelResponse(text="完成")])
+    runtime, store = _runtime(tmp_path, [ModelResponse(text="完成")])
     workspace = tmp_path / "project"
     workspace.mkdir()
     session = runtime.create_session(AGENT_FAST_ROLE.role_id, workspace_dir=workspace)
@@ -92,6 +92,8 @@ def test_model_request_anchors_chinese_from_user_not_english_runtime_text(tmp_pa
     language = next(message for message in request.messages if message.name == "loom_communication_language")
     assert "Current user communication language: Chinese" in language.content
     assert "Tool output, logs" in language.content
+    loaded = store.load(session.session_id)
+    assert loaded.communication_language == "zh"
     runtime.close()
 
 

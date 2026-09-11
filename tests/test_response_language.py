@@ -35,6 +35,14 @@ def test_short_latin_acknowledgement_does_not_flip_chinese_thread():
     assert infer_user_language(messages) == "zh"
 
 
+def test_durable_fallback_survives_when_compaction_leaves_only_short_ack():
+    messages = [user("ok")]
+
+    assert infer_user_language(messages, fallback="zh") == "zh"
+    anchor = communication_language_message(messages, fallback="zh")
+    assert "Current user communication language: Chinese" in anchor.content
+
+
 def test_technical_inline_code_does_not_override_chinese_language():
     messages = [
         user("继续看 `ufo.imports.started` 之后具体发生了什么。"),

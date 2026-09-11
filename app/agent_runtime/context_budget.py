@@ -213,8 +213,17 @@ def prepare_context(rt, session, step, token):
     instructions = rt.instruction_loader.load(session.workspace_dir)
     if instructions:
         transient.append(AIMessage(role=MessageRole.SYSTEM, name="loom_project_instructions", content=instructions))
-    communication_language = infer_user_language(session.messages)
-    transient.append(communication_language_message(session.messages))
+    communication_language = infer_user_language(
+        session.messages,
+        fallback=session.communication_language,
+    )
+    session.communication_language = communication_language
+    transient.append(
+        communication_language_message(
+            session.messages,
+            fallback=communication_language,
+        )
+    )
 
     tools = step.tool_router.definitions()
     budget = rt.limits.context_window_tokens - rt.limits.output_reserve_tokens
@@ -227,7 +236,10 @@ def prepare_context(rt, session, step, token):
 
     repair = repair_tool_history(session.messages, max_tool_result_chars=rt.limits.max_tool_result_chars)
     history = tuple(repair.messages)
-    language_message = communication_language_message(history)
+    language_message = communication_language_message(
+        history,
+        fallback=communication_language,
+    )
     max_summary_output = max(1, rt.limits.output_reserve_tokens)
     archived, retained = _select_partition(
         rt,
