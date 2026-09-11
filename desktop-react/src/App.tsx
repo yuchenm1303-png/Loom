@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Composer } from "./components/Composer";
 import { Inspector } from "./components/Inspector";
 import { LanguageSettingsDock } from "./components/LanguageSettingsDock";
+import { ReviewWorkspace } from "./components/ReviewWorkspace";
 import { RunProgress } from "./components/RunProgress";
 import { SettingsComputerLogExport } from "./components/SettingsComputerLogExport";
 import { SettingsPage } from "./components/SettingsPage";
@@ -45,12 +46,30 @@ function errorMessage(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
 }
 
+function reviewFileCount(items: TranscriptItem[]): number {
+  const keys = new Set<string>();
+  for (const item of items) {
+    if (item.type !== "file_edit") continue;
+    const paths = item.paths ?? [];
+    if (paths.length) {
+      for (const path of paths) {
+        const normalized = String(path || "").trim().replaceAll("\\", "/");
+        if (normalized) keys.add(normalized);
+      }
+    } else if (String(item.diff || "").trim()) {
+      keys.add(item.id);
+    }
+  }
+  return keys.size;
+}
+
 export default function App() {
   const loom = useLoom();
   const { t } = useI18n();
   const [inspectorOpen, setInspectorOpen] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [reviewOpen, setReviewOpen] = useState(false);
   const [shortcuts, setShortcuts] = useState<ShortcutSettings>(() => readShortcutSettings());
   const [dismissedApprovalIds, setDismissedApprovalIds] = useState<Set<string>>(() => new Set());
   const thread = loom.active?.thread;
@@ -65,9 +84,11 @@ export default function App() {
   const capabilitySettings = loom.runtime.settings?.capabilities ?? {};
   const attachmentsEnabled = capabilitySettings.attachments !== false;
   const stickersEnabled = capabilitySettings.stickers !== false;
+  const changedFileCount = reviewFileCount(loom.items);
 
   useEffect(() => {
     setDismissedApprovalIds(new Set());
+    setReviewOpen(false);
   }, [thread?.id]);
 
   useEffect(() => {
@@ -309,8 +330,11 @@ export default function App() {
           model={currentModel}
           permissionMode={permissionMode}
           inspectorOpen={inspectorOpen}
+          reviewOpen={reviewOpen}
+          reviewCount={changedFileCount}
           onOpenSettings={() => setSettingsOpen(true)}
           onToggleInspector={() => setInspectorOpen((open) => !open)}
+          onToggleReview={() => setReviewOpen((open) => !open)}
         />
 
         <div className={`conversation-stage ${running ? "is-running" : ""}`}>
@@ -360,6 +384,7 @@ export default function App() {
       </section>
 
       {inspectorOpen ? <Inspector items={loom.items} onClose={() => setInspectorOpen(false)} /> : null}
+      <ReviewWorkspace items={loom.items} open={reviewOpen} onClose={() => setReviewOpen(false)} />
     </div>
   );
 }
