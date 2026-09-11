@@ -1,0 +1,85 @@
+/* Settings icon geometry ----------------------------------------------------
+   Normalize SVG layout first, then apply tiny optical corrections only where
+   an asymmetric Lucide glyph still looks off-center to the eye. */
+
+.settings-shell .mature-preference-icon,
+.settings-shell .general-default-card-icon,
+.settings-shell .general-overview-icon,
+.settings-shell .capability-icon,
+.settings-shell .model-summary-icon,
+.settings-shell .settings-brand-orb {
+  display: grid;
+  place-items: center;
+  align-self: center;
+  justify-self: center;
+  flex: 0 0 auto;
+  line-height: 0;
+}
+
+.settings-shell .mature-preference-icon > svg,
+.settings-shell .general-default-card-icon > svg,
+.settings-shell .general-overview-icon > svg,
+.settings-shell .capability-icon > svg,
+.settings-shell .model-summary-icon > svg,
+.settings-shell .settings-brand-orb > svg,
+.settings-shell .settings-nav button > svg,
+.settings-shell .settings-row-link > svg {
+  display: block;
+  flex: 0 0 auto;
+  margin: 0;
+  vertical-align: middle;
+  transform-origin: 50% 50%;
+}
+
+.settings-shell .mature-preference-icon {
+  width: 30px;
+  height: 30px;
+}
+
+.settings-shell .mature-preference-icon > svg,
+.settings-shell .general-default-card-icon > svg,
+.settings-shell .capability-icon > svg {
+  width: 17px;
+  height: 17px;
+}
+
+.settings-shell .general-overview-icon > svg {
+  width: 18px;
+  height: 18px;
+}
+
+.settings-shell .model-summary-icon > svg {
+  width: 22px;
+  height: 22px;
+}
+
+.settings-shell .settings-brand-orb > svg,
+.settings-shell .settings-nav button > svg,
+.settings-shell .settings-row-link > svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Optical centering for asymmetric glyphs. Keep these sub-pixel only. */
+.settings-shell .mature-preference-icon > .lucide-type {
+  transform: translateY(0.5px);
+}
+
+.settings-shell .mature-preference-icon > .lucide-gauge {
+  transform: translateY(0.5px);
+}
+
+.settings-shell .mature-preference-icon > .lucide-moon {
+  transform: translateX(0.5px);
+}
+
+.settings-shell .mature-preference-icon > .lucide-code-2 {
+  transform: translateX(-0.25px);
+}
+
+.settings-shell .mature-preference-row,
+.settings-shell .capability-row,
+.settings-shell .plugin-row,
+.settings-shell .model-summary-card {
+  align-items: center;
+}
