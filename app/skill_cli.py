@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 from typing import Sequence
 
-from .agent_runtime import SkillInstallError, SkillInstaller
+from .agent_runtime.skill_installer import SkillInstallError, SkillInstaller
 
 
 def _default_home() -> Path:
@@ -153,4 +153,8 @@ def _emit_rows(
     return 0
 
 
-__all__ = ["build_skill_parser", "run_skill_cli"]
+def main(argv: Sequence[str] | None = None) -> int:
+    return run_skill_cli(sys.argv[1:] if argv is None else argv)
+
+
+__all__ = ["build_skill_parser", "main", "run_skill_cli"]
