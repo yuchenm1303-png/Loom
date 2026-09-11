@@ -996,28 +996,15 @@ function EmptyState({ disabled, onPrompt }: { disabled?: boolean; onPrompt?(prom
 }
 
 export function Transcript({ items, running, currentTurnId, promptDisabled, onPrompt, onApproval }: TranscriptProps) {
-  const scrollRef = useRef<HTMLDivElement | null>(null);
-  const previousCount = useRef(0);
   const turnBlocks = groupTurns(items);
-  const fallbackActiveTurnId = running
-    ? [...turnBlocks].reverse().find((block): block is Extract<TurnBlock, { kind: "turn" }> => block.kind === "turn")?.id
-    : undefined;
-  const activeTurnId = String(currentTurnId || fallbackActiveTurnId || "");
-
-  useEffect(() => {
-    if (items.length > previousCount.current) {
-      const scroller = scrollRef.current;
-      if (scroller) {
-        requestAnimationFrame(() => {
-          scroller.scrollTo({ top: scroller.scrollHeight, behavior: "smooth" });
-        });
-      }
-    }
-    previousCount.current = items.length;
-  }, [items.length]);
+  // The caller only marks a turn live after the server has confirmed its
+  // currentTurnId. Never guess by taking the latest historical turn: during the
+  // optimistic send window that guess used to reactivate the previous turn and
+  // collapse/re-expand large parts of the transcript.
+  const activeTurnId = running && currentTurnId ? String(currentTurnId) : "";
 
   return (
-    <div className="transcript-scroll" ref={scrollRef}>
+    <div className="transcript-scroll">
       <div className="chat-ambient" aria-hidden="true">
         <span className="ambient-glow glow-one" />
         <span className="ambient-glow glow-two" />
