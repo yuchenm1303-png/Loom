@@ -19,6 +19,7 @@ from app.ai.reasoning_store import ReasoningConfigStore
 
 PRIMARY_SELECTION = "builtin:minimax"
 CQU_SELECTION = "builtin:cqu"
+MINIMAX_SELECTION_PREFIX = "builtin:minimax:"
 MANAGED_SELECTION_PREFIX = "managed:"
 MANAGED_RELAY_BASE_URL = "https://relay.smirel.com/v1"
 MINIMAX_BASE_URL = "https://api.minimax.io/v1"
@@ -273,11 +274,26 @@ def _fetch_managed_model_ids(
     return models
 
 
+def _minimax_selection_for_model(model: str) -> str:
+    normalized = str(model or "").strip()
+    if normalized.casefold() == MINIMAX_DEFAULT_MODEL.casefold():
+        return PRIMARY_SELECTION
+    return f"{MINIMAX_SELECTION_PREFIX}{urllib.parse.quote(normalized, safe='')}"
+
+
+def _minimax_model_from_selection(selection: str) -> str | None:
+    value = str(selection or "").strip()
+    if value == PRIMARY_SELECTION:
+        return MINIMAX_DEFAULT_MODEL
+    if value.startswith(MINIMAX_SELECTION_PREFIX):
+        model = urllib.parse.unquote(value[len(MINIMAX_SELECTION_PREFIX) :]).strip()
+        return model if _is_minimax_model(model) else None
+    return None
+
+
 def _managed_selection_for_model(model: str) -> str:
     normalized = str(model or "").strip()
     folded = normalized.casefold()
-    if folded == MINIMAX_DEFAULT_MODEL.casefold():
-        return PRIMARY_SELECTION
     if folded == CQU_DEFAULT_MODEL.casefold():
         return CQU_SELECTION
     return f"{MANAGED_SELECTION_PREFIX}{urllib.parse.quote(normalized, safe='')}"
@@ -285,8 +301,6 @@ def _managed_selection_for_model(model: str) -> str:
 
 def _managed_model_from_selection(selection: str) -> str | None:
     value = str(selection or "").strip()
-    if value == PRIMARY_SELECTION:
-        return MINIMAX_DEFAULT_MODEL
     if value == CQU_SELECTION:
         return CQU_DEFAULT_MODEL
     if value.startswith(MANAGED_SELECTION_PREFIX):
@@ -308,10 +322,30 @@ def _managed_display_name(model: str) -> str:
     return _MANAGED_MODEL_DISPLAY_NAMES.get(value.casefold(), value)
 
 
+def _safe_minimax(
+    model: str = MINIMAX_DEFAULT_MODEL,
+    environ: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
+    model = str(model or "").strip()
+    if not _is_minimax_model(model):
+        raise ValueError(f"unsupported MiniMax model id: {model!r}")
+    return {
+        "selection": _minimax_selection_for_model(model),
+        "id": _managed_profile_id(model),
+        "kind": "builtin",
+        "name": _managed_display_name(model),
+        "adapter": "openai-compatible",
+        "baseUrl": _legacy_minimax_base_url(environ),
+        "model": model,
+    }
+
+
 def _safe_managed(model: str, environ: Mapping[str, str] | None = None) -> dict[str, Any]:
     model = str(model or "").strip()
     if not model:
         raise ValueError("managed model id must not be empty")
+    if _is_minimax_model(model):
+        return _safe_minimax(model, environ)
     return {
         "selection": _managed_selection_for_model(model),
         "id": _managed_profile_id(model),
@@ -324,7 +358,7 @@ def _safe_managed(model: str, environ: Mapping[str, str] | None = None) -> dict[
 
 
 def _safe_primary() -> dict[str, Any]:
-    return _safe_managed(MINIMAX_DEFAULT_MODEL)
+    return _safe_minimax(MINIMAX_DEFAULT_MODEL)
 
 
 def _safe_cqu() -> dict[str, Any]:
@@ -335,9 +369,7 @@ def _safe_legacy_minimax(
     model: str = MINIMAX_DEFAULT_MODEL,
     environ: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
-    profile = _safe_managed(model)
-    profile["baseUrl"] = _legacy_minimax_base_url(environ)
-    return profile
+    return _safe_minimax(model, environ)
 
 
 def _safe_saved(entry: StoredModel) -> dict[str, Any]:
@@ -390,32 +422,27 @@ def _with_reasoning(profile: dict[str, Any], reasoning_store: ReasoningConfigSto
 
 
 def _managed_profiles(store: ModelConfigStore, environ: Mapping[str, str] | None = None) -> list[dict[str, Any]]:
+    profiles: list[dict[str, Any]] = [_safe_minimax(model_id, environ) for model_id in MINIMAX_MODEL_IDS]
     api_key = _managed_relay_key(store, environ, Path(__file__).resolve().parent)
-    legacy_minimax_key = _primary_minimax_key(environ)
     if api_key:
         model_ids = _fetch_managed_model_ids(api_key, environ)
         if not model_ids:
-            model_ids = [*MINIMAX_MODEL_IDS, CQU_DEFAULT_MODEL]
-    elif legacy_minimax_key:
-        model_ids = list(MINIMAX_MODEL_IDS)
-    else:
-        model_ids = [MINIMAX_DEFAULT_MODEL]
-    profiles: list[dict[str, Any]] = []
-    seen: set[str] = set()
-    for model_id in model_ids:
-        folded = str(model_id or "").strip().casefold()
-        if not folded or folded in seen:
-            continue
-        seen.add(folded)
-        if not api_key and legacy_minimax_key and _is_minimax_model(model_id):
-            profiles.append(_safe_legacy_minimax(model_id, environ))
-        else:
+            model_ids = [CQU_DEFAULT_MODEL]
+        seen = {str(profile.get("model") or "").strip().casefold() for profile in profiles}
+        for model_id in model_ids:
+            folded = str(model_id or "").strip().casefold()
+            if not folded or folded in seen or _is_minimax_model(model_id):
+                continue
+            seen.add(folded)
             profiles.append(_safe_managed(model_id, environ))
     return profiles
 
 
 def _base_profile_for_selection(store: ModelConfigStore, selection: str) -> dict[str, Any]:
     requested = str(selection or "").strip()
+    minimax_model = _minimax_model_from_selection(requested)
+    if minimax_model:
+        return _safe_minimax(minimax_model)
     managed_model = _managed_model_from_selection(requested)
     if managed_model:
         return _safe_managed(managed_model)
@@ -447,6 +474,8 @@ def _describe_model(
     if not requested_model:
         raise ValueError("model must not be empty")
     profile = _base_profile_for_selection(store, selection)
+    if _is_minimax_model(requested_model):
+        profile = _safe_minimax(requested_model)
     profile["model"] = requested_model
     return _with_reasoning(profile, reasoning_store)
 
@@ -484,23 +513,24 @@ def _resolve(
     requested = explicit_selection or _active_selection(store, selection_store)
     profile = _with_reasoning(_base_profile_for_selection(store, requested), reasoning_store)
 
+    minimax_model = _minimax_model_from_selection(requested)
+    if minimax_model:
+        api_key = _primary_minimax_key()
+        if api_key:
+            official_profile = _with_reasoning(_safe_minimax(minimax_model), reasoning_store)
+            return {**official_profile, "provider": "openai-compatible", "apiKey": api_key}
+        raise RuntimeError(
+            "MiniMax API key is not configured. Set MINIMAX_API_KEY for the official "
+            "MiniMax endpoint, or add a saved MiniMax connection."
+        )
+
     managed_model = _managed_model_from_selection(requested)
     if managed_model:
         api_key = _managed_relay_key(store, repo_root=Path(__file__).resolve().parent)
         if api_key:
             return {**profile, "provider": "openai-compatible", "apiKey": api_key}
-        if _is_minimax_model(managed_model):
-            legacy_key = _primary_minimax_key()
-            if legacy_key:
-                legacy_profile = _with_reasoning(_safe_legacy_minimax(managed_model), reasoning_store)
-                return {**legacy_profile, "provider": "openai-compatible", "apiKey": legacy_key}
-        if not explicit_selection:
-            legacy_key = _primary_minimax_key()
-            if legacy_key:
-                legacy_profile = _with_reasoning(_safe_legacy_minimax(), reasoning_store)
-                return {**legacy_profile, "provider": "openai-compatible", "apiKey": legacy_key}
         raise RuntimeError(
-            "Smirel Relay credential is not provisioned. Build or install Loom with "
+            "Smirel Relay credential is not provisioned for CQUAI. Build or install Loom with "
             "loom-relay-credential.json, or set LOOM_RELAY_API_KEY for development."
         )
 
@@ -565,7 +595,7 @@ def _set_active(
     payload: dict[str, Any],
 ) -> dict[str, Any]:
     selection = str(payload.get("selection") or "").strip() or PRIMARY_SELECTION
-    if _managed_model_from_selection(selection):
+    if _minimax_model_from_selection(selection) or _managed_model_from_selection(selection):
         store.set_active(None)
     else:
         saved = store.model_for_selection(selection)
