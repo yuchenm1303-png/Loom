@@ -76,6 +76,15 @@ export default function App() {
     }
   }
 
+  async function handleMoveProject(projectId: string): Promise<void> {
+    if (!thread?.id || running) return;
+    await window.loom.call("thread/move_project", {
+      threadId: thread.id,
+      projectId,
+    });
+    await loom.refreshProjects();
+  }
+
   const progressProps = {
     items: loom.items,
     startedAt: loom.turnStartedAt,
@@ -144,6 +153,11 @@ export default function App() {
           model={currentModel}
           permissionMode={permissionMode}
           inspectorOpen={inspectorOpen}
+          projects={loom.projects}
+          projectsSupported={loom.projectsSupported}
+          currentProjectId={thread?.projectId}
+          projectMoveDisabled={!thread || running}
+          onMoveProject={handleMoveProject}
           onOpenSettings={() => setSettingsOpen(true)}
           onToggleInspector={() => setInspectorOpen((open) => !open)}
         />
