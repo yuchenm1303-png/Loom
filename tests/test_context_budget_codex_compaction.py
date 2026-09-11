@@ -159,8 +159,30 @@ def test_compaction_uses_full_reserved_output_budget_and_codex_prompt_shape():
     request = runtime.model_executor.requests[0][1]
     assert request.max_output_tokens == runtime.limits.output_reserve_tokens
     assert request.tools == ()
+    assert request.messages[0].role is MessageRole.SYSTEM
+    assert request.messages[0].name == "loom_communication_language"
+    assert "Current user communication language" in request.messages[0].content
     assert request.messages[-1].role is MessageRole.USER
     assert "compacting earlier canonical conversation history" in request.messages[-1].content
+
+
+def test_auto_compaction_language_anchor_comes_from_user_history():
+    runtime = FakeRuntime([ModelResponse(text="压缩摘要", finish_reason="stop")])
+    history = _long_history(pairs=7, chars=420)
+    history.extend(
+        [
+            AIMessage(role=MessageRole.USER, content="继续检查这个问题，不要被英文日志带偏。" + ("继续" * 120)),
+            AIMessage(role=MessageRole.ASSISTANT, content="Now reading English logs and source code." + (" log" * 180)),
+        ]
+    )
+    session = Session(history)
+
+    prepare_context(runtime, session, Step(), Token())
+
+    request = runtime.model_executor.requests[0][1]
+    language = request.messages[0]
+    assert language.name == "loom_communication_language"
+    assert "Current user communication language: Chinese" in language.content
 
 
 def test_oversized_compaction_request_trims_only_temporary_old_history():
