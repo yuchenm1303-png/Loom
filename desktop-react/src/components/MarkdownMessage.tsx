@@ -1,5 +1,5 @@
 import { Check, Copy } from "lucide-react";
-import { isValidElement, useState, type ReactNode } from "react";
+import { isValidElement, memo, useState, type ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import rehypeKatex from "rehype-katex";
@@ -95,7 +95,7 @@ const markdownComponents: Components = {
   },
 };
 
-export function MarkdownMessage({ content, compact = false }: MarkdownMessageProps) {
+export const MarkdownMessage = memo(function MarkdownMessage({ content, compact = false }: MarkdownMessageProps) {
   return (
     <div className={`markdown-body ${compact ? "markdown-compact" : ""}`}>
       <ReactMarkdown
@@ -111,4 +111,4 @@ export function MarkdownMessage({ content, compact = false }: MarkdownMessagePro
       </ReactMarkdown>
     </div>
   );
-}
+});
