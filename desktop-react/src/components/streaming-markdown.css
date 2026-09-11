@@ -1,0 +1,33 @@
+.streaming-markdown {
+  position: relative;
+  min-width: 0;
+}
+
+.streaming-markdown.is-streaming {
+  --streaming-tail: rgba(174, 166, 255, .76);
+}
+
+.streaming-markdown-pulse {
+  display: inline-block;
+  width: 4px;
+  height: 12px;
+  margin-left: 3px;
+  border-radius: 999px;
+  vertical-align: -1px;
+  background: linear-gradient(180deg, transparent, var(--streaming-tail) 26%, var(--streaming-tail) 74%, transparent);
+  opacity: .52;
+  animation: streaming-markdown-breathe 980ms ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes streaming-markdown-breathe {
+  0%, 100% { opacity: .22; transform: scaleY(.76); }
+  50% { opacity: .72; transform: scaleY(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .streaming-markdown-pulse {
+    display: none;
+    animation: none !important;
+  }
+}
