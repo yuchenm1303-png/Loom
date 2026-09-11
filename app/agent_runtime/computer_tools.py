@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from .computer_types import ComputerAction, ComputerActionType
-from .contracts import ToolEffect
+from .contracts import AgentEventKind, ToolEffect
 from .tools import AgentTool, ToolContext, ToolResult
 
 if TYPE_CHECKING:
@@ -141,9 +141,10 @@ def _safe_arguments(runtime: "ComputerUseRuntime", arguments: dict[str, Any]) ->
             action_copy["text"] = text if raw_allowed else "[TRANSIENT_TEXT]"
             action_copy["text_length"] = len(text)
         copied["action"] = action_copy
-    if "instruction" in copied:
-        instruction = str(copied.get("instruction") or "")
-        copied["instruction"] = instruction if raw_allowed else {"length": len(instruction)}
+    for key in ("instruction", "task", "stop_when"):
+        if key in copied:
+            text = str(copied.get(key) or "")
+            copied[key] = text if raw_allowed else {"length": len(text)}
     return copied
 
 
@@ -217,6 +218,118 @@ def _enrich_outcome_payload(
     if trace_meta:
         payload["trace"] = trace_meta
     return payload
+
+
+def _bounded_int(value: Any, *, default: int, minimum: int, maximum: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        parsed = default
+    return max(minimum, min(maximum, parsed))
+
+
+def _is_terminal_outcome(outcome: "ComputerStepOutcome") -> bool:
+    return outcome.prediction.action.type in {ComputerActionType.FINISH, ComputerActionType.CALL_USER}
+
+
+def _task_step_content(outcome: "ComputerStepOutcome") -> str:
+    action = outcome.prediction.action.type.value
+    if outcome.prediction.action.type is ComputerActionType.CALL_USER:
+        return "Computer task runner stopped because visual policy requested user assistance."
+    if outcome.prediction.action.type is ComputerActionType.FINISH:
+        return "Computer task runner stopped because visual policy marked the task complete."
+    if bool(outcome.verification.get("stuck_detected")):
+        return "Computer task runner detected a repeated unchanged action and is asking the policy to try a different strategy."
+    if outcome.execution is not None and not outcome.execution.ok:
+        return f"Computer task runner attempted {action}, but execution did not complete cleanly."
+    return f"Computer task runner executed one {action} step and re-observed the desktop."
+
+
+def _task_step_summary(index: int, outcome: "ComputerStepOutcome") -> dict[str, object]:
+    execution_ok = True if outcome.execution is None else bool(outcome.execution.ok)
+    verification = dict(outcome.verification)
+    return {
+        "index": index,
+        "action": outcome.prediction.action.safe_dict(),
+        "execution_ok": execution_ok,
+        "terminal": _is_terminal_outcome(outcome),
+        "verification": {
+            "method": verification.get("method"),
+            "visual_changed": verification.get("visual_changed"),
+            "active_window_changed": verification.get("active_window_changed"),
+            "target_confirmed": verification.get("target_confirmed"),
+            "stuck_detected": verification.get("stuck_detected", False),
+            "revision_autofixed": verification.get("revision_autofixed", False),
+        },
+        "geometry": _point_geometry(outcome),
+        "before": _observation_summary(outcome.before),
+        "after": _observation_summary(outcome.after) if outcome.after is not None else None,
+    }
+
+
+def _task_instruction(
+    *,
+    task: str,
+    stop_when: str,
+    step_index: int,
+    max_steps: int,
+    previous: dict[str, object] | None,
+    previous_error: str,
+) -> str:
+    parts = [
+        "You are inside Loom computer_run_task, a continuous desktop automation loop.",
+        "Complete the user's GUI task by choosing exactly one next action from the screenshot.",
+        "Do not explain in prose unless you need to call the user or terminate.",
+        f"Task: {task}",
+        f"Step budget: {step_index}/{max_steps}.",
+    ]
+    if stop_when:
+        parts.append(f"Stop condition: {stop_when}")
+    if previous is not None:
+        action = previous.get("action")
+        verification = previous.get("verification")
+        parts.append(f"Previous step summary: action={action}; verification={verification}.")
+        if isinstance(verification, dict) and verification.get("stuck_detected"):
+            parts.append(
+                "The last action repeated on an unchanged screenshot. Choose a different strategy now: use keyboard shortcuts, click a different visible target, scroll, wait, or ask the user."
+            )
+    if previous_error:
+        parts.append(
+            f"Previous policy/execution error was normalized by Loom: {previous_error[:500]}. Try again with one supported visible action."
+        )
+    parts.append("When the visible task is done, return terminate success. When you need user help, return interact/answer/call_user.")
+    return "\n".join(parts)
+
+
+def _emit_inner_tool_event(
+    context: ToolContext,
+    kind: AgentEventKind,
+    *,
+    call_id: str,
+    tool_name: str,
+    step_index: int,
+    arguments: dict[str, Any] | None = None,
+    result: ToolResult | None = None,
+    content: str = "",
+) -> None:
+    data: dict[str, object] = {
+        "call_id": call_id,
+        "tool": tool_name,
+        "source": "computer_run_task",
+        "task_step_index": step_index,
+    }
+    if arguments is not None:
+        data["arguments"] = arguments
+    if result is not None:
+        data["ok"] = result.ok
+        data["content"] = result.content
+        data["data"] = result.data
+    elif content:
+        data["content"] = content
+    try:
+        context.emit(kind, data)
+    except Exception:
+        pass
 
 
 def computer_tools(runtime: "ComputerUseRuntime") -> tuple[AgentTool, ...]:
@@ -449,6 +562,177 @@ def computer_tools(runtime: "ComputerUseRuntime") -> tuple[AgentTool, ...]:
             )
             raise
 
+    def run_task(context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
+        context.raise_if_cancelled()
+        diagnostics = _diagnostics(runtime)
+        operation_id = diagnostics.operation_id() if diagnostics is not None else uuid.uuid4().hex[:16]
+        started = time.perf_counter()
+        max_steps = _bounded_int(arguments.get("max_steps"), default=8, minimum=1, maximum=40)
+        max_retries = _bounded_int(arguments.get("max_retries"), default=2, minimum=0, maximum=5)
+        task = runtime.consume_computer_transient(str(arguments["task"]))
+        stop_when = runtime.consume_computer_transient(str(arguments.get("stop_when") or ""))
+        if not task.strip():
+            raise ValueError("computer_run_task task must not be empty")
+        if len(task) > 20_000:
+            raise ValueError("computer_run_task task exceeds 20,000 characters")
+        if len(stop_when) > 4_000:
+            raise ValueError("computer_run_task stop_when exceeds 4,000 characters")
+
+        _trace(
+            runtime,
+            context,
+            "task.started",
+            operation_id=operation_id,
+            tool_name="computer_run_task",
+            started=started,
+            status="started",
+            max_steps=max_steps,
+            max_retries=max_retries,
+            arguments=_safe_arguments(runtime, {"task": task, "stop_when": stop_when, "max_steps": max_steps}),
+        )
+
+        steps: list[dict[str, object]] = []
+        previous: dict[str, object] | None = None
+        previous_error = ""
+        retry_count = 0
+        status = "max_steps_reached"
+        final_content = "Computer task runner reached the step budget and returned control to the outer agent."
+
+        for index in range(1, max_steps + 1):
+            context.raise_if_cancelled()
+            instruction = _task_instruction(
+                task=task,
+                stop_when=stop_when,
+                step_index=index,
+                max_steps=max_steps,
+                previous=previous,
+                previous_error=previous_error,
+            )
+            inner_call_id = f"computer-run-task:{operation_id}:{index}"
+            safe_instruction_args = _safe_arguments(runtime, {"instruction": instruction})
+            _trace(
+                runtime,
+                context,
+                "task.step_started",
+                operation_id=operation_id,
+                tool_name="computer_run_task",
+                status="started",
+                task_step_index=index,
+                nested_tool="computer_step",
+                arguments=safe_instruction_args,
+            )
+            _emit_inner_tool_event(
+                context,
+                AgentEventKind.TOOL_STARTED,
+                call_id=inner_call_id,
+                tool_name="computer_step",
+                step_index=index,
+                arguments=safe_instruction_args,
+            )
+
+            try:
+                outcome = _store(runtime).step(context.session_id, instruction)
+            except Exception as exc:
+                previous_error = f"{type(exc).__name__}: {exc}"
+                retry_count += 1
+                _trace(
+                    runtime,
+                    context,
+                    "task.step_failed",
+                    operation_id=operation_id,
+                    tool_name="computer_run_task",
+                    started=started,
+                    status="failed",
+                    task_step_index=index,
+                    nested_tool="computer_step",
+                    error_type=type(exc).__name__,
+                    error=str(exc),
+                    retry_count=retry_count,
+                )
+                _emit_inner_tool_event(
+                    context,
+                    AgentEventKind.TOOL_FAILED,
+                    call_id=inner_call_id,
+                    tool_name="computer_step",
+                    step_index=index,
+                    content=previous_error,
+                )
+                if retry_count <= max_retries:
+                    continue
+                status = "needs_outer_replan"
+                final_content = "Computer task runner stopped after repeated visual policy errors and returned control for re-planning."
+                break
+
+            retry_count = 0
+            previous_error = ""
+            summary = _task_step_summary(index, outcome)
+            steps.append(summary)
+            previous = summary
+            data = _enrich_outcome_payload(runtime, context, outcome)
+            result = ToolResult(
+                ok=bool(outcome.execution is None or outcome.execution.ok),
+                content=_task_step_content(outcome),
+                data=data,
+            )
+            _trace(
+                runtime,
+                context,
+                "task.step_completed",
+                operation_id=operation_id,
+                tool_name="computer_run_task",
+                started=started,
+                status="completed" if result.ok else "execution_failed",
+                task_step_index=index,
+                nested_tool="computer_step",
+                outcome=summary,
+            )
+            _emit_inner_tool_event(
+                context,
+                AgentEventKind.TOOL_COMPLETED if result.ok else AgentEventKind.TOOL_FAILED,
+                call_id=inner_call_id,
+                tool_name="computer_step",
+                step_index=index,
+                result=result,
+            )
+
+            if outcome.prediction.action.type is ComputerActionType.FINISH:
+                status = "completed"
+                final_content = "Computer task runner completed the visible GUI task."
+                break
+            if outcome.prediction.action.type is ComputerActionType.CALL_USER:
+                status = "needs_user"
+                final_content = "Computer task runner needs user help before continuing."
+                break
+            if bool(outcome.verification.get("stuck_detected")) and sum(
+                1 for item in steps[-3:] if isinstance(item.get("verification"), dict) and item["verification"].get("stuck_detected")
+            ) >= 2:
+                status = "needs_outer_replan"
+                final_content = "Computer task runner stopped after repeated unchanged actions and returned control for re-planning."
+                break
+
+        trace_meta = _trace_meta(runtime, context)
+        payload: dict[str, object] = {
+            "status": status,
+            "step_count": len(steps),
+            "max_steps": max_steps,
+            "steps": steps[-12:],
+            "truncated_steps": max(0, len(steps) - 12),
+            "trace": trace_meta,
+        }
+        _trace(
+            runtime,
+            context,
+            "task.completed",
+            operation_id=operation_id,
+            tool_name="computer_run_task",
+            started=started,
+            status=status,
+            step_count=len(steps),
+            max_steps=max_steps,
+            trace=trace_meta,
+        )
+        return ToolResult(ok=True, content=final_content, data=payload)
+
     sensitive = ToolEffect.SENSITIVE
     tools.extend(
         [
@@ -490,22 +774,45 @@ def computer_tools(runtime: "ComputerUseRuntime") -> tuple[AgentTool, ...]:
         ]
     )
     if runtime.computer_sessions.grounder is not None:
-        tools.append(
-            AgentTool(
-                name="computer_step",
-                description=(
-                    "Perform one screenshot-driven GUI policy step: capture screenshot + UIA context, ask the configured "
-                    "visual grounding backend for one next action, normalize provider-specific tool-call variants, execute "
-                    "at most one OS action, then re-observe and return verification signals. Loom remains the outer agent "
-                    "loop; repeated unchanged actions request re-planning instead of failing the whole turn."
+        tools.extend(
+            [
+                AgentTool(
+                    name="computer_run_task",
+                    description=(
+                        "Run a continuous screenshot-driven desktop automation task inside Loom. Prefer this for user-level "
+                        "GUI tasks such as operating WeChat, Edge, apps, settings, or multi-step desktop workflows. The tool "
+                        "internally loops observe -> visual grounding -> normalize action -> execute -> verify, keeps the HUD "
+                        "and trace continuous, and returns control only when the task is complete, needs the user, hits the step "
+                        "budget, or needs outer re-planning. This avoids brittle one-tool-call-per-click orchestration."
+                    ),
+                    input_schema=_schema(
+                        {
+                            "task": {"type": "string", "minLength": 1, "maxLength": 20000},
+                            "stop_when": {"type": "string", "maxLength": 4000},
+                            "max_steps": {"type": "integer", "minimum": 1, "maximum": 40},
+                            "max_retries": {"type": "integer", "minimum": 0, "maximum": 5},
+                        },
+                        ("task",),
+                    ),
+                    handler=run_task,
+                    effect=sensitive,
                 ),
-                input_schema=_schema(
-                    {"instruction": {"type": "string", "minLength": 1, "maxLength": 20000}},
-                    ("instruction",),
+                AgentTool(
+                    name="computer_step",
+                    description=(
+                        "Perform one low-level screenshot-driven GUI policy step: capture screenshot + UIA context, ask the "
+                        "configured visual grounding backend for one next action, normalize provider-specific tool-call variants, "
+                        "execute at most one OS action, then re-observe and return verification signals. Prefer computer_run_task "
+                        "for normal multi-step GUI work; use this only for surgical debugging or a single controlled action."
+                    ),
+                    input_schema=_schema(
+                        {"instruction": {"type": "string", "minLength": 1, "maxLength": 20000}},
+                        ("instruction",),
+                    ),
+                    handler=step,
+                    effect=sensitive,
                 ),
-                handler=step,
-                effect=sensitive,
-            )
+            ]
         )
     return tuple(tools)
 
