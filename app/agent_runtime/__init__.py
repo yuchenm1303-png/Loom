@@ -139,7 +139,10 @@ from .streaming_runtime import (
     AgentStreamListener,
     StreamingAgentRuntime,
 )
-from .sticker_body_runtime import BodyFirstStickerStreamingAgentRuntime
+from .sticker_body_runtime import (
+    BalancedStickerStreamingAgentRuntime,
+    BodyFirstStickerStreamingAgentRuntime,
+)
 from .tool_search_runtime import ToolSearchRuntime
 from .tools import (
     AgentTool,
@@ -167,13 +170,13 @@ from .web_search_runtime import WebSearchRuntime
 from .web_search_tools import web_search_tools
 
 # Runtime v2 default stack:
-# Core -> Durable -> Sandbox -> Context -> Multi-Agent -> Memory -> Web Search -> Browser -> MCP -> Tool Search -> Skills -> Code Mode -> Streaming -> Body-first sticker guard.
-# Streaming is a transient observer layer over the same canonical drive loop; the
-# final MODEL_RESPONSE remains the durable message boundary. The production
-# wrapper guarantees that eligible stickers land in the visible answer instead
-# of being consumed only by hidden reasoning.
+# Core -> Durable -> Sandbox -> Context -> Multi-Agent -> Memory -> Web Search -> Browser -> MCP -> Tool Search -> Skills -> Code Mode -> Streaming -> balanced sticker coverage.
+# Streaming remains the transient observer layer; the final MODEL_RESPONSE is the
+# durable boundary. Sticker quantity stays dynamic, while the production wrapper
+# spreads eligible stickers across the rendered Thought process and final answer
+# instead of treating either surface as forbidden.
 # Lower layers remain exported for embedders that intentionally need them.
-AgentRuntime = BodyFirstStickerStreamingAgentRuntime
+AgentRuntime = BalancedStickerStreamingAgentRuntime
 
 __all__ = [
     "AgentControl",
@@ -196,6 +199,7 @@ __all__ = [
     "AgentTool",
     "ApplyPatchRuntime",
     "ApprovalPolicy",
+    "BalancedStickerStreamingAgentRuntime",
     "BodyFirstStickerStreamingAgentRuntime",
     "BraveWebSearchProvider",
     "BrowserBackend",
