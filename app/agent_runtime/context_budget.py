@@ -9,6 +9,7 @@ from app.ai import AIMessage, ChatRequest, MessageRole, ModelResponse, ModelUsag
 from app.ai.errors import AIResponseError, AITransportError
 from app.ai.execution_control import ModelCancelled
 from .history import repair_tool_history
+from .response_language import communication_language_message
 
 
 _COMPACTION_RETRY_LIMIT = 3
@@ -175,14 +176,20 @@ def _trim_oldest_compaction_unit(messages):
     return items[index:]
 
 
-def _build_summary_request(archived, *, max_output_tokens: int) -> ChatRequest:
+def _build_summary_request(
+    archived,
+    *,
+    max_output_tokens: int,
+    language_message: AIMessage,
+) -> ChatRequest:
     from .context_runtime import _COMPACTION_SYSTEM_PROMPT
 
-    # Codex appends its synthesized compaction instruction as a user item at the
-    # end of the history being compacted. Keep that shape here instead of adding
-    # another permanent system-level instruction.
+    # Compaction is a separate model task. Carry the user-language anchor into it
+    # explicitly so English-heavy logs/tool output cannot rewrite the conversation
+    # language at the exact point old user messages are being summarized away.
     return ChatRequest(
         messages=(
+            language_message,
             *archived,
             AIMessage(role=MessageRole.USER, content=_COMPACTION_SYSTEM_PROMPT),
         ),
@@ -206,6 +213,7 @@ def prepare_context(rt, session, step, token):
 
     repair = repair_tool_history(session.messages, max_tool_result_chars=rt.limits.max_tool_result_chars)
     history = tuple(repair.messages)
+    language_message = communication_language_message(history)
     max_summary_output = max(1, rt.limits.output_reserve_tokens)
     archived, retained = _select_partition(
         rt,
@@ -246,6 +254,7 @@ def prepare_context(rt, session, step, token):
         summary_request = _build_summary_request(
             compaction_input,
             max_output_tokens=max_summary_output,
+            language_message=language_message,
         )
 
         # Mirror Codex's ContextWindowExceeded handling: remove oldest cloned
@@ -257,6 +266,7 @@ def prepare_context(rt, session, step, token):
             summary_request = _build_summary_request(
                 compaction_input,
                 max_output_tokens=max_summary_output,
+                language_message=language_message,
             )
 
         if estimate_tokens(summary_request.messages) > budget:
