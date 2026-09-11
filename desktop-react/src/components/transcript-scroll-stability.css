@@ -1,0 +1,14 @@
+/* Transcript viewport stability ---------------------------------------------
+   Auto-follow is coordinated in TranscriptScrollController. Native smooth
+   scrolling made rapid streaming deltas queue animations and visibly chase the
+   bottom, so the scroller itself stays immediate and deterministic. */
+
+.conversation-stage > .transcript-scroll {
+  scroll-behavior: auto !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .conversation-stage > .transcript-scroll {
+    scroll-behavior: auto !important;
+  }
+}
