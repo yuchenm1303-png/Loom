@@ -1,20 +1,48 @@
-/* Stable four-column layout for the Runtime inspector tabs.
-   Keep icon, label, and count inside each tab cell so narrow inspector widths
-   cannot spill into neighboring tabs. */
+/* Roomier Runtime inspector tabs.
+   The inspector is narrow, so inactive counts collapse into subtle dots while
+   the active tab keeps the full badge. This keeps the four tabs readable
+   without changing the React structure. */
 
 .runtime-tabs {
   grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  padding: 6px 8px;
+}
+
+.runtime-tab-glider {
+  display: none !important;
 }
 
 .runtime-tab {
   min-width: 0;
+  height: 36px;
   overflow: hidden;
   display: grid;
   grid-template-columns: 14px minmax(0, 1fr) auto;
   align-items: center;
   justify-content: stretch;
-  column-gap: 5px;
-  padding-inline: 7px;
+  column-gap: 7px;
+  padding-inline: 9px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 560;
+  line-height: 1;
+}
+
+.runtime-tab:hover {
+  background: rgba(255, 255, 255, .028);
+  border-color: rgba(255, 255, 255, .035);
+}
+
+.runtime-tab.active {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, .042), rgba(255, 255, 255, .014)),
+    rgba(21, 23, 31, .92);
+  border-color: rgba(255, 255, 255, .065);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .032),
+    0 6px 16px rgba(0, 0, 0, .12);
 }
 
 .runtime-tab > svg {
@@ -33,26 +61,74 @@
 }
 
 .runtime-tab-count {
-  min-width: 15px;
-  height: 15px;
-  margin: 0;
-  padding-inline: 4px;
-  line-height: 1;
   justify-self: end;
   flex: none;
+  min-width: 18px;
+  height: 18px;
+  margin: 0;
+  padding: 0 5px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 999px;
+  line-height: 1;
+  font-size: 8.5px;
+  font-weight: 680;
+  font-variant-numeric: tabular-nums;
+}
+
+.runtime-tab:not(.active) .runtime-tab-count {
+  min-width: 6px;
+  width: 6px;
+  height: 6px;
+  padding: 0;
+  color: transparent;
+  font-size: 0;
+  overflow: hidden;
+  background: rgba(139, 124, 246, .62);
+  border: 0;
+  box-shadow: 0 0 0 3px rgba(139, 124, 246, .07);
 }
 
 @media (max-width: 1180px) {
+  .runtime-tabs {
+    gap: 5px;
+    padding-inline: 7px;
+  }
+
   .runtime-tab {
-    column-gap: 4px;
-    padding-inline: 5px;
-    font-size: 8.5px;
+    height: 35px;
+    column-gap: 6px;
+    padding-inline: 8px;
+    font-size: 9.5px;
   }
 
   .runtime-tab-count {
-    min-width: 14px;
-    height: 14px;
-    padding-inline: 3px;
-    font-size: 7.5px;
+    min-width: 17px;
+    height: 17px;
+    padding-inline: 4px;
+    font-size: 8px;
+  }
+
+  .runtime-tab:not(.active) .runtime-tab-count {
+    min-width: 5.5px;
+    width: 5.5px;
+    height: 5.5px;
+    padding: 0;
+    font-size: 0;
+  }
+}
+
+@media (max-width: 900px) {
+  .runtime-tab {
+    grid-template-columns: 13px minmax(0, 1fr) auto;
+    column-gap: 5px;
+    padding-inline: 7px;
+    font-size: 9px;
+  }
+
+  .runtime-tab > svg {
+    width: 13px;
+    height: 13px;
+    min-width: 13px;
   }
 }
