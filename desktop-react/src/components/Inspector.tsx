@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { TranscriptItem } from "../types/loom";
+import { ReviewWorkspace } from "./ReviewWorkspace";
 import "./Inspector.css";
 import "./InspectorMark.css";
 import "./ComputerLogExport.css";
@@ -264,6 +265,7 @@ function sectionTitle(tab: Tab): string {
 export function Inspector({ items, onClose }: InspectorProps) {
   const [tab, setTab] = useState<Tab>("activity");
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [reviewOpen, setReviewOpen] = useState(false);
   const [exportingLogs, setExportingLogs] = useState(false);
   const [exportResult, setExportResult] = useState<Window["loom"] extends { exportComputerLogs(): Promise<infer T> } ? T | null : unknown>(null);
   const [exportError, setExportError] = useState("");
@@ -309,96 +311,105 @@ export function Inspector({ items, onClose }: InspectorProps) {
     : "";
 
   return (
-    <aside className="inspector runtime-inspector">
-      <header className="runtime-header">
-        <div className="runtime-heading">
-          <div className="runtime-title-row">
-            <strong>Runtime</strong>
-            <span className={`runtime-health ${busy ? "live" : failed ? "warning" : "idle"}`}>
-              <span className="runtime-health-dot" />
-              {busy ? "Live" : failed ? "Attention" : "Idle"}
+    <>
+      <aside className="inspector runtime-inspector">
+        <header className="runtime-header">
+          <div className="runtime-heading">
+            <div className="runtime-title-row">
+              <strong>Runtime</strong>
+              <span className={`runtime-health ${busy ? "live" : failed ? "warning" : "idle"}`}>
+                <span className="runtime-health-dot" />
+                {busy ? "Live" : failed ? "Attention" : "Idle"}
+              </span>
+            </div>
+            <span className="runtime-caption">Execution inspector</span>
+          </div>
+          <button className="runtime-close" onClick={onClose} title="Close runtime inspector" aria-label="Close runtime inspector">
+            <PanelRightClose size={16} strokeWidth={1.8} />
+          </button>
+        </header>
+
+        <div className="runtime-tabs" role="tablist" aria-label="Runtime views" style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}>
+          <span
+            className="runtime-tab-glider"
+            style={{
+              width: `calc((100% - 16px) / ${tabs.length})`,
+              transform: `translateX(${tabIndex * 100}%)`,
+            }}
+            aria-hidden="true"
+          />
+          {tabs.map(({ id, label, icon: Icon }) => (
+            <button
+              key={id}
+              role="tab"
+              aria-selected={tab === id}
+              className={`runtime-tab ${tab === id ? "active" : ""}`}
+              onClick={() => {
+                setTab(id);
+                setExpandedId(null);
+              }}
+            >
+              <Icon size={14} strokeWidth={1.75} />
+              <span>{label}</span>
+              {counts[id] > 0 ? <span className="runtime-tab-count">{counts[id]}</span> : null}
+            </button>
+          ))}
+        </div>
+
+        <div className="runtime-body">
+          <div className="runtime-section-bar">
+            <span>{sectionTitle(tab)}</span>
+            <span className="runtime-section-actions">
+              {tab === "computer" ? (
+                <button className="computer-log-export-button" onClick={handleExportComputerLogs} disabled={exportingLogs}>
+                  <Download size={12} strokeWidth={1.8} />
+                  <span>{exportingLogs ? "Exporting" : "Export logs"}</span>
+                </button>
+              ) : null}
+              {tab === "changes" && changes.length ? (
+                <button className="runtime-review-button" type="button" onClick={() => setReviewOpen(true)}>
+                  <FileDiff size={12} strokeWidth={1.8} />
+                  <span>Review</span>
+                </button>
+              ) : null}
+              <span>{visible.length ? `${visible.length} ${visible.length === 1 ? "event" : "events"}` : "Waiting"}</span>
             </span>
           </div>
-          <span className="runtime-caption">Execution inspector</span>
-        </div>
-        <button className="runtime-close" onClick={onClose} title="Close runtime inspector" aria-label="Close runtime inspector">
-          <PanelRightClose size={16} strokeWidth={1.8} />
-        </button>
-      </header>
 
-      <div className="runtime-tabs" role="tablist" aria-label="Runtime views" style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}>
-        <span
-          className="runtime-tab-glider"
-          style={{
-            width: `calc((100% - 16px) / ${tabs.length})`,
-            transform: `translateX(${tabIndex * 100}%)`,
-          }}
-          aria-hidden="true"
-        />
-        {tabs.map(({ id, label, icon: Icon }) => (
-          <button
-            key={id}
-            role="tab"
-            aria-selected={tab === id}
-            className={`runtime-tab ${tab === id ? "active" : ""}`}
-            onClick={() => {
-              setTab(id);
-              setExpandedId(null);
-            }}
-          >
-            <Icon size={14} strokeWidth={1.75} />
-            <span>{label}</span>
-            {counts[id] > 0 ? <span className="runtime-tab-count">{counts[id]}</span> : null}
-          </button>
-        ))}
-      </div>
+          <div className="runtime-scroll">
+            <div className="runtime-pane">
+              {tab === "computer" && (exportArchivePath || exportError) ? (
+                <div className={`computer-log-export-note ${exportError ? "error" : "success"}`}>
+                  <strong>{exportError ? "Export failed" : "Logs exported"}</strong>
+                  <span>
+                    {exportError || `${exportArchivePath}${exportFileCount ? ` · ${exportFileCount} files` : ""}${exportSize ? ` · ${exportSize}` : ""}`}
+                  </span>
+                </div>
+              ) : null}
+              {!visible.length ? (
+                <EmptyState tab={tab} />
+              ) : (
+                <div className="runtime-timeline">
+                  {visible.map((item) => (
+                    <RuntimeEvent
+                      item={item}
+                      key={item.id}
+                      expanded={expandedId === item.id}
+                      onToggle={() => setExpandedId((current) => current === item.id ? null : item.id)}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
 
-      <div className="runtime-body">
-        <div className="runtime-section-bar">
-          <span>{sectionTitle(tab)}</span>
-          <span className="runtime-section-actions">
-            {tab === "computer" ? (
-              <button className="computer-log-export-button" onClick={handleExportComputerLogs} disabled={exportingLogs}>
-                <Download size={12} strokeWidth={1.8} />
-                <span>{exportingLogs ? "Exporting" : "Export logs"}</span>
-              </button>
-            ) : null}
-            <span>{visible.length ? `${visible.length} ${visible.length === 1 ? "event" : "events"}` : "Waiting"}</span>
-          </span>
-        </div>
-
-        <div className="runtime-scroll">
-          <div className="runtime-pane">
-            {tab === "computer" && (exportArchivePath || exportError) ? (
-              <div className={`computer-log-export-note ${exportError ? "error" : "success"}`}>
-                <strong>{exportError ? "Export failed" : "Logs exported"}</strong>
-                <span>
-                  {exportError || `${exportArchivePath}${exportFileCount ? ` · ${exportFileCount} files` : ""}${exportSize ? ` · ${exportSize}` : ""}`}
-                </span>
-              </div>
-            ) : null}
-            {!visible.length ? (
-              <EmptyState tab={tab} />
-            ) : (
-              <div className="runtime-timeline">
-                {visible.map((item) => (
-                  <RuntimeEvent
-                    item={item}
-                    key={item.id}
-                    expanded={expandedId === item.id}
-                    onToggle={() => setExpandedId((current) => current === item.id ? null : item.id)}
-                  />
-                ))}
-              </div>
-            )}
+          <div className="runtime-footer">
+            <span className={`runtime-stream-mark ${busy ? "live" : ""}`} aria-hidden="true"><i /><i /><i /></span>
+            <span>{busy ? "Receiving runtime events" : "Runtime event stream ready"}</span>
           </div>
         </div>
-
-        <div className="runtime-footer">
-          <span className={`runtime-stream-mark ${busy ? "live" : ""}`} aria-hidden="true"><i /><i /><i /></span>
-          <span>{busy ? "Receiving runtime events" : "Runtime event stream ready"}</span>
-        </div>
-      </div>
-    </aside>
+      </aside>
+      <ReviewWorkspace items={changes} open={reviewOpen} onClose={() => setReviewOpen(false)} />
+    </>
   );
 }
