@@ -83,6 +83,10 @@ interface RegistrySnapshot {
   activeModelId: string | null;
 }
 
+interface ModelMetadataSnapshot {
+  profiles: ModelProfile[];
+}
+
 export const PRIMARY_SELECTION = "builtin:minimax";
 
 export class DesktopModelManager {
@@ -105,11 +109,23 @@ export class DesktopModelManager {
   }
 
   registry(): RegistrySnapshot {
-    return this.runBridge<RegistrySnapshot>("list", {});
+    const registry = this.runBridge<RegistrySnapshot>("list", {});
+    const metadata = this.runAdmin<ModelMetadataSnapshot>("metadata", {});
+    const declared = new Map(metadata.profiles.map((profile) => [profile.selection, profile]));
+    const profiles = registry.profiles.map((profile) => {
+      const safe = declared.get(profile.selection);
+      return { ...profile, vision: safe?.vision ?? profile.vision ?? true };
+    });
+    const primary = profiles.find((profile) => profile.selection === registry.primary.selection)
+      ?? { ...registry.primary, vision: registry.primary.vision ?? true };
+    return { ...registry, primary, profiles };
   }
 
   snapshot(): ModelSnapshot {
     const registry = this.registry();
+    const currentProfile = this.currentSpec
+      ? registry.profiles.find((profile) => profile.selection === this.currentSpec?.selection)
+      : undefined;
     const current = this.currentSpec
       ? {
           selection: this.currentSpec.selection,
@@ -120,7 +136,7 @@ export class DesktopModelManager {
           baseUrl: this.currentSpec.baseUrl,
           model: this.currentSpec.model,
           provider: this.currentSpec.provider,
-          vision: this.currentSpec.vision,
+          vision: currentProfile?.vision ?? this.currentSpec.vision ?? true,
           reasoning: this.currentSpec.reasoning ?? null,
         }
       : null;
@@ -132,7 +148,10 @@ export class DesktopModelManager {
   }
 
   resolve(selection: string): ModelLaunchSpec {
-    return this.runBridge<ModelLaunchSpec>("resolve", { selection });
+    const resolved = this.runBridge<ModelLaunchSpec>("resolve", { selection });
+    const metadata = this.runAdmin<ModelMetadataSnapshot>("metadata", {});
+    const safe = metadata.profiles.find((profile) => profile.selection === selection);
+    return { ...resolved, vision: safe?.vision ?? resolved.vision ?? true };
   }
 
   add(input: AddModelInput): ModelProfile {
@@ -222,7 +241,7 @@ export class DesktopModelManager {
     return this.runPythonBridge<T>("loom_model_bridge.py", command, payload);
   }
 
-  private runAdmin<T>(command: "update" | "test", payload: Record<string, unknown>): T {
+  private runAdmin<T>(command: "metadata" | "update" | "test", payload: Record<string, unknown>): T {
     return this.runPythonBridge<T>("loom_model_admin.py", command, payload);
   }
 
