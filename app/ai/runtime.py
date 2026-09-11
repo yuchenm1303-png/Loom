@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
+from .capabilities import ModelCapability
 from .configuration import AIConfiguration
 from .credential_resolver import CredentialResolver
 from .openai_streaming import OpenAIStreamingChatBackend
@@ -27,6 +28,12 @@ def build_ai_platform(
     ``AIConfiguration`` / ``ModelProfile`` snapshots. The returned platform is
     stream-capable but starts with streaming disabled; Loom's top-level Runtime
     enables it so detached callers retain the legacy completion behavior.
+
+    Local in-process drivers sometimes need to reuse the same active model (for
+    example the isolated Windows Computer Driver). A private connection snapshot
+    is therefore attached to the live platform only. It may contain the resolved
+    credential, is never part of configuration/status serialization, and dies with
+    the process.
     """
 
     if not isinstance(configuration, AIConfiguration):
@@ -35,6 +42,7 @@ def build_ai_platform(
         raise TypeError("credential_resolver must be CredentialResolver")
 
     platform = StreamingAIPlatform(prefer_streaming=False)
+    runtime_connections: list[dict[str, Any]] = []
     for profile in configuration.profiles.all():
         connection = configuration.providers.require_executable(profile.provider)
         secret = credential_resolver.resolve(connection.credential_ref)
@@ -59,6 +67,21 @@ def build_ai_platform(
                 f"no runtime backend for provider adapter {connection.adapter.value!r}"
             )
         platform.register(profile, backend)
+        runtime_connections.append(
+            {
+                "profile_id": profile.profile_id,
+                "provider": connection.adapter.value,
+                "base_url": connection.base_url,
+                "model": profile.model,
+                "api_key": secret,
+                "vision": ModelCapability.VISION in profile.capabilities,
+            }
+        )
+
+    # Private RAM-only metadata: never expose this through runtime status/logging.
+    setattr(platform, "_loom_model_connections", tuple(runtime_connections))
+    if len(runtime_connections) == 1:
+        setattr(platform, "_loom_model_connection", dict(runtime_connections[0]))
     return platform
 
 
