@@ -1,0 +1,269 @@
+/* Appearance page ----------------------------------------------------------
+   Appearance preferences intentionally stay presentation-only: they change
+   spacing, widths, typography, and decorative chrome without touching Agent
+   behavior or runtime permissions. */
+
+.appearance-overview-card {
+  min-height: 154px;
+  display: grid;
+  grid-template-columns: minmax(260px, .72fr) minmax(420px, 1.28fr);
+  gap: 22px;
+  align-items: center;
+  padding: 18px;
+  border: 1px solid var(--settings-border, rgba(255,255,255,.075));
+  border-radius: 12px;
+  background: #121419;
+}
+
+.appearance-overview-copy {
+  min-width: 0;
+  display: grid;
+  gap: 7px;
+}
+
+.appearance-overview-copy strong {
+  color: #f1f2f5;
+  font-size: 16px;
+  font-weight: 680;
+  letter-spacing: -.015em;
+}
+
+.appearance-overview-copy p {
+  margin: 0;
+  color: #858c98;
+  font-size: 12.5px;
+  line-height: 1.52;
+}
+
+.appearance-overview-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 3px;
+}
+
+.appearance-overview-meta span {
+  min-height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--settings-divider, rgba(255,255,255,.055));
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  color: #a7adb8;
+  background: #0f1115;
+  font-size: 10.5px;
+  font-weight: 560;
+}
+
+.appearance-workspace-preview {
+  height: 116px;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 22% minmax(0,1fr) 18%;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,.075);
+  border-radius: 10px;
+  background: #0d0f13;
+}
+
+.appearance-preview-sidebar,
+.appearance-preview-inspector {
+  position: relative;
+  background: #101217;
+}
+
+.appearance-preview-sidebar {
+  border-right: 1px solid rgba(255,255,255,.06);
+}
+
+.appearance-preview-inspector {
+  border-left: 1px solid rgba(255,255,255,.06);
+}
+
+.appearance-preview-sidebar::before,
+.appearance-preview-sidebar::after,
+.appearance-preview-inspector::before,
+.appearance-preview-inspector::after {
+  content: "";
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.08);
+}
+
+.appearance-preview-sidebar::before,
+.appearance-preview-inspector::before { top: 17px; }
+.appearance-preview-sidebar::after,
+.appearance-preview-inspector::after { top: 33px; opacity: .62; }
+
+.appearance-preview-main {
+  min-width: 0;
+  padding: 18px 16px;
+  display: grid;
+  align-content: center;
+  gap: 8px;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(139,124,246,.055), transparent 60%),
+    #0b0d11;
+}
+
+.appearance-preview-main span {
+  display: block;
+  height: 7px;
+  border-radius: 999px;
+  background: rgba(225,227,234,.13);
+}
+
+.appearance-preview-main span:nth-child(1) { width: 72%; }
+.appearance-preview-main span:nth-child(2) { width: 92%; }
+.appearance-preview-main span:nth-child(3) { width: 58%; background: rgba(154,140,255,.20); }
+
+.appearance-segmented {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--settings-border, rgba(255,255,255,.075));
+  border-radius: 9px;
+  background: #0f1115;
+}
+
+.appearance-segmented button {
+  min-width: 46px;
+  height: 28px;
+  border: 0;
+  border-radius: 6px;
+  padding: 0 9px;
+  background: transparent;
+  color: #858c98;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 590;
+  cursor: pointer;
+  transition: background 110ms ease, color 110ms ease;
+}
+
+.appearance-segmented button:hover {
+  color: #d8dbe2;
+  background: rgba(255,255,255,.035);
+}
+
+.appearance-segmented button.active {
+  color: #e8e5ff;
+  background: rgba(154,140,255,.12);
+}
+
+.appearance-reading-preview {
+  padding: 16px 18px;
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--settings-border, rgba(255,255,255,.075));
+  border-radius: 10px;
+  background: #0e1014;
+}
+
+.appearance-reading-preview-label {
+  color: #777f8b;
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.appearance-reading-preview-message {
+  max-width: 760px;
+  color: #d9dde5;
+  font-size: var(--loom-chat-font-size, 13px);
+  line-height: var(--loom-message-line-height, 1.72);
+}
+
+.appearance-reading-preview-message strong {
+  color: #f0f1f4;
+}
+
+.appearance-code-preview-head {
+  margin-top: 10px;
+  padding: 0 2px 7px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: #737b87;
+  font-size: 10.5px;
+}
+
+/* Runtime-facing appearance variables ----------------------------------- */
+.user-message,
+.assistant-message {
+  font-size: var(--loom-chat-font-size, 13px);
+  line-height: var(--loom-message-line-height, 1.72);
+}
+
+.markdown-body :not(pre) > code,
+.markdown-code-block pre,
+.command-preview,
+.tool-detail pre,
+.activity-row code,
+.activity-detail code {
+  font-family: var(--loom-code-font, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
+}
+
+.markdown-code-block pre,
+.mature-code-preview,
+.mature-diagnostics-preview {
+  font-size: var(--loom-code-font-size, 12px);
+  line-height: var(--loom-code-line-height, 1.62);
+}
+
+html[data-loom-code-wrap="true"] .markdown-code-block pre code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+html[data-loom-ambient-effects="false"] .chat-ambient {
+  display: none;
+}
+
+html[data-loom-density="compact"] .transcript {
+  gap: 16px;
+  padding-top: 28px;
+  padding-bottom: 44px;
+}
+
+html[data-loom-density="spacious"] .transcript {
+  gap: 28px;
+  padding-top: 42px;
+  padding-bottom: 62px;
+}
+
+html[data-loom-density="compact"] .mature-preference-row,
+html[data-loom-density="compact"] .settings-detail-row {
+  min-height: 58px;
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+html[data-loom-density="spacious"] .mature-preference-row,
+html[data-loom-density="spacious"] .settings-detail-row {
+  min-height: 82px;
+  padding-top: 16px;
+  padding-bottom: 16px;
+}
+
+html[data-loom-density="spacious"] .activity-row,
+html[data-loom-density="spacious"] .tool-row,
+html[data-loom-density="spacious"] .thread-row {
+  min-height: 54px;
+}
+
+@media (max-width: 980px) {
+  .appearance-overview-card {
+    grid-template-columns: 1fr;
+  }
+
+  .appearance-workspace-preview {
+    min-height: 110px;
+  }
+}
