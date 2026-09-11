@@ -90,6 +90,14 @@ When this mode is active, `browser_status` should report:
 
 The bridge runs only on loopback. The shared token is not exposed to model-visible status or tool descriptions.
 
+## Page-local browser HUD
+
+The extension renders browser automation feedback inside the web page itself instead of using the desktop full-screen Computer Use overlay.
+
+For read-only state collection, the page shows a compact top-right pill such as "Reading current tab". For element actions, the page draws a small target frame directly around the DOM element that Loom is about to hover, click, type into, select, or drag from. The HUD uses `pointer-events: none`, does not dim the whole page, and automatically disappears after the action.
+
+The HUD is best-effort and only appears on injectable `http` and `https` pages. It is skipped for privileged browser surfaces such as `chrome://`, `edge://`, extension pages, and file picker/native OS dialogs.
+
 ## Supported MVP actions
 
 The current extension backend supports:
