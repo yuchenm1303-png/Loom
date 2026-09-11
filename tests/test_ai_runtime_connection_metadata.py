@@ -47,7 +47,7 @@ def test_single_runtime_binding_exposes_ram_only_connection_for_local_drivers():
     metadata = getattr(platform, "_loom_model_connection")
     assert metadata == {
         "profile_id": "agent.fast",
-        "provider": "openai_compatible",
+        "provider": "openai-compatible",
         "base_url": "https://example.test/v1",
         "model": "vision-model",
         "api_key": "runtime-secret",
