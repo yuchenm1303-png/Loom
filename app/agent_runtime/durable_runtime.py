@@ -280,6 +280,10 @@ class DurableAgentRuntime(CoreAgentRuntime):
             if session.status is AgentStatus.RUNNING:
                 raise RuntimeError("agent session already has an active turn")
 
+            retrying_failed_input = (
+                source == "user" and self._is_failed_user_input_retry(session, content)
+            )
+
             resolved_turn_id = str(turn_id or uuid.uuid4()).strip()
             if not resolved_turn_id:
                 raise ValueError("turn_id must not be empty")
@@ -293,20 +297,23 @@ class DurableAgentRuntime(CoreAgentRuntime):
             session.final_text = ""
             session.error = ""
             self.diff_trackers.for_turn(session.session_id, resolved_turn_id)
-            session.messages.append(AIMessage(role=MessageRole.USER, content=content))
+            if not retrying_failed_input:
+                session.messages.append(AIMessage(role=MessageRole.USER, content=content))
             start_data: dict[str, object] = {
                 "permission_mode": session.permission_mode.value,
                 "source": source,
                 "usage_start": session.usage.total_tokens,
+                "retrying_failed_input": retrying_failed_input,
             }
             if queue_item is not None:
                 start_data["queue_id"] = queue_item.queue_id
             self._record(session, AgentEventKind.TURN_STARTED, data=start_data)
-            self._record(
-                session,
-                AgentEventKind.USER_MESSAGE,
-                data={"text": text, "source": source},
-            )
+            if not retrying_failed_input:
+                self._record(
+                    session,
+                    AgentEventKind.USER_MESSAGE,
+                    data={"text": text, "source": source},
+                )
             if queue_item is not None:
                 self._record(
                     session,

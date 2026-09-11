@@ -12,7 +12,7 @@ from app.agent_runtime import (
     FileAgentSessionStore, SandboxManager, SandboxPolicy, ToolRegistry, ToolResult,
     ToolEffect,
 )
-from app.ai import AIMessage, ModelResponse, ToolCall, MessageRole
+from app.ai import AIMessage, ImagePart, ModelResponse, ToolCall, MessageRole, TextPart
 from app.agent_runtime.instructions import InstructionLoader
 from app.agent_runtime.context_budget import safe_split
 from app.agent_runtime.tools import validate_tool_arguments
@@ -31,6 +31,45 @@ class Scripted:
 def make_runtime(path, platform, tools=(), **kwargs):
     return AgentRuntime(platform=platform, store=FileAgentSessionStore(path),
         tools=ToolRegistry(tuple(tools)), sandbox_manager=SandboxManager(policy=SandboxPolicy.OFF), **kwargs)
+
+
+@pytest.mark.parametrize("kind", [AgentRuntime, CoreAgentRuntime])
+def test_resubmitting_identical_failed_input_reuses_canonical_user_message(tmp_path, kind):
+    class FailThenSucceed:
+        def __init__(self):
+            self.calls = 0
+
+        def execute_chat(self, profile, request):
+            self.calls += 1
+            if self.calls == 1:
+                raise RuntimeError("provider rejected request")
+            return ModelResponse(text="recovered")
+
+    platform = FailThenSucceed()
+    kwargs = {
+        "platform": platform,
+        "store": FileAgentSessionStore(tmp_path),
+        "tools": ToolRegistry(),
+    }
+    runtime = kind(**kwargs)
+    session = runtime.create_session("agent.fast")
+    content = (
+        TextPart("same request"),
+        ImagePart("data:image/png;base64,AA"),
+    )
+
+    assert runtime.start_turn(session.session_id, content).status is AgentStatus.FAILED
+    assert runtime.start_turn(session.session_id, content).status is AgentStatus.COMPLETED
+
+    stored = runtime.store.load(session.session_id)
+    assert sum(message.role is MessageRole.USER for message in stored.messages) == 1
+    user_events = [event for event in runtime.store.events(session.session_id)
+                   if event.kind.value == "user_message"]
+    assert len(user_events) == 1
+    starts = [event for event in runtime.store.events(session.session_id)
+              if event.kind.value == "turn_started"]
+    assert starts[-1].data["retrying_failed_input"] is True
+    runtime.close()
 
 
 @pytest.mark.parametrize("kind", [AgentRuntime, CoreAgentRuntime])

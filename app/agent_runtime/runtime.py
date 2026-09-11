@@ -208,6 +208,16 @@ class AgentRuntime:
             )
             return session
 
+    @staticmethod
+    def _is_failed_user_input_retry(session: AgentSession, content) -> bool:
+        """Return whether a submission reuses the unprocessed tail of a failed turn."""
+        return bool(
+            session.status is AgentStatus.FAILED
+            and session.messages
+            and session.messages[-1].role is MessageRole.USER
+            and session.messages[-1].content == content
+        )
+
     def start_turn(self, session_id: str, user_text: TurnInput) -> AgentRunResult:
         content, text = normalize_turn_input(user_text)
         lock = self._session_lock(session_id)
@@ -215,6 +225,7 @@ class AgentRuntime:
             session = self.store.load(session_id)
             if session.status is AgentStatus.WAITING_APPROVAL:
                 raise RuntimeError("agent session is waiting for tool approval")
+            retrying_failed_input = self._is_failed_user_input_retry(session, content)
             turn_id = str(uuid.uuid4())
             session.current_turn_id = turn_id
             session.status = AgentStatus.RUNNING
@@ -226,13 +237,18 @@ class AgentRuntime:
             session.final_text = ""
             session.error = ""
             self.diff_trackers.for_turn(session.session_id, turn_id)
-            session.messages.append(AIMessage(role=MessageRole.USER, content=content))
+            if not retrying_failed_input:
+                session.messages.append(AIMessage(role=MessageRole.USER, content=content))
             self._record(
                 session,
                 AgentEventKind.TURN_STARTED,
-                data={"permission_mode": session.permission_mode.value},
+                data={
+                    "permission_mode": session.permission_mode.value,
+                    "retrying_failed_input": retrying_failed_input,
+                },
             )
-            self._record(session, AgentEventKind.USER_MESSAGE, data={"text": text})
+            if not retrying_failed_input:
+                self._record(session, AgentEventKind.USER_MESSAGE, data={"text": text})
             token = self._activate(session.session_id)
             try:
                 return self._drive(session, token)

@@ -6,6 +6,7 @@ import pytest
 
 from app.ai import (
     AIMessage,
+    ImagePart,
     MessageRole,
     ModelContextLimits,
     ModelResponse,
@@ -13,7 +14,7 @@ from app.ai import (
     ToolCall,
     ToolDefinition,
 )
-from app.agent_runtime.context_budget import ContextBudgetExceeded, prepare_context
+from app.agent_runtime.context_budget import ContextBudgetExceeded, estimate_tokens, prepare_context
 from app.agent_runtime.context_limits import resolve_context_limits
 
 
@@ -130,6 +131,25 @@ class FakeRuntime:
             AIMessage(role=MessageRole.SYSTEM, name="loom_compaction", content=summary),
             *retained,
         ]
+
+
+def test_inline_image_base64_is_replaced_by_visual_token_cost():
+    prefix = "data:image/png;base64,"
+    short = AIMessage(role=MessageRole.USER, content=(ImagePart(prefix + "AA"),))
+    huge = AIMessage(role=MessageRole.USER, content=(ImagePart(prefix + ("A" * 200_000)),))
+
+    assert estimate_tokens((short,)) == estimate_tokens((huge,))
+    assert estimate_tokens((huge,)) < 3000
+
+
+def test_each_image_is_charged_once_instead_of_each_message_once():
+    image = ImagePart("data:image/png;base64," + ("A" * 100_000))
+    one = AIMessage(role=MessageRole.USER, content=(image,))
+    two = AIMessage(role=MessageRole.USER, content=(image, image))
+
+    delta = estimate_tokens((two,)) - estimate_tokens((one,))
+
+    assert 2000 <= delta <= 2200
 
 
 def test_model_profile_context_window_beats_conservative_runtime_fallback(monkeypatch):

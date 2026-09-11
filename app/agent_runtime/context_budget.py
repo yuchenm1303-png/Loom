@@ -7,7 +7,7 @@ import time
 from dataclasses import dataclass
 from typing import Sequence
 
-from app.ai import AIMessage, ChatRequest, MessageRole, ModelResponse, ModelUsage, ToolChoice
+from app.ai import AIMessage, ChatRequest, ImagePart, MessageRole, ModelResponse, ModelUsage, ToolChoice
 from app.ai.errors import AIResponseError, AITransportError
 from app.ai.execution_control import ModelCancelled
 
@@ -46,6 +46,12 @@ _CONTEXT_WINDOW_ERROR_MARKERS = (
     "token limit",
 )
 
+# Codex-style replacement cost for non-text image content. Inline base64 is a
+# transport encoding, not text seen by the model tokenizer. Keep a small
+# provider-neutral safety margin over Codex's current ~1,844-token resized-image
+# estimate because Loom also targets third-party OpenAI-compatible providers.
+_IMAGE_TOKEN_ESTIMATE = 2048
+
 
 @dataclass(frozen=True, slots=True)
 class ContextBudgetExceeded(RuntimeError):
@@ -72,7 +78,27 @@ def estimate_tokens(messages, tools=()) -> int:
     """
     from .storage import _message_to_dict
 
-    data = [_message_to_dict(message) for message in messages]
+    data = []
+    image_count = 0
+    for message in messages:
+        payload = _message_to_dict(message)
+        content = payload.get("content")
+        if isinstance(content, list):
+            for item in content:
+                if not isinstance(item, dict) or item.get("type") != "image":
+                    continue
+                image_count += 1
+                image_url = str(item.get("image_url") or "")
+                metadata, separator, _encoded = image_url.partition(",")
+                if (
+                    separator
+                    and metadata.casefold().startswith("data:image/")
+                    and ";base64" in metadata.casefold()
+                ):
+                    # Retain MIME/framing bytes but never charge the base64 body
+                    # as ordinary prompt text.
+                    item["image_url"] = metadata + separator
+        data.append(payload)
     schemas = [
         {"name": tool.name, "description": tool.description, "parameters": tool.input_schema}
         for tool in tools
@@ -81,7 +107,7 @@ def estimate_tokens(messages, tools=()) -> int:
     return (
         math.ceil(len(text.encode("utf-8")) / 3)
         + 8 * len(messages)
-        + sum(4096 for message in messages if message.uses_vision)
+        + image_count * _IMAGE_TOKEN_ESTIMATE
     )
 
 
