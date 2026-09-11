@@ -139,40 +139,40 @@ function useSmoothedMarkdownContent(content: string): string {
   const targetRef = useRef(content);
   const timerRef = useRef<number | null>(null);
 
-  const cancelTimer = () => {
-    if (timerRef.current !== null) {
-      window.clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-  };
-
-  const commit = (value: string) => {
-    visibleRef.current = value;
-    setVisible(value);
-  };
-
-  const schedule = () => {
-    if (timerRef.current !== null) return;
-    timerRef.current = window.setTimeout(function tick() {
-      timerRef.current = null;
-      const target = targetRef.current;
-      const current = visibleRef.current;
-      if (current === target) return;
-
-      if (!target.startsWith(current)) {
-        commit(target);
-        return;
-      }
-
-      const backlog = target.length - current.length;
-      const step = Math.min(STREAM_MAX_STEP, streamStep(backlog));
-      commit(target.slice(0, current.length + step));
-      if (visibleRef.current !== targetRef.current) schedule();
-    }, STREAM_FRAME_MS);
-  };
-
   useEffect(() => {
     targetRef.current = content;
+
+    const cancelTimer = () => {
+      if (timerRef.current !== null) {
+        window.clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+
+    const commit = (value: string) => {
+      visibleRef.current = value;
+      setVisible(value);
+    };
+
+    const schedule = () => {
+      if (timerRef.current !== null) return;
+      timerRef.current = window.setTimeout(function tick() {
+        timerRef.current = null;
+        const target = targetRef.current;
+        const current = visibleRef.current;
+        if (current === target) return;
+
+        if (!target.startsWith(current)) {
+          commit(target);
+          return;
+        }
+
+        const backlog = target.length - current.length;
+        const step = Math.min(STREAM_MAX_STEP, streamStep(backlog));
+        commit(target.slice(0, current.length + step));
+        if (visibleRef.current !== targetRef.current) schedule();
+      }, STREAM_FRAME_MS);
+    };
 
     if (prefersReducedMotion()) {
       cancelTimer();
@@ -192,7 +192,12 @@ function useSmoothedMarkdownContent(content: string): string {
     // text instead of repeatedly restarting before it can paint.
   }, [content]);
 
-  useEffect(() => () => cancelTimer(), []);
+  useEffect(() => () => {
+    if (timerRef.current !== null) {
+      window.clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+  }, []);
 
   return visible;
 }
