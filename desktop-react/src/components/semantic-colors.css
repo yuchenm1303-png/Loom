@@ -1,0 +1,121 @@
+/* Unified semantic colors ---------------------------------------------------
+   Keep Loom's purple product accent, but make success/error/info signals
+   clearer against the dark UI. Loaded late so legacy muted values converge on
+   one shared palette without changing component behavior. */
+
+:root {
+  --success: #55d995;
+  --danger: #ff7182;
+  --warning: #f1ba57;
+  --info: #70a9ff;
+
+  --semantic-success: #55d995;
+  --semantic-success-text: #7ee7ad;
+  --semantic-success-soft: rgba(85, 217, 149, 0.12);
+  --semantic-success-border: rgba(85, 217, 149, 0.28);
+
+  --semantic-danger: #ff7182;
+  --semantic-danger-text: #ff92a0;
+  --semantic-danger-soft: rgba(255, 113, 130, 0.11);
+  --semantic-danger-border: rgba(255, 113, 130, 0.27);
+
+  --semantic-info: #70a9ff;
+  --semantic-info-text: #92beff;
+  --semantic-info-soft: rgba(112, 169, 255, 0.11);
+  --semantic-info-border: rgba(112, 169, 255, 0.26);
+}
+
+/* Diff / file-change counters. */
+.turn-artifacts-stats b,
+.task-flow-plus {
+  color: var(--semantic-success);
+}
+
+.turn-artifacts-stats i,
+.task-flow-minus,
+.task-flow-group-failed {
+  color: var(--semantic-danger);
+}
+
+/* Compact activity status dots. */
+.task-flow-status.completed .task-flow-status-dot,
+.task-flow-status.changed .task-flow-status-dot,
+.runtime-status-dot.status-completed,
+.runtime-status-dot.status-success,
+.runtime-status-dot.status-succeeded {
+  background: var(--semantic-success);
+  box-shadow: 0 0 0 3px var(--semantic-success-soft);
+}
+
+.task-flow-status.failed .task-flow-status-dot,
+.task-flow-status.denied .task-flow-status-dot,
+.runtime-status-dot.status-failed,
+.runtime-status-dot.status-error,
+.runtime-status-dot.status-denied {
+  background: var(--semantic-danger);
+  box-shadow: 0 0 0 3px var(--semantic-danger-soft);
+}
+
+/* Runtime inspector failure states. */
+.runtime-health.warning {
+  color: var(--semantic-danger-text);
+  border-color: var(--semantic-danger-border);
+  background: var(--semantic-danger-soft);
+}
+
+.runtime-health.warning .runtime-health-dot {
+  background: var(--semantic-danger);
+  box-shadow: 0 0 0 3px var(--semantic-danger-soft);
+}
+
+.runtime-event.is-failed {
+  background: linear-gradient(90deg, var(--semantic-danger-soft), transparent 72%);
+}
+
+.runtime-event.is-failed .runtime-event-icon {
+  color: var(--semantic-danger-text);
+  border-color: var(--semantic-danger-border);
+  background: var(--semantic-danger-soft);
+}
+
+/* Settings status surfaces use the same success/error language. */
+.settings-status-pill.ready {
+  color: var(--semantic-success-text);
+  border-color: var(--semantic-success-border);
+  background: var(--semantic-success-soft);
+}
+
+.settings-status-pill.ready .settings-status-dot {
+  color: var(--semantic-success);
+}
+
+.settings-toast.success {
+  border-color: var(--semantic-success-border);
+}
+
+.settings-toast.error {
+  border-color: var(--semantic-danger-border);
+  color: var(--semantic-danger-text);
+}
+
+/* Generic semantic utility hooks for current and future components. */
+.status-success,
+.text-success,
+.diff-added,
+.added {
+  color: var(--semantic-success);
+}
+
+.status-danger,
+.status-error,
+.text-danger,
+.text-error,
+.diff-removed,
+.removed {
+  color: var(--semantic-danger);
+}
+
+.status-info,
+.text-info {
+  color: var(--semantic-info);
+}
