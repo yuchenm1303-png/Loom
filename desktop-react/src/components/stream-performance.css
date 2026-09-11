@@ -1,0 +1,19 @@
+/* Long transcripts should not stay fully involved in layout/paint while a live
+   turn is streaming. Chromium can skip off-screen message subtrees and reuse
+   their measured intrinsic height as they move in and out of the viewport. */
+.transcript-entry {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 160px;
+}
+
+/* A live turn already changes the visible message frequently. Avoid spending
+   compositor time on decorative background motion at the same time. */
+.conversation-stage.is-running .ambient-glow {
+  animation-play-state: paused !important;
+}
+
+/* CSS smooth scrolling can keep an old scroll animation alive while new stream
+   frames arrive. Runtime-driven scrolling should settle immediately instead. */
+.conversation-stage.is-running .transcript-scroll {
+  scroll-behavior: auto;
+}
