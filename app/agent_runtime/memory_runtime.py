@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import time
+import uuid
 from dataclasses import dataclass
 from typing import Any
 
@@ -24,6 +25,7 @@ from .memory_store import (
 )
 from .memory_tools import memory_tools
 from .multi_agent_runtime import MultiAgentRuntime
+from .storage import utc_now
 
 
 _MEMORY_EXTRACTION_SYSTEM_PROMPT = (
@@ -53,14 +55,7 @@ class MemoryExtractionResult:
 
 
 class MemoryRuntime(MultiAgentRuntime):
-    """Runtime v2 with durable, progressively-disclosed long-term memory.
-
-    Memory v2-A keeps SQLite as canonical storage and preserves the original
-    candidate/consolidation safety boundary. Completed turns are scheduled for
-    background extraction through a debounce worker, never inside the synchronous
-    TURN_COMPLETED listener. Only a compact summary is injected automatically;
-    deeper history is available through search_memory/read_memory.
-    """
+    """Durable long-term memory with asynchronous incremental extraction."""
 
     def __init__(
         self,
@@ -100,6 +95,7 @@ class MemoryRuntime(MultiAgentRuntime):
             else bool(memory_auto_extract)
         )
         self._memory_pipeline: MemoryPipeline | None = None
+        self._memory_backlog_scheduled = False
 
         for tool in memory_tools(self.memory_store):
             if self.tools.get(tool.name) is None:
@@ -111,7 +107,6 @@ class MemoryRuntime(MultiAgentRuntime):
                 idle_seconds=self.memory_idle_seconds,
             )
             self.subscribe(self._memory_pipeline.on_event)
-            self._schedule_memory_backlog()
 
     def close(self) -> None:
         pipeline = self._memory_pipeline
@@ -127,7 +122,7 @@ class MemoryRuntime(MultiAgentRuntime):
         max_messages: int = 80,
         consolidate: bool = True,
     ) -> MemoryExtractionResult:
-        """Explicit/manual extraction retained for compatibility and diagnostics."""
+        """Explicit/manual extraction retained for compatibility."""
 
         lock = self._session_lock(session_id)
         with lock:
@@ -137,12 +132,27 @@ class MemoryRuntime(MultiAgentRuntime):
             transcript = _memory_transcript(session.messages, max_messages=max_messages)
             if not transcript:
                 raise ValueError("thread has no observable conversation to extract memory from")
-            return self._extract_memory_locked(
-                session,
-                transcript=transcript,
+            result = self._perform_memory_extraction(
+                profile_id=session.profile_id,
+                source_session_id=session.session_id,
                 source_turn_id=session.current_turn_id,
+                workspace=session.workspace_dir,
+                transcript=transcript,
                 consolidate=consolidate,
             )
+            session.usage = _add_usage(session.usage, result.usage)
+            self._record(
+                session,
+                AgentEventKind.MEMORY_EXTRACTED,
+                data=_memory_extracted_event_data(result),
+            )
+            if consolidate:
+                self._record(
+                    session,
+                    AgentEventKind.MEMORY_CONSOLIDATED,
+                    data=_memory_consolidated_event_data(result),
+                )
+            return result
 
     def extract_memory_from_events(
         self,
@@ -150,14 +160,13 @@ class MemoryRuntime(MultiAgentRuntime):
         *,
         consolidate: bool = True,
     ) -> MemoryExtractionResult | None:
-        """Incrementally extract memory from durable events through a completed turn."""
+        """Incrementally extract durable events without holding the foreground turn lock."""
 
         lock = self._session_lock(session_id)
         with lock:
             session = self.store.load(session_id)
             if session.status in {AgentStatus.RUNNING, AgentStatus.WAITING_APPROVAL}:
                 raise RuntimeError("cannot extract long-term memory while a turn is active")
-
             events = self.store.events(session_id)
             if not events:
                 return None
@@ -168,7 +177,6 @@ class MemoryRuntime(MultiAgentRuntime):
                     if event.event_id == state.last_event_id:
                         start_index = index + 1
                         break
-
             pending = events[start_index:]
             completed_indices = [
                 index
@@ -177,49 +185,61 @@ class MemoryRuntime(MultiAgentRuntime):
             ]
             if not completed_indices:
                 return None
-
-            final_index = completed_indices[-1]
-            selected = pending[: final_index + 1]
+            selected = pending[: completed_indices[-1] + 1]
             terminal = selected[-1]
-            if terminal.event_id == state.last_event_id:
-                return None
-
             transcript = _memory_event_transcript(
                 selected,
                 max_chars=self.memory_max_extraction_chars,
             )
-            if not transcript:
-                self.memory_store.mark_thread_success(
-                    session_id,
-                    last_event_id=terminal.event_id,
-                    last_turn_id=terminal.turn_id,
-                )
-                return None
+            profile_id = session.profile_id
+            workspace = session.workspace_dir
+            source_start_event_id = selected[0].event_id
+            source_end_event_id = terminal.event_id
+            source_turn_id = terminal.turn_id
 
-            result = self._extract_memory_locked(
-                session,
-                transcript=transcript,
-                source_turn_id=terminal.turn_id,
-                source_start_event_id=selected[0].event_id,
-                source_end_event_id=terminal.event_id,
-                consolidate=consolidate,
-            )
+        if not transcript:
             self.memory_store.mark_thread_success(
                 session_id,
-                last_event_id=terminal.event_id,
-                last_turn_id=terminal.turn_id,
+                last_event_id=source_end_event_id,
+                last_turn_id=source_turn_id,
             )
-            return result
+            return None
 
-    def _extract_memory_locked(
+        # Model work is outside the session execution lease. A user can begin a
+        # new foreground turn while memory extraction is running.
+        result = self._perform_memory_extraction(
+            profile_id=profile_id,
+            source_session_id=session_id,
+            source_turn_id=source_turn_id,
+            workspace=workspace,
+            transcript=transcript,
+            source_start_event_id=source_start_event_id,
+            source_end_event_id=source_end_event_id,
+            consolidate=consolidate,
+        )
+        self.memory_store.mark_thread_success(
+            session_id,
+            last_event_id=source_end_event_id,
+            last_turn_id=source_turn_id,
+        )
+        self._append_background_memory_audit(
+            session_id=session_id,
+            source_turn_id=source_turn_id,
+            result=result,
+        )
+        return result
+
+    def _perform_memory_extraction(
         self,
-        session: AgentSession,
         *,
-        transcript: str,
+        profile_id: str,
+        source_session_id: str,
         source_turn_id: str,
+        workspace: str,
+        transcript: str,
+        consolidate: bool,
         source_start_event_id: str = "",
         source_end_event_id: str = "",
-        consolidate: bool,
     ) -> MemoryExtractionResult:
         request = ChatRequest(
             messages=(
@@ -237,7 +257,7 @@ class MemoryRuntime(MultiAgentRuntime):
             temperature=0.0,
             max_output_tokens=2400,
         )
-        response = self.platform.execute_chat(session.profile_id, request)
+        response = self.platform.execute_chat(profile_id, request)
         if not isinstance(response, ModelResponse):
             raise TypeError("memory extraction model must return ModelResponse")
         if response.tool_calls:
@@ -245,55 +265,56 @@ class MemoryRuntime(MultiAgentRuntime):
 
         payload = _parse_memory_payload(response.text)
         candidates = _validate_candidates(payload.get("memories"))
-        summary = redact_secrets(str(payload.get("summary") or "").strip())
         extraction = self.memory_store.add_extraction(
-            source_session_id=session.session_id,
+            source_session_id=source_session_id,
             source_turn_id=source_turn_id,
-            workspace=session.workspace_dir,
-            summary=summary,
+            workspace=workspace,
+            summary=redact_secrets(str(payload.get("summary") or "").strip()),
             candidates=candidates,
             usage_total_tokens=response.usage.total_tokens,
             source_start_event_id=source_start_event_id,
             source_end_event_id=source_end_event_id,
         )
-
-        session.usage = _add_usage(session.usage, response.usage)
-        self._record(
-            session,
-            AgentEventKind.MEMORY_EXTRACTED,
-            data={
-                "extraction_id": extraction.extraction_id,
-                "source_turn_id": source_turn_id,
-                "source_start_event_id": source_start_event_id,
-                "source_end_event_id": source_end_event_id,
-                "candidate_count": extraction.candidate_count,
-                "summary": extraction.summary,
-                "usage": {
-                    "input_tokens": response.usage.input_tokens,
-                    "output_tokens": response.usage.output_tokens,
-                    "total_tokens": response.usage.total_tokens,
-                },
-            },
-        )
-
-        consolidated: tuple[MemoryRecord, ...] = ()
-        if consolidate:
-            consolidated = self.memory_store.consolidate_pending()
-            self._record(
-                session,
-                AgentEventKind.MEMORY_CONSOLIDATED,
-                data={
-                    "extraction_id": extraction.extraction_id,
-                    "memory_ids": [record.memory_id for record in consolidated],
-                    "count": len(consolidated),
-                },
-            )
-
+        consolidated = self.memory_store.consolidate_pending() if consolidate else ()
         return MemoryExtractionResult(
             extraction=extraction,
             consolidated=consolidated,
             usage=response.usage,
         )
+
+    def _append_background_memory_audit(
+        self,
+        *,
+        session_id: str,
+        source_turn_id: str,
+        result: MemoryExtractionResult,
+    ) -> None:
+        try:
+            self.store.append_event(
+                AgentEvent(
+                    event_id=str(uuid.uuid4()),
+                    session_id=session_id,
+                    turn_id=source_turn_id,
+                    kind=AgentEventKind.MEMORY_EXTRACTED,
+                    created_at=utc_now(),
+                    data=_memory_extracted_event_data(result),
+                )
+            )
+            if result.consolidated:
+                self.store.append_event(
+                    AgentEvent(
+                        event_id=str(uuid.uuid4()),
+                        session_id=session_id,
+                        turn_id=source_turn_id,
+                        kind=AgentEventKind.MEMORY_CONSOLIDATED,
+                        created_at=utc_now(),
+                        data=_memory_consolidated_event_data(result),
+                    )
+                )
+        except Exception:
+            # Memory state is already committed. Audit failure must not make the
+            # same source turn eligible for extraction again.
+            return
 
     def consolidate_memory(
         self,
@@ -344,12 +365,13 @@ class MemoryRuntime(MultiAgentRuntime):
         return self.memory_store.list_records(workspace=session.workspace_dir, limit=limit)
 
     def memory_status(self, session_id: str) -> dict[str, object]:
+        self._ensure_memory_backlog_scheduled()
         session = self.store.load(session_id)
-        counts: dict[str, object] = dict(
+        data: dict[str, object] = dict(
             self.memory_store.counts(workspace=session.workspace_dir)
         )
-        thread_state = self.memory_store.thread_state(session_id)
-        counts.update(
+        state = self.memory_store.thread_state(session_id)
+        data.update(
             {
                 "auto_extract": self.memory_auto_extract,
                 "pending_jobs": (
@@ -357,19 +379,17 @@ class MemoryRuntime(MultiAgentRuntime):
                     if self._memory_pipeline is not None
                     else 0
                 ),
-                "last_event_id": thread_state.last_event_id,
-                "last_turn_id": thread_state.last_turn_id,
-                "last_success_at": thread_state.last_success_at,
-                "failure_count": thread_state.failure_count,
-                "retry_at": thread_state.retry_at,
-                "last_error": thread_state.last_error,
+                "last_event_id": state.last_event_id,
+                "last_turn_id": state.last_turn_id,
+                "last_success_at": state.last_success_at,
+                "failure_count": state.failure_count,
+                "retry_at": state.retry_at,
+                "last_error": state.last_error,
             }
         )
-        return counts
+        return data
 
     def forget_memory(self, session_id: str, memory_id: str) -> bool:
-        """Forget one memory visible to this session."""
-
         lock = self._session_lock(session_id)
         with lock:
             session = self.store.load(session_id)
@@ -402,6 +422,7 @@ class MemoryRuntime(MultiAgentRuntime):
         step,
         envelope: WorldStateEnvelope,
     ) -> tuple[AIMessage, ...]:
+        self._ensure_memory_backlog_scheduled()
         base = super()._request_context_messages(session, step, envelope)
         records = self.memory_store.summary_records(
             workspace=session.workspace_dir,
@@ -409,13 +430,14 @@ class MemoryRuntime(MultiAgentRuntime):
         )
         if not records:
             return base
-
-        memory_message = AIMessage(
-            role=MessageRole.SYSTEM,
-            name="loom_memory",
-            content=_render_memory_summary(records),
+        return (
+            *base,
+            AIMessage(
+                role=MessageRole.SYSTEM,
+                name="loom_memory",
+                content=_render_memory_summary(records),
+            ),
         )
-        return (*base, memory_message)
 
     def _process_memory_session(self, session_id: str) -> None:
         pipeline = self._memory_pipeline
@@ -433,7 +455,10 @@ class MemoryRuntime(MultiAgentRuntime):
             if pipeline is not None:
                 pipeline.schedule(session_id, delay=delay)
 
-    def _schedule_memory_backlog(self) -> None:
+    def _ensure_memory_backlog_scheduled(self) -> None:
+        if self._memory_backlog_scheduled:
+            return
+        self._memory_backlog_scheduled = True
         pipeline = self._memory_pipeline
         if pipeline is None or not self.store.root.is_dir():
             return
@@ -462,6 +487,31 @@ class MemoryRuntime(MultiAgentRuntime):
                 pipeline.schedule(session_id, delay=delay)
             except Exception:
                 continue
+
+
+def _memory_extracted_event_data(result: MemoryExtractionResult) -> dict[str, object]:
+    extraction = result.extraction
+    return {
+        "extraction_id": extraction.extraction_id,
+        "source_turn_id": extraction.source_turn_id,
+        "source_start_event_id": extraction.source_start_event_id,
+        "source_end_event_id": extraction.source_end_event_id,
+        "candidate_count": extraction.candidate_count,
+        "summary": extraction.summary,
+        "usage": {
+            "input_tokens": result.usage.input_tokens,
+            "output_tokens": result.usage.output_tokens,
+            "total_tokens": result.usage.total_tokens,
+        },
+    }
+
+
+def _memory_consolidated_event_data(result: MemoryExtractionResult) -> dict[str, object]:
+    return {
+        "extraction_id": result.extraction.extraction_id,
+        "memory_ids": [record.memory_id for record in result.consolidated],
+        "count": len(result.consolidated),
+    }
 
 
 def _render_memory_summary(records: tuple[MemoryRecord, ...]) -> str:
@@ -520,12 +570,10 @@ def _memory_event_transcript(
 ) -> str:
     rendered: list[str] = []
     total = 0
-
     for event in events:
         body = ""
         label = ""
         data = event.data
-
         if event.kind is AgentEventKind.USER_MESSAGE:
             label = "USER"
             body = str(data.get("text") or "")
@@ -547,7 +595,6 @@ def _memory_event_transcript(
             paths = data.get("paths")
             if isinstance(paths, list) and paths:
                 body = json.dumps(paths, ensure_ascii=False)
-
         if not body:
             continue
         chunk = redact_secrets(f"{label}: {body}")[:6000]
@@ -558,7 +605,6 @@ def _memory_event_transcript(
             break
         rendered.append(chunk)
         total += len(chunk)
-
     return "\n\n".join(rendered)
 
 
@@ -619,22 +665,22 @@ def _validate_candidates(value: Any) -> tuple[MemoryCandidate, ...]:
         raise RuntimeError("memory extraction 'memories' must be an array")
     if len(value) > 64:
         raise RuntimeError("memory extraction returned more than 64 candidates")
-
     candidates: list[MemoryCandidate] = []
     for index, item in enumerate(value):
         if not isinstance(item, dict):
             raise RuntimeError(f"memory candidate {index} must be an object")
         try:
-            candidate = MemoryCandidate(
-                text=str(item.get("text") or ""),
-                scope=MemoryScope(str(item.get("scope") or "")),
-                category=MemoryCategory(str(item.get("category") or "")),
-                importance=int(item.get("importance") or 3),
-                evidence=str(item.get("evidence") or ""),
+            candidates.append(
+                MemoryCandidate(
+                    text=str(item.get("text") or ""),
+                    scope=MemoryScope(str(item.get("scope") or "")),
+                    category=MemoryCategory(str(item.get("category") or "")),
+                    importance=int(item.get("importance") or 3),
+                    evidence=str(item.get("evidence") or ""),
+                )
             )
         except (TypeError, ValueError) as exc:
             raise RuntimeError(f"invalid memory candidate {index}: {exc}") from exc
-        candidates.append(candidate)
     return tuple(candidates)
 
 
