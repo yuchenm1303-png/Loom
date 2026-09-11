@@ -121,5 +121,13 @@ def test_skill_resource_rejects_symlink_escape_when_supported(tmp_path: Path):
         link.symlink_to(outside)
     except OSError:
         pytest.skip("symlink creation is not supported")
-    with pytest.raises(ValueError, match="escapes the bundle"):
+    with pytest.raises(ValueError, match="symlinks are not allowed"):
         SkillRuntime._resolve_bundle_path(bundle, "link.txt")
+
+
+def test_skill_resource_hides_installer_metadata(tmp_path: Path):
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    (bundle / ".loom-skill.json").write_text("{}", encoding="utf-8")
+    with pytest.raises(ValueError, match="private skill metadata"):
+        SkillRuntime._resolve_bundle_path(bundle, ".loom-skill.json")
