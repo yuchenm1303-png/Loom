@@ -11,6 +11,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 from app.ai import ModelResponse, ToolCall
 
 from .browser_backend import BrowserUseSessionBackend
+from .browser_extension_bridge import BrowserExtensionBridge, BrowserExtensionSessionBackend
 from .browser_security import BrowserSecurityPolicy
 from .browser_session import (
     BrowserBackendFactory,
@@ -199,6 +200,18 @@ def _validate_local_cdp_url(value: str) -> str:
     return raw
 
 
+def _env_flag_enabled(name: str) -> bool:
+    value = str(os.environ.get(name) or "").strip()
+    if not value:
+        return False
+    return value.casefold() not in {"0", "false", "off", "no", "disabled"}
+
+
+def _extension_backend_requested() -> bool:
+    backend = str(os.environ.get("LOOM_BROWSER_BACKEND") or "").strip().casefold()
+    return backend in {"extension", "browser-extension", "current-tab"} or _env_flag_enabled("LOOM_BROWSER_EXTENSION")
+
+
 @dataclass(frozen=True, slots=True)
 class BrowserStateSnapshot:
     browser_id: str
@@ -346,6 +359,9 @@ class BrowserRuntime(WebSearchRuntime):
         if configured_cdp is None and factory is None and auto_configure_browser:
             configured_cdp = os.environ.get("LOOM_BROWSER_CDP_URL")
         cdp_url = _validate_local_cdp_url(str(configured_cdp or ""))
+        extension_requested = factory is None and auto_configure_browser and _extension_backend_requested()
+        if extension_requested and cdp_url:
+            raise ValueError("LOOM_BROWSER_BACKEND=extension cannot be combined with browser_cdp_url/LOOM_BROWSER_CDP_URL")
         if cdp_url and factory is not None:
             raise ValueError("browser_cdp_url cannot be combined with a custom browser backend factory")
         if cdp_url and browser_profile_dir is not None:
@@ -358,7 +374,22 @@ class BrowserRuntime(WebSearchRuntime):
         profile_dir: Path | None = None
         profile_persistence = False
         cdp_attached = False
-        if factory is None and auto_configure_browser and browser_use_available():
+        extension_attached = False
+        extension_bridge: BrowserExtensionBridge | None = None
+        if extension_requested:
+            if browser_profile_dir is not None:
+                raise ValueError("LOOM_BROWSER_BACKEND=extension cannot be combined with browser_profile_dir")
+            extension_bridge = BrowserExtensionBridge.from_environment()
+            extension_bridge.start()
+
+            def build_extension_backend(options: BrowserLaunchOptions):
+                assert extension_bridge is not None
+                return BrowserExtensionSessionBackend(options=options, bridge=extension_bridge)
+
+            factory = build_extension_backend
+            backend_name = "browser-extension"
+            extension_attached = True
+        elif factory is None and auto_configure_browser and browser_use_available():
             if cdp_url:
                 cdp_attached = True
             elif browser_persist_profile:
@@ -384,16 +415,18 @@ class BrowserRuntime(WebSearchRuntime):
         self.browser_profile_persistence = profile_persistence
         self.browser_profile_dir = profile_dir
         self.browser_cdp_attached = cdp_attached
+        self.browser_extension_attached = extension_attached
+        self.browser_extension_bridge = extension_bridge
         # Never expose or persist the configured control endpoint in tool/status
         # payloads. Keep it only inside the backend closure used for attachment.
-        exclusive_browser = profile_persistence or cdp_attached
+        exclusive_browser = profile_persistence or cdp_attached or extension_attached
         self.browser_sessions = (
             BrowserSessionStore(
                 factory,
                 url_policy=self.browser_security_policy,
                 max_sessions_per_owner=1 if exclusive_browser else 2,
                 max_sessions_total=1 if exclusive_browser else 8,
-                filter_unsafe_background_tabs=cdp_attached,
+                filter_unsafe_background_tabs=cdp_attached or extension_attached,
             )
             if factory is not None
             else None
@@ -403,7 +436,18 @@ class BrowserRuntime(WebSearchRuntime):
 
         for raw_tool in browser_tools(self):
             tool = raw_tool
-            if cdp_attached and raw_tool.name == "browser_open":
+            if extension_attached and raw_tool.name == "browser_open":
+                tool = replace(
+                    raw_tool,
+                    description=(
+                        "Attach to the user's currently active Chrome/Edge tab through the installed Loom Browser "
+                        "Extension, optionally navigate that tab or a new tab to an http/https URL, and return a "
+                        "bounded LLM-facing DOM state. The extension bridge token is never exposed to the model. "
+                        "Existing out-of-policy background tabs remain open but are hidden from Loom. allowed_domains "
+                        "can restrict the session."
+                    ),
+                )
+            elif cdp_attached and raw_tool.name == "browser_open":
                 tool = replace(
                     raw_tool,
                     description=(
@@ -434,7 +478,13 @@ class BrowserRuntime(WebSearchRuntime):
             active = len(store.list(owner_session_id))
         persistent = bool(self.browser_profile_persistence)
         attached = bool(self.browser_cdp_attached)
-        if attached:
+        extension = bool(self.browser_extension_attached)
+        if extension:
+            persistence = "extension-current-browser"
+            recovery = "extension_reconnects_to_local_bridge"
+            profile_name = "current-browser-extension"
+            connection = "extension-bridge"
+        elif attached:
             persistence = "external-browser"
             recovery = "reattach_to_configured_local_browser"
             profile_name = "external"
@@ -449,23 +499,35 @@ class BrowserRuntime(WebSearchRuntime):
             recovery = "new_session_required_after_process_restart"
             profile_name = ""
             connection = "local-launch" if store is not None else "disabled"
-        return {
+        status: dict[str, object] = {
             "enabled": store is not None,
             "backend": self.browser_backend_name,
             "browser_connection": connection,
-            "external_browser": attached,
+            "external_browser": attached or extension,
             "cdp_endpoint_exposed": False,
             "active_sessions": active,
             "session_persistence": persistence,
             "crash_recovery": recovery,
             "secret_injection": False,
-            "storage_state_persistence": persistent or attached,
+            "storage_state_persistence": persistent or attached or extension,
             "profile_name": profile_name,
             "profile_path_exposed": False,
             "downloads": False,
             "uploads": False,
             "url_policy": "execution-layer pre/post navigation plus backend redirect/popup enforcement",
         }
+        if self.browser_extension_bridge is not None:
+            bridge_status = self.browser_extension_bridge.status()
+            status["extension_bridge"] = {
+                "connected": bool(bridge_status.get("connected")),
+                "last_client_id": str(bridge_status.get("last_client_id") or ""),
+                "last_client_version": str(bridge_status.get("last_client_version") or ""),
+                "pending_commands": int(bridge_status.get("pending_commands") or 0),
+                "queued_commands": int(bridge_status.get("queued_commands") or 0),
+                "url_exposed": False,
+                "token_exposed": False,
+            }
+        return status
 
     def effective_allowed_domains(self, requested: Sequence[str]) -> tuple[str, ...]:
         requested_tuple = tuple(str(item) for item in requested if str(item or "").strip())
@@ -493,6 +555,8 @@ class BrowserRuntime(WebSearchRuntime):
     def close(self) -> None:
         if self.browser_sessions is not None:
             self.browser_sessions.close_all()
+        if self.browser_extension_bridge is not None:
+            self.browser_extension_bridge.stop()
         super().close()
 
 
