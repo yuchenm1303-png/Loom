@@ -1,0 +1,78 @@
+.user-message-content {
+  min-width: 0;
+  display: grid;
+  gap: 11px;
+}
+
+.user-message-text {
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.user-message-attachment-list {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.user-message-attachment-card {
+  min-width: 0;
+  max-width: min(100%, 340px);
+  min-height: 54px;
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 8px 11px 8px 9px;
+  border: 1px solid rgba(255,255,255,.075);
+  border-radius: 11px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.038), rgba(255,255,255,.016)),
+    rgba(15,17,22,.72);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.025);
+}
+
+.user-message-file-icon {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(139,124,246,.18);
+  border-radius: 9px;
+  color: #b8afff;
+  background: rgba(139,124,246,.085);
+}
+
+.user-message-file-copy {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.user-message-file-copy strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #eceef4;
+  font-size: 12px;
+  line-height: 1.25;
+  font-weight: 620;
+}
+
+.user-message-file-copy > span {
+  color: #777f8c;
+  font-size: 9.5px;
+  line-height: 1;
+  font-weight: 650;
+  letter-spacing: .045em;
+}
+
+@media (max-width: 720px) {
+  .user-message-attachment-card {
+    width: 100%;
+    max-width: 100%;
+  }
+}
