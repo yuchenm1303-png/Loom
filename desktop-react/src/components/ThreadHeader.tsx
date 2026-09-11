@@ -3,6 +3,7 @@ import {
   Check,
   Copy,
   Cpu,
+  FileDiff,
   Folder,
   MessageSquareText,
   PanelRightClose,
@@ -13,6 +14,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { useI18n } from "../i18n";
 import "./thread-header.css";
+import "./thread-review-entry.css";
 
 interface ThreadHeaderProps {
   title: string;
@@ -24,8 +26,11 @@ interface ThreadHeaderProps {
   model?: string;
   permissionMode?: string;
   inspectorOpen: boolean;
+  reviewOpen: boolean;
+  reviewCount?: number;
   onOpenSettings(): void;
   onToggleInspector(): void;
+  onToggleReview(): void;
 }
 
 function workspaceName(workspace: string, fallback: string): string {
@@ -68,10 +73,13 @@ export function ThreadHeader({
   model,
   permissionMode,
   inspectorOpen,
+  reviewOpen,
+  reviewCount = 0,
   onOpenSettings,
   onToggleInspector,
+  onToggleReview,
 }: ThreadHeaderProps) {
-  const { t } = useI18n();
+  const { language, t } = useI18n();
   const [copied, setCopied] = useState(false);
 
   const state = useMemo(() => {
@@ -104,6 +112,8 @@ export function ThreadHeader({
   const permissionLabel = formatPermission(permissionMode, t("common.defaultAccess"));
   const settingsLabel = t("common.openSettings");
   const inspectorLabel = inspectorOpen ? t("common.hideInspector") : t("common.openInspector");
+  const reviewLabel = language === "zh-CN" ? "审查" : "Review";
+  const reviewTitle = language === "zh-CN" ? "审查当前对话中的文件更改" : "Review file changes from this conversation";
 
   return (
     <header className="thread-header polished-thread-header">
@@ -151,6 +161,19 @@ export function ThreadHeader({
             <span>{permissionLabel}</span>
           </span>
         </div>
+
+        <button
+          type="button"
+          className={`thread-review-button ${reviewOpen ? "active" : ""}`}
+          onClick={onToggleReview}
+          title={reviewTitle}
+          aria-label={reviewTitle}
+          aria-pressed={reviewOpen}
+        >
+          <FileDiff size={14.5} strokeWidth={1.8} />
+          <span className="thread-review-label">{reviewLabel}</span>
+          {reviewCount > 0 ? <span className="thread-review-count">{reviewCount}</span> : null}
+        </button>
 
         <span className="thread-header-divider" aria-hidden="true" />
 
