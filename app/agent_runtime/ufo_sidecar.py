@@ -18,6 +18,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import traceback
 import uuid
@@ -29,7 +30,7 @@ PROTOCOL_VERSION = 1
 EXPECTED_UFO_TAG = "v3.0.8"
 EXPECTED_UFO_COMMIT = "96983c73ed09e884a5f1d7ff8936c953b234b684"
 _PROTOCOL_STDOUT = sys.stdout
-_EMIT_LOCK = asyncio.Lock()
+_PROTOCOL_WRITE_LOCK = threading.RLock()
 _ACTIVE_CONTROLLER: "TaskController | None" = None
 _PATCHED = False
 _SENSITIVE_PARAMETER_KEYS = {
@@ -43,6 +44,19 @@ _SENSITIVE_PARAMETER_KEYS = {
 }
 _SCRATCH_PREFIX = "loom-ufo-private-"
 _SCRATCH_STALE_SECONDS = 24 * 60 * 60
+_FIRST_STEP_PROGRESS_EVENTS = {
+    "dispatcher.commands.started",
+    "window.selected",
+    "observation.completed",
+    "action.started",
+    "task.completed",
+    "task.failed",
+    "task.cancelled",
+}
+
+
+class UfoFirstStepTimeout(TimeoutError):
+    """Raised when UFO accepts a task but never emits its first actionable event."""
 
 
 class _NullWriter:
@@ -65,16 +79,43 @@ def _json_default(value: Any) -> Any:
     return str(value)
 
 
-async def emit(message: dict[str, Any]) -> None:
+def _elapsed_ms(started: float) -> float:
+    return round((time.monotonic() - started) * 1000.0, 3)
+
+
+def _float_env(name: str, default: float, minimum: float, maximum: float) -> float:
+    try:
+        value = float(str(os.environ.get(name) or "").strip() or default)
+    except (TypeError, ValueError):
+        value = default
+    return max(minimum, min(maximum, value))
+
+
+def _string_summary(value: str) -> dict[str, Any]:
+    return {"length": len(str(value or "")), "empty": not bool(str(value or "").strip())}
+
+
+def _module_summary(value: Any) -> dict[str, str]:
+    return {
+        "module": str(getattr(value, "__module__", "") or ""),
+        "name": str(getattr(value, "__name__", type(value).__name__) or ""),
+    }
+
+
+def emit_sync(message: dict[str, Any]) -> None:
     payload = json.dumps(
         message,
         ensure_ascii=False,
         separators=(",", ":"),
         default=_json_default,
     )
-    async with _EMIT_LOCK:
+    with _PROTOCOL_WRITE_LOCK:
         _PROTOCOL_STDOUT.write(payload + "\n")
         _PROTOCOL_STDOUT.flush()
+
+
+async def emit(message: dict[str, Any]) -> None:
+    emit_sync(message)
 
 
 def _safe_mapping(value: Any) -> dict[str, Any]:
@@ -130,6 +171,19 @@ def _safe_parameters(tool_name: str, parameters: Any) -> dict[str, Any]:
         if length is not None:
             safe[f"{key}_length"] = length
     return safe
+
+
+def _safe_command(command: Any) -> dict[str, Any]:
+    tool_name = str(getattr(command, "tool_name", "") or "")
+    tool_type = str(getattr(command, "tool_type", "") or "")
+    raw_parameters = getattr(command, "parameters", {})
+    parameters = _safe_parameters(tool_name, raw_parameters)
+    return {
+        "tool_name": tool_name,
+        "tool_type": tool_type,
+        "parameter_keys": sorted(parameters.keys()),
+        "parameters": parameters,
+    }
 
 
 def _result_status(value: Any) -> dict[str, Any]:
@@ -277,25 +331,60 @@ class TaskController:
         self.cancelled = False
         self.cancel_reason = ""
         self.selected_window: dict[str, Any] = {}
+        self.started_at = time.monotonic()
+        self.last_event_at = self.started_at
+        self.first_progress_kind = ""
+        self.first_progress_at = 0.0
+        self._lock = threading.RLock()
 
-    async def event(self, kind: str, data: dict[str, Any] | None = None) -> None:
-        self.sequence += 1
-        await emit(
+    def event_sync(self, kind: str, data: dict[str, Any] | None = None) -> None:
+        now = time.monotonic()
+        with self._lock:
+            payload = dict(data or {})
+            payload.setdefault("elapsed_ms", _elapsed_ms(self.started_at))
+            payload.setdefault("since_previous_ms", round((now - self.last_event_at) * 1000.0, 3))
+            if kind in _FIRST_STEP_PROGRESS_EVENTS and not self.first_progress_kind:
+                self.first_progress_kind = kind
+                self.first_progress_at = now
+                payload["first_progress"] = True
+            self.last_event_at = now
+            self.sequence += 1
+            sequence = self.sequence
+        emit_sync(
             {
                 "type": "event",
                 "request_id": self.request_id,
                 "task_id": self.task_id,
-                "sequence": self.sequence,
+                "sequence": sequence,
                 "kind": kind,
-                "data": data or {},
+                "data": payload,
             }
         )
+
+    async def event(self, kind: str, data: dict[str, Any] | None = None) -> None:
+        self.event_sync(kind, data)
+
+    async def stage(self, kind: str, **data: Any) -> None:
+        await self.event(kind, data)
+
+    def has_first_progress(self) -> bool:
+        with self._lock:
+            return bool(self.first_progress_kind)
 
     async def before_commands(self, commands: list[Any]) -> None:
         while self.paused and not self.cancelled:
             await asyncio.sleep(0.1)
         if self.cancelled:
             raise asyncio.CancelledError(self.cancel_reason or "task cancelled")
+
+        safe_commands = [_safe_command(command) for command in commands]
+        await self.event(
+            "dispatcher.commands.started",
+            {
+                "command_count": len(safe_commands),
+                "commands": safe_commands,
+            },
+        )
 
         for command in commands:
             tool_name = str(getattr(command, "tool_name", "") or "")
@@ -329,6 +418,23 @@ class TaskController:
         results: list[Any] | None,
     ) -> None:
         results = list(results or [])
+        safe_results = []
+        for index, command in enumerate(commands):
+            result = results[index] if index < len(results) else None
+            safe_results.append(
+                {
+                    "command": _safe_command(command),
+                    "result": _result_status(result),
+                }
+            )
+        await self.event(
+            "dispatcher.commands.completed",
+            {
+                "command_count": len(commands),
+                "results": safe_results,
+            },
+        )
+
         for index, command in enumerate(commands):
             tool_name = str(getattr(command, "tool_name", "") or "")
             tool_type = str(getattr(command, "tool_type", "") or "")
@@ -370,11 +476,30 @@ class TaskController:
 async def _patched_execute_commands(self, commands, timeout=6000):
     controller = _ACTIVE_CONTROLLER
     original = getattr(type(self), "_loom_original_execute_commands")
+    command_list = list(commands)
+    started = time.monotonic()
     if controller is not None:
-        await controller.before_commands(list(commands))
-    results = await original(self, commands, timeout=timeout)
+        await controller.before_commands(command_list)
+    try:
+        results = await original(self, command_list, timeout=timeout)
+    except Exception:
+        if controller is not None:
+            await controller.event(
+                "dispatcher.commands.failed",
+                {
+                    "command_count": len(command_list),
+                    "duration_ms": _elapsed_ms(started),
+                    "commands": [_safe_command(command) for command in command_list],
+                    "error_type": "DispatcherCommandError",
+                },
+            )
+        raise
     if controller is not None:
-        await controller.after_commands(list(commands), results)
+        await controller.event(
+            "dispatcher.commands.returned",
+            {"command_count": len(command_list), "duration_ms": _elapsed_ms(started)},
+        )
+        await controller.after_commands(command_list, results)
     return results
 
 
@@ -448,6 +573,9 @@ def _bootstrap_ufo(root: Path) -> dict[str, Any]:
         "git_head": _git_head(root),
         "expected_tag": EXPECTED_UFO_TAG,
         "expected_commit": EXPECTED_UFO_COMMIT,
+        "python": sys.version.split()[0],
+        "python_executable": sys.executable,
+        "pid": os.getpid(),
     }
 
 
@@ -488,6 +616,55 @@ def _bind_ephemeral_session_logs(session: Any) -> Path | None:
     return scratch
 
 
+def _hard_first_step_timeout(controller: TaskController, timeout_seconds: float) -> None:
+    if controller.has_first_progress():
+        return
+    controller.event_sync(
+        "task.first_step_timeout",
+        {
+            "timeout_seconds": timeout_seconds,
+            "first_progress_kind": controller.first_progress_kind,
+            "last_event_sequence": controller.sequence,
+            "hint": (
+                "UFO accepted the task but the Python sidecar thread did not observe any "
+                "command/window/observation/action event before the timeout. The sidecar "
+                "will exit so Loom can surface a deterministic failure instead of hanging."
+            ),
+        },
+    )
+    time.sleep(0.25)
+    os._exit(124)
+
+
+async def _watch_first_progress(
+    controller: TaskController,
+    session_task: asyncio.Task[Any],
+    timeout_seconds: float,
+) -> None:
+    deadline = time.monotonic() + timeout_seconds
+    while not session_task.done() and not controller.has_first_progress():
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            await controller.event(
+                "task.first_step_timeout",
+                {
+                    "timeout_seconds": timeout_seconds,
+                    "first_progress_kind": controller.first_progress_kind,
+                    "last_event_sequence": controller.sequence,
+                    "last_event_elapsed_ms": _elapsed_ms(controller.started_at),
+                    "hint": (
+                        "UFO accepted the task but did not dispatch commands, select a window, "
+                        "capture an observation, start an action, or return failure/completion."
+                    ),
+                },
+            )
+            session_task.cancel()
+            raise UfoFirstStepTimeout(
+                "UFO first step timeout before any command/window/observation/action event"
+            )
+        await asyncio.sleep(min(1.0, max(0.05, remaining)))
+
+
 async def _run_task(
     root: Path,
     request: dict[str, Any],
@@ -520,23 +697,64 @@ async def _run_task(
         "task.started",
         {"engine": "ufo2", "task_name": task_name},
     )
+    await controller.stage(
+        "task.accepted",
+        engine="ufo2",
+        task_name=task_name,
+        task=_string_summary(task),
+        stop_when=_string_summary(stop_when),
+        max_steps_requested=max_steps_raw,
+        raw_logs_persisted=_keep_raw_logs(),
+        first_step_timeout_seconds=_float_env("LOOM_UFO_FIRST_STEP_TIMEOUT", 30.0, 5.0, 600.0),
+        process={"pid": os.getpid(), "python": sys.version.split()[0], "executable": sys.executable},
+        paths={"cwd": os.getcwd(), "ufo_root": str(root)},
+        provider={
+            "api_type": os.environ.get("LOOM_UFO_API_TYPE", ""),
+            "api_base_configured": bool(os.environ.get("LOOM_UFO_API_BASE")),
+            "api_key_configured": bool(os.environ.get("LOOM_UFO_API_KEY")),
+            "api_model": os.environ.get("LOOM_UFO_API_MODEL", ""),
+        },
+    )
     previous_max_step = None
     config = None
     scratch_dir: Path | None = None
+    hard_timeout_timer: threading.Timer | None = None
     try:
+        await controller.stage("ufo.imports.started")
         with contextlib.redirect_stdout(sys.stderr):
             from config.config_loader import get_ufo_config
             from ufo.module.sessions.session import Session
+        await controller.stage(
+            "ufo.imports.completed",
+            get_ufo_config=_module_summary(get_ufo_config),
+            Session=_module_summary(Session),
+        )
 
+        await controller.stage("ufo.config.load.started")
+        with contextlib.redirect_stdout(sys.stderr):
             config = get_ufo_config()
-            if max_steps_raw is not None:
-                try:
-                    max_steps = max(1, min(100, int(max_steps_raw)))
-                    previous_max_step = config.system.max_step
-                    config.system.max_step = max_steps
-                except Exception:
-                    previous_max_step = None
+        await controller.stage(
+            "ufo.config.load.completed",
+            config_class=type(config).__name__,
+            system_class=type(getattr(config, "system", None)).__name__,
+            original_max_step=getattr(getattr(config, "system", None), "max_step", None),
+        )
+        if max_steps_raw is not None:
+            try:
+                max_steps = max(1, min(100, int(max_steps_raw)))
+                previous_max_step = config.system.max_step
+                config.system.max_step = max_steps
+                await controller.stage(
+                    "ufo.config.max_step.updated",
+                    previous_max_step=previous_max_step,
+                    max_step=max_steps,
+                )
+            except Exception:
+                previous_max_step = None
+                await controller.stage("ufo.config.max_step.update_failed", error_type="MaxStepUpdateError")
 
+        await controller.stage("ufo.session.create.started")
+        with contextlib.redirect_stdout(sys.stderr):
             session = Session(
                 task=task_name,
                 should_evaluate=False,
@@ -544,14 +762,59 @@ async def _run_task(
                 request=request_text,
                 mode="normal",
             )
-            scratch_dir = _bind_ephemeral_session_logs(session)
-            # Session.__init__ has already created the upstream task directory.
-            # Remove those empty/raw constructor artifacts immediately after the
-            # context is rebound to our disposable scratch location.
-            _cleanup_task_logs(root, task_name)
+        await controller.stage(
+            "ufo.session.create.completed",
+            session_class=type(session).__name__,
+            session_id=str(getattr(session, "id", task_id) or task_id),
+            session_log_path=str(getattr(session, "log_path", "") or ""),
+        )
+        scratch_dir = _bind_ephemeral_session_logs(session)
+        await controller.stage(
+            "ufo.session.logs.bound",
+            raw_logs_persisted=_keep_raw_logs(),
+            scratch_dir=(str(scratch_dir) if scratch_dir is not None else ""),
+        )
+        _cleanup_task_logs(root, task_name)
+        await controller.stage("ufo.session.logs.cleaned", task_name=task_name)
 
-            results = await session.run()
-            failed = bool(session.is_error())
+        first_step_timeout = _float_env("LOOM_UFO_FIRST_STEP_TIMEOUT", 30.0, 5.0, 600.0)
+        await controller.stage("ufo.session.run.started", first_step_timeout_seconds=first_step_timeout)
+        hard_timeout_timer = threading.Timer(
+            first_step_timeout,
+            _hard_first_step_timeout,
+            args=(controller, first_step_timeout),
+        )
+        hard_timeout_timer.daemon = True
+        hard_timeout_timer.start()
+        session_task = asyncio.create_task(session.run())
+        watchdog_task = asyncio.create_task(
+            _watch_first_progress(controller, session_task, first_step_timeout)
+        )
+        done, pending = await asyncio.wait(
+            {session_task, watchdog_task},
+            return_when=asyncio.FIRST_EXCEPTION,
+        )
+        for finished in done:
+            error = finished.exception()
+            if error is not None:
+                for item in pending:
+                    item.cancel()
+                with contextlib.suppress(asyncio.CancelledError, Exception):
+                    await asyncio.gather(*pending)
+                raise error
+        if watchdog_task in pending:
+            watchdog_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await watchdog_task
+        hard_timeout_timer.cancel()
+        results = await session_task
+        failed = bool(session.is_error())
+        await controller.stage(
+            "ufo.session.run.completed",
+            result_count=len(results or []),
+            session_error=failed,
+            first_progress_kind=controller.first_progress_kind,
+        )
 
         status = "failed" if failed else "completed"
         await controller.event(
@@ -579,6 +842,7 @@ async def _run_task(
                     "event_count": controller.sequence,
                     "selected_window": dict(controller.selected_window),
                     "raw_logs_persisted": _keep_raw_logs(),
+                    "first_progress_kind": controller.first_progress_kind,
                 },
             }
         )
@@ -597,20 +861,25 @@ async def _run_task(
                     "engine": "ufo2",
                     "event_count": controller.sequence,
                     "raw_logs_persisted": _keep_raw_logs(),
+                    "first_progress_kind": controller.first_progress_kind,
                 },
             }
         )
     except Exception as exc:
-        # UFO/provider exceptions may echo prompts or typed text. Keep frame-level
-        # debugging on stderr, but never emit exception messages across the NDJSON
-        # boundary or into Loom's durable driver trace.
         traceback.print_tb(exc.__traceback__, file=sys.stderr)
         print(
             f"{type(exc).__name__}: [REDACTED_EXCEPTION_MESSAGE]",
             file=sys.stderr,
         )
-        error_type = type(exc).__name__
-        await controller.event("task.failed", {"error_type": error_type})
+        error_type = "UFO_FIRST_STEP_TIMEOUT" if isinstance(exc, UfoFirstStepTimeout) else type(exc).__name__
+        await controller.event(
+            "task.failed",
+            {
+                "error_type": error_type,
+                "first_progress_kind": controller.first_progress_kind,
+                "last_event_sequence": controller.sequence,
+            },
+        )
         await emit(
             {
                 "type": "result",
@@ -624,10 +893,13 @@ async def _run_task(
                     "error_type": error_type,
                     "event_count": controller.sequence,
                     "raw_logs_persisted": _keep_raw_logs(),
+                    "first_progress_kind": controller.first_progress_kind,
                 },
             }
         )
     finally:
+        if hard_timeout_timer is not None:
+            hard_timeout_timer.cancel()
         if config is not None and previous_max_step is not None:
             try:
                 config.system.max_step = previous_max_step
