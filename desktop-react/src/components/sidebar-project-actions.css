@@ -140,6 +140,72 @@
   font-size: 11.5px;
 }
 
+.project-group-row {
+  display: grid;
+  grid-template-columns: 25px minmax(0, 1fr);
+  align-items: center;
+}
+
+.project-disclosure-button {
+  width: 23px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  padding: 0;
+  color: #7f8794;
+  background: transparent;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, transform 120ms ease;
+}
+
+.project-disclosure-button:hover,
+.project-disclosure-button:focus-visible {
+  color: #bdb5ff;
+  background: rgba(139, 124, 246, .09);
+  outline: none;
+}
+
+.project-disclosure-button:active {
+  transform: scale(.94);
+}
+
+.project-disclosure-button .project-disclosure-chevron {
+  margin: 0;
+}
+
+.project-group-main {
+  grid-column: 2;
+  padding-left: 4px;
+}
+
+.project-group.is-selected .project-group-main {
+  color: #f1f0ff;
+  background:
+    linear-gradient(90deg, rgba(139, 124, 246, .18), rgba(139, 124, 246, .06)),
+    rgba(255, 255, 255, .032);
+  box-shadow: inset 2px 0 0 rgba(169, 157, 255, .92);
+}
+
+.project-group.is-selected .project-group-main > svg:not(.project-disclosure-chevron) {
+  color: #c9c2ff;
+}
+
+.project-group.is-selected .project-group-main small {
+  color: #cfc9ff;
+  border-color: rgba(169, 157, 255, .2);
+  background: rgba(139, 124, 246, .10);
+}
+
+.project-group-row:has(.project-rename-input) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.project-group-row:has(.project-rename-input) .project-rename-input {
+  grid-column: 1;
+}
+
 /* While a remote conversation action is pending, all quick actions on that row
    are disabled. Use that stable signal for restrained progress feedback rather
    than adding another permanent badge to every conversation. */
@@ -251,7 +317,8 @@ html[data-loom-reduced-motion="true"] .thread-project-submenu > button,
 html[data-loom-reduced-motion="true"] .compact-thread-row,
 html[data-loom-reduced-motion="true"] .compact-thread-dot,
 html[data-loom-reduced-motion="true"] .sidebar-notice,
-html[data-loom-reduced-motion="true"] .thread-context-menu {
+html[data-loom-reduced-motion="true"] .thread-context-menu,
+html[data-loom-reduced-motion="true"] .project-disclosure-button {
   animation: none !important;
   transition-duration: .001ms !important;
 }
@@ -266,7 +333,8 @@ html[data-loom-reduced-motion="true"] .compact-thread-row:has(.thread-quick-acti
   .compact-thread-row,
   .compact-thread-dot,
   .sidebar-notice,
-  .thread-context-menu {
+  .thread-context-menu,
+  .project-disclosure-button {
     animation: none !important;
     transition-duration: .001ms !important;
   }
