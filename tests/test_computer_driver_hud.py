@@ -64,8 +64,14 @@ def test_mature_driver_keeps_low_level_computer_tools_deferred():
 
     runtime._install_driver_task_tool()
 
-    direct_names = {tool.name for tool in runtime.tools.router().all()}
-    deferred = {tool.name: tool.exposure for tool in runtime.tools.deferred()}
+    direct_names = {
+        tool.name
+        for tool in runtime.tools.router(capability_settings={}).all()
+    }
+    deferred = {
+        tool.name: tool.exposure
+        for tool in runtime.tools.deferred(capability_settings={})
+    }
     assert "computer_status" in direct_names
     assert "computer_run_task" in direct_names
     assert "computer_observe" not in direct_names
@@ -97,7 +103,10 @@ def test_legacy_mode_preserves_direct_low_level_computer_tools():
 
     runtime._install_driver_task_tool()
 
-    direct_names = {tool.name for tool in runtime.tools.router().all()}
+    direct_names = {
+        tool.name
+        for tool in runtime.tools.router(capability_settings={}).all()
+    }
     assert {
         "computer_status",
         "computer_observe",
