@@ -24,6 +24,7 @@ export interface ModelProfile {
   adapter: "openai" | "openai-compatible" | string;
   baseUrl: string;
   model: string;
+  vision?: boolean;
   reasoning?: ModelReasoningState | null;
 }
 
@@ -46,6 +47,28 @@ export interface AddModelInput {
   baseUrl: string;
   model: string;
   apiKey: string;
+  vision?: boolean;
+}
+
+export interface EditModelInput extends AddModelInput {
+  selection: string;
+}
+
+export interface ModelTestResult {
+  ok: boolean;
+  selection: string;
+  status: number;
+  latencyMs: number;
+  endpoint: string;
+  model: string;
+  modelListed: boolean;
+  discoveredModels: number;
+  capabilities: {
+    chat: boolean;
+    streaming: boolean;
+    vision: boolean;
+    reasoning: boolean;
+  };
 }
 
 interface BridgeEnvelope<T> {
@@ -97,6 +120,7 @@ export class DesktopModelManager {
           baseUrl: this.currentSpec.baseUrl,
           model: this.currentSpec.model,
           provider: this.currentSpec.provider,
+          vision: this.currentSpec.vision,
           reasoning: this.currentSpec.reasoning ?? null,
         }
       : null;
@@ -113,6 +137,22 @@ export class DesktopModelManager {
 
   add(input: AddModelInput): ModelProfile {
     return this.runBridge<ModelProfile>("save", input as unknown as Record<string, unknown>);
+  }
+
+  update(input: EditModelInput): ModelProfile {
+    const selection = String(input.selection || "").trim();
+    if (!selection) throw new Error("Model profile is required");
+    const profile = this.runAdmin<ModelProfile>("update", input as unknown as Record<string, unknown>);
+    if (this.currentSpec?.selection === selection) {
+      this.currentSpec = this.resolve(selection);
+    }
+    return profile;
+  }
+
+  test(selection: string): ModelTestResult {
+    const value = String(selection || "").trim();
+    if (!value) throw new Error("Model profile is required");
+    return this.runAdmin<ModelTestResult>("test", { selection: value });
   }
 
   delete(selection: string): RegistrySnapshot {
@@ -179,8 +219,16 @@ export class DesktopModelManager {
     command: "list" | "resolve" | "describe-model" | "save" | "delete" | "set-active" | "set-reasoning",
     payload: Record<string, unknown>,
   ): T {
+    return this.runPythonBridge<T>("loom_model_bridge.py", command, payload);
+  }
+
+  private runAdmin<T>(command: "update" | "test", payload: Record<string, unknown>): T {
+    return this.runPythonBridge<T>("loom_model_admin.py", command, payload);
+  }
+
+  private runPythonBridge<T>(scriptName: string, command: string, payload: Record<string, unknown>): T {
     const python = process.env.LOOM_PYTHON || (process.platform === "win32" ? "python" : "python3");
-    const script = path.join(this.repoRoot, "loom_model_bridge.py");
+    const script = path.join(this.repoRoot, scriptName);
     const result = spawnSync(python, [script, command], {
       cwd: this.repoRoot,
       env: { ...process.env, PYTHONUTF8: "1" },
@@ -194,17 +242,17 @@ export class DesktopModelManager {
     const stdout = String(result.stdout || "").trim();
     if (!stdout) {
       const detail = String(result.stderr || "").trim();
-      throw new Error(detail || `Model bridge exited with ${result.status ?? "unknown status"}`);
+      throw new Error(detail || `${scriptName} exited with ${result.status ?? "unknown status"}`);
     }
 
     let envelope: BridgeEnvelope<T>;
     try {
       envelope = JSON.parse(stdout) as BridgeEnvelope<T>;
     } catch {
-      throw new Error(`Model bridge returned invalid JSON: ${stdout.slice(0, 240)}`);
+      throw new Error(`${scriptName} returned invalid JSON: ${stdout.slice(0, 240)}`);
     }
     if (!envelope.ok || envelope.result === undefined) {
-      throw new Error(envelope.error || "Model bridge request failed");
+      throw new Error(envelope.error || `${scriptName} request failed`);
     }
     return envelope.result;
   }
