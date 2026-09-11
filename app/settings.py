@@ -38,6 +38,16 @@ DEFAULT_SETTINGS: dict[str, Any] = {
         "codeLineHeight": "comfortable",
         "codeWrap": False,
     },
+    "shortcuts": {
+        "newConversation": "Ctrl+N",
+        "searchConversations": "Ctrl+K",
+        "openSettings": "Ctrl+,",
+        "focusComposer": "Ctrl+L",
+        "toggleSidebar": "Ctrl+B",
+        "toggleInspector": "Ctrl+Shift+I",
+        "attachFiles": "Ctrl+Shift+A",
+        "stopTask": "Escape",
+    },
     "terminal": {
         "shell": "powershell",
         "encoding": "utf-8",
@@ -72,6 +82,14 @@ _ALLOWED_SETTING_PATHS: dict[str, tuple[type, Any]] = {
     "appearance.codeFontSize": (int, range(10, 19)),
     "appearance.codeLineHeight": (str, {"compact", "comfortable", "relaxed"}),
     "appearance.codeWrap": (bool, None),
+    "shortcuts.newConversation": (str, None),
+    "shortcuts.searchConversations": (str, None),
+    "shortcuts.openSettings": (str, None),
+    "shortcuts.focusComposer": (str, None),
+    "shortcuts.toggleSidebar": (str, None),
+    "shortcuts.toggleInspector": (str, None),
+    "shortcuts.attachFiles": (str, None),
+    "shortcuts.stopTask": (str, None),
     "terminal.shell": (str, {"powershell", "cmd", "git-bash", "wsl"}),
     "terminal.encoding": (str, {"utf-8", "system"}),
     "terminal.commandTimeoutSeconds": (int, range(15, 1801)),
@@ -148,6 +166,8 @@ class LoomSettingsStore:
                 raise ValueError(f"setting {path} cannot be empty")
             if path == "appearance.codeFont":
                 return value[:120]
+            if path.startswith("shortcuts."):
+                return value[:64]
         if allowed is not None and value not in allowed:
             raise ValueError(f"invalid value for setting {path}: {value!r}")
         return value
