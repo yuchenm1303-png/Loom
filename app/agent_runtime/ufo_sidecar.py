@@ -45,6 +45,13 @@ _SENSITIVE_PARAMETER_KEYS = {
 _SCRATCH_PREFIX = "loom-ufo-private-"
 _SCRATCH_STALE_SECONDS = 24 * 60 * 60
 _FIRST_STEP_PROGRESS_EVENTS = {
+    # Early sidecar lifecycle: emitted BEFORE the heavy Session import so the
+    # watchdog stops counting down once the task is accepted and UFO is alive.
+    "task.started",
+    "task.accepted",
+    "ufo.imports.started",
+    "ufo.imports.completed",
+    # Dispatcher-level first-actionable events.
     "dispatcher.commands.started",
     "window.selected",
     "observation.completed",
