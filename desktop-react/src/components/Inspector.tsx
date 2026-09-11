@@ -340,7 +340,7 @@ export function Inspector({ items, onClose }: InspectorProps) {
         </div>
 
         <div className="runtime-scroll">
-          <div className="runtime-pane" key={tab}>
+          <div className="runtime-pane">
             {tab === "computer" && (exportArchivePath || exportError) ? (
               <div className={`computer-log-export-note ${exportError ? "error" : "success"}`}>
                 <strong>{exportError ? "Export failed" : "Logs exported"}</strong>
