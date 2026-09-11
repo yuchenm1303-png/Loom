@@ -40,6 +40,7 @@ interface SidebarProps {
   onAddProject(root: string): Promise<ProjectRecord | void>;
   onRenameProject(projectId: string, name: string): Promise<void>;
   onRemoveProject(projectId: string): Promise<void>;
+  onMoveProject(threadId: string, projectId: string): Promise<void>;
   onRename(threadId: string, title: string): Promise<void>;
   onArchive(threadId: string, archived: boolean): Promise<void>;
   onDelete(threadId: string): Promise<void>;
