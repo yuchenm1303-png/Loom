@@ -305,8 +305,8 @@ def computer_tools(runtime: "ComputerUseRuntime") -> tuple[AgentTool, ...]:
             return ToolResult(
                 ok=True,
                 content=(
-                    "Computer observation captured. state_revision is mandatory for computer_action; screenshot bytes remain "
-                    "ephemeral unless save_screenshot was explicitly requested."
+                    "Computer observation captured. The returned state_revision can be reused for deterministic "
+                    "computer_action calls; Loom keeps a short same-session revision history to avoid unnecessary stale-state failures."
                 ),
                 data=data,
             )
@@ -362,9 +362,12 @@ def computer_tools(runtime: "ComputerUseRuntime") -> tuple[AgentTool, ...]:
                 status="completed" if bool(outcome.execution and outcome.execution.ok) else "failed",
                 outcome=_outcome_summary(outcome),
             )
+            content = "Computer action executed and the desktop was re-observed."
+            if bool(outcome.verification.get("revision_autofixed")):
+                content = "Computer action executed after Loom reused a compatible same-session observation revision."
             return ToolResult(
                 ok=bool(outcome.execution and outcome.execution.ok),
-                content="Computer action executed and the desktop was re-observed.",
+                content=content,
                 data=data,
             )
         except Exception as exc:
@@ -402,7 +405,9 @@ def computer_tools(runtime: "ComputerUseRuntime") -> tuple[AgentTool, ...]:
                 raise ValueError("computer_step instruction exceeds 20,000 characters")
             outcome = _store(runtime).step(context.session_id, instruction)
             terminal = outcome.prediction.action.type.value
-            if terminal == "call_user":
+            if bool(outcome.verification.get("stuck_detected")):
+                content = "Computer visual policy paused after a repeated unchanged action so the outer agent can re-plan instead of failing."
+            elif terminal == "call_user":
                 content = "Computer visual policy requested user assistance."
             elif terminal == "finish":
                 content = "Computer visual policy considers the current GUI instruction complete."
@@ -467,9 +472,10 @@ def computer_tools(runtime: "ComputerUseRuntime") -> tuple[AgentTool, ...]:
             AgentTool(
                 name="computer_action",
                 description=(
-                    "Execute exactly one typed Windows GUI action against the latest computer_observe state_revision. "
-                    "Prefer control_id for UIA-native clicks/edits; normalized point coordinates are frame-local 0..1 fallbacks. "
-                    "Stale revisions fail closed. The result includes replay trace metadata and resolved screen coordinates when available."
+                    "Execute exactly one typed Windows GUI action. Prefer a recent state_revision from computer_observe, "
+                    "but Loom keeps a short same-session revision history so harmless observe/status drift does not block "
+                    "execution. Prefer control_id for UIA-native clicks/edits; normalized point coordinates are frame-local "
+                    "0..1 fallbacks. The result includes replay trace metadata and resolved screen coordinates when available."
                 ),
                 input_schema=_schema(
                     {
@@ -488,10 +494,10 @@ def computer_tools(runtime: "ComputerUseRuntime") -> tuple[AgentTool, ...]:
             AgentTool(
                 name="computer_step",
                 description=(
-                    "Perform exactly one screenshot-driven GUI policy step: capture screenshot + UIA context, ask the configured "
-                    "visual grounding backend (UI-TARS adapter by default when configured) for one next action, execute at most one "
-                    "OS action, then re-observe and return verification signals. Loom remains the outer agent loop, and the step is "
-                    "written to the per-turn Computer Use trace for replay/debugging."
+                    "Perform one screenshot-driven GUI policy step: capture screenshot + UIA context, ask the configured "
+                    "visual grounding backend for one next action, normalize provider-specific tool-call variants, execute "
+                    "at most one OS action, then re-observe and return verification signals. Loom remains the outer agent "
+                    "loop; repeated unchanged actions request re-planning instead of failing the whole turn."
                 ),
                 input_schema=_schema(
                     {"instruction": {"type": "string", "minLength": 1, "maxLength": 20000}},
