@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from .memory_store import redact_secrets
 
@@ -25,6 +27,10 @@ _SECRET_KEY_PARTS = (
     "set-cookie",
     "token",
 )
+_SENSITIVE_QUERY_KEY = re.compile(
+    r"(?i)(?:^|[_-])(?:api[_-]?key|token|secret|password|passwd|cookie|authorization|auth|signature|session)(?:$|[_-])"
+)
+_URL_KEY_NAMES = {"url", "href", "src", "action_url", "current_url", "target_url"}
 
 
 def _utc_now() -> str:
@@ -42,9 +48,35 @@ def _default_log_root() -> Path:
     return (Path.cwd() / ".loom" / "logs" / "browser-use").resolve()
 
 
+def _normalized_key(key: str) -> str:
+    return str(key or "").casefold().replace("-", "_")
+
+
 def _key_is_sensitive(key: str) -> bool:
-    lowered = str(key or "").casefold().replace("-", "_")
+    lowered = _normalized_key(key)
     return any(part in lowered for part in _SECRET_KEY_PARTS)
+
+
+def _key_is_url(key: str) -> bool:
+    lowered = _normalized_key(key)
+    return lowered in _URL_KEY_NAMES or lowered.endswith("_url") or lowered.endswith("_href")
+
+
+def _redact_url(value: str) -> str:
+    raw = redact_secrets(str(value or ""))
+    try:
+        parsed = urlsplit(raw)
+    except ValueError:
+        return raw
+    if not parsed.scheme or not parsed.netloc:
+        return raw
+    pairs: list[tuple[str, str]] = []
+    for key, item in parse_qsl(parsed.query, keep_blank_values=True):
+        pairs.append((key, "[REDACTED]" if _SENSITIVE_QUERY_KEY.search(key) else redact_secrets(item)))
+    fragment = redact_secrets(parsed.fragment)
+    if any(term in fragment.casefold() for term in ("access_token", "refresh_token", "id_token", "api_key", "token=")):
+        fragment = "[REDACTED]"
+    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, urlencode(pairs, doseq=True), fragment))
 
 
 def _safe_value(value: Any, *, key: str = "", max_string: int = 4000, depth: int = 0) -> Any:
@@ -55,7 +87,7 @@ def _safe_value(value: Any, *, key: str = "", max_string: int = 4000, depth: int
     if value is None or isinstance(value, (bool, int, float)):
         return value
     if isinstance(value, str):
-        text = redact_secrets(value)
+        text = _redact_url(value) if _key_is_url(key) else redact_secrets(value)
         if len(text) > max_string:
             return text[:max_string] + "...[truncated]"
         return text
@@ -113,8 +145,8 @@ class BrowserDiagnosticLog:
     """Append-only JSONL diagnostics for browser automation smoke tests.
 
     The log is local-only and intentionally redacts secret-shaped fields. It is
-    detailed enough to reconstruct the browser bridge lifecycle without storing
-    screenshot bytes or typed text payloads.
+    detailed enough to reconstruct the browser bridge/browser-use lifecycle
+    without storing screenshot bytes or typed text payloads.
     """
 
     def __init__(self, *, root: str | Path | None = None, enabled: bool = True) -> None:

@@ -20,6 +20,7 @@ class BrowserUseSessionBackend(BrowserUseBackend):
         self._selector_map: dict[int, Any] = {}
         self._tab_map: dict[str, str] = {}
         self._state_revision = 0
+        self._log("browser_use.snapshot_backend.created")
 
     @property
     def state_revision(self) -> int:
@@ -37,15 +38,46 @@ class BrowserUseSessionBackend(BrowserUseBackend):
                 short = target_id[-12:]
                 self._tab_map[short] = target_id
         self._state_revision += 1
-        return _serialize_state(state)
+        serialized = self._with_backend_page_info(
+            _serialize_state(state),
+            capture_mode="browser_use_snapshot",
+            selector_count=len(self._selector_map),
+        )
+        self._log(
+            "browser_use.selector_snapshot.captured",
+            state_revision=self._state_revision,
+            selector_count=len(self._selector_map),
+            tab_count=len(serialized.tabs),
+            state=self._state_summary(serialized),
+        )
+        return serialized
 
     async def _node_for_index(self, index: int):
-        node = self._selector_map.get(int(index))
+        key = int(index)
+        self._log(
+            "browser_use.snapshot_node.lookup.started",
+            index=key,
+            state_revision=self._state_revision,
+            selector_count=len(self._selector_map),
+        )
+        node = self._selector_map.get(key)
         if node is None:
+            self._log(
+                "browser_use.snapshot_node.lookup.missing",
+                index=key,
+                state_revision=self._state_revision,
+                selector_count=len(self._selector_map),
+            )
             raise BrowserError(
                 f"browser element index {index} is unavailable in the latest state snapshot; "
                 "call browser_state and retry with the returned state_revision"
             )
+        self._log(
+            "browser_use.snapshot_node.lookup.completed",
+            index=key,
+            state_revision=self._state_revision,
+            backend_node_id_present=getattr(node, "backend_node_id", None) is not None,
+        )
         return node
 
     async def _actor_element_for_index(self, index: int):
@@ -60,10 +92,12 @@ class BrowserUseSessionBackend(BrowserUseBackend):
         node = await self._node_for_index(index)
         backend_node_id = getattr(node, "backend_node_id", None)
         if backend_node_id is None:
+            self._log("browser_use.actor_element.lookup.missing_backend_node", index=int(index), state_revision=self._state_revision)
             raise BrowserError(f"browser element index {index} has no backend node identity")
         element_session = await session.cdp_client_for_node(node)
         from browser_use.actor.element import Element
 
+        self._log("browser_use.actor_element.lookup.completed", index=int(index), state_revision=self._state_revision)
         return Element(session, int(backend_node_id), element_session.session_id)
 
     async def _hover_async(self, index: int) -> BrowserPageState:
@@ -72,7 +106,7 @@ class BrowserUseSessionBackend(BrowserUseBackend):
         return await self._state_async()
 
     def hover(self, index: int) -> BrowserPageState:
-        return self._runner.run(self._hover_async(index), timeout=self.action_timeout_seconds)
+        return self._run_state_action("hover", self._hover_async(index), args={"index": int(index)})
 
     async def _press_key_async(self, key: str) -> BrowserPageState:
         value = str(key or "").strip()
@@ -87,12 +121,13 @@ class BrowserUseSessionBackend(BrowserUseBackend):
         session = await self._ensure_session()
         page = await session.get_current_page()
         if page is None:
+            self._log("browser_use.keyboard.no_active_page", key=value)
             raise BrowserError("browser has no active page for keyboard input")
         await page.press(value)
         return await self._state_async()
 
     def press_key(self, key: str) -> BrowserPageState:
-        return self._runner.run(self._press_key_async(key), timeout=self.action_timeout_seconds)
+        return self._run_state_action("press_key", self._press_key_async(key), args={"key": str(key or "")})
 
     async def _select_option_async(self, index: int, value: str) -> BrowserPageState:
         option = str(value)
@@ -105,9 +140,10 @@ class BrowserUseSessionBackend(BrowserUseBackend):
         return await self._state_async()
 
     def select_option(self, index: int, value: str) -> BrowserPageState:
-        return self._runner.run(
+        return self._run_state_action(
+            "select_option",
             self._select_option_async(index, value),
-            timeout=self.action_timeout_seconds,
+            args={"index": int(index), "value": str(value)},
         )
 
     async def _drag_async(self, source_index: int, target_index: int) -> BrowserPageState:
@@ -119,9 +155,10 @@ class BrowserUseSessionBackend(BrowserUseBackend):
         return await self._state_async()
 
     def drag(self, source_index: int, target_index: int) -> BrowserPageState:
-        return self._runner.run(
+        return self._run_state_action(
+            "drag",
             self._drag_async(source_index, target_index),
-            timeout=self.action_timeout_seconds,
+            args={"source_index": int(source_index), "target_index": int(target_index)},
         )
 
     async def _refresh_async(self) -> BrowserPageState:
@@ -131,7 +168,7 @@ class BrowserUseSessionBackend(BrowserUseBackend):
         return await self._state_async()
 
     def refresh(self) -> BrowserPageState:
-        return self._runner.run(self._refresh_async(), timeout=self.action_timeout_seconds)
+        return self._run_state_action("refresh", self._refresh_async())
 
     def tabs(self) -> BrowserPageState:
         return self.state()
@@ -142,10 +179,13 @@ class BrowserUseSessionBackend(BrowserUseBackend):
             raise ValueError("browser tab_id must not be empty")
         full = self._tab_map.get(key)
         if full is not None:
+            self._log("browser_use.tab.resolve.completed", requested=key, matched=full[-12:])
             return full
         matches = [target for short, target in self._tab_map.items() if short.endswith(key) or target.endswith(key)]
         if len(matches) == 1:
+            self._log("browser_use.tab.resolve.completed", requested=key, matched=matches[0][-12:])
             return matches[0]
+        self._log("browser_use.tab.resolve.failed", requested=key, known_tabs=list(self._tab_map.keys()))
         raise BrowserError("browser tab_id is unavailable in the latest tab snapshot; call browser_tabs again")
 
     async def _switch_tab_async(self, tab_id: str) -> BrowserPageState:
@@ -155,7 +195,7 @@ class BrowserUseSessionBackend(BrowserUseBackend):
         return await self._state_async()
 
     def switch_tab(self, tab_id: str) -> BrowserPageState:
-        return self._runner.run(self._switch_tab_async(tab_id), timeout=self.action_timeout_seconds)
+        return self._run_state_action("switch_tab", self._switch_tab_async(tab_id), args={"tab_id": str(tab_id)})
 
     async def _close_tab_async(self, tab_id: str) -> BrowserPageState:
         from browser_use.browser.events import CloseTabEvent
@@ -164,7 +204,7 @@ class BrowserUseSessionBackend(BrowserUseBackend):
         return await self._state_async()
 
     def close_tab(self, tab_id: str) -> BrowserPageState:
-        return self._runner.run(self._close_tab_async(tab_id), timeout=self.action_timeout_seconds)
+        return self._run_state_action("close_tab", self._close_tab_async(tab_id), args={"tab_id": str(tab_id)})
 
 
 def browser_use_session_backend_factory(options: BrowserLaunchOptions) -> BrowserUseSessionBackend:
