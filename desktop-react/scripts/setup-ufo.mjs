@@ -51,21 +51,37 @@ function commandExists(command, args = ["--version"]) {
   return run(command, args, { quiet: true }).ok;
 }
 
-function resolveBootstrapPython() {
-  const explicit = process.env.LOOM_UFO_BOOTSTRAP_PYTHON?.trim();
-  const candidates = explicit
-    ? [{ command: explicit, prefix: [] }]
-    : process.platform === "win32"
-      ? [
-          { command: "py", prefix: ["-3.10"] },
-          { command: "python3.10", prefix: [] },
-          { command: "python", prefix: [] },
-        ]
-      : [
-          { command: "python3.10", prefix: [] },
-          { command: "python", prefix: [] },
-        ];
+function python310Candidates(explicit) {
+  if (explicit) return [{ command: explicit, prefix: [] }];
 
+  const candidates = process.platform === "win32"
+    ? [
+        { command: "py", prefix: ["-3.10"] },
+        { command: "python3.10", prefix: [] },
+        { command: "python", prefix: [] },
+      ]
+    : [
+        { command: "python3.10", prefix: [] },
+        { command: "python", prefix: [] },
+      ];
+
+  if (process.platform === "win32") {
+    const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local");
+    const programFiles = process.env.PROGRAMFILES || "C:\\Program Files";
+    const programFilesX86 = process.env["PROGRAMFILES(X86)"] || "C:\\Program Files (x86)";
+    for (const pythonPath of [
+      path.join(localAppData, "Programs", "Python", "Python310", "python.exe"),
+      path.join(programFiles, "Python310", "python.exe"),
+      path.join(programFilesX86, "Python310-32", "python.exe"),
+    ]) {
+      candidates.push({ command: pythonPath, prefix: [] });
+    }
+  }
+
+  return candidates;
+}
+
+function probePython310(candidates) {
   for (const candidate of candidates) {
     const probe = run(
       candidate.command,
@@ -78,8 +94,52 @@ function resolveBootstrapPython() {
     );
     if (probe.ok && probe.stdout === "3.10") return candidate;
   }
+  return null;
+}
+
+function autoInstallPython310() {
+  if (process.platform !== "win32") return false;
+  if (String(process.env.LOOM_UFO_AUTO_INSTALL_PYTHON || "1").trim() === "0") return false;
+  if (!commandExists("winget")) return false;
+
+  console.log("[setup-ufo] Python 3.10 was not found; trying to install it with winget.");
+  const args = [
+    "install",
+    "-e",
+    "--id",
+    "Python.Python.3.10",
+    "--scope",
+    "user",
+    "--accept-package-agreements",
+    "--accept-source-agreements",
+  ];
+  let install = run("winget", args);
+  if (!install.ok) {
+    console.log("[setup-ufo] winget user-scope install failed; retrying without --scope user.");
+    install = run("winget", args.filter((arg) => arg !== "--scope" && arg !== "user"));
+  }
+  if (!install.ok) return false;
+
+  console.log("[setup-ufo] Python 3.10 install finished; probing the installed interpreter.");
+  return true;
+}
+
+function resolveBootstrapPython() {
+  const explicit = process.env.LOOM_UFO_BOOTSTRAP_PYTHON?.trim();
+  const found = probePython310(python310Candidates(explicit));
+  if (found) return found;
+
+  if (!explicit && autoInstallPython310()) {
+    const afterInstall = probePython310(python310Candidates(""));
+    if (afterInstall) return afterInstall;
+  }
+
+  const guidance = explicit
+    ? `The configured LOOM_UFO_BOOTSTRAP_PYTHON is not Python 3.10: ${explicit}`
+    : "Python 3.10 was not found and automatic installation did not produce a usable interpreter.";
   fail(
-    "Microsoft UFO v3.0.8 is installed in a dedicated Python 3.10 environment. " +
+    guidance + " " +
+      "Loom can auto-provision UFO, but UFO v3.0.8 still requires a local Python 3.10 runtime. " +
       "Install Python 3.10 or set LOOM_UFO_BOOTSTRAP_PYTHON to a Python 3.10 executable.",
   );
 }
