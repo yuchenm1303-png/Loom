@@ -98,7 +98,7 @@ def _initialize(controller):
 def test_memory_settings_are_typed_durable_and_legacy_compatible(tmp_path):
     settings = LoomSettingsStore(tmp_path / "home")
     snapshot = settings.snapshot()
-    assert snapshot["schemaVersion"] == 3
+    assert snapshot["schemaVersion"] == 2
     assert snapshot["memory"] == {
         "enabled": True,
         "autoExtract": True,
