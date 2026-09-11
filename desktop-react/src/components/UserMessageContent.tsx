@@ -1,4 +1,6 @@
 import {
+  ChevronDown,
+  ChevronUp,
   File,
   FileArchive,
   FileCode2,
@@ -7,6 +9,7 @@ import {
   FileText,
   type LucideIcon,
 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import "./user-message-attachments.css";
 
 export interface DisplayAttachment {
@@ -24,6 +27,8 @@ export interface ParsedUserMessage {
 const MANIFEST_HEADER = "Attached files (already saved in this workspace):";
 const IMAGE_MARKER = /^\[\d+ images? attached\]$/i;
 const MANIFEST_LINE = /^-\s+(.+?)\s+—\s+(\.loom\/attachments\/.+?)\s+\((image, shown above|read it with the file tools)\)$/i;
+const LONG_MESSAGE_CHAR_THRESHOLD = 420;
+const LONG_MESSAGE_LINE_THRESHOLD = 9;
 
 function extensionOf(name: string): string {
   const clean = String(name || "").trim();
@@ -85,10 +90,42 @@ function typeLabel(attachment: DisplayAttachment): string {
   return attachment.extension ? attachment.extension.toUpperCase() : "文件";
 }
 
+function isLongUserMessage(text: string): boolean {
+  const normalized = String(text || "").trim();
+  if (!normalized) return false;
+  if (normalized.length > LONG_MESSAGE_CHAR_THRESHOLD) return true;
+  return normalized.split("\n").length >= LONG_MESSAGE_LINE_THRESHOLD;
+}
+
 export function UserMessageContent({ parsed }: { parsed: ParsedUserMessage }) {
+  const collapsible = useMemo(() => isLongUserMessage(parsed.text), [parsed.text]);
+  const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    setExpanded(false);
+  }, [parsed.text]);
+
   return (
     <div className="user-message-content">
-      {parsed.text ? <div className="user-message-text">{parsed.text}</div> : null}
+      {parsed.text ? (
+        <div className={`user-message-copy-shell ${collapsible ? "is-collapsible" : ""} ${expanded ? "is-expanded" : "is-collapsed"}`}>
+          <div className="user-message-text">{parsed.text}</div>
+          {collapsible ? (
+            <button
+              type="button"
+              className="user-message-collapse-toggle"
+              onClick={() => setExpanded((value) => !value)}
+              aria-expanded={expanded}
+              title={expanded ? "收起长消息" : "展开完整消息"}
+            >
+              <span>{expanded ? "收起" : "展开全部"}</span>
+              {expanded
+                ? <ChevronUp size={14} strokeWidth={1.9} aria-hidden="true" />
+                : <ChevronDown size={14} strokeWidth={1.9} aria-hidden="true" />}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       {parsed.attachments.length ? (
         <div className="user-message-attachment-list" aria-label="Attached files">
           {parsed.attachments.map((attachment, index) => {
