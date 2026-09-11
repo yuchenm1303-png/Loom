@@ -60,7 +60,10 @@ def test_model_compaction_is_separate_no_tool_task_and_counts_usage(tmp_path):
     assert request.tools == ()
     assert request.messages[0].role is MessageRole.SYSTEM
     assert "Do not invent facts" in request.messages[0].content
-    assert [message.content for message in request.messages[1:]] == [
+    assert request.messages[1].role is MessageRole.SYSTEM
+    assert request.messages[1].name == "loom_communication_language"
+    assert "Current user communication language" in request.messages[1].content
+    assert [message.content for message in request.messages[2:]] == [
         "question one",
         "answer one",
         "question two",
@@ -75,5 +78,6 @@ def test_model_compaction_is_separate_no_tool_task_and_counts_usage(tmp_path):
         if event.kind is AgentEventKind.CONTEXT_CHECKPOINTED
     ]
     assert events[-1].data["summary_source"] == "model"
+    assert events[-1].data["communication_language"] == "latin"
     assert events[-1].data["summary_usage"]["total_tokens"] == 140
     runtime.close()
