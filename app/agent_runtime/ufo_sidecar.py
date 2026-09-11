@@ -671,6 +671,43 @@ def _install_structured_output_probe_fallback() -> None:
     _PROBE_PATCHED = True
 
 
+def _request_shape(messages: Any) -> dict[str, Any]:
+    """Measure what a UFO turn actually sends, without retaining any of it."""
+
+    images = 0
+    image_bytes = 0
+    text_chars = 0
+    by_role: dict[str, int] = {}
+
+    def _count(role: str, size: int) -> None:
+        by_role[role] = by_role.get(role, 0) + size
+
+    for message in messages if isinstance(messages, (list, tuple)) else ():
+        role = str(message.get("role") or "?") if isinstance(message, dict) else "?"
+        content = message.get("content") if isinstance(message, dict) else None
+        if isinstance(content, str):
+            text_chars += len(content)
+            _count(role, len(content))
+            continue
+        for part in content if isinstance(content, (list, tuple)) else ():
+            if not isinstance(part, dict):
+                continue
+            if part.get("type") == "image_url":
+                url = str((part.get("image_url") or {}).get("url") or "")
+                images += 1
+                image_bytes += len(url)
+            else:
+                size = len(str(part.get("text") or ""))
+                text_chars += size
+                _count(role, size)
+    return {
+        "images": images,
+        "image_payload_kb": round(image_bytes / 1024, 1),
+        "text_chars": text_chars,
+        "text_chars_by_role": by_role,
+    }
+
+
 def _thinking_override(model: str) -> dict[str, Any] | None:
     """Request a non-reasoning response for a UFO agent turn, when supported.
 
@@ -707,16 +744,28 @@ def _install_llm_response_hook() -> None:
                 extra_body = dict(kwargs.get("extra_body") or {})
                 extra_body.update(override)
                 kwargs["extra_body"] = extra_body
-            responses, cost = original(self, *args, **kwargs)
+            agent_type = str(getattr(self, "agent_type", "") or "")
+            shape = _request_shape(args[0] if args else kwargs.get("messages"))
+            started = time.monotonic()
+            try:
+                responses, cost = original(self, *args, **kwargs)
+            finally:
+                controller = _ACTIVE_CONTROLLER
+                if controller is not None:
+                    # Desktop latency is dominated by these calls, and how long one
+                    # takes is mostly a function of how much image and UIA text is
+                    # sent. Recording both together is what makes it possible to
+                    # tell a slow model apart from an oversized request.
+                    controller.event_sync(
+                        "llm.call.completed",
+                        {"agent_type": agent_type, "duration_ms": _elapsed_ms(started), **shape},
+                    )
             cleaned = _sanitize_llm_response(responses)
             controller = _ACTIVE_CONTROLLER
             if controller is not None and cleaned != responses:
                 controller.event_sync(
                     "llm.response.normalized",
-                    {
-                        "agent_type": str(getattr(self, "agent_type", "") or ""),
-                        "removed_reasoning_wrapper": True,
-                    },
+                    {"agent_type": agent_type, "removed_reasoning_wrapper": True},
                 )
             return cleaned, cost
 
