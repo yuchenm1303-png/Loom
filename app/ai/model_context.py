@@ -13,11 +13,29 @@ _ENV_FIELDS = {
     "output_reserve_tokens": "LOOM_MODEL_OUTPUT_RESERVE_TOKENS",
     "tool_output_token_limit": "LOOM_MODEL_TOOL_OUTPUT_TOKEN_LIMIT",
 }
+_MAPPING_KEYS = {
+    "context_window_tokens": ("context_window_tokens", "contextWindowTokens"),
+    "effective_context_percent": ("effective_context_percent", "effectiveContextPercent"),
+    "auto_compact_token_limit": ("auto_compact_token_limit", "autoCompactTokenLimit"),
+    "output_reserve_tokens": ("output_reserve_tokens", "outputReserveTokens"),
+    "tool_output_token_limit": ("tool_output_token_limit", "toolOutputTokenLimit"),
+}
 
 
-def _optional_int(env: Mapping[str, str], name: str) -> int | None:
-    raw = str(env.get(name) or "").strip()
-    return int(raw) if raw else None
+def _optional_int(values: Mapping[str, object], name: str) -> int | None:
+    raw = values.get(name)
+    if raw is None or raw == "":
+        return None
+    text = str(raw).strip()
+    return int(text) if text else None
+
+
+def _first_int(payload: Mapping[str, object], keys: tuple[str, ...]) -> int | None:
+    for key in keys:
+        value = _optional_int(payload, key)
+        if value is not None:
+            return value
+    return None
 
 
 def model_context_limits_from_env(
@@ -42,4 +60,50 @@ def model_context_limits_from_env(
     )
 
 
-__all__ = ["model_context_limits_from_env"]
+def model_context_limits_from_mapping(
+    payload: Mapping[str, object] | None,
+    *,
+    fallback: ModelContextLimits | None = None,
+) -> ModelContextLimits:
+    """Normalize camelCase/snake_case context metadata from UI/RPC boundaries."""
+
+    source = payload or {}
+    base = fallback or ModelContextLimits()
+    window = _first_int(source, _MAPPING_KEYS["context_window_tokens"])
+    percent = _first_int(source, _MAPPING_KEYS["effective_context_percent"])
+    auto_compact = _first_int(source, _MAPPING_KEYS["auto_compact_token_limit"])
+    reserve = _first_int(source, _MAPPING_KEYS["output_reserve_tokens"])
+    tool_output = _first_int(source, _MAPPING_KEYS["tool_output_token_limit"])
+
+    return ModelContextLimits(
+        context_window_tokens=window if window is not None else base.context_window_tokens,
+        effective_context_percent=(
+            percent if percent is not None else base.effective_context_percent
+        ),
+        auto_compact_token_limit=(
+            auto_compact if auto_compact is not None else base.auto_compact_token_limit
+        ),
+        output_reserve_tokens=(
+            reserve if reserve is not None else base.output_reserve_tokens
+        ),
+        tool_output_token_limit=(
+            tool_output if tool_output is not None else base.tool_output_token_limit
+        ),
+    )
+
+
+def model_context_limits_to_camel(limits: ModelContextLimits) -> dict[str, int | None]:
+    return {
+        "contextWindowTokens": limits.context_window_tokens,
+        "effectiveContextPercent": limits.effective_context_percent,
+        "autoCompactTokenLimit": limits.auto_compact_token_limit,
+        "outputReserveTokens": limits.output_reserve_tokens,
+        "toolOutputTokenLimit": limits.tool_output_token_limit,
+    }
+
+
+__all__ = [
+    "model_context_limits_from_env",
+    "model_context_limits_from_mapping",
+    "model_context_limits_to_camel",
+]
