@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Iterable, Mapping
 
 from .capabilities import ModelCapability
 from .errors import AIConfigurationError
-from .profiles import ModelProfile, ModelRegistry
+from .profiles import ModelContextLimits, ModelProfile, ModelRegistry
 from .provider_catalog import ProviderCatalog, ProviderConnection
 from .roles import ModelRole
 
@@ -16,6 +16,7 @@ class ModelBinding:
     provider_id: str
     model: str
     capabilities: frozenset[ModelCapability]
+    context_limits: ModelContextLimits = field(default_factory=ModelContextLimits)
 
     def __post_init__(self) -> None:
         role_id = str(self.role_id or "").strip().casefold()
@@ -30,6 +31,8 @@ class ModelBinding:
             raise ValueError("model must not be empty")
         if not capabilities:
             raise ValueError("model binding must declare capabilities")
+        if not isinstance(self.context_limits, ModelContextLimits):
+            raise TypeError("context_limits must be ModelContextLimits")
         object.__setattr__(self, "role_id", role_id)
         object.__setattr__(self, "provider_id", provider_id)
         object.__setattr__(self, "model", model)
@@ -41,6 +44,7 @@ class ModelBinding:
             "provider_id": self.provider_id,
             "model": self.model,
             "capabilities": sorted(value.value for value in self.capabilities),
+            "context_limits": self.context_limits.as_safe_dict(),
         }
 
 
@@ -96,6 +100,7 @@ class AIConfiguration:
                     provider_id=binding.provider_id,
                     model=binding.model,
                     capabilities=binding.capabilities,
+                    context_limits=binding.context_limits,
                 )
             except (KeyError, RuntimeError, ValueError) as exc:
                 raise AIConfigurationError(

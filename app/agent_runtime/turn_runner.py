@@ -88,10 +88,16 @@ class TurnRunner:
                             name="loom_terminal_recovery",
                             content=_TERMINAL_RECOVERY_INSTRUCTION,
                         ))
+                    context_limits = extra.get("context_limits") if isinstance(extra, dict) else None
+                    resolved_output_reserve = (
+                        int(context_limits.get("output_reserve_tokens"))
+                        if isinstance(context_limits, dict) and context_limits.get("output_reserve_tokens")
+                        else rt.limits.output_reserve_tokens
+                    )
                     try:
                         response = rt.model_executor.execute(rt.platform, session.profile_id,
                             ChatRequest(messages=tuple(request_messages), tools=step.tool_router.definitions(),
-                                tool_choice=ToolChoice.AUTO, max_output_tokens=rt.limits.output_reserve_tokens,
+                                tool_choice=ToolChoice.AUTO, max_output_tokens=resolved_output_reserve,
                                 reasoning=reasoning), token)
                     except AIEmptyResponseError as exc:
                         from .runtime import _add_usage
@@ -124,11 +130,6 @@ class TurnRunner:
                         recovery_instruction = "empty_response"
                         continue
                     except AIResponseError as exc:
-                        # Provider response-shape failures happen before a model
-                        # response is committed and before any tool can execute,
-                        # so retrying is side-effect safe.  Treat the whole
-                        # response-error family consistently instead of allowing
-                        # each new malformed provider shape to kill the turn.
                         session.model_steps += 1
                         rt._record(session, Event.MODEL_RESPONSE_REJECTED, data={
                             "step_id": step.step_id,

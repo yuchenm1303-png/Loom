@@ -6,6 +6,7 @@ import pytest
 
 from app.ai.credentials import CredentialSource
 from app.ai.model_store import ModelConfigStore, model_id_from_selection
+from app.ai.profiles import ModelContextLimits
 from app.ai.provider_catalog import ProviderAdapter
 
 
@@ -42,11 +43,82 @@ def test_openai_compatible_model_metadata_is_saved_without_the_secret(tmp_path):
     payload = json.loads(persisted)
     assert payload["models"][0]["name"] == "Gateway A · Agent"
     assert payload["models"][0]["model"] == "agent-model-x"
+    assert payload["models"][0]["context_limits"]["context_window_tokens"] is None
 
     connection = entry.provider_connection()
     assert connection.adapter is ProviderAdapter.OPENAI_COMPATIBLE
     assert connection.base_url == "https://example.test/v1"
     assert connection.credential_ref.source is CredentialSource.OS_KEYCHAIN
+
+
+def test_context_limits_round_trip_with_saved_model(tmp_path):
+    store, _secrets = _store(tmp_path)
+    limits = ModelContextLimits(
+        context_window_tokens=131_072,
+        effective_context_percent=92,
+        auto_compact_token_limit=88_000,
+        output_reserve_tokens=8192,
+        tool_output_token_limit=6000,
+    )
+
+    entry = store.save_model(
+        display_name="Large Context",
+        adapter="openai-compatible",
+        base_url="https://example.test/v1",
+        model="agent-large",
+        api_key="secret",
+        context_limits=limits,
+    )
+
+    restored = store.get(entry.model_id)
+    assert restored.context_limits == limits
+    payload = json.loads((tmp_path / "models.json").read_text(encoding="utf-8"))
+    assert payload["models"][0]["context_limits"] == limits.as_safe_dict()
+
+    updated = store.update_model(
+        entry.model_id,
+        display_name=entry.display_name,
+        adapter=entry.adapter,
+        base_url=entry.base_url,
+        model=entry.model,
+        context_limits=ModelContextLimits(context_window_tokens=64_000),
+    )
+    assert updated.context_limits.context_window_tokens == 64_000
+    assert store.get(entry.model_id).context_limits.context_window_tokens == 64_000
+
+
+def test_old_v1_model_record_without_context_limits_remains_readable(tmp_path):
+    store, secrets = _store(tmp_path)
+    model_id = "m123456789abc"
+    alias = f"model/{model_id}"
+    secrets[alias] = "secret"
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    (tmp_path / "models.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "active_model_id": model_id,
+                "models": [
+                    {
+                        "id": model_id,
+                        "name": "Legacy",
+                        "adapter": "openai-compatible",
+                        "base_url": "https://legacy.example/v1",
+                        "model": "legacy-model",
+                        "credential_alias": alias,
+                        "vision": True,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    entry = store.get(model_id)
+
+    assert entry.display_name == "Legacy"
+    assert entry.context_limits == ModelContextLimits()
+    assert store.active_model() == entry
 
 
 def test_active_model_round_trips_and_can_be_cleared(tmp_path):

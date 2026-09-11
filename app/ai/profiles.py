@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Iterable
 
 from .capabilities import ModelCapability
@@ -9,6 +9,62 @@ from .credentials import CredentialRef
 
 
 _PROFILE_ID_RE = re.compile(r"^[a-z][a-z0-9._-]{0,127}$")
+
+
+@dataclass(frozen=True, slots=True)
+class ModelContextLimits:
+    """Optional model-specific context budgeting metadata.
+
+    ``None`` means that Loom has no authoritative value for that field and must
+    fall back to the runtime defaults. Keeping unknown values explicit is safer
+    than guessing a large vendor window for OpenAI-compatible endpoints.
+    """
+
+    context_window_tokens: int | None = None
+    effective_context_percent: int = 95
+    auto_compact_token_limit: int | None = None
+    output_reserve_tokens: int | None = None
+    tool_output_token_limit: int | None = None
+
+    def __post_init__(self) -> None:
+        for name in (
+            "context_window_tokens",
+            "auto_compact_token_limit",
+            "output_reserve_tokens",
+            "tool_output_token_limit",
+        ):
+            raw = getattr(self, name)
+            if raw is None:
+                continue
+            value = int(raw)
+            if value < 1:
+                raise ValueError(f"{name} must be positive when specified")
+            object.__setattr__(self, name, value)
+
+        percent = int(self.effective_context_percent)
+        if percent < 50 or percent > 100:
+            raise ValueError("effective_context_percent must be within 50..100")
+        object.__setattr__(self, "effective_context_percent", percent)
+
+        window = self.context_window_tokens
+        reserve = self.output_reserve_tokens
+        if window is not None and reserve is not None and reserve >= window:
+            raise ValueError("output_reserve_tokens must be smaller than context_window_tokens")
+
+    @property
+    def effective_context_window_tokens(self) -> int | None:
+        if self.context_window_tokens is None:
+            return None
+        return max(1, self.context_window_tokens * self.effective_context_percent // 100)
+
+    def as_safe_dict(self) -> dict[str, int | None]:
+        return {
+            "context_window_tokens": self.context_window_tokens,
+            "effective_context_percent": self.effective_context_percent,
+            "auto_compact_token_limit": self.auto_compact_token_limit,
+            "output_reserve_tokens": self.output_reserve_tokens,
+            "tool_output_token_limit": self.tool_output_token_limit,
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,6 +82,7 @@ class ModelProfile:
     capabilities: frozenset[ModelCapability]
     allow_fallback: bool = False
     credential_ref: CredentialRef | None = None
+    context_limits: ModelContextLimits = field(default_factory=ModelContextLimits)
 
     def __post_init__(self) -> None:
         profile_id = str(self.profile_id or "").strip().casefold()
@@ -43,6 +100,9 @@ class ModelProfile:
         credential_ref = self.credential_ref
         if credential_ref is not None and not isinstance(credential_ref, CredentialRef):
             raise TypeError("credential_ref must be CredentialRef or None")
+        context_limits = self.context_limits
+        if not isinstance(context_limits, ModelContextLimits):
+            raise TypeError("context_limits must be ModelContextLimits")
         object.__setattr__(self, "profile_id", profile_id)
         object.__setattr__(self, "provider", provider)
         object.__setattr__(self, "model", model)
@@ -61,6 +121,7 @@ class ModelProfile:
             "credential_ref": (
                 self.credential_ref.as_safe_dict() if self.credential_ref is not None else None
             ),
+            "context_limits": self.context_limits.as_safe_dict(),
         }
 
 
@@ -102,4 +163,4 @@ class ModelRegistry:
         return tuple(self._profiles[key] for key in sorted(self._profiles))
 
 
-__all__ = ["ModelProfile", "ModelRegistry"]
+__all__ = ["ModelContextLimits", "ModelProfile", "ModelRegistry"]

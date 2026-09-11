@@ -6,7 +6,7 @@ from typing import Iterable
 
 from .capabilities import ModelCapability
 from .credentials import CredentialRef
-from .profiles import ModelProfile
+from .profiles import ModelContextLimits, ModelProfile
 
 
 _ROLE_ID_RE = re.compile(r"^[a-z][a-z0-9._-]{0,127}$")
@@ -37,6 +37,7 @@ class ModelRole:
         model: str,
         capabilities: Iterable[ModelCapability],
         credential_ref: CredentialRef | None = None,
+        context_limits: ModelContextLimits | None = None,
     ) -> ModelProfile:
         declared = frozenset(ModelCapability(value) for value in capabilities)
         missing = tuple(
@@ -55,6 +56,7 @@ class ModelRole:
             capabilities=declared,
             allow_fallback=self.allow_fallback,
             credential_ref=credential_ref,
+            context_limits=context_limits or ModelContextLimits(),
         )
 
 
