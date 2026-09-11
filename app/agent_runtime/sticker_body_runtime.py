@@ -25,6 +25,13 @@ from .streaming_runtime import StreamingAgentRuntime
 _THINK_OPEN = "<think>"
 _THINK_CLOSE = "</think>"
 
+# Balanced coverage stays available on both rendered surfaces, but the previous
+# rollout made the Thought process guarantee too eager at the default 50/100
+# frequency. Keep reasoning stickers possible while reserving forced coverage
+# for clearly substantive/high-frequency reasoning.
+_REASONING_GUARANTEE_MIN_CHARS = 96
+_REASONING_GUARANTEE_MIN_FREQUENCY = 65
+
 
 def _visible_body_ranges(text: str) -> list[tuple[int, int]]:
     """Return ranges rendered as the final answer rather than Thought process."""
@@ -167,14 +174,13 @@ def ensure_balanced_sticker_coverage(
     preferences: StickerPreferences,
     context: StickerContext,
 ) -> StickerResult:
-    """Keep stickers distributed across both Thought process and final answer.
+    """Keep stickers distributed across Thought process and final answer.
 
-    The normal sticker engine already chooses a dynamic quantity from reply
-    length, natural nodes and the frequency setting. This postcondition only
-    prevents one rendered surface from monopolizing those stickers: the final
-    answer has first priority, then substantive Thought process receives one
-    when capacity remains. Existing reasoning stickers are preserved instead of
-    being stripped.
+    The base sticker engine owns the dynamic quantity. This postcondition keeps
+    the final answer from going empty, while Thought process remains eligible
+    without automatically adding a second sticker to ordinary/default-density
+    replies. Forced reasoning coverage is reserved for longer reasoning at a
+    higher frequency so the overall visual density stays restrained.
     """
 
     scene = analyze_scene(context, preferences)
@@ -197,9 +203,11 @@ def ensure_balanced_sticker_coverage(
     reasoning_len = _plain_length(source, reasoning_ranges)
 
     diagnostics.update({
-        "stickerCoverageMode": "balanced_reasoning_and_answer",
+        "stickerCoverageMode": "balanced_reasoning_and_answer_restrained",
         "visibleBodyStickerCount": len(_markers_in_ranges(source, body_ranges)),
         "reasoningStickerCount": len(_markers_in_ranges(source, reasoning_ranges)),
+        "reasoningGuaranteeMinChars": _REASONING_GUARANTEE_MIN_CHARS,
+        "reasoningGuaranteeMinFrequency": _REASONING_GUARANTEE_MIN_FREQUENCY,
     })
 
     # The final answer remains the hard priority. If a very small explicit max
@@ -229,11 +237,17 @@ def ensure_balanced_sticker_coverage(
                     "bodyStickerGuaranteeAnchor": anchor,
                 })
 
-    # Thought process is now a first-class rendered surface too. It may carry
-    # stickers naturally, but it never steals the last available slot from the
-    # final answer because the answer pass above runs first.
+    # Thought process stays a first-class sticker surface, but default-density
+    # replies no longer receive a mechanically forced extra sticker. The model
+    # may still place a natural reasoning candidate; this pass only guarantees
+    # one for clearly long/high-frequency reasoning.
     reasoning_ranges = _reasoning_ranges(source)
-    if reasoning_len >= 18 and not _markers_in_ranges(source, reasoning_ranges):
+    reasoning_should_be_guaranteed = (
+        preferences.frequency >= _REASONING_GUARANTEE_MIN_FREQUENCY
+        and reasoning_len >= _REASONING_GUARANTEE_MIN_CHARS
+    )
+    diagnostics["reasoningGuaranteeEligible"] = reasoning_should_be_guaranteed
+    if reasoning_should_be_guaranteed and not _markers_in_ranges(source, reasoning_ranges):
         remaining = limit - len(extract_keys(source))
         if remaining >= 1:
             inserted = _inject_surface_sticker(
@@ -277,10 +291,11 @@ class BalancedStickerStreamingAgentRuntime(StreamingAgentRuntime):
         guard_prompt = (
             "【Loom 表情均匀分布规则｜高优先级】\n"
             "表情候选可以出现在 <think>...</think> Thought process，也可以出现在最终正文；两部分都是可渲染区域。\n"
-            "数量不要固定成某个数字，而要跟随发送频率、回复长度和自然表达节点动态增长。\n"
-            "有多个候选时必须尽量均匀覆盖整条输出的前段、中段、后段，不要集中塞在开头、结尾或同一段。\n"
-            "最终正文优先保证：只要允许表情且正文形成完整自然表达节点，正文至少给 1 个自然候选；"
-            "Thought process 足够长时也应自然提供候选。\n"
+            "整体密度保持克制：比密集版少一些，优先留白，不要为了覆盖每一段而机械塞表情。\n"
+            "数量仍然跟随发送频率、回复长度和自然表达节点动态增长；短到中等回复通常只需要 1 个自然位置，明显长回复再逐步增加。\n"
+            "有多个候选时尽量均匀覆盖整条输出的前段、中段、后段，不要集中塞在开头、结尾或同一段。\n"
+            "最终正文优先保证：只要允许表情且正文形成完整自然表达节点，正文至少给 1 个自然候选。\n"
+            "Thought process 可以有表情，但默认频率下不要求每段思考都放；只有思考明显较长、位置很自然或发送频率较高时再提供候选。\n"
             "标题、代码、表格、公式和未完句中间仍然不要放候选。"
         )
         insert_at = 0
@@ -295,7 +310,7 @@ class BalancedStickerStreamingAgentRuntime(StreamingAgentRuntime):
             ),
         )
         merged_extra = dict(extra)
-        merged_extra["sticker_coverage"] = "balanced_reasoning_and_answer_v2"
+        merged_extra["sticker_coverage"] = "balanced_reasoning_and_answer_restrained_v3"
         return messages, merged_extra
 
     def _finalize_sticker_model_text(
