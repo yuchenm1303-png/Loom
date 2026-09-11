@@ -22,8 +22,21 @@ def _search_record(record) -> dict[str, object]:
     }
 
 
+def _model_access_disabled(store: MemoryStore) -> ToolResult | None:
+    if bool(getattr(store, "model_access_enabled", True)):
+        return None
+    return ToolResult(
+        ok=False,
+        content="Long-term memory is disabled in Loom settings.",
+        data={"enabled": False},
+    )
+
+
 def memory_tools(store: MemoryStore) -> tuple[AgentTool, ...]:
     def search_memory(context: ToolContext, arguments: dict[str, object]) -> ToolResult:
+        disabled = _model_access_disabled(store)
+        if disabled is not None:
+            return disabled
         query = str(arguments.get("query") or "").strip()
         if not query:
             raise ValueError("query must not be empty")
@@ -43,6 +56,9 @@ def memory_tools(store: MemoryStore) -> tuple[AgentTool, ...]:
         )
 
     def read_memory(context: ToolContext, arguments: dict[str, object]) -> ToolResult:
+        disabled = _model_access_disabled(store)
+        if disabled is not None:
+            return disabled
         memory_id = str(arguments.get("memory_id") or "").strip()
         if not memory_id:
             raise ValueError("memory_id must not be empty")
@@ -68,6 +84,9 @@ def memory_tools(store: MemoryStore) -> tuple[AgentTool, ...]:
 
     def memory_status(context: ToolContext, arguments: dict[str, object]) -> ToolResult:
         _ = arguments
+        disabled = _model_access_disabled(store)
+        if disabled is not None:
+            return disabled
         counts = store.counts(workspace=context.workspace)
         state = store.thread_state(context.session_id)
         data: dict[str, object] = {
