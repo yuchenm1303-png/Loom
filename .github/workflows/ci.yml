@@ -39,6 +39,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+      - name: Check UFO desktop scripts
+        run: node --check scripts/setup-ufo.mjs && node --check scripts/ufo-preflight.mjs
       - name: Install React desktop dependencies
         run: npm install --no-audit --no-fund
       - name: Typecheck React desktop
@@ -88,7 +90,7 @@ jobs:
         shell: pwsh
         run: |
           $arch = if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64") { "arm64" } else { "x64" }
-          $exe = Join-Path $env:GITHUB_WORKSPACE "node_modules\@microsoft\mxc-sdk\bin\$arch\wxc-exec.exe"
+          $exe = Join-Path $env:GITHUB_WORKSPACE "node_modules\@microsoft/mxc-sdk\bin\$arch\wxc-exec.exe"
           if (-not (Test-Path $exe)) { throw "MXC wxc-exec.exe was not installed at $exe" }
           & $exe --probe
           if ($LASTEXITCODE -ne 0) { throw "MXC platform probe failed with exit code $LASTEXITCODE" }
