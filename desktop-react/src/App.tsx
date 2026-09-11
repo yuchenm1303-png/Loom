@@ -183,13 +183,18 @@ export default function App() {
     }
   }
 
-  async function handleMoveProject(projectId: string): Promise<void> {
-    if (!thread?.id || running) return;
+  async function handleMoveProject(threadId: string, projectId: string): Promise<void> {
+    const movingThread = loom.threads.find((entry) => entry.id === threadId);
+    if (!movingThread || movingThread.status === "running" || movingThread.status === "waiting_approval") return;
+
     await window.loom.call("thread/move_project", {
-      threadId: thread.id,
+      threadId,
       projectId,
     });
+
     await loom.refreshProjects();
+    await loom.setThreadView(loom.threadView);
+    if (thread?.id === threadId) await loom.openThread(threadId);
   }
 
   const progressProps = {
@@ -243,6 +248,7 @@ export default function App() {
           onAddProject={loom.createProject}
           onRenameProject={loom.renameProject}
           onRemoveProject={loom.removeProject}
+          onMoveProject={handleMoveProject}
           onRename={loom.renameThread}
           onArchive={loom.archiveThread}
           onDelete={loom.deleteThread}
@@ -262,11 +268,6 @@ export default function App() {
           model={currentModel}
           permissionMode={permissionMode}
           inspectorOpen={inspectorOpen}
-          projects={loom.projects}
-          projectsSupported={loom.projectsSupported}
-          currentProjectId={thread?.projectId}
-          projectMoveDisabled={!thread || running}
-          onMoveProject={handleMoveProject}
           onOpenSettings={() => setSettingsOpen(true)}
           onToggleInspector={() => setInspectorOpen((open) => !open)}
         />
