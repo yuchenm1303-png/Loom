@@ -118,6 +118,7 @@ export interface ModelProfile {
   adapter: string;
   baseUrl: string;
   model: string;
+  vision?: boolean;
   reasoning?: ModelReasoningState | null;
 }
 
@@ -139,6 +140,28 @@ export interface AddModelInput {
   baseUrl: string;
   model: string;
   apiKey: string;
+  vision?: boolean;
+}
+
+export interface EditModelInput extends AddModelInput {
+  selection: string;
+}
+
+export interface ModelTestResult {
+  ok: boolean;
+  selection: string;
+  status: number;
+  latencyMs: number;
+  endpoint: string;
+  model: string;
+  modelListed: boolean;
+  discoveredModels: number;
+  capabilities: {
+    chat: boolean;
+    streaming: boolean;
+    vision: boolean;
+    reasoning: boolean;
+  };
 }
 
 export interface StickerPreferences {
