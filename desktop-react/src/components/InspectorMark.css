@@ -1,6 +1,6 @@
 /* Minimal asymmetric atomic-orbit treatment for the Runtime empty-state mark.
-   Keep the decorative mark cheap to composite: tab changes swap the center SVG,
-   so persistent blur/drop-shadow animations here would force avoidable raster work. */
+   Keep the decorative mark cheap to composite: all center glyphs stay mounted
+   and tab changes only cross-fade them instead of replacing SVG/filter layers. */
 
 .runtime-empty-visual {
   position: relative;
@@ -111,7 +111,7 @@
   animation: runtime-electron-fade 4s ease-in-out -2.1s infinite;
 }
 
-/* Keep the nucleus wrapper stable across tab changes. Only the inner Lucide SVG swaps. */
+/* Keep the nucleus wrapper and all Lucide glyph nodes stable across tab changes. */
 .runtime-empty-icon {
   position: absolute;
   z-index: 3;
@@ -127,26 +127,33 @@
   outline: none;
   box-shadow: none;
   transform: translate(-46%, -47%);
-  transition: color 160ms ease, transform 160ms cubic-bezier(.2, .75, .2, 1);
+  transition: color 160ms ease;
 }
 
 .runtime-empty-icon::before,
 .runtime-empty-icon::after { content: none; }
 
-.runtime-empty-icon svg {
+.runtime-empty-glyph {
+  position: absolute;
   width: 27px;
   height: 27px;
-  /* Avoid filter/drop-shadow rasterization whenever the tab swaps SVG nodes. */
+  opacity: 0;
+  transform: scale(.965);
   filter: none;
-  transition: transform 160ms cubic-bezier(.2, .75, .2, 1);
+  transition: opacity 120ms ease, transform 140ms cubic-bezier(.2, .75, .2, 1);
+  pointer-events: none;
+}
+
+.runtime-empty-glyph.active {
+  opacity: 1;
+  transform: scale(1);
 }
 
 .runtime-empty:hover .runtime-empty-icon {
   color: #b3a9ff;
-  transform: translate(-46%, calc(-47% - 1px)) scale(1.025);
 }
 
-.runtime-empty:hover .runtime-empty-icon svg {
+.runtime-empty:hover .runtime-empty-glyph.active {
   transform: scale(1.025);
 }
 
@@ -169,5 +176,9 @@
   .runtime-orbit-one::before,
   .runtime-orbit-two::before {
     animation: none !important;
+  }
+
+  .runtime-empty-glyph {
+    transition: none !important;
   }
 }
