@@ -380,18 +380,73 @@ def prepare_context(rt, session, step, token):
     )
     history = tuple(repair.messages)
 
-    # If a short/non-archivable turn only crossed the proactive threshold, do
-    # not manufacture a compaction. The hard budget still protects the request.
+    # If no safe archival boundary exists, compaction cannot help. For a hard
+    # overflow, make one final request-visible reduction pass that is allowed to
+    # trim user text to the actual remaining budget. Canonical history remains
+    # untouched, and fixed transient/tool-schema pressure still fails closed.
     possible_split, _ = safe_split(history, keep=min(12, max(2, len(history) // 3)))
-    if below_hard_limit and not possible_split:
-        return visible_messages, _metadata_base(
-            envelope=envelope,
-            communication_language=communication_language,
-            limits=limits,
-            tools=tools,
-            estimated_before=estimated_before,
-            estimated_after=estimated_visible,
-            reduction=initial_reduction,
+    if not possible_split:
+        if below_hard_limit:
+            return visible_messages, _metadata_base(
+                envelope=envelope,
+                communication_language=communication_language,
+                limits=limits,
+                tools=tools,
+                estimated_before=estimated_before,
+                estimated_after=estimated_visible,
+                reduction=initial_reduction,
+            )
+
+        fixed_tokens = estimate_tokens(transient, tools)
+        emergency_user_budget = max(
+            128,
+            min(
+                limits.recent_user_token_limit,
+                hard_target - fixed_tokens - 64,
+            ),
+        )
+        emergency_history, user_reduction = truncate_user_messages(
+            history,
+            max_total_tokens=emergency_user_budget,
+        )
+
+        def emergency_total(candidate: Sequence[AIMessage]) -> int:
+            return estimate_tokens([*transient, *candidate], tools)
+
+        emergency_history, tool_reduction = reduce_tool_outputs(
+            emergency_history,
+            per_output_token_limit=limits.tool_output_token_limit,
+            target_total_tokens=hard_target,
+            estimate_total=emergency_total,
+        )
+        emergency_reduction = user_reduction.merged(tool_reduction)
+        emergency_messages = [*transient, *emergency_history]
+        emergency_tokens = estimate_tokens(emergency_messages, tools)
+        if (
+            emergency_tokens <= hard_target
+            and len(emergency_messages) <= rt.limits.max_messages
+        ):
+            metadata = _metadata_base(
+                envelope=envelope,
+                communication_language=communication_language,
+                limits=limits,
+                tools=tools,
+                estimated_before=estimated_before,
+                estimated_after=emergency_tokens,
+                reduction=emergency_reduction,
+            )
+            metadata["emergency_user_truncation"] = True
+            return emergency_messages, metadata
+
+        raise ContextBudgetExceeded(
+            estimated_tokens=emergency_tokens,
+            input_budget_tokens=limits.input_budget_tokens,
+            tool_schema_tokens=estimate_tool_schema_tokens(tools),
+            message_count=len(emergency_messages),
+            reason=(
+                "non-archivable recent context cannot fit after emergency "
+                "request-visible reduction"
+            ),
         )
 
     language_message = communication_language_message(
