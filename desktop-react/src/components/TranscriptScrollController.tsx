@@ -10,9 +10,14 @@ interface TranscriptScrollControllerProps {
 }
 
 const BOTTOM_THRESHOLD_PX = 96;
+const PANEL_RESIZE_END_EVENT = "loom:panel-resize-end";
 
 function transcriptScroller(): HTMLDivElement | null {
   return document.querySelector<HTMLDivElement>(".conversation-stage > .transcript-scroll");
+}
+
+function isPanelResizeActive(): boolean {
+  return document.body.classList.contains("loom-panel-resizing");
 }
 
 function isNearBottom(scroller: HTMLDivElement): boolean {
@@ -31,12 +36,10 @@ function latestUserMessageId(items: TranscriptItem[]): string {
 /**
  * Owns the conversation viewport policy without coupling it to message layout.
  *
- * - Opening a thread starts at its newest message.
- * - Sending a new turn returns to the newest message.
- * - Streaming deltas stay pinned only while the user is already near bottom.
- * - Scrolling upward deliberately suspends auto-follow until the user returns.
- * - Content/viewport resizes (markdown reflow, progress strip, tool expansion)
- *   preserve the bottom lock instead of making the transcript jump.
+ * Panel resizing intentionally suspends bottom-sync work. The resize preview is
+ * compositor-only, then the final panel width is committed once on release.
+ * Waiting until that commit settles prevents ResizeObserver from turning one
+ * horizontal resize into repeated scrollHeight/layout reads on long threads.
  */
 export function TranscriptScrollController({
   items,
@@ -59,10 +62,11 @@ export function TranscriptScrollController({
   };
 
   const scheduleBottomSync = (scroller: HTMLDivElement) => {
+    if (isPanelResizeActive()) return;
     cancelScheduledScroll();
     frameRef.current = requestAnimationFrame(() => {
       frameRef.current = null;
-      if (!stickToBottomRef.current) return;
+      if (!stickToBottomRef.current || isPanelResizeActive()) return;
       scroller.scrollTop = scroller.scrollHeight;
     });
   };
@@ -85,9 +89,7 @@ export function TranscriptScrollController({
     lastTurnIdRef.current = nextTurnId;
     lastUserMessageIdRef.current = latestUserId;
 
-    if (stickToBottomRef.current) {
-      // Layout effect keeps the current frame stable; the rAF catches markdown
-      // and font layout that settles immediately after React commits.
+    if (stickToBottomRef.current && !isPanelResizeActive()) {
       scroller.scrollTop = scroller.scrollHeight;
       scheduleBottomSync(scroller);
     }
@@ -104,14 +106,19 @@ export function TranscriptScrollController({
     scroller.scrollTop = scroller.scrollHeight;
 
     const onScroll = () => {
+      if (isPanelResizeActive()) return;
       stickToBottomRef.current = isNearBottom(scroller);
     };
+    const onPanelResizeEnd = () => {
+      if (stickToBottomRef.current) scheduleBottomSync(scroller);
+    };
     scroller.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener(PANEL_RESIZE_END_EVENT, onPanelResizeEnd);
 
     const observer = typeof ResizeObserver === "undefined"
       ? null
       : new ResizeObserver(() => {
-          if (stickToBottomRef.current) scheduleBottomSync(scroller);
+          if (stickToBottomRef.current && !isPanelResizeActive()) scheduleBottomSync(scroller);
         });
     observer?.observe(scroller);
     observer?.observe(content);
@@ -120,6 +127,7 @@ export function TranscriptScrollController({
 
     return () => {
       scroller.removeEventListener("scroll", onScroll);
+      window.removeEventListener(PANEL_RESIZE_END_EVENT, onPanelResizeEnd);
       observer?.disconnect();
       cancelScheduledScroll();
     };
