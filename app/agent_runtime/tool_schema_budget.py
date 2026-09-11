@@ -5,21 +5,10 @@ import math
 from dataclasses import dataclass, replace
 from typing import Iterable
 
+from .json_schema_semantics import validating_schema
 from .tools import AgentTool, ToolRouter
 
 
-_ANNOTATION_KEYS = frozenset(
-    {
-        "description",
-        "title",
-        "examples",
-        "example",
-        "$comment",
-        "deprecated",
-        "readOnly",
-        "writeOnly",
-    }
-)
 _CORE_TOOL_NAMES = frozenset(
     {
         "tool_search",
@@ -83,18 +72,6 @@ def estimate_tool_schema_tokens(tools: Iterable[AgentTool]) -> int:
     return math.ceil(len(encoded) / 3) + 12 * len(payload)
 
 
-def _strip_schema_annotations(value):
-    if isinstance(value, dict):
-        return {
-            key: _strip_schema_annotations(item)
-            for key, item in value.items()
-            if key not in _ANNOTATION_KEYS
-        }
-    if isinstance(value, list):
-        return [_strip_schema_annotations(item) for item in value]
-    return value
-
-
 def _short_description(text: str, *, limit: int) -> str:
     normalized = " ".join(str(text or "").split())
     if len(normalized) <= limit:
@@ -112,13 +89,13 @@ def _project_tool(tool: AgentTool, *, mode: str) -> AgentTool:
         return replace(
             tool,
             description=_short_description(tool.description, limit=240),
-            input_schema=_strip_schema_annotations(tool.input_schema),
+            input_schema=validating_schema(tool.input_schema),
         )
     if mode == "structural":
         return replace(
             tool,
             description=_short_description(tool.description, limit=112),
-            input_schema=_strip_schema_annotations(tool.input_schema),
+            input_schema=validating_schema(tool.input_schema),
         )
     raise ValueError(f"unknown tool schema projection mode: {mode}")
 
