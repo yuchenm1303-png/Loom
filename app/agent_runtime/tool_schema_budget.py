@@ -138,18 +138,18 @@ def _project_router(
     return ToolRouter(tools)
 
 
-def _priority(name: str, pinned: set[str]) -> tuple[int, str]:
+def _priority(name: str, pinned: set[str]) -> int:
     if name in pinned:
-        return (0, name)
+        return 0
     if name == "tool_search":
-        return (1, name)
+        return 1
     if name in _CORE_TOOL_NAMES:
-        return (2, name)
+        return 2
     if name.startswith("exec_"):
-        return (3, name)
+        return 3
     if name.startswith(("read_", "list_", "get_", "search_")):
-        return (4, name)
-    return (5, name)
+        return 4
+    return 5
 
 
 def plan_tool_schema_pressure(
@@ -219,14 +219,16 @@ def plan_tool_schema_pressure(
     selected: set[str] = set()
     mandatory = set(pinned)
     mandatory.add("tool_search")
-    for name in sorted(mandatory, key=lambda item: _priority(item, pinned)):
+    for name in sorted(mandatory, key=lambda item: (_priority(item, pinned), item)):
         if name in projected:
             selected.add(name)
 
-    current = estimate_tool_schema_tokens(projected[name] for name in selected)
+    # Within one capability tier, prefer smaller schemas so the same fixed budget
+    # retains more callable surface area. Names are only the deterministic final
+    # tie-breaker, never the capacity policy.
     candidates = sorted(
         (name for name in projected if name not in selected),
-        key=lambda name: (_priority(name, pinned), per_tool_tokens[name]),
+        key=lambda name: (_priority(name, pinned), per_tool_tokens[name], name),
     )
     for name in candidates:
         candidate_tokens = estimate_tool_schema_tokens(
@@ -234,7 +236,6 @@ def plan_tool_schema_pressure(
         )
         if candidate_tokens <= soft_limit:
             selected.add(name)
-            current = candidate_tokens
 
     # If the soft budget is smaller than mandatory discovery/pinned tools, keep
     # them anyway. The hard context budget remains authoritative and will emit a
