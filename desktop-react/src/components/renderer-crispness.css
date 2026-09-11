@@ -1,0 +1,120 @@
+/* Crisp renderer typography -------------------------------------------------
+   Avoid keeping text-bearing sidebar rows on transformed compositor layers,
+   remove fractional typography where it is most noticeable, and let Chromium
+   use the platform's native text rasterization instead of forced smoothing. */
+
+html,
+body,
+#root,
+.app-shell {
+  -webkit-font-smoothing: auto;
+  text-rendering: auto;
+}
+
+.codex-sidebar,
+.codex-sidebar button,
+.codex-sidebar input {
+  font-family: "Segoe UI Variable Text", "Segoe UI", Inter, ui-sans-serif, sans-serif;
+  -webkit-font-smoothing: auto;
+  text-rendering: auto;
+  font-synthesis: none;
+}
+
+/* The old entry animation used `both`, so every row kept a transform after the
+   animation finished. Keeping text on that compositor layer softens glyphs on
+   Windows high-DPI displays. Rows now enter without a persistent transform. */
+.codex-sidebar .compact-thread-row {
+  animation: none !important;
+  transform: none !important;
+}
+
+.codex-sidebar .compact-thread-main,
+.codex-sidebar .project-group-main,
+.codex-sidebar .workspace-group-header,
+.codex-sidebar .sidebar-section-title,
+.codex-sidebar .codex-sidebar-brand,
+.codex-sidebar .sidebar-new-conversation,
+.codex-sidebar .sidebar-secondary-action {
+  transform: none;
+}
+
+/* Prefer integer CSS pixel sizes/line boxes and standard Windows font weights.
+   Fractional sizes such as 13.5px combined with display/page scaling produce
+   visibly softer stems and baselines. */
+.codex-sidebar .compact-thread-title {
+  font-size: 14px;
+  line-height: 18px;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: #dde1e7;
+}
+
+.codex-sidebar .compact-thread-row.active .compact-thread-title,
+.codex-sidebar .compact-thread-row.unread .compact-thread-title {
+  font-weight: 600;
+  color: #f3f5f8;
+}
+
+.codex-sidebar .project-group-main span {
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: #d0d4db;
+}
+
+.codex-sidebar .workspace-group-header > span,
+.codex-sidebar .workspace-group-header > span.workspace-group-label {
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+.codex-sidebar .recent-section .sidebar-section-title {
+  font-size: 14px;
+  line-height: 18px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.codex-sidebar .sidebar-section-title {
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 700;
+}
+
+.codex-sidebar .codex-sidebar-brand span {
+  font-size: 16px;
+  line-height: 20px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.codex-sidebar .sidebar-new-conversation span,
+.codex-sidebar .sidebar-secondary-action span {
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+/* Keep text-bearing rows on whole-pixel geometry. */
+.codex-sidebar .compact-thread-row,
+.codex-sidebar .compact-thread-main,
+.codex-sidebar .project-group-row,
+.codex-sidebar .project-group-main {
+  min-height: 36px;
+}
+
+.codex-sidebar .compact-thread-main,
+.codex-sidebar .project-group-main {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .codex-sidebar .compact-thread-row {
+    animation: none !important;
+  }
+}
