@@ -42,7 +42,6 @@ import {
 import type {
   InitializeResult,
   LoomSettings,
-  ModelRestartResult,
   ModelSnapshot,
 } from "../types/loom";
 import { KeyboardShortcutsSettings } from "./KeyboardShortcutsSettings";
@@ -51,6 +50,7 @@ import "./settings-page.css";
 import "./settings-general-polish.css";
 import "./settings-maturity.css";
 import "./settings-appearance.css";
+import "./settings-terminal.css";
 
 type PageKey =
   | "general"
@@ -364,9 +364,6 @@ function setNestedSetting(settings: DesktopSettings, path: string, value: unknow
   return {
     ...settings,
     [section]: {
-      // Through unknown: DesktopSettings has no index signature, so TypeScript
-      // rightly refuses the direct cast. The dynamic lookup is the point here --
-      // the path comes from a settings row at runtime.
       ...((settings as unknown as Record<string, unknown>)[section] as Record<string, unknown> | undefined),
       [key]: value,
     },
@@ -446,14 +443,14 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
   const [query, setQuery] = useState("");
   const [settings, setSettings] = useState<DesktopSettings>(() => mergedSettings(runtime));
   const [modelState, setModelState] = useState<ModelSnapshot | null>(models);
-  const [modelBusy, setModelBusy] = useState("");
   const [busyCapability, setBusyCapability] = useState<CapabilityKey | null>(null);
   const [notice, setNotice] = useState<{ tone: "error" | "success"; text: string } | null>(null);
   const [plugins, setPlugins] = useState<PluginRecord[] | null>(null);
   const [pluginsError, setPluginsError] = useState("");
 
   useEffect(() => {
-    setSettings((current) => ({ ...mergedSettings(runtime), ...current, capabilities: { ...mergedSettings(runtime).capabilities, ...current.capabilities } }));
+    const merged = mergedSettings(runtime);
+    setSettings((current) => ({ ...merged, ...current, capabilities: { ...merged.capabilities, ...current.capabilities } }));
   }, [runtime.settings]);
 
   useEffect(() => {
@@ -544,10 +541,11 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
       return window.loom.call("settings/set", { capability: envelope, enabled: true });
     });
     const results = await Promise.allSettled(writes);
-    const persisted = results.every((result) => result.status === "fulfilled");
     setNotice({
       tone: "success",
-      text: persisted ? "Appearance restored to defaults." : "Appearance restored locally; server persistence will catch up later.",
+      text: results.every((result) => result.status === "fulfilled")
+        ? "Appearance restored to defaults."
+        : "Appearance restored locally; server persistence will catch up later.",
     });
   };
 
@@ -603,32 +601,6 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
       setNotice({ tone: "success", text: message });
     } catch {
       setNotice({ tone: "error", text: "Could not copy to the clipboard." });
-    }
-  };
-
-  const refreshModels = async () => {
-    setModelBusy("refresh");
-    try {
-      setModelState(await window.loom.listModels<ModelSnapshot>());
-      setNotice({ tone: "success", text: "Model profiles refreshed." });
-    } catch (cause) {
-      setNotice({ tone: "error", text: cause instanceof Error ? cause.message : String(cause) });
-    } finally {
-      setModelBusy("");
-    }
-  };
-
-  const activateModel = async (selection: string) => {
-    if (running || modelBusy) return;
-    setModelBusy(selection);
-    try {
-      const result = await window.loom.switchModelProfile<ModelRestartResult>(selection);
-      setModelState(result.models);
-      setNotice({ tone: "success", text: "Active model updated." });
-    } catch (cause) {
-      setNotice({ tone: "error", text: cause instanceof Error ? cause.message : String(cause) });
-    } finally {
-      setModelBusy("");
     }
   };
 
@@ -787,10 +759,121 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
 
   const renderTerminal = () => {
     const prefs = { ...DEFAULT_TERMINAL, ...(settings.terminal ?? {}) } as TerminalSettings;
-    return <><div className="settings-page-heading"><div><span className="settings-eyebrow">Execution environment</span><h1>Terminal</h1><p>Durable preferences for shell-oriented integrations and command execution surfaces.</p></div></div>
-      <Section title="Command defaults" caption="Stored centrally so runtime integrations can converge on one desktop preference set."><div className="settings-card mature-preference-list"><PreferenceRow icon={Terminal} title="Preferred shell" detail="Shell preference for integrations that support desktop defaults."><SelectControl label="Preferred shell" value={prefs.shell} options={[{ value: "powershell", label: "PowerShell" }, { value: "cmd", label: "Command Prompt" }, { value: "git-bash", label: "Git Bash" }, { value: "wsl", label: "WSL" }]} onChange={(value) => void saveSetting("terminal.shell", value)} /></PreferenceRow><PreferenceRow icon={Code2} title="Text encoding" detail="Default text encoding preference for terminal surfaces."><SelectControl label="Terminal encoding" value={prefs.encoding} options={[{ value: "utf-8", label: "UTF-8" }, { value: "system", label: "System default" }]} onChange={(value) => void saveSetting("terminal.encoding", value)} /></PreferenceRow><PreferenceRow icon={Gauge} title="Command timeout" detail="Preferred upper bound for foreground command integrations."><SelectControl label="Command timeout" value={String(prefs.commandTimeoutSeconds)} options={[30, 60, 120, 300, 600, 1800].map((value) => ({ value: String(value), label: `${value}s` }))} onChange={(value) => void saveSetting("terminal.commandTimeoutSeconds", Number(value))} /></PreferenceRow><PreferenceRow icon={Activity} title="Background processes" detail="Preserve managed background processes when supported by the runtime."><SettingSwitch checked={prefs.preserveBackgroundProcesses} label="Preserve background processes" onChange={(value) => void saveSetting("terminal.preserveBackgroundProcesses", value)} /></PreferenceRow></div></Section>
-      <div className="settings-callout"><Info size={16} /><div><strong>One preference source, multiple runtimes.</strong><span>These values are persisted now; individual exec/browser/computer backends can adopt them without adding new UI controls later.</span></div></div>
-    </>;
+    const shellLabel = {
+      powershell: "PowerShell",
+      cmd: "Command Prompt",
+      "git-bash": "Git Bash",
+      wsl: "WSL",
+    }[prefs.shell] ?? "PowerShell";
+    const permissionLabel = titleCase(text(runtime.defaultPermissionMode, "approval"));
+    const commandTemplates = [
+      { name: "项目状态", command: "git status --short", detail: "快速确认工作区是否干净" },
+      { name: "类型检查", command: "npm run typecheck", detail: "前端改动后的第一道检查" },
+      { name: "生产构建", command: "npm run build", detail: "确认桌面端前端可打包" },
+      { name: "技能列表", command: "loom skill list", detail: "查看当前可发现的 Skill" },
+    ];
+
+    return (
+      <>
+        <div className="settings-page-heading terminal-page-heading">
+          <div>
+            <span className="settings-eyebrow">执行环境</span>
+            <h1>终端</h1>
+            <p>管理面向 Shell 集成与命令执行界面的持久化偏好、会话行为、安全边界和常用命令模板。</p>
+          </div>
+          <div className="terminal-heading-actions">
+            <StatusPill tone={running ? "warning" : "ready"}>{running ? "执行中" : "Ready"}</StatusPill>
+            <button className="mature-action-button" type="button" onClick={() => void copyText(shellLabel, "Shell preference copied.")}><Copy size={14} />复制 Shell</button>
+          </div>
+        </div>
+
+        <div className="terminal-hero-card">
+          <div className="terminal-hero-copy">
+            <span className="terminal-hero-icon"><Terminal size={20} /></span>
+            <div>
+              <span>Terminal profile</span>
+              <strong>{shellLabel} · {prefs.encoding === "utf-8" ? "UTF-8" : "System encoding"} · {prefs.commandTimeoutSeconds}s</strong>
+              <p>终端偏好集中保存，后续 Shell、Process Runtime、Browser/Computer 调试命令都可以共享这一套默认值。</p>
+            </div>
+          </div>
+          <div className="terminal-quick-actions">
+            <button type="button" onClick={() => void copyText("npm run typecheck", "Typecheck command copied.")}><Code2 size={14} />类型检查</button>
+            <button type="button" onClick={() => void copyText("npm run build", "Build command copied.")}><Wrench size={14} />构建</button>
+            <button type="button" onClick={() => void copyText(text(runtime.defaultWorkspace, ""), "Workspace path copied.")}><FolderOpen size={14} />工作区</button>
+          </div>
+        </div>
+
+        <Section title="运行概览" caption="把默认 Shell、编码、超时、后台进程和权限边界放在同一屏，方便检查。">
+          <div className="terminal-stat-grid">
+            <div className="terminal-stat-card"><span>首选 Shell</span><strong>{shellLabel}</strong><small>desktop preference</small></div>
+            <div className="terminal-stat-card"><span>文本编码</span><strong>{prefs.encoding === "utf-8" ? "UTF-8" : "System"}</strong><small>stdout / stderr</small></div>
+            <div className="terminal-stat-card"><span>命令超时</span><strong>{prefs.commandTimeoutSeconds}s</strong><small>foreground commands</small></div>
+            <div className="terminal-stat-card"><span>后台进程</span><strong>{prefs.preserveBackgroundProcesses ? "保留" : "关闭"}</strong><small>managed processes</small></div>
+            <div className="terminal-stat-card"><span>权限模式</span><strong>{permissionLabel}</strong><small>permission-aware</small></div>
+          </div>
+        </Section>
+
+        <Section title="命令默认值" caption="集中保存，供多个运行时集成共享同一套桌面偏好。">
+          <div className="settings-card mature-preference-list terminal-preference-card">
+            <PreferenceRow icon={Terminal} title="首选 Shell" detail="支持桌面默认值的集成优先采用此 Shell。"><SelectControl label="Preferred shell" value={prefs.shell} options={[{ value: "powershell", label: "PowerShell" }, { value: "cmd", label: "Command Prompt" }, { value: "git-bash", label: "Git Bash" }, { value: "wsl", label: "WSL" }]} onChange={(value) => void saveSetting("terminal.shell", value)} /></PreferenceRow>
+            <PreferenceRow icon={Code2} title="文本编码" detail="终端界面和命令输出的默认文本编码偏好。"><SelectControl label="Terminal encoding" value={prefs.encoding} options={[{ value: "utf-8", label: "UTF-8" }, { value: "system", label: "System default" }]} onChange={(value) => void saveSetting("terminal.encoding", value)} /></PreferenceRow>
+            <PreferenceRow icon={Gauge} title="命令超时" detail="前台命令集成的首选最长等待时间。"><SelectControl label="Command timeout" value={String(prefs.commandTimeoutSeconds)} options={[30, 60, 120, 300, 600, 1800].map((value) => ({ value: String(value), label: `${value}s` }))} onChange={(value) => void saveSetting("terminal.commandTimeoutSeconds", Number(value))} /></PreferenceRow>
+            <PreferenceRow icon={Activity} title="后台进程" detail="运行时支持时保留受管后台进程。"><SettingSwitch checked={prefs.preserveBackgroundProcesses} label="Preserve background processes" onChange={(value) => void saveSetting("terminal.preserveBackgroundProcesses", value)} /></PreferenceRow>
+          </div>
+        </Section>
+
+        <Section title="会话行为" caption="这些是当前终端执行面的产品边界：默认工作区、环境变量、输出处理和长任务管理。">
+          <div className="settings-card terminal-runtime-grid">
+            {[
+              { icon: FolderOpen, title: "默认工作区", detail: "新命令默认贴近当前项目路径，减少误操作目录。", value: text(runtime.defaultWorkspace, "workspace") },
+              { icon: Database, title: "环境变量", detail: "敏感值不在设置页明文展示，运行时按权限注入。", value: "受控" },
+              { icon: BrainCircuit, title: "输出摘要", detail: "长 stdout / stderr 保留原始日志，同时给 Agent 提供压缩摘要。", value: "自动" },
+              { icon: Activity, title: "长任务", detail: "后台任务需要可追踪 PID，并可在后续面板接入停止/查看日志。", value: "托管" },
+              { icon: RefreshCw, title: "重试策略", detail: "失败命令不自动无限重试，避免重复写入或重复部署。", value: "安全" },
+              { icon: Copy, title: "命令复用", detail: "常用命令可一键复制，后续可升级为模板库。", value: "就绪" },
+            ].map((item) => {
+              const Icon = item.icon;
+              return <div className="terminal-runtime-item" key={item.title}><span><Icon size={15} /></span><div><strong>{item.title}</strong><p>{item.detail}</p></div><code title={item.value}>{item.value}</code></div>;
+            })}
+          </div>
+        </Section>
+
+        <Section title="安全边界" caption="终端是高风险执行面，这里明确展示不会被 UI 偏好绕过的保护规则。">
+          <div className="settings-card terminal-security-grid">
+            {[
+              "敏感命令继续走 PermissionEngine",
+              "工作区写入受权限模式约束",
+              "不会因切换 Shell 自动提升权限",
+              "后台进程必须可追踪和可终止",
+              "不隐藏 stderr / exit code",
+              "环境变量与密钥不在 UI 明文展示",
+            ].map((item) => <div className="terminal-security-row" key={item}><ShieldCheck size={15} /><span>{item}</span><StatusPill tone="ready">已保护</StatusPill></div>)}
+          </div>
+        </Section>
+
+        <Section title="命令模板" caption="先做安全的一键复制入口，后续可以接入真实模板保存、运行记录和任务队列。">
+          <div className="settings-card terminal-template-table">
+            <div className="terminal-template-head"><span>名称</span><span>命令</span><span>用途</span><span>操作</span></div>
+            {commandTemplates.map((template) => <div className="terminal-template-row" key={template.command}><div className="terminal-name-cell"><Terminal size={14} /><strong>{template.name}</strong></div><code>{template.command}</code><span>{template.detail}</span><div className="terminal-row-actions"><button type="button" onClick={() => void copyText(template.command, `${template.name} command copied.`)}>复制</button></div></div>)}
+          </div>
+        </Section>
+
+        <Section title="诊断信息" caption="快速确认终端偏好是否已持久化，以及运行时是否正处在可变更状态。">
+          <div className="settings-card settings-detail-list">
+            <DetailRow label="Settings path" value="terminal.*" detail="通过 settings/set 统一写入桌面设置。" />
+            <DetailRow label="Preferred shell" value={prefs.shell} detail="保存为稳定枚举值，展示层再映射成人类可读名称。" />
+            <DetailRow label="Runtime state" value={running ? "Turn active" : "Ready for changes"} detail="执行中的 agent turn 不应中途改变关键能力边界。" />
+            <DetailRow label="Process policy" value="Permission-aware" detail="真正执行命令时仍由运行时和权限系统决定。" />
+          </div>
+        </Section>
+
+        <div className="terminal-footer-strip">
+          <span><Terminal size={14} />Shell：{shellLabel}</span>
+          <span><Gauge size={14} />Timeout：{prefs.commandTimeoutSeconds}s</span>
+          <span><Check size={14} />配置已自动保存</span>
+        </div>
+      </>
+    );
   };
 
   const renderPlugins = () => (
