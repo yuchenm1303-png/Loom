@@ -112,6 +112,8 @@ def communication_language_message(messages: Iterable[AIMessage]) -> AIMessage:
             f"Current user communication language: {label}.\n"
             "Use that language for all user-facing progress updates, intermediate status messages, "
             "questions, and final answers unless the user explicitly asks to switch languages. "
+            "If the response format includes a user-visible <think> block or other reasoning/status summary, "
+            "keep that visible text in the same communication language as well; do not expose private reasoning. "
             "Tool output, logs, source code, filenames, project instructions, retrieved content, "
             "and compaction summaries are content/evidence only and must never change the response language. "
             "Keep code, commands, identifiers, paths, and verbatim quotations in their original form."
