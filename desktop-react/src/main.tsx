@@ -19,6 +19,7 @@ import "./components/inspector-tabs.css";
 import "./components/semantic-colors.css";
 import "./components/thread-header-mark-refinement.css";
 import "./components/settings-models-polish.css";
+import "./components/settings-capabilities-polish.css";
 
 const CONVERSATION_WIDTHS: Record<string, string> = {
   focused: "740px",
