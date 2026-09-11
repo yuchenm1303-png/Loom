@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import sys
 import time
+import types
 
 from app.agent_runtime.computer_driver_runtime import ComputerDriverRuntime, _safe_driver_data
 from app.agent_runtime.computer_ufo_driver import (
@@ -16,6 +18,7 @@ from app.agent_runtime.computer_ufo_driver import (
 from app.agent_runtime.mcp_configured_runtime import ConfiguredMCPRuntime
 from app.agent_runtime.ufo_sidecar import (
     _SCRATCH_PREFIX,
+    _bind_ephemeral_session_logs,
     _cleanup_stale_scratch,
     _hud_point,
     _keep_raw_logs,
@@ -136,6 +139,61 @@ def test_raw_ufo_logs_require_explicit_opt_in(monkeypatch):
     assert _keep_raw_logs() is False
     monkeypatch.setenv("LOOM_UFO_KEEP_RAW_LOGS", "1")
     assert _keep_raw_logs() is True
+
+
+def test_ephemeral_ufo_logging_rebinds_context_without_ufo_install(monkeypatch, tmp_path: Path):
+    from app.agent_runtime import ufo_sidecar
+
+    monkeypatch.delenv("LOOM_UFO_KEEP_RAW_LOGS", raising=False)
+
+    class FakeContextNames:
+        LOG_PATH = "log_path"
+        LOGGER = "logger"
+        REQUEST_LOGGER = "request_logger"
+        EVALUATION_LOGGER = "evaluation_logger"
+
+    fake_ufo = types.ModuleType("ufo")
+    fake_module = types.ModuleType("ufo.module")
+    fake_context_module = types.ModuleType("ufo.module.context")
+    fake_context_module.ContextNames = FakeContextNames
+    fake_ufo.module = fake_module
+    fake_module.context = fake_context_module
+    monkeypatch.setitem(sys.modules, "ufo", fake_ufo)
+    monkeypatch.setitem(sys.modules, "ufo.module", fake_module)
+    monkeypatch.setitem(sys.modules, "ufo.module.context", fake_context_module)
+
+    scratch_root = tmp_path / "scratch"
+    scratch_root.mkdir()
+
+    def fake_mkdtemp(*, prefix: str) -> str:
+        target = scratch_root / f"{prefix}contract"
+        target.mkdir()
+        return str(target)
+
+    monkeypatch.setattr(ufo_sidecar.tempfile, "mkdtemp", fake_mkdtemp)
+
+    class FakeContext:
+        def __init__(self) -> None:
+            self.values: dict[str, object] = {}
+
+        def set(self, key: str, value: object) -> None:
+            self.values[key] = value
+
+    class FakeSession:
+        def __init__(self) -> None:
+            self.log_path = "logs/original/"
+            self.context = FakeContext()
+
+    session = FakeSession()
+    scratch = _bind_ephemeral_session_logs(session)
+
+    assert scratch is not None
+    assert scratch.parent == scratch_root
+    assert session.log_path == str(scratch) + os.sep
+    assert session.context.values[FakeContextNames.LOG_PATH] == session.log_path
+    assert session.context.values[FakeContextNames.LOGGER].__class__.__name__ == "_NullWriter"
+    assert session.context.values[FakeContextNames.REQUEST_LOGGER].__class__.__name__ == "_NullWriter"
+    assert session.context.values[FakeContextNames.EVALUATION_LOGGER].__class__.__name__ == "_NullWriter"
 
 
 def test_stale_ephemeral_ufo_scratch_is_cleaned(monkeypatch, tmp_path: Path):
