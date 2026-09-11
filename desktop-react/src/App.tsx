@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Composer } from "./components/Composer";
 import { Inspector } from "./components/Inspector";
 import { LanguageSettingsDock } from "./components/LanguageSettingsDock";
+import { ReviewInteractionBridge } from "./components/ReviewInteractionBridge";
 import { ReviewWorkspace } from "./components/ReviewWorkspace";
 import { RunProgress } from "./components/RunProgress";
 import { SettingsComputerLogExport } from "./components/SettingsComputerLogExport";
@@ -12,6 +13,7 @@ import { ThreadHeader } from "./components/ThreadHeader";
 import { Transcript } from "./components/Transcript";
 import { TranscriptScrollController } from "./components/TranscriptScrollController";
 import "./components/inline-thinking.css";
+import "./components/review-dock.css";
 import "./components/sidebar-codex-polish.css";
 import "./components/shortcut-runtime.css";
 import { useI18n } from "./i18n";
@@ -44,6 +46,13 @@ function afterPaint(callback: () => void): void {
 
 function errorMessage(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
+}
+
+function normalizeReviewPath(value: string | undefined): string {
+  return String(value ?? "")
+    .trim()
+    .replaceAll("\\", "/")
+    .replace(/^\.\//, "");
 }
 
 function reviewFileCount(items: TranscriptItem[]): number {
@@ -85,6 +94,36 @@ export default function App() {
   const attachmentsEnabled = capabilitySettings.attachments !== false;
   const stickersEnabled = capabilitySettings.stickers !== false;
   const changedFileCount = reviewFileCount(loom.items);
+
+  function focusReviewFile(path?: string): void {
+    const normalized = normalizeReviewPath(path);
+    setInspectorOpen(false);
+    setReviewOpen(true);
+    if (!normalized) return;
+
+    afterPaint(() => {
+      const candidates = Array.from(document.querySelectorAll<HTMLButtonElement>(".review-directory-files button[title]"));
+      const exact = candidates.find((button) => normalizeReviewPath(button.getAttribute("title") || "") === normalized);
+      const suffix = exact ?? candidates.find((button) => {
+        const candidate = normalizeReviewPath(button.getAttribute("title") || "");
+        return Boolean(candidate && (candidate.endsWith(`/${normalized}`) || normalized.endsWith(`/${candidate}`)));
+      });
+      suffix?.click();
+    });
+  }
+
+  function toggleReview(): void {
+    if (reviewOpen) {
+      setReviewOpen(false);
+      return;
+    }
+    focusReviewFile();
+  }
+
+  function toggleInspector(): void {
+    setReviewOpen(false);
+    setInspectorOpen((open) => !open);
+  }
 
   useEffect(() => {
     setDismissedApprovalIds(new Set());
@@ -166,7 +205,7 @@ export default function App() {
 
       if (eventMatchesShortcut(event, shortcuts.toggleInspector)) {
         consume();
-        setInspectorOpen((open) => !open);
+        toggleInspector();
         return;
       }
 
@@ -183,7 +222,7 @@ export default function App() {
 
     window.addEventListener("keydown", handleShortcut, true);
     return () => window.removeEventListener("keydown", handleShortcut, true);
-  }, [loom, running, shortcuts]);
+  }, [loom, reviewOpen, running, shortcuts]);
 
   const transcriptItems = loom.items.filter((item) => {
     if (item.type !== "approval") return true;
@@ -296,7 +335,7 @@ export default function App() {
   }
 
   return (
-    <div className={`app-shell ${inspectorOpen ? "with-inspector" : ""} ${sidebarOpen ? "" : "sidebar-collapsed"}`}>
+    <div className={`app-shell ${inspectorOpen ? "with-inspector" : ""} ${reviewOpen ? "with-review" : ""} ${sidebarOpen ? "" : "sidebar-collapsed"}`}>
       {sidebarOpen ? (
         <Sidebar
           threads={loom.threads}
@@ -333,8 +372,8 @@ export default function App() {
           reviewOpen={reviewOpen}
           reviewCount={changedFileCount}
           onOpenSettings={() => setSettingsOpen(true)}
-          onToggleInspector={() => setInspectorOpen((open) => !open)}
-          onToggleReview={() => setReviewOpen((open) => !open)}
+          onToggleInspector={toggleInspector}
+          onToggleReview={toggleReview}
         />
 
         <div className={`conversation-stage ${running ? "is-running" : ""}`}>
@@ -383,8 +422,9 @@ export default function App() {
         </div>
       </section>
 
-      {inspectorOpen ? <Inspector items={loom.items} onClose={() => setInspectorOpen(false)} /> : null}
+      {inspectorOpen && !reviewOpen ? <Inspector items={loom.items} onClose={() => setInspectorOpen(false)} /> : null}
       <ReviewWorkspace items={loom.items} open={reviewOpen} onClose={() => setReviewOpen(false)} />
+      <ReviewInteractionBridge onOpen={focusReviewFile} />
     </div>
   );
 }
