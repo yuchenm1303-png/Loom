@@ -2,6 +2,10 @@ const PROTOCOL_VERSION = 1;
 const DEFAULT_BRIDGE_URL = "http://127.0.0.1:39222";
 const DEFAULT_TOKEN = "loom-dev-browser-extension";
 const EXTENSION_VERSION = chrome.runtime.getManifest().version;
+// How long to keep looking for a navigation an element action may have started.
+const NAVIGATION_GRACE_MS = 300;
+// How long to wait when the page said the action does start one.
+const NAVIGATION_COMMIT_TIMEOUT_MS = 8000;
 const CLIENT_ID_KEY = "loomBrowserBridgeClientId";
 
 let polling = false;
@@ -170,9 +174,59 @@ function elementRefFor(tabId, index) {
   return item.loom_id;
 }
 
-async function afterTabAction(tab, waitMs = 200) {
+// Element actions can start a navigation. navigate() and refresh() already wait
+// for the tab to finish loading, but click/type/select/drag/press/go_back used to
+// return after a fixed sleep, so a click on a link reported the page it had just
+// left. The model reads that as "my click did nothing" and clicks again.
+function watchTabNavigation(tabId) {
+  let started = false;
+  let announce = () => {};
+  const startedPromise = new Promise((resolve) => { announce = resolve; });
+  const listener = (id, info) => {
+    if (id !== tabId) return;
+    if (info.status === "loading" || typeof info.url === "string") {
+      started = true;
+      announce();
+    }
+  };
+  chrome.tabs.onUpdated.addListener(listener);
+  return {
+    get started() { return started; },
+    startedPromise,
+    stop() { chrome.tabs.onUpdated.removeListener(listener); },
+  };
+}
+
+async function afterTabAction(tab, waitMs = 200, watcher = null, expectNavigation = false) {
   await sleep(waitMs);
-  return collectStateForTab(await chrome.tabs.get(tab.id), { showHud: false });
+  let navWaited = false;
+  if (watcher) {
+    if (!watcher.started) {
+      // A page that told us it is navigating gets the long window, because the
+      // commit can take seconds on a slow origin. Everything else pays only the
+      // short one, so an action that navigates nothing stays fast.
+      const grace = expectNavigation ? NAVIGATION_COMMIT_TIMEOUT_MS : NAVIGATION_GRACE_MS;
+      await Promise.race([watcher.startedPromise, sleep(grace)]);
+    }
+    if (watcher.started) {
+      await waitForTabComplete(tab.id);
+      navWaited = true;
+    }
+  }
+  const state = await collectStateForTab(await chrome.tabs.get(tab.id), { showHud: false });
+  state.page_info = { ...(state.page_info || {}), nav_waited: navWaited };
+  return state;
+}
+
+async function withNavigationWatch(tabId, run, waitMs) {
+  const watcher = watchTabNavigation(tabId);
+  try {
+    const outcome = await run();
+    const expected = Boolean(outcome && outcome.navigation_expected);
+    return await afterTabAction({ id: tabId }, waitMs, watcher, expected);
+  } finally {
+    watcher.stop();
+  }
 }
 
 async function navigate(args) {
@@ -201,8 +255,11 @@ async function waitForTabComplete(tabId) {
 async function withElement(args, action, extra = {}, waitMs = 200) {
   const tab = await tabFromArgs(args);
   const loomId = elementRefFor(tab.id, args.index);
-  await inject(tab.id, runPageAction, [action, { ...extra, loom_id: loomId, index: Number(args.index) }]);
-  return afterTabAction(tab, waitMs);
+  return withNavigationWatch(
+    tab.id,
+    () => inject(tab.id, runPageAction, [action, { ...extra, loom_id: loomId, index: Number(args.index) }]),
+    waitMs,
+  );
 }
 
 async function click(args) {
@@ -223,19 +280,23 @@ async function selectOption(args) {
 
 async function drag(args) {
   const tab = await tabFromArgs(args);
-  await inject(tab.id, runPageAction, ["drag", {
+  const payload = {
     source_loom_id: elementRefFor(tab.id, args.source_index),
     target_loom_id: elementRefFor(tab.id, args.target_index),
     source_index: Number(args.source_index),
     target_index: Number(args.target_index),
-  }]);
-  return afterTabAction(tab, 250);
+  };
+  return withNavigationWatch(tab.id, () => inject(tab.id, runPageAction, ["drag", payload]), 250);
 }
 
 async function pressKey(args) {
   const tab = await tabFromArgs(args);
-  await inject(tab.id, runPageAction, ["press_key", { key: String(args.key || "") }]);
-  return afterTabAction(tab, 150);
+  // Enter in a form field is the usual way a key press turns into a navigation.
+  return withNavigationWatch(
+    tab.id,
+    () => inject(tab.id, runPageAction, ["press_key", { key: String(args.key || "") }]),
+    150,
+  );
 }
 
 async function scroll(args) {
@@ -247,8 +308,7 @@ async function scroll(args) {
 async function goBack(args) {
   const tab = await tabFromArgs(args);
   if (!isInjectableUrl(tab.url || "")) throw new Error("Cannot go back from a privileged browser page");
-  await inject(tab.id, runPageAction, ["go_back", {}]);
-  return afterTabAction(tab, 500);
+  return withNavigationWatch(tab.id, () => inject(tab.id, runPageAction, ["go_back", {}]), 500);
 }
 
 async function refresh(args) {
@@ -590,12 +650,34 @@ function runPageAction(action, args = {}) {
     };
   }
 
+  // chrome.tabs.onUpdated only reports "loading" once a navigation commits, which
+  // on a slow origin is well over a second after the click. The background script
+  // cannot tell that apart from a click that navigates nothing, so the page says
+  // up front whether a navigation is on the way.
+  function navigationExpectedFor(el) {
+    const anchor = typeof el.closest === "function" ? el.closest("a[href]") : null;
+    if (anchor) {
+      const href = String(anchor.getAttribute("href") || "").trim();
+      const target = String(anchor.getAttribute("target") || "").trim().toLowerCase();
+      const inPage = !href || href.startsWith("#") || /^javascript:/i.test(href);
+      // _blank lands in a new tab, so the tab being watched never navigates.
+      if (!inPage && target !== "_blank") return true;
+    }
+    const type = String(el.getAttribute("type") || "").toLowerCase();
+    const isSubmit =
+      (el.tagName === "BUTTON" && type !== "button" && type !== "reset") ||
+      (el.tagName === "INPUT" && (type === "submit" || type === "image"));
+    if (isSubmit && typeof el.closest === "function" && el.closest("form")) return true;
+    return false;
+  }
+
   function clickElement() {
     const el = targetById(args.loom_id);
     showTargetHud(el, `Click #${Number(args.index)}`, clean(el.innerText || el.value || el.getAttribute("aria-label") || el.getAttribute("placeholder") || el.tagName, 180), "action");
     el.focus({ preventScroll: true });
+    const expected = navigationExpectedFor(el);
     el.click();
-    return true;
+    return { ok: true, navigation_expected: expected };
   }
 
   function hoverElement() {
