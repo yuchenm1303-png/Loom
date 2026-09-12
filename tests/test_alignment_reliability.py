@@ -191,6 +191,55 @@ def test_dangling_terminal_response_is_retried_without_poisoning_history(tmp_pat
     runtime.close()
 
 
+def test_stop_while_introducing_next_action_is_retried_as_a_tool_call(tmp_path):
+    unfinished = (
+        "`Shell Folders` 还有 3 项指向 OneDrive。"
+        "我会一并改成绝对路径："
+    )
+    calls = []
+    platform = Scripted([
+        ModelResponse(text=unfinished, finish_reason="stop"),
+        ModelResponse(
+            tool_calls=(ToolCall("call", "echo", {"value": "fixed"}),),
+            finish_reason="tool_calls",
+        ),
+        ModelResponse(text="修复并验证完成。", finish_reason="stop"),
+    ])
+    tool = AgentTool("echo", "echo", {"type": "object"},
+        lambda c, a: calls.append(a["value"]) or ToolResult(True, a["value"]))
+    runtime = make_runtime(tmp_path, platform, [tool])
+    session = runtime.create_session("agent.fast")
+
+    result = runtime.start_turn(session.session_id, "继续修复")
+
+    assert result.status is AgentStatus.COMPLETED
+    assert result.final_text == "修复并验证完成。"
+    assert calls == ["fixed"]
+    stored = runtime.store.load(session.session_id)
+    assert all(unfinished not in str(message.content) for message in stored.messages)
+    recovery_messages = platform.requests[1].messages[-2:]
+    assert recovery_messages[0].content == unfinished
+    assert recovery_messages[1].name == "loom_terminal_recovery"
+    rejected = [event for event in runtime.store.events(session.session_id)
+        if event.kind.value == "model_response_rejected"]
+    assert rejected[-1].data["reason"] == "unfinished_terminal_text"
+    runtime.close()
+
+
+def test_completed_answer_with_internal_colon_is_accepted(tmp_path):
+    answer = "修复结果：\n- 配置已更新\n- 验证已通过。"
+    runtime = make_runtime(tmp_path, Scripted([
+        ModelResponse(text=answer, finish_reason="stop"),
+    ]))
+    session = runtime.create_session("agent.fast")
+
+    result = runtime.start_turn(session.session_id, "修复")
+
+    assert result.status is AgentStatus.COMPLETED
+    assert result.final_text == answer
+    runtime.close()
+
+
 def test_minimax_textual_tool_protocol_is_retried_as_native_tool_call(tmp_path):
     malformed = (
         "让我验证：]<]minimax[>[<tool_call>\n"

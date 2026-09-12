@@ -21,6 +21,7 @@ def _exposed_tool_names(step) -> tuple[str, ...]:
 _COMPLETE_FINISH_REASONS = {"", "stop", "tool_calls", "function_call", "completed", "end_turn"}
 _COMPLETE_THINK_BLOCK_RE = re.compile(r"<think>.*?</think>", re.IGNORECASE | re.DOTALL)
 _DANGLING_TERMINAL_RE = re.compile(r"(?:\[|\{|<tool_call>|```(?:json)?)\s*$", re.IGNORECASE)
+_DANGLING_DISCOURSE_RE = re.compile(r"[:：]\s*$")
 _SERIALIZED_TOOL_PROTOCOL_RE = re.compile(
     r"(?:<tool_call\b|</tool_call>|<invoke\s+name\s*=|\]\s*<\]\s*minimax\s*\[>\s*\[<)",
     re.IGNORECASE,
@@ -37,6 +38,11 @@ _TRUNCATED_RECOVERY_INSTRUCTION = (
     "The previous assistant response was cut off by the provider's output limit and was not committed. "
     "Continue the same task from that partial response without repeating its analysis. If it was leading to "
     "a tool action, emit the native structured tool call immediately; otherwise finish with a concise answer."
+)
+_UNFINISHED_RECOVERY_INSTRUCTION = (
+    "The previous assistant response ended while introducing the next action and was not committed as a final "
+    "answer. Continue the same task from that partial response without repeating it. If the promised action "
+    "requires an available tool, emit the native structured tool call now; otherwise complete the answer."
 )
 
 
@@ -62,6 +68,12 @@ def _invalid_terminal_response(response: ModelResponse) -> str:
         return "dangling_serialized_structure"
     if visible.count("```") % 2:
         return "unterminated_code_fence"
+    # A terminal colon/dash introduces content that never arrived. Providers can
+    # incorrectly label this shape as ``stop`` when they drop a pending native
+    # tool call. Treat the provider marker as transport metadata, not proof that
+    # the agent's turn is semantically complete.
+    if _DANGLING_DISCOURSE_RE.search(visible):
+        return "unfinished_terminal_text"
     return ""
 
 
@@ -180,7 +192,9 @@ class TurnRunner:
                             role=MessageRole.SYSTEM,
                             name="loom_terminal_recovery",
                             content=(
-                                _TRUNCATED_RECOVERY_INSTRUCTION
+                                _UNFINISHED_RECOVERY_INSTRUCTION
+                                if recovery_instruction == "unfinished_terminal_text"
+                                else _TRUNCATED_RECOVERY_INSTRUCTION
                                 if recovery_partial
                                 else _TERMINAL_RECOVERY_INSTRUCTION
                             ),
@@ -296,6 +310,7 @@ class TurnRunner:
                     recovery_partial = (
                         str(response.text or "")
                         if invalid_terminal.startswith("incomplete_finish:")
+                        or invalid_terminal == "unfinished_terminal_text"
                         else ""
                     )
                 if rt._cancel_if_requested(session, token):
