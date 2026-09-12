@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from app.agent_runtime.contracts import AgentSession
+from app.agent_runtime import AgentRuntime, FileAgentSessionStore, ToolRegistry
+from app.agent_runtime.contracts import AgentSession, AgentStatus
 from app.agent_runtime.storage import session_from_dict, session_to_dict
 from app.ai import (
     AIMessage,
@@ -11,6 +12,7 @@ from app.ai import (
     MessageRole,
     ModelCapability,
     ModelProfile,
+    ModelResponse,
     ProviderAdapter,
     ProviderConnection,
     ReasoningKind,
@@ -181,6 +183,49 @@ def test_provider_private_reasoning_survives_session_snapshot_round_trip(tmp_pat
     assert payload["messages"][0]["_provider_reasoning_content"] == "private-continuation"
     assert "reasoning_content" not in payload["messages"][0]
     assert restored.messages[0].reasoning_content == "private-continuation"
+
+
+class _ScriptedPlatform:
+    def __init__(self, responses) -> None:
+        self.responses = iter(responses)
+        self.requests = []
+
+    def execute_chat(self, _profile, request):
+        self.requests.append(request)
+        return next(self.responses)
+
+
+def test_truncated_recovery_replays_matching_provider_reasoning_state(tmp_path) -> None:
+    platform = _ScriptedPlatform(
+        [
+            ModelResponse(
+                text="partial answer",
+                finish_reason="length",
+                reasoning_content="private-truncated-reasoning",
+            ),
+            ModelResponse(text="done", finish_reason="stop"),
+        ]
+    )
+    runtime = AgentRuntime(
+        platform=platform,
+        store=FileAgentSessionStore(tmp_path),
+        tools=ToolRegistry(),
+    )
+    session = runtime.create_session("agent.fast")
+
+    result = runtime.start_turn(session.session_id, "continue")
+
+    assert result.status is AgentStatus.COMPLETED
+    retry_messages = platform.requests[1].messages
+    replay = next(
+        message
+        for message in retry_messages
+        if message.role is MessageRole.ASSISTANT and message.content == "partial answer"
+    )
+    assert replay.reasoning_content == "private-truncated-reasoning"
+    stored = runtime.store.load(session.session_id)
+    assert not any(message.content == "partial answer" for message in stored.messages)
+    runtime.close()
 
 
 class _RecordingCompletions:
