@@ -41,7 +41,8 @@ class ProjectMovableLoomAppServerService(ReasoningManagedLoomAppServerService):
         settings should not be written into ``session.system_prompt`` or old
         messages. Wrapping the request builder keeps project Instructions live:
         edits apply to the next turn, while the snapshot captured when a turn
-        starts protects an already-running turn from mid-run settings changes.
+        actually starts protects an already-running turn from mid-run settings
+        changes.
         """
 
         base_prepare = getattr(self.runtime, "_loom_base_prepare_model_request", None)
@@ -114,13 +115,12 @@ class ProjectMovableLoomAppServerService(ReasoningManagedLoomAppServerService):
                 return [*cleaned[:index], project_message, *cleaned[index:]]
         return [*cleaned, project_message]
 
-    def turn_start(self, params: dict[str, Any]) -> dict[str, Any]:
-        thread_id = str(params.get("threadId") or "").strip()
-        if thread_id:
-            self._snapshot_project_instruction_context(self._session_or_rpc_error(thread_id))
-        return super().turn_start(params)
-
     def _on_runtime_event(self, event: Any) -> None:
+        if event.kind is AgentEventKind.TURN_STARTED:
+            try:
+                self._snapshot_project_instruction_context(self.store.load(event.session_id))
+            except Exception:
+                pass
         try:
             super()._on_runtime_event(event)
         finally:
