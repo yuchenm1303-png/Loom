@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 
 from app.ai import AIMessage, ChatRequest, MessageRole, ModelResponse, ModelUsage, ToolChoice
 from app.ai.errors import AIEmptyResponseError, AIResponseError, AITransportError
@@ -20,6 +21,11 @@ def _exposed_tool_names(step) -> tuple[str, ...]:
 _COMPLETE_FINISH_REASONS = {"", "stop", "tool_calls", "function_call", "completed", "end_turn"}
 _COMPLETE_THINK_BLOCK_RE = re.compile(r"<think>.*?</think>", re.IGNORECASE | re.DOTALL)
 _DANGLING_TERMINAL_RE = re.compile(r"(?:\[|\{|<tool_call>|```(?:json)?)\s*$", re.IGNORECASE)
+_SERIALIZED_TOOL_PROTOCOL_RE = re.compile(
+    r"(?:<tool_call\b|</tool_call>|<invoke\s+name\s*=|\]\s*<\]\s*minimax\s*\[>\s*\[<)",
+    re.IGNORECASE,
+)
+_INLINE_STICKER_RE = re.compile(r"\[\[AI_LEDGER_INLINE_STICKER:[a-z0-9_]{2,48}\]\]", re.I)
 _TERMINAL_RECOVERY_INSTRUCTION = (
     "Your previous response was rejected because it was empty, malformed (including invalid native tool-call "
     "arguments), ended with an incomplete serialized structure, or contained reasoning without a user-visible "
@@ -50,6 +56,8 @@ def _invalid_terminal_response(response: ModelResponse) -> str:
     visible = _COMPLETE_THINK_BLOCK_RE.sub("", raw).strip()
     if raw.strip() and not visible:
         return "reasoning_without_visible_answer"
+    if _SERIALIZED_TOOL_PROTOCOL_RE.search(visible):
+        return "serialized_tool_call_text"
     if _DANGLING_TERMINAL_RE.search(visible):
         return "dangling_serialized_structure"
     if visible.count("```") % 2:
@@ -57,15 +65,58 @@ def _invalid_terminal_response(response: ModelResponse) -> str:
     return ""
 
 
-def _history_message_count(messages) -> int:
-    """Count conversation messages, ignoring Loom's own injected guidance.
+def _strip_compaction_echo(messages, text: str) -> tuple[str, bool]:
+    """Remove a model's verbatim replay of private checkpoint context.
 
-    Compaction is what has to satisfy max_messages, but it runs partway through
-    request preparation: later layers still append their own system guidance
-    afterwards. Counting those against the same limit let a request that
-    compaction had just fitted tip back over it, reported as "no safe compaction
-    boundary" even though a boundary had been found.
+    Compatible models sometimes quote the injected ``loom_compaction`` message
+    inside an otherwise valid answer. Streaming is transient, but the durable
+    response boundary must never commit that internal prompt. Match several
+    substantive lines rather than a single marker so ordinary discussion of
+    compaction is left untouched.
     """
+
+    source = str(text or "")
+    summaries = [
+        str(message.content or "")
+        for message in messages
+        if message.role is MessageRole.SYSTEM
+        and str(getattr(message, "name", "") or "") == "loom_compaction"
+        and isinstance(message.content, str)
+    ]
+    if not source or not summaries:
+        return source, False
+
+    def normalized(line: str) -> str:
+        return re.sub(r"\s+", " ", _INLINE_STICKER_RE.sub("", line)).strip()
+
+    summary_lines = {
+        value
+        for summary in summaries
+        for line in summary.splitlines()
+        if len(value := normalized(line)) >= 12
+    }
+    response_lines = source.splitlines(keepends=True)
+    matched = [
+        index for index, line in enumerate(response_lines)
+        if normalized(line) in summary_lines
+    ]
+    if len(matched) < 3 or sum(len(normalized(response_lines[i])) for i in matched) < 80:
+        return source, False
+
+    start = matched[0]
+    while start > 0:
+        previous = normalized(response_lines[start - 1])
+        if not previous or previous.startswith("#") or "压缩摘要" in previous or previous.startswith("[请求已被压缩"):
+            start -= 1
+            continue
+        break
+    cleaned = "".join(response_lines[:start]).strip()
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+    return cleaned, True
+
+
+def _history_message_count(messages) -> int:
+    """Count conversation messages, ignoring Loom's own injected guidance."""
 
     total = 0
     for message in messages:
@@ -199,7 +250,17 @@ class TurnRunner:
 
                     if not isinstance(response, ModelResponse):
                         raise TypeError("agent model platform must return ModelResponse")
-                    invalid_terminal = _invalid_terminal_response(response)
+                    clean_text, compaction_echo_removed = _strip_compaction_echo(
+                        messages,
+                        response.text,
+                    )
+                    if compaction_echo_removed:
+                        response = replace(response, text=clean_text)
+                    invalid_terminal = (
+                        "compaction_echo"
+                        if compaction_echo_removed and not response.tool_calls
+                        else _invalid_terminal_response(response)
+                    )
                     if not invalid_terminal:
                         break
 
@@ -242,7 +303,6 @@ class TurnRunner:
                 session.model_steps += 1
                 from .runtime import _add_usage
                 session.usage = _add_usage(session.usage, response.usage)
-                # Keep public partial output for inspection, but never execute partial calls.
                 reason = response.finish_reason.casefold()
                 incomplete = reason not in {"", "stop", "tool_calls", "function_call", "completed", "end_turn"}
                 calls = () if incomplete else response.tool_calls
@@ -256,6 +316,7 @@ class TurnRunner:
                     "step_id": step.step_id, "text": response.text, "finish_reason": response.finish_reason,
                     "response_id": response.response_id,
                     "tool_calls": [{"call_id": c.call_id, "name": c.name, "arguments": c.arguments} for c in calls],
+                    "compaction_echo_removed": compaction_echo_removed,
                     "usage": {"input_tokens": response.usage.input_tokens, "output_tokens": response.usage.output_tokens,
                         "total_tokens": response.usage.total_tokens},
                 })
@@ -280,7 +341,6 @@ class TurnRunner:
                 with rt._active_tokens_guard:
                     if rt._consume_steering(session):
                         continue
-                    # Stop accepting steering before committing the terminal state.
                     rt._active_tokens.pop(session.session_id, None)
                 session.status = AgentStatus.COMPLETED
                 session.final_text = response.text
@@ -301,16 +361,11 @@ class TurnRunner:
             token.cancel()
             rt._cancel_if_requested(session, token)
         except Exception as exc:
-            # A cancelled turn raises like any other failure. Reporting it as
-            # FAILED loses the distinction the caller acts on, so cancellation is
-            # resolved first.
             if token.cancelled:
                 rt._cancel_if_requested(session, token)
             else:
                 session.status = AgentStatus.FAILED
                 session.error = f"{type(exc).__name__}: {exc}"
-                # A turn that dies mid tool call leaves calls without results.
-                # Carrying that into the next turn poisons the model's history.
                 session.messages = list(
                     repair_tool_history(
                         session.messages,
