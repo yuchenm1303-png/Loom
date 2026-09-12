@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import importlib.util
+import json
 import os
 import threading
 import time
@@ -22,6 +23,12 @@ from .browser_session import (
 
 
 _DEFAULT_ACTION_TIMEOUT = 60.0
+_WAIT_POLL_SECONDS = 0.25
+_WAIT_MAX_SECONDS = 60.0
+# The async runner has to outlive the wait itself, or a wait that legitimately
+# runs to its timeout is reported as a backend timeout instead of an unmet
+# condition.
+_WAIT_RUNNER_MARGIN = 10.0
 
 
 class _AsyncLoopThread:
@@ -470,6 +477,83 @@ class BrowserUseBackend(BrowserBackend):
             value_type=str(outcome.get("value_type") or ""),
         )
         return outcome
+
+    async def _wait_async(
+        self,
+        *,
+        seconds: float,
+        condition: str,
+        timeout_seconds: float,
+    ) -> dict[str, Any]:
+        started = time.monotonic()
+        if not condition:
+            await asyncio.sleep(seconds)
+            return {"satisfied": True, "waited_ms": int((time.monotonic() - started) * 1000)}
+
+        # Poll rather than race a provider event: the thing being waited for is a
+        # page-defined condition, and a page can satisfy it without firing
+        # anything Loom or browser-use would see.
+        deadline = started + timeout_seconds
+        last_error = ""
+        while True:
+            outcome = await self._evaluate_async(condition, await_promise=True)
+            if outcome.get("ok"):
+                if bool(outcome.get("value")):
+                    return {
+                        "satisfied": True,
+                        "waited_ms": int((time.monotonic() - started) * 1000),
+                    }
+                last_error = ""
+            else:
+                last_error = str(outcome.get("error") or "")
+            if time.monotonic() >= deadline:
+                return {
+                    "satisfied": False,
+                    "waited_ms": int((time.monotonic() - started) * 1000),
+                    "error": last_error,
+                }
+            await asyncio.sleep(_WAIT_POLL_SECONDS)
+
+    def wait_for(
+        self,
+        *,
+        seconds: float = 0.0,
+        for_text: str = "",
+        until: str = "",
+        timeout_seconds: float = 15.0,
+    ) -> dict[str, Any]:
+        """Wait for a page condition, or just settle for a fixed time.
+
+        Without this the only way to wait out an async page was to re-request the
+        whole state in a loop, which costs a DOM serialization per attempt and
+        puts a stream of near-identical snapshots in front of the model.
+        """
+
+        timeout = max(0.5, min(float(timeout_seconds), _WAIT_MAX_SECONDS))
+        text = str(for_text or "").strip()
+        expression = str(until or "").strip()
+        if text and expression:
+            raise ValueError("browser wait takes either for_text or until, not both")
+        if text:
+            if len(text) > 500:
+                raise ValueError("browser wait text exceeds 500 characters")
+            # json.dumps produces a safe JS string literal, so page text cannot
+            # break out of the expression.
+            literal = json.dumps(text)
+            expression = (
+                "(() => { const t = document.body && document.body.innerText;"
+                f" return !!t && t.indexOf({literal}) !== -1; }})()"
+            )
+        elif expression:
+            if len(expression) > 20_000:
+                raise ValueError("browser wait condition exceeds 20,000 characters")
+        delay = max(0.0, min(float(seconds or 0.0), _WAIT_MAX_SECONDS))
+        if not expression and delay <= 0:
+            raise ValueError("browser wait needs seconds, for_text, or until")
+        return self._runner.run(
+            self._wait_async(seconds=delay, condition=expression, timeout_seconds=timeout),
+            timeout=timeout + _WAIT_RUNNER_MARGIN,
+        )
 
     async def _downloads_async(self) -> list[str]:
         session = await self._ensure_session()

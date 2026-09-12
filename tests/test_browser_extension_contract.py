@@ -82,6 +82,53 @@ def test_click_reports_whether_a_navigation_is_coming(background):
     assert "javascript:" in expected_body
 
 
+def test_an_injected_failure_is_rethrown_instead_of_read_as_success(background):
+    """chrome.scripting.executeScript resolves when the injected function throws.
+
+    The thrown error is not in the result either, so every page action that
+    failed came back as an ordinary state with no errors: a click on a stale
+    index, or a select with no matching option, reported success. runPageAction
+    returns the failure as data and inject rethrows it.
+    """
+
+    assert "__loomError" in _function_body(background, "runPageAction")
+    inject = _function_body(background, "inject")
+    assert "__loomError" in inject
+    assert "throw new Error" in inject
+
+
+def test_select_resolves_the_option_instead_of_assigning_select_value(background):
+    """Assigning an unmatched string to select.value clears the selection.
+
+    browser_select is called with the option text browser_dropdown_options
+    reports, which is not the option value, so the old `el.value = wanted` left
+    the select with nothing chosen and still reported success.
+    """
+
+    body = _function_body(background, "selectElement")
+    assert "selectedIndex" in body
+    assert "No option matches" in body
+    # Matching has to accept either the option's value or its visible text.
+    assert "option.value === wanted" in body
+    assert "option.text" in body
+
+
+def test_evaluating_a_string_runs_in_the_page_world(background):
+    """The isolated world is governed by the extension's MV3 policy, which
+    forbids evaluating a string, so eval there fails on every page."""
+
+    assert '"MAIN"' in _function_body(background, "evaluate")
+    assert '"MAIN"' in _function_body(background, "waitFor")
+
+
+@pytest.mark.parametrize(
+    "permission",
+    ["cookies", "downloads"],
+)
+def test_manifest_requests_the_permissions_the_new_actions_use(manifest, permission):
+    assert permission in (manifest.get("permissions") or [])
+
+
 def _function_body(source: str, name: str) -> str:
     match = re.search(rf"(?:async\s+)?function\s+{re.escape(name)}\s*\(", source)
     if match is None:

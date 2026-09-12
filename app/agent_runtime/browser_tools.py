@@ -413,6 +413,45 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
             },
         )
 
+    def wait(context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
+        context.raise_if_cancelled()
+        store = _store(runtime)
+        browser_id = str(arguments["browser_id"])
+        item = store._owned(context.session_id, browser_id)
+        waiter = getattr(item.backend, "wait_for", None)
+        if not callable(waiter):
+            raise RuntimeError(
+                f"browser backend {item.backend.backend_name!r} does not support waiting"
+            )
+        outcome = dict(
+            waiter(
+                seconds=float(arguments.get("seconds") or 0.0),
+                for_text=str(arguments.get("for_text") or ""),
+                until=str(arguments.get("until") or ""),
+                timeout_seconds=float(arguments.get("timeout_seconds") or 15.0),
+            )
+        )
+        snapshot = store.snapshot(context.session_id, browser_id, refresh=True)
+        satisfied = bool(outcome.get("satisfied"))
+        payload = {
+            **snapshot.to_dict(),
+            "satisfied": satisfied,
+            "waited_ms": int(outcome.get("waited_ms") or 0),
+        }
+        if outcome.get("error"):
+            payload["condition_error"] = str(outcome["error"])[:500]
+        # A wait that times out is a fact about the page, not a broken call, but
+        # it must not read as success either.
+        return ToolResult(
+            ok=satisfied,
+            content=(
+                f"Condition met after {payload['waited_ms']}ms."
+                if satisfied
+                else f"Still not satisfied after {payload['waited_ms']}ms; the returned state is current."
+            ),
+            data=payload,
+        )
+
     def cookies(context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
         context.raise_if_cancelled()
         store = _store(runtime)
@@ -843,6 +882,28 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
                     ("browser_id", "expression"),
                 ),
                 handler=evaluate,
+                effect=sensitive,
+            ),
+            AgentTool(
+                name="browser_wait",
+                description=(
+                    "Wait for the page to reach a condition instead of re-reading the whole state in a "
+                    "loop. Give until with a JavaScript expression that becomes truthy (the general "
+                    "form, e.g. a spinner disappearing or a row count settling), for_text to wait for "
+                    "visible text to appear, or seconds for a plain settle. Returns ok=false when the "
+                    "condition never held, with the current state attached either way."
+                ),
+                input_schema=_schema(
+                    {
+                        "browser_id": _browser_id_schema(),
+                        "until": {"type": "string", "maxLength": 20000},
+                        "for_text": {"type": "string", "maxLength": 500},
+                        "seconds": {"type": "number", "minimum": 0, "maximum": 60},
+                        "timeout_seconds": {"type": "number", "minimum": 0.5, "maximum": 60},
+                    },
+                    ("browser_id",),
+                ),
+                handler=wait,
                 effect=sensitive,
             ),
             AgentTool(

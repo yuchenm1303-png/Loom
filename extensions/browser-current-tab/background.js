@@ -129,9 +129,20 @@ async function tabsForWindow(tab) {
 
 const isInjectableUrl = (url) => /^https?:\/\//i.test(String(url || ""));
 
-async function inject(tabId, func, args = []) {
-  const results = await chrome.scripting.executeScript({ target: { tabId }, func, args });
-  return results?.[0]?.result || {};
+async function inject(tabId, func, args = [], world) {
+  // Content scripts run in the ISOLATED world, which is governed by the
+  // extension's own MV3 policy, and that policy forbids evaluating a string as
+  // JavaScript. Anything that has to eval must run in MAIN, where the page's own
+  // CSP applies instead - most pages allow it, a strict-CSP page does not.
+  const target = { tabId };
+  const options = { target, func, args };
+  if (world) options.world = world;
+  const results = await chrome.scripting.executeScript(options);
+  const value = results?.[0]?.result;
+  if (value && typeof value === "object" && value.__loomError) {
+    throw new Error(value.__loomError);
+  }
+  return value || {};
 }
 
 async function collectStateForTab(tab, options = {}) {
@@ -311,6 +322,115 @@ async function goBack(args) {
   return withNavigationWatch(tab.id, () => inject(tab.id, runPageAction, ["go_back", {}]), 500);
 }
 
+async function goForward(args) {
+  const tab = await tabFromArgs(args);
+  await chrome.tabs.goForward(tab.id);
+  await waitForTabComplete(tab.id);
+  return collectStateForTab(await chrome.tabs.get(tab.id), { showHud: true });
+}
+
+async function findText(args) {
+  const tab = await requireInjectableTab(args);
+  const outcome = await inject(tab.id, runPageAction, ["find_text", { text: String(args.text || "") }]);
+  const state = await afterTabAction({ id: tab.id }, 150);
+  state.found = Boolean(outcome && outcome.found);
+  return state;
+}
+
+async function dropdownOptions(args) {
+  const tab = await requireInjectableTab(args);
+  const loomId = elementRefFor(tab.id, args.index);
+  const outcome = await inject(tab.id, runPageAction, [
+    "dropdown_options",
+    { loom_id: loomId, index: Number(args.index) },
+  ]);
+  return { options: (outcome && outcome.options) || [] };
+}
+
+async function evaluate(args) {
+  const tab = await requireInjectableTab(args);
+  return inject(
+    tab.id,
+    runPageAction,
+    ["evaluate", { expression: String(args.expression || "") }],
+    "MAIN",
+  );
+}
+
+async function waitFor(args) {
+  const started = Date.now();
+  const timeoutMs = Math.max(500, Math.min(Number(args.timeout_seconds || 15) * 1000, 60000));
+  const expression = String(args.until || "");
+  if (!expression) {
+    await sleep(Math.max(0, Math.min(Number(args.seconds || 0) * 1000, 60000)));
+    return { satisfied: true, waited_ms: Date.now() - started };
+  }
+  let lastError = "";
+  for (;;) {
+    const tab = await requireInjectableTab(args);
+    const outcome = await inject(
+      tab.id,
+      runPageAction,
+      ["evaluate_condition", { expression }],
+      "MAIN",
+    );
+    if (outcome && outcome.ok) {
+      if (outcome.satisfied) return { satisfied: true, waited_ms: Date.now() - started };
+      lastError = "";
+    } else {
+      lastError = String((outcome && outcome.error) || "");
+    }
+    if (Date.now() - started >= timeoutMs) {
+      return { satisfied: false, waited_ms: Date.now() - started, error: lastError };
+    }
+    await sleep(250);
+  }
+}
+
+async function originStorage(args) {
+  const tab = await requireInjectableTab(args);
+  const outcome = await inject(tab.id, runPageAction, ["origin_storage", {}]);
+  return { origins: outcome && outcome.origin ? [outcome] : [] };
+}
+
+async function listCookies(args) {
+  const tab = await tabFromArgs(args);
+  const url = String(tab.url || "");
+  if (!isInjectableUrl(url)) throw new Error("Cannot read cookies for a privileged browser page");
+  const cookies = await chrome.cookies.getAll({ url });
+  return { cookies: cookies.map((c) => ({ ...c, httpOnly: c.httpOnly, sameSite: c.sameSite })) };
+}
+
+async function clearCookies(args) {
+  const tab = await tabFromArgs(args);
+  const url = String(tab.url || "");
+  if (!isInjectableUrl(url)) throw new Error("Cannot clear cookies for a privileged browser page");
+  const cookies = await chrome.cookies.getAll({ url });
+  for (const cookie of cookies) {
+    const scheme = cookie.secure ? "https://" : "http://";
+    const host = cookie.domain.startsWith(".") ? cookie.domain.slice(1) : cookie.domain;
+    await chrome.cookies.remove({ url: scheme + host + cookie.path, name: cookie.name }).catch(() => {});
+  }
+  return { cleared: cookies.length };
+}
+
+async function listDownloads() {
+  const items = await chrome.downloads.search({ limit: 200, orderBy: ["-startTime"] });
+  return {
+    files: items
+      .filter((item) => item.state === "complete" && item.filename)
+      .map((item) => ({ path: item.filename, bytes: item.fileSize || 0 })),
+  };
+}
+
+async function requireInjectableTab(args) {
+  const tab = await tabFromArgs(args);
+  if (!isInjectableUrl(tab.url || "")) {
+    throw new Error("Loom cannot inspect chrome://, edge://, extension, file, or other privileged pages.");
+  }
+  return tab;
+}
+
 async function refresh(args) {
   const tab = await tabFromArgs(args);
   if (isInjectableUrl(tab.url || "")) {
@@ -364,6 +484,15 @@ async function dispatchCommand(action, args) {
     case "switch_tab": return switchTab(args);
     case "close_tab": return closeTab(args);
     case "screenshot": return screenshot(args);
+    case "go_forward": return goForward(args);
+    case "find_text": return findText(args);
+    case "dropdown_options": return dropdownOptions(args);
+    case "evaluate": return evaluate(args);
+    case "wait_for": return waitFor(args);
+    case "origin_storage": return originStorage(args);
+    case "cookies": return listCookies(args);
+    case "clear_cookies": return clearCookies(args);
+    case "downloads": return listDownloads(args);
     default: throw new Error(`Unsupported Loom browser extension action: ${action}`);
   }
 }
@@ -715,11 +844,26 @@ function runPageAction(action, args = {}) {
   function selectElement() {
     const el = targetById(args.loom_id);
     if (!(el instanceof HTMLSelectElement)) throw new Error("Target element is not a select");
-    showTargetHud(el, `Select #${Number(args.index)}`, clean(String(args.value || ""), 180), "action");
-    el.value = String(args.value || "");
+    const wanted = String(args.value || "");
+    showTargetHud(el, `Select #${Number(args.index)}`, clean(wanted, 180), "action");
+    // browser_select is called with the option text that browser_dropdown_options
+    // reports, or with the option's value. Assigning select.value matches only
+    // the value, and assigning a string no option carries clears the selection
+    // rather than failing, so an option picked by its visible label used to
+    // silently deselect everything and still report success.
+    let chosen = -1;
+    for (let i = 0; i < el.options.length; i += 1) {
+      const option = el.options[i];
+      if (option.value === wanted || String(option.text).trim() === wanted.trim()) {
+        chosen = i;
+        break;
+      }
+    }
+    if (chosen < 0) throw new Error(`No option matches ${JSON.stringify(wanted)} in this select`);
+    el.selectedIndex = chosen;
     el.dispatchEvent(new Event("input", { bubbles: true }));
     el.dispatchEvent(new Event("change", { bubbles: true }));
-    return true;
+    return { ok: true, value: el.value };
   }
 
   function dragElement() {
@@ -771,6 +915,108 @@ function runPageAction(action, args = {}) {
     return true;
   }
 
+  function findTextInPage() {
+    const needle = String(args.text || "");
+    const body = document.body;
+    if (!body || !needle) return { found: false };
+    // Walk text nodes rather than using window.find, which moves the selection
+    // and behaves differently across engines.
+    const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
+    let node = walker.nextNode();
+    while (node) {
+      if (String(node.nodeValue || "").indexOf(needle) !== -1) {
+        const target = node.parentElement;
+        if (target) {
+          target.scrollIntoView({ block: "center", inline: "nearest" });
+          showTargetHud(target, "Found text", clean(needle, 120), "target");
+          return { found: true };
+        }
+      }
+      node = walker.nextNode();
+    }
+    return { found: false };
+  }
+
+  function readDropdownOptions() {
+    const el = targetById(args.loom_id);
+    if (!(el instanceof HTMLSelectElement)) return { options: [] };
+    showTargetHud(el, `Read options of #${Number(args.index)}`, `${el.options.length} options`, "target");
+    const options = [];
+    for (let i = 0; i < el.options.length && i < 300; i += 1) {
+      const option = el.options[i];
+      options.push({
+        text: clean(option.text, 300),
+        value: String(option.value || "").slice(0, 300),
+        selected: Boolean(option.selected),
+      });
+    }
+    return { options };
+  }
+
+  function evaluateInPage() {
+    const source = String(args.expression || "");
+    try {
+      // Indirect eval runs in global scope, which is what a console expression
+      // does and what the model is reaching for.
+      const value = (0, eval)(source);
+      return { ok: true, value: serializeValue(value), value_type: typeof value };
+    } catch (cause) {
+      return { ok: false, error: String(cause && cause.message ? cause.message : cause).slice(0, 2000) };
+    }
+  }
+
+  function serializeValue(value) {
+    if (value === undefined) return null;
+    try {
+      return JSON.parse(JSON.stringify(value));
+    } catch (cause) {
+      return String(value).slice(0, 30000);
+    }
+  }
+
+  function evaluateCondition() {
+    const source = String(args.expression || "");
+    try {
+      return { ok: true, satisfied: Boolean((0, eval)(source)) };
+    } catch (cause) {
+      return { ok: false, error: String(cause && cause.message ? cause.message : cause).slice(0, 500) };
+    }
+  }
+
+  function readOriginStorage() {
+    const read = (store) => {
+      const rows = [];
+      try {
+        for (let i = 0; i < store.length && i < 300; i += 1) {
+          const name = store.key(i);
+          rows.push({ name: String(name).slice(0, 300), value: String(store.getItem(name) || "").slice(0, 2000) });
+        }
+      } catch (cause) {
+        return rows;
+      }
+      return rows;
+    };
+    return {
+      origin: location.origin,
+      localStorage: read(window.localStorage),
+      sessionStorage: read(window.sessionStorage),
+    };
+  }
+
+  // chrome.scripting.executeScript resolves rather than rejects when the
+  // injected function throws, and the thrown error is not in the result, so an
+  // action that failed in the page used to come back as an ordinary state with
+  // no errors: a click on a stale index, or a select with no matching option,
+  // reported success. The failure is returned as data and rethrown by inject().
+  try {
+    return dispatchPageAction();
+  } catch (cause) {
+    return {
+      __loomError: String(cause && cause.message ? cause.message : cause).slice(0, 500),
+    };
+  }
+
+  function dispatchPageAction() {
   switch (action) {
     case "state": return collectPageState(args.show_hud !== false);
     case "hud_status":
@@ -784,7 +1030,13 @@ function runPageAction(action, args = {}) {
     case "press_key": return pressKeyInPage();
     case "scroll": return scrollPage();
     case "go_back": return goBack();
+    case "find_text": return findTextInPage();
+    case "dropdown_options": return readDropdownOptions();
+    case "evaluate": return evaluateInPage();
+    case "evaluate_condition": return evaluateCondition();
+    case "origin_storage": return readOriginStorage();
     default: throw new Error(`Unsupported injected Loom page action: ${action}`);
+  }
   }
 }
 

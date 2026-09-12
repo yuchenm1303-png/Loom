@@ -13,7 +13,12 @@ from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
 from .browser_diagnostics import BrowserDiagnosticLog, summarize_bridge_args, summarize_browser_state_payload
-from .browser_session import BrowserError, BrowserLaunchOptions, BrowserPageState
+from .browser_session import (
+    BrowserError,
+    BrowserLaunchOptions,
+    BrowserPageState,
+    BrowserTextNotFoundError,
+)
 
 
 DEFAULT_EXTENSION_HOST = "127.0.0.1"
@@ -145,9 +150,23 @@ class BrowserExtensionBridge:
             server.server_close()
         self._log("bridge.stopped")
 
-    def call(self, action: str, args: dict[str, Any] | None = None) -> dict[str, Any]:
+    def call(
+        self,
+        action: str,
+        args: dict[str, Any] | None = None,
+        *,
+        timeout: float | None = None,
+    ) -> dict[str, Any]:
+        """Run one command in the extension.
+
+        timeout overrides the bridge default for commands that legitimately take
+        longer than an interaction, such as waiting for a page condition: the
+        default would fire first and report the extension as unresponsive.
+        """
+
         self.start()
         action_name = str(action)
+        wait_seconds = self.command_timeout if timeout is None else max(1.0, float(timeout))
         command = _BridgeCommand(
             command_id=uuid.uuid4().hex,
             action=action_name,
@@ -166,7 +185,7 @@ class BrowserExtensionBridge:
             self._commands.append(command)
             self._pending[command.command_id] = command
             self._condition.notify_all()
-        if not command.event.wait(self.command_timeout):
+        if not command.event.wait(wait_seconds):
             with self._condition:
                 self._pending.pop(command.command_id, None)
             self._log(
@@ -424,6 +443,96 @@ class BrowserExtensionSessionBackend:
 
     def close_tab(self, tab_id: str) -> BrowserPageState:
         return self._call_state("close_tab", {"tab_id": str(tab_id)})
+
+    def go_forward(self) -> BrowserPageState:
+        return self._call_state("go_forward", self._target_args())
+
+    def find_text(self, text: str, direction: str = "down") -> BrowserPageState:
+        value = str(text or "").strip()
+        if not value:
+            raise ValueError("browser find text must not be empty")
+        if len(value) > 500:
+            raise ValueError("browser find text exceeds 500 characters")
+        # The extension walks text nodes, so direction does not apply; it is
+        # accepted to keep one call shape across both backends.
+        result = self.bridge.call("find_text", self._target_args({"text": value}))
+        if not bool(result.get("found")):
+            raise BrowserTextNotFoundError("browser find matched no text on the page")
+        return self._state_from_result(result)
+
+    def dropdown_options(self, index: int) -> list[dict[str, Any]]:
+        result = self.bridge.call(
+            "dropdown_options", self._target_args({"index": int(index)})
+        )
+        raw = result.get("options")
+        return [dict(item) for item in raw][:300] if isinstance(raw, list) else []
+
+    def evaluate(self, expression: str, *, await_promise: bool = True) -> dict[str, Any]:
+        source = str(expression or "")
+        if not source.strip():
+            raise ValueError("browser evaluate expression must not be empty")
+        if len(source) > 20_000:
+            raise ValueError("browser evaluate expression exceeds 20,000 characters")
+        # The page action resolves synchronously; a promise has to be awaited by
+        # the expression itself, which is why the flag is accepted and ignored.
+        result = self.bridge.call("evaluate", self._target_args({"expression": source}))
+        return dict(result) if isinstance(result, dict) else {"ok": False, "error": "no result"}
+
+    def wait_for(
+        self,
+        *,
+        seconds: float = 0.0,
+        for_text: str = "",
+        until: str = "",
+        timeout_seconds: float = 15.0,
+    ) -> dict[str, Any]:
+        text = str(for_text or "").strip()
+        expression = str(until or "").strip()
+        if text and expression:
+            raise ValueError("browser wait takes either for_text or until, not both")
+        if text:
+            if len(text) > 500:
+                raise ValueError("browser wait text exceeds 500 characters")
+            literal = json.dumps(text)
+            expression = (
+                "(() => { const t = document.body && document.body.innerText;"
+                f" return !!t && t.indexOf({literal}) !== -1; }})()"
+            )
+        elif expression and len(expression) > 20_000:
+            raise ValueError("browser wait condition exceeds 20,000 characters")
+        delay = max(0.0, min(float(seconds or 0.0), 60.0))
+        if not expression and delay <= 0:
+            raise ValueError("browser wait needs seconds, for_text, or until")
+        result = self.bridge.call(
+            "wait_for",
+            self._target_args(
+                {"until": expression, "seconds": delay, "timeout_seconds": float(timeout_seconds)}
+            ),
+            timeout=max(5.0, float(timeout_seconds) + 10.0),
+        )
+        return dict(result) if isinstance(result, dict) else {"satisfied": False, "waited_ms": 0}
+
+    def cookies(self) -> list[dict[str, Any]]:
+        result = self.bridge.call("cookies", self._target_args())
+        raw = result.get("cookies")
+        return [dict(item) for item in raw] if isinstance(raw, list) else []
+
+    def clear_cookies(self) -> None:
+        self.bridge.call("clear_cookies", self._target_args())
+
+    def storage_origins(self) -> list[dict[str, Any]]:
+        # Only the current origin: a content script cannot read another origin's
+        # storage, unlike the CDP path which enumerates every origin.
+        result = self.bridge.call("origin_storage", self._target_args())
+        raw = result.get("origins")
+        return [dict(item) for item in raw] if isinstance(raw, list) else []
+
+    def downloaded_files(self) -> list[str]:
+        result = self.bridge.call("downloads", self._target_args())
+        raw = result.get("files")
+        if not isinstance(raw, list):
+            return []
+        return [str(item.get("path") or "") for item in raw if isinstance(item, dict)]
 
     def hover(self, index: int) -> BrowserPageState:
         return self._call_state("hover", self._target_args({"index": int(index)}))
