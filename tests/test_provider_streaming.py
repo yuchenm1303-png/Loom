@@ -8,6 +8,7 @@ import pytest
 
 from app.agent_runtime import (
     AgentStatus,
+    AgentEventKind,
     AgentStreamEvent,
     AgentStreamEventKind,
     FileAgentSessionStore,
@@ -455,6 +456,36 @@ def test_runtime_stream_bus_is_transient_and_final_message_is_atomic(tmp_path: P
     assert len(assistant_messages) == 1
     assert assistant_messages[0].content == "Hello"
     assert all("assistant_text_delta" not in event.kind.value for event in store.events(session.session_id))
+    runtime.close()
+
+
+def test_checkpoint_context_buffers_provider_text_until_sanitized_commit(tmp_path: Path):
+    runtime, _store, platform, workspace = _runtime(tmp_path)
+    observed = []
+    runtime.subscribe_stream(observed.append)
+    session = runtime.create_session(
+        AGENT_FAST_ROLE.role_id,
+        workspace_dir=workspace,
+        permission_mode=PermissionMode.WORKSPACE,
+    )
+    session.messages.append(AIMessage(
+        role=MessageRole.SYSTEM,
+        name="loom_compaction",
+        content="private checkpoint summary",
+    ))
+    session.current_turn_id = "turn"
+    runtime._record(session, AgentEventKind.MODEL_REQUESTED, data={
+        "step_id": "step",
+        "profile_id": AGENT_FAST_ROLE.role_id,
+        "attempt": 0,
+    })
+
+    platform.execute_chat(AGENT_FAST_ROLE.role_id, _request())
+
+    assert not any(
+        event.kind is AgentStreamEventKind.ASSISTANT_TEXT_DELTA
+        for event in observed
+    )
     runtime.close()
 
 

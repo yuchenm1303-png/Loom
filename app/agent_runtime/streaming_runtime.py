@@ -144,6 +144,7 @@ class StreamingAgentRuntime(CodeModeRuntime):
         self._sticker_stream_text: dict[tuple[str, str, str], str] = {}
         self._sticker_diagnostics: dict[tuple[str, str, str], dict[str, Any]] = {}
         self._sticker_final_by_turn: dict[tuple[str, str], str] = {}
+        self._buffered_checkpoint_streams: set[tuple[str, str, str]] = set()
         self._sticker_preferences = StickerPreferences.from_env()
 
         super().__init__(*args, **kwargs)
@@ -354,6 +355,12 @@ class StreamingAgentRuntime(CodeModeRuntime):
         if event.kind is ProviderStreamEventKind.TEXT_DELTA:
             if not event.text_delta:
                 return
+            # A model that received private checkpoint context may echo it.
+            # Buffer its text until the durable response sanitizer has proved
+            # it safe; tool-call deltas remain independently streamable.
+            with self._sticker_guard:
+                if key in self._buffered_checkpoint_streams:
+                    return
             with self._sticker_guard:
                 sanitizer = self._sticker_streams.get(key)
             delta = sanitizer.push(event.text_delta) if sanitizer is not None else event.text_delta
@@ -517,6 +524,12 @@ class StreamingAgentRuntime(CodeModeRuntime):
                 )
                 with self._sticker_guard:
                     self._sticker_streams[self._sticker_stream_key(context)] = sanitizer
+                    if any(
+                        message.role is MessageRole.SYSTEM
+                        and str(getattr(message, "name", "") or "") == "loom_compaction"
+                        for message in session.messages
+                    ):
+                        self._buffered_checkpoint_streams.add(self._sticker_stream_key(context))
 
         if kind is AgentEventKind.MODEL_RESPONSE:
             step_id = str(payload.get("step_id") or "").strip()
@@ -525,6 +538,7 @@ class StreamingAgentRuntime(CodeModeRuntime):
                 with self._sticker_guard:
                     self._sticker_streams.pop(key, None)
                     self._sticker_stream_text.pop(key, None)
+                    self._buffered_checkpoint_streams.discard(key)
             self._stream_context.set(None)
 
         if kind in {
@@ -547,6 +561,7 @@ class StreamingAgentRuntime(CodeModeRuntime):
                     self._sticker_streams.pop(key, None)
                     self._sticker_stream_text.pop(key, None)
                     self._sticker_diagnostics.pop(key, None)
+                    self._buffered_checkpoint_streams.discard(key)
         return event
 
     def close(self) -> None:
@@ -557,6 +572,7 @@ class StreamingAgentRuntime(CodeModeRuntime):
             self._sticker_stream_text.clear()
             self._sticker_diagnostics.clear()
             self._sticker_final_by_turn.clear()
+            self._buffered_checkpoint_streams.clear()
         self._stream_context.set(None)
         super().close()
 
