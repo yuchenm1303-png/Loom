@@ -1,4 +1,5 @@
 import {
+  Check,
   ExternalLink,
   File,
   FileText,
@@ -16,6 +17,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ProjectRecord, ThreadRecord, TranscriptItem } from "../types/loom";
 import "./project-details-panel.css";
+import "./project-details-git.css";
 
 interface ProjectDetailsPanelProps {
   project: ProjectRecord | null;
@@ -80,6 +82,18 @@ interface ProjectGitDiffResult {
   error?: string;
 }
 
+interface ProjectGitActionResult {
+  projectId: string;
+  projectName?: string;
+  root: string;
+  path?: string;
+  message?: string;
+  before?: string;
+  commitSha?: string;
+  summary?: string;
+  git: ProjectWorkspaceStatus["git"];
+}
+
 type LoomBridge = {
   call<T = unknown>(method: string, params?: Record<string, unknown>): Promise<T>;
 };
@@ -116,6 +130,37 @@ function fileStatusLabel(file: ProjectGitFile): string {
   if (status.includes("A")) return "新增";
   if (status.includes("M")) return "修改";
   return status || "变更";
+}
+
+function gitFileKey(file: ProjectGitFile): string {
+  return `${file.status}:${file.path}`;
+}
+
+function fileBaseName(path: string): string {
+  const normalized = String(path || "").replaceAll("\\", "/");
+  return normalized.split("/").filter(Boolean).at(-1) || normalized || "workspace";
+}
+
+function fileIsStaged(file: ProjectGitFile): boolean {
+  const index = String(file.index ?? "").trim();
+  const status = String(file.status || "").padEnd(2, " ");
+  return Boolean(index && index !== "?") || Boolean(status[0].trim() && status[0] !== "?");
+}
+
+function fileIsUnstaged(file: ProjectGitFile): boolean {
+  const working = String(file.workingTree ?? "").trim();
+  const status = String(file.status || "").trim();
+  return status === "??" || Boolean(working && working !== "?") || status.includes("?");
+}
+
+function suggestedCommitMessage(files: ProjectGitFile[]): string {
+  if (!files.length) return "chore: update project workspace";
+  if (files.length === 1) return `chore: update ${fileBaseName(files[0].path)}`;
+  const added = files.filter((file) => fileStatusLabel(file) === "新增").length;
+  const deleted = files.filter((file) => fileStatusLabel(file) === "删除").length;
+  if (added > deleted && added >= Math.ceil(files.length / 2)) return `feat: add ${added} project files`;
+  if (deleted > added && deleted >= Math.ceil(files.length / 2)) return `chore: remove ${deleted} project files`;
+  return `chore: update ${files.length} project files`;
 }
 
 function formatSize(value?: number): string {
@@ -165,10 +210,13 @@ export function ProjectDetailsPanel({
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
   const [workspaceError, setWorkspaceError] = useState("");
   const [reviewLoadingPath, setReviewLoadingPath] = useState("");
+  const [gitBusy, setGitBusy] = useState("");
+  const [commitMessage, setCommitMessage] = useState("");
+  const [commitNotice, setCommitNotice] = useState("");
   const projectId = project?.id ?? "";
 
-  const loadWorkspaceStatus = useCallback(async (quiet = false) => {
-    if (!open || !projectId) return;
+  const loadWorkspaceStatus = useCallback(async (quiet = false): Promise<ProjectWorkspaceStatus | null> => {
+    if (!open || !projectId) return null;
     if (!quiet) setWorkspaceLoading(true);
     setWorkspaceError("");
     try {
@@ -176,8 +224,10 @@ export function ProjectDetailsPanel({
       if (!client) throw new Error("Loom bridge is unavailable");
       const status = await client.call<ProjectWorkspaceStatus>("project/workspace_status", { projectId });
       setWorkspaceStatus(status);
+      return status;
     } catch (cause) {
       setWorkspaceError(cause instanceof Error ? cause.message : String(cause));
+      return null;
     } finally {
       if (!quiet) setWorkspaceLoading(false);
     }
@@ -188,6 +238,8 @@ export function ProjectDetailsPanel({
     setNotice("");
     setSaving(false);
     setReviewLoadingPath("");
+    setGitBusy("");
+    setCommitNotice("");
   }, [project?.id, project?.instructions]);
 
   useEffect(() => {
@@ -196,6 +248,7 @@ export function ProjectDetailsPanel({
       setWorkspaceError("");
       setWorkspaceLoading(false);
       setReviewLoadingPath("");
+      setGitBusy("");
       return undefined;
     }
     void loadWorkspaceStatus();
@@ -215,13 +268,21 @@ export function ProjectDetailsPanel({
   const instructionsLength = draft.length;
   const git = workspaceStatus?.git;
   const changedFiles = git?.changedFiles ?? [];
+  const stagedFiles = changedFiles.filter(fileIsStaged);
+  const unstagedFiles = changedFiles.filter(fileIsUnstaged);
   const treeEntries = workspaceStatus?.tree.entries ?? [];
+  const gitBlocked = Boolean(gitBusy || workspaceLoading || busyThreads.length || !git?.isRepo);
 
   useEffect(() => {
     if (!notice) return;
     const timer = window.setTimeout(() => setNotice(""), 2200);
     return () => window.clearTimeout(timer);
   }, [notice]);
+
+  useEffect(() => {
+    if (commitMessage.trim() || !stagedFiles.length) return;
+    setCommitMessage(suggestedCommitMessage(stagedFiles));
+  }, [commitMessage, stagedFiles]);
 
   if (!open || !project) return null;
 
@@ -264,6 +325,82 @@ export function ProjectDetailsPanel({
     }
   };
 
+  const runGitAction = async (method: "project/git_stage" | "project/git_unstage", path = "") => {
+    const key = `${method}:${path || "all"}`;
+    setGitBusy(key);
+    setWorkspaceError("");
+    setCommitNotice("");
+    try {
+      const client = bridge();
+      if (!client) throw new Error("Loom bridge is unavailable");
+      const params: Record<string, unknown> = { projectId: project.id };
+      if (path) params.path = path;
+      const result = await client.call<ProjectGitActionResult>(method, params);
+      setWorkspaceStatus((current) => current ? { ...current, git: result.git } : current);
+      await loadWorkspaceStatus(true);
+    } catch (cause) {
+      setWorkspaceError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setGitBusy("");
+    }
+  };
+
+  const commitStaged = async () => {
+    const message = commitMessage.trim();
+    if (!message || !stagedFiles.length || gitBlocked) return;
+    setGitBusy("project/git_commit");
+    setWorkspaceError("");
+    setCommitNotice("");
+    try {
+      const client = bridge();
+      if (!client) throw new Error("Loom bridge is unavailable");
+      const result = await client.call<ProjectGitActionResult>("project/git_commit", {
+        projectId: project.id,
+        message,
+      });
+      setWorkspaceStatus((current) => current ? { ...current, git: result.git } : current);
+      setCommitNotice(result.commitSha ? `已提交 ${result.commitSha}` : "已提交");
+      setCommitMessage("");
+      await loadWorkspaceStatus(true);
+    } catch (cause) {
+      setWorkspaceError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setGitBusy("");
+    }
+  };
+
+  const renderGitFile = (file: ProjectGitFile, kind: "staged" | "unstaged") => {
+    const path = String(file.path || "").replaceAll("\\", "/");
+    const loading = reviewLoadingPath === path;
+    const actionMethod = kind === "staged" ? "project/git_unstage" : "project/git_stage";
+    const actionLabel = kind === "staged" ? "取消暂存" : "暂存";
+    const actionKey = `${actionMethod}:${path || "all"}`;
+    return (
+      <div className="project-stage-file" key={`${kind}:${gitFileKey(file)}`}>
+        <button
+          type="button"
+          className="project-stage-file-main"
+          onClick={() => void openProjectDiff(file)}
+          disabled={Boolean(reviewLoadingPath)}
+          title="在右侧审查栏查看 diff"
+        >
+          <span className={`project-git-badge ${kind}`}>{loading ? "读取" : fileStatusLabel(file)}</span>
+          <code>{path}</code>
+          <ExternalLink size={12} strokeWidth={1.9} />
+        </button>
+        <button
+          type="button"
+          className="project-stage-file-action"
+          onClick={() => void runGitAction(actionMethod, path)}
+          disabled={gitBlocked || Boolean(reviewLoadingPath)}
+          title={actionLabel}
+        >
+          {gitBusy === actionKey ? "处理中" : actionLabel}
+        </button>
+      </div>
+    );
+  };
+
   return (
     <aside className="project-details-panel" aria-label="Project details">
       <header className="project-details-header">
@@ -297,7 +434,7 @@ export function ProjectDetailsPanel({
         {busyThreads.length ? (
           <div className="project-running-guard" role="status">
             <ShieldAlert size={15} strokeWidth={1.85} />
-            <span>项目内有任务正在运行，移动、删除等危险操作会被保护。先让任务结束再调整归属。</span>
+            <span>项目内有任务正在运行，移动、删除、提交等危险操作会被保护。先让任务结束再调整归属或提交代码。</span>
           </div>
         ) : null}
 
@@ -307,7 +444,7 @@ export function ProjectDetailsPanel({
               <span>Workspace</span>
               <strong>工作区状态</strong>
             </div>
-            <button type="button" onClick={() => void loadWorkspaceStatus()} disabled={workspaceLoading}>
+            <button type="button" onClick={() => void loadWorkspaceStatus()} disabled={workspaceLoading || Boolean(gitBusy)}>
               <RefreshCw size={14} strokeWidth={1.85} />
               {workspaceLoading ? "刷新中" : "刷新"}
             </button>
@@ -324,7 +461,7 @@ export function ProjectDetailsPanel({
               <FileText size={15} strokeWidth={1.8} />
               <span>变更</span>
               <strong>{git?.changedCount ?? 0}</strong>
-              <small>{git?.changedCount ? "点击文件可打开右侧 Review" : "工作区暂无 Git 变更"}</small>
+              <small>{git?.changedCount ? `${stagedFiles.length} staged · ${unstagedFiles.length} unstaged` : "工作区暂无 Git 变更"}</small>
             </div>
           </div>
 
@@ -335,33 +472,81 @@ export function ProjectDetailsPanel({
           ) : null}
 
           <div className="project-changed-block">
-            <div className="project-subheading">
-              <span>当前变更</span>
-              <small>{changedFiles.length ? `${changedFiles.length}${git?.truncated ? "+" : ""} 个文件` : "clean"}</small>
+            <div className="project-subheading project-git-subheading">
+              <div>
+                <span>当前变更</span>
+                <small>{changedFiles.length ? `${changedFiles.length}${git?.truncated ? "+" : ""} 个文件` : "clean"}</small>
+              </div>
+              {changedFiles.length ? (
+                <div className="project-git-toolbar">
+                  <button type="button" onClick={() => void runGitAction("project/git_stage")} disabled={gitBlocked || !unstagedFiles.length}>
+                    {gitBusy === "project/git_stage:all" ? "处理中" : "暂存全部"}
+                  </button>
+                  <button type="button" onClick={() => void runGitAction("project/git_unstage")} disabled={gitBlocked || !stagedFiles.length}>
+                    {gitBusy === "project/git_unstage:all" ? "处理中" : "取消暂存"}
+                  </button>
+                </div>
+              ) : null}
             </div>
+
             {changedFiles.length ? (
-              <div className="project-changed-files">
-                {changedFiles.slice(0, 8).map((file) => {
-                  const loading = reviewLoadingPath === file.path;
-                  return (
-                    <button
-                      key={`${file.status}:${file.path}`}
-                      type="button"
-                      className="project-changed-file"
-                      onClick={() => void openProjectDiff(file)}
-                      title="在右侧审查栏查看"
-                      disabled={Boolean(reviewLoadingPath)}
-                    >
-                      <span>{loading ? "读取" : fileStatusLabel(file)}</span>
-                      <code>{file.path}</code>
-                      <ExternalLink size={12} strokeWidth={1.9} />
-                    </button>
-                  );
-                })}
+              <div className="project-stage-columns">
+                <section className="project-stage-section staged">
+                  <header>
+                    <span>Staged</span>
+                    <small>{stagedFiles.length}</small>
+                  </header>
+                  {stagedFiles.length ? stagedFiles.slice(0, 12).map((file) => renderGitFile(file, "staged")) : (
+                    <p className="project-muted-line">还没有已暂存文件。</p>
+                  )}
+                </section>
+                <section className="project-stage-section unstaged">
+                  <header>
+                    <span>Unstaged</span>
+                    <small>{unstagedFiles.length}</small>
+                  </header>
+                  {unstagedFiles.length ? unstagedFiles.slice(0, 12).map((file) => renderGitFile(file, "unstaged")) : (
+                    <p className="project-muted-line">没有未暂存变更。</p>
+                  )}
+                </section>
               </div>
             ) : (
               <p className="project-muted-line">没有检测到 Git 工作区变更。</p>
             )}
+
+            {git?.isRepo ? (
+              <div className="project-commit-box">
+                <div className="project-commit-heading">
+                  <div>
+                    <span>Commit</span>
+                    <strong>提交已暂存变更</strong>
+                  </div>
+                  <small>{commitNotice || "只提交 staged，不会 push 到远端"}</small>
+                </div>
+                <textarea
+                  value={commitMessage}
+                  onChange={(event) => setCommitMessage(event.target.value)}
+                  placeholder="例如：feat: improve project workspace panel"
+                  maxLength={500}
+                  disabled={Boolean(gitBusy)}
+                  aria-label="Git commit message"
+                />
+                <div className="project-commit-actions">
+                  <button type="button" onClick={() => setCommitMessage(suggestedCommitMessage(stagedFiles))} disabled={!stagedFiles.length || Boolean(gitBusy)}>
+                    生成信息
+                  </button>
+                  <button
+                    type="button"
+                    className="primary"
+                    onClick={() => void commitStaged()}
+                    disabled={!stagedFiles.length || !commitMessage.trim() || gitBlocked}
+                  >
+                    <Check size={13} strokeWidth={1.9} />
+                    {gitBusy === "project/git_commit" ? "提交中" : "提交"}
+                  </button>
+                </div>
+              </div>
+            ) : null}
           </div>
 
           <div className="project-file-tree-block">
@@ -468,7 +653,7 @@ export function ProjectDetailsPanel({
           <span>下一步能力</span>
           <div>
             <small>AGENTS.md</small>
-            <small>Git diff</small>
+            <small>Git commit</small>
             <small>项目级模型</small>
             <small>项目级权限</small>
           </div>
