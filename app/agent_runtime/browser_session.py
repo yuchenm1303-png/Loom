@@ -24,6 +24,16 @@ class BrowserURLPolicyError(BrowserError):
     pass
 
 
+class BrowserTextNotFoundError(BrowserError):
+    """A text search completed and matched nothing.
+
+    Its own type because not finding text is an ordinary answer, and because the
+    backend must translate the provider's error rather than let the tool layer
+    match on message text: browser-use ships an unrelated class also named
+    BrowserError, so `except BrowserError` never catches it.
+    """
+
+
 @dataclass(frozen=True, slots=True)
 class BrowserLaunchOptions:
     headless: bool = True

@@ -1,9 +1,82 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from .browser_session import BrowserError, BrowserLaunchOptions, BrowserPageState
 from .browser_use_backend import BrowserUseBackend, _serialize_state
+
+
+_MAX_DROPDOWN_OPTIONS = 300
+
+
+def _dropdown_selection_succeeded(outcome: Any) -> bool:
+    """Read the dropdown watchdog's own verdict.
+
+    It answers with a mapping whose ``success`` is the string "true" rather than a
+    boolean, so this cannot just be truth-tested: every non-empty string is
+    truthy, including "false".
+    """
+
+    if outcome is None:
+        return False
+    if isinstance(outcome, bool):
+        return outcome
+    if isinstance(outcome, dict):
+        raw = outcome.get("success")
+        if isinstance(raw, bool):
+            return raw
+        if raw is None:
+            # Older shapes report only a message; treat a reported value as proof.
+            return bool(str(outcome.get("value") or "").strip())
+        return str(raw).strip().casefold() in {"true", "1", "yes", "ok"}
+    return True
+
+
+def _normalize_dropdown_options(raw: Any) -> list[dict[str, Any]]:
+    """Reduce a provider dropdown payload to bounded {text, value, selected} rows.
+
+    browser-use returns whatever its watchdog produced, which varies by version
+    and can carry the whole option element. Only what browser_select needs to be
+    called with is kept, and the list is capped so a pathological page cannot
+    push an unbounded payload into the model's context.
+    """
+
+    items: Any = raw
+    if isinstance(raw, dict):
+        for key in ("options", "dropdown_options", "values", "result"):
+            candidate = raw.get(key)
+            # browser-use hands back this list already serialized to JSON, beside
+            # prose fields that name its own tools. Only the structured rows are
+            # useful here, and its prose must not reach the model.
+            if isinstance(candidate, str) and candidate.strip().startswith("["):
+                try:
+                    candidate = json.loads(candidate)
+                except json.JSONDecodeError:
+                    candidate = None
+            if isinstance(candidate, (list, tuple)):
+                items = candidate
+                break
+    if not isinstance(items, (list, tuple)):
+        return []
+
+    options: list[dict[str, Any]] = []
+    for item in items[:_MAX_DROPDOWN_OPTIONS]:
+        if isinstance(item, dict):
+            text = str(item.get("text") or item.get("label") or item.get("value") or "")
+            value = str(item.get("value") or "")
+            selected = bool(item.get("selected"))
+        elif isinstance(item, str):
+            text, value, selected = item, "", False
+        else:
+            text = str(getattr(item, "text", "") or getattr(item, "label", "") or "")
+            value = str(getattr(item, "value", "") or "")
+            selected = bool(getattr(item, "selected", False))
+        text = text.strip()[:300]
+        if not text and not value:
+            continue
+        options.append({"text": text, "value": value.strip()[:300], "selected": selected})
+    return options
 
 
 class BrowserUseSessionBackend(BrowserUseBackend):
@@ -130,13 +203,33 @@ class BrowserUseSessionBackend(BrowserUseBackend):
         return self._run_state_action("press_key", self._press_key_async(key), args={"key": str(key or "")})
 
     async def _select_option_async(self, index: int, value: str) -> BrowserPageState:
+        """Pick an option on a select.
+
+        This used to go through the actor Element's select_option, which returned
+        without error and without selecting anything: the page value never moved
+        and no change event fired, for option text and option value alike. The
+        dropdown event is the path browser-use actually implements, and it
+        reports which option it matched, so a miss can be raised instead of
+        silently reported as done.
+        """
+
+        from browser_use.browser.events import SelectDropdownOptionEvent
+
         option = str(value)
         if not option:
             raise ValueError("browser select value must not be empty")
         if len(option) > 2_000:
             raise ValueError("browser select value exceeds 2,000 characters")
-        element = await self._actor_element_for_index(index)
-        await element.select_option(option)
+        session = await self._ensure_session()
+        node = await self._node_for_index(index)
+        dispatched = session.event_bus.dispatch(SelectDropdownOptionEvent(node=node, text=option))
+        await dispatched
+        outcome = await dispatched.event_result(raise_if_any=True, raise_if_none=False)
+        if not _dropdown_selection_succeeded(outcome):
+            raise BrowserError(
+                f"browser select did not match an option for {option!r}; "
+                "read the exact option text with browser_dropdown_options first"
+            )
         return await self._state_async()
 
     def select_option(self, index: int, value: str) -> BrowserPageState:
@@ -144,6 +237,45 @@ class BrowserUseSessionBackend(BrowserUseBackend):
             "select_option",
             self._select_option_async(index, value),
             args={"index": int(index), "value": str(value)},
+        )
+
+    async def _upload_file_async(self, index: int, file_path: str) -> BrowserPageState:
+        from browser_use.browser.events import UploadFileEvent
+
+        node = await self._node_for_index(index)
+        await self._dispatch(UploadFileEvent(node=node, file_path=file_path))
+        return await self._state_async()
+
+    def upload_file(self, index: int, file_path: str) -> BrowserPageState:
+        # The path is resolved and confined to the workspace by the tool layer;
+        # keep it out of diagnostics because it names a real user file.
+        return self._run_state_action(
+            "upload_file",
+            self._upload_file_async(index, file_path),
+            args={"index": int(index)},
+            include_dom_excerpt=False,
+        )
+
+    async def _dropdown_options_async(self, index: int) -> list[dict[str, Any]]:
+        from browser_use.browser.events import GetDropdownOptionsEvent
+
+        session = await self._ensure_session()
+        node = await self._node_for_index(index)
+        dispatched = session.event_bus.dispatch(GetDropdownOptionsEvent(node=node))
+        await dispatched
+        raw = await dispatched.event_result(raise_if_any=True, raise_if_none=False)
+        return _normalize_dropdown_options(raw)
+
+    def dropdown_options(self, index: int) -> list[dict[str, Any]]:
+        """Read a select's options.
+
+        browser_select needs an option's exact text, which the serialized DOM does
+        not carry, so without this the model has to guess it from the page copy.
+        """
+
+        return self._runner.run(
+            self._dropdown_options_async(index),
+            timeout=self.action_timeout_seconds,
         )
 
     async def _drag_async(self, source_index: int, target_index: int) -> BrowserPageState:

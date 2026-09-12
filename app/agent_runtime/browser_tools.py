@@ -4,6 +4,7 @@ import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from .browser_session import BrowserTextNotFoundError
 from .contracts import ToolEffect
 from .tools import AgentTool, ToolContext, ToolResult
 
@@ -314,6 +315,87 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
         snapshot = _store(runtime).close_tab(context.session_id, browser_id, str(arguments["tab_id"]))
         return _snapshot_result(snapshot, "Browser tab closed.")
 
+    def go_forward(context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
+        context.raise_if_cancelled()
+        store = _store(runtime)
+        browser_id = str(arguments["browser_id"])
+        snapshot = _backend_snapshot_action(store, context.session_id, browser_id, "go_forward")
+        return _snapshot_result(snapshot, "Browser moved forward in history.")
+
+    def find_text(context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
+        context.raise_if_cancelled()
+        store = _store(runtime)
+        browser_id = str(arguments["browser_id"])
+        text = str(arguments["text"] or "").strip()
+        if not text:
+            raise ValueError("browser_find text must not be empty")
+        direction = str(arguments.get("direction") or "down").strip().casefold()
+        if direction not in {"up", "down"}:
+            raise ValueError("browser_find direction must be up or down")
+        try:
+            snapshot = _backend_snapshot_action(
+                store, context.session_id, browser_id, "find_text", text, direction
+            )
+        except BrowserTextNotFoundError:
+            # Not finding the text is an answer, not a malfunction. Raising made a
+            # plain search look like a broken tool call and told the model nothing
+            # about the page it is on.
+            snapshot = store.snapshot(context.session_id, browser_id, refresh=True)
+            return ToolResult(
+                ok=False,
+                content="That text is not present on the page.",
+                data={**snapshot.to_dict(), "found": False},
+            )
+        return _snapshot_result(
+            snapshot,
+            "Scrolled to the first match. Confirm against the returned state.",
+            extra={"found": True},
+        )
+
+    def dropdown_options(context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
+        store = _store(runtime)
+        browser_id = str(arguments["browser_id"])
+        store.ensure_revision(context.session_id, browser_id, int(arguments["state_revision"]))
+        item = store._owned(context.session_id, browser_id)
+        reader = getattr(item.backend, "dropdown_options", None)
+        if not callable(reader):
+            raise RuntimeError(
+                f"browser backend {item.backend.backend_name!r} does not support dropdown_options"
+            )
+        options = list(reader(int(arguments["index"])))
+        return ToolResult(
+            ok=True,
+            content=(
+                f"Read {len(options)} option(s). Pass one option's text to browser_select."
+                if options
+                else "That element exposed no options; it may not be a select."
+            ),
+            data={"browser_id": browser_id, "index": int(arguments["index"]), "options": options},
+        )
+
+    def upload_file(context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
+        context.raise_if_cancelled()
+        store = _store(runtime)
+        browser_id = str(arguments["browser_id"])
+        store.ensure_revision(context.session_id, browser_id, int(arguments["state_revision"]))
+        # Uploading sends a local file to whatever site the page belongs to, so the
+        # path is confined to the workspace rather than taken as an absolute path.
+        target = context.resolve_workspace_path(str(arguments["path"]))
+        if not target.is_file():
+            raise ValueError("browser_upload path must be an existing file inside the workspace")
+        snapshot = _backend_snapshot_action(
+            store,
+            context.session_id,
+            browser_id,
+            "upload_file",
+            int(arguments["index"]),
+            str(target),
+        )
+        return _snapshot_result(
+            snapshot,
+            "File attached to the page input. The site has not necessarily submitted it yet.",
+        )
+
     def screenshot(context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
         context.raise_if_cancelled()
         store = _store(runtime)
@@ -507,7 +589,10 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
                 name="browser_drag",
                 description=(
                     "Drag one DOM element onto another using indexes from the same latest browser_state snapshot. "
-                    "Requires the matching state_revision."
+                    "Requires the matching state_revision. This presses, moves and releases the mouse, which drives "
+                    "the drag handling most page scripts implement. It cannot perform a native HTML5 "
+                    "draggable=true drag, and such a page reports no error, so verify the result in the "
+                    "returned state rather than assuming the drop happened."
                 ),
                 input_schema=_schema(
                     {
@@ -540,6 +625,71 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
                 description="Navigate the active tab back and return the refreshed browser state.",
                 input_schema=_schema({"browser_id": _browser_id_schema()}, ("browser_id",)),
                 handler=back,
+                effect=sensitive,
+            ),
+            AgentTool(
+                name="browser_forward",
+                description="Navigate the active tab forward and return the refreshed browser state.",
+                input_schema=_schema({"browser_id": _browser_id_schema()}, ("browser_id",)),
+                handler=go_forward,
+                effect=sensitive,
+            ),
+            AgentTool(
+                name="browser_find",
+                description=(
+                    "Scroll to the first occurrence of visible text on the page, so content below the "
+                    "fold can be reached and read without guessing scroll amounts. Returns the refreshed "
+                    "state; compare it to confirm the text was actually found."
+                ),
+                input_schema=_schema(
+                    {
+                        "browser_id": _browser_id_schema(),
+                        "text": {"type": "string", "minLength": 1, "maxLength": 500},
+                        "direction": {"type": "string", "enum": ["up", "down"]},
+                    },
+                    ("browser_id", "text"),
+                ),
+                handler=find_text,
+                effect=sensitive,
+            ),
+            AgentTool(
+                name="browser_dropdown_options",
+                description=(
+                    "List the options of a select element from the latest browser_state. browser_select "
+                    "needs an option's exact text, which the serialized DOM does not carry, so read the "
+                    "options before selecting instead of guessing from page copy."
+                ),
+                input_schema=_schema(
+                    {
+                        "browser_id": _browser_id_schema(),
+                        "index": index_schema,
+                        "state_revision": revision_schema,
+                    },
+                    ("browser_id", "index", "state_revision"),
+                ),
+                # Reads live page content, exactly like browser_state, so it is not
+                # READ_ONLY: that effect skips approval, and Loom closes browser
+                # sessions outright in read-only permission mode.
+                handler=dropdown_options,
+                effect=sensitive,
+            ),
+            AgentTool(
+                name="browser_upload",
+                description=(
+                    "Attach a workspace file to a file input on the page. The path is resolved inside the "
+                    "Loom workspace; absolute paths and paths escaping the workspace are refused. This "
+                    "sends the file's contents to the site that owns the page."
+                ),
+                input_schema=_schema(
+                    {
+                        "browser_id": _browser_id_schema(),
+                        "index": index_schema,
+                        "state_revision": revision_schema,
+                        "path": {"type": "string", "minLength": 1, "maxLength": 1000},
+                    },
+                    ("browser_id", "index", "state_revision", "path"),
+                ),
+                handler=upload_file,
                 effect=sensitive,
             ),
             AgentTool(

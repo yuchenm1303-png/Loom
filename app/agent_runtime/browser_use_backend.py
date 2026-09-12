@@ -16,6 +16,7 @@ from .browser_session import (
     BrowserError,
     BrowserLaunchOptions,
     BrowserPageState,
+    BrowserTextNotFoundError,
     BrowserUnavailableError,
 )
 
@@ -398,6 +399,46 @@ class BrowserUseBackend(BrowserBackend):
             "scroll",
             self._scroll_async(direction, amount),
             args={"direction": direction, "amount": int(amount)},
+        )
+
+    async def _forward_async(self) -> BrowserPageState:
+        from browser_use.browser.events import GoForwardEvent
+
+        await self._dispatch(GoForwardEvent())
+        return await self._state_async()
+
+    def go_forward(self) -> BrowserPageState:
+        return self._run_state_action("go_forward", self._forward_async())
+
+    async def _find_text_async(self, text: str, *, direction: str) -> BrowserPageState:
+        from browser_use.browser.events import ScrollToTextEvent
+
+        try:
+            await self._dispatch(ScrollToTextEvent(text=text, direction=direction))
+        except Exception as exc:
+            # Translate "no match" into Loom's own type at the boundary. The
+            # provider signals it with a class that happens to share the name
+            # BrowserError but is unrelated to Loom's, so callers cannot catch it.
+            if "not found" not in str(exc).casefold():
+                raise
+            raise BrowserTextNotFoundError("browser find matched no text on the page") from exc
+        return await self._state_async()
+
+    # direction is positional because _backend_snapshot_action forwards *args.
+    def find_text(self, text: str, direction: str = "down") -> BrowserPageState:
+        value = str(text or "").strip()
+        if not value:
+            raise ValueError("browser find text must not be empty")
+        if len(value) > 500:
+            raise ValueError("browser find text exceeds 500 characters")
+        wanted = str(direction or "down").strip().casefold()
+        if wanted not in {"up", "down"}:
+            raise ValueError("browser find direction must be up or down")
+        return self._run_state_action(
+            "find_text",
+            self._find_text_async(value, direction=wanted),
+            args={"direction": wanted},
+            include_dom_excerpt=False,
         )
 
     async def _back_async(self) -> BrowserPageState:
