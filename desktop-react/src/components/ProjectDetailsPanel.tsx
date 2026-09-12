@@ -87,7 +87,7 @@ export function ProjectDetailsPanel({
     setSaving(true);
     try {
       await onSetInstructions(project.id, draft);
-      setNotice("项目 Instructions 已保存");
+      setNotice("项目 Instructions 已保存，下一轮自动生效");
     } catch (cause) {
       setNotice(cause instanceof Error ? cause.message : "保存失败");
     } finally {
@@ -141,7 +141,7 @@ export function ProjectDetailsPanel({
             <FileText size={16} strokeWidth={1.8} aria-hidden="true" />
           </div>
           <p>
-            写给这个项目里所有任务看的固定背景、约束和偏好。下一阶段会把它注入 Agent 运行上下文。
+            写给这个项目里所有任务看的固定背景、约束和偏好。保存后会自动注入下一轮 Agent 运行上下文；已经运行中的任务保持启动时快照。
           </p>
           <textarea
             value={draft}
