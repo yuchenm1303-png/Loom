@@ -105,6 +105,7 @@ class _StreamAccumulator:
         finish_reason: str = "",
         reasoning_char_count: int = 0,
         reasoning_content: str = "",
+        provider_state: tuple[dict[str, Any], ...] = (),
         chunk_count: int = 0,
     ) -> ModelResponse:
         if not self.completed:
@@ -147,6 +148,7 @@ class _StreamAccumulator:
             finish_reason=str(finish_reason or self.finish_reason or ""),
             response_id=str(response_id or ""),
             reasoning_content=str(reasoning_content or ""),
+            provider_state=tuple(dict(item) for item in provider_state),
         )
 
 
@@ -156,7 +158,7 @@ class StreamingAIPlatform(AIPlatform):
     The runtime still receives one atomic ``ModelResponse`` for canonical history,
     while interested clients can subscribe to transient provider-normalized deltas.
     Streaming is opt-in so detached/legacy platform users keep the old completion
-    semantics until a Runtime enables it. Provider-private reasoning continuity is
+    semantics until a Runtime enables it. Provider-private continuity state is
     carried only inside the final response and never published to stream listeners.
     """
 
@@ -235,12 +237,16 @@ class StreamingAIPlatform(AIPlatform):
         usage = metadata.get("usage")
         if not isinstance(usage, ModelUsage):
             usage = ModelUsage()
+        provider_state = metadata.get("provider_state")
+        if not isinstance(provider_state, tuple):
+            provider_state = ()
         result = accumulator.finalize(
             usage=usage,
             response_id=str(metadata.get("response_id") or ""),
             finish_reason=str(metadata.get("finish_reason") or ""),
             reasoning_char_count=int(metadata.get("reasoning_char_count") or 0),
             reasoning_content=str(metadata.get("reasoning_content") or ""),
+            provider_state=provider_state,
             chunk_count=int(metadata.get("chunk_count") or 0),
         )
         self._publish(
