@@ -2,11 +2,16 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 from pathlib import Path
 from typing import Any
 
 
 _UNSUPPORTED_PRODUCT_LEVELS = {"ultra", "persistent"}
+_CACHE_LOCK = threading.Lock()
+_CACHE_PATH: Path | None = None
+_CACHE_SIGNATURE: tuple[int, int, int] | None = None
+_CACHE_MODELS: tuple[dict[str, Any], ...] = ()
 
 
 def _default_home() -> Path:
@@ -37,6 +42,42 @@ def _catalog_models(payload: Any) -> list[dict[str, Any]]:
     if not isinstance(raw_models, list):
         return []
     return [dict(item) for item in raw_models if isinstance(item, dict)]
+
+
+def _catalog_signature(path: Path) -> tuple[int, int, int] | None:
+    try:
+        stat = path.stat()
+    except OSError:
+        return None
+    if not path.is_file():
+        return None
+    return (int(stat.st_mtime_ns), int(stat.st_ctime_ns), int(stat.st_size))
+
+
+def _load_catalog_models(path: Path) -> tuple[dict[str, Any], ...]:
+    """Load and cache one catalog until its on-disk signature changes."""
+
+    global _CACHE_PATH, _CACHE_SIGNATURE, _CACHE_MODELS
+
+    signature = _catalog_signature(path)
+    with _CACHE_LOCK:
+        if _CACHE_PATH == path and _CACHE_SIGNATURE == signature:
+            return _CACHE_MODELS
+        if signature is None:
+            _CACHE_PATH = path
+            _CACHE_SIGNATURE = None
+            _CACHE_MODELS = ()
+            return _CACHE_MODELS
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            models: tuple[dict[str, Any], ...] = ()
+        else:
+            models = tuple(_catalog_models(payload))
+        _CACHE_PATH = path
+        _CACHE_SIGNATURE = signature
+        _CACHE_MODELS = models
+        return _CACHE_MODELS
 
 
 def _reasoning_levels(entry: dict[str, Any]) -> list[dict[str, Any]]:
@@ -77,21 +118,15 @@ def catalog_reasoning_spec(model: str) -> dict[str, Any] | None:
 
     Catalog parsing is deliberately fail-closed. A malformed or unreadable file
     never breaks model selection and never invents reasoning capabilities; Loom
-    simply falls back to its bundled provider knowledge.
+    simply falls back to its bundled provider knowledge. Parsed catalogs are
+    cached until their path or on-disk signature changes.
     """
 
     target = _model_slug(model)
     if not target:
         return None
     path = model_catalog_path()
-    if not path.is_file():
-        return None
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-        return None
-
-    for entry in _catalog_models(payload):
+    for entry in _load_catalog_models(path):
         slug = _model_slug(str(entry.get("slug") or entry.get("model") or entry.get("id") or ""))
         if not slug or slug != target:
             continue
