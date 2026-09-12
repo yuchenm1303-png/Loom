@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -42,6 +43,26 @@ def service(tmp_path):
     )
     yield built
     runtime.close()
+
+
+def _git(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", "-C", str(root), *args],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    )
+
+
+def _require_git(root: Path) -> None:
+    result = subprocess.run(["git", "--version"], capture_output=True, text=True, check=False)
+    if result.returncode != 0:
+        pytest.skip("git is not available")
+    assert _git(root, "init").returncode == 0
+    assert _git(root, "config", "user.email", "loom@example.invalid").returncode == 0
+    assert _git(root, "config", "user.name", "Loom Test").returncode == 0
 
 
 def test_workspace_status_lists_a_bounded_project_tree(service, tmp_path: Path) -> None:
@@ -94,3 +115,74 @@ def test_workspace_status_is_dispatchable_and_advertised(service, tmp_path: Path
         }
     )
     assert response["result"]["root"] == str(root.resolve())
+
+
+def test_project_git_diff_returns_tracked_and_untracked_changes(service, tmp_path: Path) -> None:
+    root = tmp_path / "loom"
+    root.mkdir()
+    _require_git(root)
+    tracked = root / "src" / "main.ts"
+    tracked.parent.mkdir()
+    tracked.write_text("console.log('old')\n", encoding="utf-8")
+    assert _git(root, "add", "src/main.ts").returncode == 0
+    assert _git(root, "commit", "-m", "baseline").returncode == 0
+    tracked.write_text("console.log('new')\n", encoding="utf-8")
+    (root / "src" / "new.ts").write_text("export const value = 1\n", encoding="utf-8")
+    project = service.project_create({"root": str(root)})["project"]
+
+    payload = service.project_git_diff({"projectId": project["id"]})
+
+    assert payload["projectId"] == project["id"]
+    assert "src/main.ts" in payload["paths"]
+    assert "src/new.ts" in payload["paths"]
+    assert "-console.log('old')" in payload["diff"]
+    assert "+console.log('new')" in payload["diff"]
+    assert "+export const value = 1" in payload["diff"]
+
+
+def test_project_git_diff_can_be_scoped_to_one_file(service, tmp_path: Path) -> None:
+    root = tmp_path / "loom"
+    root.mkdir()
+    _require_git(root)
+    (root / "a.txt").write_text("a\n", encoding="utf-8")
+    assert _git(root, "add", "a.txt").returncode == 0
+    assert _git(root, "commit", "-m", "baseline").returncode == 0
+    (root / "a.txt").write_text("aa\n", encoding="utf-8")
+    (root / "b.txt").write_text("bb\n", encoding="utf-8")
+    project = service.project_create({"root": str(root)})["project"]
+
+    payload = service.project_git_diff({"projectId": project["id"], "path": "a.txt"})
+
+    assert payload["paths"] == ["a.txt"]
+    assert "+aa" in payload["diff"]
+    assert "b.txt" not in payload["diff"]
+
+
+def test_project_git_diff_is_dispatchable_and_advertised(service, tmp_path: Path) -> None:
+    root = tmp_path / "loom"
+    root.mkdir()
+    project = service.project_create({"root": str(root)})["project"]
+    controller = ProjectMovableLoomRpcController(service)
+
+    init = controller.handle(
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": PROTOCOL_VERSION,
+                "clientInfo": {"name": "pytest", "version": "1"},
+            },
+        }
+    )
+    assert init["result"]["capabilities"]["projects"]["gitDiff"] is True
+
+    response = controller.handle(
+        {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "project/git_diff",
+            "params": {"projectId": project["id"]},
+        }
+    )
+    assert response["result"]["projectId"] == project["id"]
