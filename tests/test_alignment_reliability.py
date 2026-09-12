@@ -77,13 +77,42 @@ def test_resubmitting_identical_failed_input_reuses_canonical_user_message(tmp_p
 def test_partial_response_never_completes_or_executes(tmp_path, kind, reason):
     calls = []
     tool = AgentTool("touch", "touch", {"type": "object"}, lambda c, a: calls.append(1))
-    runtime = kind(platform=Scripted([ModelResponse(text="partial", finish_reason=reason,
-        tool_calls=(ToolCall("x", "touch", {}),))]), store=FileAgentSessionStore(tmp_path), tools=ToolRegistry((tool,)))
+    partial = ModelResponse(text="partial", finish_reason=reason,
+        tool_calls=(ToolCall("x", "touch", {}),))
+    runtime = kind(platform=Scripted([partial, partial, partial]),
+        store=FileAgentSessionStore(tmp_path), tools=ToolRegistry((tool,)))
     session = runtime.create_session("agent.fast")
     result = runtime.start_turn(session.session_id, "work")
     assert result.status is AgentStatus.FAILED
     assert not calls
     assert reason in result.error
+    runtime.close()
+
+
+def test_length_truncation_continues_with_ephemeral_partial_and_executes_once(tmp_path):
+    calls = []
+    platform = Scripted([
+        ModelResponse(text="I will write the file now:", finish_reason="length"),
+        ModelResponse(tool_calls=(ToolCall("x", "touch", {}),), finish_reason="tool_calls"),
+        ModelResponse(text="done", finish_reason="stop"),
+    ])
+    tool = AgentTool("touch", "touch", {"type": "object"},
+        lambda c, a: calls.append(1) or ToolResult(True, "done"))
+    runtime = AgentRuntime(platform=platform, store=FileAgentSessionStore(tmp_path),
+        tools=ToolRegistry((tool,)))
+    session = runtime.create_session("agent.fast")
+
+    result = runtime.start_turn(session.session_id, "work")
+
+    assert result.status is AgentStatus.COMPLETED
+    assert calls == [1]
+    retry = platform.requests[1].messages
+    assert any(message.role is MessageRole.ASSISTANT and
+        message.content == "I will write the file now:" for message in retry)
+    assert any(message.name == "loom_terminal_recovery" and
+        "cut off" in message.content for message in retry)
+    stored = runtime.store.load(session.session_id)
+    assert not any(message.content == "I will write the file now:" for message in stored.messages)
     runtime.close()
 
 

@@ -27,6 +27,11 @@ _TERMINAL_RECOVERY_INSTRUCTION = (
     "If an available tool is needed, emit a native structured tool call through the tool-calling protocol; "
     "do not print JSON, '[' or a tool-call prefix in assistant text. Otherwise return a complete final answer."
 )
+_TRUNCATED_RECOVERY_INSTRUCTION = (
+    "The previous assistant response was cut off by the provider's output limit and was not committed. "
+    "Continue the same task from that partial response without repeating its analysis. If it was leading to "
+    "a tool action, emit the native structured tool call immediately; otherwise finish with a concise answer."
+)
 
 
 def _invalid_terminal_response(response: ModelResponse) -> str:
@@ -37,7 +42,9 @@ def _invalid_terminal_response(response: ModelResponse) -> str:
     it poisons the next turn and makes the model repeat the same fragment.
     """
     reason = str(response.finish_reason or "").strip().casefold()
-    if response.tool_calls or reason not in _COMPLETE_FINISH_REASONS:
+    if reason not in _COMPLETE_FINISH_REASONS:
+        return f"incomplete_finish:{reason or 'unknown'}"
+    if response.tool_calls:
         return ""
     raw = str(response.text or "")
     visible = _COMPLETE_THINK_BLOCK_RE.sub("", raw).strip()
@@ -84,6 +91,7 @@ class TurnRunner:
                 if rt.limits.max_model_steps > 0 and session.model_steps >= rt.limits.max_model_steps:
                     return rt._limit(session, "model step limit reached")
                 recovery_instruction = ""
+                recovery_partial = ""
                 for attempt in range(rt.limits.model_retries + 1):
                     step = rt._build_step_context(session, next_model_step=True)
                     messages, extra = rt._prepare_model_request(session, step, token)
@@ -101,10 +109,19 @@ class TurnRunner:
                     })
                     request_messages = list(messages)
                     if recovery_instruction:
+                        if recovery_partial:
+                            request_messages.append(AIMessage(
+                                role=MessageRole.ASSISTANT,
+                                content=recovery_partial,
+                            ))
                         request_messages.append(AIMessage(
                             role=MessageRole.SYSTEM,
                             name="loom_terminal_recovery",
-                            content=_TERMINAL_RECOVERY_INSTRUCTION,
+                            content=(
+                                _TRUNCATED_RECOVERY_INSTRUCTION
+                                if recovery_partial
+                                else _TERMINAL_RECOVERY_INSTRUCTION
+                            ),
                         ))
                     context_limits = extra.get("context_limits") if isinstance(extra, dict) else None
                     resolved_output_reserve = (
@@ -146,6 +163,7 @@ class TurnRunner:
                                 "model repeatedly completed without public text or tool calls"
                             ) from exc
                         recovery_instruction = "empty_response"
+                        recovery_partial = ""
                         continue
                     except AIResponseError as exc:
                         session.model_steps += 1
@@ -166,6 +184,7 @@ class TurnRunner:
                                 f"model repeatedly returned malformed responses: {exc}"
                             ) from exc
                         recovery_instruction = "invalid_provider_response"
+                        recovery_partial = ""
                         continue
                     except AITransportError as exc:
                         if not exc.retryable or attempt >= rt.limits.model_retries:
@@ -202,6 +221,11 @@ class TurnRunner:
                             f"model repeatedly returned an invalid terminal response ({invalid_terminal})"
                         )
                     recovery_instruction = invalid_terminal
+                    recovery_partial = (
+                        str(response.text or "")
+                        if invalid_terminal.startswith("incomplete_finish:")
+                        else ""
+                    )
                 if rt._cancel_if_requested(session, token):
                     return rt._result(session)
                 if not isinstance(response, ModelResponse):
