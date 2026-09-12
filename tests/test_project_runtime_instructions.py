@@ -8,11 +8,14 @@ import pytest
 
 from app.ai import AIMessage, MessageRole
 from app.agent_runtime import (
+    AgentEvent,
+    AgentEventKind,
     DurableAgentRuntime,
     FileAgentSessionStore,
     PermissionMode,
     ToolRegistry,
 )
+from app.agent_runtime.storage import utc_now
 from app.app_server_project_move import ProjectMovableLoomAppServerService
 
 
@@ -120,14 +123,23 @@ def test_project_instruction_marker_is_replaced_not_duplicated(service, tmp_path
     assert injected[2].role is MessageRole.USER
 
 
-def test_active_turn_uses_the_starting_instruction_snapshot(service, tmp_path):
+def test_active_turn_uses_the_runtime_start_instruction_snapshot(service, tmp_path):
     workspace = _folder(tmp_path, "loom")
     project = service.project_create({"root": str(workspace)})["project"]
     service.project_set_instructions({"projectId": project["id"], "instructions": "Starting rule."})
     thread = service.thread_start({"projectId": project["id"]})["thread"]
     session = service.runtime.get_session(thread["id"])
 
-    service._snapshot_project_instruction_context(session)
+    service._on_runtime_event(
+        AgentEvent(
+            event_id="evt-project-instructions-started",
+            session_id=session.session_id,
+            turn_id="turn-1",
+            kind=AgentEventKind.TURN_STARTED,
+            created_at=utc_now(),
+            data={"source": "test"},
+        )
+    )
     service.project_set_instructions({"projectId": project["id"], "instructions": "Next-turn rule."})
 
     messages = _prepared_messages(service, thread["id"])
@@ -135,8 +147,16 @@ def test_active_turn_uses_the_starting_instruction_snapshot(service, tmp_path):
     assert "Starting rule." in content
     assert "Next-turn rule." not in content
 
-    with service._guard:
-        service._project_instruction_context_snapshots.pop(thread["id"], None)
+    service._on_runtime_event(
+        AgentEvent(
+            event_id="evt-project-instructions-completed",
+            session_id=session.session_id,
+            turn_id="turn-1",
+            kind=AgentEventKind.TURN_COMPLETED,
+            created_at=utc_now(),
+            data={},
+        )
+    )
 
     messages = _prepared_messages(service, thread["id"])
     content = _project_context_messages(messages)[0].content
