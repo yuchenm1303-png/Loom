@@ -68,6 +68,33 @@ def test_minimax_m3_hosted_catalog_uses_safe_thinking_modes() -> None:
     assert _option_values(capability) == ["disabled", "adaptive"]
 
 
+def test_deepseek_v4_uses_official_codex_reasoning_preset() -> None:
+    capability = reasoning_capability(
+        model="deepseek-v4-pro",
+        adapter="openai-compatible",
+        base_url="https://api.deepseek.com",
+    )
+
+    assert capability is not None
+    assert capability["kind"] == "openai-effort"
+    assert capability["defaultValue"] == "high"
+    assert _option_values(capability) == ["low", "high", "max"]
+    advanced = [option for option in capability["options"] if option["advanced"]]  # type: ignore[index]
+    assert [option["value"] for option in advanced] == ["max"]
+
+
+def test_namespaced_deepseek_v4_slug_keeps_reasoning_picker() -> None:
+    capability = reasoning_capability(
+        model="deepseek/deepseek-v4-flash",
+        adapter="openai-compatible",
+        base_url="https://relay.example.invalid/v1",
+    )
+
+    assert capability is not None
+    assert capability["defaultValue"] == "high"
+    assert _option_values(capability) == ["low", "high", "max"]
+
+
 def test_gpt_5_6_sol_catalog_exposes_only_public_api_efforts() -> None:
     capability = reasoning_capability(
         model="gpt-5.6-sol",
@@ -80,6 +107,18 @@ def test_gpt_5_6_sol_catalog_exposes_only_public_api_efforts() -> None:
     assert _option_values(capability) == ["none", "low", "medium", "high", "xhigh", "max"]
     advanced = [option for option in capability["options"] if option["advanced"]]  # type: ignore[index]
     assert [option["value"] for option in advanced] == ["max"]
+
+
+def test_namespaced_openai_slug_keeps_reasoning_picker() -> None:
+    capability = reasoning_capability(
+        model="openai/gpt-5.6-sol",
+        adapter="openai-compatible",
+        base_url="https://relay.example.invalid/v1",
+    )
+
+    assert capability is not None
+    assert capability["defaultValue"] == "low"
+    assert _option_values(capability) == ["none", "low", "medium", "high", "xhigh", "max"]
 
 
 def test_gpt_6_astra_does_not_advertise_none_or_ultra() -> None:
@@ -129,6 +168,14 @@ def test_unknown_model_does_not_invent_reasoning_control() -> None:
     ) is None
 
 
+def test_retired_deepseek_alias_does_not_claim_current_v4_preset() -> None:
+    assert reasoning_capability(
+        model="deepseek-reasoner",
+        adapter="openai-compatible",
+        base_url="https://api.deepseek.com",
+    ) is None
+
+
 def test_incompatible_saved_reasoning_falls_back_to_model_default() -> None:
     capability, selected = resolved_reasoning(
         model="MiniMax-M3",
@@ -159,6 +206,14 @@ def test_minimax_reasoning_is_sent_as_thinking_object() -> None:
     )
 
     assert kwargs["extra_body"] == {"thinking": {"type": "adaptive"}}
+
+
+def test_deepseek_reasoning_is_sent_as_reasoning_effort() -> None:
+    kwargs = _fake_backend("deepseek-v4-pro")._request_kwargs(
+        _request(ReasoningRequest(ReasoningKind.OPENAI_EFFORT, "max"))
+    )
+
+    assert kwargs["extra_body"] == {"reasoning_effort": "max"}
 
 
 def test_openai_reasoning_is_sent_as_reasoning_effort() -> None:
