@@ -80,6 +80,10 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
         mode = str(preferences.get("mode") or "local-launch").strip()
         engine = str(preferences.get("preferredEngine") or "").strip()
         persist = preferences.get("persistSessions")
+        if hasattr(self.runtime, "browser_model_controlled_connection"):
+            self.runtime.browser_model_controlled_connection = bool(
+                preferences.get("modelSelectsConnection", False)
+            )
         try:
             apply(
                 mode,

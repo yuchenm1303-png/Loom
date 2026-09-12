@@ -26,8 +26,13 @@ def _browser_id_schema() -> dict[str, Any]:
     return {"type": "string", "minLength": 1, "maxLength": 128}
 
 
-def _snapshot_result(snapshot: "BrowserStateSnapshot", message: str) -> ToolResult:
-    return ToolResult(ok=True, content=message, data=snapshot.to_dict())
+def _snapshot_result(
+    snapshot: "BrowserStateSnapshot",
+    message: str,
+    *,
+    extra: dict[str, Any] | None = None,
+) -> ToolResult:
+    return ToolResult(ok=True, content=message, data={**snapshot.to_dict(), **(extra or {})})
 
 
 def _store(runtime: "BrowserRuntime") -> "BrowserSessionStore":
@@ -64,20 +69,32 @@ def _backend_snapshot_action(
 
 def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
     def status(context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
-        return ToolResult(
-            ok=True,
-            content="Browser runtime status.",
-            data=runtime.browser_status(context.session_id),
-        )
+        payload = runtime.browser_status(context.session_id)
+        if bool(arguments.get("include_attachable")):
+            discover = getattr(runtime, "browser_attachable_browsers", None)
+            payload["attachable_browsers"] = list(discover()) if callable(discover) else []
+        return ToolResult(ok=True, content="Browser runtime status.", data=payload)
 
     tools: list[AgentTool] = [
         AgentTool(
             name="browser_status",
             description=(
                 "Report whether Loom Browser is available and its honest lifecycle/security capabilities. "
-                "This never starts a browser or performs network I/O."
+                "This never starts a browser. It performs no network I/O unless include_attachable is "
+                "set, which additionally checks a short fixed list of loopback DevTools ports and "
+                "returns the local browsers that can be driven with browser_open connect=attach."
             ),
-            input_schema=_schema({}),
+            input_schema=_schema(
+                {
+                    "include_attachable": {
+                        "type": "boolean",
+                        "description": (
+                            "Also list local browsers that are running with remote debugging "
+                            "enabled. Requires model-selected browser connections to be allowed."
+                        ),
+                    }
+                }
+            ),
             handler=status,
             effect=ToolEffect.READ_ONLY,
         )
@@ -94,10 +111,27 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
         if len(allowed_raw) > 32:
             raise ValueError("allowed_domains supports at most 32 entries")
         allowed = runtime.effective_allowed_domains(tuple(str(item) for item in allowed_raw))
+
+        connect = str(arguments.get("connect") or "").strip()
+        requested_cdp = str(arguments.get("cdp_url") or "").strip()
+        if (connect or requested_cdp) and not bool(
+            getattr(runtime, "browser_model_controlled_connection", False)
+        ):
+            raise ValueError(
+                "choosing the browser is disabled; Loom uses the connection configured in "
+                "Settings > Browser. Remove connect/cdp_url, or ask the user to enable "
+                "model-selected browser connections."
+            )
+        factory, external, label = runtime.browser_session_connection(
+            connect, cdp_url=requested_cdp
+        )
+
         managed = store.start(
             context.session_id,
             headless=runtime.browser_headless,
             allowed_domains=allowed,
+            backend_factory=factory,
+            external_browser=external,
         )
         try:
             url = str(arguments.get("url") or "").strip()
@@ -113,6 +147,9 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
         return _snapshot_result(
             snapshot,
             "Browser session opened. Element indexes are valid only for the returned state_revision.",
+            # Which browser this session drives changes what the model may assume
+            # about the tabs it sees, so it is reported rather than inferred.
+            extra={"browser_connection": label, "external_browser": bool(external)},
         )
 
     def state(context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
@@ -330,6 +367,26 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
                             "type": "array",
                             "items": {"type": "string", "maxLength": 255},
                             "maxItems": 32,
+                        },
+                        "connect": {
+                            "type": "string",
+                            "enum": ["launch", "attach", "current_tab"],
+                            "description": (
+                                "Which browser to drive, when Settings > Browser allows the model "
+                                "to choose. launch starts Loom's own browser; attach drives an "
+                                "already-running local browser named by cdp_url; current_tab drives "
+                                "the tab the user is looking at through the Loom bridge extension. "
+                                "Omit to use the configured default."
+                            ),
+                        },
+                        "cdp_url": {
+                            "type": "string",
+                            "maxLength": 2000,
+                            "description": (
+                                "Loopback DevTools endpoint for connect=attach, taken from "
+                                "browser_status attachable_browsers. Must be http/https/ws/wss on "
+                                "127.0.0.1 or ::1 with an explicit port."
+                            ),
                         },
                     }
                 ),

@@ -59,6 +59,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
         "cdpUrl": "",
         "preferredEngine": "edge",
         "persistSessions": True,
+        "modelSelectsConnection": False,
     },
     "computer": {
         "verifyActions": True,
@@ -108,6 +109,7 @@ _ALLOWED_SETTING_PATHS: dict[str, tuple[type, Any]] = {
     "browser.cdpUrl": (str, None),
     "browser.preferredEngine": (str, {"edge", "chrome", "system"}),
     "browser.persistSessions": (bool, None),
+    "browser.modelSelectsConnection": (bool, None),
     "computer.verifyActions": (bool, None),
     "computer.screenshotQuality": (str, {"fast", "balanced", "high"}),
     "memory.enabled": (bool, None),

@@ -38,6 +38,53 @@ def _browser_channel_for_engine(engine: str) -> str:
     return _BROWSER_ENGINE_CHANNELS.get(str(engine or "").strip().casefold(), "")
 
 
+# Chrome/Edge default to 9222, and the usual way to run more than one debuggable
+# browser is to step the port. A model cannot guess a port, so Loom reports the
+# ones that answer instead of letting it invent endpoints. Deliberately a short
+# fixed list: this must not become a local port scanner.
+_CDP_DISCOVERY_PORTS = (9222, 9223, 9224, 9225)
+_CDP_DISCOVERY_TIMEOUT = 0.35
+
+
+def _probe_local_cdp_endpoint(port: int, timeout: float = _CDP_DISCOVERY_TIMEOUT) -> dict[str, Any] | None:
+    """Identify a DevTools endpoint on a loopback port, or return None."""
+
+    import json as _json
+    import urllib.error
+    import urllib.request
+
+    url = f"http://127.0.0.1:{int(port)}/json/version"
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as response:
+            if getattr(response, "status", 200) != 200:
+                return None
+            payload = _json.loads(response.read(64_000).decode("utf-8", "replace"))
+    except (urllib.error.URLError, OSError, ValueError, _json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    browser = str(payload.get("Browser") or "").strip()
+    if not browser:
+        return None
+    return {
+        "cdp_url": f"http://127.0.0.1:{int(port)}",
+        "browser": browser[:120],
+        # The websocket URL is a control channel, not something the model needs.
+        "protocol_version": str(payload.get("Protocol-Version") or "")[:16],
+    }
+
+
+def discover_local_cdp_endpoints(
+    ports: Sequence[int] = _CDP_DISCOVERY_PORTS,
+) -> tuple[dict[str, Any], ...]:
+    found: list[dict[str, Any]] = []
+    for port in ports:
+        endpoint = _probe_local_cdp_endpoint(port)
+        if endpoint is not None:
+            found.append(endpoint)
+    return tuple(found)
+
+
 _SENSITIVE_QUERY_KEY = re.compile(
     r"(?i)(?:^|[_-])(?:api[_-]?key|token|secret|password|passwd|cookie|authorization|auth|signature|session)(?:$|[_-])"
 )
@@ -268,7 +315,7 @@ class BrowserSessionStore(BrowserSessionManager):
             try:
                 self.url_policy.validate(url, allowed_domains=options.allowed_domains)
             except BrowserURLPolicyError:
-                if self.filter_unsafe_background_tabs:
+                if self.filter_unsafe_background_tabs or options.external_browser:
                     # Existing Chrome/Edge can contain localhost, chrome:// and
                     # extension tabs that Loom must neither expose nor control. They
                     # stay open in the user's browser but disappear from model state.
@@ -374,6 +421,11 @@ class BrowserRuntime(WebSearchRuntime):
         self._browser_auto_configure = bool(auto_configure_browser)
         self._browser_engine = ""
         self._browser_connection_configured = False
+        # When on, browser_open accepts a connection instead of always using the
+        # configured default. Attaching to a browser the user is signed into means
+        # any page it holds can steer the model, so this stays a visible switch
+        # rather than an implicit capability.
+        self.browser_model_controlled_connection = False
         # The user's standing choice, kept apart from browser_profile_persistence,
         # which is a per-mode derived fact: cdp-attach and extension drive a browser
         # that owns its own profile, so they always report no Loom profile. Reading
@@ -547,6 +599,96 @@ class BrowserRuntime(WebSearchRuntime):
                 )
         self._browser_connection_configured = True
 
+    def browser_attachable_browsers(self) -> tuple[dict[str, Any], ...]:
+        """Local browsers that browser_open connect=attach can drive.
+
+        Empty unless the user allowed the model to choose the browser, so the
+        switch also controls whether Loom looks for endpoints at all.
+        """
+
+        if not self.browser_model_controlled_connection:
+            return ()
+        if not browser_use_available():
+            return ()
+        return discover_local_cdp_endpoints()
+
+    def _extension_bridge_for_session(self) -> BrowserExtensionBridge:
+        """Reuse the runtime's bridge, starting one if this is not extension mode.
+
+        A model asking for the current tab while Loom's default is to launch its
+        own browser still needs a bridge, and starting a second one would bind a
+        port the installed extension is not polling.
+        """
+
+        bridge = self.browser_extension_bridge
+        if bridge is None:
+            bridge = BrowserExtensionBridge.from_environment()
+            bridge.start()
+            self.browser_extension_bridge = bridge
+        return bridge
+
+    def browser_session_connection(
+        self,
+        connect: str,
+        *,
+        cdp_url: str = "",
+    ) -> tuple[BrowserBackendFactory, bool, str]:
+        """Build a backend for one requested connection, without changing the default.
+
+        Returns the factory, whether the target is a browser Loom does not own,
+        and a label for status/diagnostics. Per-session so a model can attach to
+        an external browser without altering what the next session connects to.
+        """
+
+        requested = str(connect or "").strip().casefold().replace("-", "_")
+        if requested in {"", "default"}:
+            store = self.browser_sessions
+            if store is None:
+                raise RuntimeError("browser backend is unavailable")
+            external = bool(self.browser_cdp_attached or self.browser_extension_attached)
+            return store.backend_factory, external, self.browser_connection_mode
+
+        if requested == "current_tab":
+            bridge = self._extension_bridge_for_session()
+
+            def build_extension(options: BrowserLaunchOptions):
+                return BrowserExtensionSessionBackend(options=options, bridge=bridge)
+
+            return build_extension, True, "extension"
+
+        if requested not in {"launch", "attach"}:
+            raise ValueError("browser connect must be one of: launch, attach, current_tab")
+        if not browser_use_available():
+            raise RuntimeError("this browser connection requires the browser-use extra")
+
+        channel = _browser_channel_for_engine(self._browser_engine)
+        if requested == "attach":
+            # Loopback only, exactly as for the configured default. A model may
+            # pick which local browser to drive; it may not point Loom at a host.
+            endpoint = _validate_local_cdp_url(str(cdp_url or ""))
+            if not endpoint:
+                raise ValueError("attaching to a browser requires a loopback CDP URL with an explicit port")
+
+            def build_attached(options: BrowserLaunchOptions):
+                backend = BrowserUseSessionBackend(options=options)
+                backend.user_data_dir = None
+                backend.cdp_url = endpoint
+                backend.browser_channel = channel
+                return backend
+
+            return build_attached, True, "cdp-attach"
+
+        profile_dir = self.browser_profile_dir if self._browser_persist_preference else None
+
+        def build_launched(options: BrowserLaunchOptions):
+            backend = BrowserUseSessionBackend(options=options)
+            backend.user_data_dir = profile_dir
+            backend.cdp_url = None
+            backend.browser_channel = channel
+            return backend
+
+        return build_launched, False, "local-launch"
+
     @property
     def browser_connection_mode(self) -> str:
         if self.browser_extension_attached:
@@ -654,6 +796,7 @@ class BrowserRuntime(WebSearchRuntime):
             "storage_state_persistence": persistent or attached or extension,
             "profile_name": profile_name,
             "profile_path_exposed": False,
+            "model_controlled_connection": bool(self.browser_model_controlled_connection),
             "downloads": False,
             "uploads": False,
             "url_policy": "execution-layer pre/post navigation plus backend redirect/popup enforcement",

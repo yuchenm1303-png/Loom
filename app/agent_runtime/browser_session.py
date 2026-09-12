@@ -28,6 +28,12 @@ class BrowserURLPolicyError(BrowserError):
 class BrowserLaunchOptions:
     headless: bool = True
     allowed_domains: tuple[str, ...] = ()
+    # True when this session drives a browser Loom did not launch. Such a browser
+    # legitimately holds chrome://, extension and localhost tabs that Loom must
+    # hide rather than reject, and the decision belongs to the session because a
+    # model can attach to an external browser while the runtime default is to
+    # launch its own.
+    external_browser: bool = False
 
     def __post_init__(self) -> None:
         normalized: list[str] = []
@@ -258,11 +264,21 @@ class BrowserSessionManager:
         *,
         headless: bool = True,
         allowed_domains: Sequence[str] = (),
+        backend_factory: BrowserBackendFactory | None = None,
+        external_browser: bool = False,
     ) -> ManagedBrowserSession:
+        """Open one browser session for an owner.
+
+        backend_factory overrides the store's default for this session only, so a
+        caller can put sessions on different browsers concurrently without
+        changing what the next session gets.
+        """
+
         owner = _key(owner_session_id, "owner_session_id")
         options = BrowserLaunchOptions(
             headless=bool(headless),
             allowed_domains=tuple(allowed_domains),
+            external_browser=bool(external_browser),
         )
         with self._lock:
             if len(self._sessions) >= self.max_sessions_total:
@@ -272,7 +288,10 @@ class BrowserSessionManager:
                 raise BrowserError(
                     f"browser session limit for Loom session reached ({self.max_sessions_per_owner})"
                 )
-        backend = self.backend_factory(options)
+        factory = backend_factory or self.backend_factory
+        if not callable(factory):
+            raise TypeError("browser backend_factory must be callable")
+        backend = factory(options)
         try:
             state = backend.start()
             state = self._validated_state(state, options)

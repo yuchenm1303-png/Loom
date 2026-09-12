@@ -26,6 +26,8 @@ def envelope(path: str, value: object) -> str:
 class FakeBrowserRuntime:
     """Records connection changes and can be told to refuse one."""
 
+    browser_model_controlled_connection = False
+
     def __init__(self, *, refuse: str = ""):
         self.refuse = refuse
         self.calls: list[dict[str, object]] = []
@@ -134,3 +136,40 @@ def test_settings_store_rejects_an_unknown_browser_mode(tmp_path):
     store = LoomSettingsStore(tmp_path)
     with pytest.raises(ValueError):
         store.set_capability(envelope("browser.mode", "remote-grid"), True)
+
+
+def test_letting_the_model_pick_the_browser_is_off_until_switched_on(tmp_path):
+    store = LoomSettingsStore(tmp_path)
+    assert store.snapshot()["browser"]["modelSelectsConnection"] is False
+
+    runtime = FakeBrowserRuntime()
+    service = service_with(runtime, store)
+    service._apply_browser_settings(store.snapshot())
+    assert runtime.browser_model_controlled_connection is False
+
+    store.set_capability(envelope("browser.modelSelectsConnection", True), True)
+    service._apply_browser_settings(store.snapshot())
+    assert runtime.browser_model_controlled_connection is True
+
+    store.set_capability(envelope("browser.modelSelectsConnection", False), True)
+    service._apply_browser_settings(store.snapshot())
+    assert runtime.browser_model_controlled_connection is False
+
+
+def test_the_switch_is_applied_even_when_the_stored_connection_fails(tmp_path):
+    """Degrading to local-launch must not silently re-lock the model's choice.
+
+    The two are independent: which browser Loom defaults to, and whether the
+    model may pick a different one.
+    """
+
+    store = LoomSettingsStore(tmp_path)
+    store.set_capability(envelope("browser.mode", "cdp-attach"), True)
+    store.set_capability(envelope("browser.cdpUrl", LOOPBACK_CDP), True)
+    store.set_capability(envelope("browser.modelSelectsConnection", True), True)
+
+    runtime = FakeBrowserRuntime(refuse="cdp-attach")
+    service = service_with(runtime, store)
+
+    assert service._apply_browser_settings(store.snapshot()) != ""
+    assert runtime.browser_model_controlled_connection is True

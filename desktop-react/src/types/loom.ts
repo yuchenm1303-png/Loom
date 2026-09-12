@@ -212,6 +212,7 @@ export interface LoomBrowserSettings {
   cdpUrl?: string;
   preferredEngine?: "edge" | "chrome" | "system";
   persistSessions?: boolean;
+  modelSelectsConnection?: boolean;
 }
 
 export interface LoomComputerSettings {
