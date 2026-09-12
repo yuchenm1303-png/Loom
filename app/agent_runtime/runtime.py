@@ -4,6 +4,7 @@ import json
 import os
 import threading
 import uuid
+from contextlib import nullcontext
 from dataclasses import replace
 from pathlib import Path
 from typing import Callable, Protocol
@@ -88,6 +89,11 @@ class AgentRuntime:
     managed processes and turn diffs are injected into the tool context rather
     than hidden in individual tool modules.
     """
+
+    def _internal_model_stream_scope(self):
+        """Hide detached model work from the user-facing response stream."""
+
+        return nullcontext()
 
     def __init__(
         self,

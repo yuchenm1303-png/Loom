@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import math
 import time
+from contextlib import nullcontext
 from dataclasses import dataclass
 from typing import Sequence
 
@@ -549,12 +550,14 @@ def prepare_context(rt, session, step, token):
             )
 
         try:
-            response = rt.model_executor.execute(
-                rt.platform,
-                session.profile_id,
-                summary_request,
-                token,
-            )
+            stream_scope = getattr(rt, "_internal_model_stream_scope", None)
+            with stream_scope() if callable(stream_scope) else nullcontext():
+                response = rt.model_executor.execute(
+                    rt.platform,
+                    session.profile_id,
+                    summary_request,
+                    token,
+                )
         except ModelCancelled:
             raise
         except (AITransportError, AIResponseError, TimeoutError) as exc:
@@ -565,6 +568,10 @@ def prepare_context(rt, session, step, token):
                     trimmed_messages += previous_len - len(compaction_input)
                     last_failure = "provider_context_window_exceeded"
                     continue
+                _charge_uncommitted_usage(session, total_usage)
+                raise
+
+            if isinstance(exc, AITransportError) and not exc.retryable:
                 _charge_uncommitted_usage(session, total_usage)
                 raise
 

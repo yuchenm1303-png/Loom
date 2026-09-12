@@ -413,6 +413,28 @@ def test_stream_retry_does_not_duplicate_tool_side_effect(tmp_path):
     rt.close()
 
 
+def test_permanent_transport_failure_is_not_retried_by_turn_runner(tmp_path):
+    from app.ai.errors import AITransportError
+
+    class P:
+        count = 0
+
+        def execute_chat(self, profile, request):
+            self.count += 1
+            raise AITransportError("402 Insufficient Balance", retryable=False)
+
+    platform = P()
+    rt = make_runtime(tmp_path, platform)
+    session = rt.create_session("agent.fast")
+
+    result = rt.start_turn(session.session_id, "work")
+
+    assert result.status is AgentStatus.FAILED
+    assert platform.count == 1
+    assert "Insufficient Balance" in result.error
+    rt.close()
+
+
 def test_shell_policy_filters_inherited_and_explicit_variables(monkeypatch):
     from app.agent_runtime.shell_environment import ShellEnvironmentPolicy
     monkeypatch.setenv("LOOM_TEST_VISIBLE", "yes")

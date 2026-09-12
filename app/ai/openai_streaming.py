@@ -7,7 +7,7 @@ from typing import Any
 from .contracts import ChatRequest, ModelUsage, StreamEvent, StreamEventKind
 from .errors import AITransportError
 from .execution_control import current_control, check_cancelled, ModelCancelled
-from .openai_runtime import OpenAIChatBackend, _usage_from
+from .openai_runtime import OpenAIChatBackend, _retryable_provider_error, _usage_from
 from .provider_catalog import ProviderAdapter
 
 
@@ -137,7 +137,8 @@ class OpenAIStreamingChatBackend(OpenAIChatBackend):
         except Exception as exc:
             raise AITransportError(
                 f"AI stream failed via provider {self.connection.provider_id!r}: "
-                f"{type(exc).__name__}: {exc}"
+                f"{type(exc).__name__}: {exc}",
+                retryable=_retryable_provider_error(exc),
             ) from exc
         finally:
             if callable(close):

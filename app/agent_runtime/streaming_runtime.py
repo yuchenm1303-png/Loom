@@ -4,6 +4,7 @@ import json
 import os
 import re
 import threading
+from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field, replace
 from enum import Enum
@@ -158,6 +159,22 @@ class StreamingAgentRuntime(CodeModeRuntime):
     @property
     def provider_streaming_enabled(self) -> bool:
         return self._provider_streaming_enabled
+
+    @contextmanager
+    def _internal_model_stream_scope(self):
+        """Prevent compaction/memory model deltas from becoming chat output.
+
+        The provider event bus is shared by foreground and detached requests.
+        Temporarily clearing correlation is the hard boundary: even if a stale
+        foreground context survives an exceptional path, internal output has no
+        user-visible session/turn/step to attach to.
+        """
+
+        binding = self._stream_context.set(None)
+        try:
+            yield
+        finally:
+            self._stream_context.reset(binding)
 
     def _sticker_preferences_path(self) -> Path | None:
         root = getattr(self.store, "root", None)

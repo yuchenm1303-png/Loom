@@ -167,8 +167,8 @@ class TurnRunner:
                             ) from exc
                         recovery_instruction = "invalid_provider_response"
                         continue
-                    except AITransportError:
-                        if attempt >= rt.limits.model_retries:
+                    except AITransportError as exc:
+                        if not exc.retryable or attempt >= rt.limits.model_retries:
                             raise
                         if token._event.wait(min(2.0, 0.25 * 2 ** attempt)):
                             raise ModelCancelled()

@@ -14,7 +14,17 @@ class AICredentialError(AIPlatformError):
 
 
 class AITransportError(AIPlatformError):
-    pass
+    """Provider/network failure with an explicit retry contract.
+
+    Callers used to treat every transport-shaped exception as transient.  That
+    turns permanent provider rejections (for example HTTP 402 or 401) into
+    duplicate full-context requests.  Keep the default retryable for legacy
+    adapters, while allowing adapters that know the status to fail closed.
+    """
+
+    def __init__(self, message: str, *, retryable: bool = True) -> None:
+        super().__init__(message)
+        self.retryable = bool(retryable)
 
 
 class AIResponseError(AIPlatformError):

@@ -4,6 +4,8 @@ import time
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from app.agent_runtime import (
     AgentStatus,
     AgentStreamEvent,
@@ -34,12 +36,13 @@ from app.ai import (
 )
 from app.ai.openai_streaming import OpenAIStreamingChatBackend
 from app.ai.openai_runtime import _message_payload
-from app.ai.errors import AIEmptyResponseError
+from app.ai.errors import AIEmptyResponseError, AITransportError
 from app.ai.streaming_platform import (
     ProviderStreamEvent,
     ProviderStreamEventKind,
     StreamingAIPlatform,
 )
+from app.agent_runtime.streaming_runtime import _ModelStreamContext
 
 
 class FakeStreamBackend:
@@ -134,6 +137,22 @@ class RecordingCompletions:
         return iter(self.chunks)
 
 
+class ProviderFailure(Exception):
+    def __init__(self, status_code: int, message: str) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+
+
+class FailingCompletions:
+    def __init__(self, error: Exception) -> None:
+        self.error = error
+        self.calls = 0
+
+    def create(self, **_kwargs):
+        self.calls += 1
+        raise self.error
+
+
 def _profile() -> ModelProfile:
     return ModelProfile(
         profile_id=AGENT_FAST_ROLE.role_id,
@@ -210,6 +229,27 @@ def test_compatible_provider_omits_auto_but_preserves_explicit_image_detail():
     }
 
 
+def test_permanent_provider_rejection_preserves_non_retryable_classification():
+    completions = FailingCompletions(ProviderFailure(402, "Insufficient Balance"))
+    backend = OpenAIStreamingChatBackend(
+        connection=ProviderConnection(
+            provider_id="test-provider",
+            adapter=ProviderAdapter.OPENAI_COMPATIBLE,
+            credential_ref=CredentialRef.runtime("test-key"),
+            base_url="https://example.invalid/v1",
+        ),
+        profile=_profile(),
+        api_key="secret-for-test-only",
+        client=SimpleNamespace(chat=SimpleNamespace(completions=completions)),
+    )
+
+    with pytest.raises(AITransportError) as failure:
+        backend.complete(_request())
+
+    assert failure.value.retryable is False
+    assert completions.calls == 1
+
+
 def _runtime(tmp_path: Path):
     workspace = tmp_path / "workspace"
     workspace.mkdir()
@@ -224,6 +264,22 @@ def _runtime(tmp_path: Path):
         auto_configure_web_search=False,
     )
     return runtime, store, platform, workspace
+
+
+def test_internal_model_scope_never_emits_user_facing_stream(tmp_path):
+    runtime, _store, platform, _workspace = _runtime(tmp_path)
+    observed = []
+    runtime.subscribe_stream(observed.append)
+    stale = _ModelStreamContext("session", "turn", "step", AGENT_FAST_ROLE.role_id)
+    binding = runtime._stream_context.set(stale)
+    try:
+        with runtime._internal_model_stream_scope():
+            platform.execute_chat(AGENT_FAST_ROLE.role_id, _request())
+    finally:
+        runtime._stream_context.reset(binding)
+        runtime.close()
+
+    assert observed == []
 
 
 def _wait_idle(service: StreamingLoomAppServerService, session_id: str, timeout: float = 2.0):
