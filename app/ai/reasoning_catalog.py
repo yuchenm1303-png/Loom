@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from .codex_model_catalog import catalog_reasoning_spec
 from .reasoning import ReasoningKind, ReasoningRequest
 
 
@@ -14,9 +15,6 @@ def _option(value: str, label: str, description: str, *, advanced: bool = False)
     }
 
 
-# MiniMax's hosted OpenAI-compatible M3 endpoint documents adaptive thinking as
-# the default and supports disabling it. Keep this catalog conservative even
-# though the open-weight model can expose additional deployment-specific modes.
 _MINIMAX_M3_OPTIONS = [
     _option("disabled", "Direct", "Disable deliberate thinking for the lowest latency."),
     _option("adaptive", "Adaptive", "Let M3 decide when deeper reasoning is useful."),
@@ -30,9 +28,6 @@ _OPENAI_OPTION_LIBRARY: dict[str, dict[str, Any]] = {
     "high": _option("high", "High", "Greater reasoning depth for complex problems."),
     "xhigh": _option("xhigh", "Extra high", "Extra reasoning depth for difficult multi-step work."),
     "max": _option("max", "Max", "Maximum API reasoning depth for the hardest problems.", advanced=True),
-    # ``ultra`` and ``persistent`` remain valid normalized values for forward
-    # compatibility with Codex-style catalogs, but Loom's public OpenAI API
-    # catalog does not advertise them unless a provider explicitly does so.
     "ultra": _option("ultra", "Ultra", "Provider-defined orchestration reasoning mode.", advanced=True),
     "persistent": _option("persistent", "Persistent", "Provider-defined persistent reasoning mode.", advanced=True),
 }
@@ -42,26 +37,45 @@ def _openai_options(values: tuple[str, ...]) -> list[dict[str, Any]]:
     return [dict(_OPENAI_OPTION_LIBRARY[value]) for value in values]
 
 
-def _model_slug(model_key: str) -> str:
-    """Return the provider-local model slug from common namespaced ids.
+def _catalog_options(levels: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Convert Codex catalog levels into Loom picker metadata.
 
-    OpenAI-compatible relays frequently expose ids such as
-    ``openai/gpt-5.6-sol`` or ``deepseek/deepseek-v4-pro``. Capability matching
-    should follow the underlying model slug rather than disappear merely because
-    a relay prepended its provider namespace.
+    Unknown future effort names are preserved instead of being rejected. That
+    mirrors Codex's custom reasoning-effort handling while still letting the
+    catalog parser filter product-only levels Loom cannot implement yet.
     """
 
+    options: list[dict[str, Any]] = []
+    for level in levels:
+        value = str(level.get("effort") or "").strip().casefold()
+        if not value:
+            continue
+        description = str(level.get("description") or "").strip()
+        known = _OPENAI_OPTION_LIBRARY.get(value)
+        if known is not None:
+            option = dict(known)
+            if description:
+                option["description"] = description
+            option["advanced"] = bool(level.get("advanced")) or bool(option.get("advanced"))
+        else:
+            label = value.replace("_", " ").replace("-", " ").title()
+            option = _option(
+                value,
+                label,
+                description or f"Provider-defined reasoning level: {value}.",
+                advanced=bool(level.get("advanced")),
+            )
+        options.append(option)
+    return options
+
+
+def _model_slug(model_key: str) -> str:
     value = str(model_key or "").strip().casefold()
     return value.rsplit("/", 1)[-1]
 
 
 def _deepseek_model_spec(model_key: str) -> tuple[str, tuple[str, ...], str] | None:
-    """Return the official DeepSeek V4 preset used for Codex-style clients.
-
-    DeepSeek's current Codex integration publishes Low/High/Max with High as the
-    default. Chat Completions accepts the same reasoning_effort values, while
-    Max remains an advanced picker choice in Loom just as it is in Codex.
-    """
+    """Return the official DeepSeek V4 preset used for Codex-style clients."""
 
     slug = _model_slug(model_key)
     if slug.startswith("deepseek-v4-"):
@@ -74,14 +88,7 @@ def _deepseek_model_spec(model_key: str) -> tuple[str, tuple[str, ...], str] | N
 
 
 def requires_reasoning_content_replay(*, model: str, adapter: str, base_url: str = "") -> bool:
-    """Whether tool-bearing chat requests must replay provider reasoning state.
-
-    DeepSeek V4 Chat Completions requires every prior assistant
-    ``reasoning_content`` value to be sent back whenever ``tools`` is present.
-    Keep this provider quirk behind the model catalog rather than leaking it into
-    the provider-neutral runtime or applying it to OpenAI models that do not use
-    this wire field.
-    """
+    """Whether tool-bearing chat requests must replay provider reasoning state."""
 
     adapter_key = str(adapter or "").strip().casefold()
     if adapter_key not in {"openai", "openai-compatible"}:
@@ -90,116 +97,68 @@ def requires_reasoning_content_replay(*, model: str, adapter: str, base_url: str
 
 
 def _openai_model_spec(model_key: str) -> tuple[str, tuple[str, ...], str] | None:
-    """Return Loom's conservative public-API reasoning spec for a known model.
-
-    Codex can advertise product-only levels such as ``ultra`` because it owns a
-    richer orchestration/runtime layer. Loom currently calls public OpenAI or
-    OpenAI-compatible endpoints, so the picker must expose only effort values
-    that are valid request parameters for the underlying model family.
-    """
+    """Return Loom's conservative public-API reasoning spec for a known model."""
 
     model_key = _model_slug(model_key)
 
     if model_key.startswith("gpt-6-astra"):
-        return (
-            "low",
-            ("low", "medium", "high", "xhigh", "max"),
-            "OpenAI GPT-6 Astra API",
-        )
-
+        return ("low", ("low", "medium", "high", "xhigh", "max"), "OpenAI GPT-6 Astra API")
     if model_key.startswith("gpt-5.6"):
-        return (
-            "low",
-            ("none", "low", "medium", "high", "xhigh", "max"),
-            "OpenAI GPT-5.6 API",
-        )
-
+        return ("low", ("none", "low", "medium", "high", "xhigh", "max"), "OpenAI GPT-5.6 API")
     if model_key.startswith("gpt-5.5-pro"):
-        return (
-            "high",
-            ("medium", "high", "xhigh"),
-            "OpenAI GPT-5.5 Pro API",
-        )
-
+        return ("high", ("medium", "high", "xhigh"), "OpenAI GPT-5.5 Pro API")
     if model_key.startswith("gpt-5.5"):
-        return (
-            "medium",
-            ("none", "low", "medium", "high", "xhigh"),
-            "OpenAI GPT-5.5 API",
-        )
-
+        return ("medium", ("none", "low", "medium", "high", "xhigh"), "OpenAI GPT-5.5 API")
     if model_key.startswith("gpt-5.4-pro"):
-        return (
-            "medium",
-            ("medium", "high", "xhigh"),
-            "OpenAI GPT-5.4 Pro API",
-        )
-
+        return ("medium", ("medium", "high", "xhigh"), "OpenAI GPT-5.4 Pro API")
     if model_key.startswith("gpt-5.4"):
-        return (
-            "medium",
-            ("none", "low", "medium", "high", "xhigh"),
-            "OpenAI GPT-5.4 API",
-        )
-
+        return ("medium", ("none", "low", "medium", "high", "xhigh"), "OpenAI GPT-5.4 API")
     if model_key.startswith("gpt-5.2-pro"):
-        return (
-            "medium",
-            ("medium", "high", "xhigh"),
-            "OpenAI GPT-5.2 Pro API",
-        )
-
+        return ("medium", ("medium", "high", "xhigh"), "OpenAI GPT-5.2 Pro API")
     if model_key.startswith("gpt-5.2"):
-        return (
-            "none",
-            ("none", "low", "medium", "high", "xhigh"),
-            "OpenAI GPT-5.2 API",
-        )
-
+        return ("none", ("none", "low", "medium", "high", "xhigh"), "OpenAI GPT-5.2 API")
     if model_key.startswith("gpt-5.1"):
-        return (
-            "none",
-            ("none", "low", "medium", "high"),
-            "OpenAI GPT-5.1 API",
-        )
-
+        return ("none", ("none", "low", "medium", "high"), "OpenAI GPT-5.1 API")
     if model_key.startswith("gpt-5-pro"):
-        return (
-            "high",
-            ("high",),
-            "OpenAI GPT-5 Pro API",
-        )
-
+        return ("high", ("high",), "OpenAI GPT-5 Pro API")
     if (
         model_key == "gpt-5"
         or model_key.startswith("gpt-5-")
         or model_key.startswith("gpt-5-mini")
         or model_key.startswith("gpt-5-nano")
     ):
-        return (
-            "medium",
-            ("minimal", "low", "medium", "high"),
-            "OpenAI GPT-5 API",
-        )
-
+        return ("medium", ("minimal", "low", "medium", "high"), "OpenAI GPT-5 API")
     if model_key.startswith(("o1", "o3", "o4")):
-        return (
-            "medium",
-            ("low", "medium", "high"),
-            "OpenAI o-series API",
-        )
-
+        return ("medium", ("low", "medium", "high"), "OpenAI o-series API")
     return None
 
 
 def reasoning_capability(*, model: str, adapter: str, base_url: str = "") -> dict[str, Any] | None:
-    """Return safe UI metadata for reasoning controls supported by a model."""
+    """Return safe UI metadata for reasoning controls supported by a model.
+
+    For OpenAI-compatible transports an explicit ``~/.loom/models.json`` (or
+    ``LOOM_MODEL_CATALOG_JSON``) is authoritative. The file uses Codex's model
+    catalog reasoning fields, so third-party providers can install capability
+    metadata without requiring a Loom source-code change.
+    """
 
     model_key = str(model or "").strip().casefold()
     adapter_key = str(adapter or "").strip().casefold()
     endpoint = str(base_url or "").strip().casefold()
     if not model_key:
         return None
+
+    if adapter_key in {"openai", "openai-compatible"}:
+        catalog = catalog_reasoning_spec(model_key)
+        if catalog is not None:
+            options = _catalog_options(list(catalog.get("levels") or []))
+            if options:
+                return {
+                    "kind": ReasoningKind.OPENAI_EFFORT.value,
+                    "defaultValue": str(catalog["default"]),
+                    "options": options,
+                    "source": str(catalog["source"]),
+                }
 
     if "minimax-m3" in model_key or ("minimax" in endpoint and model_key in {"m3", "minimax-m3"}):
         return {
