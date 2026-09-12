@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 from typing import Any, Callable, TextIO
 
@@ -24,6 +25,196 @@ _TERMINAL_TURN_KINDS = {
     AgentEventKind.TURN_INTERRUPTED,
     AgentEventKind.LIMIT_REACHED,
 }
+_WORKSPACE_TREE_LIMIT = 96
+_WORKSPACE_TREE_DEPTH = 3
+_WORKSPACE_TREE_SKIP_DIRS = {
+    ".git",
+    ".hg",
+    ".svn",
+    ".next",
+    ".nuxt",
+    ".turbo",
+    ".cache",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".ruff_cache",
+    "__pycache__",
+    "node_modules",
+    "dist",
+    "build",
+    "out",
+    "target",
+    ".venv",
+    "venv",
+    "env",
+}
+
+
+def _workspace_relative(root: Path, path: Path) -> str:
+    try:
+        value = path.resolve().relative_to(root.resolve())
+    except (OSError, ValueError):
+        value = path.relative_to(root)
+    return value.as_posix()
+
+
+def _workspace_tree(root: Path, *, limit: int = _WORKSPACE_TREE_LIMIT, max_depth: int = _WORKSPACE_TREE_DEPTH) -> dict[str, Any]:
+    entries: list[dict[str, Any]] = []
+    truncated = False
+
+    def add_entry(path: Path, *, depth: int, entry_type: str) -> None:
+        payload: dict[str, Any] = {
+            "path": _workspace_relative(root, path),
+            "name": path.name,
+            "type": entry_type,
+            "depth": depth,
+        }
+        if entry_type == "file":
+            try:
+                payload["size"] = path.stat().st_size
+            except OSError:
+                payload["size"] = 0
+        entries.append(payload)
+
+    def walk(directory: Path, depth: int) -> None:
+        nonlocal truncated
+        if len(entries) >= limit:
+            truncated = True
+            return
+        try:
+            children = sorted(
+                directory.iterdir(),
+                key=lambda item: (
+                    1 if item.is_file() else 0,
+                    item.name.casefold(),
+                ),
+            )
+        except OSError:
+            return
+
+        for child in children:
+            if len(entries) >= limit:
+                truncated = True
+                return
+            name = child.name
+            if name in _WORKSPACE_TREE_SKIP_DIRS:
+                continue
+            try:
+                if child.is_symlink():
+                    add_entry(child, depth=depth, entry_type="symlink")
+                    continue
+                is_dir = child.is_dir()
+                is_file = child.is_file()
+            except OSError:
+                continue
+            if not is_dir and not is_file:
+                continue
+            add_entry(child, depth=depth, entry_type="directory" if is_dir else "file")
+            if is_dir and depth < max_depth:
+                walk(child, depth + 1)
+
+    walk(root, 0)
+    return {
+        "entries": entries,
+        "truncated": truncated,
+        "limit": limit,
+        "maxDepth": max_depth,
+    }
+
+
+def _run_git(root: Path, *args: str) -> subprocess.CompletedProcess[str] | None:
+    try:
+        return subprocess.run(
+            ["git", "-C", str(root), *args],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=3,
+            check=False,
+        )
+    except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
+        return None
+
+
+def _parse_git_status(root: Path) -> dict[str, Any]:
+    inside = _run_git(root, "rev-parse", "--is-inside-work-tree")
+    if inside is None:
+        return {
+            "available": False,
+            "isRepo": False,
+            "branch": "",
+            "summary": "Git is not available",
+            "changedCount": 0,
+            "changedFiles": [],
+            "truncated": False,
+        }
+    if inside.returncode != 0 or inside.stdout.strip().casefold() != "true":
+        return {
+            "available": True,
+            "isRepo": False,
+            "branch": "",
+            "summary": "Not a Git repository",
+            "changedCount": 0,
+            "changedFiles": [],
+            "truncated": False,
+        }
+
+    branch = ""
+    branch_result = _run_git(root, "symbolic-ref", "--quiet", "--short", "HEAD")
+    if branch_result is not None and branch_result.returncode == 0:
+        branch = branch_result.stdout.strip()
+    if not branch:
+        head_result = _run_git(root, "rev-parse", "--short", "HEAD")
+        if head_result is not None and head_result.returncode == 0:
+            branch = head_result.stdout.strip()
+
+    status_result = _run_git(root, "status", "--short", "--branch", "--untracked-files=normal")
+    if status_result is None:
+        return {
+            "available": False,
+            "isRepo": True,
+            "branch": branch,
+            "summary": branch,
+            "changedCount": 0,
+            "changedFiles": [],
+            "truncated": False,
+            "error": "Git status timed out or could not run",
+        }
+
+    lines = [line.rstrip("\n") for line in status_result.stdout.splitlines()]
+    summary = branch
+    changed: list[dict[str, Any]] = []
+    for line in lines:
+        if line.startswith("## "):
+            summary = line[3:].strip()
+            continue
+        if not line.strip():
+            continue
+        status = line[:2] if len(line) >= 2 else line.strip()
+        raw_path = line[3:].strip() if len(line) > 3 else ""
+        path = raw_path.split(" -> ", 1)[-1].strip() if " -> " in raw_path else raw_path
+        changed.append(
+            {
+                "path": path,
+                "status": status.strip() or status,
+                "index": status[:1].strip(),
+                "workingTree": status[1:2].strip() if len(status) > 1 else "",
+                "raw": line,
+            }
+        )
+
+    max_changed = 80
+    return {
+        "available": True,
+        "isRepo": True,
+        "branch": branch,
+        "summary": summary,
+        "changedCount": len(changed),
+        "changedFiles": changed[:max_changed],
+        "truncated": len(changed) > max_changed,
+        "error": "" if status_result.returncode == 0 else (status_result.stderr.strip() or "git status failed"),
+    }
 
 
 class ProjectMovableLoomAppServerService(ReasoningManagedLoomAppServerService):
@@ -290,6 +481,55 @@ class ProjectMovableLoomAppServerService(ReasoningManagedLoomAppServerService):
         self._notify("project/updated", {"project": payload, "reason": "instructions_changed"})
         return {"project": payload}
 
+    def project_workspace_status(self, params: dict[str, Any]) -> dict[str, Any]:
+        project_id = self._required_text(params, "projectId")
+        try:
+            project = self.projects.get(project_id)
+        except KeyError as exc:
+            raise JsonRpcError(-32004, "project not found") from exc
+        except ProjectStoreError as exc:
+            raise JsonRpcError(-32028, f"could not read project registry: {exc}") from exc
+
+        root = Path(project.root).expanduser()
+        try:
+            resolved = root.resolve()
+        except OSError:
+            resolved = root.absolute()
+
+        exists = resolved.exists()
+        is_directory = resolved.is_dir()
+        payload: dict[str, Any] = {
+            "projectId": project.project_id,
+            "root": str(resolved),
+            "exists": exists,
+            "isDirectory": is_directory,
+            "git": {
+                "available": False,
+                "isRepo": False,
+                "branch": "",
+                "summary": "",
+                "changedCount": 0,
+                "changedFiles": [],
+                "truncated": False,
+            },
+            "tree": {
+                "entries": [],
+                "truncated": False,
+                "limit": _WORKSPACE_TREE_LIMIT,
+                "maxDepth": _WORKSPACE_TREE_DEPTH,
+            },
+        }
+        if not exists:
+            payload["error"] = "Project folder does not exist"
+            return payload
+        if not is_directory:
+            payload["error"] = "Project root is not a directory"
+            return payload
+
+        payload["git"] = _parse_git_status(resolved)
+        payload["tree"] = _workspace_tree(resolved)
+        return payload
+
     def thread_move_project(self, params: dict[str, Any]) -> dict[str, Any]:
         session = self._session_or_rpc_error(params.get("threadId"))
         if self._is_active(session.session_id) or session.status in {
@@ -371,6 +611,7 @@ class ProjectMovableLoomRpcController(ReasoningManagedLoomRpcController):
             "remove": True,
             "moveThread": True,
             "instructions": True,
+            "workspaceStatus": True,
         }
         capabilities["memory"] = {
             "status": True,
@@ -388,6 +629,8 @@ class ProjectMovableLoomRpcController(ReasoningManagedLoomRpcController):
             return self.service.thread_move_project(params)
         if method == "project/set_instructions":
             return self.service.project_set_instructions(params)
+        if method == "project/workspace_status":
+            return self.service.project_workspace_status(params)
         if method == "memory/status":
             return self.service.memory_status(params)
         if method == "memory/list":
