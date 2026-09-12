@@ -1,0 +1,267 @@
+.project-git-subheading {
+  align-items: flex-start;
+}
+
+.project-git-subheading > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.project-git-toolbar,
+.project-commit-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.project-git-toolbar button,
+.project-commit-actions button,
+.project-stage-file-action {
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, .07);
+  background: rgba(255, 255, 255, .035);
+  color: #c6ccd7;
+  border-radius: 9px;
+  min-height: 26px;
+  padding: 0 8px;
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color 140ms ease, background 140ms ease, color 140ms ease, transform 140ms ease;
+}
+
+.project-git-toolbar button:hover,
+.project-commit-actions button:hover,
+.project-stage-file-action:hover {
+  border-color: rgba(169, 157, 255, .22);
+  background: rgba(139, 124, 246, .1);
+  color: #f0edff;
+  transform: translateY(-1px);
+}
+
+.project-git-toolbar button:disabled,
+.project-commit-actions button:disabled,
+.project-stage-file-action:disabled,
+.project-stage-file-main:disabled {
+  cursor: default;
+  opacity: .45;
+  transform: none;
+}
+
+.project-stage-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.project-stage-section {
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, .055);
+  background: rgba(5, 7, 11, .26);
+}
+
+.project-stage-section header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 20px;
+  padding: 0 2px 2px;
+}
+
+.project-stage-section header span {
+  color: #dce2ec;
+  font-size: 11px;
+  line-height: 14px;
+  font-weight: 760;
+}
+
+.project-stage-section header small {
+  min-width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  color: #95ffca;
+  background: rgba(53, 237, 145, .09);
+  border: 1px solid rgba(53, 237, 145, .14);
+  font-size: 10px;
+  font-weight: 760;
+}
+
+.project-stage-section.unstaged header small {
+  color: #ffd58a;
+  background: rgba(255, 193, 87, .08);
+  border-color: rgba(255, 193, 87, .13);
+}
+
+.project-stage-file {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 5px;
+}
+
+.project-stage-file-main {
+  min-width: 0;
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, .055);
+  background: rgba(255, 255, 255, .026);
+  color: #dfe4ee;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) 13px;
+  align-items: center;
+  gap: 7px;
+  min-height: 30px;
+  border-radius: 10px;
+  padding: 0 7px;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 140ms ease, background 140ms ease, transform 140ms ease;
+}
+
+.project-stage-file-main:hover {
+  border-color: rgba(53, 237, 145, .23);
+  background: rgba(53, 237, 145, .07);
+  transform: translateY(-1px);
+}
+
+.project-stage-file-main code {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #cfd6e2;
+  font-family: var(--code-font, "JetBrains Mono", ui-monospace, SFMono-Regular, Consolas, monospace);
+  font-size: 10.5px;
+}
+
+.project-stage-file-main svg {
+  color: #7f8797;
+}
+
+.project-git-badge {
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 6px;
+  border-radius: 999px;
+  color: var(--success-strong, #21ff87);
+  background: rgba(53, 237, 145, .09);
+  border: 1px solid rgba(53, 237, 145, .15);
+  font-size: 10px;
+  font-weight: 760;
+}
+
+.project-git-badge.unstaged {
+  color: #ffd58a;
+  background: rgba(255, 193, 87, .08);
+  border-color: rgba(255, 193, 87, .14);
+}
+
+.project-stage-file-action {
+  white-space: nowrap;
+}
+
+.project-commit-box {
+  margin-top: 10px;
+  padding: 10px;
+  border-radius: 15px;
+  border: 1px solid rgba(139, 124, 246, .13);
+  background:
+    linear-gradient(180deg, rgba(139, 124, 246, .075), rgba(139, 124, 246, .025)),
+    rgba(8, 10, 15, .42);
+}
+
+.project-commit-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.project-commit-heading > div {
+  display: grid;
+  gap: 2px;
+}
+
+.project-commit-heading span {
+  color: #a59cff;
+  font-size: 10px;
+  line-height: 12px;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  font-weight: 760;
+}
+
+.project-commit-heading strong {
+  color: #eef0f6;
+  font-size: 12.5px;
+  line-height: 16px;
+  font-weight: 740;
+}
+
+.project-commit-heading small {
+  max-width: 48%;
+  text-align: right;
+  color: #818a9a;
+  font-size: 10.5px;
+  line-height: 15px;
+}
+
+.project-commit-box textarea {
+  width: 100%;
+  min-height: 58px;
+  resize: vertical;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, .075);
+  outline: none;
+  padding: 9px 10px;
+  color: #e9edf5;
+  background: rgba(5, 7, 11, .58);
+  font-family: var(--code-font, "JetBrains Mono", ui-monospace, SFMono-Regular, Consolas, monospace);
+  font-size: 11.5px;
+  line-height: 17px;
+}
+
+.project-commit-box textarea:focus {
+  border-color: rgba(169, 157, 255, .4);
+  box-shadow: 0 0 0 3px rgba(139, 124, 246, .1);
+}
+
+.project-commit-actions {
+  width: 100%;
+  margin-top: 8px;
+}
+
+.project-commit-actions button:first-child {
+  margin-right: auto;
+}
+
+.project-commit-actions button.primary {
+  border-color: rgba(53, 237, 145, .28);
+  color: #eafff4;
+  background: linear-gradient(180deg, rgba(53, 237, 145, .2), rgba(33, 255, 135, .11));
+}
+
+html[data-loom-reduced-motion="true"] .project-git-toolbar button,
+html[data-loom-reduced-motion="true"] .project-commit-actions button,
+html[data-loom-reduced-motion="true"] .project-stage-file-action,
+html[data-loom-reduced-motion="true"] .project-stage-file-main {
+  transition-duration: .001ms !important;
+}
+
+@media (max-width: 1180px) {
+  .project-stage-columns { grid-template-columns: 1fr; }
+}
