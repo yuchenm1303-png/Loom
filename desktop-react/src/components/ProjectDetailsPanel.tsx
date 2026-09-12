@@ -14,7 +14,7 @@ import {
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { ProjectRecord, ThreadRecord } from "../types/loom";
+import type { ProjectRecord, ThreadRecord, TranscriptItem } from "../types/loom";
 import "./project-details-panel.css";
 
 interface ProjectDetailsPanelProps {
@@ -68,6 +68,18 @@ interface ProjectWorkspaceStatus {
   };
 }
 
+interface ProjectGitDiffResult {
+  projectId: string;
+  projectName?: string;
+  root: string;
+  path: string;
+  paths: string[];
+  diff: string;
+  changedFiles: ProjectGitFile[];
+  truncated: boolean;
+  error?: string;
+}
+
 type LoomBridge = {
   call<T = unknown>(method: string, params?: Record<string, unknown>): Promise<T>;
 };
@@ -92,14 +104,6 @@ function displayPath(root: string): string {
   return String(root || "").replaceAll("\\", "/");
 }
 
-function reviewPath(path?: string): void {
-  window.dispatchEvent(
-    new CustomEvent("loom:review-open", {
-      detail: { path: String(path || "").replaceAll("\\", "/") },
-    }),
-  );
-}
-
 function bridge(): LoomBridge | null {
   return Reflect.get(window, "loom") as LoomBridge | null;
 }
@@ -122,6 +126,28 @@ function formatSize(value?: number): string {
   return `${Math.round(bytes / 1024 / 102.4) / 10} MB`;
 }
 
+function reviewDiffItem(projectId: string, result: ProjectGitDiffResult, fallbackPath = ""): TranscriptItem {
+  const now = new Date().toISOString();
+  const paths = result.paths?.length
+    ? result.paths
+    : result.path
+      ? [result.path]
+      : fallbackPath
+        ? [fallbackPath]
+        : [];
+  return {
+    id: `project-diff:${projectId}:${Date.now()}:${Math.random().toString(36).slice(2)}`,
+    threadId: `project:${projectId}`,
+    turnId: null,
+    type: "file_edit",
+    status: "completed",
+    diff: result.diff || "",
+    paths,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
 export function ProjectDetailsPanel({
   project,
   threads,
@@ -138,6 +164,7 @@ export function ProjectDetailsPanel({
   const [workspaceStatus, setWorkspaceStatus] = useState<ProjectWorkspaceStatus | null>(null);
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
   const [workspaceError, setWorkspaceError] = useState("");
+  const [reviewLoadingPath, setReviewLoadingPath] = useState("");
   const projectId = project?.id ?? "";
 
   const loadWorkspaceStatus = useCallback(async (quiet = false) => {
@@ -160,6 +187,7 @@ export function ProjectDetailsPanel({
     setDraft(project?.instructions ?? "");
     setNotice("");
     setSaving(false);
+    setReviewLoadingPath("");
   }, [project?.id, project?.instructions]);
 
   useEffect(() => {
@@ -167,6 +195,7 @@ export function ProjectDetailsPanel({
       setWorkspaceStatus(null);
       setWorkspaceError("");
       setWorkspaceLoading(false);
+      setReviewLoadingPath("");
       return undefined;
     }
     void loadWorkspaceStatus();
@@ -206,6 +235,32 @@ export function ProjectDetailsPanel({
       setNotice(cause instanceof Error ? cause.message : "保存失败");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const openProjectDiff = async (file?: ProjectGitFile) => {
+    const path = String(file?.path || "").replaceAll("\\", "/");
+    const loadingKey = path || "__all__";
+    setReviewLoadingPath(loadingKey);
+    setWorkspaceError("");
+    try {
+      const client = bridge();
+      if (!client) throw new Error("Loom bridge is unavailable");
+      const params: Record<string, unknown> = { projectId: project.id };
+      if (path) params.path = path;
+      const result = await client.call<ProjectGitDiffResult>("project/git_diff", params);
+      const detail = {
+        path: path || result.paths?.[0] || "",
+        title: `${project.name} · Git diff`,
+        subtitle: result.truncated ? "项目工作区当前 Git diff（已截断）" : "项目工作区当前 Git diff",
+        items: [reviewDiffItem(project.id, result, path)],
+      };
+      window.dispatchEvent(new CustomEvent("loom:review-open-diff", { detail }));
+      if (result.error) setWorkspaceError(result.error);
+    } catch (cause) {
+      setWorkspaceError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setReviewLoadingPath("");
     }
   };
 
@@ -286,19 +341,23 @@ export function ProjectDetailsPanel({
             </div>
             {changedFiles.length ? (
               <div className="project-changed-files">
-                {changedFiles.slice(0, 8).map((file) => (
-                  <button
-                    key={`${file.status}:${file.path}`}
-                    type="button"
-                    className="project-changed-file"
-                    onClick={() => reviewPath(file.path)}
-                    title="在右侧审查栏查看"
-                  >
-                    <span>{fileStatusLabel(file)}</span>
-                    <code>{file.path}</code>
-                    <ExternalLink size={12} strokeWidth={1.9} />
-                  </button>
-                ))}
+                {changedFiles.slice(0, 8).map((file) => {
+                  const loading = reviewLoadingPath === file.path;
+                  return (
+                    <button
+                      key={`${file.status}:${file.path}`}
+                      type="button"
+                      className="project-changed-file"
+                      onClick={() => void openProjectDiff(file)}
+                      title="在右侧审查栏查看"
+                      disabled={Boolean(reviewLoadingPath)}
+                    >
+                      <span>{loading ? "读取" : fileStatusLabel(file)}</span>
+                      <code>{file.path}</code>
+                      <ExternalLink size={12} strokeWidth={1.9} />
+                    </button>
+                  );
+                })}
               </div>
             ) : (
               <p className="project-muted-line">没有检测到 Git 工作区变更。</p>
