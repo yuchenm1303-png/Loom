@@ -280,7 +280,9 @@ class TurnRunner:
                         response.text,
                     )
                     if compaction_echo_removed:
-                        response = replace(response, text=clean_text)
+                        # Raw provider output no longer matches canonical history.
+                        # Never replay the unsanitized provider item on a later turn.
+                        response = replace(response, text=clean_text, provider_state=())
                     invalid_terminal = (
                         "compaction_echo"
                         if compaction_echo_removed and not response.tool_calls
@@ -338,6 +340,7 @@ class TurnRunner:
                     content=response.text,
                     tool_calls=calls,
                     reasoning_content=response.reasoning_content,
+                    provider_state=response.provider_state,
                 ))
                 rt._record(session, Event.MODEL_RESPONSE, data={
                     "step_id": step.step_id, "text": response.text, "finish_reason": response.finish_reason,
