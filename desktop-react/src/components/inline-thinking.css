@@ -7,10 +7,16 @@
 }
 
 /* The active turn already has a RunProgress status card. The old tail-level
-   PendingThinking marker can appear as a stray purple dot after tool activity,
-   so keep it mounted for compatibility but never paint it in the transcript. */
-.turn-block > .inline-thinking {
+   PendingThinking line is still useful as a small text cue, but its orbit icon
+   can appear as a stray purple dot after tool activity. Hide only that direct
+   icon and keep the "正在思考…" text visible. */
+.turn-block > .inline-thinking > .thinking-symbol {
   display: none !important;
+}
+
+.turn-block > .inline-thinking {
+  gap: 0;
+  margin-left: 0;
 }
 
 /* Composer owns no thinking copy while a turn is running. The live run status
