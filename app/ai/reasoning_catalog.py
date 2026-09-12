@@ -42,6 +42,37 @@ def _openai_options(values: tuple[str, ...]) -> list[dict[str, Any]]:
     return [dict(_OPENAI_OPTION_LIBRARY[value]) for value in values]
 
 
+def _model_slug(model_key: str) -> str:
+    """Return the provider-local model slug from common namespaced ids.
+
+    OpenAI-compatible relays frequently expose ids such as
+    ``openai/gpt-5.6-sol`` or ``deepseek/deepseek-v4-pro``. Capability matching
+    should follow the underlying model slug rather than disappear merely because
+    a relay prepended its provider namespace.
+    """
+
+    value = str(model_key or "").strip().casefold()
+    return value.rsplit("/", 1)[-1]
+
+
+def _deepseek_model_spec(model_key: str) -> tuple[str, tuple[str, ...], str] | None:
+    """Return the official DeepSeek V4 preset used for Codex-style clients.
+
+    DeepSeek's current Codex integration publishes Low/High/Max with High as the
+    default. Chat Completions accepts the same reasoning_effort values, while
+    Max remains an advanced picker choice in Loom just as it is in Codex.
+    """
+
+    slug = _model_slug(model_key)
+    if slug.startswith("deepseek-v4-"):
+        return (
+            "high",
+            ("low", "high", "max"),
+            "DeepSeek V4 Codex model catalog",
+        )
+    return None
+
+
 def _openai_model_spec(model_key: str) -> tuple[str, tuple[str, ...], str] | None:
     """Return Loom's conservative public-API reasoning spec for a known model.
 
@@ -50,6 +81,8 @@ def _openai_model_spec(model_key: str) -> tuple[str, tuple[str, ...], str] | Non
     OpenAI-compatible endpoints, so the picker must expose only effort values
     that are valid request parameters for the underlying model family.
     """
+
+    model_key = _model_slug(model_key)
 
     if model_key.startswith("gpt-6-astra"):
         return (
@@ -157,9 +190,10 @@ def reasoning_capability(*, model: str, adapter: str, base_url: str = "") -> dic
     """Return safe UI metadata for reasoning controls supported by a model.
 
     The shape follows Codex's model-catalog pattern: each model advertises its
-    supported choices and one default, instead of clients inventing a universal
-    slider. Loom deliberately keeps the public API catalog conservative until it
-    has provider-supplied model metadata of its own.
+    supported choices and one default. Known third-party Codex catalogs (for
+    example DeepSeek V4) are represented here too, so OpenAI-compatible models
+    do not lose their reasoning picker merely because they are not OpenAI models.
+    Unknown providers remain conservative until Loom has authoritative metadata.
     """
 
     model_key = str(model or "").strip().casefold()
@@ -179,7 +213,7 @@ def reasoning_capability(*, model: str, adapter: str, base_url: str = "") -> dic
     if adapter_key not in {"openai", "openai-compatible"}:
         return None
 
-    spec = _openai_model_spec(model_key)
+    spec = _deepseek_model_spec(model_key) or _openai_model_spec(model_key)
     if spec is None:
         return None
     default_value, values, source = spec
