@@ -167,6 +167,7 @@ class TurnRunner:
                 recovery_instruction = ""
                 recovery_partial = ""
                 recovery_reasoning_content = ""
+                recovery_provider_state: tuple[dict[str, object], ...] = ()
                 for attempt in range(rt.limits.model_retries + 1):
                     step = rt._build_step_context(session, next_model_step=True)
                     messages, extra = rt._prepare_model_request(session, step, token)
@@ -189,6 +190,7 @@ class TurnRunner:
                                 role=MessageRole.ASSISTANT,
                                 content=recovery_partial,
                                 reasoning_content=recovery_reasoning_content,
+                                provider_state=recovery_provider_state,
                             ))
                         request_messages.append(AIMessage(
                             role=MessageRole.SYSTEM,
@@ -243,6 +245,7 @@ class TurnRunner:
                         recovery_instruction = "empty_response"
                         recovery_partial = ""
                         recovery_reasoning_content = ""
+                        recovery_provider_state = ()
                         continue
                     except AIResponseError as exc:
                         session.model_steps += 1
@@ -265,6 +268,7 @@ class TurnRunner:
                         recovery_instruction = "invalid_provider_response"
                         recovery_partial = ""
                         recovery_reasoning_content = ""
+                        recovery_provider_state = ()
                         continue
                     except AITransportError as exc:
                         if not exc.retryable or attempt >= rt.limits.model_retries:
@@ -321,6 +325,11 @@ class TurnRunner:
                     )
                     recovery_reasoning_content = (
                         str(response.reasoning_content or "") if recovery_partial else ""
+                    )
+                    recovery_provider_state = (
+                        tuple(dict(item) for item in response.provider_state)
+                        if recovery_partial
+                        else ()
                     )
                 if rt._cancel_if_requested(session, token):
                     return rt._result(session)
