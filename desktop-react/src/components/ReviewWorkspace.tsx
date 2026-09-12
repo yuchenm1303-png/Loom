@@ -35,6 +35,12 @@ type ReviewFile = {
   eventCount: number;
 };
 
+type ExternalReview = {
+  items: TranscriptItem[];
+  title?: string;
+  subtitle?: string;
+};
+
 interface ReviewWorkspaceProps {
   items: TranscriptItem[];
   open: boolean;
@@ -252,10 +258,14 @@ function lineMarker(kind: ReviewRow["kind"]): string {
 export function ReviewWorkspace({ items, open, onClose }: ReviewWorkspaceProps) {
   const { language } = useI18n();
   const c = language === "zh-CN" ? COPY_TEXT.zh : COPY_TEXT.en;
-  const files = useMemo(() => buildReviewFiles(items), [items]);
+  const [externalReview, setExternalReview] = useState<ExternalReview | null>(null);
+  const sourceItems = externalReview?.items ?? items;
+  const files = useMemo(() => buildReviewFiles(sourceItems), [sourceItems]);
   const [query, setQuery] = useState("");
   const [selectedPath, setSelectedPath] = useState("");
   const [copied, setCopied] = useState(false);
+  const reviewTitle = externalReview?.title || c.title;
+  const reviewSubtitle = externalReview?.subtitle || c.subtitle;
 
   const visibleFiles = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -286,6 +296,44 @@ export function ReviewWorkspace({ items, open, onClose }: ReviewWorkspaceProps) 
   ), [files]);
 
   const selectedIndex = selected ? visibleFiles.findIndex((file) => file.path === selected.path) : -1;
+
+  useEffect(() => {
+    const handleExternalReview = (event: Event) => {
+      const detail = (event as CustomEvent<{
+        path?: string;
+        items?: TranscriptItem[];
+        item?: TranscriptItem;
+        title?: string;
+        subtitle?: string;
+      }>).detail;
+      const nextItems = Array.isArray(detail?.items)
+        ? detail.items
+        : detail?.item
+          ? [detail.item]
+          : [];
+      setExternalReview({
+        items: nextItems,
+        title: detail?.title,
+        subtitle: detail?.subtitle,
+      });
+      setQuery("");
+      const preferred = normalizePath(detail?.path || String(nextItems[0]?.paths?.[0] || ""));
+      setSelectedPath(preferred);
+    };
+
+    const clearExternalReview = () => {
+      setExternalReview(null);
+      setQuery("");
+      setSelectedPath("");
+    };
+
+    window.addEventListener("loom:review-open-diff", handleExternalReview);
+    window.addEventListener("loom:review-clear-external", clearExternalReview);
+    return () => {
+      window.removeEventListener("loom:review-open-diff", handleExternalReview);
+      window.removeEventListener("loom:review-clear-external", clearExternalReview);
+    };
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -333,13 +381,13 @@ export function ReviewWorkspace({ items, open, onClose }: ReviewWorkspaceProps) 
   };
 
   return createPortal(
-    <div className="review-workspace" role="dialog" aria-modal="true" aria-label={c.title}>
+    <div className="review-workspace" role="dialog" aria-modal="true" aria-label={reviewTitle}>
       <header className="review-topbar">
         <div className="review-heading">
           <span className="review-heading-icon"><Files size={17} strokeWidth={1.8} /></span>
           <div>
-            <strong>{c.title}</strong>
-            <span>{c.subtitle}</span>
+            <strong>{reviewTitle}</strong>
+            <span>{reviewSubtitle}</span>
           </div>
         </div>
         <div className="review-summary">
