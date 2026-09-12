@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -252,24 +251,12 @@ class FileAgentSessionStore:
         session.updated_at = utc_now()
         directory = self.session_dir(session.session_id)
         directory.mkdir(parents=True, exist_ok=True)
-        target = directory / "session.json"
-        temp = directory / f".session.{os.getpid()}.{uuid.uuid4().hex}.tmp"
-        data = json.dumps(session_to_dict(session), ensure_ascii=False, indent=2, sort_keys=True)
-        try:
-            with temp.open("w", encoding="utf-8", newline="\n") as handle:
-                handle.write(data)
-                handle.flush()
-                os.fsync(handle.fileno())
-            os.replace(temp, target)
-            try:
-                target.chmod(0o600)
-            except OSError:
-                pass
-        finally:
-            try:
-                temp.unlink(missing_ok=True)
-            except OSError:
-                pass
+        atomic_json(
+            directory / "session.json",
+            session_to_dict(session),
+            indent=2,
+            sort_keys=True,
+        )
 
     def load(self, session_id: str) -> AgentSession:
         target = self.session_dir(session_id) / "session.json"
