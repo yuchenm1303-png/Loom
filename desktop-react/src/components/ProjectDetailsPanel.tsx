@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ProjectRecord, ThreadRecord, TranscriptItem } from "../types/loom";
+import { ProjectAgentFilesCard } from "./ProjectAgentFilesCard";
 import "./project-details-panel.css";
 import "./project-details-git.css";
 
@@ -615,6 +616,8 @@ export function ProjectDetailsPanel({
             </button>
           </div>
         </section>
+
+        <ProjectAgentFilesCard projectId={project.id} open={open} />
 
         <section className="project-thread-card">
           <div className="project-card-heading">
