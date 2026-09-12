@@ -27,6 +27,8 @@ _TERMINAL_TURN_KINDS = {
 }
 _WORKSPACE_TREE_LIMIT = 96
 _WORKSPACE_TREE_DEPTH = 3
+_PROJECT_DIFF_MAX_CHARS = 420_000
+_PROJECT_DIFF_MAX_NEW_FILE_BYTES = 180_000
 _WORKSPACE_TREE_SKIP_DIRS = {
     ".git",
     ".hg",
@@ -122,7 +124,7 @@ def _workspace_tree(root: Path, *, limit: int = _WORKSPACE_TREE_LIMIT, max_depth
     }
 
 
-def _run_git(root: Path, *args: str) -> subprocess.CompletedProcess[str] | None:
+def _run_git(root: Path, *args: str, timeout: float = 3) -> subprocess.CompletedProcess[str] | None:
     try:
         return subprocess.run(
             ["git", "-C", str(root), *args],
@@ -130,7 +132,7 @@ def _run_git(root: Path, *args: str) -> subprocess.CompletedProcess[str] | None:
             text=True,
             encoding="utf-8",
             errors="replace",
-            timeout=3,
+            timeout=timeout,
             check=False,
         )
     except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
@@ -214,6 +216,153 @@ def _parse_git_status(root: Path) -> dict[str, Any]:
         "changedFiles": changed[:max_changed],
         "truncated": len(changed) > max_changed,
         "error": "" if status_result.returncode == 0 else (status_result.stderr.strip() or "git status failed"),
+    }
+
+
+def _safe_git_path(value: Any) -> str:
+    text = str(value or "").replace("\\", "/").strip()
+    if not text:
+        return ""
+    text = text.lstrip("/")
+    parts = [part for part in text.split("/") if part and part != "."]
+    if any(part == ".." for part in parts):
+        raise ValueError("project diff path must stay inside the project")
+    return "/".join(parts)
+
+
+def _new_file_unified_diff(root: Path, path: str) -> tuple[str, bool]:
+    relative = _safe_git_path(path)
+    if not relative:
+        return "", False
+    target = (root / relative).resolve()
+    try:
+        target.relative_to(root.resolve())
+    except ValueError:
+        return "", False
+    if not target.is_file():
+        return "", False
+    try:
+        data = target.read_bytes()
+    except OSError:
+        return "", False
+    truncated = len(data) > _PROJECT_DIFF_MAX_NEW_FILE_BYTES
+    sample = data[:_PROJECT_DIFF_MAX_NEW_FILE_BYTES]
+    if b"\x00" in sample:
+        return (
+            "\n".join(
+                [
+                    f"diff --git a/{relative} b/{relative}",
+                    "new file mode 100644",
+                    "--- /dev/null",
+                    f"+++ b/{relative}",
+                    "@@ -0,0 +1 @@",
+                    "+[Binary file omitted from inline review]",
+                ]
+            ),
+            truncated,
+        )
+    try:
+        text = sample.decode("utf-8")
+    except UnicodeDecodeError:
+        text = sample.decode("utf-8", errors="replace")
+    lines = text.splitlines()
+    hunk = f"@@ -0,0 +1,{len(lines)} @@"
+    patch_lines = [
+        f"diff --git a/{relative} b/{relative}",
+        "new file mode 100644",
+        "--- /dev/null",
+        f"+++ b/{relative}",
+        hunk,
+        *[f"+{line}" for line in lines],
+    ]
+    if truncated:
+        patch_lines.append("+[New file preview truncated]")
+    return "\n".join(patch_lines), truncated
+
+
+def _diff_for_changed_file(root: Path, path: str, status: str) -> tuple[str, bool]:
+    relative = _safe_git_path(path)
+    if not relative:
+        return "", False
+    parts: list[str] = []
+    truncated = False
+    for args in (
+        ("diff", "--cached", "--no-ext-diff", "--unified=80", "--", relative),
+        ("diff", "--no-ext-diff", "--unified=80", "--", relative),
+    ):
+        result = _run_git(root, *args, timeout=5)
+        if result is not None and result.stdout.strip():
+            parts.append(result.stdout.rstrip("\n"))
+    if not parts and status.strip() == "??":
+        preview, preview_truncated = _new_file_unified_diff(root, relative)
+        if preview:
+            parts.append(preview)
+            truncated = truncated or preview_truncated
+    return "\n".join(parts), truncated
+
+
+def _project_git_diff(root: Path, *, path: str = "") -> dict[str, Any]:
+    git = _parse_git_status(root)
+    if not git.get("available") or not git.get("isRepo"):
+        return {
+            "root": str(root),
+            "git": git,
+            "path": path,
+            "paths": [],
+            "diff": "",
+            "changedFiles": [],
+            "truncated": False,
+            "error": git.get("summary") or git.get("error") or "Git diff is not available for this project",
+        }
+
+    requested = _safe_git_path(path)
+    changed_files = list(git.get("changedFiles") or [])
+    if requested:
+        changed_files = [
+            file
+            for file in changed_files
+            if _safe_git_path(file.get("path")) == requested
+        ]
+        if not changed_files:
+            changed_files = [{"path": requested, "status": "", "index": "", "workingTree": "", "raw": requested}]
+
+    paths: list[str] = []
+    chunks: list[str] = []
+    truncated = False
+    remaining = _PROJECT_DIFF_MAX_CHARS
+
+    for file in changed_files:
+        current_path = _safe_git_path(file.get("path"))
+        if not current_path:
+            continue
+        diff, file_truncated = _diff_for_changed_file(root, current_path, str(file.get("status") or ""))
+        if not diff.strip():
+            continue
+        paths.append(current_path)
+        truncated = truncated or file_truncated
+        if len(diff) > remaining:
+            chunks.append(diff[:remaining].rstrip("\n"))
+            truncated = True
+            remaining = 0
+            break
+        chunks.append(diff.rstrip("\n"))
+        remaining -= len(diff)
+        if remaining <= 0:
+            truncated = True
+            break
+
+    if truncated and chunks:
+        chunks.append("\n[Project diff truncated]")
+
+    return {
+        "root": str(root),
+        "git": git,
+        "path": requested,
+        "paths": paths,
+        "diff": "\n".join(chunk for chunk in chunks if chunk),
+        "changedFiles": changed_files,
+        "truncated": truncated,
+        "error": "",
     }
 
 
@@ -481,8 +630,7 @@ class ProjectMovableLoomAppServerService(ReasoningManagedLoomAppServerService):
         self._notify("project/updated", {"project": payload, "reason": "instructions_changed"})
         return {"project": payload}
 
-    def project_workspace_status(self, params: dict[str, Any]) -> dict[str, Any]:
-        project_id = self._required_text(params, "projectId")
+    def _project_root_or_error(self, project_id: str) -> tuple[Any, Path]:
         try:
             project = self.projects.get(project_id)
         except KeyError as exc:
@@ -495,6 +643,11 @@ class ProjectMovableLoomAppServerService(ReasoningManagedLoomAppServerService):
             resolved = root.resolve()
         except OSError:
             resolved = root.absolute()
+        return project, resolved
+
+    def project_workspace_status(self, params: dict[str, Any]) -> dict[str, Any]:
+        project_id = self._required_text(params, "projectId")
+        project, resolved = self._project_root_or_error(project_id)
 
         exists = resolved.exists()
         is_directory = resolved.is_dir()
@@ -528,6 +681,22 @@ class ProjectMovableLoomAppServerService(ReasoningManagedLoomAppServerService):
 
         payload["git"] = _parse_git_status(resolved)
         payload["tree"] = _workspace_tree(resolved)
+        return payload
+
+    def project_git_diff(self, params: dict[str, Any]) -> dict[str, Any]:
+        project_id = self._required_text(params, "projectId")
+        project, resolved = self._project_root_or_error(project_id)
+        if not resolved.exists():
+            raise JsonRpcError(-32032, "project folder does not exist")
+        if not resolved.is_dir():
+            raise JsonRpcError(-32033, "project root is not a directory")
+        try:
+            path = _safe_git_path(params.get("path"))
+        except ValueError as exc:
+            raise JsonRpcError(-32602, str(exc)) from exc
+        payload = _project_git_diff(resolved, path=path)
+        payload["projectId"] = project.project_id
+        payload["projectName"] = project.name
         return payload
 
     def thread_move_project(self, params: dict[str, Any]) -> dict[str, Any]:
@@ -612,6 +781,7 @@ class ProjectMovableLoomRpcController(ReasoningManagedLoomRpcController):
             "moveThread": True,
             "instructions": True,
             "workspaceStatus": True,
+            "gitDiff": True,
         }
         capabilities["memory"] = {
             "status": True,
@@ -631,6 +801,8 @@ class ProjectMovableLoomRpcController(ReasoningManagedLoomRpcController):
             return self.service.project_set_instructions(params)
         if method == "project/workspace_status":
             return self.service.project_workspace_status(params)
+        if method == "project/git_diff":
+            return self.service.project_git_diff(params)
         if method == "memory/status":
             return self.service.memory_status(params)
         if method == "memory/list":
