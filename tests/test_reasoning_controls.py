@@ -208,12 +208,15 @@ def test_minimax_reasoning_is_sent_as_thinking_object() -> None:
     assert kwargs["extra_body"] == {"thinking": {"type": "adaptive"}}
 
 
-def test_deepseek_reasoning_is_sent_as_reasoning_effort() -> None:
+def test_deepseek_reasoning_is_sent_with_thinking_enabled() -> None:
     kwargs = _fake_backend("deepseek-v4-pro")._request_kwargs(
         _request(ReasoningRequest(ReasoningKind.OPENAI_EFFORT, "max"))
     )
 
-    assert kwargs["extra_body"] == {"reasoning_effort": "max"}
+    assert kwargs["extra_body"] == {
+        "reasoning_effort": "max",
+        "thinking": {"type": "enabled"},
+    }
 
 
 def test_openai_reasoning_is_sent_as_reasoning_effort() -> None:
