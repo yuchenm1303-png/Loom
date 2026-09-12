@@ -57,7 +57,10 @@ def _git(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
 
 
 def _require_git(root: Path) -> None:
-    result = subprocess.run(["git", "--version"], capture_output=True, text=True, check=False)
+    try:
+        result = subprocess.run(["git", "--version"], capture_output=True, text=True, check=False)
+    except FileNotFoundError:
+        pytest.skip("git is not available")
     if result.returncode != 0:
         pytest.skip("git is not available")
     assert _git(root, "init").returncode == 0
