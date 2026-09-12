@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, Callable, TextIO
@@ -8,7 +9,7 @@ from app.ai import ReasoningRequest
 from app.agent_runtime import AgentEvent, AgentEventKind, AgentStatus, PermissionMode
 from app.agent_runtime.tools import ToolExposure, ToolRegistry
 from app.runtime_model_switch import build_runtime_model_platform, validate_runtime_reasoning
-from app.settings import LoomSettingsStore
+from app.settings import SETTINGS_UPDATE_PREFIX, LoomSettingsStore
 
 from .app_server_thread_management import (
     ManagedStreamingJsonRpcStdioServer,
@@ -28,6 +29,21 @@ _CAPABILITY_MATCHERS: dict[str, Callable[[str], bool]] = {
 }
 
 
+def _is_browser_setting(capability: str) -> bool:
+    """Detect a browser preference inside the desktop settings-update envelope."""
+
+    raw = str(capability or "").strip()
+    if not raw.startswith(SETTINGS_UPDATE_PREFIX):
+        return False
+    try:
+        payload = json.loads(raw[len(SETTINGS_UPDATE_PREFIX):])
+    except (json.JSONDecodeError, ValueError):
+        return False
+    if not isinstance(payload, dict):
+        return False
+    return str(payload.get("path") or "").startswith("browser.")
+
+
 class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService):
     """Managed App Server with reasoning, expressions, and desktop settings."""
 
@@ -42,7 +58,44 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
         # Keep the canonical runtime tool set so capability switches can hide or
         # restore whole tool families without rebuilding the model/runtime stack.
         self._canonical_tools = tuple(self.runtime.tools.all())
-        self._apply_capability_settings(self.settings_store.snapshot())
+        snapshot = self.settings_store.snapshot()
+        self._apply_capability_settings(snapshot)
+        self._apply_browser_settings(snapshot)
+
+    def _apply_browser_settings(self, settings: dict[str, Any]) -> str:
+        """Point the browser layer at whichever browser the user selected.
+
+        Returns an empty string on success, or a reason the stored choice could
+        not be honoured. Startup must not abort over it: a saved cdp-attach
+        endpoint whose browser is no longer running, or an extension bridge whose
+        port is taken, should degrade to Loom's own browser with a visible reason
+        rather than leave the desktop unable to start.
+        """
+
+        apply = getattr(self.runtime, "browser_set_connection", None)
+        if not callable(apply):
+            return ""
+        raw = settings.get("browser")
+        preferences = dict(raw) if isinstance(raw, dict) else {}
+        mode = str(preferences.get("mode") or "local-launch").strip()
+        engine = str(preferences.get("preferredEngine") or "").strip()
+        persist = preferences.get("persistSessions")
+        try:
+            apply(
+                mode,
+                cdp_url=str(preferences.get("cdpUrl") or "").strip(),
+                persist_profile=None if persist is None else bool(persist),
+                engine=engine,
+            )
+            return ""
+        except Exception as exc:
+            reason = f"{type(exc).__name__}: {exc}"
+            if mode != "local-launch":
+                try:
+                    apply("local-launch", engine=engine)
+                except Exception:
+                    pass
+            return reason
 
     def _apply_capability_settings(self, settings: dict[str, Any]) -> None:
         raw = settings.get("capabilities")
@@ -498,8 +551,20 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
             raise ValueError("capability is required")
         if not isinstance(enabled, bool):
             raise ValueError("enabled must be a boolean")
+        # Browser preferences are delivered through the same envelope as every
+        # other desktop setting, so the changed path is the only signal that the
+        # browser connection has to be rebuilt.
+        browser_change = _is_browser_setting(capability)
+        previous = self.settings_store.snapshot() if browser_change else None
         settings = self.settings_store.set_capability(capability, enabled)
         self._apply_capability_settings(settings)
+        browser_error = ""
+        if browser_change:
+            browser_error = self._apply_browser_settings(settings)
+            if browser_error and previous is not None:
+                # Keep the stored choice and the live connection in agreement.
+                settings = self.settings_store.replace(previous)
+                self._apply_browser_settings(settings)
         updated = self.runtime_status()
         self._notify(
             "runtime/updated",
@@ -508,7 +573,10 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
                 "runtime": updated,
             },
         )
-        return {"settings": settings, "runtime": updated}
+        result: dict[str, Any] = {"settings": settings, "runtime": updated}
+        if browser_error:
+            result["browserWarning"] = browser_error
+        return result
 
 
 class ReasoningManagedLoomRpcController(ManagedStreamingLoomRpcController):

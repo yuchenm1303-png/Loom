@@ -208,6 +208,8 @@ export interface LoomTerminalSettings {
 }
 
 export interface LoomBrowserSettings {
+  mode?: "local-launch" | "cdp-attach" | "extension";
+  cdpUrl?: string;
   preferredEngine?: "edge" | "chrome" | "system";
   persistSessions?: boolean;
 }

@@ -100,7 +100,11 @@ type TerminalSettings = {
   preserveBackgroundProcesses: boolean;
 };
 
+type BrowserConnectionMode = "local-launch" | "cdp-attach" | "extension";
+
 type BrowserSettings = {
+  mode: BrowserConnectionMode;
+  cdpUrl: string;
   preferredEngine: "edge" | "chrome" | "system";
   persistSessions: boolean;
 };
@@ -220,9 +224,29 @@ const DEFAULT_TERMINAL: TerminalSettings = {
 };
 
 const DEFAULT_BROWSER: BrowserSettings = {
+  mode: "local-launch",
+  cdpUrl: "",
   preferredEngine: "edge",
   persistSessions: true,
 };
+
+const BROWSER_MODE_OPTIONS: { value: BrowserConnectionMode; label: string; detail: string }[] = [
+  {
+    value: "local-launch",
+    label: "Loom's own browser",
+    detail: "Loom launches and owns a browser. Your everyday browsing is untouched.",
+  },
+  {
+    value: "cdp-attach",
+    label: "Attach to a local browser",
+    detail: "Drive a Chrome/Edge already running with remote debugging on this machine.",
+  },
+  {
+    value: "extension",
+    label: "Current tab via extension",
+    detail: "Drive the tab you are looking at, through the installed Loom bridge extension.",
+  },
+];
 
 const DEFAULT_COMPUTER: ComputerSettings = {
   verifyActions: true,
@@ -447,6 +471,8 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
   const [notice, setNotice] = useState<{ tone: "error" | "success"; text: string } | null>(null);
   const [plugins, setPlugins] = useState<PluginRecord[] | null>(null);
   const [pluginsError, setPluginsError] = useState("");
+  // Held locally so the endpoint can be typed without a round trip per keystroke.
+  const [cdpDraft, setCdpDraft] = useState(settings.browser?.cdpUrl ?? DEFAULT_BROWSER.cdpUrl);
 
   useEffect(() => {
     const merged = mergedSettings(runtime);
@@ -479,6 +505,7 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
           privacy: { ...DEFAULT_PRIVACY, ...(result.settings.privacy ?? {}), ...(local.privacy ?? {}) },
         } as DesktopSettings;
         setSettings(next);
+        setCdpDraft(next.browser?.cdpUrl ?? DEFAULT_BROWSER.cdpUrl);
         applyAppearance(next);
       })
       .catch(() => undefined);
@@ -528,6 +555,45 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
     } catch {
       setNotice({ tone: "success", text: `${successText || "Preference saved."} Local desktop preference is active.` });
     }
+  };
+
+  // Appearance and shortcuts are local-first, so saveSetting treats a server
+  // failure as harmless. The browser connection is the opposite: the runtime is
+  // the thing being changed, and it rejects and rolls back anything it cannot
+  // honour. Reporting that as "saved" would leave the page showing a browser
+  // Loom is not driving.
+  const saveBrowserSetting = async (path: string, value: unknown, successText: string) => {
+    const previous = settings;
+    const next = setNestedSetting(settings, path, value);
+    setSettings(next);
+    writeLocalSettings(next);
+    try {
+      const envelope = `${SETTINGS_UPDATE_PREFIX}${JSON.stringify({ path, value })}`;
+      const result = (await window.loom.call("settings/set", { capability: envelope, enabled: true })) as
+        | { settings?: DesktopSettings; browserWarning?: string }
+        | undefined;
+      if (result?.browserWarning) {
+        setSettings(previous);
+        writeLocalSettings(previous);
+        setNotice({ tone: "error", text: `Browser connection unchanged: ${result.browserWarning}` });
+        return false;
+      }
+      setNotice({ tone: "success", text: successText });
+      return true;
+    } catch (error) {
+      setSettings(previous);
+      writeLocalSettings(previous);
+      setNotice({ tone: "error", text: `Could not change the browser connection: ${String((error as Error)?.message || error)}` });
+      return false;
+    }
+  };
+
+  const saveBrowserMode = async (mode: BrowserConnectionMode) => {
+    if (mode === "cdp-attach" && !cdpDraft.trim()) {
+      setNotice({ tone: "error", text: "Enter the loopback debugging endpoint before attaching to a local browser." });
+      return;
+    }
+    await saveBrowserSetting("browser.mode", mode, "Browser connection updated.");
   };
 
   const resetAppearance = async () => {
@@ -753,7 +819,22 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
     const prefs = { ...DEFAULT_BROWSER, ...(settings.browser ?? {}) } as BrowserSettings;
     return <><div className="settings-page-heading settings-heading-with-switch"><div><span className="settings-eyebrow">Web interaction</span><h1>Browser</h1><p>Control Loom's browser-use session or attach to a local Chrome/Edge instance.</p></div><div className="settings-master-switch"><StatusPill tone={badge.tone}>{badge.text}</StatusPill><SettingSwitch checked={enabled} disabled={running || busyCapability !== null} label="Toggle Browser Use" onChange={(value) => void setCapability("browserUse", value)} /></div></div>
       <Section title="Browser runtime"><div className="settings-card settings-detail-list"><DetailRow label="Backend" value={text(browserStatus?.backend, capabilityStatusText(browserStatus))} /><DetailRow label="Connection" value={text(browserStatus?.browser_connection, "Not reported")} /><DetailRow label="External browser" value={bool(browserStatus?.external_browser) ? "Attached" : "Not reported"} /><DetailRow label="Active sessions" value={String(browserStatus?.active_sessions ?? "Not reported")} /></div></Section>
-      <Section title="Browser preferences"><div className="settings-card mature-preference-list"><PreferenceRow icon={Globe2} title="Preferred browser" detail="Preferred desktop browser for compatible Browser Use backends."><SelectControl label="Preferred browser" value={prefs.preferredEngine} options={[{ value: "edge", label: "Microsoft Edge" }, { value: "chrome", label: "Google Chrome" }, { value: "system", label: "System default" }]} onChange={(value) => void saveSetting("browser.preferredEngine", value)} /></PreferenceRow><PreferenceRow icon={Database} title="Persist sessions" detail="Keep compatible browser profiles available across Loom restarts."><SettingSwitch checked={prefs.persistSessions} label="Persist browser sessions" onChange={(value) => void saveSetting("browser.persistSessions", value)} /></PreferenceRow></div></Section>
+      <Section title="Which browser Loom drives" caption="Changing this closes any browser session Loom currently holds.">
+        <div className="settings-card mature-preference-list">
+          <PreferenceRow icon={Globe2} title="Connection" detail={BROWSER_MODE_OPTIONS.find((item) => item.value === prefs.mode)?.detail ?? ""}>
+            <SelectControl label="Browser connection" value={prefs.mode} options={BROWSER_MODE_OPTIONS.map((item) => ({ value: item.value, label: item.label }))} onChange={(value) => void saveBrowserMode(value as BrowserConnectionMode)} />
+          </PreferenceRow>
+          {prefs.mode === "cdp-attach" ? (
+            <PreferenceRow icon={Plug} title="Debugging endpoint" detail="Loopback only, with an explicit port. Start the browser with --remote-debugging-port first.">
+              <input className="mature-input" value={cdpDraft} placeholder="http://127.0.0.1:9222" onChange={(event) => setCdpDraft(event.target.value)} onBlur={(event) => void saveBrowserSetting("browser.cdpUrl", event.target.value.trim(), "Debugging endpoint updated.")} />
+            </PreferenceRow>
+          ) : null}
+          {prefs.mode === "extension" ? (
+            <div className="settings-callout-inline"><CircleAlert size={15} /><span>Requires the Loom Current Tab Bridge extension to be installed and enabled in Chrome or Edge.</span></div>
+          ) : null}
+        </div>
+      </Section>
+      <Section title="Browser preferences"><div className="settings-card mature-preference-list"><PreferenceRow icon={Globe2} title="Preferred browser" detail={prefs.mode === "local-launch" ? "Which installed browser Loom launches." : "Only applies when Loom launches its own browser."}><SelectControl label="Preferred browser" value={prefs.preferredEngine} options={[{ value: "edge", label: "Microsoft Edge" }, { value: "chrome", label: "Google Chrome" }, { value: "system", label: "System default" }]} onChange={(value) => void saveSetting("browser.preferredEngine", value)} /></PreferenceRow><PreferenceRow icon={Database} title="Persist sessions" detail="Keep cookies and site storage in Loom's own browser profile across restarts."><SettingSwitch checked={prefs.persistSessions} label="Persist browser sessions" onChange={(value) => void saveSetting("browser.persistSessions", value)} /></PreferenceRow></div></Section>
     </>;
   };
 

@@ -74,6 +74,8 @@ class BrowserUseBackend(BrowserBackend):
     action_timeout_seconds: float = _DEFAULT_ACTION_TIMEOUT
     user_data_dir: str | Path | None = None
     cdp_url: str | None = None
+    # browser-use channel name ("chrome"/"msedge"); empty keeps its own default.
+    browser_channel: str = ""
     diagnostics: BrowserDiagnosticLog | None = None
 
     def __post_init__(self) -> None:
@@ -221,8 +223,11 @@ class BrowserUseBackend(BrowserBackend):
         from browser_use import BrowserProfile, BrowserSession
 
         attached = bool(str(self.cdp_url or "").strip())
+        # An attached browser is already running, so its build is not ours to pick.
+        channel = "" if attached else str(self.browser_channel or "").strip()
         try:
             profile = BrowserProfile(
+                **({"channel": channel} if channel else {}),
                 headless=self.options.headless,
                 allowed_domains=list(self.options.allowed_domains) or None,
                 prohibited_domains=[

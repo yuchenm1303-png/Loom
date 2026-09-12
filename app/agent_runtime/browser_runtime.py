@@ -23,7 +23,19 @@ from .browser_session import (
 )
 from .browser_use_backend import browser_use_available
 from .memory_store import redact_secrets
+from .tools import ToolRegistry
 from .web_search_runtime import WebSearchRuntime
+
+
+_BROWSER_CONNECTION_MODES = frozenset({"local-launch", "cdp-attach", "extension"})
+# browser-use resolves a channel name to the installed browser itself. Loom only
+# maps its own user-facing engine choice onto that vocabulary; "system" keeps
+# browser-use's default so an unusual install is not forced onto a missing build.
+_BROWSER_ENGINE_CHANNELS = {"edge": "msedge", "chrome": "chrome"}
+
+
+def _browser_channel_for_engine(engine: str) -> str:
+    return _BROWSER_ENGINE_CHANNELS.get(str(engine or "").strip().casefold(), "")
 
 
 _SENSITIVE_QUERY_KEY = re.compile(
@@ -352,14 +364,64 @@ class BrowserRuntime(WebSearchRuntime):
         # browser-specific secret scrubbing in front of that durable boundary.
         self.platform = _BrowserSecretBoundaryPlatform(self.platform)
 
-        factory = browser_backend_factory
-        backend_name = "custom" if factory is not None else "disabled"
+        self.browser_headless = bool(browser_headless)
+        self.browser_allowed_domains = tuple(str(item) for item in browser_allowed_domains)
+        self.browser_security_policy = browser_security_policy or BrowserSecurityPolicy()
+        # Remember how this runtime was constructed so a later connection change
+        # can rebuild the backend from the same starting point instead of
+        # inheriting whatever the previous mode happened to leave behind.
+        self._browser_custom_factory = browser_backend_factory
+        self._browser_auto_configure = bool(auto_configure_browser)
+        self._browser_engine = ""
+        self._browser_connection_configured = False
+        # The user's standing choice, kept apart from browser_profile_persistence,
+        # which is a per-mode derived fact: cdp-attach and extension drive a browser
+        # that owns its own profile, so they always report no Loom profile. Reading
+        # the preference back out of that derived flag made a round trip through
+        # either mode silently downgrade local-launch to an ephemeral profile.
+        self._browser_persist_preference = bool(browser_persist_profile)
+
         explicit_cdp = browser_cdp_url is not None
         configured_cdp = browser_cdp_url
-        if configured_cdp is None and factory is None and auto_configure_browser:
+        if configured_cdp is None and browser_backend_factory is None and auto_configure_browser:
             configured_cdp = os.environ.get("LOOM_BROWSER_CDP_URL")
-        cdp_url = _validate_local_cdp_url(str(configured_cdp or ""))
-        extension_requested = factory is None and auto_configure_browser and _extension_backend_requested()
+        if explicit_cdp and not str(configured_cdp or "").strip():
+            raise ValueError("browser_cdp_url must not be empty")
+
+        self._configure_browser_connection(
+            cdp_url=str(configured_cdp or ""),
+            extension=browser_backend_factory is None
+            and auto_configure_browser
+            and _extension_backend_requested(),
+            persist_profile=bool(browser_persist_profile),
+            profile_dir=browser_profile_dir,
+        )
+
+    def _configure_browser_connection(
+        self,
+        *,
+        cdp_url: str,
+        extension: bool,
+        persist_profile: bool,
+        profile_dir: str | Path | None,
+        engine: str = "",
+    ) -> None:
+        """Build the browser backend, session store and mode-specific tools.
+
+        Loom supports three ways to reach a browser - launching its own, attaching
+        to a local CDP endpoint, and driving the user's current tab through the
+        extension bridge - and they differ in profile ownership, tab filtering and
+        what browser_open should tell the model. All of that is derived here so the
+        desktop can switch modes without rebuilding the whole runtime stack.
+        """
+
+        factory = self._browser_custom_factory
+        auto_configure_browser = self._browser_auto_configure
+        browser_profile_dir = profile_dir
+        browser_persist_profile = bool(persist_profile)
+        backend_name = "custom" if factory is not None else "disabled"
+        cdp_url = _validate_local_cdp_url(str(cdp_url or ""))
+        extension_requested = bool(extension) and factory is None and auto_configure_browser
         if extension_requested and cdp_url:
             raise ValueError("LOOM_BROWSER_BACKEND=extension cannot be combined with browser_cdp_url/LOOM_BROWSER_CDP_URL")
         if cdp_url and factory is not None:
@@ -368,8 +430,6 @@ class BrowserRuntime(WebSearchRuntime):
             raise ValueError("browser_cdp_url cannot be combined with browser_profile_dir")
         if cdp_url and not auto_configure_browser:
             raise ValueError("browser_cdp_url requires auto_configure_browser=True")
-        if explicit_cdp and not cdp_url:
-            raise ValueError("browser_cdp_url must not be empty")
 
         profile_dir: Path | None = None
         profile_persistence = False
@@ -397,10 +457,13 @@ class BrowserRuntime(WebSearchRuntime):
                 profile_dir = _prepare_profile_dir(configured)
                 profile_persistence = True
 
+            channel = _browser_channel_for_engine(engine)
+
             def build_browser_use_backend(options: BrowserLaunchOptions):
                 backend = BrowserUseSessionBackend(options=options)
                 backend.user_data_dir = profile_dir
                 backend.cdp_url = cdp_url or None
+                backend.browser_channel = channel
                 return backend
 
             factory = build_browser_use_backend
@@ -409,9 +472,7 @@ class BrowserRuntime(WebSearchRuntime):
             raise RuntimeError("browser_cdp_url requires the browser-use extra")
 
         self.browser_backend_name = backend_name
-        self.browser_headless = bool(browser_headless)
-        self.browser_allowed_domains = tuple(str(item) for item in browser_allowed_domains)
-        self.browser_security_policy = browser_security_policy or BrowserSecurityPolicy()
+        self._browser_engine = str(engine or "")
         self.browser_profile_persistence = profile_persistence
         self.browser_profile_dir = profile_dir
         self.browser_cdp_attached = cdp_attached
@@ -468,8 +529,89 @@ class BrowserRuntime(WebSearchRuntime):
                         "can restrict the session. No browser-profile filesystem path or cookie value is exposed to the model."
                     ),
                 )
-            if self.tools.get(tool.name) is None:
+            existing = self.tools.get(tool.name)
+            if existing is None:
                 self.tools.register(tool)
+            elif self._browser_connection_configured and existing.description != tool.description:
+                # browser_open's description is the only place the model learns
+                # which browser it is about to drive. A mode switch has to rewrite
+                # it, or the model keeps being told it is opening an ephemeral
+                # browser while it is really steering the user's own tabs. The
+                # registry has no in-place update, so rebuild it around the change
+                # and keep every other tool's exposure exactly as it was.
+                self.tools = ToolRegistry(
+                    tuple(
+                        tool if candidate.name == tool.name else candidate
+                        for candidate in self.tools.all()
+                    )
+                )
+        self._browser_connection_configured = True
+
+    @property
+    def browser_connection_mode(self) -> str:
+        if self.browser_extension_attached:
+            return "extension"
+        if self.browser_cdp_attached:
+            return "cdp-attach"
+        if self.browser_sessions is None:
+            return "disabled"
+        return "local-launch"
+
+    def browser_set_connection(
+        self,
+        mode: str,
+        *,
+        cdp_url: str = "",
+        persist_profile: bool | None = None,
+        engine: str = "",
+    ) -> dict[str, object]:
+        """Switch which browser Loom drives, closing whatever it drove before.
+
+        Changing modes mid-task would leave the model holding browser_ids and
+        element indexes that belong to a browser it no longer controls, so the
+        caller has to settle active sessions first.
+        """
+
+        requested = str(mode or "").strip().casefold()
+        if requested not in _BROWSER_CONNECTION_MODES:
+            raise ValueError(
+                "browser connection mode must be one of: "
+                + ", ".join(sorted(_BROWSER_CONNECTION_MODES))
+            )
+        if self._browser_custom_factory is not None:
+            raise RuntimeError("a custom browser backend factory owns this runtime's browser connection")
+        if not self._browser_auto_configure:
+            raise RuntimeError("browser auto-configuration is disabled for this runtime")
+
+        store = self.browser_sessions
+        if store is not None and store.active_count():
+            raise RuntimeError("close the active browser session before changing the browser connection")
+
+        endpoint = str(cdp_url or "").strip()
+        if requested == "cdp-attach" and not endpoint:
+            raise ValueError("cdp-attach requires a loopback CDP URL")
+        if requested != "cdp-attach":
+            endpoint = ""
+
+        previous_bridge = self.browser_extension_bridge
+        if persist_profile is not None:
+            self._browser_persist_preference = bool(persist_profile)
+        persist = self._browser_persist_preference
+        self._configure_browser_connection(
+            cdp_url=endpoint,
+            extension=requested == "extension",
+            persist_profile=persist,
+            profile_dir=None,
+            engine=str(engine or self._browser_engine),
+        )
+        if previous_bridge is not None and previous_bridge is not self.browser_extension_bridge:
+            try:
+                previous_bridge.stop()
+            except Exception:
+                # A bridge that cannot be stopped must not strand the runtime in
+                # the old mode; the new backend is already installed.
+                pass
+        return self.browser_status()
 
     def browser_status(self, owner_session_id: str | None = None) -> dict[str, object]:
         store = self.browser_sessions

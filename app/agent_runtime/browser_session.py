@@ -303,6 +303,16 @@ class BrowserSessionManager:
         items.sort(key=lambda item: (item.created_at, item.browser_id))
         return tuple(item.snapshot() for item in items)
 
+    def active_count(self) -> int:
+        """Live sessions across every owner.
+
+        Reconfiguring the browser connection has to know whether any model still
+        holds a browser_id, which is not answerable from a single owner's list.
+        """
+
+        with self._lock:
+            return len(self._sessions)
+
     def state(self, owner_session_id: str, browser_id: str) -> BrowserPageState:
         item = self._owned(owner_session_id, browser_id)
         state = item.backend.state()

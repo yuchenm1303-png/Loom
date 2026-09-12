@@ -55,6 +55,8 @@ DEFAULT_SETTINGS: dict[str, Any] = {
         "preserveBackgroundProcesses": True,
     },
     "browser": {
+        "mode": "local-launch",
+        "cdpUrl": "",
         "preferredEngine": "edge",
         "persistSessions": True,
     },
@@ -100,6 +102,10 @@ _ALLOWED_SETTING_PATHS: dict[str, tuple[type, Any]] = {
     "terminal.encoding": (str, {"utf-8", "system"}),
     "terminal.commandTimeoutSeconds": (int, range(15, 1801)),
     "terminal.preserveBackgroundProcesses": (bool, None),
+    "browser.mode": (str, {"local-launch", "cdp-attach", "extension"}),
+    # Validated properly by the runtime, which is the only place that knows the
+    # loopback rule. Storing it is not the same as accepting it.
+    "browser.cdpUrl": (str, None),
     "browser.preferredEngine": (str, {"edge", "chrome", "system"}),
     "browser.persistSessions": (bool, None),
     "computer.verifyActions": (bool, None),
@@ -111,6 +117,11 @@ _ALLOWED_SETTING_PATHS: dict[str, tuple[type, Any]] = {
     "privacy.telemetry": (bool, None),
     "privacy.crashReports": (bool, None),
 }
+
+# Empty is a meaningful value for these: clearing the CDP endpoint is how the user
+# says "no external browser", and rejecting it would strand a stale address in the
+# stored settings after a switch back to local-launch.
+_CLEARABLE_SETTING_PATHS = frozenset({"browser.cdpUrl"})
 
 
 class LoomSettingsStore:
@@ -140,6 +151,17 @@ class LoomSettingsStore:
         capabilities[key] = bool(enabled)
         data["capabilities"] = capabilities
         self._write(data)
+        return self.snapshot()
+
+    def replace(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Write back a previously read snapshot.
+
+        A setting that the runtime then refuses to honour must not stay on disk,
+        or the settings page would keep showing a browser connection that Loom is
+        not actually using.
+        """
+
+        self._write(self._normalize(dict(data)))
         return self.snapshot()
 
     def set_value(self, path: str, value: Any) -> dict[str, Any]:
@@ -176,8 +198,10 @@ class LoomSettingsStore:
             raise ValueError(f"invalid value type for setting {path}")
         if expected_type is str:
             value = value.strip()
-            if not value:
+            if not value and path not in _CLEARABLE_SETTING_PATHS:
                 raise ValueError(f"setting {path} cannot be empty")
+            if path == "browser.cdpUrl":
+                return value[:2000]
             if path == "appearance.codeFont":
                 return value[:120]
             if path.startswith("shortcuts."):
