@@ -3,7 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Callable, TextIO
 
-from app.agent_runtime import AgentStatus, PermissionMode
+from app.ai import AIMessage, MessageRole
+from app.agent_runtime import AgentEventKind, AgentStatus, PermissionMode
 from app.agent_runtime.storage import utc_now
 from app.projects import ProjectStoreError
 
@@ -15,8 +16,117 @@ from .app_server_reasoning import (
 )
 
 
+_PROJECT_CONTEXT_MESSAGE_NAME = "loom_registered_project_instructions"
+_TERMINAL_TURN_KINDS = {
+    AgentEventKind.TURN_COMPLETED,
+    AgentEventKind.TURN_FAILED,
+    AgentEventKind.TURN_CANCELLED,
+    AgentEventKind.TURN_INTERRUPTED,
+    AgentEventKind.LIMIT_REACHED,
+}
+
+
 class ProjectMovableLoomAppServerService(ReasoningManagedLoomAppServerService):
     """Project placement plus product-facing Memory v2 management."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        self._project_instruction_context_snapshots: dict[str, str] = {}
+        super().__init__(*args, **kwargs)
+        self._install_project_instruction_context()
+
+    def _install_project_instruction_context(self) -> None:
+        """Inject durable project instructions at model-request time.
+
+        The Agent Runtime owns the durable conversation history, so project
+        settings should not be written into ``session.system_prompt`` or old
+        messages. Wrapping the request builder keeps project Instructions live:
+        edits apply to the next turn, while the snapshot captured when a turn
+        starts protects an already-running turn from mid-run settings changes.
+        """
+
+        base_prepare = getattr(self.runtime, "_loom_base_prepare_model_request", None)
+        if not callable(base_prepare):
+            base_prepare = getattr(self.runtime, "_prepare_model_request", None)
+            if not callable(base_prepare):
+                return
+            setattr(self.runtime, "_loom_base_prepare_model_request", base_prepare)
+
+        def prepare_with_project_context(session: Any, step: Any, token: Any) -> Any:
+            prepared = base_prepare(session, step, token)
+            if not isinstance(prepared, tuple) or len(prepared) != 2:
+                return prepared
+            messages, request_options = prepared
+            return self._inject_project_instruction_message(session, messages), request_options
+
+        setattr(self.runtime, "_prepare_model_request", prepare_with_project_context)
+
+    def _project_instruction_context(self, session: Any) -> str:
+        project_id = self._resolved_project_id(session)
+        if not project_id:
+            return ""
+        try:
+            project = self.projects.get(project_id)
+        except (KeyError, ProjectStoreError):
+            return ""
+        instructions = str(getattr(project, "instructions", "") or "").strip()
+        if not instructions:
+            return ""
+        return (
+            "Loom Project Instructions\n"
+            f"Project: {project.name}\n"
+            f"Project root: {project.root}\n\n"
+            "The following instructions come from this Loom project's settings. "
+            "Apply them to tasks in this project. If the current user request conflicts with them, "
+            "ask for clarification instead of silently ignoring the project instructions.\n\n"
+            f"{instructions}"
+        )
+
+    def _project_instruction_context_for_request(self, session: Any) -> str:
+        with self._guard:
+            has_snapshot = session.session_id in self._project_instruction_context_snapshots
+            snapshot = self._project_instruction_context_snapshots.get(session.session_id, "")
+        if has_snapshot:
+            return snapshot
+        return self._project_instruction_context(session)
+
+    def _snapshot_project_instruction_context(self, session: Any) -> None:
+        context = self._project_instruction_context(session)
+        with self._guard:
+            self._project_instruction_context_snapshots[session.session_id] = context
+
+    def _inject_project_instruction_message(self, session: Any, messages: Any) -> list[Any]:
+        context = self._project_instruction_context_for_request(session)
+        cleaned = [
+            message
+            for message in list(messages or [])
+            if str(getattr(message, "name", "") or "") != _PROJECT_CONTEXT_MESSAGE_NAME
+        ]
+        if not context:
+            return cleaned
+
+        project_message = AIMessage(
+            role=MessageRole.SYSTEM,
+            name=_PROJECT_CONTEXT_MESSAGE_NAME,
+            content=context,
+        )
+        for index, message in enumerate(cleaned):
+            if getattr(message, "role", None) != MessageRole.SYSTEM:
+                return [*cleaned[:index], project_message, *cleaned[index:]]
+        return [*cleaned, project_message]
+
+    def turn_start(self, params: dict[str, Any]) -> dict[str, Any]:
+        thread_id = str(params.get("threadId") or "").strip()
+        if thread_id:
+            self._snapshot_project_instruction_context(self._session_or_rpc_error(thread_id))
+        return super().turn_start(params)
+
+    def _on_runtime_event(self, event: Any) -> None:
+        try:
+            super()._on_runtime_event(event)
+        finally:
+            if event.kind in _TERMINAL_TURN_KINDS:
+                with self._guard:
+                    self._project_instruction_context_snapshots.pop(event.session_id, None)
 
     def _sync_runtime_settings(self, snapshot: dict[str, Any] | None = None) -> dict[str, Any]:
         current = super()._sync_runtime_settings(snapshot)
