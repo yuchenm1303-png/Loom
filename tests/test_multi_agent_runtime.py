@@ -1,4 +1,5 @@
 from __future__ import annotations
+from conftest import without_stickers
 
 import json
 import threading
@@ -107,7 +108,7 @@ def test_model_can_spawn_wait_and_receive_independent_child_result(tmp_path):
     result = runtime.start_turn(parent.session_id, "Delegate this work")
 
     assert result.status is AgentStatus.COMPLETED
-    assert result.final_text == "parent-result: child completed"
+    assert without_stickers(result.final_text) == "parent-result: child completed"
     tree = runtime.agent_control.list_tree(parent.session_id, include_closed=False)
     assert len(tree) == 1
     child_snapshot = tree[0]

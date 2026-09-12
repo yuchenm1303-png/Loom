@@ -183,7 +183,14 @@ def test_restart_backlog_processes_completed_unextracted_turn(tmp_path):
     status = runtime2.memory_status(session.session_id)
     assert status["auto_extract"] is True
 
+    # Extraction stores the memory first and marks the thread afterwards, so the
+    # durable state is what this assertion has to wait for. Waiting on the count
+    # alone let the read land between those two writes.
     _wait_until(lambda: runtime2.memory_store.counts(workspace=workspace)["total"] == 1)
+    _wait_until(
+        lambda: runtime2.memory_store.thread_state(session.session_id).last_turn_id
+        == result.turn_id
+    )
     state = runtime2.memory_store.thread_state(session.session_id)
     assert state.last_turn_id == result.turn_id
     assert len(platform2.requests) == 1
