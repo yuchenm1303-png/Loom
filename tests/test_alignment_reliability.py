@@ -191,6 +191,37 @@ def test_dangling_terminal_response_is_retried_without_poisoning_history(tmp_pat
     runtime.close()
 
 
+def test_minimax_textual_tool_protocol_is_retried_as_native_tool_call(tmp_path):
+    malformed = (
+        "让我验证：]<]minimax[>[<tool_call>\n"
+        "]<]minimax[>[<invoke name=\"echo\">]<]minimax[>[<value>ok</value>\n"
+        "]<]minimax[>[</invoke>\n]<]minimax[>[</tool_call>"
+    )
+    calls = []
+    platform = Scripted([
+        ModelResponse(text=malformed, finish_reason="stop"),
+        ModelResponse(tool_calls=(ToolCall("call", "echo", {"value": "ok"}),),
+            finish_reason="tool_calls"),
+        ModelResponse(text="验证完成。", finish_reason="stop"),
+    ])
+    tool = AgentTool("echo", "echo", {"type": "object"},
+        lambda c, a: calls.append(a["value"]) or ToolResult(True, a["value"]))
+    runtime = make_runtime(tmp_path, platform, [tool])
+    session = runtime.create_session("agent.fast")
+
+    result = runtime.start_turn(session.session_id, "验证")
+
+    assert result.status is AgentStatus.COMPLETED
+    assert result.final_text == "验证完成。"
+    assert calls == ["ok"]
+    assert all(malformed not in str(message.content)
+        for message in runtime.store.load(session.session_id).messages)
+    rejected = [event for event in runtime.store.events(session.session_id)
+        if event.kind.value == "model_response_rejected"]
+    assert rejected[-1].data["reason"] == "serialized_tool_call_text"
+    runtime.close()
+
+
 def test_repeated_invalid_terminal_response_fails_with_diagnostic(tmp_path):
     runtime = make_runtime(
         tmp_path,

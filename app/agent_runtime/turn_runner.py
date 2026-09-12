@@ -21,6 +21,10 @@ def _exposed_tool_names(step) -> tuple[str, ...]:
 _COMPLETE_FINISH_REASONS = {"", "stop", "tool_calls", "function_call", "completed", "end_turn"}
 _COMPLETE_THINK_BLOCK_RE = re.compile(r"<think>.*?</think>", re.IGNORECASE | re.DOTALL)
 _DANGLING_TERMINAL_RE = re.compile(r"(?:\[|\{|<tool_call>|```(?:json)?)\s*$", re.IGNORECASE)
+_SERIALIZED_TOOL_PROTOCOL_RE = re.compile(
+    r"(?:<tool_call\b|</tool_call>|<invoke\s+name\s*=|\]\s*<\]\s*minimax\s*\[>\s*\[<)",
+    re.IGNORECASE,
+)
 _INLINE_STICKER_RE = re.compile(r"\[\[AI_LEDGER_INLINE_STICKER:[a-z0-9_]{2,48}\]\]", re.I)
 _TERMINAL_RECOVERY_INSTRUCTION = (
     "Your previous response was rejected because it was empty, malformed (including invalid native tool-call "
@@ -52,6 +56,8 @@ def _invalid_terminal_response(response: ModelResponse) -> str:
     visible = _COMPLETE_THINK_BLOCK_RE.sub("", raw).strip()
     if raw.strip() and not visible:
         return "reasoning_without_visible_answer"
+    if _SERIALIZED_TOOL_PROTOCOL_RE.search(visible):
+        return "serialized_tool_call_text"
     if _DANGLING_TERMINAL_RE.search(visible):
         return "dangling_serialized_structure"
     if visible.count("```") % 2:
