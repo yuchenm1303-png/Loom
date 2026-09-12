@@ -24,6 +24,12 @@ _TARGET_MODULE = "app.app_server_project_move"
 _INSTALLED = False
 
 
+def _json_rpc_error_cls() -> type[Exception]:
+    module = sys.modules.get(_TARGET_MODULE)
+    error_cls = getattr(module, "JsonRpcError", RuntimeError) if module is not None else RuntimeError
+    return error_cls if isinstance(error_cls, type) else RuntimeError
+
+
 def _safe_git_path(value: Any) -> str:
     text = str(value or "").replace("\\", "/").strip()
     if not text:
@@ -80,12 +86,13 @@ def _root_or_rpc_error(service: Any, project_id: str) -> tuple[Any, Path]:
     if hasattr(service, "_project_root_or_error"):
         return service._project_root_or_error(project_id)
 
+    JsonRpcError = _json_rpc_error_cls()
     try:
         project = service.projects.get(project_id)
     except KeyError as exc:
-        raise service.JsonRpcError(-32004, "project not found") from exc  # type: ignore[attr-defined]
+        raise JsonRpcError(-32004, "project not found") from exc
     except ProjectStoreError as exc:
-        raise service.JsonRpcError(-32028, f"could not read project registry: {exc}") from exc  # type: ignore[attr-defined]
+        raise JsonRpcError(-32028, f"could not read project registry: {exc}") from exc
 
     root = Path(project.root).expanduser()
     try:
@@ -118,7 +125,7 @@ def _git_status(service: Any, root: Path) -> dict[str, Any]:
 
 
 def _validate_project_repo(service: Any, params: dict[str, Any]) -> tuple[Any, Path, str]:
-    JsonRpcError = getattr(sys.modules[_TARGET_MODULE], "JsonRpcError")
+    JsonRpcError = _json_rpc_error_cls()
     project_id = service._required_text(params, "projectId")
     project, root = _root_or_rpc_error(service, project_id)
     if not root.exists():
