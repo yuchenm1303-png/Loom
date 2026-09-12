@@ -6,7 +6,7 @@ from typing import Any
 
 from .contracts import ChatRequest, ModelUsage, StreamEvent, StreamEventKind
 from .errors import AITransportError
-from .execution_control import current_control, check_cancelled, ModelCancelled
+from .execution_control import ModelCancelled, check_cancelled, current_control
 from .openai_runtime import OpenAIChatBackend, _retryable_provider_error, _usage_from
 from .provider_catalog import ProviderAdapter
 
@@ -14,10 +14,9 @@ from .provider_catalog import ProviderAdapter
 class OpenAIStreamingChatBackend(OpenAIChatBackend):
     """OpenAI Chat backend with end-to-end stream completion metadata.
 
-    Text and tool arguments are yielded as provider deltas. Token usage is
-    requested with the OpenAI ``stream_options.include_usage`` contract and kept
-    in thread-local completion metadata so the final canonical ModelResponse can
-    still be committed atomically by the runtime.
+    Text and tool arguments are yielded as provider deltas. Provider-private
+    reasoning continuity is retained only for models whose catalog explicitly
+    requires replay and is never exposed as a public stream event.
     """
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
@@ -37,11 +36,6 @@ class OpenAIStreamingChatBackend(OpenAIChatBackend):
         try:
             return self._create(stream_kwargs)
         except AITransportError as exc:
-            # Some OpenAI-compatible endpoints reject ``stream_options`` with an
-            # ordinary provider error instead of a precise unsupported-field
-            # response. Retry once without usage metadata before failing the
-            # whole turn so MiniMax/relays are not taken down by fragile
-            # compatibility around optional stream accounting.
             message = str(exc).casefold()
             compatible = self.connection.adapter is ProviderAdapter.OPENAI_COMPATIBLE
             retry_without_usage = any(
@@ -77,6 +71,8 @@ class OpenAIStreamingChatBackend(OpenAIChatBackend):
         response_id = ""
         chunk_count = 0
         reasoning_char_count = 0
+        reasoning_parts: list[str] = []
+        retain_reasoning = self._replays_reasoning_content()
         try:
             for chunk in stream:
                 check_cancelled()
@@ -89,19 +85,16 @@ class OpenAIStreamingChatBackend(OpenAIChatBackend):
 
                 choices = getattr(chunk, "choices", None) or ()
                 if not choices:
-                    # With include_usage the final OpenAI-compatible chunk has
-                    # no choices and carries only token accounting.
                     continue
                 choice = choices[0]
                 delta = getattr(choice, "delta", None)
                 if delta is not None:
-                    # Deliberately expose only public assistant content. Provider
-                    # reasoning_content / hidden reasoning fields are ignored,
-                    # but retain a length-only diagnostic so a reasoning-only
-                    # completion can be distinguished from a truly empty stream.
-                    reasoning = getattr(delta, "reasoning_content", None)
-                    if reasoning is not None:
-                        reasoning_char_count += len(str(reasoning))
+                    raw_reasoning = getattr(delta, "reasoning_content", None)
+                    if raw_reasoning is not None:
+                        reasoning_piece = str(raw_reasoning)
+                        reasoning_char_count += len(reasoning_piece)
+                        if retain_reasoning and reasoning_piece:
+                            reasoning_parts.append(reasoning_piece)
                     text = str(getattr(delta, "content", "") or "")
                     if text:
                         yield StreamEvent(kind=StreamEventKind.TEXT_DELTA, text_delta=text)
@@ -126,6 +119,7 @@ class OpenAIStreamingChatBackend(OpenAIChatBackend):
                 "finish_reason": finish_reason,
                 "response_id": response_id,
                 "reasoning_char_count": reasoning_char_count,
+                "reasoning_content": "".join(reasoning_parts),
                 "chunk_count": chunk_count,
             }
             yield StreamEvent(
