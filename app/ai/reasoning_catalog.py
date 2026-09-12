@@ -73,6 +73,22 @@ def _deepseek_model_spec(model_key: str) -> tuple[str, tuple[str, ...], str] | N
     return None
 
 
+def requires_reasoning_content_replay(*, model: str, adapter: str, base_url: str = "") -> bool:
+    """Whether tool-bearing chat requests must replay provider reasoning state.
+
+    DeepSeek V4 Chat Completions requires every prior assistant
+    ``reasoning_content`` value to be sent back whenever ``tools`` is present.
+    Keep this provider quirk behind the model catalog rather than leaking it into
+    the provider-neutral runtime or applying it to OpenAI models that do not use
+    this wire field.
+    """
+
+    adapter_key = str(adapter or "").strip().casefold()
+    if adapter_key not in {"openai", "openai-compatible"}:
+        return False
+    return _deepseek_model_spec(str(model or "").strip().casefold()) is not None
+
+
 def _openai_model_spec(model_key: str) -> tuple[str, tuple[str, ...], str] | None:
     """Return Loom's conservative public-API reasoning spec for a known model.
 
@@ -91,9 +107,6 @@ def _openai_model_spec(model_key: str) -> tuple[str, tuple[str, ...], str] | Non
             "OpenAI GPT-6 Astra API",
         )
 
-    # GPT-5.6 Sol/Terra/Luna and the gpt-5.6 alias share the same public effort
-    # surface. Loom keeps Codex's lower product default while still advertising
-    # the exact API-valid values.
     if model_key.startswith("gpt-5.6"):
         return (
             "low",
@@ -123,9 +136,6 @@ def _openai_model_spec(model_key: str) -> tuple[str, tuple[str, ...], str] | Non
         )
 
     if model_key.startswith("gpt-5.4"):
-        # Codex currently defaults GPT-5.4 to medium even though the public API
-        # itself defaults to none. Preserve the Codex-like product default while
-        # keeping the supported set API-accurate.
         return (
             "medium",
             ("none", "low", "medium", "high", "xhigh"),
@@ -153,8 +163,6 @@ def _openai_model_spec(model_key: str) -> tuple[str, tuple[str, ...], str] | Non
             "OpenAI GPT-5.1 API",
         )
 
-    # GPT-5 Pro is intentionally checked before the generic GPT-5 snapshot
-    # matcher below. The Pro model only accepts high reasoning effort.
     if model_key.startswith("gpt-5-pro"):
         return (
             "high",
@@ -174,8 +182,6 @@ def _openai_model_spec(model_key: str) -> tuple[str, tuple[str, ...], str] | Non
             "OpenAI GPT-5 API",
         )
 
-    # Earlier o-series public APIs use the conventional low/medium/high effort
-    # surface. Do not invent xhigh/max for these families.
     if model_key.startswith(("o1", "o3", "o4")):
         return (
             "medium",
@@ -187,14 +193,7 @@ def _openai_model_spec(model_key: str) -> tuple[str, tuple[str, ...], str] | Non
 
 
 def reasoning_capability(*, model: str, adapter: str, base_url: str = "") -> dict[str, Any] | None:
-    """Return safe UI metadata for reasoning controls supported by a model.
-
-    The shape follows Codex's model-catalog pattern: each model advertises its
-    supported choices and one default. Known third-party Codex catalogs (for
-    example DeepSeek V4) are represented here too, so OpenAI-compatible models
-    do not lose their reasoning picker merely because they are not OpenAI models.
-    Unknown providers remain conservative until Loom has authoritative metadata.
-    """
+    """Return safe UI metadata for reasoning controls supported by a model."""
 
     model_key = str(model or "").strip().casefold()
     adapter_key = str(adapter or "").strip().casefold()
@@ -243,15 +242,7 @@ def resolve_reasoning_wire_value(
     base_url: str,
     reasoning: ReasoningRequest,
 ) -> str:
-    """Resolve a normalized selection to a transport-safe provider value.
-
-    Codex-level aliases are retained in Loom's normalized type for forward
-    compatibility, but they are not blindly copied onto Chat Completions.
-    ``ultra`` degrades to the strongest effort the current model really supports.
-    ``persistent`` is a Responses/configuration-update concept, so on Loom's
-    current Chat Completions transport stale state falls back to the model
-    default instead of emitting Codex's internal ``disabled`` wire value.
-    """
+    """Resolve a normalized selection to a transport-safe provider value."""
 
     if reasoning.kind is not ReasoningKind.OPENAI_EFFORT:
         return reasoning.value
@@ -289,4 +280,9 @@ def resolved_reasoning(
     return capability, selected
 
 
-__all__ = ["reasoning_capability", "resolve_reasoning_wire_value", "resolved_reasoning"]
+__all__ = [
+    "reasoning_capability",
+    "requires_reasoning_content_replay",
+    "resolve_reasoning_wire_value",
+    "resolved_reasoning",
+]
