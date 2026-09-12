@@ -61,6 +61,8 @@ def _message_to_dict(message: AIMessage) -> dict[str, Any]:
     }
     if message.reasoning_content:
         payload["_provider_reasoning_content"] = message.reasoning_content
+    if message.provider_state:
+        payload["_provider_state"] = [dict(item) for item in message.provider_state]
     return payload
 
 
@@ -97,6 +99,11 @@ def _message_from_dict(payload: dict[str, Any]) -> AIMessage:
             if isinstance(item, dict)
         ),
         reasoning_content=str(payload.get("_provider_reasoning_content") or ""),
+        provider_state=tuple(
+            dict(item)
+            for item in payload.get("_provider_state", [])
+            if isinstance(item, dict)
+        ),
     )
 
 
