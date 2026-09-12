@@ -1,0 +1,196 @@
+.project-agent-files-card {
+  border-radius: 18px;
+  padding: 13px;
+  margin-bottom: 12px;
+  border: 1px solid rgba(255, 255, 255, .075);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, .045), rgba(255, 255, 255, .018)),
+    rgba(14, 16, 22, .76);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .045);
+}
+
+.project-agent-files-help {
+  margin: 0 0 10px;
+  color: #9aa2b2;
+  font-size: 12.5px;
+  line-height: 19px;
+}
+
+.project-agent-files-warning {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 82, 107, .2);
+  color: #ffd1da;
+  background: rgba(255, 82, 107, .075);
+  font-size: 11.5px;
+  line-height: 17px;
+}
+
+.project-agent-file-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin-bottom: 9px;
+}
+
+.project-agent-file-tabs > button {
+  min-width: 0;
+  min-height: 34px;
+  appearance: none;
+  border: 1px solid rgba(255,255,255,.065);
+  border-radius: 11px;
+  padding: 6px 7px;
+  display: grid;
+  grid-template-columns: 15px minmax(0, 1fr);
+  grid-template-areas:
+    "icon name"
+    "icon meta";
+  align-items: center;
+  gap: 1px 6px;
+  background: rgba(255,255,255,.024);
+  color: #cfd5df;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 130ms ease, background 130ms ease, transform 130ms ease, color 130ms ease;
+}
+
+.project-agent-file-tabs > button:hover,
+.project-agent-file-tabs > button.active {
+  color: #f2f3f7;
+  border-color: rgba(169, 157, 255, .22);
+  background: rgba(139, 124, 246, .09);
+  transform: translateY(-1px);
+}
+
+.project-agent-file-tabs svg {
+  grid-area: icon;
+  color: #a59cff;
+}
+
+.project-agent-file-tabs span {
+  grid-area: name;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11.5px;
+  font-weight: 710;
+}
+
+.project-agent-file-tabs small {
+  grid-area: meta;
+  min-width: 0;
+  color: #747d8d;
+  font-size: 10px;
+  line-height: 12px;
+}
+
+.project-agent-file-tabs small.exists {
+  color: var(--success-strong, #21ff87);
+}
+
+.project-agent-file-tabs small.missing {
+  color: #6c7482;
+}
+
+.project-agent-file-empty-tabs {
+  grid-column: 1 / -1;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border-radius: 12px;
+  color: #858e9f;
+  background: rgba(255,255,255,.022);
+  font-size: 12px;
+}
+
+.project-agent-file-viewer {
+  min-height: 128px;
+  max-height: 260px;
+  overflow: auto;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,.06);
+  background: rgba(5, 7, 11, .42);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(169, 157, 255, .22) transparent;
+}
+
+.project-agent-file-meta {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  min-height: 32px;
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: #ccd2df;
+  background: rgba(12, 14, 20, .95);
+  border-bottom: 1px solid rgba(255,255,255,.055);
+}
+
+.project-agent-file-meta span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 720;
+}
+
+.project-agent-file-meta small {
+  flex: none;
+  color: #7e8796;
+  font-size: 10.5px;
+}
+
+.project-agent-file-viewer pre {
+  margin: 0;
+  padding: 11px 12px 13px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #d9dfeb;
+  font-family: var(--code-font, "JetBrains Mono", ui-monospace, SFMono-Regular, Consolas, monospace);
+  font-size: 11.4px;
+  line-height: 18px;
+}
+
+.project-agent-file-empty {
+  min-height: 128px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 6px;
+  padding: 18px;
+  color: #848d9e;
+  text-align: center;
+}
+
+.project-agent-file-empty svg {
+  color: #a59cff;
+  opacity: .82;
+}
+
+.project-agent-file-empty strong {
+  color: #cdd3df;
+  font-size: 12.5px;
+}
+
+.project-agent-file-empty span {
+  color: #7c8594;
+  font-size: 11.5px;
+}
+
+html[data-loom-reduced-motion="true"] .project-agent-file-tabs > button {
+  transition-duration: .001ms !important;
+}
+
+@media (max-width: 860px) {
+  .project-agent-file-tabs {
+    grid-template-columns: 1fr;
+  }
+}
