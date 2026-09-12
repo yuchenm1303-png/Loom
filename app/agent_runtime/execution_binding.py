@@ -5,7 +5,9 @@ import hashlib
 import json
 import marshal
 
+from .exec_policy import EXEC_POLICY_VERSION
 from .json_schema_semantics import validating_schema
+from .network_policy import NETWORK_POLICY_VERSION
 
 
 def binding_digest(step, tool, platform) -> str:
@@ -23,7 +25,11 @@ def binding_digest(step, tool, platform) -> str:
     function = getattr(handler, "__func__", handler)
     code = getattr(function, "__code__", None)
     payload = {
-        "version": 2,
+        "version": 3,
+        "policy_versions": {
+            "exec": EXEC_POLICY_VERSION,
+            "network": NETWORK_POLICY_VERSION,
+        },
         "workspace": step.world_state.workspace_dir,
         "profile": step.world_state.profile_id,
         "environment_policy": repr(step.environment_policy),
