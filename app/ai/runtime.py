@@ -6,6 +6,7 @@ from typing import Any
 from .capabilities import ModelCapability
 from .configuration import AIConfiguration
 from .credential_resolver import CredentialResolver
+from .openai_responses import OpenAIResponsesBackend
 from .openai_streaming import OpenAIStreamingChatBackend
 from .profiles import ModelProfile
 from .provider_catalog import ProviderAdapter, ProviderConnection
@@ -29,6 +30,11 @@ def build_ai_platform(
     stream-capable but starts with streaming disabled; Loom's top-level Runtime
     enables it so detached callers retain the legacy completion behavior.
 
+    Direct OpenAI connections use the Responses API. OpenAI-compatible relays
+    intentionally remain on Chat Completions because their protocol extensions
+    (for example DeepSeek and MiniMax thinking) are not interchangeable with the
+    native OpenAI Responses contract.
+
     Local in-process drivers sometimes need to reuse the same active model (for
     example the isolated Windows Computer Driver). A private connection snapshot
     is therefore attached to the live platform only. It may contain the resolved
@@ -51,10 +57,15 @@ def build_ai_platform(
             if client_factory is not None
             else None
         )
-        if connection.adapter in {
-            ProviderAdapter.OPENAI,
-            ProviderAdapter.OPENAI_COMPATIBLE,
-        }:
+        if connection.adapter is ProviderAdapter.OPENAI:
+            backend = OpenAIResponsesBackend(
+                connection=connection,
+                profile=profile,
+                api_key=secret,
+                client=client,
+                request_timeout_seconds=request_timeout_seconds,
+            )
+        elif connection.adapter is ProviderAdapter.OPENAI_COMPATIBLE:
             backend = OpenAIStreamingChatBackend(
                 connection=connection,
                 profile=profile,
