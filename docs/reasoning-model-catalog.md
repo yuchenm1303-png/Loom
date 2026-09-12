@@ -36,6 +36,8 @@ Namespaced relay ids such as `provider/example-reasoner` match the catalog slug 
 
 Loom also accepts the older field spelling `default_reasoning_effort` / `supported_reasoning_efforts`. Unknown future effort strings are preserved so a provider catalog can add a normal reasoning level without requiring a Loom source-code release.
 
+Provider-native reasoning protocols take precedence over generic catalog metadata. For example, MiniMax M3 keeps its native Direct / Adaptive thinking contract even if a `models.json` entry for `MiniMax-M3` incorrectly advertises OpenAI-style effort levels. This prevents an external catalog from changing the wire protocol for a model Loom already knows requires provider-specific parameters.
+
 `max` is treated as an advanced choice and requires an explicit selection in the desktop UI. `ultra` and `persistent` are currently filtered from external catalogs because Codex assigns them product/runtime semantics that Loom's Chat Completions transport does not yet implement completely. They should not be exposed as ordinary provider request values.
 
 If the catalog is missing or invalid, Loom fails closed: it falls back to bundled provider knowledge and does not invent reasoning support for an unknown model.
@@ -52,4 +54,4 @@ The same rules apply to namespaced ids such as `deepseek/deepseek-v4-pro`.
 
 For DeepSeek V4 Chat Completions, Loom also preserves the provider-private `reasoning_content` required for tool-call continuity. When a request contains tools, prior assistant reasoning state is replayed exactly as required by the provider. It is not emitted through Loom's public model-response events or streaming UI events.
 
-That continuation state can be stored inside the local `session.json` snapshot so a resumed thread can continue using tools correctly. It is stored under the internal `_provider_reasoning_content` key and the snapshot is written with user-only file permissions where the operating system supports them. Loom does not treat this provider state as user-visible assistant text, memory, or audit-event content.
+That continuation state can be stored inside the local `session.json` snapshot so a resumed thread can continue using tools correctly. It is stored under the internal `_provider_reasoning_content` key and Loom's atomic runtime JSON writes use user-only file permissions where the operating system supports them. The same protection applies to temporary atomic files and crash-recovery journal state, so provider-private reasoning is not briefly written through a more permissive staging file. Loom does not treat this provider state as user-visible assistant text, memory, or audit-event content.
