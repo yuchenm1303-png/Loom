@@ -290,6 +290,29 @@
   box-shadow: 0 0 0 3px rgba(255,113,130,.09);
 }
 
+/* Projects are the primary workspace entry. Keep them visually above ordinary
+   chats even when another sidebar stylesheet is loaded later in the bundle. */
+aside.sidebar.compact-sidebar .compact-thread-scroll {
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+aside.sidebar.compact-sidebar .compact-thread-scroll > section.project-section {
+  order: -20 !important;
+}
+
+aside.sidebar.compact-sidebar .compact-thread-scroll > section.recent-section {
+  order: 20 !important;
+}
+
+aside.sidebar.compact-sidebar .compact-thread-scroll > section.workspace-group {
+  order: 30 !important;
+}
+
+aside.sidebar.compact-sidebar .compact-thread-scroll > .compact-sidebar-empty {
+  order: 40 !important;
+}
+
 @keyframes thread-project-submenu-in {
   from {
     opacity: 0;
