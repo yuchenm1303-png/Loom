@@ -34,6 +34,7 @@ from .errors import (
     AIResponseError,
     AITransportError,
 )
+from .openai_responses import OpenAIResponsesBackend
 from .openai_runtime import OpenAIChatBackend
 from .openai_streaming import OpenAIStreamingChatBackend
 from .platform import AIPlatform, ChatModelBackend, StructuredModelBackend
@@ -90,6 +91,7 @@ __all__ = [
     "ModelRole",
     "ModelUsage",
     "OpenAIChatBackend",
+    "OpenAIResponsesBackend",
     "OpenAIStreamingChatBackend",
     "ProviderAdapter",
     "ProviderCatalog",
