@@ -40,6 +40,19 @@ def _snapshot_result(
 _MAX_EVAL_VALUE_CHARS = 30_000
 _DOWNLOADS_DIR = "browser-downloads"
 _SESSION_STATE_PATH = "browser-state/session.json"
+# CDP's Browser.PermissionType. Kept here so a typo fails with the valid names
+# instead of reaching the browser, which rejects the whole grant on one bad name.
+_CDP_PERMISSIONS = frozenset({
+    "ar", "audioCapture", "automaticFullscreen", "backgroundFetch", "backgroundSync",
+    "cameraPanTiltZoom", "capturedSurfaceControl", "clipboardReadWrite",
+    "clipboardSanitizedWrite", "displayCapture", "durableStorage", "geolocation",
+    "handTracking", "idleDetection", "keyboardLock", "localFonts", "localNetworkAccess",
+    "midi", "midiSysex", "nfc", "notifications", "paymentHandler",
+    "periodicBackgroundSync", "pointerLock", "protectedMediaIdentifier", "sensors",
+    "smartCard", "speakerSelection", "storageAccess", "topLevelStorageAccess",
+    "videoCapture", "vr", "wakeLockScreen", "wakeLockSystem", "webAppInstallation",
+    "webPrinting", "windowManagement",
+})
 
 
 def _bounded_json_value(value: Any) -> tuple[Any, bool]:
@@ -82,6 +95,74 @@ def _cookie_row(raw: Any, *, include_values: bool) -> dict[str, Any]:
     if include_values:
         row["value"] = str(item.get("value") or "")[:4000]
     return row
+
+
+def _validated_viewport(raw: Any) -> dict[str, Any] | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise ValueError("browser_emulate viewport must be an object")
+    try:
+        width = int(raw["width"])
+        height = int(raw["height"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError("browser_emulate viewport needs integer width and height") from exc
+    if not (1 <= width <= 10_000 and 1 <= height <= 10_000):
+        raise ValueError("browser_emulate viewport width and height must be within 1..10000")
+    scale = float(raw.get("device_scale_factor") or 1.0)
+    if not 0.1 <= scale <= 5.0:
+        raise ValueError("browser_emulate device_scale_factor must be within 0.1..5")
+    return {
+        "width": width,
+        "height": height,
+        "device_scale_factor": scale,
+        "mobile": bool(raw.get("mobile")),
+    }
+
+
+def _validated_geolocation(raw: Any) -> dict[str, Any] | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise ValueError("browser_emulate geolocation must be an object")
+    try:
+        latitude = float(raw["latitude"])
+        longitude = float(raw["longitude"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError("browser_emulate geolocation needs latitude and longitude") from exc
+    if not -90.0 <= latitude <= 90.0:
+        raise ValueError("browser_emulate latitude must be within -90..90")
+    if not -180.0 <= longitude <= 180.0:
+        raise ValueError("browser_emulate longitude must be within -180..180")
+    accuracy = float(raw.get("accuracy") or 100.0)
+    if accuracy < 0:
+        raise ValueError("browser_emulate accuracy must not be negative")
+    return {"latitude": latitude, "longitude": longitude, "accuracy": accuracy}
+
+
+def _validated_permissions(raw: Any) -> list[str]:
+    """Check permission names before sending them.
+
+    CDP rejects the whole grant when one name is unknown, so a typo would
+    silently leave every requested permission ungranted.
+    """
+
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        raise ValueError("browser_emulate grant_permissions must be an array")
+    names = [str(item or "").strip() for item in raw if str(item or "").strip()]
+    if len(names) > 37:
+        raise ValueError("browser_emulate grant_permissions has too many entries")
+    unknown = [name for name in names if name not in _CDP_PERMISSIONS]
+    if unknown:
+        raise ValueError(
+            "unknown browser permission(s): "
+            + ", ".join(sorted(unknown))
+            + ". Valid names include geolocation, notifications, camera, videoCapture, "
+            "audioCapture, clipboardReadWrite, midi."
+        )
+    return names
 
 
 def _store(runtime: "BrowserRuntime") -> "BrowserSessionStore":
@@ -486,6 +567,49 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
             ),
             data={"browser_id": browser_id, "action": "list", "cookies": rows,
                   "values_included": include_values},
+        )
+
+    def emulate(context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
+        context.raise_if_cancelled()
+        store = _store(runtime)
+        browser_id = str(arguments["browser_id"])
+        item = store._owned(context.session_id, browser_id)
+        runner = getattr(item.backend, "emulate", None)
+        if not callable(runner):
+            raise RuntimeError(
+                f"browser backend {item.backend.backend_name!r} does not support emulation"
+            )
+
+        viewport = _validated_viewport(arguments.get("viewport"))
+        geolocation = _validated_geolocation(arguments.get("geolocation"))
+        permissions = _validated_permissions(arguments.get("grant_permissions"))
+        user_agent = str(arguments.get("user_agent") or "").strip()
+        if len(user_agent) > 1000:
+            raise ValueError("browser_emulate user_agent exceeds 1,000 characters")
+        reset = bool(arguments.get("reset"))
+        if not any((viewport, geolocation, permissions, user_agent, reset)):
+            raise ValueError(
+                "browser_emulate needs viewport, user_agent, geolocation, grant_permissions, or reset"
+            )
+
+        outcome = dict(
+            runner(
+                viewport=viewport,
+                user_agent=user_agent,
+                geolocation=geolocation,
+                grant_permissions=permissions,
+                reset=reset,
+            )
+        )
+        snapshot = store.snapshot(context.session_id, browser_id, refresh=True)
+        return ToolResult(
+            ok=True,
+            content=(
+                "Applied: "
+                + ", ".join(outcome.get("applied") or ["nothing"])
+                + ". A page already loaded may not re-read these until it reloads."
+            ),
+            data={**snapshot.to_dict(), "applied": outcome.get("applied") or []},
         )
 
     def session_state(context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
@@ -1087,6 +1211,60 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
                     ("browser_id",),
                 ),
                 handler=cookies,
+                effect=sensitive,
+            ),
+            AgentTool(
+                name="browser_emulate",
+                description=(
+                    "Change what the page believes about its device and what it is allowed to do: "
+                    "viewport size and mobile flag for responsive layouts, user_agent for sites that "
+                    "gate on it, geolocation for sites that ask where you are, and grant_permissions "
+                    "to pre-approve prompts such as geolocation or notifications that would otherwise "
+                    "block. A page already loaded may not re-read these until it reloads. reset "
+                    "clears every override, including the viewport the browser backend set when it "
+                    "connected, so the page ends up at the real window size rather than back at "
+                    "whatever it reported before."
+                ),
+                input_schema=_schema(
+                    {
+                        "browser_id": _browser_id_schema(),
+                        "viewport": {
+                            "type": "object",
+                            "properties": {
+                                "width": {"type": "integer", "minimum": 1, "maximum": 10000},
+                                "height": {"type": "integer", "minimum": 1, "maximum": 10000},
+                                "device_scale_factor": {"type": "number", "minimum": 0.1, "maximum": 5},
+                                "mobile": {"type": "boolean"},
+                            },
+                            "required": ["width", "height"],
+                            "additionalProperties": False,
+                        },
+                        "user_agent": {"type": "string", "maxLength": 1000},
+                        "geolocation": {
+                            "type": "object",
+                            "properties": {
+                                "latitude": {"type": "number", "minimum": -90, "maximum": 90},
+                                "longitude": {"type": "number", "minimum": -180, "maximum": 180},
+                                "accuracy": {"type": "number", "minimum": 0},
+                            },
+                            "required": ["latitude", "longitude"],
+                            "additionalProperties": False,
+                        },
+                        "grant_permissions": {
+                            "type": "array",
+                            "items": {"type": "string", "maxLength": 60},
+                            "maxItems": 37,
+                            "description": (
+                                "CDP permission names, e.g. geolocation, notifications, camera, "
+                                "videoCapture, audioCapture, clipboardReadWrite. This replaces the "
+                                "whole grant set rather than adding to it."
+                            ),
+                        },
+                        "reset": {"type": "boolean"},
+                    },
+                    ("browser_id",),
+                ),
+                handler=emulate,
                 effect=sensitive,
             ),
             AgentTool(

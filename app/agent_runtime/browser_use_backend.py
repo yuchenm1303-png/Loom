@@ -714,6 +714,95 @@ class BrowserUseBackend(BrowserBackend):
     def cookies(self) -> list[dict[str, Any]]:
         return self._runner.run(self._cookies_async(), timeout=self.action_timeout_seconds)
 
+    async def _emulate_async(
+        self,
+        *,
+        viewport: dict[str, Any] | None,
+        user_agent: str,
+        geolocation: dict[str, Any] | None,
+        grant_permissions: list[str],
+        reset: bool,
+    ) -> dict[str, Any]:
+        session = await self._ensure_session()
+        cdp = await session.get_or_create_cdp_session()
+        client = cdp.cdp_client
+        applied: list[str] = []
+
+        if reset:
+            await client.send.Emulation.clearDeviceMetricsOverride(session_id=cdp.session_id)
+            await client.send.Emulation.setUserAgentOverride(
+                params={"userAgent": ""}, session_id=cdp.session_id
+            )
+            try:
+                await client.send.Emulation.clearGeolocationOverride(session_id=cdp.session_id)
+            except Exception:
+                # Not every build exposes the clear; the override is harmless.
+                pass
+            await client.send.Browser.resetPermissions(params={})
+            applied.append("reset")
+
+        if viewport:
+            await client.send.Emulation.setDeviceMetricsOverride(
+                params={
+                    "width": int(viewport["width"]),
+                    "height": int(viewport["height"]),
+                    "deviceScaleFactor": float(viewport.get("device_scale_factor") or 1.0),
+                    "mobile": bool(viewport.get("mobile")),
+                },
+                session_id=cdp.session_id,
+            )
+            applied.append("viewport")
+
+        if user_agent:
+            await client.send.Emulation.setUserAgentOverride(
+                params={"userAgent": user_agent}, session_id=cdp.session_id
+            )
+            applied.append("user_agent")
+
+        if geolocation:
+            await client.send.Emulation.setGeolocationOverride(
+                params={
+                    "latitude": float(geolocation["latitude"]),
+                    "longitude": float(geolocation["longitude"]),
+                    "accuracy": float(geolocation.get("accuracy") or 100.0),
+                },
+                session_id=cdp.session_id,
+            )
+            applied.append("geolocation")
+
+        if grant_permissions:
+            # browser-use's helper for this raises NotImplementedError, so the CDP
+            # command is sent directly. Browser.grantPermissions replaces the
+            # whole grant set rather than adding to it.
+            await client.send.Browser.grantPermissions(
+                params={"permissions": list(grant_permissions)}
+            )
+            applied.append("permissions")
+
+        return {"applied": applied}
+
+    def emulate(
+        self,
+        *,
+        viewport: dict[str, Any] | None = None,
+        user_agent: str = "",
+        geolocation: dict[str, Any] | None = None,
+        grant_permissions: list[str] | None = None,
+        reset: bool = False,
+    ) -> dict[str, Any]:
+        """Change what the page believes about its device and its permissions."""
+
+        return self._runner.run(
+            self._emulate_async(
+                viewport=viewport,
+                user_agent=str(user_agent or ""),
+                geolocation=geolocation,
+                grant_permissions=list(grant_permissions or ()),
+                reset=bool(reset),
+            ),
+            timeout=self.action_timeout_seconds,
+        )
+
     async def _storage_state_async(self) -> dict[str, Any]:
         session = await self._ensure_session()
         raw = await session._cdp_get_storage_state()
