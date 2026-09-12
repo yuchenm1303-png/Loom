@@ -94,11 +94,16 @@ class AIMessage:
     # output, but some reasoning providers (notably DeepSeek with tools) require
     # the exact value to be replayed on later requests.
     reasoning_content: str = ""
+    # Provider-owned output items needed to continue a stateless protocol. For
+    # example, OpenAI Responses reasoning items carry encrypted continuity state
+    # and assistant output items carry phase metadata that must be replayed.
+    provider_state: tuple[dict[str, Any], ...] = ()
 
     def __post_init__(self) -> None:
         role = MessageRole(self.role)
         content = self.content
         tool_calls = tuple(self.tool_calls)
+        provider_state = tuple(dict(item) for item in self.provider_state)
         if any(not isinstance(call, ToolCall) for call in tool_calls):
             raise TypeError("message tool_calls must contain ToolCall values")
         if len({call.call_id for call in tool_calls}) != len(tool_calls):
@@ -123,12 +128,15 @@ class AIMessage:
             raise ValueError("tool messages cannot contain tool_calls")
         if reasoning_content and role is not MessageRole.ASSISTANT:
             raise ValueError("only assistant messages may contain provider reasoning state")
+        if provider_state and role is not MessageRole.ASSISTANT:
+            raise ValueError("only assistant messages may contain provider output state")
         object.__setattr__(self, "role", role)
         object.__setattr__(self, "content", content)
         object.__setattr__(self, "name", name)
         object.__setattr__(self, "tool_call_id", tool_call_id)
         object.__setattr__(self, "tool_calls", tool_calls)
         object.__setattr__(self, "reasoning_content", reasoning_content)
+        object.__setattr__(self, "provider_state", provider_state)
 
     @property
     def uses_vision(self) -> bool:
@@ -233,6 +241,7 @@ class ModelResponse:
     # Provider-private continuity state; never publish this through user-facing
     # events. It exists only so provider adapters can satisfy replay contracts.
     reasoning_content: str = ""
+    provider_state: tuple[dict[str, Any], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
