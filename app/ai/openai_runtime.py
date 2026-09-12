@@ -9,6 +9,7 @@ from .contracts import (
     AIMessage,
     ChatRequest,
     ImagePart,
+    MessageRole,
     ModelResponse,
     ModelUsage,
     StreamEvent,
@@ -86,9 +87,10 @@ def _message_payload(
             }
             for call in message.tool_calls
         ]
-    # Provider-private state is emitted only for adapters whose catalog declares
-    # this replay contract. It never becomes public assistant content.
-    if include_reasoning_content and message.reasoning_content:
+    # DeepSeek requires this field on assistant history whenever tools are
+    # carried by the request. Keep it provider-gated and include an empty value
+    # for synthetic assistant messages that have no provider reasoning state.
+    if include_reasoning_content and message.role is MessageRole.ASSISTANT:
         payload["reasoning_content"] = message.reasoning_content
     return payload
 
@@ -221,7 +223,8 @@ class OpenAIChatBackend:
         )
 
     def _request_kwargs(self, request: ChatRequest) -> dict[str, Any]:
-        replay_reasoning = bool(request.tools) and self._replays_reasoning_content()
+        provider_reasoning_replay = self._replays_reasoning_content()
+        replay_reasoning = bool(request.tools) and provider_reasoning_replay
         kwargs: dict[str, Any] = {
             "model": self.profile.model,
             "messages": [
@@ -254,6 +257,8 @@ class OpenAIChatBackend:
                     base_url=self.connection.base_url,
                     reasoning=request.reasoning,
                 )
+                if provider_reasoning_replay:
+                    extra_body["thinking"] = {"type": "enabled"}
             kwargs["extra_body"] = extra_body
         return kwargs
 
