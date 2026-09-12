@@ -99,6 +99,13 @@ def _openai_model_spec(model_key: str) -> tuple[str, tuple[str, ...], str] | Non
             "OpenAI GPT-5.4 API",
         )
 
+    if model_key.startswith("gpt-5.2-pro"):
+        return (
+            "medium",
+            ("medium", "high", "xhigh"),
+            "OpenAI GPT-5.2 Pro API",
+        )
+
     if model_key.startswith("gpt-5.2"):
         return (
             "none",
@@ -111,6 +118,15 @@ def _openai_model_spec(model_key: str) -> tuple[str, tuple[str, ...], str] | Non
             "none",
             ("none", "low", "medium", "high"),
             "OpenAI GPT-5.1 API",
+        )
+
+    # GPT-5 Pro is intentionally checked before the generic GPT-5 snapshot
+    # matcher below. The Pro model only accepts high reasoning effort.
+    if model_key.startswith("gpt-5-pro"):
+        return (
+            "high",
+            ("high",),
+            "OpenAI GPT-5 Pro API",
         )
 
     if (
