@@ -92,6 +92,7 @@ class TurnRunner:
                     return rt._limit(session, "model step limit reached")
                 recovery_instruction = ""
                 recovery_partial = ""
+                recovery_reasoning_content = ""
                 for attempt in range(rt.limits.model_retries + 1):
                     step = rt._build_step_context(session, next_model_step=True)
                     messages, extra = rt._prepare_model_request(session, step, token)
@@ -113,6 +114,7 @@ class TurnRunner:
                             request_messages.append(AIMessage(
                                 role=MessageRole.ASSISTANT,
                                 content=recovery_partial,
+                                reasoning_content=recovery_reasoning_content,
                             ))
                         request_messages.append(AIMessage(
                             role=MessageRole.SYSTEM,
@@ -164,6 +166,7 @@ class TurnRunner:
                             ) from exc
                         recovery_instruction = "empty_response"
                         recovery_partial = ""
+                        recovery_reasoning_content = ""
                         continue
                     except AIResponseError as exc:
                         session.model_steps += 1
@@ -185,6 +188,7 @@ class TurnRunner:
                             ) from exc
                         recovery_instruction = "invalid_provider_response"
                         recovery_partial = ""
+                        recovery_reasoning_content = ""
                         continue
                     except AITransportError as exc:
                         if not exc.retryable or attempt >= rt.limits.model_retries:
@@ -225,6 +229,9 @@ class TurnRunner:
                         str(response.text or "")
                         if invalid_terminal.startswith("incomplete_finish:")
                         else ""
+                    )
+                    recovery_reasoning_content = (
+                        str(response.reasoning_content or "") if recovery_partial else ""
                     )
                 if rt._cancel_if_requested(session, token):
                     return rt._result(session)
