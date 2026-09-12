@@ -6,6 +6,7 @@ import json
 import os
 import threading
 import time
+from collections import deque
 from concurrent.futures import TimeoutError as FutureTimeoutError
 from dataclasses import dataclass
 from pathlib import Path
@@ -29,6 +30,10 @@ _WAIT_MAX_SECONDS = 60.0
 # runs to its timeout is reported as a backend timeout instead of an unmet
 # condition.
 _WAIT_RUNNER_MARGIN = 10.0
+# A page can issue thousands of requests, so the log is a ring: the recent ones
+# are what a model is asking about.
+_NETWORK_LOG_LIMIT = 500
+_NETWORK_BODY_CHARS = 30_000
 
 
 class _AsyncLoopThread:
@@ -478,6 +483,144 @@ class BrowserUseBackend(BrowserBackend):
         )
         return outcome
 
+    def _network_log(self) -> deque:
+        log = getattr(self, "_network_entries", None)
+        if log is None:
+            log = deque(maxlen=_NETWORK_LOG_LIMIT)
+            self._network_entries = log
+        return log
+
+    async def _network_start_async(self) -> dict[str, Any]:
+        session = await self._ensure_session()
+        cdp = await session.get_or_create_cdp_session()
+        log = self._network_log()
+        if getattr(self, "_network_registered", False):
+            await cdp.cdp_client.send.Network.enable(session_id=cdp.session_id)
+            return {"capturing": True, "entries": len(log)}
+
+        def on_request(event, session_id=None):
+            request = event.get("request") or {}
+            log.append(
+                {
+                    "request_id": str(event.get("requestId") or ""),
+                    "method": str(request.get("method") or ""),
+                    "url": str(request.get("url") or "")[:2000],
+                    "resource_type": str(event.get("type") or ""),
+                    "status": None,
+                    "mime_type": "",
+                    "bytes": 0,
+                    "from_cache": False,
+                    "started_at": float(event.get("timestamp") or 0.0),
+                }
+            )
+
+        def on_response(event, session_id=None):
+            response = event.get("response") or {}
+            request_id = str(event.get("requestId") or "")
+            # A cache hit transfers nothing, so bytes is legitimately 0 there. The
+            # flag is recorded because "0 bytes" on its own reads as an empty
+            # response.
+            cached = bool(response.get("fromDiskCache") or response.get("fromPrefetchCache"))
+            for entry in reversed(log):
+                if entry["request_id"] == request_id:
+                    entry["status"] = response.get("status")
+                    entry["mime_type"] = str(response.get("mimeType") or "")
+                    entry["bytes"] = int(response.get("encodedDataLength") or 0)
+                    entry["from_cache"] = cached
+                    return
+            log.append(
+                {
+                    "request_id": request_id,
+                    "method": "",
+                    "url": str(response.get("url") or "")[:2000],
+                    "resource_type": "",
+                    "status": response.get("status"),
+                    "mime_type": str(response.get("mimeType") or ""),
+                    "bytes": int(response.get("encodedDataLength") or 0),
+                    "from_cache": cached,
+                    "started_at": 0.0,
+                }
+            )
+
+        def on_failed(event, session_id=None):
+            request_id = str(event.get("requestId") or "")
+            for entry in reversed(log):
+                if entry["request_id"] == request_id:
+                    entry["status"] = None
+                    entry["error"] = str(event.get("errorText") or "failed")[:300]
+                    return
+
+        def on_finished(event, session_id=None):
+            # responseReceived fires before the body has arrived, so its
+            # encodedDataLength is 0 for almost everything. The transferred size
+            # is only known here.
+            request_id = str(event.get("requestId") or "")
+            size = int(event.get("encodedDataLength") or 0)
+            if size <= 0:
+                return
+            for entry in reversed(log):
+                if entry["request_id"] == request_id:
+                    entry["bytes"] = size
+                    return
+
+        client = cdp.cdp_client
+        client.register.Network.requestWillBeSent(on_request)
+        client.register.Network.responseReceived(on_response)
+        client.register.Network.loadingFailed(on_failed)
+        client.register.Network.loadingFinished(on_finished)
+        # Registration is on the client and cumulative, so a second start would
+        # double-count every request.
+        self._network_registered = True
+        await client.send.Network.enable(session_id=cdp.session_id)
+        return {"capturing": True, "entries": len(log)}
+
+    async def _network_stop_async(self) -> dict[str, Any]:
+        session = await self._ensure_session()
+        cdp = await session.get_or_create_cdp_session()
+        # The listeners stay registered; disabling the domain is what stops the
+        # events, and re-enabling later must not add a second set of handlers.
+        await cdp.cdp_client.send.Network.disable(session_id=cdp.session_id)
+        return {"capturing": False, "entries": len(self._network_log())}
+
+    async def _network_body_async(self, request_id: str) -> dict[str, Any]:
+        session = await self._ensure_session()
+        cdp = await session.get_or_create_cdp_session()
+        try:
+            payload = await cdp.cdp_client.send.Network.getResponseBody(
+                params={"requestId": request_id}, session_id=cdp.session_id
+            )
+        except Exception as exc:
+            # A body is only retained while the response is still in the
+            # browser's buffer, so this legitimately fails for older requests.
+            return {"ok": False, "error": f"{type(exc).__name__}: {exc}"[:300]}
+        body = str(payload.get("body") or "")
+        return {
+            "ok": True,
+            "base64_encoded": bool(payload.get("base64Encoded")),
+            "body": body[:_NETWORK_BODY_CHARS],
+            "truncated": len(body) > _NETWORK_BODY_CHARS,
+        }
+
+    def network_start(self) -> dict[str, Any]:
+        return self._runner.run(self._network_start_async(), timeout=self.action_timeout_seconds)
+
+    def network_stop(self) -> dict[str, Any]:
+        return self._runner.run(self._network_stop_async(), timeout=self.action_timeout_seconds)
+
+    def network_entries(self) -> list[dict[str, Any]]:
+        return [dict(entry) for entry in self._network_log()]
+
+    def network_clear(self) -> None:
+        self._network_log().clear()
+
+    def network_body(self, request_id: str) -> dict[str, Any]:
+        value = str(request_id or "").strip()
+        if not value:
+            raise ValueError("browser network request_id must not be empty")
+        return self._runner.run(
+            self._network_body_async(value), timeout=self.action_timeout_seconds
+        )
+
     async def _wait_async(
         self,
         *,
@@ -570,6 +713,28 @@ class BrowserUseBackend(BrowserBackend):
 
     def cookies(self) -> list[dict[str, Any]]:
         return self._runner.run(self._cookies_async(), timeout=self.action_timeout_seconds)
+
+    async def _storage_state_async(self) -> dict[str, Any]:
+        session = await self._ensure_session()
+        raw = await session._cdp_get_storage_state()
+        payload = dict(raw or {})
+        return {
+            "cookies": [dict(item) for item in (payload.get("cookies") or [])],
+            "origins": [dict(item) for item in (payload.get("origins") or [])],
+        }
+
+    def storage_state(self) -> dict[str, Any]:
+        return self._runner.run(self._storage_state_async(), timeout=self.action_timeout_seconds)
+
+    async def _set_cookies_async(self, cookies: list[dict[str, Any]]) -> None:
+        session = await self._ensure_session()
+        await session._cdp_set_cookies(cookies)
+
+    def set_cookies(self, cookies: list[dict[str, Any]]) -> None:
+        self._runner.run(
+            self._set_cookies_async([dict(item) for item in cookies]),
+            timeout=self.action_timeout_seconds,
+        )
 
     async def _clear_cookies_async(self) -> None:
         session = await self._ensure_session()

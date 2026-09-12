@@ -39,6 +39,7 @@ def _snapshot_result(
 
 _MAX_EVAL_VALUE_CHARS = 30_000
 _DOWNLOADS_DIR = "browser-downloads"
+_SESSION_STATE_PATH = "browser-state/session.json"
 
 
 def _bounded_json_value(value: Any) -> tuple[Any, bool]:
@@ -487,6 +488,170 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
                   "values_included": include_values},
         )
 
+    def session_state(context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
+        context.raise_if_cancelled()
+        store = _store(runtime)
+        browser_id = str(arguments["browser_id"])
+        item = store._owned(context.session_id, browser_id)
+        relative = str(arguments.get("path") or _SESSION_STATE_PATH)
+        target = context.resolve_workspace_path(relative)
+        action = str(arguments.get("action") or "save").strip().casefold()
+
+        if action == "save":
+            reader = getattr(item.backend, "storage_state", None)
+            if not callable(reader):
+                raise RuntimeError(
+                    f"browser backend {item.backend.backend_name!r} does not expose session state"
+                )
+            state = dict(reader())
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(
+                json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+            origins = [
+                str(origin.get("origin") or "")
+                for origin in state.get("origins") or []
+                if origin.get("localStorage") or origin.get("sessionStorage")
+            ]
+            return ToolResult(
+                ok=True,
+                content=(
+                    f"Saved {len(state.get('cookies') or [])} cookie(s) and {len(origins)} origin(s) "
+                    f"of web storage to {relative}. The file holds live session credentials in plain "
+                    "text inside the workspace."
+                ),
+                data={
+                    "browser_id": browser_id,
+                    "path": relative,
+                    "cookies": len(state.get("cookies") or []),
+                    "storage_origins": origins,
+                },
+            )
+
+        if action != "load":
+            raise ValueError("browser_session_state action must be save or load")
+        if not target.is_file():
+            raise ValueError(f"no saved browser session state at {relative}")
+        try:
+            saved = json.loads(target.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise ValueError(f"saved browser session state at {relative} is unreadable") from exc
+        if not isinstance(saved, dict):
+            raise ValueError(f"saved browser session state at {relative} is not an object")
+        writer = getattr(item.backend, "set_cookies", None)
+        if not callable(writer):
+            raise RuntimeError(
+                f"browser backend {item.backend.backend_name!r} cannot restore session state"
+            )
+        cookies = [dict(row) for row in (saved.get("cookies") or []) if isinstance(row, dict)]
+        writer(cookies)
+        pending = [
+            str(origin.get("origin") or "")
+            for origin in saved.get("origins") or []
+            if isinstance(origin, dict) and (origin.get("localStorage") or origin.get("sessionStorage"))
+        ]
+        return ToolResult(
+            ok=True,
+            content=(
+                f"Restored {len(cookies)} cookie(s). Web storage is not restored automatically, "
+                "because writing it requires being on each origin: navigate there and set the keys "
+                f"with browser_eval, reading the values from {relative}."
+                if pending
+                else f"Restored {len(cookies)} cookie(s)."
+            ),
+            data={
+                "browser_id": browser_id,
+                "path": relative,
+                "cookies_restored": len(cookies),
+                "storage_origins_not_restored": pending,
+            },
+        )
+
+    def network(context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
+        context.raise_if_cancelled()
+        store = _store(runtime)
+        browser_id = str(arguments["browser_id"])
+        item = store._owned(context.session_id, browser_id)
+        action = str(arguments.get("action") or "list").strip().casefold()
+
+        def backend_call(name: str):
+            method = getattr(item.backend, name, None)
+            if not callable(method):
+                raise RuntimeError(
+                    f"browser backend {item.backend.backend_name!r} does not support network capture"
+                )
+            return method
+
+        if action == "start":
+            outcome = dict(backend_call("network_start")())
+            return ToolResult(
+                ok=True,
+                content=(
+                    "Network capture is on. Requests from now on are recorded; earlier ones were not."
+                ),
+                data={"browser_id": browser_id, **outcome},
+            )
+        if action == "stop":
+            outcome = dict(backend_call("network_stop")())
+            return ToolResult(
+                ok=True,
+                content="Network capture is off. Already recorded requests remain readable.",
+                data={"browser_id": browser_id, **outcome},
+            )
+        if action == "clear":
+            backend_call("network_clear")()
+            return ToolResult(
+                ok=True,
+                content="Recorded requests discarded.",
+                data={"browser_id": browser_id, "entries": 0},
+            )
+        if action == "body":
+            request_id = str(arguments.get("request_id") or "").strip()
+            if not request_id:
+                raise ValueError("browser_network body requires request_id")
+            outcome = dict(backend_call("network_body")(request_id))
+            if not outcome.get("ok"):
+                return ToolResult(
+                    ok=False,
+                    content=(
+                        "That response body is no longer available. The browser keeps bodies only "
+                        "briefly; read it closer to the request, or re-issue it."
+                    ),
+                    data={"browser_id": browser_id, "request_id": request_id,
+                          "error": str(outcome.get("error") or "")},
+                )
+            return ToolResult(
+                ok=True,
+                content=(
+                    "Response body returned verbatim."
+                    + (" It was truncated." if outcome.get("truncated") else "")
+                ),
+                data={"browser_id": browser_id, "request_id": request_id, **outcome},
+            )
+
+        entries = list(backend_call("network_entries")())
+        needle = str(arguments.get("url_contains") or "").strip().casefold()
+        if needle:
+            entries = [e for e in entries if needle in str(e.get("url") or "").casefold()]
+        if bool(arguments.get("failures_only")):
+            entries = [
+                e
+                for e in entries
+                if e.get("error") or (e.get("status") is not None and int(e["status"]) >= 400)
+            ]
+        limit = max(1, min(int(arguments.get("limit") or 50), 200))
+        entries = entries[-limit:]
+        return ToolResult(
+            ok=True,
+            content=(
+                f"{len(entries)} recorded request(s). Use action=body with a request_id to read one "
+                "response. Nothing is recorded until action=start."
+                if entries
+                else "No recorded requests match. Nothing is recorded until action=start."
+            ),
+            data={"browser_id": browser_id, "requests": entries},
+        )
+
     def downloads(context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
         store = _store(runtime)
         browser_id = str(arguments["browser_id"])
@@ -922,6 +1087,60 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
                     ("browser_id",),
                 ),
                 handler=cookies,
+                effect=sensitive,
+            ),
+            AgentTool(
+                name="browser_session_state",
+                description=(
+                    "Save this browser session's cookies and web-storage inventory to a workspace "
+                    "file, or restore the cookies from one. This is how a sign-in survives closing "
+                    "and reopening the browser. The saved file holds live session credentials in "
+                    "plain text. Loading restores cookies only: web storage cannot be written without "
+                    "being on its origin, so navigate there and set the keys with browser_eval, "
+                    "reading them from the saved file."
+                ),
+                input_schema=_schema(
+                    {
+                        "browser_id": _browser_id_schema(),
+                        "action": {"type": "string", "enum": ["save", "load"]},
+                        "path": {
+                            "type": "string",
+                            "maxLength": 1000,
+                            "description": (
+                                f"Workspace-relative file. Defaults to {_SESSION_STATE_PATH}."
+                            ),
+                        },
+                    },
+                    ("browser_id", "action"),
+                ),
+                handler=session_state,
+                effect=sensitive,
+            ),
+            AgentTool(
+                name="browser_network",
+                description=(
+                    "Inspect the requests a page makes. Call action=start first, since nothing is "
+                    "recorded until then and earlier requests cannot be recovered; then action=list to "
+                    "see method, URL, status and size, optionally filtered by url_contains or "
+                    "failures_only; then action=body with a request_id to read one response. This is "
+                    "how to tell a failing API call from a rendering problem. The browser keeps "
+                    "response bodies only briefly, so read one soon after the request."
+                ),
+                input_schema=_schema(
+                    {
+                        "browser_id": _browser_id_schema(),
+                        "action": {
+                            "type": "string",
+                            "enum": ["start", "stop", "list", "body", "clear"],
+                        },
+                        "request_id": {"type": "string", "maxLength": 200},
+                        "url_contains": {"type": "string", "maxLength": 500},
+                        "failures_only": {"type": "boolean"},
+                        "limit": {"type": "integer", "minimum": 1, "maximum": 200},
+                    },
+                    ("browser_id",),
+                ),
+                handler=network,
                 effect=sensitive,
             ),
             AgentTool(
