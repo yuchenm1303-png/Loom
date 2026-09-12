@@ -27,12 +27,24 @@ _TERMINAL_RECOVERY_INSTRUCTION = (
     "If an available tool is needed, emit a native structured tool call through the tool-calling protocol; "
     "do not print JSON, '[' or a tool-call prefix in assistant text. Otherwise return a complete final answer."
 )
+_TRUNCATED_RECOVERY_INSTRUCTION = (
+    "The previous assistant response was cut off by the provider's output limit and was not committed. "
+    "Continue the same task from that partial response without repeating its analysis. If it was leading to "
+    "a tool action, emit the native structured tool call immediately; otherwise finish with a concise answer."
+)
 
 
 def _invalid_terminal_response(response: ModelResponse) -> str:
-    """Reject provider 'stop' responses that cannot be valid terminal output."""
+    """Reject provider 'stop' responses that cannot be valid terminal output.
+
+    OpenAI-compatible relays occasionally terminate while beginning a textual
+    serialization of a tool call. Such text must never become canonical history:
+    it poisons the next turn and makes the model repeat the same fragment.
+    """
     reason = str(response.finish_reason or "").strip().casefold()
-    if response.tool_calls or reason not in _COMPLETE_FINISH_REASONS:
+    if reason not in _COMPLETE_FINISH_REASONS:
+        return f"incomplete_finish:{reason or 'unknown'}"
+    if response.tool_calls:
         return ""
     raw = str(response.text or "")
     visible = _COMPLETE_THINK_BLOCK_RE.sub("", raw).strip()
@@ -46,7 +58,15 @@ def _invalid_terminal_response(response: ModelResponse) -> str:
 
 
 def _history_message_count(messages) -> int:
-    """Count conversation messages, ignoring Loom's own injected guidance."""
+    """Count conversation messages, ignoring Loom's own injected guidance.
+
+    Compaction is what has to satisfy max_messages, but it runs partway through
+    request preparation: later layers still append their own system guidance
+    afterwards. Counting those against the same limit let a request that
+    compaction had just fitted tip back over it, reported as "no safe compaction
+    boundary" even though a boundary had been found.
+    """
+
     total = 0
     for message in messages:
         if message.role is MessageRole.SYSTEM and str(getattr(message, "name", "") or "").startswith("loom_"):
@@ -71,6 +91,7 @@ class TurnRunner:
                 if rt.limits.max_model_steps > 0 and session.model_steps >= rt.limits.max_model_steps:
                     return rt._limit(session, "model step limit reached")
                 recovery_instruction = ""
+                recovery_partial = ""
                 for attempt in range(rt.limits.model_retries + 1):
                     step = rt._build_step_context(session, next_model_step=True)
                     messages, extra = rt._prepare_model_request(session, step, token)
@@ -88,10 +109,19 @@ class TurnRunner:
                     })
                     request_messages = list(messages)
                     if recovery_instruction:
+                        if recovery_partial:
+                            request_messages.append(AIMessage(
+                                role=MessageRole.ASSISTANT,
+                                content=recovery_partial,
+                            ))
                         request_messages.append(AIMessage(
                             role=MessageRole.SYSTEM,
                             name="loom_terminal_recovery",
-                            content=_TERMINAL_RECOVERY_INSTRUCTION,
+                            content=(
+                                _TRUNCATED_RECOVERY_INSTRUCTION
+                                if recovery_partial
+                                else _TERMINAL_RECOVERY_INSTRUCTION
+                            ),
                         ))
                     context_limits = extra.get("context_limits") if isinstance(extra, dict) else None
                     resolved_output_reserve = (
@@ -133,6 +163,7 @@ class TurnRunner:
                                 "model repeatedly completed without public text or tool calls"
                             ) from exc
                         recovery_instruction = "empty_response"
+                        recovery_partial = ""
                         continue
                     except AIResponseError as exc:
                         session.model_steps += 1
@@ -153,6 +184,7 @@ class TurnRunner:
                                 f"model repeatedly returned malformed responses: {exc}"
                             ) from exc
                         recovery_instruction = "invalid_provider_response"
+                        recovery_partial = ""
                         continue
                     except AITransportError as exc:
                         if not exc.retryable or attempt >= rt.limits.model_retries:
@@ -189,6 +221,11 @@ class TurnRunner:
                             f"model repeatedly returned an invalid terminal response ({invalid_terminal})"
                         )
                     recovery_instruction = invalid_terminal
+                    recovery_partial = (
+                        str(response.text or "")
+                        if invalid_terminal.startswith("incomplete_finish:")
+                        else ""
+                    )
                 if rt._cancel_if_requested(session, token):
                     return rt._result(session)
                 if not isinstance(response, ModelResponse):
@@ -198,11 +235,10 @@ class TurnRunner:
                 session.model_steps += 1
                 from .runtime import _add_usage
                 session.usage = _add_usage(session.usage, response.usage)
+                # Keep public partial output for inspection, but never execute partial calls.
                 reason = response.finish_reason.casefold()
                 incomplete = reason not in {"", "stop", "tool_calls", "function_call", "completed", "end_turn"}
                 calls = () if incomplete else response.tool_calls
-                # Preserve provider-private reasoning continuity in canonical
-                # model history without exposing it through MODEL_RESPONSE.
                 session.messages.append(AIMessage(
                     role=MessageRole.ASSISTANT,
                     content=response.text,
@@ -237,6 +273,7 @@ class TurnRunner:
                 with rt._active_tokens_guard:
                     if rt._consume_steering(session):
                         continue
+                    # Stop accepting steering before committing the terminal state.
                     rt._active_tokens.pop(session.session_id, None)
                 session.status = AgentStatus.COMPLETED
                 session.final_text = response.text
@@ -257,11 +294,16 @@ class TurnRunner:
             token.cancel()
             rt._cancel_if_requested(session, token)
         except Exception as exc:
+            # A cancelled turn raises like any other failure. Reporting it as
+            # FAILED loses the distinction the caller acts on, so cancellation is
+            # resolved first.
             if token.cancelled:
                 rt._cancel_if_requested(session, token)
             else:
                 session.status = AgentStatus.FAILED
                 session.error = f"{type(exc).__name__}: {exc}"
+                # A turn that dies mid tool call leaves calls without results.
+                # Carrying that into the next turn poisons the model's history.
                 session.messages = list(
                     repair_tool_history(
                         session.messages,
