@@ -22,7 +22,7 @@ from .errors import AIEmptyResponseError, AIResponseError, AITransportError
 from .profiles import ModelProfile
 from .provider_catalog import ProviderAdapter, ProviderConnection
 from .reasoning import ReasoningKind
-from .reasoning_catalog import resolve_reasoning_wire_value
+from .reasoning_catalog import requires_reasoning_content_replay, resolve_reasoning_wire_value
 
 
 _RETRYABLE_STATUS_CODES = {408, 409, 425, 429, 500, 502, 503, 504}
@@ -43,6 +43,7 @@ def _message_payload(
     message: AIMessage,
     *,
     include_auto_image_detail: bool = True,
+    include_reasoning_content: bool = False,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {"role": message.role.value}
     if isinstance(message.content, str):
@@ -54,9 +55,6 @@ def _message_payload(
                 content.append({"type": "text", "text": part.text})
             elif isinstance(part, ImagePart):
                 image_url: dict[str, str] = {"url": part.image_url}
-                # ``detail`` is optional in the OpenAI wire format. Compatible
-                # providers do not consistently accept OpenAI's ``auto`` enum,
-                # so omit only that default while preserving explicit low/high.
                 if part.detail != "auto" or include_auto_image_detail:
                     image_url["detail"] = part.detail
                 content.append(
@@ -88,6 +86,10 @@ def _message_payload(
             }
             for call in message.tool_calls
         ]
+    # Provider-private state is emitted only for adapters whose catalog declares
+    # this replay contract. It never becomes public assistant content.
+    if include_reasoning_content and message.reasoning_content:
+        payload["reasoning_content"] = message.reasoning_content
     return payload
 
 
@@ -211,7 +213,15 @@ class OpenAIChatBackend:
     def name(self) -> str:
         return f"{self.connection.adapter.value}-chat"
 
+    def _replays_reasoning_content(self) -> bool:
+        return requires_reasoning_content_replay(
+            model=self.profile.model,
+            adapter=self.connection.adapter.value,
+            base_url=self.connection.base_url,
+        )
+
     def _request_kwargs(self, request: ChatRequest) -> dict[str, Any]:
+        replay_reasoning = bool(request.tools) and self._replays_reasoning_content()
         kwargs: dict[str, Any] = {
             "model": self.profile.model,
             "messages": [
@@ -220,6 +230,7 @@ class OpenAIChatBackend:
                     include_auto_image_detail=(
                         self.connection.adapter is ProviderAdapter.OPENAI
                     ),
+                    include_reasoning_content=replay_reasoning,
                 )
                 for message in request.messages
             ],
@@ -237,9 +248,6 @@ class OpenAIChatBackend:
             if request.reasoning.kind is ReasoningKind.MINIMAX_THINKING:
                 extra_body["thinking"] = {"type": request.reasoning.value}
             elif request.reasoning.kind is ReasoningKind.OPENAI_EFFORT:
-                # Keep the user's normalized selection separate from the provider
-                # wire value. Codex-level aliases such as ultra/persistent are not
-                # ordinary public API reasoning_effort strings.
                 extra_body["reasoning_effort"] = resolve_reasoning_wire_value(
                     model=self.profile.model,
                     adapter=self.connection.adapter.value,
@@ -280,14 +288,17 @@ class OpenAIChatBackend:
             raise AIResponseError("AI response choice contained no message")
         text = str(getattr(message, "content", "") or "")
         tool_calls = _parse_tool_calls(message)
+        raw_reasoning = getattr(message, "reasoning_content", None)
+        reasoning_content = (
+            str(raw_reasoning or "") if self._replays_reasoning_content() else ""
+        )
         if not text and not tool_calls:
-            reasoning = getattr(message, "reasoning_content", None)
             usage = _usage_from(response)
             raise AIEmptyResponseError(
                 "AI response completed without public text or tool calls",
                 finish_reason=str(getattr(choice, "finish_reason", "") or ""),
                 response_id=str(getattr(response, "id", "") or ""),
-                reasoning_char_count=len(str(reasoning)) if reasoning is not None else 0,
+                reasoning_char_count=len(str(raw_reasoning)) if raw_reasoning is not None else 0,
                 input_tokens=usage.input_tokens,
                 output_tokens=usage.output_tokens,
                 total_tokens=usage.total_tokens,
@@ -298,6 +309,7 @@ class OpenAIChatBackend:
             usage=_usage_from(response),
             finish_reason=str(getattr(choice, "finish_reason", "") or ""),
             response_id=str(getattr(response, "id", "") or ""),
+            reasoning_content=reasoning_content,
         )
 
     def _effective_structured_mode(self, requested: StructuredOutputMode) -> StructuredOutputMode:
