@@ -30,12 +30,7 @@ _TERMINAL_RECOVERY_INSTRUCTION = (
 
 
 def _invalid_terminal_response(response: ModelResponse) -> str:
-    """Reject provider 'stop' responses that cannot be valid terminal output.
-
-    OpenAI-compatible relays occasionally terminate while beginning a textual
-    serialization of a tool call. Such text must never become canonical history:
-    it poisons the next turn and makes the model repeat the same fragment.
-    """
+    """Reject provider 'stop' responses that cannot be valid terminal output."""
     reason = str(response.finish_reason or "").strip().casefold()
     if response.tool_calls or reason not in _COMPLETE_FINISH_REASONS:
         return ""
@@ -51,15 +46,7 @@ def _invalid_terminal_response(response: ModelResponse) -> str:
 
 
 def _history_message_count(messages) -> int:
-    """Count conversation messages, ignoring Loom's own injected guidance.
-
-    Compaction is what has to satisfy max_messages, but it runs partway through
-    request preparation: later layers still append their own system guidance
-    afterwards. Counting those against the same limit let a request that
-    compaction had just fitted tip back over it, reported as "no safe compaction
-    boundary" even though a boundary had been found.
-    """
-
+    """Count conversation messages, ignoring Loom's own injected guidance."""
     total = 0
     for message in messages:
         if message.role is MessageRole.SYSTEM and str(getattr(message, "name", "") or "").startswith("loom_"):
@@ -211,11 +198,17 @@ class TurnRunner:
                 session.model_steps += 1
                 from .runtime import _add_usage
                 session.usage = _add_usage(session.usage, response.usage)
-                # Keep public partial output for inspection, but never execute partial calls.
                 reason = response.finish_reason.casefold()
                 incomplete = reason not in {"", "stop", "tool_calls", "function_call", "completed", "end_turn"}
                 calls = () if incomplete else response.tool_calls
-                session.messages.append(AIMessage(role=MessageRole.ASSISTANT, content=response.text, tool_calls=calls))
+                # Preserve provider-private reasoning continuity in canonical
+                # model history without exposing it through MODEL_RESPONSE.
+                session.messages.append(AIMessage(
+                    role=MessageRole.ASSISTANT,
+                    content=response.text,
+                    tool_calls=calls,
+                    reasoning_content=response.reasoning_content,
+                ))
                 rt._record(session, Event.MODEL_RESPONSE, data={
                     "step_id": step.step_id, "text": response.text, "finish_reason": response.finish_reason,
                     "response_id": response.response_id,
@@ -244,7 +237,6 @@ class TurnRunner:
                 with rt._active_tokens_guard:
                     if rt._consume_steering(session):
                         continue
-                    # Stop accepting steering before committing the terminal state.
                     rt._active_tokens.pop(session.session_id, None)
                 session.status = AgentStatus.COMPLETED
                 session.final_text = response.text
@@ -265,16 +257,11 @@ class TurnRunner:
             token.cancel()
             rt._cancel_if_requested(session, token)
         except Exception as exc:
-            # A cancelled turn raises like any other failure. Reporting it as
-            # FAILED loses the distinction the caller acts on, so cancellation is
-            # resolved first.
             if token.cancelled:
                 rt._cancel_if_requested(session, token)
             else:
                 session.status = AgentStatus.FAILED
                 session.error = f"{type(exc).__name__}: {exc}"
-                # A turn that dies mid tool call leaves calls without results.
-                # Carrying that into the next turn poisons the model's history.
                 session.messages = list(
                     repair_tool_history(
                         session.messages,
