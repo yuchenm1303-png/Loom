@@ -136,7 +136,8 @@ def _openai_model_spec(model_key: str) -> tuple[str, tuple[str, ...], str] | Non
 def reasoning_capability(*, model: str, adapter: str, base_url: str = "") -> dict[str, Any] | None:
     """Return safe UI metadata for reasoning controls supported by a model.
 
-    For OpenAI-compatible transports an explicit ``~/.loom/models.json`` (or
+    Native provider protocols win over generic catalog metadata. For remaining
+    OpenAI-compatible transports an explicit ``~/.loom/models.json`` (or
     ``LOOM_MODEL_CATALOG_JSON``) is authoritative. The file uses Codex's model
     catalog reasoning fields, so third-party providers can install capability
     metadata without requiring a Loom source-code change.
@@ -147,6 +148,17 @@ def reasoning_capability(*, model: str, adapter: str, base_url: str = "") -> dic
     endpoint = str(base_url or "").strip().casefold()
     if not model_key:
         return None
+
+    # MiniMax M3 has a provider-native thinking contract. Never let a generic
+    # Codex-style effort catalog reinterpret it as ``openai-effort`` because the
+    # resulting wire payload would use the wrong protocol.
+    if "minimax-m3" in model_key or ("minimax" in endpoint and model_key in {"m3", "minimax-m3"}):
+        return {
+            "kind": ReasoningKind.MINIMAX_THINKING.value,
+            "defaultValue": "adaptive",
+            "options": list(_MINIMAX_M3_OPTIONS),
+            "source": "MiniMax M3 hosted API",
+        }
 
     if adapter_key in {"openai", "openai-compatible"}:
         catalog = catalog_reasoning_spec(model_key)
@@ -159,14 +171,6 @@ def reasoning_capability(*, model: str, adapter: str, base_url: str = "") -> dic
                     "options": options,
                     "source": str(catalog["source"]),
                 }
-
-    if "minimax-m3" in model_key or ("minimax" in endpoint and model_key in {"m3", "minimax-m3"}):
-        return {
-            "kind": ReasoningKind.MINIMAX_THINKING.value,
-            "defaultValue": "adaptive",
-            "options": list(_MINIMAX_M3_OPTIONS),
-            "source": "MiniMax M3 hosted API",
-        }
 
     if adapter_key not in {"openai", "openai-compatible"}:
         return None
