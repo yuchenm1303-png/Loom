@@ -59,9 +59,6 @@ def _message_to_dict(message: AIMessage) -> dict[str, Any]:
         "tool_call_id": message.tool_call_id,
         "tool_calls": [_tool_call_to_dict(call) for call in message.tool_calls],
     }
-    # This field is provider-private continuation state. It is intentionally kept
-    # out of events.jsonl/UI payloads but must survive session reloads for providers
-    # such as DeepSeek that require reasoning replay whenever tools are enabled.
     if message.reasoning_content:
         payload["_provider_reasoning_content"] = message.reasoning_content
     return payload
@@ -264,6 +261,10 @@ class FileAgentSessionStore:
                 handle.flush()
                 os.fsync(handle.fileno())
             os.replace(temp, target)
+            try:
+                target.chmod(0o600)
+            except OSError:
+                pass
         finally:
             try:
                 temp.unlink(missing_ok=True)
