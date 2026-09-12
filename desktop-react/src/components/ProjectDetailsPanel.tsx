@@ -143,14 +143,21 @@ function fileBaseName(path: string): string {
 
 function fileIsStaged(file: ProjectGitFile): boolean {
   const index = String(file.index ?? "").trim();
+  if (file.index !== undefined || file.workingTree !== undefined) {
+    return Boolean(index && index !== "?");
+  }
   const status = String(file.status || "").padEnd(2, " ");
-  return Boolean(index && index !== "?") || Boolean(status[0].trim() && status[0] !== "?");
+  return Boolean(status[0].trim() && status[0] !== "?");
 }
 
 function fileIsUnstaged(file: ProjectGitFile): boolean {
   const working = String(file.workingTree ?? "").trim();
   const status = String(file.status || "").trim();
-  return status === "??" || Boolean(working && working !== "?") || status.includes("?");
+  if (file.index !== undefined || file.workingTree !== undefined) {
+    return status === "??" || Boolean(working && working !== "?");
+  }
+  const pair = String(file.status || "").padEnd(2, " ");
+  return status === "??" || Boolean(pair[1].trim() && pair[1] !== "?") || status.includes("?");
 }
 
 function suggestedCommitMessage(files: ProjectGitFile[]): string {
