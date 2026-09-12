@@ -25,6 +25,19 @@ _CORE_TOOL_NAMES = frozenset(
 # could open and inspect but never interact with, and dropped spawn_agent, the
 # only entry point to delegation. These stay resident so shedding falls on tools
 # whose absence costs a lookup rather than a capability.
+#
+# The browser surface has since grown past the point where five verbs cover it,
+# and the size tie-break keeps trivial tools like browser_refresh over
+# load-bearing ones. Only two more meet the same bar. browser_select: a form with
+# a dropdown cannot be completed without it, and setting the value from script
+# skips the events real form code listens for. browser_eval: it is the only way
+# to reach anything the DOM-index tools cannot express, including answering a
+# native dialog before the browser auto-answers it.
+#
+# Deliberately not here: browser_wait, whose absence costs repeated state reads
+# rather than an outcome, and browser_network / browser_upload / browser_emulate,
+# which serve specific tasks rather than the interaction loop. Those stay
+# discoverable through tool_search.
 _CAPABILITY_ACTION_NAMES = frozenset(
     {
         "browser_open",
@@ -32,6 +45,8 @@ _CAPABILITY_ACTION_NAMES = frozenset(
         "browser_navigate",
         "browser_click",
         "browser_type",
+        "browser_select",
+        "browser_eval",
         "computer_run_task",
         "spawn_agent",
         "wait_agent",
