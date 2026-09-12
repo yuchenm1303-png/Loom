@@ -15,7 +15,6 @@ from app.ai import (
     ProviderConnection,
     ReasoningKind,
     ReasoningRequest,
-    StreamEventKind,
     ToolDefinition,
 )
 from app.ai.openai_runtime import OpenAIChatBackend
@@ -81,7 +80,28 @@ def test_deepseek_tool_request_replays_private_reasoning_content() -> None:
     kwargs = backend._request_kwargs(request)
 
     assert kwargs["messages"][0]["reasoning_content"] == "provider-private-reasoning"
-    assert kwargs["extra_body"] == {"reasoning_effort": "high"}
+    assert kwargs["extra_body"] == {
+        "reasoning_effort": "high",
+        "thinking": {"type": "enabled"},
+    }
+
+
+def test_deepseek_tool_request_keeps_empty_reasoning_field_for_synthetic_assistant() -> None:
+    backend = OpenAIChatBackend(
+        connection=_connection(),
+        profile=_profile("deepseek-v4-pro"),
+        api_key="test-secret",
+        client=object(),
+    )
+    request = ChatRequest(
+        messages=(AIMessage(role=MessageRole.ASSISTANT, content="synthetic recovery"),),
+        tools=(_tool(),),
+        reasoning=_reasoning(),
+    )
+
+    kwargs = backend._request_kwargs(request)
+
+    assert kwargs["messages"][0]["reasoning_content"] == ""
 
 
 def test_non_deepseek_provider_never_replays_private_reasoning_field() -> None:
@@ -237,6 +257,10 @@ def test_deepseek_streaming_retains_reasoning_without_publishing_it() -> None:
     assert all("private" not in str(event) for event in published)
     assert completions.calls[0]["stream"] is True
     assert completions.calls[0]["stream_options"] == {"include_usage": True}
+    assert completions.calls[0]["extra_body"] == {
+        "reasoning_effort": "high",
+        "thinking": {"type": "enabled"},
+    }
     assert [
         event.text_delta
         for event in published
