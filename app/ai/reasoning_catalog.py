@@ -191,6 +191,17 @@ def reasoning_capability(*, model: str, adapter: str, base_url: str = "") -> dic
     }
 
 
+def _supported_openai_efforts(capability: dict[str, Any] | None) -> tuple[set[str], str]:
+    if not isinstance(capability, dict):
+        return set(), ""
+    supported = {
+        str(option.get("value") or "")
+        for option in capability.get("options", [])
+        if isinstance(option, dict)
+    }
+    return supported, str(capability.get("defaultValue") or "")
+
+
 def resolve_reasoning_wire_value(
     *,
     model: str,
@@ -198,28 +209,27 @@ def resolve_reasoning_wire_value(
     base_url: str,
     reasoning: ReasoningRequest,
 ) -> str:
-    """Resolve a normalized selection to the value emitted on the provider wire.
+    """Resolve a normalized selection to a transport-safe provider value.
 
-    ``ultra`` is a Codex-level orchestration selection, not a normal public
-    OpenAI API effort. If stale/local state supplies it anyway, degrade to the
-    strongest effort the current model actually advertises. Codex also keeps the
-    user-facing ``persistent`` name locally while its wire protocol uses
-    ``disabled``; preserve that normalization here for forward compatibility.
+    Codex-level aliases are retained in Loom's normalized type for forward
+    compatibility, but they are not blindly copied onto Chat Completions.
+    ``ultra`` degrades to the strongest effort the current model really supports.
+    ``persistent`` is a Responses/configuration-update concept, so on Loom's
+    current Chat Completions transport stale state falls back to the model
+    default instead of emitting Codex's internal ``disabled`` wire value.
     """
 
     if reasoning.kind is not ReasoningKind.OPENAI_EFFORT:
         return reasoning.value
-    if reasoning.value == "persistent":
-        return "disabled"
-    if reasoning.value != "ultra":
+    if reasoning.value not in {"ultra", "persistent"}:
         return reasoning.value
 
     capability = reasoning_capability(model=model, adapter=adapter, base_url=base_url)
-    supported = {
-        str(option.get("value") or "")
-        for option in (capability or {}).get("options", [])
-        if isinstance(option, dict)
-    }
+    supported, default_value = _supported_openai_efforts(capability)
+
+    if reasoning.value == "persistent" and default_value in supported:
+        return default_value
+
     for fallback in ("max", "xhigh", "high", "medium", "low", "minimal", "none"):
         if fallback in supported:
             return fallback
