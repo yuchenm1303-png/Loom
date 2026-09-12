@@ -12,43 +12,16 @@ from enum import Enum
 from pathlib import Path
 from typing import Mapping
 
-from .contracts import PermissionMode
+from .contracts import PermissionMode, ToolEffect
+from .exec_policy import current_exec_effect
+from .network_policy import current_network_access_granted
 from .permissions import FileSystemAccess, PermissionSnapshot, permission_snapshot
 
 
 _MXC_SCHEMA_VERSION = "0.8.0-alpha"
 _MXC_CONFIG_LIMIT = 22_000
 _MXC_TIERS = frozenset({"base-container", "appcontainer-bfs", "appcontainer-dacl"})
-_MXC_ENV_ALWAYS = frozenset(
-    {
-        "ALLUSERSPROFILE",
-        "APPDATA",
-        "COMSPEC",
-        "HOME",
-        "HOMEDRIVE",
-        "HOMEPATH",
-        "LOCALAPPDATA",
-        "NUMBER_OF_PROCESSORS",
-        "OS",
-        "PATH",
-        "PATHEXT",
-        "PROCESSOR_ARCHITECTURE",
-        "PROGRAMDATA",
-        "PROGRAMFILES",
-        "PROGRAMFILES(X86)",
-        "PROGRAMW6432",
-        "PSMODULEPATH",
-        "PYTHONHOME",
-        "PYTHONPATH",
-        "SYSTEMDRIVE",
-        "SYSTEMROOT",
-        "TEMP",
-        "TMP",
-        "USERPROFILE",
-        "VIRTUAL_ENV",
-        "WINDIR",
-    }
-)
+_MXC_ENV_ALWAYS = frozenset({"ALLUSERSPROFILE", "APPDATA", "COMSPEC", "HOME", "HOMEDRIVE", "HOMEPATH", "LOCALAPPDATA", "NUMBER_OF_PROCESSORS", "OS", "PATH", "PATHEXT", "PROCESSOR_ARCHITECTURE", "PROGRAMDATA", "PROGRAMFILES", "PROGRAMFILES(X86)", "PROGRAMW6432", "PSMODULEPATH", "PYTHONHOME", "PYTHONPATH", "SYSTEMDRIVE", "SYSTEMROOT", "TEMP", "TMP", "USERPROFILE", "VIRTUAL_ENV", "WINDIR"})
 _SECRET_ENV_MARKERS = ("API_KEY", "TOKEN", "SECRET", "PASSWORD", "PASSWD", "PRIVATE_KEY")
 
 
@@ -79,6 +52,8 @@ class SandboxSnapshot:
     enforced: bool
     reason: str
     network_isolated: bool = False
+    network_access_granted: bool = False
+    effective_exec_effect: str = ""
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -89,6 +64,8 @@ class SandboxSnapshot:
             "enforced": self.enforced,
             "reason": self.reason,
             "network_isolated": self.network_isolated,
+            "network_access_granted": self.network_access_granted,
+            "effective_exec_effect": self.effective_exec_effect or None,
         }
 
 
@@ -100,30 +77,15 @@ class SandboxCommand:
 
 
 class SandboxManager:
-    """Plan OS-level command isolation from the resolved permission snapshot.
+    """Plan OS-level isolation from resolved permission plus call-specific policy."""
 
-    Linux uses Bubblewrap when available. Windows can use Microsoft MXC's
-    ``wxc-exec`` ProcessContainer launcher. AUTO records an honest unsandboxed
-    fallback when no usable backend exists; REQUIRED fails closed; OFF skips
-    OS sandboxing. Unrestricted filesystem access intentionally bypasses it.
-    """
-
-    def __init__(
-        self,
-        *,
-        policy: SandboxPolicy | str = SandboxPolicy.AUTO,
-        bubblewrap_executable: str | None = None,
-        windows_mxc_executable: str | None = None,
-        probe_backend: bool = True,
-        system_name: str | None = None,
-    ) -> None:
+    def __init__(self, *, policy: SandboxPolicy | str = SandboxPolicy.AUTO, bubblewrap_executable: str | None = None, windows_mxc_executable: str | None = None, probe_backend: bool = True, system_name: str | None = None) -> None:
         self.policy = SandboxPolicy(policy)
         self.system_name = str(system_name or platform.system()).strip().casefold()
         self.bubblewrap_executable = ""
         self.windows_mxc_executable = ""
         self._backend_available = False
         self._backend_reason = "No supported OS sandbox backend is available."
-
         if self.system_name == "linux":
             explicit = str(bubblewrap_executable or "").strip()
             self.bubblewrap_executable = str(explicit or shutil.which("bwrap") or "")
@@ -133,54 +95,25 @@ class SandboxManager:
                 self._backend_available = True
                 self._backend_reason = "Bubblewrap availability was accepted without a runtime probe."
             else:
-                ok, reason = self._probe_bubblewrap(self.bubblewrap_executable)
-                self._backend_available = ok
-                self._backend_reason = reason
+                self._backend_available, self._backend_reason = self._probe_bubblewrap(self.bubblewrap_executable)
             return
-
         if self.system_name == "windows":
-            explicit = str(
-                windows_mxc_executable
-                or os.environ.get("LOOM_WINDOWS_SANDBOX_EXECUTABLE")
-                or ""
-            ).strip()
-            self.windows_mxc_executable = str(
-                explicit
-                or shutil.which("wxc-exec.exe")
-                or shutil.which("wxc-exec")
-                or ""
-            )
+            explicit = str(windows_mxc_executable or os.environ.get("LOOM_WINDOWS_SANDBOX_EXECUTABLE") or "").strip()
+            self.windows_mxc_executable = str(explicit or shutil.which("wxc-exec.exe") or shutil.which("wxc-exec") or "")
             if not self.windows_mxc_executable:
-                self._backend_reason = (
-                    "Microsoft MXC wxc-exec was not found. Install @microsoft/mxc-sdk "
-                    "or set LOOM_WINDOWS_SANDBOX_EXECUTABLE to its wxc-exec.exe."
-                )
+                self._backend_reason = "Microsoft MXC wxc-exec was not found. Install @microsoft/mxc-sdk or set LOOM_WINDOWS_SANDBOX_EXECUTABLE to its wxc-exec.exe."
             elif not probe_backend:
                 self._backend_available = True
                 self._backend_reason = "Microsoft MXC availability was accepted without a runtime probe."
             else:
-                ok, reason = self._probe_windows_mxc(self.windows_mxc_executable)
-                self._backend_available = ok
-                self._backend_reason = reason
+                self._backend_available, self._backend_reason = self._probe_windows_mxc(self.windows_mxc_executable)
             return
-
-        self._backend_reason = (
-            f"No Loom OS sandbox backend is implemented for {self.system_name or 'this platform'}."
-        )
+        self._backend_reason = f"No Loom OS sandbox backend is implemented for {self.system_name or 'this platform'}."
 
     @staticmethod
     def _probe_bubblewrap(executable: str) -> tuple[bool, str]:
         try:
-            completed = subprocess.run(
-                [executable, "--die-with-parent", "--ro-bind", "/", "/", "--", "/bin/true"],
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.PIPE,
-                text=True,
-                errors="replace",
-                timeout=3,
-                check=False,
-            )
+            completed = subprocess.run([executable, "--die-with-parent", "--ro-bind", "/", "/", "--", "/bin/true"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, errors="replace", timeout=3, check=False)
         except (OSError, subprocess.TimeoutExpired) as exc:
             return False, f"Bubblewrap probe failed: {type(exc).__name__}: {exc}"
         if completed.returncode == 0:
@@ -190,19 +123,8 @@ class SandboxManager:
 
     @staticmethod
     def _probe_windows_mxc(executable: str) -> tuple[bool, str]:
-        """Require MXC's read-only platform probe, not mere executable presence."""
-
         try:
-            completed = subprocess.run(
-                [executable, "--probe"],
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                errors="replace",
-                timeout=8,
-                check=False,
-            )
+            completed = subprocess.run([executable, "--probe"], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, errors="replace", timeout=8, check=False)
         except (OSError, subprocess.TimeoutExpired) as exc:
             return False, f"Microsoft MXC probe failed: {type(exc).__name__}: {exc}"
         if completed.returncode != 0:
@@ -236,17 +158,9 @@ class SandboxManager:
 
     @staticmethod
     def mode_for_permission(permission_mode: PermissionMode | str) -> SandboxMode:
-        """Compatibility helper resolved through the canonical snapshot table."""
-
         return SandboxManager.mode_for_permissions(permission_snapshot(permission_mode))
 
-    def snapshot(
-        self,
-        *,
-        workspace: str | Path,
-        permissions: PermissionSnapshot | None = None,
-        permission_mode: PermissionMode | str | None = None,
-    ) -> SandboxSnapshot:
+    def snapshot(self, *, workspace: str | Path, permissions: PermissionSnapshot | None = None, permission_mode: PermissionMode | str | None = None, network_access_granted: bool | None = None) -> SandboxSnapshot:
         if permissions is None:
             if permission_mode is None:
                 raise ValueError("sandbox snapshot requires permissions or permission_mode")
@@ -257,140 +171,51 @@ class SandboxManager:
                 raise ValueError("sandbox permission_mode does not match permission snapshot")
 
         mode = self.mode_for_permissions(permissions)
+        effect = current_exec_effect()
+        if effect is ToolEffect.READ_ONLY and mode is SandboxMode.WORKSPACE:
+            mode = SandboxMode.READ_ONLY
         _ = Path(workspace).expanduser().resolve()
+        network_granted = current_network_access_granted() if network_access_granted is None else bool(network_access_granted)
+        effect_value = effect.value if effect is not None else ""
 
         if mode is SandboxMode.DISABLED:
-            return SandboxSnapshot(
-                policy=self.policy,
-                mode=mode,
-                backend=SandboxBackend.NONE,
-                available=self._backend_available,
-                enforced=False,
-                reason="Permission snapshot intentionally selects unrestricted filesystem access.",
-            )
+            return SandboxSnapshot(self.policy, mode, SandboxBackend.NONE, self._backend_available, False, "Permission snapshot intentionally selects unrestricted filesystem access.", network_access_granted=network_granted, effective_exec_effect=effect_value)
         if self.policy is SandboxPolicy.OFF:
-            return SandboxSnapshot(
-                policy=self.policy,
-                mode=mode,
-                backend=SandboxBackend.NONE,
-                available=self._backend_available,
-                enforced=False,
-                reason="OS sandboxing was explicitly disabled by runtime policy.",
-            )
+            return SandboxSnapshot(self.policy, mode, SandboxBackend.NONE, self._backend_available, False, "OS sandboxing was explicitly disabled by runtime policy.", network_access_granted=network_granted, effective_exec_effect=effect_value)
         if self._backend_available:
-            if self.system_name == "linux":
-                backend = SandboxBackend.BUBBLEWRAP
-                network_isolated = False
-            elif self.system_name == "windows":
-                backend = SandboxBackend.WINDOWS_MXC
-                network_isolated = True
-            else:  # defensive: unsupported platforms never mark a backend available
-                backend = SandboxBackend.NONE
-                network_isolated = False
-            return SandboxSnapshot(
-                policy=self.policy,
-                mode=mode,
-                backend=backend,
-                available=True,
-                enforced=True,
-                reason=self._backend_reason,
-                network_isolated=network_isolated,
-            )
-        return SandboxSnapshot(
-            policy=self.policy,
-            mode=mode,
-            backend=SandboxBackend.NONE,
-            available=False,
-            enforced=False,
-            reason=self._backend_reason,
-        )
+            backend = SandboxBackend.BUBBLEWRAP if self.system_name == "linux" else SandboxBackend.WINDOWS_MXC if self.system_name == "windows" else SandboxBackend.NONE
+            return SandboxSnapshot(self.policy, mode, backend, True, True, self._backend_reason, network_isolated=not network_granted, network_access_granted=network_granted, effective_exec_effect=effect_value)
+        return SandboxSnapshot(self.policy, mode, SandboxBackend.NONE, False, False, self._backend_reason, network_access_granted=network_granted, effective_exec_effect=effect_value)
 
-    def prepare(
-        self,
-        *,
-        argv: tuple[str, ...],
-        cwd: Path,
-        workspace: Path,
-        permissions: PermissionSnapshot | None = None,
-        permission_mode: PermissionMode | str | None = None,
-        environment: Mapping[str, str] | None = None,
-    ) -> SandboxCommand:
+    def prepare(self, *, argv: tuple[str, ...], cwd: Path, workspace: Path, permissions: PermissionSnapshot | None = None, permission_mode: PermissionMode | str | None = None, environment: Mapping[str, str] | None = None, network_access_granted: bool | None = None) -> SandboxCommand:
         root = Path(workspace).expanduser().resolve()
         resolved_cwd = Path(cwd).expanduser().resolve()
         try:
             resolved_cwd.relative_to(root)
         except ValueError as exc:
             raise ValueError("command cwd escapes the Loom workspace") from exc
-
-        snapshot = self.snapshot(
-            permissions=permissions,
-            permission_mode=permission_mode,
-            workspace=root,
-        )
-        if (
-            snapshot.mode is not SandboxMode.DISABLED
-            and self.policy is SandboxPolicy.REQUIRED
-            and not snapshot.enforced
-        ):
+        network_granted = current_network_access_granted() if network_access_granted is None else bool(network_access_granted)
+        snapshot = self.snapshot(permissions=permissions, permission_mode=permission_mode, workspace=root, network_access_granted=network_granted)
+        if snapshot.mode is not SandboxMode.DISABLED and self.policy is SandboxPolicy.REQUIRED and not snapshot.enforced:
             raise RuntimeError(f"OS sandbox is required but unavailable. {snapshot.reason}")
         if not snapshot.enforced:
-            return SandboxCommand(argv=tuple(argv), cwd=resolved_cwd, snapshot=snapshot)
-
+            return SandboxCommand(tuple(argv), resolved_cwd, snapshot)
         if snapshot.backend is SandboxBackend.BUBBLEWRAP:
-            return SandboxCommand(
-                argv=self._bubblewrap_argv(
-                    argv=tuple(argv),
-                    cwd=resolved_cwd,
-                    workspace=root,
-                    mode=snapshot.mode,
-                ),
-                cwd=Path("/"),
-                snapshot=snapshot,
-            )
+            return SandboxCommand(self._bubblewrap_argv(argv=tuple(argv), cwd=resolved_cwd, workspace=root, mode=snapshot.mode, network_access_granted=network_granted), Path("/"), snapshot)
         if snapshot.backend is SandboxBackend.WINDOWS_MXC:
-            return SandboxCommand(
-                argv=self._windows_mxc_argv(
-                    argv=tuple(argv),
-                    cwd=resolved_cwd,
-                    workspace=root,
-                    mode=snapshot.mode,
-                    environment=environment or {},
-                ),
-                cwd=resolved_cwd,
-                snapshot=snapshot,
-            )
+            return SandboxCommand(self._windows_mxc_argv(argv=tuple(argv), cwd=resolved_cwd, workspace=root, mode=snapshot.mode, environment=environment or {}, network_access_granted=network_granted), resolved_cwd, snapshot)
         raise RuntimeError(f"unsupported sandbox backend: {snapshot.backend.value}")
 
-    def _bubblewrap_argv(
-        self,
-        *,
-        argv: tuple[str, ...],
-        cwd: Path,
-        workspace: Path,
-        mode: SandboxMode,
-    ) -> tuple[str, ...]:
+    def _bubblewrap_argv(self, *, argv: tuple[str, ...], cwd: Path, workspace: Path, mode: SandboxMode, network_access_granted: bool) -> tuple[str, ...]:
         executable = self.bubblewrap_executable
         if not executable:
             raise RuntimeError("bubblewrap executable is unavailable")
-
-        command: list[str] = [
-            executable,
-            "--die-with-parent",
-            "--new-session",
-            "--unshare-pid",
-            "--ro-bind",
-            "/",
-            "/",
-            "--dev",
-            "/dev",
-            "--proc",
-            "/proc",
-            "--tmpfs",
-            "/tmp",
-        ]
+        command: list[str] = [executable, "--die-with-parent", "--new-session", "--unshare-pid"]
+        if not network_access_granted:
+            command.append("--unshare-net")
+        command.extend(["--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc", "--tmpfs", "/tmp"])
         if mode is SandboxMode.WORKSPACE:
             command.extend(["--bind", str(workspace), str(workspace)])
-            # Protect control-plane metadata even when the project itself is writable.
             for name in (".git", ".loom", ".agents"):
                 protected = workspace / name
                 if protected.exists():
@@ -399,21 +224,12 @@ class SandboxManager:
         command.extend(argv)
         return tuple(command)
 
-    def _windows_mxc_argv(
-        self,
-        *,
-        argv: tuple[str, ...],
-        cwd: Path,
-        workspace: Path,
-        mode: SandboxMode,
-        environment: Mapping[str, str],
-    ) -> tuple[str, ...]:
+    def _windows_mxc_argv(self, *, argv: tuple[str, ...], cwd: Path, workspace: Path, mode: SandboxMode, environment: Mapping[str, str], network_access_granted: bool) -> tuple[str, ...]:
         executable = self.windows_mxc_executable
         if not executable:
             raise RuntimeError("Microsoft MXC wxc-exec is unavailable")
         if mode is SandboxMode.DISABLED:
             return argv
-
         readonly_paths = self._windows_tool_read_paths(argv=argv, environment=environment)
         if mode is SandboxMode.READ_ONLY:
             readonly_paths.insert(0, str(workspace))
@@ -424,46 +240,22 @@ class SandboxManager:
                 protected = workspace / name
                 if protected.exists():
                     readonly_paths.append(str(protected))
-
         child_env = self._windows_mxc_environment(environment)
         config: dict[str, object] = {
             "version": _MXC_SCHEMA_VERSION,
             "containerId": f"loom-{uuid.uuid4().hex[:12]}",
             "containment": "process",
             "lifecycle": {"destroyOnExit": True, "preservePolicy": False},
-            "process": {
-                "commandLine": subprocess.list2cmdline(list(argv)),
-                "cwd": str(cwd),
-                "timeout": 0,
-                "env": [f"{key}={value}" for key, value in sorted(child_env.items())],
-            },
-            "filesystem": {
-                "readwritePaths": _unique_paths(readwrite_paths),
-                "readonlyPaths": _unique_paths(readonly_paths),
-                "deniedPaths": [],
-            },
-            "network": {
-                "egress": {"default": "deny"},
-                "ingress": {"default": "deny", "hostLoopback": "deny"},
-            },
+            "process": {"commandLine": subprocess.list2cmdline(list(argv)), "cwd": str(cwd), "timeout": 0, "env": [f"{key}={value}" for key, value in sorted(child_env.items())]},
+            "filesystem": {"readwritePaths": _unique_paths(readwrite_paths), "readonlyPaths": _unique_paths(readonly_paths), "deniedPaths": []},
+            "network": {"egress": {"default": "allow" if network_access_granted else "deny"}, "ingress": {"default": "deny", "hostLoopback": "deny"}},
             "ui": {"disable": True, "clipboard": "none", "injection": False},
-            "processContainer": {
-                "capabilities": [],
-                "ui": {
-                    "isolation": "container",
-                    "desktopSystemControl": False,
-                    "systemSettings": "none",
-                    "ime": False,
-                },
-            },
+            "processContainer": {"capabilities": [], "ui": {"isolation": "container", "desktopSystemControl": False, "systemSettings": "none", "ime": False}},
         }
         raw = json.dumps(config, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         encoded = base64.b64encode(raw).decode("ascii")
         if len(encoded) > _MXC_CONFIG_LIMIT:
-            raise RuntimeError(
-                "Windows MXC sandbox configuration is too large for safe inline launch; "
-                "reduce the child environment or PATH"
-            )
+            raise RuntimeError("Windows MXC sandbox configuration is too large for safe inline launch; reduce the child environment or PATH")
         return (executable, "--config-base64", encoded)
 
     @staticmethod
@@ -481,22 +273,9 @@ class SandboxManager:
         return output
 
     @staticmethod
-    def _windows_tool_read_paths(
-        *,
-        argv: tuple[str, ...],
-        environment: Mapping[str, str],
-    ) -> list[str]:
-        """Grant only concrete runtime roots needed to start the target command.
-
-        ProcessContainer's AppContainer+DACL fallback mutates ACLs on every
-        declared path. Passing the host's entire PATH is both unnecessarily
-        broad and can fail on stale/nonexistent entries. Resolve the actual
-        executable and a small set of existing runtime roots instead.
-        """
-
+    def _windows_tool_read_paths(*, argv: tuple[str, ...], environment: Mapping[str, str]) -> list[str]:
         output: list[str] = []
         path_value = str(environment.get("PATH") or environment.get("Path") or "")
-
         program = str(argv[0] if argv else "").strip().strip('"')
         candidate = Path(program)
         resolved_program = None
@@ -509,10 +288,6 @@ class SandboxManager:
             if located:
                 resolved_program = Path(located).resolve()
                 output.append(str(resolved_program.parent))
-
-        # A Windows venv launcher reads pyvenv.cfg beside/above Scripts and then
-        # loads the base interpreter. Directly launching .venv/Scripts/python.exe
-        # does not set VIRTUAL_ENV, so environment-only discovery misses both.
         if resolved_program is not None and resolved_program.name.casefold() in {"python.exe", "pythonw.exe"}:
             for root in (resolved_program.parent, resolved_program.parent.parent):
                 config = root / "pyvenv.cfg"
@@ -528,7 +303,6 @@ class SandboxManager:
                         if home.is_absolute() and (home / "python.exe").is_file():
                             output.append(str(home.resolve()))
                 break
-
         for name in ("SYSTEMROOT", "WINDIR", "PYTHONHOME", "VIRTUAL_ENV"):
             value = str(environment.get(name) or "").strip().strip('"')
             if not value:
@@ -536,7 +310,6 @@ class SandboxManager:
             path = Path(value)
             if path.is_absolute() and path.exists():
                 output.append(str(path.resolve()))
-
         python_path = str(environment.get("PYTHONPATH") or "")
         for entry in python_path.split(os.pathsep):
             text = entry.strip().strip('"')
@@ -545,7 +318,6 @@ class SandboxManager:
             path = Path(text)
             if path.is_absolute() and path.exists():
                 output.append(str(path.resolve()))
-
         return _unique_paths(output)
 
 
@@ -564,11 +336,4 @@ def _unique_paths(values: list[str]) -> list[str]:
     return output
 
 
-__all__ = [
-    "SandboxBackend",
-    "SandboxCommand",
-    "SandboxManager",
-    "SandboxMode",
-    "SandboxPolicy",
-    "SandboxSnapshot",
-]
+__all__ = ["SandboxBackend", "SandboxCommand", "SandboxManager", "SandboxMode", "SandboxPolicy", "SandboxSnapshot"]

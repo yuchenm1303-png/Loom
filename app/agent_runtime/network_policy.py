@@ -1,12 +1,9 @@
 from __future__ import annotations
 
-"""Explicit network authorization policy shared by command-aware execution.
+"""Explicit network authorization and per-process enforcement context."""
 
-This layer answers whether a tool call that *intends* to use the network may run.
-OS-level egress containment remains a separate sandbox concern; keeping the two
-concepts separate avoids treating an unavailable sandbox backend as permission.
-"""
-
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from enum import Enum
 
@@ -14,7 +11,11 @@ from .contracts import PermissionMode
 from .permissions import ApprovalPolicy, PermissionDecision, PermissionSnapshot
 
 
-NETWORK_POLICY_VERSION = 1
+NETWORK_POLICY_VERSION = 2
+_NETWORK_ACCESS_GRANTED: ContextVar[bool] = ContextVar(
+    "loom_network_access_granted",
+    default=False,
+)
 
 
 class NetworkAccess(str, Enum):
@@ -28,6 +29,21 @@ class NetworkPolicyEvaluation:
     access: NetworkAccess
     decision: PermissionDecision
     reason: str
+
+
+@contextmanager
+def network_access_scope(granted: bool):
+    """Bind the resolved network grant only while one tool starts its process."""
+
+    token = _NETWORK_ACCESS_GRANTED.set(bool(granted))
+    try:
+        yield
+    finally:
+        _NETWORK_ACCESS_GRANTED.reset(token)
+
+
+def current_network_access_granted() -> bool:
+    return bool(_NETWORK_ACCESS_GRANTED.get())
 
 
 class NetworkPolicy:
@@ -65,12 +81,12 @@ class NetworkPolicy:
             return NetworkPolicyEvaluation(
                 access=access,
                 decision=PermissionDecision.APPROVAL,
-                reason="Network access requires explicit approval in the active permission mode.",
+                reason="Network capability requires explicit approval in the active permission mode.",
             )
         return NetworkPolicyEvaluation(
             access=access,
             decision=PermissionDecision.DENY,
-            reason="Network access is disabled by the active permission mode.",
+            reason="Network capability is disabled by the active permission mode.",
         )
 
 
@@ -79,4 +95,6 @@ __all__ = [
     "NetworkAccess",
     "NetworkPolicy",
     "NetworkPolicyEvaluation",
+    "current_network_access_granted",
+    "network_access_scope",
 ]
