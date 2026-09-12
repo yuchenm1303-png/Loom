@@ -16,18 +16,24 @@ function selectionIsActive(): boolean {
   return Boolean(selection && !selection.isCollapsed && selection.toString().trim());
 }
 
+function clearExternalReview(): void {
+  window.dispatchEvent(new CustomEvent("loom:review-clear-external"));
+}
+
 /**
- * Connects transcript affordances to the persistent review pane without
- * threading review callbacks through every message/activity component.
- *
- * Structured change cards own their local expand/collapse interaction. They
- * explicitly request the review pane through loom:review-open when the user
- * clicks the Review action. Historical file path chips and task rows still open
- * the matching review file directly.
+ * Connects transcript and project affordances to the persistent review pane
+ * without threading review callbacks through every message/activity component.
  */
 export function ReviewInteractionBridge({ onOpen }: ReviewInteractionBridgeProps) {
   useEffect(() => {
     const handleOpenEvent = (event: Event) => {
+      clearExternalReview();
+      const detail = (event as CustomEvent<{ path?: string }>).detail;
+      const path = cleanPath(detail?.path);
+      onOpen(path || undefined);
+    };
+
+    const handleProjectDiffEvent = (event: Event) => {
       const detail = (event as CustomEvent<{ path?: string }>).detail;
       const path = cleanPath(detail?.path);
       onOpen(path || undefined);
@@ -39,6 +45,7 @@ export function ReviewInteractionBridge({ onOpen }: ReviewInteractionBridgeProps
 
       const artifactPath = target.closest<HTMLElement>(".turn-artifacts-files code[title]");
       if (artifactPath) {
+        clearExternalReview();
         onOpen(cleanPath(artifactPath.getAttribute("title") || artifactPath.textContent));
         return;
       }
@@ -46,6 +53,7 @@ export function ReviewInteractionBridge({ onOpen }: ReviewInteractionBridgeProps
       const taskRow = target.closest<HTMLElement>(".task-flow-row");
       const taskPath = taskRow?.querySelector<HTMLElement>(".task-flow-path");
       if (taskPath) {
+        clearExternalReview();
         onOpen(cleanPath(taskPath.getAttribute("title") || taskPath.textContent));
         return;
       }
@@ -53,14 +61,17 @@ export function ReviewInteractionBridge({ onOpen }: ReviewInteractionBridgeProps
       const codeBlock = target.closest<HTMLElement>(".markdown-code-block pre, .markdown-code-block code");
       if (codeBlock) {
         if (target.closest("button, a") || selectionIsActive()) return;
+        clearExternalReview();
         onOpen();
       }
     };
 
     window.addEventListener("loom:review-open", handleOpenEvent);
+    window.addEventListener("loom:review-open-diff", handleProjectDiffEvent);
     document.addEventListener("click", handleClick);
     return () => {
       window.removeEventListener("loom:review-open", handleOpenEvent);
+      window.removeEventListener("loom:review-open-diff", handleProjectDiffEvent);
       document.removeEventListener("click", handleClick);
     };
   }, [onOpen]);
