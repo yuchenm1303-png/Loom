@@ -213,6 +213,7 @@ export interface LoomBrowserSettings {
   preferredEngine?: "edge" | "chrome" | "system";
   persistSessions?: boolean;
   modelSelectsConnection?: boolean;
+  allowPrivateNetworks?: boolean;
 }
 
 export interface LoomComputerSettings {

@@ -109,6 +109,7 @@ type BrowserSettings = {
   preferredEngine: "edge" | "chrome" | "system";
   persistSessions: boolean;
   modelSelectsConnection: boolean;
+  allowPrivateNetworks: boolean;
 };
 
 type ComputerSettings = {
@@ -231,6 +232,7 @@ const DEFAULT_BROWSER: BrowserSettings = {
   preferredEngine: "edge",
   persistSessions: true,
   modelSelectsConnection: false,
+  allowPrivateNetworks: false,
 };
 
 const BROWSER_MODE_OPTIONS: { value: BrowserConnectionMode; label: string; detail: string }[] = [
@@ -837,6 +839,9 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
           ) : null}
           <PreferenceRow icon={ShieldAlert} title="Let the model pick the browser" detail="The model may attach to any local browser running with remote debugging, or take over your current tab, instead of only using the connection above.">
             <SettingSwitch checked={prefs.modelSelectsConnection} label="Model-selected browser connections" onChange={(value) => void saveBrowserSetting("browser.modelSelectsConnection", value, value ? "The model can now choose the browser." : "The model is restricted to the connection above.")} />
+          </PreferenceRow>
+          <PreferenceRow icon={ShieldAlert} title="Reach local addresses" detail="Let the browser open localhost and private network addresses, such as your own dev server. Off by default because it also reaches services that were never exposed.">
+            <SettingSwitch checked={prefs.allowPrivateNetworks} label="Allow private network addresses" onChange={(value) => void saveBrowserSetting("browser.allowPrivateNetworks", value, value ? "The browser can now reach local addresses." : "Local addresses are blocked again.")} />
           </PreferenceRow>
           {prefs.modelSelectsConnection ? (
             <div className="settings-callout-inline"><ShieldAlert size={15} /><span>A browser you are signed into exposes those sessions to the model, and any page it opens can try to redirect it. Remote endpoints stay blocked: attaching is limited to 127.0.0.1 and ::1.</span></div>

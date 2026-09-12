@@ -7,22 +7,21 @@ from dataclasses import dataclass, field
 from typing import Callable, Sequence
 from urllib.parse import unquote, urlsplit
 
-from .browser_session import BrowserURLPolicyError
+from .browser_session import (
+    CLOUD_METADATA_ADDRESSES,
+    INFRASTRUCTURE_HOST_NAMES,
+    LOCAL_HOST_NAMES,
+    BrowserURLPolicyError,
+)
 
 
 DNSResolver = Callable[[str], Sequence[str]]
 _UNICODE_DOTS = str.maketrans({"\u3002": ".", "\uff0e": ".", "\uff61": "."})
-_DEFAULT_PROHIBITED = (
-    "localhost",
-    "*.localhost",
-    "localhost.localdomain",
-    "metadata",
-    "metadata.google.internal",
-    "host.docker.internal",
-    "gateway.docker.internal",
-    "kubernetes.default",
-    "kubernetes.default.svc",
-)
+# Rules that describe "somewhere on this machine or network", which the
+# private-network switch governs. Every other prohibited rule is an endpoint
+# that hands out credentials and is never reachable.
+_LOCAL_RULES = frozenset({*LOCAL_HOST_NAMES, "*.localhost"})
+_DEFAULT_PROHIBITED = tuple(sorted(_LOCAL_RULES | INFRASTRUCTURE_HOST_NAMES))
 
 
 def _default_resolver(hostname: str) -> tuple[str, ...]:
@@ -119,8 +118,17 @@ class BrowserSecurityPolicy:
 
         host = _canonical_host(parsed.hostname or "")
         prohibited = tuple(_normalize_domain_rule(item) for item in self.prohibited_domains)
-        if any(_matches_domain(host, rule) for rule in prohibited) and not self.allow_private_networks:
-            raise BrowserURLPolicyError(f"browser navigation to prohibited host is blocked: {host}")
+        matched = tuple(rule for rule in prohibited if _matches_domain(host, rule))
+        if matched:
+            # Reaching local addresses and reaching the endpoints that hand out
+            # credentials are different questions. The whole list used to be
+            # skipped when private networks were allowed, so enabling one enabled
+            # the other; only the local names follow that switch.
+            local_only = all(rule in _LOCAL_RULES for rule in matched)
+            if not local_only or not self.allow_private_networks:
+                raise BrowserURLPolicyError(
+                    f"browser navigation to prohibited host is blocked: {host}"
+                )
 
         if allowed_domains:
             allowed = tuple(_normalize_domain_rule(item) for item in allowed_domains)
@@ -142,6 +150,12 @@ class BrowserSecurityPolicy:
         return value
 
     def _validate_ip(self, address: ipaddress.IPv4Address | ipaddress.IPv6Address) -> None:
+        if address in CLOUD_METADATA_ADDRESSES:
+            # Link-local is otherwise governed by the switch; this address is the
+            # instance metadata service and hands out credentials.
+            raise BrowserURLPolicyError(
+                f"browser navigation to the cloud metadata service is blocked: {address}"
+            )
         if not self.allow_private_networks and not address.is_global:
             raise BrowserURLPolicyError(f"browser navigation to non-public IP is blocked: {address}")
 

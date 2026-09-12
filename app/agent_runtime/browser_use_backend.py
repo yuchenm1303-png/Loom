@@ -92,6 +92,9 @@ class BrowserUseBackend(BrowserBackend):
     # Where downloads land. Set by the tool layer to a directory inside the Loom
     # workspace, which is the only place the model can read files back from.
     downloads_dir: str | Path | None = None
+    # Lets this session reach loopback and private addresses, which browser-use
+    # blocks by default. Set from the runtime, which owns the user's choice.
+    allow_private_networks: bool = False
     diagnostics: BrowserDiagnosticLog | None = None
 
     def __post_init__(self) -> None:
@@ -248,14 +251,25 @@ class BrowserUseBackend(BrowserBackend):
                 **({"downloads_path": downloads, "accept_downloads": True} if downloads else {}),
                 headless=self.options.headless,
                 allowed_domains=list(self.options.allowed_domains) or None,
-                prohibited_domains=[
-                    "localhost",
-                    "*.localhost",
-                    "metadata.google.internal",
-                    "host.docker.internal",
-                    "gateway.docker.internal",
-                ],
-                block_ip_addresses=True,
+                # Cloud and container metadata endpoints stay blocked either way:
+                # reaching those is never the point of pointing a browser at a
+                # local address, and they hand out credentials.
+                prohibited_domains=(
+                    [
+                        "metadata.google.internal",
+                        "host.docker.internal",
+                        "gateway.docker.internal",
+                    ]
+                    if self.allow_private_networks
+                    else [
+                        "localhost",
+                        "*.localhost",
+                        "metadata.google.internal",
+                        "host.docker.internal",
+                        "gateway.docker.internal",
+                    ]
+                ),
+                block_ip_addresses=not self.allow_private_networks,
                 enable_default_extensions=False,
                 # Existing CDP browsers own their own profile. Supplying a second
                 # user_data_dir would be misleading and is ignored by browser-use's

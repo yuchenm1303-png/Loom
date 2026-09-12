@@ -12,6 +12,31 @@ from urllib.parse import urlsplit
 from .storage import utc_now
 
 
+# Allowing the browser to reach local addresses and allowing it to reach the
+# endpoints that hand out credentials are different questions. These were one
+# list, checked only when private networks were forbidden, so the moment that
+# became configurable a cloud metadata service would have become reachable too.
+LOCAL_HOST_NAMES = frozenset({"localhost", "localhost.localdomain"})
+INFRASTRUCTURE_HOST_NAMES = frozenset(
+    {
+        "metadata",
+        "metadata.google.internal",
+        "host.docker.internal",
+        "gateway.docker.internal",
+        "kubernetes.default",
+        "kubernetes.default.svc",
+    }
+)
+# The instance metadata services. Link-local otherwise stays governed by the
+# private-network switch; these two addresses never are.
+CLOUD_METADATA_ADDRESSES = frozenset(
+    {
+        ipaddress.ip_address("169.254.169.254"),
+        ipaddress.ip_address("fd00:ec2::254"),
+    }
+)
+
+
 class BrowserError(RuntimeError):
     pass
 
@@ -157,18 +182,7 @@ class BrowserURLPolicy:
     resolve_dns: bool = True
     resolver: DNSResolver = field(default=_default_resolver, repr=False, compare=False)
 
-    _blocked_names = frozenset(
-        {
-            "localhost",
-            "localhost.localdomain",
-            "metadata.google.internal",
-            "metadata",
-            "host.docker.internal",
-            "gateway.docker.internal",
-            "kubernetes.default",
-            "kubernetes.default.svc",
-        }
-    )
+    _blocked_names = LOCAL_HOST_NAMES | INFRASTRUCTURE_HOST_NAMES
 
     def validate(self, url: str, *, allowed_domains: tuple[str, ...] = ()) -> str:
         value = str(url or "").strip()
@@ -180,7 +194,9 @@ class BrowserURLPolicy:
         host = (parsed.hostname or "").casefold().rstrip(".")
         if not host:
             raise BrowserURLPolicyError("browser navigation URL must contain a hostname")
-        if host in self._blocked_names or host.endswith(".localhost"):
+        if host in INFRASTRUCTURE_HOST_NAMES:
+            raise BrowserURLPolicyError(f"browser navigation to prohibited host is blocked: {host}")
+        if host in LOCAL_HOST_NAMES or host.endswith(".localhost"):
             if not self.allow_private_networks:
                 raise BrowserURLPolicyError(f"browser navigation to local host is blocked: {host}")
         if allowed_domains and not _matches_domains(host, allowed_domains):
@@ -199,6 +215,10 @@ class BrowserURLPolicy:
         return value
 
     def _validate_ip(self, address: ipaddress.IPv4Address | ipaddress.IPv6Address) -> None:
+        if address in CLOUD_METADATA_ADDRESSES:
+            raise BrowserURLPolicyError(
+                f"browser navigation to the cloud metadata service is blocked: {address}"
+            )
         if self.allow_private_networks:
             return
         if not address.is_global:

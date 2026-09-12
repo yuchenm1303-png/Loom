@@ -84,6 +84,14 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
             self.runtime.browser_model_controlled_connection = bool(
                 preferences.get("modelSelectsConnection", False)
             )
+        private = getattr(self.runtime, "browser_set_private_networks", None)
+        if callable(private):
+            try:
+                private(bool(preferences.get("allowPrivateNetworks", False)))
+            except Exception:
+                # A live session blocks the change; the stored value still
+                # applies the next time the connection is rebuilt.
+                pass
         try:
             apply(
                 mode,

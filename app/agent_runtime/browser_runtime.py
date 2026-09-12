@@ -510,12 +510,18 @@ class BrowserRuntime(WebSearchRuntime):
                 profile_persistence = True
 
             channel = _browser_channel_for_engine(engine)
+            private = bool(
+                getattr(self.browser_security_policy, "allow_private_networks", False)
+            )
 
             def build_browser_use_backend(options: BrowserLaunchOptions):
                 backend = BrowserUseSessionBackend(options=options)
                 backend.user_data_dir = profile_dir
                 backend.cdp_url = cdp_url or None
                 backend.browser_channel = channel
+                # browser-use enforces its own private-address rule, so Loom's
+                # policy has to be mirrored onto the backend or the two disagree.
+                backend.allow_private_networks = private
                 return backend
 
             factory = build_browser_use_backend
@@ -524,6 +530,7 @@ class BrowserRuntime(WebSearchRuntime):
             raise RuntimeError("browser_cdp_url requires the browser-use extra")
 
         self.browser_backend_name = backend_name
+        self._browser_cdp_url = cdp_url
         self._browser_engine = str(engine or "")
         self.browser_profile_persistence = profile_persistence
         self.browser_profile_dir = profile_dir
@@ -599,6 +606,43 @@ class BrowserRuntime(WebSearchRuntime):
                 )
         self._browser_connection_configured = True
 
+    @property
+    def browser_allow_private_networks(self) -> bool:
+        return bool(getattr(self.browser_security_policy, "allow_private_networks", False))
+
+    def browser_set_private_networks(self, allowed: bool) -> dict[str, object]:
+        """Allow or forbid browser navigation to loopback and private addresses.
+
+        Off by default because a browser that can reach the local network is a
+        way to read services that were never exposed. It has to be reachable
+        though: without it Loom's browser cannot open the user's own dev server,
+        which is most of what a coding agent would point a browser at.
+        """
+
+        wanted = bool(allowed)
+        if wanted == self.browser_allow_private_networks:
+            return {"allow_private_networks": wanted, "changed": False}
+        store = self.browser_sessions
+        if store is not None and store.active_count():
+            raise RuntimeError(
+                "close the active browser session before changing private-network access"
+            )
+        self.browser_security_policy = replace(
+            self.browser_security_policy, allow_private_networks=wanted
+        )
+        if store is not None:
+            # The store holds the policy it was built with, and the backend
+            # enforces its own copy of the rule, so both have to follow.
+            store.url_policy = self.browser_security_policy
+        self._configure_browser_connection(
+            cdp_url=self._browser_cdp_url,
+            extension=self.browser_extension_attached,
+            persist_profile=self._browser_persist_preference,
+            profile_dir=None,
+            engine=self._browser_engine,
+        )
+        return {"allow_private_networks": wanted, "changed": True}
+
     def browser_attachable_browsers(self) -> tuple[dict[str, Any], ...]:
         """Local browsers that browser_open connect=attach can drive.
 
@@ -662,6 +706,9 @@ class BrowserRuntime(WebSearchRuntime):
             raise RuntimeError("this browser connection requires the browser-use extra")
 
         channel = _browser_channel_for_engine(self._browser_engine)
+        # Mirrored onto every per-session backend for the same reason as the
+        # configured default: browser-use enforces its own private-address rule.
+        private = bool(getattr(self.browser_security_policy, "allow_private_networks", False))
         if requested == "attach":
             # Loopback only, exactly as for the configured default. A model may
             # pick which local browser to drive; it may not point Loom at a host.
@@ -674,6 +721,7 @@ class BrowserRuntime(WebSearchRuntime):
                 backend.user_data_dir = None
                 backend.cdp_url = endpoint
                 backend.browser_channel = channel
+                backend.allow_private_networks = private
                 return backend
 
             return build_attached, True, "cdp-attach"
@@ -685,6 +733,7 @@ class BrowserRuntime(WebSearchRuntime):
             backend.user_data_dir = profile_dir
             backend.cdp_url = None
             backend.browser_channel = channel
+            backend.allow_private_networks = private
             return backend
 
         return build_launched, False, "local-launch"

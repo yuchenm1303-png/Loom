@@ -60,6 +60,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
         "preferredEngine": "edge",
         "persistSessions": True,
         "modelSelectsConnection": False,
+        "allowPrivateNetworks": False,
     },
     "computer": {
         "verifyActions": True,
@@ -110,6 +111,7 @@ _ALLOWED_SETTING_PATHS: dict[str, tuple[type, Any]] = {
     "browser.preferredEngine": (str, {"edge", "chrome", "system"}),
     "browser.persistSessions": (bool, None),
     "browser.modelSelectsConnection": (bool, None),
+    "browser.allowPrivateNetworks": (bool, None),
     "computer.verifyActions": (bool, None),
     "computer.screenshotQuality": (str, {"fast", "balanced", "high"}),
     "memory.enabled": (bool, None),
