@@ -98,6 +98,22 @@ def test_gpt_5_4_keeps_codex_product_default_with_api_accurate_options() -> None
     assert _option_values(capability) == ["none", "low", "medium", "high", "xhigh"]
 
 
+def test_gpt_5_2_pro_does_not_inherit_base_model_none_or_low() -> None:
+    capability = reasoning_capability(model="gpt-5.2-pro", adapter="openai")
+
+    assert capability is not None
+    assert capability["defaultValue"] == "medium"
+    assert _option_values(capability) == ["medium", "high", "xhigh"]
+
+
+def test_gpt_5_pro_only_advertises_high() -> None:
+    capability = reasoning_capability(model="gpt-5-pro", adapter="openai")
+
+    assert capability is not None
+    assert capability["defaultValue"] == "high"
+    assert _option_values(capability) == ["high"]
+
+
 def test_legacy_gpt_5_does_not_invent_xhigh() -> None:
     capability = reasoning_capability(model="gpt-5", adapter="openai")
 
@@ -161,12 +177,12 @@ def test_stale_openai_ultra_is_normalized_to_strongest_supported_wire_effort() -
     assert kwargs["extra_body"] == {"reasoning_effort": "max"}
 
 
-def test_persistent_alias_uses_codex_wire_value() -> None:
+def test_persistent_alias_falls_back_to_current_transport_default() -> None:
     kwargs = _fake_backend("gpt-5.6-sol")._request_kwargs(
         _request(ReasoningRequest(ReasoningKind.OPENAI_EFFORT, "persistent"))
     )
 
-    assert kwargs["extra_body"] == {"reasoning_effort": "disabled"}
+    assert kwargs["extra_body"] == {"reasoning_effort": "low"}
 
 
 def test_app_server_accepts_only_catalogued_minimax_hosted_modes() -> None:
