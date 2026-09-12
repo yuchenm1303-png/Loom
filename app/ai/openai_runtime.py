@@ -22,6 +22,7 @@ from .errors import AIEmptyResponseError, AIResponseError, AITransportError
 from .profiles import ModelProfile
 from .provider_catalog import ProviderAdapter, ProviderConnection
 from .reasoning import ReasoningKind
+from .reasoning_catalog import resolve_reasoning_wire_value
 
 
 _RETRYABLE_STATUS_CODES = {408, 409, 425, 429, 500, 502, 503, 504}
@@ -236,10 +237,15 @@ class OpenAIChatBackend:
             if request.reasoning.kind is ReasoningKind.MINIMAX_THINKING:
                 extra_body["thinking"] = {"type": request.reasoning.value}
             elif request.reasoning.kind is ReasoningKind.OPENAI_EFFORT:
-                # ``extra_body`` keeps this compatible with OpenAI SDK versions
-                # that predate newer effort enum values while still emitting the
-                # canonical top-level reasoning_effort field on the wire.
-                extra_body["reasoning_effort"] = request.reasoning.value
+                # Keep the user's normalized selection separate from the provider
+                # wire value. Codex-level aliases such as ultra/persistent are not
+                # ordinary public API reasoning_effort strings.
+                extra_body["reasoning_effort"] = resolve_reasoning_wire_value(
+                    model=self.profile.model,
+                    adapter=self.connection.adapter.value,
+                    base_url=self.connection.base_url,
+                    reasoning=request.reasoning,
+                )
             kwargs["extra_body"] = extra_body
         return kwargs
 
