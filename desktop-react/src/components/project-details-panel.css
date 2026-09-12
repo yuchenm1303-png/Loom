@@ -370,6 +370,18 @@
   transform: translateY(-1px);
 }
 
+.project-changed-file:disabled {
+  cursor: progress;
+  opacity: .72;
+  transform: none;
+}
+
+.project-changed-file:disabled:hover {
+  border-color: rgba(255, 255, 255, .06);
+  background: rgba(255, 255, 255, .026);
+  transform: none;
+}
+
 .project-changed-file > span {
   height: 18px;
   display: inline-flex;
