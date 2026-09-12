@@ -140,6 +140,32 @@
   font-size: 11.5px;
 }
 
+.compact-thread-scroll {
+  display: flex;
+  flex-direction: column;
+}
+
+.compact-thread-scroll > .project-section {
+  order: 1;
+}
+
+.compact-thread-scroll > .recent-section {
+  order: 2;
+}
+
+.compact-thread-scroll > .workspace-group {
+  order: 3;
+}
+
+.compact-thread-scroll > .compact-sidebar-empty {
+  order: 4;
+}
+
+.project-section + .recent-section,
+.recent-section + .project-section {
+  margin-top: 2px;
+}
+
 .project-group-row {
   display: grid;
   grid-template-columns: 25px minmax(0, 1fr);
