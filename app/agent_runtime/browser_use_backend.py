@@ -77,6 +77,9 @@ class BrowserUseBackend(BrowserBackend):
     cdp_url: str | None = None
     # browser-use channel name ("chrome"/"msedge"); empty keeps its own default.
     browser_channel: str = ""
+    # Where downloads land. Set by the tool layer to a directory inside the Loom
+    # workspace, which is the only place the model can read files back from.
+    downloads_dir: str | Path | None = None
     diagnostics: BrowserDiagnosticLog | None = None
 
     def __post_init__(self) -> None:
@@ -227,8 +230,10 @@ class BrowserUseBackend(BrowserBackend):
         # An attached browser is already running, so its build is not ours to pick.
         channel = "" if attached else str(self.browser_channel or "").strip()
         try:
+            downloads = str(self.downloads_dir) if self.downloads_dir else None
             profile = BrowserProfile(
                 **({"channel": channel} if channel else {}),
+                **({"downloads_path": downloads, "accept_downloads": True} if downloads else {}),
                 headless=self.options.headless,
                 allowed_domains=list(self.options.allowed_domains) or None,
                 prohibited_domains=[
@@ -400,6 +405,102 @@ class BrowserUseBackend(BrowserBackend):
             self._scroll_async(direction, amount),
             args={"direction": direction, "amount": int(amount)},
         )
+
+    async def _evaluate_async(self, expression: str, *, await_promise: bool) -> dict[str, Any]:
+        session = await self._ensure_session()
+        cdp = await session.get_or_create_cdp_session()
+        response = await cdp.cdp_client.send.Runtime.evaluate(
+            params={
+                "expression": expression,
+                "returnByValue": True,
+                "awaitPromise": bool(await_promise),
+                # Page scripts are what the model is reaching for, so a plain
+                # expression should behave the way it would in the console.
+                "userGesture": True,
+            },
+            session_id=cdp.session_id,
+        )
+        details = response.get("exceptionDetails") if isinstance(response, dict) else None
+        if details:
+            thrown = details.get("exception") or {}
+            message = (
+                str(thrown.get("description") or thrown.get("value") or details.get("text") or "")
+            ).strip()
+            return {"ok": False, "error": message[:2000] or "the page script raised"}
+
+        raw = (response.get("result") or {}) if isinstance(response, dict) else {}
+        if "value" in raw:
+            value = raw["value"]
+        elif raw.get("type") == "undefined":
+            value = None
+        else:
+            # Functions, DOM nodes and other non-serializable results come back
+            # only as a description; report that instead of a silent null.
+            value = str(raw.get("description") or raw.get("className") or raw.get("type") or "")
+        return {"ok": True, "value": value, "value_type": str(raw.get("type") or "undefined")}
+
+    def evaluate(self, expression: str, *, await_promise: bool = True) -> dict[str, Any]:
+        """Run a JavaScript expression in the active page and return its value."""
+
+        source = str(expression or "")
+        if not source.strip():
+            raise ValueError("browser evaluate expression must not be empty")
+        if len(source) > 20_000:
+            raise ValueError("browser evaluate expression exceeds 20,000 characters")
+        started = time.monotonic()
+        # The expression and its result both come from, and can reveal, page
+        # content, so neither is written to diagnostics.
+        self._log("browser_use.evaluate.started", expression_chars=len(source))
+        try:
+            outcome = self._runner.run(
+                self._evaluate_async(source, await_promise=await_promise),
+                timeout=self.action_timeout_seconds,
+            )
+        except Exception as exc:
+            self._log(
+                "browser_use.evaluate.failed",
+                elapsed_ms=int((time.monotonic() - started) * 1000),
+                error=type(exc).__name__,
+            )
+            raise
+        self._log(
+            "browser_use.evaluate.completed",
+            elapsed_ms=int((time.monotonic() - started) * 1000),
+            ok=bool(outcome.get("ok")),
+            value_type=str(outcome.get("value_type") or ""),
+        )
+        return outcome
+
+    async def _downloads_async(self) -> list[str]:
+        session = await self._ensure_session()
+        raw = getattr(session, "downloaded_files", None) or []
+        return [str(item) for item in raw]
+
+    def downloaded_files(self) -> list[str]:
+        return self._runner.run(self._downloads_async(), timeout=self.action_timeout_seconds)
+
+    async def _cookies_async(self) -> list[dict[str, Any]]:
+        session = await self._ensure_session()
+        raw = await session._cdp_get_cookies()
+        return [dict(item) for item in (raw or [])]
+
+    def cookies(self) -> list[dict[str, Any]]:
+        return self._runner.run(self._cookies_async(), timeout=self.action_timeout_seconds)
+
+    async def _clear_cookies_async(self) -> None:
+        session = await self._ensure_session()
+        await session._cdp_clear_cookies()
+
+    def clear_cookies(self) -> None:
+        self._runner.run(self._clear_cookies_async(), timeout=self.action_timeout_seconds)
+
+    async def _storage_origins_async(self) -> list[dict[str, Any]]:
+        session = await self._ensure_session()
+        raw = await session._cdp_get_origins()
+        return [dict(item) for item in (raw or [])]
+
+    def storage_origins(self) -> list[dict[str, Any]]:
+        return self._runner.run(self._storage_origins_async(), timeout=self.action_timeout_seconds)
 
     async def _forward_async(self) -> BrowserPageState:
         from browser_use.browser.events import GoForwardEvent

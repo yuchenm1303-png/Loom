@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -34,6 +35,52 @@ def _snapshot_result(
     extra: dict[str, Any] | None = None,
 ) -> ToolResult:
     return ToolResult(ok=True, content=message, data={**snapshot.to_dict(), **(extra or {})})
+
+
+_MAX_EVAL_VALUE_CHARS = 30_000
+_DOWNLOADS_DIR = "browser-downloads"
+
+
+def _bounded_json_value(value: Any) -> tuple[Any, bool]:
+    """Keep an arbitrary script result from flooding the model's context.
+
+    A page can hand back a whole document or a multi-megabyte array, and the
+    result goes straight into tool output, so an oversized value is replaced by a
+    truncated rendering rather than trimmed in place: half a JSON structure would
+    read as real data.
+    """
+
+    try:
+        encoded = json.dumps(value, ensure_ascii=False)
+    except (TypeError, ValueError):
+        return (str(value)[:_MAX_EVAL_VALUE_CHARS], True)
+    if len(encoded) <= _MAX_EVAL_VALUE_CHARS:
+        return (value, False)
+    return (encoded[:_MAX_EVAL_VALUE_CHARS], True)
+
+
+def _cookie_row(raw: Any, *, include_values: bool) -> dict[str, Any]:
+    """Describe one cookie, withholding its value unless it was asked for.
+
+    A cookie value is usually the session itself. Listing cookies to see what a
+    site set is a different act from reading those credentials, so the value only
+    appears when the caller says so.
+    """
+
+    item = dict(raw) if isinstance(raw, dict) else {}
+    row: dict[str, Any] = {
+        "name": str(item.get("name") or "")[:300],
+        "domain": str(item.get("domain") or "")[:300],
+        "path": str(item.get("path") or "")[:300],
+        "secure": bool(item.get("secure")),
+        "http_only": bool(item.get("httpOnly")),
+        "same_site": str(item.get("sameSite") or ""),
+        "expires": item.get("expires"),
+        "value_chars": len(str(item.get("value") or "")),
+    }
+    if include_values:
+        row["value"] = str(item.get("value") or "")[:4000]
+    return row
 
 
 def _store(runtime: "BrowserRuntime") -> "BrowserSessionStore":
@@ -126,6 +173,22 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
         factory, external, label = runtime.browser_session_connection(
             connect, cdp_url=requested_cdp
         )
+
+        # Downloads have to land where the model can read them back, which is the
+        # workspace and nowhere else. The backend is built inside store.start and
+        # connects immediately, so the directory is attached through the factory
+        # rather than set on the session afterwards.
+        downloads_dir = context.resolve_workspace_path(_DOWNLOADS_DIR)
+        downloads_dir.mkdir(parents=True, exist_ok=True)
+        connection_factory = factory
+
+        def factory_with_downloads(options):
+            backend = connection_factory(options)
+            if hasattr(backend, "downloads_dir"):
+                backend.downloads_dir = str(downloads_dir)
+            return backend
+
+        factory = factory_with_downloads
 
         managed = store.start(
             context.session_id,
@@ -314,6 +377,136 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
         browser_id = str(arguments["browser_id"])
         snapshot = _store(runtime).close_tab(context.session_id, browser_id, str(arguments["tab_id"]))
         return _snapshot_result(snapshot, "Browser tab closed.")
+
+    def evaluate(context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
+        context.raise_if_cancelled()
+        store = _store(runtime)
+        browser_id = str(arguments["browser_id"])
+        item = store._owned(context.session_id, browser_id)
+        runner = getattr(item.backend, "evaluate", None)
+        if not callable(runner):
+            raise RuntimeError(
+                f"browser backend {item.backend.backend_name!r} does not support evaluate"
+            )
+        expression = str(arguments["expression"])
+        outcome = dict(
+            runner(expression, await_promise=bool(arguments.get("await_promise", True)))
+        )
+        if not outcome.get("ok"):
+            return ToolResult(
+                ok=False,
+                content=f"The page script raised: {outcome.get('error') or 'unknown error'}",
+                data={"browser_id": browser_id, "error": outcome.get("error") or ""},
+            )
+        value, truncated = _bounded_json_value(outcome.get("value"))
+        return ToolResult(
+            ok=True,
+            content=(
+                "Script evaluated. The value is reported verbatim; nothing about the page was verified."
+                + (" The value was truncated." if truncated else "")
+            ),
+            data={
+                "browser_id": browser_id,
+                "value": value,
+                "value_type": str(outcome.get("value_type") or ""),
+                "truncated": truncated,
+            },
+        )
+
+    def cookies(context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
+        context.raise_if_cancelled()
+        store = _store(runtime)
+        browser_id = str(arguments["browser_id"])
+        item = store._owned(context.session_id, browser_id)
+        action = str(arguments.get("action") or "list").strip().casefold()
+        if action == "clear":
+            clear = getattr(item.backend, "clear_cookies", None)
+            if not callable(clear):
+                raise RuntimeError(
+                    f"browser backend {item.backend.backend_name!r} does not support clearing cookies"
+                )
+            clear()
+            return ToolResult(
+                ok=True,
+                content="Browser cookies cleared for this browser session.",
+                data={"browser_id": browser_id, "action": "clear"},
+            )
+        reader = getattr(item.backend, "cookies", None)
+        if not callable(reader):
+            raise RuntimeError(
+                f"browser backend {item.backend.backend_name!r} does not support reading cookies"
+            )
+        include_values = bool(arguments.get("include_values"))
+        rows = [_cookie_row(raw, include_values=include_values) for raw in reader()][:500]
+        return ToolResult(
+            ok=True,
+            content=(
+                f"{len(rows)} cookie(s)."
+                + ("" if include_values else " Values are withheld; pass include_values to read them.")
+            ),
+            data={"browser_id": browser_id, "action": "list", "cookies": rows,
+                  "values_included": include_values},
+        )
+
+    def downloads(context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
+        store = _store(runtime)
+        browser_id = str(arguments["browser_id"])
+        item = store._owned(context.session_id, browser_id)
+        reader = getattr(item.backend, "downloaded_files", None)
+        if not callable(reader):
+            raise RuntimeError(
+                f"browser backend {item.backend.backend_name!r} does not report downloads"
+            )
+        root = context.resolve_workspace_path(_DOWNLOADS_DIR)
+        rows: list[dict[str, Any]] = []
+        for raw in list(reader())[:200]:
+            path = Path(str(raw))
+            try:
+                relative = path.resolve().relative_to(root.resolve().parent)
+            except (OSError, ValueError):
+                # A download that escaped the workspace is reported by name only;
+                # the model cannot read it and should not be handed the real path.
+                rows.append({"name": path.name, "in_workspace": False})
+                continue
+            exists = path.is_file()
+            rows.append(
+                {
+                    "name": path.name,
+                    "path": relative.as_posix(),
+                    "in_workspace": True,
+                    "bytes": path.stat().st_size if exists else 0,
+                    "exists": exists,
+                }
+            )
+        return ToolResult(
+            ok=True,
+            content=(
+                f"{len(rows)} file(s) downloaded in this browser session, under {_DOWNLOADS_DIR}/."
+                if rows
+                else "No files have been downloaded in this browser session."
+            ),
+            data={"browser_id": browser_id, "directory": _DOWNLOADS_DIR, "files": rows},
+        )
+
+    def storage(context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
+        context.raise_if_cancelled()
+        store = _store(runtime)
+        browser_id = str(arguments["browser_id"])
+        item = store._owned(context.session_id, browser_id)
+        reader = getattr(item.backend, "storage_origins", None)
+        if not callable(reader):
+            raise RuntimeError(
+                f"browser backend {item.backend.backend_name!r} does not support storage inspection"
+            )
+        origins = [dict(row) for row in reader()][:200]
+        return ToolResult(
+            ok=True,
+            content=(
+                f"{len(origins)} origin(s) hold storage in this browser session. Read or write "
+                "individual values with browser_eval against localStorage/sessionStorage."
+            ),
+            data={"browser_id": browser_id, "origins": origins},
+        )
 
     def go_forward(context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
         context.raise_if_cancelled()
@@ -625,6 +818,70 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
                 description="Navigate the active tab back and return the refreshed browser state.",
                 input_schema=_schema({"browser_id": _browser_id_schema()}, ("browser_id",)),
                 handler=back,
+                effect=sensitive,
+            ),
+            AgentTool(
+                name="browser_eval",
+                description=(
+                    "Run a JavaScript expression in the active tab and return its value. This is the "
+                    "escape hatch for what the other browser tools cannot express: reading computed "
+                    "state, driving a widget that ignores synthetic clicks, working with "
+                    "localStorage/sessionStorage, or replacing window.confirm before an action so a "
+                    "native dialog does not get auto-answered. It runs with the page's own privileges "
+                    "on whatever site the tab is on, including one the user is signed into. Large "
+                    "values are truncated, and a thrown error is returned rather than raised."
+                ),
+                input_schema=_schema(
+                    {
+                        "browser_id": _browser_id_schema(),
+                        "expression": {"type": "string", "minLength": 1, "maxLength": 20000},
+                        "await_promise": {
+                            "type": "boolean",
+                            "description": "Await a returned promise before reporting. Defaults to true.",
+                        },
+                    },
+                    ("browser_id", "expression"),
+                ),
+                handler=evaluate,
+                effect=sensitive,
+            ),
+            AgentTool(
+                name="browser_cookies",
+                description=(
+                    "List or clear the cookies of this browser session. Values are withheld unless "
+                    "include_values is set, because a cookie value is usually the signed-in session "
+                    "itself. Clearing signs the browser out of the affected sites."
+                ),
+                input_schema=_schema(
+                    {
+                        "browser_id": _browser_id_schema(),
+                        "action": {"type": "string", "enum": ["list", "clear"]},
+                        "include_values": {"type": "boolean"},
+                    },
+                    ("browser_id",),
+                ),
+                handler=cookies,
+                effect=sensitive,
+            ),
+            AgentTool(
+                name="browser_downloads",
+                description=(
+                    "List files this browser session downloaded. Downloads are written into the "
+                    f"{_DOWNLOADS_DIR}/ directory of the Loom workspace, so they can then be read with "
+                    "the ordinary file tools."
+                ),
+                input_schema=_schema({"browser_id": _browser_id_schema()}, ("browser_id",)),
+                handler=downloads,
+                effect=sensitive,
+            ),
+            AgentTool(
+                name="browser_storage",
+                description=(
+                    "List the origins that hold local/session storage in this browser session. Read or "
+                    "write individual keys with browser_eval against localStorage or sessionStorage."
+                ),
+                input_schema=_schema({"browser_id": _browser_id_schema()}, ("browser_id",)),
+                handler=storage,
                 effect=sensitive,
             ),
             AgentTool(
