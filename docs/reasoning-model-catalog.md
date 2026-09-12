@@ -36,6 +36,8 @@ Namespaced relay ids such as `provider/example-reasoner` match the catalog slug 
 
 Loom also accepts the older field spelling `default_reasoning_effort` / `supported_reasoning_efforts`. Unknown future effort strings are preserved so a provider catalog can add a normal reasoning level without requiring a Loom source-code release.
 
+Catalog parsing is cached by file path and on-disk signature. Repeated model metadata lookups do not re-read an unchanged file, while replacing or editing the file automatically invalidates the cache. Malformed catalogs still fail closed and are retried after their file signature changes.
+
 Provider-native reasoning protocols take precedence over generic catalog metadata. For example, MiniMax M3 keeps its native Direct / Adaptive thinking contract even if a `models.json` entry for `MiniMax-M3` incorrectly advertises OpenAI-style effort levels. This prevents an external catalog from changing the wire protocol for a model Loom already knows requires provider-specific parameters.
 
 `max` is treated as an advanced choice and requires an explicit selection in the desktop UI. `ultra` and `persistent` are currently filtered from external catalogs because Codex assigns them product/runtime semantics that Loom's Chat Completions transport does not yet implement completely. They should not be exposed as ordinary provider request values.
