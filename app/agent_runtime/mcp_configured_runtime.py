@@ -80,6 +80,7 @@ class ConfiguredMCPRuntime(ComputerDriverRuntime, MCPRuntime):
         servers = []
         for config in sorted(self.mcp_clients.configs, key=lambda item: item.name):
             current = status_by_name.get(config.name, {})
+            server_info = str(current.get("server_info") or "")
             servers.append(
                 {
                     "name": config.name,
@@ -88,7 +89,7 @@ class ConfiguredMCPRuntime(ComputerDriverRuntime, MCPRuntime):
                     # should make execution fail, not mutate the identity of an
                     # otherwise unchanged server binding.
                     "protocol_version": str(current.get("protocol_version") or ""),
-                    "server_info": str(current.get("server_info") or ""),
+                    "server_info_sha256": self._identity_hash(server_info) if server_info else "",
                     "tool_count": int(current.get("tool_count") or 0),
                     "config_sha256": self._identity_hash(repr(config)),
                 }
