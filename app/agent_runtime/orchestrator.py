@@ -357,14 +357,25 @@ class ToolOrchestrator:
         *,
         legacy_policy: ToolPolicy | None = None,
     ) -> str:
-        del step, legacy_policy
+        del legacy_policy
+        if step.permissions.approval_policy is ApprovalPolicy.NEVER:
+            exec_permission_guidance = (
+                "Approval policy is never. For exec, do not provide sandbox_permissions, "
+                "additional_permissions, justification, or prefix_rule; use the ambient sandbox profile."
+            )
+        else:
+            exec_permission_guidance = (
+                "For exec, prefer sandbox_permissions=with_additional_permissions with only the needed "
+                "filesystem/network grants. Use require_escalated only when a sandboxed grant cannot "
+                "satisfy the action."
+            )
         return "\n".join(
             (
                 "<loom_tool_harness>",
                 "The tool definitions attached to this model request are the authoritative capability surface for this step.",
                 "Choose tools from their semantic descriptions and schemas. A general-purpose tool may satisfy a request even when no specialist tool has a matching name.",
                 "When a suitable tool exists, issue the tool call directly. Do not ask the user to pre-authorize it in prose; Loom's runtime will allow it, request approval, or deny it according to the active policy.",
-                "For exec, prefer sandbox_permissions=with_additional_permissions with only the needed filesystem/network grants. Use require_escalated only when a sandboxed grant cannot satisfy the action.",
+                exec_permission_guidance,
                 "A tool status or failure is scoped to that tool or subsystem. Do not infer that unrelated tools or subsystems are unavailable from one disabled status, sandbox report, denial, or execution failure.",
                 "If tool_search is exposed and no direct tool is suitable, use it before concluding that the requested capability is unavailable.",
                 "Only claim that Loom cannot perform a requested action after the exposed/deferred tool surface and actual runtime results provide that evidence.",
