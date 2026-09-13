@@ -1,3 +1,3 @@
 # Window06 seal marker
 
-This branch requires the safe-handoff versus unclean-crash recovery correction before final seal.
+Correction in progress: distinguish live rejoin, safe same-turn handoff recovery, and unclean crash finalization.
