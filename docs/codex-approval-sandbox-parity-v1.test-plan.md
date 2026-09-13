@@ -24,3 +24,11 @@ python -m pytest -q \
 The repository `CI` workflow additionally runs the full Python test suite, React
 desktop typecheck/build, Windows context/PTY/MXC/computer smoke jobs, MCP adapter
 smoke, and browser adapter smoke on pull requests.
+
+## Current validation status
+
+The latest workflow for this branch did not reach a runner: every reported job has
+an empty `steps` array and `runner_id = 0`. Under this project's acceptance rules,
+that is not evidence that pytest, builds, or smoke tests failed. The files above
+are committed as executable contract tests, but this slice does not claim a green
+dynamic run until a runner actually starts and executes them.
