@@ -24,7 +24,7 @@ from .contracts import (
 from .diff_tracker import DiffTrackerRegistry
 from .model_execution import ModelExecutor
 from .instructions import InstructionLoader
-from .execution_binding import binding_digest
+from .execution_binding import action_binding_digest
 from .journal import ExecutionLease
 from app.ai.execution_control import ModelCancelled
 from .orchestrator import PreparedToolCall, ToolOrchestrator
@@ -279,10 +279,24 @@ class AgentRuntime:
             if not session.pending_tool_calls or session.pending_tool_calls[0].call_id != pending.call_id:
                 raise RuntimeError("pending tool approval state is inconsistent")
 
-            validation_step = self._build_step_context(session, next_model_step=False, step_id=session.pending_step_id or None)
+            validation_step = self._build_step_context(
+                session,
+                next_model_step=False,
+                step_id=session.pending_step_id or None,
+            )
+            validation_call = session.pending_tool_calls[0]
             selected_tool = validation_step.tool_router.get(pending.tool_name)
             expected = session.pending_bindings.get(pending.call_id)
-            if approved and (selected_tool is None or not expected or binding_digest(validation_step, selected_tool, self.platform) != expected):
+            if approved and (
+                selected_tool is None
+                or not expected
+                or action_binding_digest(
+                    validation_step,
+                    selected_tool,
+                    validation_call,
+                    self.platform,
+                ) != expected
+            ):
                 raise ValueError("approval binding changed or is legacy; deny this request and start a new turn")
             session.status = AgentStatus.RUNNING
             session.pending_approval = None
@@ -423,7 +437,16 @@ class AgentRuntime:
             call = session.pending_tool_calls[0]
             selected = execution_step.tool_router.get(call.name)
             expected = session.pending_bindings.get(call.call_id)
-            if expected and selected is not None and binding_digest(execution_step, selected, self.platform) != expected:
+            if (
+                expected
+                and selected is not None
+                and action_binding_digest(
+                    execution_step,
+                    selected,
+                    call,
+                    self.platform,
+                ) != expected
+            ):
                 from .history import repair_tool_history
                 session.messages = list(repair_tool_history(session.messages).messages)
                 session.pending_tool_calls.clear()

@@ -10,7 +10,7 @@ from app.ai.execution_control import ModelCancelled
 
 from .contracts import AgentEventKind as Event
 from .contracts import AgentStatus
-from .execution_binding import binding_digest
+from .execution_binding import action_binding_digest
 from .history import repair_tool_history
 
 
@@ -345,8 +345,11 @@ class TurnRunner:
                         return rt._limit(session, "tool call limit reached")
                     session.pending_tool_calls.extend(calls)
                     session.pending_step_id = step.step_id
-                    session.pending_bindings = {c.call_id: binding_digest(step, tool, rt.platform)
-                        for c in calls if (tool := step.tool_router.get(c.name)) is not None}
+                    session.pending_bindings = {
+                        c.call_id: action_binding_digest(step, tool, c, rt.platform)
+                        for c in calls
+                        if (tool := step.tool_router.get(c.name)) is not None
+                    }
                     for call in calls:
                         rt._record(session, Event.TOOL_REQUESTED, data={"call_id": call.call_id,
                             "tool": call.name, "arguments": call.arguments, "step_id": step.step_id})

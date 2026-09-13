@@ -2,32 +2,44 @@
 from __future__ import annotations
 
 import hashlib
-import hmac
 import json
 import marshal
-import secrets
 
+from .execution_action import exec_environment_identity, execution_action_for
 from .json_schema_semantics import validating_schema
-
-
-_PROCESS_ENV_BINDING_KEY = secrets.token_bytes(32)
 
 
 def _exec_environment_identity(step, tool) -> str:
     if str(getattr(tool, "name", "") or "") != "exec":
         return ""
-    environment = step.environment_policy.build()
+    return exec_environment_identity(step)
+
+
+def _call_arguments_digest(call) -> str:
     raw = json.dumps(
-        environment,
+        dict(getattr(call, "arguments", {}) or {}),
         ensure_ascii=False,
         sort_keys=True,
         separators=(",", ":"),
+        default=str,
     ).encode("utf-8")
-    return hmac.new(_PROCESS_ENV_BINDING_KEY, raw, hashlib.sha256).hexdigest()
+    return hashlib.sha256(raw).hexdigest()
+
+
+def _composite_action_binding(base: str, *, kind: str, digest: str) -> str:
+    payload = {
+        "version": 1,
+        "tool_binding": base,
+        "action_kind": str(kind),
+        "action_digest": str(digest),
+    }
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
 
 
 def binding_digest(step, tool, platform) -> str:
-    """Hash executable semantics against the exact sampling-step identity.
+    """Hash tool/step execution semantics independently from one concrete call.
 
     Production/default steps bind to their frozen request-state snapshot. Lower-
     level embedders that still construct an uncaptured StepContext retain the
@@ -39,10 +51,9 @@ def binding_digest(step, tool, platform) -> str:
     are intentionally excluded so full/compact/structural prompt projections all
     represent the same approval binding.
 
-    Exec also binds to the resolved child environment through a process-local
-    fingerprint. The environment map itself is not persisted. A changed inherited
-    environment therefore invalidates the pending exec binding, and a process
-    restart intentionally requires a fresh exec approval.
+    Exec also binds to the ambient resolved child environment through the typed
+    execution-action identity layer. Concrete call semantics such as argv/cwd/PTY
+    are added separately by ``action_binding_digest``.
     """
 
     handler = tool.handler
@@ -96,4 +107,36 @@ def binding_digest(step, tool, platform) -> str:
     return hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()
 
 
-__all__ = ["binding_digest"]
+def action_binding_digest(step, tool, call, platform) -> str:
+    """Bind one concrete call to the frozen tool/step world.
+
+    Tools without a typed execution action keep the legacy binding exactly. Exec
+    adds its canonical action digest so argument/environment semantics become part
+    of the approval key without creating a second pending-action store.
+
+    Malformed typed calls keep flowing to the normal tool-validation path, but
+    still receive a call-specific digest. This prevents one invalid queued action
+    from being substituted for a different invalid action while approval waits.
+    """
+
+    if str(getattr(call, "name", "") or "") != str(tool.name):
+        raise ValueError("tool call does not match selected tool")
+    base = binding_digest(step, tool, platform)
+    try:
+        action = execution_action_for(step, call)
+    except ValueError:
+        return _composite_action_binding(
+            base,
+            kind=f"malformed:{tool.name}",
+            digest=_call_arguments_digest(call),
+        )
+    if action is None:
+        return base
+    return _composite_action_binding(
+        base,
+        kind="exec_command",
+        digest=action.digest(),
+    )
+
+
+__all__ = ["action_binding_digest", "binding_digest"]
