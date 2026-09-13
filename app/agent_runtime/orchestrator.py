@@ -6,6 +6,7 @@ from app.ai import ToolCall
 
 from .contracts import PermissionMode
 from .permissions import PermissionDecision, PermissionEngine
+from .sandbox import SandboxMode, SandboxPolicy
 from .step import StepContext
 from .tools import AgentTool, ToolContext, ToolPolicy, ToolResult, validate_tool_arguments
 
@@ -23,6 +24,26 @@ class ToolOrchestrator:
 
     def __init__(self, *, permission_engine: PermissionEngine | None = None) -> None:
         self.permission_engine = permission_engine or PermissionEngine()
+
+    @staticmethod
+    def _exec_needs_unsandboxed_fallback_approval(step: StepContext, tool: AgentTool) -> bool:
+        """Return whether AUTO would execute ``exec`` without requested containment.
+
+        Loom's current process sandbox has an intentional AUTO compatibility
+        fallback when no host backend is available. A model-originated exec call
+        must not cross that boundary merely because the host lacks bwrap/MXC;
+        make the fallback explicit to the user instead. Full-access and an
+        explicitly disabled sandbox remain intentional unsandboxed modes.
+        """
+
+        sandbox = step.world_state.sandbox
+        return bool(
+            tool.name == "exec"
+            and sandbox is not None
+            and sandbox.policy is SandboxPolicy.AUTO
+            and sandbox.mode is not SandboxMode.DISABLED
+            and not sandbox.enforced
+        )
 
     def evaluate_tool(
         self,
@@ -49,6 +70,18 @@ class ToolOrchestrator:
                 if decision is PermissionDecision.APPROVAL
                 else f"Compatibility approval policy auto-approves {tool.effect.value}."
             )
+
+        if (
+            decision is not PermissionDecision.DENY
+            and self._exec_needs_unsandboxed_fallback_approval(step, tool)
+        ):
+            sandbox = step.world_state.sandbox
+            decision = PermissionDecision.APPROVAL
+            reason = (
+                "OS sandbox containment is unavailable for this exec call. "
+                "Approval is required before Loom may use its AUTO unsandboxed fallback. "
+                f"{sandbox.reason if sandbox is not None else ''}"
+            ).strip()
         return decision, reason
 
     def capability_contract(
