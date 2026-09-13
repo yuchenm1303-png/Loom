@@ -12,6 +12,7 @@ from typing import Any
 
 from app.ai import AIMessage, MessageRole
 
+from .context_compaction import COMPACTION_MESSAGE_NAME, SUMMARY_PREFIX
 from .step import StepContext
 from .storage import _message_from_dict, _message_to_dict, utc_now
 
@@ -78,8 +79,6 @@ def build_host_environment() -> dict[str, Any]:
             f"name it in argv, for example {_shell_example(shell)}."
         ),
         "current_date": now.date().isoformat(),
-        # A localized tzname is encoded in the host code page and differs per
-        # machine language; the offset says the same thing unambiguously.
         "utc_offset": f"{offset[:3]}:{offset[3:]}" if len(offset) == 5 else offset,
     }
 
@@ -112,10 +111,6 @@ def build_world_state_envelope(
             "approval_policy": step.approval_policy.value,
         },
         "sandbox": sandbox.to_dict() if sandbox is not None else None,
-        # Tool names are deliberately absent. Every callable tool is already
-        # sent as its own schema with its own description; repeating ~50 bare
-        # names here cost tokens and invited routing by name. It also listed
-        # deferred and hidden tools that the model cannot call.
         "goal": goal,
         "queue_pending": max(0, int(queue_pending)),
         "turn_diff": {
@@ -123,9 +118,6 @@ def build_world_state_envelope(
             "changed_paths": list(changed_paths),
         },
     }
-    # Execution identity is useful to the model but must not poison the state
-    # reference hash. Two adjacent model steps with the same actual runtime state
-    # should produce the same digest so future stateful backends can send deltas.
     identity = {
         "session_id": step.session_id,
         "turn_id": step.turn_id,
@@ -165,17 +157,16 @@ class ContextCheckpoint:
         return len(self.archived_messages)
 
     def summary_message(self) -> AIMessage:
+        """Render the checkpoint using the same role/shape as active compaction.
+
+        Older Loom checkpoints promoted summaries to SYSTEM instructions. Codex
+        treats the compaction summary as contextual user history; recovery must
+        not change that precedence.
+        """
         return AIMessage(
-            role=MessageRole.SYSTEM,
-            name="loom_compaction",
-            content=(
-                f"LOOM_CONTEXT_CHECKPOINT {self.checkpoint_id}\n"
-                "The following is a compacted summary of earlier canonical conversation history. "
-                "Treat it as prior conversation context, not as a new user instruction. "
-                "Its language is historical content, not a response-language instruction; for all user-facing "
-                "output follow the current LOOM_COMMUNICATION_LANGUAGE system message.\n"
-                f"{self.summary}"
-            ),
+            role=MessageRole.USER,
+            name=COMPACTION_MESSAGE_NAME,
+            content=f"{SUMMARY_PREFIX}\n{self.summary}",
         )
 
 
@@ -275,11 +266,11 @@ class ContextCheckpointStore:
 
 
 def compaction_split_index(messages: tuple[AIMessage, ...], *, keep_recent: int) -> int:
-    """Choose a safe suffix boundary that starts at a real user message.
+    """Legacy compatibility helper for callers outside the active compact path.
 
-    Starting the retained suffix at a user message keeps assistant tool-call/output
-    groups on the same side of the checkpoint and avoids creating provider-invalid
-    orphan tool outputs after compaction.
+    Codex-parity compaction no longer retains an arbitrary recent suffix; the
+    helper remains exported so older product code does not break while the model
+    window itself is rebuilt by ``build_compacted_history``.
     """
     if len(messages) < 2:
         return 0

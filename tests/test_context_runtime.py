@@ -13,6 +13,7 @@ from app.agent_runtime import (
     SandboxPolicy,
     compaction_split_index,
 )
+from app.agent_runtime.context_compaction import SUMMARY_PREFIX
 from app.agent_runtime.workspace_tools import loom_default_tools
 from app.ai import AGENT_FAST_ROLE, AIMessage, MessageRole, ModelResponse, ToolCall
 
@@ -142,7 +143,7 @@ def test_compaction_split_starts_at_user_and_keeps_tool_pair_together():
     assert split > 2
 
 
-def test_context_checkpoint_archives_old_history_before_replacing_active_transcript(tmp_path):
+def test_context_checkpoint_archives_canonical_history_and_replaces_only_model_window(tmp_path):
     runtime, store = _runtime(tmp_path)
     workspace = tmp_path / "project"
     workspace.mkdir()
@@ -167,13 +168,23 @@ def test_context_checkpoint_archives_old_history_before_replacing_active_transcr
     )
     loaded = store.load(session.session_id)
 
-    assert checkpoint.archived_message_count == 4
+    # Codex replacement semantics archive the full canonical pre-compaction
+    # window, then reconstruct the active model history from real user messages
+    # plus one contextual-user summary. No assistant/tool suffix is replayed.
+    assert checkpoint.archived_message_count == 8
     assert checkpoint.retained_message_count == 4
     assert len(loaded.messages) == 5
-    assert loaded.messages[0].role is MessageRole.SYSTEM
-    assert loaded.messages[0].name == "loom_compaction"
-    assert checkpoint.checkpoint_id in loaded.messages[0].content
-    assert loaded.messages[1].content == "user three"
+    assert [message.content for message in loaded.messages[:-1]] == [
+        "user one",
+        "user two",
+        "user three",
+        "user four",
+    ]
+    summary = loaded.messages[-1]
+    assert summary.role is MessageRole.USER
+    assert summary.name == "loom_compaction"
+    assert str(summary.content).startswith(SUMMARY_PREFIX)
+    assert "Earlier discussion covered" in str(summary.content)
 
     checkpoint_store = ContextCheckpointStore(store.root)
     restored_archive = checkpoint_store.load(session.session_id, checkpoint.checkpoint_id)
@@ -182,12 +193,17 @@ def test_context_checkpoint_archives_old_history_before_replacing_active_transcr
         "answer one",
         "user two",
         "answer two",
+        "user three",
+        "answer three",
+        "user four",
+        "answer four",
     ]
     events = store.events(session.session_id)
     checkpoint_events = [
         event for event in events if event.kind is AgentEventKind.CONTEXT_CHECKPOINTED
     ]
-    assert checkpoint_events[-1].data["archived_messages"] == 4
+    assert checkpoint_events[-1].data["archived_messages"] == 8
+    assert checkpoint_events[-1].data["replacement_messages"] == 5
     assert checkpoint_events[-1].data["communication_language"] == "auto"
     runtime.close()
 
