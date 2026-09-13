@@ -89,6 +89,23 @@ def test_exec_action_binding_ignores_call_id_for_same_semantics(tmp_path):
     assert first == second
 
 
+def test_malformed_exec_uses_generic_binding_until_normal_tool_validation(tmp_path):
+    tool = _tool("exec")
+    step = _step(tmp_path, tool)
+    platform = BarePlatform()
+    malformed = ToolCall(
+        call_id="exec-invalid",
+        name="exec",
+        arguments={"argv": [], "cwd": "."},
+    )
+
+    assert action_binding_digest(step, tool, malformed, platform) == binding_digest(
+        step,
+        tool,
+        platform,
+    )
+
+
 def test_untyped_tool_keeps_legacy_binding(tmp_path):
     tool = _tool("change")
     step = _step(tmp_path, tool)
