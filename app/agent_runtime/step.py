@@ -28,10 +28,11 @@ class WorldStateSnapshot:
 
 @dataclass(frozen=True, slots=True)
 class RequestStateSnapshot:
-    """Model-visible settings frozen for one sampling step.
+    """Model-visible and execution-binding settings frozen for one sampling step.
 
-    The model profile representation is the provider-safe metadata exposed by
-    ``ModelProfile.as_safe_dict`` serialized canonically, never credentials.
+    Model metadata is provider-safe output from ``ModelProfile.as_safe_dict``.
+    MCP binding data is a canonical, secret-free identity snapshot; credentials
+    are never copied into this object.
     """
 
     captured: bool = False
@@ -39,6 +40,7 @@ class RequestStateSnapshot:
     project_instructions: str = ""
     communication_language: str = "auto"
     model_profile_json: str = ""
+    mcp_binding_json: str = ""
     context_limits: ResolvedContextLimits | None = None
 
     def __post_init__(self) -> None:
@@ -48,6 +50,7 @@ class RequestStateSnapshot:
         object.__setattr__(self, "project_instructions", str(self.project_instructions or ""))
         object.__setattr__(self, "communication_language", language)
         object.__setattr__(self, "model_profile_json", str(self.model_profile_json or ""))
+        object.__setattr__(self, "mcp_binding_json", str(self.mcp_binding_json or ""))
         if self.context_limits is not None and not isinstance(self.context_limits, ResolvedContextLimits):
             raise TypeError("context_limits must be ResolvedContextLimits or None")
 
@@ -59,6 +62,7 @@ class RequestStateSnapshot:
         project_instructions: str = "",
         communication_language: str = "auto",
         model_profile: dict[str, object] | None = None,
+        mcp_binding: dict[str, object] | None = None,
         context_limits: ResolvedContextLimits | None = None,
     ) -> "RequestStateSnapshot":
         profile_json = ""
@@ -69,12 +73,21 @@ class RequestStateSnapshot:
                 sort_keys=True,
                 separators=(",", ":"),
             )
+        mcp_json = ""
+        if mcp_binding:
+            mcp_json = json.dumps(
+                mcp_binding,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            )
         return cls(
             captured=True,
             system_prompt=system_prompt,
             project_instructions=project_instructions,
             communication_language=communication_language,
             model_profile_json=profile_json,
+            mcp_binding_json=mcp_json,
             context_limits=context_limits,
         )
 
@@ -85,6 +98,7 @@ class RequestStateSnapshot:
             "project_instructions": self.project_instructions,
             "communication_language": self.communication_language,
             "model_profile_json": self.model_profile_json,
+            "mcp_binding_json": self.mcp_binding_json,
             "context_limits": self.context_limits.as_dict() if self.context_limits else None,
         }
         raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
