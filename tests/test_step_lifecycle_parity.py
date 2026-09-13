@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from app.ai import AGENT_FAST_ROLE, MessageRole, ModelResponse, ReasoningKind, ReasoningRequest, ToolCall
+from app.ai.errors import AITransportError
 from app.agent_runtime.context_runtime import ContextAgentRuntime
 from app.agent_runtime.contracts import AgentStatus, PermissionMode, ToolEffect
 from app.agent_runtime.process_runtime import ProcessStore
@@ -23,11 +24,53 @@ class ScriptedPlatform:
         return self.responses.pop(0)
 
 
+class RecordingContextRuntime(ContextAgentRuntime):
+    def __init__(self, *args, **kwargs):
+        self.captured_steps = []
+        super().__init__(*args, **kwargs)
+
+    def _capture_step_context(self, session, *, next_model_step, step_id=None):
+        step = super()._capture_step_context(
+            session,
+            next_model_step=next_model_step,
+            step_id=step_id,
+        )
+        self.captured_steps.append(step)
+        return step
+
+
+class MutatingTransportPlatform:
+    def __init__(self):
+        self.runtime = None
+        self.requests = []
+        self.calls = 0
+
+    def execute_chat(self, _profile_id, request):
+        self.requests.append(request)
+        self.calls += 1
+        if self.calls == 1:
+            assert self.runtime is not None
+            self.runtime.reasoning = ReasoningRequest(ReasoningKind.OPENAI_EFFORT, "high")
+            self.runtime.tools.register(_read_only_tool("late_tool"))
+            raise AITransportError("transient transport failure", retryable=True)
+        return ModelResponse(text="done")
+
+
 def _sandbox_off() -> SandboxManager:
     return SandboxManager(
         policy=SandboxPolicy.OFF,
         system_name="Linux",
         probe_backend=False,
+    )
+
+
+def _read_only_tool(name: str) -> AgentTool:
+    return AgentTool(
+        name=name,
+        description=f"Read-only {name} test tool.",
+        input_schema={"type": "object", "properties": {}, "additionalProperties": False},
+        handler=lambda _context, _arguments: ToolResult(ok=True, content=name),
+        effect=ToolEffect.READ_ONLY,
     )
 
 
@@ -67,6 +110,37 @@ def test_captured_step_keeps_profile_permissions_and_environment_until_next_capt
     assert new_step.world_state.permission_mode is PermissionMode.FULL_ACCESS
     assert new_step.environment_policy.inherit == "none"
     assert new_step.reasoning is not None and new_step.reasoning.value == "high"
+
+
+def test_transport_retry_reuses_exact_step_and_prepared_request(tmp_path):
+    platform = MutatingTransportPlatform()
+    runtime = RecordingContextRuntime(
+        platform=platform,
+        store=FileAgentSessionStore(tmp_path / "state"),
+        tools=ToolRegistry((_read_only_tool("initial_tool"),)),
+        sandbox_manager=_sandbox_off(),
+    )
+    platform.runtime = runtime
+    runtime.reasoning = ReasoningRequest(ReasoningKind.OPENAI_EFFORT, "low")
+    session = runtime.create_session(
+        AGENT_FAST_ROLE.role_id,
+        workspace_dir=tmp_path,
+        permission_mode=PermissionMode.APPROVAL,
+    )
+
+    result = runtime.start_turn(session.session_id, "Answer after retry.")
+
+    assert result.status is AgentStatus.COMPLETED
+    assert platform.calls == 2
+    assert len(runtime.captured_steps) == 1
+    step = runtime.captured_steps[0]
+    assert step.reasoning is not None and step.reasoning.value == "low"
+    assert step.tool_router.get("initial_tool") is not None
+    assert step.tool_router.get("late_tool") is None
+    assert platform.requests[0] is platform.requests[1]
+    assert platform.requests[0].reasoning is not None
+    assert platform.requests[0].reasoning.value == "low"
+    assert [definition.name for definition in platform.requests[0].tools] == ["initial_tool"]
 
 
 def test_invalid_tool_arguments_become_observation_and_turn_continues(tmp_path):
