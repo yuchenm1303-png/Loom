@@ -250,7 +250,12 @@ class ToolSearchRuntime(ConfiguredMCPRuntime):
         )
         activations = self._activation_names(session)
         base_router = self.tools.router(activated_names=activations)
-        limits = resolve_context_limits(self, session)
+        frozen_limits = step.request_state.context_limits
+        limits = (
+            frozen_limits
+            if step.request_state.captured and frozen_limits is not None
+            else resolve_context_limits(self, session)
+        )
         plan = plan_tool_schema_pressure(
             base_router,
             max_schema_tokens=schema_token_budget(limits.input_budget_tokens),
