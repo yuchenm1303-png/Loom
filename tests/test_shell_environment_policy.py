@@ -53,14 +53,19 @@ def test_default_policy_strips_only_non_inheritable_credentials(monkeypatch: pyt
     """Loom's own subsystem credentials never reach a child, even by default."""
 
     monkeypatch.setenv("LOOM_COMPUTER_API_KEY", "loomy")
-    monkeypatch.setenv("DASHSCOPE_API_KEY", "loomy")
+    monkeypatch.setenv("LOOM_API_KEY", "loomy")
     monkeypatch.setenv("GH_TOKEN", "ghp_pass")
+    # A provider key the user provisioned for themselves. Loom reads it too, but
+    # Codex leaves the exact analogue (OPENAI_API_KEY) inheritable, and this
+    # strip has no escape hatch -- see NON_INHERITABLE_ENV_VARS.
+    monkeypatch.setenv("DASHSCOPE_API_KEY", "user-provisioned")
 
     env = ShellEnvironmentPolicy().build()
 
     assert env["GH_TOKEN"] == "ghp_pass"
+    assert env["DASHSCOPE_API_KEY"] == "user-provisioned"
     assert "LOOM_COMPUTER_API_KEY" not in env
-    assert "DASHSCOPE_API_KEY" not in env
+    assert "LOOM_API_KEY" not in env
     for name in NON_INHERITABLE_ENV_VARS:
         assert name not in env
 

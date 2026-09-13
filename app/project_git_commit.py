@@ -16,6 +16,7 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any
 
+from app.import_patch_chain import find_spec_without
 from app.agent_runtime import AgentStatus
 from app.projects import ProjectStoreError
 
@@ -261,11 +262,10 @@ class _ProjectGitCommitFinder(importlib.abc.MetaPathFinder):
     def find_spec(self, fullname: str, path: Any, target: ModuleType | None = None):
         if fullname != _TARGET_MODULE:
             return None
-        try:
-            sys.meta_path.remove(self)
-            spec = importlib.machinery.PathFinder.find_spec(fullname, path)
-        finally:
-            sys.meta_path.insert(0, self)
+        # Delegate through the other finders, not straight to PathFinder:
+        # `project_agent_files` patches this same module and would otherwise
+        # never be consulted.
+        spec = find_spec_without(self, fullname, path, target)
         if spec is None or spec.loader is None or isinstance(spec.loader, _ProjectGitCommitLoader):
             return spec
         spec.loader = _ProjectGitCommitLoader(spec.loader)  # type: ignore[arg-type]

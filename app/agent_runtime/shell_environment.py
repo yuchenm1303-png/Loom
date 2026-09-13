@@ -51,13 +51,24 @@ _DEFAULT_EXCLUDE_PATTERNS = ("*KEY*", "*SECRET*", "*TOKEN*")
 # credential into a child process, not an operator's own environment leaking.
 _INJECTION_GUARD_MARKERS = ("API_KEY", "TOKEN", "SECRET", "PASSWORD", "PASSWD", "PRIVATE_KEY")
 
-# Loom's analogue of Codex's NON_INHERITABLE_ENV_VARS: credentials the app reads
-# for its own subsystems. A model-reachable child process has no reason to see
-# them, so they are removed after every other step, including `set`.
+# Loom's analogue of Codex's NON_INHERITABLE_ENV_VARS: credentials that exist
+# because Loom is running. A model-reachable child has no reason to see them, so
+# they are removed after every other step, including `set`.
+#
+# Scope follows Codex, which lists its own CODEX_*/identity tokens but pointedly
+# leaves OPENAI_API_KEY alone. Generic provider keys a user provisioned for
+# themselves -- OPENAI_API_KEY, DASHSCOPE_API_KEY, TAVILY_API_KEY,
+# BRAVE_SEARCH_API_KEY, AI_API_KEY -- stay inheritable even though Loom also
+# reads them, because a script in the workspace may legitimately need one and
+# nothing here can be overridden: `set` is applied before this strip and the
+# exec override channel refuses secret-shaped names. An over-broad entry is a
+# hole with no escape hatch, so only Loom's own namespace belongs here.
 NON_INHERITABLE_ENV_VARS = (
+    "LOOM_API_KEY",
+    "LOOM_BROWSER_EXTENSION_TOKEN",
     "LOOM_COMPUTER_API_KEY",
     "LOOM_UFO_API_KEY",
-    "DASHSCOPE_API_KEY",
+    "LOOM_WEB_SEARCH_API_KEY",
 )
 
 _UNIX_CORE_ENV_VARS = (
