@@ -9,25 +9,28 @@ from .json_schema_semantics import validating_schema
 
 
 def binding_digest(step, tool, platform) -> str:
-    """Hash executable semantics against the exact frozen sampling step.
+    """Hash executable semantics against the exact sampling-step identity.
+
+    Production/default steps bind to their frozen request-state snapshot. Lower-
+    level embedders that still construct an uncaptured StepContext retain the
+    previous live-registry model identity fallback instead of silently losing that
+    approval protection.
 
     Tool descriptions and JSON Schema annotation keywords help the model choose a
     tool but do not change what arguments validate or what handler executes. They
     are intentionally excluded so full/compact/structural prompt projections all
-    represent the same approval binding. Validation-affecting schema changes,
-    handler/effect/binding changes, permissions, sandbox state, and the frozen
-    request settings remain part of the digest and fail closed on resume.
+    represent the same approval binding.
     """
 
-    del platform  # Model identity is captured in StepContext, never re-read live here.
     handler = tool.handler
     function = getattr(handler, "__func__", handler)
     code = getattr(function, "__code__", None)
+    request_state = getattr(step, "request_state", None)
+    captured = bool(getattr(request_state, "captured", False))
     payload = {
         "version": 3,
         "workspace": step.world_state.workspace_dir,
         "profile": step.world_state.profile_id,
-        "request_state": step.request_state.digest(),
         "environment_policy": repr(step.environment_policy),
         "permission": {
             "mode": step.permissions.mode.value,
@@ -44,6 +47,19 @@ def binding_digest(step, tool, platform) -> str:
         "handler": f"{getattr(function, '__module__', '')}:{getattr(function, '__qualname__', '')}",
         "code": hashlib.sha256(marshal.dumps(code)).hexdigest() if code else str(type(handler)),
     }
+    if captured:
+        payload["request_state"] = request_state.digest()
+    else:
+        registry = getattr(platform, "registry", None)
+        if registry is not None:
+            try:
+                profile = registry.get(step.world_state.profile_id)
+            except (AttributeError, KeyError, TypeError, ValueError):
+                profile = None
+            safe = getattr(profile, "as_safe_dict", None)
+            if callable(safe):
+                payload["model"] = safe()
+
     # Primitive captured configuration identifies factories without persisting secrets.
     closure = getattr(function, "__closure__", None) or ()
     values = []
