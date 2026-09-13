@@ -7,7 +7,12 @@ from typing import Any
 
 @dataclass(frozen=True, slots=True)
 class ResolvedContextLimits:
-    """One model step's authoritative context budget."""
+    """One model step's resolved context window and compaction threshold.
+
+    ``tool_output_token_limit`` and ``recent_user_token_limit`` remain for API
+    compatibility with Loom product code, but Codex-parity compaction does not
+    use them as prompt-time emergency reducers.
+    """
 
     context_window_tokens: int
     effective_context_window_tokens: int
@@ -55,12 +60,12 @@ def _profile_limits(platform: Any, profile_id: str):
 
 
 def resolve_context_limits(rt: Any, session: Any) -> ResolvedContextLimits:
-    """Resolve model-scoped limits without guessing provider capacity.
+    """Resolve the current model step's window using Codex-compatible defaults.
 
-    Precedence for the hard window is an explicit legacy runtime environment
-    override, then model-profile metadata, then ``AgentLimits``. This preserves
-    backwards compatibility while allowing different models to carry different
-    windows in the same process.
+    Codex derives the default automatic compaction threshold from the model's
+    resolved context window (90%), not from a locally estimated request input
+    budget. Re-running this function for every model step also means a profile /
+    model change immediately changes the threshold.
     """
 
     fallback_window = max(2, int(rt.limits.context_window_tokens))
@@ -94,35 +99,32 @@ def resolve_context_limits(rt: Any, session: Any) -> ResolvedContextLimits:
     else:
         output_reserve = fallback_reserve
 
-    # A bad endpoint profile should fail locally with a precise configuration
-    # error instead of producing an impossible provider request.
     if output_reserve >= effective_window:
         raise ValueError(
             "resolved output reserve must be smaller than the effective model context window"
         )
 
+    # Chat Completions needs an explicit output reservation; this is a Loom
+    # transport adaptation, not the signal used to decide whether to compact.
     input_budget = effective_window - output_reserve
-    safety_tokens = max(256, min(2048, input_budget // 100))
+    safety_tokens = max(0, min(2048, input_budget // 100))
 
     configured_auto = getattr(profile_limits, "auto_compact_token_limit", None)
     if configured_auto is None:
-        # Compact before the hard wall. 78% leaves enough headroom for one large
-        # observation and the compaction summary itself without wasting half of a
-        # model's available window.
-        auto_compact = input_budget * 78 // 100
+        auto_compact = effective_window * 9 // 10
     else:
         auto_compact = int(configured_auto)
-    auto_compact = max(512, min(auto_compact, max(512, input_budget - safety_tokens)))
+    auto_compact = max(1, min(auto_compact, effective_window))
 
+    # Kept for callers that expose these values in telemetry. Codex-parity
+    # history projection no longer silently truncates user text/tool output from
+    # canonical history to satisfy these local heuristics.
     configured_tool = getattr(profile_limits, "tool_output_token_limit", None)
-    if configured_tool is None:
-        # Per-result request-visible budget. Canonical tool output stays durable;
-        # this only controls how much is repeatedly sent back to the model.
-        tool_output_limit = min(6000, max(1200, input_budget // 8))
-    else:
-        tool_output_limit = max(256, int(configured_tool))
-    tool_output_limit = min(tool_output_limit, max(256, input_budget // 2))
-
+    tool_output_limit = (
+        max(256, int(configured_tool))
+        if configured_tool is not None
+        else min(6000, max(1200, input_budget // 8))
+    )
     recent_user_limit = min(20_000, max(2_000, input_budget // 2))
 
     return ResolvedContextLimits(
