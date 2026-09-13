@@ -159,4 +159,16 @@ class ExecActionIdentity:
         return hashlib.sha256(_canonical_bytes(self.binding_payload())).hexdigest()
 
 
-__all__ = ["ExecActionIdentity", "exec_environment_identity"]
+def execution_action_for(step, call: ToolCall) -> ExecActionIdentity | None:
+    """Resolve the typed execution action for a model call when one exists."""
+
+    if str(call.name or "") == "exec":
+        return ExecActionIdentity.build(step, call)
+    return None
+
+
+__all__ = [
+    "ExecActionIdentity",
+    "exec_environment_identity",
+    "execution_action_for",
+]
