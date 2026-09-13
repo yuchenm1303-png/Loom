@@ -399,7 +399,7 @@ class SandboxAgentRuntime(DurableAgentRuntime):
                 "reason": reason,
                 "retry_reason": retry_reason,
                 "kind": ApprovalKind.SANDBOX_ESCALATION.value,
-                "permission_mode": session.permission_mode.value,
+                "permission_mode": step.world_state.permission_mode.value,
                 "step_id": step.step_id,
             },
         )
@@ -440,7 +440,7 @@ class SandboxAgentRuntime(DurableAgentRuntime):
             session_id=session.session_id,
             turn_id=session.current_turn_id,
             workspace=Path(step.world_state.workspace_dir),
-            permission_mode=session.permission_mode.value,
+            permission_mode=step.world_state.permission_mode.value,
             is_cancelled=lambda: token.cancelled,
             services={
                 "process_store": self.process_store,
