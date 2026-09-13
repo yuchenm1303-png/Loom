@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from contextvars import ContextVar
 from dataclasses import replace
 from pathlib import Path
 
@@ -28,6 +29,12 @@ from .sandbox_attempt import (
 from .sandbox_tools import sandbox_status_tool
 from .step import RequestStateSnapshot, StepContext
 from .tools import ToolContext, ToolResult
+
+
+_APPROVAL_ATTEMPT: ContextVar[tuple[str, str, SandboxAttempt] | None] = ContextVar(
+    "loom_approval_sandbox_attempt",
+    default=None,
+)
 
 
 def _sandbox_manager_identity(manager):
@@ -124,12 +131,15 @@ class SandboxAgentRuntime(DurableAgentRuntime):
             and pending.kind is ApprovalKind.SANDBOX_ESCALATION
         ):
             attempt = SandboxAttempt.escalated(pending.retry_reason or pending.reason)
-            with sandbox_attempt_scope(attempt):
+            token = _APPROVAL_ATTEMPT.set((session_id, requested_call_id, attempt))
+            try:
                 return super().resume_approval(
                     session_id,
                     call_id,
                     approved=True,
                 )
+            finally:
+                _APPROVAL_ATTEMPT.reset(token)
 
         return super().resume_approval(
             session_id,
@@ -138,6 +148,37 @@ class SandboxAgentRuntime(DurableAgentRuntime):
         )
 
     def _consume_tool_call(
+        self,
+        session,
+        call,
+        *,
+        token,
+        step,
+        approval_granted: bool,
+    ) -> bool:
+        planned = _APPROVAL_ATTEMPT.get()
+        if (
+            planned is not None
+            and planned[0] == session.session_id
+            and planned[1] == call.call_id
+        ):
+            with sandbox_attempt_scope(planned[2]):
+                return self._consume_tool_call_once(
+                    session,
+                    call,
+                    token=token,
+                    step=step,
+                    approval_granted=approval_granted,
+                )
+        return self._consume_tool_call_once(
+            session,
+            call,
+            token=token,
+            step=step,
+            approval_granted=approval_granted,
+        )
+
+    def _consume_tool_call_once(
         self,
         session,
         call,
