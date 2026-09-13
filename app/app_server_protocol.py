@@ -31,22 +31,14 @@ def _structured_value(data: dict[str, Any], *keys: str) -> Any:
     return None
 
 
-def _approval_kind(data: dict[str, Any]) -> str:
-    explicit = str(
-        data.get("approval_kind")
-        or data.get("approvalKind")
-        or data.get("kind")
-        or ""
-    ).strip()
+def _approval_stage(data: dict[str, Any]) -> str:
+    explicit = str(data.get("approval_stage") or data.get("approvalStage") or "").strip()
     if explicit:
         return explicit
     if _structured_value(data, "network_approval_context", "networkApprovalContext") is not None:
         return "network"
     if str(data.get("retry_reason") or data.get("retryReason") or "").strip():
         return "retry"
-    # The current Loom runtime emits TOOL_APPROVAL_REQUIRED only at the
-    # pre-execution permission boundary. Do not infer sandbox/network stages
-    # from the human-readable reason string.
     return "initial"
 
 
@@ -77,19 +69,14 @@ def approval_request_from_event(
     retry_reason = str(data.get("retry_reason") or data.get("retryReason") or "").strip() or None
 
     return {
-        # Loom's Electron bridge cannot yet answer true server-initiated JSON-RPC
-        # requests. event_id is therefore the durable correlation identity used
-        # by the notification/request compatibility adapter.
         "requestId": event.event_id,
         "threadId": event.session_id,
         "turnId": turn_id,
-        # Match Codex's approval params: itemId identifies the item under review.
         "itemId": f"tool:{call_id}",
-        # Loom keeps a separate transcript approval item as a UI affordance.
         "approvalItemId": f"approval:{call_id}",
         "callId": call_id,
         "requestType": "toolExecution",
-        "kind": _approval_kind(data),
+        "approvalStage": _approval_stage(data),
         "retryReason": retry_reason,
         "startedAtMs": _timestamp_ms(event.created_at),
         "toolName": tool_name,
@@ -124,9 +111,6 @@ def pending_approval_record(
             continue
         return approval_request_from_event(event, pending=pending)
 
-    # Old/corrupt snapshots may predate durable approval events. Keep enough
-    # display data for recovery UX, but deliberately omit requestId so the
-    # app-server cannot accidentally approve an uncorrelated request.
     effect_value = getattr(pending, "effect", "")
     return {
         "requestId": None,
@@ -136,7 +120,7 @@ def pending_approval_record(
         "approvalItemId": f"approval:{call_id}",
         "callId": call_id,
         "requestType": "toolExecution",
-        "kind": "initial",
+        "approvalStage": "initial",
         "retryReason": None,
         "startedAtMs": 0,
         "toolName": str(getattr(pending, "tool_name", "") or ""),
