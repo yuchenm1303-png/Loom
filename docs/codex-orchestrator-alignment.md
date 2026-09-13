@@ -7,7 +7,7 @@ This branch moves Loom's core runtime toward the current Codex ownership model w
 - `ToolOrchestrator` is now both the preparation boundary and the handler execution boundary for the default sandbox-backed runtime stack.
 - An approval-required prepared call cannot execute unless the runtime explicitly carries an approval grant into the execution boundary.
 - A denied prepared call cannot execute even if a caller mistakenly supplies an approval flag.
-- Pending approvals distinguish the initial authorization stage from a future sandbox-escalation retry stage.
+- Pending approvals distinguish the initial authorization stage from a sandbox-escalation retry stage.
 - Approval-stage metadata is durable and old session snapshots remain compatible by defaulting missing stage data to `initial`.
 - A model-originated `exec` call can no longer silently cross Loom's `SandboxPolicy.AUTO` compatibility fallback when no OS sandbox backend is available. The runtime forces an approval and tells the user that the approved call may run without OS-level containment. `FULL_ACCESS` and an explicitly configured `SandboxPolicy.OFF` remain intentional unsandboxed modes.
 - `SandboxPolicy.REQUIRED` with no enforced backend is refused before user approval instead of asking the user to approve an action that cannot run under the active policy.
@@ -48,9 +48,30 @@ This is deliberately narrower than putting the full host environment into every 
 
 Loom now has a `SandboxExecutionError` contract with explicit failure kinds (`denied`, `unavailable`, `configuration`) and an `escalatable` bit. `ToolOrchestrator.execute()` preserves that structure in the resulting `ToolResult.data` instead of flattening it into an ordinary exception string.
 
-This is plumbing, not a claim that all current sandbox failures are classified. The current Bubblewrap/MXC process path still does **not** manufacture a typed `denied` result from a generic non-zero exit code or stderr text. A backend should emit `SandboxExecutionError(DENIED, ..., escalatable=True)` only when it has a trustworthy containment-specific signal.
+This is still not a claim that all current sandbox failures are classified. The current Bubblewrap/MXC process path does **not** manufacture a typed `denied` result from a generic non-zero exit code or stderr text. A backend should emit `SandboxExecutionError(DENIED, ..., escalatable=True)` only when it has a trustworthy containment-specific signal.
 
-Likewise, Loom does not yet create a `sandbox_escalation` retry merely because a typed channel exists. A real retry needs an explicit per-attempt sandbox object/override so the second attempt has different, auditable semantics. Re-running the same `ProcessStore.start()` path or mutating a global sandbox policy would not satisfy that invariant.
+## Explicit sandbox attempts and one-shot escalation
+
+Loom now has an explicit `SandboxAttempt` contract rather than mutating the process-wide sandbox policy for retries. The current attempt records an attempt kind/index and a planning selection. The default attempt uses the ambient policy; a sandbox escalation attempt explicitly selects no OS sandbox for that one execution attempt.
+
+`SandboxAgentRuntime` wraps its already-resolved `SandboxManager` in an attempt-aware planner. The wrapper does not re-probe the host backend and remains a `SandboxManager` subtype for compatibility. Attempt state is carried in a `ContextVar`, so concurrent runtime work does not share a mutable escalation flag. `ProcessStore.start()` continues to use the normal `sandbox_manager.prepare()` call; the active attempt changes planning only inside the matching execution scope.
+
+The escalation state transition is now wired end to end:
+
+1. the original prepared `exec` action runs under the initial policy-selected attempt;
+2. only a typed `sandbox_failure=denied` result with `sandbox_escalatable=true` can request escalation;
+3. the same original `ToolCall`, pending binding, frozen step id and approval arguments are retained;
+4. Loom creates a durable `PendingToolApproval(kind=sandbox_escalation)` with the typed retry reason;
+5. if the user approves, only that exact call id executes inside `SandboxAttempt.escalated(...)`;
+6. the escalated attempt bypasses OS containment only when policy permits it; `SandboxPolicy.REQUIRED` cannot be bypassed;
+7. the attempt scope ends with that call. A later model-generated `exec` immediately returns to the normal initial/policy attempt;
+8. a second typed denial is returned to the model as a failed tool result and never creates a third approval.
+
+For a real sensitive `exec` under `WORKSPACE`/`APPROVAL`, this can intentionally be a two-stage user decision: first authorize the sensitive command, then—only if a proven sandbox denial occurs—separately authorize the one-shot no-sandbox retry. The second approval is not treated as implied by the first because it changes the containment boundary.
+
+The runtime records the first failed attempt and the subsequent approval/attempt as observable events under the same call id. The app-server reducer already updates that call item through `failed -> waiting_approval -> running -> completed/failed` rather than creating duplicate tool items. The current static `pendingApproval` snapshot still exposes the human-readable reason but does not yet include `kind`/`retryReason`; the raw approval event does include both fields.
+
+Most importantly, this state machine remains dormant for ordinary Bubblewrap/MXC command failures until those backends can produce a trustworthy typed denial. Loom still does not guess from `Permission denied`, exit code, or arbitrary stderr.
 
 ## CI cleanup and current infrastructure limitation
 
@@ -67,8 +88,8 @@ It also does not yet make Loom's StepContext as broad as Codex's current StepCon
 1. move request-state capture lower into the core runtime so lower-level runtime compositions do not need a compatibility fallback;
 2. replace the current exec-specific environment fingerprint with a first-class typed execution-action snapshot when the core runtime can carry action objects end to end;
 3. make MCP binding a first-class typed object rather than canonical JSON inside request state;
-4. introduce an explicit per-attempt sandbox object/override and connect trustworthy backend denial signals to `SandboxExecutionError`;
-5. create a `sandbox_escalation` approval only after a typed, escalatable denial and retry at most once with distinct attempt events;
+4. connect trustworthy backend-specific containment-denial signals to `SandboxExecutionError` without stderr guessing;
+5. expose approval `kind`/`retryReason` in the static app-server pending-approval snapshot as well as the event stream;
 6. add network approval on the same orchestration boundary.
 
 The rule remains: do not imitate Codex by name alone. Port the observable state transition and fail-closed invariant, then lock it with a Loom test.
