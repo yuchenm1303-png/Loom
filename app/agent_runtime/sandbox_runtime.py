@@ -68,6 +68,35 @@ class SandboxAgentRuntime(DurableAgentRuntime):
         self.process_store.terminate_session(session_id)
         return super().recover_interrupted(session_id)
 
+    def resume_approval(
+        self,
+        session_id: str,
+        call_id: str,
+        *,
+        approved: bool,
+    ):
+        if approved:
+            session = self.store.load(session_id)
+            pending = session.pending_approval
+            requested_call_id = str(call_id or "").strip()
+            if pending is not None and pending.call_id == requested_call_id:
+                if not session.pending_tool_calls:
+                    raise RuntimeError("pending tool approval state is inconsistent")
+                call = session.pending_tool_calls[0]
+                if (
+                    call.call_id != pending.call_id
+                    or call.name != pending.tool_name
+                    or dict(call.arguments) != dict(pending.arguments)
+                ):
+                    raise ValueError(
+                        "approved tool action changed while waiting; deny this request and start a new turn"
+                    )
+        return super().resume_approval(
+            session_id,
+            call_id,
+            approved=approved,
+        )
+
     def _consume_tool_call(
         self,
         session,
