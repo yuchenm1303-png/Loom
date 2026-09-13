@@ -1,26 +1,24 @@
-"""Codex-parity project instruction discovery, rendering, and turn snapshots.
+"""Codex-parity project instruction discovery, rendering, and applied caching.
 
 Discovery walks from the project root to the effective cwd, choosing at most one
 instruction file per directory. Deeper files therefore appear later and can
 refine shallower rules. Rendering mirrors Codex's contextual-user fragment
 markers so project documentation stays recognisable after history projection.
 
-Loom uses stateless Chat Completions transports, so it reprojects contextual
-fragments on each request. A durable per-turn snapshot prevents that reprojection
-from re-reading AGENTS.md during approval resume or later model steps in the same
-turn, preserving the frozen instruction state Codex carries in world state.
+Codex does not use a turn id as the repository-instruction refresh boundary.
+Its AgentsMdManager keeps the applied repository snapshot while the selected
+environment/trust authority is unchanged. Loom currently has one local workspace
+selection and no independent trust-level contract in this layer, so the closest
+faithful representation is an in-memory applied snapshot keyed by resolved
+workspace. Restart recovery is intentionally not implemented here; Window 06 owns
+reconstruction of the complete captured execution world.
 """
 from __future__ import annotations
 
-import hashlib
-import json
-import os
 import threading
-import uuid
-from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Iterator
+from typing import Iterable
 
 
 DEFAULT_ROOT_MARKERS = (".git",)
@@ -39,8 +37,8 @@ class ProjectInstruction:
 
 @dataclass(frozen=True, slots=True)
 class ProjectInstructionSnapshot:
-    session_id: str
-    turn_id: str
+    """One applied repository-instruction snapshot for an environment key."""
+
     workspace: str
     rendered: str
     source_paths: tuple[str, ...]
@@ -108,6 +106,7 @@ class InstructionLoader:
                 remaining -= len(payload)
                 if text.strip():
                     entries.append(ProjectInstruction(path=path, text=text, truncated=truncated))
+                # An existing empty higher-priority candidate still wins this directory.
                 break
         return tuple(entries)
 
@@ -128,141 +127,66 @@ class InstructionLoader:
         return self.render(self.load_entries(workspace_path), directory=workspace_path)
 
 
-class ProjectInstructionSnapshotStore:
-    """Durably freeze model-visible project instructions for one Loom turn."""
+class AppliedInstructionCache:
+    """Cache the applied repository snapshot while the environment key is stable.
 
-    def __init__(self, session_root: str | Path) -> None:
-        self.session_root = Path(session_root).expanduser().resolve()
+    Current Loom exposes the resolved workspace as the repository-selection key.
+    A future environment/trust owner may widen ``_key`` without changing context
+    or compaction semantics. This cache is deliberately process-local: restoring
+    an interrupted pending Step is a recovery concern and must restore the whole
+    captured execution world, not just AGENTS content.
+    """
 
-    @staticmethod
-    def _turn_key(turn_id: str) -> str:
-        return hashlib.sha256(str(turn_id).encode("utf-8")).hexdigest()[:32]
-
-    def _path(self, session_id: str, turn_id: str) -> Path:
-        directory = self.session_root / str(session_id) / "instruction_snapshots"
-        directory.mkdir(parents=True, exist_ok=True)
-        return directory / f"turn-{self._turn_key(turn_id)}.json"
-
-    def load(self, session_id: str, turn_id: str) -> ProjectInstructionSnapshot | None:
-        target = self._path(session_id, turn_id)
-        if not target.is_file():
-            return None
-        payload = json.loads(target.read_text(encoding="utf-8"))
-        if not isinstance(payload, dict):
-            raise ValueError("instruction snapshot must be a JSON object")
-        if str(payload.get("session_id") or "") != str(session_id):
-            raise ValueError("instruction snapshot session id mismatch")
-        if str(payload.get("turn_id") or "") != str(turn_id):
-            raise ValueError("instruction snapshot turn id mismatch")
-        return ProjectInstructionSnapshot(
-            session_id=str(session_id),
-            turn_id=str(turn_id),
-            workspace=str(payload.get("workspace") or ""),
-            rendered=str(payload.get("rendered") or ""),
-            source_paths=tuple(str(item) for item in payload.get("source_paths", []) if item),
-        )
-
-    def capture(
-        self,
-        *,
-        session_id: str,
-        turn_id: str,
-        workspace: str | Path,
-        loader: InstructionLoader,
-    ) -> ProjectInstructionSnapshot:
-        existing = self.load(session_id, turn_id)
-        if existing is not None:
-            return existing
-
-        workspace_path = Path(workspace).expanduser().resolve()
-        entries = loader.load_entries(workspace_path)
-        snapshot = ProjectInstructionSnapshot(
-            session_id=str(session_id),
-            turn_id=str(turn_id),
-            workspace=str(workspace_path),
-            rendered=loader.render(entries, directory=workspace_path),
-            source_paths=tuple(str(entry.path) for entry in entries),
-        )
-        target = self._path(session_id, turn_id)
-        temp = target.with_name(f".{target.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
-        payload = {
-            "version": 1,
-            "session_id": snapshot.session_id,
-            "turn_id": snapshot.turn_id,
-            "workspace": snapshot.workspace,
-            "rendered": snapshot.rendered,
-            "source_paths": list(snapshot.source_paths),
-        }
-        data = json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True)
-        try:
-            with temp.open("w", encoding="utf-8", newline="\n") as handle:
-                handle.write(data)
-                handle.flush()
-                os.fsync(handle.fileno())
-            os.replace(temp, target)
-        finally:
-            try:
-                temp.unlink(missing_ok=True)
-            except OSError:
-                pass
-        return snapshot
-
-
-class TurnScopedInstructionLoader:
-    """Reuse one durable project-instruction snapshot inside an active turn."""
-
-    def __init__(self, loader: InstructionLoader, snapshot_store: ProjectInstructionSnapshotStore) -> None:
+    def __init__(self, loader: InstructionLoader) -> None:
         self.loader = loader
-        self.snapshot_store = snapshot_store
-        self._local = threading.local()
+        self._lock = threading.RLock()
+        self._cache: dict[str, ProjectInstructionSnapshot] = {}
 
     def __getattr__(self, name: str):
         return getattr(self.loader, name)
 
-    @contextmanager
-    def bind_turn(
-        self,
-        *,
-        session_id: str,
-        turn_id: str,
-        workspace: str | Path,
-    ) -> Iterator[None]:
-        previous = getattr(self._local, "binding", None)
-        self._local.binding = (
-            str(session_id),
-            str(turn_id),
-            str(Path(workspace).expanduser().resolve()),
+    @staticmethod
+    def _key(workspace: str | Path) -> str:
+        return str(Path(workspace).expanduser().resolve())
+
+    def snapshot(self, workspace: str | Path) -> ProjectInstructionSnapshot:
+        key = self._key(workspace)
+        with self._lock:
+            cached = self._cache.get(key)
+            if cached is not None:
+                return cached
+
+        workspace_path = Path(key)
+        entries = self.loader.load_entries(workspace_path)
+        snapshot = ProjectInstructionSnapshot(
+            workspace=key,
+            rendered=self.loader.render(entries, directory=workspace_path),
+            source_paths=tuple(str(entry.path) for entry in entries),
         )
-        try:
-            yield
-        finally:
-            self._local.binding = previous
+        with self._lock:
+            # Preserve the first coherent applied value if concurrent requests race.
+            return self._cache.setdefault(key, snapshot)
 
     def load(self, workspace: str | Path) -> str:
-        resolved = str(Path(workspace).expanduser().resolve())
-        binding = getattr(self._local, "binding", None)
-        if binding is None:
-            return self.loader.load(resolved)
-        session_id, turn_id, bound_workspace = binding
-        if resolved != bound_workspace or not turn_id:
-            return self.loader.load(resolved)
-        return self.snapshot_store.capture(
-            session_id=session_id,
-            turn_id=turn_id,
-            workspace=resolved,
-            loader=self.loader,
-        ).rendered
+        return self.snapshot(workspace).rendered
+
+    def invalidate(self, workspace: str | Path | None = None) -> None:
+        """Explicit hook for a future environment/trust-selection owner."""
+        with self._lock:
+            if workspace is None:
+                self._cache.clear()
+            else:
+                self._cache.pop(self._key(workspace), None)
 
 
 __all__ = [
     "AGENTS_FRAGMENT_END",
     "AGENTS_FRAGMENT_START",
+    "AppliedInstructionCache",
     "DEFAULT_INSTRUCTION_NAMES",
     "DEFAULT_ROOT_MARKERS",
     "InstructionLoader",
     "PROJECT_DOC_SEPARATOR",
     "ProjectInstruction",
     "ProjectInstructionSnapshot",
-    "ProjectInstructionSnapshotStore",
-    "TurnScopedInstructionLoader",
 ]
