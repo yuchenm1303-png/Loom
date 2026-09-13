@@ -16,6 +16,19 @@ from .process_runtime import validate_argv, validate_terminal_size, validate_tim
 _ACTION_BINDING_KEY = secrets.token_bytes(32)
 _MAX_STDIN_CHARS = 256_000
 _MAX_ENV_ENTRIES = 256
+_EXEC_ARGUMENT_NAMES = frozenset(
+    {
+        "argv",
+        "cwd",
+        "stdin",
+        "env",
+        "timeout_seconds",
+        "pty",
+        "rows",
+        "cols",
+        "wait",
+    }
+)
 
 
 def _canonical_bytes(value: object) -> bytes:
@@ -32,23 +45,57 @@ def _private_identity(value: object) -> str:
     return hmac.new(_ACTION_BINDING_KEY, _canonical_bytes(value), hashlib.sha256).hexdigest()
 
 
+def _validate_exec_argument_shape(arguments: dict[str, object]) -> None:
+    extras = sorted(set(arguments) - _EXEC_ARGUMENT_NAMES)
+    if extras:
+        raise ValueError(f"exec contains unsupported arguments: {', '.join(extras)}")
+
+    raw_argv = arguments.get("argv")
+    if not isinstance(raw_argv, list) or any(not isinstance(value, str) for value in raw_argv):
+        raise ValueError("argv must be an array of strings")
+    if "cwd" in arguments and not isinstance(arguments["cwd"], str):
+        raise ValueError("cwd must be a string")
+    if "stdin" in arguments and not isinstance(arguments["stdin"], str):
+        raise ValueError("stdin must be a string")
+    if "env" in arguments and not isinstance(arguments["env"], dict):
+        raise ValueError("env must be an object of string values")
+    if "timeout_seconds" in arguments and (
+        isinstance(arguments["timeout_seconds"], bool)
+        or not isinstance(arguments["timeout_seconds"], int)
+    ):
+        raise ValueError("timeout_seconds must be an integer")
+    for name in ("pty", "wait"):
+        if name in arguments and not isinstance(arguments[name], bool):
+            raise ValueError(f"{name} must be a boolean")
+    for name in ("rows", "cols"):
+        if name in arguments and (
+            isinstance(arguments[name], bool) or not isinstance(arguments[name], int)
+        ):
+            raise ValueError(f"{name} must be an integer")
+
+
 def _explicit_environment(raw: object) -> dict[str, str]:
     if raw is None:
         return {}
-    if not isinstance(raw, Mapping):
+    if not isinstance(raw, dict):
         raise ValueError("env must be an object of string values")
     if len(raw) > _MAX_ENV_ENTRIES:
         raise ValueError("env contains too many entries")
     output: dict[str, str] = {}
     for key, value in raw.items():
-        if not isinstance(value, str):
-            raise ValueError("env values must be strings")
-        output[str(key)] = value
+        if not isinstance(key, str) or not isinstance(value, str):
+            raise ValueError("env must be an object of string values")
+        output[key] = value
     return output
 
 
 def _workspace_cwd(workspace: str | Path, raw_cwd: object) -> tuple[str, Path]:
-    requested = str(raw_cwd or ".").strip() or "."
+    if raw_cwd is None:
+        requested = "."
+    elif isinstance(raw_cwd, str):
+        requested = raw_cwd.strip() or "."
+    else:
+        raise ValueError("cwd must be a string")
     root = Path(workspace).expanduser().resolve()
     resolved = (root / requested).resolve()
     try:
@@ -95,27 +142,32 @@ class ExecActionIdentity:
     explicit_environment_identity: str
     resolved_environment_identity: str
 
+    @property
+    def kind(self) -> str:
+        return "exec_command"
+
     @classmethod
     def build(cls, step, call: ToolCall) -> "ExecActionIdentity":
         if str(call.name or "") != "exec":
             raise ValueError("ExecActionIdentity requires an exec tool call")
         arguments = dict(call.arguments)
+        _validate_exec_argument_shape(arguments)
         argv = validate_argv(arguments.get("argv"))
         requested_cwd, resolved_cwd = _workspace_cwd(
             step.world_state.workspace_dir,
             arguments.get("cwd"),
         )
         timeout_seconds = validate_timeout(arguments.get("timeout_seconds"))
-        stdin_text = str(arguments.get("stdin") or "")
+        stdin_text = arguments.get("stdin", "")
         if len(stdin_text) > _MAX_STDIN_CHARS:
             raise ValueError("stdin exceeds 256,000 characters")
         explicit_env = _explicit_environment(arguments.get("env"))
-        pty = bool(arguments.get("pty", False))
+        pty = arguments.get("pty", False)
         parsed_rows, parsed_cols = validate_terminal_size(
             arguments.get("rows", 24),
             arguments.get("cols", 80),
         )
-        wait = bool(arguments.get("wait", True))
+        wait = arguments.get("wait", True)
         return cls(
             call_id=str(call.call_id or "").strip(),
             argv=argv,
@@ -134,7 +186,7 @@ class ExecActionIdentity:
 
     def binding_payload(self) -> dict[str, Any]:
         return {
-            "kind": "exec_command",
+            "kind": self.kind,
             "argv": list(self.argv),
             "resolved_cwd": self.resolved_cwd,
             "wait": self.wait,
