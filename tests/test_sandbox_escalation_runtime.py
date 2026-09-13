@@ -254,3 +254,84 @@ def test_escalation_scope_is_limited_to_the_approved_call(tmp_path):
         ]
     finally:
         runtime.close()
+
+
+def test_sensitive_exec_requires_initial_approval_before_sandbox_escalation(tmp_path):
+    attempts = []
+
+    def handler(_context, _arguments):
+        attempt = current_sandbox_attempt()
+        attempts.append(attempt)
+        if attempt.kind is SandboxAttemptKind.INITIAL:
+            raise SandboxExecutionError(
+                SandboxFailureKind.DENIED,
+                "sandbox rejected the authorized action",
+                escalatable=True,
+            )
+        return ToolResult(ok=True, content="escalated sensitive action succeeded")
+
+    tool = AgentTool(
+        name="exec",
+        description="Synthetic sensitive exec for two-stage approval testing.",
+        input_schema={
+            "type": "object",
+            "properties": {"label": {"type": "string"}},
+            "required": ["label"],
+            "additionalProperties": False,
+        },
+        handler=handler,
+        effect=ToolEffect.SENSITIVE,
+    )
+    runtime = SandboxAgentRuntime(
+        platform=ScriptedPlatform(
+            (
+                ModelResponse(
+                    tool_calls=(
+                        ToolCall(
+                            call_id="exec-sensitive",
+                            name="exec",
+                            arguments={"label": "authorized-action"},
+                        ),
+                    )
+                ),
+                ModelResponse(text="two approvals completed"),
+            )
+        ),
+        store=FileAgentSessionStore(tmp_path / "state"),
+        tools=ToolRegistry((tool,)),
+        sandbox_manager=_manager(),
+    )
+    try:
+        session = _session(runtime, tmp_path)
+        initial_wait = runtime.start_turn(session.session_id, "Run the sensitive synthetic action.")
+
+        assert initial_wait.status is AgentStatus.WAITING_APPROVAL
+        assert initial_wait.pending_approval is not None
+        assert initial_wait.pending_approval.kind is ApprovalKind.INITIAL
+        assert attempts == []
+
+        escalation_wait = runtime.resume_approval(
+            session.session_id,
+            "exec-sensitive",
+            approved=True,
+        )
+
+        assert escalation_wait.status is AgentStatus.WAITING_APPROVAL
+        assert escalation_wait.pending_approval is not None
+        assert escalation_wait.pending_approval.kind is ApprovalKind.SANDBOX_ESCALATION
+        assert [attempt.kind for attempt in attempts] == [SandboxAttemptKind.INITIAL]
+
+        completed = runtime.resume_approval(
+            session.session_id,
+            "exec-sensitive",
+            approved=True,
+        )
+
+        assert completed.status is AgentStatus.COMPLETED
+        assert completed.final_text == "two approvals completed"
+        assert [attempt.kind for attempt in attempts] == [
+            SandboxAttemptKind.INITIAL,
+            SandboxAttemptKind.ESCALATION,
+        ]
+    finally:
+        runtime.close()
