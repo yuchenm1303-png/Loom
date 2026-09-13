@@ -1,7 +1,6 @@
 """The single model/tool state machine used by both core and extended runtimes."""
 from __future__ import annotations
 
-import re
 from dataclasses import replace
 
 from app.ai import AIMessage, ChatRequest, MessageRole, ModelResponse, ModelUsage, ToolChoice
@@ -12,141 +11,30 @@ from .contracts import AgentEventKind as Event
 from .contracts import AgentStatus
 from .execution_binding import action_binding_digest
 from .history import repair_tool_history
+from .turn_response_validation import (
+    COMPLETE_FINISH_REASONS,
+    TERMINAL_RECOVERY_INSTRUCTION,
+    TRUNCATED_RECOVERY_INSTRUCTION,
+    UNFINISHED_RECOVERY_INSTRUCTION,
+    history_message_count,
+    invalid_terminal_response,
+    strip_compaction_echo,
+)
+
+
+# Compatibility aliases retained for focused tests and callers that imported the
+# previous module-private validation helpers.
+_COMPLETE_FINISH_REASONS = COMPLETE_FINISH_REASONS
+_TERMINAL_RECOVERY_INSTRUCTION = TERMINAL_RECOVERY_INSTRUCTION
+_TRUNCATED_RECOVERY_INSTRUCTION = TRUNCATED_RECOVERY_INSTRUCTION
+_UNFINISHED_RECOVERY_INSTRUCTION = UNFINISHED_RECOVERY_INSTRUCTION
+_invalid_terminal_response = invalid_terminal_response
+_strip_compaction_echo = strip_compaction_echo
+_history_message_count = history_message_count
 
 
 def _exposed_tool_names(step) -> tuple[str, ...]:
     return tuple(sorted(tool.name for tool in step.tool_router.all()))
-
-
-_COMPLETE_FINISH_REASONS = {"", "stop", "tool_calls", "function_call", "completed", "end_turn"}
-_COMPLETE_THINK_BLOCK_RE = re.compile(r"<think>.*?</think>", re.IGNORECASE | re.DOTALL)
-_DANGLING_TERMINAL_RE = re.compile(r"(?:\[|\{|<tool_call>|```(?:json)?)\s*$", re.IGNORECASE)
-_DANGLING_DISCOURSE_RE = re.compile(r"[:：]\s*$")
-_SERIALIZED_TOOL_PROTOCOL_RE = re.compile(
-    r"(?:<tool_call\b|</tool_call>|<invoke\s+name\s*=|\]\s*<\]\s*minimax\s*\[>\s*\[<)",
-    re.IGNORECASE,
-)
-_INLINE_STICKER_RE = re.compile(r"\[\[AI_LEDGER_INLINE_STICKER:[a-z0-9_]{2,48}\]\]", re.I)
-_TERMINAL_RECOVERY_INSTRUCTION = (
-    "Your previous response was rejected because it was empty, malformed (including invalid native tool-call "
-    "arguments), ended with an incomplete serialized structure, or contained reasoning without a user-visible "
-    "answer. Continue the same task now. "
-    "If an available tool is needed, emit a native structured tool call through the tool-calling protocol; "
-    "do not print JSON, '[' or a tool-call prefix in assistant text. Otherwise return a complete final answer."
-)
-_TRUNCATED_RECOVERY_INSTRUCTION = (
-    "The previous assistant response was cut off by the provider's output limit and was not committed. "
-    "Continue the same task from that partial response without repeating its analysis. If it was leading to "
-    "a tool action, emit the native structured tool call immediately; otherwise finish with a concise answer."
-)
-_UNFINISHED_RECOVERY_INSTRUCTION = (
-    "The previous assistant response ended while introducing the next action and was not committed as a final "
-    "answer. Continue the same task from that partial response without repeating it. If the promised action "
-    "requires an available tool, emit the native structured tool call now; otherwise complete the answer."
-)
-
-
-def _invalid_terminal_response(response: ModelResponse) -> str:
-    """Reject provider 'stop' responses that cannot be valid terminal output.
-
-    OpenAI-compatible relays occasionally terminate while beginning a textual
-    serialization of a tool call. Such text must never become canonical history:
-    it poisons the next turn and makes the model repeat the same fragment.
-    """
-    reason = str(response.finish_reason or "").strip().casefold()
-    if reason not in _COMPLETE_FINISH_REASONS:
-        return f"incomplete_finish:{reason or 'unknown'}"
-    if response.tool_calls:
-        return ""
-    raw = str(response.text or "")
-    visible = _COMPLETE_THINK_BLOCK_RE.sub("", raw).strip()
-    if raw.strip() and not visible:
-        return "reasoning_without_visible_answer"
-    if _SERIALIZED_TOOL_PROTOCOL_RE.search(visible):
-        return "serialized_tool_call_text"
-    if _DANGLING_TERMINAL_RE.search(visible):
-        return "dangling_serialized_structure"
-    if visible.count("```") % 2:
-        return "unterminated_code_fence"
-    # A terminal colon/dash introduces content that never arrived. Providers can
-    # incorrectly label this shape as ``stop`` when they drop a pending native
-    # tool call. Treat the provider marker as transport metadata, not proof that
-    # the agent's turn is semantically complete.
-    if _DANGLING_DISCOURSE_RE.search(visible):
-        return "unfinished_terminal_text"
-    return ""
-
-
-def _strip_compaction_echo(messages, text: str) -> tuple[str, bool]:
-    """Remove a model's verbatim replay of private checkpoint context.
-
-    Compatible models sometimes quote the injected ``loom_compaction`` message
-    inside an otherwise valid answer.  Streaming is transient, but the durable
-    response boundary must never commit that internal prompt.  Match several
-    substantive lines rather than a single marker so ordinary discussion of
-    compaction is left untouched.
-    """
-
-    source = str(text or "")
-    summaries = [
-        str(message.content or "")
-        for message in messages
-        if message.role is MessageRole.SYSTEM
-        and str(getattr(message, "name", "") or "") == "loom_compaction"
-        and isinstance(message.content, str)
-    ]
-    if not source or not summaries:
-        return source, False
-
-    def normalized(line: str) -> str:
-        return re.sub(r"\s+", " ", _INLINE_STICKER_RE.sub("", line)).strip()
-
-    summary_lines = {
-        value
-        for summary in summaries
-        for line in summary.splitlines()
-        if len(value := normalized(line)) >= 12
-    }
-    response_lines = source.splitlines(keepends=True)
-    matched = [
-        index for index, line in enumerate(response_lines)
-        if normalized(line) in summary_lines
-    ]
-    if len(matched) < 3 or sum(len(normalized(response_lines[i])) for i in matched) < 80:
-        return source, False
-
-    start = matched[0]
-    while start > 0:
-        previous = normalized(response_lines[start - 1])
-        if not previous or previous.startswith("#") or "压缩摘要" in previous or previous.startswith("[请求已被压缩"):
-            start -= 1
-            continue
-        break
-    # Fail closed from the first proven echo onward.  Trying to recover a suffix
-    # risks retaining unmatched private lines (stickers or formatting can break
-    # otherwise exact line matches). A tool call can still proceed; a text-only
-    # contaminated response is retried by the caller.
-    cleaned = "".join(response_lines[:start]).strip()
-    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
-    return cleaned, True
-
-
-def _history_message_count(messages) -> int:
-    """Count conversation messages, ignoring Loom's own injected guidance.
-
-    Compaction is what has to satisfy max_messages, but it runs partway through
-    request preparation: later layers still append their own system guidance
-    afterwards. Counting those against the same limit let a request that
-    compaction had just fitted tip back over it, reported as "no safe compaction
-    boundary" even though a boundary had been found.
-    """
-
-    total = 0
-    for message in messages:
-        if message.role is MessageRole.SYSTEM and str(getattr(message, "name", "") or "").startswith("loom_"):
-            continue
-        total += 1
-    return total
 
 
 class TurnRunner:
@@ -167,14 +55,17 @@ class TurnRunner:
                 recovery_instruction = ""
                 recovery_partial = ""
                 for attempt in range(rt.limits.model_retries + 1):
-                    step = rt._build_step_context(session, next_model_step=True)
+                    # Capture once so request context, advertised tools, and all
+                    # tool calls from this response share one immutable world.
+                    step = rt._capture_step_context(session, next_model_step=True)
                     messages, extra = rt._prepare_model_request(session, step, token)
                     if _history_message_count(messages) > rt.limits.max_messages:
                         return rt._limit(session, "context message limit reached; no safe compaction boundary")
-                    reasoning = getattr(rt, "reasoning", None)
+                    reasoning = step.reasoning
+                    profile_id = step.world_state.profile_id
                     tool_names = _exposed_tool_names(step)
                     rt._record(session, Event.MODEL_REQUESTED, data={
-                        "profile_id": session.profile_id, "step": step.model_step,
+                        "profile_id": profile_id, "step": step.model_step,
                         "step_id": step.step_id, "message_count": len(messages),
                         "tool_count": len(tool_names), "tool_names": list(tool_names),
                         "permission_mode": step.world_state.permission_mode.value,
@@ -206,10 +97,18 @@ class TurnRunner:
                         else rt.limits.output_reserve_tokens
                     )
                     try:
-                        response = rt.model_executor.execute(rt.platform, session.profile_id,
-                            ChatRequest(messages=tuple(request_messages), tools=step.tool_router.definitions(),
-                                tool_choice=ToolChoice.AUTO, max_output_tokens=resolved_output_reserve,
-                                reasoning=reasoning), token)
+                        response = rt.model_executor.execute(
+                            rt.platform,
+                            profile_id,
+                            ChatRequest(
+                                messages=tuple(request_messages),
+                                tools=step.tool_router.definitions(),
+                                tool_choice=ToolChoice.AUTO,
+                                max_output_tokens=resolved_output_reserve,
+                                reasoning=reasoning,
+                            ),
+                            token,
+                        )
                     except AIEmptyResponseError as exc:
                         from .runtime import _add_usage
 
@@ -234,6 +133,7 @@ class TurnRunner:
                                 "total_tokens": exc.total_tokens,
                             },
                         })
+                        rt._release_step_context(step)
                         if attempt >= rt.limits.model_retries:
                             raise RuntimeError(
                                 "model repeatedly completed without public text or tool calls"
@@ -255,6 +155,7 @@ class TurnRunner:
                                 "total_tokens": 0,
                             },
                         })
+                        rt._release_step_context(step)
                         if attempt >= rt.limits.model_retries:
                             raise RuntimeError(
                                 f"model repeatedly returned malformed responses: {exc}"
@@ -265,6 +166,7 @@ class TurnRunner:
                     except AITransportError as exc:
                         if not exc.retryable or attempt >= rt.limits.model_retries:
                             raise
+                        rt._release_step_context(step)
                         if token._event.wait(min(2.0, 0.25 * 2 ** attempt)):
                             raise ModelCancelled()
                         continue
@@ -302,6 +204,7 @@ class TurnRunner:
                             "total_tokens": response.usage.total_tokens,
                         },
                     })
+                    rt._release_step_context(step)
                     if attempt >= rt.limits.model_retries:
                         raise RuntimeError(
                             f"model repeatedly returned an invalid terminal response ({invalid_terminal})"
@@ -324,7 +227,7 @@ class TurnRunner:
                 session.usage = _add_usage(session.usage, response.usage)
                 # Keep public partial output for inspection, but never execute partial calls.
                 reason = response.finish_reason.casefold()
-                incomplete = reason not in {"", "stop", "tool_calls", "function_call", "completed", "end_turn"}
+                incomplete = reason not in _COMPLETE_FINISH_REASONS
                 calls = () if incomplete else response.tool_calls
                 session.messages.append(AIMessage(role=MessageRole.ASSISTANT, content=response.text, tool_calls=calls))
                 rt._record(session, Event.MODEL_RESPONSE, data={
@@ -340,8 +243,10 @@ class TurnRunner:
                 if calls:
                     session.tool_calls += len(calls)
                     if rt.limits.max_tool_calls > 0 and session.tool_calls > rt.limits.max_tool_calls:
-                        session.messages = list(repair_tool_history(session.messages,
-                            max_tool_result_chars=rt.limits.max_tool_result_chars).messages)
+                        session.messages = list(repair_tool_history(
+                            session.messages,
+                            max_tool_result_chars=rt.limits.max_tool_result_chars,
+                        ).messages)
                         return rt._limit(session, "tool call limit reached")
                     session.pending_tool_calls.extend(calls)
                     session.pending_step_id = step.step_id
@@ -351,13 +256,18 @@ class TurnRunner:
                         if (tool := step.tool_router.get(c.name)) is not None
                     }
                     for call in calls:
-                        rt._record(session, Event.TOOL_REQUESTED, data={"call_id": call.call_id,
-                            "tool": call.name, "arguments": call.arguments, "step_id": step.step_id})
+                        rt._record(session, Event.TOOL_REQUESTED, data={
+                            "call_id": call.call_id,
+                            "tool": call.name,
+                            "arguments": call.arguments,
+                            "step_id": step.step_id,
+                        })
                     if not rt._process_pending_tools(session, token, step=step):
                         return rt._result(session)
                     continue
                 with rt._active_tokens_guard:
                     if rt._consume_steering(session):
+                        rt._release_step_context(step)
                         continue
                     # Stop accepting steering before committing the terminal state.
                     rt._active_tokens.pop(session.session_id, None)
@@ -375,6 +285,7 @@ class TurnRunner:
                         "changed_paths": list(diff.paths),
                     },
                 )
+                rt._release_step_context(step)
                 return rt._result(session)
         except ModelCancelled:
             token.cancel()
@@ -396,6 +307,7 @@ class TurnRunner:
                         max_tool_result_chars=rt.limits.max_tool_result_chars,
                     ).messages
                 )
+                rt._release_turn_steps(session)
                 rt.store.save(session)
                 rt._record(session, Event.TURN_FAILED, data={"error": session.error})
         return rt._result(session)
