@@ -7,64 +7,109 @@ from enum import Enum
 from pathlib import Path
 from typing import Iterator, Mapping
 
+from .permissions import AdditionalPermissionProfile, SandboxPermissions
 from .sandbox import SandboxBackend, SandboxCommand, SandboxManager, SandboxMode, SandboxPolicy
 from .sandbox_failure import SandboxExecutionError, SandboxFailureKind
 
 
 class SandboxAttemptKind(str, Enum):
     INITIAL = "initial"
-    ESCALATION = "escalation"
+    RETRY = "retry"
+    # Backward-compatible spelling for persisted/test data from #121.
+    ESCALATION = "retry"
 
 
 class SandboxAttemptSelection(str, Enum):
     POLICY = "policy"
+    ADDITIONAL_PERMISSIONS = "additional_permissions"
     NO_SANDBOX = "no_sandbox"
 
 
 @dataclass(frozen=True, slots=True)
 class SandboxAttempt:
-    """One explicit execution attempt without mutating the ambient sandbox policy."""
+    """One explicit execution attempt without mutating ambient sandbox policy."""
 
     kind: SandboxAttemptKind = SandboxAttemptKind.INITIAL
     index: int = 0
     selection: SandboxAttemptSelection = SandboxAttemptSelection.POLICY
+    sandbox_permissions: SandboxPermissions = SandboxPermissions.USE_DEFAULT
+    additional_permissions: AdditionalPermissionProfile | None = None
     reason: str = ""
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "kind", SandboxAttemptKind(self.kind))
         object.__setattr__(self, "selection", SandboxAttemptSelection(self.selection))
+        object.__setattr__(self, "sandbox_permissions", SandboxPermissions(self.sandbox_permissions))
         object.__setattr__(self, "index", int(self.index))
         object.__setattr__(self, "reason", str(self.reason or "").strip())
         if self.index < 0:
             raise ValueError("sandbox attempt index must be non-negative")
         if self.kind is SandboxAttemptKind.INITIAL and self.index != 0:
             raise ValueError("initial sandbox attempt must use index 0")
-        if self.kind is SandboxAttemptKind.ESCALATION and self.index < 1:
-            raise ValueError("sandbox escalation attempt must use index >= 1")
+        if self.kind is SandboxAttemptKind.RETRY and self.index < 1:
+            raise ValueError("sandbox retry attempt must use index >= 1")
+        if self.selection is SandboxAttemptSelection.ADDITIONAL_PERMISSIONS:
+            if self.sandbox_permissions is not SandboxPermissions.WITH_ADDITIONAL_PERMISSIONS:
+                raise ValueError("additional-permissions attempt requires matching sandbox_permissions")
+            if self.additional_permissions is None or self.additional_permissions.empty:
+                raise ValueError("additional-permissions attempt requires a non-empty profile")
+        elif self.additional_permissions is not None:
+            raise ValueError("additional_permissions only belongs to an additional-permissions attempt")
         if (
-            self.kind is SandboxAttemptKind.INITIAL
-            and self.selection is SandboxAttemptSelection.NO_SANDBOX
+            self.selection is SandboxAttemptSelection.NO_SANDBOX
+            and self.kind is SandboxAttemptKind.INITIAL
+            and self.sandbox_permissions is not SandboxPermissions.REQUIRE_ESCALATED
         ):
-            raise ValueError("initial sandbox attempt cannot request an escalation bypass")
+            raise ValueError("initial no-sandbox attempt must be an explicit require_escalated request")
 
     @classmethod
-    def initial(cls) -> "SandboxAttempt":
-        return cls()
+    def initial(
+        cls,
+        sandbox_permissions: SandboxPermissions = SandboxPermissions.USE_DEFAULT,
+        additional_permissions: AdditionalPermissionProfile | None = None,
+    ) -> "SandboxAttempt":
+        resolved = SandboxPermissions(sandbox_permissions)
+        if resolved is SandboxPermissions.REQUIRE_ESCALATED:
+            selection = SandboxAttemptSelection.NO_SANDBOX
+        elif resolved is SandboxPermissions.WITH_ADDITIONAL_PERMISSIONS:
+            selection = SandboxAttemptSelection.ADDITIONAL_PERMISSIONS
+        else:
+            selection = SandboxAttemptSelection.POLICY
+        return cls(
+            kind=SandboxAttemptKind.INITIAL,
+            index=0,
+            selection=selection,
+            sandbox_permissions=resolved,
+            additional_permissions=additional_permissions,
+        )
+
+    @classmethod
+    def retry_without_sandbox(cls, reason: str, *, index: int = 1) -> "SandboxAttempt":
+        return cls(
+            kind=SandboxAttemptKind.RETRY,
+            index=index,
+            selection=SandboxAttemptSelection.NO_SANDBOX,
+            sandbox_permissions=SandboxPermissions.REQUIRE_ESCALATED,
+            reason=reason,
+        )
 
     @classmethod
     def escalated(cls, reason: str, *, index: int = 1) -> "SandboxAttempt":
-        return cls(
-            kind=SandboxAttemptKind.ESCALATION,
-            index=index,
-            selection=SandboxAttemptSelection.NO_SANDBOX,
-            reason=reason,
-        )
+        """Compatibility alias for #121 callers; retry semantics are now explicit."""
+
+        return cls.retry_without_sandbox(reason, index=index)
 
     def to_dict(self) -> dict[str, object]:
         return {
             "kind": self.kind.value,
             "index": self.index,
             "selection": self.selection.value,
+            "sandbox_permissions": self.sandbox_permissions.value,
+            "additional_permissions": (
+                self.additional_permissions.canonical()
+                if self.additional_permissions is not None
+                else None
+            ),
             "reason": self.reason,
         }
 
@@ -98,9 +143,6 @@ class AttemptAwareSandboxManager(SandboxManager):
             base = base.base
         if not isinstance(base, SandboxManager):
             raise TypeError("base sandbox manager must be SandboxManager")
-        # The wrapped manager has already resolved and probed the host backend.
-        # Keep that exact instance as the source of ambient policy/state rather
-        # than constructing another manager with potentially different probes.
         object.__setattr__(self, "base", base)
 
     def __getattr__(self, name: str):
@@ -124,9 +166,18 @@ class AttemptAwareSandboxManager(SandboxManager):
         permissions=None,
         permission_mode=None,
         environment: Mapping[str, str] | None = None,
+        additional_permissions: AdditionalPermissionProfile | None = None,
     ) -> SandboxCommand:
         attempt = current_sandbox_attempt()
-        if attempt.selection is SandboxAttemptSelection.POLICY:
+        if attempt.selection in {
+            SandboxAttemptSelection.POLICY,
+            SandboxAttemptSelection.ADDITIONAL_PERMISSIONS,
+        }:
+            overlay = (
+                attempt.additional_permissions
+                if attempt.selection is SandboxAttemptSelection.ADDITIONAL_PERMISSIONS
+                else additional_permissions
+            )
             return self.base.prepare(
                 argv=argv,
                 cwd=cwd,
@@ -134,6 +185,7 @@ class AttemptAwareSandboxManager(SandboxManager):
                 permissions=permissions,
                 permission_mode=permission_mode,
                 environment=environment,
+                additional_permissions=overlay,
             )
 
         root = Path(workspace).expanduser().resolve()
@@ -160,11 +212,11 @@ class AttemptAwareSandboxManager(SandboxManager):
         if ambient.policy is SandboxPolicy.REQUIRED:
             raise SandboxExecutionError(
                 SandboxFailureKind.CONFIGURATION,
-                "sandbox escalation cannot bypass SandboxPolicy.REQUIRED",
+                "sandbox bypass cannot override SandboxPolicy.REQUIRED",
                 escalatable=False,
             )
 
-        detail = f"Explicit sandbox escalation attempt {attempt.index} bypassed OS containment."
+        detail = f"Explicit attempt {attempt.index} bypassed OS sandbox containment."
         if attempt.reason:
             detail = f"{detail} {attempt.reason}"
         snapshot = replace(
