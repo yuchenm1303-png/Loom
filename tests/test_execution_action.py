@@ -7,7 +7,11 @@ import pytest
 
 from app.ai import ToolCall
 from app.agent_runtime.contracts import PermissionMode, ToolEffect
-from app.agent_runtime.execution_action import ExecActionIdentity, exec_environment_identity
+from app.agent_runtime.execution_action import (
+    ExecActionIdentity,
+    exec_environment_identity,
+    execution_action_for,
+)
 from app.agent_runtime.shell_environment import ShellEnvironmentPolicy
 from app.agent_runtime.step import StepContext
 from app.agent_runtime.tools import AgentTool, ToolResult, ToolRouter
@@ -55,6 +59,17 @@ def _call(*, call_id: str = "exec-1", **overrides) -> ToolCall:
     }
     arguments.update(overrides)
     return ToolCall(call_id=call_id, name="exec", arguments=arguments)
+
+
+def test_execution_action_factory_is_typed_and_extensible(tmp_path):
+    step = _step(tmp_path)
+    action = execution_action_for(step, _call())
+
+    assert isinstance(action, ExecActionIdentity)
+    assert execution_action_for(
+        step,
+        ToolCall(call_id="other-1", name="other", arguments={}),
+    ) is None
 
 
 def test_exec_action_captures_execution_shape_without_copying_private_values(tmp_path):
