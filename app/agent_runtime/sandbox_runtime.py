@@ -212,9 +212,11 @@ class SandboxAgentRuntime(DurableAgentRuntime):
                 raise ValueError(
                     "approved tool action changed while waiting; deny this request and start a new turn"
                 )
-            validation_step = self._build_step_context(
+            # Approval review belongs to the sampled action. Reusing the exact
+            # captured StepContext prevents live settings, MCP catalogs, sandbox
+            # state, or instructions from changing the authority under review.
+            validation_step = self._captured_step_context(
                 session,
-                next_model_step=False,
                 step_id=session.pending_step_id or None,
             )
             selected = validation_step.tool_router.get(pending.tool_name)
