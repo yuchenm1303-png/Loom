@@ -19,6 +19,7 @@ class ResolvedContextLimits:
     input_budget_tokens: int
     output_reserve_tokens: int
     auto_compact_token_limit: int
+    auto_compact_token_limit_scope: str
     tool_output_token_limit: int
     recent_user_token_limit: int
     safety_tokens: int
@@ -31,6 +32,7 @@ class ResolvedContextLimits:
             "input_budget_tokens": self.input_budget_tokens,
             "output_reserve_tokens": self.output_reserve_tokens,
             "auto_compact_token_limit": self.auto_compact_token_limit,
+            "auto_compact_token_limit_scope": self.auto_compact_token_limit_scope,
             "tool_output_token_limit": self.tool_output_token_limit,
             "recent_user_token_limit": self.recent_user_token_limit,
             "safety_tokens": self.safety_tokens,
@@ -66,6 +68,12 @@ def resolve_context_limits(rt: Any, session: Any) -> ResolvedContextLimits:
     resolved context window (90%), not from a locally estimated request input
     budget. Re-running this function for every model step also means a profile /
     model change immediately changes the threshold.
+
+    Current Loom model-profile metadata has no field for Codex's optional
+    ``body_after_prefix`` scope and no AutoCompactWindow prefill baseline. The
+    only faithfully representable scope is therefore the Codex default ``total``.
+    If a future profile object supplies another scope, fail closed instead of
+    silently treating it as ``total``.
     """
 
     fallback_window = max(2, int(rt.limits.context_window_tokens))
@@ -78,6 +86,14 @@ def resolve_context_limits(rt: Any, session: Any) -> ResolvedContextLimits:
     profile_window = getattr(profile_limits, "context_window_tokens", None)
     profile_reserve = getattr(profile_limits, "output_reserve_tokens", None)
     profile_percent = int(getattr(profile_limits, "effective_context_percent", 100) or 100)
+    auto_compact_scope = str(
+        getattr(profile_limits, "auto_compact_token_limit_scope", "total") or "total"
+    ).strip().casefold()
+    if auto_compact_scope != "total":
+        raise ValueError(
+            "auto_compact_token_limit_scope='body_after_prefix' requires an active "
+            "prefill-window state contract that Loom ModelContextLimits does not expose"
+        )
 
     if env_window is not None:
         context_window = env_window
@@ -116,9 +132,6 @@ def resolve_context_limits(rt: Any, session: Any) -> ResolvedContextLimits:
         auto_compact = int(configured_auto)
     auto_compact = max(1, min(auto_compact, effective_window))
 
-    # Kept for callers that expose these values in telemetry. Codex-parity
-    # history projection no longer silently truncates user text/tool output from
-    # canonical history to satisfy these local heuristics.
     configured_tool = getattr(profile_limits, "tool_output_token_limit", None)
     tool_output_limit = (
         max(256, int(configured_tool))
@@ -133,6 +146,7 @@ def resolve_context_limits(rt: Any, session: Any) -> ResolvedContextLimits:
         input_budget_tokens=input_budget,
         output_reserve_tokens=output_reserve,
         auto_compact_token_limit=auto_compact,
+        auto_compact_token_limit_scope=auto_compact_scope,
         tool_output_token_limit=tool_output_limit,
         recent_user_token_limit=recent_user_limit,
         safety_tokens=safety_tokens,
