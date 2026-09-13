@@ -463,23 +463,49 @@ def _patch_mcp_configured_runtime(module: ModuleType) -> None:
                 runtime_home = str(Path(getattr(store, "root", "")).expanduser().resolve().parents[1])
             except Exception:
                 runtime_home = ""
+        rejected: list[tuple[str, str]] = []
         if kwargs.get("mcp_servers") is None and kwargs.get("mcp_config_path") is None and not os.environ.get("LOOM_CONFIG"):
+            mcp_runtime = sys.modules.get("app.agent_runtime.mcp_runtime")
+            loader = getattr(mcp_runtime, "load_mcp_server_configs", None)
             for candidate in _mcp_config_paths(runtime_home):
-                if candidate.is_file():
-                    kwargs["mcp_config_path"] = str(candidate)
-                    break
+                if not candidate.is_file():
+                    continue
+                # Discovery is best-effort: these are other tools' files that
+                # Loom merely offers to reuse. One unreadable candidate must not
+                # take AgentRuntime construction down with it -- that turned an
+                # installed Claude Desktop into a hard startup failure. An
+                # explicitly supplied `mcp_config_path` is left strict, because
+                # there the operator named the file and deserves the error.
+                if callable(loader):
+                    try:
+                        loader(candidate)
+                    except Exception as exc:
+                        rejected.append((str(candidate), f"{type(exc).__name__}: {exc}"))
+                        continue
+                kwargs["mcp_config_path"] = str(candidate)
+                break
         original_init(self, *args, **kwargs)
         # The runtime home, not the file that was chosen: passing the config
         # path here asked for "<...>/config.toml/config.toml" and reported a
         # list of places Loom had never looked.
         checked = [str(path) for path in _mcp_config_paths(runtime_home)]
         self.mcp_config_checked_paths = tuple(checked)
+        self.mcp_config_rejected_paths = tuple(rejected)
 
     original_status = module.ConfiguredMCPRuntime.mcp_status
 
     def configured_status(self: Any) -> dict[str, object]:  # noqa: ANN001
         status = dict(original_status(self))
         status["checked_config_paths"] = list(getattr(self, "mcp_config_checked_paths", ()))
+        # A candidate Loom found but could not read. Without this the skip is
+        # invisible, and "no MCP servers" looks the same as "your config is
+        # malformed".
+        rejected = [
+            {"path": path, "reason": reason}
+            for path, reason in getattr(self, "mcp_config_rejected_paths", ())
+        ]
+        if rejected:
+            status["rejected_config_paths"] = rejected
         return status
 
     module.ConfiguredMCPRuntime.__init__ = configured_init

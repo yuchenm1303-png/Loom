@@ -4,8 +4,9 @@ import os
 from pathlib import Path
 from typing import Any, Sequence
 
+from . import mcp_runtime as _mcp_runtime
 from .computer_driver_runtime import ComputerDriverRuntime
-from .mcp_runtime import MCPRuntime, MCPServerConfig, load_mcp_server_configs
+from .mcp_runtime import MCPRuntime, MCPServerConfig
 
 
 class ConfiguredMCPRuntime(ComputerDriverRuntime, MCPRuntime):
@@ -49,7 +50,13 @@ class ConfiguredMCPRuntime(ComputerDriverRuntime, MCPRuntime):
                 or (runtime_home / "config.toml")
             ).expanduser().resolve()
             self.mcp_config_path = str(selected)
-            resolved_servers = load_mcp_server_configs(selected)
+            # Resolved through the module, not a name bound at import time.
+            # `runtime_capability_defaults` installs the JSON-aware loader by
+            # rebinding `mcp_runtime.load_mcp_server_configs`; a `from ... import`
+            # here would keep pointing at the original TOML-only function and
+            # send a Claude Desktop / Cursor `.json` config straight into
+            # `tomllib.loads`.
+            resolved_servers = _mcp_runtime.load_mcp_server_configs(selected)
         elif mcp_config_path is not None:
             self.mcp_config_path = str(Path(mcp_config_path).expanduser().resolve())
 
