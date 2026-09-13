@@ -175,6 +175,29 @@ def test_exec_action_identity_changes_for_command_semantics(tmp_path):
     assert base.digest() != changed_tty.digest()
 
 
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    (
+        ({"argv": ["synthetic-program", 7]}, "array of strings"),
+        ({"cwd": 7}, "cwd must be a string"),
+        ({"stdin": 7}, "stdin must be a string"),
+        ({"env": {"NAME": 7}}, "env must be an object of string values"),
+        ({"timeout_seconds": "45"}, "timeout_seconds must be an integer"),
+        ({"pty": "false"}, "pty must be a boolean"),
+        ({"rows": "24"}, "rows must be an integer"),
+        ({"wait": 1}, "wait must be a boolean"),
+        ({"unexpected": "value"}, "unsupported arguments"),
+    ),
+)
+def test_exec_action_rejects_schema_invalid_shapes_before_canonicalization(
+    tmp_path,
+    overrides,
+    message,
+):
+    with pytest.raises(ValueError, match=message):
+        ExecActionIdentity.build(_step(tmp_path), _call(**overrides))
+
+
 def test_exec_action_rejects_workspace_escape_and_wrong_tool(tmp_path):
     step = _step(tmp_path)
 
