@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+import threading
+from dataclasses import dataclass, replace
 from enum import Enum
 
 from app.ai import ToolCall
 
+from .approval_actions import ApprovalDecisionStore, ReviewDecision, approval_action_for
 from .contracts import PermissionMode
 from .execution_action import ExecActionIdentity
 from .permissions import (
@@ -65,6 +67,74 @@ class ToolOrchestrator:
 
     def __init__(self, *, permission_engine: PermissionEngine | None = None) -> None:
         self.permission_engine = permission_engine or PermissionEngine()
+        self._approval_stores: dict[str, ApprovalDecisionStore] = {}
+        self._approval_stores_guard = threading.RLock()
+
+    def _approval_store(self, session_id: str) -> ApprovalDecisionStore:
+        key = str(session_id or "").strip()
+        if not key:
+            raise ValueError("approval cache requires session_id")
+        with self._approval_stores_guard:
+            store = self._approval_stores.get(key)
+            if store is None:
+                store = ApprovalDecisionStore()
+                self._approval_stores[key] = store
+            return store
+
+    @staticmethod
+    def _approval_action(step: StepContext, call: ToolCall):
+        try:
+            return approval_action_for(step, call, environment_id="local")
+        except (TypeError, ValueError):
+            # Invalid actions must never gain a cache bypass. Normal validation
+            # and tool execution will report the actual malformed request.
+            return None
+
+    def cached_review_decision(
+        self,
+        step: StepContext,
+        call: ToolCall,
+    ) -> ReviewDecision | None:
+        action = self._approval_action(step, call)
+        if action is None:
+            return None
+        return self._approval_store(step.session_id).lookup(action.cache_keys())
+
+    def record_review_decision(
+        self,
+        step: StepContext,
+        call: ToolCall,
+        decision: ReviewDecision | str,
+    ) -> None:
+        action = self._approval_action(step, call)
+        if action is None:
+            return
+        self._approval_store(step.session_id).record(
+            action.cache_keys(),
+            ReviewDecision(decision),
+        )
+
+    def clear_session_approvals(self, session_id: str) -> None:
+        with self._approval_stores_guard:
+            self._approval_stores.pop(str(session_id or "").strip(), None)
+
+    def _apply_cached_review(
+        self,
+        step: StepContext,
+        prepared: PreparedToolCall,
+    ) -> PreparedToolCall:
+        if prepared.decision is not PermissionDecision.APPROVAL:
+            return prepared
+        if (
+            self.cached_review_decision(step, prepared.call)
+            is not ReviewDecision.APPROVED_FOR_SESSION
+        ):
+            return prepared
+        return replace(
+            prepared,
+            decision=PermissionDecision.ALLOW,
+            reason="Equivalent action was approved for this session.",
+        )
 
     @staticmethod
     def _exec_needs_unsandboxed_fallback_approval(step: StepContext, tool: AgentTool) -> bool:
@@ -277,18 +347,21 @@ class ToolOrchestrator:
         validate_tool_arguments(tool.input_schema, call.arguments)
 
         if tool.name == "exec":
-            return self._prepare_exec(step, call, tool)
+            return self._apply_cached_review(step, self._prepare_exec(step, call, tool))
 
         decision, reason = self.evaluate_tool(
             step,
             tool,
             legacy_policy=legacy_policy,
         )
-        return PreparedToolCall(
-            call=call,
-            tool=tool,
-            decision=decision,
-            reason=reason,
+        return self._apply_cached_review(
+            step,
+            PreparedToolCall(
+                call=call,
+                tool=tool,
+                decision=decision,
+                reason=reason,
+            ),
         )
 
     def sandbox_retry_plan(
