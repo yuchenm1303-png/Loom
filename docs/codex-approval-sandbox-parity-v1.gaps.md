@@ -22,3 +22,15 @@ These are intentionally not represented as complete parity:
    execution environment, so structured approval actions use `environment_id =
    "local"`. The cache-key type already includes environment id for a future
    multi-environment runtime.
+7. **Shell-command canonicalization breadth** — Codex delegates approval-key
+   canonicalization to `codex-shell-command`, including richer shell parsing.
+   Loom ports the observable simple Bourne-shell and PowerShell cases with a
+   conservative Python parser and preserves ambiguous scripts verbatim. This is
+   intentionally a safe subset rather than a claim of parser-complete parity.
+8. **Linux permission-profile enforcement shape** — Loom's current Bubblewrap
+   baseline exposes the host filesystem read-only and does not isolate network
+   access. Therefore an additional read grant is already satisfied by ambient
+   read visibility, and `network.enabled=true` cannot widen an already-open Linux
+   network boundary. Scoped extra write paths are enforced with explicit bind
+   mounts. Windows MXC can enforce the read/write/network subset directly. Full
+   Codex permission-profile/network-proxy parity on Linux remains future work.
