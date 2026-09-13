@@ -7,6 +7,7 @@ from app.ai import ToolCall
 from .contracts import PermissionMode
 from .permissions import PermissionDecision, PermissionEngine
 from .sandbox import SandboxMode, SandboxPolicy
+from .sandbox_failure import SandboxExecutionError
 from .step import StepContext
 from .tools import AgentTool, ToolContext, ToolPolicy, ToolResult, validate_tool_arguments
 
@@ -27,20 +28,22 @@ class ToolOrchestrator:
 
     @staticmethod
     def _exec_needs_unsandboxed_fallback_approval(step: StepContext, tool: AgentTool) -> bool:
-        """Return whether AUTO would execute ``exec`` without requested containment.
-
-        Loom's current process sandbox has an intentional AUTO compatibility
-        fallback when no host backend is available. A model-originated exec call
-        must not cross that boundary merely because the host lacks bwrap/MXC;
-        make the fallback explicit to the user instead. Full-access and an
-        explicitly disabled sandbox remain intentional unsandboxed modes.
-        """
-
         sandbox = step.world_state.sandbox
         return bool(
             tool.name == "exec"
             and sandbox is not None
             and sandbox.policy is SandboxPolicy.AUTO
+            and sandbox.mode is not SandboxMode.DISABLED
+            and not sandbox.enforced
+        )
+
+    @staticmethod
+    def _exec_required_sandbox_unavailable(step: StepContext, tool: AgentTool) -> bool:
+        sandbox = step.world_state.sandbox
+        return bool(
+            tool.name == "exec"
+            and sandbox is not None
+            and sandbox.policy is SandboxPolicy.REQUIRED
             and sandbox.mode is not SandboxMode.DISABLED
             and not sandbox.enforced
         )
@@ -69,6 +72,19 @@ class ToolOrchestrator:
                 f"Compatibility approval policy requires approval for {tool.effect.value}."
                 if decision is PermissionDecision.APPROVAL
                 else f"Compatibility approval policy auto-approves {tool.effect.value}."
+            )
+
+        if (
+            decision is not PermissionDecision.DENY
+            and self._exec_required_sandbox_unavailable(step, tool)
+        ):
+            sandbox = step.world_state.sandbox
+            return (
+                PermissionDecision.DENY,
+                (
+                    "OS sandbox containment is required for this exec call, but no enforced "
+                    f"backend is available. {sandbox.reason if sandbox is not None else ''}"
+                ).strip(),
             )
 
         if (
@@ -146,6 +162,12 @@ class ToolOrchestrator:
             if not isinstance(result, ToolResult):
                 raise TypeError("agent tool handler must return ToolResult")
             return result
+        except SandboxExecutionError as exc:
+            return ToolResult(
+                ok=False,
+                content=str(exc),
+                data=exc.to_result_data(),
+            )
         except Exception as exc:
             return ToolResult(ok=False, content=f"{type(exc).__name__}: {exc}")
 
