@@ -24,11 +24,24 @@ The default runtime now captures a `RequestStateSnapshot` inside each immutable 
 
 The request assembler consumes those frozen values instead of reading project instructions, language state, or context limits a second time. Tool-schema pressure planning also reuses the same frozen token budget.
 
-Approval binding version 3 hashes the request-state digest. As a result, changing project instructions, model-profile identity, context limits, or the MCP binding between tool sampling and approval resume fails closed instead of executing an old tool call in a different world.
+Approval binding version 4 hashes the request-state digest. As a result, changing project instructions, model-profile identity, context limits, or the MCP binding between tool sampling and approval resume fails closed instead of executing an old tool call in a different world.
 
 The MCP snapshot deliberately separates identity from availability. It hashes server configuration identity and MCP tool binding keys, and records protocol/server/tool-surface identity when available, but it does not copy credential values and does not bind to a transient connected/disconnected boolean.
 
 Legacy/lower-level embedders that construct a `StepContext` without a captured request state retain the previous live-resolution behavior. The production/default runtime uses the frozen path.
+
+## Exec action/environment approval identity
+
+`exec` now receives a narrower action-specific binding in addition to the common step binding:
+
+- the exact approval arguments must still match the queued `ToolCall` before an approved action may execute;
+- the resolved child environment is included in approval identity through a process-local HMAC fingerprint;
+- the child environment map itself is not persisted in session state or events;
+- only the new-process `exec` tool uses this environment fingerprint. `exec_wait`, `exec_write`, and `exec_resize` operate on an already-created process and are not invalidated by later host-environment changes;
+- if inherited environment state such as `PATH` changes while an `exec` approval is waiting, approval resume fails closed;
+- because the HMAC key is process-local, a Loom process restart intentionally invalidates any pending pre-restart `exec` approval. The command must be sampled/approved again in the new runtime process.
+
+This is deliberately narrower than putting the full host environment into every `StepContext`. Environment changes should affect tools whose execution semantics actually depend on launching a new child process, not unrelated actions such as file edits or MCP calls.
 
 ## CI cleanup and current infrastructure limitation
 
@@ -43,7 +56,7 @@ This stage does **not** yet infer that an arbitrary non-zero command exit was ca
 It also does not yet make Loom's StepContext as broad as Codex's current StepContext. Important remaining alignment work includes:
 
 1. move request-state capture lower into the core runtime so lower-level runtime compositions do not need a compatibility fallback;
-2. capture a more explicit turn/environment capability snapshot rather than relying on the current world-state envelope and shell policy split;
+2. replace the current exec-specific environment fingerprint with a first-class typed execution-action snapshot when the core runtime can carry action objects end to end;
 3. make MCP binding a first-class typed object rather than canonical JSON inside request state;
 4. represent sandbox-policy rejection as a typed execution outcome where the backend can prove it;
 5. create a `sandbox_escalation` approval only when policy permits an escalated attempt and retry at most once;
