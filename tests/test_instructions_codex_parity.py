@@ -10,6 +10,7 @@ from app.agent_runtime.instructions import (
     AGENTS_FRAGMENT_START,
     InstructionLoader,
     PROJECT_DOC_SEPARATOR,
+    ProjectInstructionSnapshotStore,
 )
 
 
@@ -119,3 +120,39 @@ def test_discovered_symlink_is_not_rejected_only_because_target_is_outside_root(
     loaded = InstructionLoader().load(root)
 
     assert "linked instructions" in loaded
+
+
+def test_instruction_snapshot_is_stable_within_turn_and_refreshes_for_new_turn(tmp_path: Path):
+    workspace = tmp_path / "repo"
+    workspace.mkdir()
+    (workspace / ".git").mkdir()
+    agents = workspace / "AGENTS.md"
+    agents.write_text("first version", encoding="utf-8")
+    loader = InstructionLoader()
+    snapshots = ProjectInstructionSnapshotStore(tmp_path / "state")
+
+    first = snapshots.capture(
+        session_id="session-1",
+        turn_id="turn-1",
+        workspace=workspace,
+        loader=loader,
+    )
+    agents.write_text("second version", encoding="utf-8")
+    same_turn = snapshots.capture(
+        session_id="session-1",
+        turn_id="turn-1",
+        workspace=workspace,
+        loader=loader,
+    )
+    next_turn = snapshots.capture(
+        session_id="session-1",
+        turn_id="turn-2",
+        workspace=workspace,
+        loader=loader,
+    )
+
+    assert same_turn.rendered == first.rendered
+    assert "first version" in same_turn.rendered
+    assert "second version" not in same_turn.rendered
+    assert "second version" in next_turn.rendered
+    assert "first version" not in next_turn.rendered
