@@ -115,18 +115,29 @@ def _text_request(workspace: str | Path, raw_patch: object) -> tuple[str, tuple[
 
 
 @dataclass(frozen=True, slots=True)
-class ApplyPatchActionIdentity:
-    """Secret-minimized identity for the requested apply_patch transformation.
+class ApplyPatchApprovalCacheKey:
+    """Codex-parity reusable approval identity: execution environment + path."""
 
-    The identity intentionally does not include live file preimages. A preceding
-    tool in the same sampled batch may legitimately change the workspace before
-    this call executes. Atomic preimage validation remains the responsibility of
-    ApplyPatchRuntime at execution time.
+    environment_id: str
+    path: str
+
+    def digest(self) -> str:
+        return _digest({"environment_id": self.environment_id, "path": self.path})
+
+
+@dataclass(frozen=True, slots=True)
+class ApplyPatchActionIdentity:
+    """Pending-action integrity identity for the requested transformation.
+
+    The request digest is intentionally stricter than Codex's reusable approval
+    key. It protects Loom's durable wait/resume boundary; approval reuse is keyed
+    per path through ``approval_cache_keys``.
     """
 
     call_id: str
     input_format: str
     paths: tuple[str, ...]
+    resolved_paths: tuple[str, ...]
     request_digest: str
 
     @property
@@ -153,11 +164,27 @@ class ApplyPatchActionIdentity:
         else:
             request_digest, paths = _structured_request(workspace, arguments["changes"])
             input_format = "structured"
+        root = Path(workspace).expanduser().resolve()
+        resolved_paths = tuple(str((root / path).resolve()) for path in paths)
         return cls(
             call_id=str(call.call_id or "").strip(),
             input_format=input_format,
             paths=paths,
+            resolved_paths=resolved_paths,
             request_digest=request_digest,
+        )
+
+    def approval_cache_keys(
+        self,
+        *,
+        environment_id: str = "local",
+    ) -> tuple[ApplyPatchApprovalCacheKey, ...]:
+        return tuple(
+            ApplyPatchApprovalCacheKey(
+                environment_id=str(environment_id or "local"),
+                path=path,
+            )
+            for path in self.resolved_paths
         )
 
     def binding_payload(self) -> dict[str, Any]:
@@ -178,4 +205,4 @@ class ApplyPatchActionIdentity:
         return _digest(self.binding_payload())
 
 
-__all__ = ["ApplyPatchActionIdentity"]
+__all__ = ["ApplyPatchActionIdentity", "ApplyPatchApprovalCacheKey"]
