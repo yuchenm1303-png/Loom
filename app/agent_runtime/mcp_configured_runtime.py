@@ -136,8 +136,10 @@ class ConfiguredMCPRuntime(ComputerDriverRuntime, MCPRuntime):
 
         This is deliberately narrower than crash recovery: it adds no new user
         message and creates a fresh execution/Step stack. Pending approval or
-        pending tool execution is rejected because Window02 must regenerate that
-        authority after restart rather than reusing process-local bindings.
+        pending tool execution is rejected after process restart because the
+        original sampled Step and process-local approval authority no longer
+        exist; Loom must fail closed rather than reconstruct equivalent-looking
+        execution authority from live state.
         """
         resolved_turn_id = str(turn_id or "").strip()
         if not resolved_turn_id:
@@ -152,7 +154,8 @@ class ConfiguredMCPRuntime(ComputerDriverRuntime, MCPRuntime):
                     raise RuntimeError("turn is still live in this runtime; rejoin it instead")
             if session.status is AgentStatus.WAITING_APPROVAL:
                 raise RuntimeError(
-                    "pending approval recovery requires fresh Window02 approval authority"
+                    "pending approval recovery requires the original captured StepContext and "
+                    "process-local approval authority"
                 )
             if session.status is not AgentStatus.RUNNING:
                 raise RuntimeError("thread has no safely suspended unfinished turn")
