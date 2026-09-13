@@ -41,7 +41,7 @@ def _step(tmp_path, *, policy: ShellEnvironmentPolicy | None = None) -> StepCont
     )
 
 
-def _call(**overrides) -> ToolCall:
+def _call(*, call_id: str = "exec-1", **overrides) -> ToolCall:
     arguments = {
         "argv": ["synthetic-program", "--flag"],
         "cwd": ".",
@@ -54,7 +54,7 @@ def _call(**overrides) -> ToolCall:
         "cols": 101,
     }
     arguments.update(overrides)
-    return ToolCall(call_id="exec-1", name="exec", arguments=arguments)
+    return ToolCall(call_id=call_id, name="exec", arguments=arguments)
 
 
 def test_exec_action_captures_execution_shape_without_copying_private_values(tmp_path):
@@ -70,11 +70,24 @@ def test_exec_action_captures_execution_shape_without_copying_private_values(tmp
     assert action.pty is True
     assert (action.rows, action.cols) == (31, 101)
     assert action.explicit_environment_names == ("VISIBLE_NAME",)
+    assert "call_id" not in payload
+    assert action.instance_payload()["call_id"] == "exec-1"
     assert "private-input-value" not in rendered
     assert "private-env-value" not in rendered
     assert len(action.stdin_identity) == 64
     assert len(action.explicit_environment_identity) == 64
     assert len(action.resolved_environment_identity) == 64
+
+
+def test_exec_action_semantic_identity_does_not_depend_on_call_id(tmp_path):
+    step = _step(tmp_path)
+    first = ExecActionIdentity.build(step, _call(call_id="exec-1"))
+    second = ExecActionIdentity.build(step, _call(call_id="exec-2"))
+
+    assert first.call_id != second.call_id
+    assert first.instance_payload() != second.instance_payload()
+    assert first.binding_payload() == second.binding_payload()
+    assert first.digest() == second.digest()
 
 
 def test_exec_action_identity_changes_for_explicit_environment_value(tmp_path):
