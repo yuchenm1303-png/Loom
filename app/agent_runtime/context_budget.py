@@ -344,7 +344,13 @@ def prepare_context(rt, session, step, token):
         for message in rt._request_context_messages(session, step, envelope)
         if message.name != "loom_communication_language"
     ]
-    instructions = rt.instruction_loader.load(session.workspace_dir)
+    request_state = getattr(step, "request_state", None)
+    captured = bool(getattr(request_state, "captured", False))
+    instructions = (
+        request_state.project_instructions
+        if captured
+        else rt.instruction_loader.load(session.workspace_dir)
+    )
     if instructions:
         transient.append(
             AIMessage(
@@ -353,20 +359,27 @@ def prepare_context(rt, session, step, token):
                 content=instructions,
             )
         )
-    communication_language = infer_user_language(
-        session.messages,
-        fallback=session.communication_language,
-    )
+    if captured:
+        communication_language = request_state.communication_language
+    else:
+        communication_language = infer_user_language(
+            session.messages,
+            fallback=session.communication_language,
+        )
     session.communication_language = communication_language
     transient.append(
         communication_language_message(
-            session.messages,
+            () if captured else session.messages,
             fallback=communication_language,
         )
     )
 
     tools = step.tool_router.definitions()
-    limits = resolve_context_limits(rt, session)
+    limits = (
+        request_state.context_limits
+        if captured and request_state.context_limits is not None
+        else resolve_context_limits(rt, session)
+    )
     hard_target = max(1, limits.input_budget_tokens - limits.safety_tokens)
     original_history = tuple(session.messages)
     estimated_before = estimate_tokens([*transient, *original_history], tools)
@@ -477,7 +490,7 @@ def prepare_context(rt, session, step, token):
         )
 
     language_message = communication_language_message(
-        history,
+        () if captured else history,
         fallback=communication_language,
     )
     max_summary_output = max(1, limits.output_reserve_tokens)
@@ -554,7 +567,7 @@ def prepare_context(rt, session, step, token):
             with stream_scope() if callable(stream_scope) else nullcontext():
                 response = rt.model_executor.execute(
                     rt.platform,
-                    session.profile_id,
+                    step.world_state.profile_id if captured else session.profile_id,
                     summary_request,
                     token,
                 )
