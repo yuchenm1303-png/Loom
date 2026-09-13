@@ -27,16 +27,9 @@ def _protected_workspace_paths(workspace: Path) -> tuple[Path, ...]:
     )
 
 
-def _overlaps(left: Path, right: Path) -> bool:
-    left_value = left.resolve()
-    right_value = right.resolve()
+def _is_within(path: Path, root: Path) -> bool:
     try:
-        left_value.relative_to(right_value)
-        return True
-    except ValueError:
-        pass
-    try:
-        right_value.relative_to(left_value)
+        path.resolve().relative_to(root.resolve())
         return True
     except ValueError:
         return False
@@ -46,7 +39,7 @@ def _validate_write_grants(workspace: Path, profile: AdditionalPermissionProfile
     protected = _protected_workspace_paths(workspace)
     for raw in profile.file_system_write:
         path = Path(raw).expanduser().resolve()
-        if any(_overlaps(path, control_path) and path == control_path for control_path in protected):
+        if any(_is_within(path, control_path) for control_path in protected):
             raise SandboxExecutionError(
                 SandboxFailureKind.CONFIGURATION,
                 f"additional write permission cannot override Loom control-plane protection: {path}",
