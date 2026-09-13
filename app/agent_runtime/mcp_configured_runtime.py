@@ -9,24 +9,19 @@ from typing import Any, Sequence
 
 from . import mcp_runtime as _mcp_runtime
 from .computer_driver_runtime import ComputerDriverRuntime
-from .mcp_runtime import MCPRuntime, MCPServerConfig
+from .contracts import AgentStatus
+from .mcp_runtime import MCPConfigurationError, MCPRuntime, MCPServerConfig, McpBinding
 from .step import StepContext
+from .tools import ToolRegistry
 
 
 class ConfiguredMCPRuntime(ComputerDriverRuntime, MCPRuntime):
-    """Default Loom runtime with mature Computer Driver plus MCP discovery.
+    """Default Loom runtime with mature Computer Driver plus exact MCP step binding.
 
-    ``ComputerDriverRuntime`` keeps the historical low-level Computer Use stack as
-    fallback while routing full desktop tasks through a provider-neutral mature
-    driver boundary. ``MCPRuntime`` remains a sibling BrowserRuntime layer. The
-    cooperative MRO deliberately composes them here so Loom keeps one canonical
-    Agent drive loop while the default stack gains Computer Use before Tool Search,
-    Skills, Code Mode and Streaming. Embedders that intentionally instantiate the
-    lower-level ``MCPRuntime`` continue to get the historical MCP-only layer.
-
-    Embedders can pass ``mcp_servers`` explicitly. The CLI does not need MCP-specific
-    wiring: when omitted, Loom reads ``$LOOM_CONFIG`` or ``<runtime-home>/config.toml``.
-    A missing file means MCP is disabled.
+    The default stack composes Loom's product layers through cooperative MRO, but
+    MCP authority is captured once per semantic sampling Step. Model-visible MCP
+    schemas and executable handlers therefore come from the same immutable
+    ``McpBinding``; later manager refresh/reconnect cannot reroute an older Step.
     """
 
     def __init__(
@@ -43,7 +38,6 @@ class ConfiguredMCPRuntime(ComputerDriverRuntime, MCPRuntime):
             if store is None:
                 raise ValueError("default MCP config discovery requires the Runtime store")
             root = Path(getattr(store, "root", "")).expanduser().resolve()
-            # FileAgentSessionStore.root = <runtime-home>/agent_runtime/sessions.
             try:
                 runtime_home = root.parents[1]
             except IndexError as exc:
@@ -54,12 +48,6 @@ class ConfiguredMCPRuntime(ComputerDriverRuntime, MCPRuntime):
                 or (runtime_home / "config.toml")
             ).expanduser().resolve()
             self.mcp_config_path = str(selected)
-            # Resolved through the module, not a name bound at import time.
-            # `runtime_capability_defaults` installs the JSON-aware loader by
-            # rebinding `mcp_runtime.load_mcp_server_configs`; a `from ... import`
-            # here would keep pointing at the original TOML-only function and
-            # send a Claude Desktop / Cursor `.json` config straight into
-            # `tomllib.loads`.
             resolved_servers = _mcp_runtime.load_mcp_server_configs(selected)
         elif mcp_config_path is not None:
             self.mcp_config_path = str(Path(mcp_config_path).expanduser().resolve())
@@ -70,45 +58,29 @@ class ConfiguredMCPRuntime(ComputerDriverRuntime, MCPRuntime):
     def _identity_hash(value: object) -> str:
         return hashlib.sha256(str(value).encode("utf-8")).hexdigest()
 
-    def _mcp_binding_snapshot(self) -> dict[str, object]:
-        status = dict(super().mcp_status())
-        status_by_name = {
-            str(item.get("name") or ""): item
-            for item in status.get("servers", [])
-            if isinstance(item, dict)
+    def _mcp_binding_snapshot(self, binding: McpBinding) -> dict[str, object]:
+        """Secret-free diagnostic projection; never execution authority."""
+        return {
+            "identity": binding.identity,
+            "tools": [
+                {
+                    "name": descriptor.canonical_name,
+                    "server": descriptor.server_name,
+                    "remote_name": descriptor.remote_name,
+                    "effect": descriptor.effect.value,
+                    "exposure": descriptor.exposure.value,
+                    "schema_sha256": self._identity_hash(
+                        json.dumps(
+                            descriptor.input_schema,
+                            ensure_ascii=False,
+                            sort_keys=True,
+                            separators=(",", ":"),
+                        )
+                    ),
+                }
+                for descriptor in binding.tools()
+            ],
         }
-        servers = []
-        for config in sorted(self.mcp_clients.configs, key=lambda item: item.name):
-            current = status_by_name.get(config.name, {})
-            server_info = str(current.get("server_info") or "")
-            servers.append(
-                {
-                    "name": config.name,
-                    "transport": config.transport,
-                    # Availability is intentionally excluded. A transient disconnect
-                    # should make execution fail, not mutate the identity of an
-                    # otherwise unchanged server binding.
-                    "protocol_version": str(current.get("protocol_version") or ""),
-                    "server_info_sha256": self._identity_hash(server_info) if server_info else "",
-                    "tool_count": int(current.get("tool_count") or 0),
-                    "config_sha256": self._identity_hash(repr(config)),
-                }
-            )
-
-        tools = []
-        for tool in sorted(
-            (item for item in self.tools.all() if item.name.startswith("mcp.")),
-            key=lambda item: item.name,
-        ):
-            tools.append(
-                {
-                    "name": tool.name,
-                    "effect": tool.effect.value,
-                    "exposure": tool.exposure.value,
-                    "binding_sha256": self._identity_hash(tool.binding_key),
-                }
-            )
-        return {"servers": servers, "tools": tools}
 
     def _build_step_context(
         self,
@@ -117,26 +89,82 @@ class ConfiguredMCPRuntime(ComputerDriverRuntime, MCPRuntime):
         next_model_step: bool,
         step_id: str | None = None,
     ) -> StepContext:
+        # Capture exact MCP execution authority at the same semantic boundary as
+        # the Step. MCPRuntime historically registers an initial compatibility
+        # projection in self.tools; filter those stale projection entries and
+        # rebuild the per-Step router from the current immutable binding.
+        binding = self.mcp_clients.capture_binding()
+        bound_tools = binding.agent_tools()
+        base_tools = tuple(
+            tool
+            for tool in self.tools.all()
+            if not str(tool.binding_key or "").startswith("mcp-binding:")
+        )
+        base_names = {tool.name for tool in base_tools}
+        collision = next((tool.name for tool in bound_tools if tool.name in base_names), None)
+        if collision is not None:
+            raise MCPConfigurationError(f"MCP tool conflicts with existing Loom tool: {collision}")
+        router = ToolRegistry(tuple((*base_tools, *bound_tools))).router()
+
         step = super()._build_step_context(
             session,
             next_model_step=next_model_step,
             step_id=step_id,
         )
-        if not step.request_state.captured:
-            return step
         binding_json = json.dumps(
-            self._mcp_binding_snapshot(),
+            self._mcp_binding_snapshot(binding),
             ensure_ascii=False,
             sort_keys=True,
             separators=(",", ":"),
         )
         return replace(
             step,
+            world_state=replace(
+                step.world_state,
+                tool_names=tuple(tool.name for tool in router.all()),
+            ),
+            tool_router=router,
             request_state=replace(
                 step.request_state,
                 mcp_binding_json=binding_json,
             ),
+            mcp_binding=binding,
         )
+
+    def recover_turn_if_idle(self, session_id: str, turn_id: str):
+        """Resume a trusted safe handoff using the existing logical turn id.
+
+        This is deliberately narrower than crash recovery: it adds no new user
+        message and creates a fresh execution/Step stack. Pending approval or
+        pending tool execution is rejected because Window02 must regenerate that
+        authority after restart rather than reusing process-local bindings.
+        """
+        resolved_turn_id = str(turn_id or "").strip()
+        if not resolved_turn_id:
+            raise ValueError("turn_id must not be empty")
+        lock = self._session_lock(session_id)
+        with lock:
+            session = self.get_session(session_id)
+            if session.current_turn_id != resolved_turn_id:
+                raise ValueError("turn_id does not match the unfinished turn")
+            with self._active_tokens_guard:
+                if session.session_id in self._active_tokens:
+                    raise RuntimeError("turn is still live in this runtime; rejoin it instead")
+            if session.status is AgentStatus.WAITING_APPROVAL:
+                raise RuntimeError(
+                    "pending approval recovery requires fresh Window02 approval authority"
+                )
+            if session.status is not AgentStatus.RUNNING:
+                raise RuntimeError("thread has no safely suspended unfinished turn")
+            if session.pending_tool_calls or session.pending_step_id or session.pending_bindings:
+                raise RuntimeError(
+                    "safe handoff contains unresolved execution authority; fail closed instead"
+                )
+            token = self._activate(session.session_id)
+            try:
+                return self._drive(session, token)
+            finally:
+                self._deactivate(session.session_id, token)
 
     def mcp_status(self) -> dict[str, object]:
         status = dict(super().mcp_status())
