@@ -1,9 +1,9 @@
-"""Codex-parity project instruction discovery.
+"""Codex-parity project instruction discovery and model-visible rendering.
 
-This module intentionally mirrors Codex's AGENTS.md discovery contract rather
-than treating project instructions as one global file. Discovery walks from the
-project root to the effective cwd, choosing at most one instruction file per
-directory. Deeper files therefore appear later and can refine shallower rules.
+Discovery walks from the project root to the effective cwd, choosing at most one
+instruction file per directory. Deeper files therefore appear later and can
+refine shallower rules. Rendering mirrors Codex's contextual-user fragment
+markers so project documentation stays recognisable after history projection.
 """
 from __future__ import annotations
 
@@ -15,6 +15,8 @@ from typing import Iterable
 DEFAULT_ROOT_MARKERS = (".git",)
 DEFAULT_INSTRUCTION_NAMES = ("AGENTS.override.md", "AGENTS.md")
 PROJECT_DOC_SEPARATOR = "--- project-doc ---"
+AGENTS_FRAGMENT_START = "# AGENTS.md instructions"
+AGENTS_FRAGMENT_END = "</INSTRUCTIONS>"
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,23 +90,39 @@ class InstructionLoader:
                 payload = raw[:remaining]
                 text = payload.decode("utf-8", errors="replace")
                 remaining -= len(payload)
-                entries.append(ProjectInstruction(path=path, text=text, truncated=truncated))
+                if text.strip():
+                    entries.append(ProjectInstruction(path=path, text=text, truncated=truncated))
                 # Only the first matching candidate in a directory applies:
-                # override > AGENTS.md > configured fallbacks.
+                # override > AGENTS.md > configured fallbacks. An empty primary
+                # file still wins candidate selection, exactly like Codex.
                 break
         return tuple(entries)
 
-    def load(self, workspace: str | Path) -> str:
-        entries = self.load_entries(workspace)
-        if not entries:
+    @staticmethod
+    def render(entries: Iterable[ProjectInstruction], *, directory: str | Path) -> str:
+        selected = tuple(entries)
+        if not selected:
             return ""
-        # Loom's ChatRequest currently has no developer/contextual-user content
-        # kind. Keep rendering deterministic and preserve Codex's root->cwd
-        # order; the runtime adapter is responsible for assigning transport role.
-        return f"{PROJECT_DOC_SEPARATOR}\n\n" + "\n\n".join(entry.text for entry in entries)
+        # Codex's LoadedAgentsMd::legacy_text joins project entries directly
+        # with blank lines. The `--- project-doc ---` separator is only inserted
+        # when host/user/thread instructions precede the first project entry;
+        # Loom's loader owns project entries only, so it must not invent that
+        # transition marker here.
+        body = "\n\n".join(entry.text for entry in selected)
+        cwd = Path(directory).expanduser().resolve()
+        return (
+            f"{AGENTS_FRAGMENT_START} for {cwd}\n\n"
+            f"<INSTRUCTIONS>\n{body}\n{AGENTS_FRAGMENT_END}"
+        )
+
+    def load(self, workspace: str | Path) -> str:
+        workspace_path = Path(workspace).expanduser().resolve()
+        return self.render(self.load_entries(workspace_path), directory=workspace_path)
 
 
 __all__ = [
+    "AGENTS_FRAGMENT_END",
+    "AGENTS_FRAGMENT_START",
     "DEFAULT_INSTRUCTION_NAMES",
     "DEFAULT_ROOT_MARKERS",
     "InstructionLoader",
