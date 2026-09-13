@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import os
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, Sequence
 
 from . import mcp_runtime as _mcp_runtime
 from .computer_driver_runtime import ComputerDriverRuntime
 from .mcp_runtime import MCPRuntime, MCPServerConfig
+from .step import StepContext
 
 
 class ConfiguredMCPRuntime(ComputerDriverRuntime, MCPRuntime):
@@ -61,6 +65,75 @@ class ConfiguredMCPRuntime(ComputerDriverRuntime, MCPRuntime):
             self.mcp_config_path = str(Path(mcp_config_path).expanduser().resolve())
 
         super().__init__(*args, mcp_servers=tuple(resolved_servers or ()), **kwargs)
+
+    @staticmethod
+    def _identity_hash(value: object) -> str:
+        return hashlib.sha256(str(value).encode("utf-8")).hexdigest()
+
+    def _mcp_binding_snapshot(self) -> dict[str, object]:
+        status = dict(super().mcp_status())
+        status_by_name = {
+            str(item.get("name") or ""): item
+            for item in status.get("servers", [])
+            if isinstance(item, dict)
+        }
+        servers = []
+        for config in sorted(self.mcp_clients.configs, key=lambda item: item.name):
+            current = status_by_name.get(config.name, {})
+            servers.append(
+                {
+                    "name": config.name,
+                    "transport": config.transport,
+                    "connected": bool(current.get("connected", False)),
+                    "protocol_version": str(current.get("protocol_version") or ""),
+                    "server_info": str(current.get("server_info") or ""),
+                    "tool_count": int(current.get("tool_count") or 0),
+                    "config_sha256": self._identity_hash(repr(config)),
+                }
+            )
+
+        tools = []
+        for tool in sorted(
+            (item for item in self.tools.all() if item.name.startswith("mcp.")),
+            key=lambda item: item.name,
+        ):
+            tools.append(
+                {
+                    "name": tool.name,
+                    "effect": tool.effect.value,
+                    "exposure": tool.exposure.value,
+                    "binding_sha256": self._identity_hash(tool.binding_key),
+                }
+            )
+        return {"servers": servers, "tools": tools}
+
+    def _build_step_context(
+        self,
+        session,
+        *,
+        next_model_step: bool,
+        step_id: str | None = None,
+    ) -> StepContext:
+        step = super()._build_step_context(
+            session,
+            next_model_step=next_model_step,
+            step_id=step_id,
+        )
+        if not step.request_state.captured:
+            return step
+        binding_json = json.dumps(
+            self._mcp_binding_snapshot(),
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        return replace(
+            step,
+            request_state=replace(
+                step.request_state,
+                mcp_binding_json=binding_json,
+            ),
+        )
 
     def mcp_status(self) -> dict[str, object]:
         status = dict(super().mcp_status())
