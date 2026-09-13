@@ -119,6 +119,44 @@ def test_malformed_exec_keeps_normal_validation_but_still_has_call_specific_bind
     assert second_binding != first_binding
 
 
+def test_schema_invalid_exec_shape_cannot_share_valid_action_binding(tmp_path):
+    tool = _tool("exec")
+    step = _step(tmp_path, tool)
+    platform = BarePlatform()
+    valid = ToolCall(
+        call_id="exec-valid",
+        name="exec",
+        arguments={
+            "argv": ["synthetic-program"],
+            "cwd": ".",
+            "timeout_seconds": 45,
+            "pty": False,
+        },
+    )
+    coerced = ToolCall(
+        call_id="exec-invalid-coerced",
+        name="exec",
+        arguments={
+            "argv": ["synthetic-program"],
+            "cwd": ".",
+            "timeout_seconds": "45",
+            "pty": False,
+        },
+    )
+    extra = ToolCall(
+        call_id="exec-invalid-extra",
+        name="exec",
+        arguments={
+            **dict(valid.arguments),
+            "unexpected": "ignored-by-old-action-builder",
+        },
+    )
+
+    valid_binding = action_binding_digest(step, tool, valid, platform)
+    assert action_binding_digest(step, tool, coerced, platform) != valid_binding
+    assert action_binding_digest(step, tool, extra, platform) != valid_binding
+
+
 def test_untyped_tool_keeps_legacy_binding(tmp_path):
     tool = _tool("change")
     step = _step(tmp_path, tool)
