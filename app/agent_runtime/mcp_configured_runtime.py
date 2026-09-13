@@ -84,7 +84,9 @@ class ConfiguredMCPRuntime(ComputerDriverRuntime, MCPRuntime):
                 {
                     "name": config.name,
                     "transport": config.transport,
-                    "connected": bool(current.get("connected", False)),
+                    # Availability is intentionally excluded. A transient disconnect
+                    # should make execution fail, not mutate the identity of an
+                    # otherwise unchanged server binding.
                     "protocol_version": str(current.get("protocol_version") or ""),
                     "server_info": str(current.get("server_info") or ""),
                     "tool_count": int(current.get("tool_count") or 0),
