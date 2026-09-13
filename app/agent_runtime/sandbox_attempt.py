@@ -90,14 +90,17 @@ def sandbox_attempt_scope(attempt: SandboxAttempt) -> Iterator[SandboxAttempt]:
         _ACTIVE_ATTEMPT.reset(token)
 
 
-class AttemptAwareSandboxManager:
-    """Delegate normal planning, with an explicit override for the active attempt."""
+class AttemptAwareSandboxManager(SandboxManager):
+    """Transparent SandboxManager wrapper with a per-attempt planning override."""
 
     def __init__(self, base: SandboxManager) -> None:
         if isinstance(base, AttemptAwareSandboxManager):
             base = base.base
         if not isinstance(base, SandboxManager):
             raise TypeError("base sandbox manager must be SandboxManager")
+        # Do not call SandboxManager.__init__: the wrapped manager has already
+        # resolved and probed its host backend. Re-probing here could produce a
+        # different planning world from the StepContext that selected it.
         self.base = base
 
     def __getattr__(self, name: str):
