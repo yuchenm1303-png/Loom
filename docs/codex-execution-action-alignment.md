@@ -18,17 +18,19 @@ Current Codex models approval as a structured `ApprovalAction`: an exec action c
 
 The action parser reuses Loom's existing argv, timeout and terminal-size validators. Workspace cwd resolution is fail-closed, and explicit environment values must remain strings just as the real exec handler requires.
 
+Before semantic canonicalization, the builder also enforces the input-shape constraints of the real exec tool schema: argv elements/cwd/stdin are strings, timeout/rows/cols are integers rather than coercible strings, pty/wait are booleans, env has the expected object shape, and unknown top-level arguments are rejected. This keeps schema-invalid requests out of the valid-action identity domain instead of allowing values such as `"45"` and `45` to collapse to one approval key.
+
 `execution_action_for(step, call)` is the generic entry point for downstream runtime code. It currently returns an `ExecActionIdentity` only for `exec`; later action types can be added without teaching Core call sites about each tool's argument shape.
 
 ## Instance identity versus execution identity
 
-The action object keeps request data that is useful for tracing, but its semantic binding deliberately canonicalizes values that do not change execution:
+The action object keeps request data that is useful for tracing, but its semantic binding deliberately canonicalizes values that do not change execution **after the request has a valid input shape**:
 
 - `call_id` identifies the protocol request and is excluded from the action digest;
 - requested cwd spelling is retained for the instance payload, while the semantic key uses the resolved workspace path (`.` and `./` are equivalent);
 - rows/cols are still validated for every request, but they are excluded from effective action state when PTY is disabled because the pipe backend does not consume them.
 
-This lets an approval key represent what will actually execute instead of hashing incidental JSON spelling.
+This lets an approval key represent what will actually execute instead of hashing incidental JSON spelling without accidentally normalizing malformed input into a valid action.
 
 ## Secret handling
 
@@ -74,7 +76,9 @@ The stacked branch now covers:
 - PTY and effective terminal-dimension semantics;
 - explicit and inherited environment identity;
 - secret-minimized stdin/environment handling;
+- schema-invalid exec shapes are rejected before semantic canonicalization;
 - malformed exec requests continue to normal validation while retaining call-specific drift detection;
+- invalid coercible/extra-field requests cannot share a valid exec action binding;
 - Core creation and resume validation of call-specific pending bindings;
 - fail-closed rejection when a queued exec action drifts before approval;
 - preservation of the exact same action binding across initial approval and one-shot sandbox escalation.
