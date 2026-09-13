@@ -221,7 +221,6 @@ class ContextAgentRuntime(SandboxAgentRuntime):
             )
 
     def list_context_checkpoints(self, session_id: str) -> tuple[ContextCheckpoint, ...]:
-        # Validate the Loom session before exposing checkpoint storage.
         self.store.load(session_id)
         return self.checkpoint_store.list(session_id)
 
@@ -236,17 +235,24 @@ class ContextAgentRuntime(SandboxAgentRuntime):
         Subclasses may append advisory context such as retrieved memory without
         persisting it into canonical thread history or duplicating the drive loop.
         """
-        _ = step
+        request_state = getattr(step, "request_state", None)
+        captured = bool(getattr(request_state, "captured", False))
+        system_prompt = request_state.system_prompt if captured else session.system_prompt
+        communication_language = (
+            request_state.communication_language
+            if captured
+            else session.communication_language
+        )
         return (
-            AIMessage(role=MessageRole.SYSTEM, content=session.system_prompt),
+            AIMessage(role=MessageRole.SYSTEM, content=system_prompt),
             AIMessage(
                 role=MessageRole.SYSTEM,
                 name="loom_runtime_state",
                 content=envelope.text,
             ),
             communication_language_message(
-                session.messages,
-                fallback=session.communication_language,
+                () if captured else session.messages,
+                fallback=communication_language,
             ),
         )
 
