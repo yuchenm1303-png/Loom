@@ -15,6 +15,29 @@ def _exec_environment_identity(step, tool) -> str:
     return exec_environment_identity(step)
 
 
+def _call_arguments_digest(call) -> str:
+    raw = json.dumps(
+        dict(getattr(call, "arguments", {}) or {}),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    ).encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()
+
+
+def _composite_action_binding(base: str, *, kind: str, digest: str) -> str:
+    payload = {
+        "version": 1,
+        "tool_binding": base,
+        "action_kind": str(kind),
+        "action_digest": str(digest),
+    }
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+
 def binding_digest(step, tool, platform) -> str:
     """Hash tool/step execution semantics independently from one concrete call.
 
@@ -91,9 +114,9 @@ def action_binding_digest(step, tool, call, platform) -> str:
     adds its canonical action digest so argument/environment semantics become part
     of the approval key without creating a second pending-action store.
 
-    If the call is malformed, keep the generic binding instead of letting action
-    construction preempt the normal tool-validation path. A later mutation from
-    malformed to valid still changes the binding and fails closed.
+    Malformed typed calls keep flowing to the normal tool-validation path, but
+    still receive a call-specific digest. This prevents one invalid queued action
+    from being substituted for a different invalid action while approval waits.
     """
 
     if str(getattr(call, "name", "") or "") != str(tool.name):
@@ -102,18 +125,18 @@ def action_binding_digest(step, tool, call, platform) -> str:
     try:
         action = execution_action_for(step, call)
     except ValueError:
-        return base
+        return _composite_action_binding(
+            base,
+            kind=f"malformed:{tool.name}",
+            digest=_call_arguments_digest(call),
+        )
     if action is None:
         return base
-    payload = {
-        "version": 1,
-        "tool_binding": base,
-        "action_kind": "exec_command",
-        "action_digest": action.digest(),
-    }
-    return hashlib.sha256(
-        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    ).hexdigest()
+    return _composite_action_binding(
+        base,
+        kind="exec_command",
+        digest=action.digest(),
+    )
 
 
 __all__ = ["action_binding_digest", "binding_digest"]
