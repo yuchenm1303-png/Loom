@@ -66,12 +66,13 @@ class PermissionMode(str, Enum):
     FULL_ACCESS = "full-access"
 
 
+class ApprovalKind(str, Enum):
+    INITIAL = "initial"
+    SANDBOX_ESCALATION = "sandbox_escalation"
+
+
 @dataclass(frozen=True, slots=True)
 class AgentLimits:
-    # A zero execution budget means "unlimited". Loom should not terminate a
-    # legitimate long-running agent/computer-use task merely because it crossed
-    # an arbitrary number of model/tool iterations. Callers can still opt into a
-    # finite cap by supplying a positive value.
     max_model_steps: int = 0
     max_tool_calls: int = 0
     max_messages: int = 160
@@ -109,11 +110,14 @@ class PendingToolApproval:
     arguments: dict[str, Any]
     effect: ToolEffect
     reason: str
+    kind: ApprovalKind = ApprovalKind.INITIAL
+    retry_reason: str = ""
 
     def __post_init__(self) -> None:
         call_id = str(self.call_id or "").strip()
         tool_name = str(self.tool_name or "").strip()
         reason = str(self.reason or "").strip()
+        retry_reason = str(self.retry_reason or "").strip()
         if not call_id or not tool_name:
             raise ValueError("pending approval requires call_id and tool_name")
         if not isinstance(self.arguments, dict):
@@ -122,6 +126,8 @@ class PendingToolApproval:
         object.__setattr__(self, "tool_name", tool_name)
         object.__setattr__(self, "effect", ToolEffect(self.effect))
         object.__setattr__(self, "reason", reason)
+        object.__setattr__(self, "kind", ApprovalKind(self.kind))
+        object.__setattr__(self, "retry_reason", retry_reason)
 
 
 @dataclass(slots=True)
@@ -198,6 +204,7 @@ __all__ = [
     "AgentRunResult",
     "AgentSession",
     "AgentStatus",
+    "ApprovalKind",
     "PendingToolApproval",
     "PermissionMode",
     "ToolEffect",
