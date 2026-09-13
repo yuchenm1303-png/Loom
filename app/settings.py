@@ -54,6 +54,15 @@ DEFAULT_SETTINGS: dict[str, Any] = {
         "commandTimeoutSeconds": 120,
         "preserveBackgroundProcesses": True,
     },
+    "environment": {
+        # Explicit allowlist of secret-shaped env var names that the agent
+        # sandbox is allowed to inherit from the host. Anything matching
+        # *_TOKEN / *_KEY / *_SECRET etc. is stripped by default to prevent
+        # accidental leakage. Listing a name here opts it in. Names are
+        # case-insensitive and matched against the host environment only —
+        # runtime overrides still go through the secret-name denylist.
+        "passThroughEnvVars": [],
+    },
     "browser": {
         "mode": "local-launch",
         "cdpUrl": "",

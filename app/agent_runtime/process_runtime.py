@@ -14,7 +14,10 @@ from pathlib import Path
 from typing import Callable, Mapping, Protocol
 
 from .sandbox import SandboxManager, SandboxSnapshot
-from .shell_environment import ShellEnvironmentPolicy
+from .shell_environment import (
+    ShellEnvironmentPolicy,
+    get_default_environment_policy,
+)
 from .permissions import PermissionSnapshot
 
 
@@ -48,7 +51,7 @@ def _secret_env_name(name: str) -> bool:
 
 
 def safe_process_environment(overrides: Mapping[str, object] | None = None) -> dict[str, str]:
-    return ShellEnvironmentPolicy().build(overrides)
+    return get_default_environment_policy().build(overrides)
 
 
 def validate_argv(raw_argv: object) -> tuple[str, ...]:
@@ -879,7 +882,7 @@ class ProcessStore:
     ) -> None:
         self.max_processes = max(1, int(max_processes))
         self.sandbox_manager = sandbox_manager or SandboxManager()
-        self.environment_policy = environment_policy or ShellEnvironmentPolicy()
+        self.environment_policy = environment_policy or get_default_environment_policy()
         self._lock = threading.RLock()
         self._processes: dict[str, ManagedProcess] = {}
         self._order: list[str] = []

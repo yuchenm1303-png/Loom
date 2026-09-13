@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from .contracts import PermissionMode
 from .permissions import (
@@ -11,7 +11,7 @@ from .permissions import (
 )
 from .sandbox import SandboxSnapshot
 from .tools import ToolRouter
-from .shell_environment import ShellEnvironmentPolicy
+from .shell_environment import ShellEnvironmentPolicy, get_default_environment_policy
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,7 +34,7 @@ class StepContext:
     world_state: WorldStateSnapshot
     permissions: PermissionSnapshot
     tool_router: ToolRouter
-    environment_policy: ShellEnvironmentPolicy = ShellEnvironmentPolicy()
+    environment_policy: ShellEnvironmentPolicy = field(default_factory=get_default_environment_policy)
 
     @property
     def permission_profile(self) -> PermissionProfile:

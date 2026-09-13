@@ -16,6 +16,10 @@ from app.ai import AGENT_FAST_ROLE, ImagePart, MessageRole, TextPart
 from app.agent_runtime import AgentEvent, AgentEventKind, AgentStatus, PermissionMode
 from app.agent_runtime.storage import utc_now
 from app.agent_runtime.tools import set_tool_capability_settings, tool_capability_name
+from app.agent_runtime.shell_environment import (
+    build_environment_from_settings,
+    set_default_environment_policy,
+)
 from app.projects import UNFILED, ProjectStore, ProjectStoreError
 from app.settings import LoomSettingsStore
 from app.attachments import (
@@ -509,6 +513,7 @@ class LoomAppServerService:
         current = snapshot or self.settings.snapshot()
         capabilities = dict(current.get("capabilities") or {})
         set_tool_capability_settings(capabilities)
+        set_default_environment_policy(build_environment_from_settings(current))
         return current
 
     def _status_owner_session_id(self) -> str:
