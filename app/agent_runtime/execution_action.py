@@ -48,16 +48,16 @@ def _explicit_environment(raw: object) -> dict[str, str]:
 
 
 def _workspace_cwd(workspace: str | Path, raw_cwd: object) -> tuple[str, Path]:
-    relative = str(raw_cwd or ".").strip() or "."
+    requested = str(raw_cwd or ".").strip() or "."
     root = Path(workspace).expanduser().resolve()
-    resolved = (root / relative).resolve()
+    resolved = (root / requested).resolve()
     try:
         resolved.relative_to(root)
     except ValueError as exc:
         raise ValueError("command cwd escapes the Loom workspace") from exc
     if not resolved.is_dir():
         raise ValueError("command cwd must be a workspace directory")
-    return relative, resolved
+    return requested, resolved
 
 
 def exec_environment_identity(step, overrides: Mapping[str, object] | None = None) -> str:
@@ -71,10 +71,10 @@ def exec_environment_identity(step, overrides: Mapping[str, object] | None = Non
 class ExecActionIdentity:
     """Secret-minimized identity for one model-originated exec action.
 
-    ``call_id`` identifies this protocol instance but is intentionally excluded
-    from the semantic digest. Two calls that request the same execution action
-    therefore have the same action identity, matching Codex's separation between
-    ApprovalAction request ids and approval/cache keys.
+    ``call_id`` and the requested cwd spelling identify the protocol instance but
+    are intentionally excluded from the semantic digest. Two calls that resolve
+    to the same execution action therefore share an action identity, matching
+    Codex's separation between ApprovalAction request data and approval/cache keys.
 
     User-visible arguments remain in the ToolCall/PendingToolApproval. This object
     records execution semantics for binding without copying stdin or environment
@@ -88,8 +88,8 @@ class ExecActionIdentity:
     wait: bool
     timeout_seconds: int
     pty: bool
-    rows: int
-    cols: int
+    rows: int | None
+    cols: int | None
     stdin_identity: str
     explicit_environment_names: tuple[str, ...]
     explicit_environment_identity: str
@@ -101,7 +101,7 @@ class ExecActionIdentity:
             raise ValueError("ExecActionIdentity requires an exec tool call")
         arguments = dict(call.arguments)
         argv = validate_argv(arguments.get("argv"))
-        relative_cwd, resolved_cwd = _workspace_cwd(
+        requested_cwd, resolved_cwd = _workspace_cwd(
             step.world_state.workspace_dir,
             arguments.get("cwd"),
         )
@@ -111,7 +111,7 @@ class ExecActionIdentity:
             raise ValueError("stdin exceeds 256,000 characters")
         explicit_env = _explicit_environment(arguments.get("env"))
         pty = bool(arguments.get("pty", False))
-        rows, cols = validate_terminal_size(
+        parsed_rows, parsed_cols = validate_terminal_size(
             arguments.get("rows", 24),
             arguments.get("cols", 80),
         )
@@ -119,13 +119,13 @@ class ExecActionIdentity:
         return cls(
             call_id=str(call.call_id or "").strip(),
             argv=argv,
-            cwd=relative_cwd,
+            cwd=requested_cwd,
             resolved_cwd=str(resolved_cwd),
             wait=wait,
             timeout_seconds=timeout_seconds,
             pty=pty,
-            rows=rows,
-            cols=cols,
+            rows=parsed_rows if pty else None,
+            cols=parsed_cols if pty else None,
             stdin_identity=_private_identity(stdin_text),
             explicit_environment_names=tuple(sorted(explicit_env)),
             explicit_environment_identity=_private_identity(explicit_env),
@@ -136,7 +136,6 @@ class ExecActionIdentity:
         return {
             "kind": "exec_command",
             "argv": list(self.argv),
-            "cwd": self.cwd,
             "resolved_cwd": self.resolved_cwd,
             "wait": self.wait,
             "timeout_seconds": self.timeout_seconds,
@@ -152,6 +151,7 @@ class ExecActionIdentity:
     def instance_payload(self) -> dict[str, Any]:
         return {
             "call_id": self.call_id,
+            "cwd": self.cwd,
             **self.binding_payload(),
         }
 
