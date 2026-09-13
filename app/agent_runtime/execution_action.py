@@ -11,6 +11,7 @@ from typing import Any, Mapping
 from app.ai import ToolCall
 
 from .apply_patch_action import ApplyPatchActionIdentity
+from .command_approval import canonicalize_command_for_approval
 from .permissions import AdditionalPermissionProfile, SandboxPermissions
 from .process_runtime import validate_argv, validate_terminal_size, validate_timeout
 
@@ -279,7 +280,7 @@ class ExecActionIdentity:
         return ExecApprovalCacheKey(
             environment_id=str(environment_id or "local"),
             executable=self.argv[0] if self.argv else None,
-            command=self.argv,
+            command=canonicalize_command_for_approval(self.argv),
             cwd=self.resolved_cwd,
             tty=self.pty,
             sandbox_permissions=self.sandbox_permissions,
