@@ -1,6 +1,6 @@
 # Typed execution-action alignment
 
-This stacked branch starts separating **what the user is approving** from the generic tool-definition binding.
+This stacked branch separates **what the user is approving** from the generic tool-definition binding.
 
 Current Codex models approval as a structured `ApprovalAction`: an exec action carries the command, cwd, TTY state, sandbox permissions and environment identity rather than relying on a tool name plus free-form reason. Its approval/cache key is derived from execution semantics rather than the per-request call id. Loom is moving toward the same observable invariant without copying Codex's Rust type shape.
 
@@ -36,20 +36,37 @@ The typed action is not another copy of command secrets. Its binding payload del
 
 Moving the process-local environment identity into this module also gives Loom one source of truth for exec execution identity; `execution_binding.py` no longer owns a separate HMAC implementation.
 
-## `action_binding_digest`
+## Call-specific binding
 
-The branch now defines the target call-specific approval-key shape without switching Core persistence yet:
+`action_binding_digest(step, tool, call, platform)` now composes the existing frozen Step/tool binding with a typed action digest when one exists:
 
-- `binding_digest(step, tool, platform)` remains the tool + frozen-step identity;
-- `action_binding_digest(step, tool, call, platform)` composes that base binding with a typed action digest when one exists;
-- `exec` therefore adds canonical argv/cwd/PTY/stdin/environment semantics;
-- tools that do not yet have a typed action return the existing binding unchanged;
-- a call/tool-name mismatch fails closed.
+- `exec` adds canonical argv/cwd/PTY/stdin/environment semantics;
+- tools that do not yet have a typed action return the existing `binding_digest()` unchanged;
+- a call/tool-name mismatch fails closed;
+- malformed exec calls temporarily keep the generic binding so action construction does not preempt the normal tool-schema validation path. If such a queued call is later changed into a valid action, the binding changes and execution still fails closed.
 
-This gives Core one migration target instead of another side-channel state store. The eventual atomic integration is to use `action_binding_digest` both when `pending_bindings` are created and at every resume/pending validation site.
+Core now uses this call-specific binding at all three lifecycle points as one atomic migration:
 
-## Deliberate next boundary
+1. `TurnRunner` creates `session.pending_bindings` from the exact sampled call;
+2. `AgentRuntime.resume_approval()` rebuilds the same action identity before accepting approval;
+3. `_process_pending_tools()` validates the same identity immediately before preparation/execution.
 
-This branch does **not** yet switch the durable `pending_bindings` call sites. That change must update binding creation and every validation path together; changing only one side would intentionally make pending approvals fail closed but would not be a usable migration.
+There is no parallel pending-action store in `SandboxAgentRuntime`.
 
-The Core integration should therefore be one small, atomic patch rather than adding a parallel pending-action map in `SandboxAgentRuntime`.
+## Sandbox escalation composition
+
+Sandbox escalation remains an execution-attempt decision, not a different action identity. The same original call, frozen Step and pending action binding survive the transition from the initial sandboxed attempt to the explicitly approved escalation attempt.
+
+The escalation scope is opened only when the approved call executes, after Core has validated the action binding. A later model-generated exec therefore returns to its own initial action/attempt state.
+
+## Upgrade behavior
+
+Because typed exec identities use process-local HMACs, restarting Loom already invalidates pending exec approvals by design. This branch also changes the durable key shape for exec from generic tool binding to call-specific action binding. A pending exec approval created by an older runtime therefore fails closed and must be sampled/approved again.
+
+Untyped tools keep their exact legacy `binding_digest()` value, so this migration does not invalidate their pending bindings merely because the runtime gained typed exec actions.
+
+## Remaining boundary
+
+The next useful alignment step is no longer Core binding plumbing. It is to extend the structured action model only where execution semantics justify it—for example apply-patch, MCP or network approval—while keeping each action type canonical and secret-minimized.
+
+Separately, the repository still lacks trustworthy post-launch Bubblewrap/MXC containment-denial classification for ordinary process failures; typed sandbox escalation must continue to activate only from a proven structured denial rather than stderr guessing.
