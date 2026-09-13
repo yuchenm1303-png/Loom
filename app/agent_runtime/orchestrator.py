@@ -19,6 +19,7 @@ from .permissions import (
     SandboxPermissions,
 )
 from .sandbox import SandboxMode, SandboxPolicy
+from .sandbox_denial import classify_exec_sandbox_denial
 from .sandbox_failure import SandboxExecutionError
 from .step import StepContext
 from .tools import AgentTool, ToolContext, ToolPolicy, ToolResult, validate_tool_arguments
@@ -377,7 +378,8 @@ class ToolOrchestrator:
         """Resolve Codex's one retry after a typed sandbox denial.
 
         Ordinary stderr/non-zero exit is never sufficient: callers must provide
-        the typed sandbox-denied result produced from ``SandboxExecutionError``.
+        the typed sandbox-denied result produced by a platform adapter or by the
+        centralized Codex-compatible denial classifier.
         """
 
         if prepared.tool.name != "exec" or result.ok:
@@ -437,6 +439,8 @@ class ToolOrchestrator:
             result = prepared.tool.handler(context, prepared.call.arguments)
             if not isinstance(result, ToolResult):
                 raise TypeError("agent tool handler must return ToolResult")
+            if prepared.tool.name == "exec":
+                result = classify_exec_sandbox_denial(result)
             return result
         except SandboxExecutionError as exc:
             return ToolResult(
