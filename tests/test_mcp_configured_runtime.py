@@ -1,11 +1,19 @@
 from __future__ import annotations
 
+import json
 import pathlib
 from pathlib import Path
 
 import pytest
 
-from app.agent_runtime import ConfiguredMCPRuntime, FileAgentSessionStore, ToolRegistry
+from app.ai import AGENT_FAST_ROLE
+from app.agent_runtime import (
+    ConfiguredMCPRuntime,
+    FileAgentSessionStore,
+    MCPServerConfig,
+    PermissionMode,
+    ToolRegistry,
+)
 
 
 class _UnusedPlatform:
@@ -40,6 +48,17 @@ def _runtime(tmp_path: Path, **kwargs):
         auto_configure_web_search=False,
         **kwargs,
     )
+
+
+def _step(runtime: ConfiguredMCPRuntime, root: Path):
+    workspace = root / "workspace"
+    workspace.mkdir(parents=True, exist_ok=True)
+    session = runtime.create_session(
+        AGENT_FAST_ROLE.role_id,
+        workspace_dir=workspace,
+        permission_mode=PermissionMode.APPROVAL,
+    )
+    return runtime._build_step_context(session, next_model_step=True)
 
 
 # "enabled" now means the MCP subsystem is available, which it always is: Loom
@@ -84,3 +103,65 @@ def test_explicit_empty_server_list_disables_auto_discovery(monkeypatch, tmp_pat
         assert status["config_path"] == ""
     finally:
         runtime.close()
+
+
+def test_step_mcp_binding_snapshot_never_contains_resolved_secret(monkeypatch, tmp_path: Path):
+    secret = "synthetic-mcp-secret-value"
+    monkeypatch.setenv("LOOM_TEST_MCP_SECRET", secret)
+    config = MCPServerConfig(
+        name="demo",
+        transport="stdio",
+        command="python",
+        args=("server.py",),
+        env_from=(("API_KEY", "LOOM_TEST_MCP_SECRET"),),
+    )
+    runtime = _runtime(
+        tmp_path / "state",
+        mcp_servers=(config,),
+        auto_connect_mcp=False,
+    )
+    try:
+        step = _step(runtime, tmp_path / "project")
+        raw = step.request_state.mcp_binding_json
+        payload = json.loads(raw)
+
+        assert secret not in raw
+        assert payload["servers"][0]["name"] == "demo"
+        assert payload["servers"][0]["transport"] == "stdio"
+        assert len(payload["servers"][0]["config_sha256"]) == 64
+    finally:
+        runtime.close()
+
+
+def test_mcp_config_identity_changes_frozen_request_digest(tmp_path: Path):
+    first_config = MCPServerConfig(
+        name="demo",
+        transport="stdio",
+        command="python",
+        args=("server-a.py",),
+    )
+    second_config = MCPServerConfig(
+        name="demo",
+        transport="stdio",
+        command="python",
+        args=("server-b.py",),
+    )
+    first = _runtime(
+        tmp_path / "state-a",
+        mcp_servers=(first_config,),
+        auto_connect_mcp=False,
+    )
+    second = _runtime(
+        tmp_path / "state-b",
+        mcp_servers=(second_config,),
+        auto_connect_mcp=False,
+    )
+    try:
+        first_step = _step(first, tmp_path / "project-a")
+        second_step = _step(second, tmp_path / "project-b")
+
+        assert first_step.request_state.mcp_binding_json != second_step.request_state.mcp_binding_json
+        assert first_step.request_state.digest() != second_step.request_state.digest()
+    finally:
+        first.close()
+        second.close()
