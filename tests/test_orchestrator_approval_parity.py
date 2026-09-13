@@ -28,7 +28,7 @@ def _tool() -> AgentTool:
     )
 
 
-def _step(tmp_path, policy, *, granular=None):
+def _step(tmp_path, policy, *, granular=None, sandbox_policy=SandboxPolicy.AUTO, backend=True):
     tool = _tool()
     permissions = replace(
         permission_snapshot(PermissionMode.WORKSPACE),
@@ -36,8 +36,8 @@ def _step(tmp_path, policy, *, granular=None):
         granular_approval=granular,
     )
     manager = SandboxManager(
-        policy=SandboxPolicy.AUTO,
-        bubblewrap_executable="/synthetic/bwrap",
+        policy=sandbox_policy,
+        bubblewrap_executable="/synthetic/bwrap" if backend else "",
         probe_backend=False,
         system_name="Linux",
     )
@@ -153,6 +153,58 @@ def test_never_does_not_turn_sandbox_denial_into_retry_prompt(tmp_path):
     )
 
     assert plan.disposition is SandboxRetryDisposition.NONE
+
+
+def test_never_rejects_any_explicit_sandbox_permissions_request(tmp_path):
+    orchestrator = ToolOrchestrator()
+    step = _step(tmp_path, ApprovalPolicy.NEVER)
+
+    explicit_default = orchestrator.prepare(
+        step,
+        _call(sandbox_permissions=SandboxPermissions.USE_DEFAULT.value),
+    )
+    scoped = orchestrator.prepare(
+        step,
+        _call(
+            sandbox_permissions=SandboxPermissions.WITH_ADDITIONAL_PERMISSIONS.value,
+            additional_permissions={"file_system": {"read": [str(tmp_path)]}},
+        ),
+    )
+    escalated = orchestrator.prepare(
+        step,
+        _call(
+            sandbox_permissions=SandboxPermissions.REQUIRE_ESCALATED.value,
+            justification="Should be rejected under never.",
+        ),
+    )
+
+    assert explicit_default.decision is PermissionDecision.DENY
+    assert scoped.decision is PermissionDecision.DENY
+    assert escalated.decision is PermissionDecision.DENY
+
+
+def test_never_still_allows_omitted_sandbox_permissions_under_ambient_sandbox(tmp_path):
+    orchestrator = ToolOrchestrator()
+    step = _step(tmp_path, ApprovalPolicy.NEVER)
+    prepared = orchestrator.prepare(step, _call())
+    assert prepared.decision is PermissionDecision.ALLOW
+    assert prepared.sandbox_permissions is SandboxPermissions.USE_DEFAULT
+
+
+def test_required_sandbox_unavailable_is_denied_before_execution(tmp_path):
+    orchestrator = ToolOrchestrator()
+    step = _step(
+        tmp_path,
+        ApprovalPolicy.ON_REQUEST,
+        sandbox_policy=SandboxPolicy.REQUIRED,
+        backend=False,
+    )
+
+    prepared = orchestrator.prepare(step, _call())
+
+    assert prepared.decision is PermissionDecision.DENY
+    assert "required" in prepared.reason.casefold()
+    assert "backend" in prepared.reason.casefold()
 
 
 def test_granular_can_forbid_explicit_sandbox_override_prompt(tmp_path):
