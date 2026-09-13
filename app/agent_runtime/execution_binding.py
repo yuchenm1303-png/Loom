@@ -5,7 +5,7 @@ import hashlib
 import json
 import marshal
 
-from .execution_action import exec_environment_identity
+from .execution_action import exec_environment_identity, execution_action_for
 from .json_schema_semantics import validating_schema
 
 
@@ -16,7 +16,7 @@ def _exec_environment_identity(step, tool) -> str:
 
 
 def binding_digest(step, tool, platform) -> str:
-    """Hash executable semantics against the exact sampling-step identity.
+    """Hash tool/step execution semantics independently from one concrete call.
 
     Production/default steps bind to their frozen request-state snapshot. Lower-
     level embedders that still construct an uncaptured StepContext retain the
@@ -28,10 +28,9 @@ def binding_digest(step, tool, platform) -> str:
     are intentionally excluded so full/compact/structural prompt projections all
     represent the same approval binding.
 
-    Exec also binds to the resolved child environment through the typed execution-
-    action identity layer. The environment map itself is not persisted. A changed
-    inherited environment therefore invalidates the pending exec binding, and a
-    process restart intentionally requires a fresh exec approval.
+    Exec also binds to the ambient resolved child environment through the typed
+    execution-action identity layer. Concrete call semantics such as argv/cwd/PTY
+    are added separately by ``action_binding_digest``.
     """
 
     handler = tool.handler
@@ -85,4 +84,29 @@ def binding_digest(step, tool, platform) -> str:
     return hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()
 
 
-__all__ = ["binding_digest"]
+def action_binding_digest(step, tool, call, platform) -> str:
+    """Bind one concrete call to the frozen tool/step world.
+
+    Tools without a typed execution action keep the legacy binding exactly. Exec
+    adds its canonical action digest so argument/environment semantics become part
+    of the approval key without creating a second pending-action store.
+    """
+
+    if str(getattr(call, "name", "") or "") != str(tool.name):
+        raise ValueError("tool call does not match selected tool")
+    base = binding_digest(step, tool, platform)
+    action = execution_action_for(step, call)
+    if action is None:
+        return base
+    payload = {
+        "version": 1,
+        "tool_binding": base,
+        "action_kind": "exec_command",
+        "action_digest": action.digest(),
+    }
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+
+__all__ = ["action_binding_digest", "binding_digest"]
