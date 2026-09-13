@@ -5,7 +5,12 @@ from pathlib import Path
 
 import pytest
 
-from app.agent_runtime.instructions import InstructionLoader, PROJECT_DOC_SEPARATOR
+from app.agent_runtime.instructions import (
+    AGENTS_FRAGMENT_END,
+    AGENTS_FRAGMENT_START,
+    InstructionLoader,
+    PROJECT_DOC_SEPARATOR,
+)
 
 
 def test_nested_agents_walk_root_to_cwd_and_deeper_rules_come_later(tmp_path: Path):
@@ -19,7 +24,9 @@ def test_nested_agents_walk_root_to_cwd_and_deeper_rules_come_later(tmp_path: Pa
 
     loaded = InstructionLoader().load(cwd)
 
-    assert loaded.startswith(PROJECT_DOC_SEPARATOR)
+    assert loaded.startswith(f"{AGENTS_FRAGMENT_START} for {cwd.resolve()}\n\n<INSTRUCTIONS>\n")
+    assert loaded.endswith(AGENTS_FRAGMENT_END)
+    assert PROJECT_DOC_SEPARATOR not in loaded
     assert loaded.index("root rule") < loaded.index("package rule") < loaded.index("worker rule")
 
 
@@ -53,6 +60,18 @@ def test_configured_fallback_is_used_only_when_primary_names_are_absent(tmp_path
     assert [entry.path.name for entry in entries] == ["TEAM.md", "AGENTS.md"]
     assert entries[0].text == "fallback root"
     assert entries[1].text == "primary child"
+
+
+def test_empty_primary_file_still_blocks_same_directory_fallback(tmp_path: Path):
+    root = tmp_path / "repo"
+    root.mkdir()
+    (root / ".git").mkdir()
+    (root / "AGENTS.md").write_text("   \n", encoding="utf-8")
+    (root / "TEAM.md").write_text("fallback must not win", encoding="utf-8")
+
+    loaded = InstructionLoader(fallback_names=("TEAM.md",)).load(root)
+
+    assert loaded == ""
 
 
 def test_empty_root_markers_disable_parent_walk(tmp_path: Path):
