@@ -4,6 +4,8 @@ import hashlib
 import json
 from dataclasses import dataclass, field
 
+from app.ai import ReasoningRequest
+
 from .context_limits import ResolvedContextLimits
 from .contracts import PermissionMode
 from .permissions import (
@@ -117,6 +119,7 @@ class StepContext:
     permissions: PermissionSnapshot
     tool_router: ToolRouter
     request_state: RequestStateSnapshot = field(default_factory=RequestStateSnapshot)
+    reasoning: ReasoningRequest | None = None
     environment_policy: ShellEnvironmentPolicy = field(default_factory=get_default_environment_policy)
 
     @property
@@ -146,10 +149,13 @@ class StepContext:
         sandbox_snapshot: SandboxSnapshot | None = None,
         permissions: PermissionSnapshot | None = None,
         request_state: RequestStateSnapshot | None = None,
+        reasoning: ReasoningRequest | None = None,
     ) -> "StepContext":
         resolved_permissions = permission_snapshot(permissions or permission_mode)
         if PermissionMode(permission_mode) is not resolved_permissions.mode:
             raise ValueError("step permission_mode does not match the supplied permission snapshot")
+        if reasoning is not None and not isinstance(reasoning, ReasoningRequest):
+            raise TypeError("reasoning must be ReasoningRequest or None")
         world_state = WorldStateSnapshot(
             workspace_dir=str(workspace_dir),
             profile_id=str(profile_id),
@@ -166,6 +172,7 @@ class StepContext:
             permissions=resolved_permissions,
             tool_router=tool_router,
             request_state=request_state or RequestStateSnapshot(),
+            reasoning=reasoning,
         )
 
 
