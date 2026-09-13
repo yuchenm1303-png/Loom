@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from app.agent_runtime import (
     AgentStatus,
     AgentTool,
@@ -155,7 +157,7 @@ def test_tool_search_exposes_only_matching_deferred_tool_for_current_turn(tmp_pa
         runtime.close()
 
 
-def test_deferred_approval_can_resume_after_runtime_restart(tmp_path: Path):
+def test_deferred_approval_after_runtime_restart_fails_closed(tmp_path: Path):
     calls: list[str] = []
     sensitive = _tool(
         "mcp.external.write_record",
@@ -213,7 +215,7 @@ def test_deferred_approval_can_resume_after_runtime_restart(tmp_path: Path):
     assert calls == []
     runtime1.close()
 
-    second_platform = RecordingPlatform([ModelResponse(text="approved and done")])
+    second_platform = RecordingPlatform([ModelResponse(text="must not execute")])
     runtime2 = ToolSearchRuntime(
         platform=second_platform,
         store=store,
@@ -223,15 +225,16 @@ def test_deferred_approval_can_resume_after_runtime_restart(tmp_path: Path):
         auto_configure_web_search=False,
     )
     try:
-        completed = runtime2.resume_approval(
-            session.session_id,
-            "write-1",
-            approved=True,
-        )
-        assert completed.status is AgentStatus.COMPLETED
-        assert completed.final_text == "approved and done"
-        assert calls == ["approved-value"]
-        assert "mcp.external.write_record" in _tool_names(second_platform.requests[0])
+        with pytest.raises(RuntimeError, match="captured step context is unavailable"):
+            runtime2.resume_approval(
+                session.session_id,
+                "write-1",
+                approved=True,
+            )
+        assert calls == []
+        assert second_platform.requests == []
+        persisted = runtime2.get_session(session.session_id)
+        assert persisted.status is AgentStatus.WAITING_APPROVAL
     finally:
         runtime2.close()
 
