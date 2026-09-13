@@ -6,6 +6,7 @@ from contextvars import ContextVar
 from dataclasses import replace
 from pathlib import Path
 
+from .approval_actions import ReviewDecision
 from .context_limits import resolve_context_limits
 from .contracts import (
     AgentEventKind,
@@ -15,6 +16,7 @@ from .contracts import (
     PendingToolApproval,
 )
 from .durable_runtime import DurableAgentRuntime
+from .execution_binding import action_binding_digest
 from .orchestrator import SandboxRetryDisposition
 from .permissions import PermissionDecision, SandboxPermissions, permission_snapshot
 from .process_runtime import ProcessStore
@@ -152,10 +154,32 @@ class SandboxAgentRuntime(DurableAgentRuntime):
         call_id: str,
         *,
         approved: bool,
+        review_decision: ReviewDecision | str | None = None,
     ):
+        resolved_review = (
+            ReviewDecision(review_decision)
+            if review_decision is not None
+            else ReviewDecision.APPROVED
+            if approved
+            else ReviewDecision.DENIED
+        )
+        if resolved_review in {ReviewDecision.TIMED_OUT, ReviewDecision.ABORTED}:
+            # Loom's public resume boundary is still a boolean allow/deny API.
+            # Do not silently pretend timeout/turn-abort have denial semantics;
+            # those protocol outcomes need their own product/runtime plumbing.
+            raise ValueError(
+                f"review decision {resolved_review.value} is not supported by the boolean resume boundary"
+            )
+        if approved != (
+            resolved_review in {ReviewDecision.APPROVED, ReviewDecision.APPROVED_FOR_SESSION}
+        ):
+            raise ValueError("approved flag does not match review_decision")
+
         session = self.store.load(session_id)
         pending = session.pending_approval
         requested_call_id = str(call_id or "").strip()
+        validation_step = None
+        validation_call = None
         if approved and pending is not None and pending.call_id == requested_call_id:
             if not session.pending_tool_calls:
                 raise RuntimeError("pending tool approval state is inconsistent")
@@ -168,6 +192,42 @@ class SandboxAgentRuntime(DurableAgentRuntime):
                 raise ValueError(
                     "approved tool action changed while waiting; deny this request and start a new turn"
                 )
+            validation_step = self._build_step_context(
+                session,
+                next_model_step=False,
+                step_id=session.pending_step_id or None,
+            )
+            selected = validation_step.tool_router.get(pending.tool_name)
+            expected = session.pending_bindings.get(pending.call_id)
+            if (
+                selected is None
+                or not expected
+                or action_binding_digest(
+                    validation_step,
+                    selected,
+                    call,
+                    self.platform,
+                ) != expected
+            ):
+                raise ValueError(
+                    "approval binding changed or is legacy; deny this request and start a new turn"
+                )
+            validation_call = call
+
+        # Codex writes ApprovedForSession before resuming orchestration, so a
+        # second equivalent action later in the same resumed turn can hit cache.
+        # Loom mirrors that ordering only after the durable action binding above
+        # has proven this is still the exact reviewed action.
+        if (
+            resolved_review is ReviewDecision.APPROVED_FOR_SESSION
+            and validation_step is not None
+            and validation_call is not None
+        ):
+            self.orchestrator.record_review_decision(
+                validation_step,
+                validation_call,
+                resolved_review,
+            )
 
         if (
             approved
