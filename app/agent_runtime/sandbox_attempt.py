@@ -15,7 +15,6 @@ from .sandbox_failure import SandboxExecutionError, SandboxFailureKind
 class SandboxAttemptKind(str, Enum):
     INITIAL = "initial"
     RETRY = "retry"
-    # Backward-compatible spelling for persisted/test data from #121.
     ESCALATION = "retry"
 
 
@@ -95,8 +94,6 @@ class SandboxAttempt:
 
     @classmethod
     def escalated(cls, reason: str, *, index: int = 1) -> "SandboxAttempt":
-        """Compatibility alias for #121 callers; retry semantics are now explicit."""
-
         return cls.retry_without_sandbox(reason, index=index)
 
     def to_dict(self) -> dict[str, object]:
@@ -166,18 +163,9 @@ class AttemptAwareSandboxManager(SandboxManager):
         permissions=None,
         permission_mode=None,
         environment: Mapping[str, str] | None = None,
-        additional_permissions: AdditionalPermissionProfile | None = None,
     ) -> SandboxCommand:
         attempt = current_sandbox_attempt()
-        if attempt.selection in {
-            SandboxAttemptSelection.POLICY,
-            SandboxAttemptSelection.ADDITIONAL_PERMISSIONS,
-        }:
-            overlay = (
-                attempt.additional_permissions
-                if attempt.selection is SandboxAttemptSelection.ADDITIONAL_PERMISSIONS
-                else additional_permissions
-            )
+        if attempt.selection is SandboxAttemptSelection.POLICY:
             return self.base.prepare(
                 argv=argv,
                 cwd=cwd,
@@ -185,7 +173,31 @@ class AttemptAwareSandboxManager(SandboxManager):
                 permissions=permissions,
                 permission_mode=permission_mode,
                 environment=environment,
-                additional_permissions=overlay,
+            )
+        if attempt.selection is SandboxAttemptSelection.ADDITIONAL_PERMISSIONS:
+            ambient = self.base.snapshot(
+                permissions=permissions,
+                permission_mode=permission_mode,
+                workspace=workspace,
+            )
+            profile = attempt.additional_permissions
+            if not ambient.enforced:
+                raise SandboxExecutionError(
+                    SandboxFailureKind.CONFIGURATION,
+                    "additional permissions require an enforced sandbox",
+                    escalatable=False,
+                )
+            # Window 02 owns the contract, but backend-specific path/network
+            # widening must be implemented by a backend that can prove the
+            # requested scope. Until then, fail closed instead of converting a
+            # scoped grant into unrestricted execution.
+            raise SandboxExecutionError(
+                SandboxFailureKind.CONFIGURATION,
+                (
+                    "sandbox backend does not yet implement scoped additional permissions: "
+                    f"{profile.canonical() if profile is not None else {}}"
+                ),
+                escalatable=False,
             )
 
         root = Path(workspace).expanduser().resolve()
