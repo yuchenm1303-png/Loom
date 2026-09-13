@@ -38,14 +38,14 @@ Moving the process-local environment identity into this module also gives Loom o
 
 ## Call-specific binding
 
-`action_binding_digest(step, tool, call, platform)` now composes the existing frozen Step/tool binding with a typed action digest when one exists:
+`action_binding_digest(step, tool, call, platform)` composes the existing frozen Step/tool binding with a typed action digest when one exists:
 
 - `exec` adds canonical argv/cwd/PTY/stdin/environment semantics;
 - tools that do not yet have a typed action return the existing `binding_digest()` unchanged;
 - a call/tool-name mismatch fails closed;
-- malformed exec calls temporarily keep the generic binding so action construction does not preempt the normal tool-schema validation path. If such a queued call is later changed into a valid action, the binding changes and execution still fails closed.
+- malformed typed calls still continue to Loom's normal schema/tool-validation path instead of failing the turn early, but they receive a canonical call-arguments composite binding rather than the generic tool key. Changing one invalid queued request into a different invalid request therefore fails closed just like valid action drift.
 
-Core now uses this call-specific binding at all three lifecycle points as one atomic migration:
+Core uses this call-specific binding at all three lifecycle points as one atomic migration:
 
 1. `TurnRunner` creates `session.pending_bindings` from the exact sampled call;
 2. `AgentRuntime.resume_approval()` rebuilds the same action identity before accepting approval;
@@ -74,7 +74,7 @@ The stacked branch now covers:
 - PTY and effective terminal-dimension semantics;
 - explicit and inherited environment identity;
 - secret-minimized stdin/environment handling;
-- malformed exec fallback to normal tool validation;
+- malformed exec requests continue to normal validation while retaining call-specific drift detection;
 - Core creation and resume validation of call-specific pending bindings;
 - fail-closed rejection when a queued exec action drifts before approval;
 - preservation of the exact same action binding across initial approval and one-shot sandbox escalation.
