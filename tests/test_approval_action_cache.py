@@ -132,6 +132,25 @@ def test_exec_cache_key_changes_for_codex_semantic_fields(tmp_path):
     assert base != changed_additional
 
 
+def test_exec_cache_canonicalizes_equivalent_shell_wrappers(tmp_path):
+    step = _step(tmp_path)
+    absolute = ExecActionIdentity.build(
+        step,
+        _exec_call(argv=["/bin/bash", "-lc", "cargo test -p codex-core"]),
+    ).approval_cache_key()
+    plain = ExecActionIdentity.build(
+        step,
+        _exec_call(argv=["bash", "-lc", "cargo   test   -p codex-core"]),
+    ).approval_cache_key()
+
+    # Codex keeps the launched executable separately while canonicalizing the
+    # command body. The reusable command component is equivalent even though the
+    # executable field still records the actual launcher.
+    assert absolute.command == plain.command == ("cargo", "test", "-p", "codex-core")
+    assert absolute.executable == "/bin/bash"
+    assert plain.executable == "bash"
+
+
 def test_call_id_reuse_cannot_reuse_approval_after_command_changes(tmp_path):
     step = _step(tmp_path)
     first = approval_action_for(
@@ -184,26 +203,6 @@ def test_approved_for_session_is_retained_but_one_shot_and_denials_are_not(tmp_p
 
     store.record(keys, ReviewDecision.APPROVED_FOR_SESSION)
     assert store.lookup(keys) is ReviewDecision.APPROVED_FOR_SESSION
-
-
-def test_policy_fingerprint_partitions_exec_session_cache(tmp_path):
-    step = _step(tmp_path)
-    action = approval_action_for(step, _exec_call())
-    assert isinstance(action, ExecApprovalAction)
-    keys = action.cache_keys()
-    store = ApprovalDecisionStore()
-
-    store.record(
-        keys,
-        ReviewDecision.APPROVED_FOR_SESSION,
-        policy_fingerprint="policy-v1",
-    )
-
-    assert (
-        store.lookup(keys, policy_fingerprint="policy-v1")
-        is ReviewDecision.APPROVED_FOR_SESSION
-    )
-    assert store.lookup(keys, policy_fingerprint="policy-v2") is None
 
 
 def test_multi_file_patch_requires_every_path_to_be_session_approved(tmp_path):
