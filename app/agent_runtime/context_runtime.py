@@ -11,6 +11,7 @@ from .context_state import (
 )
 from .contracts import AgentEventKind, AgentRunResult, AgentSession, AgentStatus
 from .history import HistoryRepair, repair_tool_history
+from .instructions import ProjectInstructionSnapshotStore, TurnScopedInstructionLoader
 from .response_language import communication_language_message, infer_user_language
 from .runtime import CancellationToken
 from .sandbox_runtime import SandboxAgentRuntime
@@ -33,6 +34,11 @@ class ContextAgentRuntime(SandboxAgentRuntime):
     def __init__(self, *args, checkpoint_store: ContextCheckpointStore | None = None, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.checkpoint_store = checkpoint_store or ContextCheckpointStore(self.store.root)
+        self.instruction_snapshot_store = ProjectInstructionSnapshotStore(self.store.root)
+        self.instruction_loader = TurnScopedInstructionLoader(
+            self.instruction_loader,
+            self.instruction_snapshot_store,
+        )
 
     def _goal_payload(self, session_id: str) -> dict[str, object] | None:
         try:
@@ -110,9 +116,6 @@ class ContextAgentRuntime(SandboxAgentRuntime):
         step = self._build_step_context(session, next_model_step=False)
         envelope = self._context_envelope(session, step)
 
-        # Import here to keep context_compaction independent of request-budget
-        # transport details. Codex likewise uses an approximate count only for
-        # the 20k retained-user-message cap, not for normal auto-compact timing.
         from .context_budget import estimate_tokens
 
         replacement = build_compacted_history(
@@ -207,10 +210,6 @@ class ContextAgentRuntime(SandboxAgentRuntime):
             ]
             project_instructions = self.instruction_loader.load(session.workspace_dir)
             if project_instructions:
-                # Codex project docs are contextual-user fragments, lower than
-                # base/developer instructions. Loom's AI contract has no custom
-                # content-kind field, so USER + a stable name is the closest
-                # transport-equivalent representation.
                 request_messages.append(
                     AIMessage(
                         role=MessageRole.USER,
@@ -273,7 +272,13 @@ class ContextAgentRuntime(SandboxAgentRuntime):
 
     def _prepare_model_request(self, session, step, token):
         from .context_budget import prepare_context
-        return prepare_context(self, session, step, token)
+
+        with self.instruction_loader.bind_turn(
+            session_id=session.session_id,
+            turn_id=session.current_turn_id,
+            workspace=session.workspace_dir,
+        ):
+            return prepare_context(self, session, step, token)
 
 
 def _add_usage(left: ModelUsage, right: ModelUsage) -> ModelUsage:
