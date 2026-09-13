@@ -35,7 +35,10 @@ class _Platform:
 
 
 class _Runner:
-    def run(self, *_args, **_kwargs):
+    def run(self, coroutine, *_args, **_kwargs):
+        close = getattr(coroutine, "close", None)
+        if callable(close):
+            close()
         raise AssertionError("MCP call should not execute in this contract test")
 
     def close(self):
