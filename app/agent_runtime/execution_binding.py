@@ -2,28 +2,17 @@
 from __future__ import annotations
 
 import hashlib
-import hmac
 import json
 import marshal
-import secrets
 
+from .execution_action import exec_environment_identity
 from .json_schema_semantics import validating_schema
-
-
-_PROCESS_ENV_BINDING_KEY = secrets.token_bytes(32)
 
 
 def _exec_environment_identity(step, tool) -> str:
     if str(getattr(tool, "name", "") or "") != "exec":
         return ""
-    environment = step.environment_policy.build()
-    raw = json.dumps(
-        environment,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode("utf-8")
-    return hmac.new(_PROCESS_ENV_BINDING_KEY, raw, hashlib.sha256).hexdigest()
+    return exec_environment_identity(step)
 
 
 def binding_digest(step, tool, platform) -> str:
@@ -39,10 +28,10 @@ def binding_digest(step, tool, platform) -> str:
     are intentionally excluded so full/compact/structural prompt projections all
     represent the same approval binding.
 
-    Exec also binds to the resolved child environment through a process-local
-    fingerprint. The environment map itself is not persisted. A changed inherited
-    environment therefore invalidates the pending exec binding, and a process
-    restart intentionally requires a fresh exec approval.
+    Exec also binds to the resolved child environment through the typed execution-
+    action identity layer. The environment map itself is not persisted. A changed
+    inherited environment therefore invalidates the pending exec binding, and a
+    process restart intentionally requires a fresh exec approval.
     """
 
     handler = tool.handler
