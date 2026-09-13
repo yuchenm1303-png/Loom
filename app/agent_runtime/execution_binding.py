@@ -2,10 +2,28 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import marshal
+import secrets
 
 from .json_schema_semantics import validating_schema
+
+
+_PROCESS_ENV_BINDING_KEY = secrets.token_bytes(32)
+
+
+def _exec_environment_identity(step, tool) -> str:
+    if str(getattr(tool, "name", "") or "") != "exec":
+        return ""
+    environment = step.environment_policy.build()
+    raw = json.dumps(
+        environment,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hmac.new(_PROCESS_ENV_BINDING_KEY, raw, hashlib.sha256).hexdigest()
 
 
 def binding_digest(step, tool, platform) -> str:
@@ -20,6 +38,11 @@ def binding_digest(step, tool, platform) -> str:
     tool but do not change what arguments validate or what handler executes. They
     are intentionally excluded so full/compact/structural prompt projections all
     represent the same approval binding.
+
+    Exec also binds to the resolved child environment through a process-local
+    fingerprint. The environment map itself is not persisted. A changed inherited
+    environment therefore invalidates the pending exec binding, and a process
+    restart intentionally requires a fresh exec approval.
     """
 
     handler = tool.handler
@@ -28,10 +51,11 @@ def binding_digest(step, tool, platform) -> str:
     request_state = getattr(step, "request_state", None)
     captured = bool(getattr(request_state, "captured", False))
     payload = {
-        "version": 3,
+        "version": 4,
         "workspace": step.world_state.workspace_dir,
         "profile": step.world_state.profile_id,
         "environment_policy": repr(step.environment_policy),
+        "exec_environment_identity": _exec_environment_identity(step, tool),
         "permission": {
             "mode": step.permissions.mode.value,
             "effects": sorted(x.value for x in step.permissions.profile.allowed_effects),
@@ -60,7 +84,6 @@ def binding_digest(step, tool, platform) -> str:
             if callable(safe):
                 payload["model"] = safe()
 
-    # Primitive captured configuration identifies factories without persisting secrets.
     closure = getattr(function, "__closure__", None) or ()
     values = []
     for cell in closure:
