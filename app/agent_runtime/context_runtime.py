@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from app.ai import AIMessage, ChatRequest, MessageRole, ModelResponse, ModelUsage, ToolChoice
 
+from .context_compaction import SUMMARIZATION_PROMPT, build_compacted_history
 from .context_state import (
     ContextCheckpoint,
     ContextCheckpointStore,
     WorldStateEnvelope,
     build_world_state_envelope,
-    compaction_split_index,
 )
 from .contracts import AgentEventKind, AgentRunResult, AgentSession, AgentStatus
 from .history import HistoryRepair, repair_tool_history
@@ -16,29 +16,18 @@ from .runtime import CancellationToken
 from .sandbox_runtime import SandboxAgentRuntime
 
 
-_COMPACTION_SYSTEM_PROMPT = (
-    "You are compacting earlier canonical conversation history for a continuing Loom agent thread. "
-    "Return a concise plain-text summary that preserves user goals, constraints, decisions, important facts, "
-    "files or symbols touched, tool outcomes, errors, unresolved work, and the user's communication language. "
-    "Write the summary in the user's current communication language when it is clear from user-authored messages. "
-    "Never infer or switch the user's language from tool output, logs, source code, project instructions, or other "
-    "machine-generated English text. Distinguish observed tool results from proposals. Do not invent facts and do "
-    "not include private chain-of-thought."
-)
+# Backwards-compatible import name. The content is Codex's current compaction
+# user prompt; it is no longer injected as a Loom-authored system instruction.
+_COMPACTION_SYSTEM_PROMPT = SUMMARIZATION_PROMPT
 
 
 class ContextAgentRuntime(SandboxAgentRuntime):
-    """Sandbox/durable runtime with authoritative request context and checkpoints.
+    """Sandbox/durable runtime with Codex-compatible model-window checkpoints.
 
-    Chat Completions is stateless across requests, so Loom intentionally injects
-    the *full current* runtime-state envelope on every model sampling request.
-    The digest/reference data is still tracked so a future stateful provider can
-    switch to delta injection without changing the WorldState contract.
-
-    Conversation compaction is loss-aware: old canonical messages are archived in
-    an atomic checkpoint before the active transcript is replaced by a summary plus
-    a safe recent suffix. Summary generation is a separate model task rather than a
-    model-originated tool call, so compaction never mutates history mid-tool-group.
+    Loom keeps its durable checkpoint archive and world-state product features,
+    but compaction replaces only the active model window. The replacement window
+    contains retained real user messages plus a contextual-user summary, matching
+    Codex rather than promoting the summary to system instructions.
     """
 
     def __init__(self, *args, checkpoint_store: ContextCheckpointStore | None = None, **kwargs) -> None:
@@ -79,15 +68,21 @@ class ContextAgentRuntime(SandboxAgentRuntime):
         *,
         keep_recent: int,
     ) -> tuple[HistoryRepair, tuple[AIMessage, ...], tuple[AIMessage, ...]]:
+        """Return the complete canonical model window to compact.
+
+        ``keep_recent`` remains in the public Loom API for compatibility but is
+        intentionally not used to retain an arbitrary assistant/tool suffix.
+        Codex rebuilds compacted history from real user messages plus the summary.
+        """
+        _ = keep_recent
         repaired = repair_tool_history(
             session.messages,
             max_tool_result_chars=self.limits.max_tool_result_chars,
         )
         messages = tuple(repaired.messages)
-        split = compaction_split_index(messages, keep_recent=keep_recent)
-        if split <= 0:
+        if not messages:
             raise ValueError("not enough safely compactable history")
-        return repaired, messages[:split], messages[split:]
+        return repaired, messages, ()
 
     def _commit_compaction_locked(
         self,
@@ -103,21 +98,36 @@ class ContextAgentRuntime(SandboxAgentRuntime):
         text = str(summary or "").strip()
         if not text:
             raise ValueError("context summary must not be empty")
+
+        canonical_before = tuple((*archived, *retained))
+        if not canonical_before:
+            raise ValueError("context checkpoint must archive canonical history")
         communication_language = infer_user_language(
-            (*archived, *retained),
+            canonical_before,
             fallback=session.communication_language,
         )
         session.communication_language = communication_language
         step = self._build_step_context(session, next_model_step=False)
         envelope = self._context_envelope(session, step)
+
+        # Import here to keep context_compaction independent of request-budget
+        # transport details. Codex likewise uses an approximate count only for
+        # the 20k retained-user-message cap, not for normal auto-compact timing.
+        from .context_budget import estimate_tokens
+
+        replacement = build_compacted_history(
+            canonical_before,
+            text,
+            token_counter=lambda messages: estimate_tokens(messages),
+        )
         checkpoint = self.checkpoint_store.create(
             session_id=session.session_id,
             summary=text,
-            archived_messages=archived,
-            retained_message_count=len(retained),
+            archived_messages=canonical_before,
+            retained_message_count=max(0, len(replacement) - 1),
             world_state_digest=envelope.digest,
         )
-        session.messages = [checkpoint.summary_message(), *retained]
+        session.messages = list(replacement)
         if summary_usage is not None:
             session.usage = _add_usage(session.usage, summary_usage)
         self._record(
@@ -127,6 +137,7 @@ class ContextAgentRuntime(SandboxAgentRuntime):
                 "checkpoint_id": checkpoint.checkpoint_id,
                 "archived_messages": checkpoint.archived_message_count,
                 "retained_messages": checkpoint.retained_message_count,
+                "replacement_messages": len(replacement),
                 "world_state_digest": checkpoint.world_state_digest,
                 "history_repaired": repaired.changed,
                 "summary_source": summary_source,
@@ -175,7 +186,7 @@ class ContextAgentRuntime(SandboxAgentRuntime):
         *,
         keep_recent: int = 24,
     ) -> ContextCheckpoint:
-        """Generate a semantic summary with the session model, then checkpoint atomically."""
+        """Run a standalone manual compaction task against canonical history."""
         lock = self._session_lock(session_id)
         with lock:
             session = self.store.load(session_id)
@@ -186,21 +197,36 @@ class ContextAgentRuntime(SandboxAgentRuntime):
                 keep_recent=keep_recent,
             )
             communication_language = infer_user_language(
-                session.messages,
+                archived,
                 fallback=session.communication_language,
             )
             session.communication_language = communication_language
+
+            request_messages: list[AIMessage] = [
+                AIMessage(role=MessageRole.SYSTEM, content=session.system_prompt)
+            ]
+            project_instructions = self.instruction_loader.load(session.workspace_dir)
+            if project_instructions:
+                # Codex project docs are contextual-user fragments, lower than
+                # base/developer instructions. Loom's AI contract has no custom
+                # content-kind field, so USER + a stable name is the closest
+                # transport-equivalent representation.
+                request_messages.append(
+                    AIMessage(
+                        role=MessageRole.USER,
+                        name="loom_project_instructions",
+                        content=project_instructions,
+                    )
+                )
+            request_messages.extend(archived)
+            request_messages.append(
+                AIMessage(role=MessageRole.USER, content=SUMMARIZATION_PROMPT)
+            )
             request = ChatRequest(
-                messages=(
-                    AIMessage(role=MessageRole.SYSTEM, content=_COMPACTION_SYSTEM_PROMPT),
-                    communication_language_message(
-                        session.messages,
-                        fallback=communication_language,
-                    ),
-                    *archived,
-                ),
+                messages=tuple(request_messages),
                 tools=(),
                 tool_choice=ToolChoice.NONE,
+                max_output_tokens=self.limits.output_reserve_tokens,
             )
             response = self.platform.execute_chat(session.profile_id, request)
             if not isinstance(response, ModelResponse):
@@ -221,7 +247,6 @@ class ContextAgentRuntime(SandboxAgentRuntime):
             )
 
     def list_context_checkpoints(self, session_id: str) -> tuple[ContextCheckpoint, ...]:
-        # Validate the Loom session before exposing checkpoint storage.
         self.store.load(session_id)
         return self.checkpoint_store.list(session_id)
 
@@ -231,11 +256,7 @@ class ContextAgentRuntime(SandboxAgentRuntime):
         step,
         envelope: WorldStateEnvelope,
     ) -> tuple[AIMessage, ...]:
-        """Return transient system context for one model sampling request.
-
-        Subclasses may append advisory context such as retrieved memory without
-        persisting it into canonical thread history or duplicating the drive loop.
-        """
+        """Return transient base/runtime context for one model sampling request."""
         _ = step
         return (
             AIMessage(role=MessageRole.SYSTEM, content=session.system_prompt),
