@@ -36,6 +36,12 @@ from .turn_input import TurnInput, normalize_turn_input
 from .tools import ToolContext, ToolPolicy, ToolRegistry, ToolResult
 
 
+# The "answer it by running a command" rule is adapted from the Codex CLI
+# system prompt (openai/codex, Apache-2.0). Without it this agent routed
+# questions about the host by tool *name*: asked how much RAM was free it
+# called memory_status (Loom's own memory store), then told the user to open
+# Task Manager. A measured A/B over the real provider showed this paragraph,
+# not the runtime-state envelope, is what makes it reach for exec instead.
 DEFAULT_AGENT_SYSTEM_PROMPT = (
     "You are an execution agent operating inside a controlled tool harness. "
     "Use only the tools provided to you, never invent tool results, and treat tool errors as observations "
@@ -85,6 +91,8 @@ class AgentRuntime:
     """
 
     def _internal_model_stream_scope(self):
+        """Hide detached model work from the user-facing response stream."""
+
         return nullcontext()
 
     def __init__(
@@ -193,6 +201,10 @@ class AgentRuntime:
             previous = session.permission_mode
             if previous is resolved:
                 return session
+            # Loom does not yet have an OS sandbox capable of retroactively
+            # constraining an already-running process. Kill stale terminals on
+            # any permission transition instead of pretending the new profile
+            # was applied to them.
             self.process_store.terminate_session(session.session_id)
             session.permission_mode = resolved
             self._record(
@@ -204,6 +216,7 @@ class AgentRuntime:
 
     @staticmethod
     def _is_failed_user_input_retry(session: AgentSession, content) -> bool:
+        """Return whether a submission reuses the unprocessed tail of a failed turn."""
         return bool(
             session.status is AgentStatus.FAILED
             and session.messages
@@ -415,12 +428,8 @@ class AgentRuntime:
             if self.store.pending_steering(session.session_id, session.current_turn_id):
                 while session.pending_tool_calls:
                     abandoned = session.pending_tool_calls.pop(0)
-                    self._append_tool_result(
-                        session,
-                        abandoned,
-                        ToolResult(False, "Not executed: new user steering arrived; reconsider this action."),
-                        failed=True,
-                    )
+                    self._append_tool_result(session, abandoned, ToolResult(False,
+                        "Not executed: new user steering arrived; reconsider this action."), failed=True)
                 self._consume_steering(session)
                 break
             if self._cancel_if_requested(session, token):
@@ -607,19 +616,16 @@ class AgentRuntime:
         step_id: str | None = None,
     ) -> StepContext:
         model_step = session.model_steps + (1 if next_model_step else 0)
-        return replace(
-            StepContext.build(
-                step_id=step_id or str(uuid.uuid4()),
-                session_id=session.session_id,
-                turn_id=session.current_turn_id,
-                model_step=model_step,
-                workspace_dir=session.workspace_dir,
-                profile_id=session.profile_id,
-                permission_mode=session.permission_mode,
-                tool_router=self.tools.router(),
-            ),
-            environment_policy=self.process_store.environment_policy,
-        )
+        return replace(StepContext.build(
+            step_id=step_id or str(uuid.uuid4()),
+            session_id=session.session_id,
+            turn_id=session.current_turn_id,
+            model_step=model_step,
+            workspace_dir=session.workspace_dir,
+            profile_id=session.profile_id,
+            permission_mode=session.permission_mode,
+            tool_router=self.tools.router(),
+        ), environment_policy=self.process_store.environment_policy)
 
     def _model_system_prompt(self, session: AgentSession, step: StepContext) -> str:
         capability_contract = self.orchestrator.capability_contract(
@@ -677,12 +683,7 @@ class AgentRuntime:
         session.pending_step_id = ""
         session.error = "cancelled by user"
         from .history import repair_tool_history
-        session.messages = list(
-            repair_tool_history(
-                session.messages,
-                max_tool_result_chars=self.limits.max_tool_result_chars,
-            ).messages
-        )
+        session.messages = list(repair_tool_history(session.messages, max_tool_result_chars=self.limits.max_tool_result_chars).messages)
         self._record(session, AgentEventKind.TURN_CANCELLED, data={})
         return True
 
