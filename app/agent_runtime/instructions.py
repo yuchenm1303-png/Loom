@@ -15,10 +15,12 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import threading
 import uuid
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Iterator
 
 
 DEFAULT_ROOT_MARKERS = (".git",)
@@ -61,7 +63,6 @@ class InstructionLoader:
         )
 
     def _project_root(self, cwd: Path) -> Path:
-        # Codex treats an empty marker list as "do not walk upward".
         if not self.root_markers:
             return cwd
         for directory in (cwd, *cwd.parents):
@@ -99,9 +100,6 @@ class InstructionLoader:
                 path = directory / name
                 if not path.is_file():
                     continue
-                # Match Codex: a discovered instruction file may itself be a
-                # symlink. Scope comes from the directory in which it was
-                # discovered, not from rejecting targets outside project_root.
                 with path.open("rb") as handle:
                     raw = handle.read(remaining + 1)
                 truncated = len(raw) > remaining
@@ -110,9 +108,8 @@ class InstructionLoader:
                 remaining -= len(payload)
                 if text.strip():
                     entries.append(ProjectInstruction(path=path, text=text, truncated=truncated))
-                # Only the first matching candidate in a directory applies:
-                # override > AGENTS.md > configured fallbacks. An empty primary
-                # file still wins candidate selection, exactly like Codex.
+                # The first existing candidate wins even when it is empty:
+                # override > AGENTS.md > configured fallback names.
                 break
         return tuple(entries)
 
@@ -121,11 +118,6 @@ class InstructionLoader:
         selected = tuple(entries)
         if not selected:
             return ""
-        # Codex's LoadedAgentsMd::legacy_text joins project entries directly
-        # with blank lines. The `--- project-doc ---` separator is only inserted
-        # when host/user/thread instructions precede the first project entry;
-        # Loom's loader owns project entries only, so it must not invent that
-        # transition marker here.
         body = "\n\n".join(entry.text for entry in selected)
         cwd = Path(directory).expanduser().resolve()
         return (
@@ -209,8 +201,6 @@ class ProjectInstructionSnapshotStore:
                 handle.write(data)
                 handle.flush()
                 os.fsync(handle.fileno())
-            # The session execution lease serializes normal runtime captures.
-            # Replace keeps the sidecar atomic for process restart recovery.
             os.replace(temp, target)
         finally:
             try:
@@ -218,6 +208,56 @@ class ProjectInstructionSnapshotStore:
             except OSError:
                 pass
         return snapshot
+
+
+class TurnScopedInstructionLoader:
+    """Project loader that reuses one durable snapshot inside an active turn.
+
+    ``prepare_context`` still depends on the simple ``load(workspace)`` loader
+    contract. This adapter keeps that contract while allowing the context runtime
+    to bind the current durable turn around request preparation. Thread-local
+    binding avoids leaking one session's instruction snapshot into another when
+    independent sessions are prepared concurrently.
+    """
+
+    def __init__(self, loader: InstructionLoader, snapshot_store: ProjectInstructionSnapshotStore) -> None:
+        self.loader = loader
+        self.snapshot_store = snapshot_store
+        self._local = threading.local()
+
+    @contextmanager
+    def bind_turn(
+        self,
+        *,
+        session_id: str,
+        turn_id: str,
+        workspace: str | Path,
+    ) -> Iterator[None]:
+        previous = getattr(self._local, "binding", None)
+        self._local.binding = (
+            str(session_id),
+            str(turn_id),
+            str(Path(workspace).expanduser().resolve()),
+        )
+        try:
+            yield
+        finally:
+            self._local.binding = previous
+
+    def load(self, workspace: str | Path) -> str:
+        resolved = str(Path(workspace).expanduser().resolve())
+        binding = getattr(self._local, "binding", None)
+        if binding is None:
+            return self.loader.load(resolved)
+        session_id, turn_id, bound_workspace = binding
+        if resolved != bound_workspace or not turn_id:
+            return self.loader.load(resolved)
+        return self.snapshot_store.capture(
+            session_id=session_id,
+            turn_id=turn_id,
+            workspace=resolved,
+            loader=self.loader,
+        ).rendered
 
 
 __all__ = [
@@ -230,4 +270,5 @@ __all__ = [
     "ProjectInstruction",
     "ProjectInstructionSnapshot",
     "ProjectInstructionSnapshotStore",
+    "TurnScopedInstructionLoader",
 ]
