@@ -20,14 +20,15 @@ The Codex baseline was re-read from `openai/codex` main at the start of this wor
 | Auto compact limit | current `ModelInfo::auto_compact_token_limit()` default is 90% of resolved context window | old Loom default was 78% of local input budget | Use 90% of effective model window; explicit model limit still wins |
 | Auto compact scope | `AutoCompactTokenLimitScope::{Total, BodyAfterPrefix}`; default `total`; `body_after_prefix` subtracts an AutoCompactWindow prefill baseline but full context remains a hard cap | Loom `ModelContextLimits` has no scope field and no prefill-window state | Implement default `total`; fail closed if a future profile supplies unsupported `body_after_prefix`; request profile/window-state interface from owning window |
 | Auto compact trigger | `session/turn.rs` + `session/context_window.rs` use active token usage and configured scope | old Loom used UTF-8 bytes / 3 as the normal trigger | Use latest provider-reported response usage when available; fallback estimate only when provider usage is absent |
-| Manual compact task | `tasks/compact.rs`, `tasks/mod.rs`, `core/src/compact.rs` model compaction as a task with cancellation | `compact_context_with_model()` | Keep Loom public API, but use the same no-tools compaction prompt / replacement semantics and propagate cancellation before commit |
+| Manual compact task | `tasks/compact.rs`, `tasks/mod.rs`, `core/src/compact.rs` model compaction as a task with cancellation | `compact_context_with_model()` | Keep Loom public API, but use the same no-tools compaction prompt / replacement semantics. Provider remote-v2 and TokenBudget-specific task routing remain explicit capability gaps |
 | Context-window retry | `core/src/compact.rs` retries `ContextWindowExceeded` after dropping the oldest input item | old Loom had three semantic summary retries plus custom reducers | Drop oldest logical history item; keep tool call/output group together in Loom's message representation; remove semantic finish-reason retry policy |
 | Compact output replacement | `core/src/compact.rs::build_compacted_history` keeps real user messages newest-first under ~20k tokens and appends `SUMMARY_PREFIX + summary` as contextual user history | old Loom used SYSTEM summary + arbitrary recent suffix | Port Codex shape: real user messages + contextual-user summary; do not replay pre-compact assistant/tool suffix |
 | Compact prompt | `codex-rs/protocol/src/prompts/templates/compact/prompt.md` | old Loom custom language-aware SYSTEM prompt | Use current Codex prompt as the final user message of the compaction request |
 | Summary prefix | `codex-rs/prompts/templates/compact/summary_prefix.md` | old Loom `LOOM_CONTEXT_CHECKPOINT` SYSTEM wrapper | Use current Codex prefix and USER role |
 | Direct tool metadata | current main strips disabled direct metadata from inference and compaction clones, without mutating durable history | Loom `AIMessage` has no direct-execution metadata; approval binding lives in `pending_bindings`, outside messages | No destructive strip needed: execution binding is structurally absent from model history. Preserve durable binding state |
 | AGENTS discovery | `codex-rs/core/src/agents_md.rs` | `instructions.py` | Root -> cwd, one candidate per directory: override > AGENTS > configured fallback, shared 32 KiB budget |
-| AGENTS scope | base prompt + `agents_md` tests: directory subtree scope, deeper file wins conflicts | old Loom flattened files into a SYSTEM message | Preserve root-to-cwd ordering and contextual-user role so deeper rules appear later without gaining system precedence |
+| AGENTS rendering | `context/user_instructions.rs` + contextual-fragment rendering | old Loom injected bare project text as SYSTEM | Render `# AGENTS.md instructions for <cwd>` with `<INSTRUCTIONS>...</INSTRUCTIONS>` as a USER message; project-only loading does not invent the host-to-project separator |
+| AGENTS state | `context/world_state/agents_md.rs` stores an instruction snapshot and renders changes as world-state diffs | old Loom re-read files on every request | Capture a durable per-turn project-instruction snapshot on first model preparation and reuse it for later model steps and approval resume, including after process restart; a new turn gets a new snapshot |
 | Base instructions | config selects explicit base override, then `model_instructions_file`, then configured instructions | Loom session system prompt | Preserve base SYSTEM prompt; do not mix project docs into it |
 | Developer instructions | `core/src/context/developer_instructions.rs` uses a developer contextual fragment | Loom `AIMessage` has no developer role | Documented platform adaptation; no out-of-scope `app/ai` contract rewrite in this window |
 
@@ -56,17 +57,32 @@ AGENTS.override.md
     > configured fallback names
 ```
 
-The root-to-cwd project-doc chain is rendered as contextual user content. It is not promoted to SYSTEM. Loom's existing runtime-state and communication-language product context remain transient system context; compaction never rewrites them into durable conversation history.
+An existing empty higher-priority file still wins candidate selection; Loom must not skip it and silently fall through to a lower-priority fallback in the same directory.
+
+The root-to-cwd project-doc chain is rendered as contextual user content. It is not promoted to SYSTEM. The model-visible form is:
+
+```text
+# AGENTS.md instructions for <cwd>
+
+<INSTRUCTIONS>
+<root-to-cwd project instruction text>
+</INSTRUCTIONS>
+```
+
+Codex inserts `--- project-doc ---` only on the transition from host user/thread instructions into project entries. Loom's loader owns project entries only, so it does not add that separator by itself.
+
+For an active Loom turn the first model preparation durably captures this rendered fragment under the session/turn. Later model steps and approval resume reuse that snapshot instead of re-reading disk. This prevents an AGENTS edit made while a tool is awaiting approval from changing the authority context of the already-started turn. The next turn captures current disk state again.
 
 ## Context and compaction state machine
 
 ```text
-prepare model step
+start / resume model step
+  -> active turn? capture-or-load durable AGENTS snapshot for this turn
   -> resolve current model window / explicit compact threshold
   -> resolve auto-compact scope
        -> total: supported, current Loom path
        -> body_after_prefix: requires Codex-style prefill-window state; fail closed until owned interface exists
-  -> project transient base + Loom product context + project docs + canonical model window
+  -> project transient base + Loom product context + frozen project docs + canonical model window
   -> read latest surviving provider token usage
        -> checkpoint newer than usage? invalidate old usage
        -> no provider usage? conservative fallback estimate
@@ -77,7 +93,7 @@ prepare model step
        -> cancellation => abort without history mutation
        -> context-window overflow => remove oldest logical input unit and retry
        -> other retryable transport failure => transport retry policy
-       -> summary text (empty => Codex-compatible placeholder)
+       -> summary text (empty => Codex-compatible placeholder on automatic path)
   -> build replacement model history
        -> genuine user messages, newest first, shared ~20k token cap
        -> append contextual USER compaction summary
@@ -98,7 +114,8 @@ The following behavior was removed from the active context path because it had n
 - arbitrary `keep_recent` assistant/tool suffix replay after compaction;
 - SYSTEM-role compaction summary;
 - Loom-specific language-aware compaction SYSTEM prompt;
-- three-attempt semantic summary completeness loop based on finish reason / unexpected verbosity.
+- three-attempt semantic summary completeness loop based on finish reason / unexpected verbosity;
+- re-reading AGENTS/project instructions independently on every model request inside one active turn.
 
 `keep_recent` remains accepted by the public Loom methods for API compatibility, but it no longer changes Codex-parity replacement history.
 
@@ -120,6 +137,12 @@ Codex has a distinct developer contextual fragment. Loom's `AIMessage` contract 
 
 Risk: a backend that treats named USER content differently from Codex contextual-user fragments may not be byte-for-byte identical, but project docs no longer gain the stronger SYSTEM precedence they had before.
 
+### AGENTS world-state transport
+
+Codex can persist AGENTS state as part of its world-state model and emit replacement/removal diffs when the current snapshot changes. Loom's provider-neutral Chat Completions transport is stateless, so it sends the complete frozen contextual-user fragment on every model request rather than a delta.
+
+The observable authority semantics are preserved at the Loom turn boundary: one started turn has one frozen project-instruction snapshot, including across approval resume and process restart; a later turn observes the then-current project files. Delta-vs-full transmission is treated as a platform transport adaptation, not a different precedence rule.
+
 ### Auto-compact `body_after_prefix` scope
 
 Current Codex config schema exposes `model_auto_compact_token_limit_scope` with `total` and `body_after_prefix`. `body_after_prefix` uses the first observed input-token count in the current AutoCompactWindow as a baseline, charges only subsequent growth against the configured auto-compact limit, and still compacts when the full effective context window is reached. Codex tests include `auto_compact_body_after_prefix_ignores_starting_window_prefix` and `auto_compact_body_after_prefix_counts_growth_after_compaction`.
@@ -140,6 +163,12 @@ Codex stores active-window token usage and recomputes it after replacement histo
 
 Risk: immediately after compaction, one request can use fallback accounting rather than provider-native active-window accounting. Solving this exactly requires a dedicated active-context usage field or lifecycle callback outside the current ownership boundary.
 
+### TokenBudget fallback and provider remote compaction
+
+At this Codex baseline, token-budget-enabled sessions can reserve an `auto_compact_fallback_buffer_tokens` window and sample an `auto_compact_fallback_prompt` before rollover. Manual `CompactTask` also branches between the TokenBudget-specific manual path, provider remote-compaction v2, and local compaction based on feature/provider capabilities.
+
+Loom currently exposes neither the TokenBudget fallback state/config nor a provider remote-compaction capability contract in this window. This PR therefore ports the local/default compaction semantics and records these as missing upstream interfaces rather than inventing a local substitute. The appropriate owners need to expose feature state, fallback prompt/buffer, and provider remote-compaction support before these branches can be ported faithfully.
+
 ### Chat Completions output reservation
 
 Loom must reserve `max_output_tokens` locally for stateless Chat Completions-compatible providers. Therefore a hard request-budget check can trigger before the pure 90% auto-compact threshold. This is a platform transport constraint, not an alternative compaction state machine.
@@ -150,12 +179,14 @@ Codex main at the recorded SHA strips disabled direct-call execution metadata fr
 
 ## Tests translated / added
 
-- nested AGENTS root-to-cwd ordering;
+- nested AGENTS root-to-cwd ordering and exact contextual-user wrapper;
 - conflicting AGENTS with `AGENTS.override.md` precedence;
+- empty primary AGENTS blocking same-directory fallback;
 - cwd-only behavior when root markers are disabled;
 - configured fallback instruction names;
 - shared instruction byte budget;
 - discovered AGENTS symlink behavior;
+- durable per-turn AGENTS snapshot across approval wait, runtime restart, and approval resume;
 - 90% auto-compact default and model-window changes;
 - default `total` auto-compact scope plus fail-closed unsupported `body_after_prefix` boundary;
 - provider usage as primary compact trigger;
@@ -164,7 +195,7 @@ Codex main at the recorded SHA strips disabled direct-call execution metadata fr
 - replacement history contains real user messages + contextual summary only;
 - tool call/output pair remains complete in durable archive;
 - context-window retry removes the oldest logical tool group from the compact request clone;
-- cancellation does not commit compaction;
+- cancellation does not commit automatic compaction;
 - irreducible giant user input fails closed rather than silent truncation;
 - fixed instruction/tool-schema pressure fails closed;
 - reconstructed checkpoint summary keeps contextual-user precedence;
@@ -172,7 +203,9 @@ Codex main at the recorded SHA strips disabled direct-call execution metadata fr
 
 ## Validation status
 
-PR `#125` was opened against `main`. The first GitHub Actions CI run was marked failed by GitHub, but all nine returned jobs (including `test`) had `steps: []` and no runner assignment. Per project acceptance rules this is not evidence that pytest/build ran or failed. No successful test execution result is claimed from that run.
+PR `#125` is open and mergeable against `main`. GitHub Actions runs observed during this work have been marked `failure`, but each returned job (including `test`) had no steps and no runner execution data; attempting to download the `test` job log returned a missing-blob response. Per project acceptance rules this is infrastructure non-execution, not evidence that pytest/build ran and failed. No successful CI result is claimed.
+
+A local checkout/test run is also unavailable in the current execution environment because outbound DNS to GitHub is blocked. The branch therefore contains the translated regression tests, but final executable verification remains pending a working CI runner or another environment with the repository checkout.
 
 ## Changed production files
 
