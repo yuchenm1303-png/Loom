@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from dataclasses import replace
 
 from app.ai import ToolCall
 from app.agent_runtime.apply_patch_action import ApplyPatchActionIdentity
@@ -179,3 +178,22 @@ def test_generic_action_factory_and_binding_use_apply_patch_identity(tmp_path):
 
     assert bound != generic
     assert changed != bound
+
+
+def test_malformed_patch_keeps_normal_validation_but_binds_invalid_arguments(tmp_path):
+    step = _step(tmp_path)
+    tool = step.tool_router.get("apply_patch")
+    assert tool is not None
+    platform = BarePlatform()
+    first = _structured_call(call_id="patch-invalid-1", path="../outside-one.txt")
+    same = _structured_call(call_id="patch-invalid-2", path="../outside-one.txt")
+    second = _structured_call(call_id="patch-invalid-3", path="../outside-two.txt")
+
+    generic = binding_digest(step, tool, platform)
+    first_binding = action_binding_digest(step, tool, first, platform)
+    same_binding = action_binding_digest(step, tool, same, platform)
+    second_binding = action_binding_digest(step, tool, second, platform)
+
+    assert first_binding != generic
+    assert first_binding == same_binding
+    assert second_binding != first_binding
