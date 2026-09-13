@@ -91,7 +91,9 @@ export interface PendingApproval {
   approvalItemId: string;
   callId: string;
   requestType: "toolExecution" | string;
-  kind: string;
+  /** Loom lifecycle stage extension; distinct from Codex command-approval `kind`. */
+  approvalStage: string;
+  /** Loom lifecycle extension; Codex v2 command approval has no retryReason field. */
   retryReason: string | null;
   startedAtMs: number;
   toolName: string;
