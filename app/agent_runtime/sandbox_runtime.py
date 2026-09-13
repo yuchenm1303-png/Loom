@@ -4,13 +4,14 @@ import os
 from dataclasses import replace
 from pathlib import Path
 
-from .contracts import AgentSession
+from .contracts import AgentEventKind, AgentSession
 from .durable_runtime import DurableAgentRuntime
-from .permissions import permission_snapshot
+from .permissions import PermissionDecision, permission_snapshot
 from .process_runtime import ProcessStore
 from .sandbox import SandboxManager, SandboxPolicy, SandboxSnapshot
 from .sandbox_tools import sandbox_status_tool
 from .step import StepContext
+from .tools import ToolContext, ToolResult
 
 
 class SandboxAgentRuntime(DurableAgentRuntime):
@@ -62,11 +63,98 @@ class SandboxAgentRuntime(DurableAgentRuntime):
         )
 
     def recover_interrupted(self, session_id: str):
-        # Managed processes are intentionally ephemeral. If recovery is invoked
-        # in a still-running host, terminate any process launched under the
-        # interrupted turn before repairing its canonical history.
         self.process_store.terminate_session(session_id)
         return super().recover_interrupted(session_id)
+
+    def _consume_tool_call(
+        self,
+        session,
+        call,
+        *,
+        token,
+        step,
+        approval_granted: bool,
+    ) -> bool:
+        if self._cancel_if_requested(session, token):
+            return False
+        try:
+            prepared = self.orchestrator.prepare(step, call, legacy_policy=self.policy)
+        except ValueError as exc:
+            self._append_tool_result(
+                session,
+                call,
+                ToolResult(ok=False, content=f"Invalid tool request: {exc}"),
+                failed=True,
+            )
+            return True
+        if prepared.decision is PermissionDecision.DENY:
+            raise RuntimeError("permission-denied tool reached executor")
+        if prepared.decision is PermissionDecision.APPROVAL and not approval_granted:
+            raise RuntimeError("approval-required tool reached executor without approval")
+        return self._execute_prepared_tool(
+            session,
+            prepared,
+            token=token,
+            step=step,
+            approval_granted=approval_granted,
+        )
+
+    def _execute_prepared_tool(
+        self,
+        session,
+        prepared,
+        *,
+        token,
+        step,
+        approval_granted: bool = False,
+    ) -> bool:
+        if self._cancel_if_requested(session, token):
+            return False
+        call = prepared.call
+        self._record(
+            session,
+            AgentEventKind.TOOL_STARTED,
+            data={"call_id": call.call_id, "tool": call.name, "step_id": step.step_id},
+        )
+        tracker = self.diff_trackers.for_turn(session.session_id, session.current_turn_id)
+        diff_revision_before = tracker.revision
+        context = ToolContext(
+            session_id=session.session_id,
+            turn_id=session.current_turn_id,
+            workspace=Path(step.world_state.workspace_dir),
+            permission_mode=session.permission_mode.value,
+            is_cancelled=lambda: token.cancelled,
+            services={
+                "process_store": self.process_store,
+                "permission_snapshot": step.permissions,
+                "environment_policy": step.environment_policy,
+                "active_skills": session.active_skills,
+                "diff_tracker": tracker,
+            },
+            emit_event=lambda kind, data: self._record(session, kind, data=data),
+        )
+        result = self.orchestrator.execute(
+            prepared,
+            context,
+            approval_granted=approval_granted,
+        )
+
+        if tracker.revision != diff_revision_before:
+            snapshot = tracker.snapshot(max_chars=self.limits.max_tool_result_chars)
+            self._record(
+                session,
+                AgentEventKind.TURN_DIFF_UPDATED,
+                data={
+                    "revision": snapshot.revision,
+                    "paths": list(snapshot.paths),
+                    "diff": snapshot.diff,
+                    "truncated": snapshot.truncated,
+                },
+            )
+        self._append_tool_result(session, call, result, failed=not result.ok)
+        if self._cancel_if_requested(session, token):
+            return False
+        return True
 
     def _build_step_context(
         self,
