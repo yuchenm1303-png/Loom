@@ -251,6 +251,28 @@ class ToolOrchestrator:
                 exec_action=action,
             )
 
+        # Codex only accepts a fresh with_additional_permissions request under
+        # OnRequest. Other policies may use this mode only after authority has
+        # already been granted and merged for the selected environment. Loom
+        # does not yet carry that per-environment preapproved authority, so fail
+        # closed instead of treating a new scoped grant as reviewable here.
+        if (
+            action.sandbox_permissions.uses_additional_permissions
+            and step.permissions.approval_policy is not ApprovalPolicy.ON_REQUEST
+        ):
+            return PreparedToolCall(
+                call=call,
+                tool=tool,
+                decision=PermissionDecision.DENY,
+                reason=(
+                    "Fresh additional permissions require approval policy on-request; "
+                    "preapproved per-environment permission grants are not available in Loom yet."
+                ),
+                sandbox_permissions=action.sandbox_permissions,
+                additional_permissions=action.additional_permissions,
+                exec_action=action,
+            )
+
         # SandboxPolicy.REQUIRED is a Loom platform fail-closed adapter. Resolve
         # the missing backend before any tool handler/process spawn so the
         # runtime cannot fall through to a late RuntimeError or unsandboxed
@@ -363,11 +385,18 @@ class ToolOrchestrator:
                 "Approval policy is never. For exec, do not provide sandbox_permissions, "
                 "additional_permissions, justification, or prefix_rule; use the ambient sandbox profile."
             )
-        else:
+        elif step.permissions.approval_policy is ApprovalPolicy.ON_REQUEST:
             exec_permission_guidance = (
                 "For exec, prefer sandbox_permissions=with_additional_permissions with only the needed "
                 "filesystem/network grants. Use require_escalated only when a sandboxed grant cannot "
                 "satisfy the action."
+            )
+        else:
+            exec_permission_guidance = (
+                "For exec, use the ambient sandbox profile by default. Do not request "
+                "with_additional_permissions: Loom does not yet carry Codex's preapproved "
+                "per-environment permission grants for this approval policy. Use require_escalated "
+                "only when the active policy allows a full sandbox-bypass review."
             )
         return "\n".join(
             (
