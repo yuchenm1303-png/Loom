@@ -4,13 +4,13 @@ import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 from app.ai import ToolCall
 
-from .patch_format import parse_text_patch
-from .patch_runtime import ApplyPatchRuntime, PatchPlan
-from .tools import ToolContext
+
+_MAX_PATCH_CHARS = 2_000_000
+_MAX_PATCH_OPERATIONS = 128
 
 
 def _canonical_bytes(value: object) -> bytes:
@@ -23,58 +23,84 @@ def _canonical_bytes(value: object) -> bytes:
     ).encode("utf-8")
 
 
-def _content_digest(value: str | None) -> str | None:
-    if value is None:
-        return None
-    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+def _digest(value: object) -> str:
+    return hashlib.sha256(_canonical_bytes(value)).hexdigest()
 
 
-def _planning_context(step) -> ToolContext:
-    return ToolContext(
-        session_id=step.session_id,
-        turn_id=step.turn_id,
-        workspace=Path(step.world_state.workspace_dir),
-        permission_mode=step.permissions.mode.value,
-    )
-
-
-def _plan_for_call(step, call: ToolCall) -> PatchPlan:
-    if str(call.name or "") != "apply_patch":
-        raise ValueError("ApplyPatchActionIdentity requires an apply_patch tool call")
-    arguments = dict(call.arguments)
-    context = _planning_context(step)
+def _canonical_workspace_path(workspace: str | Path, raw_path: object) -> str:
+    value = str(raw_path or "").strip()
+    if not value:
+        raise ValueError("patch path must not be empty")
+    root = Path(workspace).expanduser().resolve()
+    resolved = (root / value).resolve()
     try:
-        if "patch" in arguments:
-            raw_changes = parse_text_patch(context, arguments["patch"])
-        elif "changes" in arguments:
-            raw_changes = arguments["changes"]
-        else:
-            raise ValueError("apply_patch requires patch or changes")
-        return ApplyPatchRuntime().plan(context, raw_changes)
-    except OSError as exc:
-        raise ValueError(f"apply_patch planning failed: {exc}") from exc
+        return resolved.relative_to(root).as_posix()
+    except ValueError as exc:
+        raise ValueError("patch path escapes the workspace") from exc
 
 
-@dataclass(frozen=True, slots=True)
-class PlannedFileChangeIdentity:
-    path: str
-    before_digest: str | None
-    after_digest: str | None
+def _structured_request(workspace: str | Path, raw_changes: object) -> tuple[str, tuple[str, ...]]:
+    if not isinstance(raw_changes, list) or not raw_changes:
+        raise ValueError("changes must be a non-empty array")
+    if len(raw_changes) > _MAX_PATCH_OPERATIONS:
+        raise ValueError("patch contains too many file operations")
 
-    def binding_payload(self) -> dict[str, object]:
-        return {
-            "path": self.path,
-            "before_digest": self.before_digest,
-            "after_digest": self.after_digest,
-        }
+    normalized: list[dict[str, object]] = []
+    paths: set[str] = set()
+    for index, raw in enumerate(raw_changes):
+        if not isinstance(raw, Mapping):
+            raise ValueError(f"changes[{index}] must be an object")
+        item = {str(key): value for key, value in raw.items()}
+        item["action"] = str(item.get("action") or "").strip().casefold()
+        path = _canonical_workspace_path(workspace, item.get("path"))
+        item["path"] = path
+        paths.add(path)
+        if "move_to" in item:
+            destination = _canonical_workspace_path(workspace, item.get("move_to"))
+            item["move_to"] = destination
+            paths.add(destination)
+        normalized.append(item)
+    return _digest(normalized), tuple(sorted(paths))
+
+
+def _text_request(workspace: str | Path, raw_patch: object) -> tuple[str, tuple[str, ...]]:
+    if not isinstance(raw_patch, str) or len(raw_patch) > _MAX_PATCH_CHARS:
+        raise ValueError("patch must be a string of at most 2,000,000 characters")
+    lines = raw_patch.splitlines()
+    if len(lines) < 3 or lines[0] != "*** Begin Patch" or lines[-1] != "*** End Patch":
+        raise ValueError("patch requires Begin Patch and End Patch markers")
+
+    paths: set[str] = set()
+    prefixes = (
+        "*** Add File: ",
+        "*** Delete File: ",
+        "*** Update File: ",
+        "*** Move to: ",
+    )
+    for line in lines[1:-1]:
+        for prefix in prefixes:
+            if line.startswith(prefix):
+                paths.add(_canonical_workspace_path(workspace, line[len(prefix):]))
+                break
+
+    canonical_text = "\n".join(lines)
+    return hashlib.sha256(canonical_text.encode("utf-8")).hexdigest(), tuple(sorted(paths))
 
 
 @dataclass(frozen=True, slots=True)
 class ApplyPatchActionIdentity:
-    """Canonical identity for the effective file changes of one apply_patch call."""
+    """Secret-minimized identity for the requested apply_patch transformation.
+
+    The identity intentionally does not include live file preimages. A preceding
+    tool in the same sampled batch may legitimately change the workspace before
+    this call executes. Atomic preimage validation remains the responsibility of
+    ApplyPatchRuntime at execution time.
+    """
 
     call_id: str
-    changes: tuple[PlannedFileChangeIdentity, ...]
+    input_format: str
+    paths: tuple[str, ...]
+    request_digest: str
 
     @property
     def kind(self) -> str:
@@ -82,24 +108,31 @@ class ApplyPatchActionIdentity:
 
     @classmethod
     def build(cls, step, call: ToolCall) -> "ApplyPatchActionIdentity":
-        plan = _plan_for_call(step, call)
-        changes = tuple(
-            PlannedFileChangeIdentity(
-                path=change.path,
-                before_digest=_content_digest(change.before),
-                after_digest=_content_digest(change.after),
-            )
-            for change in plan.changes
-        )
+        if str(call.name or "") != "apply_patch":
+            raise ValueError("ApplyPatchActionIdentity requires an apply_patch tool call")
+        arguments = dict(call.arguments)
+        workspace = step.world_state.workspace_dir
+        if "patch" in arguments:
+            request_digest, paths = _text_request(workspace, arguments["patch"])
+            input_format = "text"
+        elif "changes" in arguments:
+            request_digest, paths = _structured_request(workspace, arguments["changes"])
+            input_format = "structured"
+        else:
+            raise ValueError("apply_patch requires patch or changes")
         return cls(
             call_id=str(call.call_id or "").strip(),
-            changes=changes,
+            input_format=input_format,
+            paths=paths,
+            request_digest=request_digest,
         )
 
     def binding_payload(self) -> dict[str, Any]:
         return {
             "kind": self.kind,
-            "changes": [change.binding_payload() for change in self.changes],
+            "input_format": self.input_format,
+            "paths": list(self.paths),
+            "request_digest": self.request_digest,
         }
 
     def instance_payload(self) -> dict[str, Any]:
@@ -109,10 +142,7 @@ class ApplyPatchActionIdentity:
         }
 
     def digest(self) -> str:
-        return hashlib.sha256(_canonical_bytes(self.binding_payload())).hexdigest()
+        return _digest(self.binding_payload())
 
 
-__all__ = [
-    "ApplyPatchActionIdentity",
-    "PlannedFileChangeIdentity",
-]
+__all__ = ["ApplyPatchActionIdentity"]
