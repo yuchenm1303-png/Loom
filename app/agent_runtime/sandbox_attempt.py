@@ -98,13 +98,19 @@ class AttemptAwareSandboxManager(SandboxManager):
             base = base.base
         if not isinstance(base, SandboxManager):
             raise TypeError("base sandbox manager must be SandboxManager")
-        # Do not call SandboxManager.__init__: the wrapped manager has already
-        # resolved and probed its host backend. Re-probing here could produce a
-        # different planning world from the StepContext that selected it.
-        self.base = base
+        # The wrapped manager has already resolved and probed the host backend.
+        # Keep that exact instance as the source of ambient policy/state rather
+        # than constructing another manager with potentially different probes.
+        object.__setattr__(self, "base", base)
 
     def __getattr__(self, name: str):
         return getattr(self.base, name)
+
+    def __setattr__(self, name: str, value) -> None:
+        if name == "base" or "base" not in self.__dict__:
+            object.__setattr__(self, name, value)
+            return
+        setattr(self.base, name, value)
 
     def snapshot(self, *args, **kwargs):
         return self.base.snapshot(*args, **kwargs)
