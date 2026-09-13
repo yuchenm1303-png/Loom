@@ -10,7 +10,7 @@ from app.ai.execution_control import ModelCancelled
 
 from .contracts import AgentEventKind as Event
 from .contracts import AgentStatus
-from .execution_binding import binding_digest
+from .execution_binding import action_binding_digest
 from .history import repair_tool_history
 
 
@@ -68,24 +68,13 @@ def _invalid_terminal_response(response: ModelResponse) -> str:
         return "dangling_serialized_structure"
     if visible.count("```") % 2:
         return "unterminated_code_fence"
-    # A terminal colon/dash introduces content that never arrived. Providers can
-    # incorrectly label this shape as ``stop`` when they drop a pending native
-    # tool call. Treat the provider marker as transport metadata, not proof that
-    # the agent's turn is semantically complete.
     if _DANGLING_DISCOURSE_RE.search(visible):
         return "unfinished_terminal_text"
     return ""
 
 
 def _strip_compaction_echo(messages, text: str) -> tuple[str, bool]:
-    """Remove a model's verbatim replay of private checkpoint context.
-
-    Compatible models sometimes quote the injected ``loom_compaction`` message
-    inside an otherwise valid answer.  Streaming is transient, but the durable
-    response boundary must never commit that internal prompt.  Match several
-    substantive lines rather than a single marker so ordinary discussion of
-    compaction is left untouched.
-    """
+    """Remove a model's verbatim replay of private checkpoint context."""
 
     source = str(text or "")
     summaries = [
@@ -122,24 +111,13 @@ def _strip_compaction_echo(messages, text: str) -> tuple[str, bool]:
             start -= 1
             continue
         break
-    # Fail closed from the first proven echo onward.  Trying to recover a suffix
-    # risks retaining unmatched private lines (stickers or formatting can break
-    # otherwise exact line matches). A tool call can still proceed; a text-only
-    # contaminated response is retried by the caller.
     cleaned = "".join(response_lines[:start]).strip()
     cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
     return cleaned, True
 
 
 def _history_message_count(messages) -> int:
-    """Count conversation messages, ignoring Loom's own injected guidance.
-
-    Compaction is what has to satisfy max_messages, but it runs partway through
-    request preparation: later layers still append their own system guidance
-    afterwards. Counting those against the same limit let a request that
-    compaction had just fitted tip back over it, reported as "no safe compaction
-    boundary" even though a boundary had been found.
-    """
+    """Count conversation messages, ignoring Loom's own injected guidance."""
 
     total = 0
     for message in messages:
@@ -322,7 +300,6 @@ class TurnRunner:
                 session.model_steps += 1
                 from .runtime import _add_usage
                 session.usage = _add_usage(session.usage, response.usage)
-                # Keep public partial output for inspection, but never execute partial calls.
                 reason = response.finish_reason.casefold()
                 incomplete = reason not in {"", "stop", "tool_calls", "function_call", "completed", "end_turn"}
                 calls = () if incomplete else response.tool_calls
@@ -345,8 +322,11 @@ class TurnRunner:
                         return rt._limit(session, "tool call limit reached")
                     session.pending_tool_calls.extend(calls)
                     session.pending_step_id = step.step_id
-                    session.pending_bindings = {c.call_id: binding_digest(step, tool, rt.platform)
-                        for c in calls if (tool := step.tool_router.get(c.name)) is not None}
+                    session.pending_bindings = {
+                        c.call_id: action_binding_digest(step, tool, c, rt.platform)
+                        for c in calls
+                        if (tool := step.tool_router.get(c.name)) is not None
+                    }
                     for call in calls:
                         rt._record(session, Event.TOOL_REQUESTED, data={"call_id": call.call_id,
                             "tool": call.name, "arguments": call.arguments, "step_id": step.step_id})
@@ -356,7 +336,6 @@ class TurnRunner:
                 with rt._active_tokens_guard:
                     if rt._consume_steering(session):
                         continue
-                    # Stop accepting steering before committing the terminal state.
                     rt._active_tokens.pop(session.session_id, None)
                 session.status = AgentStatus.COMPLETED
                 session.final_text = response.text
@@ -377,16 +356,11 @@ class TurnRunner:
             token.cancel()
             rt._cancel_if_requested(session, token)
         except Exception as exc:
-            # A cancelled turn raises like any other failure. Reporting it as
-            # FAILED loses the distinction the caller acts on, so cancellation is
-            # resolved first.
             if token.cancelled:
                 rt._cancel_if_requested(session, token)
             else:
                 session.status = AgentStatus.FAILED
                 session.error = f"{type(exc).__name__}: {exc}"
-                # A turn that dies mid tool call leaves calls without results.
-                # Carrying that into the next turn poisons the model's history.
                 session.messages = list(
                     repair_tool_history(
                         session.messages,
