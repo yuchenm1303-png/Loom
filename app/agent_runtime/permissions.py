@@ -258,10 +258,14 @@ _PERMISSION_SNAPSHOTS: dict[PermissionMode, PermissionSnapshot] = {
         approval_policy=ApprovalPolicy.NEVER,
         file_system_access=FileSystemAccess.READ_ONLY,
     ),
+    # Loom's product-level "approval" preset means unmatched commands should
+    # actually ask. Codex represents that behavior as `unless-trusted`; keeping
+    # `on-request` here would make ordinary sandboxed exec calls silently skip
+    # the prompt once exec starts using Codex's dedicated requirement logic.
     PermissionMode.APPROVAL: PermissionSnapshot(
         mode=PermissionMode.APPROVAL,
         profile=_READ_ONLY_PROFILE,
-        approval_policy=ApprovalPolicy.ON_REQUEST,
+        approval_policy=ApprovalPolicy.UNLESS_TRUSTED,
         file_system_access=FileSystemAccess.WORKSPACE_WRITE,
     ),
     PermissionMode.WORKSPACE: PermissionSnapshot(
