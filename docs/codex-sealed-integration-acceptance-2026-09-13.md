@@ -50,6 +50,14 @@ Window02 is now sealed and integrated, but this does not make a pre-restart pend
 
 Therefore `WAITING_APPROVAL` recovery after process restart remains intentionally rejected. A safe handoff may continue an unfinished running turn only when there is no unresolved approval/tool execution authority. This is a deliberate safety boundary, not unfinished Window02 wiring.
 
+### 4. Tool execution must consume the sampled permission mode
+
+The composed Sandbox runtime already passed the immutable `step.permissions` and `step.environment_policy` into `ToolContext`, but it still populated `ToolContext.permission_mode` from the mutable live `session.permission_mode`.
+
+That field is execution authority, not display metadata: process execution forwards it to `ProcessStore.start(...)`. A permission-mode change while an approval was pending could therefore let the reviewed action execute under a different live mode than the one captured when the model sampled it.
+
+The integration branch now derives `ToolContext.permission_mode` and sandbox-escalation approval metadata from `step.world_state.permission_mode`. The reviewed action therefore executes under the same Step-frozen permission world that produced its approval requirement. A later semantic model step may capture a newly changed permission mode normally.
+
 ## Accepted composed runtime ownership
 
 The integrated stack now follows these central rules:
@@ -58,6 +66,7 @@ The integrated stack now follows these central rules:
 - model-visible tool definitions and executable `ToolRouter` handlers come from the same Step-scoped source.
 - `StepContext.mcp_binding` holds exact MCP execution authority; `mcp_binding_json` and `binding_key` are diagnostics/integrity projections only.
 - tool calls from one model response continue on the exact sampled Step rather than rereading live manager/registry/settings state.
+- executable permission mode, permission snapshot and environment policy for a sampled action come from that same Step, not mutable live session state.
 - `ToolOrchestrator` owns approval requirement and sandbox retry planning.
 - only typed/centrally classified sandbox denial may enter the one-shot retry path.
 - `AdditionalPermissionProfile` is explicit scoped authority and is not reduced to a binary sandbox/no-sandbox toggle.
@@ -69,6 +78,7 @@ The integrated stack now follows these central rules:
 Central contracts now cover:
 
 - same-process approval resume does not rebuild the sampled Step;
+- approval resume continues to execute with the sampled Step permission mode even if durable live session settings drift while review is pending;
 - exact MCP `PreparedMcpCall` survives ToolSearch activation and schema planning;
 - deferred approval after runtime restart fails closed with no tool side effect or new model request;
 - safe recovery of a running unfinished turn preserves its turn id and adds no synthetic user message;
