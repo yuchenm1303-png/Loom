@@ -205,8 +205,6 @@ def _metadata(
         "active_context_tokens": active_context_tokens,
         "token_accounting_source": token_accounting_source,
         "tool_schema_tokens": estimate_tool_schema_tokens(tools),
-        # Legacy telemetry keys remain stable, but Codex-parity projection no
-        # longer silently reduces canonical user/tool content on the normal path.
         "tool_outputs_reduced": 0,
         "tool_outputs_collapsed": 0,
         "user_messages_truncated": 0,
@@ -231,8 +229,6 @@ def prepare_context(rt, session, step, token):
 
     project_instructions = rt.instruction_loader.load(session.workspace_dir)
     if project_instructions:
-        # Codex exposes project docs as contextual-user content, below base /
-        # developer instructions. Loom's transport has no content-kind field.
         transient.append(
             AIMessage(
                 role=MessageRole.USER,
@@ -259,6 +255,19 @@ def prepare_context(rt, session, step, token):
     visible_messages = [*transient, *canonical_history]
     estimated_before = estimate_tokens(visible_messages, tools)
 
+    # Compaction cannot reduce base/runtime/project context or tool schemas. Fail
+    # closed before asking the model to summarize history that cannot possibly
+    # make the next request fit.
+    fixed_tokens = estimate_tokens(transient, tools)
+    if fixed_tokens >= limits.input_budget_tokens:
+        raise ContextBudgetExceeded(
+            estimated_tokens=estimated_before,
+            input_budget_tokens=limits.input_budget_tokens,
+            tool_schema_tokens=estimate_tool_schema_tokens(tools),
+            message_count=len(visible_messages),
+            reason="fixed instructions/runtime context or tool schemas exceed the model input budget",
+        )
+
     provider_tokens = _latest_provider_context_tokens(rt, session)
     if provider_tokens is None:
         active_context_tokens = estimated_before
@@ -284,8 +293,6 @@ def prepare_context(rt, session, step, token):
             token_accounting_source=accounting_source,
         )
 
-    # Compaction works on a repaired clone. Canonical/durable history is not
-    # prompt-time truncated and no arbitrary recent assistant/tool suffix is kept.
     repair = repair_tool_history(
         canonical_history,
         max_tool_result_chars=rt.limits.max_tool_result_chars,
@@ -312,6 +319,22 @@ def prepare_context(rt, session, step, token):
             compact_input,
             max_output_tokens=max_output_tokens,
         )
+        request_tokens = estimate_tokens(request.messages)
+        if request_tokens + max_output_tokens > limits.effective_context_window_tokens:
+            if len(compact_input) <= 1:
+                raise ContextBudgetExceeded(
+                    estimated_tokens=request_tokens,
+                    input_budget_tokens=limits.input_budget_tokens,
+                    tool_schema_tokens=0,
+                    message_count=len(request.messages),
+                    reason="compaction request cannot fit after trimming old history",
+                )
+            previous = len(compact_input)
+            compact_input = _trim_oldest_compaction_unit(compact_input)
+            trimmed_messages += previous - len(compact_input)
+            transport_retries = 0
+            continue
+
         try:
             stream_scope = getattr(rt, "_internal_model_stream_scope", None)
             with stream_scope() if callable(stream_scope) else nullcontext():
@@ -347,7 +370,6 @@ def prepare_context(rt, session, step, token):
         raise RuntimeError("context compaction model returned unexpected tool calls")
     summary = str(response.text or "").strip() or "(no summary available)"
 
-    # Validate the replacement window before mutating durable session state.
     replacement = build_compacted_history(
         tuple(repair.messages),
         summary,
@@ -377,9 +399,6 @@ def prepare_context(rt, session, step, token):
         summary_usage=response.usage,
     )
 
-    # Re-project from the committed canonical model window. Product-specific
-    # runtime/project context is transient and therefore remains at the same
-    # precedence after compaction.
     committed_visible = [*transient, *session.messages]
     metadata = _metadata(
         envelope=envelope,
