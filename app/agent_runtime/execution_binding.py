@@ -90,12 +90,19 @@ def action_binding_digest(step, tool, call, platform) -> str:
     Tools without a typed execution action keep the legacy binding exactly. Exec
     adds its canonical action digest so argument/environment semantics become part
     of the approval key without creating a second pending-action store.
+
+    If the call is malformed, keep the generic binding instead of letting action
+    construction preempt the normal tool-validation path. A later mutation from
+    malformed to valid still changes the binding and fails closed.
     """
 
     if str(getattr(call, "name", "") or "") != str(tool.name):
         raise ValueError("tool call does not match selected tool")
     base = binding_digest(step, tool, platform)
-    action = execution_action_for(step, call)
+    try:
+        action = execution_action_for(step, call)
+    except ValueError:
+        return base
     if action is None:
         return base
     payload = {
