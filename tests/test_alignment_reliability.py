@@ -593,8 +593,18 @@ def test_shell_policy_filters_inherited_and_explicit_variables(monkeypatch):
     from app.agent_runtime.shell_environment import ShellEnvironmentPolicy
     monkeypatch.setenv("LOOM_TEST_VISIBLE", "yes")
     monkeypatch.setenv("LOOM_TEST_SECRET", "hidden")
-    policy = ShellEnvironmentPolicy(include_only=("LOOM_TEST_*",), exclude=("*DENIED*",))
-    assert policy.build() == {"LOOM_TEST_VISIBLE": "yes"}
+    # The *KEY*/*SECRET*/*TOKEN* denylist is opt-in since the Codex alignment,
+    # and this assertion is about what it strips, so it has to ask for it.
+    policy = ShellEnvironmentPolicy(
+        ignore_default_excludes=False,
+        include_only=("LOOM_TEST_*",),
+        exclude=("*DENIED*",),
+    )
+    built = policy.build()
+    # Codex restores PATHEXT on Windows after include_only, so a child can still
+    # resolve .cmd/.bat shims. Not part of what this test is pinning.
+    built.pop("PATHEXT", None)
+    assert built == {"LOOM_TEST_VISIBLE": "yes"}
     with pytest.raises(ValueError):
         policy.build({"LOOM_TEST_DENIED": "no"})
     with pytest.raises(ValueError):

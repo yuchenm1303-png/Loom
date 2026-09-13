@@ -19,6 +19,7 @@ from app.agent_runtime import (
     SandboxMode,
     SandboxPolicy,
 )
+from app.agent_runtime.shell_environment import ShellEnvironmentPolicy
 from app.agent_runtime.workspace_tools import loom_default_tools
 from app.ai import AGENT_FAST_ROLE, ModelResponse
 
@@ -276,6 +277,9 @@ def test_process_store_passes_the_exact_sanitized_child_environment_to_sandbox(
         permission_mode=PermissionMode.FULL_ACCESS.value,
         timeout_seconds=30,
         env={"LOOM_EXEC_VISIBLE": "yes"},
+        # Inheriting secret-shaped names is the Codex-aligned default, so the
+        # strip this test pins has to be requested explicitly.
+        environment_policy=ShellEnvironmentPolicy(ignore_default_excludes=False),
     )
 
     assert snapshot.returncode == 0
