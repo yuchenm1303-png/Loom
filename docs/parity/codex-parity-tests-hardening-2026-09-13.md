@@ -2,77 +2,75 @@
 
 ## Scope and baselines
 
-This report is the validation artifact for the `codex-parity-tests-hardening-v1` branch. It intentionally changes tests and parity documentation only; no Loom production runtime file is changed by this branch.
+Validation branch: `codex-parity-tests-hardening-v1`. This branch changes tests and parity documentation only; **0 Loom production runtime files are changed**.
 
-- Loom repository: `yuchenm1303-png/Loom`
-- Loom base: `b3dc3db50b117615be59b79806a6fd8fd38b02a8`
-- Codex repository: `openai/codex`
-- Codex `main` re-read at start of work: `1715e55076737158ba61d43158ede504de6d4ce1`
-- Codex commit date: 2026-09-13
-- Codex commit subject: `Bind direct tool-call metadata to invocation outputs (#45185)`
+- Loom base: `yuchenm1303-png/Loom@b3dc3db50b117615be59b79806a6fd8fd38b02a8`
+- Codex `main` re-read before implementation: `openai/codex@1715e55076737158ba61d43158ede504de6d4ce1`
+- Codex baseline date: 2026-09-13
+- Codex baseline subject: `Bind direct tool-call metadata to invocation outputs (#45185)`
 
-The comparison target is observable contract/state-machine behavior, not Rust syntax or product UI.
+The target is observable runtime contract/state-machine behavior, not Rust syntax or Codex product UI.
 
-## Codex source → contract → Loom counterpart → gap → port plan
+## Codex parity test inventory
 
 ### P0 — safety / lifecycle
 
-| Codex source / test | Protected contract | Loom counterpart | Gap | Port status |
-| --- | --- | --- | --- | --- |
-| `codex-rs/core/src/session/step_activation_tests.rs::submitted_sparse_updates_preserve_captured_steps_and_ordering` | A submitted task keeps its captured step and ordering. | `tests/test_permission_snapshot_alignment.py`; `app/agent_runtime/turn_runner.py` immutable per-sample `StepContext` | Managed-authority activation semantics are broader in Codex. | Existing partial coverage; do not claim equivalence. |
-| `step_activation_tests.rs::delayed_activation_does_not_retarget_a_task` | Delayed activation cannot silently retarget a task to newer state. | Frozen `StepContext`, `pending_bindings` and approval binding digest. | Loom has no direct activation-state-machine analogue. | Partial. |
-| `step_activation_tests.rs::delayed_activation_rechecks_live_managed_authorization` | Captured task identity is retained while live managed authorization is rechecked. | Permission snapshot + approval binding revalidation. | Full managed-policy authority model not present. | Partial. |
-| `step_activation_tests.rs::instruction_refresh_serializes_reads_and_releases_on_cancellation` | Instruction refresh is serialized and cancellation releases waiters. | AGENTS/skill snapshot tests in `tests/test_alignment_reliability.py`. | No direct serialized refresh/cancellation contract located in Loom. | Missing direct parity test/capability evidence. |
-| `codex-rs/core/src/tools/approvals_tests.rs::approval_resolution_aborts_turn_when_approval_is_aborted` | Aborted approval aborts the owning turn rather than executing. | Durable pending approval + cancellation in `runtime.py`. | Needed an explicit late-resolution regression. | Added `test_cancel_waiting_approval_invalidates_late_resolution`. |
-| `codex-rs/core/tests/suite/approvals.rs` permission/sandbox cases | Approval is coupled to sandbox/permission state; escalation does not silently broaden authority. | `tests/test_permission_snapshot_alignment.py`, `tests/test_sandbox_runtime.py`. | Codex amendment/reviewer/escalation surface is richer. | Partial; new drift/action tests added. |
-| `approvals_tests.rs::approval_resolution_rejects_denied_network_policy_amendment` | A denied network amendment cannot become authority through approval resolution. | Loom network/sandbox policy is separate and still evolving. | Exact network amendment semantics missing on base. | Missing / blocker. |
-| `approvals_tests.rs::approval_resolution_rejects_mcp_policy_amendment` | MCP policy amendment cannot silently widen authority. | MCP tool binding identity/digest. | No Codex-style MCP policy amendment state machine. | Partial. |
-| `codex-rs/core/tests/suite/approvals.rs` multi-call approval flows | Completed tool outputs remain observations while a later call waits for approval; resume continues the same turn. | Core pending tool queue and durable approval. | No single cross-module regression existed on base. | Added `test_multiple_tool_calls_pause_at_approval_then_resume_with_observations`. |
-| Current direct metadata suite: repeated call IDs | Call IDs may repeat without losing per-invocation output association. | Ordinary Loom tool history is call-id based but has no Codex direct metadata binding layer. | Execution should not deduplicate repeated IDs; metadata attribution still missing. | Added shallow execution regression; direct metadata parity remains Missing. |
-| Codex abort/cancellation tests + approval tests | Cancellation wins races and cannot be undone by a late response. | `tests/test_alignment_reliability.py` cancellation coverage. | Explicit late approval resolution case was absent. | Added regression. |
-| Codex exec/apply-patch approval scenarios | Approval authorizes the exact action, once. | Loom `exec`, `apply_patch`, pending argument/binding state. | Needed real-tool cross-module evidence rather than synthetic tools. | Added three action-integrity tests. |
+| Codex source / test | Contract protected | Loom counterpart | Gap / port decision |
+| --- | --- | --- | --- |
+| `codex-rs/core/src/session/step_activation_tests.rs::submitted_sparse_updates_preserve_captured_steps_and_ordering` | Submitted work keeps captured step identity/order. | Immutable per-sample `StepContext`, permission snapshot tests. | Existing partial coverage; Codex activation authority is broader. |
+| `step_activation_tests.rs::delayed_activation_does_not_retarget_a_task` | Delayed activation cannot retarget work to newer state. | Frozen step + pending binding digest. | Partial; no direct activation-state-machine analogue. |
+| `step_activation_tests.rs::delayed_activation_rechecks_live_managed_authorization` | Retain captured task identity while rechecking live managed authority. | Approval/binding revalidation. | Full managed-policy authority model Missing. |
+| `step_activation_tests.rs::instruction_refresh_serializes_reads_and_releases_on_cancellation` | Instruction refresh serialized; cancellation releases waiters. | AGENTS/skill snapshot tests. | Direct refresh-lock/cancellation contract Missing. |
+| `codex-rs/core/src/tools/approvals_tests.rs::approval_resolution_aborts_turn_when_approval_is_aborted` | Aborted approval cannot execute and aborts owning work. | Durable pending approval + cancel. | Added explicit late-resolution regression. |
+| `codex-rs/core/tests/suite/approvals.rs` permission/sandbox matrix | Approval remains coupled to captured permission/sandbox authority. | `test_permission_snapshot_alignment.py`, `test_sandbox_runtime.py`. | Codex amendment/reviewer/escalation semantics are richer. |
+| `approvals_tests.rs::approval_resolution_rejects_denied_network_policy_amendment` | Denied network amendment cannot become authority through approval. | Network/sandbox policy pieces. | Exact amendment semantics Missing. |
+| `approvals_tests.rs::approval_resolution_rejects_mcp_policy_amendment` | MCP policy amendment cannot silently widen authority. | MCP/tool binding digest. | Codex-style MCP amendment state machine Missing. |
+| Codex multi-call approval flows | Earlier tool observations survive while later tool call waits; resume continues same turn. | Pending tool queue + durable approval. | Added direct cross-module regression. |
+| Codex cancellation/abort tests | Cancellation wins races; late resolution cannot resurrect work. | Existing cancellation tests. | Added late-approval regression. |
+| Codex exec/apply-patch approval behavior | Approval authorizes exact action, once. | Real Loom `exec`/`apply_patch`. | Added real-tool action-integrity tests. |
+| Current direct-metadata repeated-call-id regressions | Reused call IDs must not attach old invocation metadata to new output. | Ordinary tool history only. | Added shallow execution regression; direct metadata association remains Missing. |
 
 ### P1 — context / MCP / protocol
 
-| Codex source / test | Protected contract | Loom counterpart | Gap | Port status |
-| --- | --- | --- | --- | --- |
-| `codex-rs/core/src/compact_tests.rs::local_compaction_respects_tool_metadata_state` | Local compaction preserves or strips executed-tool metadata according to live feature state without corrupting ordinary output metadata. | `tests/test_context_budget_codex_compaction.py` | Loom base has no `ExecutedToolCallMetadata` equivalent. | Missing; production capability required before faithful test port. |
-| `codex-rs/core/tests/suite/direct_tool_metadata.rs::direct_call_metadata_during_compaction_respects_provider_support` | Direct-call metadata survives/strips across local vs remote compaction according to provider support and feature state. | Loom compaction tests cover summary/budget/history, not host-owned direct metadata. | Exact capability absent. | Missing / blocker. |
-| `direct_tool_metadata.rs::direct_function_and_tool_search_mark_complete_attempts` | Valid, malformed, tool-search and budget-pruned direct attempts have correct completeness metadata; request metadata is budgeted. | Loom malformed response retry + tool observations. | No host-owned direct-call metadata budget/completeness state. | Missing / blocker. |
-| Current Codex commit `#45185` direct metadata binding tests | Tool-call metadata is bound to invocation output, not merely keyed by call ID; budget is released on completion/drop. | No corresponding Loom metadata ledger. | Major semantic gap, especially for repeated call IDs. | Missing. |
-| `codex-rs/codex-mcp/src/binding_tests.rs::prepared_call_keeps_captured_connection_and_authority_after_refresh` | Prepared MCP call retains captured connection/config/authority through refresh. | `tests/test_mcp_runtime.py`, `tests/test_mcp_configured_runtime.py`, execution binding digest. | Loom base has no catalog revision/refresh prepared-call state. | Missing. |
-| `binding_tests.rs::prepared_call_is_rejected_after_catalog_refresh` | A stale prepared MCP call is rejected before preparation/execution after catalog refresh. | Static/configured MCP binding. | No catalog revision refresh contract. | Missing / blocker. |
-| `binding_tests.rs::stale_prepared_call_does_not_run_preparation` | Stale-call rejection occurs before side effects. | Binding digest fail-closed for approval. | Not equivalent to catalog-preparation guard. | Missing. |
-| `binding_tests.rs::preparation_holds_catalog_authority_until_it_finishes` | Refresh cannot overtake an in-progress preparation that owns catalog authority. | No identified Loom analogue. | Missing serialization/authority mechanism. | Missing. |
-| `codex-rs/core/src/tools/spec_plan_tests.rs` | Visible tool specs/namespaces/mode/worker controls form a deterministic tool plan. | Loom `ToolRegistry`, `ToolRouter`, Tool Search schema planning. | No full Codex tool-plan parity inventory yet. | Partial. |
-| `codex-rs/app-server/tests/suite/v2/**` approval/protocol lifecycle | Protocol reconnection cannot orphan or retarget durable work; approval remains attached to exact request/thread generation. | Durable thread ID + call ID and `approval/respond`. | Loom protocol is not Codex v2 wire-identical; generation mechanics differ. | Adapted behavior test added. |
-| Core resumed-history tests such as `core/tests/suite/agents_md.rs`, `fork_thread.rs`, `review.rs` | Resumed threads reconstruct history/state without changing task semantics. | `tests/test_runtime_v2_durable_thread.py`, `tests/test_alignment_reliability.py`. | Full Codex rollout/history format differs. | Adapted partial coverage. |
+| Codex source / test | Contract protected | Loom counterpart | Gap / port decision |
+| --- | --- | --- | --- |
+| `codex-rs/core/src/compact_tests.rs::local_compaction_respects_tool_metadata_state` | Local compaction preserves/strips executed-tool metadata according to feature state. | `test_context_budget_codex_compaction.py`. | `ExecutedToolCallMetadata` equivalent Missing; faithful port blocked. |
+| `codex-rs/core/tests/suite/direct_tool_metadata.rs::direct_call_metadata_during_compaction_respects_provider_support` | Direct metadata across local/remote compaction obeys provider support and feature state. | Summary/budget/history compaction tests. | Host-owned direct metadata Missing. |
+| `direct_tool_metadata.rs::direct_function_and_tool_search_mark_complete_attempts` | Valid/malformed/search attempts carry correct completeness metadata under request budgets. | Malformed/tool observation tests. | Metadata budget/completeness ledger Missing. |
+| Current Codex `#45185` tests | Metadata is bound to invocation output; pending/request budget released on completion/drop/cancel. | No equivalent Loom ledger. | Major Missing capability; repeated IDs make call-id-only association insufficient. |
+| `codex-rs/codex-mcp/src/binding_tests.rs::prepared_call_keeps_captured_connection_and_authority_after_refresh` | Prepared call retains captured connection/config/authority during refresh. | Static/configured MCP binding. | Catalog revision/prepared-call state Missing. |
+| `binding_tests.rs::prepared_call_is_rejected_after_catalog_refresh` | Stale prepared call rejected before execution after refresh. | Approval binding fail-closed. | Not equivalent; catalog revision Missing. |
+| `binding_tests.rs::stale_prepared_call_does_not_run_preparation` | Stale rejection precedes preparation side effects. | No direct analogue. | Missing. |
+| `binding_tests.rs::preparation_holds_catalog_authority_until_it_finishes` | Refresh cannot overtake active preparation authority. | No identified analogue. | Missing serialization/authority mechanism. |
+| `codex-rs/core/src/tools/spec_plan_tests.rs` | Visible tool specs/namespaces/tool mode form deterministic plan. | `ToolRegistry`, `ToolRouter`, Tool Search planning. | Partial; full spec-plan parity not established. |
+| `codex-rs/app-server/tests/suite/v2/**` | Reconnect cannot orphan/retarget durable approval/work. | Durable threadId/callId + `approval/respond`. | Adapted Loom protocol; new reconnect test added. |
+| Core resume/history tests (`agents_md.rs`, `fork_thread.rs`, `review.rs`, etc.) | Resume reconstructs history/state without changing semantics. | Durable-thread/recovery tests. | Adapted partial; rollout format differs. |
 
 ### P2 — edge / compatibility
 
-| Codex source / test | Protected contract | Loom counterpart | Gap | Port status |
-| --- | --- | --- | --- | --- |
-| `approvals_tests.rs::non_utf8_cwd_preserves_approval_routing` | Edge-path encoding does not redirect approval ownership. | Workspace normalization tests, Windows/path tests. | Exact non-UTF-8 route not ported. | Missing edge case. |
-| `approvals_tests.rs::explicit_mcp_reviewer_override_takes_precedence_over_action_context` | Explicit reviewer authority wins over ambient action context. | No reviewer override analogue located. | Product/runtime semantic difference. | Missing unless Loom adopts reviewer authority. |
-| Direct metadata malformed-call coverage | Malformed tool arguments still produce correctly attributed completion/error metadata. | Malformed provider/tool validation tests. | Ordinary error path exists, metadata attribution layer absent. | Partial at tool execution, Missing at metadata layer. |
-| Repeated direct call ID after compaction | A reused ID after compaction is associated with the new invocation, not old metadata. | Added sequential repeated-ID execution test. | Metadata association remains unimplemented. | Partial. |
+| Codex source / test | Contract protected | Loom counterpart | Gap / port decision |
+| --- | --- | --- | --- |
+| `approvals_tests.rs::non_utf8_cwd_preserves_approval_routing` | Edge path encoding cannot redirect approval ownership. | Workspace/path tests. | Exact non-UTF-8 case not ported. |
+| `approvals_tests.rs::explicit_mcp_reviewer_override_takes_precedence_over_action_context` | Explicit reviewer authority beats ambient action context. | No reviewer-override analogue. | Missing unless Loom adopts this authority model. |
+| Direct metadata malformed-call coverage | Malformed attempts still get correct output-bound metadata. | Ordinary malformed validation exists. | Tool path Partial; metadata layer Missing. |
+| Repeated direct call ID after compaction | New invocation with reused ID gets new metadata. | Added sequential repeated-ID execution test. | Metadata association remains Missing. |
 
-## Required cross-module scenario status
+## Required cross-module scenarios
 
-1. **model sample → multiple tool calls → approval → observation → next step** — new contract added: `test_multiple_tool_calls_pause_at_approval_then_resume_with_observations`.
-2. **settings/tool catalog drift while waiting approval** — permission mode and tool binding drift are now fail-closed in `test_waiting_approval_fails_closed_on_permission_or_binding_drift`; full MCP catalog revision/refresh remains Missing.
-3. **sandbox denial + permission/escalation** — existing sandbox tests prove REQUIRED fail-closed and recovery behavior; new denied-exec test proves user denial creates an observation with no process side effect. Codex-style typed containment-denial → one-shot escalation is not present on the reviewed base and remains Partial.
-4. **malformed tool call** — existing malformed provider/tool validation coverage in `tests/test_alignment_reliability.py`; Codex direct metadata attribution for malformed attempts is Missing.
-5. **cancellation race** — existing model cancellation coverage plus new late-approval invalidation test.
-6. **restart/recovery** — existing approval-binding restart and durable-thread recovery tests; full Codex rollout equivalence is not claimed.
-7. **compaction with tool metadata** — Missing. Codex source located precisely in `compact_tests.rs` and `direct_tool_metadata.rs`; Loom lacks the metadata capability required for a faithful test.
-8. **MCP binding refresh** — Missing. Codex prepared-call/catalog revision state machine has no Loom base counterpart.
-9. **app-server reconnect during approval** — added adapted contract: `test_reconnected_controller_can_resolve_existing_approval`.
-10. **two sessions concurrently** — added `test_two_sessions_can_sample_concurrently_without_cross_session_serialization`; existing execution-lease tests cover same-session ownership separately.
-11. **same call id reuse** — added ordinary execution regression `test_reused_call_id_executes_each_sample_once_without_deduplicating`; current Codex direct metadata association remains Missing.
-12. **patch/exec action approval integrity** — added real `exec` and `apply_patch` tests plus denied-exec no-side-effect test.
+1. **model sample → multiple tool calls → approval → observation → next step** — added `test_multiple_tool_calls_pause_at_approval_then_resume_with_observations`.
+2. **settings/tool catalog drift while waiting approval** — added permission/tool-binding drift fail-closed test; full MCP catalog refresh remains Missing.
+3. **sandbox denial + permission/escalation** — existing REQUIRED/AUTO/fail-closed tests plus new denied-exec no-side-effect observation; Codex-style trusted typed containment denial → one-shot escalation remains Partial on reviewed base.
+4. **malformed tool call** — existing Loom malformed provider/tool coverage; direct metadata attribution Missing.
+5. **cancellation race** — existing model cancellation plus new late-approval invalidation.
+6. **restart/recovery** — existing durable queue, torn-log, approval-binding restart/recovery coverage; full Codex rollout equivalence not claimed.
+7. **compaction with tool metadata** — **Missing**; exact Codex source found in `compact_tests.rs` and `direct_tool_metadata.rs`.
+8. **MCP binding refresh** — **Missing**; prepared-call/catalog-revision state machine absent.
+9. **app-server reconnect during approval** — added adapted `test_reconnected_controller_can_resolve_existing_approval`.
+10. **two sessions concurrently** — added non-global-serialization test; existing same-session execution lease remains separate evidence.
+11. **same call id reuse** — added ordinary execution regression; exact Codex direct-metadata association still Missing.
+12. **patch/exec action approval integrity** — added real `exec`, real `apply_patch`, and denied-exec tests.
 
-## Tests added by this branch
+## New tests
 
 `tests/test_codex_parity_lifecycle.py`
 
@@ -92,96 +90,103 @@ The comparison target is observable contract/state-machine behavior, not Rust sy
 - `test_apply_patch_approval_executes_exact_pending_patch_once`
 - `test_denied_exec_action_becomes_observation_without_side_effect`
 
-Total: **9 new parity/regression tests**.
+Total: **9 tests**. Production files changed by this branch: **0**.
 
 ## Execution evidence
 
-### Local execution attempt
+### Local execution
 
-An executable checkout was attempted with:
+Attempted:
 
 ```text
 git clone --depth 1 --branch codex-parity-tests-hardening-v1 https://github.com/yuchenm1303-png/Loom.git /tmp/loom-parity
 ```
 
-The execution environment failed before checkout with:
+The available execution environment failed before checkout:
 
 ```text
 fatal: unable to access 'https://github.com/yuchenm1303-png/Loom.git/': Could not resolve host: github.com
 ```
 
-Therefore no local `pytest` result exists for these new tests. This is an environment/network limitation, not a test pass or test failure.
+Therefore no local `pytest` result exists for these nine tests. This is an environment/network failure, not a passing or failing test result.
 
-### GitHub Actions evidence
+### GitHub Actions investigation
 
-Reviewed `.github/workflows/ci.yml`: it uses ordinary `ubuntu-latest` / `windows-latest` labels and normal checkout/setup/install/test steps. No concrete YAML syntax failure was observed, so this branch does **not** rewrite the workflow speculatively.
+`.github/workflows/ci.yml` uses ordinary `ubuntu-latest` / `windows-latest` labels and normal checkout/setup/install/test steps. No concrete YAML syntax error was found; no speculative YAML rewrite was made.
 
-Observed run `34756502512`:
+Earlier evidence:
 
-- jobs were created and completed as `failure` within seconds;
-- inspected jobs had no steps (`steps: []` / `steps: null` at run-job level);
-- `test` job `103721658556` returned no steps;
-- log retrieval for that job returned `404 BlobNotFound`.
+- run `34756502512`: inspected jobs completed `failure` with no steps; `test` job `103721658556` returned `steps: []`; log retrieval returned `404 BlobNotFound`.
+- `main` run `34748733495` at base `b3dc3db50b117615be59b79806a6fd8fd38b02a8`: same no-step shape on the inspected test job (`103701262426`).
+- historical run `34114209121` succeeded, proving the workflow/standard hosted-runner labels have worked in this repository before.
 
-Observed `main` run `34748733495` at Loom base `b3dc3db50b117615be59b79806a6fd8fd38b02a8`:
+Fresh evidence from this branch / PR #126:
 
-- all Linux/Windows jobs showed the same pre-step failure shape;
-- `test` job `103701262426` had no steps.
+- workflow run `34758253875` was accepted and created all CI jobs.
+- eight jobs, including the general `test` job `103726330800`, immediately completed `failure` with `steps: null` / `logs_url: null`.
+- explicit step lookup for `103726330800` returned `steps: []`; its log endpoint returned `404 BlobNotFound`.
+- in the **same run**, `windows-desktop-smoke` job `103726330788` acquired a runner: `Set up job`, `actions/checkout@v4`, and `actions/setup-python@v5` completed successfully and `Install desktop extra` entered `in_progress` when observed.
 
-Historical run `34114209121` on the same repository/workflow completed successfully, so `ubuntu-latest` / `windows-latest` are not intrinsically invalid labels for this repository.
+This fresh mixed result materially narrows the diagnosis:
 
-Repository Actions policy/billing/quota/account endpoints were not available through the connected GitHub surface. Therefore the exact platform gate is **unverified**. Billing, quota, policy and account restriction remain hypotheses only and must not be presented as the root cause without platform evidence.
+- the workflow is accepted by GitHub, so this is not a workflow parse rejection;
+- repository Actions is not globally disabled, because one job in the same run reached real runner steps;
+- `windows-latest` is not globally invalid/unavailable, because the desktop job used it successfully;
+- the eight zero-step failures are **pre-runner / job-level scheduling-or-eligibility failures**, not pytest/npm/build failures;
+- the exact scheduler/platform/account cause remains **unverified**. Billing, quota, policy, concurrency/account restriction, or transient platform scheduling are hypotheses only until GitHub exposes a concrete reason.
 
-**Conclusion: `contract committed, CI not executed`.** The current red checks are not evidence that pytest, npm, Windows sandbox tests, or the new parity tests failed.
+The general `test` job did not start, so the nine new parity contracts were not executed by CI.
+
+**Validation statement: `contract committed, CI not executed` (for the parity test suite).** A separate desktop job executing does not make the parity tests passed.
 
 ## Parity scorecard
 
 | Domain | Rating | Evidence / reason |
 | --- | --- | --- |
-| Turn/Step | **Partial** | Loom has immutable per-sample StepContext and durable pending state, but not the full Codex step-activation/managed-authority state machine or serialized instruction-refresh semantics. |
-| Approval/Sandbox | **Partial** | Strong fail-closed permission snapshot, durable approval, binding validation and sandbox policy tests; Codex amendment/reviewer/escalation semantics are broader. |
-| Exec | **Partial** | Strong process lifecycle and new exact-action approval test on base; stacked typed-action/orchestrator work is not merged/validated. |
-| Patch | **Partial** | Atomic patch/preimage/diff behavior exists and exact pending patch approval is newly tested; typed action identity is still a draft stacked PR. |
-| Context/Compaction | **Partial** | Auto/length compaction, budgets, language anchor and summaries are tested; current Codex direct-tool metadata compaction semantics are Missing. |
-| Instructions | **Partial** | AGENTS/skill snapshot and restart coverage exist; Codex serialized refresh + cancellation authority is not proven. |
-| MCP | **Partial** | Configuration/binding/credential safety exists; prepared-call catalog revision/refresh state machine is Missing. |
-| Network | **Partial** | Sandbox/network policy pieces exist, but base does not demonstrate current Codex amendment semantics or completed OS egress propagation. |
-| App Server | **Partial** | Durable thread/approval protocol plus new reconnect contract; wire protocol and reconnect-generation model are an adapted Loom implementation, not Codex v2 equivalence. |
-| Recovery | **Partial** | Durable queue/restart/torn-log/approval-binding recovery tests are substantial; Codex rollout/history representation and all recovery edges are not fully mapped. |
-| Concurrency | **Partial** | Existing same-session execution lease plus new two-session non-global serialization regression; full Codex governance concurrency is not ported. |
-| Tests/CI | **Partial** | High-value parity contracts committed, but repository Actions currently fails before runner steps and these new tests have no executed result. |
+| Turn/Step | **Partial** | Immutable per-sample step + durable pending state exist; full Codex activation/managed-authority/serialized-refresh semantics do not. |
+| Approval/Sandbox | **Partial** | Strong fail-closed snapshots, durable approval, binding checks and sandbox tests; Codex amendment/reviewer/escalation surface is broader. |
+| Exec | **Partial** | Process lifecycle + exact pending-action approval test; stacked typed-action/orchestrator work remains unvalidated. |
+| Patch | **Partial** | Atomic patch/preimage/diff + exact pending patch test; typed patch identity is still a draft stack. |
+| Context/Compaction | **Partial** | Summary/budget/auto-compaction tests exist; current direct-tool metadata compaction semantics Missing. |
+| Instructions | **Partial** | AGENTS/skill snapshot/restart coverage exists; serialized refresh/cancellation authority not proven. |
+| MCP | **Partial** | Config/binding/credential safety exists; prepared-call catalog revision/refresh Missing. |
+| Network | **Partial** | Policy/sandbox pieces exist; Codex amendment semantics and completed OS egress enforcement not demonstrated on base. |
+| App Server | **Partial** | Durable approval protocol + new reconnect test; Loom wire/generation model is adapted, not Codex v2 equivalent. |
+| Recovery | **Partial** | Durable restart/torn-log/approval-binding recovery substantial; full Codex rollout/history edges not mapped. |
+| Concurrency | **Partial** | Same-session execution lease + new cross-session concurrency test; full Codex governance concurrency not ported. |
+| Tests/CI | **Partial** | Contracts committed; parity `test` job fails before first step, while one unrelated desktop job can reach a runner. No parity-test execution result. |
 
-No domain is labeled `Codex-equivalent` in this report without end-to-end source/test evidence.
+No domain is labeled `Codex-equivalent` without end-to-end source and executed-test evidence.
 
-## Current blockers to mature Codex-runtime parity
+## Blockers
 
-1. **Executed direct tool-call metadata (`#45185`)**: Loom lacks Codex's output-bound metadata ledger, completeness markers, pending/request budgets and cancellation/drop release semantics. Repeated call IDs make call-id-only association insufficient.
-2. **Metadata-aware compaction**: no faithful Loom port is possible until the above metadata representation exists.
-3. **MCP catalog revision / prepared-call authority**: refresh must reject stale prepared calls before preparation side effects while preserving captured connection/authority for in-flight work.
-4. **Step activation / managed authority**: Loom's immutable step snapshot covers part of the contract, not Codex's delayed activation + live managed authorization + serialized instruction refresh state machine.
-5. **Approval amendment / network authority**: exact Codex network/MCP amendment rejection and reviewer authority are not represented on the reviewed base.
-6. **Network enforcement completion**: policy classification is not equivalent to OS-level egress enforcement.
-7. **CI runner/platform gate**: tests cannot be called green until a runner actually executes steps.
+1. **Executed direct tool-call metadata (`#45185`)** — no Loom output-bound metadata ledger, completeness markers, request/pending budgets, or completion/drop/cancel release semantics.
+2. **Metadata-aware compaction** — cannot be faithfully ported before direct metadata representation exists.
+3. **MCP catalog revision / prepared-call authority** — stale prepared calls must be rejected before preparation side effects while active preparations retain captured authority.
+4. **Step activation / managed authority** — immutable snapshot is not the whole Codex activation/live-managed-auth/serialized-refresh state machine.
+5. **Approval amendment / network authority** — exact Codex network/MCP amendment and reviewer semantics are not represented on reviewed base.
+6. **Network enforcement completion** — classification/policy is not equivalent to OS-level egress enforcement.
+7. **CI job-level pre-runner failure** — exact scheduler/platform cause is unknown, and the parity `test` job still never starts.
 
 ## Open PR merge guidance
 
-### Absolute hold while validation is unavailable
+### Absolute hold
 
-- **#121 — `Align runtime execution boundary with Codex orchestration`**: touches P0 approval/sandbox/step authority and explicitly reports pre-runner CI. It should not merge until the parity suite and its own tests actually execute. Its own PR body also lists remaining StepContext, MCP typing, backend denial, static approval snapshot and network gaps.
-- **#122 — `Introduce typed exec action identity`**: draft stacked on #121, changes approval/action binding identity. Do not merge before #121 is validated and the stacked tests execute.
-- **#123 — `Add typed apply-patch action identity`**: draft stacked on #122, changes patch approval identity. Do not merge before its parent stack is validated and the tests execute.
-- **#120 — `feat(agent): add Codex-style exec and network policy`**: safety-relevant network/exec policy work. Its own scope says OS sandbox egress propagation is a follow-up. Do not merge it as a claim of completed Codex network parity; with CI currently not executing, this report recommends holding the safety-sensitive change until executable validation exists.
+- **#121 — `Align runtime execution boundary with Codex orchestration`**: P0 approval/sandbox/step-authority changes. Its own description acknowledges remaining StepContext/MCP/backend-denial/static approval/network gaps. Do not merge until its tests and this parity suite execute.
+- **#122 — `Introduce typed exec action identity`**: draft stacked on #121; changes action/approval binding. Do not merge before parent validation and executable tests.
+- **#123 — `Add typed apply-patch action identity`**: draft stacked on #122; changes patch approval identity. Do not merge before parent-stack validation and executable tests.
+- **#120 — `feat(agent): add Codex-style exec and network policy`**: safety-relevant exec/network policy. Its own scope says sandbox egress propagation is follow-up. Do not merge it as completed Codex network parity, and do not merge the safety-sensitive change while its validation path is unavailable.
 
-### Outside this window / no parity-green endorsement
+### Outside this window / not certified
 
-- **#119 — `fix(reasoning): align effort controls with Codex semantics`** is a reasoning/provider-state PR rather than the core approval/MCP/exec focus of this window. It is a draft and also reports pre-runner CI. This report does not certify it; absence of a hold finding here is not a merge approval.
+- **#119 — `fix(reasoning): align effort controls with Codex semantics`** is mainly reasoning/provider-state work, outside this window's core approval/MCP/exec focus. It is draft and also reports pre-runner CI. This report does not certify it.
 
 ## Acceptance summary
 
-- Codex baseline re-read and pinned: `1715e55076737158ba61d43158ede504de6d4ce1`.
-- High-value Codex source/test semantics inventoried before test implementation.
-- 9 new cross-module parity contracts committed; 0 production files changed.
-- CI failures were investigated as runner/pre-step failures rather than mislabeled pytest failures.
-- Current direct metadata + compaction and MCP catalog-refresh gaps are explicitly classified as Missing rather than papered over with invented tests.
-- Scorecard remains conservative: no `Codex-equivalent` labels without executable and source-backed evidence.
-- **Validation state: `contract committed, CI not executed`.**
+- Current Codex baseline re-read and pinned before implementation.
+- P0/P1/P2 inventory built from exact Codex test/source files before writing Loom tests.
+- 9 high-value cross-module parity contracts committed; 0 production files changed.
+- Current direct metadata/metadata-compaction and MCP refresh gaps explicitly left Missing instead of inventing substitutes.
+- CI root cause is not mislabeled as pytest failure: the parity `test` job has zero steps/logs, while another job in the same run can reach a runner, proving a job-level pre-runner problem rather than a global workflow parse failure.
+- PR #126 remains draft.
+- **Final validation state: `contract committed, CI not executed` for the parity suite.**
