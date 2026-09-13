@@ -1,125 +1,113 @@
-# Codex persistence / recovery / session parity v1
+# Codex persistence / recovery / session parity v1 — final
 
-## Baselines
+## Frozen baselines
 
-- Codex source baseline: `openai/codex@1715e55076737158ba61d43158ede504de6d4ce1` (`main` HEAD re-read at task start, 2026-09-13).
+- Final Codex audit baseline: `openai/codex@36f0dbe796d9bb1a18a0fc0640ed08b3e1d54564`.
+- Previous audit baseline: `1715e55076737158ba61d43158ede504de6d4ce1`.
+- The one upstream commit between them is Windows Desktop uninstall / ACL plumbing and does not alter the recovery contract below.
 - Loom implementation baseline: `yuchenm1303-png/Loom@b3dc3db50b117615be59b79806a6fd8fd38b02a8`.
-- Loom branch: `codex-recovery-session-parity-v1`.
+- Window branch: `codex-recovery-session-parity-v1`.
 
-The port target is observable recovery semantics, not Rust implementation structure. Loom-only durable goals and queued turns remain a product-layer feature and do not become permission to resume a Core turn after process loss.
+## Corrected canonical contract
 
-## Codex source mapping
+The first revision correctly separated durable history from ephemeral runtime state, but it was too broad when it treated every process restart as a terminal interruption.
 
-| Codex source | Contract / state machine / tests | Loom counterpart | Gap found | Port decision |
-| --- | --- | --- | --- | --- |
-| `codex-rs/core/src/session/session.rs` | `Session` owns persisted-session facilities separately from `active_turn: Mutex<Option<ActiveTurn>>` and the input queue. | `AgentSession` plus `DurableAgentRuntime` | Loom serialized execution-shaped fields in `session.json` and could mistake them for resumable capability. | Treat persisted pending execution fields as audit/reconstruction evidence only after process loss. |
-| `codex-rs/core/src/state/turn.rs` | `ActiveTurn`, `RunningTask`, cancellation/task handles, pending approval oneshot senders, pending permission/user-input state are process-local. | Runtime active token, `pending_tool_calls`, `pending_bindings`, `pending_approval` | Loom snapshot outlived the process-local authority that made these fields meaningful. | On restart recovery, invalidate tool/step/binding/approval capability and mark turn interrupted. |
-| `codex-rs/core/src/session/input_queue.rs` | `InputQueue` is an in-memory mailbox. | Steering plus Loom durable product queue | Loom has intentionally durable goals/queued turns. | Keep Loom product queue durable, but never interpret it as continuation of the crashed Core turn. Consume turn-local steering when interrupting. |
-| `codex-rs/core/src/session/rollout_reconstruction.rs` | Reconstructs model history, turn settings, retained context, world/reference context and compaction state from persisted rollout segments. `TurnComplete` / `TurnAborted` delimit replay; surviving compaction can replace earlier history. | `session.json`, event log, context checkpoints | Loom had snapshot-oriented recovery rather than an explicit durable-history-versus-execution boundary. | Preserve canonical durable transcript and make crash recovery terminal/idempotent. Context projection remains separate. |
-| `codex-rs/history/src/lib.rs` | `RolloutItem` is the persisted domain. `ResponseItemEnvelope` preserves response items plus harness metadata. `CompactedItem.replacement_history` is a recovery checkpoint and stores latest reachable token usage. | `AIMessage` history + Loom context checkpoint events/state | Loom compaction format is product-specific. | Preserve Loom checkpoint representation; require only committed checkpoints to influence reconstruction. |
-| `codex-rs/rollout/src/recorder.rs` | JSONL rollout persistence; resume loads valid durable records; persistence queues retry after materialization failure. Loader reports parse errors. | `events.jsonl` + `.pending-commit.json` redo journal + atomic `session.json` | Different persistence mechanism, same durability goal. | Keep Loom atomic snapshot/redo design. Torn final event is repairable; malformed interior event remains fail-closed because Loom's writer invariant makes it corruption, not an expected crash boundary. |
-| `codex-rs/core/src/context_manager/normalize.rs` | Missing call outputs are synthesized as `aborted` only for in-memory model prompt normalization; synthetic repair is not persisted. Stable derived IDs avoid cache churn on repeated resume. | `repair_tool_history()` | Loom recovery previously wrote repaired messages back to durable `session.json`. | Stop persisting recovery repair. Record projection counts only. The model-request layer must apply the projection ephemerally before future sampling. |
-| `codex-rs/core/src/session/handlers.rs` | Shutdown/abort interrupts tasks and terminates process-local execution resources; approval responses target live in-memory waiters. | Runtime cancellation/process manager/approval resume | Persisted approval or process identity cannot recreate its old waiter/handle after restart. | Never auto-continue approved/pre-exec, running process, or pending tool state after process loss. |
-| `codex-rs/app-server/tests/suite/v2/thread_resume.rs` | Same-server resume can rejoin a running thread. Resume tests also replay pending command/file-change approval requests. A rollout tail without a terminal turn is presented as interrupted. | Loom `thread_resume`, `recover_interrupted()` | Loom app-server currently only loads snapshot on resume; it does not distinguish live rejoin from restart recovery. Loom also cannot yet safely mint a fresh approval binding on replay. | Provide an idempotent recovery primitive now. Window05 must call it only when there is no live turn. Approval replay needs a fresh-binding interface from window02; until then restart recovery interrupts rather than reusing stale authority. |
-| `codex-rs/app-server/tests/suite/v2/thread_fork.rs` | Fork consumes persisted history and creates a new thread identity; tests preserve intended persisted history/configuration semantics. | Loom fork/session cloning | Fork must copy history/product state intentionally, never live execution authority. | No pending approval/tool/process binding may be inherited as an executable capability. |
+Current Codex has an explicit `RecoverTurnRequest` and `CodexThread::recover_turn_if_idle()`. A safely suspended unfinished turn can be reconstructed on a replacement runtime and resume sampling under the **same already-recorded turn id**, with **no new user input**. The old runtime task stack is not revived; a fresh execution stack is created for the existing logical turn.
 
-## Codex durability boundary
+The canonical state machine is therefore three-way:
 
-1. **Durable history** is the persisted rollout domain: response items plus protocol/session/turn/context/compaction events required for reconstruction.
-2. **Model context reconstruction** replays the surviving rollout segment, using the newest surviving compaction replacement history as a checkpoint and replaying the suffix.
-3. **Active turn execution is not serialized**. Tokio task handles, cancellation tokens, approval waiters, live process handles and input mailbox contents are process-local.
-4. **Interrupted turn representation** comes from a started/non-terminal tail or an explicit abort/interruption boundary; persisted work remains visible, but the old execution stack is not revived.
-5. **Pending tool execution is not a restart capability**. A missing tool output can be represented to the next model request by a synthetic aborted output, but that synthetic repair is not written into the rollout.
-6. **Pending approval** is special: app-server resume can replay an approval request, but it does not serialize and reuse the old oneshot waiter. Loom therefore needs a fresh authority/binding for equivalent behavior.
-7. **OS process execution** is process-local. After process loss, ownership/completion cannot be proven from the old handle; recovery must not reattach or re-execute automatically.
-8. **Input queue** is process-local in Codex. Loom's durable goals/queue are product features and remain isolated from Core turn continuation.
-9. **Thread resume != turn resume**. Resume reconstructs/reattaches a thread. Same-process rejoin can observe a still-live active turn; process restart cannot resume the old task stack.
-10. **Fork/rejoin**: fork creates a new thread from persisted history; rejoin attaches to an existing live thread when one exists.
-11. **Item/call IDs** already persisted in response items survive reconstruction. Synthetic normalization IDs are deterministic so repeated resume does not churn prompt identity.
-12. **Compaction checkpoint** participates only once its compacted record is durable. An incomplete compaction cannot replace earlier canonical history.
+1. **Live rejoin** — the current process still owns the live turn. Rejoin it; do not run crash recovery.
+2. **Safe handoff recovery** — the old runtime deliberately suspended the unfinished turn, flushed persistence, and closed its writer without recording a terminal turn boundary. A replacement runtime may resume sampling for the same logical turn id. Do not mark it interrupted first.
+3. **Unclean process loss** — there is no live owner and safe handoff cannot be established. Fail closed: invalidate stale execution-shaped state, preserve canonical durable history, expose ambiguous work as interrupted / outcome unknown, and never infer that an unfinished action should run again.
+
+This distinction is the final Window06 ruling: **execution-stack recovery is not the same thing as logical-turn recovery**.
+
+## Source → contract mapping
+
+| Codex source | Canonical contract | Loom decision |
+| --- | --- | --- |
+| `codex-rs/protocol/src/turn_input.rs` | `RecoverTurnRequest` restarts sampling for an interrupted regular turn using the already-recorded `turn_id`. | Window01 must expose the Python-equivalent same-turn recovery primitive. |
+| `codex-rs/core/src/codex_thread.rs` | `recover_turn_if_idle()` resumes only when idle and adds no new user input. `suspend_turn_and_shutdown()` leaves the unfinished turn non-terminal so another runtime can recover it. | Window05 must route trusted handoff to Window01 recovery and must not call unclean finalization first. |
+| `codex-rs/core/tests/suite/abort_tasks.rs` | Safe handoff test: suspend, verify no `TurnAborted` / `TurnComplete`, resume replacement runtime, recover the original `turn_id`, then complete it. | This is the required integration acceptance shape for Window01/05. |
+| `codex-rs/core/src/context_manager/normalize.rs` | Missing tool output may be synthesized as `aborted` for model-context normalization. | Keep this projection non-persisted; do not rewrite canonical transcript during crash recovery. |
+| `codex-rs/app-server/tests/suite/v2/thread_resume.rs` | Resume can rejoin live state and can replay pending approval requests. | Window05 owns rejoin/routing; Window02 must regenerate fresh approval runtime authority on replay. |
 
 ## Recovery matrix
 
-| State | Codex behavior | Loom before this branch | Target / this branch |
-| --- | --- | --- | --- |
-| Idle thread | Resume reconstructed persisted history; no active task. | Loads snapshot. | Same. No recovery mutation. |
-| Active sampling | Same-process rejoin may observe live turn; after process loss, no sampling task is serialized and non-terminal tail is interrupted. | Persisted `RUNNING` could remain apparently active after restart. | `recover_interrupted()` marks `INTERRUPTED`; no sampling continuation. Window05 must invoke only when no live turn exists. |
-| Waiting approval | Resume can replay a new approval request; old in-process waiter is not the durable authority. | `WAITING_APPROVAL`, approval and binding survived snapshot. | Old approval/binding/tool state is invalidated and turn is interrupted. Future parity requires window02 to mint a fresh replay binding. |
-| Approval accepted / pre-exec | No process-local task continuation is provable after restart; must not infer that execution should start. | Pending tool state could survive. | Interrupt; clear pending calls/bindings. Never auto-execute. |
-| Tool running | Live process/tool handle is process-local; restart cannot prove ownership/completion. | Event/UI could continue to look running. | Core recovery interrupts and never reattaches/retries. Window05 should render unfinished process/tool item as interrupted/unknown under an interrupted turn. |
-| Tool completed / pre-observation | Side effect may have happened, but without durable tool output the durable history cannot prove result. Prompt normalization can synthesize `aborted`/unknown. | Recovery wrote a synthetic aborted observation into durable messages. | Durable messages remain unchanged. Recovery records projection counts with `persisted=false`; do not retry automatically. |
-| Compaction running | Only a durable compacted checkpoint replaces history. | Checkpoint behavior is Loom-specific. | Ignore incomplete/uncommitted checkpoint; reconstruct from last durable state. |
-| Cancelled turn | Terminal cancellation/abort is durable; no continuation. | Core runtime already persists cancellation and currently repairs history durably. | No restart continuation. Durable-repair-on-cancel is owned by window01 and should be compared with Codex prompt-only normalization separately. |
-| Crashed turn | Persisted history remains; non-terminal active turn is interrupted. | `RUNNING` crash recovery persisted synthetic repair and did not clear bindings. | Interrupt idempotently, preserve durable transcript, clear execution capabilities. |
-| Reconnect without process restart | Rejoin existing live thread/turn. | App-server can reconnect to its live runtime. | Do not call crash recovery when a live turn exists. |
-| Process restart | Reconstruct persisted thread; no old task/waiter/process continuation. | Snapshot could expose stale active/pending state. | Window05 calls fail-closed recovery when persisted status is active but no live turn exists. |
+| Persisted / live state | Final behavior |
+| --- | --- |
+| idle thread | Reconstruct durable history; no recovery mutation. |
+| live active turn in current process | Rejoin live turn. |
+| safely suspended unfinished turn | Preserve non-terminal state; recover same logical turn through Window01, same `turn_id`, no duplicate user input. |
+| active snapshot after unclean process loss | Mark interrupted and invalidate stale execution-shaped fields. |
+| waiting approval, same process | Use the live approval path. |
+| waiting approval after restart | Do not reuse old runtime authority. Until Window02 supports fresh replay, fail closed. |
+| action may have completed but observation is not durable | Outcome unknown; do not automatically retry. |
+| missing tool output in model history | Add only a non-persisted `aborted` projection at model-request time. |
+| incomplete compaction | Ignore as replacement checkpoint until durable. |
+| Loom durable goal / future queue | Preserve as product intent; it is not authority to revive the lost Core execution stack. |
 
-## Crash windows and fail-closed rules
+## Window06-owned implementation
 
-### Approval accepted, execution not yet started
+`DurableAgentRuntime.recover_interrupted()` is retained as the current compatibility entry point for **unclean process-loss finalization only**. It must not be treated as the Codex `recover_turn_if_idle()` operation.
 
-The durable record can say the user approved, but a restarted process cannot prove whether the old execution task had already crossed into side effects. Recovery therefore does **not** start the tool. The old binding is invalidated.
+For an unclean loss it correctly:
 
-### Tool running when the process dies
+- handles persisted `RUNNING` and `WAITING_APPROVAL` states;
+- clears pending tool calls, step id, bindings and approval state;
+- preserves canonical durable messages;
+- records missing/orphan/duplicate tool-output repair counts as a non-persisted projection;
+- preserves Loom durable goals / future queue state;
+- emits one idempotent `TURN_INTERRUPTED` boundary;
+- does not automatically repeat ambiguous work.
 
-A stale process ID or an old process record is not proof of ownership. Recovery does not reattach, kill by guessed PID, or execute again. The action outcome is unknown unless a durable completion observation exists.
+The method name is legacy. Its semantics are now explicitly constrained by this contract. Renaming it is optional cleanup, not a reason to rewrite the production file in Window06.
 
-### Tool completed, observation not durable
+## Storage contract
 
-The side effect may have happened. Retrying would risk duplication. The durable transcript is left unchanged; the next model prompt may receive a synthetic aborted/unknown output as a non-persisted projection so the model must inspect state before retrying.
+Loom's `.pending-commit.json` redo plus atomic snapshot design is a platform-equivalent persistence mechanism, not a Rust rollout clone.
 
-### Event durable, snapshot not durable (or vice versa)
+- torn final JSONL record: repairable before the next append;
+- redo event already present: deduplicate by stable event id;
+- malformed interior record: fail closed under Loom's writer invariant;
+- only durable context checkpoints participate in reconstruction.
 
-Loom's `.pending-commit.json` redo record intentionally differs from Codex JSONL-only rollout mechanics. Recovery completes the pair and deduplicates by `event_id`. A torn final JSONL record is truncated before the next append. A malformed interior record remains an error: with Loom's atomic append/redo protocol it indicates corruption rather than an ordinary crash boundary, so fail-closed is safer than silently skipping it.
+## Cross-window interfaces
 
-## Loom-only durability isolation
+### Window01 — runtime / turn
 
-`DurableThreadStateStore` goals and queued turns are product-layer intent. They survive restart by design. They are not an `ActiveTurn`, tool continuation, approval token, process lease, or input mailbox.
+Provide:
 
-Crash recovery therefore:
+- non-persisted history projection at the model-request boundary;
+- `recover_turn_if_idle(existing_turn_id, ...)` or equivalent: same logical turn id, no new user input, fresh StepContext/execution stack, only for a caller-authorized safe handoff.
 
-- reconciles queue claims against the durable turn id;
-- preserves queued turns and durable goals;
-- consumes turn-local steering for the dead turn;
-- clears pending tool calls, pending step id, pending bindings and pending approval;
-- leaves canonical messages untouched;
-- emits one durable `TURN_INTERRUPTED` event, and is idempotent thereafter.
+Also review cancellation / binding-failure paths that still persist `repair_tool_history()` output.
 
-## Tests translated / added
+### Window02 — approval / sandbox
 
-- crash recovery preserves canonical durable history;
-- missing tool output is counted as a non-persisted model-history projection;
-- stale pending bindings are invalidated;
-- waiting approval fails closed after process loss;
-- durable product queue survives Core turn interruption;
-- repeated recovery is idempotent (one terminal interruption event);
-- torn final event log record is repaired before next append;
-- redo recovery does not duplicate an already-appended event id;
-- malformed interior event log corruption fails closed.
+Provide fresh approval replay from persisted request data. A restart must not rely on the old process-local approval binding.
 
-Existing Loom tests continue to cover durable goal/queue restart behavior. Codex source/tests additionally establish resume/rejoin/fork, interrupted-tail and compaction reconstruction semantics; app-server/context integration items below are intentionally not implemented from this window.
+### Window05 — app-server / UI
 
-## Required minimal interfaces from other windows
+Use three-way resume routing:
 
-### Window01 — runtime/turn
+1. live turn exists locally → rejoin;
+2. trusted safe handoff is recoverable → Window01 same-turn recovery;
+3. no live owner and no safe handoff proof → Window06 unclean finalization.
 
-Provide a model-request boundary that can accept a **non-persisted history projection** (the existing `repair_tool_history()` output is sufficient as input) so missing tool outputs are synthesized for provider validity without writing them to canonical session history. Also review cancellation/binding-failure paths in core runtime that currently persist `repair_tool_history()` output; this window did not modify those owned files.
+For unclean interruption, UI should show unfinished tool/process work as interrupted / outcome unknown rather than fabricating completion.
 
-### Window02 — approval/sandbox
+## Intentional integration gaps
 
-Provide `replay_pending_approval(persisted_request) -> fresh_process_local_binding` (name illustrative) or equivalent. The fresh binding must be generated by the new process and must not trust the serialized old binding/HMAC. Until this exists, recovery intentionally interrupts a restarted `WAITING_APPROVAL` turn instead of pretending Codex-compatible approval replay is safe.
+- Pending approval replay remains blocked on Window02 fresh authority generation.
+- Same-turn safe-handoff sampling recovery remains blocked on the Window01 runtime primitive plus Window05 routing.
 
-### Window05 — app-server/UI
+These are explicit integration dependencies. Window06 must not reimplement Window01/02/05 internals.
 
-On `thread/resume` (and any startup restoration path), distinguish:
+## Seal
 
-- a thread with a live runtime turn in the current process: **rejoin; do not recover**;
-- a persisted `RUNNING` / `WAITING_APPROVAL` thread with no live turn: call `runtime.recover_interrupted(thread_id)` once before returning the reconstructed thread.
+Window06 is **sealed** for its owned domain after this correction: persistence boundary, reconstruction contract, unclean crash finalization, durable-history integrity, storage crash tolerance, and the three-way recovery state machine are fixed.
 
-When rendering events, any tool/process item still marked running inside a terminal `INTERRUPTED` turn should be presented as interrupted / outcome unknown rather than live. Do not fabricate `PROCESS_EXITED` or `TOOL_COMPLETED` events.
+The previous blanket statement `process restart => terminal interrupted turn` is superseded by this document. The final rule is:
 
-## Known intentional deviation from current Codex
-
-Current Codex app-server tests replay pending command-execution and file-change approval requests on resume. Loom cannot yet do this safely because the approval authority/binding regeneration contract is owned by window02 and is not present in this branch. Reusing the serialized binding would weaken the security boundary, so this branch chooses the temporary safer behavior: invalidate and interrupt.
-
-The observable difference is that a user must start/continue a fresh turn instead of approving the old request after a process restart. Once window02 exposes fresh replay binding generation, this deviation can be closed without changing the durability rule established here.
+> Live turn → rejoin. Safe suspended turn → rebuild a fresh execution stack for the same logical turn. Unclean loss → fail closed and interrupt.
