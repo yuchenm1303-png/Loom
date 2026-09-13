@@ -54,6 +54,23 @@ def test_auto_exec_fallback_requires_approval_when_no_backend_exists(tmp_path):
     assert "unavailable" in reason.casefold() or "no loom os sandbox backend" in reason.casefold()
 
 
+def test_required_exec_without_backend_is_denied_before_user_approval(tmp_path):
+    manager = SandboxManager(
+        policy=SandboxPolicy.REQUIRED,
+        system_name="Darwin",
+        probe_backend=False,
+    )
+    step = _step(tmp_path, mode=PermissionMode.WORKSPACE, manager=manager)
+    tool = step.tool_router.get("exec")
+    assert tool is not None
+
+    decision, reason = ToolOrchestrator().evaluate_tool(step, tool)
+
+    assert decision is PermissionDecision.DENY
+    assert "required" in reason.casefold()
+    assert "no enforced backend" in reason.casefold()
+
+
 def test_full_access_does_not_add_redundant_sandbox_fallback_approval(tmp_path):
     manager = SandboxManager(
         policy=SandboxPolicy.AUTO,
