@@ -10,6 +10,7 @@ from typing import Any, Mapping
 
 from app.ai import ToolCall
 
+from .apply_patch_action import ApplyPatchActionIdentity
 from .process_runtime import validate_argv, validate_terminal_size, validate_timeout
 
 
@@ -95,6 +96,10 @@ class ExecActionIdentity:
     explicit_environment_identity: str
     resolved_environment_identity: str
 
+    @property
+    def kind(self) -> str:
+        return "exec_command"
+
     @classmethod
     def build(cls, step, call: ToolCall) -> "ExecActionIdentity":
         if str(call.name or "") != "exec":
@@ -134,7 +139,7 @@ class ExecActionIdentity:
 
     def binding_payload(self) -> dict[str, Any]:
         return {
-            "kind": "exec_command",
+            "kind": self.kind,
             "argv": list(self.argv),
             "resolved_cwd": self.resolved_cwd,
             "wait": self.wait,
@@ -159,15 +164,19 @@ class ExecActionIdentity:
         return hashlib.sha256(_canonical_bytes(self.binding_payload())).hexdigest()
 
 
-def execution_action_for(step, call: ToolCall) -> ExecActionIdentity | None:
+def execution_action_for(step, call: ToolCall) -> ExecActionIdentity | ApplyPatchActionIdentity | None:
     """Resolve the typed execution action for a model call when one exists."""
 
-    if str(call.name or "") == "exec":
+    name = str(call.name or "")
+    if name == "exec":
         return ExecActionIdentity.build(step, call)
+    if name == "apply_patch":
+        return ApplyPatchActionIdentity.build(step, call)
     return None
 
 
 __all__ = [
+    "ApplyPatchActionIdentity",
     "ExecActionIdentity",
     "exec_environment_identity",
     "execution_action_for",
