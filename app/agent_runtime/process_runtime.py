@@ -1009,6 +1009,7 @@ class ProcessStore:
             cwd=cwd,
             permission_mode=permission_mode,
             timeout_seconds=timeout_seconds,
+            environment_policy=environment_policy,
             stdin_text=stdin_text,
             workspace=workspace,
             env=env,

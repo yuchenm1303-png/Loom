@@ -17,6 +17,7 @@ from app.agent_runtime import (
 )
 from app.agent_runtime.process_runtime import ProcessState, safe_process_environment
 from app.agent_runtime.sandbox import SandboxManager
+from app.agent_runtime.shell_environment import ShellEnvironmentPolicy
 from app.agent_runtime.workspace_tools import loom_default_tools
 from app.ai import AGENT_FAST_ROLE, ModelResponse, ToolCall
 
@@ -61,6 +62,13 @@ def test_exec_pipe_captures_stdout_stderr_exit_cwd_env_and_unicode(tmp_path, mon
         "print('stderr-✓', file=sys.stderr)"
     )
 
+    # The Codex-aligned default is to inherit the parent environment
+    # unfiltered, so the host's LOOM_TEST_API_KEY would normally reach the
+    # child. The test asserts the strip-side contract: with the denylist
+    # turned back on via an explicit policy, secret-shaped host env vars do
+    # not propagate.
+    secret_stripping_policy = ShellEnvironmentPolicy(ignore_default_excludes=False)
+
     snapshot = store.run(
         session_id="session-a",
         argv=(sys.executable, "-u", "-c", script),
@@ -72,6 +80,7 @@ def test_exec_pipe_captures_stdout_stderr_exit_cwd_env_and_unicode(tmp_path, mon
         # arbitrary child's locale. Configure this Python fixture to emit UTF-8
         # so the test measures Loom's UTF-8 capture/decoding boundary itself.
         env={"LOOM_TEST_VALUE": "works", "PYTHONIOENCODING": "utf-8"},
+        environment_policy=secret_stripping_policy,
     )
 
     assert snapshot.state is ProcessState.EXITED

@@ -55,12 +55,27 @@ DEFAULT_SETTINGS: dict[str, Any] = {
         "preserveBackgroundProcesses": True,
     },
     "environment": {
-        # Explicit allowlist of secret-shaped env var names that the agent
-        # sandbox is allowed to inherit from the host. Anything matching
-        # *_TOKEN / *_KEY / *_SECRET etc. is stripped by default to prevent
-        # accidental leakage. Listing a name here opts it in. Names are
-        # case-insensitive and matched against the host environment only —
-        # runtime overrides still go through the secret-name denylist.
+        # Mirrors Codex's `shell_environment_policy` table. Defaults match
+        # Codex's own: inherit the full parent environment and filter nothing,
+        # which is what lets GH_TOKEN / GITHUB_TOKEN reach git and gh in a
+        # spawned process.
+        #
+        # Seed for the child environment: all | core | none.
+        "inherit": "all",
+        # True (Codex's default) skips the *KEY* / *SECRET* / *TOKEN* denylist.
+        # Set to false to turn that filtering back on.
+        "ignoreDefaultExcludes": True,
+        # Wildcard patterns (* and ?) matched case-insensitively against names.
+        "exclude": [],
+        # Operator-supplied name -> value pairs inserted after the excludes.
+        # Distinct from the `env` argument on the model's exec tool, which is
+        # screened separately and cannot introduce secret-shaped names.
+        "set": {},
+        # When non-empty, only names matching these patterns survive.
+        "includeOnly": [],
+        # Loom extension with no Codex counterpart: names that stay readable
+        # even when `ignoreDefaultExcludes` is false. Lets an operator run the
+        # denylist and still pass specific credentials through.
         "passThroughEnvVars": [],
     },
     "browser": {
@@ -113,6 +128,11 @@ _ALLOWED_SETTING_PATHS: dict[str, tuple[type, Any]] = {
     "terminal.encoding": (str, {"utf-8", "system"}),
     "terminal.commandTimeoutSeconds": (int, range(15, 1801)),
     "terminal.preserveBackgroundProcesses": (bool, None),
+    "environment.inherit": (str, {"all", "core", "none"}),
+    "environment.ignoreDefaultExcludes": (bool, None),
+    "environment.exclude": (list, None),
+    "environment.set": (dict, None),
+    "environment.includeOnly": (list, None),
     "environment.passThroughEnvVars": (list, None),
     "browser.mode": (str, {"local-launch", "cdp-attach", "extension"}),
     # Validated properly by the runtime, which is the only place that knows the
@@ -136,6 +156,17 @@ _ALLOWED_SETTING_PATHS: dict[str, tuple[type, Any]] = {
 # says "no external browser", and rejecting it would strand a stale address in the
 # stored settings after a switch back to local-launch.
 _CLEARABLE_SETTING_PATHS = frozenset({"browser.cdpUrl"})
+
+# Shell-environment settings holding env var names or wildcard patterns. They
+# share one validator: a malformed entry here reaches every spawned process, so
+# it is rejected at the settings boundary rather than at exec time.
+_ENV_NAME_LIST_PATHS = frozenset(
+    {
+        "environment.exclude",
+        "environment.includeOnly",
+        "environment.passThroughEnvVars",
+    }
+)
 
 
 class LoomSettingsStore:
@@ -220,19 +251,34 @@ class LoomSettingsStore:
                 return value[:120]
             if path.startswith("shortcuts."):
                 return value[:64]
-        if expected_type is list:
-            if path == "environment.passThroughEnvVars":
-                if not all(isinstance(item, str) for item in value):
-                    raise ValueError(f"setting {path} must be a list of strings")
-                cleaned: list[str] = []
-                for item in value:
-                    name = item.strip()
-                    if not name:
-                        continue
-                    if len(name) > 256 or any(ch in name for ch in "\0="):
-                        raise ValueError(f"setting {path} contains an invalid name: {item!r}")
-                    cleaned.append(name)
-                return cleaned
+        if expected_type is list and path in _ENV_NAME_LIST_PATHS:
+            if not all(isinstance(item, str) for item in value):
+                raise ValueError(f"setting {path} must be a list of strings")
+            cleaned: list[str] = []
+            for item in value:
+                name = item.strip()
+                if not name:
+                    continue
+                if len(name) > 256 or any(ch in name for ch in "\0="):
+                    raise ValueError(f"setting {path} contains an invalid name: {item!r}")
+                cleaned.append(name)
+            return cleaned
+        if path == "environment.set":
+            # Operator-controlled, so unlike the model's exec `env` argument this
+            # may carry a credential on purpose. Only shape is enforced.
+            pairs: dict[str, str] = {}
+            for raw_name, raw_value in value.items():
+                name = str(raw_name).strip()
+                if not name:
+                    continue
+                if len(name) > 256 or any(ch in name for ch in "\0="):
+                    raise ValueError(f"setting {path} contains an invalid name: {raw_name!r}")
+                if not isinstance(raw_value, str):
+                    raise ValueError(f"setting {path} must map names to strings")
+                if "\0" in raw_value or len(raw_value) > 64_000:
+                    raise ValueError(f"setting {path} contains an invalid value for {name}")
+                pairs[name] = raw_value
+            return pairs
         if allowed is not None and value not in allowed:
             raise ValueError(f"invalid value for setting {path}: {value!r}")
         return value
