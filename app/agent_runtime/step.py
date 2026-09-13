@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from app.ai import ReasoningRequest
 
@@ -18,6 +19,9 @@ from .sandbox import SandboxSnapshot
 from .tools import ToolRouter
 from .shell_environment import ShellEnvironmentPolicy, get_default_environment_policy
 
+if TYPE_CHECKING:
+    from .mcp_runtime import McpBinding
+
 
 @dataclass(frozen=True, slots=True)
 class WorldStateSnapshot:
@@ -30,11 +34,11 @@ class WorldStateSnapshot:
 
 @dataclass(frozen=True, slots=True)
 class RequestStateSnapshot:
-    """Model-visible and execution-binding settings frozen for one sampling step.
+    """Model-visible and integrity metadata frozen for one sampling step.
 
     Model metadata is provider-safe output from ``ModelProfile.as_safe_dict``.
-    MCP binding data is a canonical, secret-free identity snapshot; credentials
-    are never copied into this object.
+    ``mcp_binding_json`` is a secret-free diagnostic/integrity projection only;
+    exact MCP execution authority lives on ``StepContext.mcp_binding``.
     """
 
     captured: bool = False
@@ -121,6 +125,7 @@ class StepContext:
     request_state: RequestStateSnapshot = field(default_factory=RequestStateSnapshot)
     reasoning: ReasoningRequest | None = None
     environment_policy: ShellEnvironmentPolicy = field(default_factory=get_default_environment_policy)
+    mcp_binding: McpBinding | None = None
 
     @property
     def permission_profile(self) -> PermissionProfile:
@@ -150,6 +155,7 @@ class StepContext:
         permissions: PermissionSnapshot | None = None,
         request_state: RequestStateSnapshot | None = None,
         reasoning: ReasoningRequest | None = None,
+        mcp_binding: McpBinding | None = None,
     ) -> "StepContext":
         resolved_permissions = permission_snapshot(permissions or permission_mode)
         if PermissionMode(permission_mode) is not resolved_permissions.mode:
@@ -173,6 +179,7 @@ class StepContext:
             tool_router=tool_router,
             request_state=request_state or RequestStateSnapshot(),
             reasoning=reasoning,
+            mcp_binding=mcp_binding,
         )
 
 
