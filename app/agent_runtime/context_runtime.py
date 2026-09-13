@@ -11,7 +11,7 @@ from .context_state import (
 )
 from .contracts import AgentEventKind, AgentRunResult, AgentSession, AgentStatus
 from .history import HistoryRepair, repair_tool_history
-from .instructions import ProjectInstructionSnapshotStore, TurnScopedInstructionLoader
+from .instructions import AppliedInstructionCache
 from .response_language import communication_language_message, infer_user_language
 from .runtime import CancellationToken
 from .sandbox_runtime import SandboxAgentRuntime
@@ -34,11 +34,11 @@ class ContextAgentRuntime(SandboxAgentRuntime):
     def __init__(self, *args, checkpoint_store: ContextCheckpointStore | None = None, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.checkpoint_store = checkpoint_store or ContextCheckpointStore(self.store.root)
-        self.instruction_snapshot_store = ProjectInstructionSnapshotStore(self.store.root)
-        self.instruction_loader = TurnScopedInstructionLoader(
-            self.instruction_loader,
-            self.instruction_snapshot_store,
-        )
+        # Codex keeps one applied repository-instruction snapshot while the
+        # environment/trust selection is unchanged. Loom currently exposes the
+        # resolved workspace as that key. This cache is intentionally in-memory;
+        # restart recovery belongs to the owner that restores the entire Step.
+        self.instruction_loader = AppliedInstructionCache(self.instruction_loader)
 
     def _goal_payload(self, session_id: str) -> dict[str, object] | None:
         try:
@@ -273,12 +273,7 @@ class ContextAgentRuntime(SandboxAgentRuntime):
     def _prepare_model_request(self, session, step, token):
         from .context_budget import prepare_context
 
-        with self.instruction_loader.bind_turn(
-            session_id=session.session_id,
-            turn_id=session.current_turn_id,
-            workspace=session.workspace_dir,
-        ):
-            return prepare_context(self, session, step, token)
+        return prepare_context(self, session, step, token)
 
 
 def _add_usage(left: ModelUsage, right: ModelUsage) -> ModelUsage:
