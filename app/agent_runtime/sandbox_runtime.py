@@ -11,9 +11,19 @@ from .permissions import PermissionDecision, permission_snapshot
 from .process_runtime import ProcessStore
 from .response_language import infer_user_language
 from .sandbox import SandboxManager, SandboxPolicy, SandboxSnapshot
+from .sandbox_attempt import (
+    AttemptAwareSandboxManager,
+    ensure_attempt_aware_sandbox_manager,
+)
 from .sandbox_tools import sandbox_status_tool
 from .step import RequestStateSnapshot, StepContext
 from .tools import ToolContext, ToolResult
+
+
+def _sandbox_manager_identity(manager):
+    if isinstance(manager, AttemptAwareSandboxManager):
+        return manager.base
+    return manager
 
 
 class SandboxAgentRuntime(DurableAgentRuntime):
@@ -44,11 +54,17 @@ class SandboxAgentRuntime(DurableAgentRuntime):
                 if resolved_policy is None:
                     resolved_policy = str(os.environ.get("LOOM_SANDBOX_POLICY") or SandboxPolicy.AUTO.value)
                 sandbox_manager = SandboxManager(policy=resolved_policy)
-        elif supplied_store is not None and supplied_store.sandbox_manager is not sandbox_manager:
+        elif supplied_store is not None and (
+            _sandbox_manager_identity(supplied_store.sandbox_manager)
+            is not _sandbox_manager_identity(sandbox_manager)
+        ):
             raise ValueError("sandbox_manager must match the supplied process_store")
 
+        sandbox_manager = ensure_attempt_aware_sandbox_manager(sandbox_manager)
         if supplied_store is None:
             kwargs["process_store"] = ProcessStore(sandbox_manager=sandbox_manager)
+        else:
+            supplied_store.sandbox_manager = sandbox_manager
 
         super().__init__(*args, **kwargs)
         self.sandbox_manager = self.process_store.sandbox_manager
