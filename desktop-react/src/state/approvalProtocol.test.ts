@@ -9,7 +9,7 @@ const pending = {
   approvalItemId: "approval:call-1",
   callId: "call-1",
   requestType: "toolExecution",
-  kind: "initial",
+  approvalStage: "initial",
   retryReason: null,
   startedAtMs: 1,
   toolName: "shell",
