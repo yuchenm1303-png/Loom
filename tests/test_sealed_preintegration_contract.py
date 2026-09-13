@@ -125,7 +125,7 @@ def test_safe_handoff_recovers_same_turn_without_new_user_input(tmp_path):
     assert observed == {"turn_id": "existing-turn", "messages": []}
 
 
-def test_safe_handoff_refuses_pending_approval_until_window02(tmp_path):
+def test_safe_handoff_refuses_pending_approval_without_original_process_authority(tmp_path):
     runtime = _runtime(tmp_path)
     runtime.mcp_clients = _BindingSequence(_binding(revision=1))
     workspace = tmp_path / "project"
@@ -135,5 +135,5 @@ def test_safe_handoff_refuses_pending_approval_until_window02(tmp_path):
     session.status = AgentStatus.WAITING_APPROVAL
     runtime.store.save(session)
 
-    with pytest.raises(RuntimeError, match="Window02"):
+    with pytest.raises(RuntimeError, match="original captured StepContext"):
         runtime.recover_turn_if_idle(session.session_id, "approval-turn")
