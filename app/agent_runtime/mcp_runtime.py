@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import asyncio
 import concurrent.futures
+import hashlib
 import json
 import os
 import re
 import threading
 import time
 import tomllib
-from dataclasses import dataclass
+from copy import deepcopy
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
@@ -27,6 +29,10 @@ class MCPConfigurationError(ValueError):
 
 
 class MCPUnavailableError(RuntimeError):
+    pass
+
+
+class MCPCatalogChangedError(MCPUnavailableError):
     pass
 
 
@@ -262,6 +268,9 @@ class _ConnectedServer:
     instructions: str = ""
     protocol_version: str = ""
     server_info: str = ""
+    catalog_revision: int = 1
+    closed: bool = False
+    catalog_lock: threading.RLock = field(default_factory=threading.RLock, repr=False)
 
 
 class _AsyncLoopRunner:
@@ -312,8 +321,213 @@ class _AsyncLoopRunner:
         self._thread.join(timeout=3.0)
 
 
+def _copy_descriptor(descriptor: MCPToolDescriptor) -> MCPToolDescriptor:
+    return MCPToolDescriptor(
+        canonical_name=descriptor.canonical_name,
+        server_name=descriptor.server_name,
+        remote_name=descriptor.remote_name,
+        description=descriptor.description,
+        input_schema=deepcopy(descriptor.input_schema),
+        effect=descriptor.effect,
+        exposure=descriptor.exposure,
+    )
+
+
+class PreparedMcpCall:
+    """Exact client + catalog revision captured for one model-visible MCP tool."""
+
+    def __init__(
+        self,
+        connected: _ConnectedServer,
+        descriptor: MCPToolDescriptor,
+        *,
+        catalog_revision: int,
+        runner: Any,
+        max_result_chars: int,
+    ) -> None:
+        self._connected = connected
+        self._descriptor = _copy_descriptor(descriptor)
+        self.catalog_revision = int(catalog_revision)
+        self._runner = runner
+        self._max_result_chars = max(1000, int(max_result_chars))
+
+    @property
+    def server_name(self) -> str:
+        return self._descriptor.server_name
+
+    @property
+    def tool_name(self) -> str:
+        return self._descriptor.remote_name
+
+    @property
+    def tool_info(self) -> MCPToolDescriptor:
+        return _copy_descriptor(self._descriptor)
+
+    @property
+    def config(self) -> MCPServerConfig:
+        return self._connected.config
+
+    def _assert_current_locked(self) -> None:
+        if self._connected.closed:
+            raise MCPUnavailableError(
+                f"MCP client is shut down for {self.server_name}/{self.tool_name}"
+            )
+        if self._connected.catalog_revision != self.catalog_revision:
+            raise MCPCatalogChangedError(
+                "MCP tool call rejected because the catalog changed after "
+                f"{self.server_name}/{self.tool_name} was prepared"
+            )
+
+    def call_with_preparation(
+        self,
+        arguments: Mapping[str, Any],
+        *,
+        prepare: Callable[[], Any] | None = None,
+        cancel_check: Callable[[], bool] | None = None,
+    ) -> ToolResult:
+        """Run preparation and execution under the captured catalog authority.
+
+        The lock is per captured connection.  Refresh on that same connection
+        must wait for an in-flight prepared call; conversely a stale revision is
+        rejected before any caller-supplied preparation can run.
+        """
+
+        if self._runner is None:
+            raise MCPUnavailableError("MCP runtime is not active")
+        with self._connected.catalog_lock:
+            self._assert_current_locked()
+            if prepare is not None:
+                prepare()
+                # A re-entrant preparation may itself trigger catalog refresh.
+                self._assert_current_locked()
+            result = self._runner.run(
+                self._connected.client.call_tool(self.tool_name, dict(arguments)),
+                timeout=self._connected.config.timeout_seconds,
+                cancel_check=cancel_check,
+            )
+        normalized = _normalize_mcp_result(result, max_chars=self._max_result_chars)
+        data = dict(normalized.data)
+        data.update({"server": self.server_name, "tool": self.tool_name})
+        return ToolResult(ok=normalized.ok, content=normalized.content, data=data)
+
+    def call(
+        self,
+        arguments: Mapping[str, Any],
+        *,
+        cancel_check: Callable[[], bool] | None = None,
+    ) -> ToolResult:
+        return self.call_with_preparation(arguments, cancel_check=cancel_check)
+
+
+class McpBinding:
+    """Immutable semantic MCP catalog paired with exact execution handles."""
+
+    def __init__(
+        self,
+        connections: Sequence[_ConnectedServer],
+        *,
+        runner: Any,
+        max_result_chars: int,
+    ) -> None:
+        self._connections = tuple(connections)
+        self._tools: list[MCPToolDescriptor] = []
+        self._calls: dict[tuple[str, str], PreparedMcpCall] = {}
+        canonical_seen: set[str] = set()
+
+        for connected in sorted(self._connections, key=lambda item: item.config.name):
+            with connected.catalog_lock:
+                if connected.closed:
+                    continue
+                revision = connected.catalog_revision
+                for raw_descriptor in connected.descriptors:
+                    descriptor = _copy_descriptor(raw_descriptor)
+                    if descriptor.canonical_name in canonical_seen:
+                        raise MCPConfigurationError(
+                            f"duplicate canonical MCP tool: {descriptor.canonical_name}"
+                        )
+                    canonical_seen.add(descriptor.canonical_name)
+                    self._tools.append(descriptor)
+                    self._calls[(descriptor.server_name, descriptor.remote_name)] = PreparedMcpCall(
+                        connected,
+                        descriptor,
+                        catalog_revision=revision,
+                        runner=runner,
+                        max_result_chars=max_result_chars,
+                    )
+
+        self._tools_tuple = tuple(self._tools)
+        self.identity = self._semantic_identity()
+
+    def _semantic_identity(self) -> str:
+        payload = {
+            "servers": [
+                {
+                    "name": connected.config.name,
+                    "transport": connected.config.transport,
+                    "protocol_version": connected.protocol_version,
+                    "server_info": connected.server_info,
+                    "catalog_revision": connected.catalog_revision,
+                }
+                for connected in sorted(self._connections, key=lambda item: item.config.name)
+                if not connected.closed
+            ],
+            "tools": [
+                {
+                    "canonical_name": item.canonical_name,
+                    "server_name": item.server_name,
+                    "remote_name": item.remote_name,
+                    "description": item.description,
+                    "input_schema": item.input_schema,
+                    "effect": item.effect.value,
+                    "exposure": item.exposure.value,
+                }
+                for item in self._tools_tuple
+            ],
+        }
+        serialized = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        return "mcp-binding:" + hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+    def tools(self) -> tuple[MCPToolDescriptor, ...]:
+        return tuple(_copy_descriptor(item) for item in self._tools_tuple)
+
+    def prepare_call(self, server_name: str, remote_tool_name: str) -> PreparedMcpCall | None:
+        return self._calls.get((str(server_name or "").strip(), str(remote_tool_name or "").strip()))
+
+    def agent_tools(self) -> tuple[AgentTool, ...]:
+        tools: list[AgentTool] = []
+        for descriptor in self._tools_tuple:
+            prepared = self._calls[(descriptor.server_name, descriptor.remote_name)]
+
+            def handler(
+                context: ToolContext,
+                arguments: dict[str, Any],
+                *,
+                _prepared=prepared,
+            ) -> ToolResult:
+                context.raise_if_cancelled()
+                return _prepared.call(
+                    arguments,
+                    cancel_check=lambda: context.cancelled,
+                )
+
+            tools.append(
+                AgentTool(
+                    name=descriptor.canonical_name,
+                    description=descriptor.description,
+                    input_schema=deepcopy(descriptor.input_schema),
+                    handler=handler,
+                    effect=descriptor.effect,
+                    exposure=descriptor.exposure,
+                    # Diagnostic/compatibility projection only.  Execution
+                    # authority lives in the captured PreparedMcpCall above.
+                    binding_key=self.identity,
+                )
+            )
+        return tuple(tools)
+
+
 class MCPClientManager:
-    """Owns configured MCP clients and adapts their tools into Loom AgentTool objects."""
+    """Owns MCP connections and captures Codex-style immutable step bindings."""
 
     def __init__(
         self,
@@ -327,8 +541,36 @@ class MCPClientManager:
         self._target_factory = target_factory
         self._runner = _AsyncLoopRunner() if self.configs else None
         self._servers: dict[str, _ConnectedServer] = {}
+        self._retired_servers: list[_ConnectedServer] = []
         self._errors: dict[str, str] = {}
+        self._binding_cache: tuple[tuple[tuple[str, int, int], ...], McpBinding] | None = None
         self._closed = False
+
+    def _invalidate_binding_cache(self) -> None:
+        self._binding_cache = None
+
+    def _binding_signature(self) -> tuple[tuple[str, int, int], ...]:
+        return tuple(
+            (name, id(connected), connected.catalog_revision)
+            for name, connected in sorted(self._servers.items())
+            if not connected.closed
+        )
+
+    def capture_binding(self) -> McpBinding:
+        signature = self._binding_signature()
+        cached = self._binding_cache
+        if cached is not None and cached[0] == signature:
+            return cached[1]
+        binding = McpBinding(
+            tuple(self._servers[name] for name in sorted(self._servers)),
+            runner=self._runner,
+            max_result_chars=self.max_result_chars,
+        )
+        # Re-check after capture so a concurrent refresh cannot publish a stale
+        # binding as the cache authority.
+        if signature == self._binding_signature():
+            self._binding_cache = (signature, binding)
+        return binding
 
     def connect(self) -> None:
         if not self.configs:
@@ -357,6 +599,45 @@ class MCPClientManager:
                 continue
             self._servers[config.name] = connected
             self._errors.pop(config.name, None)
+            self._invalidate_binding_cache()
+
+    def _descriptors_from_listed(
+        self,
+        config: MCPServerConfig,
+        listed: Any,
+        *,
+        instructions: str,
+    ) -> tuple[MCPToolDescriptor, ...]:
+        descriptors: list[MCPToolDescriptor] = []
+        seen: set[str] = set()
+        for remote in getattr(listed, "tools", ()) or ():
+            remote_name = str(getattr(remote, "name", "") or "").strip()
+            if not remote_name:
+                continue
+            canonical = canonical_mcp_tool_name(config.name, remote_name)
+            if canonical in seen:
+                raise MCPConfigurationError(
+                    f"MCP tool name collision on server {config.name!r}: {remote_name!r} -> {canonical!r}"
+                )
+            seen.add(canonical)
+            description = str(getattr(remote, "description", "") or f"MCP tool {remote_name}").strip()
+            if instructions:
+                description = f"{description}\nServer guidance: {instructions[:512]}"
+            schema = _schema_subset(getattr(remote, "input_schema", None))
+            if schema.get("type") != "object":
+                schema = {"type": "object", "properties": {}}
+            descriptors.append(
+                MCPToolDescriptor(
+                    canonical_name=canonical,
+                    server_name=config.name,
+                    remote_name=remote_name,
+                    description=f"[MCP:{config.name}] {description}"[:4000],
+                    input_schema=schema,
+                    effect=config.effect_for(remote_name),
+                    exposure=config.exposure,
+                )
+            )
+        return tuple(descriptors)
 
     async def _open_server(self, config: MCPServerConfig) -> _ConnectedServer:
         from mcp import Client, StdioServerParameters
@@ -407,36 +688,7 @@ class MCPClientManager:
             raise
 
         instructions = redact_secrets(str(getattr(client, "instructions", "") or ""))[:2000]
-        descriptors: list[MCPToolDescriptor] = []
-        seen: set[str] = set()
-        for remote in getattr(listed, "tools", ()) or ():
-            remote_name = str(getattr(remote, "name", "") or "").strip()
-            if not remote_name:
-                continue
-            canonical = canonical_mcp_tool_name(config.name, remote_name)
-            if canonical in seen:
-                raise MCPConfigurationError(
-                    f"MCP tool name collision on server {config.name!r}: {remote_name!r} -> {canonical!r}"
-                )
-            seen.add(canonical)
-            description = str(getattr(remote, "description", "") or f"MCP tool {remote_name}").strip()
-            if instructions:
-                description = f"{description}\nServer guidance: {instructions[:512]}"
-            schema = _schema_subset(getattr(remote, "input_schema", None))
-            if schema.get("type") != "object":
-                schema = {"type": "object", "properties": {}}
-            descriptors.append(
-                MCPToolDescriptor(
-                    canonical_name=canonical,
-                    server_name=config.name,
-                    remote_name=remote_name,
-                    description=f"[MCP:{config.name}] {description}"[:4000],
-                    input_schema=schema,
-                    effect=config.effect_for(remote_name),
-                    exposure=config.exposure,
-                )
-            )
-
+        descriptors = self._descriptors_from_listed(config, listed, instructions=instructions)
         info = getattr(client, "server_info", None)
         info_name = str(getattr(info, "name", "") or "") if info is not None else ""
         info_version = str(getattr(info, "version", "") or "") if info is not None else ""
@@ -444,49 +696,80 @@ class MCPClientManager:
             config=config,
             client=client,
             http_client=http_client,
-            descriptors=tuple(descriptors),
+            descriptors=descriptors,
             instructions=instructions,
             protocol_version=str(getattr(client, "protocol_version", "") or ""),
             server_info="@".join(part for part in (info_name, info_version) if part),
         )
 
-    def agent_tools(self) -> tuple[AgentTool, ...]:
-        tools: list[AgentTool] = []
-        canonical_seen: set[str] = set()
-        for server_name in sorted(self._servers):
-            connected = self._servers[server_name]
-            for descriptor in connected.descriptors:
-                if descriptor.canonical_name in canonical_seen:
-                    raise MCPConfigurationError(f"duplicate canonical MCP tool: {descriptor.canonical_name}")
-                canonical_seen.add(descriptor.canonical_name)
+    def refresh_tools(self, server_name: str | None = None) -> bool:
+        """Refresh tool catalogs on existing ready clients.
 
-                def handler(
-                    context: ToolContext,
-                    arguments: dict[str, Any],
-                    *,
-                    _server=descriptor.server_name,
-                    _tool=descriptor.remote_name,
-                ) -> ToolResult:
-                    context.raise_if_cancelled()
-                    return self.call_tool(
-                        _server,
-                        _tool,
-                        arguments,
-                        cancel_check=lambda: context.cancelled,
-                    )
+        Returns True if any semantic catalog changed.  Existing prepared calls
+        then fail closed on their old revision rather than executing a new tool
+        definition under an old model step.
+        """
 
-                tools.append(
-                    AgentTool(
-                        name=descriptor.canonical_name,
-                        description=descriptor.description,
-                        input_schema=descriptor.input_schema,
-                        handler=handler,
-                        effect=descriptor.effect,
-                        exposure=descriptor.exposure,
-                        binding_key=repr(connected.config),
-                    )
+        if self._runner is None:
+            return False
+        names = (
+            (str(server_name or "").strip(),)
+            if server_name is not None
+            else tuple(sorted(self._servers))
+        )
+        changed = False
+        for name in names:
+            connected = self._servers.get(name)
+            if connected is None:
+                raise MCPUnavailableError(f"MCP server is not connected: {name}")
+            with connected.catalog_lock:
+                if connected.closed:
+                    raise MCPUnavailableError(f"MCP client is shut down for {name}")
+                listed = self._runner.run(
+                    connected.client.list_tools(),
+                    timeout=connected.config.timeout_seconds,
                 )
-        return tuple(tools)
+                descriptors = self._descriptors_from_listed(
+                    connected.config,
+                    listed,
+                    instructions=connected.instructions,
+                )
+                if descriptors != connected.descriptors:
+                    connected.descriptors = descriptors
+                    connected.catalog_revision += 1
+                    changed = True
+        if changed:
+            self._invalidate_binding_cache()
+        return changed
+
+    def reconnect_server(self, server_name: str) -> McpBinding:
+        """Publish a new ready client without rerouting already-captured calls."""
+
+        name = str(server_name or "").strip()
+        config = next((item for item in self.configs if item.name == name), None)
+        if config is None:
+            raise MCPUnavailableError(f"MCP server is not configured: {name}")
+        if self._runner is None:
+            raise MCPUnavailableError("MCP runtime is not active")
+        replacement = self._runner.run(
+            self._open_server(config),
+            timeout=config.timeout_seconds,
+        )
+        previous = self._servers.get(name)
+        self._servers[name] = replacement
+        if previous is not None:
+            # Match Codex Arc semantics: old bindings keep their exact old
+            # client alive.  It is retired only when the manager closes.
+            self._retired_servers.append(previous)
+        self._errors.pop(name, None)
+        self._invalidate_binding_cache()
+        return self.capture_binding()
+
+    def agent_tools(self) -> tuple[AgentTool, ...]:
+        return self.capture_binding().agent_tools()
+
+    def prepare_call(self, server_name: str, remote_tool_name: str) -> PreparedMcpCall | None:
+        return self.capture_binding().prepare_call(server_name, remote_tool_name)
 
     def call_tool(
         self,
@@ -496,20 +779,14 @@ class MCPClientManager:
         *,
         cancel_check: Callable[[], bool] | None = None,
     ) -> ToolResult:
-        connected = self._servers.get(str(server_name or "").strip())
-        if connected is None:
-            raise MCPUnavailableError(f"MCP server is not connected: {server_name}")
-        if self._runner is None:
-            raise MCPUnavailableError("MCP runtime is not active")
-        result = self._runner.run(
-            connected.client.call_tool(str(remote_tool_name), dict(arguments)),
-            timeout=connected.config.timeout_seconds,
-            cancel_check=cancel_check,
-        )
-        normalized = _normalize_mcp_result(result, max_chars=self.max_result_chars)
-        data = dict(normalized.data)
-        data.update({"server": connected.config.name, "tool": str(remote_tool_name)})
-        return ToolResult(ok=normalized.ok, content=normalized.content, data=data)
+        # Compatibility entry point.  Model-visible AgentTool handlers never
+        # use this live lookup path; they close over PreparedMcpCall directly.
+        prepared = self.prepare_call(server_name, remote_tool_name)
+        if prepared is None:
+            raise MCPUnavailableError(
+                f"MCP tool is not available to the current binding: {server_name}/{remote_tool_name}"
+            )
+        return prepared.call(arguments, cancel_check=cancel_check)
 
     def status(self) -> dict[str, object]:
         servers: list[dict[str, object]] = []
@@ -519,36 +796,55 @@ class MCPClientManager:
                 {
                     "name": config.name,
                     "transport": config.transport,
-                    "connected": connected is not None,
+                    "connected": connected is not None and not connected.closed,
                     "protocol_version": connected.protocol_version if connected else "",
                     "server_info": connected.server_info if connected else "",
                     "tool_count": len(connected.descriptors) if connected else 0,
+                    "catalog_revision": connected.catalog_revision if connected else 0,
                     "error": self._errors.get(config.name, ""),
                 }
             )
         return {
             "enabled": bool(self.configs),
             "sdk_available": mcp_sdk_available(),
-            "connected_servers": len(self._servers),
-            "tool_count": sum(len(item.descriptors) for item in self._servers.values()),
+            "connected_servers": sum(1 for item in self._servers.values() if not item.closed),
+            "tool_count": sum(
+                len(item.descriptors) for item in self._servers.values() if not item.closed
+            ),
             "servers": servers,
         }
 
-    async def _close_async(self) -> None:
-        for name in reversed(tuple(self._servers)):
-            connected = self._servers.pop(name)
+    async def _close_connections(self, connections: Sequence[_ConnectedServer]) -> None:
+        for connected in reversed(tuple(connections)):
             try:
                 await connected.client.__aexit__(None, None, None)
-            finally:
-                if connected.http_client is not None:
+            except BaseException:
+                pass
+            if connected.http_client is not None:
+                try:
                     await connected.http_client.__aexit__(None, None, None)
+                except BaseException:
+                    pass
 
     def close(self) -> None:
         if self._closed:
             return
+        connections: list[_ConnectedServer] = []
+        seen: set[int] = set()
+        for connected in (*self._servers.values(), *self._retired_servers):
+            if id(connected) in seen:
+                continue
+            seen.add(id(connected))
+            connections.append(connected)
+        for connected in connections:
+            with connected.catalog_lock:
+                connected.closed = True
+        self._servers.clear()
+        self._retired_servers.clear()
+        self._invalidate_binding_cache()
         if self._runner is not None:
             try:
-                self._runner.run(self._close_async(), timeout=10.0)
+                self._runner.run(self._close_connections(connections), timeout=10.0)
             except Exception:
                 pass
             self._runner.close()
@@ -638,12 +934,15 @@ def load_mcp_server_configs(path: str | Path) -> tuple[MCPServerConfig, ...]:
 
 
 __all__ = [
+    "MCPCatalogChangedError",
     "MCPClientManager",
     "MCPConfigurationError",
     "MCPRuntime",
     "MCPServerConfig",
     "MCPToolDescriptor",
     "MCPUnavailableError",
+    "McpBinding",
+    "PreparedMcpCall",
     "canonical_mcp_tool_name",
     "load_mcp_server_configs",
     "mcp_sdk_available",
