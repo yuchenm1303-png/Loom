@@ -78,6 +78,31 @@ export interface TranscriptItem {
   [key: string]: unknown;
 }
 
+export type ApprovalDecision = "accept" | "decline";
+
+export interface PendingApproval {
+  /** Durable correlation id. Null means display-only legacy state; responses fail closed. */
+  requestId: string | null;
+  threadId: string;
+  turnId: string | null;
+  /** The tool item under review, matching Codex approval itemId semantics. */
+  itemId: string;
+  /** Loom-only transcript affordance; not the runtime item being approved. */
+  approvalItemId: string;
+  callId: string;
+  requestType: "toolExecution" | string;
+  kind: string;
+  retryReason: string | null;
+  startedAtMs: number;
+  toolName: string;
+  arguments: unknown;
+  effect: string;
+  reason: string;
+  permissionMode: string | null;
+  networkApprovalContext: Record<string, unknown> | null;
+  availableDecisions: ApprovalDecision[];
+}
+
 export interface TurnRecord {
   id: string;
   threadId: string;
@@ -91,7 +116,7 @@ export interface TurnRecord {
 export interface ThreadReadResult {
   thread: ThreadRecord;
   turns: TurnRecord[];
-  pendingApproval?: Record<string, unknown> | null;
+  pendingApproval?: PendingApproval | null;
   finalText?: string;
   error?: string;
 }

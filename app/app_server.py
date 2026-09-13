@@ -20,6 +20,11 @@ from app.agent_runtime.shell_environment import (
     build_environment_from_settings,
     set_default_environment_policy,
 )
+from app.app_server_protocol import (
+    APPROVAL_DECISIONS,
+    approval_request_from_event,
+    pending_approval_record,
+)
 from app.projects import UNFILED, ProjectStore, ProjectStoreError
 from app.settings import LoomSettingsStore
 from app.attachments import (
@@ -100,18 +105,6 @@ def _usage_record(usage: Any) -> dict[str, int]:
         "inputTokens": int(getattr(usage, "input_tokens", 0) or 0),
         "outputTokens": int(getattr(usage, "output_tokens", 0) or 0),
         "totalTokens": int(getattr(usage, "total_tokens", 0) or 0),
-    }
-
-
-def _approval_record(pending: Any) -> dict[str, Any] | None:
-    if pending is None:
-        return None
-    return {
-        "callId": pending.call_id,
-        "toolName": pending.tool_name,
-        "arguments": copy.deepcopy(pending.arguments),
-        "effect": pending.effect.value,
-        "reason": pending.reason,
     }
 
 
@@ -760,7 +753,7 @@ class LoomAppServerService:
             "thread": self._record(session, active=self._is_active(session_id)),
             "turns": _turn_records(session, events),
             "messages": [_message_record(message) for message in session.messages],
-            "pendingApproval": _approval_record(session.pending_approval),
+            "pendingApproval": pending_approval_record(session, events),
             "events": [_event_record(event) for event in events],
             "finalText": session.final_text,
             "error": session.error,
@@ -847,9 +840,9 @@ class LoomAppServerService:
 
     def turn_interrupt(self, params: dict[str, Any]) -> dict[str, Any]:
         session_id = self._required_text(params, "threadId")
+        requested_turn_id = self._required_text(params, "turnId")
         session = self._load(session_id)
-        requested_turn_id = str(params.get("turnId") or "").strip()
-        if requested_turn_id and session.current_turn_id != requested_turn_id:
+        if session.current_turn_id != requested_turn_id:
             raise ValueError("turnId does not match the thread's current turn")
         if session.status not in {AgentStatus.RUNNING, AgentStatus.WAITING_APPROVAL}:
             return {
@@ -868,25 +861,48 @@ class LoomAppServerService:
 
     def approval_respond(self, params: dict[str, Any]) -> dict[str, Any]:
         session_id = self._required_text(params, "threadId")
+        turn_id = self._required_text(params, "turnId")
+        request_id = self._required_text(params, "requestId")
         call_id = self._required_text(params, "callId")
-        approved = params.get("approved")
-        if not isinstance(approved, bool):
-            raise ValueError("approval/respond approved must be a boolean")
+        decision = self._required_text(params, "decision")
+        if decision not in APPROVAL_DECISIONS:
+            raise ValueError(
+                f"approval/respond decision must be one of: {', '.join(APPROVAL_DECISIONS)}"
+            )
         session = self._load(session_id)
+        if session.status is not AgentStatus.WAITING_APPROVAL:
+            raise RuntimeError("thread is not waiting for approval")
+        if session.current_turn_id != turn_id:
+            raise ValueError("turnId does not match the pending approval turn")
         pending = session.pending_approval
         if pending is None:
             raise RuntimeError("thread has no pending approval")
         if pending.call_id != call_id:
             raise ValueError("callId does not match the pending approval")
+        approval = pending_approval_record(session, self.store.events(session_id))
+        if approval is None:
+            raise RuntimeError("thread has no pending approval")
+        expected_request_id = str(approval.get("requestId") or "").strip()
+        if not expected_request_id:
+            raise RuntimeError("pending approval has no durable request identity")
+        if expected_request_id != request_id:
+            raise ValueError("requestId does not match the pending approval")
         self._launch(
             session_id,
             lambda: self.runtime.resume_approval(
                 session_id,
                 call_id,
-                approved=approved,
+                approved=decision == "accept",
             ),
         )
-        return {"accepted": True, "threadId": session_id, "callId": call_id}
+        return {
+            "accepted": True,
+            "threadId": session_id,
+            "turnId": turn_id,
+            "requestId": request_id,
+            "callId": call_id,
+            "decision": decision,
+        }
 
     def _launch(self, session_id: str, operation: Callable[[], Any]) -> None:
         with self._guard:
@@ -1016,6 +1032,8 @@ class LoomAppServerService:
 
         if kind is AgentEventKind.TOOL_APPROVAL_REQUIRED:
             call_id = str(data.get("call_id") or "")
+            if not call_id:
+                return
             item = _base_item(
                 event,
                 item_id=_approval_item_id(call_id),
@@ -1023,20 +1041,14 @@ class LoomAppServerService:
                 status="waiting",
             )
             _apply_event_to_item(item, event)
+            approval = approval_request_from_event(event)
             self._notify("item/started", {"item": copy.deepcopy(item)})
             self._notify(
                 "approval/requested",
                 {
                     "threadId": event.session_id,
                     "turnId": event.turn_id,
-                    "approval": {
-                        "itemId": item["id"],
-                        "callId": call_id,
-                        "toolName": str(data.get("tool") or ""),
-                        "arguments": copy.deepcopy(data.get("arguments") or {}),
-                        "effect": str(data.get("effect") or ""),
-                        "reason": str(data.get("reason") or ""),
-                    },
+                    "approval": approval,
                 },
             )
             self._notify(
@@ -1305,6 +1317,13 @@ class LoomRpcController:
                 "settings": {"get": True, "set": True},
                 "turns": {"start": True, "interrupt": True},
                 "approvals": True,
+                "approvalProtocol": {
+                    "requestTransport": "correlatedNotification",
+                    "requestNotification": "approval/requested",
+                    "responseMethod": "approval/respond",
+                    "decisions": list(APPROVAL_DECISIONS),
+                    "staleResponses": "rejected",
+                },
                 "notifications": [
                     "thread/started",
                     "runtime/updated",
