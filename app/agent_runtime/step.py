@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import dataclass, field
 
+from .context_limits import ResolvedContextLimits
 from .contracts import PermissionMode
 from .permissions import (
     ApprovalPolicy,
@@ -24,6 +27,67 @@ class WorldStateSnapshot:
 
 
 @dataclass(frozen=True, slots=True)
+class RequestStateSnapshot:
+    """Model-visible settings frozen for one sampling step.
+
+    The model profile representation is the provider-safe metadata exposed by
+    ``ModelProfile.as_safe_dict`` serialized canonically, never credentials.
+    """
+
+    system_prompt: str = ""
+    project_instructions: str = ""
+    communication_language: str = "auto"
+    model_profile_json: str = ""
+    context_limits: ResolvedContextLimits | None = None
+
+    def __post_init__(self) -> None:
+        language = str(self.communication_language or "auto").strip().casefold() or "auto"
+        object.__setattr__(self, "system_prompt", str(self.system_prompt or ""))
+        object.__setattr__(self, "project_instructions", str(self.project_instructions or ""))
+        object.__setattr__(self, "communication_language", language)
+        object.__setattr__(self, "model_profile_json", str(self.model_profile_json or ""))
+        if self.context_limits is not None and not isinstance(self.context_limits, ResolvedContextLimits):
+            raise TypeError("context_limits must be ResolvedContextLimits or None")
+
+    @classmethod
+    def build(
+        cls,
+        *,
+        system_prompt: str = "",
+        project_instructions: str = "",
+        communication_language: str = "auto",
+        model_profile: dict[str, object] | None = None,
+        context_limits: ResolvedContextLimits | None = None,
+    ) -> "RequestStateSnapshot":
+        profile_json = ""
+        if model_profile:
+            profile_json = json.dumps(
+                model_profile,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+        return cls(
+            system_prompt=system_prompt,
+            project_instructions=project_instructions,
+            communication_language=communication_language,
+            model_profile_json=profile_json,
+            context_limits=context_limits,
+        )
+
+    def digest(self) -> str:
+        payload = {
+            "system_prompt": self.system_prompt,
+            "project_instructions": self.project_instructions,
+            "communication_language": self.communication_language,
+            "model_profile_json": self.model_profile_json,
+            "context_limits": self.context_limits.as_dict() if self.context_limits else None,
+        }
+        raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+@dataclass(frozen=True, slots=True)
 class StepContext:
     """Immutable request-scoped state captured for one model sampling step."""
 
@@ -34,6 +98,7 @@ class StepContext:
     world_state: WorldStateSnapshot
     permissions: PermissionSnapshot
     tool_router: ToolRouter
+    request_state: RequestStateSnapshot = field(default_factory=RequestStateSnapshot)
     environment_policy: ShellEnvironmentPolicy = field(default_factory=get_default_environment_policy)
 
     @property
@@ -62,6 +127,7 @@ class StepContext:
         tool_router: ToolRouter,
         sandbox_snapshot: SandboxSnapshot | None = None,
         permissions: PermissionSnapshot | None = None,
+        request_state: RequestStateSnapshot | None = None,
     ) -> "StepContext":
         resolved_permissions = permission_snapshot(permissions or permission_mode)
         if PermissionMode(permission_mode) is not resolved_permissions.mode:
@@ -81,7 +147,8 @@ class StepContext:
             world_state=world_state,
             permissions=resolved_permissions,
             tool_router=tool_router,
+            request_state=request_state or RequestStateSnapshot(),
         )
 
 
-__all__ = ["StepContext", "WorldStateSnapshot"]
+__all__ = ["RequestStateSnapshot", "StepContext", "WorldStateSnapshot"]
