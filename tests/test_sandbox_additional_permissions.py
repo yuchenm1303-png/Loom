@@ -136,6 +136,29 @@ def test_windows_scoped_grants_extend_paths_and_network_without_bypassing_mxc(tm
     }
 
 
+def test_protected_control_plane_descendant_write_grant_fails_closed(tmp_path):
+    workspace = tmp_path / "project"
+    workspace.mkdir()
+    protected = workspace / ".git"
+    protected.mkdir()
+    descendant = protected / "objects"
+    descendant.mkdir()
+
+    with pytest.raises(SandboxExecutionError) as raised:
+        prepare_with_additional_permissions(
+            _linux_manager(),
+            argv=("python", "-V"),
+            cwd=workspace,
+            workspace=workspace,
+            permission_mode=PermissionMode.WORKSPACE,
+            profile=AdditionalPermissionProfile(file_system_write=(str(descendant),)),
+        )
+
+    assert raised.value.kind is SandboxFailureKind.CONFIGURATION
+    assert raised.value.escalatable is False
+    assert "control-plane" in str(raised.value)
+
+
 def test_missing_additional_write_path_fails_closed(tmp_path):
     workspace = tmp_path / "project"
     workspace.mkdir()
