@@ -9,6 +9,7 @@ from typing import Iterable
 from app.ai import ToolCall
 
 from .apply_patch_action import ApplyPatchActionIdentity, ApplyPatchApprovalCacheKey
+from .command_approval import canonicalize_command_for_approval
 from .execution_action import ExecActionIdentity, ExecApprovalCacheKey, execution_action_for
 from .permissions import AdditionalPermissionProfile, SandboxPermissions
 
@@ -47,23 +48,15 @@ def _key_payload(key: ApprovalCacheKey) -> dict[str, object]:
     raise TypeError(f"unsupported approval cache key: {type(key).__name__}")
 
 
-def approval_cache_digest(
-    key: ApprovalCacheKey,
-    *,
-    policy_fingerprint: str = "",
-) -> str:
-    """Stable session-cache identity.
+def approval_cache_digest(key: ApprovalCacheKey) -> str:
+    """Stable serialization identity for one Codex-style approval cache key."""
 
-    Codex's action cache key is independent of call id. Loom additionally binds
-    an optional policy fingerprint at the store boundary so a changed exec-policy
-    snapshot cannot inherit a decision made under an older ruleset.
-    """
-
-    payload = {
-        "key": _key_payload(key),
-        "policy_fingerprint": str(policy_fingerprint or ""),
-    }
-    raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    raw = json.dumps(
+        _key_payload(key),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
@@ -106,7 +99,7 @@ class ExecApprovalAction:
         identity = ExecApprovalCacheKey(
             environment_id=self.environment_id,
             executable=self.command[0] if self.command else None,
-            command=self.command,
+            command=canonicalize_command_for_approval(self.command),
             cwd=self.cwd,
             tty=self.tty,
             sandbox_permissions=self.sandbox_permissions,
@@ -180,19 +173,12 @@ class ApprovalDecisionStore:
     def __init__(self) -> None:
         self._decisions: dict[str, ReviewDecision] = {}
 
-    def lookup(
-        self,
-        keys: Iterable[ApprovalCacheKey],
-        *,
-        policy_fingerprint: str = "",
-    ) -> ReviewDecision | None:
+    def lookup(self, keys: Iterable[ApprovalCacheKey]) -> ReviewDecision | None:
         values = tuple(keys)
         if not values:
             return None
         decisions = tuple(
-            self._decisions.get(
-                approval_cache_digest(key, policy_fingerprint=policy_fingerprint)
-            )
+            self._decisions.get(approval_cache_digest(key))
             for key in values
         )
         if decisions and all(
@@ -206,8 +192,6 @@ class ApprovalDecisionStore:
         self,
         keys: Iterable[ApprovalCacheKey],
         decision: ReviewDecision,
-        *,
-        policy_fingerprint: str = "",
     ) -> None:
         resolved = ReviewDecision(decision)
         # Codex only retains the explicit session-scoped approval. One-shot
@@ -215,9 +199,7 @@ class ApprovalDecisionStore:
         if resolved is not ReviewDecision.APPROVED_FOR_SESSION:
             return
         for key in tuple(keys):
-            self._decisions[
-                approval_cache_digest(key, policy_fingerprint=policy_fingerprint)
-            ] = resolved
+            self._decisions[approval_cache_digest(key)] = resolved
 
     def clear(self) -> None:
         self._decisions.clear()
