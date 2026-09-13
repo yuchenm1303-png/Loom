@@ -65,6 +65,20 @@ Because typed exec identities use process-local HMACs, restarting Loom already i
 
 Untyped tools keep their exact legacy `binding_digest()` value, so this migration does not invalidate their pending bindings merely because the runtime gained typed exec actions.
 
+## Test contracts
+
+The stacked branch now covers:
+
+- semantic exec identity versus protocol call id;
+- resolved cwd canonicalization;
+- PTY and effective terminal-dimension semantics;
+- explicit and inherited environment identity;
+- secret-minimized stdin/environment handling;
+- malformed exec fallback to normal tool validation;
+- Core creation and resume validation of call-specific pending bindings;
+- fail-closed rejection when a queued exec action drifts before approval;
+- preservation of the exact same action binding across initial approval and one-shot sandbox escalation.
+
 ## Remaining boundary
 
 The next useful alignment step is no longer Core binding plumbing. It is to extend the structured action model only where execution semantics justify it—for example apply-patch, MCP or network approval—while keeping each action type canonical and secret-minimized.
