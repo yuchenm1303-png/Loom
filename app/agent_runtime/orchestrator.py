@@ -232,6 +232,43 @@ class ToolOrchestrator:
         action = ExecActionIdentity.build(step, call)
         sandbox = step.world_state.sandbox
 
+        # Codex tells models that approval_policy=never rejects commands that
+        # explicitly provide sandbox_permissions. Do not interpret Never as a
+        # silent grant of either scoped or full extra authority. Omitted
+        # sandbox_permissions still resolves to use_default and can run under the
+        # ambient sandbox profile.
+        if (
+            step.permissions.approval_policy is ApprovalPolicy.NEVER
+            and "sandbox_permissions" in call.arguments
+        ):
+            return PreparedToolCall(
+                call=call,
+                tool=tool,
+                decision=PermissionDecision.DENY,
+                reason="approval policy never rejects explicit sandbox_permissions requests",
+                sandbox_permissions=action.sandbox_permissions,
+                additional_permissions=action.additional_permissions,
+                exec_action=action,
+            )
+
+        # SandboxPolicy.REQUIRED is a Loom platform fail-closed adapter. Resolve
+        # the missing backend before any tool handler/process spawn so the
+        # runtime cannot fall through to a late RuntimeError or unsandboxed
+        # execution.
+        if self._exec_required_sandbox_unavailable(step, tool):
+            return PreparedToolCall(
+                call=call,
+                tool=tool,
+                decision=PermissionDecision.DENY,
+                reason=(
+                    "OS sandbox containment is required for this exec call, but no enforced "
+                    f"backend is available. {sandbox.reason if sandbox is not None else ''}"
+                ).strip(),
+                sandbox_permissions=action.sandbox_permissions,
+                additional_permissions=action.additional_permissions,
+                exec_action=action,
+            )
+
         if (
             action.sandbox_permissions.requires_escalated_permissions
             and sandbox is not None
