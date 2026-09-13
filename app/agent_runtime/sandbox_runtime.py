@@ -156,6 +156,26 @@ class SandboxAgentRuntime(DurableAgentRuntime):
         approved: bool,
         review_decision: ReviewDecision | str | None = None,
     ):
+        # Keep action validation, session-cache mutation, cancellation ordering,
+        # and the resumed execution under the same reentrant ExecutionLease. The
+        # superclass re-enters this lease when it commits the actual approval.
+        lock = self._session_lock(session_id)
+        with lock:
+            return self._resume_approval_locked(
+                session_id,
+                call_id,
+                approved=approved,
+                review_decision=review_decision,
+            )
+
+    def _resume_approval_locked(
+        self,
+        session_id: str,
+        call_id: str,
+        *,
+        approved: bool,
+        review_decision: ReviewDecision | str | None,
+    ):
         resolved_review = (
             ReviewDecision(review_decision)
             if review_decision is not None
