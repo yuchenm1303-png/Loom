@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from copy import deepcopy
 from contextvars import ContextVar
 from dataclasses import replace
 from pathlib import Path
@@ -14,7 +15,8 @@ from .contracts import (
     PendingToolApproval,
 )
 from .durable_runtime import DurableAgentRuntime
-from .permissions import PermissionDecision, permission_snapshot
+from .orchestrator import SandboxRetryDisposition
+from .permissions import PermissionDecision, SandboxPermissions, permission_snapshot
 from .process_runtime import ProcessStore
 from .response_language import infer_user_language
 from .sandbox import SandboxManager, SandboxMode, SandboxPolicy, SandboxSnapshot
@@ -28,7 +30,7 @@ from .sandbox_attempt import (
 )
 from .sandbox_tools import sandbox_status_tool
 from .step import RequestStateSnapshot, StepContext
-from .tools import ToolContext, ToolResult
+from .tools import ToolContext, ToolResult, ToolRouter
 
 
 _APPROVAL_ATTEMPT: ContextVar[tuple[str, str, SandboxAttempt] | None] = ContextVar(
@@ -43,14 +45,57 @@ def _sandbox_manager_identity(manager):
     return manager
 
 
-class SandboxAgentRuntime(DurableAgentRuntime):
-    """Durable runtime with an explicit OS-sandbox planning boundary.
+def _exec_router_with_permission_schema(router: ToolRouter) -> ToolRouter:
+    """Expose Codex sandbox permission fields without changing non-exec aliases."""
 
-    The manager never claims isolation that the host cannot enforce. AUTO uses a
-    supported backend when available and otherwise records an honest fallback;
-    REQUIRED fails closed; OFF deliberately skips OS sandboxing. Full-access
-    sessions intentionally remain unsandboxed regardless of runtime policy.
-    """
+    changed = False
+    tools = []
+    for tool in router.all():
+        if tool.name != "exec":
+            tools.append(tool)
+            continue
+        schema = deepcopy(tool.input_schema)
+        properties = schema.setdefault("properties", {})
+        properties.update(
+            {
+                "sandbox_permissions": {
+                    "type": "string",
+                    "enum": [value.value for value in SandboxPermissions],
+                    "description": (
+                        "Use the default sandbox, request full escalation, or request scoped "
+                        "additional permissions while remaining sandboxed."
+                    ),
+                },
+                "additional_permissions": {
+                    "type": "object",
+                    "properties": {
+                        "network": {
+                            "type": "object",
+                            "properties": {"enabled": {"type": "boolean"}},
+                            "additionalProperties": False,
+                        },
+                        "file_system": {
+                            "type": "object",
+                            "properties": {
+                                "read": {"type": "array", "items": {"type": "string"}},
+                                "write": {"type": "array", "items": {"type": "string"}},
+                            },
+                            "additionalProperties": False,
+                        },
+                    },
+                    "additionalProperties": False,
+                },
+                "justification": {"type": "string"},
+                "prefix_rule": {"type": "array", "items": {"type": "string"}},
+            }
+        )
+        tools.append(replace(tool, input_schema=schema))
+        changed = True
+    return ToolRouter(tuple(tools)) if changed else router
+
+
+class SandboxAgentRuntime(DurableAgentRuntime):
+    """Durable runtime with Codex-style approval/sandbox attempt orchestration."""
 
     def __init__(
         self,
@@ -130,7 +175,9 @@ class SandboxAgentRuntime(DurableAgentRuntime):
             and pending.call_id == requested_call_id
             and pending.kind is ApprovalKind.SANDBOX_ESCALATION
         ):
-            attempt = SandboxAttempt.escalated(pending.retry_reason or pending.reason)
+            attempt = SandboxAttempt.retry_without_sandbox(
+                pending.retry_reason or pending.reason
+            )
             token = _APPROVAL_ATTEMPT.set((session_id, requested_call_id, attempt))
             try:
                 return super().resume_approval(
@@ -203,6 +250,21 @@ class SandboxAgentRuntime(DurableAgentRuntime):
             raise RuntimeError("permission-denied tool reached executor")
         if prepared.decision is PermissionDecision.APPROVAL and not approval_granted:
             raise RuntimeError("approval-required tool reached executor without approval")
+
+        active = current_sandbox_attempt()
+        if prepared.tool.name == "exec" and active.kind is SandboxAttemptKind.INITIAL:
+            attempt = SandboxAttempt.initial(
+                prepared.sandbox_permissions,
+                prepared.additional_permissions,
+            )
+            with sandbox_attempt_scope(attempt):
+                return self._execute_prepared_tool(
+                    session,
+                    prepared,
+                    token=token,
+                    step=step,
+                    approval_granted=approval_granted,
+                )
         return self._execute_prepared_tool(
             session,
             prepared,
@@ -211,29 +273,12 @@ class SandboxAgentRuntime(DurableAgentRuntime):
             approval_granted=approval_granted,
         )
 
-    @staticmethod
-    def _should_request_sandbox_escalation(step, prepared, result: ToolResult) -> bool:
-        attempt = current_sandbox_attempt()
-        sandbox = step.world_state.sandbox
-        return bool(
-            prepared.tool.name == "exec"
-            and attempt.kind is SandboxAttemptKind.INITIAL
-            and not result.ok
-            and result.data.get("failure_kind") == "sandbox"
-            and result.data.get("sandbox_failure") == "denied"
-            and result.data.get("sandbox_escalatable") is True
-            and sandbox is not None
-            and sandbox.enforced
-            and sandbox.mode is not SandboxMode.DISABLED
-            and sandbox.policy is not SandboxPolicy.REQUIRED
-        )
-
-    def _request_sandbox_escalation(self, session, prepared, step, result: ToolResult) -> None:
+    def _request_sandbox_retry_approval(self, session, prepared, step, result: ToolResult) -> None:
         call = prepared.call
         retry_reason = str(result.content or "sandbox containment rejected the first attempt").strip()
         reason = (
-            "The sandbox rejected this exec attempt. Approval is required to retry the same action "
-            "once without OS-level sandbox containment."
+            "The sandbox denied this approved exec attempt. Current policy requires a fresh review "
+            "before the same bound action may retry once without OS-level containment."
         )
         session.pending_tool_calls.insert(0, call)
         session.pending_approval = PendingToolApproval(
@@ -277,6 +322,13 @@ class SandboxAgentRuntime(DurableAgentRuntime):
             },
         )
 
+    def _run_prepared_once(self, prepared, context, *, approval_granted: bool) -> ToolResult:
+        return self.orchestrator.execute(
+            prepared,
+            context,
+            approval_granted=approval_granted,
+        )
+
     def _execute_prepared_tool(
         self,
         session,
@@ -317,7 +369,7 @@ class SandboxAgentRuntime(DurableAgentRuntime):
             },
             emit_event=lambda kind, data: self._record(session, kind, data=data),
         )
-        result = self.orchestrator.execute(
+        result = self._run_prepared_once(
             prepared,
             context,
             approval_granted=approval_granted,
@@ -336,9 +388,37 @@ class SandboxAgentRuntime(DurableAgentRuntime):
                 },
             )
 
-        if self._should_request_sandbox_escalation(step, prepared, result):
-            self._request_sandbox_escalation(session, prepared, step, result)
-            return False
+        # Never recursively plan from the retry attempt. Codex performs at most
+        # one retry after the typed first-attempt sandbox denial.
+        if prepared.tool.name == "exec" and attempt.kind is SandboxAttemptKind.INITIAL:
+            plan = self.orchestrator.sandbox_retry_plan(
+                step,
+                prepared,
+                result,
+                already_approved=approval_granted,
+            )
+            if plan.disposition is SandboxRetryDisposition.WITHOUT_SANDBOX:
+                if plan.approval_required:
+                    self._request_sandbox_retry_approval(session, prepared, step, result)
+                    return False
+                retry_attempt = SandboxAttempt.retry_without_sandbox(plan.retry_reason)
+                with sandbox_attempt_scope(retry_attempt):
+                    self._record(
+                        session,
+                        AgentEventKind.TOOL_STARTED,
+                        data={
+                            "call_id": call.call_id,
+                            "tool": call.name,
+                            "step_id": step.step_id,
+                            "sandbox_attempt": retry_attempt.to_dict(),
+                            "retry": True,
+                        },
+                    )
+                    result = self._run_prepared_once(
+                        prepared,
+                        context,
+                        approval_granted=approval_granted,
+                    )
 
         self._append_tool_result(session, call, result, failed=not result.ok)
         if self._cancel_if_requested(session, token):
@@ -388,6 +468,7 @@ class SandboxAgentRuntime(DurableAgentRuntime):
         return replace(
             step,
             world_state=replace(step.world_state, sandbox=snapshot),
+            tool_router=_exec_router_with_permission_schema(step.tool_router),
             request_state=request_state,
         )
 
