@@ -8,9 +8,9 @@ import pytest
 from app.agent_runtime.instructions import (
     AGENTS_FRAGMENT_END,
     AGENTS_FRAGMENT_START,
+    AppliedInstructionCache,
     InstructionLoader,
     PROJECT_DOC_SEPARATOR,
-    ProjectInstructionSnapshotStore,
 )
 
 
@@ -122,37 +122,39 @@ def test_discovered_symlink_is_not_rejected_only_because_target_is_outside_root(
     assert "linked instructions" in loaded
 
 
-def test_instruction_snapshot_is_stable_within_turn_and_refreshes_for_new_turn(tmp_path: Path):
+def test_applied_instruction_cache_reuses_repository_snapshot_for_same_environment(tmp_path: Path):
     workspace = tmp_path / "repo"
     workspace.mkdir()
     (workspace / ".git").mkdir()
     agents = workspace / "AGENTS.md"
     agents.write_text("first version", encoding="utf-8")
-    loader = InstructionLoader()
-    snapshots = ProjectInstructionSnapshotStore(tmp_path / "state")
 
-    first = snapshots.capture(
-        session_id="session-1",
-        turn_id="turn-1",
-        workspace=workspace,
-        loader=loader,
-    )
+    cache = AppliedInstructionCache(InstructionLoader())
+    first = cache.load(workspace)
     agents.write_text("second version", encoding="utf-8")
-    same_turn = snapshots.capture(
-        session_id="session-1",
-        turn_id="turn-1",
-        workspace=workspace,
-        loader=loader,
-    )
-    next_turn = snapshots.capture(
-        session_id="session-1",
-        turn_id="turn-2",
-        workspace=workspace,
-        loader=loader,
-    )
+    same_environment = cache.load(workspace)
 
-    assert same_turn.rendered == first.rendered
-    assert "first version" in same_turn.rendered
-    assert "second version" not in same_turn.rendered
-    assert "second version" in next_turn.rendered
-    assert "first version" not in next_turn.rendered
+    assert same_environment == first
+    assert "first version" in same_environment
+    assert "second version" not in same_environment
+
+
+def test_applied_instruction_cache_uses_distinct_environment_key_and_explicit_invalidation(tmp_path: Path):
+    first_workspace = tmp_path / "repo-a"
+    second_workspace = tmp_path / "repo-b"
+    for workspace, text in (
+        (first_workspace, "repo a"),
+        (second_workspace, "repo b"),
+    ):
+        workspace.mkdir()
+        (workspace / ".git").mkdir()
+        (workspace / "AGENTS.md").write_text(text, encoding="utf-8")
+
+    cache = AppliedInstructionCache(InstructionLoader())
+    assert "repo a" in cache.load(first_workspace)
+    assert "repo b" in cache.load(second_workspace)
+
+    (first_workspace / "AGENTS.md").write_text("repo a refreshed", encoding="utf-8")
+    assert "repo a refreshed" not in cache.load(first_workspace)
+    cache.invalidate(first_workspace)
+    assert "repo a refreshed" in cache.load(first_workspace)
