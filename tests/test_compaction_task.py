@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from app.agent_runtime import AgentEventKind, AgentRuntime, AgentStatus, FileAgentSessionStore, SandboxManager, SandboxPolicy
+from app.agent_runtime.context_compaction import SUMMARIZATION_PROMPT, SUMMARY_PREFIX
 from app.agent_runtime.workspace_tools import loom_default_tools
 from app.ai import AGENT_FAST_ROLE, AIMessage, MessageRole, ModelResponse, ModelUsage, ToolChoice
 
@@ -51,7 +52,7 @@ def test_model_compaction_is_separate_no_tool_task_and_counts_usage(tmp_path):
 
     checkpoint = runtime.compact_context_with_model(session.session_id, keep_recent=4)
 
-    assert checkpoint.archived_message_count == 4
+    assert checkpoint.archived_message_count == 8
     assert checkpoint.retained_message_count == 4
     assert checkpoint.summary.startswith("The earlier discussion")
     assert len(platform.requests) == 1
@@ -59,20 +60,30 @@ def test_model_compaction_is_separate_no_tool_task_and_counts_usage(tmp_path):
     assert request.tool_choice is ToolChoice.NONE
     assert request.tools == ()
     assert request.messages[0].role is MessageRole.SYSTEM
-    assert "Do not invent facts" in request.messages[0].content
-    assert request.messages[1].role is MessageRole.SYSTEM
-    assert request.messages[1].name == "loom_communication_language"
-    assert "Current user communication language" in request.messages[1].content
-    assert [message.content for message in request.messages[2:]] == [
+    assert request.messages[-1].role is MessageRole.USER
+    assert request.messages[-1].content == SUMMARIZATION_PROMPT
+    assert [message.content for message in request.messages[1:-1]] == [
         "question one",
         "answer one",
         "question two",
         "answer two",
+        "question three",
+        "answer three",
+        "question four",
+        "answer four",
     ]
 
     loaded = store.load(session.session_id)
     assert loaded.usage.total_tokens == 140
-    assert loaded.messages[0].name == "loom_compaction"
+    assert [message.content for message in loaded.messages[:-1]] == [
+        "question one",
+        "question two",
+        "question three",
+        "question four",
+    ]
+    assert loaded.messages[-1].role is MessageRole.USER
+    assert loaded.messages[-1].name == "loom_compaction"
+    assert str(loaded.messages[-1].content).startswith(SUMMARY_PREFIX)
     events = [
         event for event in store.events(session.session_id)
         if event.kind is AgentEventKind.CONTEXT_CHECKPOINTED
