@@ -22,6 +22,7 @@ from app.agent_runtime import (
     ToolResult,
 )
 from app.app_server import LoomAppServerService, _turn_records
+from app.app_server_protocol import approval_request_from_event
 
 
 class _Platform:
@@ -115,7 +116,8 @@ def test_refresh_and_resume_keep_the_same_durable_approval_identity(tmp_path: Pa
         assert first["turnId"] == turn_id
         assert first["itemId"] == "tool:call-1"
         assert first["approvalItemId"] == "approval:call-1"
-        assert first["kind"] == "initial"
+        assert first["approvalStage"] == "initial"
+        assert "kind" not in first
         assert first["retryReason"] is None
         assert first["availableDecisions"] == ["accept", "decline"]
 
@@ -290,7 +292,7 @@ def test_same_call_retry_reuses_tool_and_approval_item_ids() -> None:
                 "call_id": "call-retry",
                 "tool": "approval_tool",
                 "arguments": {"value": "x"},
-                "kind": "retry",
+                "approval_stage": "retry",
                 "retry_reason": "sandbox denied",
             },
             **common,
@@ -299,3 +301,7 @@ def test_same_call_retry_reuses_tool_and_approval_item_ids() -> None:
     items = _turn_records(session, events)[0]["items"]
     assert [item["id"] for item in items].count("tool:call-retry") == 1
     assert [item["id"] for item in items].count("approval:call-retry") == 1
+    retry = approval_request_from_event(events[-1])
+    assert retry["approvalStage"] == "retry"
+    assert retry["retryReason"] == "sandbox denied"
+    assert "kind" not in retry
