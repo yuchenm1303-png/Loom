@@ -10,6 +10,7 @@ from typing import Any, Mapping
 
 from app.ai import ToolCall
 
+from .apply_patch_action import ApplyPatchActionIdentity
 from .process_runtime import validate_argv, validate_terminal_size, validate_timeout
 
 
@@ -211,15 +212,19 @@ class ExecActionIdentity:
         return hashlib.sha256(_canonical_bytes(self.binding_payload())).hexdigest()
 
 
-def execution_action_for(step, call: ToolCall) -> ExecActionIdentity | None:
+def execution_action_for(step, call: ToolCall) -> ExecActionIdentity | ApplyPatchActionIdentity | None:
     """Resolve the typed execution action for a model call when one exists."""
 
-    if str(call.name or "") == "exec":
+    name = str(call.name or "")
+    if name == "exec":
         return ExecActionIdentity.build(step, call)
+    if name == "apply_patch":
+        return ApplyPatchActionIdentity.build(step, call)
     return None
 
 
 __all__ = [
+    "ApplyPatchActionIdentity",
     "ExecActionIdentity",
     "exec_environment_identity",
     "execution_action_for",

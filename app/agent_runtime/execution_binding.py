@@ -110,9 +110,9 @@ def binding_digest(step, tool, platform) -> str:
 def action_binding_digest(step, tool, call, platform) -> str:
     """Bind one concrete call to the frozen tool/step world.
 
-    Tools without a typed execution action keep the legacy binding exactly. Exec
-    adds its canonical action digest so argument/environment semantics become part
-    of the approval key without creating a second pending-action store.
+    Tools without a typed execution action keep the legacy binding exactly. A
+    typed action adds its canonical semantic digest without creating a second
+    pending-action store.
 
     Malformed typed calls keep flowing to the normal tool-validation path, but
     still receive a call-specific digest. This prevents one invalid queued action
@@ -134,7 +134,7 @@ def action_binding_digest(step, tool, call, platform) -> str:
         return base
     return _composite_action_binding(
         base,
-        kind="exec_command",
+        kind=action.kind,
         digest=action.digest(),
     )
 
