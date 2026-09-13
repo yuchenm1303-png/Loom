@@ -5,15 +5,25 @@ from dataclasses import replace
 from pathlib import Path
 
 from .context_limits import resolve_context_limits
-from .contracts import AgentEventKind, AgentSession
+from .contracts import (
+    AgentEventKind,
+    AgentSession,
+    AgentStatus,
+    ApprovalKind,
+    PendingToolApproval,
+)
 from .durable_runtime import DurableAgentRuntime
 from .permissions import PermissionDecision, permission_snapshot
 from .process_runtime import ProcessStore
 from .response_language import infer_user_language
-from .sandbox import SandboxManager, SandboxPolicy, SandboxSnapshot
+from .sandbox import SandboxManager, SandboxMode, SandboxPolicy, SandboxSnapshot
 from .sandbox_attempt import (
     AttemptAwareSandboxManager,
+    SandboxAttempt,
+    SandboxAttemptKind,
+    current_sandbox_attempt,
     ensure_attempt_aware_sandbox_manager,
+    sandbox_attempt_scope,
 )
 from .sandbox_tools import sandbox_status_tool
 from .step import RequestStateSnapshot, StepContext
@@ -91,22 +101,36 @@ class SandboxAgentRuntime(DurableAgentRuntime):
         *,
         approved: bool,
     ):
-        if approved:
-            session = self.store.load(session_id)
-            pending = session.pending_approval
-            requested_call_id = str(call_id or "").strip()
-            if pending is not None and pending.call_id == requested_call_id:
-                if not session.pending_tool_calls:
-                    raise RuntimeError("pending tool approval state is inconsistent")
-                call = session.pending_tool_calls[0]
-                if (
-                    call.call_id != pending.call_id
-                    or call.name != pending.tool_name
-                    or dict(call.arguments) != dict(pending.arguments)
-                ):
-                    raise ValueError(
-                        "approved tool action changed while waiting; deny this request and start a new turn"
-                    )
+        session = self.store.load(session_id)
+        pending = session.pending_approval
+        requested_call_id = str(call_id or "").strip()
+        if approved and pending is not None and pending.call_id == requested_call_id:
+            if not session.pending_tool_calls:
+                raise RuntimeError("pending tool approval state is inconsistent")
+            call = session.pending_tool_calls[0]
+            if (
+                call.call_id != pending.call_id
+                or call.name != pending.tool_name
+                or dict(call.arguments) != dict(pending.arguments)
+            ):
+                raise ValueError(
+                    "approved tool action changed while waiting; deny this request and start a new turn"
+                )
+
+        if (
+            approved
+            and pending is not None
+            and pending.call_id == requested_call_id
+            and pending.kind is ApprovalKind.SANDBOX_ESCALATION
+        ):
+            attempt = SandboxAttempt.escalated(pending.retry_reason or pending.reason)
+            with sandbox_attempt_scope(attempt):
+                return super().resume_approval(
+                    session_id,
+                    call_id,
+                    approved=True,
+                )
+
         return super().resume_approval(
             session_id,
             call_id,
@@ -146,6 +170,72 @@ class SandboxAgentRuntime(DurableAgentRuntime):
             approval_granted=approval_granted,
         )
 
+    @staticmethod
+    def _should_request_sandbox_escalation(step, prepared, result: ToolResult) -> bool:
+        attempt = current_sandbox_attempt()
+        sandbox = step.world_state.sandbox
+        return bool(
+            prepared.tool.name == "exec"
+            and attempt.kind is SandboxAttemptKind.INITIAL
+            and not result.ok
+            and result.data.get("failure_kind") == "sandbox"
+            and result.data.get("sandbox_failure") == "denied"
+            and result.data.get("sandbox_escalatable") is True
+            and sandbox is not None
+            and sandbox.enforced
+            and sandbox.mode is not SandboxMode.DISABLED
+            and sandbox.policy is not SandboxPolicy.REQUIRED
+        )
+
+    def _request_sandbox_escalation(self, session, prepared, step, result: ToolResult) -> None:
+        call = prepared.call
+        retry_reason = str(result.content or "sandbox containment rejected the first attempt").strip()
+        reason = (
+            "The sandbox rejected this exec attempt. Approval is required to retry the same action "
+            "once without OS-level sandbox containment."
+        )
+        session.pending_tool_calls.insert(0, call)
+        session.pending_approval = PendingToolApproval(
+            call_id=call.call_id,
+            tool_name=call.name,
+            arguments=dict(call.arguments),
+            effect=prepared.tool.effect,
+            reason=reason,
+            kind=ApprovalKind.SANDBOX_ESCALATION,
+            retry_reason=retry_reason,
+        )
+        session.status = AgentStatus.WAITING_APPROVAL
+        attempt = current_sandbox_attempt()
+        self._record(
+            session,
+            AgentEventKind.TOOL_FAILED,
+            data={
+                "call_id": call.call_id,
+                "tool": call.name,
+                "ok": False,
+                "content": result.content,
+                "data": result.data,
+                "step_id": step.step_id,
+                "sandbox_attempt": attempt.to_dict(),
+                "retry_pending": True,
+            },
+        )
+        self._record(
+            session,
+            AgentEventKind.TOOL_APPROVAL_REQUIRED,
+            data={
+                "call_id": call.call_id,
+                "tool": call.name,
+                "arguments": call.arguments,
+                "effect": prepared.tool.effect.value,
+                "reason": reason,
+                "retry_reason": retry_reason,
+                "kind": ApprovalKind.SANDBOX_ESCALATION.value,
+                "permission_mode": session.permission_mode.value,
+                "step_id": step.step_id,
+            },
+        )
+
     def _execute_prepared_tool(
         self,
         session,
@@ -158,10 +248,16 @@ class SandboxAgentRuntime(DurableAgentRuntime):
         if self._cancel_if_requested(session, token):
             return False
         call = prepared.call
+        attempt = current_sandbox_attempt()
         self._record(
             session,
             AgentEventKind.TOOL_STARTED,
-            data={"call_id": call.call_id, "tool": call.name, "step_id": step.step_id},
+            data={
+                "call_id": call.call_id,
+                "tool": call.name,
+                "step_id": step.step_id,
+                "sandbox_attempt": attempt.to_dict(),
+            },
         )
         tracker = self.diff_trackers.for_turn(session.session_id, session.current_turn_id)
         diff_revision_before = tracker.revision
@@ -198,6 +294,11 @@ class SandboxAgentRuntime(DurableAgentRuntime):
                     "truncated": snapshot.truncated,
                 },
             )
+
+        if self._should_request_sandbox_escalation(step, prepared, result):
+            self._request_sandbox_escalation(session, prepared, step, result)
+            return False
+
         self._append_tool_result(session, call, result, failed=not result.ok)
         if self._cancel_if_requested(session, token):
             return False
