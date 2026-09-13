@@ -9,23 +9,25 @@ from .json_schema_semantics import validating_schema
 
 
 def binding_digest(step, tool, platform) -> str:
-    """Hash executable semantics independently from request-only schema projection.
+    """Hash executable semantics against the exact frozen sampling step.
 
     Tool descriptions and JSON Schema annotation keywords help the model choose a
     tool but do not change what arguments validate or what handler executes. They
     are intentionally excluded so full/compact/structural prompt projections all
     represent the same approval binding. Validation-affecting schema changes,
-    handler/effect/binding changes, permissions, sandbox and model identity remain
-    part of the digest and still fail closed.
+    handler/effect/binding changes, permissions, sandbox state, and the frozen
+    request settings remain part of the digest and fail closed on resume.
     """
 
+    del platform  # Model identity is captured in StepContext, never re-read live here.
     handler = tool.handler
     function = getattr(handler, "__func__", handler)
     code = getattr(function, "__code__", None)
     payload = {
-        "version": 2,
+        "version": 3,
         "workspace": step.world_state.workspace_dir,
         "profile": step.world_state.profile_id,
+        "request_state": step.request_state.digest(),
         "environment_policy": repr(step.environment_policy),
         "permission": {
             "mode": step.permissions.mode.value,
@@ -42,9 +44,6 @@ def binding_digest(step, tool, platform) -> str:
         "handler": f"{getattr(function, '__module__', '')}:{getattr(function, '__qualname__', '')}",
         "code": hashlib.sha256(marshal.dumps(code)).hexdigest() if code else str(type(handler)),
     }
-    registry = getattr(platform, "registry", None)
-    if registry is not None:
-        payload["model"] = registry.get(step.world_state.profile_id).as_safe_dict()
     # Primitive captured configuration identifies factories without persisting secrets.
     closure = getattr(function, "__closure__", None) or ()
     values = []
