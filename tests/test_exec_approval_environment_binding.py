@@ -82,20 +82,26 @@ def _runtime(tmp_path, responses) -> SandboxAgentRuntime:
 
 def test_environment_change_only_changes_exec_binding(monkeypatch, tmp_path):
     exec_action = _synthetic_tool("exec")
-    ordinary = _synthetic_tool("change")
     exec_step = _step(exec_action, tmp_path)
-    ordinary_step = _step(ordinary, tmp_path)
+    other_names = ("change", "exec_wait", "exec_write", "exec_resize")
+    others = [(_synthetic_tool(name), name) for name in other_names]
 
     monkeypatch.setenv("LOOM_EXEC_BINDING_TEST", "before")
     exec_before = binding_digest(exec_step, exec_action, object())
-    ordinary_before = binding_digest(ordinary_step, ordinary, object())
+    other_before = {
+        name: binding_digest(_step(tool, tmp_path), tool, object())
+        for tool, name in others
+    }
 
     monkeypatch.setenv("LOOM_EXEC_BINDING_TEST", "after")
     exec_after = binding_digest(exec_step, exec_action, object())
-    ordinary_after = binding_digest(ordinary_step, ordinary, object())
+    other_after = {
+        name: binding_digest(_step(tool, tmp_path), tool, object())
+        for tool, name in others
+    }
 
     assert exec_before != exec_after
-    assert ordinary_before == ordinary_after
+    assert other_before == other_after
 
 
 def test_pending_exec_approval_rejects_changed_environment(monkeypatch, tmp_path):
