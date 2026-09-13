@@ -39,6 +39,23 @@ def _prepare(manager, tmp_path: Path):
     )
 
 
+def test_attempt_wrapper_preserves_manager_type_and_mutation_semantics():
+    base = SandboxManager(
+        policy=SandboxPolicy.AUTO,
+        system_name="Darwin",
+        probe_backend=False,
+    )
+    manager = ensure_attempt_aware_sandbox_manager(base)
+
+    assert isinstance(manager, SandboxManager)
+    assert manager.policy is SandboxPolicy.AUTO
+
+    manager.policy = SandboxPolicy.OFF
+
+    assert manager.policy is SandboxPolicy.OFF
+    assert base.policy is SandboxPolicy.OFF
+
+
 def test_escalated_attempt_changes_only_current_planning_scope(tmp_path: Path):
     manager = _manager()
 
