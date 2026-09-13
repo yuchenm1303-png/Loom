@@ -108,8 +108,6 @@ class InstructionLoader:
                 remaining -= len(payload)
                 if text.strip():
                     entries.append(ProjectInstruction(path=path, text=text, truncated=truncated))
-                # The first existing candidate wins even when it is empty:
-                # override > AGENTS.md > configured fallback names.
                 break
         return tuple(entries)
 
@@ -211,19 +209,15 @@ class ProjectInstructionSnapshotStore:
 
 
 class TurnScopedInstructionLoader:
-    """Project loader that reuses one durable snapshot inside an active turn.
-
-    ``prepare_context`` still depends on the simple ``load(workspace)`` loader
-    contract. This adapter keeps that contract while allowing the context runtime
-    to bind the current durable turn around request preparation. Thread-local
-    binding avoids leaking one session's instruction snapshot into another when
-    independent sessions are prepared concurrently.
-    """
+    """Reuse one durable project-instruction snapshot inside an active turn."""
 
     def __init__(self, loader: InstructionLoader, snapshot_store: ProjectInstructionSnapshotStore) -> None:
         self.loader = loader
         self.snapshot_store = snapshot_store
         self._local = threading.local()
+
+    def __getattr__(self, name: str):
+        return getattr(self.loader, name)
 
     @contextmanager
     def bind_turn(
