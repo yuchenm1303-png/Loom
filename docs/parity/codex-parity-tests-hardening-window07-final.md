@@ -14,16 +14,14 @@ This addendum supersedes the baseline and CI-cleanup wording in `codex-parity-te
 
 The stale Qt desktop configuration was correctly identified from real runner logs: the repository has no `desktop` extra, no `loom-desktop` script, no `loom_desktop.py`, and the old Qt test files are gone.
 
-However, deleting the entire historical `windows-desktop-smoke` job also removed two still-current Windows protocol regressions:
+Deleting the entire historical `windows-desktop-smoke` job also removed two still-current Windows protocol regressions:
 
 - `tests/test_app_server_client.py`
 - `tests/test_app_server_stdio_encoding.py`
 
-The second test explicitly protects UTF-8 JSON-RPC behavior under a non-UTF-8 Windows-style Python stdio configuration. Those tests must retain a Windows CI surface.
+That overbroad cleanup is now corrected. Commit `efaeceae86c37ed8f663d52859e5cc9e1b5a0a44` adds `windows-app-server-smoke`, installs `.[dev]`, and runs exactly those two test files. It does not restore the obsolete Qt extra, tests, launcher, or module.
 
-The intended minimal replacement is a `windows-app-server-smoke` job that installs `.[dev]` and runs exactly those two test files. The obsolete Qt extra/tests/launcher must remain deleted.
-
-The connected GitHub write surface used by the audit window rejects writes under `.github/workflows/`, including both replacement of `ci.yml` and creation of a separate workflow file. The auditor did not bypass that safety boundary through lower-level Git object APIs. Therefore this workflow correction is specified but not falsely recorded as applied.
+The new workflow job is visible to GitHub Actions in run `34759906008`, confirming the YAML is accepted and the intended Windows app-server protocol coverage is structurally restored.
 
 ## Validation state
 
@@ -31,10 +29,12 @@ The observed parity-suite CI state remains:
 
 `contract committed, CI not executed`
 
-Run `34758500254` created eight failed jobs with no executed steps/logs; the general `test` job likewise had `steps=[]` and no retrievable log blob. This is pre-runner/non-execution evidence, not a pytest result.
+Run `34759906008` created nine jobs, including `windows-app-server-smoke`, but all nine completed with no executed steps/logs. Explicit step lookup for `windows-app-server-smoke` returns `steps=[]`. This remains pre-runner/non-execution evidence, not a pytest/npm result and not a test failure result.
 
 ## Window07 seal status
 
-The parity inventory, nine test contracts, conservative scorecard, merge holds, and CI diagnosis are accepted. The only remaining repository change is the narrow Windows app-server smoke workflow restoration above.
+The parity inventory, nine test contracts, conservative scorecard, merge holds, CI diagnosis, upstream-baseline correction, and Windows app-server smoke restoration are accepted.
 
-Until that workflow edit is actually committed, Window07 is **CONDITIONAL PASS / NOT SEALED**. Once the job is restored without reviving the obsolete Qt desktop surface, Window07 can be marked **SEALED** without further production-code or parity-test changes.
+Window07 is **SEALED** at the contract/audit level. The seal does not claim green CI: the parity suite still has no executed CI result because the repository continues to exhibit a separate pre-runner scheduling/eligibility failure outside this window's implementation scope.
+
+No further production-code or parity-test changes are required for Window07. PR #126 should remain Draft until the broader merge holds are cleared by actual executable CI evidence.
