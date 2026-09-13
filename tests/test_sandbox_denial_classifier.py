@@ -10,7 +10,11 @@ from app.agent_runtime.tools import ToolResult
 def _result(*, enforced=True, returncode=1, stdout="", stderr="") -> ToolResult:
     return ToolResult(
         ok=returncode == 0,
-        content=f"exit={returncode}\nstdout:\n{stdout}\nstderr:\n{stderr}",
+        content=(
+            f"process=proc-1 status=exited backend=pipe\n"
+            f"sandbox=bubblewrap:workspace\n"
+            f"exit={returncode}\nstdout:\n{stdout}\nstderr:\n{stderr}"
+        ),
         data={
             "returncode": returncode,
             "stdout": stdout,
@@ -30,8 +34,9 @@ def test_sandbox_keyword_under_enforced_sandbox_is_promoted_to_typed_denial():
     assert typed.data["sandbox_detection"] == "codex_heuristic"
 
 
-def test_plain_nonzero_exit_is_not_sandbox_denial():
+def test_plain_nonzero_exit_is_not_sandbox_denial_even_when_harness_content_names_sandbox():
     raw = _result(stderr="application-level validation failed")
+    assert "sandbox=bubblewrap" in raw.content
     assert is_likely_sandbox_denied_result(raw) is False
     assert classify_exec_sandbox_denial(raw) is raw
 
