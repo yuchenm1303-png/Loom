@@ -9,6 +9,7 @@ from typing import Iterator, Mapping
 
 from .permissions import AdditionalPermissionProfile, SandboxPermissions
 from .sandbox import SandboxBackend, SandboxCommand, SandboxManager, SandboxMode, SandboxPolicy
+from .sandbox_additional_permissions import prepare_with_additional_permissions
 from .sandbox_failure import SandboxExecutionError, SandboxFailureKind
 
 
@@ -175,29 +176,22 @@ class AttemptAwareSandboxManager(SandboxManager):
                 environment=environment,
             )
         if attempt.selection is SandboxAttemptSelection.ADDITIONAL_PERMISSIONS:
-            ambient = self.base.snapshot(
-                permissions=permissions,
-                permission_mode=permission_mode,
-                workspace=workspace,
-            )
             profile = attempt.additional_permissions
-            if not ambient.enforced:
+            if profile is None or profile.empty:
                 raise SandboxExecutionError(
                     SandboxFailureKind.CONFIGURATION,
-                    "additional permissions require an enforced sandbox",
+                    "additional-permissions attempt requires a non-empty profile",
                     escalatable=False,
                 )
-            # Window 02 owns the contract, but backend-specific path/network
-            # widening must be implemented by a backend that can prove the
-            # requested scope. Until then, fail closed instead of converting a
-            # scoped grant into unrestricted execution.
-            raise SandboxExecutionError(
-                SandboxFailureKind.CONFIGURATION,
-                (
-                    "sandbox backend does not yet implement scoped additional permissions: "
-                    f"{profile.canonical() if profile is not None else {}}"
-                ),
-                escalatable=False,
+            return prepare_with_additional_permissions(
+                self.base,
+                argv=argv,
+                cwd=cwd,
+                workspace=workspace,
+                permissions=permissions,
+                permission_mode=permission_mode,
+                environment=environment,
+                profile=profile,
             )
 
         root = Path(workspace).expanduser().resolve()
