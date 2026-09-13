@@ -4,13 +4,15 @@ import os
 from dataclasses import replace
 from pathlib import Path
 
+from .context_limits import resolve_context_limits
 from .contracts import AgentEventKind, AgentSession
 from .durable_runtime import DurableAgentRuntime
 from .permissions import PermissionDecision, permission_snapshot
 from .process_runtime import ProcessStore
+from .response_language import infer_user_language
 from .sandbox import SandboxManager, SandboxPolicy, SandboxSnapshot
 from .sandbox_tools import sandbox_status_tool
-from .step import StepContext
+from .step import RequestStateSnapshot, StepContext
 from .tools import ToolContext, ToolResult
 
 
@@ -156,6 +158,20 @@ class SandboxAgentRuntime(DurableAgentRuntime):
             return False
         return True
 
+    def _model_profile_snapshot(self, profile_id: str) -> dict[str, object] | None:
+        registry = getattr(self.platform, "registry", None)
+        if registry is None:
+            return None
+        try:
+            profile = registry.get(profile_id)
+        except (AttributeError, KeyError, TypeError, ValueError):
+            return None
+        safe = getattr(profile, "as_safe_dict", None)
+        if not callable(safe):
+            return None
+        payload = safe()
+        return dict(payload) if isinstance(payload, dict) else None
+
     def _build_step_context(
         self,
         session: AgentSession,
@@ -172,9 +188,20 @@ class SandboxAgentRuntime(DurableAgentRuntime):
             permissions=step.permissions,
             workspace=Path(step.world_state.workspace_dir),
         )
+        request_state = RequestStateSnapshot.build(
+            system_prompt=session.system_prompt,
+            project_instructions=self.instruction_loader.load(session.workspace_dir),
+            communication_language=infer_user_language(
+                session.messages,
+                fallback=session.communication_language,
+            ),
+            model_profile=self._model_profile_snapshot(session.profile_id),
+            context_limits=resolve_context_limits(self, session),
+        )
         return replace(
             step,
             world_state=replace(step.world_state, sandbox=snapshot),
+            request_state=request_state,
         )
 
 
