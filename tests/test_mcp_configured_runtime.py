@@ -165,3 +165,45 @@ def test_mcp_config_identity_changes_frozen_request_digest(tmp_path: Path):
     finally:
         first.close()
         second.close()
+
+
+def test_transient_mcp_connected_state_does_not_change_binding_identity(monkeypatch, tmp_path: Path):
+    config = MCPServerConfig(
+        name="demo",
+        transport="stdio",
+        command="python",
+        args=("server.py",),
+    )
+    runtime = _runtime(
+        tmp_path / "state",
+        mcp_servers=(config,),
+        auto_connect_mcp=False,
+    )
+    try:
+        def status(connected: bool):
+            return {
+                "enabled": True,
+                "sdk_available": True,
+                "connected_servers": 1 if connected else 0,
+                "tool_count": 0,
+                "servers": [
+                    {
+                        "name": "demo",
+                        "transport": "stdio",
+                        "connected": connected,
+                        "protocol_version": "2026-07-28",
+                        "server_info": "demo-server/1",
+                        "tool_count": 0,
+                        "error": "" if connected else "temporary disconnect",
+                    }
+                ],
+            }
+
+        monkeypatch.setattr(runtime.mcp_clients, "status", lambda: status(True))
+        connected_snapshot = runtime._mcp_binding_snapshot()
+        monkeypatch.setattr(runtime.mcp_clients, "status", lambda: status(False))
+        disconnected_snapshot = runtime._mcp_binding_snapshot()
+
+        assert connected_snapshot == disconnected_snapshot
+    finally:
+        runtime.close()
