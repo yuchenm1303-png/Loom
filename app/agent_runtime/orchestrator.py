@@ -7,7 +7,7 @@ from app.ai import ToolCall
 from .contracts import PermissionMode
 from .permissions import PermissionDecision, PermissionEngine
 from .step import StepContext
-from .tools import AgentTool, ToolPolicy, validate_tool_arguments
+from .tools import AgentTool, ToolContext, ToolPolicy, ToolResult, validate_tool_arguments
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,13 +31,6 @@ class ToolOrchestrator:
         *,
         legacy_policy: ToolPolicy | None = None,
     ) -> tuple[PermissionDecision, str]:
-        """Return the exact authorization decision used by real execution.
-
-        The frozen StepContext permission snapshot is authoritative. The model
-        does not need to predict this decision before it emits a tool call;
-        Loom's runtime owns allow/approval/deny enforcement.
-        """
-
         evaluation = self.permission_engine.evaluate(
             effect=tool.effect,
             snapshot=step.permissions,
@@ -45,10 +38,7 @@ class ToolOrchestrator:
         decision = evaluation.decision
         reason = evaluation.reason
 
-        if (
-            step.permissions.mode is PermissionMode.APPROVAL
-            and legacy_policy is not None
-        ):
+        if step.permissions.mode is PermissionMode.APPROVAL and legacy_policy is not None:
             decision = (
                 PermissionDecision.APPROVAL
                 if legacy_policy.requires_approval(tool)
@@ -67,21 +57,6 @@ class ToolOrchestrator:
         *,
         legacy_policy: ToolPolicy | None = None,
     ) -> str:
-        """Return model-facing tool-harness rules without leaking permission policy.
-
-        This method keeps its historical name for compatibility. Earlier Loom
-        versions injected a per-step capability matrix containing tool names,
-        permission decisions, sandbox state, and hand-written intent routes.
-        That made the model perform a second, fallible authorization pass before
-        calling tools. Codex instead treats the finalized tool plan as the
-        model-visible capability surface and keeps authorization in the runtime.
-
-        The current contract is therefore intentionally invariant across
-        permission profiles for the same model/tool request. ``step`` and
-        ``legacy_policy`` remain parameters only so callers do not need a
-        migration in the same release.
-        """
-
         del step, legacy_policy
         return "\n".join(
             (
@@ -120,6 +95,26 @@ class ToolOrchestrator:
             decision=decision,
             reason=reason,
         )
+
+    def execute(
+        self,
+        prepared: PreparedToolCall,
+        context: ToolContext,
+        *,
+        approval_granted: bool = False,
+    ) -> ToolResult:
+        if prepared.decision is PermissionDecision.DENY:
+            raise RuntimeError("denied tool reached execution")
+        if prepared.decision is PermissionDecision.APPROVAL and not approval_granted:
+            raise RuntimeError("tool execution requires approval")
+
+        try:
+            result = prepared.tool.handler(context, prepared.call.arguments)
+            if not isinstance(result, ToolResult):
+                raise TypeError("agent tool handler must return ToolResult")
+            return result
+        except Exception as exc:
+            return ToolResult(ok=False, content=f"{type(exc).__name__}: {exc}")
 
 
 __all__ = ["PreparedToolCall", "ToolOrchestrator"]
