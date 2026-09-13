@@ -17,7 +17,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install
-        run: python -m pip install -e '.[dev,browser]'
+        run: python -m pip install -e '.[dev]'
       - name: Compile
         run: python -m compileall -q app loom_cli.py loom_web.py loom_app_server.py run_loom.py
       - name: Test
@@ -111,6 +111,18 @@ jobs:
       - name: Windows adapter imports
         run: python -c "from app.agent_runtime.computer_windows import windows_computer_available; assert windows_computer_available()"
 
+  windows-app-server-smoke:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: python -m pip install -e ".[dev]"
+      - name: App-server process and UTF-8 protocol contracts
+        run: python -m pytest -q tests/test_app_server_client.py tests/test_app_server_stdio_encoding.py
+
   mcp-adapter-smoke:
     runs-on: ubuntu-latest
     steps:
@@ -126,6 +138,10 @@ jobs:
   browser-adapter-smoke:
     runs-on: ubuntu-latest
     env:
+      # browser-use 0.13.x reads IN_DOCKER to enable its documented Chromium
+      # container launch flags (including --no-sandbox). GitHub-hosted runners
+      # otherwise look like a regular Linux host even though Chrome requires the
+      # container-style launch policy in this test environment.
       IN_DOCKER: "true"
     steps:
       - uses: actions/checkout@v4
