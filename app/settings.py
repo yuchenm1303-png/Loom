@@ -113,6 +113,7 @@ _ALLOWED_SETTING_PATHS: dict[str, tuple[type, Any]] = {
     "terminal.encoding": (str, {"utf-8", "system"}),
     "terminal.commandTimeoutSeconds": (int, range(15, 1801)),
     "terminal.preserveBackgroundProcesses": (bool, None),
+    "environment.passThroughEnvVars": (list, None),
     "browser.mode": (str, {"local-launch", "cdp-attach", "extension"}),
     # Validated properly by the runtime, which is the only place that knows the
     # loopback rule. Storing it is not the same as accepting it.
@@ -219,6 +220,19 @@ class LoomSettingsStore:
                 return value[:120]
             if path.startswith("shortcuts."):
                 return value[:64]
+        if expected_type is list:
+            if path == "environment.passThroughEnvVars":
+                if not all(isinstance(item, str) for item in value):
+                    raise ValueError(f"setting {path} must be a list of strings")
+                cleaned: list[str] = []
+                for item in value:
+                    name = item.strip()
+                    if not name:
+                        continue
+                    if len(name) > 256 or any(ch in name for ch in "\0="):
+                        raise ValueError(f"setting {path} contains an invalid name: {item!r}")
+                    cleaned.append(name)
+                return cleaned
         if allowed is not None and value not in allowed:
             raise ValueError(f"invalid value for setting {path}: {value!r}")
         return value
