@@ -71,6 +71,11 @@ def exec_environment_identity(step, overrides: Mapping[str, object] | None = Non
 class ExecActionIdentity:
     """Secret-minimized identity for one model-originated exec action.
 
+    ``call_id`` identifies this protocol instance but is intentionally excluded
+    from the semantic digest. Two calls that request the same execution action
+    therefore have the same action identity, matching Codex's separation between
+    ApprovalAction request ids and approval/cache keys.
+
     User-visible arguments remain in the ToolCall/PendingToolApproval. This object
     records execution semantics for binding without copying stdin or environment
     values into another durable representation.
@@ -130,7 +135,6 @@ class ExecActionIdentity:
     def binding_payload(self) -> dict[str, Any]:
         return {
             "kind": "exec_command",
-            "call_id": self.call_id,
             "argv": list(self.argv),
             "cwd": self.cwd,
             "resolved_cwd": self.resolved_cwd,
@@ -143,6 +147,12 @@ class ExecActionIdentity:
             "explicit_environment_names": list(self.explicit_environment_names),
             "explicit_environment_identity": self.explicit_environment_identity,
             "resolved_environment_identity": self.resolved_environment_identity,
+        }
+
+    def instance_payload(self) -> dict[str, Any]:
+        return {
+            "call_id": self.call_id,
+            **self.binding_payload(),
         }
 
     def digest(self) -> str:
