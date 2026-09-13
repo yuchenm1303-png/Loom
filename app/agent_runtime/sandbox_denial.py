@@ -18,9 +18,11 @@ def is_likely_sandbox_denied_result(result: ToolResult) -> bool:
     """Port Codex's centralized sandbox-denial heuristic to Loom exec output.
 
     A non-zero exit or stderr alone is never enough. The result must carry an
-    enforced sandbox snapshot and one of Codex's well-known denial markers.
-    Results already classified by a platform/runtime adapter are handled by the
-    caller and do not depend on this heuristic.
+    enforced sandbox snapshot and one of Codex's well-known denial markers in
+    the command's stdout/stderr. Loom's human-readable ``content`` deliberately
+    does not participate because it contains harness metadata such as
+    ``sandbox=bubblewrap`` that would make every failed sandboxed command look
+    like a denial.
     """
 
     if result.ok:
@@ -36,7 +38,7 @@ def is_likely_sandbox_denied_result(result: ToolResult) -> bool:
     sections = (
         str(data.get("stderr") or ""),
         str(data.get("stdout") or ""),
-        str(result.content or ""),
+        str(data.get("aggregated_output") or ""),
     )
     return any(
         needle in section.casefold()
