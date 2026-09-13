@@ -259,6 +259,12 @@ class MCPToolDescriptor:
     exposure: ToolExposure
 
 
+@dataclass(frozen=True, slots=True)
+class MCPServerMetadata:
+    protocol_version: str = ""
+    server_info: str = ""
+
+
 @dataclass(slots=True)
 class _ConnectedServer:
     config: MCPServerConfig
@@ -334,7 +340,7 @@ def _copy_descriptor(descriptor: MCPToolDescriptor) -> MCPToolDescriptor:
 
 
 class PreparedMcpCall:
-    """Exact client + catalog revision captured for one model-visible MCP tool."""
+    """Exact client, config, metadata and catalog revision for one MCP tool."""
 
     def __init__(
         self,
@@ -347,6 +353,11 @@ class PreparedMcpCall:
     ) -> None:
         self._connected = connected
         self._descriptor = _copy_descriptor(descriptor)
+        self._config = connected.config
+        self._server_metadata = MCPServerMetadata(
+            protocol_version=connected.protocol_version,
+            server_info=connected.server_info,
+        )
         self.catalog_revision = int(catalog_revision)
         self._runner = runner
         self._max_result_chars = max(1000, int(max_result_chars))
@@ -365,7 +376,11 @@ class PreparedMcpCall:
 
     @property
     def config(self) -> MCPServerConfig:
-        return self._connected.config
+        return self._config
+
+    @property
+    def server_metadata(self) -> MCPServerMetadata:
+        return self._server_metadata
 
     def _assert_current_locked(self) -> None:
         if self._connected.closed:
@@ -402,7 +417,7 @@ class PreparedMcpCall:
                 self._assert_current_locked()
             result = self._runner.run(
                 self._connected.client.call_tool(self.tool_name, dict(arguments)),
-                timeout=self._connected.config.timeout_seconds,
+                timeout=self._config.timeout_seconds,
                 cancel_check=cancel_check,
             )
         normalized = _normalize_mcp_result(result, max_chars=self._max_result_chars)
@@ -432,13 +447,24 @@ class McpBinding:
         self._connections = tuple(connections)
         self._tools: list[MCPToolDescriptor] = []
         self._calls: dict[tuple[str, str], PreparedMcpCall] = {}
+        self._server_snapshots: list[tuple[str, str, str, str, int]] = []
         canonical_seen: set[str] = set()
 
         for connected in sorted(self._connections, key=lambda item: item.config.name):
             with connected.catalog_lock:
                 if connected.closed:
                     continue
+                config = connected.config
                 revision = connected.catalog_revision
+                self._server_snapshots.append(
+                    (
+                        config.name,
+                        config.transport,
+                        connected.protocol_version,
+                        connected.server_info,
+                        revision,
+                    )
+                )
                 for raw_descriptor in connected.descriptors:
                     descriptor = _copy_descriptor(raw_descriptor)
                     if descriptor.canonical_name in canonical_seen:
@@ -456,20 +482,20 @@ class McpBinding:
                     )
 
         self._tools_tuple = tuple(self._tools)
+        self._server_snapshots_tuple = tuple(self._server_snapshots)
         self.identity = self._semantic_identity()
 
     def _semantic_identity(self) -> str:
         payload = {
             "servers": [
                 {
-                    "name": connected.config.name,
-                    "transport": connected.config.transport,
-                    "protocol_version": connected.protocol_version,
-                    "server_info": connected.server_info,
-                    "catalog_revision": connected.catalog_revision,
+                    "name": name,
+                    "transport": transport,
+                    "protocol_version": protocol_version,
+                    "server_info": server_info,
+                    "catalog_revision": catalog_revision,
                 }
-                for connected in sorted(self._connections, key=lambda item: item.config.name)
-                if not connected.closed
+                for name, transport, protocol_version, server_info, catalog_revision in self._server_snapshots_tuple
             ],
             "tools": [
                 {
@@ -543,15 +569,15 @@ class MCPClientManager:
         self._servers: dict[str, _ConnectedServer] = {}
         self._retired_servers: list[_ConnectedServer] = []
         self._errors: dict[str, str] = {}
-        self._binding_cache: tuple[tuple[tuple[str, int, int], ...], McpBinding] | None = None
+        self._binding_cache: tuple[tuple[tuple[str, int, int, int], ...], McpBinding] | None = None
         self._closed = False
 
     def _invalidate_binding_cache(self) -> None:
         self._binding_cache = None
 
-    def _binding_signature(self) -> tuple[tuple[str, int, int], ...]:
+    def _binding_signature(self) -> tuple[tuple[str, int, int, int], ...]:
         return tuple(
-            (name, id(connected), connected.catalog_revision)
+            (name, id(connected), id(connected.config), connected.catalog_revision)
             for name, connected in sorted(self._servers.items())
             if not connected.closed
         )
@@ -939,6 +965,7 @@ __all__ = [
     "MCPConfigurationError",
     "MCPRuntime",
     "MCPServerConfig",
+    "MCPServerMetadata",
     "MCPToolDescriptor",
     "MCPUnavailableError",
     "McpBinding",
