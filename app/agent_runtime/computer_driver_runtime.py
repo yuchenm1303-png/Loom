@@ -7,7 +7,7 @@ from typing import Any
 
 from .computer_driver import ComputerDriverEvent, ComputerTaskDriver
 from .computer_runtime import ComputerUseRuntime
-from .computer_ufo_driver import UfoWindowsDriver
+from .computer_ufo_driver import UfoWindowsDriver, _safe_stderr_line
 from .contracts import AgentEventKind, ToolEffect
 from .tools import AgentTool, ToolContext, ToolExposure, ToolRegistry, ToolResult
 
@@ -29,11 +29,24 @@ _SENSITIVE_DRIVER_KEYS = {
     "raw",
     "request",
     "response",
-    "stderr_tail",
     "task",
     "text",
     "traceback",
 }
+# stderr_tail is rewritten rather than blanked. Blanking it destroyed the one
+# thing that makes a driver crash actionable: a TypeError inside UFO reached the
+# logs as a bare error_type with no frames at all. The line scrubber keeps only
+# fixed traceback headers, file basenames, line numbers, function names and
+# exception class names, and replaces everything else with a placeholder, so
+# applying it here is safe whatever a driver put in the field. It is idempotent,
+# so scrubbing an already-scrubbed tail changes nothing.
+_SCRUBBED_DRIVER_KEYS = {"stderr_tail"}
+
+
+def _scrubbed_driver_text(value: Any) -> Any:
+    if not isinstance(value, str):
+        return _safe_driver_data(value)
+    return "\n".join(_safe_stderr_line(line) for line in value.splitlines())
 _UFO_COMPATIBLE_PROVIDERS = {"openai", "openai-compatible", "openai_compatible"}
 
 
@@ -56,6 +69,8 @@ def _safe_driver_data(value: Any, *, key: str = "") -> Any:
     """Keep provider events useful without persisting task/input/error payloads."""
 
     key_folded = str(key or "").casefold()
+    if key_folded in _SCRUBBED_DRIVER_KEYS:
+        return _scrubbed_driver_text(value)
     if key_folded in _SENSITIVE_DRIVER_KEYS:
         if value in (None, "", [], {}):
             return value

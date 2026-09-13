@@ -35,7 +35,10 @@ def test_driver_result_redacts_stderr_and_provider_payloads():
         }
     )
 
-    assert safe["stderr_tail"] == "[REDACTED_DRIVER_DATA]"
+    # stderr_tail is scrubbed line by line rather than blanked, so a real
+    # traceback keeps its frames. Text that is not traceback-shaped, like this,
+    # still goes.
+    assert safe["stderr_tail"] == "[REDACTED_UFO_STDERR]"
     assert safe["error"] == "[REDACTED_DRIVER_DATA]"
     assert safe["preview"] == "[REDACTED_DRIVER_DATA]"
     assert safe["traceback"] == "[REDACTED_DRIVER_DATA]"
@@ -181,3 +184,115 @@ def test_driver_action_has_balanced_transcript_lifecycle_without_terminal_hud_id
     assert completed["tool"] == "driver_action_result"
     assert completed["driver_progress"] is True
     assert pending[0] is None
+
+
+def test_prescrubbed_stderr_survives_redaction_but_raw_fields_do_not():
+    """A driver failure has to leave something to act on.
+
+    stderr_tail arrives already rewritten by the driver's whitelist scrubber,
+    which keeps only fixed traceback headers, file basenames, line numbers,
+    function names and exception class names. Redacting it a second time
+    destroyed exactly that structure, so a TypeError inside UFO reached the logs
+    as a bare error_type with no frames and could not be diagnosed at all.
+    """
+
+    scrubbed = (
+        'Traceback (most recent call last):\n'
+        '  File "session.py", line 912, in handle\n'
+        'TypeError: [REDACTED_EXCEPTION_MESSAGE]'
+    )
+    safe = _safe_driver_data(
+        {
+            "error_type": "TypeError",
+            "frames": ["session.py:912:handle", "host_agent.py:233:process"],
+            "stderr_tail": scrubbed,
+            "error": "provider echoed the user request",
+            "traceback": "raw traceback carrying task text",
+            "task": "open WeChat and search for today's news",
+        }
+    )
+
+    assert safe["stderr_tail"] == scrubbed
+    assert safe["frames"] == ["session.py:912:handle", "host_agent.py:233:process"]
+    # Everything that was never scrubbed at the source still is here.
+    assert safe["error"] == "[REDACTED_DRIVER_DATA]"
+    assert safe["traceback"] == "[REDACTED_DRIVER_DATA]"
+    assert safe["task"] == "[REDACTED_DRIVER_DATA]"
+    assert "WeChat" not in repr(safe)
+
+
+def test_the_stderr_scrubber_emits_no_free_text():
+    """What makes passing stderr_tail through safe."""
+
+    from app.agent_runtime.computer_ufo_driver import _safe_stderr_line
+
+    assert _safe_stderr_line("Traceback (most recent call last):") == "Traceback (most recent call last):"
+    assert (
+        _safe_stderr_line(r'  File "C:\secret\path\session.py", line 912, in handle')
+        == '  File "session.py", line 912, in handle'
+    )
+    assert (
+        _safe_stderr_line("TypeError: cannot use 'NoneType' as a control label")
+        == "TypeError: [REDACTED_EXCEPTION_MESSAGE]"
+    )
+    # Anything the scrubber does not recognise is discarded rather than passed on.
+    assert _safe_stderr_line("user typed: hunter2") == "[REDACTED_UFO_STDERR]"
+    assert _safe_stderr_line("INFO: opening C:/private/report.docx") == "INFO: [REDACTED_UFO_STDERR]"
+
+
+def test_sidecar_frames_carry_location_without_payload():
+    import importlib.util
+    import pathlib
+
+    spec = importlib.util.spec_from_file_location(
+        "_loom_sidecar_probe",
+        pathlib.Path(__file__).resolve().parents[1] / "app" / "agent_runtime" / "ufo_sidecar.py",
+    )
+    # The sidecar imports UFO at module scope, so only the helper's source is
+    # exercised here rather than the module.
+    source = spec.origin
+    text = pathlib.Path(source).read_text(encoding="utf-8")
+    namespace: dict = {"traceback": __import__("traceback")}
+    start = text.index("def _exception_frames(")
+    end = text.index("def _keep_raw_logs(")
+    exec(compile(text[start:end], source, "exec"), namespace)
+    build = namespace["_exception_frames"]
+
+    try:
+        raise TypeError("cannot use 'NoneType' as a control label")
+    except TypeError as exc:
+        frames = build(exc)
+
+    assert frames
+    assert all(len(item.split(":")) == 3 for item in frames)
+    assert "NoneType" not in " ".join(frames)
+    assert frames[-1].startswith("test_computer_driver_hud.py:")
+
+
+def test_sidecar_frames_follow_a_chained_cause():
+    import importlib.util
+    import pathlib
+
+    source = str(
+        pathlib.Path(__file__).resolve().parents[1] / "app" / "agent_runtime" / "ufo_sidecar.py"
+    )
+    text = pathlib.Path(source).read_text(encoding="utf-8")
+    namespace: dict = {"traceback": __import__("traceback")}
+    start = text.index("def _exception_frames(")
+    end = text.index("def _keep_raw_logs(")
+    exec(compile(text[start:end], source, "exec"), namespace)
+    build = namespace["_exception_frames"]
+
+    def inner():
+        raise ValueError("inner detail")
+
+    try:
+        try:
+            inner()
+        except ValueError as cause:
+            raise TypeError("outer") from cause
+    except TypeError as exc:
+        frames = build(exc)
+
+    # UFO wraps failures, so the frame that actually broke is usually in the cause.
+    assert any(":inner" in item for item in frames)

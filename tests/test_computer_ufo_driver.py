@@ -125,8 +125,43 @@ def test_runtime_redacts_provider_errors_and_text_before_persistence():
     assert safe["result"]["error"] == "[REDACTED_DRIVER_DATA]"
     assert safe["parameters"]["text"] == "[REDACTED_DRIVER_DATA]"
     assert safe["parameters"]["text_length"] == 12
-    assert safe["stderr_tail"] == "[REDACTED_DRIVER_DATA]"
+    # stderr_tail is rewritten line by line rather than blanked, so a genuine
+    # traceback keeps the frames that make a driver crash findable. Text that is
+    # not traceback-shaped, like this, is still discarded.
+    assert safe["stderr_tail"] == "[REDACTED_UFO_STDERR]"
+    assert "provider echoed task text" not in repr(safe)
     assert safe["window"]["title"] == "WeChat"
+
+
+def test_a_real_traceback_survives_the_runtime_redaction():
+    """Blanking this field left a driver TypeError with no frames at all."""
+
+    tail = "\n".join(
+        (
+            "Traceback (most recent call last):",
+            r'  File "C:\Users\Alice\ufo\session.py", line 912, in handle',
+            "TypeError: cannot use NoneType as a control label",
+        )
+    )
+    safe = _safe_driver_data({"stderr_tail": tail})
+
+    assert safe["stderr_tail"] == "\n".join(
+        (
+            "Traceback (most recent call last):",
+            '  File "session.py", line 912, in handle',
+            "TypeError: [REDACTED_EXCEPTION_MESSAGE]",
+        )
+    )
+    assert "Alice" not in safe["stderr_tail"]
+    assert "control label" not in safe["stderr_tail"]
+
+
+def test_scrubbing_the_tail_twice_changes_nothing():
+    """The runtime scrubs whatever arrives, including an already-scrubbed tail."""
+
+    once = _safe_driver_data({"stderr_tail": "INFO: opening C:/private/report.docx"})
+    twice = _safe_driver_data({"stderr_tail": once["stderr_tail"]})
+    assert once == twice
 
 
 def test_ufo_stderr_preserves_structure_but_drops_message_and_user_paths():

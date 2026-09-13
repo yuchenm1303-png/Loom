@@ -804,6 +804,28 @@ def _git_head(root: Path) -> str:
         return ""
 
 
+def _exception_frames(exc: BaseException, *, limit: int = 12) -> list[str]:
+    """Describe where an exception came from, carrying no payload.
+
+    Each frame is reduced to a file basename, a line number and a function name,
+    which is enough to find the code and cannot contain task text, page content
+    or provider output. Chained causes are followed because UFO wraps failures.
+    """
+
+    frames: list[str] = []
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen and len(frames) < limit:
+        seen.add(id(current))
+        for frame in traceback.extract_tb(current.__traceback__):
+            name = str(getattr(frame, "filename", "") or "").replace("\\", "/").rsplit("/", 1)[-1]
+            frames.append(f"{name or '<unknown>'}:{frame.lineno}:{frame.name}")
+            if len(frames) >= limit:
+                break
+        current = current.__cause__ or current.__context__
+    return frames
+
+
 def _keep_raw_logs() -> bool:
     return str(os.environ.get("LOOM_UFO_KEEP_RAW_LOGS") or "").strip().casefold() in {
         "1",
@@ -1277,6 +1299,11 @@ async def _run_task(
             "task.failed",
             {
                 "error_type": error_type,
+                # Where it broke, without what it was carrying. The message goes
+                # to stderr redacted, and a bare error_type left a failure with
+                # nothing to act on: a TypeError could have come from anywhere in
+                # UFO's response handling.
+                "frames": _exception_frames(exc),
                 "first_progress_kind": controller.first_progress_kind,
                 "last_event_sequence": controller.sequence,
             },
