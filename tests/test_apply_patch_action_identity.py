@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from app.ai import ToolCall
 from app.agent_runtime.apply_patch_action import ApplyPatchActionIdentity
 from app.agent_runtime.contracts import PermissionMode, ToolEffect
@@ -80,7 +82,7 @@ def test_structured_patch_canonicalizes_call_id_path_spelling_and_object_key_ord
                 {
                     "content": "hello",
                     "path": "note.txt",
-                    "action": "ADD",
+                    "action": "add",
                 }
             ]
         },
@@ -180,6 +182,57 @@ def test_generic_action_factory_and_binding_use_apply_patch_identity(tmp_path):
     assert changed != bound
 
 
+@pytest.mark.parametrize(
+    ("arguments", "message"),
+    (
+        (
+            {"changes": [{"action": "ADD", "path": "note.txt", "content": "x"}]},
+            "unsupported patch action",
+        ),
+        (
+            {"changes": [{"action": "add", "path": 7, "content": "x"}]},
+            "path must be a string",
+        ),
+        (
+            {"changes": [{"action": "add", "path": "note.txt", "content": 7}]},
+            "content must be a string",
+        ),
+        (
+            {
+                "changes": [
+                    {"action": "add", "path": "note.txt", "content": "x", "extra": True}
+                ]
+            },
+            "unsupported fields",
+        ),
+        (
+            {
+                "changes": [{"action": "add", "path": "note.txt", "content": "x"}],
+                "patch": "*** Begin Patch\n*** End Patch",
+            },
+            "exactly one",
+        ),
+        (
+            {
+                "changes": [{"action": "add", "path": "note.txt", "content": "x"}],
+                "unexpected": "value",
+            },
+            "unsupported arguments",
+        ),
+    ),
+)
+def test_patch_action_rejects_schema_invalid_shapes_before_canonicalization(
+    tmp_path,
+    arguments,
+    message,
+):
+    with pytest.raises(ValueError, match=message):
+        ApplyPatchActionIdentity.build(
+            _step(tmp_path),
+            ToolCall(call_id="patch-invalid", name="apply_patch", arguments=arguments),
+        )
+
+
 def test_malformed_patch_keeps_normal_validation_but_binds_invalid_arguments(tmp_path):
     step = _step(tmp_path)
     tool = step.tool_router.get("apply_patch")
@@ -188,12 +241,25 @@ def test_malformed_patch_keeps_normal_validation_but_binds_invalid_arguments(tmp
     first = _structured_call(call_id="patch-invalid-1", path="../outside-one.txt")
     same = _structured_call(call_id="patch-invalid-2", path="../outside-one.txt")
     second = _structured_call(call_id="patch-invalid-3", path="../outside-two.txt")
+    valid = _structured_call(call_id="patch-valid", path="note.txt")
+    uppercase = ToolCall(
+        call_id="patch-invalid-uppercase",
+        name="apply_patch",
+        arguments={
+            "changes": [
+                {"action": "ADD", "path": "note.txt", "content": "private-content"}
+            ]
+        },
+    )
 
     generic = binding_digest(step, tool, platform)
     first_binding = action_binding_digest(step, tool, first, platform)
     same_binding = action_binding_digest(step, tool, same, platform)
     second_binding = action_binding_digest(step, tool, second, platform)
+    valid_binding = action_binding_digest(step, tool, valid, platform)
+    uppercase_binding = action_binding_digest(step, tool, uppercase, platform)
 
     assert first_binding != generic
     assert first_binding == same_binding
     assert second_binding != first_binding
+    assert uppercase_binding != valid_binding
