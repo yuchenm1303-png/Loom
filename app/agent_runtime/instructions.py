@@ -1,12 +1,21 @@
-"""Codex-parity project instruction discovery and model-visible rendering.
+"""Codex-parity project instruction discovery, rendering, and turn snapshots.
 
 Discovery walks from the project root to the effective cwd, choosing at most one
 instruction file per directory. Deeper files therefore appear later and can
 refine shallower rules. Rendering mirrors Codex's contextual-user fragment
 markers so project documentation stays recognisable after history projection.
+
+Loom uses stateless Chat Completions transports, so it reprojects contextual
+fragments on each request. A durable per-turn snapshot prevents that reprojection
+from re-reading AGENTS.md during approval resume or later model steps in the same
+turn, preserving the frozen instruction state Codex carries in world state.
 """
 from __future__ import annotations
 
+import hashlib
+import json
+import os
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -24,6 +33,15 @@ class ProjectInstruction:
     path: Path
     text: str
     truncated: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class ProjectInstructionSnapshot:
+    session_id: str
+    turn_id: str
+    workspace: str
+    rendered: str
+    source_paths: tuple[str, ...]
 
 
 class InstructionLoader:
@@ -120,6 +138,88 @@ class InstructionLoader:
         return self.render(self.load_entries(workspace_path), directory=workspace_path)
 
 
+class ProjectInstructionSnapshotStore:
+    """Durably freeze model-visible project instructions for one Loom turn."""
+
+    def __init__(self, session_root: str | Path) -> None:
+        self.session_root = Path(session_root).expanduser().resolve()
+
+    @staticmethod
+    def _turn_key(turn_id: str) -> str:
+        return hashlib.sha256(str(turn_id).encode("utf-8")).hexdigest()[:32]
+
+    def _path(self, session_id: str, turn_id: str) -> Path:
+        directory = self.session_root / str(session_id) / "instruction_snapshots"
+        directory.mkdir(parents=True, exist_ok=True)
+        return directory / f"turn-{self._turn_key(turn_id)}.json"
+
+    def load(self, session_id: str, turn_id: str) -> ProjectInstructionSnapshot | None:
+        target = self._path(session_id, turn_id)
+        if not target.is_file():
+            return None
+        payload = json.loads(target.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            raise ValueError("instruction snapshot must be a JSON object")
+        if str(payload.get("session_id") or "") != str(session_id):
+            raise ValueError("instruction snapshot session id mismatch")
+        if str(payload.get("turn_id") or "") != str(turn_id):
+            raise ValueError("instruction snapshot turn id mismatch")
+        return ProjectInstructionSnapshot(
+            session_id=str(session_id),
+            turn_id=str(turn_id),
+            workspace=str(payload.get("workspace") or ""),
+            rendered=str(payload.get("rendered") or ""),
+            source_paths=tuple(str(item) for item in payload.get("source_paths", []) if item),
+        )
+
+    def capture(
+        self,
+        *,
+        session_id: str,
+        turn_id: str,
+        workspace: str | Path,
+        loader: InstructionLoader,
+    ) -> ProjectInstructionSnapshot:
+        existing = self.load(session_id, turn_id)
+        if existing is not None:
+            return existing
+
+        workspace_path = Path(workspace).expanduser().resolve()
+        entries = loader.load_entries(workspace_path)
+        snapshot = ProjectInstructionSnapshot(
+            session_id=str(session_id),
+            turn_id=str(turn_id),
+            workspace=str(workspace_path),
+            rendered=loader.render(entries, directory=workspace_path),
+            source_paths=tuple(str(entry.path) for entry in entries),
+        )
+        target = self._path(session_id, turn_id)
+        temp = target.with_name(f".{target.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
+        payload = {
+            "version": 1,
+            "session_id": snapshot.session_id,
+            "turn_id": snapshot.turn_id,
+            "workspace": snapshot.workspace,
+            "rendered": snapshot.rendered,
+            "source_paths": list(snapshot.source_paths),
+        }
+        data = json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True)
+        try:
+            with temp.open("w", encoding="utf-8", newline="\n") as handle:
+                handle.write(data)
+                handle.flush()
+                os.fsync(handle.fileno())
+            # The session execution lease serializes normal runtime captures.
+            # Replace keeps the sidecar atomic for process restart recovery.
+            os.replace(temp, target)
+        finally:
+            try:
+                temp.unlink(missing_ok=True)
+            except OSError:
+                pass
+        return snapshot
+
+
 __all__ = [
     "AGENTS_FRAGMENT_END",
     "AGENTS_FRAGMENT_START",
@@ -128,4 +228,6 @@ __all__ = [
     "InstructionLoader",
     "PROJECT_DOC_SEPARATOR",
     "ProjectInstruction",
+    "ProjectInstructionSnapshot",
+    "ProjectInstructionSnapshotStore",
 ]
