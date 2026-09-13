@@ -18,7 +18,8 @@ The Codex baseline was re-read from `openai/codex` main at the start of this wor
 | Durable rollout reconstruction | `codex-rs/core/src/session/rollout_reconstruction.rs`, `codex-rs/rollout/src/model_context.rs` reconstruct from durable rollout/checkpoints rather than treating raw rollout as the next prompt | `ContextCheckpointStore` + session snapshot | Preserve Loom durable checkpoint product data, but render reconstructed summary at contextual-user precedence |
 | Context window | `codex-rs/core/src/session/context_window.rs` resolves the active model step's window | `context_limits.py` | Resolve every model step; model/profile changes immediately change the threshold |
 | Auto compact limit | current `ModelInfo::auto_compact_token_limit()` default is 90% of resolved context window | old Loom default was 78% of local input budget | Use 90% of effective model window; explicit model limit still wins |
-| Auto compact trigger | `session/turn.rs` primarily uses current token usage and active model window | old Loom used UTF-8 bytes / 3 as the normal trigger | Use latest provider-reported response usage when available; fallback estimate only when provider usage is absent |
+| Auto compact scope | `AutoCompactTokenLimitScope::{Total, BodyAfterPrefix}`; default `total`; `body_after_prefix` subtracts an AutoCompactWindow prefill baseline but full context remains a hard cap | Loom `ModelContextLimits` has no scope field and no prefill-window state | Implement default `total`; fail closed if a future profile supplies unsupported `body_after_prefix`; request profile/window-state interface from owning window |
+| Auto compact trigger | `session/turn.rs` + `session/context_window.rs` use active token usage and configured scope | old Loom used UTF-8 bytes / 3 as the normal trigger | Use latest provider-reported response usage when available; fallback estimate only when provider usage is absent |
 | Manual compact task | `tasks/compact.rs`, `tasks/mod.rs`, `core/src/compact.rs` model compaction as a task with cancellation | `compact_context_with_model()` | Keep Loom public API, but use the same no-tools compaction prompt / replacement semantics and propagate cancellation before commit |
 | Context-window retry | `core/src/compact.rs` retries `ContextWindowExceeded` after dropping the oldest input item | old Loom had three semantic summary retries plus custom reducers | Drop oldest logical history item; keep tool call/output group together in Loom's message representation; remove semantic finish-reason retry policy |
 | Compact output replacement | `core/src/compact.rs::build_compacted_history` keeps real user messages newest-first under ~20k tokens and appends `SUMMARY_PREFIX + summary` as contextual user history | old Loom used SYSTEM summary + arbitrary recent suffix | Port Codex shape: real user messages + contextual-user summary; do not replay pre-compact assistant/tool suffix |
@@ -62,6 +63,9 @@ The root-to-cwd project-doc chain is rendered as contextual user content. It is 
 ```text
 prepare model step
   -> resolve current model window / explicit compact threshold
+  -> resolve auto-compact scope
+       -> total: supported, current Loom path
+       -> body_after_prefix: requires Codex-style prefill-window state; fail closed until owned interface exists
   -> project transient base + Loom product context + project docs + canonical model window
   -> read latest surviving provider token usage
        -> checkpoint newer than usage? invalidate old usage
@@ -116,6 +120,14 @@ Codex has a distinct developer contextual fragment. Loom's `AIMessage` contract 
 
 Risk: a backend that treats named USER content differently from Codex contextual-user fragments may not be byte-for-byte identical, but project docs no longer gain the stronger SYSTEM precedence they had before.
 
+### Auto-compact `body_after_prefix` scope
+
+Current Codex config schema exposes `model_auto_compact_token_limit_scope` with `total` and `body_after_prefix`. `body_after_prefix` uses the first observed input-token count in the current AutoCompactWindow as a baseline, charges only subsequent growth against the configured auto-compact limit, and still compacts when the full effective context window is reached. Codex tests include `auto_compact_body_after_prefix_ignores_starting_window_prefix` and `auto_compact_body_after_prefix_counts_growth_after_compaction`.
+
+Loom's `app/ai/profiles.py::ModelContextLimits` currently has neither the scope field nor an AutoCompactWindow/prefill baseline contract. That file is outside this window's production write ownership. This port therefore keeps the current Codex default `total` behavior and explicitly rejects a dynamically supplied non-total scope instead of silently changing semantics.
+
+Required interface from the profile/lifecycle owner: expose `auto_compact_token_limit_scope` plus durable-per-window `prefill_input_tokens` that resets on compaction/new-context/restore/history replacement. Once supplied, `context_budget.py` can apply the Codex subtraction without changing the rest of the state machine.
+
 ### Exact pre-turn / mid-turn lifecycle placement
 
 Codex distinguishes pre-turn compaction from mid-turn rollover and only performs mid-turn rollover when a follow-up model step is required. Loom invokes context preparation immediately before each model request from the shared turn runner. This window did not modify the turn lifecycle core because that file belongs to window 01.
@@ -145,6 +157,7 @@ Codex main at the recorded SHA strips disabled direct-call execution metadata fr
 - shared instruction byte budget;
 - discovered AGENTS symlink behavior;
 - 90% auto-compact default and model-window changes;
+- default `total` auto-compact scope plus fail-closed unsupported `body_after_prefix` boundary;
 - provider usage as primary compact trigger;
 - checkpoint invalidation of stale provider usage;
 - manual compact no-tools request and exact compact prompt placement;
@@ -156,6 +169,10 @@ Codex main at the recorded SHA strips disabled direct-call execution metadata fr
 - fixed instruction/tool-schema pressure fails closed;
 - reconstructed checkpoint summary keeps contextual-user precedence;
 - durable checkpoint archive remains distinct from model projection.
+
+## Validation status
+
+PR `#125` was opened against `main`. The first GitHub Actions CI run was marked failed by GitHub, but all nine returned jobs (including `test`) had `steps: []` and no runner assignment. Per project acceptance rules this is not evidence that pytest/build ran or failed. No successful test execution result is claimed from that run.
 
 ## Changed production files
 
