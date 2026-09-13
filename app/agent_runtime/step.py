@@ -34,6 +34,7 @@ class RequestStateSnapshot:
     ``ModelProfile.as_safe_dict`` serialized canonically, never credentials.
     """
 
+    captured: bool = False
     system_prompt: str = ""
     project_instructions: str = ""
     communication_language: str = "auto"
@@ -42,6 +43,7 @@ class RequestStateSnapshot:
 
     def __post_init__(self) -> None:
         language = str(self.communication_language or "auto").strip().casefold() or "auto"
+        object.__setattr__(self, "captured", bool(self.captured))
         object.__setattr__(self, "system_prompt", str(self.system_prompt or ""))
         object.__setattr__(self, "project_instructions", str(self.project_instructions or ""))
         object.__setattr__(self, "communication_language", language)
@@ -68,6 +70,7 @@ class RequestStateSnapshot:
                 separators=(",", ":"),
             )
         return cls(
+            captured=True,
             system_prompt=system_prompt,
             project_instructions=project_instructions,
             communication_language=communication_language,
@@ -77,6 +80,7 @@ class RequestStateSnapshot:
 
     def digest(self) -> str:
         payload = {
+            "captured": self.captured,
             "system_prompt": self.system_prompt,
             "project_instructions": self.project_instructions,
             "communication_language": self.communication_language,
