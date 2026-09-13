@@ -279,3 +279,56 @@ def test_reused_call_id_executes_each_sample_once_without_deduplicating(tmp_path
     assert '"content":"first"' in str(outputs[0].content)
     assert '"content":"second"' in str(outputs[1].content)
     runtime.close()
+
+
+def test_two_sessions_can_sample_concurrently_without_cross_session_serialization(tmp_path):
+    """Codex multi-thread parity: one session lease must not serialize another session."""
+    import threading
+
+    entered = []
+    barrier = threading.Barrier(2)
+
+    class ConcurrentPlatform:
+        def execute_chat(self, _profile_id, request):
+            user = next(
+                str(message.content)
+                for message in reversed(request.messages)
+                if message.role is MessageRole.USER
+            )
+            entered.append(user)
+            barrier.wait(timeout=3)
+            return ModelResponse(text=f"done:{user}", finish_reason="stop")
+
+    runtime = AgentRuntime(
+        platform=ConcurrentPlatform(),
+        store=FileAgentSessionStore(tmp_path / "state"),
+        tools=ToolRegistry(),
+    )
+    first = runtime.create_session("agent.fast")
+    second = runtime.create_session("agent.fast")
+    results = {}
+    errors = []
+
+    def run(label, session_id):
+        try:
+            results[label] = runtime.start_turn(session_id, label)
+        except BaseException as exc:
+            errors.append(exc)
+
+    workers = [
+        threading.Thread(target=run, args=("first", first.session_id)),
+        threading.Thread(target=run, args=("second", second.session_id)),
+    ]
+    for worker in workers:
+        worker.start()
+    for worker in workers:
+        worker.join(5)
+
+    assert errors == []
+    assert all(not worker.is_alive() for worker in workers)
+    assert set(entered) == {"first", "second"}
+    assert results["first"].status is AgentStatus.COMPLETED
+    assert results["second"].status is AgentStatus.COMPLETED
+    assert results["first"].final_text == "done:first"
+    assert results["second"].final_text == "done:second"
+    runtime.close()
