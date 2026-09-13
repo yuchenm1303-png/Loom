@@ -87,15 +87,42 @@ def session_lock(directory):
                 fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
-def atomic_json(path, value):
-    temp = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+def _chmod_private(path) -> None:
+    """Best-effort user-only permissions for local runtime state."""
+
     try:
-        with temp.open("w", encoding="utf-8") as handle:
-            json.dump(value, handle, ensure_ascii=False, separators=(",", ":"))
+        path.chmod(0o600)
+    except OSError:
+        pass
+
+
+def atomic_json(path, value, *, indent=None, sort_keys=False):
+    """Atomically persist private runtime JSON without a permissive temp window."""
+
+    temp = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    descriptor = None
+    try:
+        descriptor = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            descriptor = None
+            json.dump(
+                value,
+                handle,
+                ensure_ascii=False,
+                separators=None if indent is not None else (",", ":"),
+                indent=indent,
+                sort_keys=sort_keys,
+            )
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(temp, path)
+        _chmod_private(path)
     finally:
+        if descriptor is not None:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
         temp.unlink(missing_ok=True)
 
 
@@ -135,5 +162,5 @@ def recover(directory):
             handle.write(json.dumps(event, ensure_ascii=False) + "\n")
             handle.flush()
             os.fsync(handle.fileno())
-    atomic_json(directory / "session.json", payload["session"])
+    atomic_json(directory / "session.json", payload["session"], indent=2, sort_keys=True)
     journal.unlink()

@@ -166,6 +166,7 @@ class TurnRunner:
                     return rt._limit(session, "model step limit reached")
                 recovery_instruction = ""
                 recovery_partial = ""
+                recovery_reasoning_content = ""
                 for attempt in range(rt.limits.model_retries + 1):
                     step = rt._build_step_context(session, next_model_step=True)
                     messages, extra = rt._prepare_model_request(session, step, token)
@@ -187,6 +188,7 @@ class TurnRunner:
                             request_messages.append(AIMessage(
                                 role=MessageRole.ASSISTANT,
                                 content=recovery_partial,
+                                reasoning_content=recovery_reasoning_content,
                             ))
                         request_messages.append(AIMessage(
                             role=MessageRole.SYSTEM,
@@ -240,6 +242,7 @@ class TurnRunner:
                             ) from exc
                         recovery_instruction = "empty_response"
                         recovery_partial = ""
+                        recovery_reasoning_content = ""
                         continue
                     except AIResponseError as exc:
                         session.model_steps += 1
@@ -261,6 +264,7 @@ class TurnRunner:
                             ) from exc
                         recovery_instruction = "invalid_provider_response"
                         recovery_partial = ""
+                        recovery_reasoning_content = ""
                         continue
                     except AITransportError as exc:
                         if not exc.retryable or attempt >= rt.limits.model_retries:
@@ -313,6 +317,9 @@ class TurnRunner:
                         or invalid_terminal == "unfinished_terminal_text"
                         else ""
                     )
+                    recovery_reasoning_content = (
+                        str(response.reasoning_content or "") if recovery_partial else ""
+                    )
                 if rt._cancel_if_requested(session, token):
                     return rt._result(session)
                 if not isinstance(response, ModelResponse):
@@ -326,7 +333,12 @@ class TurnRunner:
                 reason = response.finish_reason.casefold()
                 incomplete = reason not in {"", "stop", "tool_calls", "function_call", "completed", "end_turn"}
                 calls = () if incomplete else response.tool_calls
-                session.messages.append(AIMessage(role=MessageRole.ASSISTANT, content=response.text, tool_calls=calls))
+                session.messages.append(AIMessage(
+                    role=MessageRole.ASSISTANT,
+                    content=response.text,
+                    tool_calls=calls,
+                    reasoning_content=response.reasoning_content,
+                ))
                 rt._record(session, Event.MODEL_RESPONSE, data={
                     "step_id": step.step_id, "text": response.text, "finish_reason": response.finish_reason,
                     "response_id": response.response_id,

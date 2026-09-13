@@ -52,13 +52,16 @@ def _message_to_dict(message: AIMessage) -> dict[str, Any]:
                 )
             else:  # pragma: no cover - AI contracts reject unsupported parts
                 raise TypeError("unsupported AI message part")
-    return {
+    payload = {
         "role": message.role.value,
         "content": content,
         "name": message.name,
         "tool_call_id": message.tool_call_id,
         "tool_calls": [_tool_call_to_dict(call) for call in message.tool_calls],
     }
+    if message.reasoning_content:
+        payload["_provider_reasoning_content"] = message.reasoning_content
+    return payload
 
 
 def _message_from_dict(payload: dict[str, Any]) -> AIMessage:
@@ -93,6 +96,7 @@ def _message_from_dict(payload: dict[str, Any]) -> AIMessage:
             for item in payload.get("tool_calls", [])
             if isinstance(item, dict)
         ),
+        reasoning_content=str(payload.get("_provider_reasoning_content") or ""),
     )
 
 
@@ -208,8 +212,9 @@ class FileAgentSessionStore:
     """Local durable state for Loom Agent Runtime.
 
     ``session.json`` is an atomic resumable snapshot. ``events.jsonl`` is an
-    append-only UI/audit feed. Observable state is persisted; private model
-    chain-of-thought is not.
+    append-only UI/audit feed. Provider-private continuation state may be kept in
+    the local snapshot when required for protocol correctness, but it is never
+    copied into the UI/audit event stream.
     """
 
     def __init__(self, runtime_root: str | Path) -> None:
@@ -247,20 +252,12 @@ class FileAgentSessionStore:
         session.updated_at = utc_now()
         directory = self.session_dir(session.session_id)
         directory.mkdir(parents=True, exist_ok=True)
-        target = directory / "session.json"
-        temp = directory / f".session.{os.getpid()}.{uuid.uuid4().hex}.tmp"
-        data = json.dumps(session_to_dict(session), ensure_ascii=False, indent=2, sort_keys=True)
-        try:
-            with temp.open("w", encoding="utf-8", newline="\n") as handle:
-                handle.write(data)
-                handle.flush()
-                os.fsync(handle.fileno())
-            os.replace(temp, target)
-        finally:
-            try:
-                temp.unlink(missing_ok=True)
-            except OSError:
-                pass
+        atomic_json(
+            directory / "session.json",
+            session_to_dict(session),
+            indent=2,
+            sort_keys=True,
+        )
 
     def load(self, session_id: str) -> AgentSession:
         target = self.session_dir(session_id) / "session.json"
@@ -303,7 +300,6 @@ class FileAgentSessionStore:
             payload = {"event_id": event.event_id, "session_id": event.session_id,
                 "turn_id": event.turn_id, "kind": event.kind.value, "created_at": event.created_at, "data": event.data}
             atomic_json(directory / ".pending-commit.json", {"session": session_to_dict(session), "event": payload})
-            # Once the redo record is durable, recovery must complete both writes.
             self._append_event(event)
             self._save(session)
             (directory / ".pending-commit.json").unlink()
@@ -348,7 +344,7 @@ class FileAgentSessionStore:
                 payload = json.loads(raw)
             except (json.JSONDecodeError, UnicodeDecodeError):
                 if index == len(lines) - 1 and not raw.endswith(b"\n"):
-                    break  # A crash may leave an uncommitted final record.
+                    break
                 raise
             output.append(
                 AgentEvent(

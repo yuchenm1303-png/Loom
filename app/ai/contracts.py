@@ -90,6 +90,10 @@ class AIMessage:
     name: str = ""
     tool_call_id: str = ""
     tool_calls: tuple[ToolCall, ...] = ()
+    # Provider-private continuity state. This is never rendered as assistant
+    # output, but some reasoning providers (notably DeepSeek with tools) require
+    # the exact value to be replayed on later requests.
+    reasoning_content: str = ""
 
     def __post_init__(self) -> None:
         role = MessageRole(self.role)
@@ -110,17 +114,21 @@ class AIMessage:
                 raise TypeError("unsupported message content part")
         name = str(self.name or "").strip()
         tool_call_id = str(self.tool_call_id or "").strip()
+        reasoning_content = str(self.reasoning_content or "")
         if role is MessageRole.TOOL and not tool_call_id:
             raise ValueError("tool messages require tool_call_id")
         if tool_calls and role is not MessageRole.ASSISTANT:
             raise ValueError("only assistant messages may contain tool_calls")
         if role is MessageRole.TOOL and tool_calls:
             raise ValueError("tool messages cannot contain tool_calls")
+        if reasoning_content and role is not MessageRole.ASSISTANT:
+            raise ValueError("only assistant messages may contain provider reasoning state")
         object.__setattr__(self, "role", role)
         object.__setattr__(self, "content", content)
         object.__setattr__(self, "name", name)
         object.__setattr__(self, "tool_call_id", tool_call_id)
         object.__setattr__(self, "tool_calls", tool_calls)
+        object.__setattr__(self, "reasoning_content", reasoning_content)
 
     @property
     def uses_vision(self) -> bool:
@@ -222,6 +230,9 @@ class ModelResponse:
     usage: ModelUsage = field(default_factory=ModelUsage)
     finish_reason: str = ""
     response_id: str = ""
+    # Provider-private continuity state; never publish this through user-facing
+    # events. It exists only so provider adapters can satisfy replay contracts.
+    reasoning_content: str = ""
 
 
 @dataclass(frozen=True, slots=True)

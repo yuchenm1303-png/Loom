@@ -80,14 +80,18 @@ function ReasoningControl({
   running?: boolean;
   onChange(kind: string, value: string): Promise<void> | void;
 }) {
-  const selectedIndex = Math.max(0, reasoning.options.findIndex((option) => option.value === reasoning.value));
+  const selectedOption = activeReasoningOption(reasoning) ?? reasoning.options[0];
+  const standardOptions = reasoning.options.filter((option) => !option.advanced);
+  const advancedOptions = reasoning.options.filter((option) => option.advanced);
+  const sliderOptions = standardOptions.length ? standardOptions : reasoning.options;
+  const exactSliderIndex = sliderOptions.findIndex((option) => option.value === reasoning.value);
+  const selectedIndex = exactSliderIndex >= 0 ? exactSliderIndex : Math.max(0, sliderOptions.length - 1);
   const [displayIndex, setDisplayIndex] = useState(selectedIndex);
   const [error, setError] = useState("");
   const locked = Boolean(busy || running);
-  const displayOption = reasoning.options[displayIndex] ?? reasoning.options[selectedIndex] ?? reasoning.options[0];
   const canReset = reasoning.value !== reasoning.defaultValue;
-  const denominator = Math.max(1, reasoning.options.length - 1);
-  const progress = reasoning.options.length <= 1 ? 0 : displayIndex / denominator;
+  const denominator = Math.max(1, sliderOptions.length - 1);
+  const progress = sliderOptions.length <= 1 ? 0 : displayIndex / denominator;
   const progressPercent = Math.max(0, Math.min(100, progress * 100));
   const strengthLevel = Math.max(0, Math.min(5, Math.round(progress * 5)));
   const sliderStyle = {
@@ -99,11 +103,9 @@ function ReasoningControl({
     setDisplayIndex(selectedIndex);
   }, [selectedIndex]);
 
-  async function commit(index: number) {
-    const option = reasoning.options[index];
+  async function commitOption(option: ModelReasoningOption | undefined) {
     if (!option || locked || option.value === reasoning.value) return;
     setError("");
-    setDisplayIndex(index);
     try {
       await onChange(reasoning.kind, option.value);
     } catch (cause) {
@@ -112,9 +114,19 @@ function ReasoningControl({
     }
   }
 
+  async function commitStandard(index: number) {
+    const option = sliderOptions[index];
+    if (!option || locked) return;
+    setDisplayIndex(index);
+    await commitOption(option);
+  }
+
   async function reset() {
-    const index = reasoning.options.findIndex((option) => option.value === reasoning.defaultValue);
-    if (index >= 0) await commit(index);
+    const option = reasoning.options.find((candidate) => candidate.value === reasoning.defaultValue);
+    if (!option) return;
+    const sliderIndex = sliderOptions.findIndex((candidate) => candidate.value === option.value);
+    if (sliderIndex >= 0) setDisplayIndex(sliderIndex);
+    await commitOption(option);
   }
 
   return (
@@ -122,7 +134,7 @@ function ReasoningControl({
       <div className="reasoning-head">
         <span className="reasoning-icon"><Zap size={17} fill="currentColor" /></span>
         <div className="reasoning-heading-copy">
-          <strong>{displayOption?.label || reasoning.value}</strong>
+          <strong>{selectedOption?.label || reasoning.value}</strong>
           <span>{modelName}</span>
         </div>
         <button
@@ -156,23 +168,45 @@ function ReasoningControl({
           className="reasoning-range"
           type="range"
           min={0}
-          max={Math.max(0, reasoning.options.length - 1)}
+          max={Math.max(0, sliderOptions.length - 1)}
           step={1}
           value={displayIndex}
-          disabled={locked || reasoning.options.length <= 1}
+          disabled={locked || sliderOptions.length <= 1}
           aria-label="Reasoning strength"
-          aria-valuetext={displayOption?.label || reasoning.value}
-          title={displayOption?.description || "Reasoning strength"}
+          aria-valuetext={selectedOption?.label || reasoning.value}
+          title={selectedOption?.description || "Reasoning strength"}
           onChange={(event) => setDisplayIndex(Number(event.currentTarget.value))}
-          onPointerUp={(event) => void commit(Number(event.currentTarget.value))}
+          onPointerUp={(event) => void commitStandard(Number(event.currentTarget.value))}
           onKeyUp={(event) => {
             if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) {
-              void commit(Number(event.currentTarget.value));
+              void commitStandard(Number(event.currentTarget.value));
             }
           }}
         />
         <span className="reasoning-thumb" aria-hidden="true" />
       </div>
+
+      {advancedOptions.map((option) => {
+        const active = option.value === reasoning.value;
+        return (
+          <button
+            key={option.value}
+            type="button"
+            className="model-wide-action"
+            disabled={locked || active}
+            aria-pressed={active}
+            title={option.description}
+            onClick={() => void commitOption(option)}
+          >
+            <SlidersHorizontal size={15} />
+            <span>
+              <strong>{active ? `${option.label} · Active` : option.label}</strong>
+              <small>{option.description}</small>
+            </span>
+            {active ? <Check size={14} /> : <ChevronRight size={14} />}
+          </button>
+        );
+      })}
 
       {running ? <div className="reasoning-locked-note">Stop the active turn to change reasoning.</div> : null}
       {error ? <div className="composer-popover-error">{error}</div> : null}
