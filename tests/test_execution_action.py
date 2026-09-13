@@ -71,7 +71,9 @@ def test_exec_action_captures_execution_shape_without_copying_private_values(tmp
     assert (action.rows, action.cols) == (31, 101)
     assert action.explicit_environment_names == ("VISIBLE_NAME",)
     assert "call_id" not in payload
+    assert "cwd" not in payload
     assert action.instance_payload()["call_id"] == "exec-1"
+    assert action.instance_payload()["cwd"] == "."
     assert "private-input-value" not in rendered
     assert "private-env-value" not in rendered
     assert len(action.stdin_identity) == 64
@@ -88,6 +90,30 @@ def test_exec_action_semantic_identity_does_not_depend_on_call_id(tmp_path):
     assert first.instance_payload() != second.instance_payload()
     assert first.binding_payload() == second.binding_payload()
     assert first.digest() == second.digest()
+
+
+def test_exec_action_semantic_identity_uses_resolved_cwd(tmp_path):
+    step = _step(tmp_path)
+    dot = ExecActionIdentity.build(step, _call(cwd="."))
+    dotted = ExecActionIdentity.build(step, _call(cwd="./"))
+
+    assert dot.cwd != dotted.cwd
+    assert dot.resolved_cwd == dotted.resolved_cwd
+    assert dot.binding_payload() == dotted.binding_payload()
+    assert dot.digest() == dotted.digest()
+
+
+def test_pipe_action_ignores_terminal_dimensions_but_still_validates_them(tmp_path):
+    step = _step(tmp_path)
+    first = ExecActionIdentity.build(step, _call(pty=False, rows=24, cols=80))
+    second = ExecActionIdentity.build(step, _call(pty=False, rows=70, cols=160))
+
+    assert first.rows is None and first.cols is None
+    assert second.rows is None and second.cols is None
+    assert first.digest() == second.digest()
+
+    with pytest.raises(ValueError, match="rows"):
+        ExecActionIdentity.build(step, _call(pty=False, rows=0))
 
 
 def test_exec_action_identity_changes_for_explicit_environment_value(tmp_path):
