@@ -4,13 +4,26 @@ import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 from app.ai import ToolCall
 
 
 _MAX_PATCH_CHARS = 2_000_000
 _MAX_PATCH_OPERATIONS = 128
+_PATCH_ACTIONS = frozenset({"add", "update", "delete", "move"})
+_PATCH_ARGUMENT_NAMES = frozenset({"changes", "patch"})
+_PATCH_CHANGE_NAMES = frozenset(
+    {
+        "action",
+        "path",
+        "content",
+        "old_text",
+        "new_text",
+        "expected_text",
+        "move_to",
+    }
+)
 
 
 def _canonical_bytes(value: object) -> bytes:
@@ -28,7 +41,9 @@ def _digest(value: object) -> str:
 
 
 def _canonical_workspace_path(workspace: str | Path, raw_path: object) -> str:
-    value = str(raw_path or "").strip()
+    if not isinstance(raw_path, str):
+        raise ValueError("patch path must be a string")
+    value = raw_path.strip()
     if not value:
         raise ValueError("patch path must not be empty")
     root = Path(workspace).expanduser().resolve()
@@ -48,15 +63,27 @@ def _structured_request(workspace: str | Path, raw_changes: object) -> tuple[str
     normalized: list[dict[str, object]] = []
     paths: set[str] = set()
     for index, raw in enumerate(raw_changes):
-        if not isinstance(raw, Mapping):
+        if not isinstance(raw, dict):
             raise ValueError(f"changes[{index}] must be an object")
-        item = {str(key): value for key, value in raw.items()}
-        item["action"] = str(item.get("action") or "").strip().casefold()
-        path = _canonical_workspace_path(workspace, item.get("path"))
+        extras = sorted(set(raw) - _PATCH_CHANGE_NAMES)
+        if extras:
+            raise ValueError(f"changes[{index}] contains unsupported fields: {', '.join(extras)}")
+
+        action = raw.get("action")
+        if not isinstance(action, str) or action not in _PATCH_ACTIONS:
+            raise ValueError(f"unsupported patch action at changes[{index}]: {action!r}")
+        path = _canonical_workspace_path(workspace, raw.get("path"))
+
+        item: dict[str, object] = dict(raw)
+        item["action"] = action
         item["path"] = path
         paths.add(path)
+
+        for name in ("content", "old_text", "new_text", "expected_text"):
+            if name in item and not isinstance(item[name], str):
+                raise ValueError(f"changes[{index}].{name} must be a string")
         if "move_to" in item:
-            destination = _canonical_workspace_path(workspace, item.get("move_to"))
+            destination = _canonical_workspace_path(workspace, item["move_to"])
             item["move_to"] = destination
             paths.add(destination)
         normalized.append(item)
@@ -111,15 +138,21 @@ class ApplyPatchActionIdentity:
         if str(call.name or "") != "apply_patch":
             raise ValueError("ApplyPatchActionIdentity requires an apply_patch tool call")
         arguments = dict(call.arguments)
+        extras = sorted(set(arguments) - _PATCH_ARGUMENT_NAMES)
+        if extras:
+            raise ValueError(f"apply_patch contains unsupported arguments: {', '.join(extras)}")
+        has_patch = "patch" in arguments
+        has_changes = "changes" in arguments
+        if has_patch == has_changes:
+            raise ValueError("apply_patch requires exactly one of patch or changes")
+
         workspace = step.world_state.workspace_dir
-        if "patch" in arguments:
+        if has_patch:
             request_digest, paths = _text_request(workspace, arguments["patch"])
             input_format = "text"
-        elif "changes" in arguments:
+        else:
             request_digest, paths = _structured_request(workspace, arguments["changes"])
             input_format = "structured"
-        else:
-            raise ValueError("apply_patch requires patch or changes")
         return cls(
             call_id=str(call.call_id or "").strip(),
             input_format=input_format,
