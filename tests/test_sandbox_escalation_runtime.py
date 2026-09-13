@@ -187,3 +187,70 @@ def test_user_can_deny_sandbox_escalation_without_second_attempt(tmp_path):
         assert [attempt.kind for attempt in attempts] == [SandboxAttemptKind.INITIAL]
     finally:
         runtime.close()
+
+
+def test_escalation_scope_is_limited_to_the_approved_call(tmp_path):
+    seen: list[tuple[str, SandboxAttemptKind]] = []
+
+    def handler(_context, arguments):
+        label = str(arguments["label"])
+        attempt = current_sandbox_attempt()
+        seen.append((label, attempt.kind))
+        if label == "first" and attempt.kind is SandboxAttemptKind.INITIAL:
+            raise SandboxExecutionError(
+                SandboxFailureKind.DENIED,
+                "first action needs escalation",
+                escalatable=True,
+            )
+        return ToolResult(ok=True, content=f"completed:{label}")
+
+    tool = AgentTool(
+        name="exec",
+        description="Synthetic exec used to verify attempt scope isolation.",
+        input_schema={
+            "type": "object",
+            "properties": {"label": {"type": "string"}},
+            "required": ["label"],
+            "additionalProperties": False,
+        },
+        handler=handler,
+        effect=ToolEffect.READ_ONLY,
+    )
+    runtime = SandboxAgentRuntime(
+        platform=ScriptedPlatform(
+            (
+                ModelResponse(
+                    tool_calls=(
+                        ToolCall(call_id="exec-1", name="exec", arguments={"label": "first"}),
+                    )
+                ),
+                ModelResponse(
+                    tool_calls=(
+                        ToolCall(call_id="exec-2", name="exec", arguments={"label": "second"}),
+                    )
+                ),
+                ModelResponse(text="both complete"),
+            )
+        ),
+        store=FileAgentSessionStore(tmp_path / "state"),
+        tools=ToolRegistry((tool,)),
+        sandbox_manager=_manager(),
+    )
+    try:
+        session = _session(runtime, tmp_path)
+        waiting = runtime.start_turn(session.session_id, "Run both synthetic actions.")
+        assert waiting.status is AgentStatus.WAITING_APPROVAL
+        assert waiting.pending_approval is not None
+        assert waiting.pending_approval.kind is ApprovalKind.SANDBOX_ESCALATION
+
+        completed = runtime.resume_approval(session.session_id, "exec-1", approved=True)
+
+        assert completed.status is AgentStatus.COMPLETED
+        assert completed.final_text == "both complete"
+        assert seen == [
+            ("first", SandboxAttemptKind.INITIAL),
+            ("first", SandboxAttemptKind.ESCALATION),
+            ("second", SandboxAttemptKind.INITIAL),
+        ]
+    finally:
+        runtime.close()
