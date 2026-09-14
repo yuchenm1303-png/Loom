@@ -73,7 +73,7 @@ def test_escalated_attempt_changes_only_current_planning_scope(tmp_path: Path):
         assert escalated.snapshot.enforced is False
         assert escalated.snapshot.backend is SandboxBackend.NONE
         assert escalated.snapshot.network_isolated is False
-        assert "escalation attempt 1" in escalated.snapshot.reason
+        assert "Explicit attempt 1 bypassed OS sandbox containment" in escalated.snapshot.reason
         assert "proven containment rejection" in escalated.snapshot.reason
 
     restored = _prepare(manager, tmp_path)
