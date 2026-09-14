@@ -108,11 +108,13 @@ def test_sampled_step_freezes_exec_environment_binding(monkeypatch, tmp_path):
     }
 
     monkeypatch.setenv("LOOM_EXEC_BINDING_TEST", "after")
-    # Re-reading the same sampled Step must not turn a parent-process env edit
+    monkeypatch.setenv("LOOM_EXEC_BINDING_EXTRA", "new-variable")
+    # Re-reading the same sampled Step must not turn parent-process env edits
     # into a different reviewed action.
     assert binding_digest(exec_step, exec_action, object()) == exec_before
 
-    # The next semantic Step captures the new environment instead.
+    # The next semantic Step captures the new environment instead. Ambient child
+    # environment changes are exec-specific and must not perturb unrelated tools.
     exec_after = binding_digest(_step(exec_action, tmp_path), exec_action, object())
     other_after = {
         name: binding_digest(_step(tool, tmp_path), tool, object())
