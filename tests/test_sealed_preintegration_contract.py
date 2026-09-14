@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
-
 import pytest
 
 from app.agent_runtime.contracts import AgentRunResult, AgentStatus, ToolEffect
@@ -12,7 +10,6 @@ from app.agent_runtime.mcp_runtime import (
     McpBinding,
     _ConnectedServer,
 )
-from app.agent_runtime.runtime import AgentRuntime
 from app.agent_runtime.storage import FileAgentSessionStore
 from app.agent_runtime.tools import ToolExposure, ToolRegistry
 
@@ -59,15 +56,15 @@ def _binding(*, revision: int, remote_name: str = "echo") -> McpBinding:
 
 
 def _runtime(tmp_path) -> ConfiguredMCPRuntime:
-    runtime = object.__new__(ConfiguredMCPRuntime)
-    AgentRuntime.__init__(
-        runtime,
+    return ConfiguredMCPRuntime(
         platform=_NoModelPlatform(),
         store=FileAgentSessionStore(tmp_path / "state"),
         tools=ToolRegistry(),
+        mcp_servers=(),
+        auto_connect_mcp=False,
+        auto_configure_browser=False,
+        auto_configure_web_search=False,
     )
-    runtime.mcp_config_path = ""
-    return runtime
 
 
 def test_step_captures_exact_mcp_binding_and_same_router_authority(tmp_path):
@@ -93,6 +90,7 @@ def test_step_captures_exact_mcp_binding_and_same_router_authority(tmp_path):
     # The legacy JSON field remains diagnostic metadata, not authority.
     assert first.identity in step_one.request_state.mcp_binding_json
     assert second.identity in step_two.request_state.mcp_binding_json
+    runtime.close()
 
 
 def test_safe_handoff_recovers_same_turn_without_new_user_input(tmp_path):
@@ -119,10 +117,12 @@ def test_safe_handoff_recovers_same_turn_without_new_user_input(tmp_path):
         )
 
     runtime._drive = drive
-    result = runtime.recover_turn_if_idle(session.session_id, "existing-turn")
-
-    assert result.status is AgentStatus.COMPLETED
-    assert observed == {"turn_id": "existing-turn", "messages": []}
+    try:
+        result = runtime.recover_turn_if_idle(session.session_id, "existing-turn")
+        assert result.status is AgentStatus.COMPLETED
+        assert observed == {"turn_id": "existing-turn", "messages": []}
+    finally:
+        runtime.close()
 
 
 def test_safe_handoff_refuses_pending_approval_without_original_process_authority(tmp_path):
@@ -135,5 +135,8 @@ def test_safe_handoff_refuses_pending_approval_without_original_process_authorit
     session.status = AgentStatus.WAITING_APPROVAL
     runtime.store.save(session)
 
-    with pytest.raises(RuntimeError, match="original captured StepContext"):
-        runtime.recover_turn_if_idle(session.session_id, "approval-turn")
+    try:
+        with pytest.raises(RuntimeError, match="original captured StepContext"):
+            runtime.recover_turn_if_idle(session.session_id, "approval-turn")
+    finally:
+        runtime.close()
