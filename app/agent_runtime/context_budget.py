@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import math
 from contextlib import nullcontext
-from dataclasses import dataclass
+from dataclasses import replace
 from typing import Sequence
 
 from app.ai import AIMessage, ChatRequest, MessageRole, ModelResponse, ModelUsage, ToolChoice
@@ -26,15 +26,27 @@ _CONTEXT_WINDOW_ERROR_MARKERS = (
     "token limit",
 )
 _IMAGE_TOKEN_ESTIMATE = 2048
+_EMERGENCY_OMISSION_MARKER = "\n\n[... omitted for context budget ...]\n\n"
 
 
-@dataclass(frozen=True, slots=True)
 class ContextBudgetExceeded(RuntimeError):
-    estimated_tokens: int
-    input_budget_tokens: int
-    tool_schema_tokens: int
-    message_count: int
-    reason: str
+    """Structured request-budget error that behaves like a normal exception."""
+
+    def __init__(
+        self,
+        *,
+        estimated_tokens: int,
+        input_budget_tokens: int,
+        tool_schema_tokens: int,
+        message_count: int,
+        reason: str,
+    ) -> None:
+        self.estimated_tokens = int(estimated_tokens)
+        self.input_budget_tokens = int(input_budget_tokens)
+        self.tool_schema_tokens = int(tool_schema_tokens)
+        self.message_count = int(message_count)
+        self.reason = str(reason)
+        super().__init__(str(self))
 
     def __str__(self) -> str:
         return (
@@ -212,6 +224,77 @@ def _raise_if_cancelled(token) -> None:
         raise ModelCancelled()
 
 
+def _single_user_emergency_projection(
+    transient: Sequence[AIMessage],
+    history: Sequence[AIMessage],
+    tools,
+    *,
+    target_tokens: int,
+) -> tuple[list[AIMessage], int] | None:
+    """Clip one oversized real-user item for this request without mutating history.
+
+    There is nothing useful for a compaction model to summarize when the entire
+    canonical window is one oversized user item. Keep both ends of that item,
+    make the omission explicit to the model, and leave durable history intact.
+    """
+    if len(history) != 1:
+        return None
+    message = history[0]
+    if (
+        message.role is not MessageRole.USER
+        or message.name
+        or not isinstance(message.content, str)
+        or not message.content
+        or message.tool_calls
+    ):
+        return None
+
+    original = message.content
+
+    def candidate(keep_chars: int) -> list[AIMessage]:
+        head = (keep_chars + 1) // 2
+        tail = keep_chars // 2
+        if tail:
+            content = original[:head] + _EMERGENCY_OMISSION_MARKER + original[-tail:]
+        else:
+            content = original[:head] + _EMERGENCY_OMISSION_MARKER
+        return [*transient, replace(message, content=content)]
+
+    minimum = candidate(0)
+    minimum_tokens = estimate_tokens(minimum, tools)
+    if minimum_tokens > target_tokens:
+        return None
+
+    low, high = 0, len(original) - 1
+    best = minimum
+    best_tokens = minimum_tokens
+    while low <= high:
+        mid = (low + high) // 2
+        visible = candidate(mid)
+        cost = estimate_tokens(visible, tools)
+        if cost <= target_tokens:
+            best = visible
+            best_tokens = cost
+            low = mid + 1
+        else:
+            high = mid - 1
+    return best, best_tokens
+
+
+def _fit_replacement_message_limit(
+    replacement: Sequence[AIMessage],
+    *,
+    transient_count: int,
+    max_messages: int,
+) -> tuple[AIMessage, ...]:
+    """Keep the newest compacted user context plus the summary under a hard cap."""
+    items = tuple(replacement)
+    allowed = max(1, int(max_messages) - int(transient_count))
+    while len(items) > allowed and len(items) > 1:
+        items = items[1:]
+    return items
+
+
 def prepare_context(rt, session, step, token):
     """Project canonical history from the captured Step and compact when required."""
     _raise_if_cancelled(token)
@@ -283,6 +366,38 @@ def prepare_context(rt, session, step, token):
     else:
         active_context_tokens = provider_tokens
         accounting_source = "provider_usage"
+
+    # If one giant user item is the only canonical history, summarization cannot
+    # safely archive a smaller history first. Use a request-only projection and
+    # preserve the full durable user message for future recovery/export.
+    hard_target = max(1, limits.input_budget_tokens - limits.safety_tokens)
+    if estimated_before > hard_target:
+        emergency = _single_user_emergency_projection(
+            transient,
+            canonical_history,
+            tools,
+            target_tokens=hard_target,
+        )
+        if emergency is not None:
+            emergency_visible, emergency_tokens = emergency
+            metadata = _metadata(
+                envelope=envelope,
+                communication_language=communication_language,
+                limits=limits,
+                tools=tools,
+                estimated_before=estimated_before,
+                estimated_after=emergency_tokens,
+                active_context_tokens=active_context_tokens,
+                token_accounting_source=accounting_source,
+            )
+            metadata.update(
+                {
+                    "emergency_user_truncation": True,
+                    "user_messages_truncated": 1,
+                    "estimated_tokens_saved": max(0, estimated_before - emergency_tokens),
+                }
+            )
+            return emergency_visible, metadata
 
     hard_request_fits = (
         estimated_before <= limits.input_budget_tokens
@@ -387,6 +502,11 @@ def prepare_context(rt, session, step, token):
         summary,
         token_counter=lambda messages: estimate_tokens(messages),
     )
+    replacement = _fit_replacement_message_limit(
+        replacement,
+        transient_count=len(transient),
+        max_messages=rt.limits.max_messages,
+    )
     compacted_visible = [*transient, *replacement]
     estimated_after = estimate_tokens(compacted_visible, tools)
     if (
@@ -409,6 +529,7 @@ def prepare_context(rt, session, step, token):
         retained=(),
         summary_source="auto",
         summary_usage=response.usage,
+        replacement_override=replacement,
     )
 
     committed_visible = [*transient, *session.messages]
