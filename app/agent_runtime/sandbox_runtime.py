@@ -422,6 +422,30 @@ class SandboxAgentRuntime(DurableAgentRuntime):
     ) -> bool:
         if self._cancel_if_requested(session, token):
             return False
+
+        # `_process_pending_tools` executes ALLOW decisions directly instead of
+        # routing them through `_consume_tool_call_once`. That matters after an
+        # ApprovedForSession cache hit: an exec that was explicitly approved as
+        # `require_escalated` must still launch its first attempt without sandbox
+        # containment. Normalize the initial attempt here as the final execution
+        # boundary so every path observes the sandbox permissions frozen into the
+        # prepared call. Retry attempts are already explicit and are left intact.
+        active = current_sandbox_attempt()
+        if prepared.tool.name == "exec" and active.kind is SandboxAttemptKind.INITIAL:
+            expected_attempt = SandboxAttempt.initial(
+                prepared.sandbox_permissions,
+                prepared.additional_permissions,
+            )
+            if active != expected_attempt:
+                with sandbox_attempt_scope(expected_attempt):
+                    return self._execute_prepared_tool(
+                        session,
+                        prepared,
+                        token=token,
+                        step=step,
+                        approval_granted=approval_granted,
+                    )
+
         call = prepared.call
         attempt = current_sandbox_attempt()
         self._record(
