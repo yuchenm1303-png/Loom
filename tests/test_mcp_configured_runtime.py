@@ -126,14 +126,16 @@ def test_step_mcp_binding_snapshot_never_contains_resolved_secret(monkeypatch, t
         payload = json.loads(raw)
 
         assert secret not in raw
-        assert payload["servers"][0]["name"] == "demo"
-        assert payload["servers"][0]["transport"] == "stdio"
-        assert len(payload["servers"][0]["config_sha256"]) == 64
+        assert payload["identity"].startswith("mcp-binding:")
+        assert payload["tools"] == []
+        assert "servers" not in payload
+        assert step.mcp_binding is not None
+        assert step.mcp_binding.identity == payload["identity"]
     finally:
         runtime.close()
 
 
-def test_mcp_config_identity_changes_frozen_request_digest(tmp_path: Path):
+def test_disconnected_mcp_config_does_not_change_exact_frozen_binding(tmp_path: Path):
     first_config = MCPServerConfig(
         name="demo",
         transport="stdio",
@@ -160,14 +162,18 @@ def test_mcp_config_identity_changes_frozen_request_digest(tmp_path: Path):
         first_step = _step(first, tmp_path / "project-a")
         second_step = _step(second, tmp_path / "project-b")
 
-        assert first_step.request_state.mcp_binding_json != second_step.request_state.mcp_binding_json
-        assert first_step.request_state.digest() != second_step.request_state.digest()
+        # Configuration is not executable authority. With neither server
+        # connected, both sampled Steps bind the same empty executable catalog.
+        assert first_step.request_state.mcp_binding_json == second_step.request_state.mcp_binding_json
+        assert first_step.mcp_binding is not None
+        assert second_step.mcp_binding is not None
+        assert first_step.mcp_binding.identity == second_step.mcp_binding.identity
     finally:
         first.close()
         second.close()
 
 
-def test_transient_mcp_connected_state_does_not_change_binding_identity(monkeypatch, tmp_path: Path):
+def test_transient_mcp_connected_status_does_not_change_binding_identity(monkeypatch, tmp_path: Path):
     config = MCPServerConfig(
         name="demo",
         transport="stdio",
@@ -199,11 +205,13 @@ def test_transient_mcp_connected_state_does_not_change_binding_identity(monkeypa
                 ],
             }
 
+        binding = runtime.mcp_clients.capture_binding()
         monkeypatch.setattr(runtime.mcp_clients, "status", lambda: status(True))
-        connected_snapshot = runtime._mcp_binding_snapshot()
+        connected_snapshot = runtime._mcp_binding_snapshot(binding)
         monkeypatch.setattr(runtime.mcp_clients, "status", lambda: status(False))
-        disconnected_snapshot = runtime._mcp_binding_snapshot()
+        disconnected_snapshot = runtime._mcp_binding_snapshot(binding)
 
         assert connected_snapshot == disconnected_snapshot
+        assert connected_snapshot["identity"] == binding.identity
     finally:
         runtime.close()
