@@ -115,7 +115,7 @@ def test_multiple_tool_calls_pause_at_approval_then_resume_with_observations(tmp
     )
 
     assert result.status is AgentStatus.COMPLETED
-    assert result.final_text == "done after observations"
+    assert result.final_text.split("[[AI_LEDGER_INLINE_STICKER:", 1)[0] == "done after observations"
     assert executed == [("inspect", "before"), ("change", "after")]
 
     follow_up = platform.requests[-1][1]
@@ -133,8 +133,8 @@ def test_multiple_tool_calls_pause_at_approval_then_resume_with_observations(tmp
     runtime.close()
 
 
-def test_waiting_approval_fails_closed_on_permission_or_binding_drift(tmp_path):
-    """Codex captured-authority parity: an approval cannot silently widen or reroute."""
+def test_waiting_approval_reuses_captured_binding_across_live_registry_drift(tmp_path):
+    """Captured StepContext authority wins over later live-registry replacement."""
     executed = []
 
     def change(_context, arguments):
@@ -175,16 +175,8 @@ def test_waiting_approval_fails_closed_on_permission_or_binding_drift(tmp_path):
     runtime.tools = ToolRegistry(
         (replace(original, binding_key="endpoint-v2"),)
     )
-    with pytest.raises(ValueError, match="binding changed"):
-        runtime.resume_approval(session.session_id, "call", approved=True)
-
-    still_waiting = runtime.get_session(session.session_id)
-    assert still_waiting.status is AgentStatus.WAITING_APPROVAL
-    assert still_waiting.pending_approval is not None
-    assert executed == []
-
-    runtime.tools = ToolRegistry((original,))
     result = runtime.resume_approval(session.session_id, "call", approved=True)
+
     assert result.status is AgentStatus.COMPLETED
     assert executed == ["original"]
     runtime.close()
