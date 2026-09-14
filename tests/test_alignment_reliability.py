@@ -646,7 +646,7 @@ def test_text_patch_updates_moves_and_adds_atomically(tmp_path):
     assert (tmp_path / "new.py").read_text() == "def run():\n    return 2\n"
     bad = "*** Begin Patch\n*** Add File: first.txt\n+must not commit\n*** Update File: new.py\n@@\n-missing\n+bad\n*** End Patch"
     with pytest.raises(ValueError):
-        tool.handler(context, {"patch": bad)
+        tool.handler(context, {"patch": bad})
     assert not (tmp_path / "first.txt").exists()
 
 
