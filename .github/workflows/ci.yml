@@ -1,4 +1,4 @@
-name: Granular Retry Focused Test
+name: Granular Retry Identity Trace
 
 on:
   pull_request:
@@ -7,7 +7,7 @@ permissions:
   contents: read
 
 jobs:
-  granular-retry-focused-test:
+  granular-retry-identity-trace:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -16,5 +16,70 @@ jobs:
           python-version: "3.12"
       - name: Install focused test dependencies
         run: python -m pip install -e '.[dev]'
-      - name: Run exact granular retry contract
-        run: python -m pytest -q tests/test_sandbox_escalation_runtime.py::test_granular_retry_without_prior_approval_requires_fresh_review
+      - name: Trace exact pytest granular retry contract
+        shell: bash
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import pytest
+
+          from app.agent_runtime.execution_action import execution_action_for
+          from app.agent_runtime.execution_binding import (
+              action_binding_digest as real_action_binding_digest,
+              binding_digest,
+          )
+          import app.agent_runtime.runtime as runtime_module
+          import app.agent_runtime.sandbox_runtime as sandbox_runtime_module
+          import app.agent_runtime.turn_runner as turn_runner_module
+
+          records = []
+
+          def closure_projection(tool):
+              handler = tool.handler
+              function = getattr(handler, "__func__", handler)
+              output = []
+              for cell in (getattr(function, "__closure__", None) or ()):
+                  value = cell.cell_contents
+                  if isinstance(value, (str, int, float, bool, type(None))):
+                      output.append({"kind": "primitive", "type": type(value).__name__, "value": value})
+                  elif hasattr(value, "config"):
+                      raw = repr(value.config).encode("utf-8")
+                      output.append({
+                          "kind": "config",
+                          "type": type(value).__name__,
+                          "config_sha256": hashlib.sha256(raw).hexdigest(),
+                      })
+                  else:
+                      output.append({"kind": "ignored", "type": type(value).__name__})
+              return output
+
+          def traced(step, tool, call, platform):
+              digest = real_action_binding_digest(step, tool, call, platform)
+              action = execution_action_for(step, call)
+              record = {
+                  "index": len(records),
+                  "digest": digest,
+                  "base_digest": binding_digest(step, tool, platform),
+                  "action_digest": action.digest() if action is not None else None,
+                  "resolved_environment_identity": getattr(action, "resolved_environment_identity", None),
+                  "frozen_test_env": step.environment_policy.build().get("LOOM_GRANULAR_RETRY_ENV"),
+                  "request_state_digest": step.request_state.digest() if step.request_state.captured else None,
+                  "closure": closure_projection(tool),
+              }
+              records.append(record)
+              print("BINDING_TRACE=" + json.dumps(record, sort_keys=True), flush=True)
+              return digest
+
+          turn_runner_module.action_binding_digest = traced
+          runtime_module.action_binding_digest = traced
+          sandbox_runtime_module.action_binding_digest = traced
+
+          code = pytest.main([
+              "-q",
+              "-s",
+              "tests/test_sandbox_escalation_runtime.py::test_granular_retry_without_prior_approval_requires_fresh_review",
+          ])
+          print("ALL_BINDING_TRACES=" + json.dumps(records, sort_keys=True), flush=True)
+          raise SystemExit(int(code))
+          PY
