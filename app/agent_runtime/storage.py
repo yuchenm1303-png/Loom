@@ -16,6 +16,7 @@ from .contracts import (
     AgentEventKind,
     AgentSession,
     AgentStatus,
+    ApprovalKind,
     PendingToolApproval,
     PermissionMode,
     ToolEffect,
@@ -105,6 +106,8 @@ def _approval_to_dict(value: PendingToolApproval | None) -> dict[str, Any] | Non
         "arguments": value.arguments,
         "effect": value.effect.value,
         "reason": value.reason,
+        "kind": value.kind.value,
+        "retry_reason": value.retry_reason,
     }
 
 
@@ -117,6 +120,8 @@ def _approval_from_dict(value: Any) -> PendingToolApproval | None:
         arguments=dict(value.get("arguments") or {}),
         effect=ToolEffect(str(value.get("effect") or ToolEffect.READ_ONLY.value)),
         reason=str(value.get("reason") or ""),
+        kind=ApprovalKind(str(value.get("kind") or ApprovalKind.INITIAL.value)),
+        retry_reason=str(value.get("retry_reason") or ""),
     )
 
 
@@ -303,7 +308,6 @@ class FileAgentSessionStore:
             payload = {"event_id": event.event_id, "session_id": event.session_id,
                 "turn_id": event.turn_id, "kind": event.kind.value, "created_at": event.created_at, "data": event.data}
             atomic_json(directory / ".pending-commit.json", {"session": session_to_dict(session), "event": payload})
-            # Once the redo record is durable, recovery must complete both writes.
             self._append_event(event)
             self._save(session)
             (directory / ".pending-commit.json").unlink()
@@ -348,7 +352,7 @@ class FileAgentSessionStore:
                 payload = json.loads(raw)
             except (json.JSONDecodeError, UnicodeDecodeError):
                 if index == len(lines) - 1 and not raw.endswith(b"\n"):
-                    break  # A crash may leave an uncommitted final record.
+                    break
                 raise
             output.append(
                 AgentEvent(

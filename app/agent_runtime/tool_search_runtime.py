@@ -249,8 +249,41 @@ class ToolSearchRuntime(ConfiguredMCPRuntime):
             step_id=step_id,
         )
         activations = self._activation_names(session)
-        base_router = self.tools.router(activated_names=activations)
-        limits = resolve_context_limits(self, session)
+
+        # Preserve the exact Step-scoped execution authority produced by lower
+        # runtime layers (especially ConfiguredMCPRuntime's McpBinding). Tool
+        # search may change exposure and schema pressure, but it must never swap
+        # an exact handler for a long-lived registry projection.
+        scoped_tools: dict[str, AgentTool] = {}
+        for tool in step.tool_router.all():
+            current = tool
+            if (
+                self.defer_mcp_tools
+                and current.name.startswith("mcp.")
+                and current.exposure is ToolExposure.DIRECT
+            ):
+                current = replace(current, exposure=ToolExposure.DEFERRED)
+            scoped_tools[current.name] = current
+
+        # Add deferred/non-visible registry tools for discovery. Existing Step
+        # tools always win. Stale MCP compatibility projections are metadata only
+        # and must not become executable authority for this Step.
+        for tool in self.tools.all():
+            if tool.name in scoped_tools:
+                continue
+            if str(tool.binding_key or "").startswith("mcp-binding:"):
+                continue
+            scoped_tools[tool.name] = tool
+
+        base_router = ToolRegistry(tuple(scoped_tools.values())).router(
+            activated_names=activations,
+        )
+        frozen_limits = step.request_state.context_limits
+        limits = (
+            frozen_limits
+            if step.request_state.captured and frozen_limits is not None
+            else resolve_context_limits(self, session)
+        )
         plan = plan_tool_schema_pressure(
             base_router,
             max_schema_tokens=schema_token_budget(limits.input_budget_tokens),
@@ -303,9 +336,9 @@ class ToolSearchRuntime(ConfiguredMCPRuntime):
         return result
 
     def resume_approval(self, session_id: str, call_id: str, *, approved: bool):
-        # Reconstruct the exact pending tool before the parent runtime rebuilds
-        # its immutable StepContext. This makes approval resume safe even after a
-        # host restart erased turn-scoped activation/schema-pressure memory.
+        # Activation bookkeeping is not execution authority. The parent runtime
+        # must resume the original in-process captured StepContext; after restart
+        # that authority is unavailable and resume fails closed.
         session = self.store.load(session_id)
         pending = session.pending_approval
         if pending is not None and pending.call_id == str(call_id or "").strip():

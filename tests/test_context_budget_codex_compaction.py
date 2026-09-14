@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from app.ai import AIMessage, MessageRole, ModelResponse, ModelUsage
-from app.agent_runtime.context_budget import prepare_context
+from app.ai import AIMessage, MessageRole, ModelContextLimits, ModelResponse, ModelUsage, ToolCall
+from app.ai.errors import AIResponseError
+from app.agent_runtime.context_budget import estimate_tokens, prepare_context
+from app.agent_runtime.context_compaction import SUMMARIZATION_PROMPT, build_compacted_history
 
 
 class ScriptedExecutor:
@@ -15,7 +17,10 @@ class ScriptedExecutor:
         self.requests.append((profile_id, request))
         if not self.responses:
             raise AssertionError("scripted compaction executor ran out of responses")
-        return self.responses.pop(0)
+        response = self.responses.pop(0)
+        if isinstance(response, BaseException):
+            raise response
+        return response
 
 
 class EmptyRouter:
@@ -34,10 +39,11 @@ class InstructionLoader:
 
 @dataclass
 class Limits:
-    context_window_tokens: int = 2200
-    output_reserve_tokens: int = 400
+    context_window_tokens: int = 12_000
+    output_reserve_tokens: int = 1000
     max_messages: int = 160
     max_tool_result_chars: int = 20_000
+    model_retries: int = 2
 
 
 class Envelope:
@@ -48,28 +54,53 @@ class Token:
     cancelled = False
 
 
+class Profile:
+    context_limits = ModelContextLimits(
+        context_window_tokens=12_000,
+        effective_context_percent=100,
+        output_reserve_tokens=1000,
+        auto_compact_token_limit=1,
+    )
+
+
+class Registry:
+    def get(self, _profile_id):
+        return Profile()
+
+
+class Platform:
+    registry = Registry()
+
+
 class Session:
-    def __init__(self, messages, *, communication_language="auto"):
+    def __init__(self, messages):
+        self.session_id = "session-1"
         self.messages = list(messages)
         self.workspace_dir = "/tmp/project"
         self.profile_id = "agent.fast"
-        self.communication_language = communication_language
+        self.communication_language = "auto"
         self.usage = ModelUsage()
 
 
+class Store:
+    def events(self, _session_id):
+        return ()
+
+
 class FakeRuntime:
-    def __init__(self, responses, *, limits=None):
-        self.limits = limits or Limits()
+    def __init__(self, responses):
+        self.limits = Limits()
         self.model_executor = ScriptedExecutor(responses)
-        self.platform = object()
+        self.platform = Platform()
         self.instruction_loader = InstructionLoader()
+        self.store = Store()
         self.commits = []
 
     def _context_envelope(self, _session, _step):
         return Envelope()
 
     def _request_context_messages(self, _session, _step, _envelope):
-        return (AIMessage(role=MessageRole.SYSTEM, content="runtime state"),)
+        return (AIMessage(role=MessageRole.SYSTEM, content="base/runtime context"),)
 
     def _commit_compaction_locked(
         self,
@@ -81,6 +112,7 @@ class FakeRuntime:
         retained,
         summary_source,
         summary_usage=None,
+        replacement_override=None,
     ):
         self.commits.append(
             {
@@ -90,162 +122,112 @@ class FakeRuntime:
                 "retained": tuple(retained),
                 "summary_source": summary_source,
                 "summary_usage": summary_usage,
+                "replacement_override": replacement_override,
             }
         )
-        session.messages = [
-            AIMessage(role=MessageRole.SYSTEM, name="loom_compaction", content=summary),
-            *retained,
-        ]
+        session.messages = list(
+            replacement_override
+            if replacement_override is not None
+            else build_compacted_history(
+                tuple((*archived, *retained)),
+                summary,
+                token_counter=lambda messages: estimate_tokens(messages),
+            )
+        )
 
 
-def _long_history(*, pairs=8, chars=420, user_filler="u"):
+def _history(pairs=4, chars=240):
     messages = []
     for index in range(pairs):
-        messages.append(
-            AIMessage(role=MessageRole.USER, content=f"user-{index}: " + (user_filler * chars))
-        )
-        messages.append(
-            AIMessage(role=MessageRole.ASSISTANT, content=f"assistant-{index}: " + ("a" * chars))
-        )
+        messages.append(AIMessage(role=MessageRole.USER, content=f"user-{index}: " + ("u" * chars)))
+        messages.append(AIMessage(role=MessageRole.ASSISTANT, content=f"assistant-{index}: " + ("a" * chars)))
     return messages
 
 
-def test_provider_specific_success_finish_reason_is_accepted():
-    runtime = FakeRuntime(
-        [ModelResponse(text="Complete compact summary.", finish_reason="eos_token")]
-    )
-    session = Session(_long_history())
-
-    _messages, metadata = prepare_context(runtime, session, Step(), Token())
-
-    assert runtime.commits[-1]["summary"] == "Complete compact summary."
-    assert metadata["auto_compacted"] is True
-    assert metadata["compaction_attempts"] == 1
-
-
-def test_length_completion_retries_instead_of_killing_the_turn():
-    runtime = FakeRuntime(
-        [
-            ModelResponse(
-                text="partial summary",
-                finish_reason="length",
-                usage=ModelUsage(input_tokens=100, output_tokens=400, total_tokens=500),
-            ),
-            ModelResponse(
-                text="Complete summary after retry.",
-                finish_reason="eos_token",
-                usage=ModelUsage(input_tokens=90, output_tokens=30, total_tokens=120),
-            ),
-        ]
-    )
-    session = Session(_long_history())
-
-    _messages, metadata = prepare_context(runtime, session, Step(), Token())
-
-    assert len(runtime.model_executor.requests) == 2
-    assert runtime.commits[-1]["summary"] == "Complete summary after retry."
-    assert runtime.commits[-1]["summary_source"] == "auto_retry"
-    assert runtime.commits[-1]["summary_usage"].total_tokens == 620
-    assert metadata["compaction_attempts"] == 2
-
-
-def test_compaction_uses_full_reserved_output_budget_and_codex_prompt_shape():
-    runtime = FakeRuntime(
-        [ModelResponse(text="summary", finish_reason="stop")]
-    )
-    session = Session(_long_history())
+def test_compaction_request_uses_codex_prompt_as_final_user_message_and_no_tools():
+    runtime = FakeRuntime([ModelResponse(text="summary", finish_reason="stop")])
+    session = Session(_history())
 
     prepare_context(runtime, session, Step(), Token())
 
     request = runtime.model_executor.requests[0][1]
-    assert request.max_output_tokens == runtime.limits.output_reserve_tokens
     assert request.tools == ()
-    assert request.messages[0].role is MessageRole.SYSTEM
-    assert request.messages[0].name == "loom_communication_language"
-    assert "Current user communication language" in request.messages[0].content
     assert request.messages[-1].role is MessageRole.USER
-    assert "compacting earlier canonical conversation history" in request.messages[-1].content
+    assert request.messages[-1].content == SUMMARIZATION_PROMPT
+    assert request.messages[0].role is MessageRole.SYSTEM
+    assert runtime.commits[-1]["retained"] == ()
 
 
-def test_auto_compaction_language_anchor_comes_from_user_history():
-    runtime = FakeRuntime([ModelResponse(text="压缩摘要", finish_reason="stop")])
-    history = _long_history(pairs=7, chars=420)
-    history.extend(
+def test_completed_compaction_does_not_invent_semantic_finish_reason_retries():
+    runtime = FakeRuntime(
         [
-            AIMessage(role=MessageRole.USER, content="继续检查这个问题，不要被英文日志带偏。" + ("继续" * 120)),
-            AIMessage(role=MessageRole.ASSISTANT, content="Now reading English logs and source code." + (" log" * 180)),
+            ModelResponse(
+                text="provider-produced summary",
+                finish_reason="length",
+                usage=ModelUsage(input_tokens=100, output_tokens=30, total_tokens=130),
+            )
+        ]
+    )
+    session = Session(_history())
+
+    _messages, metadata = prepare_context(runtime, session, Step(), Token())
+
+    assert len(runtime.model_executor.requests) == 1
+    assert runtime.commits[-1]["summary"] == "provider-produced summary"
+    assert runtime.commits[-1]["summary_usage"].total_tokens == 130
+    assert metadata["compaction_attempts"] == 1
+
+
+def test_context_window_error_drops_oldest_logical_tool_group_then_retries():
+    call = ToolCall(call_id="call-1", name="read_file", arguments={"path": "a.txt"})
+    history = [
+        AIMessage(role=MessageRole.ASSISTANT, content="", tool_calls=(call,)),
+        AIMessage(role=MessageRole.TOOL, content="contents", name="read_file", tool_call_id="call-1"),
+        AIMessage(role=MessageRole.USER, content="continue"),
+        AIMessage(role=MessageRole.ASSISTANT, content="working"),
+    ]
+    runtime = FakeRuntime(
+        [
+            AIResponseError("maximum context window exceeded"),
+            ModelResponse(text="summary"),
         ]
     )
     session = Session(history)
 
+    _messages, metadata = prepare_context(runtime, session, Step(), Token())
+
+    assert len(runtime.model_executor.requests) == 2
+    first = runtime.model_executor.requests[0][1].messages
+    second = runtime.model_executor.requests[1][1].messages
+    assert any(message.tool_calls for message in first)
+    assert not any(message.tool_calls for message in second)
+    assert not any(message.role is MessageRole.TOOL for message in second)
+    assert metadata["compaction_trimmed_messages"] == 2
+
+    # The retry trims only the compaction request clone. The durable checkpoint
+    # still archives the complete repaired canonical history, including the pair.
+    archived = runtime.commits[-1]["archived"]
+    assert archived[0].tool_calls[0].call_id == "call-1"
+    assert archived[1].tool_call_id == "call-1"
+
+
+def test_replacement_history_contains_real_users_and_summary_not_tool_or_assistant_items():
+    call = ToolCall(call_id="call-2", name="echo", arguments={"text": "x"})
+    history = [
+        AIMessage(role=MessageRole.USER, content="first"),
+        AIMessage(role=MessageRole.ASSISTANT, content="", tool_calls=(call,)),
+        AIMessage(role=MessageRole.TOOL, content="x", name="echo", tool_call_id="call-2"),
+        AIMessage(role=MessageRole.USER, content="second"),
+    ]
+    runtime = FakeRuntime([ModelResponse(text="summary")])
+    session = Session(history)
+
     prepare_context(runtime, session, Step(), Token())
 
-    request = runtime.model_executor.requests[0][1]
-    language = request.messages[0]
-    assert language.name == "loom_communication_language"
-    assert "Current user communication language: Chinese" in language.content
-    assert session.communication_language == "zh"
-
-
-def test_auto_compaction_keeps_persisted_chinese_when_only_short_user_text_remains():
-    runtime = FakeRuntime([ModelResponse(text="继续保持中文的压缩摘要", finish_reason="stop")])
-    # A Chinese thread: the filler has to read as Chinese, otherwise the history
-    # this test archives is itself a substantive Latin conversation and "stays
-    # Chinese" is not the behaviour being exercised.
-    history = _long_history(pairs=8, chars=430, user_filler="中")
-    history.extend(
-        [
-            AIMessage(role=MessageRole.USER, content="ok"),
-            AIMessage(role=MessageRole.ASSISTANT, content="Now reading another English diagnostic log." + (" log" * 180)),
-        ]
-    )
-    session = Session(history, communication_language="zh")
-
-    _messages, metadata = prepare_context(runtime, session, Step(), Token())
-
-    request = runtime.model_executor.requests[0][1]
-    assert "Current user communication language: Chinese" in request.messages[0].content
-    assert metadata["communication_language"] == "zh"
-    assert session.communication_language == "zh"
-
-
-def test_oversized_compaction_request_trims_only_temporary_old_history():
-    runtime = FakeRuntime(
-        [ModelResponse(text="summary", finish_reason="stop")],
-        limits=Limits(context_window_tokens=1800, output_reserve_tokens=300),
-    )
-    original = _long_history(pairs=9, chars=520)
-    session = Session(original)
-
-    _messages, metadata = prepare_context(runtime, session, Step(), Token())
-
-    request = runtime.model_executor.requests[0][1]
-    request_text = "\n".join(str(message.content) for message in request.messages)
-    assert "user-0:" not in request_text
-    assert metadata["compaction_trimmed_messages"] > 0
-
-    # The request clone is trimmed like Codex, but Loom's durable checkpoint still
-    # archives the complete canonical prefix selected for compaction.
-    archived = runtime.commits[-1]["archived"]
-    assert archived
-    assert str(archived[0].content).startswith("user-0:")
-
-
-def test_partition_reserves_room_for_summary_before_calling_model():
-    summary = "summary " * 110
-    runtime = FakeRuntime(
-        [ModelResponse(text=summary, finish_reason="stop")],
-        limits=Limits(context_window_tokens=2200, output_reserve_tokens=400),
-    )
-    # With the old placeholder-only partitioning, six recent messages were kept.
-    # This complete (and output-limit-compliant) summary then made the candidate
-    # exceed the request budget on every retry. Reserving summary space selects a
-    # smaller safe suffix before the model call.
-    session = Session(_long_history(pairs=10, chars=700))
-
-    _messages, metadata = prepare_context(runtime, session, Step(), Token())
-
-    assert metadata["compaction_attempts"] == 1
-    assert runtime.commits[-1]["summary"] == summary.strip()
-    request = runtime.model_executor.requests[0][1]
-    assert 0 < request.max_output_tokens <= runtime.limits.output_reserve_tokens
+    assert [message.role for message in session.messages] == [
+        MessageRole.USER,
+        MessageRole.USER,
+        MessageRole.USER,
+    ]
+    assert [message.content for message in session.messages[:2]] == ["first", "second"]
+    assert session.messages[-1].name == "loom_compaction"

@@ -37,7 +37,7 @@ def test_permission_snapshots_are_canonical_and_preserve_existing_mode_semantics
             frozenset({ToolEffect.READ_ONLY}),
         ),
         PermissionMode.APPROVAL: (
-            ApprovalPolicy.ON_REQUEST,
+            ApprovalPolicy.UNLESS_TRUSTED,
             FileSystemAccess.WORKSPACE_WRITE,
             frozenset({ToolEffect.READ_ONLY}),
         ),

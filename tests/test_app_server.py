@@ -245,11 +245,19 @@ def test_approval_response_runs_through_real_permission_boundary(tmp_path: Path)
             lambda: service.thread_read({"threadId": thread_id})["pendingApproval"]
         )
         assert pending["callId"] == "call-sensitive"
+        assert pending["requestId"]
+        assert pending["turnId"]
         assert calls == []
         assert any(method == "approval/requested" for method, _ in notifications)
 
         accepted = service.approval_respond(
-            {"threadId": thread_id, "callId": "call-sensitive", "approved": True}
+            {
+                "threadId": thread_id,
+                "turnId": pending["turnId"],
+                "requestId": pending["requestId"],
+                "callId": "call-sensitive",
+                "decision": "accept",
+            }
         )
         assert accepted["accepted"] is True
         _wait_until(lambda: thread_id not in service.runtime_status()["activeThreadIds"])

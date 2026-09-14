@@ -7,7 +7,9 @@ from app.agent_runtime import (
     AgentStatus,
     FileAgentSessionStore,
     GoalStatus,
+    PendingToolApproval,
     QueueItemState,
+    ToolEffect,
 )
 from app.agent_runtime.workspace_tools import loom_default_tools
 from app.ai import AIMessage, MessageRole, ModelResponse, ModelUsage, ToolCall
@@ -109,19 +111,23 @@ def test_stale_queue_claim_is_released_or_deduplicated(tmp_path):
     assert runtime.list_queued_turns(session.session_id) == ()
 
 
-def test_recover_interrupted_repairs_missing_and_orphan_tool_outputs(tmp_path):
+def test_recover_interrupted_preserves_durable_history_and_invalidates_execution_state(tmp_path):
     project = tmp_path / "project"
     project.mkdir()
     runtime, store = _runtime(tmp_path)
     session = runtime.create_session("agent.fast", workspace_dir=project)
     session.status = AgentStatus.RUNNING
     session.current_turn_id = "dead-turn"
+    pending = ToolCall(call_id="missing-1", name="echo", arguments={"text": "x"})
+    session.pending_tool_calls = [pending]
+    session.pending_step_id = "step-dead"
+    session.pending_bindings = {"missing-1": "stale-binding"}
     session.messages = [
         AIMessage(role=MessageRole.USER, content="run a tool"),
         AIMessage(
             role=MessageRole.ASSISTANT,
             content="",
-            tool_calls=(ToolCall(call_id="missing-1", name="echo", arguments={"text": "x"}),),
+            tool_calls=(pending,),
         ),
         AIMessage(
             role=MessageRole.TOOL,
@@ -130,23 +136,99 @@ def test_recover_interrupted_repairs_missing_and_orphan_tool_outputs(tmp_path):
             tool_call_id="orphan-call",
         ),
     ]
+    durable_messages = tuple(session.messages)
     store.save(session)
 
     result = runtime.recover_interrupted(session.session_id)
     restored = store.load(session.session_id)
 
     assert result.status is AgentStatus.INTERRUPTED
-    tool_messages = [message for message in restored.messages if message.role is MessageRole.TOOL]
-    assert len(tool_messages) == 1
-    assert tool_messages[0].tool_call_id == "missing-1"
-    assert '"aborted":true' in str(tool_messages[0].content)
-    repaired = [
+    assert tuple(restored.messages) == durable_messages
+    assert restored.pending_tool_calls == []
+    assert restored.pending_step_id == ""
+    assert restored.pending_bindings == {}
+    assert restored.pending_approval is None
+    assert not [
         event
         for event in store.events(session.session_id)
         if event.kind is AgentEventKind.HISTORY_REPAIRED
     ]
-    assert repaired[-1].data["inserted_aborted_outputs"] == 1
-    assert repaired[-1].data["removed_orphan_outputs"] == 1
+    interrupted = [
+        event
+        for event in store.events(session.session_id)
+        if event.kind is AgentEventKind.TURN_INTERRUPTED
+    ]
+    assert len(interrupted) == 1
+    assert interrupted[0].data["previous_status"] == AgentStatus.RUNNING.value
+    assert interrupted[0].data["invalidated_pending_call_ids"] == ["missing-1"]
+    assert interrupted[0].data["invalidated_binding_ids"] == ["missing-1"]
+    assert interrupted[0].data["history_projection"] == {
+        "inserted_aborted_outputs": 1,
+        "removed_orphan_outputs": 1,
+        "removed_duplicate_outputs": 0,
+        "persisted": False,
+    }
+
+
+def test_recover_waiting_approval_fails_closed_but_preserves_product_queue(tmp_path):
+    project = tmp_path / "project"
+    project.mkdir()
+    runtime, store = _runtime(tmp_path)
+    session = runtime.create_session("agent.fast", workspace_dir=project)
+    queued = runtime.enqueue_turn(session.session_id, "do this later")
+    call = ToolCall(call_id="approve-1", name="echo", arguments={"text": "x"})
+    session = store.load(session.session_id)
+    session.status = AgentStatus.WAITING_APPROVAL
+    session.current_turn_id = "approval-turn"
+    session.pending_tool_calls = [call]
+    session.pending_step_id = "approval-step"
+    session.pending_bindings = {"approve-1": "process-local-binding"}
+    session.pending_approval = PendingToolApproval(
+        call_id="approve-1",
+        tool_name="echo",
+        arguments={"text": "x"},
+        effect=ToolEffect.MUTATING,
+        reason="mutating tool requires approval",
+    )
+    store.save(session)
+
+    result = runtime.recover_interrupted(session.session_id)
+    restored = store.load(session.session_id)
+
+    assert result.status is AgentStatus.INTERRUPTED
+    assert restored.pending_approval is None
+    assert restored.pending_tool_calls == []
+    assert restored.pending_step_id == ""
+    assert restored.pending_bindings == {}
+    assert [item.queue_id for item in runtime.list_queued_turns(session.session_id)] == [queued.queue_id]
+    interrupted = [
+        event
+        for event in store.events(session.session_id)
+        if event.kind is AgentEventKind.TURN_INTERRUPTED
+    ][-1]
+    assert interrupted.data["previous_status"] == AgentStatus.WAITING_APPROVAL.value
+    assert interrupted.data["invalidated_approval_call_id"] == "approve-1"
+
+
+def test_recover_interrupted_is_idempotent(tmp_path):
+    project = tmp_path / "project"
+    project.mkdir()
+    runtime, store = _runtime(tmp_path)
+    session = runtime.create_session("agent.fast", workspace_dir=project)
+    session.status = AgentStatus.RUNNING
+    session.current_turn_id = "dead-turn"
+    store.save(session)
+
+    first = runtime.recover_interrupted(session.session_id)
+    second = runtime.recover_interrupted(session.session_id)
+
+    assert first.status is AgentStatus.INTERRUPTED
+    assert second.status is AgentStatus.INTERRUPTED
+    assert len([
+        event
+        for event in store.events(session.session_id)
+        if event.kind is AgentEventKind.TURN_INTERRUPTED
+    ]) == 1
 
 
 def test_goal_is_durable_and_budget_limited_by_real_model_usage(tmp_path):

@@ -131,9 +131,16 @@ class CodeModeRuntime(SkillRuntime):
         *,
         token,
         step: StepContext,
+        approval_granted: bool = False,
     ) -> bool:
         if prepared.tool.name != _CODE_MODE_TOOL_NAME:
-            return super()._execute_prepared_tool(session, prepared, token=token, step=step)
+            return super()._execute_prepared_tool(
+                session,
+                prepared,
+                token=token,
+                step=step,
+                approval_granted=approval_granted,
+            )
         if self._cancel_if_requested(session, token):
             return False
 
@@ -276,7 +283,7 @@ class CodeModeRuntime(SkillRuntime):
                     "tool": nested_call.name,
                     "source": "permission",
                     "reason": prepared.reason,
-                    "permission_mode": session.permission_mode.value,
+                    "permission_mode": step.world_state.permission_mode.value,
                     "step_id": step.step_id,
                     "nested": True,
                     "parent_call_id": parent_call_id,
@@ -297,7 +304,7 @@ class CodeModeRuntime(SkillRuntime):
                     "tool": nested_call.name,
                     "source": "code_mode_requires_approval",
                     "reason": prepared.reason,
-                    "permission_mode": session.permission_mode.value,
+                    "permission_mode": step.world_state.permission_mode.value,
                     "step_id": step.step_id,
                     "nested": True,
                     "parent_call_id": parent_call_id,
@@ -333,7 +340,7 @@ class CodeModeRuntime(SkillRuntime):
             session_id=session.session_id,
             turn_id=session.current_turn_id,
             workspace=Path(step.world_state.workspace_dir),
-            permission_mode=session.permission_mode.value,
+            permission_mode=step.world_state.permission_mode.value,
             is_cancelled=lambda: token.cancelled,
             services={
                 "process_store": self.process_store,

@@ -202,42 +202,73 @@ class DurableAgentRuntime(CoreAgentRuntime):
         return result
 
     def recover_interrupted(self, session_id: str) -> AgentRunResult:
+        """Fail closed after a process-local execution stack has been lost.
+
+        Codex resumes a thread by rebuilding durable rollout/history. It does not
+        serialize an ``ActiveTurn`` task stack, approval waiter, input mailbox, or
+        live OS-process handle. Loom's snapshot historically persisted several
+        execution-shaped fields and treated them as resumable. On process restart
+        those values are evidence for audit/reconstruction only, never capabilities
+        that authorize execution.
+
+        Missing tool outputs are deliberately *not* written into ``session.json``.
+        Codex synthesizes the equivalent ``aborted`` output only while normalizing
+        the in-memory model prompt. ``repair_tool_history`` is used here only to
+        describe what the model-history projection will need; the durable transcript
+        remains byte-for-byte faithful to what actually reached storage.
+        """
+
         lock = self._session_lock(session_id)
         with lock:
             session = self.store.load(session_id)
             self.durable_state.reconcile_dispatches(session.session_id, session.current_turn_id)
-            if session.status is not AgentStatus.RUNNING:
+            if session.status not in {AgentStatus.RUNNING, AgentStatus.WAITING_APPROVAL}:
                 return self._result(session)
 
-            repair = repair_tool_history(
+            previous_status = session.status
+            pending_call_ids = tuple(
+                call.call_id for call in session.pending_tool_calls if str(call.call_id or "").strip()
+            )
+            approval_call_id = (
+                session.pending_approval.call_id if session.pending_approval is not None else ""
+            )
+            invalidated_binding_ids = tuple(sorted(session.pending_bindings))
+            projection = repair_tool_history(
                 session.messages,
                 max_tool_result_chars=self.limits.max_tool_result_chars,
             )
-            if repair.changed:
-                session.messages = list(repair.messages)
-                self._record(
-                    session,
-                    AgentEventKind.HISTORY_REPAIRED,
-                    data={
-                        "inserted_aborted_outputs": repair.inserted_aborted_outputs,
-                        "removed_orphan_outputs": repair.removed_orphan_outputs,
-                        "removed_duplicate_outputs": repair.removed_duplicate_outputs,
-                    },
-                )
 
+            # Everything below this line describes process-local execution state.
+            # Do not attempt to infer whether an approved/pre-exec or running tool
+            # already had side effects. A durable TOOL_COMPLETED observation is the
+            # only proof that the result crossed the persistence boundary.
             session.status = AgentStatus.INTERRUPTED
             session.pending_approval = None
             session.pending_tool_calls.clear()
             session.pending_step_id = ""
+            session.pending_bindings.clear()
             self._consume_steering(session)
             session.error = (
                 "Agent process stopped before the active turn reached a durable terminal state. "
-                "Incomplete tool calls were repaired as aborted observations."
+                "Process-local approval bindings, pending tool execution, and live process ownership "
+                "were invalidated; any action without a durable completion observation has unknown outcome."
             )
             self._record(
                 session,
                 AgentEventKind.TURN_INTERRUPTED,
-                data={"error": session.error},
+                data={
+                    "error": session.error,
+                    "previous_status": previous_status.value,
+                    "invalidated_pending_call_ids": list(pending_call_ids),
+                    "invalidated_approval_call_id": approval_call_id or None,
+                    "invalidated_binding_ids": list(invalidated_binding_ids),
+                    "history_projection": {
+                        "inserted_aborted_outputs": projection.inserted_aborted_outputs,
+                        "removed_orphan_outputs": projection.removed_orphan_outputs,
+                        "removed_duplicate_outputs": projection.removed_duplicate_outputs,
+                        "persisted": False,
+                    },
+                },
             )
             return self._result(session)
 
