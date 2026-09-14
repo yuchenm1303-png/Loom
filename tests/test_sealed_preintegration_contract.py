@@ -32,6 +32,9 @@ class _BindingSequence:
             return self._bindings.pop(0)
         return self._bindings[0]
 
+    def close(self):
+        return None
+
 
 def _binding(*, revision: int, remote_name: str = "echo") -> McpBinding:
     config = MCPServerConfig(name="demo", transport="stdio", command="python")
