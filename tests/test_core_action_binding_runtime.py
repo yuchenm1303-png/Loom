@@ -78,7 +78,7 @@ def _session(runtime: AgentRuntime, tmp_path):
     return runtime.create_session(
         AGENT_FAST_ROLE.role_id,
         workspace_dir=tmp_path,
-        permission_mode=PermissionMode.WORKSPACE,
+        permission_mode=PermissionMode.APPROVAL,
     )
 
 
