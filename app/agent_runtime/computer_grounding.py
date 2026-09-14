@@ -103,7 +103,7 @@ class UITarsGroundingBackend:
                 continue
             controls.append(
                 f"{control.control_id}: type={control.control_type!r}, name={control.name!r}, "
-                f"point=({point.x:.4f},{point.y:.4f}), enabled={control.enabled}"
+                f"point=({round(point.x * 1000)},{round(point.y * 1000)}), enabled={control.enabled}"
             )
         control_text = "\n".join(controls) if controls else "(no usable UIA controls)"
 
@@ -116,7 +116,7 @@ class UITarsGroundingBackend:
             f"Frame: {observation.frame.width}x{observation.frame.height}, source={observation.frame.source}, "
             f"active_window={active_title!r}\n\n"
             f"Recent trajectory:\n{history_text}\n\n"
-            f"UI Automation candidates:\n{control_text}\n"
+            f"UI Automation candidates (points use the same 0..1000 model frame):\n{control_text}\n"
         )
         request = ChatRequest(
             messages=(
