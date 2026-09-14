@@ -353,7 +353,11 @@ def test_approval_resume_reuses_sampled_step_across_live_drift(tmp_path):
     assert resumed.status is AgentStatus.COMPLETED
     assert executions == ["old-handler"]
     assert "Original execution rule" in _render_request(platform.requests[0])
-    assert "Changed execution rule" in _render_request(platform.requests[1])
+    # Approval continuation remains inside the sampled Step. A new Step is not
+    # captured until the next semantic sampling boundary, so live AGENTS.md drift
+    # cannot rewrite the authority of the follow-up request for this response.
+    assert "Original execution rule" in _render_request(platform.requests[1])
+    assert "Changed execution rule" not in _render_request(platform.requests[1])
     with pytest.raises(RuntimeError, match="captured step context is unavailable"):
         runtime._captured_step_context(
             runtime.store.load(session.session_id),
