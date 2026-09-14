@@ -35,18 +35,29 @@ class ScriptedPlatform:
 
 
 def _synthetic_tool(name: str) -> AgentTool:
-    return AgentTool(
-        name=name,
-        description="Synthetic sensitive tool for binding tests.",
-        input_schema={
+    if name == "exec":
+        schema = {
+            "type": "object",
+            "properties": {
+                "argv": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+            },
+            "required": ["argv"],
+            "additionalProperties": True,
+        }
+    else:
+        schema = {
             "type": "object",
             "properties": {"label": {"type": "string"}},
             "required": ["label"],
             "additionalProperties": False,
-        },
+        }
+    return AgentTool(
+        name=name,
+        description="Synthetic sensitive tool for binding tests.",
+        input_schema=schema,
         handler=lambda _context, arguments: ToolResult(
             ok=True,
-            content=str(arguments.get("label") or ""),
+            content=str(arguments.get("label") or arguments.get("argv") or ""),
         ),
         effect=ToolEffect.SENSITIVE,
     )
@@ -113,7 +124,7 @@ def test_pending_exec_approval_rejects_changed_environment(monkeypatch, tmp_path
                     ToolCall(
                         call_id="exec-1",
                         name="exec",
-                        arguments={"label": "first"},
+                        arguments={"argv": ["synthetic-program", "first"]},
                     ),
                 )
             ),
@@ -148,7 +159,7 @@ def test_approval_arguments_must_match_queued_call(tmp_path):
                     ToolCall(
                         call_id="exec-1",
                         name="exec",
-                        arguments={"label": "first"},
+                        arguments={"argv": ["synthetic-program", "first"]},
                     ),
                 )
             ),
@@ -167,7 +178,7 @@ def test_approval_arguments_must_match_queued_call(tmp_path):
         assert persisted.pending_approval is not None
         persisted.pending_approval = replace(
             persisted.pending_approval,
-            arguments={"label": "second"},
+            arguments={"argv": ["synthetic-program", "second"]},
         )
         runtime.store.save(persisted)
 
