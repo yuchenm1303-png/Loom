@@ -4,6 +4,7 @@ import type {
   InitializeResult,
   ModelRestartResult,
   ModelSnapshot,
+  PendingApproval,
   ProjectListResult,
   ProjectRecord,
   ReasoningUpdateResult,
@@ -12,6 +13,7 @@ import type {
   TranscriptItem,
   TurnRecord,
 } from "../types/loom";
+import { buildApprovalResponse } from "./approvalProtocol";
 
 type ThreadView = "active" | "archived";
 type ThreadCounts = { active: number; archived: number; all: number };
@@ -253,6 +255,7 @@ export function useLoom() {
       setActive((current) => current && current.thread.id === active.thread.id
         ? {
             ...current,
+            pendingApproval: null,
             thread: {
               ...current.thread,
               currentTurnId: turn.id,
@@ -267,11 +270,12 @@ export function useLoom() {
   }, [active?.thread.archived, active?.thread.id]);
 
   const interrupt = useCallback(async () => {
-    if (!active?.thread.id) return;
+    if (!active?.thread.id || !active.thread.currentTurnId) return;
     await requireBridge().call("turn/interrupt", {
       threadId: active.thread.id,
+      turnId: active.thread.currentTurnId,
     });
-  }, [active?.thread.id]);
+  }, [active?.thread.currentTurnId, active?.thread.id]);
 
   const setPermissionMode = useCallback(async (permissionMode: string) => {
     if (!active?.thread.id || active.thread.archived) return;
@@ -352,12 +356,12 @@ export function useLoom() {
 
   const respondApproval = useCallback(async (item: TranscriptItem, approved: boolean) => {
     if (!active?.thread.id || !item.callId) return;
-    await requireBridge().call("approval/respond", {
-      threadId: active.thread.id,
-      callId: item.callId,
-      approved,
-    });
-  }, [active?.thread.id]);
+    const params = buildApprovalResponse(active.pendingApproval, item.callId, approved);
+    if (params.threadId !== active.thread.id) {
+      throw new Error("The pending approval belongs to a different thread. Reload the thread.");
+    }
+    await requireBridge().call("approval/respond", params);
+  }, [active?.pendingApproval, active?.thread.id]);
 
   useEffect(() => {
     const bridge = getBridge();
@@ -411,6 +415,7 @@ export function useLoom() {
           setActive((current) => current && current.thread.id === activeId
             ? {
                 ...current,
+                pendingApproval: null,
                 thread: {
                   ...current.thread,
                   status: "running",
@@ -462,13 +467,25 @@ export function useLoom() {
             next[index] = { ...current[index], ...completed };
             return next;
           });
+          if (completed.type === "approval" && completed.callId) {
+            setActive((current) => current && current.pendingApproval?.callId === completed.callId
+              ? { ...current, pendingApproval: null }
+              : current);
+          }
         }
       } else if (message.method === "thread/resync") {
         void openThread(activeId);
       } else if (message.method === "approval/requested") {
-        setActive((current) => current && current.thread.id === activeId
-          ? { ...current, thread: { ...current.thread, status: "waiting_approval" } }
-          : current);
+        const approval = params.approval as PendingApproval | undefined;
+        if (approval && approval.threadId === activeId) {
+          setActive((current) => current && current.thread.id === activeId
+            ? {
+                ...current,
+                pendingApproval: approval,
+                thread: { ...current.thread, status: "waiting_approval" },
+              }
+            : current);
+        }
       } else if (message.method === "turn/completed") {
         const turn = params.turn as TurnRecord | undefined;
         setTurnActive(false);
@@ -477,6 +494,7 @@ export function useLoom() {
           setActive((current) => current && current.thread.id === activeId
             ? {
                 ...current,
+                pendingApproval: null,
                 thread: {
                   ...current.thread,
                   status: turn.status as ThreadRecord["status"],

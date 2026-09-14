@@ -75,32 +75,33 @@ def _step(permission_mode: PermissionMode) -> StepContext:
     )
 
 
-def test_model_harness_contract_is_permission_invariant_and_tool_first():
+def test_model_harness_contract_is_tool_first_with_policy_specific_exec_guidance():
     orchestrator = ToolOrchestrator()
 
     workspace_contract = orchestrator.capability_contract(_step(PermissionMode.WORKSPACE))
     read_only_contract = orchestrator.capability_contract(_step(PermissionMode.READ_ONLY))
 
-    assert workspace_contract == read_only_contract
-    assert workspace_contract.startswith("<loom_tool_harness>")
-    assert "tool definitions attached to this model request are the authoritative capability surface" in workspace_contract
-    assert "issue the tool call directly" in workspace_contract
-    assert "Do not ask the user to pre-authorize it in prose" in workspace_contract
-    assert "runtime will allow it, request approval, or deny it" in workspace_contract
-    assert "status or failure is scoped to that tool or subsystem" in workspace_contract
-    assert "tool_search" in workspace_contract
+    for contract in (workspace_contract, read_only_contract):
+        assert contract.startswith("<loom_tool_harness>")
+        assert "tool definitions attached to this model request are the authoritative capability surface" in contract
+        assert "issue the tool call directly" in contract
+        assert "Do not ask the user to pre-authorize it in prose" in contract
+        assert "runtime will allow it, request approval, or deny it" in contract
+        assert "status or failure is scoped to that tool or subsystem" in contract
+        assert "tool_search" in contract
+        assert "permission_mode=" not in contract
+        assert "filesystem_access=" not in contract
+        assert "sandbox=" not in contract
+        assert "allow=" not in contract
+        assert "approval=" not in contract
+        assert "deny=" not in contract
+        assert "inspect_anything" not in contract
+        assert "general_exec" not in contract
+        assert "change_anything" not in contract
 
-    # Authorization and containment are runtime concerns, not a second model-side
-    # capability matrix. The system prompt must not enumerate these values.
-    assert "permission_mode=" not in workspace_contract
-    assert "filesystem_access=" not in workspace_contract
-    assert "sandbox=" not in workspace_contract
-    assert "allow=" not in workspace_contract
-    assert "approval=" not in workspace_contract
-    assert "deny=" not in workspace_contract
-    assert "inspect_anything" not in workspace_contract
-    assert "general_exec" not in workspace_contract
-    assert "change_anything" not in workspace_contract
+    assert workspace_contract != read_only_contract
+    assert "prefer sandbox_permissions=with_additional_permissions" in workspace_contract
+    assert "Approval policy is never" in read_only_contract
 
 
 def test_authorization_and_execution_share_one_runtime_evaluator():

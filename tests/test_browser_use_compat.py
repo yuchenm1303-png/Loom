@@ -41,8 +41,12 @@ def test_browser_use_013_adapter_import_and_event_contract():
         backend.close()
 
 
-def test_browser_use_backend_launches_real_headless_browser_and_captures_png():
+def test_browser_use_backend_launches_real_headless_browser_and_captures_png(monkeypatch):
     """Exercise a real Chrome/CDP lifecycle while tolerating browser-use launch races.
+
+    GitHub-hosted Linux runners do not provide the kernel/browser sandbox boundary
+    browser-use assumes for a normal local desktop. Disable Chromium's own sandbox
+    only inside this smoke test; Loom's production backend keeps its secure default.
 
     browser-use 0.13.x can occasionally launch Chrome and establish the root CDP
     connection before its SessionManager observes the first target, or its
@@ -51,6 +55,15 @@ def test_browser_use_backend_launches_real_headless_browser_and_captures_png():
     BrowserError boundary. Each retry uses a completely fresh backend and Chrome
     process; persistent launch/CDP failures still fail this test.
     """
+    from browser_use import BrowserProfile as RealBrowserProfile
+
+    def ci_browser_profile(*args, **kwargs):
+        kwargs["chromium_sandbox"] = False
+        return RealBrowserProfile(*args, **kwargs)
+
+    # BrowserUseBackend imports BrowserProfile lazily at session creation, so this
+    # changes only the provider launch contract used by this CI smoke.
+    monkeypatch.setattr(browser_use, "BrowserProfile", ci_browser_profile)
 
     last_error: BrowserError | None = None
     for attempt in range(3):

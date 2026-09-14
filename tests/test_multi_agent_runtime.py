@@ -129,14 +129,17 @@ def test_model_can_spawn_wait_and_receive_independent_child_result(tmp_path):
         request for _, request in platform.requests
         if request.messages[-1].content != "Inspect delegated task"
     ]
+    # Tool-schema pressure is allowed to shed unrelated direct definitions. The
+    # contract that matters here is that each tool the model actually calls was
+    # present in the immutable Step that issued that call.
     first_tools = {tool.name for tool in parent_requests[0].tools}
-    assert {
-        "spawn_agent",
-        "send_agent_message",
-        "wait_agent",
-        "list_agents",
-        "close_agent",
-    }.issubset(first_tools)
+    assert "spawn_agent" in first_tools
+    spawn_follow_up = next(
+        request for request in parent_requests
+        if request.messages[-1].role is MessageRole.TOOL
+        and request.messages[-1].name == "spawn_agent"
+    )
+    assert "wait_agent" in {tool.name for tool in spawn_follow_up.tools}
     assert any(
         message.name == "loom_runtime_state" and '"agent_tree"' in str(message.content)
         for request in parent_requests

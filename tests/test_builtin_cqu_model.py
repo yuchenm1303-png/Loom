@@ -24,7 +24,20 @@ def _stores(tmp_path):
     return model_store, reasoning_store, selection_store
 
 
-def test_cqu_is_exposed_as_builtin_profile_without_changing_default(tmp_path):
+def _provision_cqu(monkeypatch):
+    # Managed relay models are deliberately hidden until the operator has a
+    # credential. Keep these builtin-profile tests deterministic without making
+    # network calls or depending on a developer machine's real secret state.
+    monkeypatch.setattr(loom_model_bridge, "_managed_relay_key", lambda *args, **kwargs: "test-relay-key")
+    monkeypatch.setattr(
+        loom_model_bridge,
+        "_fetch_managed_model_ids",
+        lambda *_args, **_kwargs: [CQU_DEFAULT_MODEL],
+    )
+
+
+def test_cqu_is_exposed_as_builtin_profile_without_changing_default(tmp_path, monkeypatch):
+    _provision_cqu(monkeypatch)
     model_store, reasoning_store, selection_store = _stores(tmp_path)
     snapshot = _snapshot(model_store, reasoning_store, selection_store)
 
@@ -36,7 +49,8 @@ def test_cqu_is_exposed_as_builtin_profile_without_changing_default(tmp_path):
     assert cqu["model"] == CQU_DEFAULT_MODEL
 
 
-def test_cqu_builtin_selection_persists_across_snapshots(tmp_path):
+def test_cqu_builtin_selection_persists_across_snapshots(tmp_path, monkeypatch):
+    _provision_cqu(monkeypatch)
     model_store, reasoning_store, selection_store = _stores(tmp_path)
 
     _set_active(model_store, reasoning_store, selection_store, {"selection": CQU_SELECTION})

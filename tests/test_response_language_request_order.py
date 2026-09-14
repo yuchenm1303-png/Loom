@@ -38,7 +38,7 @@ def test_language_anchor_is_last_transient_system_context(tmp_path):
     language_index = names.index("loom_communication_language")
     user_index = next(
         index for index, message in enumerate(request.messages)
-        if message.role is MessageRole.USER
+        if message.role is MessageRole.USER and not message.name
     )
 
     assert project_index < language_index < user_index

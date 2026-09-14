@@ -11,6 +11,7 @@ from typing import Callable, Protocol
 
 from app.ai import AIMessage, ChatRequest, MessageRole, ModelResponse, ModelUsage, ToolCall, ToolChoice
 
+from .context_limits import resolve_context_limits
 from .contracts import (
     AgentEvent,
     AgentEventKind,
@@ -24,13 +25,14 @@ from .contracts import (
 from .diff_tracker import DiffTrackerRegistry
 from .model_execution import ModelExecutor
 from .instructions import InstructionLoader
-from .execution_binding import binding_digest
+from .execution_binding import action_binding_digest
 from .journal import ExecutionLease
 from app.ai.execution_control import ModelCancelled
 from .orchestrator import PreparedToolCall, ToolOrchestrator
 from .permissions import PermissionDecision
 from .process_runtime import ProcessStore
-from .step import StepContext
+from .response_language import infer_user_language
+from .step import RequestStateSnapshot, StepContext
 from .storage import FileAgentSessionStore, utc_now
 from .turn_input import TurnInput, normalize_turn_input
 from .tools import ToolContext, ToolPolicy, ToolRegistry, ToolResult
@@ -127,12 +129,20 @@ class AgentRuntime:
         self._session_locks_guard = threading.Lock()
         self._active_tokens: dict[str, CancellationToken] = {}
         self._active_tokens_guard = threading.RLock()
+        # Python adaptation of Codex's Arc<StepContext> ownership. This is
+        # intentionally ephemeral: durable recovery owns persistence semantics,
+        # while this runtime refuses to reconstruct an execution world from live
+        # state after a sampled action has already been admitted.
+        self._captured_steps: dict[tuple[str, str, str], StepContext] = {}
+        self._captured_steps_guard = threading.RLock()
 
     def close(self) -> None:
         with self._active_tokens_guard:
             tokens = tuple(self._active_tokens.values())
         for token in tokens:
             token.cancel()
+        with self._captured_steps_guard:
+            self._captured_steps.clear()
         self.process_store.terminate_all()
 
     def subscribe(self, listener: EventListener) -> None:
@@ -232,6 +242,7 @@ class AgentRuntime:
             if session.status is AgentStatus.WAITING_APPROVAL:
                 raise RuntimeError("agent session is waiting for tool approval")
             retrying_failed_input = self._is_failed_user_input_retry(session, content)
+            self._release_session_steps(session.session_id)
             turn_id = str(uuid.uuid4())
             session.current_turn_id = turn_id
             session.status = AgentStatus.RUNNING
@@ -279,19 +290,27 @@ class AgentRuntime:
             if not session.pending_tool_calls or session.pending_tool_calls[0].call_id != pending.call_id:
                 raise RuntimeError("pending tool approval state is inconsistent")
 
-            validation_step = self._build_step_context(session, next_model_step=False, step_id=session.pending_step_id or None)
-            selected_tool = validation_step.tool_router.get(pending.tool_name)
+            step = self._captured_step_context(
+                session,
+                step_id=session.pending_step_id or None,
+            )
+            validation_call = session.pending_tool_calls[0]
+            selected_tool = step.tool_router.get(pending.tool_name)
             expected = session.pending_bindings.get(pending.call_id)
-            if approved and (selected_tool is None or not expected or binding_digest(validation_step, selected_tool, self.platform) != expected):
+            if approved and (
+                selected_tool is None
+                or not expected
+                or action_binding_digest(
+                    step,
+                    selected_tool,
+                    validation_call,
+                    self.platform,
+                ) != expected
+            ):
                 raise ValueError("approval binding changed or is legacy; deny this request and start a new turn")
             session.status = AgentStatus.RUNNING
             session.pending_approval = None
             call = session.pending_tool_calls.pop(0)
-            step = self._build_step_context(
-                session,
-                next_model_step=False,
-                step_id=session.pending_step_id or None,
-            )
             token = self._activate(session.session_id)
             try:
                 if approved:
@@ -358,6 +377,7 @@ class AgentRuntime:
                 session.pending_approval = None
                 session.pending_tool_calls.clear()
                 session.pending_step_id = ""
+                self._release_turn_steps(session)
                 session.error = "Agent process stopped before the active turn reached a durable terminal state."
                 self._record(session, AgentEventKind.TURN_INTERRUPTED, data={"error": session.error})
             return self._result(session)
@@ -367,11 +387,20 @@ class AgentRuntime:
         return TurnRunner(self).run(session, token)
 
     def _prepare_model_request(self, session, step, token):
+        request_state = step.request_state
+        captured = request_state.captured
         messages = [AIMessage(role=MessageRole.SYSTEM, content=self._model_system_prompt(session, step))]
-        instructions = self.instruction_loader.load(session.workspace_dir)
+        instructions = (
+            request_state.project_instructions
+            if captured
+            else self.instruction_loader.load(session.workspace_dir)
+        )
         if instructions:
             messages.append(AIMessage(role=MessageRole.SYSTEM, name="loom_project_instructions", content=instructions))
-        return [*messages, *session.messages], {}
+        extra: dict[str, object] = {}
+        if captured and request_state.context_limits is not None:
+            extra["context_limits"] = request_state.context_limits.as_dict()
+        return [*messages, *session.messages], extra
 
     def steer(self, session_id: str, text: str, *, turn_id: str) -> None:
         value = str(text).strip()
@@ -405,11 +434,14 @@ class AgentRuntime:
         *,
         step: StepContext | None = None,
     ) -> bool:
-        execution_step = step or self._build_step_context(
+        execution_step = step or self._captured_step_context(
             session,
-            next_model_step=False,
             step_id=session.pending_step_id or None,
         )
+        if execution_step.session_id != session.session_id or execution_step.turn_id != session.current_turn_id:
+            raise RuntimeError("captured step does not belong to the active turn")
+        if session.pending_step_id and execution_step.step_id != session.pending_step_id:
+            raise RuntimeError("pending tool calls do not belong to the supplied step")
         while session.pending_tool_calls:
             if self.store.pending_steering(session.session_id, session.current_turn_id):
                 while session.pending_tool_calls:
@@ -423,13 +455,23 @@ class AgentRuntime:
             call = session.pending_tool_calls[0]
             selected = execution_step.tool_router.get(call.name)
             expected = session.pending_bindings.get(call.call_id)
-            if expected and selected is not None and binding_digest(execution_step, selected, self.platform) != expected:
+            if (
+                expected
+                and selected is not None
+                and action_binding_digest(
+                    execution_step,
+                    selected,
+                    call,
+                    self.platform,
+                ) != expected
+            ):
                 from .history import repair_tool_history
                 session.messages = list(repair_tool_history(session.messages).messages)
                 session.pending_tool_calls.clear()
                 session.pending_step_id = ""
                 session.status = AgentStatus.FAILED
                 session.error = "pending tool binding changed; execution stopped"
+                self._release_step_context(execution_step)
                 self._record(session, AgentEventKind.TURN_FAILED, data={"error": session.error})
                 return False
             try:
@@ -458,7 +500,7 @@ class AgentRuntime:
                         "tool": call.name,
                         "source": "permission",
                         "reason": prepared.reason,
-                        "permission_mode": session.permission_mode.value,
+                        "permission_mode": execution_step.world_state.permission_mode.value,
                         "step_id": execution_step.step_id,
                     },
                 )
@@ -488,7 +530,7 @@ class AgentRuntime:
                         "arguments": call.arguments,
                         "effect": prepared.tool.effect.value,
                         "reason": prepared.reason,
-                        "permission_mode": session.permission_mode.value,
+                        "permission_mode": execution_step.world_state.permission_mode.value,
                         "step_id": execution_step.step_id,
                     },
                 )
@@ -498,6 +540,7 @@ class AgentRuntime:
             if not self._execute_prepared_tool(session, prepared, token=token, step=execution_step):
                 return False
         session.pending_step_id = ""
+        self._release_step_context(execution_step)
         return True
 
     def _consume_tool_call(
@@ -550,7 +593,7 @@ class AgentRuntime:
             session_id=session.session_id,
             turn_id=session.current_turn_id,
             workspace=Path(step.world_state.workspace_dir),
-            permission_mode=session.permission_mode.value,
+            permission_mode=step.world_state.permission_mode.value,
             is_cancelled=lambda: token.cancelled,
             services={
                 "process_store": self.process_store,
@@ -585,6 +628,20 @@ class AgentRuntime:
             return False
         return True
 
+    def _model_profile_snapshot(self, profile_id: str) -> dict[str, object] | None:
+        registry = getattr(self.platform, "registry", None)
+        if registry is None:
+            return None
+        try:
+            profile = registry.get(profile_id)
+        except (AttributeError, KeyError, TypeError, ValueError):
+            return None
+        safe = getattr(profile, "as_safe_dict", None)
+        if not callable(safe):
+            return None
+        payload = safe()
+        return dict(payload) if isinstance(payload, dict) else None
+
     def _build_step_context(
         self,
         session: AgentSession,
@@ -593,6 +650,16 @@ class AgentRuntime:
         step_id: str | None = None,
     ) -> StepContext:
         model_step = session.model_steps + (1 if next_model_step else 0)
+        request_state = RequestStateSnapshot.build(
+            system_prompt=session.system_prompt,
+            project_instructions=self.instruction_loader.load(session.workspace_dir),
+            communication_language=infer_user_language(
+                session.messages,
+                fallback=session.communication_language,
+            ),
+            model_profile=self._model_profile_snapshot(session.profile_id),
+            context_limits=resolve_context_limits(self, session),
+        )
         return replace(StepContext.build(
             step_id=step_id or str(uuid.uuid4()),
             session_id=session.session_id,
@@ -602,14 +669,81 @@ class AgentRuntime:
             profile_id=session.profile_id,
             permission_mode=session.permission_mode,
             tool_router=self.tools.router(),
+            request_state=request_state,
+            reasoning=getattr(self, "reasoning", None),
         ), environment_policy=self.process_store.environment_policy)
+
+    def _capture_step_context(
+        self,
+        session: AgentSession,
+        *,
+        next_model_step: bool,
+        step_id: str | None = None,
+    ) -> StepContext:
+        """Capture one complete request world after the runtime MRO has resolved it."""
+
+        step = self._build_step_context(
+            session,
+            next_model_step=next_model_step,
+            step_id=step_id,
+        )
+        key = (step.session_id, step.turn_id, step.step_id)
+        with self._captured_steps_guard:
+            existing = self._captured_steps.get(key)
+            if existing is not None and existing is not step:
+                raise RuntimeError("step id was already captured with a different execution world")
+            self._captured_steps[key] = step
+        return step
+
+    def _captured_step_context(
+        self,
+        session: AgentSession,
+        *,
+        step_id: str | None = None,
+    ) -> StepContext:
+        resolved_step_id = str(step_id or session.pending_step_id or "").strip()
+        if not resolved_step_id:
+            raise RuntimeError("pending tool execution has no captured step id")
+        key = (session.session_id, session.current_turn_id, resolved_step_id)
+        with self._captured_steps_guard:
+            step = self._captured_steps.get(key)
+        if step is None:
+            raise RuntimeError(
+                "captured step context is unavailable; pending action cannot be safely resumed"
+            )
+        return step
+
+    def _release_step_context(self, step: StepContext) -> None:
+        key = (step.session_id, step.turn_id, step.step_id)
+        with self._captured_steps_guard:
+            if self._captured_steps.get(key) is step:
+                self._captured_steps.pop(key, None)
+
+    def _release_turn_steps(self, session: AgentSession) -> None:
+        prefix = (session.session_id, session.current_turn_id)
+        with self._captured_steps_guard:
+            stale = [key for key in self._captured_steps if key[:2] == prefix]
+            for key in stale:
+                self._captured_steps.pop(key, None)
+
+    def _release_session_steps(self, session_id: str) -> None:
+        resolved = str(session_id or "").strip()
+        with self._captured_steps_guard:
+            stale = [key for key in self._captured_steps if key[0] == resolved]
+            for key in stale:
+                self._captured_steps.pop(key, None)
 
     def _model_system_prompt(self, session: AgentSession, step: StepContext) -> str:
         capability_contract = self.orchestrator.capability_contract(
             step,
             legacy_policy=self.policy,
         )
-        return f"{session.system_prompt}\n\n{capability_contract}"
+        base_prompt = (
+            step.request_state.system_prompt
+            if step.request_state.captured
+            else session.system_prompt
+        )
+        return f"{base_prompt}\n\n{capability_contract}"
 
     def _append_tool_result(
         self,
@@ -646,6 +780,7 @@ class AgentRuntime:
         session.pending_approval = None
         session.pending_tool_calls.clear()
         session.pending_step_id = ""
+        self._release_turn_steps(session)
         self._record(session, AgentEventKind.LIMIT_REACHED, data={"reason": reason})
         return self._result(session)
 
@@ -658,6 +793,7 @@ class AgentRuntime:
         session.pending_approval = None
         session.pending_tool_calls.clear()
         session.pending_step_id = ""
+        self._release_turn_steps(session)
         session.error = "cancelled by user"
         from .history import repair_tool_history
         session.messages = list(repair_tool_history(session.messages, max_tool_result_chars=self.limits.max_tool_result_chars).messages)
