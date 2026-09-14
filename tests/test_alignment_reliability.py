@@ -407,7 +407,7 @@ def test_cancel_returns_turn_without_waiting_for_blocked_model(tmp_path):
         rt.close()
 
 
-def test_approval_binding_survives_restart_but_rejects_replacement(tmp_path):
+def test_pending_approval_fails_closed_after_runtime_restart(tmp_path):
     executed = []
     def handler(c, a):
         executed.append("original")
@@ -417,15 +417,12 @@ def test_approval_binding_survives_restart_but_rejects_replacement(tmp_path):
     session = first.create_session("agent.fast")
     assert first.start_turn(session.session_id, "work").status is AgentStatus.WAITING_APPROVAL
     first.close()
-    changed = make_runtime(tmp_path, Scripted([ModelResponse(text="done")]), [replace(tool, binding_key="new-endpoint")])
-    with pytest.raises(ValueError, match="binding changed"):
-        changed.resume_approval(session.session_id, "call", approved=True)
+
+    restarted = make_runtime(tmp_path, Scripted([ModelResponse(text="done")]), [tool])
+    with pytest.raises(RuntimeError, match="captured step context is unavailable"):
+        restarted.resume_approval(session.session_id, "call", approved=True)
     assert not executed
-    changed.close()
-    restored = make_runtime(tmp_path, Scripted([ModelResponse(text="done")]), [tool])
-    assert restored.resume_approval(session.session_id, "call", approved=True).status is AgentStatus.COMPLETED
-    assert executed == ["original"]
-    restored.close()
+    restarted.close()
 
 
 def test_commit_recovers_snapshot_after_event_write_failure(tmp_path, monkeypatch):
@@ -649,7 +646,7 @@ def test_text_patch_updates_moves_and_adds_atomically(tmp_path):
     assert (tmp_path / "new.py").read_text() == "def run():\n    return 2\n"
     bad = "*** Begin Patch\n*** Add File: first.txt\n+must not commit\n*** Update File: new.py\n@@\n-missing\n+bad\n*** End Patch"
     with pytest.raises(ValueError):
-        tool.handler(context, {"patch": bad})
+        tool.handler(context, {"patch": bad)
     assert not (tmp_path / "first.txt").exists()
 
 
