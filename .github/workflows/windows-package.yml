@@ -39,12 +39,19 @@ jobs:
       - name: Verify packaged private runtime
         shell: pwsh
         run: |
-          $runtime = Join-Path $env:GITHUB_WORKSPACE "desktop-react\release\win-unpacked\python.exe"
+          $resources = Join-Path $env:GITHUB_WORKSPACE "desktop-react\release\win-unpacked\resources"
+          $runtime = Join-Path $resources "python.exe"
+          $mxc = Join-Path $resources "wxc-exec.exe"
           if (-not (Test-Path $runtime)) { throw "Packaged private Python runtime was not found at $runtime" }
+          if (-not (Test-Path $mxc)) { throw "Packaged MXC executable was not found at $mxc" }
           & $runtime self-test
           if ($LASTEXITCODE -ne 0) { throw "Packaged runtime self-test failed with exit code $LASTEXITCODE" }
           & $runtime -c "import app; print('loom-runtime-import-ok')"
           if ($LASTEXITCODE -ne 0) { throw "Packaged runtime import smoke failed with exit code $LASTEXITCODE" }
+          & $runtime (Join-Path $resources "loom_model_bridge.py") list
+          if ($LASTEXITCODE -ne 0) { throw "Packaged model bridge compatibility smoke failed with exit code $LASTEXITCODE" }
+          & $runtime (Join-Path $resources "loom_model_admin.py") metadata
+          if ($LASTEXITCODE -ne 0) { throw "Packaged model admin compatibility smoke failed with exit code $LASTEXITCODE" }
 
       - name: Verify installer artifact
         shell: pwsh
