@@ -6,6 +6,11 @@ from app.agent_runtime.tools import ToolRegistry
 from app.app_server import LoomAppServerService
 
 
+THREAD_ID = "11111111-1111-4111-8111-111111111111"
+TURN_ID = "22222222-2222-4222-8222-222222222222"
+OTHER_TURN_ID = "33333333-3333-4333-8333-333333333333"
+
+
 class _Runtime:
     def __init__(self, store):
         self.store = store
@@ -38,14 +43,14 @@ def _service(tmp_path):
     workspace = tmp_path / "project"
     workspace.mkdir()
     session = AgentSession(
-        session_id="thread-1",
+        session_id=THREAD_ID,
         profile_id="agent.fast",
         system_prompt="system",
         workspace_dir=str(workspace),
         created_at=utc_now(),
         updated_at=utc_now(),
         status=AgentStatus.RUNNING,
-        current_turn_id="turn-1",
+        current_turn_id=TURN_ID,
     )
     store.create(session)
     service = LoomAppServerService(
@@ -60,10 +65,10 @@ def _service(tmp_path):
 def test_app_server_load_is_observational_for_persisted_running_turn(tmp_path):
     service, runtime = _service(tmp_path)
 
-    loaded = service._load("thread-1")
+    loaded = service._load(THREAD_ID)
 
     assert loaded.status is AgentStatus.RUNNING
-    assert loaded.current_turn_id == "turn-1"
+    assert loaded.current_turn_id == TURN_ID
     assert runtime.unclean_calls == []
 
 
@@ -71,18 +76,18 @@ def test_thread_resume_routes_explicit_safe_handoff_without_unclean_finalization
     service, runtime = _service(tmp_path)
     service._launch = lambda _session_id, operation: operation()
 
-    payload = service.thread_resume({"threadId": "thread-1", "recoverTurnId": "turn-1"})
+    payload = service.thread_resume({"threadId": THREAD_ID, "recoverTurnId": TURN_ID})
 
-    assert runtime.safe_calls == [("thread-1", "turn-1")]
+    assert runtime.safe_calls == [(THREAD_ID, TURN_ID)]
     assert runtime.unclean_calls == []
-    assert payload["thread"]["currentTurnId"] == "turn-1"
+    assert payload["thread"]["currentTurnId"] == TURN_ID
 
 
 def test_thread_resume_rejects_wrong_safe_handoff_turn_id(tmp_path):
     service, runtime = _service(tmp_path)
 
     try:
-        service.thread_resume({"threadId": "thread-1", "recoverTurnId": "other-turn"})
+        service.thread_resume({"threadId": THREAD_ID, "recoverTurnId": OTHER_TURN_ID})
     except ValueError as exc:
         assert "recoverTurnId" in str(exc)
     else:
