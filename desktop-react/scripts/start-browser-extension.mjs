@@ -91,7 +91,7 @@ log(`backend: extension`);
 log(`bridge: ${bridgeUrl}`);
 log(`extension folder: ${extensionDir}`);
 log(`diagnostics: ${logDir}`);
-log(`token: ${token}`);
+log("token: configured (value hidden)");
 log("load the extension folder as an unpacked Chrome/Edge extension before asking Loom to inspect the current tab.");
 
 if (noRun || !scriptName) {
