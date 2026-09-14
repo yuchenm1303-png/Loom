@@ -140,7 +140,11 @@ def test_transport_retry_reuses_exact_step_and_prepared_request(tmp_path):
     assert platform.requests[0] is platform.requests[1]
     assert platform.requests[0].reasoning is not None
     assert platform.requests[0].reasoning.value == "low"
-    assert [definition.name for definition in platform.requests[0].tools] == ["initial_tool"]
+    requested_names = {definition.name for definition in platform.requests[0].tools}
+    sampled_names = {tool.name for tool in step.tool_router.all()}
+    assert requested_names == sampled_names
+    assert "initial_tool" in requested_names
+    assert "late_tool" not in requested_names
 
 
 def test_invalid_tool_arguments_become_observation_and_turn_continues(tmp_path):
