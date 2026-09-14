@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 
+import pytest
+
 from app.agent_runtime import (
     AgentStatus,
     AgentTool,
@@ -132,7 +134,7 @@ def test_binding_digest_still_changes_for_validating_schema_change(tmp_path: Pat
     )
 
 
-def test_schema_projected_sensitive_tool_can_resume_approval_after_restart(tmp_path: Path):
+def test_schema_projected_sensitive_tool_fails_closed_after_restart(tmp_path: Path):
     calls: list[str] = []
     target = _sensitive_tool("zebra_sensitive_action", enum_size=320, calls=calls)
     fillers = tuple(
@@ -198,10 +200,10 @@ def test_schema_projected_sensitive_tool_can_resume_approval_after_restart(tmp_p
     assert "zebra_sensitive_action" in {tool.name for tool in first_platform.requests[1].tools}
     runtime1.close()
 
-    # Restart with the pressure removed. The pending request was sampled against
-    # a projected schema, while this runtime exposes the full schema. Approval
-    # identity must still match because executable/validating semantics are equal.
-    second_platform = RecordingPlatform([ModelResponse(text="approved and done")])
+    # Approval authority is process-local because it includes the exact sampled
+    # StepContext/router. A new runtime must not reconstruct equivalent-looking
+    # authority from the durable schema, even when prompt projection is removed.
+    second_platform = RecordingPlatform([ModelResponse(text="must not run")])
     runtime2 = ToolSearchRuntime(
         platform=second_platform,
         store=store,
@@ -211,13 +213,13 @@ def test_schema_projected_sensitive_tool_can_resume_approval_after_restart(tmp_p
         auto_configure_web_search=False,
     )
     try:
-        completed = runtime2.resume_approval(
-            session.session_id,
-            "sensitive-1",
-            approved=True,
-        )
-        assert completed.status is AgentStatus.COMPLETED
-        assert completed.final_text == "approved and done"
-        assert calls == ["value-0001-xxxxxxxxxxxx"]
+        with pytest.raises(RuntimeError, match="captured step context is unavailable"):
+            runtime2.resume_approval(
+                session.session_id,
+                "sensitive-1",
+                approved=True,
+            )
+        assert calls == []
+        assert second_platform.requests == []
     finally:
         runtime2.close()
