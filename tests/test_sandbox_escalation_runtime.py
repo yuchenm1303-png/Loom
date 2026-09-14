@@ -223,13 +223,18 @@ def test_unless_trusted_initial_approval_bypasses_retry_reapproval(tmp_path):
         runtime.close()
 
 
-def test_granular_retry_without_prior_approval_requires_fresh_review(tmp_path):
+def test_granular_retry_without_prior_approval_requires_fresh_review(monkeypatch, tmp_path):
     attempts = []
+    monkeypatch.setenv("LOOM_GRANULAR_RETRY_ENV", "sampled")
 
     def handler(_context, _arguments):
         attempt = current_sandbox_attempt()
         attempts.append(attempt)
         if attempt.kind is SandboxAttemptKind.INITIAL:
+            # The fresh retry review still belongs to the same sampled action.
+            # Parent-process environment drift after the typed denial must not
+            # change either its approval identity or the environment it executes.
+            monkeypatch.setenv("LOOM_GRANULAR_RETRY_ENV", "changed-after-denial")
             raise SandboxExecutionError(
                 SandboxFailureKind.DENIED,
                 "sandbox rejected an otherwise allowed action",
