@@ -131,9 +131,16 @@ class CodeModeRuntime(SkillRuntime):
         *,
         token,
         step: StepContext,
+        approval_granted: bool = False,
     ) -> bool:
         if prepared.tool.name != _CODE_MODE_TOOL_NAME:
-            return super()._execute_prepared_tool(session, prepared, token=token, step=step)
+            return super()._execute_prepared_tool(
+                session,
+                prepared,
+                token=token,
+                step=step,
+                approval_granted=approval_granted,
+            )
         if self._cancel_if_requested(session, token):
             return False
 
