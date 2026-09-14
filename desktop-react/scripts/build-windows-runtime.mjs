@@ -64,8 +64,8 @@ run(VENV_PYTHON, [
   "app",
   "--collect-all",
   "browser_use",
-  "--collect-all",
-  "mcp",
+  "--hidden-import",
+  "mcp.client.streamable_http",
   "--collect-all",
   "keyring",
   "--collect-all",
@@ -83,4 +83,5 @@ if (!fs.existsSync(runtimeExe)) {
   process.exit(1);
 }
 run(runtimeExe, ["self-test"], { cwd: path.dirname(runtimeExe) });
+run(runtimeExe, ["-c", "import mcp; from mcp.client.streamable_http import streamable_http_client; print('loom-mcp-import-ok')"], { cwd: path.dirname(runtimeExe) });
 console.log(`[build-runtime] Ready: ${runtimeExe}`);

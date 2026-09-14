@@ -26,7 +26,7 @@ jobs:
           python-version: "3.12"
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
 
       - name: Install desktop dependencies
         working-directory: desktop-react
@@ -46,7 +46,7 @@ jobs:
           if (-not (Test-Path $mxc)) { throw "Packaged MXC executable was not found at $mxc" }
           & $runtime self-test
           if ($LASTEXITCODE -ne 0) { throw "Packaged runtime self-test failed with exit code $LASTEXITCODE" }
-          & $runtime -c "import app; print('loom-runtime-import-ok')"
+          & $runtime -c "import app; import mcp; from mcp.client.streamable_http import streamable_http_client; print('loom-runtime-import-ok')"
           if ($LASTEXITCODE -ne 0) { throw "Packaged runtime import smoke failed with exit code $LASTEXITCODE" }
           & $runtime (Join-Path $resources "loom_model_bridge.py") list
           if ($LASTEXITCODE -ne 0) { throw "Packaged model bridge compatibility smoke failed with exit code $LASTEXITCODE" }
