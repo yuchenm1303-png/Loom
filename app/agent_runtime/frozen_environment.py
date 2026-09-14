@@ -79,14 +79,14 @@ class FrozenShellEnvironment:
         return self.policy.allow_secrets
 
     def __repr__(self) -> str:
-        # Never include captured environment values in diagnostics/repr. The
-        # policy digest still makes semantic policy changes visible to callers
-        # that use repr as part of an integrity binding.
+        # Never include captured environment values (or even their count) in
+        # generic Step diagnostics. Non-exec tool bindings historically depend
+        # only on the environment *policy*, while exec gets the exact frozen
+        # environment through ``exec_environment_identity``.
         policy_digest = hashlib.sha256(repr(self.policy).encode("utf-8")).hexdigest()[:16]
         return (
             "FrozenShellEnvironment("
-            f"inherit={self.policy.inherit!r}, variables={len(self._base_items)}, "
-            f"policy_sha256={policy_digest!r})"
+            f"inherit={self.policy.inherit!r}, policy_sha256={policy_digest!r})"
         )
 
 
