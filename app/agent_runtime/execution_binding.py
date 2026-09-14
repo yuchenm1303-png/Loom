@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import marshal
+from types import CodeType
 
 from .execution_action import exec_environment_identity, execution_action_for
 from .json_schema_semantics import validating_schema
@@ -36,6 +37,39 @@ def _composite_action_binding(base: str, *, kind: str, digest: str) -> str:
     return hashlib.sha256(
         json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
+
+
+def _dequickened_constant(value):
+    if isinstance(value, CodeType):
+        return _dequickened_code(value)
+    if isinstance(value, tuple):
+        return tuple(_dequickened_constant(item) for item in value)
+    if isinstance(value, frozenset):
+        return frozenset(_dequickened_constant(item) for item in value)
+    return value
+
+
+def _dequickened_code(code: CodeType) -> CodeType:
+    """Clone executable code without CPython's mutable quickening state.
+
+    CPython 3.11+ specializes live code objects after execution. On Python 3.12
+    that runtime state can change ``marshal.dumps(code)`` even though the
+    function's source/execution semantics are unchanged, which would falsely
+    invalidate a pending approval after the first sandbox attempt. ``replace``
+    rebuilds a fresh code object from the public immutable code attributes; code
+    constants are rebuilt recursively so nested function code cannot leak its
+    own specialization state into the binding either.
+    """
+
+    constants = tuple(_dequickened_constant(value) for value in code.co_consts)
+    return code.replace(co_consts=constants)
+
+
+def _code_digest(code: object) -> str:
+    if not isinstance(code, CodeType):
+        return ""
+    stable = _dequickened_code(code)
+    return hashlib.sha256(marshal.dumps(stable)).hexdigest()
 
 
 def binding_digest(step, tool, platform) -> str:
@@ -80,7 +114,7 @@ def binding_digest(step, tool, platform) -> str:
         "schema": validating_schema(tool.input_schema),
         "effect": tool.effect.value,
         "handler": f"{getattr(function, '__module__', '')}:{getattr(function, '__qualname__', '')}",
-        "code": hashlib.sha256(marshal.dumps(code)).hexdigest() if code else str(type(handler)),
+        "code": _code_digest(code) if code else str(type(handler)),
     }
     if captured:
         payload["request_state"] = request_state.digest()
