@@ -100,6 +100,7 @@ class ContextAgentRuntime(SandboxAgentRuntime):
         retained: tuple[AIMessage, ...],
         summary_source: str,
         summary_usage: ModelUsage | None = None,
+        replacement_override: tuple[AIMessage, ...] | None = None,
     ) -> ContextCheckpoint:
         text = str(summary or "").strip()
         if not text:
@@ -118,11 +119,17 @@ class ContextAgentRuntime(SandboxAgentRuntime):
 
         from .context_budget import estimate_tokens
 
-        replacement = build_compacted_history(
-            canonical_before,
-            text,
-            token_counter=lambda messages: estimate_tokens(messages),
+        replacement = (
+            tuple(replacement_override)
+            if replacement_override is not None
+            else build_compacted_history(
+                canonical_before,
+                text,
+                token_counter=lambda messages: estimate_tokens(messages),
+            )
         )
+        if not replacement:
+            raise ValueError("context checkpoint replacement must not be empty")
         checkpoint = self.checkpoint_store.create(
             session_id=session.session_id,
             summary=text,
