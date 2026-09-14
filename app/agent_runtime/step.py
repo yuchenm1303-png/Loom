@@ -9,6 +9,7 @@ from app.ai import ReasoningRequest
 
 from .context_limits import ResolvedContextLimits
 from .contracts import PermissionMode
+from .frozen_environment import FrozenShellEnvironment
 from .permissions import (
     ApprovalPolicy,
     PermissionProfile,
@@ -124,8 +125,26 @@ class StepContext:
     tool_router: ToolRouter
     request_state: RequestStateSnapshot = field(default_factory=RequestStateSnapshot)
     reasoning: ReasoningRequest | None = None
-    environment_policy: ShellEnvironmentPolicy = field(default_factory=get_default_environment_policy)
+    environment_policy: ShellEnvironmentPolicy | FrozenShellEnvironment = field(
+        default_factory=get_default_environment_policy
+    )
     mcp_binding: McpBinding | None = None
+
+    def __post_init__(self) -> None:
+        # ``dataclasses.replace`` is used throughout the runtime MRO to refine a
+        # Step. Whenever a live policy is supplied at that boundary, resolve it
+        # immediately so later approval/execution cannot reread a changed parent
+        # environment. An already-frozen resolver is preserved byte-for-byte.
+        if isinstance(self.environment_policy, ShellEnvironmentPolicy):
+            object.__setattr__(
+                self,
+                "environment_policy",
+                FrozenShellEnvironment.capture(self.environment_policy),
+            )
+        elif not isinstance(self.environment_policy, FrozenShellEnvironment):
+            raise TypeError(
+                "environment_policy must be ShellEnvironmentPolicy or FrozenShellEnvironment"
+            )
 
     @property
     def permission_profile(self) -> PermissionProfile:
