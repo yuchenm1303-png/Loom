@@ -63,3 +63,6 @@ def test_ui_tars_backend_is_one_step_vision_adapter_with_uia_context():
     assert "uia:7" in prompt
     assert "Save" in prompt
     assert "1000x800" in prompt
+    assert "same 0..1000 model frame" in prompt
+    assert "point=(500,469)" in prompt
+    assert "point=(0.5000," not in prompt
