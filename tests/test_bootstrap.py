@@ -6,6 +6,7 @@ import sys
 from app.agent_runtime import (
     AgentEventKind,
     AgentRuntime,
+    CoreAgentRuntime,
     AgentStatus,
     FileAgentSessionStore,
     PermissionMode,
@@ -382,7 +383,9 @@ def test_precise_replace_fails_closed_on_ambiguous_match(tmp_path):
         ]
     )
     store = FileAgentSessionStore(tmp_path / "state")
-    runtime = AgentRuntime(platform=platform, store=store, tools=loom_default_tools())
+    # This test pins the precise-replace tool's approval and fail-closed semantics,
+    # independent of the production ToolSearch layer's request-scoped schema shedding.
+    runtime = CoreAgentRuntime(platform=platform, store=store, tools=loom_default_tools())
     session = _bind_workspace(
         store,
         runtime.create_session(AGENT_FAST_ROLE.role_id),
