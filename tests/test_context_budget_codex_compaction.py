@@ -112,6 +112,7 @@ class FakeRuntime:
         retained,
         summary_source,
         summary_usage=None,
+        replacement_override=None,
     ):
         self.commits.append(
             {
@@ -121,10 +122,13 @@ class FakeRuntime:
                 "retained": tuple(retained),
                 "summary_source": summary_source,
                 "summary_usage": summary_usage,
+                "replacement_override": replacement_override,
             }
         )
         session.messages = list(
-            build_compacted_history(
+            replacement_override
+            if replacement_override is not None
+            else build_compacted_history(
                 tuple((*archived, *retained)),
                 summary,
                 token_counter=lambda messages: estimate_tokens(messages),
