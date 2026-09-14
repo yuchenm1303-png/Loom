@@ -1,6 +1,7 @@
 import type { ApprovalDecision, PendingApproval } from "../types/loom";
 
 export interface ApprovalResponseParams {
+  [key: string]: unknown;
   threadId: string;
   turnId: string;
   requestId: string;
