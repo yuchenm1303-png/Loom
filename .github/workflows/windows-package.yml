@@ -1,0 +1,62 @@
+name: Windows EXE Package
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "desktop-react/**"
+      - "loom_desktop_runtime.py"
+      - ".github/workflows/windows-package.yml"
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  package-windows-x64:
+    runs-on: windows-latest
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install desktop dependencies
+        working-directory: desktop-react
+        run: npm install --no-audit --no-fund
+
+      - name: Build Windows installer
+        working-directory: desktop-react
+        run: npm run package:win
+
+      - name: Verify packaged private runtime
+        shell: pwsh
+        run: |
+          $runtime = Join-Path $env:GITHUB_WORKSPACE "desktop-react\release\win-unpacked\python.exe"
+          if (-not (Test-Path $runtime)) { throw "Packaged private Python runtime was not found at $runtime" }
+          & $runtime self-test
+          if ($LASTEXITCODE -ne 0) { throw "Packaged runtime self-test failed with exit code $LASTEXITCODE" }
+          & $runtime -c "import app; print('loom-runtime-import-ok')"
+          if ($LASTEXITCODE -ne 0) { throw "Packaged runtime import smoke failed with exit code $LASTEXITCODE" }
+
+      - name: Verify installer artifact
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem "$env:GITHUB_WORKSPACE\desktop-react\release\Loom-Setup-*.exe" | Select-Object -First 1
+          if (-not $installer) { throw "Loom Setup executable was not produced" }
+          Write-Host "Installer: $($installer.FullName)"
+          Write-Host "Size: $($installer.Length) bytes"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Loom-Windows-x64
+          path: desktop-react/release/Loom-Setup-*.exe
+          if-no-files-found: error
+          retention-days: 14
