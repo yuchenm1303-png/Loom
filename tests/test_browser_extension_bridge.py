@@ -12,7 +12,7 @@ import app.agent_runtime.browser_runtime as browser_runtime_module
 from app.agent_runtime.browser_diagnostics import BrowserDiagnosticLog, summarize_bridge_args, summarize_browser_state_payload
 from app.agent_runtime.browser_extension_bridge import BrowserExtensionBridge, BrowserExtensionSessionBackend
 from app.agent_runtime.browser_security import BrowserSecurityPolicy
-from app.agent_runtime.browser_session import BrowserLaunchOptions
+from app.agent_runtime.browser_session import BrowserError, BrowserLaunchOptions
 from app.agent_runtime.sandbox import SandboxManager, SandboxPolicy
 from app.agent_runtime.storage import FileAgentSessionStore
 from app.agent_runtime.workspace_tools import loom_default_tools
@@ -133,6 +133,49 @@ def test_extension_bridge_serves_long_poll_commands_and_results():
         assert result_holder["value"] == {"url": "https://example.com/", "title": "Example"}
         assert bridge.connected is True
         assert bridge.diagnostics.status()["entries"] >= 3
+    finally:
+        bridge.stop()
+
+
+def test_extension_bridge_timeout_removes_command_before_late_reconnect():
+    bridge = BrowserExtensionBridge(port=0, token="test-token", command_timeout=1, poll_timeout=1)
+    try:
+        with pytest.raises(BrowserError, match="did not respond"):
+            bridge.call("click", {"index": 4})
+
+        status = bridge.status()
+        assert status["pending_commands"] == 0
+        assert status["queued_commands"] == 0
+
+        # Simulate the extension reconnecting after Loom already reported the
+        # timeout. The failed command must never be delivered later.
+        with urlopen(
+            Request(
+                f"{bridge.url}/browser-extension/v1/poll?client_id=late-client&version=0.1",
+                headers={"X-Loom-Token": "test-token"},
+            ),
+            timeout=3,
+        ) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        assert payload == {"ok": True, "command": None}
+    finally:
+        bridge.stop()
+
+
+def test_extension_bridge_does_not_enable_page_cors():
+    bridge = BrowserExtensionBridge(port=0, token="test-token")
+    bridge.start()
+    try:
+        with urlopen(
+            Request(
+                f"{bridge.url}/browser-extension/v1/health",
+                method="OPTIONS",
+                headers={"Origin": "https://attacker.example"},
+            ),
+            timeout=2,
+        ) as response:
+            assert response.status == 200
+            assert response.headers.get("Access-Control-Allow-Origin") is None
     finally:
         bridge.stop()
 
