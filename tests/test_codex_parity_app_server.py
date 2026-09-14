@@ -131,6 +131,9 @@ def test_reconnected_controller_can_resolve_existing_approval(tmp_path):
             lambda: service.thread_read({"threadId": thread_id})["pendingApproval"]
         )
         assert pending["callId"] == "approval-call"
+        assert pending["threadId"] == thread_id
+        assert pending["turnId"]
+        assert pending["requestId"]
         assert executed == []
 
         # Model a transport reconnect: protocol/controller state is new, while the
@@ -143,9 +146,11 @@ def test_reconnected_controller_can_resolve_existing_approval(tmp_path):
                 "id": 11,
                 "method": "approval/respond",
                 "params": {
-                    "threadId": thread_id,
-                    "callId": "approval-call",
-                    "approved": True,
+                    "threadId": pending["threadId"],
+                    "turnId": pending["turnId"],
+                    "requestId": pending["requestId"],
+                    "callId": pending["callId"],
+                    "decision": "accept",
                 },
             }
         )
