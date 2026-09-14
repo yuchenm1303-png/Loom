@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import hmac
 import json
 import os
 import threading
@@ -35,6 +36,8 @@ class _BridgeCommand:
     event: threading.Event = field(default_factory=threading.Event)
     result: dict[str, Any] | None = None
     error: str = ""
+    dispatched_at: float = 0.0
+    cancelled: bool = False
 
 
 class BrowserExtensionBridge:
@@ -140,6 +143,7 @@ class BrowserExtensionBridge:
             server = self._server
             self._server = None
             for command in list(self._pending.values()):
+                command.cancelled = True
                 command.error = "browser extension bridge stopped"
                 command.event.set()
             self._commands.clear()
@@ -187,11 +191,20 @@ class BrowserExtensionBridge:
             self._condition.notify_all()
         if not command.event.wait(wait_seconds):
             with self._condition:
-                self._pending.pop(command.command_id, None)
+                # A command that timed out before the extension collected it must
+                # disappear from both indexes. Leaving it in _commands lets an
+                # extension that reconnects later execute an operation Loom has
+                # already reported as failed (a "ghost" click/type/navigation).
+                pending = self._pending.pop(command.command_id, None)
+                if pending is command:
+                    command.cancelled = True
+                    self._commands[:] = [queued for queued in self._commands if queued is not command]
+                phase = "dispatched" if command.dispatched_at else "queued"
             self._log(
                 "bridge.command.timeout",
                 command_id=command.command_id,
                 action=action_name,
+                phase=phase,
                 elapsed_ms=int((time.monotonic() - command.created_at) * 1000),
             )
             raise BrowserError(
@@ -233,6 +246,9 @@ class BrowserExtensionBridge:
                 return
 
             def do_OPTIONS(self) -> None:
+                # Chrome extensions with host permissions do not need page-style
+                # CORS opt-in. Deliberately omit Access-Control-Allow-Origin so an
+                # arbitrary web page cannot use this localhost service as an API.
                 self._send_json({"ok": True})
 
             def do_GET(self) -> None:
@@ -253,7 +269,19 @@ class BrowserExtensionBridge:
                         bridge._last_client_id = client_id or bridge._last_client_id
                         bridge._last_client_version = version or bridge._last_client_version
                         bridge._last_poll_at = time.monotonic()
-                        while not bridge._commands and not bridge._closed:
+                        command: _BridgeCommand | None = None
+                        while command is None and not bridge._closed:
+                            while bridge._commands:
+                                candidate = bridge._commands.pop(0)
+                                if candidate.cancelled:
+                                    continue
+                                if bridge._pending.get(candidate.command_id) is not candidate:
+                                    continue
+                                candidate.dispatched_at = time.monotonic()
+                                command = candidate
+                                break
+                            if command is not None:
+                                break
                             remaining = deadline - time.monotonic()
                             if remaining <= 0:
                                 self._send_json({"ok": True, "command": None})
@@ -262,14 +290,16 @@ class BrowserExtensionBridge:
                         if bridge._closed:
                             self._send_json({"ok": False, "error": "bridge closed"}, HTTPStatus.GONE)
                             return
-                        command = bridge._commands.pop(0)
+                        if command is None:
+                            self._send_json({"ok": True, "command": None})
+                            return
                     bridge._log(
                         "bridge.command.dispatched",
                         command_id=command.command_id,
                         action=command.action,
                         client_id=client_id[-12:],
                         client_version=version,
-                        queued_ms=int((time.monotonic() - command.created_at) * 1000),
+                        queued_ms=int((command.dispatched_at - command.created_at) * 1000),
                     )
                     self._send_json(
                         {
@@ -315,7 +345,7 @@ class BrowserExtensionBridge:
                     with bridge._condition:
                         command = bridge._pending.pop(command_id, None)
                         bridge._last_result_at = time.monotonic()
-                    if command is not None:
+                    if command is not None and not command.cancelled:
                         if ok:
                             result = body.get("result") or {}
                             command.result = result if isinstance(result, dict) else {"value": result}
@@ -340,7 +370,7 @@ class BrowserExtensionBridge:
                 supplied = self.headers.get("X-Loom-Token", "")
                 if not supplied:
                     supplied = str((parse_qs(parsed.query).get("token") or [""])[0])
-                return supplied == bridge.token
+                return hmac.compare_digest(str(supplied), bridge.token)
 
             def _read_json(self) -> dict[str, Any]:
                 length = int(self.headers.get("Content-Length") or "0")
@@ -358,9 +388,6 @@ class BrowserExtensionBridge:
                 self.send_response(int(status))
                 self.send_header("Content-Type", "application/json; charset=utf-8")
                 self.send_header("Content-Length", str(len(data)))
-                self.send_header("Access-Control-Allow-Origin", "*")
-                self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Loom-Token")
-                self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
                 self.end_headers()
                 self.wfile.write(data)
 
