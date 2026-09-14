@@ -4,7 +4,6 @@ import json
 from urllib.parse import parse_qs, urlsplit
 
 from app.agent_runtime import (
-    AgentRuntime,
     AgentStatus,
     BraveWebSearchProvider,
     FileAgentSessionStore,
@@ -14,6 +13,7 @@ from app.agent_runtime import (
     TavilyWebSearchProvider,
     WebSearchResponse,
     WebSearchResult,
+    WebSearchRuntime,
     web_search_provider_from_env,
 )
 from app.agent_runtime.workspace_tools import loom_default_tools
@@ -58,7 +58,11 @@ class FakeSearchProvider:
 def _runtime(tmp_path, responses, provider, mode=PermissionMode.APPROVAL):
     store = FileAgentSessionStore(tmp_path / "state")
     platform = ScriptedPlatform(responses)
-    runtime = AgentRuntime(
+    # This file tests the WebSearchRuntime permission/network contract itself.
+    # The production stack adds ToolSearch later, where schema-pressure shedding
+    # may intentionally defer unrelated direct tools; that behavior has its own
+    # tests and must not turn a web-search permission test into an exposure test.
+    runtime = WebSearchRuntime(
         platform=platform,
         store=store,
         tools=loom_default_tools(),
