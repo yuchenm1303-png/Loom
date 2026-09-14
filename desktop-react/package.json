@@ -68,7 +68,7 @@
       "dist-electron/**/*",
       "package.json"
     ],
-    "extraFiles": [
+    "extraResources": [
       {
         "from": "runtime-dist/python",
         "to": "."
