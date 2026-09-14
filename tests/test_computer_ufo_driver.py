@@ -64,7 +64,10 @@ def test_ufo_status_is_side_effect_free_when_not_installed(tmp_path: Path):
     assert status["dependencies_installed"] is False
     assert status["config_installed"] is False
     assert status["preflight_ready"] is False
-    assert "source" in status["reason"].lower()
+    if os.name == "nt":
+        assert "source" in status["reason"].lower()
+    else:
+        assert "windows" in status["reason"].lower()
     assert status["api_key_configured"] is True
     assert "api_key" not in status
 
