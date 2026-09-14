@@ -287,6 +287,8 @@ class BrowserSessionManager:
         self.max_sessions_total = max(1, int(max_sessions_total))
         self._lock = threading.RLock()
         self._sessions: dict[str, ManagedBrowserSession] = {}
+        self._starting_total = 0
+        self._starting_by_owner: dict[str, int] = {}
 
     def start(
         self,
@@ -310,40 +312,59 @@ class BrowserSessionManager:
             allowed_domains=tuple(allowed_domains),
             external_browser=bool(external_browser),
         )
+        factory = backend_factory or self.backend_factory
+        if not callable(factory):
+            raise TypeError("browser backend_factory must be callable")
+
         with self._lock:
-            if len(self._sessions) >= self.max_sessions_total:
+            if len(self._sessions) + self._starting_total >= self.max_sessions_total:
                 raise BrowserError(f"browser session limit reached ({self.max_sessions_total})")
             owned = sum(1 for item in self._sessions.values() if item.owner_session_id == owner)
+            owned += self._starting_by_owner.get(owner, 0)
             if owned >= self.max_sessions_per_owner:
                 raise BrowserError(
                     f"browser session limit for Loom session reached ({self.max_sessions_per_owner})"
                 )
-        factory = backend_factory or self.backend_factory
-        if not callable(factory):
-            raise TypeError("browser backend_factory must be callable")
-        backend = factory(options)
+            self._starting_total += 1
+            self._starting_by_owner[owner] = self._starting_by_owner.get(owner, 0) + 1
+
+        backend: BrowserBackend | None = None
         try:
+            backend = factory(options)
             state = backend.start()
             state = self._validated_state(state, options)
+            now = utc_now()
+            managed = ManagedBrowserSession(
+                browser_id=str(uuid.uuid4()),
+                owner_session_id=owner,
+                backend=backend,
+                options=options,
+                created_at=now,
+                updated_at=now,
+                last_state=state,
+            )
         except Exception:
-            try:
-                backend.close()
-            except Exception:
-                pass
+            if backend is not None:
+                try:
+                    backend.close()
+                except Exception:
+                    pass
+            with self._lock:
+                self._release_start_reservation_locked(owner)
             raise
-        now = utc_now()
-        managed = ManagedBrowserSession(
-            browser_id=str(uuid.uuid4()),
-            owner_session_id=owner,
-            backend=backend,
-            options=options,
-            created_at=now,
-            updated_at=now,
-            last_state=state,
-        )
+
         with self._lock:
+            self._release_start_reservation_locked(owner)
             self._sessions[managed.browser_id] = managed
         return managed
+
+    def _release_start_reservation_locked(self, owner: str) -> None:
+        self._starting_total = max(0, self._starting_total - 1)
+        remaining = self._starting_by_owner.get(owner, 0) - 1
+        if remaining > 0:
+            self._starting_by_owner[owner] = remaining
+        else:
+            self._starting_by_owner.pop(owner, None)
 
     def list(self, owner_session_id: str) -> tuple[dict[str, object], ...]:
         owner = _key(owner_session_id, "owner_session_id")
@@ -353,14 +374,15 @@ class BrowserSessionManager:
         return tuple(item.snapshot() for item in items)
 
     def active_count(self) -> int:
-        """Live sessions across every owner.
+        """Live or opening sessions across every owner.
 
         Reconfiguring the browser connection has to know whether any model still
-        holds a browser_id, which is not answerable from a single owner's list.
+        holds a browser_id or is currently opening one. Counting reservations
+        prevents a mode switch from racing backend.start().
         """
 
         with self._lock:
-            return len(self._sessions)
+            return len(self._sessions) + self._starting_total
 
     def state(self, owner_session_id: str, browser_id: str) -> BrowserPageState:
         item = self._owned(owner_session_id, browser_id)
