@@ -22,6 +22,11 @@ venv/
 /loom-relay-credential.json
 /relay-credential.json
 
+# Generated only during trusted release packaging from Actions configuration.
+# It may contain the native GitHub OAuth application's release credential pair
+# and must never enter repository history.
+/app/connector_release_config_generated.py
+
 # Original AI Ledger sticker assets are materialized and verified at dev/build
 # time, then copied into Vite's dist output. Do not commit generated binaries.
 /desktop-react/.cache/chat-stickers/
