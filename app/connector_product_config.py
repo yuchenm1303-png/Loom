@@ -9,26 +9,37 @@ cannot be treated as confidential: users can inspect the application binary.
 PKCE + a random OAuth state protect the authorization-code handoff, while Loom
 stores *user* access and refresh tokens only in the OS credential vault.
 
-Distributors may bake the OAuth app's public/native client credentials into a
-private release build or inject them at package/runtime. Never put user access
-tokens, refresh tokens, PATs, GitHub App private keys, or other user secrets in
-this module.
+Production packaging may generate ``connector_release_config_generated`` from
+CI variables/secrets. That module is intentionally absent from source control
+and removed from the working tree after PyInstaller has frozen it into the
+private runtime. Environment variables remain higher priority at runtime.
 """
 
 import os
 
 
-# Register a GitHub OAuth App with callback URL:
-#   http://127.0.0.1/oauth/github/callback
-# GitHub permits Loom to add a dynamic loopback port at runtime.
-#
-# Leave these blank in source unless the distribution intentionally treats its
-# native-client credential pair as public application material. Environment
-# overrides are always preferred for development and release automation.
-GITHUB_CLIENT_ID = ""
-GITHUB_CLIENT_SECRET = ""
-GITHUB_OAUTH_SCOPES = "repo read:org"
-GITHUB_OAUTH_CALLBACK_PATH = "/oauth/github/callback"
+try:
+    from .connector_release_config_generated import (
+        GITHUB_CLIENT_ID as _GENERATED_GITHUB_CLIENT_ID,
+        GITHUB_CLIENT_SECRET as _GENERATED_GITHUB_CLIENT_SECRET,
+        GITHUB_OAUTH_CALLBACK_PATH as _GENERATED_GITHUB_OAUTH_CALLBACK_PATH,
+        GITHUB_OAUTH_SCOPES as _GENERATED_GITHUB_OAUTH_SCOPES,
+    )
+except ImportError:
+    _GENERATED_GITHUB_CLIENT_ID = ""
+    _GENERATED_GITHUB_CLIENT_SECRET = ""
+    _GENERATED_GITHUB_OAUTH_SCOPES = ""
+    _GENERATED_GITHUB_OAUTH_CALLBACK_PATH = ""
+
+
+# Source defaults remain blank for application credentials. The Windows release
+# build can inject them from GitHub Actions without committing them to history.
+GITHUB_CLIENT_ID = str(_GENERATED_GITHUB_CLIENT_ID or "").strip()
+GITHUB_CLIENT_SECRET = str(_GENERATED_GITHUB_CLIENT_SECRET or "").strip()
+GITHUB_OAUTH_SCOPES = str(_GENERATED_GITHUB_OAUTH_SCOPES or "repo read:org").strip()
+GITHUB_OAUTH_CALLBACK_PATH = str(
+    _GENERATED_GITHUB_OAUTH_CALLBACK_PATH or "/oauth/github/callback"
+).strip()
 
 
 def _install_default(name: str, value: str) -> None:
