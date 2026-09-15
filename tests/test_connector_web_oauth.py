@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from urllib.error import HTTPError
 from urllib.parse import parse_qs, urlencode, urlsplit
 from urllib.request import urlopen
 
@@ -99,9 +100,14 @@ def _authorize(manager: WebOAuthConnectorManager, *, state_override: str = ""):
     query = parse_qs(urlsplit(authorize_url).query)
     state = state_override or query["state"][0]
     callback = str(started["redirectUrl"]) + "?" + urlencode({"code": "github-code", "state": state})
-    with urlopen(callback, timeout=3) as response:
-        assert response.status == 200
-        assert b"Authorization received" in response.read()
+    if state_override:
+        with pytest.raises(HTTPError) as exc_info:
+            urlopen(callback, timeout=3)
+        assert exc_info.value.code == 400
+    else:
+        with urlopen(callback, timeout=3) as response:
+            assert response.status == 200
+            assert b"Authorization received" in response.read()
     return started, query
 
 
@@ -128,6 +134,7 @@ def test_web_oauth_uses_loopback_pkce_and_never_puts_secret_in_browser_url(tmp_p
     assert completed["connector"]["credentialSource"] == "web-oauth-keyring"
     assert vault.values["github/access-token"] == "web-access-token"
     assert vault.values["github/refresh-token"] == "web-refresh-token"
+    assert started["sessionId"] not in manager._web_auth_sessions
 
     _url, exchange = calls[0]
     assert exchange["client_id"] == "loom-native-client"
@@ -149,6 +156,7 @@ def test_web_oauth_rejects_loopback_callback_with_wrong_state(tmp_path: Path) ->
 
     assert "github/access-token" not in vault.values
     assert calls == []
+    assert started["sessionId"] not in manager._web_auth_sessions
 
 
 def test_web_oauth_refresh_includes_client_secret_and_rotates_keyring_tokens(tmp_path: Path) -> None:
