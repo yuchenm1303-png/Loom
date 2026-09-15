@@ -12,6 +12,7 @@ const VENV_PYTHON = path.join(VENV_ROOT, "Scripts", "python.exe");
 const DIST_ROOT = path.join(DESKTOP_ROOT, "runtime-dist");
 const WORK_ROOT = path.join(DESKTOP_ROOT, "runtime-build");
 const ENTRYPOINT = path.join(REPO_ROOT, "loom_desktop_runtime.py");
+const GENERATED_CONNECTOR_CONFIG = path.join(REPO_ROOT, "app", "connector_release_config_generated.py");
 const BOOTSTRAP_PYTHON = process.env.LOOM_BOOTSTRAP_PYTHON || process.env.PYTHON || "python";
 
 function run(command, args, options = {}) {
@@ -26,6 +27,49 @@ function run(command, args, options = {}) {
   if (result.error) throw result.error;
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
+
+function cleanupGeneratedConnectorConfig() {
+  try {
+    fs.rmSync(GENERATED_CONNECTOR_CONFIG, { force: true });
+  } catch {
+    // Best-effort cleanup. The path is gitignored as a second safety boundary.
+  }
+}
+
+function pythonString(value) {
+  return JSON.stringify(String(value ?? ""));
+}
+
+function prepareGeneratedConnectorConfig() {
+  cleanupGeneratedConnectorConfig();
+  const clientId = String(process.env.LOOM_GITHUB_CLIENT_ID || "").trim();
+  const clientSecret = String(process.env.LOOM_GITHUB_CLIENT_SECRET || "").trim();
+  const scopes = String(process.env.LOOM_GITHUB_OAUTH_SCOPES || "repo read:org").trim() || "repo read:org";
+  const callbackPath = String(process.env.LOOM_GITHUB_CALLBACK_PATH || "/oauth/github/callback").trim() || "/oauth/github/callback";
+
+  if (!clientId && !clientSecret) {
+    console.log("[build-runtime] GitHub Web OAuth release config: not provisioned; safe fallbacks remain available.");
+    return false;
+  }
+  if (!clientId || !clientSecret) {
+    console.error("[build-runtime] GitHub Web OAuth release config is incomplete: both client ID and client secret are required.");
+    process.exit(2);
+  }
+
+  const content = [
+    "# Generated at package time. Do not commit this file.",
+    `GITHUB_CLIENT_ID = ${pythonString(clientId)}`,
+    `GITHUB_CLIENT_SECRET = ${pythonString(clientSecret)}`,
+    `GITHUB_OAUTH_SCOPES = ${pythonString(scopes)}`,
+    `GITHUB_OAUTH_CALLBACK_PATH = ${pythonString(callbackPath)}`,
+    "",
+  ].join("\n");
+  fs.writeFileSync(GENERATED_CONNECTOR_CONFIG, content, { encoding: "utf8", mode: 0o600 });
+  console.log("[build-runtime] GitHub Web OAuth release config: provisioned for frozen runtime.");
+  return true;
+}
+
+process.on("exit", cleanupGeneratedConnectorConfig);
 
 if (process.platform !== "win32") {
   console.error("[build-runtime] Windows runtime packaging must run on Windows.");
@@ -43,6 +87,7 @@ fs.rmSync(DIST_ROOT, { recursive: true, force: true });
 fs.rmSync(WORK_ROOT, { recursive: true, force: true });
 fs.mkdirSync(DIST_ROOT, { recursive: true });
 fs.mkdirSync(WORK_ROOT, { recursive: true });
+prepareGeneratedConnectorConfig();
 
 run(VENV_PYTHON, [
   "-m",
