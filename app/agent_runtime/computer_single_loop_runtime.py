@@ -62,6 +62,12 @@ class _Attempt:
     effect: str
 
 
+class _NoGrounder:
+    """Constructor sentinel that prevents legacy visual-model auto-discovery."""
+
+    name = "disabled-single-loop"
+
+
 def _schema(properties: dict[str, Any], required: tuple[str, ...] = ()) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "type": "object",
@@ -267,9 +273,18 @@ def _safe_snapshot_data(snapshot: ComputerStateSnapshot) -> dict[str, object]:
 
 def _safe_outcome_data(outcome: ComputerStepOutcome) -> dict[str, object]:
     after = outcome.after or outcome.before
+    execution = outcome.execution
     return {
         "action": outcome.prediction.action.safe_dict(),
-        "execution": outcome.execution.to_safe_dict() if outcome.execution is not None else None,
+        "execution": (
+            {
+                "ok": bool(execution.ok),
+                "native": bool(execution.native),
+                "fallback_used": bool(execution.fallback_used),
+            }
+            if execution is not None
+            else None
+        ),
         "verification": dict(outcome.verification),
         "after": _safe_snapshot_data(after),
     }
@@ -293,7 +308,9 @@ def _model_observation_text(snapshot: ComputerStateSnapshot) -> str:
         )
     background = [window for window in observation.windows if not window.foreground][:12]
     if background:
-        lines.append("Other visible top-level windows (use switch_window with the id when useful):")
+        lines.append(
+            "Other known top-level application windows. This list may include minimized or tray-hidden recoverable windows; use switch_window with the id instead of searching the desktop/taskbar when the target app is already listed:"
+        )
         for window in background:
             lines.append(
                 f"- id={window.window_id}; title={window.title!r}; process={window.process_name!r}"
@@ -326,7 +343,19 @@ class SingleLoopComputerRuntime(ComputerUseRuntime):
     """
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
+        # Seal the architecture here rather than relying on the product assembly
+        # layer. Stale GUI-Plus/UI-TARS environment variables must never create a
+        # second visual model when this runtime class is used directly.
+        kwargs["computer_grounder"] = _NoGrounder()
+        kwargs["computer_model_profile"] = None
+        kwargs["computer_grounder_kind"] = ""
         super().__init__(*args, **kwargs)
+        if self.computer_sessions is not None:
+            self.computer_sessions.grounder = None
+        self.computer_model_profile = ""
+        self.computer_grounder_name = "disabled"
+        self.computer_grounder_kind = "disabled"
+
         self._computer_feedback_turns: dict[str, str] = {}
         self._computer_attempts: dict[tuple[str, str], deque[_Attempt]] = defaultdict(
             lambda: deque(maxlen=4)
@@ -362,9 +391,11 @@ class SingleLoopComputerRuntime(ComputerUseRuntime):
                 "Loom's only model-facing desktop action tool. It uses the current conversation model and the normal "
                 "TurnRunner: request screenshot first, then choose exactly one visual action from the returned image. "
                 "Coordinates are normalized 0..1. Coordinate input is the primary execution path; UIA is only an "
-                "advisory visual hint and no control id is accepted here. Every non-terminal action is followed by a "
-                "fresh screenshot. If a coordinate pointer action injects successfully but causes no observable UI "
-                "change, this tool returns ok=false so you must not assume the click worked."
+                "advisory visual hint and no control id is accepted here. If a target application already appears in "
+                "the known-window list, use switch_window rather than searching the desktop or taskbar; hidden/tray "
+                "windows may be recoverable this way. Every non-terminal action is followed by a fresh screenshot. "
+                "If a coordinate pointer action injects successfully but causes no observable UI change, this tool "
+                "returns ok=false so you must not assume the click worked."
             ),
             input_schema=_schema({"action": _single_action_schema()}, ("action",)),
             handler=self._handle_single_action,
@@ -381,6 +412,7 @@ class SingleLoopComputerRuntime(ComputerUseRuntime):
                 "coordinate_execution": "primary",
                 "uia_role": "advisory hints only for the single-loop path",
                 "visual_feedback": "fresh screenshot attached ephemerally to the next model request",
+                "window_reuse": "prefer switch_window for known visible/minimized/tray-hidden app windows",
                 "legacy_grounder_active": False,
                 "ufo_default_path": False,
             }
