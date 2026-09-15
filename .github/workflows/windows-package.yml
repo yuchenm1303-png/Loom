@@ -14,8 +14,20 @@ on:
       - "pyproject.toml"
       - ".github/workflows/windows-package.yml"
   push:
+    branches:
+      - main
     tags:
       - "v*"
+    paths:
+      - "desktop-react/**"
+      - "app/__init__.py"
+      - "app/connector*.py"
+      - "loom_desktop_runtime.py"
+      - "loom_app_server.py"
+      - "loom_model_bridge.py"
+      - "loom_model_admin.py"
+      - "pyproject.toml"
+      - ".github/workflows/windows-package.yml"
 
 permissions:
   contents: read
