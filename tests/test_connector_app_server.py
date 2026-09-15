@@ -73,7 +73,12 @@ class FakeManager:
 
     def start_github_auth(self):
         self.calls.append(("start-auth", None))
-        return {"sessionId": "auth-1", "status": "pending", "mode": "device"}
+        return {
+            "sessionId": "auth-1",
+            "status": "pending",
+            "mode": "device",
+            "verificationUrl": "https://github.com/login/device",
+        }
 
     def poll_github_auth(self, session_id: str):
         self.calls.append(("poll-auth", session_id))
@@ -83,7 +88,7 @@ class FakeManager:
 
 class BaseService:
     def __init__(self, *args, **kwargs) -> None:
-        _ = args, kwargs
+        _ = args
         root = Path(kwargs.pop("root", Path.cwd() / ".loom"))
         sessions = root / "agent_runtime" / "sessions"
         sessions.mkdir(parents=True, exist_ok=True)
@@ -127,7 +132,8 @@ class FakeJsonRpcError(Exception):
 
 def _patched(monkeypatch):
     FakeManager.instances.clear()
-    monkeypatch.setattr(connector_app_server, "ConnectorManager", FakeManager)
+    monkeypatch.setattr(connector_app_server, "_connector_manager", lambda runtime_home: FakeManager(runtime_home))
+    monkeypatch.setattr(connector_app_server.webbrowser, "open", lambda *args, **kwargs: True)
     service_cls = type("ProjectMovableLoomAppServerService", (BaseService,), {})
     controller_cls = type("ProjectMovableLoomRpcController", (BaseController,), {})
     module = SimpleNamespace(
