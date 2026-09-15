@@ -62,6 +62,9 @@ def patch(module: Any) -> None:
         runtime_home = self.store.root.parents[1]
         self.connectors = _connector_manager(runtime_home)
         self.connectors.install_runtime(self.runtime)
+        from app.connector_step_provenance import install_connector_step_provenance
+
+        install_connector_step_provenance(self.connectors, self.runtime)
 
     def runtime_status(self: Any) -> dict[str, Any]:
         status = dict(original_runtime_status(self))
