@@ -6,13 +6,11 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const HIDE_AFTER_MS = 220;
-const DESTROY_AFTER_IDLE_MS = 5000;
 
 let hudWindow: BrowserWindow | null = null;
 let lastBounds = { x: 0, y: 0, width: 1440, height: 900 };
 let pendingPayload: Record<string, unknown> | null = null;
 let hideTimer: NodeJS.Timeout | null = null;
-let destroyTimer: NodeJS.Timeout | null = null;
 let displayListenersRegistered = false;
 
 function virtualDesktopBounds(): Electron.Rectangle {
@@ -35,13 +33,8 @@ function isVisiblePayload(payload: Record<string, unknown> | null): payload is R
   return Boolean(payload && payload.visible !== false);
 }
 
-function asNumber(value: unknown, fallback: number): number {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : fallback;
-}
-
 function terminalPayload(payload: Record<string, unknown>): boolean {
-  return payload.terminal === true || asNumber(payload.phase, 0) >= 4;
+  return payload.terminal === true;
 }
 
 function clearTimer(timer: NodeJS.Timeout | null): void {
@@ -193,9 +186,7 @@ function resizeHudWindow(): void {
 
 function showHudWindow(window: BrowserWindow): void {
   clearTimer(hideTimer);
-  clearTimer(destroyTimer);
   hideTimer = null;
-  destroyTimer = null;
   resizeHudWindow();
   if (!window.isVisible()) {
     window.setAlwaysOnTop(true, "screen-saver");
@@ -204,22 +195,12 @@ function showHudWindow(window: BrowserWindow): void {
   }
 }
 
-function scheduleDestroy(): void {
-  clearTimer(destroyTimer);
-  destroyTimer = setTimeout(() => {
-    if (!hudWindow || hudWindow.isDestroyed() || hudWindow.isVisible()) return;
-    hudWindow.destroy();
-    hudWindow = null;
-  }, DESTROY_AFTER_IDLE_MS);
-}
-
 function hideHudWindow(delayMs = HIDE_AFTER_MS): void {
   clearTimer(hideTimer);
   if (!hudWindow || hudWindow.isDestroyed()) return;
   hideTimer = setTimeout(() => {
     if (!hudWindow || hudWindow.isDestroyed()) return;
     hudWindow.hide();
-    scheduleDestroy();
   }, delayMs);
 }
 
@@ -293,9 +274,7 @@ export function sendHudUpdate(payload: Record<string, unknown>): void {
 
 export function closeHudOverlayWindow(): void {
   clearTimer(hideTimer);
-  clearTimer(destroyTimer);
   hideTimer = null;
-  destroyTimer = null;
   if (!hudWindow || hudWindow.isDestroyed()) return;
   hudWindow.destroy();
   hudWindow = null;
