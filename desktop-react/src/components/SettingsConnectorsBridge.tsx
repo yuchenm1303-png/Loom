@@ -1,6 +1,7 @@
 import { Link2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
+import { ConnectorLifecycleStatus } from "./ConnectorLifecycleStatus";
 import { ConnectorsSettings } from "./ConnectorsSettings";
 import "./settings-connectors.css";
 
@@ -86,7 +87,12 @@ export function SettingsConnectorsBridge() {
         </button>,
         navHost,
       )}
-      {createPortal(open ? <ConnectorsSettings running={running} /> : null, contentHost)}
+      {createPortal(open ? (
+        <>
+          <ConnectorsSettings running={running} />
+          <ConnectorLifecycleStatus />
+        </>
+      ) : null, contentHost)}
     </>
   );
 }
