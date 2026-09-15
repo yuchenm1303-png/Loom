@@ -87,7 +87,7 @@ GitHub may issue an expiring access token plus a refresh token for device/OAuth 
 - already sampled Step routers continue using the exact old bound credential/client they captured, so refresh cannot retarget in-flight or approval-pending authority;
 - an expired/invalid refresh token leaves the connector unavailable until the user reconnects.
 
-Switching deliberately to a PAT or importing a GitHub CLI credential clears any stale Loom device-OAuth refresh chain. Explicit disconnect clears Loom's keychain access/refresh credentials and disables ambient auto-reconnection.
+Switching deliberately to a PAT or importing a GitHub CLI credential clears any stale Loom device-OAuth refresh chain **only after** the replacement credential has been validated and committed. A failed PAT or failed GitHub CLI import leaves the existing working OAuth chain untouched. Explicit disconnect clears Loom's keychain access/refresh credentials and disables ambient auto-reconnection.
 
 A deployment whose GitHub application does not issue refresh tokens still works; the Settings page reports that automatic rotation is unavailable and the user reconnects after that access token expires.
 
@@ -135,13 +135,17 @@ External-write tools (classified `SENSITIVE`):
 
 Sensitive tools continue through Loom's normal `PermissionEngine` / approval boundary. Connecting GitHub never grants the model a bypass around approval policy.
 
-Most GitHub tools are `DEFERRED` so Tool Search can expose them on demand without inflating every model request. Connection status is direct so the model can explain why GitHub is unavailable.
+Most GitHub tools are `DEFERRED` so Tool Search can expose them on demand without inflating every model request. Connection status is direct so the model can explain why GitHub is unavailable. The connector test suite includes a real `ToolSearchRuntime` contract where the model first sees only `tool_search`, activates `github_issue_create`, and then executes it through the bound GitHub client.
 
-## Step-bound authorization
+## Step-bound authorization and provenance
 
 GitHub AgentTool instances capture the exact validated credential binding that existed when they were created. The binding identifier is a process-local HMAC projection; it is not the credential itself.
 
 When authorization changes or an expiring OAuth token rotates, Loom replaces only the long-lived registry projection used by **future** Steps. Already captured Step routers retain their old AgentTool objects and handler closures. This preserves the same rule Loom uses for exact MCP bindings: sampled execution authority cannot be retargeted by ambient live state.
+
+For auditability, `RequestStateSnapshot.connector_binding_json` freezes a secret-free connector projection at the same semantic Step boundary. It contains only Loom-verifiable fields such as `connector_id`, connected/enabled state, account, credential source, binding ID, and scopes. It participates in the request-state digest. Exact authority remains in the captured AgentTool handler; the JSON is diagnostic/integrity metadata only.
+
+Loom does **not** synthesize Codex `plugin_id`, `connector_id`, or `link_id` provenance that it cannot prove. The GitHub Connector records Loom's own trusted connector identity rather than fabricating upstream identifiers.
 
 ## App Server RPC
 
@@ -190,11 +194,11 @@ Loom intentionally refuses to import literal `env` values or literal HTTP header
 
 ## Packaging and release configuration
 
-The Windows packaging work already freezes all `app` submodules and includes the Windows `keyring` backend, so the Connector and OAuth-refresh modules do not require a special PyInstaller hook when that packaging branch is composed with this work.
+The Windows packaging work already freezes all `app` submodules and includes the Windows `keyring` backend, so the Connector, OAuth-refresh, and provenance modules do not require a special PyInstaller hook when that packaging branch is composed with this work.
 
-A self-contained installer cannot invent a GitHub application identity. Before a production Loom build promises one-click browser/device login, register the Loom GitHub application, enable Device Flow, and put only its **public client ID** into the release configuration. Keep client secrets/private keys out of the desktop binary.
+A self-contained installer cannot invent a GitHub application identity. Before a production Loom build promises one-click browser/device login, register the Loom GitHub application, enable Device Flow and expiring access tokens, and put only its **public client ID** into the release configuration. Keep client secrets/private keys out of the desktop binary.
 
-The packaging workflow should smoke-test `import app` plus `RefreshingConnectorManager` after the connector and Windows-packaging branches are composed.
+The normal CI includes a Windows connector smoke that imports the Windows keyring backend and refresh manager. When the separate Windows-packaging branch is composed with this work, its frozen-runtime verification should additionally import `RefreshingConnectorManager` from the built executable.
 
 ## Operational checks
 
