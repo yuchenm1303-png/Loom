@@ -25,18 +25,61 @@ MCP remains the protocol for arbitrary tool servers. A Connector is for a servic
 
 GitHub is the first first-class Connector.
 
-### Desktop
+### Desktop experience
 
-Open **Settings → Integrations → Connectors**. The GitHub card supports:
+Open **Settings → Integrations → Connectors**. The primary GitHub flow is intentionally ordinary desktop OAuth:
 
-- browser/device sign-in;
-- importing an already authenticated GitHub CLI session;
-- entering a personal access token (PAT) into a password field;
-- connection health/account metadata;
-- device-OAuth token lifetime and automatic-rotation diagnostics;
-- explicit disconnect.
+1. click **Connect GitHub**;
+2. Loom opens GitHub in the default browser;
+3. approve Loom on GitHub;
+4. GitHub redirects to a temporary `http://127.0.0.1:<random-port>/oauth/github/callback` listener owned by the running Loom process;
+5. Loom verifies the OAuth `state`, exchanges the authorization code with PKCE, validates the returned token against `/user`, stores the credential in the OS keychain, and closes the local callback listener;
+6. the Settings page notices completion automatically.
+
+The normal Web OAuth path never asks the user to copy a device code, run `gh auth login`, paste a PAT, or manually return a token to Loom.
+
+GitHub CLI import, Device Flow, and PAT import remain **advanced/recovery fallbacks** for development, headless machines, managed environments, or builds that have not been provisioned with the Loom OAuth application identity.
 
 Connector authorization cannot be changed while an Agent turn is active. This prevents a tool call sampled under one account from being executed under another account while an approval is pending.
+
+### One-click browser OAuth
+
+GitHub supports loopback redirect URLs for native desktop applications. Register the Loom OAuth App with this callback URL:
+
+```text
+http://127.0.0.1/oauth/github/callback
+```
+
+At runtime Loom binds `127.0.0.1` to an available ephemeral port and supplies, for example:
+
+```text
+http://127.0.0.1:49321/oauth/github/callback
+```
+
+GitHub explicitly permits the loopback port to differ from the registered callback port. Use the literal loopback address rather than `localhost`.
+
+Configure the desktop distribution with:
+
+```powershell
+$env:LOOM_GITHUB_CLIENT_ID = "your_github_oauth_client_id"
+$env:LOOM_GITHUB_CLIENT_SECRET = "your_github_oauth_client_secret"
+$env:LOOM_GITHUB_OAUTH_SCOPES = "repo read:org"
+$env:LOOM_GITHUB_CALLBACK_PATH = "/oauth/github/callback"
+```
+
+The same values can be supplied through the release-time constants in `app/connector_product_config.py`. Environment values win over baked defaults.
+
+GitHub's Web Application Flow currently requires `client_secret` when exchanging an authorization code, even when PKCE is used. Loom is a native/public client, so an embedded OAuth client credential cannot be treated as confidential: anyone able to inspect the desktop binary can recover application material. It is therefore **not an authorization boundary**. The real desktop protections are:
+
+- PKCE with `S256` (`code_challenge` / `code_verifier`);
+- an unguessable per-attempt OAuth `state` checked with constant-time comparison;
+- a callback listener bound only to `127.0.0.1` on an ephemeral port;
+- a ten-minute authorization lifetime;
+- immediate callback-listener shutdown after success/failure;
+- validation of every returned access token through GitHub `/user` before it becomes executable authority;
+- OS-keychain storage for user access/refresh tokens.
+
+Never commit or package **user** access tokens, refresh tokens, PATs, GitHub App private keys, or any other user-specific credential. If a future Loom distribution needs a genuinely confidential application secret, move the code exchange behind a Loom-operated HTTPS OAuth relay; the desktop flow and PKCE contract can remain the same.
 
 ### Credential resolution
 
@@ -51,45 +94,41 @@ Every candidate is validated against GitHub's `/user` endpoint before it becomes
 
 Tokens are never stored in `settings.json`, `connectors.json`, runtime status, notification payloads, tool results, or durable Step metadata. `connectors.json` contains only non-secret preferences (currently the enabled/disconnected marker and generation metadata).
 
-For device OAuth, the access token and refresh token are both stored in the OS credential vault. Loom writes only non-secret expiry timestamps to `connector-oauth.json`; neither token is written there.
+For OAuth flows, access and refresh tokens are stored in the OS credential vault. Loom writes only non-secret authorization kind and expiry timestamps to `connector-oauth.json`; neither token is written there.
 
-### Browser/device sign-in
+### Browser fallback behavior
 
-For a packaged Loom distribution, configure the public GitHub application client ID with either the release-time `app/connector_product_config.py` value or an environment override:
+`WebOAuthConnectorManager` selects the login path in this order:
 
-```powershell
-$env:LOOM_GITHUB_CLIENT_ID = "your_public_github_client_id"
-```
+1. **Web OAuth + PKCE + loopback callback** when both `LOOM_GITHUB_CLIENT_ID` and `LOOM_GITHUB_CLIENT_SECRET` are configured;
+2. **Device Flow** when a client ID exists but the Web OAuth credential pair is incomplete;
+3. **GitHub CLI browser login** when `gh` is installed and no first-party OAuth application identity is configured;
+4. **PAT import** remains available manually from Advanced / recovery settings.
 
-The GitHub application must have Device Flow enabled. Loom sends the client ID and requested scopes to GitHub's device authorization endpoints and stores the resulting credential material in the OS credential vault. A client secret, private key, access token, or refresh token must never be baked into Loom source or the installer.
-
-Scopes default to:
-
-```text
-repo read:org
-```
-
-Override them with `LOOM_GITHUB_OAUTH_SCOPES` if a deployment needs a narrower policy.
-
-If `LOOM_GITHUB_CLIENT_ID` is not configured but GitHub CLI is installed, Loom falls back to `gh auth login --web --clipboard`. After the CLI completes browser authorization, Loom imports the resulting credential into its own keychain entry.
-
-For development or environments without either route, paste a PAT in the desktop Connector page or use the CLI token command below.
+Device Flow is no longer the intended desktop product experience. It is retained because it is useful for constrained/headless environments and for safe recovery before a release is provisioned with its OAuth App credentials.
 
 ### Expiring token rotation
 
-GitHub may issue an expiring access token plus a refresh token for device/OAuth authorization. Loom treats that pair as one rotating authorization chain:
+GitHub may issue an expiring access token plus a refresh token for OAuth authorization. Loom treats that pair as one rotating authorization chain:
 
 - the access token and refresh token stay only in the OS credential vault;
-- `connector-oauth.json` stores only the access/refresh expiration timestamps;
+- `connector-oauth.json` stores only the OAuth kind and access/refresh expiration timestamps;
 - before a **future** model Step is sampled, Loom refreshes the access token inside a five-minute safety window when a valid refresh token is available;
+- Web OAuth refresh requests include the OAuth App client secret, as required by GitHub; Device Flow refresh does not require that secret;
 - if the process restarts after the access token has expired, Loom can use the still-valid refresh token to recover the connection;
 - GitHub token rotation produces a new binding identity for future Steps;
 - already sampled Step routers continue using the exact old bound credential/client they captured, so refresh cannot retarget in-flight or approval-pending authority;
 - an expired/invalid refresh token leaves the connector unavailable until the user reconnects.
 
-Switching deliberately to a PAT or importing a GitHub CLI credential clears any stale Loom device-OAuth refresh chain **only after** the replacement credential has been validated and committed. A failed PAT or failed GitHub CLI import leaves the existing working OAuth chain untouched. Explicit disconnect clears Loom's keychain access/refresh credentials and disables ambient auto-reconnection.
+Switching deliberately to a PAT or importing a GitHub CLI credential clears any stale Loom OAuth refresh chain **only after** the replacement credential has been validated and committed. A failed PAT or failed GitHub CLI import leaves the existing working OAuth chain untouched. Explicit disconnect clears Loom's keychain access/refresh credentials and disables ambient auto-reconnection.
 
-A deployment whose GitHub application does not issue refresh tokens still works; the Settings page reports that automatic rotation is unavailable and the user reconnects after that access token expires.
+A deployment whose GitHub OAuth application does not issue refresh tokens still works; the Settings page reports that automatic rotation is unavailable and the user reconnects if the access token later expires.
+
+### Cross-agent credential synchronization
+
+Connector authority remains immutable within a sampled model Step, but long-lived agents do not stay disconnected forever when another Loom process changes the shared keychain or the user logs in through `gh`.
+
+At future Step boundaries, a disconnected manager periodically re-probes the OS keychain, `GH_TOKEN`, `GITHUB_TOKEN`, and GitHub CLI even when `connectors.json` itself did not change. `github_connection_status` also performs an explicit live probe. A newly discovered credential updates only the long-lived tool registry for the **next** Step; GitHub data/write handlers already captured by the current Step remain bound to their original authority.
 
 ### CLI
 
@@ -103,9 +142,11 @@ loom connector github refresh
 loom connector github logout
 ```
 
+`loom connector github login` uses the same manager selection as the desktop: Web OAuth is preferred when the OAuth App is fully configured, with Device Flow / GitHub CLI retained as fallback paths.
+
 `loom connector github token` deliberately does **not** accept a token as a command-line argument. It reads a hidden terminal prompt (or stdin for automation), validates the token, then writes it to the OS credential vault. This keeps credentials out of normal process listings and shell history.
 
-`refresh` checks credential health and performs a due OAuth rotation when the current device-flow access token is nearing expiration.
+`refresh` checks credential health and performs a due OAuth rotation when the current access token is nearing expiration.
 
 `logout` disables GitHub in Loom and clears Loom's keychain-backed connector credential chain. It does not mutate `GH_TOKEN`, `GITHUB_TOKEN`, or the user's GitHub CLI login. While the disabled marker is present, a refresh will not silently reconnect from ambient credentials. The user must explicitly reconnect or enable GitHub again.
 
@@ -153,7 +194,7 @@ The desktop uses two App Server methods:
 
 ### `connector/list`
 
-Returns the current secret-free connector status list. Device-OAuth status can include non-secret lifetime fields such as whether automatic refresh is available and the remaining access/refresh lifetime.
+Returns the current secret-free connector status list. OAuth status can include non-secret lifetime fields such as whether automatic refresh is available, remaining access/refresh lifetime, whether one-click Web OAuth is provisioned, and the preferred browser login mode.
 
 ### `connector/manage`
 
@@ -166,9 +207,9 @@ Parameters:
 }
 ```
 
-`connect_token` includes a transient `token` field. `poll_auth` includes `sessionId` returned by `start_auth`.
+`connect_token` includes a transient `token` field. `poll_auth` includes `sessionId` returned by `start_auth`. `start_auth` opens the system browser automatically when a browser target is available. Web OAuth authorization responses expose only non-secret metadata such as `sessionId`, mode, status, redirect URL, and poll interval; OAuth state, PKCE verifier, authorization code, and token responses remain backend-only.
 
-The App Server advertises the Connector surface in `initialize.capabilities.connectors` and emits `connector/updated` plus `runtime/updated` after an authorization change.
+The App Server advertises the Connector surface in `initialize.capabilities.connectors`, including `loopbackOAuth` and `pkce`, and emits `connector/updated` plus `runtime/updated` after an authorization change.
 
 ## Codex MCP configuration reuse
 
@@ -194,11 +235,11 @@ Loom intentionally refuses to import literal `env` values or literal HTTP header
 
 ## Packaging and release configuration
 
-The Windows packaging work already freezes all `app` submodules and includes the Windows `keyring` backend, so the Connector, OAuth-refresh, and provenance modules do not require a special PyInstaller hook when that packaging branch is composed with this work.
+The Windows packaging workflow on `main` freezes all `app` submodules and includes the Windows `keyring` backend, so `connector_web_oauth.py` is included automatically by the existing `--collect-submodules app` build contract.
 
-A self-contained installer cannot invent a GitHub application identity. Before a production Loom build promises one-click browser/device login, register the Loom GitHub application, enable Device Flow and expiring access tokens, and put only its **public client ID** into the release configuration. Keep client secrets/private keys out of the desktop binary.
+A self-contained installer cannot invent a GitHub OAuth application identity. Before a production Loom build promises one-click browser login, register the Loom OAuth App, configure the loopback callback shown above, and provide the native-client credential pair at release time. Device Flow does not need to be enabled for the normal desktop experience; enable it only if that release intentionally wants the constrained-device fallback.
 
-The normal CI includes a Windows connector smoke that imports the Windows keyring backend and refresh manager. When the separate Windows-packaging branch is composed with this work, its frozen-runtime verification should additionally import `RefreshingConnectorManager` from the built executable.
+The frozen-runtime Windows smoke should instantiate the same connector manager used by the app-server so import/Windows-keyring regressions are detected in the packaged executable.
 
 ## Operational checks
 
