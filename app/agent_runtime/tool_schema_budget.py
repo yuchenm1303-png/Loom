@@ -47,7 +47,7 @@ _CAPABILITY_ACTION_NAMES = frozenset(
         "browser_type",
         "browser_select",
         "browser_eval",
-        "computer_run_task",
+        "computer_action",
         "spawn_agent",
         "wait_agent",
     }
