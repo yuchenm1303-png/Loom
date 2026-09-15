@@ -28,9 +28,9 @@ _INSTALLED = False
 
 
 def _connector_manager(runtime_home: Any):
-    from app.connector_oauth_refresh import RefreshingConnectorManager
+    from app.connector_web_oauth import WebOAuthConnectorManager
 
-    return RefreshingConnectorManager(runtime_home)
+    return WebOAuthConnectorManager(runtime_home)
 
 
 def _mutating_action(action: str) -> bool:
@@ -135,13 +135,18 @@ def patch(module: Any) -> None:
                 return {"connector": result, "runtime": status}
             if action == "start_auth":
                 authorization = self.connectors.start_github_auth()
-                if authorization.get("mode") == "device":
-                    target = str(authorization.get("verificationUrl") or "").strip()
-                    if target:
-                        try:
-                            webbrowser.open(target, new=2)
-                        except Exception:
-                            pass
+                target = str(
+                    authorization.get("authorizationUrl")
+                    or authorization.get("verificationUrl")
+                    or ""
+                ).strip()
+                if target:
+                    try:
+                        webbrowser.open(target, new=2)
+                    except Exception:
+                        # The caller still receives the target URL and can show
+                        # a retry/open action if the OS browser handoff fails.
+                        pass
                 return {"authorization": authorization}
             if action == "poll_auth":
                 session_id = self._required_text(params, "sessionId")
@@ -164,6 +169,8 @@ def patch(module: Any) -> None:
             "providers": ["github"],
             "github": {
                 "browserLogin": True,
+                "loopbackOAuth": True,
+                "pkce": True,
                 "githubCliImport": True,
                 "tokenImport": True,
                 "disconnect": True,
