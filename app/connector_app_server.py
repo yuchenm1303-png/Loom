@@ -11,6 +11,7 @@ import copy
 import importlib.abc
 import importlib.machinery
 import sys
+import webbrowser
 from types import ModuleType
 from typing import Any
 
@@ -118,7 +119,15 @@ def patch(module: Any) -> None:
                 status = _connector_changed(self)
                 return {"connector": result, "runtime": status}
             if action == "start_auth":
-                return {"authorization": self.connectors.start_github_auth()}
+                authorization = self.connectors.start_github_auth()
+                if authorization.get("mode") == "device":
+                    target = str(authorization.get("verificationUrl") or "").strip()
+                    if target:
+                        try:
+                            webbrowser.open(target, new=2)
+                        except Exception:
+                            pass
+                return {"authorization": authorization}
             if action == "poll_auth":
                 session_id = self._required_text(params, "sessionId")
                 authorization = self.connectors.poll_github_auth(session_id)
@@ -126,7 +135,7 @@ def patch(module: Any) -> None:
                 if authorization.get("status") == "connected":
                     response["runtime"] = _connector_changed(self)
                 return response
-        except ConnectorError as exc:
+        except (ConnectorError, ValueError) as exc:
             raise JsonRpcError(-32060, str(exc)) from exc
 
         raise JsonRpcError(-32602, f"unsupported connector action: {action}")
