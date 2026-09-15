@@ -86,6 +86,6 @@ run(runtimeExe, ["self-test"], { cwd: path.dirname(runtimeExe) });
 run(runtimeExe, ["-c", "import mcp; from mcp.client.streamable_http import streamable_http_client; print('loom-mcp-import-ok')"], { cwd: path.dirname(runtimeExe) });
 run(runtimeExe, [
   "-c",
-  "import tempfile; from pathlib import Path; import keyring.backends.Windows; from app.connector_oauth_refresh import RefreshingConnectorManager; m=RefreshingConnectorManager(Path(tempfile.mkdtemp()), environment={}); s=m.github_status(); assert s.get('id') == 'github'; assert 'connected' in s; print('loom-connector-status-ok')",
+  "import tempfile; from pathlib import Path; import keyring.backends.Windows; from app.connector_web_oauth import WebOAuthConnectorManager; m=WebOAuthConnectorManager(Path(tempfile.mkdtemp()), environment={}); s=m.github_status(); assert s.get('id') == 'github'; assert 'connected' in s; assert 'webOAuthAvailable' in s; print('loom-connector-status-ok')",
 ], { cwd: path.dirname(runtimeExe) });
 console.log(`[build-runtime] Ready: ${runtimeExe}`);
