@@ -37,6 +37,12 @@ jobs:
     runs-on: windows-latest
     env:
       CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      # Production OAuth application material is available only to trusted
+      # push/manual builds. Pull-request code never receives the release secret.
+      LOOM_GITHUB_CLIENT_ID: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && vars.LOOM_GITHUB_CLIENT_ID || '' }}
+      LOOM_GITHUB_CLIENT_SECRET: ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && secrets.LOOM_GITHUB_CLIENT_SECRET || '' }}
+      LOOM_GITHUB_OAUTH_SCOPES: ${{ vars.LOOM_GITHUB_OAUTH_SCOPES || 'repo read:org' }}
+      LOOM_GITHUB_CALLBACK_PATH: ${{ vars.LOOM_GITHUB_CALLBACK_PATH || '/oauth/github/callback' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -66,8 +72,25 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Packaged runtime self-test failed with exit code $LASTEXITCODE" }
           & $runtime -c "import app; import mcp; from mcp.client.streamable_http import streamable_http_client; print('loom-runtime-import-ok')"
           if ($LASTEXITCODE -ne 0) { throw "Packaged runtime import smoke failed with exit code $LASTEXITCODE" }
-          & $runtime -c "import tempfile; from pathlib import Path; import keyring.backends.Windows; from app.connector_web_oauth import WebOAuthConnectorManager; m=WebOAuthConnectorManager(Path(tempfile.mkdtemp()), environment={}); s=m.github_status(); assert s.get('id') == 'github'; assert 'connected' in s; assert 'webOAuthAvailable' in s; print('loom-frozen-connector-status-ok')"
+
+          $oauthConfigured = (-not [string]::IsNullOrWhiteSpace($env:LOOM_GITHUB_CLIENT_ID)) -and (-not [string]::IsNullOrWhiteSpace($env:LOOM_GITHUB_CLIENT_SECRET))
+          if ($oauthConfigured) { $env:LOOM_EXPECT_PACKAGED_GITHUB_OAUTH = "1" } else { $env:LOOM_EXPECT_PACKAGED_GITHUB_OAUTH = "0" }
+          $savedClientId = $env:LOOM_GITHUB_CLIENT_ID
+          $savedClientSecret = $env:LOOM_GITHUB_CLIENT_SECRET
+          $savedScopes = $env:LOOM_GITHUB_OAUTH_SCOPES
+          $savedCallback = $env:LOOM_GITHUB_CALLBACK_PATH
+          Remove-Item Env:LOOM_GITHUB_CLIENT_ID -ErrorAction SilentlyContinue
+          Remove-Item Env:LOOM_GITHUB_CLIENT_SECRET -ErrorAction SilentlyContinue
+          Remove-Item Env:LOOM_GITHUB_OAUTH_SCOPES -ErrorAction SilentlyContinue
+          Remove-Item Env:LOOM_GITHUB_CALLBACK_PATH -ErrorAction SilentlyContinue
+          & $runtime -c "import os,tempfile; from pathlib import Path; import keyring.backends.Windows; from app.connector_web_oauth import WebOAuthConnectorManager; m=WebOAuthConnectorManager(Path(tempfile.mkdtemp())); s=m.github_status(); expected=os.environ.get('LOOM_EXPECT_PACKAGED_GITHUB_OAUTH')=='1'; assert s.get('id')=='github'; assert bool(s.get('webOAuthAvailable')) is expected; print('loom-frozen-connector-status-ok', 'web-oauth-ready='+str(expected).lower())"
           if ($LASTEXITCODE -ne 0) { throw "Packaged GitHub Connector smoke failed with exit code $LASTEXITCODE" }
+          $env:LOOM_GITHUB_CLIENT_ID = $savedClientId
+          $env:LOOM_GITHUB_CLIENT_SECRET = $savedClientSecret
+          $env:LOOM_GITHUB_OAUTH_SCOPES = $savedScopes
+          $env:LOOM_GITHUB_CALLBACK_PATH = $savedCallback
+          Remove-Item Env:LOOM_EXPECT_PACKAGED_GITHUB_OAUTH -ErrorAction SilentlyContinue
+
           & $runtime (Join-Path $resources "loom_model_bridge.py") list
           if ($LASTEXITCODE -ne 0) { throw "Packaged model bridge compatibility smoke failed with exit code $LASTEXITCODE" }
           & $runtime (Join-Path $resources "loom_model_admin.py") metadata
