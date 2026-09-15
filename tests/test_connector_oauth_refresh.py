@@ -3,8 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+import pytest
+
 from app.connector_oauth_refresh import ConnectorOAuthStateStore, RefreshingConnectorManager
-from app.connectors import GitHubAPIError
+from app.connectors import ConnectorError, GitHubAPIError
 
 
 class FakeVault:
@@ -33,7 +35,7 @@ class FakeGitHubClient:
         self.token = token
 
     def user(self):
-        if self.token.startswith("expired"):
+        if self.token.startswith(("expired", "bad")):
             raise GitHubAPIError(401, "Bad credentials")
         return {"login": "alice"}, {"X-OAuth-Scopes": "repo, read:org"}
 
@@ -188,6 +190,44 @@ def test_manual_pat_breaks_old_device_refresh_chain(tmp_path: Path) -> None:
     assert vault.values["github/access-token"] == "github_pat_manual"
     assert "github/refresh-token" not in vault.values
     assert not (tmp_path / "home" / "connector-oauth.json").exists()
+
+
+def test_invalid_pat_preserves_existing_device_oauth_chain(tmp_path: Path) -> None:
+    vault = FakeVault()
+    manager = _manager(tmp_path, vault=vault)
+    _complete_device_login(manager)
+    before_status = manager.github_status()
+    before_metadata = (tmp_path / "home" / "connector-oauth.json").read_text(encoding="utf-8")
+
+    with pytest.raises(GitHubAPIError, match="Bad credentials"):
+        manager.connect_token("bad-pat")
+
+    assert vault.values["github/access-token"] == "oauth-access-1"
+    assert vault.values["github/refresh-token"] == "oauth-refresh-1"
+    assert (tmp_path / "home" / "connector-oauth.json").read_text(encoding="utf-8") == before_metadata
+    after_status = manager.github_status()
+    assert after_status["connected"] is True
+    assert after_status["bindingId"] == before_status["bindingId"]
+    assert after_status["refreshable"] is True
+
+
+def test_failed_gh_import_preserves_existing_device_oauth_chain(tmp_path: Path) -> None:
+    vault = FakeVault()
+    manager = _manager(tmp_path, vault=vault)
+    _complete_device_login(manager)
+    before_status = manager.github_status()
+    before_metadata = (tmp_path / "home" / "connector-oauth.json").read_text(encoding="utf-8")
+    manager._gh_token = lambda: ""  # type: ignore[method-assign]
+
+    with pytest.raises(ConnectorError, match="not authenticated"):
+        manager.import_github_cli()
+
+    assert vault.values["github/access-token"] == "oauth-access-1"
+    assert vault.values["github/refresh-token"] == "oauth-refresh-1"
+    assert (tmp_path / "home" / "connector-oauth.json").read_text(encoding="utf-8") == before_metadata
+    after_status = manager.github_status()
+    assert after_status["connected"] is True
+    assert after_status["bindingId"] == before_status["bindingId"]
 
 
 def test_disconnect_clears_access_and_refresh_credentials(tmp_path: Path) -> None:
