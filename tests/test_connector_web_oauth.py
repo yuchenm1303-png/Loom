@@ -192,3 +192,76 @@ def test_status_marks_web_oauth_unavailable_without_client_secret(tmp_path: Path
     assert status["webOAuthAvailable"] is False
     assert status["deviceFlowAvailable"] is True
     assert status["preferredBrowserLogin"] == "device"
+
+
+def test_local_dev_oauth_config_is_secret_free_and_enables_same_web_flow(tmp_path: Path) -> None:
+    vault = FakeVault()
+    manager = WebOAuthConnectorManager(
+        tmp_path / "home",
+        vault=vault,
+        environment={
+            "LOOM_GITHUB_OAUTH_SCOPES": "repo read:org",
+            "LOOM_GITHUB_CALLBACK_PATH": "/oauth/github/callback",
+        },
+        client_factory=FakeGitHubClient,
+        command_runner=lambda *args, **kwargs: FakeCommandResult(),
+    )
+
+    assert manager.github_status()["webOAuthAvailable"] is False
+    status = manager.configure_local_web_oauth("local-client-id", "local-client-secret")
+    assert status["webOAuthAvailable"] is True
+    assert status["webOAuthSource"] == "local"
+    assert status["localWebOAuthConfigured"] is True
+    assert status["localWebOAuthClientId"] == "local-client-id"
+
+    config_text = (tmp_path / "home" / "connector-local-oauth.json").read_text(encoding="utf-8")
+    assert "local-client-id" in config_text
+    assert "local-client-secret" not in config_text
+    assert vault.values["github/oauth-client-secret"] == "local-client-secret"
+    assert "local-client-secret" not in repr(status)
+
+    started = manager.start_github_auth()
+    assert started["mode"] == "web"
+    query = parse_qs(urlsplit(str(started["authorizationUrl"])).query)
+    assert query["client_id"] == ["local-client-id"]
+    assert "local-client-secret" not in str(started["authorizationUrl"])
+    manager._close_web_session(started["sessionId"])
+
+    cleared = manager.clear_local_web_oauth()
+    assert cleared["webOAuthAvailable"] is False
+    assert cleared["localWebOAuthConfigured"] is False
+    assert "github/oauth-client-secret" not in vault.values
+    assert not (tmp_path / "home" / "connector-local-oauth.json").exists()
+
+
+def test_release_or_environment_web_oauth_overrides_local_dev_credentials(tmp_path: Path) -> None:
+    vault = FakeVault()
+    seed = WebOAuthConnectorManager(
+        tmp_path / "home",
+        vault=vault,
+        environment={},
+        client_factory=FakeGitHubClient,
+        command_runner=lambda *args, **kwargs: FakeCommandResult(),
+    )
+    seed.configure_local_web_oauth("local-client", "local-secret")
+
+    manager = WebOAuthConnectorManager(
+        tmp_path / "home",
+        vault=vault,
+        environment={
+            "LOOM_GITHUB_CLIENT_ID": "release-client",
+            "LOOM_GITHUB_CLIENT_SECRET": "release-secret",
+        },
+        client_factory=FakeGitHubClient,
+        command_runner=lambda *args, **kwargs: FakeCommandResult(),
+    )
+    status = manager.github_status()
+    assert status["webOAuthAvailable"] is True
+    assert status["webOAuthSource"] == "release-or-env"
+    assert status["localWebOAuthConfigured"] is True
+
+    started = manager.start_github_auth()
+    query = parse_qs(urlsplit(str(started["authorizationUrl"])).query)
+    assert query["client_id"] == ["release-client"]
+    assert "release-secret" not in str(started["authorizationUrl"])
+    manager._close_web_session(started["sessionId"])
