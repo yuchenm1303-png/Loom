@@ -31,7 +31,7 @@ from urllib.parse import parse_qs, urlencode, urlsplit
 
 from app.connector_local_oauth import LocalOAuthConfigStore
 from app.connector_oauth_refresh import RefreshingConnectorManager
-from app.connectors import ConnectorError
+from app.connectors import ConnectorError, CredentialVault
 
 
 _GITHUB_AUTHORIZE_URL = "https://github.com/login/oauth/authorize"
@@ -119,8 +119,12 @@ class WebOAuthConnectorManager(RefreshingConnectorManager):
     ) -> None:
         self._web_oauth_transport = web_oauth_post
         self._web_auth_sessions: dict[str, _LoopbackAuthSession] = {}
+        resolved_vault = kwargs.get("vault")
+        if resolved_vault is None:
+            resolved_vault = CredentialVault()
+            kwargs["vault"] = resolved_vault
+        self.local_oauth = LocalOAuthConfigStore(runtime_home, resolved_vault)
         super().__init__(runtime_home, **kwargs)
-        self.local_oauth = LocalOAuthConfigStore(self.runtime_home, self.vault)
 
     def _environment_web_credentials(self) -> tuple[str, str]:
         return (
