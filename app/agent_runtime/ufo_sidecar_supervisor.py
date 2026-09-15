@@ -1,15 +1,10 @@
 from __future__ import annotations
 
-"""Supervised launcher for Loom's UFO sidecar.
+"""Supervised launcher for Loom's patched UFO sidecar entrypoint.
 
-A wedged interpreter in the child cannot report itself, so this wrapper keeps the
-sidecar implementation intact and adds an out-of-process watchdog: if the child
-goes completely silent - no events and no heartbeat - for the stall timeout, it is
-killed and Loom gets a deterministic failure instead of an indefinite wait.
-
-The watchdog deliberately keys on silence rather than on reaching a particular
-stage, because a single UFO step can legitimately spend a long time inside one
-vision-model call.
+The supervisor stays outside the UFO child so a wedged interpreter can still be
+killed deterministically. The child itself is Loom's thin runtime-patch entrypoint,
+which delegates to the pinned UFO sidecar after installing performance/safety hooks.
 """
 
 import argparse
@@ -23,16 +18,9 @@ import time
 import uuid
 from typing import Any
 
-TERMINAL_EVENTS = {
-    "task.completed",
-    "task.failed",
-    "task.cancelled",
-}
+TERMINAL_EVENTS = {"task.completed", "task.failed", "task.cancelled"}
 SENSITIVE_FIELDS = {"task", "stop_when", "text", "prompt", "content", "request", "message"}
 WRITE_LOCK = threading.RLock()
-# stdout carries the protocol and stderr carries UFO's noisy diagnostics. They must
-# not share a lock: a backed-up stderr pipe would otherwise block protocol writes,
-# wedging both event forwarding and the watchdog's own failure report.
 STDERR_LOCK = threading.RLock()
 STATE_LOCK = threading.RLock()
 CHILD_LOCK = threading.RLock()
@@ -43,15 +31,14 @@ shutdown_requested = False
 
 
 def _timeout_seconds() -> float:
-    """How long the child may stay completely silent before it is declared wedged.
-
-    This is a stall timeout, not a first-step timeout. The sidecar heartbeats from
-    its event loop while a task runs, so a slow model call keeps the task alive
-    while a deadlocked interpreter stops producing events entirely.
-    """
-
     try:
-        value = float(str(os.environ.get("LOOM_UFO_STALL_TIMEOUT") or os.environ.get("LOOM_UFO_FIRST_STEP_TIMEOUT") or "90").strip())
+        value = float(
+            str(
+                os.environ.get("LOOM_UFO_STALL_TIMEOUT")
+                or os.environ.get("LOOM_UFO_FIRST_STEP_TIMEOUT")
+                or "90"
+            ).strip()
+        )
     except ValueError:
         value = 90.0
     return max(15.0, min(600.0, value))
@@ -85,19 +72,21 @@ def emit(message: dict[str, Any]) -> None:
 
 
 def emit_event(request_id: str, task_id: str, sequence: int, kind: str, data: dict[str, Any]) -> None:
-    emit({
-        "type": "event",
-        "request_id": request_id,
-        "task_id": task_id,
-        "sequence": sequence,
-        "kind": kind,
-        "data": data,
-    })
+    emit(
+        {
+            "type": "event",
+            "request_id": request_id,
+            "task_id": task_id,
+            "sequence": sequence,
+            "kind": kind,
+            "data": data,
+        }
+    )
 
 
 def spawn_child(ufo_root: Path) -> subprocess.Popen[str]:
-    sidecar = Path(__file__).with_name("ufo_sidecar.py").resolve()
-    process = subprocess.Popen(
+    sidecar = Path(__file__).with_name("ufo_sidecar_entry.py").resolve()
+    return subprocess.Popen(
         [sys.executable, str(sidecar), "--ufo-root", str(ufo_root)],
         cwd=str(ufo_root),
         env=os.environ.copy(),
@@ -110,7 +99,6 @@ def spawn_child(ufo_root: Path) -> subprocess.Popen[str]:
         bufsize=1,
         creationflags=int(getattr(subprocess, "CREATE_NO_WINDOW", 0) or 0),
     )
-    return process
 
 
 def forward_stderr(process: subprocess.Popen[str]) -> None:
@@ -133,16 +121,12 @@ def forward_stdout(process: subprocess.Popen[str]) -> None:
         try:
             message = json.loads(line)
         except Exception:
-            # Stray output on the child's protocol stream is diagnostic noise, not a
-            # task failure. Forwarding it as a protocol_error used to abort a task
-            # that was otherwise running fine.
             with STDERR_LOCK:
                 sys.stderr.write(f"[supervisor] non-JSON child stdout ignored: {line[:200]}\n")
                 sys.stderr.flush()
             continue
         if not isinstance(message, dict):
             continue
-
         with STATE_LOCK:
             current = active
             if current is not None and str(message.get("request_id") or "") == current.get("request_id"):
@@ -157,7 +141,6 @@ def forward_stdout(process: subprocess.Popen[str]) -> None:
                 elif message_type in {"result", "error", "protocol_error"}:
                     current["finished"] = True
                     active = None
-
         emit(message)
 
 
@@ -167,8 +150,18 @@ def start_supervised_child(ufo_root: Path) -> subprocess.Popen[str]:
         if child is not None and child.poll() is None:
             return child
         child = spawn_child(ufo_root)
-        threading.Thread(target=forward_stdout, args=(child,), daemon=True, name="loom-ufo-supervisor-stdout").start()
-        threading.Thread(target=forward_stderr, args=(child,), daemon=True, name="loom-ufo-supervisor-stderr").start()
+        threading.Thread(
+            target=forward_stdout,
+            args=(child,),
+            daemon=True,
+            name="loom-ufo-supervisor-stdout",
+        ).start()
+        threading.Thread(
+            target=forward_stderr,
+            args=(child,),
+            daemon=True,
+            name="loom-ufo-supervisor-stderr",
+        ).start()
         return child
 
 
@@ -182,7 +175,6 @@ def mark_run_task(message: dict[str, Any]) -> None:
             "request_id": request_id,
             "task_id": task_id,
             "started_at": started,
-            "deadline": started + _timeout_seconds(),
             "finished": False,
             "last_event_kind": "run_task.forwarded",
             "last_event_sequence": 0,
@@ -191,8 +183,26 @@ def mark_run_task(message: dict[str, Any]) -> None:
         }
 
 
+def _stop_child() -> None:
+    global child
+    with CHILD_LOCK:
+        process = child
+        child = None
+    if process is None or process.poll() is not None:
+        return
+    try:
+        process.terminate()
+        try:
+            process.wait(timeout=1.0)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=1.0)
+    except Exception:
+        pass
+
+
 def watchdog_loop() -> None:
-    global active, child
+    global active
     while True:
         time.sleep(0.2)
         if shutdown_requested:
@@ -208,7 +218,6 @@ def watchdog_loop() -> None:
                     active = None
         if timed_out is None:
             continue
-
         request_id = str(timed_out.get("request_id") or "")
         task_id = str(timed_out.get("task_id") or "")
         sequence = int(timed_out.get("last_event_sequence") or 0) + 1
@@ -228,32 +237,18 @@ def watchdog_loop() -> None:
         }
         emit_event(request_id, task_id, sequence, "task.first_step_timeout", data)
         emit_event(request_id, task_id, sequence + 1, "task.failed", data)
-        emit({
-            "type": "result",
-            "request_id": request_id,
-            "task_id": task_id,
-            "status": "failed",
-            "ok": False,
-            "summary": "UFO desktop task failed: UFO_STALL_TIMEOUT",
-            "data": data,
-        })
-
-        with CHILD_LOCK:
-            process = child
-            child = None
-        if process is not None and process.poll() is None:
-            try:
-                process.terminate()
-                try:
-                    process.wait(timeout=1.0)
-                except subprocess.TimeoutExpired:
-                    process.kill()
-                    process.wait(timeout=1.0)
-            except Exception:
-                pass
-        # This wrapper exits after a runtime timeout. Loom will start a fresh
-        # supervised sidecar for the next task instead of reusing a possibly
-        # corrupted UFO child process.
+        emit(
+            {
+                "type": "result",
+                "request_id": request_id,
+                "task_id": task_id,
+                "status": "failed",
+                "ok": False,
+                "summary": "UFO desktop task failed: UFO_STALL_TIMEOUT",
+                "data": data,
+            }
+        )
+        _stop_child()
         os._exit(124)
 
 
@@ -264,8 +259,11 @@ def main() -> int:
     args = parser.parse_args()
     ufo_root = Path(args.ufo_root).expanduser().resolve()
     process = start_supervised_child(ufo_root)
-    threading.Thread(target=watchdog_loop, daemon=True, name="loom-ufo-supervisor-watchdog").start()
-
+    threading.Thread(
+        target=watchdog_loop,
+        daemon=True,
+        name="loom-ufo-supervisor-watchdog",
+    ).start()
     try:
         for raw in sys.stdin:
             line = raw.strip()
@@ -287,7 +285,13 @@ def main() -> int:
             if process.poll() is not None:
                 process = start_supervised_child(ufo_root)
             if process.stdin is None:
-                emit({"type": "error", "request_id": str(message.get("request_id") or ""), "error_type": "ChildStdinClosed"})
+                emit(
+                    {
+                        "type": "error",
+                        "request_id": str(message.get("request_id") or ""),
+                        "error_type": "ChildStdinClosed",
+                    }
+                )
                 continue
             process.stdin.write(json.dumps(message, ensure_ascii=False, separators=(",", ":")) + "\n")
             process.stdin.flush()
@@ -299,13 +303,7 @@ def main() -> int:
                 return 0
     finally:
         shutdown_requested = True
-        with CHILD_LOCK:
-            process = child
-        if process is not None and process.poll() is None:
-            try:
-                process.terminate()
-            except Exception:
-                pass
+        _stop_child()
     return 0
 
 
