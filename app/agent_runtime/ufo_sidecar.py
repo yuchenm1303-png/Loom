@@ -23,6 +23,7 @@ import threading
 import time
 import traceback
 import uuid
+from collections.abc import Mapping
 from typing import Any
 
 
@@ -229,6 +230,54 @@ def _safe_command(command: Any) -> dict[str, Any]:
     }
 
 
+#: Failure shapes UFO produces that say what a caller should do differently.
+#: Each pattern is matched against the error text and only the pattern's own
+#: name is recorded, so nothing from the message itself is carried across.
+_ERROR_SIGNATURES: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("control_id_not_found", re.compile(r"control with id\b.*\bnot found", re.I)),
+    ("no_controls_available", re.compile(r"no application windows available", re.I)),
+    ("window_id_required", re.compile(r"window id is required", re.I)),
+    ("element_not_found", re.compile(r"\belement(?:_| )?not(?:_| )?found\b", re.I)),
+    ("timeout", re.compile(r"\btimed?\s?out\b|\btimeout\b", re.I)),
+    ("permission_denied", re.compile(r"access is denied|permission denied", re.I)),
+    ("stale_element", re.compile(r"\bstale\b|no longer (?:valid|exists)", re.I)),
+)
+
+_ERROR_TYPE_RE = re.compile(r"^\s*([A-Za-z_][A-Za-z0-9_.]*(?:Error|Exception|Warning))\b")
+
+
+def _safe_error_summary(error: Any) -> dict[str, Any]:
+    """Say what went wrong without carrying the message across the boundary.
+
+    A UFO action error routinely quotes control names, window titles and the very
+    text the action was asked to type, so it cannot be copied through verbatim.
+    What the message is actually needed for -- telling a stale control id apart
+    from a missing window apart from a timeout -- survives as a signature name
+    and, where present, the exception class. Blanking the field outright left
+    ``has_error: true`` as the only record, which is not enough to act on.
+    """
+
+    if not error:
+        return {}
+    if isinstance(error, BaseException):
+        text = f"{type(error).__name__}: {error}"
+    else:
+        text = str(error)
+    text = " ".join(text.split())
+    if not text:
+        return {}
+    summary: dict[str, Any] = {"error_length": len(text)}
+    match = _ERROR_TYPE_RE.match(text)
+    if match:
+        summary["error_type"] = match.group(1)
+    signatures = [name for name, pattern in _ERROR_SIGNATURES if pattern.search(text)]
+    if signatures:
+        summary["error_signatures"] = signatures
+    elif "error_type" not in summary:
+        summary["error_type"] = "[REDACTED_ERROR]"
+    return summary
+
+
 def _result_status(value: Any) -> dict[str, Any]:
     if value is None:
         return {"status": "unknown", "ok": False, "has_error": False}
@@ -239,7 +288,28 @@ def _result_status(value: Any) -> dict[str, Any]:
         "status": status_text or "unknown",
         "ok": status_text.casefold() in {"success", "completed", "ok"},
         "has_error": bool(error),
+        **_safe_error_summary(error),
     }
+
+
+def _observation_scale(payload: Any) -> dict[str, Any]:
+    """Count what an observation found, without naming any of it.
+
+    An app that exposes no usable UI Automation tree -- Qt and Electron windows
+    routinely expose none -- makes every control-targeted action fail while the
+    screenshot still looks fine. A bare count separates that from a control list
+    the policy simply read wrong, and a count cannot leak a control name.
+    """
+
+    if isinstance(payload, Mapping):
+        for key in ("controls", "control_list", "items", "windows", "app_list"):
+            value = payload.get(key)
+            if isinstance(value, (list, tuple)):
+                return {"control_count": len(value)}
+        return {}
+    if isinstance(payload, (list, tuple)):
+        return {"control_count": len(payload)}
+    return {}
 
 
 def _extract_result_payload(value: Any) -> Any:
@@ -544,7 +614,11 @@ class TaskController:
             }:
                 await self.event(
                     "observation.completed",
-                    {"operation": tool_name, "result": _result_status(result)},
+                    {
+                        "operation": tool_name,
+                        "result": _result_status(result),
+                        **_observation_scale(_extract_result_payload(result)),
+                    },
                 )
 
 

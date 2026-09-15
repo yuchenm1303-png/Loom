@@ -281,3 +281,90 @@ def test_hud_point_uses_selected_application_window_not_whole_screen(monkeypatch
     assert point["screen_y"] == 400
     assert point["x_norm"] == 0.625
     assert point["y_norm"] == 0.4
+
+
+class _StubResult:
+    def __init__(self, status: str, error: object = None) -> None:
+        self.status = status
+        self.error = error
+
+
+def test_a_failed_action_says_what_kind_of_failure_it_was():
+    """`has_error: true` alone is not something a policy or a human can act on.
+
+    In trace d340cb3f the model clicked a WeChat search box, tried the control
+    behind it twice, and both attempts failed with nothing recorded but this
+    boolean -- so the trace could not distinguish a stale control id from a Qt
+    window that exposes no control tree at all.
+    """
+
+    from app.agent_runtime.ufo_sidecar import _result_status
+
+    status = _result_status(
+        _StubResult("failure", "Control with id '9' not found. Available control ids: ['1', '2']")
+    )
+
+    assert status["ok"] is False
+    assert status["has_error"] is True
+    assert status["error_signatures"] == ["control_id_not_found"]
+
+
+def test_an_action_error_never_carries_its_message_across():
+    """UFO errors quote control names, window titles and text the user typed."""
+
+    from app.agent_runtime.ufo_sidecar import _result_status
+
+    status = _result_status(
+        _StubResult(
+            "failure",
+            "ValueError: could not type 'my bank passphrase hunter2' into control '搜索' "
+            r"of C:\Users\Alice\wallet.txt",
+        )
+    )
+    serialized = repr(status)
+
+    assert status["error_type"] == "ValueError"
+    assert "hunter2" not in serialized
+    assert "搜索" not in serialized
+    assert "Alice" not in serialized
+
+
+def test_an_unrecognised_error_is_summarised_rather_than_quoted():
+    from app.agent_runtime.ufo_sidecar import _result_status
+
+    status = _result_status(_StubResult("failure", "opening C:/private/report.docx failed"))
+
+    assert status["error_type"] == "[REDACTED_ERROR]"
+    assert "report.docx" not in repr(status)
+    assert status["error_length"] == len("opening C:/private/report.docx failed")
+
+
+def test_a_successful_result_gains_no_error_fields():
+    from app.agent_runtime.ufo_sidecar import _result_status
+
+    status = _result_status(_StubResult("success"))
+
+    assert status == {"status": "success", "ok": True, "has_error": False}
+
+
+def test_an_observation_records_how_many_controls_it_found():
+    """A window exposing no UIA tree must be distinguishable from a misread one."""
+
+    from app.agent_runtime.ufo_sidecar import _observation_scale
+
+    assert _observation_scale({"controls": [{"id": "1"}, {"id": "2"}]}) == {"control_count": 2}
+    assert _observation_scale({"controls": []}) == {"control_count": 0}
+    assert _observation_scale([1, 2, 3]) == {"control_count": 3}
+    # A screenshot payload has nothing to count and must not invent a number.
+    assert _observation_scale("raw-image-bytes") == {}
+
+
+def test_counting_controls_never_names_them():
+    from app.agent_runtime.ufo_sidecar import _observation_scale
+
+    scale = _observation_scale(
+        {"controls": [{"name": "passphrase field", "automation_id": "secret-box"}]}
+    )
+
+    assert scale == {"control_count": 1}
+    assert "passphrase" not in repr(scale)
