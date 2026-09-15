@@ -10,7 +10,8 @@ import webbrowser
 from pathlib import Path
 from typing import Sequence
 
-from app.connectors import ConnectorError, ConnectorManager
+from app.connectors import ConnectorError
+from app.connector_oauth_refresh import RefreshingConnectorManager
 
 
 def _runtime_home(value: str = "") -> Path:
@@ -64,7 +65,7 @@ def _token_from_terminal() -> str:
     return sys.stdin.readline().strip()
 
 
-def _login(manager: ConnectorManager, *, open_browser: bool, as_json: bool) -> int:
+def _login(manager: RefreshingConnectorManager, *, open_browser: bool, as_json: bool) -> int:
     started = manager.start_github_auth()
     if as_json:
         _print(started, as_json=True)
@@ -105,7 +106,7 @@ def run_connector_cli(argv: Sequence[str] | None = None) -> int:
     if not args.command:
         _parser().print_help()
         return 2
-    manager = ConnectorManager(_runtime_home(args.home))
+    manager = RefreshingConnectorManager(_runtime_home(args.home))
     try:
         if args.command == "list":
             if args.json:
