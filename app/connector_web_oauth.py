@@ -7,6 +7,11 @@ callback bound to 127.0.0.1 on an ephemeral port. GitHub explicitly supports
 this redirect shape for native desktop applications. Device flow, GitHub CLI,
 and PAT import remain fallbacks in the base connector manager.
 
+Production builds receive the OAuth application credentials at package time.
+Source/development runs may provide the same application credentials through a
+machine-local secret-free config + OS credential vault, so both builds exercise
+the identical browser authorization flow.
+
 No user access token, refresh token, authorization code, PKCE verifier, or OAuth
 state is written to Loom JSON state. Access/refresh tokens are committed to the
 OS credential vault only after GitHub returns to the loopback listener and the
@@ -24,6 +29,7 @@ from pathlib import Path
 from typing import Any, Callable, Mapping
 from urllib.parse import parse_qs, urlencode, urlsplit
 
+from app.connector_local_oauth import LocalOAuthConfigStore
 from app.connector_oauth_refresh import RefreshingConnectorManager
 from app.connectors import ConnectorError
 
@@ -114,15 +120,51 @@ class WebOAuthConnectorManager(RefreshingConnectorManager):
         self._web_oauth_transport = web_oauth_post
         self._web_auth_sessions: dict[str, _LoopbackAuthSession] = {}
         super().__init__(runtime_home, **kwargs)
+        self.local_oauth = LocalOAuthConfigStore(self.runtime_home, self.vault)
+
+    def _environment_web_credentials(self) -> tuple[str, str]:
+        return (
+            str(self.environment.get("LOOM_GITHUB_CLIENT_ID") or "").strip(),
+            str(self.environment.get("LOOM_GITHUB_CLIENT_SECRET") or "").strip(),
+        )
+
+    def _web_credentials(self) -> tuple[str, str, str]:
+        environment_id, environment_secret = self._environment_web_credentials()
+        if environment_id and environment_secret:
+            return environment_id, environment_secret, "release-or-env"
+        local_id, local_secret = self.local_oauth.github_credentials()
+        if local_id and local_secret:
+            return local_id, local_secret, "local"
+        return "", "", ""
 
     def _web_client_id(self) -> str:
-        return str(self.environment.get("LOOM_GITHUB_CLIENT_ID") or "").strip()
+        client_id, _secret, _source = self._web_credentials()
+        if client_id:
+            return client_id
+        environment_id, _environment_secret = self._environment_web_credentials()
+        if environment_id:
+            return environment_id
+        return str(self.local_oauth.github_status().get("clientId") or "").strip()
 
     def _web_client_secret(self) -> str:
-        return str(self.environment.get("LOOM_GITHUB_CLIENT_SECRET") or "").strip()
+        _client_id, client_secret, _source = self._web_credentials()
+        return client_secret
+
+    def _web_oauth_source(self) -> str:
+        _client_id, _client_secret, source = self._web_credentials()
+        return source
 
     def _web_oauth_available(self) -> bool:
-        return bool(self._web_client_id() and self._web_client_secret())
+        client_id, client_secret, _source = self._web_credentials()
+        return bool(client_id and client_secret)
+
+    def configure_local_web_oauth(self, client_id: str, client_secret: str) -> dict[str, Any]:
+        self.local_oauth.configure_github(client_id, client_secret)
+        return self.github_status()
+
+    def clear_local_web_oauth(self) -> dict[str, Any]:
+        self.local_oauth.clear_github()
+        return self.github_status()
 
     def _cleanup_expired_web_sessions(self) -> None:
         now = float(self.clock())
@@ -442,8 +484,13 @@ class WebOAuthConnectorManager(RefreshingConnectorManager):
             and str(metadata.get("kind") or "") == "web-oauth"
         ):
             status["credentialSource"] = "web-oauth-keyring"
-        status["webOAuthAvailable"] = self._web_oauth_available()
-        status["preferredBrowserLogin"] = "web" if self._web_oauth_available() else (
+        local_status = self.local_oauth.github_status()
+        web_available = self._web_oauth_available()
+        status["webOAuthAvailable"] = web_available
+        status["webOAuthSource"] = self._web_oauth_source()
+        status["localWebOAuthConfigured"] = bool(local_status.get("configured"))
+        status["localWebOAuthClientId"] = str(local_status.get("clientId") or "")
+        status["preferredBrowserLogin"] = "web" if web_available else (
             "device" if status.get("deviceFlowAvailable") else "github-cli"
         )
         return status
