@@ -7,6 +7,7 @@ type ConnectorLifecycle = {
   connected?: boolean;
   credentialSource?: string;
   refreshable?: boolean;
+  refreshError?: string;
   accessTokenExpiresIn?: number | null;
   refreshTokenExpiresIn?: number | null;
 };
@@ -80,6 +81,7 @@ export function ConnectorLifecycleStatus() {
         {github.refreshTokenExpiresIn !== null && github.refreshTokenExpiresIn !== undefined ? (
           <DetailRow label="Refresh token" value={`${duration(github.refreshTokenExpiresIn)} remaining`} detail="Reconnect GitHub after the refresh credential itself expires." />
         ) : null}
+        {github.refreshError ? <DetailRow label="Renewal warning" value={github.refreshError} /> : null}
       </div>
       {github.refreshable ? (
         <div className="settings-callout">
@@ -89,7 +91,7 @@ export function ConnectorLifecycleStatus() {
       ) : deviceOAuth ? (
         <div className="settings-callout warning">
           <Clock3 size={16} />
-          <div><strong>This device authorization is not refreshable.</strong><span>GitHub did not issue a refresh token for this application configuration; reconnect when the access token expires.</span></div>
+          <div><strong>This device authorization is not refreshable.</strong><span>{github.refreshError || "GitHub did not issue a refresh token for this application configuration; reconnect when the access token expires."}</span></div>
         </div>
       ) : null}
     </section>
