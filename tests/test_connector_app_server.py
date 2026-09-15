@@ -43,8 +43,9 @@ class FakeManager:
             "connected": self.connected,
             "enabled": True,
             "account": "alice" if self.connected else "",
-            "credentialSource": "keyring" if self.connected else "",
+            "credentialSource": "web-oauth-keyring" if self.connected else "",
             "bindingId": "github:test" if self.connected else "github:disconnected",
+            "webOAuthAvailable": True,
             "error": "" if self.connected else "No GitHub credential found",
         }
 
@@ -76,14 +77,16 @@ class FakeManager:
         return {
             "sessionId": "auth-1",
             "status": "pending",
-            "mode": "device",
-            "verificationUrl": "https://github.com/login/device",
+            "mode": "web",
+            "authorizationUrl": "https://github.com/login/oauth/authorize?client_id=test&state=random",
+            "redirectUrl": "http://127.0.0.1:43123/oauth/github/callback",
+            "pollInterval": 1,
         }
 
     def poll_github_auth(self, session_id: str):
         self.calls.append(("poll-auth", session_id))
         self.connected = True
-        return {"sessionId": session_id, "status": "connected", "connector": self.github_status()}
+        return {"sessionId": session_id, "mode": "web", "status": "connected", "connector": self.github_status()}
 
 
 class BaseService:
@@ -163,7 +166,10 @@ def test_connector_rpc_is_advertised_and_runtime_reports_health(monkeypatch, tmp
     controller = controller_cls(service)
 
     initialized = controller._initialize({})
-    assert initialized["capabilities"]["connectors"]["providers"] == ["github"]
+    connector_caps = initialized["capabilities"]["connectors"]
+    assert connector_caps["providers"] == ["github"]
+    assert connector_caps["github"]["loopbackOAuth"] is True
+    assert connector_caps["github"]["pkce"] is True
     assert "connector/updated" in initialized["capabilities"]["notifications"]
     assert initialized["runtime"]["connectorStatus"]["github"]["connected"] is False
 
@@ -200,12 +206,20 @@ def test_connector_token_is_transient_and_update_notifications_are_secret_free(m
     assert any(method == "runtime/updated" for method, _ in service.notifications)
 
 
-def test_browser_auth_poll_refreshes_runtime_only_after_connection(monkeypatch, tmp_path: Path) -> None:
+def test_browser_auth_opens_web_oauth_url_and_refreshes_runtime_after_connection(monkeypatch, tmp_path: Path) -> None:
     service_cls, _controller_cls = _patched(monkeypatch)
+    opened: list[tuple[str, int]] = []
+    monkeypatch.setattr(
+        connector_app_server.webbrowser,
+        "open",
+        lambda url, new=0: opened.append((str(url), int(new))) or True,
+    )
     service = service_cls(root=tmp_path / "home")
 
     started = service.connector_manage({"provider": "github", "action": "start_auth"})
     assert started["authorization"]["status"] == "pending"
+    assert started["authorization"]["mode"] == "web"
+    assert opened == [(started["authorization"]["authorizationUrl"], 2)]
 
     completed = service.connector_manage(
         {"provider": "github", "action": "poll_auth", "sessionId": "auth-1"}
