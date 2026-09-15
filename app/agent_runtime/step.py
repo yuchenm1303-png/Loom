@@ -38,8 +38,9 @@ class RequestStateSnapshot:
     """Model-visible and integrity metadata frozen for one sampling step.
 
     Model metadata is provider-safe output from ``ModelProfile.as_safe_dict``.
-    ``mcp_binding_json`` is a secret-free diagnostic/integrity projection only;
-    exact MCP execution authority lives on ``StepContext.mcp_binding``.
+    ``mcp_binding_json`` and ``connector_binding_json`` are secret-free
+    diagnostic/integrity projections only; exact execution authority lives on
+    the Step-scoped tool router (and, for MCP, ``StepContext.mcp_binding``).
     """
 
     captured: bool = False
@@ -48,6 +49,7 @@ class RequestStateSnapshot:
     communication_language: str = "auto"
     model_profile_json: str = ""
     mcp_binding_json: str = ""
+    connector_binding_json: str = ""
     context_limits: ResolvedContextLimits | None = None
 
     def __post_init__(self) -> None:
@@ -58,6 +60,7 @@ class RequestStateSnapshot:
         object.__setattr__(self, "communication_language", language)
         object.__setattr__(self, "model_profile_json", str(self.model_profile_json or ""))
         object.__setattr__(self, "mcp_binding_json", str(self.mcp_binding_json or ""))
+        object.__setattr__(self, "connector_binding_json", str(self.connector_binding_json or ""))
         if self.context_limits is not None and not isinstance(self.context_limits, ResolvedContextLimits):
             raise TypeError("context_limits must be ResolvedContextLimits or None")
 
@@ -70,6 +73,7 @@ class RequestStateSnapshot:
         communication_language: str = "auto",
         model_profile: dict[str, object] | None = None,
         mcp_binding: dict[str, object] | None = None,
+        connector_binding: dict[str, object] | None = None,
         context_limits: ResolvedContextLimits | None = None,
     ) -> "RequestStateSnapshot":
         profile_json = ""
@@ -88,6 +92,14 @@ class RequestStateSnapshot:
                 sort_keys=True,
                 separators=(",", ":"),
             )
+        connector_json = ""
+        if connector_binding:
+            connector_json = json.dumps(
+                connector_binding,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            )
         return cls(
             captured=True,
             system_prompt=system_prompt,
@@ -95,6 +107,7 @@ class RequestStateSnapshot:
             communication_language=communication_language,
             model_profile_json=profile_json,
             mcp_binding_json=mcp_json,
+            connector_binding_json=connector_json,
             context_limits=context_limits,
         )
 
@@ -106,6 +119,7 @@ class RequestStateSnapshot:
             "communication_language": self.communication_language,
             "model_profile_json": self.model_profile_json,
             "mcp_binding_json": self.mcp_binding_json,
+            "connector_binding_json": self.connector_binding_json,
             "context_limits": self.context_limits.as_dict() if self.context_limits else None,
         }
         raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))

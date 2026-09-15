@@ -8,11 +8,35 @@ Loom can load Model Context Protocol servers as first-class runtime tools. MCP t
 pip install -e '.[mcp]'
 ```
 
-The base Loom install does not require the MCP SDK. If no MCP servers are configured, MCP remains disabled and the normal Runtime stack is unchanged.
+The base Loom install does not require the MCP SDK. If no remote MCP servers are configured, Loom still exposes its local MCP status/template diagnostics while the normal Runtime stack remains usable.
 
-## Configuration
+## Configuration and discovery
 
-The default CLI/runtime reads `$LOOM_CONFIG` when set, otherwise `<LOOM_HOME>/config.toml` (normally `~/.loom/config.toml`). A missing file simply means no MCP servers are enabled.
+Explicit Loom configuration has highest priority. The runtime reads `$LOOM_CONFIG` when set, otherwise checks `<LOOM_HOME>/config.toml` and `<LOOM_HOME>/mcp.json` (normally under `~/.loom`).
+
+When no explicit Loom MCP configuration is selected, desktop discovery can also reuse compatible MCP servers already configured by other local agent clients. The discovery order is:
+
+1. Loom runtime-home config (`config.toml`, then `mcp.json`);
+2. Codex `$CODEX_HOME/config.toml` / `~/.codex/config.toml`, only when it contains a non-empty `[mcp_servers]` table;
+3. Claude Desktop MCP configuration;
+4. Cursor MCP configuration.
+
+Discovery is best-effort. A malformed or unsupported adopted config is reported in MCP diagnostics and Loom continues checking later candidates rather than failing the whole desktop startup.
+
+### Reusing Codex MCP configuration
+
+Loom understands the safe subset of Codex MCP fields needed for normal stdio and Streamable HTTP servers:
+
+- `command`, `args`, `cwd`;
+- `env_vars`;
+- `env` values that are environment references such as `$TOKEN` or `${TOKEN}`;
+- `url`;
+- `bearer_token_env_var`;
+- startup/tool timeout values.
+
+Loom deliberately does not copy literal environment values or literal HTTP headers from another application's configuration into its own runtime model. `env_http_headers` is also refused until Loom has an equivalent typed transport contract. This preserves the existing secret-free MCP binding boundary rather than silently weakening it for auto-discovery.
+
+First-class service accounts such as GitHub are handled by Loom Connectors rather than pretending a service login is merely MCP configuration. See `docs/connectors.md`.
 
 ### stdio server
 

@@ -1,0 +1,42 @@
+.settings-connectors-nav-host {
+  display: contents;
+}
+
+.settings-connectors-content-host {
+  display: none;
+}
+
+.settings-shell.settings-connectors-mode .settings-main-scroll > .settings-content {
+  display: none;
+}
+
+.settings-shell.settings-connectors-mode .settings-connectors-content-host {
+  width: min(1040px, calc(100% - 72px));
+  margin: 0 auto;
+  padding: 42px 0 72px;
+  display: block;
+}
+
+.settings-connectors-content-host .mature-preference-control .mature-input {
+  min-width: 240px;
+}
+
+.settings-connectors-content-host .settings-callout > button {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+@media (max-width: 900px) {
+  .settings-shell.settings-connectors-mode .settings-connectors-content-host {
+    width: min(100% - 36px, 1040px);
+  }
+
+  .settings-connectors-content-host .mature-preference-control {
+    width: 100%;
+  }
+
+  .settings-connectors-content-host .mature-preference-control .mature-input {
+    min-width: 0;
+    width: 100%;
+  }
+}
