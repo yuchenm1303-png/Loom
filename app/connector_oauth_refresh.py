@@ -135,6 +135,8 @@ class RefreshingConnectorManager(ConnectorManager):
         self._oauth_transport = oauth_post
         self._pending_oauth_responses: dict[str, dict[str, Any]] = {}
         self._oauth_refreshing = False
+        self._suppress_refresh_depth = 0
+        self._oauth_refresh_warning = ""
         super().__init__(runtime_home, **kwargs)
 
     def _oauth_post(
@@ -165,6 +167,7 @@ class RefreshingConnectorManager(ConnectorManager):
         refresh_token = str(response.get("refresh_token") or "").strip()
         if not refresh_token:
             self._clear_refresh_credential()
+            self._oauth_refresh_warning = ""
             return
         # Device-flow refresh does not require a client secret. Keep the secret
         # pair in the OS vault; only timestamps are durable JSON.
@@ -176,25 +179,59 @@ class RefreshingConnectorManager(ConnectorManager):
             access_expires_at=(now + access_ttl) if access_ttl else 0.0,
             refresh_expires_at=(now + refresh_ttl) if refresh_ttl else 0.0,
         )
+        self._oauth_refresh_warning = ""
+
+    def _base_connect_token(self, secret: str) -> dict[str, Any]:
+        # ConnectorManager.connect_token validates before replacing authority,
+        # then calls self.refresh(). Suppress automatic rotation while that new
+        # candidate is being committed so an old refresh token cannot race and
+        # overwrite a just-validated PAT or newly issued access token.
+        self._suppress_refresh_depth += 1
+        try:
+            return super().connect_token(secret)
+        finally:
+            self._suppress_refresh_depth -= 1
 
     def connect_token(self, token: str) -> dict[str, Any]:
         secret = str(token or "").strip()
         response = self._pending_oauth_responses.pop(secret, None)
+
         if response is None:
-            # A PAT or imported external token is not tied to Loom's device-flow
-            # refresh chain. Never leave an old refresh token attached to it.
+            # Transactional credential switch: validate/store the PAT first. If
+            # it fails, preserve the current device OAuth refresh chain intact.
+            self._base_connect_token(secret)
             self._clear_refresh_credential()
-        else:
+            self._oauth_refresh_warning = ""
+            return self.github_status()
+
+        # OAuth endpoint issued this access token. Validate and commit it first,
+        # then attach the matching refresh credential. If refresh persistence is
+        # unavailable, keep the valid access token connected and report that
+        # automatic renewal is unavailable rather than pretending login failed.
+        self._base_connect_token(secret)
+        try:
             self._store_oauth_metadata(response)
-        return super().connect_token(secret)
+        except ConnectorError as exc:
+            self._clear_refresh_credential()
+            self._oauth_refresh_warning = f"Automatic GitHub token renewal is unavailable: {exc}"
+        return self.github_status()
 
     def import_github_cli(self) -> dict[str, Any]:
+        # Preserve current device OAuth authority when gh is missing or invalid.
+        # Only clear its refresh chain after the replacement credential commits.
+        self._suppress_refresh_depth += 1
+        try:
+            super().import_github_cli()
+        finally:
+            self._suppress_refresh_depth -= 1
         self._clear_refresh_credential()
-        return super().import_github_cli()
+        self._oauth_refresh_warning = ""
+        return self.github_status()
 
     def disconnect_github(self) -> dict[str, Any]:
         self._clear_refresh_credential()
         self._pending_oauth_responses.clear()
+        self._oauth_refresh_warning = ""
         return super().disconnect_github()
 
     def _oauth_metadata(self) -> dict[str, Any]:
@@ -256,9 +293,10 @@ class RefreshingConnectorManager(ConnectorManager):
             self._oauth_refreshing = False
 
     def refresh(self) -> dict[str, Any]:
-        # During a rotation, ConnectorManager.connect_token() calls self.refresh()
-        # after saving the new access token. Avoid recursive rotation there.
-        if self._oauth_refreshing:
+        # During a credential commit or rotation,
+        # ConnectorManager.connect_token()/import_github_cli() call self.refresh().
+        # Avoid recursively rotating with the credential being replaced.
+        if self._oauth_refreshing or self._suppress_refresh_depth:
             return super().refresh()
 
         enabled = bool((self.state_store.snapshot().get("github") or {}).get("enabled", True))
@@ -306,6 +344,8 @@ class RefreshingConnectorManager(ConnectorManager):
         status["refreshable"] = refreshable
         status["accessTokenExpiresIn"] = max(0, int(expires_at - float(self.wall_clock()))) if expires_at else None
         status["refreshTokenExpiresIn"] = max(0, int(refresh_expires_at - float(self.wall_clock()))) if refresh_expires_at else None
+        if self._oauth_refresh_warning:
+            status["refreshError"] = self._oauth_refresh_warning
         return status
 
 
