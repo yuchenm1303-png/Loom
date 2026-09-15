@@ -40,6 +40,8 @@ class FakeVault:
 
 
 class FakeGitHubClient:
+    requests: list[tuple[str, str, dict | None]] = []
+
     def __init__(self, token: str) -> None:
         self.token = token
 
@@ -48,8 +50,8 @@ class FakeGitHubClient:
         return {"login": "alice"}, {"X-OAuth-Scopes": "repo"}
 
     def request(self, method: str, path: str, *, query=None, body=None):
-        _ = query
         assert self.token == "connected-token"
+        self.requests.append((method, path, dict(body) if isinstance(body, dict) else None))
         if method == "POST" and path == "/repos/acme/widgets/issues":
             return {
                 "number": 17,
@@ -67,6 +69,7 @@ def _tool_names(request) -> set[str]:
 
 
 def test_connected_github_tool_is_discovered_then_executed_through_tool_search(tmp_path: Path) -> None:
+    FakeGitHubClient.requests.clear()
     platform = RecordingPlatform(
         [
             ModelResponse(
@@ -129,13 +132,15 @@ def test_connected_github_tool_is_discovered_then_executed_through_tool_search(t
         assert "github_issue_create" not in initial
         assert "github_issue_create" in activated
         assert "github_repository_get" not in activated
-
-        persisted = runtime.get_session(session.session_id)
-        issue_events = [
-            item for item in persisted.messages
-            if getattr(item, "name", "") == "github_issue_create"
+        assert FakeGitHubClient.requests == [
+            (
+                "POST",
+                "/repos/acme/widgets/issues",
+                {
+                    "title": "Connector integration",
+                    "body": "Created through Loom Tool Search",
+                },
+            )
         ]
-        assert issue_events
-        assert "17" in str(issue_events[-1].content)
     finally:
         runtime.close()
