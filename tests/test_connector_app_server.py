@@ -130,6 +130,18 @@ class FakeJsonRpcError(Exception):
         self.code = code
 
 
+def test_real_app_server_import_chain_receives_connector_patch() -> None:
+    from app.app_server_project_move import (
+        ProjectMovableLoomAppServerService,
+        ProjectMovableLoomRpcController,
+    )
+
+    assert getattr(ProjectMovableLoomAppServerService, "_loom_connectors_installed", False) is True
+    assert callable(getattr(ProjectMovableLoomAppServerService, "connector_list", None))
+    assert callable(getattr(ProjectMovableLoomAppServerService, "connector_manage", None))
+    assert ProjectMovableLoomRpcController._dispatch is not BaseController._dispatch
+
+
 def _patched(monkeypatch):
     FakeManager.instances.clear()
     monkeypatch.setattr(connector_app_server, "_connector_manager", lambda runtime_home: FakeManager(runtime_home))
