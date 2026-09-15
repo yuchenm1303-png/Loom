@@ -21,6 +21,8 @@ class FakeManager:
         self.runtime_home = Path(runtime_home)
         self.runtime = None
         self.connected = False
+        self.local_oauth_configured = False
+        self.local_oauth_client_id = ""
         self.calls: list[tuple[str, object]] = []
         FakeManager.instances.append(self)
 
@@ -46,6 +48,9 @@ class FakeManager:
             "credentialSource": "web-oauth-keyring" if self.connected else "",
             "bindingId": "github:test" if self.connected else "github:disconnected",
             "webOAuthAvailable": True,
+            "webOAuthSource": "local" if self.local_oauth_configured else "release-or-env",
+            "localWebOAuthConfigured": self.local_oauth_configured,
+            "localWebOAuthClientId": self.local_oauth_client_id,
             "error": "" if self.connected else "No GitHub credential found",
         }
 
@@ -57,6 +62,18 @@ class FakeManager:
     def import_github_cli(self):
         self.calls.append(("import-gh", None))
         self.connected = True
+        return self.github_status()
+
+    def configure_local_web_oauth(self, client_id: str, client_secret: str):
+        self.calls.append(("configure-web-oauth", (client_id, client_secret)))
+        self.local_oauth_configured = True
+        self.local_oauth_client_id = client_id
+        return self.github_status()
+
+    def clear_local_web_oauth(self):
+        self.calls.append(("clear-web-oauth", None))
+        self.local_oauth_configured = False
+        self.local_oauth_client_id = ""
         return self.github_status()
 
     def disconnect_github(self):
@@ -170,6 +187,7 @@ def test_connector_rpc_is_advertised_and_runtime_reports_health(monkeypatch, tmp
     assert connector_caps["providers"] == ["github"]
     assert connector_caps["github"]["loopbackOAuth"] is True
     assert connector_caps["github"]["pkce"] is True
+    assert connector_caps["github"]["localOAuthConfiguration"] is True
     assert "connector/updated" in initialized["capabilities"]["notifications"]
     assert initialized["runtime"]["connectorStatus"]["github"]["connected"] is False
 
@@ -204,6 +222,30 @@ def test_connector_token_is_transient_and_update_notifications_are_secret_free(m
     assert secret not in repr(service.notifications)
     assert any(method == "connector/updated" for method, _ in service.notifications)
     assert any(method == "runtime/updated" for method, _ in service.notifications)
+
+
+def test_local_web_oauth_secret_is_transient_and_never_returned(monkeypatch, tmp_path: Path) -> None:
+    service_cls, _controller_cls = _patched(monkeypatch)
+    service = service_cls(root=tmp_path / "home")
+    manager = FakeManager.instances[0]
+    secret = "local-oauth-client-secret"
+
+    result = service.connector_manage(
+        {
+            "provider": "github",
+            "action": "configure_web_oauth",
+            "clientId": "local-client-id",
+            "clientSecret": secret,
+        }
+    )
+    assert result["connector"]["localWebOAuthConfigured"] is True
+    assert result["connector"]["localWebOAuthClientId"] == "local-client-id"
+    assert manager.calls[0] == ("configure-web-oauth", ("local-client-id", secret))
+    assert secret not in repr(result)
+    assert secret not in repr(service.notifications)
+
+    cleared = service.connector_manage({"provider": "github", "action": "clear_web_oauth"})
+    assert cleared["connector"]["localWebOAuthConfigured"] is False
 
 
 def test_browser_auth_opens_web_oauth_url_and_refreshes_runtime_after_connection(monkeypatch, tmp_path: Path) -> None:
