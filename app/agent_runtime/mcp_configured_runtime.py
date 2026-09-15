@@ -8,17 +8,20 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from . import mcp_runtime as _mcp_runtime
-from .computer_driver_runtime import ComputerDriverRuntime
+from .computer_single_loop_runtime import SingleLoopComputerRuntime
 from .contracts import AgentStatus
 from .mcp_runtime import MCPConfigurationError, MCPRuntime, MCPServerConfig, McpBinding
 from .step import StepContext
 from .tools import ToolRegistry
 
 
-class ConfiguredMCPRuntime(ComputerDriverRuntime, MCPRuntime):
-    """Default Loom runtime with mature Computer Driver plus exact MCP step binding.
+class ConfiguredMCPRuntime(SingleLoopComputerRuntime, MCPRuntime):
+    """Default Loom runtime with single-loop Computer Use plus exact MCP binding.
 
-    The default stack composes Loom's product layers through cooperative MRO, but
+    Computer Use is owned by Loom's existing TurnRunner and the currently selected
+    conversation model. The legacy UFO/driver runtime remains importable for
+    compatibility tests while the production MRO no longer routes through it.
+
     MCP authority is captured once per semantic sampling Step. Model-visible MCP
     schemas and executable handlers therefore come from the same immutable
     ``McpBinding``; later manager refresh/reconnect cannot reroute an older Step.
