@@ -7,6 +7,7 @@ import "./settings-connectors.css";
 
 export function SettingsConnectorsBridge() {
   const [open, setOpen] = useState(false);
+  const [running, setRunning] = useState(false);
   const navHost = useMemo(() => {
     const element = document.createElement("div");
     element.className = "settings-connectors-nav-host";
@@ -26,9 +27,13 @@ export function SettingsConnectorsBridge() {
       if (!shell || !nav || !mainScroll) {
         navHost.remove();
         contentHost.remove();
+        setRunning(false);
         if (open) setOpen(false);
         return;
       }
+
+      const footerText = shell.querySelector<HTMLElement>(".settings-sidebar-footer")?.textContent || "";
+      setRunning(footerText.includes("Turn active"));
 
       const integrations = Array.from(nav.querySelectorAll<HTMLElement>(":scope > section")).find((section) =>
         section.querySelector(".settings-nav-label")?.textContent?.trim() === "Integrations",
@@ -60,7 +65,7 @@ export function SettingsConnectorsBridge() {
 
     syncHosts();
     const observer = new MutationObserver(syncHosts);
-    observer.observe(document.body, { childList: true, subtree: true });
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
     document.addEventListener("click", closeForNativeNavigation, true);
 
     return () => {
@@ -81,7 +86,7 @@ export function SettingsConnectorsBridge() {
         </button>,
         navHost,
       )}
-      {createPortal(open ? <ConnectorsSettings running={false} /> : null, contentHost)}
+      {createPortal(open ? <ConnectorsSettings running={running} /> : null, contentHost)}
     </>
   );
 }
