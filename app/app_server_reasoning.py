@@ -124,8 +124,6 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
             try:
                 private(bool(preferences.get("allowPrivateNetworks", False)))
             except Exception:
-                # A live session blocks the change; the stored value still
-                # applies the next time the connection is rebuilt.
                 pass
         try:
             apply(
@@ -387,10 +385,26 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
         point = self._hud_point(tool_name, args, result)
         phase, title, thought = self._hud_status_for_event(event.kind, source, tool_name)
         bubble_title = self._hud_tool_label(tool_name, args, result)
-        if event.kind is AgentEventKind.TOOL_FAILED:
+        single_loop_computer_action = source == "computer" and tool_name == "computer_action"
+        if single_loop_computer_action and event.kind is AgentEventKind.TOOL_COMPLETED:
+            title = "Loom 正在继续 Computer Use"
+            thought = "当前桌面动作已完成，正在检查最新界面并规划下一步。"
+        elif single_loop_computer_action and event.kind is AgentEventKind.TOOL_FAILED:
+            title = "Loom 正在恢复 Computer Use"
+            thought = "当前桌面动作未成功，正在根据最新界面重新规划。"
+        elif event.kind is AgentEventKind.TOOL_FAILED:
             error = str(event.data.get("content") or event.data.get("error") or "").strip()
             if error:
                 thought = error[:180]
+
+        tool_terminal = (
+            event.kind in {
+                AgentEventKind.TOOL_COMPLETED,
+                AgentEventKind.TOOL_FAILED,
+                AgentEventKind.TOOL_DENIED,
+            }
+            and not single_loop_computer_action
+        )
 
         payload: dict[str, Any] = {
             "threadId": event.session_id,
@@ -406,11 +420,7 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
             "thought": thought,
             "confidence": "已定位" if point is not None else "—",
             "actionSource": "browser-use + DOM/CDP" if source == "browser" else "截图 + UIA + Win32 输入",
-            "terminal": event.kind in {
-                AgentEventKind.TOOL_COMPLETED,
-                AgentEventKind.TOOL_FAILED,
-                AgentEventKind.TOOL_DENIED,
-            },
+            "terminal": tool_terminal,
         }
         if point is not None:
             payload["xNorm"], payload["yNorm"] = point
@@ -598,9 +608,6 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
             raise ValueError("capability is required")
         if not isinstance(enabled, bool):
             raise ValueError("enabled must be a boolean")
-        # Browser preferences are delivered through the same envelope as every
-        # other desktop setting, so the changed path is the only signal that the
-        # browser connection has to be rebuilt.
         browser_change = _is_browser_setting(capability)
         computer_change = _is_computer_setting(capability)
         previous = self.settings_store.snapshot() if browser_change else None
@@ -610,7 +617,6 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
         if browser_change:
             browser_error = self._apply_browser_settings(settings)
             if browser_error and previous is not None:
-                # Keep the stored choice and the live connection in agreement.
                 settings = self.settings_store.replace(previous)
                 self._apply_browser_settings(settings)
         computer_error = self._apply_computer_settings(settings) if computer_change else ""
@@ -699,10 +705,6 @@ def serve_reasoning_managed_streaming_stdio(
     reader: TextIO | None = None,
     writer: TextIO | None = None,
 ) -> int:
-    # The launcher passes the active model's vision capability so downstream
-    # request handlers can refuse attachments when the model is text-only.
-    # Older callers omit it; default to ``True`` so the capability is opt-out,
-    # not opt-in.
     setattr(runtime, "supports_vision", bool(vision))
     service = ReasoningManagedLoomAppServerService(
         runtime=runtime,
