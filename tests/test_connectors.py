@@ -80,10 +80,10 @@ class FakeGitHubClient:
         raise AssertionError(f"unexpected fake GitHub request: {method} {path} {query} {body}")
 
 
-def _manager(tmp_path: Path, *, token: str = "", environment=None) -> ConnectorManager:
+def _manager(tmp_path: Path, *, token: str = "", environment=None, vault=None) -> ConnectorManager:
     return ConnectorManager(
         tmp_path / "home",
-        vault=FakeVault(token),
+        vault=vault or FakeVault(token),
         environment={} if environment is None else environment,
         client_factory=FakeGitHubClient,
         command_runner=lambda *args, **kwargs: FakeCommandResult(),
@@ -110,6 +110,51 @@ def test_connector_status_is_secret_free(tmp_path: Path) -> None:
     assert result.ok is True
     assert secret not in result.content
     assert secret not in repr(result.data)
+
+
+def test_device_flow_validates_and_vaults_token_without_returning_it(tmp_path: Path) -> None:
+    vault = FakeVault()
+    manager = _manager(
+        tmp_path,
+        environment={"LOOM_GITHUB_CLIENT_ID": "loom-client-id"},
+        vault=vault,
+    )
+    responses = [
+        {
+            "device_code": "device-secret",
+            "user_code": "ABCD-EFGH",
+            "verification_uri": "https://github.com/login/device",
+            "expires_in": 900,
+            "interval": 5,
+        },
+        {
+            "access_token": "oauth-access-secret",
+            "token_type": "bearer",
+            "scope": "repo read:org",
+        },
+    ]
+    calls: list[tuple[str, dict[str, object]]] = []
+
+    def oauth_post(url, payload, *, timeout_seconds=20.0):
+        _ = timeout_seconds
+        calls.append((url, dict(payload)))
+        return responses.pop(0)
+
+    manager._oauth_post = oauth_post  # type: ignore[method-assign]
+
+    started = manager.start_github_auth()
+    assert started["mode"] == "device"
+    assert started["status"] == "pending"
+    assert started["userCode"] == "ABCD-EFGH"
+    assert "device-secret" not in repr(started)
+
+    completed = manager.poll_github_auth(started["sessionId"])
+    assert completed["status"] == "connected"
+    assert completed["connector"]["account"] == "alice"
+    assert "oauth-access-secret" not in repr(completed)
+    assert vault.values["github/access-token"] == "oauth-access-secret"
+    assert calls[0][1]["client_id"] == "loom-client-id"
+    assert calls[1][1]["device_code"] == "device-secret"
 
 
 def test_connector_tool_binding_freezes_authority_per_tool_snapshot(tmp_path: Path) -> None:
