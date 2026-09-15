@@ -9,6 +9,18 @@ import pytest
 
 from app.agent_runtime import ufo_sidecar_entry as entry
 
+# Importing the runtime entrypoint intentionally projects patched callables onto
+# the shared ufo_sidecar module. These unit tests only exercise entrypoint helper
+# behavior, so restore the shared core immediately after collection; otherwise
+# importing this test module changes what unrelated cold-start contract tests see.
+entry.core._bootstrap_ufo = entry._ORIGINAL_BOOTSTRAP
+entry.core._run_task = entry._ORIGINAL_RUN_TASK
+
+
+def test_entrypoint_unit_tests_do_not_leak_core_patch_state():
+    assert entry.core._bootstrap_ufo is entry._ORIGINAL_BOOTSTRAP
+    assert entry.core._run_task is entry._ORIGINAL_RUN_TASK
+
 
 def test_window_match_prefers_explicit_existing_title():
     windows = [
