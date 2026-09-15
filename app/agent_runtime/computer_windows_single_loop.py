@@ -22,6 +22,7 @@ _HIDDEN_PROCESS_DENYLIST = frozenset(
         "textinputhost.exe",
     }
 )
+_VISIBLE_WINDOW_HEAD = 6
 
 
 class SingleLoopWindowsOperator(PyWinAutoWindowsOperator):
@@ -29,9 +30,11 @@ class SingleLoopWindowsOperator(PyWinAutoWindowsOperator):
 
     The legacy operator intentionally exposed only visible windows. That is a bad
     fit for a visual agent because many desktop applications keep a hidden main
-    HWND while they live in the notification area. This operator keeps visible
-    windows first, then a bounded set of recoverable hidden top-level windows.
-    ``switch_window`` explicitly shows/restores such a target before focusing it.
+    HWND while they live in the notification area. This operator keeps a short
+    visible-window head, then representative recoverable hidden application
+    windows, then the remaining visible windows. That ordering intentionally puts
+    tray apps inside the model's bounded window shortlist without hard-coding any
+    application name. ``switch_window`` shows/restores such a target before focus.
     """
 
     name = "windows-visual-single-loop"
@@ -42,6 +45,7 @@ class SingleLoopWindowsOperator(PyWinAutoWindowsOperator):
             {
                 "window_discovery": "visible plus recoverable hidden top-level application windows",
                 "hidden_window_activation": "ShowWindow/Restore then foreground focus",
+                "window_shortlist": "foreground, visible head, one hidden representative per process, remaining visible",
             }
         )
         return status
@@ -71,6 +75,12 @@ class SingleLoopWindowsOperator(PyWinAutoWindowsOperator):
                     handle.Close()
                 except Exception:
                     pass
+
+    @staticmethod
+    def _hidden_representative_score(window: ComputerWindow) -> tuple[int, int, str]:
+        rect = window.rect
+        area = 0 if rect is None else max(0, rect.width) * max(0, rect.height)
+        return (1 if window.title else 0, area, window.window_id)
 
     def _enumerate_windows(self, foreground_hwnd: int) -> tuple[ComputerWindow, ...]:
         import win32con
@@ -127,8 +137,35 @@ class SingleLoopWindowsOperator(PyWinAutoWindowsOperator):
 
         win32gui.EnumWindows(callback, None)
         visible_items.sort(key=lambda item: (not item.foreground, item.title.casefold()))
-        hidden_items.sort(key=lambda item: (item.process_name.casefold(), item.title.casefold()))
-        return tuple((*visible_items, *hidden_items)[: self.max_windows])
+
+        # A tray application may expose several hidden top-level helper HWNDs.
+        # Present one representative per executable so the model gets app-level
+        # choices rather than a list full of indistinguishable WeChat/Electron/etc.
+        hidden_by_process: dict[str, ComputerWindow] = {}
+        for item in hidden_items:
+            key = item.process_name.casefold()
+            current = hidden_by_process.get(key)
+            if current is None or self._hidden_representative_score(item) > self._hidden_representative_score(current):
+                hidden_by_process[key] = item
+        hidden_items = sorted(
+            hidden_by_process.values(),
+            key=lambda item: (
+                not bool(item.title),
+                item.process_name.casefold(),
+                item.title.casefold(),
+            ),
+        )
+
+        foreground = [item for item in visible_items if item.foreground]
+        visible_background = [item for item in visible_items if not item.foreground]
+        head_count = min(_VISIBLE_WINDOW_HEAD, len(visible_background))
+        ordered = (
+            *foreground,
+            *visible_background[:head_count],
+            *hidden_items,
+            *visible_background[head_count:],
+        )
+        return tuple(ordered[: self.max_windows])
 
     def _switch_window(self, action: ComputerAction) -> ComputerExecution:
         import win32con
