@@ -15,6 +15,7 @@ from app.agent_runtime.computer_ufo_driver import (
     _normalize_base_url,
     _safe_stderr_line,
 )
+from app.agent_runtime.computer_single_loop_runtime import SingleLoopComputerRuntime
 from app.agent_runtime.mcp_configured_runtime import ConfiguredMCPRuntime
 from app.agent_runtime.ufo_sidecar import (
     _SCRATCH_PREFIX,
@@ -26,8 +27,18 @@ from app.agent_runtime.ufo_sidecar import (
 )
 
 
-def test_default_runtime_composes_mature_computer_driver_before_mcp():
-    assert issubclass(ConfiguredMCPRuntime, ComputerDriverRuntime)
+def test_default_runtime_no_longer_routes_through_the_ufo_driver():
+    """The production MRO owns exactly one Computer Use architecture.
+
+    This used to assert the opposite. Two architectures behind one tool name --
+    the UFO HostAgent/AppAgent driver and Loom's own loop, chosen at runtime by
+    whether UFO happened to be provisioned -- meant neither the model nor a
+    maintainer could tell which one had executed a step. The legacy driver stays
+    importable for the unit tests below it; it must not be in the default stack.
+    """
+
+    assert issubclass(ConfiguredMCPRuntime, SingleLoopComputerRuntime)
+    assert not issubclass(ConfiguredMCPRuntime, ComputerDriverRuntime)
 
 
 def test_ufo_pin_is_explicit_and_stable():
