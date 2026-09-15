@@ -247,3 +247,23 @@ def test_switch_window_shows_hidden_target_before_parent_focus(monkeypatch):
     assert result.ok is True
     assert shown == [(20, con.SW_SHOW), (20, con.SW_RESTORE)]
     assert parent_calls == ["0x14"]
+
+
+def test_the_desktop_tool_tells_the_model_it_is_not_the_default_route():
+    """Computer Use is a tool in the normal loop, not a mode the task runs in.
+
+    Nothing forced GUI automation -- exec sits in the same registry and is never
+    shed -- but nothing mentioned it either, and the system instructions say
+    nothing about the desktop at all. So a desktop-shaped task got clicked
+    through end to end, including launching an application, which exec does in
+    one step.
+    """
+
+    from app.agent_runtime.computer_single_loop_runtime import SingleLoopComputerRuntime
+
+    runtime = object.__new__(SingleLoopComputerRuntime)
+    description = SingleLoopComputerRuntime._single_action_tool(runtime).description
+
+    assert "exec" in description
+    assert "prefer a cheaper route" in description
+    assert "interleave" in description

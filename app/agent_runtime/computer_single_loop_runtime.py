@@ -388,7 +388,13 @@ class SingleLoopComputerRuntime(ComputerUseRuntime):
         return AgentTool(
             name="computer_action",
             description=(
-                "Loom's only model-facing desktop action tool. It uses the current conversation model and the normal "
+                "Loom's only model-facing desktop action tool. Reach for it when a task genuinely needs the GUI, "
+                "not as the default way to work: it is an ordinary tool in the normal loop, so prefer a cheaper route "
+                "when one exists and freely interleave the two within a single task. Launching or closing an "
+                "application, reading or writing a file, querying state, and anything scriptable are all faster and "
+                "more reliable through exec than through clicking, and exec has no application allowlist. Use this "
+                "tool for what only the GUI can do. "
+                "It uses the current conversation model and the normal "
                 "TurnRunner: request screenshot first, then choose exactly one visual action from the returned image. "
                 "Coordinates are normalized 0..1. Coordinate input is the primary execution path; UIA is only an "
                 "advisory visual hint and no control id is accepted here. If a target application already appears in "
