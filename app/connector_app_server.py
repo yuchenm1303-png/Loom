@@ -5,6 +5,11 @@ from __future__ import annotations
 The connector runtime deliberately lives outside the generic MCP transport. MCP
 continues to own protocol/tool-server execution; this module owns account
 connection, credential lifecycle, health, and the product-facing RPC surface.
+
+This patch module intentionally does *not* import ``app.connectors`` at module
+import time. ``app.__init__`` installs Loom's runtime/MCP import patches before
+the app-server is constructed; eagerly importing connectors here would import
+``app.agent_runtime`` too early and bypass that patch chain.
 """
 
 import copy
@@ -15,12 +20,17 @@ import webbrowser
 from types import ModuleType
 from typing import Any
 
-from app.connectors import ConnectorError, ConnectorManager
 from app.import_patch_chain import find_spec_without
 
 
 _TARGET_MODULE = "app.app_server_project_move"
 _INSTALLED = False
+
+
+def _connector_manager(runtime_home: Any):
+    from app.connectors import ConnectorManager
+
+    return ConnectorManager(runtime_home)
 
 
 def _mutating_action(action: str) -> bool:
@@ -50,7 +60,7 @@ def patch(module: Any) -> None:
     def service_init(self: Any, *args: Any, **kwargs: Any) -> None:
         original_service_init(self, *args, **kwargs)
         runtime_home = self.store.root.parents[1]
-        self.connectors = ConnectorManager(runtime_home)
+        self.connectors = _connector_manager(runtime_home)
         self.connectors.install_runtime(self.runtime)
 
     def runtime_status(self: Any) -> dict[str, Any]:
@@ -82,6 +92,8 @@ def patch(module: Any) -> None:
         return {"connectors": self.connectors.list()}
 
     def connector_manage(self: Any, params: dict[str, Any]) -> dict[str, Any]:
+        from app.connectors import ConnectorError
+
         provider = str(params.get("provider") or params.get("id") or "github").strip().casefold()
         if provider != "github":
             raise JsonRpcError(-32602, f"unsupported connector provider: {provider}")
