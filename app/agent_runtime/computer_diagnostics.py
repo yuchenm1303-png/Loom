@@ -106,10 +106,11 @@ class ComputerDiagnostics:
     def save_screenshot(self, observation: Any, *, operation_id: str, phase: str) -> str:
         screenshot_path = ""
         if self.raw:
-            name = f"{self._sequence + 1:06d}-{operation_id}-{phase}-{observation.observation_id}.png"
+            suffix = str(getattr(observation, "image_suffix", ".png") or ".png")
+            name = f"{self._sequence + 1:06d}-{operation_id}-{phase}-{observation.observation_id}{suffix}"
             target = self.root / "computer-snapshots" / "images" / name
             target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(observation.image_png)
+            target.write_bytes(observation.image_data)
             screenshot_path = str(target)
         self.record_snapshot_manifest(
             observation,
@@ -141,7 +142,8 @@ class ComputerDiagnostics:
             phase=str(phase or ""),
             observation_id=str(getattr(observation, "observation_id", "") or ""),
             image_sha256=str(getattr(observation, "image_sha256", "") or ""),
-            image_bytes=len(bytes(getattr(observation, "image_png", b"") or b"")),
+            image_bytes=len(bytes(getattr(observation, "image_data", b"") or b"")),
+            image_media_type=str(getattr(observation, "image_media_type", "") or ""),
             screenshot_path=str(screenshot_path or ""),
             frame=_call_dict(frame),
             active_window=_call_dict(active_window),

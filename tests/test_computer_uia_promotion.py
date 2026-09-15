@@ -57,7 +57,7 @@ class PromotionOperator:
         return ComputerObservation(
             observation_id=f"obs-{self.observe_count}",
             frame=frame,
-            image_png=b"PNG" + bytes([self.observe_count]),
+            image_data=b"PNG" + bytes([self.observe_count]),
             active_window=active,
             windows=(active,),
             controls=(outer, save),

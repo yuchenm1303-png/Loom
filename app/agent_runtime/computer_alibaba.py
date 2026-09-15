@@ -44,6 +44,8 @@ GUI_PLUS_ACTION_NAMES = frozenset(
         "terminate",
         "interact",
         "answer",
+        "switch_window",
+        "activate_window",
     }
 )
 GUI_PLUS_COMPUTER_TOOL_NAMES = frozenset(
@@ -71,8 +73,11 @@ Supported actions and arguments:
 - type: `text: string`
 - scroll: `pixels: number`, optionally `coordinate: [x, y]`; positive scrolls up and negative scrolls down
 - wait: `time: seconds`
+- switch_window: `window_id: string` — bring an already-running window to the foreground
 - terminate: `status: success|failure`
 - interact or answer: `text: string`
+
+The screenshot shows only the current foreground window. Other running windows are listed under "Open windows" below; they are real and you can reach any of them directly with switch_window. Prefer switch_window over hunting for a taskbar button, a desktop icon, or a Start menu entry: if the application you need is already in that list, activating it is one action and always works.
 
 Do not emit middle_click, hscroll, shell commands, file operations, or multiple actions. Loom owns the outer agent loop, permissions, retries, and task completion. Use terminate only when the screenshot shows that the GUI task is complete or cannot proceed.
 """
@@ -99,6 +104,7 @@ class AlibabaGUIPlusGroundingBackend:
         client: Any | None = None,
         request_timeout_seconds: float = 120.0,
         max_controls: int = 100,
+        max_windows: int = 24,
         max_trajectory: int = 8,
         system_prompt: str = _GUI_PLUS_SYSTEM_PROMPT,
         high_resolution_images: bool = True,
@@ -134,6 +140,7 @@ class AlibabaGUIPlusGroundingBackend:
         self.model = model
         self.request_timeout_seconds = timeout
         self.max_controls = max(0, int(max_controls))
+        self.max_windows = max(0, int(max_windows))
         self.max_trajectory = max(0, int(max_trajectory))
         self.system_prompt = str(system_prompt or "").strip()
         self.high_resolution_images = bool(high_resolution_images)
@@ -190,9 +197,25 @@ class AlibabaGUIPlusGroundingBackend:
         history = tuple(trajectory)[-self.max_trajectory :] if self.max_trajectory else ()
         history_text = "\n".join(item.prompt_line() for item in history) if history else "(none)"
         active_title = observation.active_window.title if observation.active_window is not None else ""
+
+        # The screenshot only ever covers the foreground window, so without this
+        # list a background application is invisible to the policy and the only
+        # route to it is the desktop or the Start menu. That detour cost three
+        # steps and 67 seconds on a machine where the target was already running.
+        windows: list[str] = []
+        for window in observation.windows[: self.max_windows]:
+            title = str(window.title or "").strip()
+            if not title or window.foreground:
+                continue
+            process = str(window.process_name or "").strip()
+            suffix = f", process={process!r}" if process else ""
+            windows.append(f"{window.window_id}: title={title!r}{suffix}")
+        window_text = "\n".join(windows) if windows else "(no other titled windows)"
+
         prompt = (
             f"Instruction: {instruction}\n"
             f"Current screenshot source={observation.frame.source}, active_window={active_title!r}.\n\n"
+            f"Open windows (use switch_window with one of these window_id values):\n{window_text}\n\n"
             f"Recent trajectory:\n{history_text}\n\n"
             f"UI Automation hints (their points also use the 0..1000 model frame):\n{control_text}\n"
         )
@@ -332,6 +355,16 @@ def parse_gui_plus_prediction(text: str) -> ComputerPrediction:
             type=ComputerActionType.WAIT,
             duration_ms=max(50, min(30_000, round(seconds * 1000))),
         )
+    elif action_name in {"switch_window", "activate_window"}:
+        window_id = str(
+            arguments.get("window_id")
+            or arguments.get("window")
+            or arguments.get("id")
+            or ""
+        ).strip()
+        if not window_id:
+            raise ValueError("GUI-Plus switch_window requires window_id")
+        action = ComputerAction(type=ComputerActionType.SWITCH_WINDOW, window_id=window_id)
     elif action_name == "terminate":
         status = str(arguments.get("status") or "success").strip().casefold()
         if status not in {"success", "failure"}:

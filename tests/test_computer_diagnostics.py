@@ -29,8 +29,12 @@ def test_raw_diagnostics_persist_original_screenshot(tmp_path):
 
     class Observation:
         observation_id = "obs-1"
-        image_png = b"original-png-bytes"
+        image_data = b"original-jpeg-bytes"
+        image_suffix = ".jpg"
 
     saved = Path(diagnostics.save_screenshot(Observation(), operation_id="op-1", phase="before"))
-    assert saved.read_bytes() == b"original-png-bytes"
+    assert saved.read_bytes() == b"original-jpeg-bytes"
     assert saved.parent == tmp_path / "computer-snapshots" / "images"
+    # The snapshot extension has to follow the capture profile, or the saved
+    # frames are JPEG bytes in files every viewer will try to decode as PNG.
+    assert saved.suffix == ".jpg"

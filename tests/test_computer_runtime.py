@@ -79,7 +79,7 @@ class FakeOperator:
         return ComputerObservation(
             observation_id=f"obs-{self.observe_count}",
             frame=frame,
-            image_png=b"PNG" + bytes([marker]),
+            image_data=b"PNG" + bytes([marker]),
             active_window=active,
             windows=(active,),
             controls=(control,),
@@ -190,7 +190,9 @@ def test_computer_step_executes_exactly_one_policy_action_and_reobserves(tmp_pat
     assert operator.observe_count == 2
     assert result.data["action"]["type"] == "click"
     assert result.data["verification"]["visual_changed"] is True
-    assert "image_png" not in json.dumps(result.data)
+    serialized = json.dumps(result.data)
+    assert "image_data" not in serialized
+    assert "image_png" not in serialized
     runtime.close()
 
 

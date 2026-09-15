@@ -38,6 +38,15 @@ class ComputerOperator(Protocol):
         ...
 
 
+def _resampling_filter():
+    from PIL import Image
+
+    # Pillow 10 moved the constants onto Image.Resampling; older installs keep
+    # them on Image itself and Loom supports both.
+    resampling = getattr(Image, "Resampling", Image)
+    return resampling.LANCZOS
+
+
 def windows_computer_available() -> bool:
     if platform.system() != "Windows":
         return False
@@ -80,6 +89,24 @@ def enable_per_monitor_v2_dpi_awareness() -> str:
         return "unknown"
 
 
+#: Screenshot encodings, cheapest first. A grounding model downsamples whatever
+#: it receives to a few thousand image tokens, so lossless capture buys nothing
+#: it can use while costing upload time in direct proportion to the byte count.
+#: Measured on a 2560x1600 desktop showing a photographic wallpaper, which is the
+#: case that hurts: 5.5 MB as lossless PNG against 0.55 MB at "balanced", or ~27s
+#: of upload against ~3s at the rate fitted from a production trace.
+#:
+#: JPEG stays at 4:4:4 (subsampling=0). Chroma subsampling smears exactly the
+#: thing the policy has to read, the coloured text on small UI controls.
+CAPTURE_PROFILES: dict[str, dict[str, object]] = {
+    "fast": {"media_type": "image/jpeg", "quality": 60, "max_pixels": 1_440_000},
+    "balanced": {"media_type": "image/jpeg", "quality": 72, "max_pixels": 2_500_000},
+    "high": {"media_type": "image/jpeg", "quality": 88, "max_pixels": 5_000_000},
+    "lossless": {"media_type": "image/png", "quality": 0, "max_pixels": 0},
+}
+DEFAULT_CAPTURE_PROFILE = "balanced"
+
+
 class PyWinAutoWindowsOperator:
     """Windows UIA-first operator with virtual-desktop coordinate fallback.
 
@@ -91,7 +118,13 @@ class PyWinAutoWindowsOperator:
 
     name = "windows-uia"
 
-    def __init__(self, *, max_controls: int = 300, max_windows: int = 48) -> None:
+    def __init__(
+        self,
+        *,
+        max_controls: int = 300,
+        max_windows: int = 48,
+        capture_profile: str = DEFAULT_CAPTURE_PROFILE,
+    ) -> None:
         if not windows_computer_available():
             raise RuntimeError(
                 "Windows Computer Use dependencies are unavailable; install Loom with the computer extra on Windows"
@@ -101,8 +134,24 @@ class PyWinAutoWindowsOperator:
         self.dpi_awareness = enable_per_monitor_v2_dpi_awareness()
         self._lock = threading.RLock()
         self._control_maps: OrderedDict[str, dict[str, object]] = OrderedDict()
+        self.capture_profile = DEFAULT_CAPTURE_PROFILE
+        self.set_capture_profile(capture_profile)
+
+    def set_capture_profile(self, profile: str) -> str:
+        """Select the screenshot encoding used by later observations."""
+
+        name = str(profile or "").strip().casefold()
+        if name not in CAPTURE_PROFILES:
+            raise ValueError(
+                f"unknown computer capture profile: {profile!r}; expected one of "
+                + ", ".join(sorted(CAPTURE_PROFILES))
+            )
+        with self._lock:
+            self.capture_profile = name
+        return name
 
     def status(self) -> dict[str, object]:
+        profile = CAPTURE_PROFILES[self.capture_profile]
         return {
             "backend": self.name,
             "platform": platform.system(),
@@ -112,7 +161,45 @@ class PyWinAutoWindowsOperator:
             "keyboard_fallback": "pyautogui hotkeys + SendInput Unicode text",
             "secure_desktop": False,
             "elevated_window_access": "subject to Windows UIPI/integrity boundaries",
+            "capture_profile": self.capture_profile,
+            "capture_media_type": profile["media_type"],
         }
+
+    def _encode(self, image) -> tuple[bytes, str, dict[str, object]]:
+        """Encode one captured frame for upload to a grounding model.
+
+        Downscaling happens before encoding so the cost is paid once. The frame
+        geometry is untouched: model coordinates are normalized against the frame,
+        never against the pixel size of the image, so a resized screenshot still
+        maps back to the same screen point.
+        """
+
+        profile = CAPTURE_PROFILES[self.capture_profile]
+        max_pixels = int(profile["max_pixels"] or 0)
+        scale = 1.0
+        if max_pixels and image.width * image.height > max_pixels:
+            scale = (max_pixels / (image.width * image.height)) ** 0.5
+            image = image.resize(
+                (max(1, round(image.width * scale)), max(1, round(image.height * scale))),
+                _resampling_filter(),
+            )
+        media_type = str(profile["media_type"])
+        output = io.BytesIO()
+        if media_type == "image/jpeg":
+            image.convert("RGB").save(
+                output, format="JPEG", quality=int(profile["quality"]), optimize=True, subsampling=0
+            )
+        else:
+            image.save(output, format="PNG")
+        return (
+            output.getvalue(),
+            media_type,
+            {
+                "image_width": int(image.width),
+                "image_height": int(image.height),
+                "downscale": round(scale, 4),
+            },
+        )
 
     def observe(self) -> ComputerObservation:
         import win32api
@@ -152,9 +239,8 @@ class PyWinAutoWindowsOperator:
             geometry_ms = round((time.perf_counter() - observe_started) * 1000.0, 3)
             capture_started = time.perf_counter()
             image = ImageGrab.grab(bbox=(left, top, right, bottom), all_screens=True)
-            output = io.BytesIO()
-            image.save(output, format="PNG")
-            screenshot = output.getvalue()
+            captured_width, captured_height = int(image.width), int(image.height)
+            screenshot, media_type, encoding = self._encode(image)
             capture_ms = round((time.perf_counter() - capture_started) * 1000.0, 3)
 
             windows_started = time.perf_counter()
@@ -180,7 +266,8 @@ class PyWinAutoWindowsOperator:
             return ComputerObservation(
                 observation_id=observation_id,
                 frame=frame,
-                image_png=screenshot,
+                image_data=screenshot,
+                image_media_type=media_type,
                 active_window=active,
                 windows=windows,
                 controls=controls,
@@ -189,16 +276,19 @@ class PyWinAutoWindowsOperator:
                     "control_backend": "uia",
                     "timings_ms": {
                         "geometry": geometry_ms,
-                        "screenshot_capture_and_png_encode": capture_ms,
+                        "screenshot_capture_and_encode": capture_ms,
                         "window_enumeration": window_enumeration_ms,
                         "uia_enumeration": uia_enumeration_ms,
                         "total": round((time.perf_counter() - observe_started) * 1000.0, 3),
                     },
                     "capture": {
+                        "profile": self.capture_profile,
+                        "media_type": media_type,
                         "image_mode": str(image.mode),
-                        "image_width": int(image.width),
-                        "image_height": int(image.height),
-                        "png_bytes": len(screenshot),
+                        "captured_width": captured_width,
+                        "captured_height": captured_height,
+                        "encoded_bytes": len(screenshot),
+                        **encoding,
                     },
                 },
             )

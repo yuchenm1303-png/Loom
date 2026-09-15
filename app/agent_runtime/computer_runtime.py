@@ -16,12 +16,29 @@ from .computer_types import (
     ComputerAction,
     ComputerActionType,
     ComputerExecution,
+    ComputerFrame,
     ComputerObservation,
     ComputerPrediction,
     ComputerTrajectoryEntry,
 )
 from .computer_windows import ComputerOperator, PyWinAutoWindowsOperator, windows_computer_available
 from .memory_store import redact_secrets
+
+
+#: Actions whose repetition means a stalled attempt rather than deliberate
+#: iteration. Scrolling, typing and key presses are legitimately repeated.
+_POINTER_ACTIONS = frozenset(
+    {
+        ComputerActionType.CLICK,
+        ComputerActionType.DOUBLE_CLICK,
+        ComputerActionType.RIGHT_CLICK,
+        ComputerActionType.DRAG,
+        ComputerActionType.SWITCH_WINDOW,
+    }
+)
+
+#: Two clicks this close are one attempt at one target, not two decisions.
+_REPEAT_PIXEL_TOLERANCE = 8
 
 
 @dataclass(frozen=True, slots=True)
@@ -303,11 +320,14 @@ class ComputerSessionStore:
             )
             return outcome
 
+        target_label = redact_secrets(self._target_label(action, before.observation))
         execution = self.operator.execute(action, before.observation)
         if self.settle_delay and action.type is not ComputerActionType.WAIT:
             time.sleep(self.settle_delay)
         after = self._publish(owner, self.operator.observe())
         verification = self._verify(before, after, action, execution)
+        if target_label:
+            verification["target_label"] = target_label
         self._trajectory[owner].append(
             ComputerTrajectoryEntry(
                 instruction=instruction,
@@ -315,6 +335,7 @@ class ComputerSessionStore:
                 image_sha256=before.observation.image_sha256,
                 action=action,
                 execution_ok=bool(execution.ok),
+                target_label=target_label,
             )
         )
         outcome = ComputerStepOutcome(before, prediction, execution, after, verification)
@@ -422,16 +443,71 @@ class ComputerSessionStore:
         )
         return replace(action, control_id=target.control_id)
 
+    @staticmethod
+    def _target_label(action: ComputerAction, observation: ComputerObservation) -> str:
+        """Name what the action will actually operate on, for the next prompt."""
+
+        if action.type is ComputerActionType.SWITCH_WINDOW and action.window_id:
+            for window in observation.windows:
+                if window.window_id == action.window_id:
+                    title = str(window.title or "").strip()
+                    return f"window {title!r}" if title else f"window {action.window_id}"
+            return ""
+        if not action.control_id:
+            return ""
+        for control in observation.controls:
+            if control.control_id == action.control_id:
+                kind = str(control.control_type or "control")
+                name = str(control.name or "").strip()
+                return f"{kind} {name!r}" if name else f"{kind} {control.control_id}"
+        return ""
+
+    @staticmethod
+    def _same_attempt(left: ComputerAction, right: ComputerAction, frame: ComputerFrame) -> bool:
+        """Decide whether two actions are the same attempt at the same target.
+
+        Pointer actions are compared by target rather than by value. A grounding
+        model re-proposing the same button rarely returns byte-identical floats:
+        in the trace that motivated this, three clicks on one dead control came
+        back as 0.495/0.770 then 0.498/0.757 twice, which exact equality reads as
+        three different attempts.
+        """
+
+        if left.type is not right.type:
+            return False
+        if left.type not in _POINTER_ACTIONS:
+            return left == right
+        if left.control_id or right.control_id:
+            return left.control_id == right.control_id
+        if left.point is None or right.point is None:
+            return left == right
+        left_x, left_y = frame.to_screen(left.point)
+        right_x, right_y = frame.to_screen(right.point)
+        return (
+            abs(left_x - right_x) <= _REPEAT_PIXEL_TOLERANCE
+            and abs(left_y - right_y) <= _REPEAT_PIXEL_TOLERANCE
+        )
+
     def _is_stuck(self, owner: str, before: ComputerStateSnapshot, action: ComputerAction) -> bool:
         history = tuple(self._trajectory[owner])
         if len(history) < 2:
             return False
+        frame = before.observation.frame
         recent = history[-2:]
-        return all(
-            item.execution_ok
-            and item.image_sha256 == before.observation.image_sha256
-            and item.action == action
+        if not all(
+            item.execution_ok and self._same_attempt(item.action, action, frame)
             for item in recent
+        ):
+            return False
+        # A third identical press is conclusive on its own. Requiring an
+        # unchanged screenshot as well made this unreachable in practice: a
+        # caret blink, a hover highlight or a spinner is enough to change the
+        # hash, so a control that silently does nothing looked like progress
+        # every time.
+        if action.type in _POINTER_ACTIONS:
+            return True
+        return all(
+            item.image_sha256 == before.observation.image_sha256 for item in recent
         )
 
     def clear_owner(self, owner_session_id: str) -> None:
@@ -586,6 +662,23 @@ class ComputerUseRuntime(BrowserRuntime):
         for tool in computer_tools(self):
             if self.tools.get(tool.name) is None:
                 self.tools.register(tool)
+
+    def computer_set_capture_profile(self, profile: str) -> str:
+        """Apply the desktop screenshot-quality preference to the live operator.
+
+        Screenshot bytes dominate a Computer Use step: upload time scales with
+        them directly while the grounding model downsamples whatever it receives,
+        so this is the difference between a ~5s and a ~30s step on a large
+        display. Returns the profile now in force.
+        """
+
+        store = self.computer_sessions
+        if store is None:
+            return ""
+        apply = getattr(store.operator, "set_capture_profile", None)
+        if not callable(apply):
+            return ""
+        return str(apply(profile))
 
     def computer_status(self, owner_session_id: str | None = None) -> dict[str, object]:
         store = self.computer_sessions

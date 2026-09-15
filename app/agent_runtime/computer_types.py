@@ -213,23 +213,32 @@ class ComputerControl:
         return payload
 
 
+#: Screenshot encodings the operator may produce. This is a validation boundary,
+#: so it lists what is actually emitted rather than everything Pillow can write.
+_IMAGE_SUFFIXES = {"image/png": ".png", "image/jpeg": ".jpg"}
+
+
 @dataclass(frozen=True, slots=True)
 class ComputerObservation:
     observation_id: str
     frame: ComputerFrame
-    image_png: bytes
+    image_data: bytes
     active_window: ComputerWindow | None = None
     windows: tuple[ComputerWindow, ...] = ()
     controls: tuple[ComputerControl, ...] = ()
     metadata: Mapping[str, Any] = field(default_factory=dict)
+    image_media_type: str = "image/png"
 
     def __post_init__(self) -> None:
         observation_id = str(self.observation_id or "").strip()
         if not observation_id:
             raise ValueError("computer observation requires observation_id")
-        image_png = bytes(self.image_png)
-        if not image_png:
+        image_data = bytes(self.image_data)
+        if not image_data:
             raise ValueError("computer observation requires screenshot bytes")
+        media_type = str(self.image_media_type or "image/png").strip().casefold()
+        if media_type not in _IMAGE_SUFFIXES:
+            raise ValueError(f"unsupported computer screenshot media type: {media_type}")
         windows = tuple(self.windows)
         controls = tuple(self.controls)
         if any(not isinstance(item, ComputerWindow) for item in windows):
@@ -237,18 +246,25 @@ class ComputerObservation:
         if any(not isinstance(item, ComputerControl) for item in controls):
             raise TypeError("controls must contain ComputerControl values")
         object.__setattr__(self, "observation_id", observation_id)
-        object.__setattr__(self, "image_png", image_png)
+        object.__setattr__(self, "image_data", image_data)
+        object.__setattr__(self, "image_media_type", media_type)
         object.__setattr__(self, "windows", windows)
         object.__setattr__(self, "controls", controls)
         object.__setattr__(self, "metadata", dict(self.metadata))
 
     @property
     def image_sha256(self) -> str:
-        return hashlib.sha256(self.image_png).hexdigest()
+        return hashlib.sha256(self.image_data).hexdigest()
+
+    @property
+    def image_suffix(self) -> str:
+        """File extension matching the encoded bytes, for snapshot writers."""
+
+        return _IMAGE_SUFFIXES[self.image_media_type]
 
     def image_data_url(self) -> str:
-        encoded = base64.b64encode(self.image_png).decode("ascii")
-        return f"data:image/png;base64,{encoded}"
+        encoded = base64.b64encode(self.image_data).decode("ascii")
+        return f"data:{self.image_media_type};base64,{encoded}"
 
     def to_safe_dict(
         self,
@@ -293,7 +309,8 @@ class ComputerObservation:
         return {
             "observation_id": self.observation_id,
             "image_sha256": self.image_sha256,
-            "image_bytes": len(self.image_png),
+            "image_bytes": len(self.image_data),
+            "image_media_type": self.image_media_type,
             "frame": self.frame.to_dict(),
             "active_window": active,
             "windows": windows,
@@ -436,13 +453,24 @@ class ComputerTrajectoryEntry:
     image_sha256: str
     action: ComputerAction
     execution_ok: bool
+    # What the action actually landed on, e.g. ``Button '切换账号'``. Without it a
+    # grounder that misses a button by 40px reads its own history as
+    # ``action={click, uia:12}; execution=ok`` and repeats the same coordinate:
+    # this is the only signal that "ok" meant "pressed the wrong control".
+    target_label: str = ""
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "target_label", str(self.target_label or ""))
 
     def prompt_line(self) -> str:
         action = self.action.safe_dict()
-        return (
+        line = (
             f"observation={self.observation_id}; image={self.image_sha256[:12]}; action={action}; "
             f"execution={'ok' if self.execution_ok else 'failed'}"
         )
+        if self.target_label:
+            line += f"; hit={self.target_label}"
+        return line
 
 
 def _point_from_mapping(value: Mapping[str, Any], key: str) -> ComputerPoint | None:

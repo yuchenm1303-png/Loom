@@ -40,7 +40,7 @@ def test_ui_tars_backend_is_one_step_vision_adapter_with_uia_context():
     observation = ComputerObservation(
         observation_id="obs",
         frame=frame,
-        image_png=b"fake-png",
+        image_data=b"fake-png",
         active_window=window,
         windows=(window,),
         controls=(

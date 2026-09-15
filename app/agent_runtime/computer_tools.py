@@ -171,7 +171,7 @@ def _observation_summary(snapshot: Any) -> dict[str, object]:
         "state_revision": int(getattr(snapshot, "state_revision", 0) or 0),
         "observation_id": str(getattr(observation, "observation_id", "") or ""),
         "image_sha256": str(getattr(observation, "image_sha256", "") or ""),
-        "image_bytes": len(bytes(getattr(observation, "image_png", b"") or b"")),
+        "image_bytes": len(bytes(getattr(observation, "image_data", b"") or b"")),
         "frame": frame.to_dict() if hasattr(frame, "to_dict") else None,
         "active_window": _active_window_summary(getattr(observation, "active_window", None)),
         "windows_total": len(tuple(getattr(observation, "windows", ()) or ())),
@@ -388,15 +388,21 @@ def computer_tools(runtime: "ComputerUseRuntime") -> tuple[AgentTool, ...]:
             data = snapshot.to_safe_dict(control_limit=int(arguments.get("control_limit", 80)))
             if bool(arguments.get("save_screenshot", False)):
                 raw_path = str(arguments.get("path") or "").strip()
+                # The capture profile decides the encoding, so the caller's
+                # extension has to agree with the bytes actually being written.
+                suffix = snapshot.observation.image_suffix
                 if raw_path:
                     relative = Path(raw_path)
-                    if relative.suffix.casefold() != ".png":
-                        raise ValueError("computer_observe screenshot path must end in .png")
+                    if relative.suffix.casefold() != suffix:
+                        raise ValueError(
+                            f"computer_observe screenshot path must end in {suffix} "
+                            "for the active capture profile"
+                        )
                 else:
-                    relative = Path("computer-screenshots") / f"{uuid.uuid4().hex[:16]}.png"
+                    relative = Path("computer-screenshots") / f"{uuid.uuid4().hex[:16]}{suffix}"
                 target = context.resolve_workspace_path(relative.as_posix())
                 target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_bytes(snapshot.observation.image_png)
+                target.write_bytes(snapshot.observation.image_data)
                 data["screenshot_path"] = relative.as_posix()
             data["trace"] = _trace_meta(runtime, context)
             _trace(

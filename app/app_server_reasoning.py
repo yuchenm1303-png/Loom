@@ -29,19 +29,31 @@ _CAPABILITY_MATCHERS: dict[str, Callable[[str], bool]] = {
 }
 
 
-def _is_browser_setting(capability: str) -> bool:
-    """Detect a browser preference inside the desktop settings-update envelope."""
+def _setting_path(capability: str) -> str:
+    """Read the changed settings path out of the desktop settings-update envelope."""
 
     raw = str(capability or "").strip()
     if not raw.startswith(SETTINGS_UPDATE_PREFIX):
-        return False
+        return ""
     try:
         payload = json.loads(raw[len(SETTINGS_UPDATE_PREFIX):])
     except (json.JSONDecodeError, ValueError):
-        return False
+        return ""
     if not isinstance(payload, dict):
-        return False
-    return str(payload.get("path") or "").startswith("browser.")
+        return ""
+    return str(payload.get("path") or "")
+
+
+def _is_browser_setting(capability: str) -> bool:
+    """Detect a browser preference inside the desktop settings-update envelope."""
+
+    return _setting_path(capability).startswith("browser.")
+
+
+def _is_computer_setting(capability: str) -> bool:
+    """Detect a Computer Use preference inside the settings-update envelope."""
+
+    return _setting_path(capability).startswith("computer.")
 
 
 class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService):
@@ -61,6 +73,29 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
         snapshot = self.settings_store.snapshot()
         self._apply_capability_settings(snapshot)
         self._apply_browser_settings(snapshot)
+        self._apply_computer_settings(snapshot)
+
+    def _apply_computer_settings(self, settings: dict[str, Any]) -> str:
+        """Point the Computer Use operator at the stored screenshot quality.
+
+        Returns an empty string on success, or a reason the stored choice could
+        not be honoured. Like the browser path, a preference Loom cannot satisfy
+        must not stop the desktop from starting.
+        """
+
+        apply = getattr(self.runtime, "computer_set_capture_profile", None)
+        if not callable(apply):
+            return ""
+        raw = settings.get("computer")
+        preferences = dict(raw) if isinstance(raw, dict) else {}
+        quality = str(preferences.get("screenshotQuality") or "").strip()
+        if not quality:
+            return ""
+        try:
+            apply(quality)
+            return ""
+        except Exception as exc:
+            return f"{type(exc).__name__}: {exc}"
 
     def _apply_browser_settings(self, settings: dict[str, Any]) -> str:
         """Point the browser layer at whichever browser the user selected.
@@ -567,6 +602,7 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
         # other desktop setting, so the changed path is the only signal that the
         # browser connection has to be rebuilt.
         browser_change = _is_browser_setting(capability)
+        computer_change = _is_computer_setting(capability)
         previous = self.settings_store.snapshot() if browser_change else None
         settings = self.settings_store.set_capability(capability, enabled)
         self._apply_capability_settings(settings)
@@ -577,6 +613,7 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
                 # Keep the stored choice and the live connection in agreement.
                 settings = self.settings_store.replace(previous)
                 self._apply_browser_settings(settings)
+        computer_error = self._apply_computer_settings(settings) if computer_change else ""
         updated = self.runtime_status()
         self._notify(
             "runtime/updated",
@@ -588,6 +625,8 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
         result: dict[str, Any] = {"settings": settings, "runtime": updated}
         if browser_error:
             result["browserWarning"] = browser_error
+        if computer_error:
+            result["computerWarning"] = computer_error
         return result
 
 

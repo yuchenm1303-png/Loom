@@ -46,7 +46,7 @@ def _observation() -> ComputerObservation:
     return ComputerObservation(
         observation_id="obs",
         frame=frame,
-        image_png=b"fake-png",
+        image_data=b"fake-png",
         active_window=window,
         windows=(window,),
         controls=(
@@ -241,3 +241,87 @@ def test_gui_plus_environment_configuration_prefers_dedicated_computer_key_witho
 
 def test_gui_plus_environment_configuration_is_optional_without_a_runtime_secret():
     assert AlibabaGUIPlusGroundingBackend.from_environment({}, client=_FakeClient("unused")) is None
+
+
+def _observation_with_background_windows() -> ComputerObservation:
+    """A foreground app plus two others that only the window list can reveal."""
+
+    frame = ComputerFrame(
+        frame_id="frame",
+        origin_x=0,
+        origin_y=0,
+        width=1000,
+        height=800,
+        window_id="0x1",
+    )
+    foreground = ComputerWindow(
+        window_id="0x1",
+        title="Loom",
+        rect=ComputerRect(0, 0, 1000, 800),
+        foreground=True,
+    )
+    wechat = ComputerWindow(
+        window_id="0x30ef2",
+        title="WeChat",
+        process_name="WeChat.exe",
+        rect=ComputerRect(1059, 479, 1501, 1060),
+    )
+    untitled = ComputerWindow(window_id="0x9", title="   ")
+    return ComputerObservation(
+        observation_id="obs",
+        frame=frame,
+        image_data=b"fake-jpeg",
+        image_media_type="image/jpeg",
+        active_window=foreground,
+        windows=(foreground, wechat, untitled),
+        controls=(),
+    )
+
+
+def test_background_windows_reach_the_policy_prompt():
+    """A screenshot of the foreground window cannot show what else is running.
+
+    Without this list the only route to a background application is the desktop
+    or the Start menu, which in a real trace cost three steps and 67 seconds to
+    reach an app that was already open.
+    """
+
+    fake = _FakeClient(_prediction('{"action":"switch_window","window_id":"0x30ef2"}'))
+    backend = AlibabaGUIPlusGroundingBackend(api_key="secret", client=fake)
+
+    prediction = backend.predict("Open WeChat", _observation_with_background_windows())
+
+    prompt = fake.completions.calls[0]["messages"][1]["content"][1]["text"]
+    assert "0x30ef2" in prompt
+    assert "WeChat" in prompt
+    # The foreground window is already in the screenshot, and a window with no
+    # title is not addressable, so neither belongs in the switch list.
+    assert "0x1:" not in prompt
+    assert "0x9" not in prompt
+
+    assert prediction.action.type is ComputerActionType.SWITCH_WINDOW
+    assert prediction.action.window_id == "0x30ef2"
+
+
+def test_switch_window_is_offered_in_the_action_vocabulary():
+    """The executor has always supported it; the policy could never ask for it."""
+
+    backend = AlibabaGUIPlusGroundingBackend(api_key="secret", client=_FakeClient("unused"))
+    assert "switch_window" in backend.system_prompt
+
+
+def test_gui_plus_switch_window_requires_a_target():
+    with pytest.raises(ValueError):
+        parse_gui_plus_prediction(_prediction('{"action":"switch_window"}'))
+
+
+def test_gui_plus_screenshot_media_type_follows_the_capture_profile():
+    """A JPEG capture must not be announced to the provider as a PNG."""
+
+    fake = _FakeClient(_prediction('{"action":"wait","time":1}'))
+    backend = AlibabaGUIPlusGroundingBackend(api_key="secret", client=fake)
+
+    backend.predict("Wait", _observation_with_background_windows())
+
+    url = fake.completions.calls[0]["messages"][1]["content"][0]["image_url"]["url"]
+    assert url.startswith("data:image/jpeg;base64,")
