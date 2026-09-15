@@ -1,5 +1,6 @@
 import { Download, ExternalLink } from "lucide-react";
 import { useEffect, useState } from "react";
+import { SettingsConnectorsBridge } from "./SettingsConnectorsBridge";
 import "./SettingsComputerLogExport.css";
 
 type DiagnosticLogKind = "computer" | "browser";
@@ -98,22 +99,29 @@ export function SettingsComputerLogExport() {
     }
   }
 
-  if (!kind) return null;
-  const label = labels(kind);
+  const logExport = kind ? (() => {
+    const label = labels(kind);
+    return (
+      <div className="settings-computer-log-export" role="status" aria-live="polite">
+        <button type="button" onClick={() => void exportLogs()} disabled={busy}>
+          <Download size={14} strokeWidth={1.85} />
+          <span>{busy ? label.exporting : label.export}</span>
+        </button>
+        {archivePath ? (
+          <button type="button" className="settings-computer-log-reveal" onClick={() => void revealArchive()} title={archivePath}>
+            <ExternalLink size={13} strokeWidth={1.8} />
+            <span>{summary || "Logs exported"}</span>
+          </button>
+        ) : null}
+        {error ? <span className="settings-computer-log-error" title={error}>{error}</span> : null}
+      </div>
+    );
+  })() : null;
 
   return (
-    <div className="settings-computer-log-export" role="status" aria-live="polite">
-      <button type="button" onClick={() => void exportLogs()} disabled={busy}>
-        <Download size={14} strokeWidth={1.85} />
-        <span>{busy ? label.exporting : label.export}</span>
-      </button>
-      {archivePath ? (
-        <button type="button" className="settings-computer-log-reveal" onClick={() => void revealArchive()} title={archivePath}>
-          <ExternalLink size={13} strokeWidth={1.8} />
-          <span>{summary || "Logs exported"}</span>
-        </button>
-      ) : null}
-      {error ? <span className="settings-computer-log-error" title={error}>{error}</span> : null}
-    </div>
+    <>
+      <SettingsConnectorsBridge />
+      {logExport}
+    </>
   );
 }
