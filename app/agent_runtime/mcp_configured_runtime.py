@@ -17,19 +17,6 @@ from .step import StepContext
 from .tools import ToolRegistry
 
 
-class _DisabledComputerGrounder:
-    """Constructor sentinel that prevents legacy grounder auto-discovery.
-
-    ComputerUseRuntime historically looked at GUI-Plus/UI-TARS environment
-    variables during construction. The single-loop runtime must not instantiate a
-    second model at all, even if those old variables are still present on a user's
-    machine. This object occupies the constructor slot only; it is removed from
-    ComputerSessionStore immediately after initialization.
-    """
-
-    name = "disabled-single-loop"
-
-
 class ConfiguredMCPRuntime(SingleLoopComputerRuntime, MCPRuntime):
     """Default Loom runtime with single-loop Computer Use plus exact MCP binding.
 
@@ -78,21 +65,10 @@ class ConfiguredMCPRuntime(SingleLoopComputerRuntime, MCPRuntime):
             kwargs["computer_operator"] = SingleLoopWindowsOperator()
             kwargs["auto_configure_computer"] = False
 
-        # Production single-loop Computer Use must not auto-create GUI-Plus or
-        # UI-TARS from stale environment variables. A constructor sentinel keeps
-        # ComputerUseRuntime from doing that; it is removed immediately after the
-        # shared Windows operator/session store has been created.
-        kwargs["computer_grounder"] = _DisabledComputerGrounder()
-        kwargs["computer_model_profile"] = None
-        kwargs["computer_grounder_kind"] = ""
-
+        # SingleLoopComputerRuntime itself owns the invariant that no legacy
+        # GUI-Plus/UI-TARS grounder can be instantiated. Keep product assembly
+        # concerned only with the concrete OS operator.
         super().__init__(*args, mcp_servers=tuple(resolved_servers or ()), **kwargs)
-
-        if self.computer_sessions is not None:
-            self.computer_sessions.grounder = None
-        self.computer_model_profile = ""
-        self.computer_grounder_name = "disabled"
-        self.computer_grounder_kind = "disabled"
 
     @staticmethod
     def _identity_hash(value: object) -> str:
