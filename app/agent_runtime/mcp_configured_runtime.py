@@ -9,6 +9,8 @@ from typing import Any, Sequence
 
 from . import mcp_runtime as _mcp_runtime
 from .computer_single_loop_runtime import SingleLoopComputerRuntime
+from .computer_windows import windows_computer_available
+from .computer_windows_single_loop import SingleLoopWindowsOperator
 from .contracts import AgentStatus
 from .mcp_runtime import MCPConfigurationError, MCPRuntime, MCPServerConfig, McpBinding
 from .step import StepContext
@@ -67,6 +69,14 @@ class ConfiguredMCPRuntime(SingleLoopComputerRuntime, MCPRuntime):
             resolved_servers = _mcp_runtime.load_mcp_server_configs(selected)
         elif mcp_config_path is not None:
             self.mcp_config_path = str(Path(mcp_config_path).expanduser().resolve())
+
+        # Install the direct visual Windows operator before ComputerUseRuntime has
+        # a chance to auto-create the legacy one. Custom embedders can still pass
+        # their own operator explicitly, and non-Windows hosts remain disabled.
+        auto_computer = bool(kwargs.get("auto_configure_computer", True))
+        if kwargs.get("computer_operator") is None and auto_computer and windows_computer_available():
+            kwargs["computer_operator"] = SingleLoopWindowsOperator()
+            kwargs["auto_configure_computer"] = False
 
         # Production single-loop Computer Use must not auto-create GUI-Plus or
         # UI-TARS from stale environment variables. A constructor sentinel keeps
