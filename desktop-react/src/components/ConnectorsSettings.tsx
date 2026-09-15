@@ -25,6 +25,8 @@ type ConnectorStatus = {
   bindingId?: string;
   githubCliAvailable?: boolean;
   deviceFlowAvailable?: boolean;
+  webOAuthAvailable?: boolean;
+  preferredBrowserLogin?: "web" | "device" | "github-cli" | string;
   error?: string;
 };
 
@@ -34,6 +36,8 @@ type AuthorizationState = {
   status?: string;
   userCode?: string;
   verificationUrl?: string;
+  authorizationUrl?: string;
+  redirectUrl?: string;
   expiresIn?: number;
   pollInterval?: number;
 };
@@ -62,6 +66,7 @@ function DetailRow({ label, value, detail }: { label: string; value: string; det
 
 export function ConnectorsSettings({ running }: ConnectorsSettingsProps) {
   const { language } = useI18n();
+  const isChinese = language === "zh-CN";
   const [connectors, setConnectors] = useState<ConnectorStatus[]>([]);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
@@ -143,7 +148,7 @@ export function ConnectorsSettings({ running }: ConnectorsSettingsProps) {
           setAuthorization(null);
           if (Array.isArray(result.runtime?.connectors)) setConnectors(result.runtime!.connectors!);
           else await load();
-          setNotice("GitHub connected.");
+          setNotice(isChinese ? "GitHub 已连接。" : "GitHub connected.");
           return;
         }
         setAuthorization(next);
@@ -162,9 +167,19 @@ export function ConnectorsSettings({ running }: ConnectorsSettingsProps) {
     const auth = result?.authorization;
     if (!auth?.sessionId) return;
     setAuthorization(auth);
-    setNotice(auth.mode === "github-cli"
-      ? "GitHub browser authorization started. The one-time code was copied to your clipboard by GitHub CLI."
-      : "GitHub browser authorization started. Complete the device confirmation in your browser.");
+    if (auth.mode === "web") {
+      setNotice(isChinese
+        ? "GitHub 已在默认浏览器中打开。授权完成后会自动返回 Loom，无需复制验证码。"
+        : "GitHub opened in your browser. Loom will finish the connection automatically after authorization.");
+    } else if (auth.mode === "github-cli") {
+      setNotice(isChinese
+        ? "此构建未配置 Loom Web OAuth，已使用 GitHub CLI 浏览器登录作为备用方式。"
+        : "Loom Web OAuth is not configured in this build, so GitHub CLI browser login is being used as a fallback.");
+    } else {
+      setNotice(isChinese
+        ? "此构建未配置 Loom Web OAuth，已进入 GitHub Device Flow 备用登录。"
+        : "Loom Web OAuth is not configured in this build, so GitHub Device Flow is being used as a fallback.");
+    }
     pollAuthorization(auth);
   };
 
@@ -177,7 +192,7 @@ export function ConnectorsSettings({ running }: ConnectorsSettingsProps) {
     const result = await manage("connect_token", { token });
     if (result?.connector?.connected) {
       setTokenDraft("");
-      setNotice("GitHub token validated and stored in the OS credential vault.");
+      setNotice(isChinese ? "GitHub Token 已验证并保存到系统凭据库。" : "GitHub token validated and stored in the OS credential vault.");
     }
   };
 
@@ -186,11 +201,17 @@ export function ConnectorsSettings({ running }: ConnectorsSettingsProps) {
     if (!code) return;
     try {
       await navigator.clipboard.writeText(code);
-      setNotice("Device code copied.");
+      setNotice(isChinese ? "验证码已复制。" : "Device code copied.");
     } catch {
       setError("Could not copy the device code.");
     }
   };
+
+  const authModeLabel = authorization?.mode === "web"
+    ? "Browser OAuth + PKCE"
+    : authorization?.mode === "github-cli"
+      ? "GitHub CLI fallback"
+      : "Device Flow fallback";
 
   return (
     <>
@@ -198,7 +219,9 @@ export function ConnectorsSettings({ running }: ConnectorsSettingsProps) {
         <div>
           <span className="settings-eyebrow">External services</span>
           <h1>Connectors</h1>
-          <p>Connect accounts once, verify health, and expose authenticated service tools without putting secrets in Loom settings.</p>
+          <p>{isChinese
+            ? "一次连接外部账号，Loom 会安全地复用授权，同时继续遵守每一步的权限与审批边界。"
+            : "Connect an external account once. Loom reuses the authorization safely while preserving per-Step permissions and approvals."}</p>
         </div>
         <button className="mature-action-button" type="button" disabled={running || Boolean(busy)} onClick={() => void load()}>
           <RefreshCw size={14} />Refresh
@@ -209,7 +232,7 @@ export function ConnectorsSettings({ running }: ConnectorsSettingsProps) {
         <div className="settings-callout warning"><CircleAlert size={16} /><div><strong>Finish the active turn before changing authorization.</strong><span>Connector identity is frozen into each sampled Step, so Loom never swaps accounts underneath an action already being reviewed or executed.</span></div></div>
       ) : null}
       {error ? <div className="settings-callout warning"><CircleAlert size={16} /><div><strong>Connector action failed</strong><span>{error}</span></div></div> : null}
-      {notice ? <div className="settings-callout"><Check size={16} /><div><strong>{notice}</strong><span>New model Steps will use the updated connector binding.</span></div></div> : null}
+      {notice ? <div className="settings-callout"><Check size={16} /><div><strong>{notice}</strong><span>{isChinese ? "新的模型 Step 会使用更新后的连接。" : "New model Steps will use the updated connector binding."}</span></div></div> : null}
 
       <section className="settings-section">
         <div className="settings-section-heading"><h2>GitHub</h2><p>Repositories, files, code search, issues, pull requests, branches, and Actions runs.</p></div>
@@ -218,30 +241,71 @@ export function ConnectorsSettings({ running }: ConnectorsSettingsProps) {
             <span className="mature-preference-icon"><Github size={17} strokeWidth={1.8} /></span>
             <div className="mature-preference-copy">
               <strong>{github.connected
-                ? (language === "zh-CN" ? `已连接账号：${github.account || "GitHub 用户"}` : `Connected as ${github.account || "GitHub user"}`)
-                : "Connect GitHub"}</strong>
-              <span>{github.connected ? "Authenticated GitHub tools are available to new agent Steps." : "Use browser login, import an existing gh session, or store a personal access token in the OS keychain."}</span>
+                ? (isChinese ? `已连接账号：${github.account || "GitHub 用户"}` : `Connected as ${github.account || "GitHub user"}`)
+                : (isChinese ? "连接 GitHub" : "Connect GitHub")}</strong>
+              <span>{github.connected
+                ? (isChinese ? "GitHub 工具已可供新的 Agent Step 使用。" : "Authenticated GitHub tools are available to new agent Steps.")
+                : github.webOAuthAvailable
+                  ? (isChinese ? "点击一次，在浏览器中授权；GitHub 会自动返回 Loom 完成连接。" : "One click opens GitHub in your browser; authorization returns to Loom automatically.")
+                  : (isChinese ? "当前构建尚未配置 Loom 的 GitHub OAuth App，将在必要时使用备用登录方式。" : "This build has no Loom GitHub OAuth App configured yet, so a fallback sign-in method will be used when needed.")}</span>
             </div>
             <div className="mature-preference-control"><StatusPill connected={Boolean(github.connected)} /></div>
           </div>
 
           <div className="mature-preference-row">
             <span className="mature-preference-icon"><Link2 size={17} strokeWidth={1.8} /></span>
-            <div className="mature-preference-copy"><strong>Browser sign-in</strong><span>Uses Loom's GitHub device OAuth client when configured; otherwise falls back to authenticated GitHub CLI web login.</span></div>
+            <div className="mature-preference-copy">
+              <strong>{isChinese ? "浏览器授权" : "Browser sign-in"}</strong>
+              <span>{github.webOAuthAvailable
+                ? (isChinese ? "使用 GitHub Web OAuth、PKCE、随机 state 与 127.0.0.1 动态回调；无需复制设备码。" : "Uses GitHub Web OAuth, PKCE, random state, and a dynamic 127.0.0.1 callback. No device code is required.")
+                : (isChinese ? "正式 Web OAuth 未配置时，Loom 会安全降级到可用的 GitHub 登录方式。" : "Until Web OAuth is configured, Loom safely falls back to an available GitHub sign-in method.")}</span>
+            </div>
             <div className="mature-preference-control">
               <button className="mature-action-button" type="button" disabled={running || Boolean(busy)} onClick={() => void startBrowserLogin()}>
-                <Github size={14} />{github.connected ? "Reconnect" : "Connect"}
+                <Github size={14} />{github.connected ? (isChinese ? "重新连接" : "Reconnect") : (isChinese ? "连接 GitHub" : "Connect GitHub")}
               </button>
             </div>
           </div>
+        </div>
+      </section>
 
+      {authorization ? (
+        <section className="settings-section">
+          <div className="settings-section-heading">
+            <h2>{isChinese ? "正在连接 GitHub" : "Connecting GitHub"}</h2>
+            <p>{authorization.mode === "web"
+              ? (isChinese ? "请在浏览器中完成授权。完成后 Loom 会自动检测并连接，不需要粘贴任何验证码。" : "Finish authorization in your browser. Loom will detect it and connect automatically; there is no code to paste.")
+              : (isChinese ? "当前正在使用备用授权方式。完成 GitHub 页面上的确认后，Loom 会自动继续。" : "A fallback authorization method is active. Finish the GitHub confirmation and Loom will continue automatically.")}</p>
+          </div>
+          <div className="settings-card settings-detail-list">
+            <DetailRow label="Mode" value={authModeLabel} />
+            {authorization.mode === "web" ? (
+              <DetailRow
+                label={isChinese ? "本机回调" : "Local callback"}
+                value="127.0.0.1 · dynamic port"
+                detail={isChinese ? "仅监听本机；授权完成即关闭。" : "Loopback-only listener; closes as soon as authorization completes."}
+              />
+            ) : (
+              <>
+                <DetailRow label="Verification" value={authorization.verificationUrl || "https://github.com/login/device"} />
+                <DetailRow label="Device code" value={authorization.userCode || "Copied by GitHub CLI"} />
+                {authorization.userCode ? <div className="settings-detail-row"><div><strong>{isChinese ? "复制验证码" : "Copy code"}</strong><span>{isChinese ? "仅备用 Device Flow 需要这一步。" : "Only the fallback Device Flow requires this step."}</span></div><button className="mature-action-button" type="button" onClick={() => void copyCode()}><Copy size={14} />Copy</button></div> : null}
+              </>
+            )}
+          </div>
+        </section>
+      ) : null}
+
+      <section className="settings-section">
+        <div className="settings-section-heading"><h2>{isChinese ? "高级 / 恢复方式" : "Advanced / recovery"}</h2><p>{isChinese ? "正常连接不需要这些方式；仅在企业环境、开发调试或 OAuth 不可用时使用。" : "Normal sign-in does not require these options. Use them for managed environments, development, or recovery."}</p></div>
+        <div className="settings-card mature-preference-list">
           <div className="mature-preference-row">
             <span className="mature-preference-icon"><Terminal size={17} strokeWidth={1.8} /></span>
-            <div className="mature-preference-copy"><strong>Import GitHub CLI session</strong><span>{github.githubCliAvailable ? "Reuse the account already authorized by `gh auth login`. Loom copies the token into its own OS-keychain entry." : "GitHub CLI was not detected on this machine."}</span></div>
+            <div className="mature-preference-copy"><strong>Import GitHub CLI session</strong><span>{github.githubCliAvailable ? "Reuse an account already authorized by `gh auth login`. Loom copies the token into its own OS-keychain entry." : "GitHub CLI was not detected on this machine."}</span></div>
             <div className="mature-preference-control">
               <button className="mature-action-button" type="button" disabled={running || Boolean(busy) || !github.githubCliAvailable} onClick={async () => {
                 const result = await manage("import_gh");
-                if (result?.connector?.connected) setNotice("GitHub CLI authorization imported into Loom.");
+                if (result?.connector?.connected) setNotice(isChinese ? "已导入 GitHub CLI 授权。" : "GitHub CLI authorization imported into Loom.");
               }}><Terminal size={14} />Import gh</button>
             </div>
           </div>
@@ -257,18 +321,6 @@ export function ConnectorsSettings({ running }: ConnectorsSettingsProps) {
         </div>
       </section>
 
-      {authorization ? (
-        <section className="settings-section">
-          <div className="settings-section-heading"><h2>Authorization in progress</h2><p>Finish the GitHub confirmation, then Loom will pick up the connected account automatically.</p></div>
-          <div className="settings-card settings-detail-list">
-            <DetailRow label="Mode" value={authorization.mode || "device"} />
-            <DetailRow label="Verification" value={authorization.verificationUrl || "https://github.com/login/device"} />
-            <DetailRow label="Device code" value={authorization.userCode || "Copied by GitHub CLI"} />
-            {authorization.userCode ? <div className="settings-detail-row"><div><strong>Copy code</strong><span>Use this code on GitHub's device page.</span></div><button className="mature-action-button" type="button" onClick={() => void copyCode()}><Copy size={14} />Copy</button></div> : null}
-          </div>
-        </section>
-      ) : null}
-
       <section className="settings-section">
         <div className="settings-section-heading"><h2>Connection details</h2><p>Only non-secret metadata is shown here or included in diagnostics.</p></div>
         <div className="settings-card settings-detail-list">
@@ -276,8 +328,9 @@ export function ConnectorsSettings({ running }: ConnectorsSettingsProps) {
           <DetailRow label="Credential source" value={github.credentialSource || "None"} />
           <DetailRow label="OAuth scopes" value={github.scopes || "Not reported"} />
           <DetailRow label="Binding" value={github.bindingId || "github:disconnected"} detail="Process-local credential identity; it is not the token." />
-          <DetailRow label="Browser device OAuth" value={github.deviceFlowAvailable ? "Configured" : "Uses GitHub CLI fallback when available"} />
-          <DetailRow label="GitHub CLI" value={github.githubCliAvailable ? "Available" : "Not detected"} />
+          <DetailRow label="Browser OAuth" value={github.webOAuthAvailable ? "Web OAuth + PKCE ready" : "Not configured in this build"} />
+          <DetailRow label="Device OAuth fallback" value={github.deviceFlowAvailable ? "Available" : "Not configured"} />
+          <DetailRow label="GitHub CLI fallback" value={github.githubCliAvailable ? "Available" : "Not detected"} />
           {github.error && !github.connected ? <DetailRow label="Last check" value={github.error} /> : null}
         </div>
       </section>
@@ -297,7 +350,7 @@ export function ConnectorsSettings({ running }: ConnectorsSettingsProps) {
           <div><strong>Disconnect GitHub from Loom</strong><span>This removes Loom's keychain credential and creates an explicit disconnect marker. It does not sign out GitHub CLI or delete environment variables.</span></div>
           <button className="mature-action-button" type="button" disabled={running || Boolean(busy)} onClick={async () => {
             const result = await manage("disconnect");
-            if (result?.connector && !result.connector.connected) setNotice("GitHub disconnected from Loom.");
+            if (result?.connector && !result.connector.connected) setNotice(isChinese ? "GitHub 已从 Loom 断开。" : "GitHub disconnected from Loom.");
           }}><LogOut size={14} />Disconnect</button>
         </div>
       ) : null}
