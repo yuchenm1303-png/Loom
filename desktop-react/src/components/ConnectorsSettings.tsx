@@ -11,6 +11,7 @@ import {
   Terminal,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useI18n } from "../i18n";
 
 
 type ConnectorStatus = {
@@ -60,6 +61,7 @@ function DetailRow({ label, value, detail }: { label: string; value: string; det
 }
 
 export function ConnectorsSettings({ running }: ConnectorsSettingsProps) {
+  const { language } = useI18n();
   const [connectors, setConnectors] = useState<ConnectorStatus[]>([]);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
@@ -215,7 +217,9 @@ export function ConnectorsSettings({ running }: ConnectorsSettingsProps) {
           <div className="mature-preference-row">
             <span className="mature-preference-icon"><Github size={17} strokeWidth={1.8} /></span>
             <div className="mature-preference-copy">
-              <strong>{github.connected ? `Connected as ${github.account || "GitHub user"}` : "Connect GitHub"}</strong>
+              <strong>{github.connected
+                ? (language === "zh-CN" ? `已连接账号：${github.account || "GitHub 用户"}` : `Connected as ${github.account || "GitHub user"}`)
+                : "Connect GitHub"}</strong>
               <span>{github.connected ? "Authenticated GitHub tools are available to new agent Steps." : "Use browser login, import an existing gh session, or store a personal access token in the OS keychain."}</span>
             </div>
             <div className="mature-preference-control"><StatusPill connected={Boolean(github.connected)} /></div>

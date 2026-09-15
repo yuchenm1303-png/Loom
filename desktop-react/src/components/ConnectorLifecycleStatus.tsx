@@ -1,5 +1,6 @@
 import { Clock3, RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useI18n, type LoomLanguage } from "../i18n";
 
 
 type ConnectorLifecycle = {
@@ -12,13 +13,14 @@ type ConnectorLifecycle = {
   refreshTokenExpiresIn?: number | null;
 };
 
-function duration(value: number | null | undefined): string {
+function duration(value: number | null | undefined, language: LoomLanguage): string {
+  const zh = language === "zh-CN";
   if (value === null || value === undefined) return "Not reported";
   const seconds = Math.max(0, Number(value) || 0);
-  if (seconds <= 0) return "Expired";
-  if (seconds < 3600) return `${Math.max(1, Math.ceil(seconds / 60))} min`;
-  if (seconds < 86_400) return `${(seconds / 3600).toFixed(1)} h`;
-  return `${Math.ceil(seconds / 86_400)} d`;
+  if (seconds <= 0) return zh ? "已过期" : "Expired";
+  if (seconds < 3600) return `${Math.max(1, Math.ceil(seconds / 60))} ${zh ? "分钟" : "min"}`;
+  if (seconds < 86_400) return `${(seconds / 3600).toFixed(1)} ${zh ? "小时" : "h"}`;
+  return `${Math.ceil(seconds / 86_400)} ${zh ? "天" : "d"}`;
 }
 
 function DetailRow({ label, value, detail }: { label: string; value: string; detail?: string }) {
@@ -31,6 +33,7 @@ function DetailRow({ label, value, detail }: { label: string; value: string; det
 }
 
 export function ConnectorLifecycleStatus() {
+  const { language } = useI18n();
   const [github, setGithub] = useState<ConnectorLifecycle | null>(null);
 
   useEffect(() => {
@@ -76,10 +79,10 @@ export function ConnectorLifecycleStatus() {
           detail={github.refreshable ? "Loom refreshes inside a five-minute safety window." : "PAT, environment, and GitHub CLI credentials use their own lifetime."}
         />
         {github.accessTokenExpiresIn !== null && github.accessTokenExpiresIn !== undefined ? (
-          <DetailRow label="Access token" value={`${duration(github.accessTokenExpiresIn)} remaining`} detail="The next Step rotates this credential before it reaches the safety window." />
+          <DetailRow label="Access token" value={`${duration(github.accessTokenExpiresIn, language)} ${language === "zh-CN" ? "剩余" : "remaining"}`} detail="The next Step rotates this credential before it reaches the safety window." />
         ) : null}
         {github.refreshTokenExpiresIn !== null && github.refreshTokenExpiresIn !== undefined ? (
-          <DetailRow label="Refresh token" value={`${duration(github.refreshTokenExpiresIn)} remaining`} detail="Reconnect GitHub after the refresh credential itself expires." />
+          <DetailRow label="Refresh token" value={`${duration(github.refreshTokenExpiresIn, language)} ${language === "zh-CN" ? "剩余" : "remaining"}`} detail="Reconnect GitHub after the refresh credential itself expires." />
         ) : null}
         {github.refreshError ? <DetailRow label="Renewal warning" value={github.refreshError} /> : null}
       </div>

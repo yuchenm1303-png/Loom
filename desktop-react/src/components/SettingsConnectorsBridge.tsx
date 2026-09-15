@@ -37,7 +37,9 @@ export function SettingsConnectorsBridge() {
       setRunning(footerText.includes("Turn active"));
 
       const integrations = Array.from(nav.querySelectorAll<HTMLElement>(":scope > section")).find((section) =>
-        section.querySelector(".settings-nav-label")?.textContent?.trim() === "Integrations",
+        Array.from(section.querySelectorAll<HTMLButtonElement>(":scope > button")).some((button) =>
+          button.textContent?.trim() === "MCP",
+        ),
       );
       if (integrations) {
         const mcp = Array.from(integrations.querySelectorAll<HTMLButtonElement>(":scope > button")).find((button) =>
