@@ -177,13 +177,33 @@ def test_default_configured_mcp_stack_uses_single_loop_not_ufo_driver(tmp_path):
 
     assert isinstance(runtime, SingleLoopComputerRuntime)
     assert isinstance(runtime, ComputerUseRuntime)
+    assert runtime.computer_sessions is not None
+    assert runtime.computer_sessions.grounder is None
     assert _visible_computer_tools(runtime) == {"computer_action", "computer_status"}
     status = runtime.computer_status(session.session_id)
     assert status["architecture"] == "single-model-single-loop"
     assert status["model_control"] == "current conversation model via Loom TurnRunner"
+    assert status["grounder"] == "disabled"
+    assert status["legacy_grounder_active"] is False
     assert status["ufo_default_path"] is False
     runtime.close()
     assert operator.closed is True
+
+
+def test_stale_grounder_environment_cannot_reenable_second_visual_model(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOOM_COMPUTER_GROUNDER", "ui-tars")
+    monkeypatch.setenv("LOOM_COMPUTER_MODEL_PROFILE", "legacy-visual-profile")
+
+    runtime, _, _, session = _runtime(tmp_path, [ModelResponse(text="done")])
+
+    assert runtime.computer_sessions is not None
+    assert runtime.computer_sessions.grounder is None
+    status = runtime.computer_status(session.session_id)
+    assert status["grounder"] == "disabled"
+    assert status["grounder_kind"] == "disabled"
+    assert status["model_profile"] == ""
+    assert status["legacy_grounder_active"] is False
+    runtime.close()
 
 
 def test_single_loop_tool_surface_is_one_action_plus_status(tmp_path):
