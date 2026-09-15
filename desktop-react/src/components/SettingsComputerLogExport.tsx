@@ -14,6 +14,7 @@ function humanBytes(value: unknown): string {
 }
 
 function activeSettingsPage(): DiagnosticLogKind | null {
+  if (document.querySelector(".settings-shell.settings-connectors-mode")) return null;
   const heading = document.querySelector(".settings-content h1")?.textContent?.trim().toLowerCase() || "";
   if (["computer use", "电脑控制", "计算机控制", "桌面控制"].includes(heading)) return "computer";
   if (["browser", "browser use", "浏览器", "浏览器自动化"].includes(heading)) return "browser";
@@ -51,7 +52,7 @@ export function SettingsComputerLogExport() {
     const refresh = () => setKind(activeSettingsPage());
     refresh();
     const observer = new MutationObserver(refresh);
-    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["class"] });
     const timer = window.setInterval(refresh, 350);
     return () => {
       observer.disconnect();
