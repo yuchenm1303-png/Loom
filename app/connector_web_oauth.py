@@ -51,6 +51,7 @@ class _LoopbackAuthSession:
     exchange_started: bool = False
     exchange_result: dict[str, Any] | None = None
     exchange_error: str = ""
+    expiry_timer: threading.Timer | None = None
     lock: threading.RLock = field(default_factory=threading.RLock)
 
 
@@ -133,6 +134,11 @@ class WebOAuthConnectorManager(RefreshingConnectorManager):
         session = self._web_auth_sessions.pop(str(session_id or ""), None)
         if session is None:
             return
+        if session.expiry_timer is not None:
+            try:
+                session.expiry_timer.cancel()
+            except Exception:
+                pass
         try:
             session.server.shutdown()
         except Exception:
@@ -145,38 +151,17 @@ class WebOAuthConnectorManager(RefreshingConnectorManager):
     @staticmethod
     def _handler(
         callback_path: str,
+        expected_state: str,
         callback_event: threading.Event,
         callback_payload: dict[str, str],
     ) -> type[BaseHTTPRequestHandler]:
         expected_path = callback_path
+        expected_oauth_state = expected_state
         event = callback_event
         payload = callback_payload
 
         class Handler(BaseHTTPRequestHandler):
-            def do_GET(self) -> None:  # noqa: N802 - stdlib callback name
-                parsed = urlsplit(self.path)
-                if parsed.path != expected_path:
-                    body = _error_page("This local callback path does not belong to the active Loom sign-in.")
-                    self.send_response(404)
-                    self.send_header("Content-Type", "text/html; charset=utf-8")
-                    self.send_header("Content-Length", str(len(body)))
-                    self.send_header("Cache-Control", "no-store")
-                    self.end_headers()
-                    self.wfile.write(body)
-                    return
-
-                values = parse_qs(parsed.query, keep_blank_values=True)
-                payload.clear()
-                for key in ("code", "state", "error", "error_description"):
-                    payload[key] = _first_query_value(values, key)
-                event.set()
-
-                if payload.get("error"):
-                    body = _error_page(payload.get("error_description") or payload.get("error") or "Authorization cancelled")
-                    status = 400
-                else:
-                    body = _success_page()
-                    status = 200
+            def _send(self, status: int, body: bytes) -> None:
                 self.send_response(status)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.send_header("Content-Length", str(len(body)))
@@ -184,6 +169,32 @@ class WebOAuthConnectorManager(RefreshingConnectorManager):
                 self.send_header("Pragma", "no-cache")
                 self.end_headers()
                 self.wfile.write(body)
+
+            def do_GET(self) -> None:  # noqa: N802 - stdlib callback name
+                parsed = urlsplit(self.path)
+                if parsed.path != expected_path:
+                    self._send(404, _error_page("This local callback path does not belong to the active Loom sign-in."))
+                    return
+
+                values = parse_qs(parsed.query, keep_blank_values=True)
+                payload.clear()
+                for key in ("code", "state", "error", "error_description"):
+                    payload[key] = _first_query_value(values, key)
+
+                returned_state = str(payload.get("state") or "")
+                if not returned_state or not secrets.compare_digest(returned_state, expected_oauth_state):
+                    payload["error"] = "state_mismatch"
+                    payload["error_description"] = "The OAuth state did not match the active Loom sign-in."
+                    event.set()
+                    self._send(400, _error_page(payload["error_description"]))
+                    return
+
+                event.set()
+                if payload.get("error"):
+                    body = _error_page(payload.get("error_description") or payload.get("error") or "Authorization cancelled")
+                    self._send(400, body)
+                    return
+                self._send(200, _success_page())
 
             def log_message(self, _format: str, *_args: Any) -> None:
                 return
@@ -198,7 +209,10 @@ class WebOAuthConnectorManager(RefreshingConnectorManager):
         callback_path = _callback_path(self.environment.get("LOOM_GITHUB_CALLBACK_PATH"))
         callback_event = threading.Event()
         callback_payload: dict[str, str] = {}
-        handler = self._handler(callback_path, callback_event, callback_payload)
+        session_id = secrets.token_urlsafe(18)
+        oauth_state = secrets.token_urlsafe(32)
+        verifier = secrets.token_urlsafe(64)
+        handler = self._handler(callback_path, oauth_state, callback_event, callback_payload)
         try:
             server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
         except OSError as exc:
@@ -207,9 +221,6 @@ class WebOAuthConnectorManager(RefreshingConnectorManager):
 
         port = int(server.server_address[1])
         redirect_uri = f"http://127.0.0.1:{port}{callback_path}"
-        session_id = secrets.token_urlsafe(18)
-        oauth_state = secrets.token_urlsafe(32)
-        verifier = secrets.token_urlsafe(64)
         challenge = _pkce_challenge(verifier)
         now = float(self.clock())
         ttl = _DEFAULT_AUTH_TTL_SECONDS
@@ -244,6 +255,10 @@ class WebOAuthConnectorManager(RefreshingConnectorManager):
             daemon=True,
         )
         thread.start()
+        timer = threading.Timer(ttl, self._close_web_session, args=(session_id,))
+        timer.daemon = True
+        session.expiry_timer = timer
+        timer.start()
 
         return {
             "sessionId": session_id,
@@ -277,9 +292,6 @@ class WebOAuthConnectorManager(RefreshingConnectorManager):
             error = str(response.get("error_description") or response.get("error") or "").strip()
             raise ConnectorError(error or "GitHub authorization returned no access token")
 
-        # Validate and commit the access token first. If refresh-token storage
-        # fails, the valid access token remains usable rather than turning a
-        # successful browser authorization into a false login failure.
         self._base_connect_token(access_token)
         refresh_token = str(response.get("refresh_token") or "").strip()
         refresh_warning = ""
@@ -296,7 +308,7 @@ class WebOAuthConnectorManager(RefreshingConnectorManager):
         now = float(self.wall_clock())
         access_ttl = max(0, int(response.get("expires_in") or 0))
         refresh_ttl = max(0, int(response.get("refresh_token_expires_in") or 0)) if refresh_token else 0
-        self.oauth_state._write(  # tightly-coupled secret-free metadata store
+        self.oauth_state._write(
             {
                 "schemaVersion": 1,
                 "github": {
