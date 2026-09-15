@@ -28,9 +28,9 @@ _INSTALLED = False
 
 
 def _connector_manager(runtime_home: Any):
-    from app.connectors import ConnectorManager
+    from app.connector_oauth_refresh import RefreshingConnectorManager
 
-    return ConnectorManager(runtime_home)
+    return RefreshingConnectorManager(runtime_home)
 
 
 def _mutating_action(action: str) -> bool:
