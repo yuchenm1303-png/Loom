@@ -10,8 +10,8 @@ import webbrowser
 from pathlib import Path
 from typing import Sequence
 
+from app.connector_web_oauth import WebOAuthConnectorManager
 from app.connectors import ConnectorError
-from app.connector_oauth_refresh import RefreshingConnectorManager
 
 
 def _runtime_home(value: str = "") -> Path:
@@ -29,8 +29,8 @@ def _parser() -> argparse.ArgumentParser:
     github = subparsers.add_parser("github", help="manage the GitHub connector")
     github_sub = github.add_subparsers(dest="github_command")
     github_sub.add_parser("status", help="show GitHub connector status")
-    login = github_sub.add_parser("login", help="start GitHub browser/device authorization")
-    login.add_argument("--no-browser", action="store_true", help="do not open the verification page automatically")
+    login = github_sub.add_parser("login", help="start GitHub browser authorization")
+    login.add_argument("--no-browser", action="store_true", help="do not open the GitHub authorization page automatically")
     github_sub.add_parser("import-gh", help="import the current authenticated GitHub CLI credential into Loom's keychain")
     github_sub.add_parser("token", help="read a GitHub token securely from the terminal/stdin and store it in the OS keychain")
     github_sub.add_parser("logout", help="disconnect GitHub from Loom without modifying GitHub CLI or environment credentials")
@@ -65,25 +65,34 @@ def _token_from_terminal() -> str:
     return sys.stdin.readline().strip()
 
 
-def _login(manager: RefreshingConnectorManager, *, open_browser: bool, as_json: bool) -> int:
+def _login(manager: WebOAuthConnectorManager, *, open_browser: bool, as_json: bool) -> int:
     started = manager.start_github_auth()
+    mode = str(started.get("mode") or "")
+    target = str(started.get("authorizationUrl") or started.get("verificationUrl") or "").strip()
+
     if as_json:
         _print(started, as_json=True)
+    elif mode == "web":
+        print("GitHub browser authorization started (OAuth + PKCE).")
+        print("After approval GitHub will return to Loom automatically.")
+        if target:
+            print(f"Open: {target}")
+    elif mode == "github-cli":
+        print("GitHub CLI browser authorization started as a fallback.")
+        print("Complete the GitHub confirmation opened by `gh`.")
     else:
-        mode = str(started.get("mode") or "")
-        url = str(started.get("verificationUrl") or "https://github.com/login/device")
+        print("GitHub Device Flow authorization started as a fallback.")
+        if target:
+            print(f"Open: {target}")
         code = str(started.get("userCode") or "")
-        if mode == "github-cli":
-            print("GitHub CLI browser authorization started.")
-            print("The one-time device code was copied to your clipboard by `gh`.")
-        else:
-            print(f"Open: {url}")
+        if code:
             print(f"Enter code: {code}")
-            if open_browser:
-                try:
-                    webbrowser.open(url, new=2)
-                except Exception:
-                    pass
+
+    if open_browser and target and mode != "github-cli":
+        try:
+            webbrowser.open(target, new=2)
+        except Exception:
+            pass
 
     session_id = str(started.get("sessionId") or "")
     interval = max(1.0, float(started.get("pollInterval") or 2))
@@ -106,7 +115,7 @@ def run_connector_cli(argv: Sequence[str] | None = None) -> int:
     if not args.command:
         _parser().print_help()
         return 2
-    manager = RefreshingConnectorManager(_runtime_home(args.home))
+    manager = WebOAuthConnectorManager(_runtime_home(args.home))
     try:
         if args.command == "list":
             if args.json:
