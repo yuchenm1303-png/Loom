@@ -26,6 +26,9 @@ type ConnectorStatus = {
   githubCliAvailable?: boolean;
   deviceFlowAvailable?: boolean;
   webOAuthAvailable?: boolean;
+  webOAuthSource?: "release-or-env" | "local" | string;
+  localWebOAuthConfigured?: boolean;
+  localWebOAuthClientId?: string;
   preferredBrowserLogin?: "web" | "device" | "github-cli" | string;
   error?: string;
 };
@@ -72,6 +75,8 @@ export function ConnectorsSettings({ running }: ConnectorsSettingsProps) {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [tokenDraft, setTokenDraft] = useState("");
+  const [oauthClientIdDraft, setOauthClientIdDraft] = useState("");
+  const [oauthClientSecretDraft, setOauthClientSecretDraft] = useState("");
   const [authorization, setAuthorization] = useState<AuthorizationState | null>(null);
   const pollTimer = useRef<number | null>(null);
 
@@ -79,6 +84,10 @@ export function ConnectorsSettings({ running }: ConnectorsSettingsProps) {
     () => connectors.find((item) => item.id === "github") ?? ({ id: "github", name: "GitHub" } as ConnectorStatus),
     [connectors],
   );
+
+  useEffect(() => {
+    if (github.localWebOAuthClientId) setOauthClientIdDraft(github.localWebOAuthClientId);
+  }, [github.localWebOAuthClientId]);
 
   const applyConnector = (connector?: ConnectorStatus) => {
     if (!connector?.id) return;
@@ -173,14 +182,40 @@ export function ConnectorsSettings({ running }: ConnectorsSettingsProps) {
         : "GitHub opened in your browser. Loom will finish the connection automatically after authorization.");
     } else if (auth.mode === "github-cli") {
       setNotice(isChinese
-        ? "此构建未配置 Loom Web OAuth，已使用 GitHub CLI 浏览器登录作为备用方式。"
-        : "Loom Web OAuth is not configured in this build, so GitHub CLI browser login is being used as a fallback.");
+        ? "当前运行尚未配置 Loom Web OAuth，已使用 GitHub CLI 浏览器登录作为备用方式。"
+        : "Loom Web OAuth is not configured for this run, so GitHub CLI browser login is being used as a fallback.");
     } else {
       setNotice(isChinese
-        ? "此构建未配置 Loom Web OAuth，已进入 GitHub Device Flow 备用登录。"
-        : "Loom Web OAuth is not configured in this build, so GitHub Device Flow is being used as a fallback.");
+        ? "当前运行尚未配置 Loom Web OAuth，已进入 GitHub Device Flow 备用登录。"
+        : "Loom Web OAuth is not configured for this run, so GitHub Device Flow is being used as a fallback.");
     }
     pollAuthorization(auth);
+  };
+
+  const configureLocalWebOAuth = async () => {
+    const clientId = oauthClientIdDraft.trim();
+    const clientSecret = oauthClientSecretDraft.trim();
+    if (!clientId || !clientSecret) {
+      setError(isChinese ? "请填写 GitHub OAuth Client ID 和 Client Secret。" : "Enter both the GitHub OAuth Client ID and Client Secret.");
+      return;
+    }
+    const result = await manage("configure_web_oauth", { clientId, clientSecret });
+    if (result?.connector?.webOAuthAvailable) {
+      setOauthClientSecretDraft("");
+      if (result.connector.localWebOAuthClientId) setOauthClientIdDraft(result.connector.localWebOAuthClientId);
+      setNotice(isChinese
+        ? "本机测试 Web OAuth 已配置。现在测试版会和正式 EXE 使用同一套浏览器授权流程。"
+        : "Local test Web OAuth is configured. This source build now uses the same browser authorization flow as the packaged app.");
+    }
+  };
+
+  const clearLocalWebOAuth = async () => {
+    const result = await manage("clear_web_oauth");
+    if (result?.connector && !result.connector.localWebOAuthConfigured) {
+      setOauthClientIdDraft("");
+      setOauthClientSecretDraft("");
+      setNotice(isChinese ? "已清除这台机器上的测试 OAuth App 配置。" : "Local test OAuth App configuration cleared from this machine.");
+    }
   };
 
   const connectToken = async () => {
@@ -212,6 +247,12 @@ export function ConnectorsSettings({ running }: ConnectorsSettingsProps) {
     : authorization?.mode === "github-cli"
       ? "GitHub CLI fallback"
       : "Device Flow fallback";
+
+  const webOAuthSourceLabel = github.webOAuthSource === "local"
+    ? (isChinese ? "本机测试配置" : "local test config")
+    : github.webOAuthSource === "release-or-env"
+      ? (isChinese ? "正式构建 / 环境配置" : "release / environment config")
+      : (isChinese ? "未配置" : "not configured");
 
   return (
     <>
@@ -247,7 +288,7 @@ export function ConnectorsSettings({ running }: ConnectorsSettingsProps) {
                 ? (isChinese ? "GitHub 工具已可供新的 Agent Step 使用。" : "Authenticated GitHub tools are available to new agent Steps.")
                 : github.webOAuthAvailable
                   ? (isChinese ? "点击一次，在浏览器中授权；GitHub 会自动返回 Loom 完成连接。" : "One click opens GitHub in your browser; authorization returns to Loom automatically.")
-                  : (isChinese ? "当前构建尚未配置 Loom 的 GitHub OAuth App，将在必要时使用备用登录方式。" : "This build has no Loom GitHub OAuth App configured yet, so a fallback sign-in method will be used when needed.")}</span>
+                  : (isChinese ? "当前运行尚未配置 GitHub Web OAuth。测试版可在下方配置本机 OAuth App，正式 EXE 会自动使用发行配置。" : "GitHub Web OAuth is not configured for this run. Source builds can configure a local OAuth App below; packaged releases use their embedded release configuration.")}</span>
             </div>
             <div className="mature-preference-control"><StatusPill connected={Boolean(github.connected)} /></div>
           </div>
@@ -257,8 +298,8 @@ export function ConnectorsSettings({ running }: ConnectorsSettingsProps) {
             <div className="mature-preference-copy">
               <strong>{isChinese ? "浏览器授权" : "Browser sign-in"}</strong>
               <span>{github.webOAuthAvailable
-                ? (isChinese ? "使用 GitHub Web OAuth、PKCE、随机 state 与 127.0.0.1 动态回调；无需复制设备码。" : "Uses GitHub Web OAuth, PKCE, random state, and a dynamic 127.0.0.1 callback. No device code is required.")
-                : (isChinese ? "正式 Web OAuth 未配置时，Loom 会安全降级到可用的 GitHub 登录方式。" : "Until Web OAuth is configured, Loom safely falls back to an available GitHub sign-in method.")}</span>
+                ? (isChinese ? `使用 GitHub Web OAuth、PKCE、随机 state 与 127.0.0.1 动态回调；无需复制设备码。配置来源：${webOAuthSourceLabel}。` : `Uses GitHub Web OAuth, PKCE, random state, and a dynamic 127.0.0.1 callback. No device code is required. Source: ${webOAuthSourceLabel}.`)
+                : (isChinese ? "Web OAuth 未配置时，Loom 才会安全降级到 GitHub CLI / Device Flow。" : "Loom falls back to GitHub CLI / Device Flow only when Web OAuth is not configured.")}</span>
             </div>
             <div className="mature-preference-control">
               <button className="mature-action-button" type="button" disabled={running || Boolean(busy)} onClick={() => void startBrowserLogin()}>
@@ -296,6 +337,56 @@ export function ConnectorsSettings({ running }: ConnectorsSettingsProps) {
         </section>
       ) : null}
 
+      {(!github.webOAuthAvailable || github.webOAuthSource === "local") ? (
+        <section className="settings-section">
+          <div className="settings-section-heading">
+            <h2>{isChinese ? "本机测试 Web OAuth" : "Local test Web OAuth"}</h2>
+            <p>{isChinese
+              ? "让源码/测试版与正式 EXE 使用完全相同的 GitHub 浏览器授权流程。Client ID 只写入本机 Loom 配置；Client Secret 只保存到系统凭据库，不写入项目或 JSON。"
+              : "Give source/test builds the exact same GitHub browser authorization flow as the packaged app. The Client ID is stored only in Loom's local config; the Client Secret stays only in the OS credential vault."}</p>
+          </div>
+          <div className="settings-card mature-preference-list">
+            <div className="mature-preference-row">
+              <span className="mature-preference-icon"><Github size={17} strokeWidth={1.8} /></span>
+              <div className="mature-preference-copy">
+                <strong>GitHub OAuth App</strong>
+                <span>{github.localWebOAuthConfigured
+                  ? (isChinese ? "这台机器已经配置测试 OAuth App。修改时重新填写 Client Secret 即可。" : "A local test OAuth App is configured on this machine. Re-enter the Client Secret to change it.")
+                  : (isChinese ? "首次只需配置一次；之后直接点击上面的“连接 GitHub”。" : "Configure this once, then use the normal Connect GitHub button above.")}</span>
+              </div>
+              <div className="mature-preference-control" style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                <input
+                  className="mature-input"
+                  type="text"
+                  autoComplete="off"
+                  value={oauthClientIdDraft}
+                  onChange={(event) => setOauthClientIdDraft(event.target.value)}
+                  placeholder="Client ID"
+                  aria-label="GitHub OAuth Client ID"
+                />
+                <input
+                  className="mature-input"
+                  type="password"
+                  autoComplete="new-password"
+                  value={oauthClientSecretDraft}
+                  onChange={(event) => setOauthClientSecretDraft(event.target.value)}
+                  placeholder="Client Secret"
+                  aria-label="GitHub OAuth Client Secret"
+                />
+                <button className="mature-action-button" type="button" disabled={running || Boolean(busy) || !oauthClientIdDraft.trim() || !oauthClientSecretDraft.trim()} onClick={() => void configureLocalWebOAuth()}>
+                  <KeyRound size={14} />{isChinese ? "保存本机配置" : "Save local config"}
+                </button>
+                {github.localWebOAuthConfigured ? (
+                  <button className="mature-action-button" type="button" disabled={running || Boolean(busy)} onClick={() => void clearLocalWebOAuth()}>
+                    {isChinese ? "清除" : "Clear"}
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        </section>
+      ) : null}
+
       <section className="settings-section">
         <div className="settings-section-heading"><h2>{isChinese ? "高级 / 恢复方式" : "Advanced / recovery"}</h2><p>{isChinese ? "正常连接不需要这些方式；仅在企业环境、开发调试或 OAuth 不可用时使用。" : "Normal sign-in does not require these options. Use them for managed environments, development, or recovery."}</p></div>
         <div className="settings-card mature-preference-list">
@@ -328,7 +419,8 @@ export function ConnectorsSettings({ running }: ConnectorsSettingsProps) {
           <DetailRow label="Credential source" value={github.credentialSource || "None"} />
           <DetailRow label="OAuth scopes" value={github.scopes || "Not reported"} />
           <DetailRow label="Binding" value={github.bindingId || "github:disconnected"} detail="Process-local credential identity; it is not the token." />
-          <DetailRow label="Browser OAuth" value={github.webOAuthAvailable ? "Web OAuth + PKCE ready" : "Not configured in this build"} />
+          <DetailRow label="Browser OAuth" value={github.webOAuthAvailable ? `Web OAuth + PKCE ready · ${webOAuthSourceLabel}` : "Not configured"} />
+          {github.localWebOAuthClientId ? <DetailRow label="Local OAuth Client ID" value={github.localWebOAuthClientId} detail="Public application identifier; the Client Secret is never returned to the UI." /> : null}
           <DetailRow label="Device OAuth fallback" value={github.deviceFlowAvailable ? "Available" : "Not configured"} />
           <DetailRow label="GitHub CLI fallback" value={github.githubCliAvailable ? "Available" : "Not detected"} />
           {github.error && !github.connected ? <DetailRow label="Last check" value={github.error} /> : null}
