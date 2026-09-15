@@ -66,7 +66,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Packaged runtime self-test failed with exit code $LASTEXITCODE" }
           & $runtime -c "import app; import mcp; from mcp.client.streamable_http import streamable_http_client; print('loom-runtime-import-ok')"
           if ($LASTEXITCODE -ne 0) { throw "Packaged runtime import smoke failed with exit code $LASTEXITCODE" }
-          & $runtime -c "import tempfile; from pathlib import Path; import keyring.backends.Windows; from app.connector_oauth_refresh import RefreshingConnectorManager; m=RefreshingConnectorManager(Path(tempfile.mkdtemp()), environment={}); s=m.github_status(); assert s.get('id') == 'github'; assert 'connected' in s; print('loom-frozen-connector-status-ok')"
+          & $runtime -c "import tempfile; from pathlib import Path; import keyring.backends.Windows; from app.connector_web_oauth import WebOAuthConnectorManager; m=WebOAuthConnectorManager(Path(tempfile.mkdtemp()), environment={}); s=m.github_status(); assert s.get('id') == 'github'; assert 'connected' in s; assert 'webOAuthAvailable' in s; print('loom-frozen-connector-status-ok')"
           if ($LASTEXITCODE -ne 0) { throw "Packaged GitHub Connector smoke failed with exit code $LASTEXITCODE" }
           & $runtime (Join-Path $resources "loom_model_bridge.py") list
           if ($LASTEXITCODE -ne 0) { throw "Packaged model bridge compatibility smoke failed with exit code $LASTEXITCODE" }
