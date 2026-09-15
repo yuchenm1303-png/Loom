@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import json
 
-from app.agent_runtime import PermissionMode, RequestStateSnapshot, StepContext, ToolRegistry
+from app.agent_runtime import PermissionMode, ToolRegistry
+from app.agent_runtime.step import RequestStateSnapshot, StepContext
 from app.connector_step_provenance import install_connector_step_provenance
 
 
