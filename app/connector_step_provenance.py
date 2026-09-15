@@ -34,7 +34,12 @@ def _binding_snapshot(manager: Any) -> dict[str, object]:
 def install_connector_step_provenance(manager: Any, runtime: Any) -> None:
     if getattr(runtime, "_loom_connector_step_provenance_installed", False):
         return
-    original = runtime._build_step_context
+    original = getattr(runtime, "_build_step_context", None)
+    if not callable(original):
+        # Small embedders/tests may use only Connector status/RPCs and not own
+        # Loom's semantic Step runtime. Provenance is an additive audit feature,
+        # not a requirement for those lightweight integrations.
+        return
 
     def build_step_context(session: Any, *, next_model_step: bool, step_id: str | None = None):
         # `original` already includes ConnectorManager's pre-Step refresh hook.
