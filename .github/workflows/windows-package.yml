@@ -45,6 +45,19 @@ jobs:
       LOOM_GITHUB_CALLBACK_PATH: ${{ vars.LOOM_GITHUB_CALLBACK_PATH || '/oauth/github/callback' }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Validate trusted release OAuth configuration
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:LOOM_GITHUB_CLIENT_ID)) {
+            throw "Missing Actions variable LOOM_GITHUB_CLIENT_ID; refusing to build a trusted Loom release that would fall back to device-code login."
+          }
+          if ([string]::IsNullOrWhiteSpace($env:LOOM_GITHUB_CLIENT_SECRET)) {
+            throw "Missing Actions secret LOOM_GITHUB_CLIENT_SECRET; refusing to build a trusted Loom release that would fall back to device-code login."
+          }
+          Write-Host "GitHub Web OAuth release configuration is present."
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
