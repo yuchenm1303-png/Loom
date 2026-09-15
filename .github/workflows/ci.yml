@@ -122,6 +122,11 @@ jobs:
         run: python -m pip install -e ".[dev]"
       - name: App-server process and UTF-8 protocol contracts
         run: python -m pytest -q tests/test_app_server_client.py tests/test_app_server_stdio_encoding.py
+      - name: GitHub connector and Windows credential backend
+        shell: pwsh
+        run: |
+          python -c "import keyring.backends.Windows; from app.connector_oauth_refresh import RefreshingConnectorManager; print('loom-github-connector-windows-ok')"
+          python -m pytest -q tests/test_connector_product_config.py tests/test_connector_app_server.py
 
   mcp-adapter-smoke:
     runs-on: ubuntu-latest
