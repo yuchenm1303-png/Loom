@@ -42,6 +42,8 @@ def _mutating_action(action: str) -> bool:
         "disconnect",
         "enable",
         "refresh",
+        "configure_web_oauth",
+        "clear_web_oauth",
     }
 
 
@@ -129,6 +131,16 @@ def patch(module: Any) -> None:
                 result = self.connectors.import_github_cli()
                 status = _connector_changed(self)
                 return {"connector": result, "runtime": status}
+            if action == "configure_web_oauth":
+                client_id = self._required_text(params, "clientId")
+                client_secret = self._required_text(params, "clientSecret")
+                result = self.connectors.configure_local_web_oauth(client_id, client_secret)
+                status = _connector_changed(self)
+                return {"connector": result, "runtime": status}
+            if action == "clear_web_oauth":
+                result = self.connectors.clear_local_web_oauth()
+                status = _connector_changed(self)
+                return {"connector": result, "runtime": status}
             if action == "disconnect":
                 result = self.connectors.disconnect_github()
                 status = _connector_changed(self)
@@ -171,6 +183,7 @@ def patch(module: Any) -> None:
                 "browserLogin": True,
                 "loopbackOAuth": True,
                 "pkce": True,
+                "localOAuthConfiguration": True,
                 "githubCliImport": True,
                 "tokenImport": True,
                 "disconnect": True,
