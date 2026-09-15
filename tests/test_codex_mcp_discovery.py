@@ -4,9 +4,15 @@ from pathlib import Path
 
 import pytest
 
-from app import codex_mcp_discovery
+from app import codex_mcp_discovery, runtime_capability_defaults
 from app.agent_runtime import ToolEffect, ToolExposure
 from app.agent_runtime import mcp_runtime
+
+
+def test_runtime_import_chain_installs_default_and_codex_mcp_patches() -> None:
+    assert getattr(mcp_runtime, "_loom_mcp_backend_defaults", False) is True
+    assert getattr(mcp_runtime, "_loom_codex_mcp_loader", False) is True
+    assert getattr(runtime_capability_defaults._mcp_config_paths, "_loom_codex_discovery", False) is True
 
 
 def test_loads_codex_stdio_and_http_mcp_without_copying_secrets(monkeypatch, tmp_path: Path) -> None:
@@ -53,7 +59,15 @@ tool_timeout_sec = 45
 
     raw = config.read_text(encoding="utf-8")
     assert "REMOTE_MCP_TOKEN" in raw
-    assert all("secret" not in repr(server).casefold() for server in servers)
+    assert all("literal-secret-value" not in repr(server) for server in servers)
+
+    # The public loader that ConfiguredMCPRuntime actually calls must route this
+    # path through the Codex adapter, not only the helper used by this test.
+    routed = mcp_runtime.load_mcp_server_configs(config)
+    assert [server.name for server in routed] == ["local", "remote"]
+
+    discovered = tuple(runtime_capability_defaults._mcp_config_paths(tmp_path / "loom-home"))
+    assert config.resolve() in discovered
 
 
 def test_rejects_literal_codex_env_values(tmp_path: Path) -> None:
@@ -94,13 +108,15 @@ def test_codex_config_is_added_only_when_it_contains_mcp_servers(monkeypatch, tm
     codex_home.mkdir()
     monkeypatch.setenv("CODEX_HOME", str(codex_home))
 
-    empty = codex_home / "config.toml"
-    empty.write_text('model = "gpt-5.6"\n', encoding="utf-8")
-    assert codex_mcp_discovery._has_codex_mcp_servers(empty) is False
+    config = codex_home / "config.toml"
+    config.write_text('model = "gpt-5.6"\n', encoding="utf-8")
+    assert codex_mcp_discovery._has_codex_mcp_servers(config) is False
+    assert config.resolve() not in tuple(runtime_capability_defaults._mcp_config_paths(tmp_path / "loom-home"))
 
-    empty.write_text(
+    config.write_text(
         "[mcp_servers.demo]\ncommand = \"python\"\nargs = [\"server.py\"]\n",
         encoding="utf-8",
     )
-    assert codex_mcp_discovery._has_codex_mcp_servers(empty) is True
-    assert codex_mcp_discovery._is_codex_config(empty) is True
+    assert codex_mcp_discovery._has_codex_mcp_servers(config) is True
+    assert codex_mcp_discovery._is_codex_config(config) is True
+    assert config.resolve() in tuple(runtime_capability_defaults._mcp_config_paths(tmp_path / "loom-home"))
