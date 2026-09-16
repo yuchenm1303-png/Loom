@@ -70,6 +70,40 @@ def test_safe_handoff_resumes_same_turn_without_duplicating_user_message(tmp_pat
     ]) == 1
 
 
+def test_transport_failed_turn_resumes_same_turn_after_network_returns(tmp_path):
+    original, _ = _runtime(tmp_path)
+    session = _running_session(original, tmp_path, turn_id="network-recovery")
+    session.status = AgentStatus.FAILED
+    session.error = "AITransportError: connection lost"
+    original.store.save(session)
+
+    restarted, platform = _runtime(tmp_path, [ModelResponse(text="back online")])
+    result = restarted.recover_turn_if_idle(session.session_id, "network-recovery")
+    restored = restarted.store.load(session.session_id)
+
+    assert result.status is AgentStatus.COMPLETED
+    assert result.turn_id == "network-recovery"
+    assert restored.current_turn_id == "network-recovery"
+    assert restored.final_text == "back online"
+    assert restored.error == ""
+    assert len(platform.requests) == 1
+    assert [message.role for message in restored.messages].count(MessageRole.USER) == 1
+
+
+def test_non_transport_failed_turn_is_not_auto_resumed(tmp_path):
+    runtime, platform = _runtime(tmp_path)
+    session = _running_session(runtime, tmp_path, turn_id="ordinary-failure")
+    session.status = AgentStatus.FAILED
+    session.error = "RuntimeError: invalid provider response"
+    runtime.store.save(session)
+
+    result = runtime.recover_turn_if_idle(session.session_id, "ordinary-failure")
+
+    assert result.status is AgentStatus.FAILED
+    assert result.error == "RuntimeError: invalid provider response"
+    assert platform.requests == []
+
+
 def test_recovery_commits_already_durable_terminal_response_without_resampling(tmp_path):
     runtime, platform = _runtime(tmp_path)
     session = _running_session(runtime, tmp_path, turn_id="terminal-window")
