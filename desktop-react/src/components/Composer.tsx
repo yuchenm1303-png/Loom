@@ -18,6 +18,7 @@ function SteeringComposer({ disabled, onSend, onInterrupt }: ComposerProps) {
   const [focused, setFocused] = useState(false);
   const [sending, setSending] = useState(false);
   const [stopping, setStopping] = useState(false);
+  const [acknowledged, setAcknowledged] = useState(false);
   const [error, setError] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -32,15 +33,23 @@ function SteeringComposer({ disabled, onSend, onInterrupt }: ComposerProps) {
     textareaRef.current?.focus();
   }, []);
 
+  useEffect(() => {
+    if (!acknowledged) return;
+    const timer = window.setTimeout(() => setAcknowledged(false), 3200);
+    return () => window.clearTimeout(timer);
+  }, [acknowledged]);
+
   async function submit(event?: FormEvent): Promise<void> {
     event?.preventDefault();
     const input = value.trim();
     if (!input || disabled || sending || stopping) return;
     setSending(true);
+    setAcknowledged(false);
     setError("");
     try {
       await onSend(input, []);
       setValue("");
+      setAcknowledged(true);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -51,6 +60,7 @@ function SteeringComposer({ disabled, onSend, onInterrupt }: ComposerProps) {
   async function stop(): Promise<void> {
     if (stopping) return;
     setStopping(true);
+    setAcknowledged(false);
     setError("");
     try {
       await onInterrupt();
@@ -67,6 +77,14 @@ function SteeringComposer({ disabled, onSend, onInterrupt }: ComposerProps) {
     }
   }
 
+  const activityLabel = stopping
+    ? "Stopping…"
+    : sending
+      ? "Sending guidance…"
+      : acknowledged
+        ? "Guidance received"
+        : "Live steering";
+
   return (
     <div className="composer-wrap live-steering-composer">
       <form
@@ -82,7 +100,10 @@ function SteeringComposer({ disabled, onSend, onInterrupt }: ComposerProps) {
           <textarea
             ref={textareaRef}
             value={value}
-            onChange={(event) => setValue(event.target.value)}
+            onChange={(event) => {
+              setValue(event.target.value);
+              if (acknowledged) setAcknowledged(false);
+            }}
             onKeyDown={onKeyDown}
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
@@ -95,8 +116,8 @@ function SteeringComposer({ disabled, onSend, onInterrupt }: ComposerProps) {
 
         <div className="composer-toolbar">
           <div className="composer-left">
-            <span className="composer-running-label">
-              <i /> {stopping ? "Stopping…" : sending ? "Applying guidance…" : "Live steering"}
+            <span className="composer-running-label" role="status" aria-live="polite">
+              <i /> {activityLabel}
             </span>
           </div>
           <div className="composer-right">
@@ -124,7 +145,9 @@ function SteeringComposer({ disabled, onSend, onInterrupt }: ComposerProps) {
         </div>
       </form>
       <div className="composer-hint">
-        Guidance stays in this turn and is applied at the next safe step. Stop still ends the turn.
+        {acknowledged
+          ? "Received. Loom will apply this guidance at the next safe step without ending the turn."
+          : "Guidance stays in this turn and is applied at the next safe step. Stop still ends the turn."}
       </div>
     </div>
   );
