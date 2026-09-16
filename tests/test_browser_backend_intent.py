@@ -13,9 +13,12 @@ class IntentBase:
     def __init__(self, selected: str = "current-browser"):
         self._browser_requested_backend = selected
         self.started: list[str] = []
+        self.during_turn = None
 
     def start_turn(self, session_id, user_text, *, turn_id=None):
         self.started.append(str(user_text))
+        if self.during_turn is not None:
+            return self.during_turn()
         return (session_id, user_text, turn_id)
 
     def _backend_model_selectable(self, backend: str) -> bool:
@@ -31,35 +34,54 @@ class Harness(BrowserBackendIntentMixin, IntentBase):
 
 def test_normal_current_browser_task_cannot_fall_back_to_isolated():
     runtime = Harness("current-browser")
-    runtime.start_turn("s1", "打开我的 Cloudflare 控制台", turn_id="t1")
 
-    assert runtime._backend_model_selectable("isolated") is False
-    with pytest.raises(PermissionError, match="change browser identity"):
-        runtime.browser_session_connection("launch")
+    def attempt():
+        assert runtime._backend_model_selectable("isolated") is False
+        with pytest.raises(PermissionError, match="change browser identity"):
+            runtime.browser_session_connection("launch")
+        return "blocked"
+
+    runtime.during_turn = attempt
+    assert runtime.start_turn("s1", "打开我的 Cloudflare 控制台", turn_id="t1") == "blocked"
 
 
 def test_user_can_explicitly_request_clean_isolated_browser_in_chinese():
     runtime = Harness("current-browser")
-    runtime.start_turn("s1", "开一个干净浏览器，测试未登录状态", turn_id="t1")
 
-    assert runtime._backend_model_selectable("isolated") is True
-    assert runtime.browser_session_connection("launch") == ("launch", "")
+    def attempt():
+        assert runtime._backend_model_selectable("isolated") is True
+        return runtime.browser_session_connection("launch")
+
+    runtime.during_turn = attempt
+    assert runtime.start_turn("s1", "开一个干净浏览器，测试未登录状态", turn_id="t1") == ("launch", "")
 
 
 def test_user_can_explicitly_request_clean_isolated_browser_in_english():
     runtime = Harness("current-browser")
-    runtime.start_turn("s1", "Open a clean browser and test the signed-out experience", turn_id="t1")
-
-    assert runtime._backend_model_selectable("isolated") is True
-    assert runtime.browser_session_connection("isolated") == ("isolated", "")
+    runtime.during_turn = lambda: runtime.browser_session_connection("isolated")
+    assert runtime.start_turn(
+        "s1", "Open a clean browser and test the signed-out experience", turn_id="t1"
+    ) == ("isolated", "")
 
 
 def test_isolated_selected_in_settings_does_not_need_turn_keyword():
     runtime = Harness("isolated")
-    runtime.start_turn("s1", "打开 example.com", turn_id="t1")
 
-    assert runtime._backend_model_selectable("isolated") is True
-    assert runtime.browser_session_connection("launch") == ("launch", "")
+    def attempt():
+        assert runtime._backend_model_selectable("isolated") is True
+        return runtime.browser_session_connection("launch")
+
+    runtime.during_turn = attempt
+    assert runtime.start_turn("s1", "打开 example.com", turn_id="t1") == ("launch", "")
+
+
+def test_turn_intent_is_cleared_after_turn_returns():
+    runtime = Harness("current-browser")
+    runtime.during_turn = lambda: runtime.browser_session_connection("launch")
+    assert runtime.start_turn("s1", "开一个隔离浏览器", turn_id="t1") == ("launch", "")
+
+    with pytest.raises(PermissionError, match="change browser identity"):
+        runtime.browser_session_connection("launch")
 
 
 def test_intent_detection_is_conservative():
