@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Loom Current Tab Bridge",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Lets Loom inspect and control the current Chrome/Edge tab through a local loopback bridge.",
   "permissions": ["tabs", "activeTab", "scripting", "storage", "cookies", "downloads"],
   "host_permissions": ["http://127.0.0.1/*", "http://[::1]/*", "http://*/*", "https://*/*", "<all_urls>"],
@@ -9,6 +9,13 @@
     "service_worker": "background.js",
     "type": "module"
   },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["hud-computer-overlay.js"],
+      "run_at": "document_start"
+    }
+  ],
   "action": {
     "default_title": "Loom Browser Bridge"
   },
