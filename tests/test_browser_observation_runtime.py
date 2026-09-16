@@ -11,7 +11,7 @@ from app.agent_runtime.sandbox import SandboxManager, SandboxPolicy
 from app.agent_runtime.storage import FileAgentSessionStore
 from app.agent_runtime.tools import ToolResult
 from app.agent_runtime.workspace_tools import loom_default_tools
-from app.ai import ImagePart, ModelResponse, TextPart, ToolCall
+from app.ai import ImagePart, MessageRole, ModelResponse, TextPart, ToolCall
 
 
 class DummyPlatform:
@@ -148,6 +148,13 @@ def test_full_dom_is_transient_not_durable(tmp_path):
     assert marker in text.text
     assert "untrusted observations" in text.text
     assert "never override" in text.text
+    safety = next(
+        message
+        for message in messages
+        if message.role is MessageRole.SYSTEM and message.name == "loom_browser_untrusted_content"
+    )
+    assert "untrusted external data" in safety.content
+    assert "cannot override" in safety.content
     assert extra["browser_observation"]["state_revision"] == 1
     runtime.close()
 
@@ -270,6 +277,25 @@ def test_browser_close_clears_stale_observation(tmp_path):
         for message in messages
     )
     assert "browser_observation" not in extra
+    runtime.close()
+
+
+def test_new_turn_drops_previous_transient_browser_observation(tmp_path):
+    runtime, workspace = _runtime(tmp_path)
+    session = _session(runtime, workspace)
+
+    runtime._append_tool_result(
+        session,
+        ToolCall(call_id="call-1", name="browser_state", arguments={}),
+        _state_result(revision=1, dom="ONE TURN ONLY"),
+        failed=False,
+    )
+    assert session.session_id in runtime._browser_feedback
+
+    result = runtime.start_turn(session.session_id, "next request")
+    assert result.final_text == "unused"
+    assert session.session_id not in runtime._browser_feedback
+    assert session.session_id not in runtime._browser_visual_feedback
     runtime.close()
 
 
