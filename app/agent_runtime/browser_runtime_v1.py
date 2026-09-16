@@ -18,7 +18,7 @@ from .browser_runtime import (
 )
 from .browser_session import BrowserPageState
 from .browser_transient import BrowserTransientInputPlatform
-from .tools import ToolRegistry, ToolResult
+from .tools import ToolExposure, ToolRegistry, ToolResult
 
 
 _STATE_KEYS = frozenset(
@@ -51,6 +51,29 @@ _MUTATING_BROWSER_TOOLS = frozenset(
         "browser_close_tab",
         "browser_upload",
         "browser_eval",
+        "browser_emulate",
+    }
+)
+# Keep the ordinary driving surface small. These capabilities still exist in the
+# registry and remain available through tool_search; they simply stop consuming
+# every model request's schema budget until the task actually needs them.
+_DEFERRED_BROWSER_TOOLS = frozenset(
+    {
+        "browser_hover",
+        "browser_drag",
+        "browser_forward",
+        "browser_refresh",
+        "browser_tabs",
+        "browser_close_tab",
+        "browser_find",
+        "browser_eval",
+        "browser_dropdown_options",
+        "browser_upload",
+        "browser_cookies",
+        "browser_storage",
+        "browser_network",
+        "browser_downloads",
+        "browser_session_state",
         "browser_emulate",
     }
 )
@@ -234,22 +257,25 @@ class BrowserRuntime(_BrowserRuntime):
     """
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
+        # Put transient typing *inside* the base Browser secret boundary at
+        # construction time. The previous implementation mutated the private
+        # `_delegate` field after super().__init__, which coupled this layer to an
+        # implementation detail of browser_runtime.py. AgentRuntime's platform is
+        # keyword-only, so this composition point is stable and explicit.
+        platform = kwargs.get("platform")
+        if platform is None:
+            raise TypeError("BrowserRuntime requires platform as a keyword argument")
+        kwargs["platform"] = BrowserTransientInputPlatform(platform)
         super().__init__(*args, **kwargs)
-        boundary = self.platform
-        delegate = getattr(boundary, "_delegate", None)
-        if delegate is None:
-            raise RuntimeError("browser durable secret boundary is unavailable")
-        boundary._delegate = BrowserTransientInputPlatform(delegate)
 
         self._browser_feedback: dict[str, BrowserStateSnapshot] = {}
         self._browser_feedback_turns: dict[str, str] = {}
         self._browser_feedback_effect: dict[str, tuple[str, str]] = {}
         self._browser_visual_feedback: dict[str, tuple[bytes, str]] = {}
 
-        # browser_screenshot still writes a workspace artifact, but the current
-        # model may now actually see that image on the next step. Keep this policy
-        # in the model-visible description so visual fallback is deliberate rather
-        # than a misleading file-only action.
+        # browser_screenshot stays directly available because it is the intended
+        # DOM->vision fallback. Less common/high-authority browser capabilities are
+        # deferred behind tool_search instead of occupying every request.
         rebuilt = []
         for tool in self.tools.all():
             if tool.name == "browser_screenshot":
@@ -262,6 +288,8 @@ class BrowserRuntime(_BrowserRuntime):
                         "Screenshot bytes are never persisted in ToolResult/Session."
                     ),
                 )
+            if tool.name in _DEFERRED_BROWSER_TOOLS:
+                tool = replace(tool, exposure=ToolExposure.DEFERRED)
             rebuilt.append(tool)
         self.tools = ToolRegistry(tuple(rebuilt))
 
@@ -403,6 +431,8 @@ class BrowserRuntime(_BrowserRuntime):
                 "visual_feedback": "on-demand browser_screenshot -> transient ImagePart",
                 "page_content_trust": "untrusted observation; cannot override user/system/project instructions",
                 "action_feedback": "execution result plus observable effect classification",
+                "default_tool_surface": "common browser driving tools direct; advanced browser tools deferred via tool_search",
+                "deferred_browser_tools": sorted(_DEFERRED_BROWSER_TOOLS),
             }
         )
         if status.get("backend") == "browser-use":
