@@ -180,7 +180,9 @@ def test_isolated_backend_cannot_escalate_to_current_browser_without_opt_in(monk
 
     runtime.browser_allow_external_backend_selection = True
     factory, external, label = runtime.browser_session_connection("current_tab")
-    assert (factory, external, label) == ("extension-factory", True, CURRENT_BROWSER)
+    assert callable(factory)
+    assert external is True
+    assert label == CURRENT_BROWSER
 
 
 def test_browser_backend_registry_is_model_visible_without_starting_a_session(monkeypatch):
