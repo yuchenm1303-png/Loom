@@ -11,6 +11,7 @@ import { Composer } from "./components/Composer";
 import { Inspector } from "./components/Inspector";
 import { LanguageSettingsDock } from "./components/LanguageSettingsDock";
 import { ProjectDetailsPanel } from "./components/ProjectDetailsPanel";
+import { RecoveryBanner, RecoveryComposer, type RecoveryDisplayState } from "./components/RecoveryStatus";
 import { ReviewInteractionBridge } from "./components/ReviewInteractionBridge";
 import { ReviewWorkspace } from "./components/ReviewWorkspace";
 import { RunProgress } from "./components/RunProgress";
@@ -53,8 +54,15 @@ const INSPECTOR_MIN = 280;
 const INSPECTOR_MAX = 520;
 const MIN_WORKSPACE_WIDTH = 520;
 const EMPTY_TRANSCRIPT_ITEMS: TranscriptItem[] = [];
+const RECOVERY_NOTICE_MS = 1400;
+
+const SAFE_CONTINUE_PROMPT = {
+  "zh-CN": "从上次已确认的安全状态继续这个任务。不要假设任何中断或未记录的工具操作已经成功；必要时先检查当前工作区或环境状态，在确认结果前不要重复有副作用的操作，然后继续完成我之前的请求。",
+  en: "Continue this task from the last confirmed safe state. Do not assume any interrupted or unrecorded tool action succeeded. Inspect the current workspace or environment first when needed, do not repeat side-effecting actions until their outcome is confirmed, and then continue my previous request.",
+};
 
 type ResizePanel = "sidebar" | "inspector";
+type TransientRecoveryState = "idle" | "reconnecting" | "recovering";
 type LayoutStyle = CSSProperties & {
   "--loom-sidebar-panel-size": string;
   "--loom-inspector-panel-size": string;
@@ -150,15 +158,17 @@ function clearPanelWidth(key: string): void {
 
 export default function App() {
   const loom = useLoom();
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const shellRef = useRef<HTMLDivElement | null>(null);
   const resizeRef = useRef<ResizeSession | null>(null);
   const resizeReleaseFrameRef = useRef<number | null>(null);
+  const recoveryClearTimerRef = useRef<number | null>(null);
   const [inspectorOpen, setInspectorOpen] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [selectedProjectId, setSelectedProjectId] = useState("");
+  const [recoveryState, setRecoveryState] = useState<TransientRecoveryState>("idle");
   const [sidebarWidth, setSidebarWidth] = useState(() => readPanelWidth(
     SIDEBAR_WIDTH_KEY,
     rootPixelWidth("--sidebar-width", 252),
@@ -177,8 +187,17 @@ export default function App() {
   const thread = loom.active?.thread;
   const runtimeTurnRunning = thread?.status === "running" || thread?.status === "waiting_approval";
   const running = loom.turnActive || runtimeTurnRunning;
+  const recoveryBlocked = recoveryState === "reconnecting" || recoveryState === "recovering";
+  const busy = running || recoveryBlocked;
   const archived = Boolean(thread?.archived);
-  const conversationDisabled = !thread || loom.connection !== "ready" || running || archived;
+  const recoveryDisplayState: RecoveryDisplayState = recoveryState !== "idle"
+    ? recoveryState
+    : !running && thread?.status === "interrupted"
+      ? "safely_interrupted"
+      : !running && thread?.status === "cancelled"
+        ? "cancelled"
+        : "idle";
+  const conversationDisabled = !thread || loom.connection !== "ready" || busy || archived;
   const threadTitle = thread?.title || (loom.connection === "connecting" ? t("app.startingLoom") : t("app.newConversation"));
   const workspace = thread?.workspace || loom.runtime.defaultWorkspace || "";
   const currentModel = loom.models?.current?.name || loom.models?.current?.model || loom.runtime.model;
@@ -192,6 +211,22 @@ export default function App() {
     : null;
   const projectDetailsOpen = Boolean(selectedProject);
   const inspectorVisible = inspectorOpen && !reviewOpen && !projectDetailsOpen;
+
+  function clearRecoveryTimer(): void {
+    if (recoveryClearTimerRef.current !== null) {
+      window.clearTimeout(recoveryClearTimerRef.current);
+      recoveryClearTimerRef.current = null;
+    }
+  }
+
+  function showRecoveredBriefly(): void {
+    clearRecoveryTimer();
+    setRecoveryState("recovering");
+    recoveryClearTimerRef.current = window.setTimeout(() => {
+      recoveryClearTimerRef.current = null;
+      setRecoveryState("idle");
+    }, RECOVERY_NOTICE_MS);
+  }
 
   function focusReviewFile(path?: string): void {
     const normalized = normalizeReviewPath(path);
@@ -238,6 +273,60 @@ export default function App() {
   useEffect(() => {
     setDismissedApprovalIds(new Set());
     setReviewOpen(false);
+    clearRecoveryTimer();
+    setRecoveryState("idle");
+    if (thread?.active && runtimeTurnRunning) showRecoveredBriefly();
+    return clearRecoveryTimer;
+    // Recovery-on-open is intentionally keyed to selection changes only. A normal
+    // new turn in the already-selected thread must not masquerade as a restart.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [thread?.id]);
+
+  useEffect(() => {
+    const activeThreadId = thread?.id;
+    if (!activeThreadId) return undefined;
+
+    const unsubscribe = window.loom.onNotification((message) => {
+      const params = message.params ?? {};
+      const turn = params.turn as Record<string, unknown> | undefined;
+      const item = params.item as Record<string, unknown> | undefined;
+      const eventThreadId = String(params.threadId ?? turn?.threadId ?? item?.threadId ?? "");
+      if (eventThreadId && eventThreadId !== activeThreadId) return;
+
+      if (message.method === "turn/completed") {
+        const status = String(turn?.status ?? "").trim();
+        const error = String(turn?.error ?? "");
+        clearRecoveryTimer();
+        if (status === "failed" && error.startsWith("AITransportError:")) {
+          setRecoveryState("reconnecting");
+        } else {
+          setRecoveryState("idle");
+        }
+        return;
+      }
+
+      if (message.method === "turn/started") {
+        const source = String(turn?.source ?? "").trim();
+        if (source === "network_recovery") showRecoveredBriefly();
+        else {
+          clearRecoveryTimer();
+          setRecoveryState("idle");
+        }
+        return;
+      }
+
+      if (message.method === "thread/resync") {
+        clearRecoveryTimer();
+        setRecoveryState("idle");
+      }
+    });
+
+    return () => {
+      unsubscribe();
+      clearRecoveryTimer();
+    };
+    // The selected thread id is the recovery UI ownership boundary.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [thread?.id]);
 
   useEffect(() => {
@@ -255,6 +344,7 @@ export default function App() {
     const session = resizeRef.current;
     if (session?.frame !== null && session?.frame !== undefined) cancelAnimationFrame(session.frame);
     if (resizeReleaseFrameRef.current !== null) cancelAnimationFrame(resizeReleaseFrameRef.current);
+    clearRecoveryTimer();
     document.body.classList.remove("loom-panel-resizing");
   }, []);
 
@@ -542,6 +632,12 @@ export default function App() {
     }
   }
 
+  async function handleSafeContinue(): Promise<void> {
+    if (!thread || busy || archived) return;
+    const prompt = language === "zh-CN" ? SAFE_CONTINUE_PROMPT["zh-CN"] : SAFE_CONTINUE_PROMPT.en;
+    await loom.send(prompt);
+  }
+
   async function handleMoveProject(threadId: string, projectId: string): Promise<void> {
     const movingThread = loom.threads.find((entry) => entry.id === threadId);
     if (!movingThread) throw new Error("找不到这个会话，请刷新侧栏后重试。");
@@ -602,10 +698,10 @@ export default function App() {
         <SettingsPage
           runtime={loom.runtime}
           models={loom.models}
-          running={Boolean(running)}
+          running={Boolean(busy)}
           onClose={() => setSettingsOpen(false)}
         />
-        <SettingsMemoryBridge threadId={thread?.id} running={Boolean(running)} />
+        <SettingsMemoryBridge threadId={thread?.id} running={Boolean(busy)} />
         <SettingsComputerLogExport />
         <LanguageSettingsDock />
       </>
@@ -669,7 +765,7 @@ export default function App() {
           workspace={workspace}
           connection={loom.connection}
           status={thread?.status}
-          running={running}
+          running={busy}
           archived={archived}
           model={currentModel}
           permissionMode={permissionMode}
@@ -683,8 +779,13 @@ export default function App() {
           onToggleReview={toggleReview}
         />
 
-        <div className={`conversation-stage ${running ? "is-running" : ""}`}>
-          {running ? <RunProgress {...progressProps} placement="top" /> : null}
+        <div className={`conversation-stage ${busy ? "is-running" : ""}`}>
+          {recoveryDisplayState !== "idle" ? (
+            <RecoveryBanner
+              state={recoveryDisplayState}
+              onContinue={recoveryDisplayState === "safely_interrupted" ? handleSafeContinue : undefined}
+            />
+          ) : running ? <RunProgress {...progressProps} placement="top" /> : null}
           <Transcript
             items={transcriptItems}
             running={transcriptRunning}
@@ -697,33 +798,37 @@ export default function App() {
             items={transcriptItems}
             threadId={thread?.id}
             currentTurnId={thread?.currentTurnId}
-            running={running}
+            running={busy}
           />
         </div>
 
         <div className="composer-stage">
-          <Composer
-            disabled={!thread || loom.connection !== "ready" || archived}
-            running={running}
-            model={loom.runtime.model}
-            modelSnapshot={loom.models}
-            modelBusy={loom.modelBusy}
-            permissionMode={permissionMode}
-            permissionModes={loom.runtime.permissionModes}
-            stickerPreferences={stickersEnabled ? loom.runtime.stickerPreferences : null}
-            onPermissionModeChange={loom.setPermissionMode}
-            onModelProfileChange={loom.switchModelProfile}
-            onCustomModelChange={loom.switchCurrentModel}
-            onAddModel={loom.addModel}
-            onDeleteModel={loom.deleteModel}
-            onReasoningChange={loom.setReasoning}
-            onStickerPreferencesChange={async (preferences) => {
-              await window.loom.call("sticker/preferences/set", { preferences });
-            }}
-            imagesAllowed={attachmentsEnabled && loom.runtime.attachments?.images !== false}
-            onSend={loom.send}
-            onInterrupt={loom.interrupt}
-          />
+          {recoveryState === "reconnecting" || recoveryState === "recovering" ? (
+            <RecoveryComposer state={recoveryState} />
+          ) : (
+            <Composer
+              disabled={!thread || loom.connection !== "ready" || archived}
+              running={running}
+              model={loom.runtime.model}
+              modelSnapshot={loom.models}
+              modelBusy={loom.modelBusy}
+              permissionMode={permissionMode}
+              permissionModes={loom.runtime.permissionModes}
+              stickerPreferences={stickersEnabled ? loom.runtime.stickerPreferences : null}
+              onPermissionModeChange={loom.setPermissionMode}
+              onModelProfileChange={loom.switchModelProfile}
+              onCustomModelChange={loom.switchCurrentModel}
+              onAddModel={loom.addModel}
+              onDeleteModel={loom.deleteModel}
+              onReasoningChange={loom.setReasoning}
+              onStickerPreferencesChange={async (preferences) => {
+                await window.loom.call("sticker/preferences/set", { preferences });
+              }}
+              imagesAllowed={attachmentsEnabled && loom.runtime.attachments?.images !== false}
+              onSend={loom.send}
+              onInterrupt={loom.interrupt}
+            />
+          )}
         </div>
       </section>
 
