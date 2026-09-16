@@ -100,33 +100,33 @@ def _consumed_duplicate(
     text: str,
     input_id: str,
 ) -> dict[str, Any] | None:
-    """Return an idempotent success for a steering message already in history.
+    """Return idempotent success for guidance that is already in history.
 
-    This matters when the app-server response is lost after the guidance was
-    applied and the renderer retries after the turn has already completed.
-    Reusing the same id for different content is rejected instead of silently
-    dropping the user's newer instruction.
+    ``steering_ids`` is session-wide, so the durable USER_MESSAGE event is the
+    authority for which turn/text owns an id. This lets a lost RPC response be
+    retried even after queue auto-drain has advanced ``current_turn_id`` while
+    still rejecting accidental reuse of that key for different guidance.
     """
 
     if input_id not in session.steering_ids:
         return None
     for event in reversed(runtime.store.events(session.session_id)):
-        if event.turn_id != turn_id or event.kind.value != "user_message":
-            continue
         data = event.data
+        if event.kind.value != "user_message":
+            continue
         if str(data.get("source") or "") != "steering":
             continue
         if str(data.get("input_id") or "") != input_id:
             continue
-        if str(data.get("text") or "") != text:
+        if event.turn_id != turn_id or str(data.get("text") or "") != text:
             raise ValueError("clientInputId was already used for different steering input")
-        break
-    return _receipt(
-        input_id=input_id,
-        duplicate=True,
-        delivery="applied",
-        applied=True,
-    )
+        return _receipt(
+            input_id=input_id,
+            duplicate=True,
+            delivery="applied",
+            applied=True,
+        )
+    raise ValueError("clientInputId was already used for different steering input")
 
 
 def _patch_runtime_class(runtime_cls: type[Any]) -> None:
@@ -172,12 +172,11 @@ def _patch_runtime_class(runtime_cls: type[Any]) -> None:
         # The active path intentionally shares the terminal-commit guard used by
         # TurnRunner. Either the guidance enters the inbox before completion or
         # the completed turn wins. A retry of an already-consumed id remains an
-        # idempotent success even if completion won after the first submission.
+        # idempotent success even if completion (or queue auto-drain) has since
+        # moved the session beyond the target turn.
         with self._active_tokens_guard:
             token = self._active_tokens.get(resolved_session_id)
             session = self.store.load(resolved_session_id)
-            if session.current_turn_id != resolved_turn_id:
-                raise ValueError("steering target is not the active turn")
             consumed = _consumed_duplicate(
                 self,
                 session,
@@ -187,6 +186,8 @@ def _patch_runtime_class(runtime_cls: type[Any]) -> None:
             )
             if consumed is not None:
                 return consumed
+            if session.current_turn_id != resolved_turn_id:
+                raise ValueError("steering target is not the active turn")
             if (
                 token is not None
                 and not token.cancelled
@@ -215,8 +216,6 @@ def _patch_runtime_class(runtime_cls: type[Any]) -> None:
             with self._active_tokens_guard:
                 token = self._active_tokens.get(resolved_session_id)
                 session = self.store.load(resolved_session_id)
-                if session.current_turn_id != resolved_turn_id:
-                    raise ValueError("steering target is not the active turn")
                 consumed = _consumed_duplicate(
                     self,
                     session,
@@ -226,6 +225,8 @@ def _patch_runtime_class(runtime_cls: type[Any]) -> None:
                 )
                 if consumed is not None:
                     return consumed
+                if session.current_turn_id != resolved_turn_id:
+                    raise ValueError("steering target is not the active turn")
                 if (
                     token is not None
                     and not token.cancelled
@@ -245,8 +246,6 @@ def _patch_runtime_class(runtime_cls: type[Any]) -> None:
                     )
 
             session = self.store.load(resolved_session_id)
-            if session.current_turn_id != resolved_turn_id:
-                raise ValueError("steering target is not the active turn")
             consumed = _consumed_duplicate(
                 self,
                 session,
@@ -256,6 +255,8 @@ def _patch_runtime_class(runtime_cls: type[Any]) -> None:
             )
             if consumed is not None:
                 return consumed
+            if session.current_turn_id != resolved_turn_id:
+                raise ValueError("steering target is not the active turn")
             if session.status is not AgentStatus.WAITING_APPROVAL or session.pending_approval is None:
                 raise ValueError("steering target is not the active turn")
 
