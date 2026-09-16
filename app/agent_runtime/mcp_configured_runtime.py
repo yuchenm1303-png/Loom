@@ -9,6 +9,7 @@ from typing import Any, Sequence
 
 from . import mcp_runtime as _mcp_runtime
 from .browser_backend_registry import BrowserBackendRegistryMixin
+from .browser_status_privacy import BrowserStatusPrivacyMixin
 from .computer_single_loop_runtime import SingleLoopComputerRuntime
 from .computer_windows import windows_computer_available
 from .computer_windows_single_loop import SingleLoopWindowsOperator
@@ -18,16 +19,22 @@ from .step import StepContext
 from .tools import ToolRegistry
 
 
-class ConfiguredMCPRuntime(BrowserBackendRegistryMixin, SingleLoopComputerRuntime, MCPRuntime):
+class ConfiguredMCPRuntime(
+    BrowserStatusPrivacyMixin,
+    BrowserBackendRegistryMixin,
+    SingleLoopComputerRuntime,
+    MCPRuntime,
+):
     """Default Loom runtime with direct Browser/Computer Use plus exact MCP binding.
 
     Browser Use exposes explicit current-browser, isolated, and developer-CDP
     backends. The selected backend is discoverable and truthful: current-browser
     requires the Current Tab Bridge and fails fast when it is unavailable rather
-    than silently opening a different browser. Computer Use is owned by Loom's
-    existing TurnRunner and the currently selected conversation model. The
-    legacy UFO/driver runtime remains importable for compatibility tests while
-    the production MRO no longer routes through it.
+    than silently opening a different browser. Browser discovery/status strips
+    address-bar paths, queries and fragments before they can become model-visible.
+    Computer Use is owned by Loom's existing TurnRunner and the currently selected
+    conversation model. The legacy UFO/driver runtime remains importable for
+    compatibility tests while the production MRO no longer routes through it.
 
     MCP authority is captured once per semantic sampling Step. Model-visible MCP
     schemas and executable handlers therefore come from the same immutable
