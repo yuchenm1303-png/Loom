@@ -13,8 +13,7 @@
     {
       "matches": ["http://*/*", "https://*/*"],
       "js": ["hud-computer-overlay.js"],
-      "run_at": "document_start",
-      "world": "ISOLATED"
+      "run_at": "document_start"
     }
   ],
   "action": {
