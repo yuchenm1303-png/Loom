@@ -654,6 +654,13 @@ button.general-default-card:hover .general-default-card-head > svg:last-child,
   margin-top: 12px;
 }
 
+.settings-inline-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 /* Keep code typography and functional density behavior intact. */
 .markdown-body code,
 .markdown-body pre,

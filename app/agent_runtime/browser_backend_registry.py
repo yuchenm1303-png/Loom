@@ -127,6 +127,7 @@ class BrowserBackendRegistryMixin:
     def browser_backend_registry(self) -> tuple[dict[str, object], ...]:
         bridge = getattr(self, "browser_extension_bridge", None)
         current_connected = bool(bridge is not None and bridge.connected)
+        bridge_status = bridge.status() if bridge is not None else {}
         browser_use_ready = bool(browser_use_available())
         selected = str(getattr(self, "_browser_requested_backend", ISOLATED_BROWSER))
         cdp_configured = bool(str(getattr(self, "_browser_cdp_url", "") or "").strip())
@@ -138,6 +139,8 @@ class BrowserBackendRegistryMixin:
                 "model_selectable": self._backend_model_selectable(CURRENT_BROWSER),
                 "external_browser": True,
                 "requires_extension": True,
+                "browser": str(bridge_status.get("browser") or ""),
+                "current_tab": bridge_status.get("current_tab"),
                 "reason": "" if current_connected else (
                     "Loom Current Tab Bridge is not connected. Enable the Loom browser extension in Edge/Chrome."
                 ),
@@ -174,13 +177,15 @@ class BrowserBackendRegistryMixin:
             description = (
                 "Open the user's current Edge/Chrome tab through the Loom Current Tab Bridge extension by default. "
                 "This preserves the user's existing profile, cookies, login state and tabs. If the extension is not "
-                "connected, this backend fails immediately and never silently falls back. When a clean session is more "
-                "appropriate, the model may explicitly use connect=launch to open Loom's isolated visible browser."
+                "connected, fail immediately and tell the user to set up or enable the extension. Never change to an "
+                "isolated browser or Computer Use merely because current-browser is unavailable. Use connect=launch "
+                "only when the user explicitly asks for a clean, isolated, test, or signed-out browser."
             )
         elif selected == DEVELOPER_CDP:
             description = (
                 "Open the explicitly configured developer Chrome/Edge connection through loopback-only CDP by default. "
-                "This is a debugging transport. The model may explicitly use connect=launch for a clean isolated browser."
+                "This is a debugging transport. Failure must not change the browser backend. Use connect=launch only "
+                "when the user explicitly asks for a clean, isolated, test, or signed-out browser."
             )
         else:
             description = (
@@ -248,8 +253,9 @@ class BrowserBackendRegistryMixin:
             if not bridge.connected:
                 raise RuntimeError(
                     "current-browser backend is unavailable: Loom Current Tab Bridge is not connected. "
-                    "Enable the Loom browser extension in Edge/Chrome, or explicitly use connect=launch for a clean "
-                    "isolated browser. Loom will not switch backends silently."
+                    "Open Settings > Browser and install, repair, or enable the Loom Current Tab Bridge extension. "
+                    "Loom did not open another browser, will not use Computer Use as a substitute, and will not "
+                    "switch backends silently."
                 )
             if normalized in {"", "default"}:
                 factory, _external, _label = super().browser_session_connection("", cdp_url="")

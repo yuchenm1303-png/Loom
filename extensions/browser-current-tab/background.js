@@ -1,6 +1,5 @@
 const PROTOCOL_VERSION = 1;
 const DEFAULT_BRIDGE_URL = "http://127.0.0.1:39222";
-const DEFAULT_TOKEN = "loom-dev-browser-extension";
 const EXTENSION_VERSION = chrome.runtime.getManifest().version;
 // How long to keep looking for a navigation an element action may have started.
 const NAVIGATION_GRACE_MS = 300;
@@ -24,10 +23,31 @@ async function getClientId() {
 
 async function getConfig() {
   const stored = await chrome.storage.local.get(["bridgeUrl", "token"]);
+  let bundled = {};
+  try {
+    const response = await fetch(chrome.runtime.getURL("bridge-config.json"), { cache: "no-store" });
+    if (response.ok) bundled = await response.json();
+  } catch (_) {
+    // Store-distributed builds can pair through a future managed installer;
+    // unpacked Loom builds receive this file from Settings > Browser.
+  }
+  // The desktop-written config wins so "Install or repair" also replaces a
+  // stale development credential left by an older extension version.
+  const token = String(bundled.token || stored.token || "").trim();
+  if (!token) throw new Error("Loom bridge is not paired. Use Loom Settings > Browser > Set up extension.");
   return {
-    bridgeUrl: String(stored.bridgeUrl || DEFAULT_BRIDGE_URL).replace(/\/+$/, ""),
-    token: String(stored.token || DEFAULT_TOKEN),
+    bridgeUrl: String(bundled.bridgeUrl || stored.bridgeUrl || DEFAULT_BRIDGE_URL).replace(/\/+$/, ""),
+    token,
   };
+}
+
+function browserName() {
+  const brands = navigator.userAgentData?.brands || [];
+  if (brands.some((item) => /Microsoft Edge/i.test(item.brand))) return "Microsoft Edge";
+  if (brands.some((item) => /Google Chrome/i.test(item.brand))) return "Google Chrome";
+  if (/Edg\//i.test(navigator.userAgent)) return "Microsoft Edge";
+  if (/Chrome\//i.test(navigator.userAgent)) return "Google Chrome";
+  return "Chromium browser";
 }
 
 async function bridgeFetch(path, options = {}) {
@@ -39,12 +59,24 @@ async function bridgeFetch(path, options = {}) {
 }
 
 async function register() {
+  let activeTab = null;
+  try {
+    const tab = await queryActiveTab();
+    activeTab = {
+      tab_id: String(tab.id ?? ""),
+      window_id: String(tab.windowId ?? ""),
+      title: String(tab.title || ""),
+      url: String(tab.url || ""),
+    };
+  } catch (_) {}
   await bridgeFetch("/browser-extension/v1/register", {
     method: "POST",
     body: JSON.stringify({
       client_id: await getClientId(),
       version: EXTENSION_VERSION,
       protocol_version: PROTOCOL_VERSION,
+      browser: browserName(),
+      active_tab: activeTab,
     }),
   });
 }
@@ -52,7 +84,8 @@ async function register() {
 async function pollOnce() {
   const clientId = encodeURIComponent(await getClientId());
   const version = encodeURIComponent(EXTENSION_VERSION);
-  const response = await bridgeFetch(`/browser-extension/v1/poll?client_id=${clientId}&version=${version}`);
+  const browser = encodeURIComponent(browserName());
+  const response = await bridgeFetch(`/browser-extension/v1/poll?client_id=${clientId}&version=${version}&browser=${browser}`);
   if (!response.ok) throw new Error(`poll failed: HTTP ${response.status}`);
   const payload = await response.json();
   if (!payload.command) return;
@@ -1041,7 +1074,6 @@ function runPageAction(action, args = {}) {
 }
 
 chrome.runtime.onInstalled.addListener(() => {
-  chrome.storage.local.set({ bridgeUrl: DEFAULT_BRIDGE_URL, token: DEFAULT_TOKEN }).catch(() => {});
   startPolling().catch((cause) => console.warn("[loom-browser-bridge]", cause));
 });
 chrome.runtime.onStartup.addListener(() => startPolling().catch((cause) => console.warn("[loom-browser-bridge]", cause)));

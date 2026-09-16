@@ -38,6 +38,7 @@ const api = {
   setReasoning: (kind: string, value: string) => ipcRenderer.invoke("loom:reasoning-set", kind, value),
   exportComputerLogs: () => ipcRenderer.invoke("loom:export-computer-logs"),
   exportBrowserLogs: () => ipcRenderer.invoke("loom:export-browser-logs"),
+  setupBrowserExtension: (browser: "edge" | "chrome" = "edge") => ipcRenderer.invoke("loom:setup-browser-extension", browser),
   revealPath: (targetPath: string) => ipcRenderer.invoke("loom:reveal-path", targetPath),
   pickDirectory: () => ipcRenderer.invoke("loom:pick-directory"),
   pickFiles: () => ipcRenderer.invoke("loom:pick-files"),
