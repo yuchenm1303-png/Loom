@@ -146,8 +146,8 @@ function SteeringComposer({ disabled, onSend, onInterrupt }: ComposerProps) {
       </form>
       <div className="composer-hint">
         {acknowledged
-          ? "Received. Loom will apply this guidance at the next safe step without ending the turn."
-          : "Guidance stays in this turn and is applied at the next safe step. Stop still ends the turn."}
+          ? "Received. Model generation is superseded immediately; an already-running tool finishes before Loom replans."
+          : "Guide this turn anytime. Loom replaces in-flight model generation immediately, while running tools finish safely before replanning. Stop still ends the turn."}
       </div>
     </div>
   );
