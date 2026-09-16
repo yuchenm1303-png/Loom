@@ -13,26 +13,26 @@ from .app_server_project_move import (
 
 
 class BrowserPolicyLoomAppServerService(ProjectMovableLoomAppServerService):
-    """Production App Server browser wiring with honest fallback and HUD routing."""
+    """Production App Server browser wiring with explicit backend selection."""
 
     def _apply_capability_settings(self, settings: dict[str, Any]) -> None:
         super()._apply_capability_settings(settings)
-        # The capability layer rebuilds ToolRegistry from its canonical snapshot.
-        # Auto mode has a connection-specific browser_open description, so restore
-        # that truthful routing text after every unrelated capability toggle too.
-        if str(getattr(self.runtime, "_browser_requested_connection", "") or "").casefold() == "auto":
-            rewrite = getattr(self.runtime, "_rewrite_auto_browser_open_description", None)
-            if callable(rewrite):
-                rewrite()
+        # Capability toggles rebuild ToolRegistry from the canonical snapshot.
+        # Restore the selected backend's browser_open description afterwards so
+        # the model is never told it is driving a different browser route.
+        rewrite = getattr(self.runtime, "_rewrite_browser_open_description", None)
+        if callable(rewrite):
+            rewrite()
+        install_registry = getattr(self.runtime, "_install_browser_backends_tool", None)
+        if callable(install_registry):
+            install_registry()
 
     def _apply_browser_settings(self, settings: dict[str, Any]) -> str:
-        """Apply exactly the browser policy the user selected.
+        """Apply exactly the browser backend the user selected.
 
-        ``auto`` owns its own intentional, visible fallback inside the runtime.
-        Explicit extension/CDP choices are strict: if applying one fails, return
-        the error so settings_set rolls the stored preference back. Do not issue
-        a second hidden ``local-launch`` request here; that old behavior made the
-        UI say "current browser" while Loom was actually driving another browser.
+        Current browser, isolated browser, and developer CDP are separate
+        backends. A failure to use one is surfaced to the caller; the App Server
+        never issues a hidden request for another backend.
         """
 
         apply = getattr(self.runtime, "browser_set_connection", None)
@@ -40,7 +40,7 @@ class BrowserPolicyLoomAppServerService(ProjectMovableLoomAppServerService):
             return ""
         raw = settings.get("browser")
         preferences = dict(raw) if isinstance(raw, dict) else {}
-        mode = str(preferences.get("mode") or "auto").strip()
+        mode = str(preferences.get("mode") or "current-browser").strip()
         engine = str(preferences.get("preferredEngine") or "").strip()
         persist = preferences.get("persistSessions")
         if hasattr(self.runtime, "browser_model_controlled_connection"):
@@ -68,10 +68,9 @@ class BrowserPolicyLoomAppServerService(ProjectMovableLoomAppServerService):
     def _hud_tool_family(tool_name: str) -> str:
         """The desktop overlay belongs to Computer Use, never DOM automation.
 
-        The current-tab extension already draws a real page-local target around
-        the DOM element. Browser events previously reused the virtual-desktop
-        Computer HUD and invented screen coordinates from an element index,
-        which made a non-coordinate operation look precisely grounded.
+        The current-tab extension draws a real page-local target around DOM
+        elements. Browser events must never reuse the virtual-desktop Computer
+        HUD or invent screen coordinates from element indexes.
         """
 
         name = str(tool_name or "").strip()
