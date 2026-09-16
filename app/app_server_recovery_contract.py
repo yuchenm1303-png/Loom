@@ -110,6 +110,13 @@ def install() -> None:
     global _INSTALLED
     if _INSTALLED:
         return
+
+    # The app-server advertises safeHandoffRecover only when the durable runtime
+    # primitive is installed in the same process. Import lazily to avoid making
+    # package import order part of the recovery contract.
+    from app.agent_runtime.handoff_recovery import install as install_runtime_recovery
+
+    install_runtime_recovery()
     _patch_loaded_target()
     if _TARGET_MODULE not in sys.modules:
         sys.meta_path.insert(0, _RecoveryContractFinder())
