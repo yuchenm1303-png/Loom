@@ -16,7 +16,6 @@ import sys
 from types import ModuleType
 from typing import Any
 
-from app.agent_runtime.model_replan import request_replan
 from app.import_patch_chain import find_spec_without
 from app.live_steering_contract import _consumed_duplicate, _input_id, _receipt, _submit_once
 
@@ -79,7 +78,14 @@ def _patch_runtime_class(runtime_cls: type[Any]) -> None:
                     text=value,
                     input_id=resolved_input_id,
                 )
-                sampling = False if duplicate else request_replan(token)
+                sampling = False
+                if not duplicate:
+                    # Import lazily so importing ``app`` itself does not force the
+                    # entire agent_runtime package to initialize just to install
+                    # this protocol patch.
+                    from app.agent_runtime.model_replan import request_replan
+
+                    sampling = request_replan(token)
                 return _receipt(
                     input_id=identifier,
                     duplicate=duplicate,
