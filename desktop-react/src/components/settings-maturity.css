@@ -661,6 +661,38 @@ button.general-default-card:hover .general-default-card-head > svg:last-child,
   gap: 8px;
 }
 
+.browser-extension-setup-guide {
+  margin: 0 18px 18px 58px;
+  padding: 16px;
+  border: 1px solid var(--settings-border);
+  border-radius: 12px;
+  background: rgba(124, 58, 237, 0.055);
+}
+
+.browser-extension-setup-progress {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.browser-extension-setup-progress span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+}
+
+.browser-extension-setup-progress .done { color: #86efac; background: rgba(34, 197, 94, .12); }
+.browser-extension-setup-progress .pending { color: #fde68a; background: rgba(245, 158, 11, .12); }
+.browser-extension-manual-steps strong { display: block; margin-bottom: 7px; }
+.browser-extension-manual-steps ol { margin: 0 0 12px 20px; padding: 0; color: var(--settings-muted); }
+.browser-extension-manual-steps li + li { margin-top: 6px; }
+.browser-extension-path { display: block; padding: 10px 12px; overflow: auto; white-space: nowrap; }
+.browser-extension-actions { margin-top: 12px; }
+
 /* Keep code typography and functional density behavior intact. */
 .markdown-body code,
 .markdown-body pre,

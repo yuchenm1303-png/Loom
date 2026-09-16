@@ -147,6 +147,10 @@ type PluginRecord = {
   description?: string;
 };
 
+type BrowserExtensionSetupResult = Awaited<ReturnType<Window["loom"]["setupBrowserExtension"]>> & {
+  browser: "edge" | "chrome";
+};
+
 interface SettingsPageProps {
   runtime: RuntimeView;
   models: ModelSnapshot | null;
@@ -499,6 +503,8 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
   const [plugins, setPlugins] = useState<PluginRecord[] | null>(null);
   const [pluginsError, setPluginsError] = useState("");
   const [browserSetupBusy, setBrowserSetupBusy] = useState(false);
+  const [browserSetup, setBrowserSetup] = useState<BrowserExtensionSetupResult | null>(null);
+  const [browserConnectionCheck, setBrowserConnectionCheck] = useState<"idle" | "checking" | "connected" | "offline">("idle");
   // Held locally so the endpoint can be typed without a round trip per keystroke.
   const [cdpDraft, setCdpDraft] = useState(settings.browser?.cdpUrl ?? DEFAULT_BROWSER.cdpUrl);
 
@@ -576,6 +582,8 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
     setBrowserSetupBusy(true);
     try {
       const result = await window.loom.setupBrowserExtension(browser);
+      setBrowserSetup({ ...result, browser });
+      setBrowserConnectionCheck("checking");
       setNotice({
         tone: "success",
         text: `Extension folder prepared and copied to the clipboard: ${result.extensionPath}`,
@@ -586,6 +594,36 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
       setBrowserSetupBusy(false);
     }
   };
+
+  const checkBrowserExtensionConnection = async () => {
+    setBrowserConnectionCheck("checking");
+    try {
+      const snapshot = await window.loom.call<{ capabilityStatus?: Record<string, Record<string, unknown>> }>("runtime/status", {});
+      const browser = snapshot.capabilityStatus?.browserUse ?? {};
+      const extension = (browser.extension_bridge as Record<string, unknown> | undefined) ?? {};
+      const connected = extension.connected === true;
+      setBrowserConnectionCheck(connected ? "connected" : "offline");
+      return connected;
+    } catch {
+      setBrowserConnectionCheck("offline");
+      return false;
+    }
+  };
+
+  useEffect(() => {
+    if (!browserSetup || browserConnectionCheck === "connected") return;
+    let disposed = false;
+    let attempts = 0;
+    const timer = window.setInterval(() => {
+      attempts += 1;
+      void checkBrowserExtensionConnection().then((connected) => {
+        if (disposed || !connected) return;
+        window.clearInterval(timer);
+      });
+      if (attempts >= 30) window.clearInterval(timer);
+    }, 1000);
+    return () => { disposed = true; window.clearInterval(timer); };
+  }, [browserSetup, browserConnectionCheck === "connected"]);
 
   const saveSetting = async (path: string, value: unknown, successText?: string) => {
     const next = setNestedSetting(settings, path, value);
@@ -870,9 +908,21 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
       <div className={`settings-callout ${extensionConnected ? "" : "warning"}`}>{extensionConnected ? <Check size={16} /> : <CircleAlert size={16} />}<div><strong>{extensionConnected ? "Current browser is connected." : "Current Browser Bridge is offline."}</strong><span>{extensionConnected ? "The next current-browser session uses this browser's active tab, cookies, and login state." : "Loom will stop current-browser tasks instead of opening an isolated browser or using Computer Use."}</span></div></div>
       <Section title="Current Browser extension" caption="Loom prepares a paired local extension. Browser store publishing is not required for development or local installs.">
         <div className="settings-card mature-preference-list">
-          <PreferenceRow icon={Plug} title="Install or repair" detail="Prepares the extension folder, copies its path, and opens the browser extension manager. Enable Developer mode, choose Load unpacked, then paste the copied path.">
+          <PreferenceRow icon={Plug} title="Install or repair" detail="Prepares a stable extension folder, copies its absolute path, opens that folder, and opens the browser extension manager.">
             <div className="settings-inline-actions"><button className="mature-action-button" type="button" disabled={browserSetupBusy} onClick={() => void setupBrowserExtension("edge")}>Set up Edge</button><button className="mature-action-button secondary" type="button" disabled={browserSetupBusy} onClick={() => void setupBrowserExtension("chrome")}>Set up Chrome</button></div>
           </PreferenceRow>
+          {browserSetup ? (
+            <div className="browser-extension-setup-guide">
+              <div className="browser-extension-setup-progress"><span className="done"><Check size={14} />Extension prepared</span><span className="done"><Check size={14} />Absolute path copied</span><span className="done"><Check size={14} />Folder opened</span><span className={browserConnectionCheck === "connected" ? "done" : "pending"}>{browserConnectionCheck === "connected" ? <Check size={14} /> : <RefreshCw size={14} />} {browserConnectionCheck === "connected" ? "Connected" : browserConnectionCheck === "checking" ? "Waiting for connection" : "Not connected yet"}</span></div>
+              <div className="browser-extension-manual-steps">
+                <strong>Two browser-confirmed steps remain</strong>
+                <ol><li>On <code>{browserSetup.managementUrl}</code>, turn on <b>Developer mode</b>.</li><li>Choose <b>Load unpacked</b>. In the folder picker address bar, paste the exact path below, press Enter, then choose <b>Select folder</b>. Do not enter another nested folder.</li></ol>
+              </div>
+              <code className="browser-extension-path">{browserSetup.extensionPath}</code>
+              <div className="settings-inline-actions browser-extension-actions"><button className="mature-action-button secondary" type="button" onClick={() => void copyText(browserSetup.extensionPath, "Absolute extension path copied.")}><Copy size={14} />Copy path</button><button className="mature-action-button secondary" type="button" onClick={() => void window.loom.revealPath(browserSetup.extensionPath)}><FolderOpen size={14} />Open folder</button><button className="mature-action-button secondary" type="button" onClick={() => void setupBrowserExtension(browserSetup.browser)}><RefreshCw size={14} />Reopen setup</button><button className="mature-action-button" type="button" onClick={() => void checkBrowserExtensionConnection()}><Activity size={14} />Check connection</button></div>
+              {browserSetup.openError || browserSetup.folderError ? <div className="settings-callout-inline"><CircleAlert size={15} /><span>Loom could not open one of the setup windows automatically. Use “Open folder” and “Reopen setup” above. {browserSetup.openError || browserSetup.folderError}</span></div> : null}
+            </div>
+          ) : null}
         </div>
       </Section>
       <Section title="Which browser Loom drives" caption="Current browser is the safe default. Every backend switch is explicit and status always reports the actual identity.">
