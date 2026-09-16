@@ -8,7 +8,7 @@ from typing import TextIO
 from app.agent_runtime import PermissionMode
 from app.ai import ReasoningRequest
 from app.ai.reasoning_catalog import reasoning_capability
-from app.app_server_project_move import serve_project_managed_streaming_stdio
+from app.app_server_browser_policy import serve_browser_policy_managed_streaming_stdio
 from loom_cli import _build_runtime, _resolve_new_permission_mode
 
 
@@ -119,7 +119,7 @@ def main(argv: list[str] | None = None) -> int:
     runtime.reasoning = reasoning
     runtime.reasoning_capability = capability
     permission_mode = _resolve_new_permission_mode(args)
-    return serve_project_managed_streaming_stdio(
+    return serve_browser_policy_managed_streaming_stdio(
         runtime=runtime,
         store=store,
         model=model,
