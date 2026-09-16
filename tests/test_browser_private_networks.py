@@ -144,3 +144,46 @@ def test_the_runtime_switch_refuses_to_change_under_a_live_session(tmp_path):
         assert runtime.browser_allow_private_networks is True
     finally:
         runtime.close()
+
+
+def test_an_address_without_a_scheme_is_a_missing_prefix_not_a_policy_refusal():
+    """`dash.cloudflare.com` is how a destination is normally written.
+
+    Rejecting it raised BrowserURLPolicyError, whose message is about navigation
+    policy, so a missing prefix surfaced to the user as a security refusal.
+    """
+
+    from app.agent_runtime.browser_security import BrowserSecurityPolicy
+
+    policy = BrowserSecurityPolicy(resolve_dns=False, allow_private_networks=True)
+
+    assert policy.validate("dash.cloudflare.com") == "https://dash.cloudflare.com"
+    assert policy.validate("www.example.com/a?b=c") == "https://www.example.com/a?b=c"
+    # urlsplit reads `localhost` as the scheme here, so a colon cannot be the test.
+    assert policy.validate("localhost:8080") == "https://localhost:8080"
+    # An explicit scheme is still honoured verbatim.
+    assert policy.validate("http://example.com") == "http://example.com"
+
+
+def test_non_web_schemes_are_still_refused():
+    """Prepending a scheme must not smuggle anything past the http/https check."""
+
+    import pytest
+
+    from app.agent_runtime.browser_security import BrowserSecurityPolicy
+    from app.agent_runtime.browser_session import BrowserURLPolicyError
+
+    policy = BrowserSecurityPolicy(resolve_dns=False, allow_private_networks=True)
+
+    for value in (
+        "javascript:alert(1)",
+        "file:///C:/Windows/win.ini",
+        "data:text/html,<script>x</script>",
+        "about:blank",
+        "chrome://settings",
+        "view-source:https://example.com",
+        "",
+        "not a url at all",
+    ):
+        with pytest.raises(BrowserURLPolicyError):
+            policy.validate(value)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ipaddress
+import re
 import socket
 import unicodedata
 from dataclasses import dataclass, field
@@ -88,6 +89,37 @@ def _matches_domain(host: str, rule: str) -> bool:
     return host == rule
 
 
+#: Hierarchical URL: a scheme followed by an authority.
+_HIERARCHICAL_URL = re.compile(r"^[A-Za-z][A-Za-z0-9+.\-]*://")
+
+#: Opaque schemes that must keep failing the http/https check rather than being
+#: mistaken for a "host:port" that only needs a scheme prepended.
+_OPAQUE_SCHEME = re.compile(
+    r"^(?:javascript|data|mailto|file|blob|about|view-source|chrome|chrome-extension|edge|ms-browser-extension|tel|sms):",
+    re.IGNORECASE,
+)
+
+
+def _with_default_scheme(value: str) -> str:
+    """Accept the address form people and models actually write.
+
+    ``dash.cloudflare.com`` and ``localhost:8080`` are how a destination is
+    normally typed, and neither carries a scheme. Rejecting them produced a
+    message about navigation policy, which reads as a refusal on security
+    grounds for what is only a missing prefix. Genuinely non-web schemes still
+    fall through to that check and are still refused.
+
+    ``localhost:8080`` is the reason this cannot simply look for a colon:
+    ``urlsplit`` reads ``localhost`` as the scheme.
+    """
+
+    if not value or _HIERARCHICAL_URL.match(value) or _OPAQUE_SCHEME.match(value):
+        return value
+    if any(char.isspace() for char in value):
+        return value
+    return f"https://{value}"
+
+
 @dataclass(frozen=True, slots=True)
 class BrowserSecurityPolicy:
     """Execution-layer URL policy for Loom browser navigation.
@@ -109,7 +141,7 @@ class BrowserSecurityPolicy:
         object.__setattr__(self, "prohibited_domains", normalized)
 
     def validate(self, url: str, *, allowed_domains: tuple[str, ...] = ()) -> str:
-        value = str(url or "").strip()
+        value = _with_default_scheme(str(url or "").strip())
         parsed = urlsplit(value)
         if parsed.scheme.casefold() not in {"http", "https"}:
             raise BrowserURLPolicyError("browser navigation only allows http/https URLs")
