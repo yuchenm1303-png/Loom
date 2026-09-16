@@ -98,10 +98,12 @@ class TurnRunner:
                         reasoning=reasoning,
                     )
 
-                    # Transport retries are retries of this exact request, not a
-                    # new semantic sampling step. Keep both the StepContext and
-                    # prepared request stable until the provider yields a response.
+                    # Transport retries repeat this exact immutable request and
+                    # therefore use a separate, larger budget from semantic
+                    # response-repair retries. Cancellation waits on the same
+                    # token event, so Stop interrupts exponential backoff at once.
                     retry_sampling = False
+                    transport_attempt = 0
                     while True:
                         rt._record(session, Event.MODEL_REQUESTED, data={
                             "profile_id": profile_id,
@@ -113,6 +115,7 @@ class TurnRunner:
                             "permission_mode": step.world_state.permission_mode.value,
                             "reasoning": reasoning.as_safe_dict() if reasoning is not None else None,
                             "attempt": attempt,
+                            "transport_attempt": transport_attempt,
                             **extra,
                         })
                         try:
@@ -182,10 +185,10 @@ class TurnRunner:
                             retry_sampling = True
                             break
                         except AITransportError as exc:
-                            if not exc.retryable or attempt >= rt.limits.model_retries:
+                            if not exc.retryable or transport_attempt >= rt.limits.transport_retries:
                                 raise
-                            attempt += 1
-                            if token._event.wait(min(2.0, 0.25 * 2 ** (attempt - 1))):
+                            transport_attempt += 1
+                            if token._event.wait(min(8.0, 0.5 * 2 ** (transport_attempt - 1))):
                                 raise ModelCancelled()
                             continue
 
@@ -339,5 +342,8 @@ class TurnRunner:
                 )
                 rt._release_turn_steps(session)
                 rt.store.save(session)
-                rt._record(session, Event.TURN_FAILED, data={"error": session.error})
+                failure_data = {"error": session.error}
+                if isinstance(exc, AITransportError):
+                    failure_data["retryable_transport"] = bool(exc.retryable)
+                rt._record(session, Event.TURN_FAILED, data=failure_data)
         return rt._result(session)
