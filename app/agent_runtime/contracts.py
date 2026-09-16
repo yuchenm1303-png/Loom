@@ -79,7 +79,10 @@ class AgentLimits:
     max_tool_result_chars: int = 20_000
     context_window_tokens: int = 32_768
     output_reserve_tokens: int = 4096
-    model_retries: int = 2
+    # Use the full supported retry budget by default. Retryable transport errors
+    # are the one failure class where repeating the exact immutable model request
+    # is safe; non-retryable provider/credential failures still stop immediately.
+    model_retries: int = 5
 
     def __post_init__(self) -> None:
         if self.model_retries < 0 or self.model_retries > 5:
