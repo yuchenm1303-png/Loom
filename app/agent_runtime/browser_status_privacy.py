@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from typing import Any
 from urllib.parse import urlsplit
 
+from .browser_backend_intent import BrowserBackendIntentMixin
 from .memory_store import redact_secrets
 
 
@@ -47,7 +47,7 @@ def _safe_current_tab(value: object) -> dict[str, str] | None:
     }
 
 
-class BrowserStatusPrivacyMixin:
+class BrowserStatusPrivacyMixin(BrowserBackendIntentMixin):
     """Keep browser discovery/status useful without leaking address-bar secrets.
 
     The extension needs the full active-tab URL internally to drive the page, but
@@ -55,6 +55,9 @@ class BrowserStatusPrivacyMixin:
     They expose only the tab origin plus a redacted title and opaque tab/window
     identifiers. Page observations still provide Loom's normal redacted URL once
     a browser session is actually opened.
+
+    BrowserBackendIntentMixin also makes a change from current-browser to Loom's
+    isolated browser turn-authorized rather than a fallback the model can invent.
     """
 
     def browser_backend_registry(self):
