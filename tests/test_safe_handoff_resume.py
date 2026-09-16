@@ -4,6 +4,7 @@ import pytest
 
 from app.agent_runtime import (
     AgentEventKind,
+    AgentLimits,
     AgentStatus,
     DurableAgentRuntime,
     FileAgentSessionStore,
@@ -49,6 +50,27 @@ def _running_session(runtime, tmp_path, *, turn_id="recover-turn"):
     return session
 
 
+def _failed_transport(runtime, session, *, retryable: bool) -> None:
+    session.status = AgentStatus.FAILED
+    session.error = "AITransportError: connection lost"
+    runtime.store.save(session)
+    runtime._record(
+        session,
+        AgentEventKind.TURN_FAILED,
+        data={
+            "error": session.error,
+            "retryable_transport": retryable,
+        },
+    )
+
+
+def test_retry_budgets_keep_semantic_repairs_small_and_transport_recovery_longer():
+    limits = AgentLimits()
+
+    assert limits.model_retries == 2
+    assert limits.transport_retries == 5
+
+
 def test_safe_handoff_resumes_same_turn_without_duplicating_user_message(tmp_path):
     original, _ = _runtime(tmp_path)
     session = _running_session(original, tmp_path)
@@ -73,9 +95,7 @@ def test_safe_handoff_resumes_same_turn_without_duplicating_user_message(tmp_pat
 def test_transport_failed_turn_resumes_same_turn_after_network_returns(tmp_path):
     original, _ = _runtime(tmp_path)
     session = _running_session(original, tmp_path, turn_id="network-recovery")
-    session.status = AgentStatus.FAILED
-    session.error = "AITransportError: connection lost"
-    original.store.save(session)
+    _failed_transport(original, session, retryable=True)
 
     restarted, platform = _runtime(tmp_path, [ModelResponse(text="back online")])
     result = restarted.recover_turn_if_idle(session.session_id, "network-recovery")
@@ -88,6 +108,38 @@ def test_transport_failed_turn_resumes_same_turn_after_network_returns(tmp_path)
     assert restored.error == ""
     assert len(platform.requests) == 1
     assert [message.role for message in restored.messages].count(MessageRole.USER) == 1
+    recovery_starts = [
+        event
+        for event in restarted.store.events(session.session_id)
+        if event.kind is AgentEventKind.TURN_STARTED
+        and event.data.get("source") == "network_recovery"
+    ]
+    assert len(recovery_starts) == 1
+
+
+def test_non_retryable_transport_failure_is_not_auto_resumed(tmp_path):
+    runtime, platform = _runtime(tmp_path)
+    session = _running_session(runtime, tmp_path, turn_id="provider-rejection")
+    _failed_transport(runtime, session, retryable=False)
+
+    result = runtime.recover_turn_if_idle(session.session_id, "provider-rejection")
+
+    assert result.status is AgentStatus.FAILED
+    assert result.error == "AITransportError: connection lost"
+    assert platform.requests == []
+
+
+def test_transport_failure_without_durable_retryability_is_not_auto_resumed(tmp_path):
+    runtime, platform = _runtime(tmp_path)
+    session = _running_session(runtime, tmp_path, turn_id="legacy-transport")
+    session.status = AgentStatus.FAILED
+    session.error = "AITransportError: connection lost"
+    runtime.store.save(session)
+
+    result = runtime.recover_turn_if_idle(session.session_id, "legacy-transport")
+
+    assert result.status is AgentStatus.FAILED
+    assert platform.requests == []
 
 
 def test_non_transport_failed_turn_is_not_auto_resumed(tmp_path):
