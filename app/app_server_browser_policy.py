@@ -17,9 +17,6 @@ class BrowserPolicyLoomAppServerService(ProjectMovableLoomAppServerService):
 
     def _apply_capability_settings(self, settings: dict[str, Any]) -> None:
         super()._apply_capability_settings(settings)
-        # Capability toggles rebuild ToolRegistry from the canonical snapshot.
-        # Restore the selected backend's browser_open description afterwards so
-        # the model is never told it is driving a different browser route.
         rewrite = getattr(self.runtime, "_rewrite_browser_open_description", None)
         if callable(rewrite):
             rewrite()
@@ -30,9 +27,11 @@ class BrowserPolicyLoomAppServerService(ProjectMovableLoomAppServerService):
     def _apply_browser_settings(self, settings: dict[str, Any]) -> str:
         """Apply exactly the browser backend the user selected.
 
-        Current browser, isolated browser, and developer CDP are separate
-        backends. A failure to use one is surfaced to the caller; the App Server
-        never issues a hidden request for another backend.
+        The model may always explicitly choose Loom's isolated browser because
+        that reduces authority compared with a signed-in user browser. The
+        ``modelSelectsConnection`` setting now controls escalation to a different
+        external backend (current-browser/CDP), not whether the model can open a
+        clean isolated session. No backend is ever selected silently.
         """
 
         apply = getattr(self.runtime, "browser_set_connection", None)
@@ -40,13 +39,20 @@ class BrowserPolicyLoomAppServerService(ProjectMovableLoomAppServerService):
             return ""
         raw = settings.get("browser")
         preferences = dict(raw) if isinstance(raw, dict) else {}
-        mode = str(preferences.get("mode") or "current-browser").strip()
+        mode = str(preferences.get("mode") or "auto").strip()
         engine = str(preferences.get("preferredEngine") or "").strip()
         persist = preferences.get("persistSessions")
+
         if hasattr(self.runtime, "browser_model_controlled_connection"):
-            self.runtime.browser_model_controlled_connection = bool(
+            # Keep browser_open's per-session backend selector available. The
+            # registry itself enforces whether a requested external backend is an
+            # allowed escalation.
+            self.runtime.browser_model_controlled_connection = True
+        if hasattr(self.runtime, "browser_allow_external_backend_selection"):
+            self.runtime.browser_allow_external_backend_selection = bool(
                 preferences.get("modelSelectsConnection", False)
             )
+
         private = getattr(self.runtime, "browser_set_private_networks", None)
         if callable(private):
             try:
@@ -60,18 +66,17 @@ class BrowserPolicyLoomAppServerService(ProjectMovableLoomAppServerService):
                 persist_profile=None if persist is None else bool(persist),
                 engine=engine,
             )
+            # BrowserRuntime may rewrite its legacy flag while rebuilding a
+            # transport; restore the backend-registry policy afterwards.
+            if hasattr(self.runtime, "browser_model_controlled_connection"):
+                self.runtime.browser_model_controlled_connection = True
             return ""
         except Exception as exc:
             return f"{type(exc).__name__}: {exc}"
 
     @staticmethod
     def _hud_tool_family(tool_name: str) -> str:
-        """The desktop overlay belongs to Computer Use, never DOM automation.
-
-        The current-tab extension draws a real page-local target around DOM
-        elements. Browser events must never reuse the virtual-desktop Computer
-        HUD or invent screen coordinates from element indexes.
-        """
+        """The desktop overlay belongs to Computer Use, never DOM automation."""
 
         name = str(tool_name or "").strip()
         return "computer" if name.startswith("computer_") else ""
