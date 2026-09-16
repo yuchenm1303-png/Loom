@@ -7,8 +7,10 @@ export interface LoomNotification {
 }
 
 const FRAME_BATCH_MS = 16;
+const NETWORK_RECOVERY_DELAY_MS = 1500;
 const BATCHED_ITEM_METHODS = new Set(["item/started", "item/delta", "item/completed"]);
-const RECOVERABLE_THREAD_STATUSES = new Set(["running", "waiting_approval"]);
+const ACTIVE_RECOVERABLE_THREAD_STATUSES = new Set(["running", "waiting_approval"]);
+const automaticNetworkRecoveryAttempts = new Set<string>();
 
 function mergeDeltaParams(
   previous: Record<string, unknown> | undefined,
@@ -25,20 +27,33 @@ function mergeDeltaParams(
   return next;
 }
 
+function isTransportFailure(error: unknown): boolean {
+  return String(error ?? "").startsWith("AITransportError:");
+}
+
+function threadNeedsRecovery(result: Record<string, unknown>): boolean {
+  const thread = result.thread as Record<string, unknown> | undefined;
+  const status = String(thread?.status ?? "").trim();
+  return ACTIVE_RECOVERABLE_THREAD_STATUSES.has(status)
+    || (status === "failed" && isTransportFailure(result.error));
+}
+
 async function call(method: string, params: Record<string, unknown> = {}) {
   const result = await ipcRenderer.invoke("loom:call", method, params);
   if (method !== "thread/read" || !result || typeof result !== "object") return result;
 
-  const thread = (result as { thread?: Record<string, unknown> }).thread;
+  const record = result as Record<string, unknown>;
+  const thread = record.thread as Record<string, unknown> | undefined;
   const threadId = String(thread?.id ?? "").trim();
   const turnId = String(thread?.currentTurnId ?? "").trim();
-  const status = String(thread?.status ?? "").trim();
-  if (!threadId || !turnId || !RECOVERABLE_THREAD_STATUSES.has(status)) return result;
+  if (!threadId || !turnId || !threadNeedsRecovery(record)) return result;
 
   // A read is observational on the backend. When the desktop actually opens an
-  // unfinished thread, explicitly request a safe handoff. A live executor simply
-  // rejoins; a restarted executor reconstructs the turn from durable state; a lost
-  // approval or uncertain tool side effect fails closed instead of being replayed.
+  // unfinished/retryable thread, explicitly request a safe handoff. A live
+  // executor simply rejoins; a restarted executor reconstructs the turn from
+  // durable state; a retry-exhausted transport failure replays only the immutable
+  // model request. Lost approval capability or uncertain tool side effects fail
+  // closed instead of being replayed.
   return ipcRenderer.invoke("loom:call", "thread/resume", {
     threadId,
     recoverTurnId: turnId,
@@ -80,6 +95,7 @@ const api = {
   onNotification: (listener: (payload: LoomNotification) => void) => {
     let queue: LoomNotification[] = [];
     let timer: ReturnType<typeof setTimeout> | null = null;
+    const recoveryTimers = new Set<ReturnType<typeof setTimeout>>();
 
     const flush = () => {
       if (timer !== null) {
@@ -97,10 +113,53 @@ const api = {
       timer = setTimeout(flush, FRAME_BATCH_MS);
     };
 
+    const scheduleNetworkRecovery = (payload: LoomNotification) => {
+      if (payload.method !== "turn/completed") return;
+      const params = payload.params ?? {};
+      const turn = params.turn as Record<string, unknown> | undefined;
+      const status = String(turn?.status ?? "").trim();
+      const error = turn?.error;
+      const threadId = String(params.threadId ?? turn?.threadId ?? "").trim();
+      const turnId = String(turn?.id ?? "").trim();
+      if (status !== "failed" || !isTransportFailure(error) || !threadId || !turnId) return;
+
+      const key = `${threadId}:${turnId}`;
+      if (automaticNetworkRecoveryAttempts.has(key)) return;
+      automaticNetworkRecoveryAttempts.add(key);
+
+      const recoveryTimer = setTimeout(() => {
+        recoveryTimers.delete(recoveryTimer);
+        // Reflect the retry immediately in the renderer. Backend terminal events
+        // remain authoritative and will settle this state if the retry fails.
+        listener({
+          jsonrpc: "2.0",
+          method: "turn/started",
+          params: {
+            threadId,
+            turn: {
+              id: turnId,
+              threadId,
+              status: "running",
+              startedAt: new Date().toISOString(),
+              source: "network_recovery",
+            },
+          },
+        });
+        void ipcRenderer.invoke("loom:call", "thread/resume", {
+          threadId,
+          recoverTurnId: turnId,
+        }).catch(() => {
+          listener({ jsonrpc: "2.0", method: "thread/resync", params: { threadId } });
+        });
+      }, NETWORK_RECOVERY_DELAY_MS);
+      recoveryTimers.add(recoveryTimer);
+    };
+
     const wrapped = (_event: Electron.IpcRendererEvent, payload: LoomNotification) => {
       if (!BATCHED_ITEM_METHODS.has(payload.method)) {
         flush();
         listener(payload);
+        scheduleNetworkRecovery(payload);
         return;
       }
 
@@ -132,6 +191,8 @@ const api = {
     return () => {
       ipcRenderer.removeListener("loom:notification", wrapped);
       if (timer !== null) clearTimeout(timer);
+      for (const recoveryTimer of recoveryTimers) clearTimeout(recoveryTimer);
+      recoveryTimers.clear();
       timer = null;
       queue = [];
     };
