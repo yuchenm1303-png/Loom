@@ -135,10 +135,16 @@ def _patch_runtime_class(runtime_cls: type[Any]) -> None:
     if runtime_cls.__dict__.get("_loom_live_steering_installed", False):
         return
 
+    # A few protocol/streaming tests bind intentionally tiny runtime stubs to the
+    # app-server service. They are not AgentRuntime implementations and should
+    # remain valid consumers of the protocol adapter even though they cannot
+    # execute steering. Real Loom runtimes all expose this prompt hook.
+    original_system_prompt = getattr(runtime_cls, "_model_system_prompt", None)
+    if not callable(original_system_prompt):
+        return
+
     from app.agent_runtime.contracts import AgentEventKind, AgentStatus
     from app.agent_runtime.tools import ToolResult
-
-    original_system_prompt = runtime_cls._model_system_prompt
 
     def model_system_prompt(self: Any, session: Any, step: Any) -> str:
         value = str(original_system_prompt(self, session, step))
