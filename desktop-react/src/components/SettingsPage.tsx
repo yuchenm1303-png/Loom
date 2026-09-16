@@ -101,7 +101,7 @@ type TerminalSettings = {
   preserveBackgroundProcesses: boolean;
 };
 
-type BrowserConnectionMode = "local-launch" | "cdp-attach" | "extension";
+type BrowserConnectionMode = "auto" | "local-launch" | "cdp-attach" | "extension";
 
 type BrowserSettings = {
   mode: BrowserConnectionMode;
@@ -161,6 +161,7 @@ interface NavItem {
 }
 
 const LOCAL_DESKTOP_SETTINGS_KEY = "loom.settings.desktop.v2";
+const BROWSER_AUTO_MIGRATION_KEY = "loom.settings.browser-auto-default.v1";
 const SETTINGS_UPDATE_PREFIX = "__setting__:";
 
 const DEFAULT_CAPABILITIES: Record<CapabilityKey, boolean> = {
@@ -227,7 +228,7 @@ const DEFAULT_TERMINAL: TerminalSettings = {
 };
 
 const DEFAULT_BROWSER: BrowserSettings = {
-  mode: "local-launch",
+  mode: "auto",
   cdpUrl: "",
   preferredEngine: "edge",
   persistSessions: true,
@@ -237,19 +238,24 @@ const DEFAULT_BROWSER: BrowserSettings = {
 
 const BROWSER_MODE_OPTIONS: { value: BrowserConnectionMode; label: string; detail: string }[] = [
   {
-    value: "local-launch",
-    label: "Loom's own browser",
-    detail: "Loom launches and owns a browser. Your everyday browsing is untouched.",
-  },
-  {
-    value: "cdp-attach",
-    label: "Attach to a local browser",
-    detail: "Drive a Chrome/Edge already running with remote debugging on this machine.",
+    value: "auto",
+    label: "Automatic · current browser first",
+    detail: "Use your current Edge/Chrome tab when the Loom extension is connected; otherwise open a visible isolated browser.",
   },
   {
     value: "extension",
-    label: "Current tab via extension",
-    detail: "Drive the tab you are looking at, through the installed Loom bridge extension.",
+    label: "Current browser only",
+    detail: "Require the Loom extension and drive the tab you are looking at. Never fall back to another browser.",
+  },
+  {
+    value: "local-launch",
+    label: "Isolated browser",
+    detail: "Always launch a separate visible browser owned by Loom. Your everyday browser stays untouched.",
+  },
+  {
+    value: "cdp-attach",
+    label: "Developer CDP attach",
+    detail: "Drive a Chrome/Edge already running with an explicit loopback remote-debugging port.",
   },
 ];
 
@@ -303,7 +309,7 @@ const CAPABILITIES: {
   detailPage?: PageKey;
 }[] = [
   { key: "computerUse", title: "Computer Use", description: "Expose screenshot, UIA, mouse, and keyboard tools.", icon: Monitor, detailPage: "computer" },
-  { key: "browserUse", title: "Browser Use", description: "Expose browser automation and local CDP attachment.", icon: Globe2, detailPage: "browser" },
+  { key: "browserUse", title: "Browser Use", description: "Drive the current browser, an isolated browser, or a local CDP target.", icon: Globe2, detailPage: "browser" },
   { key: "webSearch", title: "Web Search", description: "Expose the configured public-web search provider.", icon: Search },
   { key: "mcp", title: "MCP tools", description: "Expose tools discovered from configured MCP servers.", icon: Plug, detailPage: "mcp" },
   { key: "skills", title: "Skills", description: "Discover and load reusable SKILL.md workflows.", icon: Sparkles, detailPage: "skills" },
@@ -353,7 +359,23 @@ function capabilityStatusText(status: Record<string, unknown> | undefined): stri
 function readLocalSettings(): Partial<DesktopSettings> {
   try {
     const parsed = JSON.parse(window.localStorage.getItem(LOCAL_DESKTOP_SETTINGS_KEY) || "{}");
-    return parsed && typeof parsed === "object" ? parsed : {};
+    if (!parsed || typeof parsed !== "object") return {};
+
+    // v2 renderer state eagerly materialized local-launch even when the user had
+    // never chosen a browser route. That old default would otherwise override
+    // the new server-side auto policy forever. Migrate that ambiguous default
+    // once, without touching any other local desktop preference. An explicit
+    // isolated-browser choice made after this release is then preserved normally.
+    if (!window.localStorage.getItem(BROWSER_AUTO_MIGRATION_KEY)) {
+      const browser = parsed.browser && typeof parsed.browser === "object" ? { ...parsed.browser } : undefined;
+      if (browser?.mode === "local-launch") {
+        delete browser.mode;
+        parsed.browser = browser;
+      }
+      window.localStorage.setItem(BROWSER_AUTO_MIGRATION_KEY, "1");
+      window.localStorage.setItem(LOCAL_DESKTOP_SETTINGS_KEY, JSON.stringify(parsed));
+    }
+    return parsed;
   } catch {
     return {};
   }
@@ -822,9 +844,14 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
     const enabled = capabilityEnabled("browserUse");
     const badge = capabilityLabel(browserStatus, enabled);
     const prefs = { ...DEFAULT_BROWSER, ...(settings.browser ?? {}) } as BrowserSettings;
-    return <><div className="settings-page-heading settings-heading-with-switch"><div><span className="settings-eyebrow">Web interaction</span><h1>Browser</h1><p>Control Loom's browser-use session or attach to a local Chrome/Edge instance.</p></div><div className="settings-master-switch"><StatusPill tone={badge.tone}>{badge.text}</StatusPill><SettingSwitch checked={enabled} disabled={running || busyCapability !== null} label="Toggle Browser Use" onChange={(value) => void setCapability("browserUse", value)} /></div></div>
-      <Section title="Browser runtime"><div className="settings-card settings-detail-list"><DetailRow label="Backend" value={text(browserStatus?.backend, capabilityStatusText(browserStatus))} /><DetailRow label="Connection" value={text(browserStatus?.browser_connection, "Not reported")} /><DetailRow label="External browser" value={bool(browserStatus?.external_browser) ? "Attached" : "Not reported"} /><DetailRow label="Active sessions" value={String(browserStatus?.active_sessions ?? "Not reported")} /></div></Section>
-      <Section title="Which browser Loom drives" caption="Changing this closes any browser session Loom currently holds.">
+    const requestedConnection = text(browserStatus?.requested_browser_connection, prefs.mode);
+    const selectedConnection = text(browserStatus?.auto_selected_connection, browserStatus?.browser_connection ? String(browserStatus.browser_connection) : "Not reported");
+    const autoFallback = bool(browserStatus?.auto_fallback);
+    const extensionConnected = bool((browserStatus?.extension_bridge as Record<string, unknown> | undefined)?.connected);
+    return <><div className="settings-page-heading settings-heading-with-switch"><div><span className="settings-eyebrow">Web interaction</span><h1>Browser</h1><p>Prefer your current signed-in Edge/Chrome tab, with a visible isolated browser as the automatic fallback.</p></div><div className="settings-master-switch"><StatusPill tone={badge.tone}>{badge.text}</StatusPill><SettingSwitch checked={enabled} disabled={running || busyCapability !== null} label="Toggle Browser Use" onChange={(value) => void setCapability("browserUse", value)} /></div></div>
+      <Section title="Browser runtime"><div className="settings-card settings-detail-list"><DetailRow label="Requested policy" value={requestedConnection} /><DetailRow label="Selected route" value={selectedConnection} /><DetailRow label="Backend" value={text(browserStatus?.backend, capabilityStatusText(browserStatus))} /><DetailRow label="Current browser bridge" value={extensionConnected ? "Connected" : "Not connected"} /><DetailRow label="Active sessions" value={String(browserStatus?.active_sessions ?? "Not reported")} /></div></Section>
+      {prefs.mode === "auto" ? <div className={`settings-callout ${autoFallback ? "warning" : ""}`}>{autoFallback ? <CircleAlert size={16} /> : <Check size={16} />}<div><strong>{autoFallback ? "Using the visible isolated fallback." : "Current browser is ready."}</strong><span>{autoFallback ? text(browserStatus?.auto_fallback_reason, "The Current Tab Bridge is not connected. Loom will use its visible isolated browser until it reconnects.") : "The Current Tab Bridge is connected, so the next Browser session will use your active Edge/Chrome tab and its existing login state."}</span></div></div> : null}
+      <Section title="Which browser Loom drives" caption="Automatic is recommended. Explicit current-browser and CDP modes fail visibly instead of silently switching browsers.">
         <div className="settings-card mature-preference-list">
           <PreferenceRow icon={Globe2} title="Connection" detail={BROWSER_MODE_OPTIONS.find((item) => item.value === prefs.mode)?.detail ?? ""}>
             <SelectControl label="Browser connection" value={prefs.mode} options={BROWSER_MODE_OPTIONS.map((item) => ({ value: item.value, label: item.label }))} onChange={(value) => void saveBrowserMode(value as BrowserConnectionMode)} />
@@ -835,9 +862,9 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
             </PreferenceRow>
           ) : null}
           {prefs.mode === "extension" ? (
-            <div className="settings-callout-inline"><CircleAlert size={15} /><span>Requires the Loom Current Tab Bridge extension to be installed and enabled in Chrome or Edge.</span></div>
+            <div className="settings-callout-inline"><CircleAlert size={15} /><span>Strict current-browser mode requires the Loom Current Tab Bridge extension. If it is not connected, Browser Use reports the error and does not open another browser.</span></div>
           ) : null}
-          <PreferenceRow icon={ShieldAlert} title="Let the model pick the browser" detail="The model may attach to any local browser running with remote debugging, or take over your current tab, instead of only using the connection above.">
+          <PreferenceRow icon={ShieldAlert} title="Let the model pick the browser" detail="The model may explicitly choose launch, local CDP attach, or the current tab instead of only using the policy above.">
             <SettingSwitch checked={prefs.modelSelectsConnection} label="Model-selected browser connections" onChange={(value) => void saveBrowserSetting("browser.modelSelectsConnection", value, value ? "The model can now choose the browser." : "The model is restricted to the connection above.")} />
           </PreferenceRow>
           <PreferenceRow icon={ShieldAlert} title="Reach local addresses" detail="Let the browser open localhost and private network addresses, such as your own dev server. Off by default because it also reaches services that were never exposed.">
@@ -848,7 +875,7 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
           ) : null}
         </div>
       </Section>
-      <Section title="Browser preferences"><div className="settings-card mature-preference-list"><PreferenceRow icon={Globe2} title="Preferred browser" detail={prefs.mode === "local-launch" ? "Which installed browser Loom launches." : "Only applies when Loom launches its own browser."}><SelectControl label="Preferred browser" value={prefs.preferredEngine} options={[{ value: "edge", label: "Microsoft Edge" }, { value: "chrome", label: "Google Chrome" }, { value: "system", label: "System default" }]} onChange={(value) => void saveSetting("browser.preferredEngine", value)} /></PreferenceRow><PreferenceRow icon={Database} title="Persist sessions" detail="Keep cookies and site storage in Loom's own browser profile across restarts."><SettingSwitch checked={prefs.persistSessions} label="Persist browser sessions" onChange={(value) => void saveSetting("browser.persistSessions", value)} /></PreferenceRow></div></Section>
+      <Section title="Browser preferences"><div className="settings-card mature-preference-list"><PreferenceRow icon={Globe2} title="Preferred isolated browser" detail={prefs.mode === "auto" ? "Used only when Automatic cannot reach the Current Tab Bridge." : prefs.mode === "local-launch" ? "Which installed browser Loom launches for the isolated session." : "Only applies when Loom launches an isolated browser."}><SelectControl label="Preferred browser" value={prefs.preferredEngine} options={[{ value: "edge", label: "Microsoft Edge" }, { value: "chrome", label: "Google Chrome" }, { value: "system", label: "System default" }]} onChange={(value) => void saveBrowserSetting("browser.preferredEngine", value, "Preferred isolated browser updated.")} /></PreferenceRow><PreferenceRow icon={Database} title="Persist isolated sessions" detail="Keep cookies and site storage only in Loom's isolated browser profile. Your current browser keeps its own profile automatically."><SettingSwitch checked={prefs.persistSessions} label="Persist isolated browser sessions" onChange={(value) => void saveBrowserSetting("browser.persistSessions", value, value ? "Isolated browser sessions will persist." : "Isolated browser sessions will be ephemeral.")} /></PreferenceRow></div></Section>
     </>;
   };
 
