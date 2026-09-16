@@ -84,10 +84,12 @@ def test_turn_intent_is_cleared_after_turn_returns():
         runtime.browser_session_connection("launch")
 
 
-def test_intent_detection_is_conservative():
+def test_intent_detection_is_conservative_and_negation_wins():
     assert user_explicitly_requests_isolated_browser("用未登录状态测试") is True
     assert user_explicitly_requests_isolated_browser("Use an incognito browser") is True
     assert user_explicitly_requests_isolated_browser("继续操作我现在的 Edge") is False
+    assert user_explicitly_requests_isolated_browser("不要开新浏览器，直接操作我的 Edge") is False
+    assert user_explicitly_requests_isolated_browser("Don't use a new browser; keep my current Edge tab") is False
 
 
 def test_production_runtime_contains_turn_scoped_backend_intent_guard():
