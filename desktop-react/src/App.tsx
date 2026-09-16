@@ -809,7 +809,10 @@ export default function App() {
 
         <div className="composer-stage">
           {recoveryState === "reconnecting" || recoveryState === "recovering" ? (
-            <RecoveryComposer state={recoveryState} />
+            <RecoveryComposer
+              state={recoveryState}
+              onStop={recoveryState === "recovering" && running ? loom.interrupt : undefined}
+            />
           ) : (
             <Composer
               disabled={!thread || loom.connection !== "ready" || archived}
