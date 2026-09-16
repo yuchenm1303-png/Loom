@@ -305,12 +305,15 @@ class BrowserRuntime(_BrowserRuntime):
         self._browser_feedback_effect.pop(session_id, None)
         self._browser_visual_feedback.pop(session_id, None)
 
-    def start_turn(self, session_id, user_text):
+    def start_turn(self, session_id, user_text, *, turn_id: str | None = None):
         # Latest DOM/image feedback is intentionally one-turn memory. A live browser
         # may remain open across turns, but the next user request must refresh state
         # rather than inherit a potentially stale page observation from RAM.
+        #
+        # The turn identity handed down from the app server has to survive this hop:
+        # dropping it breaks the caller's ability to interrupt the turn it just started.
         self._clear_browser_feedback(session_id)
-        return super().start_turn(session_id, user_text)
+        return super().start_turn(session_id, user_text, turn_id=turn_id)
 
     def _capture_screenshot_feedback(self, session, result: ToolResult) -> None:
         if not result.ok:
