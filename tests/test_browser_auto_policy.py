@@ -97,23 +97,20 @@ class RegistryHarness(BrowserBackendRegistryMixin, FakeBrowserBase):
 
 def test_production_runtime_stack_contains_browser_backend_registry():
     assert BrowserBackendRegistryMixin in AgentRuntime.mro()
-    # Old imports remain a compatibility alias, not a second implementation.
     assert BrowserAutoPolicyMixin is BrowserBackendRegistryMixin
 
 
-def test_desktop_browser_default_is_current_browser_and_legacy_modes_migrate(tmp_path):
-    assert DEFAULT_SETTINGS["browser"]["mode"] == CURRENT_BROWSER
+def test_desktop_auto_setting_remains_a_compatibility_alias_for_current_browser(tmp_path):
+    assert DEFAULT_SETTINGS["browser"]["mode"] == "auto"
     store = LoomSettingsStore(tmp_path)
-    assert store.snapshot()["browser"]["mode"] == CURRENT_BROWSER
-    assert store.set_value("browser.mode", "auto")["browser"]["mode"] == CURRENT_BROWSER
-    assert store.set_value("browser.mode", "extension")["browser"]["mode"] == CURRENT_BROWSER
-    assert store.set_value("browser.mode", "local-launch")["browser"]["mode"] == ISOLATED_BROWSER
-    assert store.set_value("browser.mode", "cdp-attach")["browser"]["mode"] == DEVELOPER_CDP
+    assert store.snapshot()["browser"]["mode"] == "auto"
+    assert normalize_browser_backend(store.snapshot()["browser"]["mode"]) == CURRENT_BROWSER
 
 
 def test_backend_aliases_normalize_to_three_canonical_routes():
     assert normalize_browser_backend("auto") == CURRENT_BROWSER
     assert normalize_browser_backend("extension") == CURRENT_BROWSER
+    assert normalize_browser_backend("current-tab") == CURRENT_BROWSER
     assert normalize_browser_backend("local-launch") == ISOLATED_BROWSER
     assert normalize_browser_backend("cdp-attach") == DEVELOPER_CDP
 
@@ -122,11 +119,7 @@ def test_current_browser_offline_fails_fast_and_never_launches_fallback(monkeypa
     monkeypatch.setattr("app.agent_runtime.browser_backend_registry.browser_use_available", lambda: True)
     runtime = RegistryHarness(connected=False)
 
-    status = runtime.browser_set_connection(
-        CURRENT_BROWSER,
-        persist_profile=True,
-        engine="edge",
-    )
+    status = runtime.browser_set_connection("auto", persist_profile=True, engine="edge")
 
     with pytest.raises(RuntimeError, match="will not open another browser automatically"):
         runtime.browser_session_connection("")
@@ -167,8 +160,6 @@ def test_isolated_browser_is_only_used_when_explicitly_selected(monkeypatch):
 
     assert [call[0] for call in runtime.calls] == ["local-launch"]
     assert (factory, external, label) == ("isolated-factory", False, "local-launch")
-    # The configured default comes from the concrete runtime; status still names
-    # the product backend separately.
     status = runtime.browser_status()
     assert status["selected_browser_backend"] == ISOLATED_BROWSER
     assert status["automatic_fallback"] is False
@@ -199,7 +190,7 @@ class RejectingRuntime:
 
     def browser_set_connection(self, mode, **kwargs):
         self.calls.append(mode)
-        if mode == CURRENT_BROWSER:
+        if mode == "auto":
             raise RuntimeError("current browser unavailable")
         return {"browser_connection": mode}
 
@@ -211,7 +202,7 @@ def test_production_app_server_never_hides_a_selected_backend_failure():
     error = service._apply_browser_settings(
         {
             "browser": {
-                "mode": CURRENT_BROWSER,
+                "mode": "auto",
                 "cdpUrl": "",
                 "preferredEngine": "edge",
                 "persistSessions": True,
@@ -222,7 +213,7 @@ def test_production_app_server_never_hides_a_selected_backend_failure():
     )
 
     assert "current browser unavailable" in error
-    assert service.runtime.calls == [CURRENT_BROWSER]
+    assert service.runtime.calls == ["auto"]
 
 
 def test_browser_events_never_enter_the_full_screen_desktop_hud():
