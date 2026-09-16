@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from app.agent_runtime import AgentRuntime
 from app.agent_runtime.browser_auto_policy import BrowserAutoPolicyMixin
 from app.agent_runtime.browser_extension_bridge import BrowserExtensionSessionBackend
 from app.agent_runtime.tools import ToolRegistry
@@ -56,6 +57,10 @@ class AutoHarness(BrowserAutoPolicyMixin, FakeBrowserBase):
     pass
 
 
+def test_production_runtime_stack_contains_browser_auto_policy():
+    assert BrowserAutoPolicyMixin in AgentRuntime.mro()
+
+
 def test_desktop_browser_default_is_auto(tmp_path):
     assert DEFAULT_SETTINGS["browser"]["mode"] == "auto"
     store = LoomSettingsStore(tmp_path)
@@ -94,6 +99,7 @@ def test_auto_prefers_a_really_connected_current_tab():
     assert external is True
     assert label == "extension"
     status = runtime.browser_status()
+    assert status["backend"] == "browser-extension"
     assert status["browser_connection"] == "extension-bridge"
     assert status["external_browser"] is True
     assert status["auto_fallback"] is False
@@ -107,7 +113,7 @@ def test_explicit_current_browser_never_silently_launches_another_browser():
         runtime.browser_session_connection("")
 
     # Selecting the strict extension route itself must not ask the base class for
-    # a local launch.  The only configured mode is the one the user requested.
+    # a local launch. The only configured mode is the one the user requested.
     assert [call[0] for call in runtime.calls] == ["extension"]
 
 
