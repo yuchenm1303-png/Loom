@@ -15,6 +15,7 @@ from .connector_app_server import install as _install_connector_app_server
 from .app_server_recovery_contract import install as _install_app_server_recovery_contract
 from .live_steering_contract import install as _install_live_steering_contract
 from .live_steering_interrupt_contract import install as _install_live_steering_interrupt_contract
+from .live_steering_stream_contract import install as _install_live_steering_stream_contract
 
 # Release-time connector metadata must be installed before any runtime or
 # connector module samples its environment. This keeps packaged builds and the
@@ -35,6 +36,7 @@ _install_connector_app_server()
 _install_app_server_recovery_contract()
 _install_live_steering_contract()
 _install_live_steering_interrupt_contract()
+_install_live_steering_stream_contract()
 del (
     _install_connector_product_config,
     _install_model_name_compat,
@@ -51,4 +53,5 @@ del (
     _install_app_server_recovery_contract,
     _install_live_steering_contract,
     _install_live_steering_interrupt_contract,
+    _install_live_steering_stream_contract,
 )
