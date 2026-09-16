@@ -55,6 +55,7 @@ const INSPECTOR_MAX = 520;
 const MIN_WORKSPACE_WIDTH = 520;
 const EMPTY_TRANSCRIPT_ITEMS: TranscriptItem[] = [];
 const RECOVERY_NOTICE_MS = 1400;
+const RECONNECT_NOTICE_TIMEOUT_MS = 5000;
 
 const SAFE_CONTINUE_PROMPT = {
   "zh-CN": "从上次已确认的安全状态继续这个任务。不要假设任何中断或未记录的工具操作已经成功；必要时先检查当前工作区或环境状态，在确认结果前不要重复有副作用的操作，然后继续完成我之前的请求。",
@@ -299,6 +300,10 @@ export default function App() {
         clearRecoveryTimer();
         if (status === "failed" && error.startsWith("AITransportError:")) {
           setRecoveryState("reconnecting");
+          recoveryClearTimerRef.current = window.setTimeout(() => {
+            recoveryClearTimerRef.current = null;
+            setRecoveryState("idle");
+          }, RECONNECT_NOTICE_TIMEOUT_MS);
         } else {
           setRecoveryState("idle");
         }
