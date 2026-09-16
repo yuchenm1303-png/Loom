@@ -358,7 +358,6 @@ class LoomRpcProcess {
         PYTHONPATH: appendPythonPath(process.env.PYTHONPATH),
         LOOM_DESKTOP_PYTHON: python,
         LOOM_API_KEY: spec.apiKey,
-        LOOM_HOME: app.getPath("userData"),
         LOOM_BROWSER_EXTENSION_TOKEN: ensureBrowserBridgeToken(),
       },
       stdio: ["pipe", "pipe", "pipe"],
