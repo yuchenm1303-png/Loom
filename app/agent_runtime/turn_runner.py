@@ -55,6 +55,34 @@ def _consume_steering_for_sample(rt, session, token) -> int:
             return expected
 
 
+def _record_steering_rejection(
+    rt,
+    session,
+    step,
+    *,
+    attempt: int,
+    usage: ModelUsage | None = None,
+    response: ModelResponse | None = None,
+) -> None:
+    resolved_usage = usage or ModelUsage()
+    data = {
+        "step_id": step.step_id,
+        "reason": "superseded_by_steering",
+        "attempt": attempt,
+        "usage": {
+            "input_tokens": resolved_usage.input_tokens,
+            "output_tokens": resolved_usage.output_tokens,
+            "total_tokens": resolved_usage.total_tokens,
+        },
+    }
+    if response is not None:
+        data.update({
+            "finish_reason": response.finish_reason,
+            "response_id": response.response_id,
+        })
+    rt._record(session, Event.MODEL_RESPONSE_REJECTED, data=data)
+
+
 class TurnRunner:
     def __init__(self, runtime):
         self.runtime = runtime
@@ -147,7 +175,15 @@ class TurnRunner:
                             # The durable inbox contains the new intent. Discard
                             # only this not-yet-committed model sample, keep the
                             # logical turn alive, and rebuild the next request from
-                            # history with the steering message included.
+                            # history with the steering message included. Recording
+                            # the rejection also closes any transient streamed UI
+                            # item for this abandoned sample.
+                            _record_steering_rejection(
+                                rt,
+                                session,
+                                step,
+                                attempt=attempt,
+                            )
                             rt._release_step_context(step)
                             recovery_instruction = ""
                             recovery_partial = ""
@@ -223,6 +259,12 @@ class TurnRunner:
                             if signal == "cancel":
                                 raise ModelCancelled()
                             if signal == "steer":
+                                _record_steering_rejection(
+                                    rt,
+                                    session,
+                                    step,
+                                    attempt=attempt,
+                                )
                                 rt._release_step_context(step)
                                 recovery_instruction = ""
                                 recovery_partial = ""
@@ -286,30 +328,63 @@ class TurnRunner:
                     raise TypeError("agent model platform must return ModelResponse")
                 if not response.text and not response.tool_calls:
                     raise RuntimeError("agent model response contained neither text nor tool calls")
-                session.model_steps += 1
+
+                # Serialize the final sample-acceptance boundary against steering
+                # submission. ModelExecutor already notices guidance during token
+                # generation; this closes the final race after the provider has
+                # returned but before MODEL_RESPONSE becomes durable. Whichever
+                # side obtains this guard first defines the ordering.
+                superseded_before_commit = False
+                cancelled_before_commit = False
                 from .runtime import _add_usage
-                session.usage = _add_usage(session.usage, response.usage)
-                # Keep public partial output for inspection, but never execute partial calls.
-                reason = response.finish_reason.casefold()
-                incomplete = reason not in _COMPLETE_FINISH_REASONS
-                calls = () if incomplete else response.tool_calls
-                session.messages.append(AIMessage(role=MessageRole.ASSISTANT, content=response.text, tool_calls=calls))
-                rt._record(session, Event.MODEL_RESPONSE, data={
-                    "step_id": step.step_id,
-                    "text": response.text,
-                    "finish_reason": response.finish_reason,
-                    "response_id": response.response_id,
-                    "tool_calls": [
-                        {"call_id": c.call_id, "name": c.name, "arguments": c.arguments}
-                        for c in calls
-                    ],
-                    "compaction_echo_removed": compaction_echo_removed,
-                    "usage": {
-                        "input_tokens": response.usage.input_tokens,
-                        "output_tokens": response.usage.output_tokens,
-                        "total_tokens": response.usage.total_tokens,
-                    },
-                })
+                with rt._active_tokens_guard:
+                    if token.cancelled:
+                        cancelled_before_commit = True
+                    elif steering_revision(token) != sample_steering_revision:
+                        session.usage = _add_usage(session.usage, response.usage)
+                        _record_steering_rejection(
+                            rt,
+                            session,
+                            step,
+                            attempt=attempt,
+                            usage=response.usage,
+                            response=response,
+                        )
+                        superseded_before_commit = True
+                    else:
+                        session.model_steps += 1
+                        session.usage = _add_usage(session.usage, response.usage)
+                        # Keep public partial output for inspection, but never execute partial calls.
+                        reason = response.finish_reason.casefold()
+                        incomplete = reason not in _COMPLETE_FINISH_REASONS
+                        calls = () if incomplete else response.tool_calls
+                        session.messages.append(AIMessage(role=MessageRole.ASSISTANT, content=response.text, tool_calls=calls))
+                        rt._record(session, Event.MODEL_RESPONSE, data={
+                            "step_id": step.step_id,
+                            "text": response.text,
+                            "finish_reason": response.finish_reason,
+                            "response_id": response.response_id,
+                            "tool_calls": [
+                                {"call_id": c.call_id, "name": c.name, "arguments": c.arguments}
+                                for c in calls
+                            ],
+                            "compaction_echo_removed": compaction_echo_removed,
+                            "usage": {
+                                "input_tokens": response.usage.input_tokens,
+                                "output_tokens": response.usage.output_tokens,
+                                "total_tokens": response.usage.total_tokens,
+                            },
+                        })
+
+                if cancelled_before_commit:
+                    rt._release_step_context(step)
+                    rt._cancel_if_requested(session, token)
+                    return rt._result(session)
+                if superseded_before_commit:
+                    rt._release_step_context(step)
+                    recovery_instruction = ""
+                    recovery_partial = ""
+                    continue
                 if incomplete:
                     raise RuntimeError(f"model response did not complete: {reason}")
                 if calls:
