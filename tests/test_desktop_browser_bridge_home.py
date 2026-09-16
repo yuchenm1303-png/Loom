@@ -10,3 +10,10 @@ def test_browser_bridge_does_not_move_the_runtime_home():
     source = MAIN.read_text(encoding="utf-8")
     assert 'LOOM_BROWSER_EXTENSION_TOKEN: ensureBrowserBridgeToken()' in source
     assert 'LOOM_HOME: app.getPath("userData")' not in source
+
+
+def test_unpacked_extension_uses_a_stable_absolute_install_folder():
+    source = MAIN.read_text(encoding="utf-8")
+    assert 'path.join(app.getPath("home"), ".loom", "browser", "current-tab-extension")' in source
+    assert 'shell.openPath(target)' in source
+    assert 'clipboard.writeText(target)' in source

@@ -117,9 +117,16 @@ function browserExtensionSource(): string {
     : path.join(REPO_ROOT, "extensions", "browser-current-tab");
 }
 
+function browserExtensionTarget(): string {
+  // Keep the install folder stable across dev Electron and packaged Loom. The
+  // absolute path is important: Chromium's unpacked-extension picker does not
+  // expand `~`, and app.getPath("userData") is named "Electron" in development.
+  return path.join(app.getPath("home"), ".loom", "browser", "current-tab-extension");
+}
+
 async function setupBrowserExtension(browser: "edge" | "chrome" = "edge"): Promise<Record<string, unknown>> {
   const source = browserExtensionSource();
-  const target = path.join(app.getPath("userData"), "browser", "current-tab-extension");
+  const target = browserExtensionTarget();
   if (!fsSync.existsSync(path.join(source, "manifest.json"))) {
     throw new Error(`Packaged browser extension is missing: ${source}`);
   }
@@ -132,6 +139,7 @@ async function setupBrowserExtension(browser: "edge" | "chrome" = "edge"): Promi
     { encoding: "utf8", mode: 0o600 },
   );
   clipboard.writeText(target);
+  const folderError = await shell.openPath(target);
   const managementUrl = browser === "chrome" ? "chrome://extensions" : "edge://extensions";
   const roots = browser === "chrome"
     ? [
@@ -152,7 +160,15 @@ async function setupBrowserExtension(browser: "edge" | "chrome" = "edge"): Promi
   } else {
     openError = await shell.openExternal(managementUrl).then(() => "", (error) => String(error));
   }
-  return { ok: true, extensionPath: target, pathCopied: true, managementUrl, openError };
+  return {
+    ok: true,
+    extensionPath: target,
+    pathCopied: true,
+    folderOpened: !folderError,
+    folderError,
+    managementUrl,
+    openError,
+  };
 }
 
 function diagnosticLogRoot(kind: DiagnosticLogKind): string {
