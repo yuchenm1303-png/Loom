@@ -8,6 +8,7 @@ export interface LoomNotification {
 
 const FRAME_BATCH_MS = 16;
 const BATCHED_ITEM_METHODS = new Set(["item/started", "item/delta", "item/completed"]);
+const RECOVERABLE_THREAD_STATUSES = new Set(["running", "waiting_approval"]);
 
 function mergeDeltaParams(
   previous: Record<string, unknown> | undefined,
@@ -24,9 +25,29 @@ function mergeDeltaParams(
   return next;
 }
 
+async function call(method: string, params: Record<string, unknown> = {}) {
+  const result = await ipcRenderer.invoke("loom:call", method, params);
+  if (method !== "thread/read" || !result || typeof result !== "object") return result;
+
+  const thread = (result as { thread?: Record<string, unknown> }).thread;
+  const threadId = String(thread?.id ?? "").trim();
+  const turnId = String(thread?.currentTurnId ?? "").trim();
+  const status = String(thread?.status ?? "").trim();
+  if (!threadId || !turnId || !RECOVERABLE_THREAD_STATUSES.has(status)) return result;
+
+  // A read is observational on the backend. When the desktop actually opens an
+  // unfinished thread, explicitly request a safe handoff. A live executor simply
+  // rejoins; a restarted executor reconstructs the turn from durable state; a lost
+  // approval or uncertain tool side effect fails closed instead of being replayed.
+  return ipcRenderer.invoke("loom:call", "thread/resume", {
+    threadId,
+    recoverTurnId: turnId,
+  });
+}
+
 const api = {
   connect: () => ipcRenderer.invoke("loom:connect"),
-  call: (method: string, params: Record<string, unknown> = {}) => ipcRenderer.invoke("loom:call", method, params),
+  call,
   disconnect: () => ipcRenderer.invoke("loom:disconnect"),
   listModels: () => ipcRenderer.invoke("loom:model-list"),
   switchModelProfile: (selection: string) => ipcRenderer.invoke("loom:model-switch", selection),
