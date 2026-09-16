@@ -4,7 +4,13 @@ import pytest
 
 from app.agent_runtime import AgentRuntime
 from app.agent_runtime.browser_auto_policy import BrowserAutoPolicyMixin
-from app.agent_runtime.browser_extension_bridge import BrowserExtensionSessionBackend
+from app.agent_runtime.browser_backend_registry import (
+    BrowserBackendRegistryMixin,
+    CURRENT_BROWSER,
+    DEVELOPER_CDP,
+    ISOLATED_BROWSER,
+    normalize_browser_backend,
+)
 from app.agent_runtime.tools import ToolRegistry
 from app.app_server_browser_policy import BrowserPolicyLoomAppServerService
 from app.settings import DEFAULT_SETTINGS, LoomSettingsStore
@@ -24,8 +30,12 @@ class FakeBrowserBase:
         self.browser_extension_bridge = FakeBridge(connected)
         self.browser_model_controlled_connection = False
         self.browser_allow_private_networks = False
+        self.browser_extension_attached = False
+        self.browser_cdp_attached = False
+        self._browser_cdp_url = ""
         self.tools = ToolRegistry(())
         self.calls: list[tuple[str, str, bool | None, str]] = []
+        self.configured_mode = "local-launch"
 
     def _extension_bridge_for_session(self):
         return self.browser_extension_bridge
@@ -39,82 +49,143 @@ class FakeBrowserBase:
         engine: str = "",
     ):
         self.calls.append((mode, cdp_url, persist_profile, engine))
+        self.configured_mode = mode
+        self.browser_extension_attached = mode == "extension"
+        self.browser_cdp_attached = mode == "cdp-attach"
+        self._browser_cdp_url = cdp_url if self.browser_cdp_attached else ""
         return self.browser_status()
 
     def browser_session_connection(self, connect: str, *, cdp_url: str = ""):
-        return "local-factory", False, "local-launch"
+        requested = str(connect or "").strip()
+        if requested == "launch":
+            return "isolated-factory", False, "local-launch"
+        if requested == "attach":
+            return "cdp-factory", True, "cdp-attach"
+        if requested == "current_tab":
+            return "extension-factory", True, "extension"
+        if self.configured_mode == "extension":
+            return "extension-factory", True, "extension"
+        if self.configured_mode == "cdp-attach":
+            return "cdp-factory", True, "cdp-attach"
+        return "isolated-factory", False, "local-launch"
 
     def browser_status(self, owner_session_id=None):
+        del owner_session_id
+        if self.configured_mode == "extension":
+            connection = "extension-bridge"
+            backend = "browser-extension"
+            external = True
+        elif self.configured_mode == "cdp-attach":
+            connection = "cdp-attach"
+            backend = "browser-use"
+            external = True
+        else:
+            connection = "local-launch"
+            backend = "browser-use"
+            external = False
         return {
             "enabled": True,
-            "backend": "browser-use",
-            "browser_connection": "local-launch",
-            "external_browser": False,
+            "backend": backend,
+            "browser_connection": connection,
+            "external_browser": external,
         }
 
 
-class AutoHarness(BrowserAutoPolicyMixin, FakeBrowserBase):
+class RegistryHarness(BrowserBackendRegistryMixin, FakeBrowserBase):
     pass
 
 
-def test_production_runtime_stack_contains_browser_auto_policy():
-    assert BrowserAutoPolicyMixin in AgentRuntime.mro()
+def test_production_runtime_stack_contains_browser_backend_registry():
+    assert BrowserBackendRegistryMixin in AgentRuntime.mro()
+    # Old imports remain a compatibility alias, not a second implementation.
+    assert BrowserAutoPolicyMixin is BrowserBackendRegistryMixin
 
 
-def test_desktop_browser_default_is_auto(tmp_path):
-    assert DEFAULT_SETTINGS["browser"]["mode"] == "auto"
+def test_desktop_browser_default_is_current_browser_and_legacy_modes_migrate(tmp_path):
+    assert DEFAULT_SETTINGS["browser"]["mode"] == CURRENT_BROWSER
     store = LoomSettingsStore(tmp_path)
-    assert store.snapshot()["browser"]["mode"] == "auto"
-    assert store.set_value("browser.mode", "auto")["browser"]["mode"] == "auto"
+    assert store.snapshot()["browser"]["mode"] == CURRENT_BROWSER
+    assert store.set_value("browser.mode", "auto")["browser"]["mode"] == CURRENT_BROWSER
+    assert store.set_value("browser.mode", "extension")["browser"]["mode"] == CURRENT_BROWSER
+    assert store.set_value("browser.mode", "local-launch")["browser"]["mode"] == ISOLATED_BROWSER
+    assert store.set_value("browser.mode", "cdp-attach")["browser"]["mode"] == DEVELOPER_CDP
 
 
-def test_auto_uses_visible_local_fallback_when_extension_is_offline():
-    runtime = AutoHarness(connected=False)
+def test_backend_aliases_normalize_to_three_canonical_routes():
+    assert normalize_browser_backend("auto") == CURRENT_BROWSER
+    assert normalize_browser_backend("extension") == CURRENT_BROWSER
+    assert normalize_browser_backend("local-launch") == ISOLATED_BROWSER
+    assert normalize_browser_backend("cdp-attach") == DEVELOPER_CDP
+
+
+def test_current_browser_offline_fails_fast_and_never_launches_fallback(monkeypatch):
+    monkeypatch.setattr("app.agent_runtime.browser_backend_registry.browser_use_available", lambda: True)
+    runtime = RegistryHarness(connected=False)
 
     status = runtime.browser_set_connection(
-        "auto",
+        CURRENT_BROWSER,
         persist_profile=True,
         engine="edge",
     )
-    factory, external, label = runtime.browser_session_connection("")
+
+    with pytest.raises(RuntimeError, match="will not open another browser automatically"):
+        runtime.browser_session_connection("")
 
     assert runtime.browser_headless is False
-    assert runtime.calls == [("local-launch", "", True, "edge")]
-    assert (factory, external, label) == ("local-factory", False, "local-launch")
-    assert status["requested_browser_connection"] == "auto"
-    assert status["auto_selected_connection"] == "local-launch"
-    assert status["auto_fallback"] is True
-    assert "visible isolated browser" in status["auto_fallback_reason"]
+    assert [call[0] for call in runtime.calls] == ["extension"]
+    assert status["selected_browser_backend"] == CURRENT_BROWSER
+    assert status["selected_backend_available"] is False
+    assert status["automatic_fallback"] is False
+    assert status["browser_connection"] == "current-browser-unavailable"
+    assert "Current Tab Bridge" in status["connection_error"]
 
 
-def test_auto_prefers_a_really_connected_current_tab():
-    runtime = AutoHarness(connected=True)
-    runtime.browser_set_connection("auto")
+def test_current_browser_connected_uses_extension_and_reports_canonical_label(monkeypatch):
+    monkeypatch.setattr("app.agent_runtime.browser_backend_registry.browser_use_available", lambda: True)
+    runtime = RegistryHarness(connected=True)
+    runtime.browser_set_connection(CURRENT_BROWSER)
 
     factory, external, label = runtime.browser_session_connection("")
-    backend = factory(object())
 
-    assert isinstance(backend, BrowserExtensionSessionBackend)
-    assert backend.bridge is runtime.browser_extension_bridge
+    assert factory == "extension-factory"
     assert external is True
-    assert label == "extension"
+    assert label == CURRENT_BROWSER
     status = runtime.browser_status()
     assert status["backend"] == "browser-extension"
     assert status["browser_connection"] == "extension-bridge"
     assert status["external_browser"] is True
-    assert status["auto_fallback"] is False
+    assert status["selected_backend_available"] is True
+    assert status["automatic_fallback"] is False
 
 
-def test_explicit_current_browser_never_silently_launches_another_browser():
-    runtime = AutoHarness(connected=False)
-    runtime.browser_set_connection("extension")
+def test_isolated_browser_is_only_used_when_explicitly_selected(monkeypatch):
+    monkeypatch.setattr("app.agent_runtime.browser_backend_registry.browser_use_available", lambda: True)
+    runtime = RegistryHarness(connected=False)
+    runtime.browser_set_connection(ISOLATED_BROWSER, engine="edge")
 
-    with pytest.raises(RuntimeError, match="Current Tab Bridge extension is not connected"):
-        runtime.browser_session_connection("")
+    factory, external, label = runtime.browser_session_connection("")
 
-    # Selecting the strict extension route itself must not ask the base class for
-    # a local launch. The only configured mode is the one the user requested.
-    assert [call[0] for call in runtime.calls] == ["extension"]
+    assert [call[0] for call in runtime.calls] == ["local-launch"]
+    assert (factory, external, label) == ("isolated-factory", False, "local-launch")
+    # The configured default comes from the concrete runtime; status still names
+    # the product backend separately.
+    status = runtime.browser_status()
+    assert status["selected_browser_backend"] == ISOLATED_BROWSER
+    assert status["automatic_fallback"] is False
+
+
+def test_browser_backend_registry_is_model_visible_without_starting_a_session(monkeypatch):
+    monkeypatch.setattr("app.agent_runtime.browser_backend_registry.browser_use_available", lambda: True)
+    runtime = RegistryHarness(connected=False)
+    runtime.browser_set_connection(CURRENT_BROWSER)
+
+    tool = runtime.tools.get("browser_backends")
+    assert tool is not None
+    rows = runtime.browser_backend_registry()
+    assert [row["id"] for row in rows] == [CURRENT_BROWSER, ISOLATED_BROWSER, DEVELOPER_CDP]
+    current = rows[0]
+    assert current["selected"] is True
+    assert current["available"] is False
 
 
 class RejectingRuntime:
@@ -128,19 +199,19 @@ class RejectingRuntime:
 
     def browser_set_connection(self, mode, **kwargs):
         self.calls.append(mode)
-        if mode == "extension":
-            raise RuntimeError("extension unavailable")
+        if mode == CURRENT_BROWSER:
+            raise RuntimeError("current browser unavailable")
         return {"browser_connection": mode}
 
 
-def test_production_app_server_does_not_hide_an_explicit_extension_failure():
+def test_production_app_server_never_hides_a_selected_backend_failure():
     service = object.__new__(BrowserPolicyLoomAppServerService)
     service.runtime = RejectingRuntime()
 
     error = service._apply_browser_settings(
         {
             "browser": {
-                "mode": "extension",
+                "mode": CURRENT_BROWSER,
                 "cdpUrl": "",
                 "preferredEngine": "edge",
                 "persistSessions": True,
@@ -150,8 +221,8 @@ def test_production_app_server_does_not_hide_an_explicit_extension_failure():
         }
     )
 
-    assert "extension unavailable" in error
-    assert service.runtime.calls == ["extension"]
+    assert "current browser unavailable" in error
+    assert service.runtime.calls == [CURRENT_BROWSER]
 
 
 def test_browser_events_never_enter_the_full_screen_desktop_hud():
