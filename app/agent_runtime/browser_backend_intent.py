@@ -16,6 +16,15 @@ _ISOLATED_INTENT_RE = re.compile(
     r")",
     flags=re.IGNORECASE,
 )
+_ISOLATED_NEGATION_RE = re.compile(
+    r"(?:"
+    r"(?:不要|别|不可|不能|不准|禁止).{0,16}(?:新|干净|隔离|独立|无痕|隐私).{0,8}浏览器|"
+    r"(?:不要|别|不可|不能|不准|禁止).{0,16}(?:另开|新开).{0,8}浏览器|"
+    r"(?:do\s+not|don't|never).{0,24}(?:new|clean|isolated|separate|fresh|incognito|private)\s+(?:browser|browsing)|"
+    r"without\s+(?:opening|using).{0,12}(?:new|clean|isolated|separate)\s+browser"
+    r")",
+    flags=re.IGNORECASE,
+)
 _ISOLATED_TURN_INTENT: ContextVar[bool] = ContextVar("loom_browser_isolated_turn_intent", default=False)
 
 
@@ -25,11 +34,14 @@ def user_explicitly_requests_isolated_browser(text: object) -> bool:
     Current-browser is allowed to fail, but failure is never authority to launch a
     different browser. An isolated browser is selectable from a current/external
     backend only when the user explicitly asks for a clean/signed-out/separate
-    browser in this turn. Users can always choose Isolated Browser in Settings if
-    they want it to be the default instead.
+    browser in this turn. Explicit negation wins over positive keywords. Users can
+    always choose Isolated Browser in Settings if they want it as the default.
     """
 
-    return bool(_ISOLATED_INTENT_RE.search(str(text or "")))
+    value = str(text or "")
+    if _ISOLATED_NEGATION_RE.search(value):
+        return False
+    return bool(_ISOLATED_INTENT_RE.search(value))
 
 
 class BrowserBackendIntentMixin:
