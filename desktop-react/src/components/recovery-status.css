@@ -1,0 +1,256 @@
+.recovery-banner-frame {
+  grid-row: 1;
+  position: relative;
+  z-index: 8;
+  min-width: 0;
+  margin: 6px 22px 5px;
+  padding: 10px 12px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid rgba(255,255,255,.07);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(24,25,31,.94), rgba(16,17,22,.92));
+  box-shadow: 0 10px 26px rgba(0,0,0,.16), inset 0 1px rgba(255,255,255,.025);
+  backdrop-filter: blur(12px);
+  animation: recovery-enter 150ms cubic-bezier(.2,.78,.2,1) both;
+}
+
+.recovery-banner-frame.recovery-reconnecting,
+.recovery-banner-frame.recovery-recovering {
+  border-color: rgba(139,124,246,.16);
+  background:
+    radial-gradient(circle at 12% -40%, rgba(139,124,246,.12), transparent 48%),
+    linear-gradient(180deg, rgba(24,24,32,.96), rgba(16,17,22,.94));
+}
+
+.recovery-banner-frame.recovery-safely_interrupted {
+  border-color: rgba(89,188,142,.16);
+  background:
+    radial-gradient(circle at 12% -40%, rgba(89,188,142,.09), transparent 48%),
+    linear-gradient(180deg, rgba(20,27,25,.96), rgba(15,20,19,.94));
+}
+
+.recovery-banner-frame.recovery-cancelled {
+  opacity: .86;
+}
+
+.recovery-banner-icon {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  color: #a79df3;
+  background: rgba(139,124,246,.09);
+  box-shadow: inset 0 0 0 1px rgba(167,157,243,.08);
+}
+
+.recovery-safely_interrupted .recovery-banner-icon {
+  color: #7dcea5;
+  background: rgba(89,188,142,.09);
+  box-shadow: inset 0 0 0 1px rgba(125,206,165,.08);
+}
+
+.recovery-cancelled .recovery-banner-icon {
+  color: #939aa5;
+  background: rgba(255,255,255,.045);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.05);
+}
+
+.recovery-recovering .recovery-banner-icon svg,
+.recovery-composer.recovery-recovering .recovery-composer-icon svg {
+  animation: recovery-spin 1.15s linear infinite;
+}
+
+.recovery-banner-copy {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.recovery-banner-copy strong {
+  color: #e8ebf2;
+  font-size: 12.4px;
+  line-height: 1.25;
+  font-weight: 690;
+}
+
+.recovery-banner-copy span {
+  color: #858d99;
+  font-size: 10.7px;
+  line-height: 1.4;
+}
+
+.recovery-continue {
+  min-height: 30px;
+  padding: 0 11px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid rgba(125,206,165,.16);
+  border-radius: 8px;
+  color: #b8e6cd;
+  background: rgba(89,188,142,.08);
+  font: inherit;
+  font-size: 10.8px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, transform 120ms ease;
+}
+
+.recovery-continue:hover {
+  background: rgba(89,188,142,.13);
+  border-color: rgba(125,206,165,.24);
+}
+
+.recovery-continue:active {
+  transform: translateY(1px);
+}
+
+.recovery-live {
+  min-width: 34px;
+  display: inline-flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 3px;
+}
+
+.recovery-live i {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #9288e8;
+  animation: recovery-dot 1.1s ease-in-out infinite;
+}
+
+.recovery-live i:nth-child(2) { animation-delay: 120ms; }
+.recovery-live i:nth-child(3) { animation-delay: 240ms; }
+
+.recovery-composer {
+  min-height: 66px;
+  margin: 0 18px 14px;
+  padding: 12px 14px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 11px;
+  border: 1px solid rgba(139,124,246,.12);
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 20% -90%, rgba(139,124,246,.10), transparent 50%),
+    linear-gradient(180deg, rgba(24,25,31,.96), rgba(17,18,23,.96));
+  box-shadow: 0 15px 32px rgba(0,0,0,.16), inset 0 1px rgba(255,255,255,.025);
+}
+
+.recovery-composer-icon {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  color: #a79df3;
+  background: rgba(139,124,246,.09);
+}
+
+.recovery-composer > div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.recovery-composer strong {
+  color: #e4e8f0;
+  font-size: 12.2px;
+  font-weight: 680;
+}
+
+.recovery-composer span:not(.recovery-composer-icon):not(.recovery-composer-spinner) {
+  color: #7d8591;
+  font-size: 10.5px;
+}
+
+.recovery-composer-spinner {
+  width: 15px;
+  height: 15px;
+  border: 1.5px solid rgba(167,157,243,.2);
+  border-top-color: #a79df3;
+  border-radius: 50%;
+  animation: recovery-spin .9s linear infinite;
+}
+
+.recovery-stop {
+  min-height: 30px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 8px;
+  color: #aeb4be;
+  background: rgba(255,255,255,.035);
+  font: inherit;
+  font-size: 10.7px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: color 120ms ease, background 120ms ease, border-color 120ms ease, transform 120ms ease;
+}
+
+.recovery-stop:hover {
+  color: #e5e8ee;
+  background: rgba(255,255,255,.065);
+  border-color: rgba(255,255,255,.13);
+}
+
+.recovery-stop:active {
+  transform: translateY(1px);
+}
+
+.recovery-stop span {
+  color: inherit !important;
+  font-size: inherit !important;
+}
+
+@keyframes recovery-enter {
+  from { opacity: 0; transform: translateY(-2px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes recovery-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes recovery-dot {
+  0%, 70%, 100% { opacity: .28; transform: translateY(0); }
+  35% { opacity: 1; transform: translateY(-2px); }
+}
+
+@media (max-width: 760px) {
+  .recovery-banner-frame {
+    margin-inline: 18px;
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .recovery-banner-frame .recovery-live,
+  .recovery-banner-frame .recovery-continue {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .recovery-composer {
+    margin-inline: 14px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .recovery-banner-frame,
+  .recovery-live i,
+  .recovery-banner-icon svg,
+  .recovery-composer-icon svg,
+  .recovery-composer-spinner {
+    animation: none !important;
+  }
+}

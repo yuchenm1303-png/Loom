@@ -79,11 +79,17 @@ class AgentLimits:
     max_tool_result_chars: int = 20_000
     context_window_tokens: int = 32_768
     output_reserve_tokens: int = 4096
+    # Semantic retries may change the prompt with a recovery instruction, so keep
+    # their budget deliberately small. Transport retries repeat the exact frozen
+    # request and can safely tolerate a longer transient outage.
     model_retries: int = 2
+    transport_retries: int = 5
 
     def __post_init__(self) -> None:
         if self.model_retries < 0 or self.model_retries > 5:
             raise ValueError("model_retries must be within 0..5")
+        if self.transport_retries < 0 or self.transport_retries > 10:
+            raise ValueError("transport_retries must be within 0..10")
         if self.output_reserve_tokens >= self.context_window_tokens:
             raise ValueError("output reserve must be smaller than the context window")
         for name in ("max_model_steps", "max_tool_calls"):
