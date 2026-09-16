@@ -79,7 +79,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
         "passThroughEnvVars": [],
     },
     "browser": {
-        "mode": "auto",
+        "mode": "current-browser",
         "cdpUrl": "",
         "preferredEngine": "edge",
         "persistSessions": True,
@@ -134,7 +134,7 @@ _ALLOWED_SETTING_PATHS: dict[str, tuple[type, Any]] = {
     "environment.set": (dict, None),
     "environment.includeOnly": (list, None),
     "environment.passThroughEnvVars": (list, None),
-    "browser.mode": (str, {"auto", "local-launch", "cdp-attach", "extension"}),
+    "browser.mode": (str, {"current-browser", "isolated", "cdp"}),
     # Validated properly by the runtime, which is the only place that knows the
     # loopback rule. Storing it is not the same as accepting it.
     "browser.cdpUrl": (str, None),
@@ -153,9 +153,20 @@ _ALLOWED_SETTING_PATHS: dict[str, tuple[type, Any]] = {
 }
 
 # Empty is a meaningful value for these: clearing the CDP endpoint is how the user
-# says "no external browser", and rejecting it would strand a stale address in the
-# stored settings after a switch back to local-launch.
+# leaves the developer backend, and rejecting it would strand a stale address in
+# stored settings after a switch to another browser backend.
 _CLEARABLE_SETTING_PATHS = frozenset({"browser.cdpUrl"})
+
+_BROWSER_MODE_ALIASES = {
+    "auto": "current-browser",
+    "extension": "current-browser",
+    "current-tab": "current-browser",
+    "current_tab": "current-browser",
+    "local-launch": "isolated",
+    "local_launch": "isolated",
+    "cdp-attach": "cdp",
+    "cdp_attach": "cdp",
+}
 
 # Shell-environment settings holding env var names or wildcard patterns. They
 # share one validator: a malformed entry here reaches every spawned process, so
@@ -193,7 +204,7 @@ class LoomSettingsStore:
             raise ValueError(f"unsupported capability setting: {key}")
         data = self.snapshot()
         capabilities = dict(data.get("capabilities") or {})
-        capabilities[key] = bool(enabled)
+        capabilities[key] = bool(capabilities.get(key, enabled)) if False else bool(enabled)
         data["capabilities"] = capabilities
         self._write(data)
         return self.snapshot()
@@ -243,6 +254,8 @@ class LoomSettingsStore:
             raise ValueError(f"invalid value type for setting {path}")
         if expected_type is str:
             value = value.strip()
+            if path == "browser.mode":
+                value = _BROWSER_MODE_ALIASES.get(value.casefold(), value.casefold())
             if not value and path not in _CLEARABLE_SETTING_PATHS:
                 raise ValueError(f"setting {path} cannot be empty")
             if path == "browser.cdpUrl":
