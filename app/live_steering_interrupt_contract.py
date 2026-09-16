@@ -31,6 +31,78 @@ def _patch_runtime_class(runtime_cls: type[Any]) -> None:
     if not callable(original_steer):
         return
 
+    # Phase one resumes a superseded approval through the normal durable layers.
+    # DurableAgentRuntime accounts goal usage after _drive() returns, but the core
+    # runner has already persisted TURN_COMPLETED by then. Phase two adds a tiny
+    # pre-completion hook so the final steering segment is accounted *before* the
+    # terminal boundary becomes observable. The wrapper below suppresses the
+    # legacy post-drive accounting only when that hook already did the work.
+    original_resume_steered_turn = getattr(runtime_cls, "resume_steered_turn", None)
+    original_track_goal_usage = getattr(runtime_cls, "_track_goal_usage", None)
+    original_before_turn_completed = getattr(runtime_cls, "_before_turn_completed", None)
+
+    def _usage_states(self: Any) -> dict[str, dict[str, Any]]:
+        states = getattr(self, "_loom_steered_usage_states", None)
+        if states is None:
+            states = {}
+            setattr(self, "_loom_steered_usage_states", states)
+        return states
+
+    def before_turn_completed(self: Any, session: Any) -> None:
+        if callable(original_before_turn_completed):
+            original_before_turn_completed(self, session)
+        if not callable(original_track_goal_usage):
+            return
+        state = _usage_states(self).get(session.session_id)
+        if not state or bool(state.get("accounted")):
+            return
+        if str(state.get("turn_id") or "") != str(session.current_turn_id or ""):
+            return
+        original_track_goal_usage(
+            self,
+            self._result(session),
+            before_tokens=int(state["before_tokens"]),
+        )
+        state["accounted"] = True
+
+    def track_goal_usage(
+        self: Any,
+        result: Any,
+        *,
+        before_tokens: int | None = None,
+    ) -> Any:
+        if not callable(original_track_goal_usage):
+            return result
+        state = _usage_states(self).get(str(getattr(result, "session_id", "")))
+        if (
+            state
+            and bool(state.get("accounted"))
+            and str(state.get("turn_id") or "") == str(getattr(result, "turn_id", "") or "")
+            and before_tokens is not None
+            and int(before_tokens) == int(state.get("before_tokens", -1))
+        ):
+            return result
+        return original_track_goal_usage(self, result, before_tokens=before_tokens)
+
+    def resume_steered_turn(self: Any, session_id: str, turn_id: str) -> Any:
+        if not callable(original_resume_steered_turn):
+            raise RuntimeError("runtime cannot resume a turn superseded by steering")
+        resolved_session_id = str(session_id or "").strip()
+        resolved_turn_id = str(turn_id or "").strip()
+        states = _usage_states(self)
+        # Only DurableAgentRuntime owns _track_goal_usage. Core runtimes still use
+        # the same resume implementation but need no accounting state.
+        if callable(original_track_goal_usage):
+            states[resolved_session_id] = {
+                "turn_id": resolved_turn_id,
+                "before_tokens": self.store.load(resolved_session_id).usage.total_tokens,
+                "accounted": False,
+            }
+        try:
+            return original_resume_steered_turn(self, resolved_session_id, resolved_turn_id)
+        finally:
+            states.pop(resolved_session_id, None)
+
     def steer(
         self: Any,
         session_id: str,
@@ -104,6 +176,11 @@ def _patch_runtime_class(runtime_cls: type[Any]) -> None:
         )
 
     runtime_cls.steer = steer
+    runtime_cls._before_turn_completed = before_turn_completed
+    if callable(original_resume_steered_turn):
+        runtime_cls.resume_steered_turn = resume_steered_turn
+    if callable(original_track_goal_usage):
+        runtime_cls._track_goal_usage = track_goal_usage
     runtime_cls._loom_live_steering_interrupt_installed = True
 
 
