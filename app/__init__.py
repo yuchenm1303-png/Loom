@@ -12,6 +12,7 @@ from .project_git_commit import install as _install_project_git_commit
 from .project_agent_files import install as _install_project_agent_files
 from .connector_cross_agent_sync import install as _install_connector_cross_agent_sync
 from .connector_app_server import install as _install_connector_app_server
+from .agent_continuity_contract import install as _install_agent_continuity_contract
 from .app_server_recovery_contract import install as _install_app_server_recovery_contract
 
 # Release-time connector metadata must be installed before any runtime or
@@ -30,6 +31,7 @@ _install_project_git_commit()
 _install_project_agent_files()
 _install_connector_cross_agent_sync()
 _install_connector_app_server()
+_install_agent_continuity_contract()
 _install_app_server_recovery_contract()
 del (
     _install_connector_product_config,
@@ -44,5 +46,6 @@ del (
     _install_project_agent_files,
     _install_connector_cross_agent_sync,
     _install_connector_app_server,
+    _install_agent_continuity_contract,
     _install_app_server_recovery_contract,
 )
