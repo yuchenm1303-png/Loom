@@ -1,13 +1,11 @@
 from __future__ import annotations
 
 import ipaddress
-import socket
 import threading
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Protocol, Sequence
-from urllib.parse import urlsplit
 
 from .storage import utc_now
 
@@ -149,99 +147,21 @@ class BrowserBackend(Protocol):
 
 
 BrowserBackendFactory = Callable[[BrowserLaunchOptions], BrowserBackend]
-DNSResolver = Callable[[str], Sequence[str]]
 
 
-def _default_resolver(hostname: str) -> tuple[str, ...]:
-    values: list[str] = []
-    try:
-        rows = socket.getaddrinfo(hostname, None, type=socket.SOCK_STREAM)
-    except socket.gaierror as exc:
-        raise BrowserURLPolicyError(f"browser destination DNS lookup failed: {hostname}") from exc
-    for row in rows:
-        address = str(row[4][0]).split("%", 1)[0]
-        if address not in values:
-            values.append(address)
-    if not values:
-        raise BrowserURLPolicyError(f"browser destination did not resolve: {hostname}")
-    return tuple(values)
-
-
-@dataclass(frozen=True, slots=True)
 class BrowserURLPolicy:
-    """Public-web URL policy applied before explicit navigation and after actions.
+    """Backward-compatible constructor for Loom's canonical BrowserSecurityPolicy.
 
-    This is an application boundary, not a complete network sandbox. The optional
-    browser-use backend additionally enables its own navigation SecurityWatchdog
-    with IP-address blocking and allowed-domain enforcement. Loom resolves explicit
-    navigation hostnames and rejects any non-global address by default to reduce
-    localhost/private-network SSRF exposure.
+    BrowserSessionManager historically shipped a second URL-policy implementation
+    here. Keeping two security rules in sync caused real drift, including metadata
+    handling. The public name remains for embedders, but construction now delegates
+    to the single implementation in browser_security.py.
     """
 
-    allow_private_networks: bool = False
-    resolve_dns: bool = True
-    resolver: DNSResolver = field(default=_default_resolver, repr=False, compare=False)
+    def __new__(cls, *args, **kwargs):
+        from .browser_security import BrowserSecurityPolicy
 
-    _blocked_names = LOCAL_HOST_NAMES | INFRASTRUCTURE_HOST_NAMES
-
-    def validate(self, url: str, *, allowed_domains: tuple[str, ...] = ()) -> str:
-        value = str(url or "").strip()
-        parsed = urlsplit(value)
-        if parsed.scheme.casefold() not in {"http", "https"}:
-            raise BrowserURLPolicyError("browser navigation only allows http/https URLs")
-        if parsed.username is not None or parsed.password is not None:
-            raise BrowserURLPolicyError("browser navigation URLs must not contain userinfo credentials")
-        host = (parsed.hostname or "").casefold().rstrip(".")
-        if not host:
-            raise BrowserURLPolicyError("browser navigation URL must contain a hostname")
-        if host in INFRASTRUCTURE_HOST_NAMES:
-            raise BrowserURLPolicyError(f"browser navigation to prohibited host is blocked: {host}")
-        if host in LOCAL_HOST_NAMES or host.endswith(".localhost"):
-            if not self.allow_private_networks:
-                raise BrowserURLPolicyError(f"browser navigation to local host is blocked: {host}")
-        if allowed_domains and not _matches_domains(host, allowed_domains):
-            raise BrowserURLPolicyError(f"browser destination is outside this session's allowed domains: {host}")
-
-        literal = _parse_ip(host)
-        if literal is not None:
-            self._validate_ip(literal)
-        elif self.resolve_dns and not self.allow_private_networks:
-            for address in self.resolver(host):
-                try:
-                    resolved = ipaddress.ip_address(str(address).split("%", 1)[0])
-                except ValueError as exc:
-                    raise BrowserURLPolicyError("browser DNS resolver returned an invalid address") from exc
-                self._validate_ip(resolved)
-        return value
-
-    def _validate_ip(self, address: ipaddress.IPv4Address | ipaddress.IPv6Address) -> None:
-        if address in CLOUD_METADATA_ADDRESSES:
-            raise BrowserURLPolicyError(
-                f"browser navigation to the cloud metadata service is blocked: {address}"
-            )
-        if self.allow_private_networks:
-            return
-        if not address.is_global:
-            raise BrowserURLPolicyError(f"browser navigation to non-public IP is blocked: {address}")
-
-
-def _parse_ip(host: str):
-    try:
-        return ipaddress.ip_address(host.split("%", 1)[0])
-    except ValueError:
-        return None
-
-
-def _matches_domains(host: str, rules: tuple[str, ...]) -> bool:
-    for rule in rules:
-        value = str(rule).casefold().rstrip(".")
-        if value.startswith("*."):
-            suffix = value[2:]
-            if host.endswith("." + suffix):
-                return True
-        elif host == value:
-            return True
-    return False
+        return BrowserSecurityPolicy(*args, **kwargs)
 
 
 @dataclass(slots=True)
