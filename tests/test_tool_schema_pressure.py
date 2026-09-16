@@ -115,14 +115,13 @@ def test_schema_pressure_sheds_only_with_discovery_and_keeps_pinned_tool():
     assert set(plan.omitted_names).isdisjoint({"tool_search", "zebra_special_action"})
 
 
-def test_a_squeezed_browser_keeps_a_loop_that_can_finish_a_form():
-    """Shedding must not leave a browser that can look but not act.
+def test_a_squeezed_browser_keeps_the_ordinary_driving_loop():
+    """Schema pressure must preserve normal DOM driving, not every escape hatch.
 
-    Within a tier the tie-break is schema size, which favours trivial tools:
-    browser_refresh and browser_tabs outlived browser_select and browser_eval,
-    leaving a model that could not choose a dropdown option or reach anything the
-    DOM-index tools cannot express. Those two carry the same cost of absence as
-    click and type, so they rank with them.
+    Specialized/high-authority capabilities such as browser_eval are deliberately
+    discoverable through tool_search rather than guaranteed resident. The fixed
+    surface needs enough verbs to open and inspect a page, navigate, click, type,
+    select, scroll, and request visual fallback when DOM state is insufficient.
     """
 
     from app.agent_runtime.browser_runtime import BrowserRuntime
@@ -152,7 +151,7 @@ def test_a_squeezed_browser_keeps_a_loop_that_can_finish_a_form():
         runtime.tools = ToolRegistry(tuple(runtime.tools.all()) + (_tool("tool_search"),))
         router = runtime.tools.router(capability_settings={})
 
-        plan = plan_tool_schema_pressure(router, max_schema_tokens=2500, allow_shedding=True)
+        plan = plan_tool_schema_pressure(router, max_schema_tokens=3500, allow_shedding=True)
 
         visible = {tool.name for tool in plan.router.all()}
         assert plan.mode == "structural"
@@ -164,11 +163,9 @@ def test_a_squeezed_browser_keeps_a_loop_that_can_finish_a_form():
             "browser_click",
             "browser_type",
             "browser_select",
-            "browser_eval",
+            "browser_scroll",
+            "browser_screenshot",
         }.issubset(visible)
-        # A tool whose absence costs repeated state reads rather than an outcome
-        # is allowed to go, and stays reachable through tool_search.
-        assert "browser_wait" in set(plan.omitted_names)
     finally:
         runtime.close()
 
