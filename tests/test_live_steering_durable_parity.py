@@ -200,15 +200,14 @@ def test_approval_steering_keeps_auto_queue_drain_behavior(tmp_path: Path) -> No
             }
         )
 
-        snapshot = _wait_until(
-            lambda: (
-                value
-                if (value := service.thread_read({"threadId": thread_id}))["finalText"]
-                == "queued follow-up complete"
-                else None
-            )
-        )
+        # Do not call thread/read while DurableAgentRuntime is between claiming a
+        # queue item and durably adopting its turn id. get_session() intentionally
+        # reconciles stale dispatches, so polling that baseline transition would
+        # perturb the queue rather than observe steering itself.
+        _wait_until(lambda: not service._is_active(thread_id))
+        snapshot = service.thread_read({"threadId": thread_id})
         assert calls == []
+        assert snapshot["finalText"] == "queued follow-up complete"
         assert snapshot["thread"]["status"] == "completed"
         assert snapshot["thread"]["currentTurnId"] != turn_id
         assert runtime.list_queued_turns(thread_id) == ()
