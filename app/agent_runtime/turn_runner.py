@@ -5,12 +5,14 @@ from dataclasses import replace
 
 from app.ai import AIMessage, ChatRequest, MessageRole, ModelResponse, ModelUsage, ToolChoice
 from app.ai.errors import AIEmptyResponseError, AIResponseError, AITransportError
-from app.ai.execution_control import ModelCancelled
+from app.ai.execution_control import ModelCancelled, ModelSteered
 
 from .contracts import AgentEventKind as Event
 from .contracts import AgentStatus
 from .execution_binding import action_binding_digest
 from .history import repair_tool_history
+from .model_replan import revision as steering_revision
+from .model_replan import wait_for_signal
 from .turn_response_validation import (
     COMPLETE_FINISH_REASONS,
     TERMINAL_RECOVERY_INSTRUCTION,
@@ -37,6 +39,22 @@ def _exposed_tool_names(step) -> tuple[str, ...]:
     return tuple(sorted(tool.name for tool in step.tool_router.all()))
 
 
+def _consume_steering_for_sample(rt, session, token) -> int:
+    """Consume all guidance known before a model request and return its revision.
+
+    A steering submission can race the inbox read. Re-read until the process-local
+    revision is stable; if guidance arrives immediately after this returns, the
+    executor receives the older revision and supersedes the request before its
+    result can commit.
+    """
+
+    while True:
+        expected = steering_revision(token)
+        rt._consume_steering(session)
+        if steering_revision(token) == expected:
+            return expected
+
+
 class TurnRunner:
     def __init__(self, runtime):
         self.runtime = runtime
@@ -57,6 +75,7 @@ class TurnRunner:
                 recovery_partial = ""
                 attempt = 0
                 while True:
+                    sample_steering_revision = _consume_steering_for_sample(rt, session, token)
                     # Capture once so request context, advertised tools, and all
                     # tool calls from this response share one immutable world.
                     step = rt._capture_step_context(session, next_model_step=True)
@@ -121,7 +140,18 @@ class TurnRunner:
                                 profile_id,
                                 request,
                                 token,
+                                steering_revision=sample_steering_revision,
                             )
+                            break
+                        except ModelSteered:
+                            # The durable inbox contains the new intent. Discard
+                            # only this not-yet-committed model sample, keep the
+                            # logical turn alive, and rebuild the next request from
+                            # history with the steering message included.
+                            rt._release_step_context(step)
+                            recovery_instruction = ""
+                            recovery_partial = ""
+                            retry_sampling = True
                             break
                         except AIEmptyResponseError as exc:
                             from .runtime import _add_usage
@@ -184,9 +214,21 @@ class TurnRunner:
                         except AITransportError as exc:
                             if not exc.retryable or attempt >= rt.limits.model_retries:
                                 raise
-                            attempt += 1
-                            if token._event.wait(min(2.0, 0.25 * 2 ** (attempt - 1))):
+                            next_attempt = attempt + 1
+                            signal = wait_for_signal(
+                                token,
+                                sample_steering_revision,
+                                min(2.0, 0.25 * 2 ** (next_attempt - 1)),
+                            )
+                            if signal == "cancel":
                                 raise ModelCancelled()
+                            if signal == "steer":
+                                rt._release_step_context(step)
+                                recovery_instruction = ""
+                                recovery_partial = ""
+                                retry_sampling = True
+                                break
+                            attempt = next_attempt
                             continue
 
                     if retry_sampling:
