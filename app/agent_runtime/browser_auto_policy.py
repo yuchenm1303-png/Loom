@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import Any
 
 from .browser_extension_bridge import BrowserExtensionSessionBackend
 from .tools import ToolRegistry
@@ -14,7 +13,7 @@ class BrowserAutoPolicyMixin:
     """Prefer the user's current browser without pretending a fallback is attached.
 
     ``BrowserRuntime`` already supports three concrete transports: Loom-owned
-    launch, CDP attachment, and the current-tab extension bridge.  This mixin adds
+    launch, CDP attachment, and the current-tab extension bridge. This mixin adds
     a product policy on top of those transports rather than inventing a fourth
     backend:
 
@@ -60,25 +59,28 @@ class BrowserAutoPolicyMixin:
     ) -> dict[str, object]:
         requested = str(mode or "").strip().casefold()
         if requested != _AUTO_MODE:
-            self._browser_requested_connection = requested
-            status = super().browser_set_connection(
+            # Let the concrete runtime validate and install the new route first.
+            # If it rejects the change, status must continue describing the old
+            # working connection instead of remembering a mode that never landed.
+            super().browser_set_connection(
                 requested,
                 cdp_url=cdp_url,
                 persist_profile=persist_profile,
                 engine=engine,
             )
+            self._browser_requested_connection = requested
             return self.browser_status()
 
-        # Auto always keeps its fallback visible.  Headless automation is a poor
+        # Auto always keeps its fallback visible. Headless automation is a poor
         # fallback for a desktop product because the user cannot see what Loom is
         # doing, cannot complete CAPTCHA/MFA, and may mistake an isolated profile
         # for their signed-in browser.
         self.browser_headless = False
 
-        # Use BrowserRuntime's ordinary local launch as the durable fallback.  It
+        # Use BrowserRuntime's ordinary local launch as the durable fallback. It
         # also validates active-session transitions and applies engine/profile
-        # preferences.  The extension bridge is then kept alive alongside it so
-        # a browser extension that reconnects later is immediately usable.
+        # preferences. The extension bridge is then kept alive alongside it so a
+        # browser extension that reconnects later is immediately usable.
         super().browser_set_connection(
             "local-launch",
             cdp_url="",
@@ -112,7 +114,7 @@ class BrowserAutoPolicyMixin:
                     "extensions/browser-current-tab in Chrome or Edge and make sure its bridge URL/token match Loom."
                 )
             # Auto deliberately and visibly falls through to the Loom-owned
-            # backend.  The browser_open result labels this session local-launch.
+            # backend. The browser_open result labels this session local-launch.
 
         return super().browser_session_connection(connect, cdp_url=cdp_url)
 
@@ -135,6 +137,16 @@ class BrowserAutoPolicyMixin:
                 if connected
                 else "Current-tab extension is not connected; Loom will use its visible isolated browser for the next session."
             )
+            if connected:
+                # Do not leak the local fallback's derived profile facts into a
+                # status that says the current browser is the selected route.
+                status["backend"] = "browser-extension"
+                status["session_persistence"] = "extension-current-browser"
+                status["crash_recovery"] = "extension_reconnects_to_local_bridge"
+                status["storage_state_persistence"] = True
+                status["profile_name"] = "current-browser-extension"
+            else:
+                status["backend"] = "browser-use"
         return status
 
 
