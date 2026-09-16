@@ -108,7 +108,7 @@ class BrowserBackendRegistryMixin:
         existing = self.tools.get(tool.name)
         if existing is None:
             self.tools.register(tool)
-        elif existing != tool:
+        elif existing.description != tool.description:
             self.tools = ToolRegistry(
                 tuple(tool if candidate.name == tool.name else candidate for candidate in self.tools.all())
             )
@@ -192,6 +192,11 @@ class BrowserBackendRegistryMixin:
             tuple(replacement if candidate.name == "browser_open" else candidate for candidate in self.tools.all())
         )
 
+    # Compatibility shim for the previous App Server layer; new code calls the
+    # backend-neutral method above.
+    def _rewrite_auto_browser_open_description(self) -> None:
+        self._rewrite_browser_open_description()
+
     def browser_set_connection(
         self,
         mode: str,
@@ -248,17 +253,20 @@ class BrowserBackendRegistryMixin:
                     "Enable the Loom browser extension in Edge/Chrome, then retry. Loom will not open another browser automatically."
                 )
             if normalized in {"", "default"}:
-                return super().browser_session_connection("", cdp_url="")
+                factory, _external, _label = super().browser_session_connection("", cdp_url="")
+                return factory, True, CURRENT_BROWSER
 
             def build_extension(options):
                 return BrowserExtensionSessionBackend(options=options, bridge=bridge)
 
-            return build_extension, True, "current-browser"
+            return build_extension, True, CURRENT_BROWSER
 
         if normalized in {"isolated", "launch"}:
-            return super().browser_session_connection("launch", cdp_url="")
+            factory, _external, _label = super().browser_session_connection("launch", cdp_url="")
+            return factory, False, ISOLATED_BROWSER
         if normalized in {"cdp", "attach"}:
-            return super().browser_session_connection("attach", cdp_url=cdp_url)
+            factory, _external, _label = super().browser_session_connection("attach", cdp_url=cdp_url)
+            return factory, True, DEVELOPER_CDP
         return super().browser_session_connection(connect, cdp_url=cdp_url)
 
     def browser_status(self, owner_session_id: str | None = None) -> dict[str, object]:
