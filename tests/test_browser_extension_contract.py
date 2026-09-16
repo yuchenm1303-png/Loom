@@ -46,6 +46,13 @@ def test_manifest_stays_manifest_v3_with_a_service_worker(manifest):
     assert manifest["background"]["service_worker"] == "background.js"
 
 
+def test_extension_has_no_public_development_credential(background):
+    assert "loom-dev-browser-extension" not in background
+    assert 'chrome.runtime.getURL("bridge-config.json")' in background
+    options = (EXTENSION / "options.js").read_text(encoding="utf-8")
+    assert "token" not in options
+
+
 @pytest.mark.parametrize(
     "handler",
     ["withElement", "drag", "pressKey", "goBack"],

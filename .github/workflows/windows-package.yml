@@ -79,8 +79,10 @@ jobs:
           $resources = Join-Path $env:GITHUB_WORKSPACE "desktop-react\release\win-unpacked\resources"
           $runtime = Join-Path $resources "python.exe"
           $mxc = Join-Path $resources "wxc-exec.exe"
+          $browserExtension = Join-Path $resources "browser-current-tab\manifest.json"
           if (-not (Test-Path $runtime)) { throw "Packaged private Python runtime was not found at $runtime" }
           if (-not (Test-Path $mxc)) { throw "Packaged MXC executable was not found at $mxc" }
+          if (-not (Test-Path $browserExtension)) { throw "Packaged Current Tab Bridge extension was not found at $browserExtension" }
           & $runtime self-test
           if ($LASTEXITCODE -ne 0) { throw "Packaged runtime self-test failed with exit code $LASTEXITCODE" }
           & $runtime -c "import app; import mcp; from mcp.client.streamable_http import streamable_http_client; print('loom-runtime-import-ok')"

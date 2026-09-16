@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from "electron";
 import { ChildProcessWithoutNullStreams, spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -93,6 +93,66 @@ function computerLogRoot(): string {
 function browserLogRoot(): string {
   const configured = process.env.LOOM_BROWSER_LOG_DIR?.trim() || process.env.LOOM_BROWSER_DIAG_DIR?.trim();
   return configured ? path.resolve(configured) : path.join(REPO_ROOT, ".loom", "logs", "browser-use");
+}
+
+function browserBridgeTokenPath(): string {
+  return path.join(app.getPath("userData"), "browser", "current-tab-bridge.token");
+}
+
+function ensureBrowserBridgeToken(): string {
+  const target = browserBridgeTokenPath();
+  try {
+    const existing = fsSync.readFileSync(target, "utf8").trim();
+    if (existing.length >= 32) return existing;
+  } catch {}
+  fsSync.mkdirSync(path.dirname(target), { recursive: true });
+  const token = crypto.randomBytes(48).toString("base64url");
+  fsSync.writeFileSync(target, token, { encoding: "utf8", mode: 0o600 });
+  return token;
+}
+
+function browserExtensionSource(): string {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, "browser-current-tab")
+    : path.join(REPO_ROOT, "extensions", "browser-current-tab");
+}
+
+async function setupBrowserExtension(browser: "edge" | "chrome" = "edge"): Promise<Record<string, unknown>> {
+  const source = browserExtensionSource();
+  const target = path.join(app.getPath("userData"), "browser", "current-tab-extension");
+  if (!fsSync.existsSync(path.join(source, "manifest.json"))) {
+    throw new Error(`Packaged browser extension is missing: ${source}`);
+  }
+  await fs.rm(target, { recursive: true, force: true });
+  await fs.mkdir(path.dirname(target), { recursive: true });
+  await fs.cp(source, target, { recursive: true });
+  await fs.writeFile(
+    path.join(target, "bridge-config.json"),
+    JSON.stringify({ bridgeUrl: "http://127.0.0.1:39222", token: ensureBrowserBridgeToken() }),
+    { encoding: "utf8", mode: 0o600 },
+  );
+  clipboard.writeText(target);
+  const managementUrl = browser === "chrome" ? "chrome://extensions" : "edge://extensions";
+  const roots = browser === "chrome"
+    ? [
+        path.join(process.env.PROGRAMFILES || "", "Google", "Chrome", "Application", "chrome.exe"),
+        path.join(process.env["PROGRAMFILES(X86)"] || "", "Google", "Chrome", "Application", "chrome.exe"),
+        path.join(process.env.LOCALAPPDATA || "", "Google", "Chrome", "Application", "chrome.exe"),
+      ]
+    : [
+        path.join(process.env["PROGRAMFILES(X86)"] || "", "Microsoft", "Edge", "Application", "msedge.exe"),
+        path.join(process.env.PROGRAMFILES || "", "Microsoft", "Edge", "Application", "msedge.exe"),
+        path.join(process.env.LOCALAPPDATA || "", "Microsoft", "Edge", "Application", "msedge.exe"),
+      ];
+  const executable = roots.find((candidate) => candidate && fsSync.existsSync(candidate));
+  let openError = "";
+  if (executable) {
+    const child = spawn(executable, [managementUrl], { detached: true, stdio: "ignore", windowsHide: false });
+    child.unref();
+  } else {
+    openError = await shell.openExternal(managementUrl).then(() => "", (error) => String(error));
+  }
+  return { ok: true, extensionPath: target, pathCopied: true, managementUrl, openError };
 }
 
 function diagnosticLogRoot(kind: DiagnosticLogKind): string {
@@ -298,6 +358,8 @@ class LoomRpcProcess {
         PYTHONPATH: appendPythonPath(process.env.PYTHONPATH),
         LOOM_DESKTOP_PYTHON: python,
         LOOM_API_KEY: spec.apiKey,
+        LOOM_HOME: app.getPath("userData"),
+        LOOM_BROWSER_EXTENSION_TOKEN: ensureBrowserBridgeToken(),
       },
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
@@ -502,6 +564,7 @@ ipcMain.handle("loom:call", (_event, method: string, params?: Record<string, unk
 ipcMain.handle("loom:disconnect", () => rpc.stop());
 ipcMain.handle("loom:export-computer-logs", () => exportComputerLogs());
 ipcMain.handle("loom:export-browser-logs", () => exportBrowserLogs());
+ipcMain.handle("loom:setup-browser-extension", (_event, browser: "edge" | "chrome" = "edge") => setupBrowserExtension(browser));
 ipcMain.handle("loom:reveal-path", (_event, targetPath: string) => revealPath(targetPath));
 ipcMain.handle("loom:pick-files", async () => {
   const result = await dialog.showOpenDialog({ title: "Attach files", properties: ["openFile", "multiSelections"] });

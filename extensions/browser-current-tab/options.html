@@ -18,18 +18,15 @@
 <body>
   <main>
     <h1>Loom Browser Bridge</h1>
-    <p>Keep these values aligned with the Loom desktop extension bridge. Defaults work for local development.</p>
+    <p>Loom Desktop manages the pairing credential. Only change the loopback address when troubleshooting.</p>
 
     <label for="bridgeUrl">Bridge URL</label>
     <input id="bridgeUrl" spellcheck="false" placeholder="http://127.0.0.1:39222">
 
-    <label for="token">Token</label>
-    <input id="token" spellcheck="false" placeholder="loom-dev-browser-extension">
-
     <button id="save">Save</button>
     <div id="status"></div>
 
-    <p style="margin-top:22px">Start Loom with <code>npm run dev:extension</code>, then click the extension icon once if Chrome suspended the service worker.</p>
+    <p style="margin-top:22px">Set up or repair this extension from <code>Loom → Settings → Browser</code>. Click the toolbar icon to wake the bridge if the browser suspended it.</p>
   </main>
   <script src="options.js"></script>
 </body>

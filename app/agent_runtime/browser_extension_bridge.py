@@ -4,12 +4,14 @@ import base64
 import hmac
 import json
 import os
+import secrets
 import threading
 import time
 import uuid
 from dataclasses import dataclass, field
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
@@ -24,7 +26,43 @@ from .browser_session import (
 
 DEFAULT_EXTENSION_HOST = "127.0.0.1"
 DEFAULT_EXTENSION_PORT = 39222
-DEFAULT_EXTENSION_TOKEN = "loom-dev-browser-extension"
+
+
+def _runtime_home() -> Path:
+    configured = str(os.environ.get("LOOM_HOME") or "").strip()
+    return Path(configured).expanduser().resolve() if configured else (Path.home() / ".loom").resolve()
+
+
+def _load_or_create_install_token() -> str:
+    """Return a stable per-install credential without exposing it in status."""
+
+    target = _runtime_home() / "browser" / "current-tab-bridge.token"
+    try:
+        value = target.read_text(encoding="utf-8").strip()
+        if len(value) >= 32:
+            return value
+    except OSError:
+        pass
+    target.parent.mkdir(parents=True, exist_ok=True)
+    value = secrets.token_urlsafe(48)
+    temporary = target.with_suffix(f".tmp-{os.getpid()}-{threading.get_ident()}")
+    temporary.write_text(value, encoding="utf-8")
+    try:
+        os.chmod(temporary, 0o600)
+    except OSError:
+        pass
+    try:
+        os.replace(temporary, target)
+    except OSError:
+        try:
+            temporary.unlink()
+        except OSError:
+            pass
+        existing = target.read_text(encoding="utf-8").strip()
+        if len(existing) < 32:
+            raise ValueError("stored browser extension bridge token is invalid")
+        return existing
+    return value
 
 
 @dataclass(slots=True)
@@ -54,7 +92,7 @@ class BrowserExtensionBridge:
         *,
         host: str = DEFAULT_EXTENSION_HOST,
         port: int = DEFAULT_EXTENSION_PORT,
-        token: str = DEFAULT_EXTENSION_TOKEN,
+        token: str | None = None,
         command_timeout: float = 45.0,
         poll_timeout: float = 25.0,
         diagnostics: BrowserDiagnosticLog | None = None,
@@ -65,7 +103,7 @@ class BrowserExtensionBridge:
         port = int(port)
         if not 0 <= port <= 65535:
             raise ValueError("browser extension bridge port must be within 0..65535")
-        token = str(token or "").strip()
+        token = str(token or _load_or_create_install_token()).strip()
         if len(token) < 8:
             raise ValueError("browser extension bridge token must be at least 8 characters")
         self.host = host
@@ -83,6 +121,11 @@ class BrowserExtensionBridge:
         self._closed = False
         self._last_client_id = ""
         self._last_client_version = ""
+        self._last_browser_name = ""
+        self._last_tab_title = ""
+        self._last_tab_url = ""
+        self._last_tab_id = ""
+        self._last_window_id = ""
         self._last_poll_at = 0.0
         self._last_result_at = 0.0
         self._log("bridge.created", host=self.host, port=self.port, command_timeout=self.command_timeout)
@@ -95,7 +138,7 @@ class BrowserExtensionBridge:
         return cls(
             host=env("LOOM_BROWSER_EXTENSION_HOST", DEFAULT_EXTENSION_HOST),
             port=int(env("LOOM_BROWSER_EXTENSION_PORT", str(DEFAULT_EXTENSION_PORT))),
-            token=env("LOOM_BROWSER_EXTENSION_TOKEN", DEFAULT_EXTENSION_TOKEN),
+            token=env("LOOM_BROWSER_EXTENSION_TOKEN", _load_or_create_install_token()),
             command_timeout=float(env("LOOM_BROWSER_EXTENSION_TIMEOUT", "45")),
         )
 
@@ -116,6 +159,13 @@ class BrowserExtensionBridge:
                 "connected": self.connected,
                 "last_client_id": self._last_client_id[-12:] if self._last_client_id else "",
                 "last_client_version": self._last_client_version,
+                "browser": self._last_browser_name,
+                "current_tab": {
+                    "title": self._last_tab_title,
+                    "url": self._last_tab_url,
+                    "tab_id": self._last_tab_id,
+                    "window_id": self._last_window_id,
+                } if self._last_tab_title or self._last_tab_url else None,
                 "pending_commands": len(self._pending),
                 "queued_commands": len(self._commands),
                 "diagnostics": self.diagnostics.status(expose_path=False),
@@ -264,10 +314,12 @@ class BrowserExtensionBridge:
                     params = parse_qs(parsed.query)
                     client_id = str((params.get("client_id") or [""])[0])[:128]
                     version = str((params.get("version") or [""])[0])[:64]
+                    browser_name = str((params.get("browser") or [""])[0])[:64]
                     deadline = time.monotonic() + bridge.poll_timeout
                     with bridge._condition:
                         bridge._last_client_id = client_id or bridge._last_client_id
                         bridge._last_client_version = version or bridge._last_client_version
+                        bridge._last_browser_name = browser_name or bridge._last_browser_name
                         bridge._last_poll_at = time.monotonic()
                         command: _BridgeCommand | None = None
                         while command is None and not bridge._closed:
@@ -325,6 +377,13 @@ class BrowserExtensionBridge:
                     with bridge._condition:
                         bridge._last_client_id = str(body.get("client_id") or "")[:128]
                         bridge._last_client_version = str(body.get("version") or "")[:64]
+                        bridge._last_browser_name = str(body.get("browser") or "")[:64]
+                        active_tab = body.get("active_tab")
+                        if isinstance(active_tab, dict):
+                            bridge._last_tab_title = str(active_tab.get("title") or "")[:500]
+                            bridge._last_tab_url = str(active_tab.get("url") or "")[:4000]
+                            bridge._last_tab_id = str(active_tab.get("tab_id") or "")[:64]
+                            bridge._last_window_id = str(active_tab.get("window_id") or "")[:64]
                         bridge._last_poll_at = time.monotonic()
                     bridge._log(
                         "bridge.client.registered",
@@ -367,9 +426,10 @@ class BrowserExtensionBridge:
                 self._send_json({"ok": False, "error": "not found"}, HTTPStatus.NOT_FOUND)
 
             def _authorized(self, parsed) -> bool:
+                origin = str(self.headers.get("Origin") or "").strip()
+                if origin and not origin.startswith("chrome-extension://"):
+                    return False
                 supplied = self.headers.get("X-Loom-Token", "")
-                if not supplied:
-                    supplied = str((parse_qs(parsed.query).get("token") or [""])[0])
                 return hmac.compare_digest(str(supplied), bridge.token)
 
             def _read_json(self) -> dict[str, Any]:

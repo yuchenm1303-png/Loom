@@ -315,6 +315,7 @@ class BrowserUseBackend(BrowserBackend):
 
     async def _state_async(self) -> BrowserPageState:
         session = await self._ensure_session()
+        await self._show_page_hud("Reading page", "Browser Use")
         started = time.monotonic()
         state = await session.get_browser_state_summary(include_screenshot=False)
         serialized = self._with_backend_page_info(_serialize_state(state), capture_mode="browser_use_summary")
@@ -364,6 +365,7 @@ class BrowserUseBackend(BrowserBackend):
     async def _navigate_async(self, url: str, *, new_tab: bool) -> BrowserPageState:
         from browser_use.browser.events import NavigateToUrlEvent
 
+        await self._show_page_hud("Navigating", "Browser Use")
         await self._dispatch(NavigateToUrlEvent(url=url, new_tab=new_tab))
         return await self._state_async()
 
@@ -398,6 +400,7 @@ class BrowserUseBackend(BrowserBackend):
         from browser_use.browser.events import ClickElementEvent
 
         node = await self._node_for_index(index)
+        await self._show_page_hud(f"Click #{index}", "Browser Use", node=node)
         await self._dispatch(ClickElementEvent(node=node))
         return await self._state_async()
 
@@ -408,6 +411,7 @@ class BrowserUseBackend(BrowserBackend):
         from browser_use.browser.events import TypeTextEvent
 
         node = await self._node_for_index(index)
+        await self._show_page_hud(f"Type into #{index}", f"{len(text)} characters", node=node)
         await self._dispatch(TypeTextEvent(node=node, text=text, clear=clear))
         return await self._state_async()
 
@@ -422,8 +426,57 @@ class BrowserUseBackend(BrowserBackend):
     async def _scroll_async(self, direction: str, amount: int) -> BrowserPageState:
         from browser_use.browser.events import ScrollEvent
 
+        await self._show_page_hud(f"Scroll {direction}", f"{amount}px")
         await self._dispatch(ScrollEvent(direction=direction, amount=amount, node=None))
         return await self._state_async()
+
+    async def _show_page_hud(self, title: str, subtitle: str, *, node: Any | None = None) -> None:
+        """Best-effort page-local HUD for isolated/CDP browser-use sessions."""
+
+        try:
+            session = await self._ensure_session()
+            cdp = await session.get_or_create_cdp_session()
+            object_id = ""
+            backend_node_id = getattr(node, "backend_node_id", None) if node is not None else None
+            if backend_node_id is not None:
+                resolved = await cdp.cdp_client.send.DOM.resolveNode(
+                    params={"backendNodeId": int(backend_node_id)}
+                )
+                remote = resolved.get("object") if isinstance(resolved, dict) else None
+                object_id = str((remote or {}).get("objectId") or "")
+            function = r"""function(title, subtitle, target) {
+              const old = document.getElementById('__loom_browser_use_hud');
+              if (old) old.remove();
+              const host = document.createElement('div');
+              host.id = '__loom_browser_use_hud';
+              host.style.cssText = 'all:initial;position:fixed;inset:0;z-index:2147483647;pointer-events:none';
+              const root = host.attachShadow({mode:'closed'});
+              const rect = target && target.getBoundingClientRect ? target.getBoundingClientRect() : null;
+              const frame = rect ? `<div class="frame" style="left:${Math.max(2,rect.left-4)}px;top:${Math.max(2,rect.top-4)}px;width:${Math.max(18,rect.width+8)}px;height:${Math.max(18,rect.height+8)}px"></div>` : '';
+              root.innerHTML = `<style>.pill{position:fixed;top:16px;right:16px;padding:9px 12px;border-radius:10px;background:#111827;color:white;font:12px/1.35 system-ui;box-shadow:0 8px 24px #0005}.pill b{display:block;font-size:13px}.pill span{color:#cbd5e1}.frame{position:fixed;box-sizing:border-box;border:2px solid #7c3aed;border-radius:7px;box-shadow:0 0 0 3px #7c3aed33}</style>${frame}<div class="pill"><b></b><span></span></div>`;
+              root.querySelector('b').textContent = String(title || 'Browser Use');
+              root.querySelector('span').textContent = String(subtitle || 'Browser Use');
+              document.documentElement.appendChild(host);
+              setTimeout(() => host.remove(), 2200);
+            }"""
+            if object_id:
+                await cdp.cdp_client.send.Runtime.callFunctionOn(
+                    params={
+                        "objectId": object_id,
+                        "functionDeclaration": function,
+                        "arguments": [
+                            {"value": str(title)[:120]},
+                            {"value": str(subtitle)[:180]},
+                            {"objectId": object_id},
+                        ],
+                        "returnByValue": True,
+                    }
+                )
+            else:
+                expression = f"({function})({json.dumps(str(title)[:120])}, {json.dumps(str(subtitle)[:180])}, null)"
+                await cdp.cdp_client.send.Runtime.evaluate(params={"expression": expression})
+        except Exception as exc:
+            self._log("browser_use.hud.skipped", error=f"{type(exc).__name__}: {exc}")
 
     def scroll(self, direction: str, amount: int) -> BrowserPageState:
         return self._run_state_action(

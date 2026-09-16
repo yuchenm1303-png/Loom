@@ -190,6 +190,32 @@ def test_extension_bridge_rejects_missing_token():
         bridge.stop()
 
 
+def test_extension_bridge_rejects_web_page_origin_even_with_token():
+    bridge = BrowserExtensionBridge(port=0, token="test-token")
+    bridge.start()
+    try:
+        with pytest.raises(Exception):
+            urlopen(
+                Request(
+                    f"{bridge.url}/browser-extension/v1/poll?client_id=attacker",
+                    headers={"X-Loom-Token": "test-token", "Origin": "https://attacker.example"},
+                ),
+                timeout=2,
+            )
+    finally:
+        bridge.stop()
+
+
+def test_generated_install_token_is_stable_and_not_the_old_development_token(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOOM_HOME", str(tmp_path))
+    first = BrowserExtensionBridge(port=0)
+    second = BrowserExtensionBridge(port=0)
+    assert first.token == second.token
+    assert len(first.token) >= 32
+    assert first.token != "loom-dev-browser-extension"
+    assert first.token not in json.dumps(first.status())
+
+
 def test_browser_diagnostics_redacts_typed_text(tmp_path):
     raw_args = {"index": 2, "text": "super secret password", "clear": True}
     safe_args = summarize_bridge_args("type_text", raw_args)

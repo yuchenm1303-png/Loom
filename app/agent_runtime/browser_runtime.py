@@ -856,6 +856,8 @@ class BrowserRuntime(WebSearchRuntime):
                 "connected": bool(bridge_status.get("connected")),
                 "last_client_id": str(bridge_status.get("last_client_id") or ""),
                 "last_client_version": str(bridge_status.get("last_client_version") or ""),
+                "browser": str(bridge_status.get("browser") or ""),
+                "current_tab": bridge_status.get("current_tab"),
                 "pending_commands": int(bridge_status.get("pending_commands") or 0),
                 "queued_commands": int(bridge_status.get("queued_commands") or 0),
                 "url_exposed": False,

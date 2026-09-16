@@ -76,6 +76,10 @@
       {
         "from": "node_modules/@microsoft/mxc-sdk/bin/x64/wxc-exec.exe",
         "to": "wxc-exec.exe"
+      },
+      {
+        "from": "../extensions/browser-current-tab",
+        "to": "browser-current-tab"
       }
     ],
     "artifactName": "Loom-Setup-${version}-${arch}.${ext}",
