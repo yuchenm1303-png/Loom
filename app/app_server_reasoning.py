@@ -262,6 +262,17 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
     def _hud_point(cls, tool_name: str, args: dict[str, Any], result: dict[str, Any]) -> tuple[float, float] | None:
         name = str(tool_name or "")
         if name.startswith("computer_"):
+            # The overlay spans the whole virtual screen, so it needs a point in
+            # that space. An action's own point is normalized against the
+            # captured application window instead, and passing it straight
+            # through drew the marker at the right fraction of the wrong
+            # rectangle -- visibly away from where the pointer actually went.
+            screen_point = result.get("screen_point")
+            if isinstance(screen_point, dict):
+                x_norm = screen_point.get("x_norm")
+                y_norm = screen_point.get("y_norm")
+                if isinstance(x_norm, (int, float)) and isinstance(y_norm, (int, float)):
+                    return cls._hud_float(x_norm, 0.52), cls._hud_float(y_norm, 0.46)
             action = cls._hud_action_from_payload(args, result)
             point = action.get("point")
             if isinstance(point, dict):

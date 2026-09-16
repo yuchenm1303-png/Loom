@@ -267,3 +267,58 @@ def test_the_desktop_tool_tells_the_model_it_is_not_the_default_route():
     assert "exec" in description
     assert "prefer a cheaper route" in description
     assert "interleave" in description
+
+
+def test_the_hud_point_is_expressed_against_the_screen_not_the_window(monkeypatch):
+    """The overlay spans the desktop; the action's point does not.
+
+    An action is normalized against the captured application window. Passing
+    that fraction to a full-screen overlay drew the marker at the right
+    fraction of the wrong rectangle, so the indicator sat away from where the
+    pointer actually went.
+    """
+
+    from app.agent_runtime import computer_single_loop_runtime as loop
+    from app.agent_runtime.computer_runtime import ComputerStateSnapshot, ComputerStepOutcome
+    from app.agent_runtime.computer_types import (
+        ComputerFrame,
+        ComputerObservation,
+        ComputerPoint,
+        ComputerPrediction,
+    )
+
+    monkeypatch.setattr(loop, "_virtual_screen_bounds", lambda: (0, 0, 2560, 1600))
+    frame = ComputerFrame(
+        frame_id="f", origin_x=1000, origin_y=800, width=400, height=200
+    )
+    observation = ComputerObservation(
+        observation_id="obs", frame=frame, image_data=b"x", image_media_type="image/jpeg"
+    )
+    action = ComputerAction(type=ComputerActionType.CLICK, point=ComputerPoint(0.5, 0.5))
+    before = ComputerStateSnapshot(1, observation)
+    outcome = ComputerStepOutcome(before, ComputerPrediction(action=action), None, before, {})
+
+    screen_point = loop._screen_point(outcome)
+
+    # Centre of a 400x200 window at (1000,800), addressed as pixel indices the
+    # way ComputerFrame.to_screen does, is (1200, 900) on the desktop.
+    assert screen_point["screen_x"] == 1200
+    assert screen_point["screen_y"] == 900
+    assert abs(screen_point["x_norm"] - 1200 / 2560) < 1e-6
+    assert abs(screen_point["y_norm"] - 900 / 1600) < 1e-6
+    # The window-local fraction would have been 0.5/0.5 -- a completely
+    # different place on a full-screen overlay.
+    assert abs(screen_point["x_norm"] - 0.5) > 0.03
+
+
+def test_the_hud_emitter_prefers_the_screen_point():
+    from app.app_server_reasoning import ReasoningManagedLoomAppServerService as S
+
+    result = {
+        "action": {"type": "click", "point": {"x": 0.5, "y": 0.5}},
+        "screen_point": {"screen_x": 1199, "screen_y": 899, "x_norm": 0.468, "y_norm": 0.562},
+    }
+
+    assert S._hud_point("computer_action", {}, result) == (0.468, 0.562)
+    # Without one, the window-local point is still better than nothing.
+    assert S._hud_point("computer_action", {}, {"action": result["action"]}) == (0.5, 0.5)

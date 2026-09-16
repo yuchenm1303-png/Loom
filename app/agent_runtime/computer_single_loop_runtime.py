@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from collections import defaultdict, deque
 from dataclasses import dataclass, replace
 from io import BytesIO
@@ -271,11 +272,59 @@ def _safe_snapshot_data(snapshot: ComputerStateSnapshot) -> dict[str, object]:
     }
 
 
+def _screen_point(outcome: ComputerStepOutcome) -> dict[str, float] | None:
+    """Where on the whole desktop the action landed, normalized 0..1.
+
+    The action's own point is normalized against the captured frame, which is
+    one application window somewhere on the desktop. Anything drawing a marker
+    over the real screen needs the same physical place expressed against the
+    virtual screen instead, and only this layer holds the frame to convert with.
+    """
+
+    action = outcome.prediction.action
+    point = action.point or action.end_point
+    if point is None:
+        return None
+    frame = outcome.before.observation.frame
+    screen_x, screen_y = frame.to_screen(point)
+    bounds = _virtual_screen_bounds()
+    if bounds is None:
+        return None
+    left, top, width, height = bounds
+    if width < 1 or height < 1:
+        return None
+    return {
+        "screen_x": float(screen_x),
+        "screen_y": float(screen_y),
+        "x_norm": min(1.0, max(0.0, (screen_x - left) / width)),
+        "y_norm": min(1.0, max(0.0, (screen_y - top) / height)),
+    }
+
+
+def _virtual_screen_bounds() -> tuple[int, int, int, int] | None:
+    if os.name != "nt":
+        return None
+    try:
+        import ctypes
+
+        user32 = ctypes.windll.user32
+        return (
+            int(user32.GetSystemMetrics(76)),  # SM_XVIRTUALSCREEN
+            int(user32.GetSystemMetrics(77)),  # SM_YVIRTUALSCREEN
+            int(user32.GetSystemMetrics(78)),  # SM_CXVIRTUALSCREEN
+            int(user32.GetSystemMetrics(79)),  # SM_CYVIRTUALSCREEN
+        )
+    except Exception:
+        return None
+
+
 def _safe_outcome_data(outcome: ComputerStepOutcome) -> dict[str, object]:
     after = outcome.after or outcome.before
     execution = outcome.execution
+    screen_point = _screen_point(outcome)
     return {
         "action": outcome.prediction.action.safe_dict(),
+        **({"screen_point": screen_point} if screen_point else {}),
         "execution": (
             {
                 "ok": bool(execution.ok),
