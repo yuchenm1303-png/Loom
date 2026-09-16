@@ -55,11 +55,27 @@ DEFAULT_SETTINGS: dict[str, Any] = {
         "preserveBackgroundProcesses": True,
     },
     "environment": {
+        # Mirrors Codex's `shell_environment_policy` table. Defaults match
+        # Codex's own: inherit the full parent environment and filter nothing,
+        # which is what lets GH_TOKEN / GITHUB_TOKEN reach git and gh in a
+        # spawned process.
+        #
+        # Seed for the child environment: all | core | none.
         "inherit": "all",
+        # True (Codex's default) skips the *KEY* / *SECRET* / *TOKEN* denylist.
+        # Set to false to turn that filtering back on.
         "ignoreDefaultExcludes": True,
+        # Wildcard patterns (* and ?) matched case-insensitively against names.
         "exclude": [],
+        # Operator-supplied name -> value pairs inserted after the excludes.
+        # Distinct from the `env` argument on the model's exec tool, which is
+        # screened separately and cannot introduce secret-shaped names.
         "set": {},
+        # When non-empty, only names matching these patterns survive.
         "includeOnly": [],
+        # Loom extension with no Codex counterpart: names that stay readable
+        # even when `ignoreDefaultExcludes` is false. Lets an operator run the
+        # denylist and still pass specific credentials through.
         "passThroughEnvVars": [],
     },
     "browser": {
@@ -119,6 +135,8 @@ _ALLOWED_SETTING_PATHS: dict[str, tuple[type, Any]] = {
     "environment.includeOnly": (list, None),
     "environment.passThroughEnvVars": (list, None),
     "browser.mode": (str, {"auto", "local-launch", "cdp-attach", "extension"}),
+    # Validated properly by the runtime, which is the only place that knows the
+    # loopback rule. Storing it is not the same as accepting it.
     "browser.cdpUrl": (str, None),
     "browser.preferredEngine": (str, {"edge", "chrome", "system"}),
     "browser.persistSessions": (bool, None),
@@ -134,11 +152,31 @@ _ALLOWED_SETTING_PATHS: dict[str, tuple[type, Any]] = {
     "privacy.crashReports": (bool, None),
 }
 
+# Empty is a meaningful value for these: clearing the CDP endpoint is how the user
+# says "no external browser", and rejecting it would strand a stale address in the
+# stored settings after a switch back to local-launch.
 _CLEARABLE_SETTING_PATHS = frozenset({"browser.cdpUrl"})
-_ENV_NAME_LIST_PATHS = frozenset({"environment.exclude", "environment.includeOnly", "environment.passThroughEnvVars"})
+
+# Shell-environment settings holding env var names or wildcard patterns. They
+# share one validator: a malformed entry here reaches every spawned process, so
+# it is rejected at the settings boundary rather than at exec time.
+_ENV_NAME_LIST_PATHS = frozenset(
+    {
+        "environment.exclude",
+        "environment.includeOnly",
+        "environment.passThroughEnvVars",
+    }
+)
 
 
 class LoomSettingsStore:
+    """Durable application settings shared by Loom desktop sessions.
+
+    ``settings/set`` historically accepted only capability booleans. The
+    ``__setting__:`` envelope remains supported for older desktop builds, while
+    ``set_value`` is the typed path used by newer protocol clients.
+    """
+
     def __init__(self, runtime_home: str | Path) -> None:
         self.runtime_home = Path(runtime_home).expanduser().resolve()
         self.runtime_home.mkdir(parents=True, exist_ok=True)
@@ -161,6 +199,13 @@ class LoomSettingsStore:
         return self.snapshot()
 
     def replace(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Write back a previously read snapshot.
+
+        A setting that the runtime then refuses to honour must not stay on disk,
+        or the settings page would keep showing a browser connection that Loom is
+        not actually using.
+        """
+
         self._write(self._normalize(dict(data)))
         return self.snapshot()
 
@@ -184,7 +229,10 @@ class LoomSettingsStore:
             raise ValueError("invalid settings update envelope") from exc
         if not isinstance(payload, dict):
             raise ValueError("invalid settings update envelope")
-        return self.set_value(str(payload.get("path") or "").strip(), payload.get("value"))
+        return self.set_value(
+            str(payload.get("path") or "").strip(),
+            payload.get("value"),
+        )
 
     @staticmethod
     def _validate_setting(path: str, value: Any) -> Any:
@@ -216,6 +264,8 @@ class LoomSettingsStore:
                 cleaned.append(name)
             return cleaned
         if path == "environment.set":
+            # Operator-controlled, so unlike the model's exec `env` argument this
+            # may carry a credential on purpose. Only shape is enforced.
             pairs: dict[str, str] = {}
             for raw_name, raw_value in value.items():
                 name = str(raw_name).strip()
@@ -246,11 +296,13 @@ class LoomSettingsStore:
     def _normalize(raw: dict[str, Any]) -> dict[str, Any]:
         data = deepcopy(raw)
         data["schemaVersion"] = int(DEFAULT_SETTINGS["schemaVersion"])
+
         raw_capabilities = raw.get("capabilities")
         capabilities = dict(raw_capabilities) if isinstance(raw_capabilities, dict) else {}
         for key, default in DEFAULT_SETTINGS["capabilities"].items():
             capabilities[key] = bool(capabilities.get(key, default))
         data["capabilities"] = capabilities
+
         for section, defaults in DEFAULT_SETTINGS.items():
             if section in {"schemaVersion", "capabilities"}:
                 continue
