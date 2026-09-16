@@ -31,11 +31,27 @@ function isTransportFailure(error: unknown): boolean {
   return String(error ?? "").startsWith("AITransportError:");
 }
 
+function retryableTransportFailure(result: Record<string, unknown>, expectedTurnId = ""): boolean {
+  const thread = result.thread as Record<string, unknown> | undefined;
+  const status = String(thread?.status ?? "").trim();
+  const turnId = String(expectedTurnId || thread?.currentTurnId || "").trim();
+  if (status !== "failed" || !turnId || !isTransportFailure(result.error)) return false;
+
+  const events = Array.isArray(result.events) ? result.events : [];
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index] as Record<string, unknown> | undefined;
+    if (!event || String(event.turnId ?? "").trim() !== turnId) continue;
+    if (String(event.kind ?? "").trim() !== "turn_failed") continue;
+    const data = event.data as Record<string, unknown> | undefined;
+    return data?.retryable_transport === true;
+  }
+  return false;
+}
+
 function threadNeedsRecovery(result: Record<string, unknown>): boolean {
   const thread = result.thread as Record<string, unknown> | undefined;
   const status = String(thread?.status ?? "").trim();
-  return ACTIVE_RECOVERABLE_THREAD_STATUSES.has(status)
-    || (status === "failed" && isTransportFailure(result.error));
+  return ACTIVE_RECOVERABLE_THREAD_STATUSES.has(status) || retryableTransportFailure(result);
 }
 
 async function call(method: string, params: Record<string, unknown> = {}) {
@@ -49,11 +65,9 @@ async function call(method: string, params: Record<string, unknown> = {}) {
   if (!threadId || !turnId || !threadNeedsRecovery(record)) return result;
 
   // A read is observational on the backend. When the desktop actually opens an
-  // unfinished/retryable thread, explicitly request a safe handoff. A live
-  // executor simply rejoins; a restarted executor reconstructs the turn from
-  // durable state; a retry-exhausted transport failure replays only the immutable
-  // model request. Lost approval capability or uncertain tool side effects fail
-  // closed instead of being replayed.
+  // unfinished/retryable thread, explicitly request a safe handoff. The durable
+  // runtime decides whether recovery is legal; the client never guesses from an
+  // exception name alone.
   return ipcRenderer.invoke("loom:call", "thread/resume", {
     threadId,
     recoverTurnId: turnId,
@@ -129,28 +143,25 @@ const api = {
 
       const recoveryTimer = setTimeout(() => {
         recoveryTimers.delete(recoveryTimer);
-        // Reflect the retry immediately in the renderer. Backend terminal events
-        // remain authoritative and will settle this state if the retry fails.
-        listener({
-          jsonrpc: "2.0",
-          method: "turn/started",
-          params: {
-            threadId,
-            turn: {
-              id: turnId,
+        void (async () => {
+          try {
+            // Confirm the durable failure metadata before retrying. This filters
+            // non-retryable provider/credential failures that share the transport
+            // exception class and avoids inventing a client-side running state.
+            const snapshot = await ipcRenderer.invoke("loom:call", "thread/read", { threadId });
+            if (!snapshot || typeof snapshot !== "object"
+              || !retryableTransportFailure(snapshot as Record<string, unknown>, turnId)) {
+              listener({ jsonrpc: "2.0", method: "thread/resync", params: { threadId } });
+              return;
+            }
+            await ipcRenderer.invoke("loom:call", "thread/resume", {
               threadId,
-              status: "running",
-              startedAt: new Date().toISOString(),
-              source: "network_recovery",
-            },
-          },
-        });
-        void ipcRenderer.invoke("loom:call", "thread/resume", {
-          threadId,
-          recoverTurnId: turnId,
-        }).catch(() => {
-          listener({ jsonrpc: "2.0", method: "thread/resync", params: { threadId } });
-        });
+              recoverTurnId: turnId,
+            });
+          } catch {
+            listener({ jsonrpc: "2.0", method: "thread/resync", params: { threadId } });
+          }
+        })();
       }, NETWORK_RECOVERY_DELAY_MS);
       recoveryTimers.add(recoveryTimer);
     };
