@@ -1,4 +1,4 @@
-import { CircleStop, Play, RefreshCw, ShieldCheck, WifiOff } from "lucide-react";
+import { CircleStop, Play, RefreshCw, ShieldCheck, Square, WifiOff } from "lucide-react";
 import { useI18n } from "../i18n";
 import "./recovery-status.css";
 
@@ -12,6 +12,11 @@ export type RecoveryDisplayState =
 interface RecoveryBannerProps {
   state: RecoveryDisplayState;
   onContinue?(): Promise<void> | void;
+}
+
+interface RecoveryComposerProps {
+  state: "reconnecting" | "recovering";
+  onStop?(): Promise<void> | void;
 }
 
 interface RecoveryCopy {
@@ -103,7 +108,7 @@ export function RecoveryBanner({ state, onContinue }: RecoveryBannerProps) {
   );
 }
 
-export function RecoveryComposer({ state }: { state: "reconnecting" | "recovering" }) {
+export function RecoveryComposer({ state, onStop }: RecoveryComposerProps) {
   const { language } = useI18n();
   const zh = language === "zh-CN";
   const recovering = state === "recovering";
@@ -119,7 +124,20 @@ export function RecoveryComposer({ state }: { state: "reconnecting" | "recoverin
           ? (zh ? "已保存的进度保持不变" : "Saved progress is preserved")
           : (zh ? "不会重新执行已经确认完成的操作" : "Confirmed actions will not be repeated")}</span>
       </div>
-      <span className="recovery-composer-spinner" aria-hidden="true" />
+      {recovering && onStop ? (
+        <button
+          type="button"
+          className="recovery-stop"
+          onClick={() => void onStop()}
+          title={zh ? "停止当前任务" : "Stop current task"}
+          aria-label={zh ? "停止当前任务" : "Stop current task"}
+        >
+          <Square size={11} fill="currentColor" />
+          <span>{zh ? "停止" : "Stop"}</span>
+        </button>
+      ) : (
+        <span className="recovery-composer-spinner" aria-hidden="true" />
+      )}
     </div>
   );
 }
