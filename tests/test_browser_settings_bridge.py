@@ -1,9 +1,8 @@
-"""The desktop Browser settings page reaching the browser runtime.
+"""The desktop Browser settings page reaching the production browser policy.
 
-The page used to be decorative: it stored preferredEngine and persistSessions and
-nothing read them back, so choosing a browser had no effect. These cover the path
-from a stored preference to the runtime's live browser connection, including the
-case where the stored choice cannot be honoured.
+The stored preference is runtime behavior, not decoration. These tests also lock
+Loom's current-browser-first default and the rule that an explicit external
+connection failure is reported rather than hidden behind another browser.
 """
 
 from __future__ import annotations
@@ -12,7 +11,8 @@ import json
 
 import pytest
 
-from app.app_server_reasoning import ReasoningManagedLoomAppServerService, _is_browser_setting
+from app.app_server_browser_policy import BrowserPolicyLoomAppServerService
+from app.app_server_reasoning import _is_browser_setting
 from app.settings import SETTINGS_UPDATE_PREFIX, LoomSettingsStore
 
 
@@ -33,8 +33,6 @@ class FakeBrowserRuntime:
         self.calls: list[dict[str, object]] = []
 
     def browser_set_connection(self, mode, *, cdp_url="", persist_profile=None, engine=""):
-        if self.refuse and mode == self.refuse:
-            raise ValueError(f"cannot use {mode}")
         self.calls.append(
             {
                 "mode": mode,
@@ -43,11 +41,13 @@ class FakeBrowserRuntime:
                 "engine": engine,
             }
         )
+        if self.refuse and mode == self.refuse:
+            raise ValueError(f"cannot use {mode}")
         return {"browser_connection": mode}
 
 
-def service_with(runtime, store: LoomSettingsStore) -> ReasoningManagedLoomAppServerService:
-    service = object.__new__(ReasoningManagedLoomAppServerService)
+def service_with(runtime, store: LoomSettingsStore) -> BrowserPolicyLoomAppServerService:
+    service = object.__new__(BrowserPolicyLoomAppServerService)
     service.runtime = runtime
     service.settings_store = store
     return service
@@ -56,6 +56,7 @@ def service_with(runtime, store: LoomSettingsStore) -> ReasoningManagedLoomAppSe
 @pytest.mark.parametrize(
     ("capability", "expected"),
     [
+        (envelope("browser.mode", "auto"), True),
         (envelope("browser.mode", "cdp-attach"), True),
         (envelope("browser.preferredEngine", "chrome"), True),
         (envelope("appearance.scale", "120"), False),
@@ -89,20 +90,18 @@ def test_stored_preferences_are_pushed_into_the_runtime(tmp_path):
     ]
 
 
-def test_default_settings_select_loom_s_own_browser(tmp_path):
+def test_default_settings_use_current_browser_first_auto_policy(tmp_path):
     runtime = FakeBrowserRuntime()
     store = LoomSettingsStore(tmp_path)
     service = service_with(runtime, store)
 
     service._apply_browser_settings(store.snapshot())
 
-    assert runtime.calls[0]["mode"] == "local-launch"
+    assert runtime.calls[0]["mode"] == "auto"
     assert runtime.calls[0]["cdp_url"] == ""
 
 
-def test_an_unusable_stored_choice_degrades_to_local_launch_with_a_reason(tmp_path):
-    """A saved cdp-attach whose browser is gone must not block startup."""
-
+def test_an_unusable_explicit_connection_is_reported_without_hidden_fallback(tmp_path):
     store = LoomSettingsStore(tmp_path)
     store.set_capability(envelope("browser.mode", "cdp-attach"), True)
     store.set_capability(envelope("browser.cdpUrl", LOOPBACK_CDP), True)
@@ -113,7 +112,7 @@ def test_an_unusable_stored_choice_degrades_to_local_launch_with_a_reason(tmp_pa
     reason = service._apply_browser_settings(store.snapshot())
 
     assert "cannot use cdp-attach" in reason
-    assert [call["mode"] for call in runtime.calls] == ["local-launch"]
+    assert [call["mode"] for call in runtime.calls] == ["cdp-attach"]
 
 
 def test_a_runtime_without_browser_support_is_left_alone(tmp_path):
@@ -132,8 +131,9 @@ def test_cdp_url_can_be_cleared_when_switching_back(tmp_path):
     assert settings["browser"]["cdpUrl"] == ""
 
 
-def test_settings_store_rejects_an_unknown_browser_mode(tmp_path):
+def test_settings_store_accepts_auto_and_rejects_an_unknown_browser_mode(tmp_path):
     store = LoomSettingsStore(tmp_path)
+    assert store.set_capability(envelope("browser.mode", "auto"), True)["browser"]["mode"] == "auto"
     with pytest.raises(ValueError):
         store.set_capability(envelope("browser.mode", "remote-grid"), True)
 
@@ -156,12 +156,8 @@ def test_letting_the_model_pick_the_browser_is_off_until_switched_on(tmp_path):
     assert runtime.browser_model_controlled_connection is False
 
 
-def test_the_switch_is_applied_even_when_the_stored_connection_fails(tmp_path):
-    """Degrading to local-launch must not silently re-lock the model's choice.
-
-    The two are independent: which browser Loom defaults to, and whether the
-    model may pick a different one.
-    """
+def test_model_selection_switch_is_applied_even_when_connection_change_fails(tmp_path):
+    """The browser-choice permission is independent of transport availability."""
 
     store = LoomSettingsStore(tmp_path)
     store.set_capability(envelope("browser.mode", "cdp-attach"), True)
@@ -173,3 +169,4 @@ def test_the_switch_is_applied_even_when_the_stored_connection_fails(tmp_path):
 
     assert service._apply_browser_settings(store.snapshot()) != ""
     assert runtime.browser_model_controlled_connection is True
+    assert [call["mode"] for call in runtime.calls] == ["cdp-attach"]

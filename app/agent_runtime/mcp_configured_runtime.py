@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from . import mcp_runtime as _mcp_runtime
+from .browser_auto_policy import BrowserAutoPolicyMixin
 from .computer_single_loop_runtime import SingleLoopComputerRuntime
 from .computer_windows import windows_computer_available
 from .computer_windows_single_loop import SingleLoopWindowsOperator
@@ -17,12 +18,15 @@ from .step import StepContext
 from .tools import ToolRegistry
 
 
-class ConfiguredMCPRuntime(SingleLoopComputerRuntime, MCPRuntime):
-    """Default Loom runtime with single-loop Computer Use plus exact MCP binding.
+class ConfiguredMCPRuntime(BrowserAutoPolicyMixin, SingleLoopComputerRuntime, MCPRuntime):
+    """Default Loom runtime with direct Browser/Computer Use plus exact MCP binding.
 
-    Computer Use is owned by Loom's existing TurnRunner and the currently selected
-    conversation model. The legacy UFO/driver runtime remains importable for
-    compatibility tests while the production MRO no longer routes through it.
+    Browser Use resolves ``auto`` at session-open time: an actually connected
+    current-tab extension wins, otherwise Loom launches a visible isolated
+    browser and reports that fallback honestly. Computer Use is owned by Loom's
+    existing TurnRunner and the currently selected conversation model. The
+    legacy UFO/driver runtime remains importable for compatibility tests while
+    the production MRO no longer routes through it.
 
     MCP authority is captured once per semantic sampling Step. Model-visible MCP
     schemas and executable handlers therefore come from the same immutable
@@ -56,6 +60,12 @@ class ConfiguredMCPRuntime(SingleLoopComputerRuntime, MCPRuntime):
             resolved_servers = _mcp_runtime.load_mcp_server_configs(selected)
         elif mcp_config_path is not None:
             self.mcp_config_path = str(Path(mcp_config_path).expanduser().resolve())
+
+        # A desktop fallback must be visible. BrowserRuntime historically defaults
+        # to headless=True because it was built as an automation backend; that is
+        # wrong for a user-facing fallback where CAPTCHA/MFA or a login handoff may
+        # require the person to see and interact with the launched browser.
+        kwargs.setdefault("browser_headless", False)
 
         # Install the direct visual Windows operator before ComputerUseRuntime has
         # a chance to auto-create the legacy one. Custom embedders can still pass
