@@ -13,26 +13,25 @@ from .app_server_project_move import (
 
 
 class BrowserPolicyLoomAppServerService(ProjectMovableLoomAppServerService):
-    """Production App Server browser wiring with honest fallback and HUD routing."""
+    """Production App Server browser wiring with explicit backend selection."""
 
     def _apply_capability_settings(self, settings: dict[str, Any]) -> None:
         super()._apply_capability_settings(settings)
-        # The capability layer rebuilds ToolRegistry from its canonical snapshot.
-        # Auto mode has a connection-specific browser_open description, so restore
-        # that truthful routing text after every unrelated capability toggle too.
-        if str(getattr(self.runtime, "_browser_requested_connection", "") or "").casefold() == "auto":
-            rewrite = getattr(self.runtime, "_rewrite_auto_browser_open_description", None)
-            if callable(rewrite):
-                rewrite()
+        rewrite = getattr(self.runtime, "_rewrite_browser_open_description", None)
+        if callable(rewrite):
+            rewrite()
+        install_registry = getattr(self.runtime, "_install_browser_backends_tool", None)
+        if callable(install_registry):
+            install_registry()
 
     def _apply_browser_settings(self, settings: dict[str, Any]) -> str:
-        """Apply exactly the browser policy the user selected.
+        """Apply exactly the browser backend the user selected.
 
-        ``auto`` owns its own intentional, visible fallback inside the runtime.
-        Explicit extension/CDP choices are strict: if applying one fails, return
-        the error so settings_set rolls the stored preference back. Do not issue
-        a second hidden ``local-launch`` request here; that old behavior made the
-        UI say "current browser" while Loom was actually driving another browser.
+        The model may always explicitly choose Loom's isolated browser because
+        that reduces authority compared with a signed-in user browser. The
+        ``modelSelectsConnection`` setting now controls escalation to a different
+        external backend (current-browser/CDP), not whether the model can open a
+        clean isolated session. No backend is ever selected silently.
         """
 
         apply = getattr(self.runtime, "browser_set_connection", None)
@@ -43,10 +42,17 @@ class BrowserPolicyLoomAppServerService(ProjectMovableLoomAppServerService):
         mode = str(preferences.get("mode") or "auto").strip()
         engine = str(preferences.get("preferredEngine") or "").strip()
         persist = preferences.get("persistSessions")
+
         if hasattr(self.runtime, "browser_model_controlled_connection"):
-            self.runtime.browser_model_controlled_connection = bool(
+            # Keep browser_open's per-session backend selector available. The
+            # registry itself enforces whether a requested external backend is an
+            # allowed escalation.
+            self.runtime.browser_model_controlled_connection = True
+        if hasattr(self.runtime, "browser_allow_external_backend_selection"):
+            self.runtime.browser_allow_external_backend_selection = bool(
                 preferences.get("modelSelectsConnection", False)
             )
+
         private = getattr(self.runtime, "browser_set_private_networks", None)
         if callable(private):
             try:
@@ -60,19 +66,17 @@ class BrowserPolicyLoomAppServerService(ProjectMovableLoomAppServerService):
                 persist_profile=None if persist is None else bool(persist),
                 engine=engine,
             )
+            # BrowserRuntime may rewrite its legacy flag while rebuilding a
+            # transport; restore the backend-registry policy afterwards.
+            if hasattr(self.runtime, "browser_model_controlled_connection"):
+                self.runtime.browser_model_controlled_connection = True
             return ""
         except Exception as exc:
             return f"{type(exc).__name__}: {exc}"
 
     @staticmethod
     def _hud_tool_family(tool_name: str) -> str:
-        """The desktop overlay belongs to Computer Use, never DOM automation.
-
-        The current-tab extension already draws a real page-local target around
-        the DOM element. Browser events previously reused the virtual-desktop
-        Computer HUD and invented screen coordinates from an element index,
-        which made a non-coordinate operation look precisely grounded.
-        """
+        """The desktop overlay belongs to Computer Use, never DOM automation."""
 
         name = str(tool_name or "").strip()
         return "computer" if name.startswith("computer_") else ""

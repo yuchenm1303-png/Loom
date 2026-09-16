@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from . import mcp_runtime as _mcp_runtime
-from .browser_auto_policy import BrowserAutoPolicyMixin
+from .browser_backend_registry import BrowserBackendRegistryMixin
 from .computer_single_loop_runtime import SingleLoopComputerRuntime
 from .computer_windows import windows_computer_available
 from .computer_windows_single_loop import SingleLoopWindowsOperator
@@ -18,12 +18,13 @@ from .step import StepContext
 from .tools import ToolRegistry
 
 
-class ConfiguredMCPRuntime(BrowserAutoPolicyMixin, SingleLoopComputerRuntime, MCPRuntime):
+class ConfiguredMCPRuntime(BrowserBackendRegistryMixin, SingleLoopComputerRuntime, MCPRuntime):
     """Default Loom runtime with direct Browser/Computer Use plus exact MCP binding.
 
-    Browser Use resolves ``auto`` at session-open time: an actually connected
-    current-tab extension wins, otherwise Loom launches a visible isolated
-    browser and reports that fallback honestly. Computer Use is owned by Loom's
+    Browser Use exposes explicit current-browser, isolated, and developer-CDP
+    backends. The selected backend is discoverable and truthful: current-browser
+    requires the Current Tab Bridge and fails fast when it is unavailable rather
+    than silently opening a different browser. Computer Use is owned by Loom's
     existing TurnRunner and the currently selected conversation model. The
     legacy UFO/driver runtime remains importable for compatibility tests while
     the production MRO no longer routes through it.
@@ -61,10 +62,9 @@ class ConfiguredMCPRuntime(BrowserAutoPolicyMixin, SingleLoopComputerRuntime, MC
         elif mcp_config_path is not None:
             self.mcp_config_path = str(Path(mcp_config_path).expanduser().resolve())
 
-        # A desktop fallback must be visible. BrowserRuntime historically defaults
-        # to headless=True because it was built as an automation backend; that is
-        # wrong for a user-facing fallback where CAPTCHA/MFA or a login handoff may
-        # require the person to see and interact with the launched browser.
+        # Any Loom-owned browser is visible. BrowserRuntime historically defaults
+        # to headless=True because it began life as a backend primitive, but an
+        # explicit isolated desktop browser must be inspectable by the user.
         kwargs.setdefault("browser_headless", False)
 
         # Install the direct visual Windows operator before ComputerUseRuntime has
