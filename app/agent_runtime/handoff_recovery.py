@@ -6,6 +6,10 @@ The durable transcript is authoritative; process-local execution state is not.
 A handoff may therefore resume model sampling only when every previously
 requested tool has a durable terminal observation. Approval waiters and tool
 calls with an unknown outcome fail closed instead of being replayed.
+
+Retry-exhausted ``AITransportError`` turns are also resumable: no provider
+response crossed the durable boundary, so rebuilding the model request is the
+same safe operation the in-process transport retry loop already performs.
 """
 
 from typing import Any
@@ -95,6 +99,21 @@ def _live_approval_context(runtime: DurableAgentRuntime, session: Any) -> bool:
     return True
 
 
+def _transport_failed(session: Any) -> bool:
+    """Whether the terminal failure is a provider/network transport failure.
+
+    TurnRunner stores terminal failures as ``<ExceptionType>: <message>``.  The
+    transport class is intentionally distinct from credentials/configuration and
+    malformed provider responses, so only this failure family is safe to retry
+    automatically without changing the user's request.
+    """
+
+    return (
+        session.status is AgentStatus.FAILED
+        and str(session.error or "").startswith("AITransportError:")
+    )
+
+
 def recover_turn_if_idle(
     runtime: DurableAgentRuntime,
     session_id: str,
@@ -105,6 +124,8 @@ def recover_turn_if_idle(
     This method is intentionally idempotent. A live executor/rejoin is a no-op,
     terminal user cancellation is never restarted, and an unresolved tool or a
     lost approval capability is converted to ``INTERRUPTED`` rather than replayed.
+    A retry-exhausted transport failure may resume the same logical turn because
+    it has no durable model response or external action to replay.
     """
 
     resolved_session_id = str(session_id or "").strip()
@@ -121,8 +142,9 @@ def recover_turn_if_idle(
         if session.current_turn_id != resolved_turn_id:
             raise ValueError("turn_id does not match the unfinished turn")
 
-        # Explicit Stop/Cancel and every other terminal state stay terminal.
-        if session.status not in {AgentStatus.RUNNING, AgentStatus.WAITING_APPROVAL}:
+        transport_retry = _transport_failed(session)
+        # Explicit Stop/Cancel and non-transport terminal states stay terminal.
+        if session.status not in {AgentStatus.RUNNING, AgentStatus.WAITING_APPROVAL} and not transport_retry:
             return runtime._result(session)
 
         # The app-server can reconnect while an executor is still alive. Never
@@ -145,6 +167,16 @@ def recover_turn_if_idle(
                 for call in session.pending_tool_calls
                 if str(call.call_id or "").strip()
             }
+
+            # A transport-failed turn is terminal only because its bounded retry
+            # budget expired. Move it back to RUNNING before either safe resume or
+            # fail-closed finalization so the ordinary recovery machinery owns the
+            # state transition from here.
+            if transport_retry:
+                session.status = AgentStatus.RUNNING
+                session.error = ""
+                runtime.store.save(session)
+
             if unresolved or pending_ids:
                 fail_closed = True
             else:
@@ -178,6 +210,8 @@ def recover_turn_if_idle(
                     # No externally-effecting action is unresolved. Rebuild a fresh
                     # model execution stack from the durable transcript and keep the
                     # original turn id; do not append the user's message again.
+                    session.status = AgentStatus.RUNNING
+                    session.error = ""
                     session.pending_approval = None
                     session.pending_tool_calls.clear()
                     session.pending_step_id = ""
