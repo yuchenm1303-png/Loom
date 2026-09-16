@@ -7,9 +7,10 @@ A handoff may therefore resume model sampling only when every previously
 requested tool has a durable terminal observation. Approval waiters and tool
 calls with an unknown outcome fail closed instead of being replayed.
 
-Retry-exhausted ``AITransportError`` turns are also resumable: rebuilding the
-model request from the last safe durable boundary is the same operation the
-in-process transport retry loop already performs.
+Retry-exhausted ``AITransportError`` turns are also resumable only when their
+terminal failure event durably records ``retryable_transport=true``. This keeps
+provider/credential rejections terminal while genuine network loss can rebuild
+the exact model request from the last safe durable boundary.
 """
 
 from typing import Any
@@ -99,13 +100,18 @@ def _live_approval_context(runtime: DurableAgentRuntime, session: Any) -> bool:
     return True
 
 
-def _transport_failed(session: Any) -> bool:
-    """Whether the terminal failure came from the provider transport layer."""
+def _transport_failed(runtime: DurableAgentRuntime, session: Any, turn_id: str) -> bool:
+    """Whether the terminal failure is durably proven retryable transport loss."""
 
-    return (
-        session.status is AgentStatus.FAILED
-        and str(session.error or "").startswith("AITransportError:")
-    )
+    if (
+        session.status is not AgentStatus.FAILED
+        or not str(session.error or "").startswith("AITransportError:")
+    ):
+        return False
+    for event in reversed(_turn_events(runtime, session.session_id, turn_id)):
+        if event.kind is AgentEventKind.TURN_FAILED:
+            return event.data.get("retryable_transport") is True
+    return False
 
 
 def recover_turn_if_idle(
@@ -118,8 +124,8 @@ def recover_turn_if_idle(
     This method is intentionally idempotent. A live executor/rejoin is a no-op,
     terminal user cancellation is never restarted, and an unresolved tool or a
     lost approval capability is converted to ``INTERRUPTED`` rather than replayed.
-    A transport-failed turn may resume the same logical turn when no uncertain
-    external action remains.
+    A retry-exhausted transport failure may resume the same logical turn only
+    when its durable failure event explicitly marks the transport as retryable.
     """
 
     resolved_session_id = str(session_id or "").strip()
@@ -138,14 +144,14 @@ def recover_turn_if_idle(
         if session.current_turn_id != resolved_turn_id:
             raise ValueError("turn_id does not match the unfinished turn")
 
-        transport_retry = _transport_failed(session)
+        transport_retry = _transport_failed(runtime, session, resolved_turn_id)
         if transport_retry:
             # The failed invocation already returned through DurableAgentRuntime
             # and therefore already contributed its usage to a durable goal.
             # Recovery must account only for tokens consumed after this point.
             recovery_usage_start = session.usage.total_tokens
 
-        # Explicit Stop/Cancel and non-transport terminal states stay terminal.
+        # Explicit Stop/Cancel and non-retryable terminal states stay terminal.
         if session.status not in {AgentStatus.RUNNING, AgentStatus.WAITING_APPROVAL} and not transport_retry:
             return runtime._result(session)
 
@@ -170,8 +176,8 @@ def recover_turn_if_idle(
                 if str(call.call_id or "").strip()
             }
 
-            # A transport-failed turn is terminal only because its request path
-            # gave up. Move it back to RUNNING before either safe resume or
+            # A transport-failed turn is terminal only because its bounded retry
+            # budget expired. Move it back to RUNNING before either safe resume or
             # fail-closed finalization so recovery owns the next transition.
             if transport_retry:
                 session.status = AgentStatus.RUNNING
@@ -181,6 +187,18 @@ def recover_turn_if_idle(
             if unresolved or pending_ids:
                 fail_closed = True
             else:
+                if transport_retry:
+                    # Publish the backend transition so clients never need to
+                    # manufacture a speculative running state on their own.
+                    runtime._record(
+                        session,
+                        AgentEventKind.TURN_STARTED,
+                        data={
+                            "source": "network_recovery",
+                            "recovered": True,
+                            "usage_start": session.usage.total_tokens,
+                        },
+                    )
                 terminal = _terminal_response(events)
                 if terminal is not None:
                     # MODEL_RESPONSE was durable, but the process died in the tiny
