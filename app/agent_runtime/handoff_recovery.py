@@ -7,9 +7,9 @@ A handoff may therefore resume model sampling only when every previously
 requested tool has a durable terminal observation. Approval waiters and tool
 calls with an unknown outcome fail closed instead of being replayed.
 
-Retry-exhausted ``AITransportError`` turns are also resumable: no provider
-response crossed the durable boundary, so rebuilding the model request is the
-same safe operation the in-process transport retry loop already performs.
+Retry-exhausted ``AITransportError`` turns are also resumable: rebuilding the
+model request from the last safe durable boundary is the same operation the
+in-process transport retry loop already performs.
 """
 
 from typing import Any
@@ -100,13 +100,7 @@ def _live_approval_context(runtime: DurableAgentRuntime, session: Any) -> bool:
 
 
 def _transport_failed(session: Any) -> bool:
-    """Whether the terminal failure is a provider/network transport failure.
-
-    TurnRunner stores terminal failures as ``<ExceptionType>: <message>``.  The
-    transport class is intentionally distinct from credentials/configuration and
-    malformed provider responses, so only this failure family is safe to retry
-    automatically without changing the user's request.
-    """
+    """Whether the terminal failure came from the provider transport layer."""
 
     return (
         session.status is AgentStatus.FAILED
@@ -124,8 +118,8 @@ def recover_turn_if_idle(
     This method is intentionally idempotent. A live executor/rejoin is a no-op,
     terminal user cancellation is never restarted, and an unresolved tool or a
     lost approval capability is converted to ``INTERRUPTED`` rather than replayed.
-    A retry-exhausted transport failure may resume the same logical turn because
-    it has no durable model response or external action to replay.
+    A transport-failed turn may resume the same logical turn when no uncertain
+    external action remains.
     """
 
     resolved_session_id = str(session_id or "").strip()
@@ -135,6 +129,8 @@ def recover_turn_if_idle(
 
     fail_closed = False
     result: AgentRunResult | None = None
+    transport_retry = False
+    recovery_usage_start: int | None = None
     lock = runtime._session_lock(resolved_session_id)
     with lock:
         session = runtime.store.load(resolved_session_id)
@@ -143,6 +139,12 @@ def recover_turn_if_idle(
             raise ValueError("turn_id does not match the unfinished turn")
 
         transport_retry = _transport_failed(session)
+        if transport_retry:
+            # The failed invocation already returned through DurableAgentRuntime
+            # and therefore already contributed its usage to a durable goal.
+            # Recovery must account only for tokens consumed after this point.
+            recovery_usage_start = session.usage.total_tokens
+
         # Explicit Stop/Cancel and non-transport terminal states stay terminal.
         if session.status not in {AgentStatus.RUNNING, AgentStatus.WAITING_APPROVAL} and not transport_retry:
             return runtime._result(session)
@@ -168,10 +170,9 @@ def recover_turn_if_idle(
                 if str(call.call_id or "").strip()
             }
 
-            # A transport-failed turn is terminal only because its bounded retry
-            # budget expired. Move it back to RUNNING before either safe resume or
-            # fail-closed finalization so the ordinary recovery machinery owns the
-            # state transition from here.
+            # A transport-failed turn is terminal only because its request path
+            # gave up. Move it back to RUNNING before either safe resume or
+            # fail-closed finalization so recovery owns the next transition.
             if transport_retry:
                 session.status = AgentStatus.RUNNING
                 session.error = ""
@@ -228,7 +229,7 @@ def recover_turn_if_idle(
     if result is None:
         raise RuntimeError("safe handoff recovery produced no result")
 
-    result = runtime._track_goal_usage(result)
+    result = runtime._track_goal_usage(result, before_tokens=recovery_usage_start) if transport_retry else runtime._track_goal_usage(result)
     if runtime.auto_drain_queue and result.status is AgentStatus.COMPLETED:
         drained = runtime._drain_queue(resolved_session_id, result)
         if drained is not None:
