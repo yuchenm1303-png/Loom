@@ -1,12 +1,18 @@
 # Browser extension current-tab bridge
 
-This mode lets Loom inspect and control the user's currently active Chrome/Edge tab. It is different from the `browser-use` local-launch/CDP helper:
+This bridge lets Loom inspect and control the user's currently active Chrome/Edge tab. It is different from the `browser-use` isolated-browser/CDP helper:
 
 - `browser-use` owns a Loom browser session.
 - CDP attach controls a visible browser that was launched with a debugging port.
 - The extension bridge controls the current tab in the browser where the Loom extension is installed.
 
-Use this when the user asks Loom to "look at my current browser" or "operate this tab".
+The desktop default is now **Automatic · current browser first**. Loom keeps the local extension bridge listening and resolves the route when `browser_open` starts a session:
+
+1. if the extension is connected, Loom uses the current Chrome/Edge tab and its existing profile, cookies, login state, tabs, and extensions;
+2. if the extension is not connected, Loom opens its own **visible isolated browser** and reports that fallback explicitly;
+3. if the user selects **Current browser only**, a missing extension is an error and Loom does not silently open another browser.
+
+CDP attach remains an explicit developer/debug route rather than the normal way to operate an everyday browser.
 
 ## Install the unpacked extension
 
@@ -29,7 +35,9 @@ Token: loom-dev-browser-extension
 
 You can edit those values from the extension's options page.
 
-## Start Loom in current-tab mode
+The normal desktop App Server starts the bridge automatically in `auto` or `extension` mode. The development helpers below remain useful when working on the extension itself.
+
+## Start Loom in current-tab development mode
 
 From `desktop-react/`:
 
@@ -64,7 +72,7 @@ LOOM_BROWSER_DIAGNOSTICS=1
 
 | Variable | Purpose |
 | --- | --- |
-| `LOOM_BROWSER_BACKEND=extension` | Select the browser extension backend. |
+| `LOOM_BROWSER_BACKEND=extension` | Select the browser extension backend for development/legacy startup paths. |
 | `LOOM_BROWSER_EXTENSION=1` | Also enables the extension backend. |
 | `LOOM_BROWSER_EXTENSION_HOST` | Bridge host. Must be `127.0.0.1` or `::1`. |
 | `LOOM_BROWSER_EXTENSION_PORT` | Bridge port. Defaults to `39222`. |
@@ -75,14 +83,17 @@ LOOM_BROWSER_DIAGNOSTICS=1
 
 ## Runtime behavior
 
-When this mode is active, `browser_status` should report:
+When Automatic has a connected extension, `browser_status` reports the selected external route while keeping the requested policy explicit:
 
 ```json
 {
   "enabled": true,
   "backend": "browser-extension",
+  "requested_browser_connection": "auto",
+  "auto_selected_connection": "extension",
   "browser_connection": "extension-bridge",
   "external_browser": true,
+  "auto_fallback": false,
   "storage_state_persistence": true,
   "extension_bridge": {
     "connected": true,
@@ -91,6 +102,8 @@ When this mode is active, `browser_status` should report:
   }
 }
 ```
+
+When the bridge is offline in Automatic mode, status instead says `auto_selected_connection: "local-launch"`, `auto_fallback: true`, and includes a human-readable `auto_fallback_reason`. The isolated fallback is visible (`headless: false`).
 
 The bridge runs only on loopback. The shared token is not exposed to model-visible status or tool descriptions.
 
@@ -112,7 +125,9 @@ The extension renders browser automation feedback inside the web page itself ins
 
 For read-only state collection, the page shows a compact top-right pill such as "Reading current tab". For element actions, the page draws a small target frame directly around the DOM element that Loom is about to hover, click, type into, select, or drag from. The HUD uses `pointer-events: none`, does not dim the whole page, and automatically disappears after the action.
 
-The HUD is best-effort and only appears on injectable `http` and `https` pages. It is skipped for privileged browser surfaces such as `chrome://`, `edge://`, extension pages, and file picker/native OS dialogs.
+Browser DOM events are no longer projected into Loom's full-screen desktop HUD. In particular, Loom does not manufacture desktop coordinates from an element index. The desktop HUD is reserved for Computer Use, where there is a real screen-space pointer target.
+
+The page-local HUD is best-effort and only appears on injectable `http` and `https` pages. It is skipped for privileged browser surfaces such as `chrome://`, `edge://`, extension pages, and file picker/native OS dialogs.
 
 ## Supported MVP actions
 
