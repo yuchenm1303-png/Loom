@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from types import SimpleNamespace
 
 from app.agent_runtime.browser_runtime_v1 import BrowserRuntime
 from app.agent_runtime.browser_security import BrowserSecurityPolicy
@@ -112,14 +111,11 @@ def _state_result(*, revision: int, dom: str, ok: bool = True) -> ToolResult:
     )
 
 
-def _step():
-    return SimpleNamespace(
-        request_state=SimpleNamespace(
-            captured=False,
-            project_instructions="",
-            context_limits=None,
-        )
-    )
+def _step(runtime: BrowserRuntime, session):
+    # Keep the observation tests on the same immutable Step contract the real
+    # runtime captures. A hand-written request_state-only namespace went stale
+    # when Context Runtime began reading world_state.sandbox.
+    return runtime._build_step_context(session, next_model_step=True)
 
 
 def test_full_dom_is_transient_not_durable(tmp_path):
@@ -141,7 +137,7 @@ def test_full_dom_is_transient_not_durable(tmp_path):
     assert "dom" not in payload["data"]
     assert payload["data"]["dom_chars"] == len(marker)
 
-    messages, extra = runtime._prepare_model_request(session, _step(), None)
+    messages, extra = runtime._prepare_model_request(session, _step(runtime, session), None)
     observation = messages[-1]
     assert isinstance(observation.content, tuple)
     text = next(part for part in observation.content if isinstance(part, TextPart))
@@ -183,7 +179,7 @@ def test_identical_post_click_state_is_uncertain_not_confirmed(tmp_path):
     assert payload["data"]["effect_reason"] == "execution_succeeded_without_observable_state_change"
     assert "user-visible effect is uncertain" in payload["content"]
 
-    messages, _ = runtime._prepare_model_request(session, _step(), None)
+    messages, _ = runtime._prepare_model_request(session, _step(runtime, session), None)
     text = next(part for part in messages[-1].content if isinstance(part, TextPart))
     assert "effect: uncertain" in text.text
     runtime.close()
@@ -244,7 +240,7 @@ def test_browser_screenshot_is_ephemeral_visual_feedback(tmp_path):
     )
     assert "VISUAL_BYTES_NEVER_DURABLE" not in durable_history
 
-    messages, extra = runtime._prepare_model_request(session, _step(), None)
+    messages, extra = runtime._prepare_model_request(session, _step(runtime, session), None)
     parts = messages[-1].content
     assert isinstance(parts, tuple)
     assert any(isinstance(part, ImagePart) for part in parts)
@@ -270,7 +266,7 @@ def test_browser_close_clears_stale_observation(tmp_path):
         failed=False,
     )
 
-    messages, extra = runtime._prepare_model_request(session, _step(), None)
+    messages, extra = runtime._prepare_model_request(session, _step(runtime, session), None)
     assert not any(
         isinstance(message.content, tuple)
         and any(isinstance(part, TextPart) and "LOOM_BROWSER_OBSERVATION" in part.text for part in message.content)
