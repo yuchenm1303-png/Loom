@@ -416,6 +416,9 @@ class TurnRunner:
                     if rt._consume_steering(session):
                         rt._release_step_context(step)
                         continue
+                    before_turn_completed = getattr(rt, "_before_turn_completed", None)
+                    if callable(before_turn_completed):
+                        before_turn_completed(session)
                     # Stop accepting steering before committing the terminal state.
                     rt._active_tokens.pop(session.session_id, None)
                 session.status = AgentStatus.COMPLETED
