@@ -181,6 +181,39 @@
   animation: recovery-spin .9s linear infinite;
 }
 
+.recovery-stop {
+  min-height: 30px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 8px;
+  color: #aeb4be;
+  background: rgba(255,255,255,.035);
+  font: inherit;
+  font-size: 10.7px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: color 120ms ease, background 120ms ease, border-color 120ms ease, transform 120ms ease;
+}
+
+.recovery-stop:hover {
+  color: #e5e8ee;
+  background: rgba(255,255,255,.065);
+  border-color: rgba(255,255,255,.13);
+}
+
+.recovery-stop:active {
+  transform: translateY(1px);
+}
+
+.recovery-stop span {
+  color: inherit !important;
+  font-size: inherit !important;
+}
+
 @keyframes recovery-enter {
   from { opacity: 0; transform: translateY(-2px); }
   to { opacity: 1; transform: translateY(0); }
