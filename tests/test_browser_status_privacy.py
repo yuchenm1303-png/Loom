@@ -61,25 +61,27 @@ def test_runtime_status_sanitizes_extension_and_registry_current_tabs():
     assert "secret-token" not in serialized
 
 
-def test_non_web_privileged_tab_url_is_not_exposed():
-    base = RawBrowserStatusBase()
-    base.browser_backend_registry = lambda: (
-        {
-            "id": "current-browser",
-            "current_tab": {
-                "title": "Extensions",
-                "url": "edge://extensions/?token=secret",
-                "tab_id": "1",
-                "window_id": "1",
+class PrivilegedTabBase:
+    def browser_backend_registry(self):
+        return (
+            {
+                "id": "current-browser",
+                "current_tab": {
+                    "title": "Extensions",
+                    "url": "edge://extensions/?token=secret",
+                    "tab_id": "1",
+                    "window_id": "1",
+                },
             },
-        },
-    )
+        )
 
-    class DynamicHarness(BrowserStatusPrivacyMixin):
-        def browser_backend_registry(self):
-            return BrowserStatusPrivacyMixin.browser_backend_registry(self)
 
-    # Use an ordinary two-class harness so super() reaches the dynamic base.
-    Safe = type("Safe", (BrowserStatusPrivacyMixin, base.__class__), {})
-    rows = Safe().browser_backend_registry()
-    assert rows[0]["current_tab"]["url"] == "https://example.com"
+class PrivilegedHarness(BrowserStatusPrivacyMixin, PrivilegedTabBase):
+    pass
+
+
+def test_non_web_privileged_tab_url_is_not_exposed():
+    rows = PrivilegedHarness().browser_backend_registry()
+    tab = rows[0]["current_tab"]
+    assert tab["url"] == ""
+    assert "secret" not in json.dumps(rows)
