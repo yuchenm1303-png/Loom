@@ -1,9 +1,56 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 from typing import TextIO
+
+
+def _sanitize_desktop_bridge_environment(*, fallback_home: Path | None = None) -> None:
+    """Keep Desktop browser pairing data out of Loom's global runtime environment.
+
+    The Electron desktop briefly has to hand the App Server the per-install
+    Current Tab Bridge credential.  That credential must not remain in the
+    environment inherited by model-run shell commands, and Electron's userData
+    directory must not replace Loom's long-standing ``~/.loom`` runtime root.
+
+    Mirror the pairing token into the normal browser credential file, then drop
+    both desktop-only environment variables before importing the runtime stack.
+    """
+
+    if not str(os.environ.get("LOOM_DESKTOP_PYTHON") or "").strip():
+        return
+    token = str(os.environ.pop("LOOM_BROWSER_EXTENSION_TOKEN", "") or "").strip()
+    # PR #149 used LOOM_HOME only to make the browser token path line up with
+    # Electron userData.  Keeping it would relocate settings, sessions, memory,
+    # connector metadata, and every other FileAgentSessionStore consumer.
+    os.environ.pop("LOOM_HOME", None)
+    if not token:
+        return
+
+    root = Path(fallback_home).expanduser().resolve() if fallback_home is not None else (Path.home() / ".loom").resolve()
+    target = root / "browser" / "current-tab-bridge.token"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    current = ""
+    try:
+        current = target.read_text(encoding="utf-8").strip()
+    except OSError:
+        pass
+    if current == token:
+        return
+    temporary = target.with_suffix(f".tmp-{os.getpid()}")
+    temporary.write_text(token, encoding="utf-8")
+    try:
+        os.chmod(temporary, 0o600)
+    except OSError:
+        pass
+    os.replace(temporary, target)
+
+
+# This has to happen before app.agent_runtime / loom_cli are imported: those
+# modules construct runtime paths and later spawn model-controlled processes.
+_sanitize_desktop_bridge_environment()
 
 from app.agent_runtime import PermissionMode
 from app.ai import ReasoningRequest
