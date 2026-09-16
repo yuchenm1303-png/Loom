@@ -27,6 +27,7 @@ class FakeBrowserRuntime:
     """Records connection changes and can be told to refuse one."""
 
     browser_model_controlled_connection = False
+    browser_allow_external_backend_selection = False
 
     def __init__(self, *, refuse: str = ""):
         self.refuse = refuse
@@ -138,26 +139,29 @@ def test_settings_store_accepts_auto_and_rejects_an_unknown_browser_mode(tmp_pat
         store.set_capability(envelope("browser.mode", "remote-grid"), True)
 
 
-def test_letting_the_model_pick_the_browser_is_off_until_switched_on(tmp_path):
+def test_model_can_always_choose_isolated_but_external_escalation_stays_opt_in(tmp_path):
     store = LoomSettingsStore(tmp_path)
     assert store.snapshot()["browser"]["modelSelectsConnection"] is False
 
     runtime = FakeBrowserRuntime()
     service = service_with(runtime, store)
     service._apply_browser_settings(store.snapshot())
-    assert runtime.browser_model_controlled_connection is False
+    assert runtime.browser_model_controlled_connection is True
+    assert runtime.browser_allow_external_backend_selection is False
 
     store.set_capability(envelope("browser.modelSelectsConnection", True), True)
     service._apply_browser_settings(store.snapshot())
     assert runtime.browser_model_controlled_connection is True
+    assert runtime.browser_allow_external_backend_selection is True
 
     store.set_capability(envelope("browser.modelSelectsConnection", False), True)
     service._apply_browser_settings(store.snapshot())
-    assert runtime.browser_model_controlled_connection is False
+    assert runtime.browser_model_controlled_connection is True
+    assert runtime.browser_allow_external_backend_selection is False
 
 
-def test_model_selection_switch_is_applied_even_when_connection_change_fails(tmp_path):
-    """The browser-choice permission is independent of transport availability."""
+def test_external_selection_switch_is_applied_even_when_connection_change_fails(tmp_path):
+    """External browser escalation permission is independent of transport availability."""
 
     store = LoomSettingsStore(tmp_path)
     store.set_capability(envelope("browser.mode", "cdp-attach"), True)
@@ -169,4 +173,5 @@ def test_model_selection_switch_is_applied_even_when_connection_change_fails(tmp
 
     assert service._apply_browser_settings(store.snapshot()) != ""
     assert runtime.browser_model_controlled_connection is True
+    assert runtime.browser_allow_external_backend_selection is True
     assert [call["mode"] for call in runtime.calls] == ["cdp-attach"]
