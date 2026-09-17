@@ -32,17 +32,23 @@ def test_browser_hud_keeps_dom_target_and_owns_its_visual_lifecycle():
     assert "loom-browser-hud-root" in source
     assert "__loomBrowserHudStandaloneV1" in source
     assert "cloneNode(true)" not in source
-    assert "IDLE_HIDE_MS = 60000" in source
+    assert "IDLE_HIDE_MS" not in source
 
     # It still uses the same visual language and real DOM geometry.
     assert "class=\"edge\"" in source
-    assert "id=\"cursor\"" in source
+    assert 'id="cursor" class="cursor"' in source
     assert "class=\"bubble\"" in source
     assert "id=\"timeline\"" in source
     assert "getBoundingClientRect()" in source
     assert "DOM exact" in source
     assert "browser + DOM" in source
     assert "position:fixed;inset:0" in source
+
+    # User interaction does not dismiss the Browser HUD; explicit session-level
+    # hide remains available for callers that intentionally end Browser Use.
+    assert "userTakesOver" not in source
+    assert "event.isTrusted" not in source
+    assert "globalThis[INSTALL_KEY] = { sync, hide }" in source
 
 
 def test_browser_hud_does_not_reenable_desktop_overlay_for_browser_tools():
