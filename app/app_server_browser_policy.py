@@ -3,12 +3,23 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, TextIO
 
-from app.agent_runtime import PermissionMode
+from app.agent_runtime import AgentEventKind, PermissionMode
 
 from .app_server_project_move import (
     ProjectMovableJsonRpcStdioServer,
     ProjectMovableLoomAppServerService,
     ProjectMovableLoomRpcController,
+)
+
+
+_BROWSER_HUD_TERMINAL_EVENTS = frozenset(
+    {
+        AgentEventKind.TURN_COMPLETED,
+        AgentEventKind.TURN_FAILED,
+        AgentEventKind.TURN_CANCELLED,
+        AgentEventKind.TURN_INTERRUPTED,
+        AgentEventKind.LIMIT_REACHED,
+    }
 )
 
 
@@ -73,6 +84,26 @@ class BrowserPolicyLoomAppServerService(ProjectMovableLoomAppServerService):
             return ""
         except Exception as exc:
             return f"{type(exc).__name__}: {exc}"
+
+    def _on_runtime_event(self, event: Any) -> None:
+        super()._on_runtime_event(event)
+        if getattr(event, "kind", None) not in _BROWSER_HUD_TERMINAL_EVENTS:
+            return
+
+        # Browser sessions intentionally survive a turn so the next user message
+        # can continue with the same tab, login state, and browser_id. The visual
+        # session indicator must not survive the turn, though. Tell the Current
+        # Tab Bridge to fade every page-local HUD after the terminal event rather
+        # than closing the browser or relying on an arbitrary idle timeout.
+        bridge = getattr(self.runtime, "browser_extension_bridge", None)
+        if bridge is None or not bool(getattr(bridge, "connected", False)):
+            return
+        try:
+            bridge.call("hud_end", {"turn_id": str(getattr(event, "turn_id", "") or "")}, timeout=2.0)
+        except Exception:
+            # Turn completion must never fail merely because Edge closed or the
+            # extension disconnected while the final response was being emitted.
+            pass
 
     @staticmethod
     def _hud_tool_family(tool_name: str) -> str:
