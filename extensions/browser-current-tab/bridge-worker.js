@@ -1,7 +1,7 @@
 import './background.js';
 
 const HUD_SCRIPTS = ['browser-hud.js'];
-const INSTALL_KEY = '__loomBrowserHudStandaloneV1';
+const INSTALL_KEY = '__loomBrowserHudRuntimeV2';
 const isWebUrl = (value) => /^https?:\/\//i.test(String(value || ''));
 
 async function hudHostInstalled(tabId) {
@@ -45,4 +45,6 @@ chrome.tabs.onActivated.addListener(({ tabId }) => {
 
 // Manifest content scripts own normal navigations. This startup pass exists for
 // tabs that were already open when an unpacked extension was reloaded/upgraded.
+// The marker is generation-specific so an extension upgrade can actually replace
+// an older HUD runtime already living in an open tab.
 void repairExistingTabs();
