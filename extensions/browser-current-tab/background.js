@@ -3,6 +3,19 @@ const DEFAULT_BRIDGE_URL = "http://127.0.0.1:39222";
 const EXTENSION_VERSION = chrome.runtime.getManifest().version;
 // How long to keep looking for a navigation an element action may have started.
 const NAVIGATION_GRACE_MS = 300;
+// The same, when the page itself reported that this action starts no navigation.
+// 86% of element actions never navigate, and the settle sleep above has already
+// given the page its chance to start one, so the full grace was pure latency on
+// almost every click, keystroke and selection. Still non-zero: the page's own
+// prediction can be wrong, and onUpdated needs a moment to fire when it is.
+const NAVIGATION_SETTLE_MS = 60;
+// Status polling granularity while a page loads. At 250ms a page that finished
+// immediately still waited out the rest of the tick.
+const TAB_COMPLETE_POLL_MS = 60;
+// The bridge only needs the active tab for its status display, so re-registering
+// before every single poll was a wasted round trip that queued behind the next
+// command. Connectivity is tracked by the poll itself, not by this.
+const REGISTER_INTERVAL_MS = 15000;
 // How long to wait when the page said the action does start one.
 const NAVIGATION_COMMIT_TIMEOUT_MS = 8000;
 const CLIENT_ID_KEY = "loomBrowserBridgeClientId";
@@ -22,6 +35,7 @@ const bridgeRuntime = {
   running: false,
   phase: "stopped",
   updateRequested: true,
+  registeredAt: 0,
 };
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -136,7 +150,14 @@ async function startPolling() {
         await applyInstalledUpdateAtCommandBoundary();
       }
       bridgeRuntime.phase = "polling";
-      await register();
+      // Registering before every poll put a full round trip between finishing one
+      // command and being able to receive the next, and the bridge only wants the
+      // active tab for its status display. The poll itself is what proves the
+      // extension is alive, so this can be periodic.
+      if (Date.now() - bridgeRuntime.registeredAt >= REGISTER_INTERVAL_MS) {
+        await register();
+        bridgeRuntime.registeredAt = Date.now();
+      }
       await pollOnce();
       backoff = 500;
     } catch (cause) {
@@ -406,15 +427,18 @@ function watchTabNavigation(tabId) {
   };
 }
 
-async function afterTabAction(tab, waitMs = 200, watcher = null, expectNavigation = false) {
+async function afterTabAction(tab, waitMs = 200, watcher = null, expectNavigation = false, navigationRuledOut = false) {
   await sleep(waitMs);
   let navWaited = false;
   if (watcher) {
     if (!watcher.started) {
       // A page that told us it is navigating gets the long window, because the
-      // commit can take seconds on a slow origin. Everything else pays only the
-      // short one, so an action that navigates nothing stays fast.
-      const grace = expectNavigation ? NAVIGATION_COMMIT_TIMEOUT_MS : NAVIGATION_GRACE_MS;
+      // commit can take seconds on a slow origin. A page that told us it is not
+      // gets only a settle tick - it has already had the sleep above. Anything
+      // that reported nothing either way keeps the original grace.
+      const grace = expectNavigation
+        ? NAVIGATION_COMMIT_TIMEOUT_MS
+        : (navigationRuledOut ? NAVIGATION_SETTLE_MS : NAVIGATION_GRACE_MS);
       await Promise.race([watcher.startedPromise, sleep(grace)]);
     }
     if (watcher.started) {
@@ -427,12 +451,18 @@ async function afterTabAction(tab, waitMs = 200, watcher = null, expectNavigatio
   return state;
 }
 
-async function withNavigationWatch(tabId, run, waitMs) {
+async function withNavigationWatch(tabId, run, waitMs, { canNavigate = true } = {}) {
   const watcher = watchTabNavigation(tabId);
   try {
     const outcome = await run();
     const expected = Boolean(outcome && outcome.navigation_expected);
-    return await afterTabAction({ id: tabId }, waitMs, watcher, expected);
+    // Two ways to know no navigation is coming: the page said so for this element,
+    // or the action cannot cause one at all. Typing text dispatches input events
+    // and hovering dispatches mouse events; neither follows a link. Pressing a key,
+    // selecting an option and dragging can all end in one, so they keep the grace.
+    const ruledOut =
+      !expected && (!canNavigate || (outcome && outcome.navigation_expected === false));
+    return await afterTabAction({ id: tabId }, waitMs, watcher, expected, ruledOut);
   } finally {
     watcher.stop();
   }
@@ -497,17 +527,18 @@ async function waitForTabComplete(tabId) {
   while (Date.now() - started < 15000) {
     const tab = await chrome.tabs.get(tabId);
     if (tab.status === "complete") return;
-    await sleep(250);
+    await sleep(TAB_COMPLETE_POLL_MS);
   }
 }
 
-async function withElement(args, action, extra = {}, waitMs = 200) {
+async function withElement(args, action, extra = {}, waitMs = 200, options = {}) {
   const tab = await tabFromArgs(args);
   const loomId = await elementRefFor(tab.id, args.index);
   return withNavigationWatch(
     tab.id,
     () => inject(tab.id, runPageAction, [action, { ...extra, loom_id: loomId, index: Number(args.index) }]),
     waitMs,
+    options,
   );
 }
 
@@ -516,11 +547,11 @@ async function click(args) {
 }
 
 async function hover(args) {
-  return withElement(args, "hover", {}, 150);
+  return withElement(args, "hover", {}, 150, { canNavigate: false });
 }
 
 async function typeText(args) {
-  return withElement(args, "type_text", { text: String(args.text || ""), clear: args.clear !== false }, 200);
+  return withElement(args, "type_text", { text: String(args.text || ""), clear: args.clear !== false }, 200, { canNavigate: false });
 }
 
 async function selectOption(args) {

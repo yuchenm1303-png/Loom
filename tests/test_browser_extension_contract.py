@@ -364,3 +364,56 @@ def test_a_password_field_reports_whether_it_is_filled_without_the_value(backgro
     # text invites the model to type it back, which is how the retired transient
     # placeholder ended up being entered into a live form.
     assert 'filled="true" value-withheld="password"' in collect
+
+
+def test_an_action_that_cannot_navigate_does_not_wait_for_one(background):
+    """86% of element actions never navigate, and all of them paid the full grace.
+
+    Measured against a real Edge: a click took 610ms of which ~500ms was sleeping,
+    while capturing the resulting state took 46ms. The settle sleep already gives
+    the page its chance to start a navigation, so when the page reports it starts
+    none the second hedge is cut to a tick. Click went to ~344ms, hover to ~240ms.
+    """
+
+    assert "NAVIGATION_SETTLE_MS = 60" in background
+    after = _function_body(background, "afterTabAction")
+    assert "navigationRuledOut ? NAVIGATION_SETTLE_MS : NAVIGATION_GRACE_MS" in after
+    # A page that says nothing either way keeps the original grace.
+    assert "NAVIGATION_GRACE_MS" in after
+
+    watch = _function_body(background, "withNavigationWatch")
+    assert "outcome.navigation_expected === false" in watch
+    assert "canNavigate" in watch
+
+
+@pytest.mark.parametrize("handler", ["hover", "typeText"])
+def test_only_actions_that_truly_cannot_navigate_are_marked(background, handler):
+    # Typing dispatches input events and hovering dispatches mouse events; neither
+    # follows a link.
+    assert "canNavigate: false" in _function_body(background, handler)
+
+
+@pytest.mark.parametrize("handler", ["click", "selectOption", "pressKey", "drag", "goBack"])
+def test_actions_that_can_navigate_keep_the_full_grace(background, handler):
+    """Enter submits, a jump menu navigates on change, a click follows a link.
+
+    These must never be marked as unable to navigate: the short settle would let
+    them return the page they just left, which is the bug the grace window exists
+    to prevent.
+    """
+
+    assert "canNavigate: false" not in _function_body(background, handler)
+
+
+def test_the_bridge_is_not_re_registered_before_every_poll(background):
+    """A register POST between every command and the next was pure round trip.
+
+    The bridge wants the active tab only for its status display, and the poll is
+    what proves the extension is alive. One smoke run went from 32 registrations
+    to 1.
+    """
+
+    loop = _function_body(background, "startPolling")
+    assert "REGISTER_INTERVAL_MS" in loop
+    assert "bridgeRuntime.registeredAt" in loop
+    assert "TAB_COMPLETE_POLL_MS" in _function_body(background, "waitForTabComplete")

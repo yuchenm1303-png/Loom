@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Loom Current Tab Bridge",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "description": "Lets Loom inspect and control the current Chrome/Edge tab through a local loopback bridge.",
   "permissions": ["tabs", "tabGroups", "activeTab", "scripting", "storage", "cookies", "downloads", "alarms"],
   "host_permissions": ["http://127.0.0.1/*", "http://[::1]/*", "http://*/*", "https://*/*", "<all_urls>"],
