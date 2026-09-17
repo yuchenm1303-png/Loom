@@ -13,6 +13,7 @@ from app.ai.execution_control import ModelCancelled
 
 from .context_compaction import SUMMARIZATION_PROMPT, build_compacted_history
 from .context_limits import ResolvedContextLimits, resolve_context_limits
+from .context_reducer import ContextReductionStats, reduce_tool_outputs
 from .history import repair_tool_history
 from .response_language import communication_language_message, infer_user_language
 
@@ -202,8 +203,9 @@ def _metadata(
     estimated_after: int,
     active_context_tokens: int,
     token_accounting_source: str,
+    reduction_stats: ContextReductionStats | None = None,
 ) -> dict[str, object]:
-    return {
+    metadata: dict[str, object] = {
         "context_digest": envelope.digest,
         "communication_language": communication_language,
         "context_limits": limits.as_dict(),
@@ -217,6 +219,9 @@ def _metadata(
         "user_messages_truncated": 0,
         "estimated_tokens_saved": 0,
     }
+    if reduction_stats is not None:
+        metadata.update(reduction_stats.as_dict())
+    return metadata
 
 
 def _raise_if_cancelled(token) -> None:
@@ -399,28 +404,61 @@ def prepare_context(rt, session, step, token):
             )
             return emergency_visible, metadata
 
-    hard_request_fits = (
-        estimated_before <= limits.input_budget_tokens
-        and len(visible_messages) <= rt.limits.max_messages
+    # Large historical tool observations should not force a semantic handoff by
+    # themselves. Project bounded previews/collapsed stubs into this request copy
+    # first; the canonical durable transcript remains untouched. This reducer is
+    # only invoked when the raw request no longer fits, so roomy model windows
+    # still receive full recent tool observations.
+    projected_history = canonical_history
+    projected_visible = visible_messages
+    estimated_projected = estimated_before
+    reduction_stats = ContextReductionStats()
+    if estimated_before > limits.input_budget_tokens:
+        projected_history, reduction_stats = reduce_tool_outputs(
+            canonical_history,
+            per_output_token_limit=limits.tool_output_token_limit,
+            target_total_tokens=hard_target,
+            estimate_total=lambda history: estimate_tokens([*transient, *history], tools),
+        )
+        projected_visible = [*transient, *projected_history]
+        estimated_projected = estimate_tokens(projected_visible, tools)
+
+    projected_active_context_tokens = active_context_tokens
+    if accounting_source == "fallback_estimate":
+        projected_active_context_tokens = estimated_projected
+
+    # Message count is not a normal Codex auto-compaction clock. Keep max_messages
+    # only as a post-compaction replacement guard; normal turns compact on model
+    # token accounting or when the projected request still cannot fit.
+    hard_request_fits = estimated_projected <= limits.input_budget_tokens
+    token_limit_reached = (
+        projected_active_context_tokens >= limits.auto_compact_token_limit
     )
-    token_limit_reached = active_context_tokens >= limits.auto_compact_token_limit
     if hard_request_fits and not token_limit_reached:
-        return visible_messages, _metadata(
+        return projected_visible, _metadata(
             envelope=envelope,
             communication_language=communication_language,
             limits=limits,
             tools=tools,
             estimated_before=estimated_before,
-            estimated_after=estimated_before,
-            active_context_tokens=active_context_tokens,
+            estimated_after=estimated_projected,
+            active_context_tokens=projected_active_context_tokens,
             token_accounting_source=accounting_source,
+            reduction_stats=reduction_stats,
         )
 
+    # The compaction model may use the request-only reduced projection, but the
+    # durable checkpoint must archive/repair canonical history. Keep those two
+    # responsibilities separate so context budgeting never destroys evidence.
     repair = repair_tool_history(
         canonical_history,
         max_tool_result_chars=rt.limits.max_tool_result_chars,
     )
-    compact_input = tuple(repair.messages)
+    projected_repair = repair_tool_history(
+        projected_history,
+        max_tool_result_chars=rt.limits.max_tool_result_chars,
+    )
+    compact_input = tuple(projected_repair.messages)
     if not compact_input:
         raise ContextBudgetExceeded(
             estimated_tokens=estimated_before,
@@ -564,8 +602,9 @@ def prepare_context(rt, session, step, token):
         tools=tools,
         estimated_before=estimated_before,
         estimated_after=estimated_after,
-        active_context_tokens=active_context_tokens,
+        active_context_tokens=projected_active_context_tokens,
         token_accounting_source=accounting_source,
+        reduction_stats=reduction_stats,
     )
     metadata.update(
         {
