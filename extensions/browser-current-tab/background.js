@@ -9,8 +9,14 @@ const CLIENT_ID_KEY = "loomBrowserBridgeClientId";
 const UPDATE_TOKEN_KEY = "loomBrowserBridgeUpdateToken";
 const UPDATE_ALARM_NAME = "loom-browser-bridge-update";
 const LOOM_TAB_GROUP_TITLE = "Loom";
+const OWNED_TAB_IDS_KEY = "loomOwnedTabIds";
+const OWNED_GROUP_IDS_KEY = "loomOwnedGroupIds";
 
-let polling = false;
+const bridgeRuntime = {
+  running: false,
+  phase: "stopped",
+  updateRequested: true,
+};
 const lastElementsByTab = new Map();
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -93,6 +99,7 @@ async function pollOnce() {
   const payload = await response.json();
   if (!payload.command) return;
   const command = payload.command;
+  bridgeRuntime.phase = "executing";
   let result = null;
   let ok = false;
   let error = "";
@@ -102,6 +109,7 @@ async function pollOnce() {
   } catch (cause) {
     error = cause instanceof Error ? cause.message : String(cause);
   }
+  bridgeRuntime.phase = "reporting";
   await bridgeFetch("/browser-extension/v1/result", {
     method: "POST",
     body: JSON.stringify({ id: command.id, ok, result, error }),
@@ -109,11 +117,20 @@ async function pollOnce() {
 }
 
 async function startPolling() {
-  if (polling) return;
-  polling = true;
+  if (bridgeRuntime.running) return;
+  bridgeRuntime.running = true;
   let backoff = 500;
   for (;;) {
     try {
+      // Updates have exactly one execution point: this boundary between fully
+      // reported commands. Alarms and clicks may request a check, but neither
+      // can reload the worker concurrently with a browser action.
+      bridgeRuntime.phase = "idle";
+      if (bridgeRuntime.updateRequested) {
+        bridgeRuntime.updateRequested = false;
+        await applyInstalledUpdateAtCommandBoundary();
+      }
+      bridgeRuntime.phase = "polling";
       await register();
       await pollOnce();
       backoff = 500;
@@ -163,7 +180,7 @@ async function tabsForWindow(tab) {
   }));
 }
 
-async function checkForInstalledUpdate() {
+async function applyInstalledUpdateAtCommandBoundary() {
   try {
     const response = await fetch(chrome.runtime.getURL("extension-update.json"), { cache: "no-store" });
     if (!response.ok) return;
@@ -186,36 +203,67 @@ async function checkForInstalledUpdate() {
 }
 
 function startInstalledUpdateWatcher() {
-  void checkForInstalledUpdate();
   chrome.alarms.create(UPDATE_ALARM_NAME, { delayInMinutes: 0.1, periodInMinutes: 0.5 });
 }
 
+function requestInstalledUpdateCheck() {
+  bridgeRuntime.updateRequested = true;
+  startPolling().catch((cause) => console.warn("[loom-browser-bridge]", cause));
+}
+
 chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === UPDATE_ALARM_NAME) void checkForInstalledUpdate();
+  if (alarm.name !== UPDATE_ALARM_NAME) return;
+  requestInstalledUpdateCheck();
 });
 
 async function isLoomWorkTab(tab) {
-  if (!tab || typeof tab.groupId !== "number" || tab.groupId < 0 || !chrome.tabGroups) return false;
-  try {
-    const group = await chrome.tabGroups.get(tab.groupId);
-    return group?.title === LOOM_TAB_GROUP_TITLE;
-  } catch (_) {
-    return false;
-  }
+  if (!tab || typeof tab.id !== "number") return false;
+  const stored = await chrome.storage.session.get(OWNED_TAB_IDS_KEY);
+  return Array.isArray(stored[OWNED_TAB_IDS_KEY]) && stored[OWNED_TAB_IDS_KEY].includes(tab.id);
 }
 
+async function markLoomWorkTab(tab) {
+  if (!tab || typeof tab.id !== "number") return tab;
+  const stored = await chrome.storage.session.get(OWNED_TAB_IDS_KEY);
+  const ids = new Set(Array.isArray(stored[OWNED_TAB_IDS_KEY]) ? stored[OWNED_TAB_IDS_KEY] : []);
+  ids.add(tab.id);
+  await chrome.storage.session.set({ [OWNED_TAB_IDS_KEY]: [...ids] });
+  return tab;
+}
+
+async function forgetLoomWorkTab(tabId) {
+  const stored = await chrome.storage.session.get(OWNED_TAB_IDS_KEY);
+  const ids = Array.isArray(stored[OWNED_TAB_IDS_KEY]) ? stored[OWNED_TAB_IDS_KEY] : [];
+  await chrome.storage.session.set({ [OWNED_TAB_IDS_KEY]: ids.filter((id) => id !== tabId) });
+  lastElementsByTab.delete(tabId);
+}
+
+chrome.tabs.onRemoved.addListener((tabId) => {
+  void forgetLoomWorkTab(tabId);
+});
+
 async function placeInLoomGroup(tab) {
-  if (!chrome.tabGroups || typeof tab?.id !== "number") return tab;
+  if (!chrome.tabGroups || typeof tab?.id !== "number") return markLoomWorkTab(tab);
   try {
-    const groups = await chrome.tabGroups.query({ windowId: tab.windowId, title: LOOM_TAB_GROUP_TITLE });
-    const groupId = groups.length
-      ? await chrome.tabs.group({ groupId: groups[0].id, tabIds: [tab.id] })
+    const stored = await chrome.storage.session.get(OWNED_GROUP_IDS_KEY);
+    const groupsByWindow = { ...(stored[OWNED_GROUP_IDS_KEY] || {}) };
+    let groupId = Number(groupsByWindow[String(tab.windowId)]);
+    try {
+      if (Number.isInteger(groupId)) await chrome.tabGroups.get(groupId);
+      else groupId = NaN;
+    } catch (_) {
+      groupId = NaN;
+    }
+    groupId = Number.isInteger(groupId)
+      ? await chrome.tabs.group({ groupId, tabIds: [tab.id] })
       : await chrome.tabs.group({ createProperties: { windowId: tab.windowId }, tabIds: [tab.id] });
     await chrome.tabGroups.update(groupId, { title: LOOM_TAB_GROUP_TITLE, color: "purple", collapsed: false });
-    return await chrome.tabs.get(tab.id);
+    groupsByWindow[String(tab.windowId)] = groupId;
+    await chrome.storage.session.set({ [OWNED_GROUP_IDS_KEY]: groupsByWindow });
+    return markLoomWorkTab(await chrome.tabs.get(tab.id));
   } catch (cause) {
     console.warn("[loom-browser-bridge] could not place work tab in group", cause);
-    return tab;
+    return markLoomWorkTab(tab);
   }
 }
 
@@ -335,40 +383,32 @@ async function withNavigationWatch(tabId, run, waitMs) {
 async function navigate(args) {
   const url = String(args.url || "");
   if (!url) throw new Error("url is required");
-  let existing = await tabFromArgs(args);
-  let createWorkTab = Boolean(args.new_tab);
-  // A browser session is initially pinned to the active tab. Reuse a matching
-  // signed-in site or a tab Loom already owns, but never navigate an unrelated
-  // personal tab. Cross-site work gets a dedicated tab in the Loom group.
-  if (!createWorkTab) {
-    try {
-      const targetOrigin = new URL(url).origin;
-      const existingOrigin = isInjectableUrl(existing.url || "") ? new URL(existing.url).origin : "";
-      if (existingOrigin !== targetOrigin) {
-        const candidates = await chrome.tabs.query(
-          typeof existing.windowId === "number" ? { windowId: existing.windowId } : { currentWindow: true },
-        );
-        const sameOrigin = candidates.find((candidate) => {
-          if (!isInjectableUrl(candidate.url || "")) return false;
-          try { return new URL(candidate.url).origin === targetOrigin; } catch (_) { return false; }
-        });
-        if (sameOrigin) existing = sameOrigin;
-        else if (!(await isLoomWorkTab(existing))) createWorkTab = true;
-      }
-    } catch (_) {
-      // Runtime URL validation remains authoritative. An uncomparable target
-      // still must not overwrite a personal tab.
-      if (!(await isLoomWorkTab(existing))) createWorkTab = true;
-    }
+  const destination = await resolveNavigationDestination(args, url);
+  if (isInjectableUrl(destination.tab.url || "")) {
+    await inject(destination.tab.id, runPageAction, ["hud_status", { title: "Opening page", subtitle: url }]).catch(() => {});
   }
-  if (isInjectableUrl(existing.url || "")) {
-    await inject(existing.id, runPageAction, ["hud_status", { title: "Opening page", subtitle: url }]).catch(() => {});
-  }
-  const tab = createWorkTab
+  const tab = destination.create
     ? await placeInLoomGroup(await chrome.tabs.create({ url, active: true }))
-    : await chrome.tabs.update(existing.id, { url, active: true });
+    : await chrome.tabs.update(destination.tab.id, { url, active: true });
   await waitForTabComplete(tab.id);
   return collectStateForTab(await chrome.tabs.get(tab.id), { showHud: true });
+}
+
+async function resolveNavigationDestination(args, url) {
+  const current = await tabFromArgs(args);
+  if (args.new_tab) return { create: true, tab: current };
+  let targetUrl = "";
+  try { targetUrl = new URL(url).href; } catch (_) { return { create: !(await isLoomWorkTab(current)), tab: current }; }
+  const candidates = await chrome.tabs.query(
+    typeof current.windowId === "number" ? { windowId: current.windowId } : { currentWindow: true },
+  );
+  const exact = candidates.find((candidate) => {
+    if (!isInjectableUrl(candidate.url || "")) return false;
+    try { return new URL(candidate.url).href === targetUrl; } catch (_) { return false; }
+  });
+  if (exact) return { create: false, tab: await markLoomWorkTab(exact) };
+  if (await isLoomWorkTab(current)) return { create: false, tab: current };
+  return { create: true, tab: current };
 }
 
 async function waitForTabComplete(tabId) {
@@ -1166,8 +1206,7 @@ chrome.runtime.onStartup.addListener(() => {
   startPolling().catch((cause) => console.warn("[loom-browser-bridge]", cause));
 });
 chrome.action.onClicked.addListener(() => {
-  void checkForInstalledUpdate();
-  startPolling().catch((cause) => console.warn("[loom-browser-bridge]", cause));
+  requestInstalledUpdateCheck();
 });
 startInstalledUpdateWatcher();
 startPolling().catch((cause) => console.warn("[loom-browser-bridge]", cause));

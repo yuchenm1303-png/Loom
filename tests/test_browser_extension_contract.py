@@ -86,20 +86,22 @@ def test_scroll_stays_on_the_cheap_path(background):
     assert "afterTabAction" in body
 
 
-def test_navigation_reuses_an_existing_same_origin_tab(background):
-    body = _function_body(background, "navigate")
-    assert "new URL(url).origin" in body
+def test_navigation_reuses_only_an_exact_existing_page(background):
+    body = _function_body(background, "resolveNavigationDestination")
+    assert "new URL(url).href" in body
     assert "chrome.tabs.query" in body
-    assert "new URL(candidate.url).origin === targetOrigin" in body
+    assert "new URL(candidate.url).href === targetUrl" in body
+    assert ".origin ===" not in body
     assert "args.new_tab" in body
 
 
 def test_navigation_never_overwrites_an_unrelated_personal_tab(background):
-    body = _function_body(background, "navigate")
-    assert "isLoomWorkTab(existing)" in body
-    assert "createWorkTab = true" in body
-    assert "placeInLoomGroup" in body
-    assert 'chrome.tabs.create({ url, active: true })' in body
+    resolver = _function_body(background, "resolveNavigationDestination")
+    navigate = _function_body(background, "navigate")
+    assert "isLoomWorkTab(current)" in resolver
+    assert "return { create: true, tab: current }" in resolver
+    assert "placeInLoomGroup" in navigate
+    assert 'chrome.tabs.create({ url, active: true })' in navigate
 
 
 def test_work_tabs_use_a_named_browser_group(background):
@@ -108,6 +110,8 @@ def test_work_tabs_use_a_named_browser_group(background):
     assert "chrome.tabs.group" in body
     assert "chrome.tabGroups.update" in body
     assert 'color: "purple"' in body
+    assert "OWNED_GROUP_IDS_KEY" in body
+    assert "markLoomWorkTab" in body
 
 
 def test_installed_extension_can_reload_itself_after_desktop_update(background):
@@ -118,6 +122,28 @@ def test_installed_extension_can_reload_itself_after_desktop_update(background):
     assert "chrome.alarms.create" in background
     assert "chrome.alarms.onAlarm.addListener" in background
     assert "setInterval(() => void checkForInstalledUpdate()" not in background
+
+
+def test_extension_update_never_reloads_during_a_browser_command(background):
+    check = _function_body(background, "applyInstalledUpdateAtCommandBoundary")
+    loop = _function_body(background, "startPolling")
+    alarm = _function_body(background, "requestInstalledUpdateCheck")
+    assert "chrome.runtime.reload()" in check
+    assert 'bridgeRuntime.phase = "idle"' in loop
+    assert "await applyInstalledUpdateAtCommandBoundary()" in loop
+    assert "bridgeRuntime.updateRequested = true" in alarm
+    assert "applyInstalledUpdateAtCommandBoundary" not in alarm
+    assert "commandInFlight" not in background
+    assert "updateCheckRequested" not in background
+
+
+def test_tab_ownership_is_explicit_and_session_scoped(background):
+    ownership = _function_body(background, "isLoomWorkTab")
+    resolver = _function_body(background, "resolveNavigationDestination")
+    assert "chrome.storage.session" in ownership
+    assert "OWNED_TAB_IDS_KEY" in ownership
+    assert "group?.title" not in ownership
+    assert "markLoomWorkTab(exact)" in resolver
 
 
 def test_click_reports_whether_a_navigation_is_coming(background):
