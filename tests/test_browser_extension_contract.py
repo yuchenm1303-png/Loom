@@ -342,3 +342,25 @@ def _function_body(source: str, name: str) -> str:
             if depth == 0:
                 return source[start : index + 1]
     raise AssertionError(f"{name} has an unbalanced body")
+
+
+def test_a_password_field_reports_whether_it_is_filled_without_the_value(background):
+    """A successful type into a password field looked exactly like a failed one.
+
+    The value is withheld on purpose, but the serializer also emitted no value
+    attribute at all, so the model could not tell "filled, hidden" from "empty".
+    On a real Google Client Secret field it typed, read the field back as blank,
+    retried, gave up on the browser tools and escalated to clicking the desktop -
+    which made Loom capture the active window, and that window was not the browser.
+    """
+
+    collect = _function_body(background, "collectPageState")
+    assert "const secret = type === \"password\"" in collect
+    assert "value: clean(valued && !secret ? el.value : \"\")" in collect, (
+        "a password value must never be serialized into model-visible state"
+    )
+    assert "filled: secret ? Boolean(valued && el.value) : false" in collect
+    # A fact about the field, never a stand-in value: anything that reads like
+    # text invites the model to type it back, which is how the retired transient
+    # placeholder ended up being entered into a live form.
+    assert 'filled="true" value-withheld="password"' in collect

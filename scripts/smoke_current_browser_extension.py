@@ -29,6 +29,7 @@ PAGE = b"""<!doctype html><meta charset=utf-8><title>Loom bridge smoke</title>
 <input aria-label='Smoke input'><button onclick="out.textContent='clicked: '+document.querySelector('input').value">Apply</button>
 <select aria-label='Smoke select'><option>Alpha</option><option>Beta</option></select>
 <div id=source tabindex=0 draggable=true>Drag source</div><div id=target tabindex=0>Drop target</div>
+<input type=password aria-label='Smoke secret'>
 <p id=out>ready</p><script>
 source.ondragstart=e=>e.dataTransfer.setData('text/plain','loom');
 target.ondragover=e=>e.preventDefault(); target.ondrop=e=>{e.preventDefault();out.textContent='dropped'};
@@ -113,6 +114,18 @@ def main() -> None:
         evaluated = backend.evaluate("document.title")
         assert evaluated.get("ok") is True and evaluated.get("value") == "Loom bridge smoke"
         assert backend.wait_for(for_text="dropped", timeout_seconds=3).get("satisfied") is True
+
+        # Typing into a password field must be observable as having happened. The
+        # value is withheld on purpose, but reporting an empty field either way made
+        # a successful type indistinguishable from a no-op: on a real Google Client
+        # Secret field the model typed, read the field back as empty, retried, then
+        # gave up on the browser tools and escalated to clicking the desktop.
+        secret_state = backend.state()
+        assert 'type="password"' in secret_state.dom
+        assert 'filled="true"' not in secret_state.dom, "an untouched password field reports as filled"
+        typed_secret = backend.type_text(5, "correct-horse-battery")
+        assert 'filled="true"' in typed_secret.dom, "a typed password field still reads as empty"
+        assert "correct-horse-battery" not in typed_secret.dom, "the password value reached the model"
         assert len(backend.screenshot()) > 100
         assert created_tab in {tab.get("tab_id") for tab in backend.tabs().tabs}
         backend.navigate(f"http://127.0.0.1:{web.server_address[1]}/second")

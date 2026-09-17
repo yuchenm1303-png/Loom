@@ -980,6 +980,8 @@ function runPageAction(action, args = {}) {
         const rect = el.getBoundingClientRect();
         const tag = el.tagName.toLowerCase();
         const type = clean(el.getAttribute("type") || "");
+        const valued = ["input", "textarea", "select"].includes(tag);
+        const secret = type === "password";
         const item = {
           index: elements.length,
           loom_id: ensureId(el),
@@ -988,7 +990,13 @@ function runPageAction(action, args = {}) {
           aria: clean(el.getAttribute("aria-label") || el.getAttribute("alt") || ""),
           placeholder: clean(el.getAttribute("placeholder") || ""),
           type,
-          value: clean(["input", "textarea", "select"].includes(tag) && type !== "password" ? el.value : ""),
+          value: clean(valued && !secret ? el.value : ""),
+          // A password value never reaches the model, but whether the field is
+          // empty has to: without it a successful type looks exactly like one that
+          // did nothing, so the model retries, gives up on the browser tools and
+          // escalates to clicking the desktop. One bit, and the page already shows
+          // it as dots - the value itself stays withheld.
+          filled: secret ? Boolean(valued && el.value) : false,
           rect: { x: Math.round(rect.left), y: Math.round(rect.top), width: Math.round(rect.width), height: Math.round(rect.height) },
         };
         elements.push(item);
@@ -1009,6 +1017,10 @@ function runPageAction(action, args = {}) {
       if (item.placeholder) attrs.push(`placeholder="${item.placeholder}"`);
       if (item.type) attrs.push(`type="${item.type}"`);
       if (item.value) attrs.push(`value="${item.value}"`);
+      // Deliberately not a stand-in value: anything that looks like text invites
+      // the model to type it back. This states the fact and cannot be mistaken
+      // for the content.
+      else if (item.filled) attrs.push('filled="true" value-withheld="password"');
       attrs.push(`rect=${item.rect.x},${item.rect.y},${item.rect.width}x${item.rect.height}`);
       return `[${item.index}] <${item.tag}> ${attrs.join(" ")}`;
     });
