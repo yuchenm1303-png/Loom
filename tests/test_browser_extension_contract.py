@@ -43,7 +43,13 @@ def test_manifest_requests_the_permission_screenshots_actually_need(manifest):
 
 def test_manifest_stays_manifest_v3_with_a_service_worker(manifest):
     assert manifest["manifest_version"] == 3
-    assert manifest["background"]["service_worker"] == "background.js"
+    worker_name = manifest["background"]["service_worker"]
+    assert worker_name in {"background.js", "bridge-worker.js"}
+    worker = (EXTENSION / worker_name).read_text(encoding="utf-8")
+    if worker_name != "background.js":
+        # A wrapper may add extension-lifecycle repair, but the production bridge
+        # runtime must still be the original background.js implementation.
+        assert "import './background.js'" in worker
     assert "tabGroups" in manifest["permissions"]
 
 
