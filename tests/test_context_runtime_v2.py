@@ -210,7 +210,7 @@ def test_model_profile_context_window_beats_conservative_runtime_fallback(monkey
     assert resolved.tool_output_token_limit == 1500
 
 
-def test_default_auto_compact_limit_is_ninety_percent_of_resolved_window(monkeypatch):
+def test_default_auto_compact_limit_uses_raw_window_with_effective_hard_cap(monkeypatch):
     monkeypatch.delenv("LOOM_CONTEXT_WINDOW_TOKENS", raising=False)
     monkeypatch.delenv("LOOM_OUTPUT_RESERVE_TOKENS", raising=False)
     runtime = FakeRuntime(
@@ -226,7 +226,10 @@ def test_default_auto_compact_limit_is_ninety_percent_of_resolved_window(monkeyp
     )
 
     assert resolved.effective_context_window_tokens == 8000
-    assert resolved.auto_compact_token_limit == 7200
+    # Codex's default auto threshold is 90% of the raw window (9000), while
+    # the effective 80% window is an independent hard cap. The earliest safe
+    # trigger is therefore 8000, not 90% of 8000.
+    assert resolved.auto_compact_token_limit == 8000
 
 
 def test_normal_projection_does_not_silently_reduce_tool_output(monkeypatch):
