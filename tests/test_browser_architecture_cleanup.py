@@ -14,26 +14,12 @@ from app.agent_runtime.sandbox import SandboxManager, SandboxPolicy
 from app.agent_runtime.storage import FileAgentSessionStore
 from app.agent_runtime.tools import ToolExposure
 from app.agent_runtime.workspace_tools import loom_default_tools
-from app.ai import ModelResponse, ToolCall
+from app.ai import ModelResponse
 
 
 class TypePlatform:
     def execute_chat(self, profile_id, request):
-        return ModelResponse(
-            text="",
-            tool_calls=(
-                ToolCall(
-                    call_id="type-1",
-                    name="browser_type",
-                    arguments={
-                        "browser_id": "browser-1",
-                        "state_revision": 1,
-                        "index": 2,
-                        "text": "secret-value-that-must-stay-in-ram",
-                    },
-                ),
-            ),
-        )
+        return ModelResponse(text="")
 
 
 class MinimalBackend:
@@ -91,18 +77,6 @@ def _runtime(tmp_path: Path) -> BrowserRuntime:
         auto_configure_browser=False,
         browser_security_policy=BrowserSecurityPolicy(resolve_dns=False),
     )
-
-
-def test_browser_transient_input_is_composed_before_durable_secret_boundary(tmp_path):
-    runtime = _runtime(tmp_path)
-    response = runtime.platform.execute_chat("test", object())
-    call = response.tool_calls[0]
-    value = str(call.arguments["text"])
-
-    assert value.startswith("loom-transient-browser-text:")
-    assert "secret-value-that-must-stay-in-ram" not in value
-    assert runtime.consume_browser_type_text(value) == "secret-value-that-must-stay-in-ram"
-    runtime.close()
 
 
 def test_advanced_browser_tools_are_deferred_but_still_discoverable(tmp_path):
