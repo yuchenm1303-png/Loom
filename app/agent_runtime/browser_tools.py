@@ -40,6 +40,11 @@ def _snapshot_result(
 _MAX_EVAL_VALUE_CHARS = 30_000
 _DOWNLOADS_DIR = "browser-downloads"
 _SESSION_STATE_PATH = "browser-state/session.json"
+# browser_type used to swap typed text for a one-shot reference with this prefix,
+# which meant conversations carry references the model can read back and copy into
+# the text argument. That is no longer resolved to anything, so without this guard
+# the placeholder is typed into the page verbatim and reported as success.
+_RETIRED_TRANSIENT_PREFIX = "loom-transient-browser-text:"
 # CDP's Browser.PermissionType. Kept here so a typo fails with the valid names
 # instead of reaching the browser, which rejects the whole grant on one bad name.
 _CDP_PERMISSIONS = frozenset({
@@ -333,6 +338,12 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
         browser_id = str(arguments["browser_id"])
         store.ensure_revision(context.session_id, browser_id, int(arguments["state_revision"]))
         text = str(arguments["text"])
+        if text.startswith(_RETIRED_TRANSIENT_PREFIX):
+            raise ValueError(
+                "browser_type was given Loom's retired internal placeholder instead of text, so "
+                "nothing was typed. Placeholders like this appear in earlier conversation history; "
+                "they are not tool input and resolve to nothing. Send the literal characters to type."
+            )
         if len(text) > 20_000:
             raise ValueError("browser_type text exceeds 20,000 characters")
         store.type_text(

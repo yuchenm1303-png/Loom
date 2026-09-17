@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from app.agent_runtime import BrowserRuntime
+from app.agent_runtime.tools import ToolContext
 from app.agent_runtime.browser_runtime import _sanitize_browser_tool_call
 from app.agent_runtime.browser_security import BrowserSecurityPolicy
 from app.agent_runtime.browser_session import BrowserLaunchOptions, BrowserPageState
@@ -67,6 +68,58 @@ class RecordingBrowserBackend:
 
     def close(self):
         return None
+
+
+def test_a_retired_transient_placeholder_is_refused_instead_of_typed(tmp_path):
+    """Observed on a real GitHub form: the placeholder was typed into the field.
+
+    Conversations from before the transient boundary was removed still carry
+    `loom-transient-browser-text:` references, and a model reading its own history
+    copies them into the text argument. Nothing resolves them any more, so they
+    used to be entered verbatim while browser_type reported success - a silent
+    wrong value, which is worse than the loop the removal was meant to fix.
+    """
+
+    typed: list[str] = []
+    store = FileAgentSessionStore(tmp_path / "state")
+    runtime = BrowserRuntime(
+        platform=ScriptedPlatform([]),
+        store=store,
+        tools=loom_default_tools(),
+        sandbox_manager=SandboxManager(policy=SandboxPolicy.OFF),
+        web_search_provider=None,
+        auto_configure_web_search=False,
+        browser_backend_factory=lambda options: RecordingBrowserBackend(options, typed),
+        auto_configure_browser=False,
+        browser_security_policy=BrowserSecurityPolicy(resolve_dns=False),
+    )
+    workspace = tmp_path / "project"
+    workspace.mkdir()
+    session = runtime.create_session(
+        AGENT_FAST_ROLE.role_id,
+        workspace_dir=workspace,
+        permission_mode=PermissionMode.FULL_ACCESS,
+    )
+    assert runtime.browser_sessions is not None
+    browser = runtime.browser_sessions.start(session.session_id)
+    snapshot = runtime.browser_sessions.snapshot(session.session_id, browser.browser_id)
+
+    tool = runtime.tools.get("browser_type")
+    assert tool is not None
+    context = ToolContext(session_id=session.session_id, turn_id="t", workspace=workspace)
+    with pytest.raises(ValueError, match="retired internal placeholder"):
+        tool.handler(
+            context,
+            {
+                "browser_id": browser.browser_id,
+                "index": 2,
+                "state_revision": snapshot.state_revision,
+                "text": "loom-transient-browser-text:5050505050505050505050505050505",
+            },
+        )
+
+    assert typed == [], "the placeholder reached the page instead of being refused"
+    runtime.close()
 
 
 def test_secret_shaped_browser_type_text_is_a_normal_tool_argument(tmp_path):
