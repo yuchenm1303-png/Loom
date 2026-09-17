@@ -88,7 +88,11 @@ def main() -> None:
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
         wait_until(lambda: bridge.connected, 20, "extension did not connect to the production bridge")
-        assert bridge.status()["last_client_version"] == "0.1.5"
+        # Match the repo rather than a pinned literal: what this needs to prove is
+        # that the copy under test is the one that connected, and a literal only
+        # made every version bump look like a bridge failure.
+        manifest = json.loads((EXTENSION / "manifest.json").read_text(encoding="utf-8"))
+        assert bridge.status()["last_client_version"] == manifest["version"]
         backend = BrowserExtensionSessionBackend(options=BrowserLaunchOptions(), bridge=bridge)
         initial = backend.start()
         assert initial.page_info.get("recovery", {}).get("action") == "browser_navigate"
@@ -115,10 +119,47 @@ def main() -> None:
         assert backend.go_back().url == url
         assert backend.go_forward().title == "Second"
         backend.refresh()
+
+        # Downloads must be scoped to the session. The extension can see every
+        # download in the browser, so a missing start time reports nothing rather
+        # than handing over the user's history.
+        assert bridge.call("downloads", {"since_ms": 0}) == {"files": []}
+        assert backend.downloaded_files() == []
+
+        # Closing hands tab ownership back to the user. Nothing may release the
+        # tabs before this: calling release_tabs directly first would consume the
+        # ownership and leave the check below passing without close() doing a thing.
+        backend.close()
+
+        # A new session must not inherit the previous session's work tab: with
+        # ownership released, navigating somewhere new opens its own tab instead of
+        # replacing whatever the user left on that one.
+        second = BrowserExtensionSessionBackend(options=BrowserLaunchOptions(), bridge=bridge)
+        second.start()
+        moved = second.navigate(url)
+        inherited = str(moved.page_info.get("tab_id") or "")
+        assert inherited != created_tab, "a released work tab was navigated away by the next session"
+
+        # A page that is already open is reused rather than duplicated, and the
+        # reused tab becomes Loom's. Whether the user can *see* that (the Loom tab
+        # group) is a real-browser check, not something this headless run can judge.
+        before = len(second.tabs().tabs)
+        adopted = second.navigate(f"http://127.0.0.1:{web.server_address[1]}/second")
+        assert str(adopted.page_info.get("tab_id") or "") == created_tab, "an open page was not reused"
+        assert len(second.tabs().tabs) == before, "reusing an open page still created a duplicate tab"
+
+        # Releasing again is harmless and reports how many were still held.
+        assert isinstance(bridge.call("release_tabs", {}).get("released"), int)
+
+        second.close_tab(inherited)
         if created_tab:
-            backend.close_tab(created_tab)
+            second.close_tab(created_tab)
             created_tab = ""
-        print("PASS: real Edge exercised Loom open/state/type/click/select/hover/drag/find/eval/wait/screenshot/tabs/navigation/history/refresh/close")
+        print(
+            "PASS: real Edge exercised Loom open/state/type/click/select/hover/drag/find/eval/wait/"
+            "screenshot/tabs/navigation/history/refresh/close, session-scoped downloads, "
+            "tab release on close, and reuse of an already-open page"
+        )
     finally:
         if process is not None:
             process.terminate()
