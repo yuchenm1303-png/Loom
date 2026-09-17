@@ -46,7 +46,13 @@ class BrowserTransientInputPlatform:
                 calls.append(call)
                 continue
             arguments = dict(call.arguments)
-            arguments["text"] = self._stash(str(arguments.get("text") or ""))
+            candidate = str(arguments.get("text") or "")
+            # Runtime mixins may compose more than one transient boundary around
+            # the same provider. An inner boundary has already protected this
+            # value, so an outer boundary must not stash its opaque reference as
+            # if it were the user's text. Doing so leaks the inner reference into
+            # the page after only the outer layer is consumed.
+            arguments["text"] = candidate if candidate.startswith(_TRANSIENT_PREFIX) else self._stash(candidate)
             calls.append(ToolCall(call_id=call.call_id, name=call.name, arguments=arguments))
             changed = True
 
@@ -73,10 +79,19 @@ class BrowserTransientInputPlatform:
         with self._lock:
             raw = self._pending.pop(token, None)
         if raw is None:
+            delegate_consumer = getattr(self._delegate, "consume_browser_type_text", None)
+            if callable(delegate_consumer):
+                return str(delegate_consumer(candidate))
             raise RuntimeError(
                 "browser transient input is no longer available; retry browser_type "
                 "instead of recovering typed data from durable state"
             )
+        # Be defensive with calls created before the no-double-wrap guard above:
+        # unwrap any inner boundary rather than typing its opaque reference.
+        if raw.startswith(_TRANSIENT_PREFIX):
+            delegate_consumer = getattr(self._delegate, "consume_browser_type_text", None)
+            if callable(delegate_consumer):
+                return str(delegate_consumer(raw))
         return raw
 
     def clear_browser_transient_inputs(self) -> None:

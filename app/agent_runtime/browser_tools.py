@@ -1037,9 +1037,11 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
             AgentTool(
                 name="browser_type",
                 description=(
-                    "Type text into an element from the latest browser_state. Model-produced typed text is kept in a one-shot "
-                    "in-memory payload and is not stored as a durable tool-call argument. Browser v1 has no automatic "
-                    "credential store or secret injection channel."
+                    "Type the exact string supplied in text into an element from the latest browser_state. Pass ordinary "
+                    "text such as names, URLs, and form values directly; never construct or reuse a "
+                    "loom-transient-browser-text reference. Loom moves the string through a one-shot in-memory boundary "
+                    "internally before execution, so the opaque reference seen in durable history is not tool input. "
+                    "Browser v1 has no automatic credential store or secret injection channel."
                 ),
                 input_schema=_schema(
                     {

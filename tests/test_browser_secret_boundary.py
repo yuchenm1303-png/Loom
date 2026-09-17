@@ -95,6 +95,29 @@ def test_transient_platform_uses_one_shot_opaque_reference():
         boundary.consume_browser_type_text(stored)
 
 
+def test_nested_transient_boundaries_do_not_type_an_opaque_reference():
+    raw = "https://example.com/oauth/callback"
+    delegate = ScriptedPlatform(
+        [
+            ModelResponse(
+                tool_calls=(
+                    ToolCall(
+                        call_id="type-nested",
+                        name="browser_type",
+                        arguments={"browser_id": "b", "index": 2, "state_revision": 1, "text": raw},
+                    ),
+                )
+            )
+        ]
+    )
+    boundary = BrowserTransientInputPlatform(BrowserTransientInputPlatform(delegate))
+    response = boundary.execute_chat("profile", object())
+    stored = str(response.tool_calls[0].arguments["text"])
+
+    assert stored.startswith("loom-transient-browser-text:")
+    assert boundary.consume_browser_type_text(stored) == raw
+
+
 def test_bare_typed_text_executes_but_never_reaches_durable_state(tmp_path):
     raw = "bare-password-without-a-label"
     typed: list[str] = []
