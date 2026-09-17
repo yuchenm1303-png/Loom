@@ -16,6 +16,10 @@ from .context_limits import ResolvedContextLimits, resolve_context_limits
 from .context_reducer import ContextReductionStats, reduce_tool_outputs
 from .history import repair_tool_history
 from .response_language import communication_language_message, infer_user_language
+from .turn_response_validation import (
+    contains_serialized_tool_protocol,
+    visible_model_text,
+)
 
 
 _CONTEXT_WINDOW_ERROR_MARKERS = (
@@ -28,6 +32,15 @@ _CONTEXT_WINDOW_ERROR_MARKERS = (
 )
 _IMAGE_TOKEN_ESTIMATE = 2048
 _EMERGENCY_OMISSION_MARKER = "\n\n[... omitted for context budget ...]\n\n"
+
+# Calibration of the fallback estimator against provider-reported input tokens.
+# Bounds keep a hostile or degenerate provider from either inflating history out
+# of the window or suppressing compaction entirely.
+_CALIBRATION_MIN_SAMPLES = 3
+_CALIBRATION_SAMPLE_LIMIT = 12
+_CALIBRATION_EVENT_SCAN_LIMIT = 240
+_CALIBRATION_MIN_FACTOR = 0.7
+_CALIBRATION_MAX_FACTOR = 2.0
 
 
 class ContextBudgetExceeded(RuntimeError):
@@ -152,6 +165,61 @@ def _latest_provider_context_tokens(rt, session) -> int | None:
     return None
 
 
+def _estimator_calibration(rt, session) -> tuple[float, int]:
+    """Measure this session's fallback-estimator bias from provider accounting.
+
+    ``estimate_tokens`` cannot know any specific provider's tokenizer, so it is
+    deliberately pessimistic. Every committed model step already records both
+    Loom's pre-request estimate and the provider's reported ``input_tokens``,
+    which makes that bias directly observable rather than assumed. Compacting on
+    an uncalibrated estimate throws away context the model still has room for,
+    and summarization is far more expensive than carrying the history.
+    """
+    try:
+        events = rt.store.events(session.session_id)
+    except Exception:
+        return 1.0, 0
+
+    factors: list[float] = []
+    pending: dict | None = None
+    for event in tuple(events)[-_CALIBRATION_EVENT_SCAN_LIMIT:]:
+        kind = getattr(event.kind, "value", str(event.kind))
+        data = event.data if isinstance(event.data, dict) else {}
+        if kind == "model_requested":
+            pending = data
+            continue
+        if kind != "model_response":
+            continue
+        request_data, pending = pending, None
+        if request_data is None:
+            continue
+        # Always the raw estimator output: metadata never stores calibrated
+        # values, otherwise each turn would calibrate against its own correction.
+        estimated = int(
+            request_data.get("estimated_input_tokens_after")
+            or request_data.get("estimated_input_tokens_before")
+            or 0
+        )
+        usage = data.get("usage")
+        reported = int(usage.get("input_tokens") or 0) if isinstance(usage, dict) else 0
+        if estimated <= 0 or reported <= 0:
+            continue
+        factors.append(reported / float(estimated))
+
+    if len(factors) < _CALIBRATION_MIN_SAMPLES:
+        return 1.0, len(factors)
+
+    sample = sorted(factors[-_CALIBRATION_SAMPLE_LIMIT:])
+    middle = len(sample) // 2
+    median = (
+        sample[middle]
+        if len(sample) % 2
+        else (sample[middle - 1] + sample[middle]) / 2
+    )
+    factor = min(_CALIBRATION_MAX_FACTOR, max(_CALIBRATION_MIN_FACTOR, median))
+    return factor, len(sample)
+
+
 def _trim_oldest_compaction_unit(messages: Sequence[AIMessage]) -> tuple[AIMessage, ...]:
     """Drop one oldest logical item without orphaning its tool outputs."""
     items = tuple(messages)
@@ -204,13 +272,24 @@ def _metadata(
     active_context_tokens: int,
     token_accounting_source: str,
     reduction_stats: ContextReductionStats | None = None,
+    calibration: float = 1.0,
+    calibration_samples: int = 0,
 ) -> dict[str, object]:
     metadata: dict[str, object] = {
         "context_digest": envelope.digest,
         "communication_language": communication_language,
         "context_limits": limits.as_dict(),
+        # Raw estimator output. `_estimator_calibration` reads these back, so
+        # storing calibrated values here would compound the correction.
         "estimated_input_tokens_before": estimated_before,
         "estimated_input_tokens_after": estimated_after,
+        "estimator_calibration": round(float(calibration), 4),
+        "estimator_calibration_samples": int(calibration_samples),
+        "calibrated_input_tokens_before": int(math.ceil(estimated_before * calibration)),
+        "calibrated_input_tokens_after": int(math.ceil(estimated_after * calibration)),
+        # A fallback window means no model profile declared its real context
+        # size, so every threshold below is a guess about someone else's model.
+        "context_window_fallback": limits.source == "runtime_fallback",
         "active_context_tokens": active_context_tokens,
         "token_accounting_source": token_accounting_source,
         "tool_schema_tokens": estimate_tool_schema_tokens(tools),
@@ -350,12 +429,17 @@ def prepare_context(rt, session, step, token):
     canonical_history = tuple(session.messages)
     visible_messages = [*transient, *canonical_history]
     estimated_before = estimate_tokens(visible_messages, tools)
+    calibration, calibration_samples = _estimator_calibration(rt, session)
+
+    def calibrated(raw_tokens: int) -> int:
+        """Raw estimator tokens restated in this provider's own accounting."""
+        return int(math.ceil(int(raw_tokens) * calibration))
 
     # Compaction cannot reduce base/runtime/project context or tool schemas. Fail
     # closed before asking the model to summarize history that cannot possibly
     # make the next request fit.
     fixed_tokens = estimate_tokens(transient, tools)
-    if fixed_tokens >= limits.input_budget_tokens:
+    if calibrated(fixed_tokens) >= limits.input_budget_tokens:
         raise ContextBudgetExceeded(
             estimated_tokens=estimated_before,
             input_budget_tokens=limits.input_budget_tokens,
@@ -376,12 +460,14 @@ def prepare_context(rt, session, step, token):
     # safely archive a smaller history first. Use a request-only projection and
     # preserve the full durable user message for future recovery/export.
     hard_target = max(1, limits.input_budget_tokens - limits.safety_tokens)
-    if estimated_before > hard_target:
+    if calibrated(estimated_before) > hard_target:
         emergency = _single_user_emergency_projection(
             transient,
             canonical_history,
             tools,
-            target_tokens=hard_target,
+            # The projection searches in raw estimator units, so the target has
+            # to be converted back out of provider accounting.
+            target_tokens=max(1, int(hard_target / calibration)),
         )
         if emergency is not None:
             emergency_visible, emergency_tokens = emergency
@@ -394,6 +480,8 @@ def prepare_context(rt, session, step, token):
                 estimated_after=emergency_tokens,
                 active_context_tokens=active_context_tokens,
                 token_accounting_source=accounting_source,
+                calibration=calibration,
+                calibration_samples=calibration_samples,
             )
             metadata.update(
                 {
@@ -413,7 +501,7 @@ def prepare_context(rt, session, step, token):
     projected_visible = visible_messages
     estimated_projected = estimated_before
     reduction_stats = ContextReductionStats()
-    if estimated_before > limits.input_budget_tokens:
+    if calibrated(estimated_before) > limits.input_budget_tokens:
         projected_history, reduction_stats = reduce_tool_outputs(
             canonical_history,
             per_output_token_limit=limits.tool_output_token_limit,
@@ -423,20 +511,23 @@ def prepare_context(rt, session, step, token):
         projected_visible = [*transient, *projected_history]
         estimated_projected = estimate_tokens(projected_visible, tools)
 
-    projected_active_context_tokens = active_context_tokens
+    calibrated_active_context_tokens = active_context_tokens
     if accounting_source == "fallback_estimate":
-        projected_active_context_tokens = estimated_projected
+        # No provider accounting yet, so this threshold is being driven by the
+        # estimator and has to be restated in provider units like every other
+        # budget comparison here.
+        calibrated_active_context_tokens = calibrated(estimated_projected)
 
     # Keep Loom's legacy message-count safety cap as a secondary compaction
     # trigger. It is not the normal token clock, but compacting here prevents the
     # outer TurnRunner guard from terminating a turn when a safe checkpoint can
     # still reduce the request.
     hard_request_fits = (
-        estimated_projected <= limits.input_budget_tokens
+        calibrated(estimated_projected) <= limits.input_budget_tokens
         and len(projected_visible) <= rt.limits.max_messages
     )
     token_limit_reached = (
-        projected_active_context_tokens >= limits.auto_compact_token_limit
+        calibrated_active_context_tokens >= limits.auto_compact_token_limit
     )
     if hard_request_fits and not token_limit_reached:
         return projected_visible, _metadata(
@@ -446,9 +537,11 @@ def prepare_context(rt, session, step, token):
             tools=tools,
             estimated_before=estimated_before,
             estimated_after=estimated_projected,
-            active_context_tokens=projected_active_context_tokens,
+            active_context_tokens=calibrated_active_context_tokens,
             token_accounting_source=accounting_source,
             reduction_stats=reduction_stats,
+            calibration=calibration,
+            calibration_samples=calibration_samples,
         )
 
     # The compaction model may use the request-only reduced projection, but the
@@ -477,7 +570,7 @@ def prepare_context(rt, session, step, token):
     response_retries = 0
     response_attempts = 0
     summary_usage = ModelUsage()
-    response: ModelResponse | None = None
+    summary = ""
     max_output_tokens = max(1, limits.output_reserve_tokens)
 
     while True:
@@ -488,7 +581,7 @@ def prepare_context(rt, session, step, token):
             max_output_tokens=max_output_tokens,
         )
         request_tokens = estimate_tokens(request.messages)
-        if request_tokens + max_output_tokens > limits.effective_context_window_tokens:
+        if calibrated(request_tokens) + max_output_tokens > limits.effective_context_window_tokens:
             if len(compact_input) <= 1:
                 raise ContextBudgetExceeded(
                     estimated_tokens=request_tokens,
@@ -540,9 +633,20 @@ def prepare_context(rt, session, step, token):
             output_tokens=summary_usage.output_tokens + candidate.usage.output_tokens,
             total_tokens=summary_usage.total_tokens + candidate.usage.total_tokens,
         )
-        if candidate.tool_calls or not str(candidate.text or "").strip():
+        # Reasoning models put `<think>` in the same channel as the answer, and
+        # some providers print tool calls as text instead of calling. Either one
+        # committed verbatim becomes a summary that is mostly not a summary, and
+        # it is re-injected on every later step of the turn.
+        candidate_summary = visible_model_text(candidate.text)
+        serialized_tool_text = contains_serialized_tool_protocol(candidate_summary)
+        if candidate.tool_calls or serialized_tool_text or not candidate_summary:
             if response_retries >= rt.limits.model_retries:
-                reason = "unexpected tool calls" if candidate.tool_calls else "an empty summary"
+                if candidate.tool_calls:
+                    reason = "unexpected tool calls"
+                elif serialized_tool_text:
+                    reason = "tool-call markup instead of a summary"
+                else:
+                    reason = "an empty summary"
                 raise RuntimeError(
                     f"context compaction model repeatedly returned {reason}"
                 )
@@ -557,11 +661,10 @@ def prepare_context(rt, session, step, token):
                 trimmed_messages += previous - len(compact_input)
             transport_retries = 0
             continue
-        response = candidate
+        summary = candidate_summary
         break
 
     _raise_if_cancelled(token)
-    summary = str(response.text or "").strip() or "(no summary available)"
 
     replacement = build_compacted_history(
         tuple(repair.messages),
@@ -576,7 +679,7 @@ def prepare_context(rt, session, step, token):
     compacted_visible = [*transient, *replacement]
     estimated_after = estimate_tokens(compacted_visible, tools)
     if (
-        estimated_after > limits.input_budget_tokens
+        calibrated(estimated_after) > limits.input_budget_tokens
         or len(compacted_visible) > rt.limits.max_messages
     ):
         raise ContextBudgetExceeded(
@@ -606,9 +709,11 @@ def prepare_context(rt, session, step, token):
         tools=tools,
         estimated_before=estimated_before,
         estimated_after=estimated_after,
-        active_context_tokens=projected_active_context_tokens,
+        active_context_tokens=calibrated_active_context_tokens,
         token_accounting_source=accounting_source,
         reduction_stats=reduction_stats,
+        calibration=calibration,
+        calibration_samples=calibration_samples,
     )
     metadata.update(
         {

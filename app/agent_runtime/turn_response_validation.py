@@ -34,6 +34,23 @@ UNFINISHED_RECOVERY_INSTRUCTION = (
 )
 
 
+def visible_model_text(text: str) -> str:
+    """Return model text with complete reasoning blocks removed.
+
+    Providers that expose ``<think>`` inline put reasoning in the same channel as
+    the answer. Every consumer that treats model text as content rather than as a
+    transcript must drop those blocks first.
+    """
+
+    return _COMPLETE_THINK_BLOCK_RE.sub("", str(text or "")).strip()
+
+
+def contains_serialized_tool_protocol(text: str) -> bool:
+    """Detect tool-call markup a provider printed as text instead of calling."""
+
+    return bool(_SERIALIZED_TOOL_PROTOCOL_RE.search(str(text or "")))
+
+
 def invalid_terminal_response(response: ModelResponse) -> str:
     """Reject provider terminal responses that cannot be valid public output."""
 
@@ -43,10 +60,10 @@ def invalid_terminal_response(response: ModelResponse) -> str:
     if response.tool_calls:
         return ""
     raw = str(response.text or "")
-    visible = _COMPLETE_THINK_BLOCK_RE.sub("", raw).strip()
+    visible = visible_model_text(raw)
     if raw.strip() and not visible:
         return "reasoning_without_visible_answer"
-    if _SERIALIZED_TOOL_PROTOCOL_RE.search(visible):
+    if contains_serialized_tool_protocol(visible):
         return "serialized_tool_call_text"
     if _DANGLING_TERMINAL_RE.search(visible):
         return "dangling_serialized_structure"
@@ -116,7 +133,9 @@ __all__ = [
     "TERMINAL_RECOVERY_INSTRUCTION",
     "TRUNCATED_RECOVERY_INSTRUCTION",
     "UNFINISHED_RECOVERY_INSTRUCTION",
+    "contains_serialized_tool_protocol",
     "history_message_count",
     "invalid_terminal_response",
+    "visible_model_text",
     "strip_compaction_echo",
 ]
