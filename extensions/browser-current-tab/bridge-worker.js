@@ -87,8 +87,9 @@ globalThis.fetch = async (input, init = {}) => {
   });
 };
 
-// Dynamic import is intentional: the fetch lifecycle interceptor above must be in
-// place before background.js starts its long-poll loop.
+// Semantically this is the old `import './background.js'` module load, but it is
+// deliberately dynamic so the hud_end interceptor above exists before the bridge
+// starts its long-poll loop.
 await import('./background.js');
 
 async function hudHostInstalled(tabId) {
