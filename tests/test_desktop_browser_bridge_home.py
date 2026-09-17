@@ -22,6 +22,14 @@ def test_unpacked_extension_uses_a_stable_absolute_install_folder():
 def test_existing_extension_updates_without_reopening_browser_setup():
     source = MAIN.read_text(encoding="utf-8")
     assert "extensionConnected = false" in source
-    assert 'path.join(target, "extension-update.json")' in source
+    assert 'path.join(installTarget, "extension-update.json")' in source
     assert "automaticUpdateRequested: extensionConnected" in source
     assert "if (!extensionConnected && executable)" in source
+
+
+def test_update_migrates_an_extension_loaded_from_the_old_electron_directory():
+    source = MAIN.read_text(encoding="utf-8")
+    assert "function legacyBrowserExtensionTargets()" in source
+    assert 'path.join(app.getPath("userData"), "browser", "current-tab-extension")' in source
+    assert "const installTargets = [target, ...legacyBrowserExtensionTargets()]" in source
+    assert "migratedLegacyInstalls:" in source
