@@ -147,6 +147,12 @@ def test_secret_shaped_browser_type_text_is_a_normal_tool_argument(tmp_path):
 
 @pytest.mark.parametrize("tool_name", ["browser_open", "browser_navigate"])
 def test_secret_shaped_browser_urls_are_still_redacted_and_blocked(tool_name):
+    """The sanitizer redacts the URL and makes the call deliberately schema-invalid.
+
+    This covers the rule itself for both tools. It cannot tell whether anything
+    still calls the sanitizer, which is what the end-to-end test below is for.
+    """
+
     arguments = {"url": "https://example.com/callback?access_token=supersecret"}
     if tool_name == "browser_navigate":
         arguments["browser_id"] = "browser-1"
@@ -158,3 +164,68 @@ def test_secret_shaped_browser_urls_are_still_redacted_and_blocked(tool_name):
     assert "supersecret" not in str(sanitized.arguments["url"])
     assert "REDACTED" in str(sanitized.arguments["url"])
     assert sanitized.arguments["_loom_blocked_sensitive_input"] is True
+
+
+def test_secret_shaped_browser_url_is_scrubbed_and_blocked_before_durable_state(tmp_path):
+    """The sanitizer is wired into the runtime, not merely present in the module.
+
+    Removing the browser_type branch left this rule as the only caller of
+    _sanitize_browser_tool_call, and unit-testing the function alone cannot see
+    whether _BrowserSecretBoundaryPlatform still wraps the platform. Detaching
+    that wrapper - which would persist a live credential and navigate with it -
+    kept every other test in this file green, so the wiring is asserted here by
+    driving a real turn: the secret must not reach durable state, the call must
+    be rejected as invalid, and the backend must never be reached.
+    """
+
+    platform = ScriptedPlatform(
+        [
+            ModelResponse(
+                tool_calls=(
+                    ToolCall(
+                        call_id="secret-url",
+                        name="browser_navigate",
+                        arguments={
+                            "browser_id": "not-started",
+                            "url": "https://example.com/callback?access_token=supersecret",
+                        },
+                    ),
+                )
+            ),
+            ModelResponse(text="Secret-bearing browser URL was blocked."),
+        ]
+    )
+    store = FileAgentSessionStore(tmp_path / "state")
+
+    def must_not_start_backend(options):
+        raise AssertionError("secret-bearing browser request must fail before backend access")
+
+    runtime = BrowserRuntime(
+        platform=platform,
+        store=store,
+        tools=loom_default_tools(),
+        sandbox_manager=SandboxManager(policy=SandboxPolicy.OFF),
+        web_search_provider=None,
+        auto_configure_web_search=False,
+        browser_backend_factory=must_not_start_backend,
+        auto_configure_browser=False,
+        browser_security_policy=BrowserSecurityPolicy(resolve_dns=False),
+    )
+    workspace = tmp_path / "project"
+    workspace.mkdir()
+    session = runtime.create_session(
+        AGENT_FAST_ROLE.role_id,
+        workspace_dir=workspace,
+        permission_mode=PermissionMode.FULL_ACCESS,
+    )
+
+    result = runtime.start_turn(session.session_id, "Navigate using this credential-bearing URL.")
+    assert result.status is AgentStatus.COMPLETED
+
+    session_dir = store.session_dir(session.session_id)
+    combined = (session_dir / "session.json").read_text(encoding="utf-8")
+    combined += (session_dir / "events.jsonl").read_text(encoding="utf-8")
+    assert "supersecret" not in combined
+    assert "_loom_blocked_sensitive_input" in combined
+    assert "Invalid tool request" in combined
+    runtime.close()

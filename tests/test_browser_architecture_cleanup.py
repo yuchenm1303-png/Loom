@@ -17,7 +17,9 @@ from app.agent_runtime.workspace_tools import loom_default_tools
 from app.ai import ModelResponse
 
 
-class TypePlatform:
+class SilentPlatform:
+    """Never asks for a tool. These tests inspect registry shape, not behaviour."""
+
     def execute_chat(self, profile_id, request):
         return ModelResponse(text="")
 
@@ -67,7 +69,7 @@ class MinimalBackend:
 
 def _runtime(tmp_path: Path) -> BrowserRuntime:
     return BrowserRuntime(
-        platform=TypePlatform(),
+        platform=SilentPlatform(),
         store=FileAgentSessionStore(tmp_path / "state"),
         tools=loom_default_tools(),
         sandbox_manager=SandboxManager(policy=SandboxPolicy.OFF),

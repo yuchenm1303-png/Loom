@@ -41,7 +41,12 @@ def test_browser_hud_is_injected_into_existing_tabs_after_extension_reload() -> 
     worker = (EXT / "bridge-worker.js").read_text(encoding="utf-8")
 
     assert manifest["background"]["service_worker"] == "bridge-worker.js"
-    assert manifest["version"] == "0.1.6"
+    # Not pinned to one exact version: reload repair depends on the worker and the
+    # content scripts below, never on the version string, so an exact pin only
+    # turned every unrelated extension change into a failure of this HUD test.
+    # The floor is the release that introduced the standalone HUD.
+    version = tuple(int(part) for part in str(manifest["version"]).split("."))
+    assert version >= (0, 1, 6)
     scripts = manifest.get("content_scripts", [])[0]["js"]
     assert scripts == ["browser-hud.js"]
 
