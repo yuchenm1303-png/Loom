@@ -3,9 +3,9 @@ from __future__ import annotations
 import pytest
 
 from app.agent_runtime import BrowserRuntime
+from app.agent_runtime.browser_runtime import _sanitize_browser_tool_call
 from app.agent_runtime.browser_security import BrowserSecurityPolicy
 from app.agent_runtime.browser_session import BrowserLaunchOptions, BrowserPageState
-from app.agent_runtime.browser_transient import BrowserTransientInputPlatform
 from app.agent_runtime.contracts import AgentStatus, PermissionMode
 from app.agent_runtime.sandbox import SandboxManager, SandboxPolicy
 from app.agent_runtime.storage import FileAgentSessionStore
@@ -69,57 +69,8 @@ class RecordingBrowserBackend:
         return None
 
 
-def test_transient_platform_uses_one_shot_opaque_reference():
-    raw = "bare-password-without-a-label"
-    delegate = ScriptedPlatform(
-        [
-            ModelResponse(
-                tool_calls=(
-                    ToolCall(
-                        call_id="type-1",
-                        name="browser_type",
-                        arguments={"browser_id": "b", "index": 2, "state_revision": 1, "text": raw},
-                    ),
-                )
-            )
-        ]
-    )
-    boundary = BrowserTransientInputPlatform(delegate)
-    response = boundary.execute_chat("profile", object())
-    stored = str(response.tool_calls[0].arguments["text"])
-
-    assert raw not in stored
-    assert stored.startswith("loom-transient-browser-text:")
-    assert boundary.consume_browser_type_text(stored) == raw
-    with pytest.raises(RuntimeError, match="no longer available"):
-        boundary.consume_browser_type_text(stored)
-
-
-def test_nested_transient_boundaries_do_not_type_an_opaque_reference():
-    raw = "https://example.com/oauth/callback"
-    delegate = ScriptedPlatform(
-        [
-            ModelResponse(
-                tool_calls=(
-                    ToolCall(
-                        call_id="type-nested",
-                        name="browser_type",
-                        arguments={"browser_id": "b", "index": 2, "state_revision": 1, "text": raw},
-                    ),
-                )
-            )
-        ]
-    )
-    boundary = BrowserTransientInputPlatform(BrowserTransientInputPlatform(delegate))
-    response = boundary.execute_chat("profile", object())
-    stored = str(response.tool_calls[0].arguments["text"])
-
-    assert stored.startswith("loom-transient-browser-text:")
-    assert boundary.consume_browser_type_text(stored) == raw
-
-
-def test_bare_typed_text_executes_but_never_reaches_durable_state(tmp_path):
-    raw = "bare-password-without-a-label"
+def test_secret_shaped_browser_type_text_is_a_normal_tool_argument(tmp_path):
+    raw = "password=hunter2"
     typed: list[str] = []
     store = FileAgentSessionStore(tmp_path / "state")
     platform = ScriptedPlatform([])
@@ -148,21 +99,22 @@ def test_bare_typed_text_executes_but_never_reaches_durable_state(tmp_path):
     assert runtime.browser_sessions is not None
     browser = runtime.browser_sessions.start(session.session_id)
     snapshot = runtime.browser_sessions.snapshot(session.session_id, browser.browser_id)
+    expected_arguments = {
+        "browser_id": browser.browser_id,
+        "index": 2,
+        "state_revision": snapshot.state_revision,
+        "text": raw,
+        "clear": True,
+    }
 
     platform.responses.extend(
         [
             ModelResponse(
                 tool_calls=(
                     ToolCall(
-                        call_id="type-bare",
+                        call_id="type-secret-shaped",
                         name="browser_type",
-                        arguments={
-                            "browser_id": browser.browser_id,
-                            "index": 2,
-                            "state_revision": snapshot.state_revision,
-                            "text": raw,
-                            "clear": True,
-                        },
+                        arguments=expected_arguments,
                     ),
                 )
             ),
@@ -174,63 +126,35 @@ def test_bare_typed_text_executes_but_never_reaches_durable_state(tmp_path):
     assert result.status is AgentStatus.COMPLETED
     assert typed == [raw]
 
-    session_dir = store.session_dir(session.session_id)
-    combined = (session_dir / "session.json").read_text(encoding="utf-8")
-    combined += (session_dir / "events.jsonl").read_text(encoding="utf-8")
-    assert raw not in combined
-    assert "loom-transient-browser-text:" in combined
-    runtime.close()
-
-
-def test_secret_shaped_browser_url_is_scrubbed_and_blocked_before_durable_state(tmp_path):
-    platform = ScriptedPlatform(
-        [
-            ModelResponse(
-                tool_calls=(
-                    ToolCall(
-                        call_id="secret-url",
-                        name="browser_navigate",
-                        arguments={
-                            "browser_id": "not-started",
-                            "url": "https://example.com/callback?access_token=supersecret",
-                        },
-                    ),
-                )
-            ),
-            ModelResponse(text="Secret-bearing browser URL was blocked."),
-        ]
-    )
-    store = FileAgentSessionStore(tmp_path / "state")
-
-    def must_not_start_backend(options):
-        raise AssertionError("secret-bearing browser request must fail before backend access")
-
-    runtime = BrowserRuntime(
-        platform=platform,
-        store=store,
-        tools=loom_default_tools(),
-        sandbox_manager=SandboxManager(policy=SandboxPolicy.OFF),
-        web_search_provider=None,
-        auto_configure_web_search=False,
-        browser_backend_factory=must_not_start_backend,
-        auto_configure_browser=False,
-        browser_security_policy=BrowserSecurityPolicy(resolve_dns=False),
-    )
-    workspace = tmp_path / "project"
-    workspace.mkdir()
-    session = runtime.create_session(
-        AGENT_FAST_ROLE.role_id,
-        workspace_dir=workspace,
-        permission_mode=PermissionMode.FULL_ACCESS,
-    )
-
-    result = runtime.start_turn(session.session_id, "Navigate using this credential-bearing URL.")
-    assert result.status is AgentStatus.COMPLETED
+    stored = store.load(session.session_id)
+    persisted_calls = [
+        call
+        for message in stored.messages
+        for call in message.tool_calls
+        if call.name == "browser_type"
+    ]
+    assert persisted_calls
+    assert persisted_calls[-1].arguments == expected_arguments
 
     session_dir = store.session_dir(session.session_id)
     combined = (session_dir / "session.json").read_text(encoding="utf-8")
     combined += (session_dir / "events.jsonl").read_text(encoding="utf-8")
-    assert "supersecret" not in combined
-    assert "_loom_blocked_sensitive_input" in combined
-    assert "Invalid tool request" in combined
+    assert raw in combined
+    assert "[REDACTED_SENSITIVE_INPUT]" not in combined
+    assert "_loom_blocked_sensitive_input" not in combined
     runtime.close()
+
+
+@pytest.mark.parametrize("tool_name", ["browser_open", "browser_navigate"])
+def test_secret_shaped_browser_urls_are_still_redacted_and_blocked(tool_name):
+    arguments = {"url": "https://example.com/callback?access_token=supersecret"}
+    if tool_name == "browser_navigate":
+        arguments["browser_id"] = "browser-1"
+
+    sanitized = _sanitize_browser_tool_call(
+        ToolCall(call_id=f"{tool_name}-secret-url", name=tool_name, arguments=arguments)
+    )
+
+    assert "supersecret" not in str(sanitized.arguments["url"])
+    assert "REDACTED" in str(sanitized.arguments["url"])
+    assert sanitized.arguments["_loom_blocked_sensitive_input"] is True
