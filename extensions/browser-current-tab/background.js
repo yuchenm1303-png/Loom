@@ -6,9 +6,11 @@ const NAVIGATION_GRACE_MS = 300;
 // How long to wait when the page said the action does start one.
 const NAVIGATION_COMMIT_TIMEOUT_MS = 8000;
 const CLIENT_ID_KEY = "loomBrowserBridgeClientId";
+const UPDATE_TOKEN_KEY = "loomBrowserBridgeUpdateToken";
 const LOOM_TAB_GROUP_TITLE = "Loom";
 
 let polling = false;
+let updateWatcherStarted = false;
 const lastElementsByTab = new Map();
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -159,6 +161,35 @@ async function tabsForWindow(tab) {
     title: item.title || "",
     active: item.id === tab.id,
   }));
+}
+
+async function checkForInstalledUpdate() {
+  try {
+    const response = await fetch(chrome.runtime.getURL("extension-update.json"), { cache: "no-store" });
+    if (!response.ok) return;
+    const payload = await response.json();
+    const token = String(payload.token || "").trim();
+    if (!token) return;
+    const stored = await chrome.storage.local.get(UPDATE_TOKEN_KEY);
+    const previous = String(stored[UPDATE_TOKEN_KEY] || "");
+    if (!previous) {
+      await chrome.storage.local.set({ [UPDATE_TOKEN_KEY]: token });
+      return;
+    }
+    if (previous !== token) {
+      await chrome.storage.local.set({ [UPDATE_TOKEN_KEY]: token });
+      chrome.runtime.reload();
+    }
+  } catch (_) {
+    // This generated file exists only in Loom's stable local installation.
+  }
+}
+
+function startInstalledUpdateWatcher() {
+  if (updateWatcherStarted) return;
+  updateWatcherStarted = true;
+  void checkForInstalledUpdate();
+  setInterval(() => void checkForInstalledUpdate(), 2000);
 }
 
 async function isLoomWorkTab(tab) {
@@ -1125,8 +1156,16 @@ function runPageAction(action, args = {}) {
 }
 
 chrome.runtime.onInstalled.addListener(() => {
+  startInstalledUpdateWatcher();
   startPolling().catch((cause) => console.warn("[loom-browser-bridge]", cause));
 });
-chrome.runtime.onStartup.addListener(() => startPolling().catch((cause) => console.warn("[loom-browser-bridge]", cause)));
-chrome.action.onClicked.addListener(() => startPolling().catch((cause) => console.warn("[loom-browser-bridge]", cause)));
+chrome.runtime.onStartup.addListener(() => {
+  startInstalledUpdateWatcher();
+  startPolling().catch((cause) => console.warn("[loom-browser-bridge]", cause));
+});
+chrome.action.onClicked.addListener(() => {
+  void checkForInstalledUpdate();
+  startPolling().catch((cause) => console.warn("[loom-browser-bridge]", cause));
+});
+startInstalledUpdateWatcher();
 startPolling().catch((cause) => console.warn("[loom-browser-bridge]", cause));

@@ -34,7 +34,7 @@ export interface LoomBridge {
   exportComputerLogs(): Promise<ComputerLogExportResult>;
   /** Create a zip archive containing local Browser Use diagnostics and bridge traces. */
   exportBrowserLogs(): Promise<BrowserLogExportResult>;
-  setupBrowserExtension(browser?: "edge" | "chrome"): Promise<{ ok: boolean; extensionPath: string; pathCopied: boolean; folderOpened: boolean; folderError?: string; managementUrl: string; openError?: string }>;
+  setupBrowserExtension(browser?: "edge" | "chrome", extensionConnected?: boolean): Promise<{ ok: boolean; desiredVersion: string; manualInstallRequired: boolean; automaticUpdateRequested: boolean; extensionPath: string; pathCopied: boolean; folderOpened: boolean; folderError?: string; managementUrl: string; openError?: string }>;
   /** Open a folder or reveal a file in the native file manager. */
   revealPath(targetPath: string): Promise<boolean>;
   /** Native folder picker. Resolves to "" when the user cancels. */

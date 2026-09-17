@@ -124,22 +124,27 @@ function browserExtensionTarget(): string {
   return path.join(app.getPath("home"), ".loom", "browser", "current-tab-extension");
 }
 
-async function setupBrowserExtension(browser: "edge" | "chrome" = "edge"): Promise<Record<string, unknown>> {
+async function setupBrowserExtension(browser: "edge" | "chrome" = "edge", extensionConnected = false): Promise<Record<string, unknown>> {
   const source = browserExtensionSource();
   const target = browserExtensionTarget();
   if (!fsSync.existsSync(path.join(source, "manifest.json"))) {
     throw new Error(`Packaged browser extension is missing: ${source}`);
   }
-  await fs.rm(target, { recursive: true, force: true });
-  await fs.mkdir(path.dirname(target), { recursive: true });
-  await fs.cp(source, target, { recursive: true });
+  await fs.mkdir(target, { recursive: true });
+  await fs.cp(source, target, { recursive: true, force: true });
   await fs.writeFile(
     path.join(target, "bridge-config.json"),
     JSON.stringify({ bridgeUrl: "http://127.0.0.1:39222", token: ensureBrowserBridgeToken() }),
     { encoding: "utf8", mode: 0o600 },
   );
-  clipboard.writeText(target);
-  const folderError = await shell.openPath(target);
+  const manifest = JSON.parse(await fs.readFile(path.join(source, "manifest.json"), "utf8")) as { version?: string };
+  await fs.writeFile(
+    path.join(target, "extension-update.json"),
+    JSON.stringify({ token: crypto.randomUUID(), version: String(manifest.version || "") }),
+    { encoding: "utf8", mode: 0o600 },
+  );
+  if (!extensionConnected) clipboard.writeText(target);
+  const folderError = extensionConnected ? "" : await shell.openPath(target);
   const managementUrl = browser === "chrome" ? "chrome://extensions" : "edge://extensions";
   const roots = browser === "chrome"
     ? [
@@ -154,17 +159,20 @@ async function setupBrowserExtension(browser: "edge" | "chrome" = "edge"): Promi
       ];
   const executable = roots.find((candidate) => candidate && fsSync.existsSync(candidate));
   let openError = "";
-  if (executable) {
+  if (!extensionConnected && executable) {
     const child = spawn(executable, [managementUrl], { detached: true, stdio: "ignore", windowsHide: false });
     child.unref();
-  } else {
+  } else if (!extensionConnected) {
     openError = await shell.openExternal(managementUrl).then(() => "", (error) => String(error));
   }
   return {
     ok: true,
+    desiredVersion: String(manifest.version || ""),
+    manualInstallRequired: !extensionConnected,
+    automaticUpdateRequested: extensionConnected,
     extensionPath: target,
-    pathCopied: true,
-    folderOpened: !folderError,
+    pathCopied: !extensionConnected,
+    folderOpened: extensionConnected || !folderError,
     folderError,
     managementUrl,
     openError,
@@ -579,7 +587,7 @@ ipcMain.handle("loom:call", (_event, method: string, params?: Record<string, unk
 ipcMain.handle("loom:disconnect", () => rpc.stop());
 ipcMain.handle("loom:export-computer-logs", () => exportComputerLogs());
 ipcMain.handle("loom:export-browser-logs", () => exportBrowserLogs());
-ipcMain.handle("loom:setup-browser-extension", (_event, browser: "edge" | "chrome" = "edge") => setupBrowserExtension(browser));
+ipcMain.handle("loom:setup-browser-extension", (_event, browser: "edge" | "chrome" = "edge", extensionConnected = false) => setupBrowserExtension(browser, extensionConnected));
 ipcMain.handle("loom:reveal-path", (_event, targetPath: string) => revealPath(targetPath));
 ipcMain.handle("loom:pick-files", async () => {
   const result = await dialog.showOpenDialog({ title: "Attach files", properties: ["openFile", "multiSelections"] });

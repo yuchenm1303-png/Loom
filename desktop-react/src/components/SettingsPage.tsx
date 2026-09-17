@@ -581,12 +581,15 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
   const setupBrowserExtension = async (browser: "edge" | "chrome") => {
     setBrowserSetupBusy(true);
     try {
-      const result = await window.loom.setupBrowserExtension(browser);
+      const bridge = (browserStatus?.extension_bridge as Record<string, unknown> | undefined) ?? {};
+      const result = await window.loom.setupBrowserExtension(browser, bridge.connected === true);
       setBrowserSetup({ ...result, browser });
       setBrowserConnectionCheck("checking");
       setNotice({
         tone: "success",
-        text: `Extension folder prepared and copied to the clipboard: ${result.extensionPath}`,
+        text: result.automaticUpdateRequested
+          ? "Extension update installed. Waiting for the browser bridge to reload."
+          : `Extension prepared. Its path is already copied: ${result.extensionPath}`,
       });
     } catch (cause) {
       setNotice({ tone: "error", text: cause instanceof Error ? cause.message : String(cause) });
@@ -601,7 +604,9 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
       const snapshot = await window.loom.call<{ capabilityStatus?: Record<string, Record<string, unknown>> }>("runtime/status", {});
       const browser = snapshot.capabilityStatus?.browserUse ?? {};
       const extension = (browser.extension_bridge as Record<string, unknown> | undefined) ?? {};
-      const connected = extension.connected === true;
+      const reportedVersion = String(extension.last_client_version || "");
+      const connected = extension.connected === true
+        && (!browserSetup?.desiredVersion || reportedVersion === browserSetup.desiredVersion);
       setBrowserConnectionCheck(connected ? "connected" : "offline");
       return connected;
     } catch {
@@ -908,18 +913,18 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
       <div className={`settings-callout ${extensionConnected ? "" : "warning"}`}>{extensionConnected ? <Check size={16} /> : <CircleAlert size={16} />}<div><strong>{extensionConnected ? "Current browser is connected." : "Current Browser Bridge is offline."}</strong><span>{extensionConnected ? "The next current-browser session uses this browser's active tab, cookies, and login state." : "Loom will stop current-browser tasks instead of opening an isolated browser or using Computer Use."}</span></div></div>
       <Section title="Current Browser extension" caption="Loom prepares a paired local extension. Browser store publishing is not required for development or local installs.">
         <div className="settings-card mature-preference-list">
-          <PreferenceRow icon={Plug} title="Install or repair" detail="Prepares a stable extension folder, copies its absolute path, opens that folder, and opens the browser extension manager.">
-            <div className="settings-inline-actions"><button className="mature-action-button" type="button" disabled={browserSetupBusy} onClick={() => void setupBrowserExtension("edge")}>Set up Edge</button><button className="mature-action-button secondary" type="button" disabled={browserSetupBusy} onClick={() => void setupBrowserExtension("chrome")}>Set up Chrome</button></div>
+          <PreferenceRow icon={Plug} title="Install or update" detail="One click updates an existing bridge automatically. The browser requires one confirmation only for the first local installation.">
+            <div className="settings-inline-actions"><button className="mature-action-button" type="button" disabled={browserSetupBusy} onClick={() => void setupBrowserExtension("edge")}>{extensionConnected ? "Update Edge bridge" : "Install Edge bridge"}</button><button className="mature-action-button secondary" type="button" disabled={browserSetupBusy} onClick={() => void setupBrowserExtension("chrome")}>{extensionConnected ? "Update Chrome bridge" : "Install Chrome bridge"}</button></div>
           </PreferenceRow>
           {browserSetup ? (
             <div className="browser-extension-setup-guide">
-              <div className="browser-extension-setup-progress"><span className="done"><Check size={14} />Extension prepared</span><span className="done"><Check size={14} />Absolute path copied</span><span className="done"><Check size={14} />Folder opened</span><span className={browserConnectionCheck === "connected" ? "done" : "pending"}>{browserConnectionCheck === "connected" ? <Check size={14} /> : <RefreshCw size={14} />} {browserConnectionCheck === "connected" ? "Connected" : browserConnectionCheck === "checking" ? "Waiting for connection" : "Not connected yet"}</span></div>
-              <div className="browser-extension-manual-steps">
-                <strong>Two browser-confirmed steps remain</strong>
-                <ol><li>On <code>{browserSetup.managementUrl}</code>, turn on <b>Developer mode</b>.</li><li>Choose <b>Load unpacked</b>. In the folder picker address bar, paste the exact path below, press Enter, then choose <b>Select folder</b>. Do not enter another nested folder.</li></ol>
-              </div>
+              <div className="browser-extension-setup-progress"><span className="done"><Check size={14} />Extension files updated</span>{browserSetup.manualInstallRequired ? <span className="done"><Check size={14} />Path copied</span> : null}<span className={browserConnectionCheck === "connected" ? "done" : "pending"}>{browserConnectionCheck === "connected" ? <Check size={14} /> : <RefreshCw size={14} />} {browserConnectionCheck === "connected" ? `Version ${browserSetup.desiredVersion} connected` : browserConnectionCheck === "checking" ? "Applying update" : "Browser confirmation needed"}</span></div>
+              {browserSetup.manualInstallRequired ? <div className="browser-extension-manual-steps">
+                <strong>First installation: two browser-confirmed steps remain</strong>
+                <ol><li>On <code>{browserSetup.managementUrl}</code>, turn on <b>Developer mode</b>.</li><li>Choose <b>Load unpacked</b>. In the folder picker address bar, paste the exact path below, press Enter, then choose <b>Select folder</b>.</li></ol>
+              </div> : <div className="browser-extension-manual-steps"><strong>Update is automatic</strong><span>The installed bridge detects the new files, reloads itself, and reconnects. For the first update from an older build, use “Open setup” once and click Reload.</span></div>}
               <code className="browser-extension-path">{browserSetup.extensionPath}</code>
-              <div className="settings-inline-actions browser-extension-actions"><button className="mature-action-button secondary" type="button" onClick={() => void copyText(browserSetup.extensionPath, "Absolute extension path copied.")}><Copy size={14} />Copy path</button><button className="mature-action-button secondary" type="button" onClick={() => void window.loom.revealPath(browserSetup.extensionPath)}><FolderOpen size={14} />Open folder</button><button className="mature-action-button secondary" type="button" onClick={() => void setupBrowserExtension(browserSetup.browser)}><RefreshCw size={14} />Reopen setup</button><button className="mature-action-button" type="button" onClick={() => void checkBrowserExtensionConnection()}><Activity size={14} />Check connection</button></div>
+              <div className="settings-inline-actions browser-extension-actions"><button className="mature-action-button secondary" type="button" onClick={() => void copyText(browserSetup.extensionPath, "Absolute extension path copied.")}><Copy size={14} />Copy path</button><button className="mature-action-button secondary" type="button" onClick={() => void window.loom.revealPath(browserSetup.extensionPath)}><FolderOpen size={14} />Open folder</button><button className="mature-action-button secondary" type="button" onClick={() => void window.loom.setupBrowserExtension(browserSetup.browser, false)}><RefreshCw size={14} />Open setup</button><button className="mature-action-button" type="button" onClick={() => void checkBrowserExtensionConnection()}><Activity size={14} />Check version</button></div>
               {browserSetup.openError || browserSetup.folderError ? <div className="settings-callout-inline"><CircleAlert size={15} /><span>Loom could not open one of the setup windows automatically. Use “Open folder” and “Reopen setup” above. {browserSetup.openError || browserSetup.folderError}</span></div> : null}
             </div>
           ) : null}

@@ -109,6 +109,13 @@ def test_work_tabs_use_a_named_browser_group(background):
     assert 'color: "purple"' in body
 
 
+def test_installed_extension_can_reload_itself_after_desktop_update(background):
+    assert 'chrome.runtime.getURL("extension-update.json")' in background
+    assert "UPDATE_TOKEN_KEY" in background
+    assert "chrome.runtime.reload()" in background
+    assert "startInstalledUpdateWatcher()" in background
+
+
 def test_click_reports_whether_a_navigation_is_coming(background):
     assert "navigationExpectedFor" in background
     click_body = _function_body(background, "clickElement")

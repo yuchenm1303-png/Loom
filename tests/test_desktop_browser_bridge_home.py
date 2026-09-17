@@ -17,3 +17,11 @@ def test_unpacked_extension_uses_a_stable_absolute_install_folder():
     assert 'path.join(app.getPath("home"), ".loom", "browser", "current-tab-extension")' in source
     assert 'shell.openPath(target)' in source
     assert 'clipboard.writeText(target)' in source
+
+
+def test_existing_extension_updates_without_reopening_browser_setup():
+    source = MAIN.read_text(encoding="utf-8")
+    assert "extensionConnected = false" in source
+    assert 'path.join(target, "extension-update.json")' in source
+    assert "automaticUpdateRequested: extensionConnected" in source
+    assert "if (!extensionConnected && executable)" in source
