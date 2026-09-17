@@ -427,10 +427,14 @@ def prepare_context(rt, session, step, token):
     if accounting_source == "fallback_estimate":
         projected_active_context_tokens = estimated_projected
 
-    # Message count is not a normal Codex auto-compaction clock. Keep max_messages
-    # only as a post-compaction replacement guard; normal turns compact on model
-    # token accounting or when the projected request still cannot fit.
-    hard_request_fits = estimated_projected <= limits.input_budget_tokens
+    # Keep Loom's legacy message-count safety cap as a secondary compaction
+    # trigger. It is not the normal token clock, but compacting here prevents the
+    # outer TurnRunner guard from terminating a turn when a safe checkpoint can
+    # still reduce the request.
+    hard_request_fits = (
+        estimated_projected <= limits.input_budget_tokens
+        and len(projected_visible) <= rt.limits.max_messages
+    )
     token_limit_reached = (
         projected_active_context_tokens >= limits.auto_compact_token_limit
     )
