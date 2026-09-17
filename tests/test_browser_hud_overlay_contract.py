@@ -22,14 +22,14 @@ def test_browser_hud_is_standalone_and_keeps_dom_target_overlay() -> None:
     assert "__loomBrowserHudStandaloneV1" in browser_hud
     assert "cloneNode(true)" not in browser_hud
     assert "loom-browser-computer-hud-root" in browser_hud  # legacy cleanup only
-    assert "IDLE_HIDE_MS = 60000" in browser_hud
     assert "sourceObserver.observe" in browser_hud
 
     # Real DOM geometry drives a persistent virtual cursor and action metadata.
     assert "getBoundingClientRect()" in browser_hud
     assert "DOM exact" in browser_hud
     assert "browser + DOM" in browser_hud
-    assert "cursor hidden" in browser_hud
+    assert 'id="cursor" class="cursor"' in browser_hud
+    assert 'class="cursor hidden"' not in browser_hud
     assert "clicking" in browser_hud
 
     for token in ("class=\"edge\"", "class=\"pill\"", "id=\"cursor\"", "class=\"bubble\"", "id=\"timeline\""):
@@ -41,12 +41,8 @@ def test_browser_hud_is_injected_into_existing_tabs_after_extension_reload() -> 
     worker = (EXT / "bridge-worker.js").read_text(encoding="utf-8")
 
     assert manifest["background"]["service_worker"] == "bridge-worker.js"
-    # Not pinned to one exact version: reload repair depends on the worker and the
-    # content scripts below, never on the version string, so an exact pin only
-    # turned every unrelated extension change into a failure of this HUD test.
-    # The floor is the release that introduced the standalone HUD.
     version = tuple(int(part) for part in str(manifest["version"]).split("."))
-    assert version >= (0, 1, 6)
+    assert version >= (0, 1, 8)
     scripts = manifest.get("content_scripts", [])[0]["js"]
     assert scripts == ["browser-hud.js"]
 
@@ -82,17 +78,25 @@ def test_browser_hud_tracks_computer_visual_language_without_sharing_lifecycle()
     assert "cloneNode(true)" not in browser_hud
 
 
-def test_browser_hud_stays_alive_between_actions_and_hides_on_real_user_takeover() -> None:
+def test_browser_hud_stays_visible_during_user_interaction() -> None:
     browser_hud = (EXT / "browser-hud.js").read_text(encoding="utf-8")
 
-    # The renderer host persists; only visibility changes after a long idle window.
-    assert "renderer.hud.classList.remove('live')" in browser_hud
+    # Browser HUD is a persistent session indicator: actions update state but do
+    # not start an idle timer or remove the renderer host.
+    assert "view.hud.classList.add('live')" in browser_hud
     assert "host.remove()" not in browser_hud
-    assert "setTimeout(hide, IDLE_HIDE_MS)" in browser_hud
+    assert "IDLE_HIDE_MS" not in browser_hud
+    assert "setTimeout(hide" not in browser_hud
 
-    # A real human taking back the page dismisses the overlay without relying on
-    # browser actions tearing the renderer down.
-    assert "event.isTrusted" in browser_hud
-    assert "pointerdown" in browser_hud
-    assert "keydown" in browser_hud
-    assert "wheel" in browser_hud
+    # A human click, key press, or wheel event must not dismiss Loom's Browser HUD.
+    assert "event.isTrusted" not in browser_hud
+    assert "userTakesOver" not in browser_hud
+    assert "addEventListener('pointerdown'" not in browser_hud
+    assert "addEventListener('keydown'" not in browser_hud
+    assert "addEventListener('wheel'" not in browser_hud
+
+    # With no fresh DOM target the virtual cursor keeps its last coordinates (or
+    # the initial viewport-centre position) instead of becoming invisible.
+    assert "lastX = width * 0.5" in browser_hud
+    assert "lastY = height * 0.46" in browser_hud
+    assert 'id="cursor" class="cursor"' in browser_hud
