@@ -332,9 +332,7 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
         store = _store(runtime)
         browser_id = str(arguments["browser_id"])
         store.ensure_revision(context.session_id, browser_id, int(arguments["state_revision"]))
-        raw_value = arguments["text"]
-        resolver = getattr(runtime, "consume_browser_type_text", None)
-        text = str(resolver(raw_value)) if callable(resolver) else str(raw_value)
+        text = str(arguments["text"])
         if len(text) > 20_000:
             raise ValueError("browser_type text exceeds 20,000 characters")
         store.type_text(
@@ -1038,10 +1036,8 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
                 name="browser_type",
                 description=(
                     "Type the exact string supplied in text into an element from the latest browser_state. Pass ordinary "
-                    "text such as names, URLs, and form values directly; never construct or reuse a "
-                    "loom-transient-browser-text reference. Loom moves the string through a one-shot in-memory boundary "
-                    "internally before execution, so the opaque reference seen in durable history is not tool input. "
-                    "Browser v1 has no automatic credential store or secret injection channel."
+                    "text such as names, URLs, and form values directly; the text is handled as a normal tool argument "
+                    "and entered as supplied. Browser v1 has no automatic credential store or secret injection channel."
                 ),
                 input_schema=_schema(
                     {
