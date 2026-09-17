@@ -432,6 +432,9 @@ def prepare_context(rt, session, step, token):
 
     trimmed_messages = 0
     transport_retries = 0
+    response_retries = 0
+    response_attempts = 0
+    summary_usage = ModelUsage()
     response: ModelResponse | None = None
     max_output_tokens = max(1, limits.output_reserve_tokens)
 
@@ -489,12 +492,33 @@ def prepare_context(rt, session, step, token):
 
         if not isinstance(candidate, ModelResponse):
             raise TypeError("compaction model must return ModelResponse")
+        response_attempts += 1
+        summary_usage = ModelUsage(
+            input_tokens=summary_usage.input_tokens + candidate.usage.input_tokens,
+            output_tokens=summary_usage.output_tokens + candidate.usage.output_tokens,
+            total_tokens=summary_usage.total_tokens + candidate.usage.total_tokens,
+        )
+        if candidate.tool_calls or not str(candidate.text or "").strip():
+            if response_retries >= rt.limits.model_retries:
+                reason = "unexpected tool calls" if candidate.tool_calls else "an empty summary"
+                raise RuntimeError(
+                    f"context compaction model repeatedly returned {reason}"
+                )
+            response_retries += 1
+            # Historical native calls can prime compatible providers to keep
+            # acting even though compaction is text-only. Retry from a smaller
+            # complete history unit; canonical history remains untouched and is
+            # still what the eventual checkpoint archives.
+            if len(compact_input) > 1:
+                previous = len(compact_input)
+                compact_input = _trim_oldest_compaction_unit(compact_input)
+                trimmed_messages += previous - len(compact_input)
+            transport_retries = 0
+            continue
         response = candidate
         break
 
     _raise_if_cancelled(token)
-    if response.tool_calls:
-        raise RuntimeError("context compaction model returned unexpected tool calls")
     summary = str(response.text or "").strip() or "(no summary available)"
 
     replacement = build_compacted_history(
@@ -528,7 +552,7 @@ def prepare_context(rt, session, step, token):
         archived=tuple(repair.messages),
         retained=(),
         summary_source="auto",
-        summary_usage=response.usage,
+        summary_usage=summary_usage,
         replacement_override=replacement,
     )
 
@@ -546,7 +570,7 @@ def prepare_context(rt, session, step, token):
     metadata.update(
         {
             "auto_compacted": True,
-            "compaction_attempts": 1,
+            "compaction_attempts": response_attempts,
             "compaction_trimmed_messages": trimmed_messages,
         }
     )

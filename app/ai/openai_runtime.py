@@ -17,6 +17,7 @@ from .contracts import (
     StructuredRequest,
     TextPart,
     ToolCall,
+    ToolChoice,
 )
 from .errors import AIEmptyResponseError, AIResponseError, AITransportError
 from .profiles import ModelProfile
@@ -227,6 +228,12 @@ class OpenAIChatBackend:
         if request.tools:
             kwargs["tools"] = [_tool_payload(tool) for tool in request.tools]
             kwargs["tool_choice"] = request.tool_choice.value
+        elif request.tool_choice is ToolChoice.NONE:
+            # A no-tools request is not enough for every OpenAI-compatible
+            # provider to disable tool generation.  Compaction and other
+            # internal text-only tasks can contain historical tool calls, so
+            # preserve the caller's explicit protocol boundary on the wire.
+            kwargs["tool_choice"] = ToolChoice.NONE.value
         if request.temperature is not None:
             kwargs["temperature"] = request.temperature
         if request.max_output_tokens is not None:

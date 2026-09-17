@@ -230,6 +230,30 @@ def test_compatible_provider_omits_auto_but_preserves_explicit_image_detail():
     }
 
 
+def test_text_only_request_sends_explicit_tool_choice_none_to_compatible_provider():
+    backend = OpenAIStreamingChatBackend(
+        connection=ProviderConnection(
+            provider_id="test-provider",
+            adapter=ProviderAdapter.OPENAI_COMPATIBLE,
+            credential_ref=CredentialRef.runtime("test-key"),
+            base_url="https://example.invalid/v1",
+        ),
+        profile=_profile(),
+        api_key="secret-for-test-only",
+        client=SimpleNamespace(chat=SimpleNamespace(completions=RecordingCompletions([]))),
+    )
+    request = ChatRequest(
+        messages=(AIMessage(role=MessageRole.USER, content="summarize"),),
+        tools=(),
+        tool_choice="none",
+    )
+
+    kwargs = backend._request_kwargs(request)
+
+    assert "tools" not in kwargs
+    assert kwargs["tool_choice"] == "none"
+
+
 def test_permanent_provider_rejection_preserves_non_retryable_classification():
     completions = FailingCompletions(ProviderFailure(402, "Insufficient Balance"))
     backend = OpenAIStreamingChatBackend(

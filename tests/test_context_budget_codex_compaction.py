@@ -211,6 +211,54 @@ def test_context_window_error_drops_oldest_logical_tool_group_then_retries():
     assert archived[1].tool_call_id == "call-1"
 
 
+def test_unexpected_compaction_tool_call_retries_without_failing_turn():
+    unexpected = ToolCall(call_id="call-compact", name="exec", arguments={"cmd": "git status"})
+    runtime = FakeRuntime([
+        ModelResponse(
+            tool_calls=(unexpected,),
+            finish_reason="tool_calls",
+            usage=ModelUsage(input_tokens=100, output_tokens=10, total_tokens=110),
+        ),
+        ModelResponse(
+            text="safe summary",
+            finish_reason="stop",
+            usage=ModelUsage(input_tokens=80, output_tokens=20, total_tokens=100),
+        ),
+    ])
+    session = Session(_history())
+
+    _messages, metadata = prepare_context(runtime, session, Step(), Token())
+
+    assert len(runtime.model_executor.requests) == 2
+    assert runtime.commits[-1]["summary"] == "safe summary"
+    assert runtime.commits[-1]["summary_usage"] == ModelUsage(
+        input_tokens=180,
+        output_tokens=30,
+        total_tokens=210,
+    )
+    assert metadata["compaction_attempts"] == 2
+    assert metadata["compaction_trimmed_messages"] > 0
+
+
+def test_repeated_compaction_tool_calls_fail_only_after_retry_budget():
+    unexpected = ModelResponse(
+        tool_calls=(ToolCall(call_id="call-compact", name="exec", arguments={}),),
+        finish_reason="tool_calls",
+    )
+    runtime = FakeRuntime([unexpected, unexpected, unexpected])
+    session = Session(_history())
+
+    try:
+        prepare_context(runtime, session, Step(), Token())
+    except RuntimeError as exc:
+        assert "repeatedly returned unexpected tool calls" in str(exc)
+    else:
+        raise AssertionError("invalid compaction responses must exhaust the retry budget")
+
+    assert len(runtime.model_executor.requests) == runtime.limits.model_retries + 1
+    assert runtime.commits == []
+
+
 def test_replacement_history_contains_real_users_and_summary_not_tool_or_assistant_items():
     call = ToolCall(call_id="call-2", name="echo", arguments={"text": "x"})
     history = [
