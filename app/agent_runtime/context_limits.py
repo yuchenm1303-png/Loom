@@ -9,9 +9,10 @@ from typing import Any
 class ResolvedContextLimits:
     """One model step's resolved context window and compaction threshold.
 
-    ``tool_output_token_limit`` and ``recent_user_token_limit`` remain for API
-    compatibility with Loom product code, but Codex-parity compaction does not
-    use them as prompt-time emergency reducers.
+    ``tool_output_token_limit`` is the request-only budget used to keep very
+    large historical tool observations from forcing a full model compaction.
+    Durable history remains unchanged. ``recent_user_token_limit`` is retained
+    for compatibility with existing product/runtime contracts.
     """
 
     context_window_tokens: int
@@ -65,9 +66,14 @@ def resolve_context_limits(rt: Any, session: Any) -> ResolvedContextLimits:
     """Resolve the current model step's window using Codex-compatible defaults.
 
     Codex derives the default automatic compaction threshold from the model's
-    resolved context window (90%), not from a locally estimated request input
-    budget. Re-running this function for every model step also means a profile /
-    model change immediately changes the threshold.
+    resolved *raw* context window (90%). The effective-window percentage is a
+    separate hard usability cap. Re-running this function for every model step
+    also means a profile/model change immediately changes the threshold.
+
+    Unknown/custom models use AgentLimits' Codex-aligned 272k fallback and a
+    conservative 95% effective window instead of silently behaving like 32k
+    models. Explicit environment overrides and authoritative model-profile
+    metadata remain higher priority.
 
     Current Loom model-profile metadata has no field for Codex's optional
     ``body_after_prefix`` scope and no AutoCompactWindow prefill baseline. The
@@ -105,7 +111,7 @@ def resolve_context_limits(rt: Any, session: Any) -> ResolvedContextLimits:
         source = "model_profile"
     else:
         context_window = fallback_window
-        effective_window = fallback_window
+        effective_window = max(1, context_window * 95 // 100)
         source = "runtime_fallback"
 
     if env_reserve is not None:
@@ -127,9 +133,11 @@ def resolve_context_limits(rt: Any, session: Any) -> ResolvedContextLimits:
 
     configured_auto = getattr(profile_limits, "auto_compact_token_limit", None)
     if configured_auto is None:
-        auto_compact = effective_window * 9 // 10
+        auto_compact = context_window * 9 // 10
     else:
         auto_compact = int(configured_auto)
+    # The effective window remains the hard upper bound even if a custom profile
+    # supplies an inconsistent threshold.
     auto_compact = max(1, min(auto_compact, effective_window))
 
     configured_tool = getattr(profile_limits, "tool_output_token_limit", None)
