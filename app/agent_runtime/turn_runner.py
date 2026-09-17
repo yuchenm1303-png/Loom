@@ -7,6 +7,7 @@ from app.ai import AIMessage, ChatRequest, MessageRole, ModelResponse, ModelUsag
 from app.ai.errors import AIEmptyResponseError, AIResponseError, AITransportError
 from app.ai.execution_control import ModelCancelled, ModelSteered
 
+from .context_budget import is_context_window_error, request_forced_compaction
 from .contracts import AgentEventKind as Event
 from .contracts import AgentStatus
 from .execution_binding import action_binding_digest
@@ -224,10 +225,19 @@ class TurnRunner:
                             retry_sampling = True
                             break
                         except AIResponseError as exc:
+                            # An over-length rejection is not a malformed response:
+                            # the request was valid and simply did not fit. Retrying
+                            # it verbatim cannot work, and the recovery instruction
+                            # below would only make it longer. Compact instead.
+                            over_length = is_context_window_error(exc)
                             session.model_steps += 1
                             rt._record(session, Event.MODEL_RESPONSE_REJECTED, data={
                                 "step_id": step.step_id,
-                                "reason": "invalid_provider_response",
+                                "reason": (
+                                    "context_window_exceeded"
+                                    if over_length
+                                    else "invalid_provider_response"
+                                ),
                                 "error_type": type(exc).__name__,
                                 "error": str(exc),
                                 "attempt": attempt,
@@ -239,11 +249,20 @@ class TurnRunner:
                             })
                             rt._release_step_context(step)
                             if attempt >= rt.limits.model_retries:
+                                if over_length:
+                                    raise RuntimeError(
+                                        "model context window is smaller than the configured limits "
+                                        f"and compaction could not recover: {exc}"
+                                    ) from exc
                                 raise RuntimeError(
                                     f"model repeatedly returned malformed responses: {exc}"
                                 ) from exc
                             attempt += 1
-                            recovery_instruction = "invalid_provider_response"
+                            if over_length:
+                                request_forced_compaction(rt, session)
+                                recovery_instruction = ""
+                            else:
+                                recovery_instruction = "invalid_provider_response"
                             recovery_partial = ""
                             retry_sampling = True
                             break

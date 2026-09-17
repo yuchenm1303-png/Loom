@@ -135,9 +135,37 @@ def safe_split(messages, keep=12):
     return max((index for index in candidates if index <= desired), default=0), last_user
 
 
-def _looks_like_context_window_error(exc: BaseException) -> bool:
+def is_context_window_error(exc: BaseException) -> bool:
+    """Whether a provider rejected a request for being too long for the model."""
     text = str(exc or "").casefold()
     return any(marker in text for marker in _CONTEXT_WINDOW_ERROR_MARKERS)
+
+
+def request_forced_compaction(rt, session) -> None:
+    """Make the next ``prepare_context`` compact even if its budget says it fits.
+
+    A provider that rejects a request as too long is the only authoritative
+    statement about that model's real window. Loom's own limits were wrong by
+    definition at that point, so retrying the same request — which is what
+    malformed-response recovery does — cannot succeed.
+    """
+    sessions = getattr(rt, "_forced_compaction_sessions", None)
+    if sessions is None:
+        sessions = set()
+        rt._forced_compaction_sessions = sessions
+    sessions.add(str(getattr(session, "session_id", "") or ""))
+
+
+def _consume_forced_compaction(rt, session) -> bool:
+    """Read and clear the one-shot flag so a forced pass never repeats itself."""
+    sessions = getattr(rt, "_forced_compaction_sessions", None)
+    if not sessions:
+        return False
+    key = str(getattr(session, "session_id", "") or "")
+    if key not in sessions:
+        return False
+    sessions.discard(key)
+    return True
 
 
 def _latest_provider_context_tokens(rt, session) -> int | None:
@@ -522,8 +550,12 @@ def prepare_context(rt, session, step, token):
     # trigger. It is not the normal token clock, but compacting here prevents the
     # outer TurnRunner guard from terminating a turn when a safe checkpoint can
     # still reduce the request.
+    # A provider that already rejected this history as too long outranks every
+    # local budget below, so that verdict forces one compaction pass.
+    forced_compaction = _consume_forced_compaction(rt, session)
     hard_request_fits = (
-        calibrated(estimated_projected) <= limits.input_budget_tokens
+        not forced_compaction
+        and calibrated(estimated_projected) <= limits.input_budget_tokens
         and len(projected_visible) <= rt.limits.max_messages
     )
     token_limit_reached = (
@@ -608,7 +640,7 @@ def prepare_context(rt, session, step, token):
         except ModelCancelled:
             raise
         except (AITransportError, AIResponseError, TimeoutError) as exc:
-            if _looks_like_context_window_error(exc):
+            if is_context_window_error(exc):
                 if len(compact_input) <= 1:
                     raise
                 previous = len(compact_input)
@@ -720,6 +752,7 @@ def prepare_context(rt, session, step, token):
             "auto_compacted": True,
             "compaction_attempts": response_attempts,
             "compaction_trimmed_messages": trimmed_messages,
+            "forced_by_provider_context_error": forced_compaction,
         }
     )
     return committed_visible, metadata
@@ -729,6 +762,8 @@ __all__ = [
     "ContextBudgetExceeded",
     "estimate_tokens",
     "estimate_tool_schema_tokens",
+    "is_context_window_error",
     "prepare_context",
+    "request_forced_compaction",
     "safe_split",
 ]
