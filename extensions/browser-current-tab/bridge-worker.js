@@ -1,7 +1,7 @@
 import './background.js';
 
-const HUD_SCRIPTS = ['hud-computer-overlay.js', 'hud-computer-host.js'];
-const INSTALL_KEY = '__loomBrowserHudHostV2';
+const HUD_SCRIPTS = ['browser-hud.js'];
+const INSTALL_KEY = '__loomBrowserHudStandaloneV1';
 const isWebUrl = (value) => /^https?:\/\//i.test(String(value || ''));
 
 async function hudHostInstalled(tabId) {
@@ -44,6 +44,5 @@ chrome.tabs.onActivated.addListener(({ tabId }) => {
 });
 
 // Manifest content scripts own normal navigations. This startup pass exists for
-// the one case manifest scripts cannot repair by themselves: tabs that were
-// already open when an unpacked extension was reloaded/upgraded.
+// tabs that were already open when an unpacked extension was reloaded/upgraded.
 void repairExistingTabs();
