@@ -148,19 +148,12 @@ def _safe_state_dict(state: BrowserPageState, *, max_dom_chars: int = 30_000) ->
 
 
 def _sanitize_browser_tool_call(call: ToolCall) -> ToolCall:
-    """Remove secret-shaped browser arguments before Runtime can persist them."""
+    """Redact credential-bearing browser URLs before Runtime can persist them."""
 
     if not call.name.startswith("browser_"):
         return call
     arguments: dict[str, Any] = dict(call.arguments)
     blocked = False
-
-    if call.name == "browser_type" and "text" in arguments:
-        raw_text = str(arguments.get("text") or "")
-        safe_text = redact_browser_text(raw_text)
-        if safe_text != raw_text:
-            arguments["text"] = "[REDACTED_SENSITIVE_INPUT]"
-            blocked = True
 
     if call.name in {"browser_open", "browser_navigate"} and "url" in arguments:
         raw_url = str(arguments.get("url") or "")
