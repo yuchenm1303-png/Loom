@@ -101,7 +101,30 @@ def test_navigation_never_overwrites_an_unrelated_personal_tab(background):
     assert "isLoomWorkTab(current)" in resolver
     assert "return { create: true, tab: current }" in resolver
     assert "placeInLoomGroup" in navigate
-    assert 'chrome.tabs.create({ url, active: true })' in navigate
+
+
+def test_loom_works_beside_the_user_instead_of_taking_the_foreground(background):
+    """Every navigate fronted Loom's tab, pulling the user off their own page.
+
+    Scripting, navigation and DOM capture all work on a background tab, so there
+    is no reason to steal focus: Loom should open its own tab quietly and leave
+    the user where they are, which is the whole point of the purple group.
+    """
+
+    navigate = _function_body(background, "navigate")
+    assert "active: true" not in navigate, "navigate steals the foreground from the user"
+    assert "chrome.tabs.create({ url, active: false })" in navigate
+    assert "chrome.tabs.update(destination.tab.id, { url })" in navigate
+
+    # Screenshots are the one exception - captureVisibleTab only returns the
+    # visible tab - so they front Loom's tab briefly and hand focus back.
+    shot = _function_body(background, "screenshot")
+    assert "captureVisibleTab" in shot
+    assert "active: true" in shot
+    assert "restore" in shot
+
+    # An explicit switch is still an explicit switch.
+    assert "active: true" in _function_body(background, "switchTab")
 
 
 def test_work_tabs_use_a_named_browser_group(background):
@@ -138,12 +161,16 @@ def test_extension_update_never_reloads_during_a_browser_command(background):
 
 
 def test_tab_ownership_is_explicit_and_session_scoped(background):
+    store = _function_body(background, "ownedTabIds")
     ownership = _function_body(background, "isLoomWorkTab")
     resolver = _function_body(background, "resolveNavigationDestination")
-    assert "chrome.storage.session" in ownership
-    assert "OWNED_TAB_IDS_KEY" in ownership
+    assert "chrome.storage.session" in store
+    assert "OWNED_TAB_IDS_KEY" in store
+    # Ownership is a recorded fact, never inferred from what the tab looks like:
+    # matching on the group title would claim any tab the user put in a group
+    # they happened to name the same thing.
     assert "group?.title" not in ownership
-    assert "placeInLoomGroup(exact)" in resolver
+    assert "placeInLoomGroup(exact" in resolver
 
 
 def test_adopting_a_user_tab_makes_the_adoption_visible(background):
@@ -159,24 +186,44 @@ def test_adopting_a_user_tab_makes_the_adoption_visible(background):
     assert "markLoomWorkTab(exact)" not in resolver, (
         "adopting a user tab without grouping it leaves the takeover invisible"
     )
-    assert "placeInLoomGroup(exact)" in resolver
+    assert "placeInLoomGroup(exact" in resolver
 
 
-def test_tab_ownership_is_handed_back_when_the_session_closes(background):
-    """Ownership outlives a Loom session, so it needs an explicit release.
+def test_only_borrowed_tabs_are_handed_back_when_the_session_closes(background):
+    """Releasing Loom's own tabs too made it fight the user for the foreground.
 
-    storage.session lives as long as the browser does. Without a hand-back, a tab
-    adopted for one task stayed Loom's for every later task, which would navigate
-    it away even after the user went back to using it themselves.
+    A tab borrowed from the user must be given back, or a later task navigates
+    away a page they returned to. A tab Loom opened itself must not be: releasing
+    those meant the next session did not recognise the tab it had just been
+    working in, so it opened another one every time - observed in a real Edge as
+    four tabs for one task, each stealing focus from what the user was reading.
     """
 
     release = _function_body(background, "releaseTabs")
-    assert "OWNED_TAB_IDS_KEY" in release
-    assert "ELEMENT_IDS_KEY" in release
+    assert "ADOPTED_TAB_IDS_KEY" in release
+    assert "OWNED_TAB_IDS_KEY" not in release, "releasing Loom's own tabs makes every session open another"
     # The group is the user's visible record of which tabs Loom touched, and the
     # next session reuses it rather than stacking up a second "Loom" group.
     assert "OWNED_GROUP_IDS_KEY" not in release
     assert '"release_tabs"' in _function_body(background, "dispatchCommand")
+
+    # The two kinds have to be recorded apart for the above to mean anything.
+    mark = _function_body(background, "markLoomWorkTab")
+    assert "ADOPTED_TAB_IDS_KEY" in mark and "OWNED_TAB_IDS_KEY" in mark
+    assert "adopted: true" in _function_body(background, "resolveNavigationDestination")
+
+
+def test_navigation_reuses_loom_own_tab_rather_than_the_users_focus(background):
+    """A session binds to whatever the user was looking at, which is not Loom's tab.
+
+    Deciding create-vs-reuse from that tab alone meant every session concluded it
+    had no work tab and opened a new one, pulling the foreground away each time.
+    Loom's own tab in the window is the work tab wherever the user's attention is.
+    """
+
+    resolver = _function_body(background, "resolveNavigationDestination")
+    assert "ownedTabIds()" in resolver
+    assert "own.includes(candidate.id)" in resolver
 
 
 def test_element_identity_survives_a_service_worker_restart(background):

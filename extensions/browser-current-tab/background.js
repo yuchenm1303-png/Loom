@@ -10,6 +10,7 @@ const UPDATE_TOKEN_KEY = "loomBrowserBridgeUpdateToken";
 const UPDATE_ALARM_NAME = "loom-browser-bridge-update";
 const LOOM_TAB_GROUP_TITLE = "Loom";
 const OWNED_TAB_IDS_KEY = "loomOwnedTabIds";
+const ADOPTED_TAB_IDS_KEY = "loomAdoptedTabIds";
 const OWNED_GROUP_IDS_KEY = "loomOwnedGroupIds";
 // Element identity has to outlive the service worker. MV3 tears the worker down
 // between commands, and the plain Map this replaces came back empty while Loom's
@@ -220,25 +221,39 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   requestInstalledUpdateCheck();
 });
 
-async function isLoomWorkTab(tab) {
-  if (!tab || typeof tab.id !== "number") return false;
-  const stored = await chrome.storage.session.get(OWNED_TAB_IDS_KEY);
-  return Array.isArray(stored[OWNED_TAB_IDS_KEY]) && stored[OWNED_TAB_IDS_KEY].includes(tab.id);
+// Two kinds of ownership, and they end differently. A tab Loom opened itself is
+// Loom's until it is closed: later sessions must recognise it, or every session
+// opens another one. A tab borrowed from the user is theirs, and holding it past
+// the session is what lets a later task navigate away a page they went back to.
+async function ownedTabIds() {
+  const stored = await chrome.storage.session.get([OWNED_TAB_IDS_KEY, ADOPTED_TAB_IDS_KEY]);
+  const own = Array.isArray(stored[OWNED_TAB_IDS_KEY]) ? stored[OWNED_TAB_IDS_KEY] : [];
+  const adopted = Array.isArray(stored[ADOPTED_TAB_IDS_KEY]) ? stored[ADOPTED_TAB_IDS_KEY] : [];
+  return { own, adopted, all: [...new Set([...own, ...adopted])] };
 }
 
-async function markLoomWorkTab(tab) {
+async function isLoomWorkTab(tab) {
+  if (!tab || typeof tab.id !== "number") return false;
+  return (await ownedTabIds()).all.includes(tab.id);
+}
+
+async function markLoomWorkTab(tab, { adopted = false } = {}) {
   if (!tab || typeof tab.id !== "number") return tab;
-  const stored = await chrome.storage.session.get(OWNED_TAB_IDS_KEY);
-  const ids = new Set(Array.isArray(stored[OWNED_TAB_IDS_KEY]) ? stored[OWNED_TAB_IDS_KEY] : []);
+  const key = adopted ? ADOPTED_TAB_IDS_KEY : OWNED_TAB_IDS_KEY;
+  const stored = await chrome.storage.session.get(key);
+  const ids = new Set(Array.isArray(stored[key]) ? stored[key] : []);
   ids.add(tab.id);
-  await chrome.storage.session.set({ [OWNED_TAB_IDS_KEY]: [...ids] });
+  await chrome.storage.session.set({ [key]: [...ids] });
   return tab;
 }
 
 async function forgetLoomWorkTab(tabId) {
-  const stored = await chrome.storage.session.get(OWNED_TAB_IDS_KEY);
-  const ids = Array.isArray(stored[OWNED_TAB_IDS_KEY]) ? stored[OWNED_TAB_IDS_KEY] : [];
-  await chrome.storage.session.set({ [OWNED_TAB_IDS_KEY]: ids.filter((id) => id !== tabId) });
+  const stored = await chrome.storage.session.get([OWNED_TAB_IDS_KEY, ADOPTED_TAB_IDS_KEY]);
+  const drop = (key) => {
+    const ids = Array.isArray(stored[key]) ? stored[key] : [];
+    return { [key]: ids.filter((id) => id !== tabId) };
+  };
+  await chrome.storage.session.set({ ...drop(OWNED_TAB_IDS_KEY), ...drop(ADOPTED_TAB_IDS_KEY) });
   await forgetElements(tabId);
 }
 
@@ -247,19 +262,19 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 });
 
 async function releaseTabs() {
-  // Ownership lives in storage.session, which outlives one Loom browser session,
-  // so without an explicit hand-back a tab adopted for one task stays Loom's for
-  // the rest of the browser's life and the next task silently navigates it away.
-  // The group itself is left alone: the tabs stay where the user can see them,
-  // and the next session reuses the group instead of stacking up a second one.
-  const stored = await chrome.storage.session.get(OWNED_TAB_IDS_KEY);
-  const released = Array.isArray(stored[OWNED_TAB_IDS_KEY]) ? stored[OWNED_TAB_IDS_KEY].length : 0;
-  await chrome.storage.session.remove([OWNED_TAB_IDS_KEY, ELEMENT_IDS_KEY]);
+  // Only the borrowed ones. Releasing Loom's own tabs too made every new session
+  // fail to recognise the tab it had just been working in, so it opened another,
+  // and another - it fought the user for the foreground instead of staying put.
+  // The group is left alone: the tabs stay visible and the next session reuses
+  // the group rather than stacking up a second one.
+  const stored = await chrome.storage.session.get(ADOPTED_TAB_IDS_KEY);
+  const released = Array.isArray(stored[ADOPTED_TAB_IDS_KEY]) ? stored[ADOPTED_TAB_IDS_KEY].length : 0;
+  await chrome.storage.session.remove(ADOPTED_TAB_IDS_KEY);
   return { released };
 }
 
-async function placeInLoomGroup(tab) {
-  if (!chrome.tabGroups || typeof tab?.id !== "number") return markLoomWorkTab(tab);
+async function placeInLoomGroup(tab, { adopted = false } = {}) {
+  if (!chrome.tabGroups || typeof tab?.id !== "number") return markLoomWorkTab(tab, { adopted });
   try {
     const stored = await chrome.storage.session.get(OWNED_GROUP_IDS_KEY);
     const groupsByWindow = { ...(stored[OWNED_GROUP_IDS_KEY] || {}) };
@@ -276,10 +291,10 @@ async function placeInLoomGroup(tab) {
     await chrome.tabGroups.update(groupId, { title: LOOM_TAB_GROUP_TITLE, color: "purple", collapsed: false });
     groupsByWindow[String(tab.windowId)] = groupId;
     await chrome.storage.session.set({ [OWNED_GROUP_IDS_KEY]: groupsByWindow });
-    return markLoomWorkTab(await chrome.tabs.get(tab.id));
+    return markLoomWorkTab(await chrome.tabs.get(tab.id), { adopted });
   } catch (cause) {
     console.warn("[loom-browser-bridge] could not place work tab in group", cause);
-    return markLoomWorkTab(tab);
+    return markLoomWorkTab(tab, { adopted });
   }
 }
 
@@ -430,9 +445,16 @@ async function navigate(args) {
   if (isInjectableUrl(destination.tab.url || "")) {
     await inject(destination.tab.id, runPageAction, ["hud_status", { title: "Opening page", subtitle: url }]).catch(() => {});
   }
+  // Loom works beside the user, not in front of them. Activating the tab here
+  // yanked the foreground onto Loom's page on every navigate, so someone reading
+  // their own tab got pulled away at each step. Scripting, navigation and DOM
+  // capture all work on a background tab; the purple group is how the work stays
+  // visible, and browser_switch_tab is there when the model genuinely needs to
+  // front something. Only screenshots need the tab visible, and they hand focus
+  // back afterwards.
   const tab = destination.create
-    ? await placeInLoomGroup(await chrome.tabs.create({ url, active: true }))
-    : await chrome.tabs.update(destination.tab.id, { url, active: true });
+    ? await placeInLoomGroup(await chrome.tabs.create({ url, active: false }))
+    : await chrome.tabs.update(destination.tab.id, { url });
   await waitForTabComplete(tab.id);
   return collectStateForTab(await chrome.tabs.get(tab.id), { showHud: true });
 }
@@ -453,8 +475,20 @@ async function resolveNavigationDestination(args, url) {
   // also hands that tab to Loom: the next navigate to a different URL replaces
   // whatever is on it. Adopting it into the visible Loom group is the only thing
   // that tells the user their tab is now a work tab, so adopt and group together.
-  if (exact) return { create: false, tab: (await isLoomWorkTab(exact)) ? exact : await placeInLoomGroup(exact) };
+  if (exact) {
+    return {
+      create: false,
+      tab: (await isLoomWorkTab(exact)) ? exact : await placeInLoomGroup(exact, { adopted: true }),
+    };
+  }
   if (await isLoomWorkTab(current)) return { create: false, tab: current };
+  // A session binds to whatever the user happened to be looking at, so "current"
+  // is usually their tab, not Loom's. Without this, every session concluded it had
+  // no work tab and opened another one. Loom's own tab in this window is the work
+  // tab regardless of where the user's attention is.
+  const { own } = await ownedTabIds();
+  const mine = candidates.find((candidate) => own.includes(candidate.id));
+  if (mine) return { create: false, tab: mine };
   return { create: true, tab: current };
 }
 
@@ -668,7 +702,22 @@ async function closeTab(args) {
 
 async function screenshot(args) {
   const tab = await tabFromArgs(args);
-  const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "png" });
+  // The one action that cannot run in the background: captureVisibleTab only ever
+  // returns the visible tab, so a background capture would silently hand back a
+  // picture of whatever the user is reading. Front Loom's tab just long enough,
+  // then put the user back where they were.
+  let restore = null;
+  if (!tab.active) {
+    const [previous] = await chrome.tabs.query({ active: true, windowId: tab.windowId });
+    restore = previous && previous.id !== tab.id ? previous.id : null;
+    await chrome.tabs.update(tab.id, { active: true });
+  }
+  let dataUrl;
+  try {
+    dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "png" });
+  } finally {
+    if (restore !== null) await chrome.tabs.update(restore, { active: true }).catch(() => {});
+  }
   if (isInjectableUrl(tab.url || "")) {
     await inject(tab.id, runPageAction, ["hud_status", { title: "Screenshot captured", subtitle: "Saved into Loom workspace" }]).catch(() => {});
   }

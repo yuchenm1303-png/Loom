@@ -126,39 +126,50 @@ def main() -> None:
         assert bridge.call("downloads", {"since_ms": 0}) == {"files": []}
         assert backend.downloaded_files() == []
 
-        # Closing hands tab ownership back to the user. Nothing may release the
-        # tabs before this: calling release_tabs directly first would consume the
-        # ownership and leave the check below passing without close() doing a thing.
+        # Closing releases the tabs borrowed from the user, and only those. Nothing
+        # may call release_tabs before this: doing so consumes the ownership and
+        # leaves the checks below passing without close() doing a thing.
         backend.close()
 
-        # A new session must not inherit the previous session's work tab: with
-        # ownership released, navigating somewhere new opens its own tab instead of
-        # replacing whatever the user left on that one.
+        # A tab Loom opened itself stays Loom's across sessions. Releasing those too
+        # meant a new session did not recognise the tab it had just been working in
+        # and opened another every time, which in a real Edge was four tabs for one
+        # task, each of them taking the foreground.
         second = BrowserExtensionSessionBackend(options=BrowserLaunchOptions(), bridge=bridge)
         second.start()
-        moved = second.navigate(url)
-        inherited = str(moved.page_info.get("tab_id") or "")
-        assert inherited != created_tab, "a released work tab was navigated away by the next session"
-
-        # A page that is already open is reused rather than duplicated, and the
-        # reused tab becomes Loom's. Whether the user can *see* that (the Loom tab
-        # group) is a real-browser check, not something this headless run can judge.
         before = len(second.tabs().tabs)
-        adopted = second.navigate(f"http://127.0.0.1:{web.server_address[1]}/second")
-        assert str(adopted.page_info.get("tab_id") or "") == created_tab, "an open page was not reused"
-        assert len(second.tabs().tabs) == before, "reusing an open page still created a duplicate tab"
+        moved = second.navigate(url)
+        assert str(moved.page_info.get("tab_id") or "") == created_tab, (
+            "a new session opened its own tab instead of reusing Loom's work tab"
+        )
+        assert len(second.tabs().tabs) == before, "a new session created a duplicate work tab"
 
         # Releasing again is harmless and reports how many were still held.
         assert isinstance(bridge.call("release_tabs", {}).get("released"), int)
 
-        second.close_tab(inherited)
+        # Loom must not take the foreground: its tab keeps working in the background
+        # while whatever the user was reading keeps focus. This is the behaviour that
+        # lets Loom sit beside a person instead of fighting them for the window. The
+        # page itself is the witness - a backgrounded tab reports "hidden" - because
+        # the tab list this backend returns carries no foreground flag.
+        assert second.evaluate("document.visibilityState").get("value") == "hidden", (
+            "Loom pulled its own tab into the foreground"
+        )
+
+        # A screenshot is the one action that needs the tab visible, and it has to
+        # put focus back where it found it.
+        assert len(second.screenshot()) > 100
+        assert second.evaluate("document.visibilityState").get("value") == "hidden", (
+            "a screenshot left Loom's tab in the foreground"
+        )
+
         if created_tab:
             second.close_tab(created_tab)
             created_tab = ""
         print(
             "PASS: real Edge exercised Loom open/state/type/click/select/hover/drag/find/eval/wait/"
             "screenshot/tabs/navigation/history/refresh/close, session-scoped downloads, "
-            "tab release on close, and reuse of an already-open page"
+            "work-tab reuse across sessions, and background operation without stealing focus"
         )
     finally:
         if process is not None:
