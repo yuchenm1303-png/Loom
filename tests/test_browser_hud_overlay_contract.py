@@ -40,7 +40,12 @@ def test_browser_hud_hot_reload_replaces_old_runtime_in_existing_tabs() -> None:
     browser_hud = (EXT / "browser-hud.js").read_text(encoding="utf-8")
 
     assert manifest["background"]["service_worker"] == "bridge-worker.js"
-    assert tuple(int(part) for part in manifest["version"].split(".")) >= (0, 1, 9)
+    # 0.1.6 is where the standalone HUD landed, and this floor stays there. Reload
+    # repair depends on the worker and the content scripts below, never on the
+    # version string, so raising this with each extension bump asserts nothing and
+    # only turns unrelated extension work into a failure of a HUD test - which it
+    # already did twice, at 0.1.7 and 0.1.9.
+    assert tuple(int(part) for part in manifest["version"].split(".")) >= (0, 1, 6)
     assert manifest.get("content_scripts", [])[0]["js"] == ["browser-hud.js"]
 
     assert "import './background.js'" in worker
