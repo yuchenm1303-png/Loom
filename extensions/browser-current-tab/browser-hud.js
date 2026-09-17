@@ -6,7 +6,6 @@
   const HOST_ID = 'loom-browser-hud-root';
   const LEGACY_HOST_ID = 'loom-browser-computer-hud-root';
   const LEGACY_LAYER_ID = 'loom-computer-hud-layer';
-  const IDLE_HIDE_MS = 60000;
 
   if (globalThis[INSTALL_KEY]) {
     try { globalThis[INSTALL_KEY].sync(); } catch (_) {}
@@ -24,7 +23,7 @@
     .edge::after{filter:blur(8px) saturate(1.3);opacity:.68;-webkit-mask:linear-gradient(to bottom,#000,transparent) top/100% 16px no-repeat,linear-gradient(to top,#000,transparent) bottom/100% 16px no-repeat,linear-gradient(to right,#000,transparent) left/16px 100% no-repeat,linear-gradient(to left,#000,transparent) right/16px 100% no-repeat;mask:linear-gradient(to bottom,#000,transparent) top/100% 16px no-repeat,linear-gradient(to top,#000,transparent) bottom/100% 16px no-repeat,linear-gradient(to right,#000,transparent) left/16px 100% no-repeat,linear-gradient(to left,#000,transparent) right/16px 100% no-repeat;animation-delay:-1.2s,-.45s}
     .pill{position:absolute;top:20px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:11px;max-width:min(720px,calc(100vw - 40px));padding:10px 15px;border-radius:999px;background:rgba(12,14,22,.78);border:1px solid rgba(169,148,255,.30);backdrop-filter:blur(18px) saturate(1.2);box-shadow:0 14px 34px rgba(0,0,0,.30),0 0 28px rgba(169,148,255,.12)}
     .dot{width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 0 rgba(169,148,255,.45);animation:loomBrowserPulse 1.45s infinite;flex:0 0 auto}.pill strong{color:#f8fbff;font-size:13px;font-weight:760;white-space:nowrap}.pill span:last-child{color:#aeb8cc;font-size:12px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-    .cursor{position:absolute;left:0;top:0;width:82px;height:82px;transform:translate3d(var(--x),var(--y),0) translate(-10px,-10px);transition:transform 210ms cubic-bezier(.18,.78,.18,1),opacity .16s ease;will-change:transform}.cursor.hidden{opacity:0}.aura{position:absolute;left:34px;top:34px;width:72px;height:72px;border-radius:50%;transform:translate(-50%,-50%);background:radial-gradient(ellipse at 34% 28%,rgba(70,238,255,.18),rgba(150,122,255,.06) 54%,transparent 78%);filter:blur(8px);opacity:.56;animation:loomBrowserAura 2.2s ease-in-out infinite}.cursor svg{position:absolute;left:0;top:0;width:36px;height:36px;overflow:visible;transform-origin:10px 10.5px;animation:loomBrowserFloat 2.15s ease-in-out infinite;filter:drop-shadow(0 0 5px rgba(90,236,255,.22)) drop-shadow(0 6px 10px rgba(52,35,120,.2))}
+    .cursor{position:absolute;left:0;top:0;width:82px;height:82px;transform:translate3d(var(--x),var(--y),0) translate(-10px,-10px);transition:transform 210ms cubic-bezier(.18,.78,.18,1);will-change:transform}.aura{position:absolute;left:34px;top:34px;width:72px;height:72px;border-radius:50%;transform:translate(-50%,-50%);background:radial-gradient(ellipse at 34% 28%,rgba(70,238,255,.18),rgba(150,122,255,.06) 54%,transparent 78%);filter:blur(8px);opacity:.56;animation:loomBrowserAura 2.2s ease-in-out infinite}.cursor svg{position:absolute;left:0;top:0;width:36px;height:36px;overflow:visible;transform-origin:10px 10.5px;animation:loomBrowserFloat 2.15s ease-in-out infinite;filter:drop-shadow(0 0 5px rgba(90,236,255,.22)) drop-shadow(0 6px 10px rgba(52,35,120,.2))}
     .wave{position:absolute;left:10px;top:10.5px;width:24px;height:24px;border-radius:50%;border:1.5px solid rgba(112,235,255,.95);box-shadow:0 0 18px rgba(120,105,255,.20);transform:translate(-50%,-50%) scale(.25);opacity:0}.cursor.clicking svg{animation:loomBrowserPress .34s cubic-bezier(.2,.8,.2,1)}.cursor.clicking .wave{animation:loomBrowserWave .6s ease-out}
     .bubble{position:absolute;left:0;top:0;width:var(--bubble-width);min-height:112px;padding:14px 15px 13px;border-radius:17px;background:rgba(8,17,27,.86);border:1px solid rgba(169,148,255,.24);backdrop-filter:blur(18px) saturate(1.18);box-shadow:0 16px 45px rgba(0,0,0,.40),0 0 26px rgba(169,148,255,.09);transform:translate3d(var(--bubble-x),var(--bubble-y),0) scale(.78);transform-origin:left top;transition:transform 210ms cubic-bezier(.18,.78,.18,1),opacity .18s ease}.bubble-title{min-height:17px;margin-bottom:7px;color:#f8fbff;font-size:13px;font-weight:780}.line{display:flex;justify-content:space-between;gap:12px;color:#9fb0c1;font-size:12px;line-height:1.7}.line b{max-width:58%;color:#e7f8ff;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-weight:650;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.thought{margin-top:8px;color:#c6d4e6;font-size:12px;line-height:1.45;max-height:35px;overflow:hidden}
     .timeline{position:absolute;left:50%;bottom:24px;transform:translateX(-50%);display:flex;gap:8px;padding:9px;border-radius:999px;background:rgba(8,10,16,.68);border:1px solid rgba(255,255,255,.09);backdrop-filter:blur(16px);box-shadow:0 15px 34px rgba(0,0,0,.32)}.phase{display:flex;align-items:center;gap:6px;padding:7px 10px;border-radius:999px;color:#7f8ea3;font-size:11px;font-weight:650}.phase i{width:7px;height:7px;border-radius:50%;background:#344054}.phase.done{color:#a9f1d0}.phase.done i{background:#6ce6b5}.phase.active{color:#f5fbff;background:rgba(255,255,255,.08)}.phase.active i{background:var(--accent);box-shadow:0 0 12px var(--accent)}
@@ -36,7 +35,6 @@
   let sourceHost = null;
   let sourceRoot = null;
   let sourceObserver = null;
-  let hideTimer = null;
   let lastX = null;
   let lastY = null;
   let lastActionNode = null;
@@ -53,32 +51,19 @@
       host = document.createElement('loom-browser-hud');
       host.id = HOST_ID;
       host.setAttribute('aria-hidden', 'true');
-      Object.assign(host.style, {
-        position: 'fixed',
-        inset: '0',
-        zIndex: '2147483646',
-        pointerEvents: 'none',
-        contain: 'layout style paint',
-      });
+      Object.assign(host.style, { position: 'fixed', inset: '0', zIndex: '2147483646', pointerEvents: 'none', contain: 'layout style paint' });
       document.documentElement.appendChild(host);
     }
     const root = host.shadowRoot || host.attachShadow({ mode: 'open' });
-    root.innerHTML = `<style>${STYLES}</style><div id="hud"><div class="edge"></div><div class="pill"><i class="dot"></i><strong id="title">Loom 正在控制浏览器</strong><span id="meta">Browser Use</span></div><div id="cursor" class="cursor hidden"><div class="aura"></div>${SVG_CURSOR}<div class="wave"></div></div><div class="bubble"><div id="bubbleTitle" class="bubble-title">准备浏览器自动化</div><div class="line"><span>目标置信度</span><b id="confidence">—</b></div><div class="line"><span>执行坐标</span><b id="point">—</b></div><div class="line"><span>动作来源</span><b id="source">browser + DOM</b></div><div id="thought" class="thought">等待下一步浏览器动作。</div></div><div class="timeline" id="timeline"></div></div>`;
+    root.innerHTML = `<style>${STYLES}</style><div id="hud"><div class="edge"></div><div class="pill"><i class="dot"></i><strong id="title">Loom 正在控制浏览器</strong><span id="meta">Browser Use</span></div><div id="cursor" class="cursor"><div class="aura"></div>${SVG_CURSOR}<div class="wave"></div></div><div class="bubble"><div id="bubbleTitle" class="bubble-title">准备浏览器自动化</div><div class="line"><span>目标置信度</span><b id="confidence">—</b></div><div class="line"><span>执行坐标</span><b id="point">—</b></div><div class="line"><span>动作来源</span><b id="source">browser + DOM</b></div><div id="thought" class="thought">等待下一步浏览器动作。</div></div><div class="timeline" id="timeline"></div></div>`;
     renderer = {
-      host,
-      root,
-      hud: root.getElementById('hud'),
-      title: root.getElementById('title'),
-      meta: root.getElementById('meta'),
-      cursor: root.getElementById('cursor'),
-      bubbleTitle: root.getElementById('bubbleTitle'),
-      confidence: root.getElementById('confidence'),
-      point: root.getElementById('point'),
-      source: root.getElementById('source'),
-      thought: root.getElementById('thought'),
-      timeline: root.getElementById('timeline'),
+      host, root,
+      hud: root.getElementById('hud'), title: root.getElementById('title'), meta: root.getElementById('meta'), cursor: root.getElementById('cursor'),
+      bubbleTitle: root.getElementById('bubbleTitle'), confidence: root.getElementById('confidence'), point: root.getElementById('point'), source: root.getElementById('source'),
+      thought: root.getElementById('thought'), timeline: root.getElementById('timeline'),
     };
     renderTimeline(0);
+    place(null);
     return renderer;
   }
 
@@ -107,11 +92,6 @@
     if (renderer) renderer.hud.classList.remove('live');
   }
 
-  function keepAlive() {
-    if (hideTimer) clearTimeout(hideTimer);
-    hideTimer = setTimeout(hide, IDLE_HIDE_MS);
-  }
-
   function extractPresentation() {
     if (!sourceRoot) return null;
     const legacyLayer = sourceRoot.getElementById?.(LEGACY_LAYER_ID);
@@ -127,27 +107,18 @@
     if (target) {
       const rect = target.getBoundingClientRect();
       if (rect.width > 0 && rect.height > 0) {
-        point = {
-          x: clamp(rect.left + rect.width / 2, 0, Math.max(1, innerWidth)),
-          y: clamp(rect.top + rect.height / 2, 0, Math.max(1, innerHeight)),
-        };
+        point = { x: clamp(rect.left + rect.width / 2, 0, Math.max(1, innerWidth)), y: clamp(rect.top + rect.height / 2, 0, Math.max(1, innerHeight)) };
       }
     }
-    return { target, actionNode, title, subtitle, point };
+    return { actionNode, title, subtitle, point };
   }
 
   function place(point) {
-    const view = ensureRenderer();
+    const view = renderer || ensureRenderer();
     const width = Math.max(1, innerWidth);
     const height = Math.max(1, innerHeight);
-    if (point) {
-      lastX = point.x;
-      lastY = point.y;
-    }
-    if (lastX === null || lastY === null) {
-      lastX = width * 0.5;
-      lastY = height * 0.46;
-    }
+    if (point) { lastX = point.x; lastY = point.y; }
+    if (lastX === null || lastY === null) { lastX = width * 0.5; lastY = height * 0.46; }
     lastX = clamp(lastX, 0, width);
     lastY = clamp(lastY, 0, height);
     const bubbleWidth = Math.min(420, Math.max(320, width - 48));
@@ -158,7 +129,7 @@
     view.hud.style.setProperty('--bubble-x', `${bx}px`);
     view.hud.style.setProperty('--bubble-y', `${by}px`);
     view.hud.style.setProperty('--bubble-width', `${bubbleWidth}px`);
-    view.point.textContent = point ? `${Math.round(lastX)}, ${Math.round(lastY)}` : (lastX === null ? '—' : `${Math.round(lastX)}, ${Math.round(lastY)}`);
+    view.point.textContent = `${Math.round(lastX)}, ${Math.round(lastY)}`;
   }
 
   function pulseClick() {
@@ -183,18 +154,13 @@
     view.confidence.textContent = presentation.point ? 'DOM exact' : 'browser';
     view.source.textContent = presentation.point ? 'browser + DOM' : 'browser runtime';
     view.thought.textContent = presentation.subtitle || 'Browser Use';
-    if (presentation.point) view.cursor.classList.remove('hidden');
     renderTimeline(phaseFor(presentation.title));
     if (isNewAction && /^click\b/i.test(presentation.title)) pulseClick();
-    keepAlive();
   }
 
   function attachSource(nextHost) {
     const nextRoot = nextHost?.shadowRoot || null;
-    if (sourceHost === nextHost && sourceRoot === nextRoot) {
-      renderFromSource();
-      return;
-    }
+    if (sourceHost === nextHost && sourceRoot === nextRoot) { renderFromSource(); return; }
     sourceObserver?.disconnect();
     sourceHost = nextHost || null;
     sourceRoot = nextRoot;
@@ -220,12 +186,6 @@
     addEventListener('resize', () => {
       if (renderer?.hud.classList.contains('live')) place(null);
     }, { passive: true });
-    const userTakesOver = (event) => {
-      if (event.isTrusted) hide();
-    };
-    addEventListener('pointerdown', userTakesOver, true);
-    addEventListener('keydown', userTakesOver, true);
-    addEventListener('wheel', userTakesOver, { capture: true, passive: true });
   }
 
   globalThis[INSTALL_KEY] = { sync, hide };
