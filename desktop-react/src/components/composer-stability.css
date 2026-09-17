@@ -38,26 +38,3 @@
 .composer.has-panel.is-focused {
   transform: none;
 }
-
-/* Live steering is an input surface, not the old compact "working" footer.
-   Keep its prompt row explicitly in layout even when legacy running-state CSS
-   is present elsewhere in the desktop bundle. */
-.live-steering-composer .composer {
-  min-height: 108px;
-}
-
-.live-steering-composer .composer-input-row {
-  display: grid !important;
-  grid-template-columns: 22px minmax(0, 1fr);
-  align-items: start;
-  gap: 7px;
-  min-height: 46px;
-}
-
-.live-steering-composer .composer-input-row textarea {
-  display: block !important;
-  min-height: 46px !important;
-  visibility: visible !important;
-  opacity: 1 !important;
-  pointer-events: auto;
-}
