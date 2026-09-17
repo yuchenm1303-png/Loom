@@ -13,7 +13,7 @@ import "./composer.css";
 
 type ComposerProps = ComponentProps<typeof ComposerBase>;
 
-function SteeringComposer({ disabled, onSend, onInterrupt }: ComposerProps) {
+function SteeringComposer({ onSend, onInterrupt }: ComposerProps) {
   const [value, setValue] = useState("");
   const [focused, setFocused] = useState(false);
   const [sending, setSending] = useState(false);
@@ -42,7 +42,11 @@ function SteeringComposer({ disabled, onSend, onInterrupt }: ComposerProps) {
   async function submit(event?: FormEvent): Promise<void> {
     event?.preventDefault();
     const input = value.trim();
-    if (!input || disabled || sending || stopping) return;
+    // This surface only exists while a turn is active. Do not inherit the
+    // ordinary-composer `disabled` gate (which also covers transient connection
+    // state): users must be able to type guidance while Loom is working. If the
+    // bridge genuinely cannot deliver the steer, surface that RPC error here.
+    if (!input || sending || stopping) return;
     setSending(true);
     setAcknowledged(false);
     setError("");
@@ -109,7 +113,7 @@ function SteeringComposer({ disabled, onSend, onInterrupt }: ComposerProps) {
             onBlur={() => setFocused(false)}
             placeholder="Guide the current task…"
             aria-label="Guide the current task"
-            disabled={disabled || sending || stopping}
+            disabled={sending || stopping}
             rows={1}
           />
         </div>
@@ -125,7 +129,7 @@ function SteeringComposer({ disabled, onSend, onInterrupt }: ComposerProps) {
             <button
               type="submit"
               className="send-button"
-              disabled={disabled || sending || stopping || !value.trim()}
+              disabled={sending || stopping || !value.trim()}
               title="Guide current task"
               aria-label="Guide current task"
             >
