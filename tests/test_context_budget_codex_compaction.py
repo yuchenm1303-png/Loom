@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from types import SimpleNamespace
 
 from app.ai import AIMessage, MessageRole, ModelContextLimits, ModelResponse, ModelUsage, ToolCall
 from app.ai.errors import AIResponseError
@@ -144,6 +145,21 @@ def _history(pairs=4, chars=240):
     return messages
 
 
+def _set_roomy_profile(runtime, *, auto_compact_token_limit=10_000, tool_output_token_limit=1000):
+    context_limits = ModelContextLimits(
+        context_window_tokens=12_000,
+        effective_context_percent=100,
+        output_reserve_tokens=1000,
+        auto_compact_token_limit=auto_compact_token_limit,
+        tool_output_token_limit=tool_output_token_limit,
+    )
+    runtime.platform = SimpleNamespace(
+        registry=SimpleNamespace(
+            get=lambda _profile_id: SimpleNamespace(context_limits=context_limits)
+        )
+    )
+
+
 def test_compaction_request_uses_codex_prompt_as_final_user_message_and_no_tools():
     runtime = FakeRuntime([ModelResponse(text="summary", finish_reason="stop")])
     session = Session(_history())
@@ -279,3 +295,55 @@ def test_replacement_history_contains_real_users_and_summary_not_tool_or_assista
     ]
     assert [message.content for message in session.messages[:2]] == ["first", "second"]
     assert session.messages[-1].name == "loom_compaction"
+
+
+def test_oversized_tool_output_is_projected_before_full_compaction():
+    call = ToolCall(call_id="call-large", name="read_workspace_text", arguments={"path": "large.go"})
+    huge_result = "x" * 40_000
+    history = [
+        AIMessage(role=MessageRole.USER, content="inspect the auth code"),
+        AIMessage(role=MessageRole.ASSISTANT, content="", tool_calls=(call,)),
+        AIMessage(
+            role=MessageRole.TOOL,
+            content=huge_result,
+            name="read_workspace_text",
+            tool_call_id="call-large",
+        ),
+        AIMessage(role=MessageRole.USER, content="continue"),
+    ]
+    runtime = FakeRuntime([])
+    _set_roomy_profile(runtime)
+    session = Session(history)
+
+    messages, metadata = prepare_context(runtime, session, Step(), Token())
+
+    assert runtime.model_executor.requests == []
+    assert runtime.commits == []
+    projected_tool = next(message for message in messages if message.role is MessageRole.TOOL)
+    assert projected_tool.content != huge_result
+    assert "context_reduced" in projected_tool.content
+    assert "exact_result_remains_in_durable_transcript" in projected_tool.content
+    assert session.messages[2].content == huge_result
+    assert metadata["tool_outputs_reduced"] == 1
+    assert metadata["estimated_tokens_saved"] > 0
+    assert metadata.get("auto_compacted") is not True
+
+
+def test_message_count_alone_does_not_trigger_auto_compaction():
+    runtime = FakeRuntime([])
+    _set_roomy_profile(runtime)
+    runtime.limits.max_messages = 2
+    history = [
+        AIMessage(role=MessageRole.USER, content="one"),
+        AIMessage(role=MessageRole.ASSISTANT, content="two"),
+        AIMessage(role=MessageRole.USER, content="three"),
+        AIMessage(role=MessageRole.ASSISTANT, content="four"),
+    ]
+    session = Session(history)
+
+    messages, metadata = prepare_context(runtime, session, Step(), Token())
+
+    assert runtime.model_executor.requests == []
+    assert runtime.commits == []
+    assert len(messages) > runtime.limits.max_messages
+    assert metadata.get("auto_compacted") is not True
