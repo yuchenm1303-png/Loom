@@ -17,7 +17,6 @@ from .browser_runtime import (
     redact_browser_url,
 )
 from .browser_session import BrowserPageState
-from .browser_transient import BrowserTransientInputPlatform
 from .tools import ToolExposure, ToolRegistry, ToolResult
 
 
@@ -248,7 +247,7 @@ def _prepare_image(data: bytes) -> tuple[bytes, str] | None:
 
 
 class BrowserRuntime(_BrowserRuntime):
-    """Hardened BrowserRuntime with transient input and observation feedback.
+    """Hardened BrowserRuntime with bounded observation feedback.
 
     The browser backend is an executor, not a nested agent. The current Loom
     conversation model receives one latest DOM observation (and an explicitly
@@ -257,15 +256,6 @@ class BrowserRuntime(_BrowserRuntime):
     """
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
-        # Put transient typing *inside* the base Browser secret boundary at
-        # construction time. The previous implementation mutated the private
-        # `_delegate` field after super().__init__, which coupled this layer to an
-        # implementation detail of browser_runtime.py. AgentRuntime's platform is
-        # keyword-only, so this composition point is stable and explicit.
-        platform = kwargs.get("platform")
-        if platform is None:
-            raise TypeError("BrowserRuntime requires platform as a keyword argument")
-        kwargs["platform"] = BrowserTransientInputPlatform(platform)
         super().__init__(*args, **kwargs)
 
         self._browser_feedback: dict[str, BrowserStateSnapshot] = {}
@@ -292,12 +282,6 @@ class BrowserRuntime(_BrowserRuntime):
                 tool = replace(tool, exposure=ToolExposure.DEFERRED)
             rebuilt.append(tool)
         self.tools = ToolRegistry(tuple(rebuilt))
-
-    def consume_browser_type_text(self, value: str) -> str:
-        consumer = getattr(self.platform, "consume_browser_type_text", None)
-        if not callable(consumer):
-            raise RuntimeError("browser transient input boundary is unavailable")
-        return str(consumer(value))
 
     def _clear_browser_feedback(self, session_id: str) -> None:
         self._browser_feedback.pop(session_id, None)
@@ -428,7 +412,7 @@ class BrowserRuntime(_BrowserRuntime):
         status = dict(super().browser_status(owner_session_id))
         status.update(
             {
-                "typed_text_persistence": "transient_only",
+                "typed_text_persistence": "ordinary_tool_argument",
                 "observation_architecture": "single-model-turnrunner-transient-latest-state",
                 "dom_persistence": "summary_only",
                 "visual_feedback": "on-demand browser_screenshot -> transient ImagePart",
@@ -451,9 +435,6 @@ class BrowserRuntime(_BrowserRuntime):
         return super().recover_interrupted(session_id)
 
     def close(self) -> None:
-        clearer = getattr(self.platform, "clear_browser_transient_inputs", None)
-        if callable(clearer):
-            clearer()
         self._browser_feedback.clear()
         self._browser_feedback_turns.clear()
         self._browser_feedback_effect.clear()
