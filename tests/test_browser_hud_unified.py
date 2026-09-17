@@ -22,19 +22,15 @@ def test_browser_hud_keeps_dom_target_and_owns_its_visual_lifecycle():
     source = (EXTENSION / "browser-hud.js").read_text(encoding="utf-8")
     background = (EXTENSION / "background.js").read_text(encoding="utf-8")
 
-    # The existing page-local DOM HUD remains the exact target source.
     assert "loom-page-hud-target" in background
     assert "loom-page-hud-label" in background
     assert "showTargetHud" in background
 
-    # Browser Use owns a standalone persistent renderer. It does not clone the
-    # Electron Computer HUD or mirror another browser-side Computer HUD layer.
-    assert "loom-browser-hud-root" in source
-    assert "__loomBrowserHudStandaloneV1" in source
+    assert "loom-browser-hud-root-v2" in source
+    assert "__loomBrowserHudRuntimeV2" in source
     assert "cloneNode(true)" not in source
     assert "IDLE_HIDE_MS" not in source
 
-    # It still uses the same visual language and real DOM geometry.
     assert "class=\"edge\"" in source
     assert 'id="cursor" class="cursor"' in source
     assert "class=\"bubble\"" in source
@@ -44,11 +40,10 @@ def test_browser_hud_keeps_dom_target_and_owns_its_visual_lifecycle():
     assert "browser + DOM" in source
     assert "position:fixed;inset:0" in source
 
-    # User interaction does not dismiss the Browser HUD; explicit session-level
-    # hide remains available for callers that intentionally end Browser Use.
     assert "userTakesOver" not in source
     assert "event.isTrusted" not in source
-    assert "globalThis[INSTALL_KEY] = { sync, hide }" in source
+    assert "globalThis[INSTALL_KEY] = { generation: GENERATION, sync, hide, dispose }" in source
+    assert "existing?.dispose?.()" in source
 
 
 def test_browser_hud_does_not_reenable_desktop_overlay_for_browser_tools():
