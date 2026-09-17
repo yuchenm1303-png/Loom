@@ -560,9 +560,11 @@ class BrowserRuntime(WebSearchRuntime):
                 tool = replace(
                     raw_tool,
                     description=(
-                        "Attach to the user's currently active Chrome/Edge tab through the installed Loom Browser "
-                        "Extension, optionally navigate that tab or a new tab to an http/https URL, and return a "
-                        "bounded LLM-facing DOM state. The extension bridge token is never exposed to the model. "
+                        "Open Browser Use through the installed Loom Browser Extension. Pass the task's target http/https "
+                        "URL whenever it is known. Loom reuses an exact page or its own work tab, otherwise it creates a "
+                        "purple Loom tab group and leaves the user's unrelated tab untouched. If the current page is "
+                        "edge://, chrome://, or otherwise protected, call browser_navigate instead of asking the user to "
+                        "switch pages. Return a bounded LLM-facing DOM state. The extension bridge token is never exposed. "
                         "Existing out-of-policy background tabs remain open but are hidden from Loom. allowed_domains "
                         "can restrict the session."
                     ),

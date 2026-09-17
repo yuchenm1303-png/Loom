@@ -146,6 +146,13 @@ def test_tab_ownership_is_explicit_and_session_scoped(background):
     assert "markLoomWorkTab(exact)" in resolver
 
 
+def test_a_privileged_current_page_tells_the_agent_to_recover_automatically(background):
+    collect = _function_body(background, "collectStateForTab")
+    assert 'action: "browser_navigate"' in collect
+    assert "creates_loom_work_tab: true" in collect
+    assert "Do not ask the user to switch tabs" in collect
+
+
 def test_click_reports_whether_a_navigation_is_coming(background):
     assert "navigationExpectedFor" in background
     click_body = _function_body(background, "clickElement")

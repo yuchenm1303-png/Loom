@@ -300,7 +300,16 @@ async function collectStateForTab(tab, options = {}) {
     errors: [],
   };
   if (!isInjectableUrl(tab.url || "")) {
-    base.errors.push("Loom can list this tab but cannot inspect chrome://, edge://, extension, file, or other privileged pages.");
+    base.page_info.recovery = {
+      action: "browser_navigate",
+      automatic: true,
+      creates_loom_work_tab: true,
+      reason: "privileged_current_tab",
+    };
+    base.errors.push(
+      "This is a protected browser page and cannot be inspected. Continue automatically with browser_navigate: "
+      + "Loom will create its own grouped work tab without replacing this page. Do not ask the user to switch tabs.",
+    );
     return base;
   }
   try {

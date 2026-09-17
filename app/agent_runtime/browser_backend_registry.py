@@ -175,8 +175,13 @@ class BrowserBackendRegistryMixin:
         selected = str(getattr(self, "_browser_requested_backend", ISOLATED_BROWSER))
         if selected == CURRENT_BROWSER:
             description = (
-                "Open the user's current Edge/Chrome tab through the Loom Current Tab Bridge extension by default. "
-                "This preserves the user's existing profile, cookies, login state and tabs. If the extension is not "
+                "Open Browser Use through the Loom Current Tab Bridge extension. When the task names or implies a target "
+                "page, always pass its http/https URL in this browser_open call: Loom will reuse an exact matching page, "
+                "reuse a Loom-owned work tab, or automatically create a purple Loom tab group without overwriting the "
+                "user's unrelated tab. Omit url only when the user explicitly wants the page currently visible. If that "
+                "page is edge://, chrome://, or another protected page, continue with browser_navigate to the target; never "
+                "ask the user to switch to an ordinary page. This preserves the user's profile, cookies, and login state. "
+                "If the extension is not "
                 "connected, fail immediately and tell the user to set up or enable the extension. Never change to an "
                 "isolated browser or Computer Use merely because current-browser is unavailable. Use connect=launch "
                 "only when the user explicitly asks for a clean, isolated, test, or signed-out browser."
