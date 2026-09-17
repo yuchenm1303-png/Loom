@@ -480,11 +480,22 @@ class BrowserRuntime(WebSearchRuntime):
         profile_persistence = False
         cdp_attached = False
         extension_attached = False
+        # Not every reconfigure is a mode switch: a private-network toggle rebuilds
+        # the whole connection too. A bridge that survives one has to be carried
+        # across, because dropping the reference does not stop its server thread -
+        # it keeps the port while the extension goes on polling it, and
+        # allow_reuse_address lets a replacement bind the same port anyway, so
+        # commands start queueing on whichever of the two the OS did not hand to
+        # the extension.
+        existing_bridge = getattr(self, "browser_extension_bridge", None)
+        if existing_bridge is not None and existing_bridge.closed:
+            existing_bridge = None
         extension_bridge: BrowserExtensionBridge | None = None
         if extension_requested:
             if browser_profile_dir is not None:
                 raise ValueError("LOOM_BROWSER_BACKEND=extension cannot be combined with browser_profile_dir")
-            extension_bridge = BrowserExtensionBridge.from_environment()
+            # start() is idempotent, so reusing a live bridge costs nothing.
+            extension_bridge = existing_bridge or BrowserExtensionBridge.from_environment()
             extension_bridge.start()
 
             def build_extension_backend(options: BrowserLaunchOptions):
@@ -528,6 +539,16 @@ class BrowserRuntime(WebSearchRuntime):
         self.browser_profile_persistence = profile_persistence
         self.browser_profile_dir = profile_dir
         self.browser_cdp_attached = cdp_attached
+        if (
+            extension_bridge is None
+            and existing_bridge is not None
+            and not getattr(self, "browser_extension_attached", False)
+        ):
+            # This bridge was opened lazily for a per-session current_tab
+            # connection, not by extension mode, so no mode switch is retiring it
+            # and dropping the reference would strand its server thread. Leaving
+            # extension mode still clears it, and browser_set_connection stops it.
+            extension_bridge = existing_bridge
         self.browser_extension_attached = extension_attached
         self.browser_extension_bridge = extension_bridge
         # Never expose or persist the configured control endpoint in tool/status

@@ -1322,9 +1322,11 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
             AgentTool(
                 name="browser_downloads",
                 description=(
-                    "List files this browser session downloaded. Downloads are written into the "
-                    f"{_DOWNLOADS_DIR}/ directory of the Loom workspace, so they can then be read with "
-                    "the ordinary file tools."
+                    "List files this browser session downloaded, and only those: files the user "
+                    "downloaded before it started are not reported. Loom's own browser writes into "
+                    f"the {_DOWNLOADS_DIR}/ directory of the workspace, so those can then be read "
+                    "with the ordinary file tools. A download the user's browser put elsewhere is "
+                    "reported by name without a path, and cannot be read."
                 ),
                 input_schema=_schema({"browser_id": _browser_id_schema()}, ("browser_id",)),
                 handler=downloads,

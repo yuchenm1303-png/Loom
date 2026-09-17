@@ -11,13 +11,17 @@ const UPDATE_ALARM_NAME = "loom-browser-bridge-update";
 const LOOM_TAB_GROUP_TITLE = "Loom";
 const OWNED_TAB_IDS_KEY = "loomOwnedTabIds";
 const OWNED_GROUP_IDS_KEY = "loomOwnedGroupIds";
+// Element identity has to outlive the service worker. MV3 tears the worker down
+// between commands, and the plain Map this replaces came back empty while Loom's
+// state_revision was still current, so every index the model held turned into
+// "refresh and retry" for no reason the model could see.
+const ELEMENT_IDS_KEY = "loomElementIdsByTab";
 
 const bridgeRuntime = {
   running: false,
   phase: "stopped",
   updateRequested: true,
 };
-const lastElementsByTab = new Map();
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const randomId = () => globalThis.crypto?.randomUUID?.() || `loom-${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -235,12 +239,24 @@ async function forgetLoomWorkTab(tabId) {
   const stored = await chrome.storage.session.get(OWNED_TAB_IDS_KEY);
   const ids = Array.isArray(stored[OWNED_TAB_IDS_KEY]) ? stored[OWNED_TAB_IDS_KEY] : [];
   await chrome.storage.session.set({ [OWNED_TAB_IDS_KEY]: ids.filter((id) => id !== tabId) });
-  lastElementsByTab.delete(tabId);
+  await forgetElements(tabId);
 }
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   void forgetLoomWorkTab(tabId);
 });
+
+async function releaseTabs() {
+  // Ownership lives in storage.session, which outlives one Loom browser session,
+  // so without an explicit hand-back a tab adopted for one task stays Loom's for
+  // the rest of the browser's life and the next task silently navigates it away.
+  // The group itself is left alone: the tabs stay where the user can see them,
+  // and the next session reuses the group instead of stacking up a second one.
+  const stored = await chrome.storage.session.get(OWNED_TAB_IDS_KEY);
+  const released = Array.isArray(stored[OWNED_TAB_IDS_KEY]) ? stored[OWNED_TAB_IDS_KEY].length : 0;
+  await chrome.storage.session.remove([OWNED_TAB_IDS_KEY, ELEMENT_IDS_KEY]);
+  return { released };
+}
 
 async function placeInLoomGroup(tab) {
   if (!chrome.tabGroups || typeof tab?.id !== "number") return markLoomWorkTab(tab);
@@ -314,7 +330,7 @@ async function collectStateForTab(tab, options = {}) {
   }
   try {
     const page = await inject(tab.id, runPageAction, ["state", { show_hud: options.showHud !== false }]);
-    lastElementsByTab.set(tab.id, Array.isArray(page.elements) ? page.elements : []);
+    await rememberElements(tab.id, page.elements);
     return {
       ...base,
       url: page.url || base.url,
@@ -328,10 +344,28 @@ async function collectStateForTab(tab, options = {}) {
   }
 }
 
-function elementRefFor(tabId, index) {
-  const item = (lastElementsByTab.get(tabId) || [])[Number(index)];
-  if (!item?.loom_id) throw new Error("Element index is not available. Refresh browser_state and retry.");
-  return item.loom_id;
+async function rememberElements(tabId, elements) {
+  // Only the opaque loom_id is kept: it is all elementRefFor needs, and storing
+  // the serialized element would put page text into extension storage.
+  const ids = (Array.isArray(elements) ? elements : []).map((item) => String(item?.loom_id || ""));
+  const stored = await chrome.storage.session.get(ELEMENT_IDS_KEY);
+  const byTab = { ...(stored[ELEMENT_IDS_KEY] || {}) };
+  byTab[String(tabId)] = ids;
+  await chrome.storage.session.set({ [ELEMENT_IDS_KEY]: byTab });
+}
+
+async function forgetElements(tabId) {
+  const stored = await chrome.storage.session.get(ELEMENT_IDS_KEY);
+  const byTab = { ...(stored[ELEMENT_IDS_KEY] || {}) };
+  delete byTab[String(tabId)];
+  await chrome.storage.session.set({ [ELEMENT_IDS_KEY]: byTab });
+}
+
+async function elementRefFor(tabId, index) {
+  const stored = await chrome.storage.session.get(ELEMENT_IDS_KEY);
+  const loomId = ((stored[ELEMENT_IDS_KEY] || {})[String(tabId)] || [])[Number(index)];
+  if (!loomId) throw new Error("Element index is not available. Refresh browser_state and retry.");
+  return loomId;
 }
 
 // Element actions can start a navigation. navigate() and refresh() already wait
@@ -415,7 +449,11 @@ async function resolveNavigationDestination(args, url) {
     if (!isInjectableUrl(candidate.url || "")) return false;
     try { return new URL(candidate.url).href === targetUrl; } catch (_) { return false; }
   });
-  if (exact) return { create: false, tab: await markLoomWorkTab(exact) };
+  // Reusing a page the user already has open beats opening a duplicate, but it
+  // also hands that tab to Loom: the next navigate to a different URL replaces
+  // whatever is on it. Adopting it into the visible Loom group is the only thing
+  // that tells the user their tab is now a work tab, so adopt and group together.
+  if (exact) return { create: false, tab: (await isLoomWorkTab(exact)) ? exact : await placeInLoomGroup(exact) };
   if (await isLoomWorkTab(current)) return { create: false, tab: current };
   return { create: true, tab: current };
 }
@@ -431,7 +469,7 @@ async function waitForTabComplete(tabId) {
 
 async function withElement(args, action, extra = {}, waitMs = 200) {
   const tab = await tabFromArgs(args);
-  const loomId = elementRefFor(tab.id, args.index);
+  const loomId = await elementRefFor(tab.id, args.index);
   return withNavigationWatch(
     tab.id,
     () => inject(tab.id, runPageAction, [action, { ...extra, loom_id: loomId, index: Number(args.index) }]),
@@ -458,8 +496,8 @@ async function selectOption(args) {
 async function drag(args) {
   const tab = await tabFromArgs(args);
   const payload = {
-    source_loom_id: elementRefFor(tab.id, args.source_index),
-    target_loom_id: elementRefFor(tab.id, args.target_index),
+    source_loom_id: await elementRefFor(tab.id, args.source_index),
+    target_loom_id: await elementRefFor(tab.id, args.target_index),
     source_index: Number(args.source_index),
     target_index: Number(args.target_index),
   };
@@ -505,7 +543,7 @@ async function findText(args) {
 
 async function dropdownOptions(args) {
   const tab = await requireInjectableTab(args);
-  const loomId = elementRefFor(tab.id, args.index);
+  const loomId = await elementRefFor(tab.id, args.index);
   const outcome = await inject(tab.id, runPageAction, [
     "dropdown_options",
     { loom_id: loomId, index: Number(args.index) },
@@ -580,11 +618,18 @@ async function clearCookies(args) {
   return { cleared: cookies.length };
 }
 
-async function listDownloads() {
+async function listDownloads(args = {}) {
+  // chrome.downloads.search sees the whole browser, so an unfiltered read hands
+  // the model the user's entire recent download history. The filenames alone are
+  // revealing, and browser_downloads promises only this session's files. Fail
+  // closed: without a session start time there is nothing this session can claim.
+  const since = Number(args.since_ms || 0);
+  if (!Number.isFinite(since) || since <= 0) return { files: [] };
   const items = await chrome.downloads.search({ limit: 200, orderBy: ["-startTime"] });
   return {
     files: items
       .filter((item) => item.state === "complete" && item.filename)
+      .filter((item) => Date.parse(item.startTime || "") >= since)
       .map((item) => ({ path: item.filename, bytes: item.fileSize || 0 })),
   };
 }
@@ -659,6 +704,7 @@ async function dispatchCommand(action, args) {
     case "cookies": return listCookies(args);
     case "clear_cookies": return clearCookies(args);
     case "downloads": return listDownloads(args);
+    case "release_tabs": return releaseTabs();
     default: throw new Error(`Unsupported Loom browser extension action: ${action}`);
   }
 }

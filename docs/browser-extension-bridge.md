@@ -129,6 +129,16 @@ Browser DOM events are no longer projected into Loom's full-screen desktop HUD. 
 
 The page-local HUD is best-effort and only appears on injectable `http` and `https` pages. It is skipped for privileged browser surfaces such as `chrome://`, `edge://`, extension pages, and file picker/native OS dialogs.
 
+## Tab ownership
+
+Loom marks the tabs it works in and keeps that list in `chrome.storage.session`, scoped to the browser session rather than to a Loom session.
+
+A navigate to a URL that is already open in the window reuses that tab instead of opening a duplicate. Reusing it makes it a Loom work tab, which means a later navigate to a different URL replaces what is on it, so the adopted tab is also placed into the purple **Loom** tab group: the group is the user's only visible record of which tabs Loom can steer. Tabs Loom opens itself are grouped the same way.
+
+Closing the browser session hands ownership back (`release_tabs`). The tabs and the group stay exactly where they are; Loom simply stops claiming them, so the next task will not navigate away a page the user has gone back to using. The group id is kept so a later session reuses that group rather than creating a second one.
+
+`browser_downloads` reports only downloads that started after the browser session opened. The extension can see the user's whole download history, and their filenames alone are revealing, so anything older is withheld.
+
 ## Supported MVP actions
 
 The current extension backend supports:
@@ -144,7 +154,7 @@ The current extension backend supports:
 - visible-tab screenshot;
 - hover, key press, select, and basic drag/drop.
 
-Element indexes are still protected by Loom's existing `state_revision` check. After the page changes, ask for `browser_state` again before clicking or typing.
+Element indexes are still protected by Loom's existing `state_revision` check. After the page changes, ask for `browser_state` again before clicking or typing. The index-to-element mapping lives in `chrome.storage.session` so that it survives the MV3 service worker being evicted between commands.
 
 ## Limitations
 

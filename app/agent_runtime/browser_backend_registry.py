@@ -125,6 +125,11 @@ class BrowserBackendRegistryMixin:
         return bool(getattr(self, "browser_allow_external_backend_selection", False))
 
     def browser_backend_registry(self) -> tuple[dict[str, object], ...]:
+        # Deliberately not _current_browser_bridge(): this feeds browser_status and
+        # the read-only browser_backends tool, and reporting availability must not
+        # bind a port as a side effect. The cost is that current-browser reads as
+        # unavailable until something opens a bridge, while browser_open with
+        # connect=current_tab would still succeed by creating one.
         bridge = getattr(self, "browser_extension_bridge", None)
         current_connected = bool(bridge is not None and bridge.connected)
         bridge_status = bridge.status() if bridge is not None else {}

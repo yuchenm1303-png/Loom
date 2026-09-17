@@ -143,7 +143,67 @@ def test_tab_ownership_is_explicit_and_session_scoped(background):
     assert "chrome.storage.session" in ownership
     assert "OWNED_TAB_IDS_KEY" in ownership
     assert "group?.title" not in ownership
-    assert "markLoomWorkTab(exact)" in resolver
+    assert "placeInLoomGroup(exact)" in resolver
+
+
+def test_adopting_a_user_tab_makes_the_adoption_visible(background):
+    """Reusing an already-open page silently made that tab Loom's.
+
+    A navigate to a URL the user already has open reused their tab, and from then
+    on it was a work tab: the next navigate to a different URL replaced what was
+    on it. Nothing marked it, so the page simply disappeared. Adoption now goes
+    through the group, which is the one thing the user can see.
+    """
+
+    resolver = _function_body(background, "resolveNavigationDestination")
+    assert "markLoomWorkTab(exact)" not in resolver, (
+        "adopting a user tab without grouping it leaves the takeover invisible"
+    )
+    assert "placeInLoomGroup(exact)" in resolver
+
+
+def test_tab_ownership_is_handed_back_when_the_session_closes(background):
+    """Ownership outlives a Loom session, so it needs an explicit release.
+
+    storage.session lives as long as the browser does. Without a hand-back, a tab
+    adopted for one task stayed Loom's for every later task, which would navigate
+    it away even after the user went back to using it themselves.
+    """
+
+    release = _function_body(background, "releaseTabs")
+    assert "OWNED_TAB_IDS_KEY" in release
+    assert "ELEMENT_IDS_KEY" in release
+    # The group is the user's visible record of which tabs Loom touched, and the
+    # next session reuses it rather than stacking up a second "Loom" group.
+    assert "OWNED_GROUP_IDS_KEY" not in release
+    assert '"release_tabs"' in _function_body(background, "dispatchCommand")
+
+
+def test_element_identity_survives_a_service_worker_restart(background):
+    """MV3 evicts the worker between commands.
+
+    The selector map lived in a module-level Map, so a restart emptied it while
+    Loom's state_revision was still current: every index the model held failed
+    with "refresh and retry" and the turn was wasted.
+    """
+
+    assert "lastElementsByTab" not in background
+    assert "chrome.storage.session" in _function_body(background, "elementRefFor")
+    assert "chrome.storage.session" in _function_body(background, "rememberElements")
+
+
+def test_downloads_are_scoped_to_this_browser_session(background):
+    """chrome.downloads.search sees the whole browser.
+
+    Unfiltered, browser_downloads handed the model the filenames of the user's
+    entire recent download history, which its own description says it does not do.
+    """
+
+    body = _function_body(background, "listDownloads")
+    assert "since_ms" in body
+    assert "startTime" in body
+    # No session start time means nothing this session can honestly claim.
+    assert "return { files: [] }" in body
 
 
 def test_a_privileged_current_page_tells_the_agent_to_recover_automatically(background):

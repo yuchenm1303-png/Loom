@@ -152,6 +152,18 @@ class BrowserExtensionBridge:
         with self._condition:
             return bool(self._last_poll_at and time.monotonic() - self._last_poll_at < 40.0)
 
+    @property
+    def closed(self) -> bool:
+        """True once stop() ran. A stopped bridge cannot be restarted.
+
+        start() would happily bind a fresh server, but _closed stays set and every
+        call() raises, so a caller looking to reuse a bridge has to check this
+        rather than assume start() is enough.
+        """
+
+        with self._condition:
+            return self._closed
+
     def status(self) -> dict[str, object]:
         with self._condition:
             return {
@@ -464,11 +476,15 @@ class BrowserExtensionSessionBackend:
         self.bridge = bridge
         self.state_revision = 0
         self._started = False
+        self._started_at_ms = 0
         self._tab_id = ""
 
     def start(self) -> BrowserPageState:
         self.bridge.start()
         self._started = True
+        # Wall clock, not monotonic: it is compared against chrome.downloads
+        # startTime inside the browser.
+        self._started_at_ms = int(time.time() * 1000)
         self._log("backend.session.started", allowed_domains=list(self.options.allowed_domains), headless=self.options.headless)
         return self.state()
 
@@ -615,7 +631,9 @@ class BrowserExtensionSessionBackend:
         return [dict(item) for item in raw] if isinstance(raw, list) else []
 
     def downloaded_files(self) -> list[str]:
-        result = self.bridge.call("downloads", self._target_args())
+        # The extension can see every download in the user's browser, so it is
+        # told when this session began and reports nothing older.
+        result = self.bridge.call("downloads", self._target_args({"since_ms": self._started_at_ms}))
         raw = result.get("files")
         if not isinstance(raw, list):
             return []
@@ -652,8 +670,26 @@ class BrowserExtensionSessionBackend:
         return data
 
     def close(self) -> None:
+        was_started = self._started
         self._started = False
-        self._log("backend.session.closed", state_revision=self.state_revision, tab_id=self._tab_id)
+        released = -1
+        if was_started:
+            try:
+                # Tab ownership lives in the browser and outlives this session, so
+                # it has to be handed back explicitly or the next task inherits
+                # tabs the user has since gone back to using. A short timeout: a
+                # close must not block on an extension that is already gone, and
+                # a browser that never answers has no ownership left to release.
+                result = self.bridge.call("release_tabs", {}, timeout=5.0)
+                released = int(result.get("released") or 0)
+            except Exception:
+                released = -1
+        self._log(
+            "backend.session.closed",
+            state_revision=self.state_revision,
+            tab_id=self._tab_id,
+            released_tabs=released,
+        )
 
     def _log(self, event: str, **fields: Any) -> None:
         diagnostics = getattr(self.bridge, "diagnostics", None)

@@ -36,6 +36,10 @@ class FakeExtensionBridge:
     def from_environment(cls):
         return cls()
 
+    @property
+    def closed(self):
+        return self.stopped
+
     def start(self):
         self.started = True
 
@@ -51,8 +55,10 @@ class FakeExtensionBridge:
             "queued_commands": 0,
         }
 
-    def call(self, action, args=None):
+    def call(self, action, args=None, *, timeout=None):
         self.calls.append((str(action), dict(args or {})))
+        if action == "release_tabs":
+            return {"released": 0}
         if action == "screenshot":
             return {"png_base64": base64.b64encode(b"\x89PNG\r\n\x1a\nfake").decode("ascii")}
         return {
@@ -276,6 +282,8 @@ def test_runtime_can_select_current_tab_extension_backend(tmp_path, monkeypatch)
 
         tool = runtime.tools.get("browser_open")
         assert tool is not None
+        # browser_open's description is where the model learns which browser it is
+        # about to drive, so extension mode has to say it is the user's own.
         description = tool.description.casefold()
         assert "installed loom browser extension" in description
         assert "http/https url" in description
@@ -283,3 +291,39 @@ def test_runtime_can_select_current_tab_extension_backend(tmp_path, monkeypatch)
     finally:
         runtime.close()
     assert FakeExtensionBridge.created[0].stopped is True
+
+
+def test_reconfiguring_in_extension_mode_reuses_the_running_bridge(tmp_path, monkeypatch):
+    """A second bridge would fight the first one for the loopback port.
+
+    Dropping the reference does not stop the old server thread, and
+    allow_reuse_address lets the replacement bind the same port anyway, so the
+    extension's long poll reaches one bridge while Loom queues commands on the
+    other. Toggling private networks reaches this path from Settings.
+    """
+
+    FakeExtensionBridge.created.clear()
+    monkeypatch.setenv("LOOM_BROWSER_BACKEND", "extension")
+    monkeypatch.setattr(browser_runtime_module, "BrowserExtensionBridge", FakeExtensionBridge)
+
+    runtime = browser_runtime_module.BrowserRuntime(
+        platform=NoopPlatform(),
+        store=FileAgentSessionStore(tmp_path / "state"),
+        tools=loom_default_tools(),
+        sandbox_manager=SandboxManager(policy=SandboxPolicy.OFF),
+        web_search_provider=None,
+        auto_configure_web_search=False,
+        auto_configure_browser=True,
+        browser_security_policy=BrowserSecurityPolicy(resolve_dns=False),
+    )
+    try:
+        first = runtime.browser_extension_bridge
+        assert len(FakeExtensionBridge.created) == 1
+
+        assert runtime.browser_set_private_networks(True)["changed"] is True
+
+        assert runtime.browser_extension_bridge is first
+        assert len(FakeExtensionBridge.created) == 1, "a reconfigure built a second bridge"
+        assert first.stopped is False
+    finally:
+        runtime.close()
