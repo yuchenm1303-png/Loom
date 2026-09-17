@@ -4,7 +4,6 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.agent_runtime import AgentLimits
 from app.agent_runtime.context_limits import resolve_context_limits
 
 
@@ -69,11 +68,14 @@ def test_default_auto_compact_threshold_uses_raw_window_not_effective_window(mon
     assert resolved.source == "model_profile"
 
 
-def test_unknown_model_uses_codex_aligned_272k_fallback(monkeypatch):
+def test_legacy_32k_runtime_fallback_is_normalized_to_codex_272k(monkeypatch):
     monkeypatch.delenv("LOOM_CONTEXT_WINDOW_TOKENS", raising=False)
     monkeypatch.delenv("LOOM_OUTPUT_RESERVE_TOKENS", raising=False)
     runtime = SimpleNamespace(
-        limits=AgentLimits(),
+        limits=SimpleNamespace(
+            context_window_tokens=32_768,
+            output_reserve_tokens=4096,
+        ),
         platform=SimpleNamespace(registry=Registry(None)),
     )
 
