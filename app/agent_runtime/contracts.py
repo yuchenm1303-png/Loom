@@ -77,7 +77,10 @@ class AgentLimits:
     max_tool_calls: int = 0
     max_messages: int = 160
     max_tool_result_chars: int = 20_000
-    context_window_tokens: int = 32_768
+    # Match Codex's conservative metadata fallback instead of treating every
+    # unknown/custom provider as a 32k model. Authoritative profile metadata or
+    # explicit runtime overrides still win over this value.
+    context_window_tokens: int = 272_000
     output_reserve_tokens: int = 4096
     model_retries: int = 2
 
