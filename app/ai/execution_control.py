@@ -10,6 +10,10 @@ class ModelCancelled(Exception):
     pass
 
 
+class ModelSteered(Exception):
+    """The current model sample was superseded by newer same-turn guidance."""
+
+
 class ExecutionControl:
     def __init__(self) -> None:
         self.event = threading.Event()

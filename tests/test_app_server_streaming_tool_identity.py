@@ -37,6 +37,17 @@ def _stream_event(*, call_id: str = "", fragment: str, tool: str = "") -> AgentS
     )
 
 
+def _assistant_stream_event(text: str) -> AgentStreamEvent:
+    return AgentStreamEvent(
+        session_id="thread-1",
+        turn_id="turn-1",
+        step_id="step-1",
+        kind=AgentStreamEventKind.ASSISTANT_TEXT_DELTA,
+        created_at="2026-09-05T00:00:00.000+00:00",
+        data={"delta": text, "profile_id": "test-model"},
+    )
+
+
 def _runtime_event(kind: AgentEventKind, *, event_id: str, data: dict[str, object]) -> AgentEvent:
     return AgentEvent(
         event_id=event_id,
@@ -135,3 +146,57 @@ def test_streamed_tool_arguments_keep_the_durable_call_item_identity(tmp_path) -
     assert completed[0]["callId"] == "call-1"
 
     assert "model-tool:" not in json.dumps(observed, ensure_ascii=False)
+
+
+def test_superseded_model_stream_tombstones_transient_assistant_and_tool_items(tmp_path) -> None:
+    runtime = _RuntimeStub()
+    service = StreamingLoomAppServerService(
+        runtime=runtime,
+        store=SimpleNamespace(root=tmp_path),
+        model="test-model",
+        default_workspace=tmp_path,
+        default_permission_mode=PermissionMode.WORKSPACE,
+    )
+    observed: list[tuple[str, dict[str, object]]] = []
+    service.subscribe_notifications(lambda method, params: observed.append((method, params)))
+
+    assert runtime.stream_listener is not None
+    assert runtime.runtime_listener is not None
+    runtime.stream_listener(_assistant_stream_event("partial stale answer"))
+    runtime.stream_listener(
+        _stream_event(call_id="call-stale", fragment='{"value":"partial"}', tool="echo")
+    )
+
+    runtime.runtime_listener(
+        _runtime_event(
+            AgentEventKind.MODEL_RESPONSE_REJECTED,
+            event_id="evt-steered",
+            data={
+                "step_id": "step-1",
+                "reason": "superseded_by_steering",
+                "attempt": 0,
+                "usage": {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0},
+            },
+        )
+    )
+
+    tombstones = [
+        params["item"]
+        for method, params in observed
+        if method == "item/completed" and params.get("item", {}).get("type") == "superseded"
+    ]
+    assert {item["id"] for item in tombstones} == {
+        "assistant:step:step-1",
+        "tool:call-stale",
+    }
+    assert all(item["status"] == "superseded" for item in tombstones)
+    assistant = next(item for item in tombstones if item["id"] == "assistant:step:step-1")
+    assert assistant["text"] == ""
+
+    # Cleanup is exact to the abandoned step; the service no longer owns phantom
+    # streaming identities that could be mistaken for the replacement sample.
+    assert ("thread-1", "turn-1", "step-1") not in service._streamed_assistant_steps
+    assert not any(
+        key[:3] == ("thread-1", "turn-1", "step-1")
+        for key in service._streamed_tool_calls
+    )

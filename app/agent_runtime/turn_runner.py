@@ -5,12 +5,14 @@ from dataclasses import replace
 
 from app.ai import AIMessage, ChatRequest, MessageRole, ModelResponse, ModelUsage, ToolChoice
 from app.ai.errors import AIEmptyResponseError, AIResponseError, AITransportError
-from app.ai.execution_control import ModelCancelled
+from app.ai.execution_control import ModelCancelled, ModelSteered
 
 from .contracts import AgentEventKind as Event
 from .contracts import AgentStatus
 from .execution_binding import action_binding_digest
 from .history import repair_tool_history
+from .model_replan import revision as steering_revision
+from .model_replan import wait_for_signal
 from .turn_response_validation import (
     COMPLETE_FINISH_REASONS,
     TERMINAL_RECOVERY_INSTRUCTION,
@@ -37,6 +39,50 @@ def _exposed_tool_names(step) -> tuple[str, ...]:
     return tuple(sorted(tool.name for tool in step.tool_router.all()))
 
 
+def _consume_steering_for_sample(rt, session, token) -> int:
+    """Consume all guidance known before a model request and return its revision.
+
+    A steering submission can race the inbox read. Re-read until the process-local
+    revision is stable; if guidance arrives immediately after this returns, the
+    executor receives the older revision and supersedes the request before its
+    result can commit.
+    """
+
+    while True:
+        expected = steering_revision(token)
+        rt._consume_steering(session)
+        if steering_revision(token) == expected:
+            return expected
+
+
+def _record_steering_rejection(
+    rt,
+    session,
+    step,
+    *,
+    attempt: int,
+    usage: ModelUsage | None = None,
+    response: ModelResponse | None = None,
+) -> None:
+    resolved_usage = usage or ModelUsage()
+    data = {
+        "step_id": step.step_id,
+        "reason": "superseded_by_steering",
+        "attempt": attempt,
+        "usage": {
+            "input_tokens": resolved_usage.input_tokens,
+            "output_tokens": resolved_usage.output_tokens,
+            "total_tokens": resolved_usage.total_tokens,
+        },
+    }
+    if response is not None:
+        data.update({
+            "finish_reason": response.finish_reason,
+            "response_id": response.response_id,
+        })
+    rt._record(session, Event.MODEL_RESPONSE_REJECTED, data=data)
+
+
 class TurnRunner:
     def __init__(self, runtime):
         self.runtime = runtime
@@ -57,6 +103,7 @@ class TurnRunner:
                 recovery_partial = ""
                 attempt = 0
                 while True:
+                    sample_steering_revision = _consume_steering_for_sample(rt, session, token)
                     # Capture once so request context, advertised tools, and all
                     # tool calls from this response share one immutable world.
                     step = rt._capture_step_context(session, next_model_step=True)
@@ -121,7 +168,26 @@ class TurnRunner:
                                 profile_id,
                                 request,
                                 token,
+                                steering_revision=sample_steering_revision,
                             )
+                            break
+                        except ModelSteered:
+                            # The durable inbox contains the new intent. Discard
+                            # only this not-yet-committed model sample, keep the
+                            # logical turn alive, and rebuild the next request from
+                            # history with the steering message included. Recording
+                            # the rejection also closes any transient streamed UI
+                            # item for this abandoned sample.
+                            _record_steering_rejection(
+                                rt,
+                                session,
+                                step,
+                                attempt=attempt,
+                            )
+                            rt._release_step_context(step)
+                            recovery_instruction = ""
+                            recovery_partial = ""
+                            retry_sampling = True
                             break
                         except AIEmptyResponseError as exc:
                             from .runtime import _add_usage
@@ -184,9 +250,27 @@ class TurnRunner:
                         except AITransportError as exc:
                             if not exc.retryable or attempt >= rt.limits.model_retries:
                                 raise
-                            attempt += 1
-                            if token._event.wait(min(2.0, 0.25 * 2 ** (attempt - 1))):
+                            next_attempt = attempt + 1
+                            signal = wait_for_signal(
+                                token,
+                                sample_steering_revision,
+                                min(2.0, 0.25 * 2 ** (next_attempt - 1)),
+                            )
+                            if signal == "cancel":
                                 raise ModelCancelled()
+                            if signal == "steer":
+                                _record_steering_rejection(
+                                    rt,
+                                    session,
+                                    step,
+                                    attempt=attempt,
+                                )
+                                rt._release_step_context(step)
+                                recovery_instruction = ""
+                                recovery_partial = ""
+                                retry_sampling = True
+                                break
+                            attempt = next_attempt
                             continue
 
                     if retry_sampling:
@@ -244,30 +328,63 @@ class TurnRunner:
                     raise TypeError("agent model platform must return ModelResponse")
                 if not response.text and not response.tool_calls:
                     raise RuntimeError("agent model response contained neither text nor tool calls")
-                session.model_steps += 1
+
+                # Serialize the final sample-acceptance boundary against steering
+                # submission. ModelExecutor already notices guidance during token
+                # generation; this closes the final race after the provider has
+                # returned but before MODEL_RESPONSE becomes durable. Whichever
+                # side obtains this guard first defines the ordering.
+                superseded_before_commit = False
+                cancelled_before_commit = False
                 from .runtime import _add_usage
-                session.usage = _add_usage(session.usage, response.usage)
-                # Keep public partial output for inspection, but never execute partial calls.
-                reason = response.finish_reason.casefold()
-                incomplete = reason not in _COMPLETE_FINISH_REASONS
-                calls = () if incomplete else response.tool_calls
-                session.messages.append(AIMessage(role=MessageRole.ASSISTANT, content=response.text, tool_calls=calls))
-                rt._record(session, Event.MODEL_RESPONSE, data={
-                    "step_id": step.step_id,
-                    "text": response.text,
-                    "finish_reason": response.finish_reason,
-                    "response_id": response.response_id,
-                    "tool_calls": [
-                        {"call_id": c.call_id, "name": c.name, "arguments": c.arguments}
-                        for c in calls
-                    ],
-                    "compaction_echo_removed": compaction_echo_removed,
-                    "usage": {
-                        "input_tokens": response.usage.input_tokens,
-                        "output_tokens": response.usage.output_tokens,
-                        "total_tokens": response.usage.total_tokens,
-                    },
-                })
+                with rt._active_tokens_guard:
+                    if token.cancelled:
+                        cancelled_before_commit = True
+                    elif steering_revision(token) != sample_steering_revision:
+                        session.usage = _add_usage(session.usage, response.usage)
+                        _record_steering_rejection(
+                            rt,
+                            session,
+                            step,
+                            attempt=attempt,
+                            usage=response.usage,
+                            response=response,
+                        )
+                        superseded_before_commit = True
+                    else:
+                        session.model_steps += 1
+                        session.usage = _add_usage(session.usage, response.usage)
+                        # Keep public partial output for inspection, but never execute partial calls.
+                        reason = response.finish_reason.casefold()
+                        incomplete = reason not in _COMPLETE_FINISH_REASONS
+                        calls = () if incomplete else response.tool_calls
+                        session.messages.append(AIMessage(role=MessageRole.ASSISTANT, content=response.text, tool_calls=calls))
+                        rt._record(session, Event.MODEL_RESPONSE, data={
+                            "step_id": step.step_id,
+                            "text": response.text,
+                            "finish_reason": response.finish_reason,
+                            "response_id": response.response_id,
+                            "tool_calls": [
+                                {"call_id": c.call_id, "name": c.name, "arguments": c.arguments}
+                                for c in calls
+                            ],
+                            "compaction_echo_removed": compaction_echo_removed,
+                            "usage": {
+                                "input_tokens": response.usage.input_tokens,
+                                "output_tokens": response.usage.output_tokens,
+                                "total_tokens": response.usage.total_tokens,
+                            },
+                        })
+
+                if cancelled_before_commit:
+                    rt._release_step_context(step)
+                    rt._cancel_if_requested(session, token)
+                    return rt._result(session)
+                if superseded_before_commit:
+                    rt._release_step_context(step)
+                    recovery_instruction = ""
+                    recovery_partial = ""
+                    continue
                 if incomplete:
                     raise RuntimeError(f"model response did not complete: {reason}")
                 if calls:
@@ -299,6 +416,9 @@ class TurnRunner:
                     if rt._consume_steering(session):
                         rt._release_step_context(step)
                         continue
+                    before_turn_completed = getattr(rt, "_before_turn_completed", None)
+                    if callable(before_turn_completed):
+                        before_turn_completed(session)
                     # Stop accepting steering before committing the terminal state.
                     rt._active_tokens.pop(session.session_id, None)
                 session.status = AgentStatus.COMPLETED
