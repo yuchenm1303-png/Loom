@@ -5,6 +5,10 @@ from dataclasses import dataclass
 from typing import Any
 
 
+_CODEX_FALLBACK_CONTEXT_WINDOW = 272_000
+_LEGACY_RUNTIME_FALLBACK_CONTEXT_WINDOW = 32_768
+
+
 @dataclass(frozen=True, slots=True)
 class ResolvedContextLimits:
     """One model step's resolved context window and compaction threshold.
@@ -70,10 +74,13 @@ def resolve_context_limits(rt: Any, session: Any) -> ResolvedContextLimits:
     separate hard usability cap. Re-running this function for every model step
     also means a profile/model change immediately changes the threshold.
 
-    Unknown/custom models use AgentLimits' Codex-aligned 272k fallback and a
-    conservative 95% effective window instead of silently behaving like 32k
-    models. Explicit environment overrides and authoritative model-profile
-    metadata remain higher priority.
+    Unknown/custom models use Codex's conservative 272k fallback and a 95%
+    effective window instead of silently behaving like 32k models. Explicit
+    environment overrides and authoritative model-profile metadata remain higher
+    priority. Loom historically constructed AgentRuntime with a hard-coded 32k
+    default; that legacy value is normalized only on the unknown-model fallback
+    path. A real 32k model remains representable through profile metadata or an
+    explicit LOOM_CONTEXT_WINDOW_TOKENS override.
 
     Current Loom model-profile metadata has no field for Codex's optional
     ``body_after_prefix`` scope and no AutoCompactWindow prefill baseline. The
@@ -110,6 +117,8 @@ def resolve_context_limits(rt: Any, session: Any) -> ResolvedContextLimits:
         effective_window = max(1, context_window * profile_percent // 100)
         source = "model_profile"
     else:
+        if fallback_window == _LEGACY_RUNTIME_FALLBACK_CONTEXT_WINDOW:
+            fallback_window = _CODEX_FALLBACK_CONTEXT_WINDOW
         context_window = fallback_window
         effective_window = max(1, context_window * 95 // 100)
         source = "runtime_fallback"
@@ -136,8 +145,9 @@ def resolve_context_limits(rt: Any, session: Any) -> ResolvedContextLimits:
         auto_compact = context_window * 9 // 10
     else:
         auto_compact = int(configured_auto)
-    # The effective window remains the hard upper bound even if a custom profile
-    # supplies an inconsistent threshold.
+    # Codex independently enforces the effective context window as a hard cap.
+    # Loom exposes one trigger threshold here, so clamp the 90%-of-raw default to
+    # that hard cap to preserve the same earliest compaction point.
     auto_compact = max(1, min(auto_compact, effective_window))
 
     configured_tool = getattr(profile_limits, "tool_output_token_limit", None)
