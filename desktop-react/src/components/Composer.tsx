@@ -67,6 +67,9 @@ function SteeringComposer({ onSend, onInterrupt }: ComposerProps) {
     setAcknowledged(false);
     setError("");
     try {
+      // Once interrupt is accepted, the backend cancellation token is terminal
+      // for steering this turn. Keep the surface locked until the parent swaps
+      // back to the ordinary composer on turn/completed.
       await onInterrupt();
     } catch (cause) {
       setStopping(false);
@@ -92,7 +95,11 @@ function SteeringComposer({ onSend, onInterrupt }: ComposerProps) {
   return (
     <div className="composer-wrap live-steering-composer">
       <form
-        className={`composer is-running ${focused ? "is-focused" : ""}`}
+        // Live steering is deliberately not `.is-running`: that legacy class
+        // belongs to the old non-interactive working footer and historically
+        // carried rules that suppressed the input row. Steering is its own
+        // editable state and must never inherit those semantics again.
+        className={`composer is-steering ${focused ? "is-focused" : ""}`}
         onSubmit={(event) => void submit(event)}
       >
         <span className="composer-glow" aria-hidden="true" />
