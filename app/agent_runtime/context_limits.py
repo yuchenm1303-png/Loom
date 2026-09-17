@@ -29,6 +29,11 @@ class ResolvedContextLimits:
     recent_user_token_limit: int
     safety_tokens: int
     source: str
+    # False when no authoritative metadata declared this model's window, so every
+    # token limit above is a guess about somebody else's model. Codex leaves the
+    # window ``None`` in that case and lets the provider be the authority instead
+    # of budgeting against a number it invented.
+    window_known: bool = True
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -42,6 +47,7 @@ class ResolvedContextLimits:
             "recent_user_token_limit": self.recent_user_token_limit,
             "safety_tokens": self.safety_tokens,
             "source": self.source,
+            "window_known": self.window_known,
         }
 
 
@@ -108,6 +114,7 @@ def resolve_context_limits(rt: Any, session: Any) -> ResolvedContextLimits:
             "prefill-window state contract that Loom ModelContextLimits does not expose"
         )
 
+    window_known = True
     if env_window is not None:
         context_window = env_window
         effective_window = env_window
@@ -122,6 +129,7 @@ def resolve_context_limits(rt: Any, session: Any) -> ResolvedContextLimits:
         context_window = fallback_window
         effective_window = max(1, context_window * 95 // 100)
         source = "runtime_fallback"
+        window_known = False
 
     if env_reserve is not None:
         output_reserve = env_reserve
@@ -169,6 +177,7 @@ def resolve_context_limits(rt: Any, session: Any) -> ResolvedContextLimits:
         recent_user_token_limit=recent_user_limit,
         safety_tokens=safety_tokens,
         source=source,
+        window_known=window_known,
     )
 
 

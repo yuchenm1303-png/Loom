@@ -241,6 +241,15 @@ class TurnRunner:
                                 "error_type": type(exc).__name__,
                                 "error": str(exc),
                                 "attempt": attempt,
+                                # The size the provider refused. For a model with
+                                # no declared window this is the only hard fact
+                                # available about it, so record it as a bound
+                                # rather than rediscovering it every time.
+                                "rejected_input_tokens": (
+                                    int(extra.get("calibrated_input_tokens_after") or 0)
+                                    if over_length and isinstance(extra, dict)
+                                    else 0
+                                ),
                                 "usage": {
                                     "input_tokens": 0,
                                     "output_tokens": 0,

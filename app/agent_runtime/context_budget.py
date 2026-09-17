@@ -193,6 +193,88 @@ def _latest_provider_context_tokens(rt, session) -> int | None:
     return None
 
 
+def _observed_context_ceiling(rt, session) -> int | None:
+    """Smallest request size this provider has already refused as too long.
+
+    When no metadata declares the model's window, a rejection is the only hard
+    fact available about it. Recording that size turns one failed request into a
+    durable bound, so an unknown-window session converges instead of rediscovering
+    the ceiling every time history grows back.
+    """
+    try:
+        events = rt.store.events(session.session_id)
+    except Exception:
+        return None
+
+    sizes: list[int] = []
+    for event in tuple(events)[-_CALIBRATION_EVENT_SCAN_LIMIT:]:
+        kind = getattr(event.kind, "value", str(event.kind))
+        if kind != "model_response_rejected":
+            continue
+        data = event.data if isinstance(event.data, dict) else {}
+        if data.get("reason") != "context_window_exceeded":
+            continue
+        size = int(data.get("rejected_input_tokens") or 0)
+        if size > 0:
+            sizes.append(size)
+    return min(sizes) if sizes else None
+
+
+def _largest_accepted_input_tokens(rt, session) -> int:
+    """Largest request size this provider has actually served in this session."""
+    try:
+        events = rt.store.events(session.session_id)
+    except Exception:
+        return 0
+    best = 0
+    for event in tuple(events)[-_CALIBRATION_EVENT_SCAN_LIMIT:]:
+        kind = getattr(event.kind, "value", str(event.kind))
+        if kind != "model_response":
+            continue
+        data = event.data if isinstance(event.data, dict) else {}
+        usage = data.get("usage")
+        if isinstance(usage, dict):
+            best = max(best, int(usage.get("input_tokens") or 0))
+    return best
+
+
+def _resolved_input_budget(
+    rt,
+    session,
+    limits: ResolvedContextLimits,
+    *,
+    fixed_tokens: int,
+) -> int | None:
+    """The ceiling to budget compaction against, or ``None`` when none is honest.
+
+    Codex budgets only against declared model metadata and otherwise leaves the
+    window unset, letting the provider be the authority. Loom follows that, plus
+    one thing Codex does not need: a ceiling this provider proved by refusing a
+    request.
+
+    That proof is only trusted when it is self-consistent. Providers return
+    context-length errors for reasons that have nothing to do with length — a
+    misrouted model, a gateway fault — and believing a bogus tiny ceiling would
+    wedge the session far more thoroughly than not budgeting at all.
+    """
+    if limits.window_known:
+        return limits.input_budget_tokens
+    ceiling = _observed_context_ceiling(rt, session)
+    if ceiling is None:
+        return None
+    # Stay clear of the proven-bad size rather than probing it again.
+    budget = max(1, ceiling * 9 // 10)
+    if budget <= int(fixed_tokens):
+        # Compaction cannot shrink base context, so this "ceiling" would make
+        # every request impossible. It is not a statement about history length.
+        return None
+    if budget <= _largest_accepted_input_tokens(rt, session):
+        # The same provider already served a larger request; the rejection
+        # contradicts its own behaviour and is not a usable bound.
+        return None
+    return budget
+
+
 def _estimator_calibration(rt, session) -> tuple[float, int]:
     """Measure this session's fallback-estimator bias from provider accounting.
 
@@ -302,6 +384,7 @@ def _metadata(
     reduction_stats: ContextReductionStats | None = None,
     calibration: float = 1.0,
     calibration_samples: int = 0,
+    input_budget: int | None = None,
 ) -> dict[str, object]:
     metadata: dict[str, object] = {
         "context_digest": envelope.digest,
@@ -318,6 +401,12 @@ def _metadata(
         # A fallback window means no model profile declared its real context
         # size, so every threshold below is a guess about someone else's model.
         "context_window_fallback": limits.source == "runtime_fallback",
+        "effective_input_budget_tokens": input_budget,
+        "context_budget_source": (
+            "model_metadata"
+            if limits.window_known
+            else ("observed_provider_limit" if input_budget is not None else "unbounded")
+        ),
         "active_context_tokens": active_context_tokens,
         "token_accounting_source": token_accounting_source,
         "tool_schema_tokens": estimate_tool_schema_tokens(tools),
@@ -465,7 +554,9 @@ def prepare_context(rt, session, step, token):
 
     # Compaction cannot reduce base/runtime/project context or tool schemas. Fail
     # closed before asking the model to summarize history that cannot possibly
-    # make the next request fit.
+    # make the next request fit. This is a structural impossibility check rather
+    # than a compaction decision, so it keeps using the resolved limits even when
+    # the window is a fallback: that number is then an absolute sanity ceiling.
     fixed_tokens = estimate_tokens(transient, tools)
     if calibrated(fixed_tokens) >= limits.input_budget_tokens:
         raise ContextBudgetExceeded(
@@ -475,6 +566,17 @@ def prepare_context(rt, session, step, token):
             message_count=len(visible_messages),
             reason="fixed instructions/runtime context or tool schemas exceed the model input budget",
         )
+
+    # ``None`` means no declared window and no credible provider rejection to
+    # learn from, so there is no honest number to compact against. Inventing one
+    # is what turned a 21k conversation into four compactions in three minutes;
+    # send the request and let the provider rule instead.
+    input_budget = _resolved_input_budget(
+        rt,
+        session,
+        limits,
+        fixed_tokens=calibrated(fixed_tokens),
+    )
 
     provider_tokens = _latest_provider_context_tokens(rt, session)
     if provider_tokens is None:
@@ -487,6 +589,8 @@ def prepare_context(rt, session, step, token):
     # If one giant user item is the only canonical history, summarization cannot
     # safely archive a smaller history first. Use a request-only projection and
     # preserve the full durable user message for future recovery/export.
+    # Also structural: one oversized user item cannot be summarized into a
+    # smaller history, so the sanity ceiling applies here too.
     hard_target = max(1, limits.input_budget_tokens - limits.safety_tokens)
     if calibrated(estimated_before) > hard_target:
         emergency = _single_user_emergency_projection(
@@ -510,6 +614,7 @@ def prepare_context(rt, session, step, token):
                 token_accounting_source=accounting_source,
                 calibration=calibration,
                 calibration_samples=calibration_samples,
+            input_budget=input_budget,
             )
             metadata.update(
                 {
@@ -529,7 +634,7 @@ def prepare_context(rt, session, step, token):
     projected_visible = visible_messages
     estimated_projected = estimated_before
     reduction_stats = ContextReductionStats()
-    if calibrated(estimated_before) > limits.input_budget_tokens:
+    if input_budget is not None and calibrated(estimated_before) > input_budget:
         projected_history, reduction_stats = reduce_tool_outputs(
             canonical_history,
             per_output_token_limit=limits.tool_output_token_limit,
@@ -555,11 +660,18 @@ def prepare_context(rt, session, step, token):
     forced_compaction = _consume_forced_compaction(rt, session)
     hard_request_fits = (
         not forced_compaction
-        and calibrated(estimated_projected) <= limits.input_budget_tokens
+        and (
+            input_budget is None
+            or calibrated(estimated_projected) <= input_budget
+        )
         and len(projected_visible) <= rt.limits.max_messages
     )
+    # Codex leaves `auto_compact_token_limit` unset for a model it has no metadata
+    # for, so this trigger simply never fires there. Guessing a threshold instead
+    # is what made a 21k conversation compact four times in three minutes.
     token_limit_reached = (
-        calibrated_active_context_tokens >= limits.auto_compact_token_limit
+        limits.window_known
+        and calibrated_active_context_tokens >= limits.auto_compact_token_limit
     )
     if hard_request_fits and not token_limit_reached:
         return projected_visible, _metadata(
@@ -574,6 +686,7 @@ def prepare_context(rt, session, step, token):
             reduction_stats=reduction_stats,
             calibration=calibration,
             calibration_samples=calibration_samples,
+            input_budget=input_budget,
         )
 
     # The compaction model may use the request-only reduced projection, but the
@@ -604,6 +717,7 @@ def prepare_context(rt, session, step, token):
     summary_usage = ModelUsage()
     summary = ""
     max_output_tokens = max(1, limits.output_reserve_tokens)
+    summary_request_ceiling = limits.effective_context_window_tokens
 
     while True:
         _raise_if_cancelled(token)
@@ -613,7 +727,7 @@ def prepare_context(rt, session, step, token):
             max_output_tokens=max_output_tokens,
         )
         request_tokens = estimate_tokens(request.messages)
-        if calibrated(request_tokens) + max_output_tokens > limits.effective_context_window_tokens:
+        if calibrated(request_tokens) + max_output_tokens > summary_request_ceiling:
             if len(compact_input) <= 1:
                 raise ContextBudgetExceeded(
                     estimated_tokens=request_tokens,
@@ -710,8 +824,11 @@ def prepare_context(rt, session, step, token):
     )
     compacted_visible = [*transient, *replacement]
     estimated_after = estimate_tokens(compacted_visible, tools)
+    # Judge the compacted result by whatever gate let the request in, so an
+    # unbudgeted session cannot be failed for producing a history it would have
+    # been allowed to send uncompacted. The message cap always applies.
     if (
-        calibrated(estimated_after) > limits.input_budget_tokens
+        (input_budget is not None and calibrated(estimated_after) > input_budget)
         or len(compacted_visible) > rt.limits.max_messages
     ):
         raise ContextBudgetExceeded(
@@ -746,6 +863,7 @@ def prepare_context(rt, session, step, token):
         reduction_stats=reduction_stats,
         calibration=calibration,
         calibration_samples=calibration_samples,
+        input_budget=input_budget,
     )
     metadata.update(
         {
