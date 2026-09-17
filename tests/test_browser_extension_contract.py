@@ -51,6 +51,7 @@ def test_manifest_stays_manifest_v3_with_a_service_worker(manifest):
         # runtime must still be the original background.js implementation.
         assert "import './background.js'" in worker
     assert "tabGroups" in manifest["permissions"]
+    assert "alarms" in manifest["permissions"]
 
 
 def test_extension_has_no_public_development_credential(background):
@@ -114,6 +115,9 @@ def test_installed_extension_can_reload_itself_after_desktop_update(background):
     assert "UPDATE_TOKEN_KEY" in background
     assert "chrome.runtime.reload()" in background
     assert "startInstalledUpdateWatcher()" in background
+    assert "chrome.alarms.create" in background
+    assert "chrome.alarms.onAlarm.addListener" in background
+    assert "setInterval(() => void checkForInstalledUpdate()" not in background
 
 
 def test_click_reports_whether_a_navigation_is_coming(background):

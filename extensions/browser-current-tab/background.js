@@ -7,10 +7,10 @@ const NAVIGATION_GRACE_MS = 300;
 const NAVIGATION_COMMIT_TIMEOUT_MS = 8000;
 const CLIENT_ID_KEY = "loomBrowserBridgeClientId";
 const UPDATE_TOKEN_KEY = "loomBrowserBridgeUpdateToken";
+const UPDATE_ALARM_NAME = "loom-browser-bridge-update";
 const LOOM_TAB_GROUP_TITLE = "Loom";
 
 let polling = false;
-let updateWatcherStarted = false;
 const lastElementsByTab = new Map();
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -186,11 +186,13 @@ async function checkForInstalledUpdate() {
 }
 
 function startInstalledUpdateWatcher() {
-  if (updateWatcherStarted) return;
-  updateWatcherStarted = true;
   void checkForInstalledUpdate();
-  setInterval(() => void checkForInstalledUpdate(), 2000);
+  chrome.alarms.create(UPDATE_ALARM_NAME, { delayInMinutes: 0.1, periodInMinutes: 0.5 });
 }
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === UPDATE_ALARM_NAME) void checkForInstalledUpdate();
+});
 
 async function isLoomWorkTab(tab) {
   if (!tab || typeof tab.groupId !== "number" || tab.groupId < 0 || !chrome.tabGroups) return false;
