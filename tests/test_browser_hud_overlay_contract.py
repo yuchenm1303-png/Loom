@@ -48,7 +48,10 @@ def test_browser_hud_hot_reload_replaces_old_runtime_in_existing_tabs() -> None:
     assert tuple(int(part) for part in manifest["version"].split(".")) >= (0, 1, 6)
     assert manifest.get("content_scripts", [])[0]["js"] == ["browser-hud.js"]
 
-    assert "import './background.js'" in worker
+    # The wrapper installs lifecycle interception before starting the production
+    # bridge runtime. This keeps turn-end HUD teardown out of background.js while
+    # preserving background.js as the sole owner of ordinary browser commands.
+    assert "await import('./background.js')" in worker
     assert "chrome.tabs.query({})" in worker
     assert "chrome.scripting.executeScript" in worker
     assert "files: HUD_SCRIPTS" in worker
