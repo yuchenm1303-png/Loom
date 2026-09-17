@@ -240,7 +240,7 @@ def test_unexpected_compaction_tool_call_retries_without_failing_turn():
     assert metadata["compaction_trimmed_messages"] > 0
 
 
-def test_repeated_compaction_tool_calls_fail_only_after_retry_budget():
+def test_repeated_compaction_tool_calls_fall_back_without_failing_turn():
     unexpected = ModelResponse(
         tool_calls=(ToolCall(call_id="call-compact", name="exec", arguments={}),),
         finish_reason="tool_calls",
@@ -248,15 +248,15 @@ def test_repeated_compaction_tool_calls_fail_only_after_retry_budget():
     runtime = FakeRuntime([unexpected, unexpected, unexpected])
     session = Session(_history())
 
-    try:
-        prepare_context(runtime, session, Step(), Token())
-    except RuntimeError as exc:
-        assert "repeatedly returned unexpected tool calls" in str(exc)
-    else:
-        raise AssertionError("invalid compaction responses must exhaust the retry budget")
+    _messages, metadata = prepare_context(runtime, session, Step(), Token())
 
     assert len(runtime.model_executor.requests) == runtime.limits.model_retries + 1
-    assert runtime.commits == []
+    assert len(runtime.commits) == 1
+    assert runtime.commits[-1]["summary_source"] == "auto"
+    assert runtime.commits[-1]["summary"].startswith("Deterministic Loom checkpoint")
+    assert metadata["compaction_fallback"] == "deterministic"
+    assert metadata["compaction_provider_response_invalid"] is True
+    assert session.messages[-1].name == "loom_compaction"
 
 
 def test_replacement_history_contains_real_users_and_summary_not_tool_or_assistant_items():

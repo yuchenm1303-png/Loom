@@ -3,7 +3,7 @@ from __future__ import annotations
 from app.agent_runtime import AgentEventKind, AgentRuntime, AgentStatus, FileAgentSessionStore, SandboxManager, SandboxPolicy
 from app.agent_runtime.context_compaction import SUMMARIZATION_PROMPT, SUMMARY_PREFIX
 from app.agent_runtime.workspace_tools import loom_default_tools
-from app.ai import AGENT_FAST_ROLE, AIMessage, MessageRole, ModelResponse, ModelUsage, ToolChoice
+from app.ai import AGENT_FAST_ROLE, AIMessage, MessageRole, ModelResponse, ModelUsage, ToolCall, ToolChoice
 
 
 class ScriptedPlatform:
@@ -18,17 +18,10 @@ class ScriptedPlatform:
         return self.responses.pop(0)
 
 
-def test_model_compaction_is_separate_no_tool_task_and_counts_usage(tmp_path):
+def _runtime(tmp_path, responses):
     workspace = tmp_path / "project"
     workspace.mkdir()
-    platform = ScriptedPlatform(
-        [
-            ModelResponse(
-                text="The earlier discussion established A and B; C remains unresolved.",
-                usage=ModelUsage(input_tokens=120, output_tokens=20, total_tokens=140),
-            )
-        ]
-    )
+    platform = ScriptedPlatform(responses)
     store = FileAgentSessionStore(tmp_path / "state")
     runtime = AgentRuntime(
         platform=platform,
@@ -49,6 +42,19 @@ def test_model_compaction_is_separate_no_tool_task_and_counts_usage(tmp_path):
         AIMessage(role=MessageRole.ASSISTANT, content="answer four"),
     ]
     store.save(session)
+    return runtime, platform, store, session
+
+
+def test_model_compaction_is_separate_no_tool_task_and_counts_usage(tmp_path):
+    runtime, platform, store, session = _runtime(
+        tmp_path,
+        [
+            ModelResponse(
+                text="The earlier discussion established A and B; C remains unresolved.",
+                usage=ModelUsage(input_tokens=120, output_tokens=20, total_tokens=140),
+            )
+        ],
+    )
 
     checkpoint = runtime.compact_context_with_model(session.session_id, keep_recent=4)
 
@@ -91,4 +97,49 @@ def test_model_compaction_is_separate_no_tool_task_and_counts_usage(tmp_path):
     assert events[-1].data["summary_source"] == "model"
     assert events[-1].data["communication_language"] == "latin"
     assert events[-1].data["summary_usage"]["total_tokens"] == 140
+    runtime.close()
+
+
+def test_manual_compaction_retries_invalid_tool_response_then_succeeds(tmp_path):
+    unexpected = ModelResponse(
+        tool_calls=(ToolCall(call_id="compact-tool", name="exec", arguments={"cmd": "git status"}),),
+        finish_reason="tool_calls",
+    )
+    runtime, platform, store, session = _runtime(
+        tmp_path,
+        [unexpected, ModelResponse(text="safe manual summary")],
+    )
+
+    checkpoint = runtime.compact_context_with_model(session.session_id)
+
+    assert checkpoint.summary == "safe manual summary"
+    assert len(platform.requests) == 2
+    assert all(request.tool_choice is ToolChoice.NONE for _, request in platform.requests)
+    assert all(request.tools == () for _, request in platform.requests)
+    loaded = store.load(session.session_id)
+    assert loaded.messages[-1].name == "loom_compaction"
+    runtime.close()
+
+
+def test_manual_compaction_falls_back_after_repeated_invalid_tool_responses(tmp_path):
+    unexpected = ModelResponse(
+        tool_calls=(ToolCall(call_id="compact-tool", name="exec", arguments={}),),
+        finish_reason="tool_calls",
+    )
+    runtime, platform, store, session = _runtime(
+        tmp_path,
+        [unexpected for _ in range(3)],
+    )
+
+    checkpoint = runtime.compact_context_with_model(session.session_id)
+
+    assert len(platform.requests) == runtime.limits.model_retries + 1
+    assert checkpoint.summary.startswith("Deterministic Loom checkpoint")
+    loaded = store.load(session.session_id)
+    assert loaded.messages[-1].name == "loom_compaction"
+    events = [
+        event for event in store.events(session.session_id)
+        if event.kind is AgentEventKind.CONTEXT_CHECKPOINTED
+    ]
+    assert events[-1].data["summary_source"] == "model_fallback"
     runtime.close()
