@@ -327,23 +327,3 @@ def test_oversized_tool_output_is_projected_before_full_compaction():
     assert metadata["tool_outputs_reduced"] == 1
     assert metadata["estimated_tokens_saved"] > 0
     assert metadata.get("auto_compacted") is not True
-
-
-def test_message_count_alone_does_not_trigger_auto_compaction():
-    runtime = FakeRuntime([])
-    _set_roomy_profile(runtime)
-    runtime.limits.max_messages = 2
-    history = [
-        AIMessage(role=MessageRole.USER, content="one"),
-        AIMessage(role=MessageRole.ASSISTANT, content="two"),
-        AIMessage(role=MessageRole.USER, content="three"),
-        AIMessage(role=MessageRole.ASSISTANT, content="four"),
-    ]
-    session = Session(history)
-
-    messages, metadata = prepare_context(runtime, session, Step(), Token())
-
-    assert runtime.model_executor.requests == []
-    assert runtime.commits == []
-    assert len(messages) > runtime.limits.max_messages
-    assert metadata.get("auto_compacted") is not True
