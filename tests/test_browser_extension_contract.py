@@ -44,6 +44,7 @@ def test_manifest_requests_the_permission_screenshots_actually_need(manifest):
 def test_manifest_stays_manifest_v3_with_a_service_worker(manifest):
     assert manifest["manifest_version"] == 3
     assert manifest["background"]["service_worker"] == "background.js"
+    assert "tabGroups" in manifest["permissions"]
 
 
 def test_extension_has_no_public_development_credential(background):
@@ -76,6 +77,30 @@ def test_scroll_stays_on_the_cheap_path(background):
     body = _function_body(background, "scroll")
     assert "withNavigationWatch" not in body
     assert "afterTabAction" in body
+
+
+def test_navigation_reuses_an_existing_same_origin_tab(background):
+    body = _function_body(background, "navigate")
+    assert "new URL(url).origin" in body
+    assert "chrome.tabs.query" in body
+    assert "new URL(candidate.url).origin === targetOrigin" in body
+    assert "args.new_tab" in body
+
+
+def test_navigation_never_overwrites_an_unrelated_personal_tab(background):
+    body = _function_body(background, "navigate")
+    assert "isLoomWorkTab(existing)" in body
+    assert "createWorkTab = true" in body
+    assert "placeInLoomGroup" in body
+    assert 'chrome.tabs.create({ url, active: true })' in body
+
+
+def test_work_tabs_use_a_named_browser_group(background):
+    assert 'LOOM_TAB_GROUP_TITLE = "Loom"' in background
+    body = _function_body(background, "placeInLoomGroup")
+    assert "chrome.tabs.group" in body
+    assert "chrome.tabGroups.update" in body
+    assert 'color: "purple"' in body
 
 
 def test_click_reports_whether_a_navigation_is_coming(background):

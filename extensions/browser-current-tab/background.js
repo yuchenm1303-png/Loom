@@ -6,6 +6,7 @@ const NAVIGATION_GRACE_MS = 300;
 // How long to wait when the page said the action does start one.
 const NAVIGATION_COMMIT_TIMEOUT_MS = 8000;
 const CLIENT_ID_KEY = "loomBrowserBridgeClientId";
+const LOOM_TAB_GROUP_TITLE = "Loom";
 
 let polling = false;
 const lastElementsByTab = new Map();
@@ -160,6 +161,31 @@ async function tabsForWindow(tab) {
   }));
 }
 
+async function isLoomWorkTab(tab) {
+  if (!tab || typeof tab.groupId !== "number" || tab.groupId < 0 || !chrome.tabGroups) return false;
+  try {
+    const group = await chrome.tabGroups.get(tab.groupId);
+    return group?.title === LOOM_TAB_GROUP_TITLE;
+  } catch (_) {
+    return false;
+  }
+}
+
+async function placeInLoomGroup(tab) {
+  if (!chrome.tabGroups || typeof tab?.id !== "number") return tab;
+  try {
+    const groups = await chrome.tabGroups.query({ windowId: tab.windowId, title: LOOM_TAB_GROUP_TITLE });
+    const groupId = groups.length
+      ? await chrome.tabs.group({ groupId: groups[0].id, tabIds: [tab.id] })
+      : await chrome.tabs.group({ createProperties: { windowId: tab.windowId }, tabIds: [tab.id] });
+    await chrome.tabGroups.update(groupId, { title: LOOM_TAB_GROUP_TITLE, color: "purple", collapsed: false });
+    return await chrome.tabs.get(tab.id);
+  } catch (cause) {
+    console.warn("[loom-browser-bridge] could not place work tab in group", cause);
+    return tab;
+  }
+}
+
 const isInjectableUrl = (url) => /^https?:\/\//i.test(String(url || ""));
 
 async function inject(tabId, func, args = [], world) {
@@ -276,12 +302,37 @@ async function withNavigationWatch(tabId, run, waitMs) {
 async function navigate(args) {
   const url = String(args.url || "");
   if (!url) throw new Error("url is required");
-  const existing = await tabFromArgs(args);
+  let existing = await tabFromArgs(args);
+  let createWorkTab = Boolean(args.new_tab);
+  // A browser session is initially pinned to the active tab. Reuse a matching
+  // signed-in site or a tab Loom already owns, but never navigate an unrelated
+  // personal tab. Cross-site work gets a dedicated tab in the Loom group.
+  if (!createWorkTab) {
+    try {
+      const targetOrigin = new URL(url).origin;
+      const existingOrigin = isInjectableUrl(existing.url || "") ? new URL(existing.url).origin : "";
+      if (existingOrigin !== targetOrigin) {
+        const candidates = await chrome.tabs.query(
+          typeof existing.windowId === "number" ? { windowId: existing.windowId } : { currentWindow: true },
+        );
+        const sameOrigin = candidates.find((candidate) => {
+          if (!isInjectableUrl(candidate.url || "")) return false;
+          try { return new URL(candidate.url).origin === targetOrigin; } catch (_) { return false; }
+        });
+        if (sameOrigin) existing = sameOrigin;
+        else if (!(await isLoomWorkTab(existing))) createWorkTab = true;
+      }
+    } catch (_) {
+      // Runtime URL validation remains authoritative. An uncomparable target
+      // still must not overwrite a personal tab.
+      if (!(await isLoomWorkTab(existing))) createWorkTab = true;
+    }
+  }
   if (isInjectableUrl(existing.url || "")) {
     await inject(existing.id, runPageAction, ["hud_status", { title: "Opening page", subtitle: url }]).catch(() => {});
   }
-  const tab = args.new_tab
-    ? await chrome.tabs.create({ url, active: true })
+  const tab = createWorkTab
+    ? await placeInLoomGroup(await chrome.tabs.create({ url, active: true }))
     : await chrome.tabs.update(existing.id, { url, active: true });
   await waitForTabComplete(tab.id);
   return collectStateForTab(await chrome.tabs.get(tab.id), { showHud: true });
