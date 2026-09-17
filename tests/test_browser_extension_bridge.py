@@ -276,7 +276,10 @@ def test_runtime_can_select_current_tab_extension_backend(tmp_path, monkeypatch)
 
         tool = runtime.tools.get("browser_open")
         assert tool is not None
-        assert "currently active chrome/edge tab" in tool.description.casefold()
+        description = tool.description.casefold()
+        assert "installed loom browser extension" in description
+        assert "http/https url" in description
+        assert "out-of-policy background tabs remain open" in description
     finally:
         runtime.close()
     assert FakeExtensionBridge.created[0].stopped is True
