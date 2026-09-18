@@ -450,3 +450,29 @@ def test_the_hud_is_driven_by_session_state_not_by_the_current_action(background
     apply_body = _function_body(hud, "applySession")
     assert "classList.add('live')" in apply_body
     assert "classList.remove('live')" in apply_body, "nothing hides the HUD when the session ends"
+
+
+def test_clickable_cards_without_a_role_still_get_an_index(background):
+    """A div with a JS handler is clickable on screen and was invisible here.
+
+    The capture only looked for elements a browser already treats as interactive,
+    so an app card built from a plain div - no role, no tabindex, and no el.onclick
+    because the handler came from addEventListener - had no index. The model could
+    see one in a screenshot, had nothing to click, and fell back to a screen
+    coordinate: it missed and hit a sidebar link, which navigated the page away.
+    cursor:pointer is how the page itself tells a person the thing is clickable.
+    """
+
+    body = _function_body(background, "collectClickableElements")
+    assert 'style.cursor !== "pointer"' in body
+    assert "MAX_POINTER_SCAN" in body, "an unbounded scan would cost the whole document"
+    assert "MAX_ELEMENTS" in body
+    # Outermost only. A card, its title and its icon all inherit the pointer
+    # cursor, and three indexes for one target is worse than none.
+    assert "other.contains(el) || el.contains(other)" in body
+    # Indexes have to read in document order or they stop matching the page.
+    assert "compareDocumentPosition" in body
+
+    # The style is computed once per element, not once for visibility and again
+    # for the cursor.
+    assert "visibleStyle" in _function_body(background, "visible")

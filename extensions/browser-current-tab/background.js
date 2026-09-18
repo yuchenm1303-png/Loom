@@ -833,12 +833,17 @@ function runPageAction(action, args = {}) {
       .replace(/'/g, "&#39;");
   }
 
-  function visible(el) {
+  function visibleStyle(el) {
     const style = getComputedStyle(el);
-    if (style.visibility === "hidden" || style.display === "none" || Number(style.opacity) === 0) return false;
+    if (style.visibility === "hidden" || style.display === "none" || Number(style.opacity) === 0) return null;
     const rect = el.getBoundingClientRect();
-    return rect.width > 0 && rect.height > 0 && rect.bottom >= 0 && rect.right >= 0 &&
+    const onScreen = rect.width > 0 && rect.height > 0 && rect.bottom >= 0 && rect.right >= 0 &&
       rect.top <= window.innerHeight && rect.left <= window.innerWidth;
+    return onScreen ? style : null;
+  }
+
+  function visible(el) {
+    return visibleStyle(el) !== null;
   }
 
   function isCandidate(el) {
@@ -1028,12 +1033,50 @@ function runPageAction(action, args = {}) {
     return el;
   }
 
+  // The explicit pass. Anything a browser already treats as interactive.
+  const SEMANTIC_SELECTOR = "a,button,input,textarea,select,summary,[role],[tabindex],[contenteditable='true']";
+  // The second pass. Card UIs build clickable things out of plain elements with a
+  // JS handler and no role, so they were invisible here while being obviously
+  // clickable on screen: the model saw an app card in a screenshot, had no index
+  // for it, and fell back to clicking a screen coordinate - the one way it can
+  // actually miss, and it did, landing on a sidebar link. cursor:pointer is what
+  // the page itself uses to tell a person the thing is clickable.
+  const POINTER_SELECTOR = "div,span,li,td,th,img,p,label,section,article,h1,h2,h3,h4,h5,h6";
+  const MAX_POINTER_SCAN = 1500;
+
+  function collectClickableElements() {
+    const picked = [];
+    for (const el of document.querySelectorAll(SEMANTIC_SELECTOR)) {
+      if (!(el instanceof HTMLElement) || !isCandidate(el) || !visible(el)) continue;
+      picked.push(el);
+      if (picked.length >= MAX_ELEMENTS) return picked;
+    }
+    let scanned = 0;
+    for (const el of document.querySelectorAll(POINTER_SELECTOR)) {
+      if (picked.length >= MAX_ELEMENTS || scanned >= MAX_POINTER_SCAN) break;
+      if (!(el instanceof HTMLElement)) continue;
+      scanned += 1;
+      // visible() computes the style anyway, so reuse it rather than paying twice.
+      const style = visibleStyle(el);
+      if (!style || style.cursor !== "pointer") continue;
+      // Outermost only. A card and its title and its icon all inherit the pointer
+      // cursor, and offering three indexes for one thing is worse than offering
+      // none: the model cannot tell which is the real target.
+      if (picked.some((other) => other.contains(el) || el.contains(other))) continue;
+      picked.push(el);
+    }
+    // Indexes have to read in document order or they stop matching the page.
+    picked.sort((a, b) => (
+      a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1
+    ));
+    return picked;
+  }
+
   function collectPageState(showHud = true) {
     const errors = [];
     const elements = [];
     try {
-      for (const el of Array.from(document.querySelectorAll("a,button,input,textarea,select,summary,[role],[tabindex],[contenteditable='true']"))) {
-        if (!(el instanceof HTMLElement) || !isCandidate(el) || !visible(el)) continue;
+      for (const el of collectClickableElements()) {
         const rect = el.getBoundingClientRect();
         const tag = el.tagName.toLowerCase();
         const type = clean(el.getAttribute("type") || "");

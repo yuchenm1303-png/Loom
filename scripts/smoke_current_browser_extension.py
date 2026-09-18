@@ -30,7 +30,9 @@ PAGE = b"""<!doctype html><meta charset=utf-8><title>Loom bridge smoke</title>
 <select aria-label='Smoke select'><option>Alpha</option><option>Beta</option></select>
 <div id=source tabindex=0 draggable=true>Drag source</div><div id=target tabindex=0>Drop target</div>
 <input type=password aria-label='Smoke secret'>
+<div id=card style="cursor:pointer;padding:18px;border:1px solid">App card</div>
 <p id=out>ready</p><script>
+card.addEventListener('click', () => { out.textContent = 'card clicked'; });
 source.ondragstart=e=>e.dataTransfer.setData('text/plain','loom');
 target.ondragover=e=>e.preventDefault(); target.ondrop=e=>{e.preventDefault();out.textContent='dropped'};
 </script>"""
@@ -52,6 +54,19 @@ class PageHandler(BaseHTTPRequestHandler):
 class QuietThreadingHTTPServer(ThreadingHTTPServer):
     def handle_error(self, _request, _client_address):
         return
+
+
+def index_of(state, needle: str) -> int:
+    """Find an element's index by what the state says about it.
+
+    Indexes are viewport-relative - anything scrolled out of view drops out - so a
+    literal index is only stable until something scrolls, which is how a hard-coded
+    5 for the password field silently became a different element.
+    """
+
+    lines = [line for line in state.dom.splitlines() if line.startswith("[") and needle in line]
+    assert len(lines) == 1, f"{needle!r} matched {len(lines)} elements, expected exactly one"
+    return int(lines[0].split("]")[0].lstrip("["))
 
 
 def wait_until(predicate, timeout: float, message: str) -> None:
@@ -123,9 +138,21 @@ def main() -> None:
         secret_state = backend.state()
         assert 'type="password"' in secret_state.dom
         assert 'filled="true"' not in secret_state.dom, "an untouched password field reports as filled"
-        typed_secret = backend.type_text(5, "correct-horse-battery")
+        typed_secret = backend.type_text(index_of(secret_state, 'type="password"'), "correct-horse-battery")
         assert 'filled="true"' in typed_secret.dom, "a typed password field still reads as empty"
         assert "correct-horse-battery" not in typed_secret.dom, "the password value reached the model"
+        # A card built from a plain div with an addEventListener handler - no role,
+        # no tabindex, no el.onclick - is what a real SPA ships and what Loom used
+        # to be blind to. The model could see one in a screenshot, had no index to
+        # click, fell back to a screen coordinate and hit a sidebar link instead.
+        card_state = backend.state()
+        assert "App card" in card_state.dom, "a cursor:pointer card is still invisible to Loom"
+        # Exactly once: the card, its text and any wrapper all inherit the pointer
+        # cursor, and three indexes for one thing is worse than none.
+        assert "card clicked" in backend.click(index_of(card_state, "App card")).dom, (
+            "the captured card was not clickable"
+        )
+
         assert len(backend.screenshot()) > 100
         assert created_tab in {tab.get("tab_id") for tab in backend.tabs().tabs}
         backend.navigate(f"http://127.0.0.1:{web.server_address[1]}/second")
