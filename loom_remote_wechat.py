@@ -32,7 +32,7 @@ def _pairing_code(value: str = "") -> str:
         if not supplied.isdigit() or not 4 <= len(supplied) <= 12:
             raise SystemExit("--pairing-code must contain 4 to 12 digits")
         return supplied
-    return f"{secrets.randbelow(1_000_000):06d}"
+    return f"{secrets.randbelow(100_000_000):08d}"
 
 
 def build_parser() -> argparse.ArgumentParser:
