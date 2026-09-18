@@ -345,23 +345,56 @@ class LoomAppServerClient:
     def approval_respond(
         self,
         thread_id: str,
+        call_id: str | None = None,
         *,
-        turn_id: str,
-        request_id: str,
-        call_id: str,
-        decision: str,
+        turn_id: str | None = None,
+        request_id: str | None = None,
+        decision: str | None = None,
+        approved: bool | None = None,
     ) -> dict[str, Any]:
-        resolved_decision = str(decision or "").strip()
+        """Respond to a correlated approval request.
+
+        The older approved=True/False form remains supported. That path rereads
+        authoritative thread state to recover the durable turn/request identity
+        before sending the current App Server protocol shape.
+        """
+
+        if decision is not None and approved is not None:
+            raise ValueError("pass decision or approved, not both")
+        resolved_decision = (
+            str(decision or "").strip()
+            if decision is not None
+            else ("accept" if approved is True else "decline" if approved is False else "")
+        )
         if resolved_decision not in {"accept", "decline"}:
             raise ValueError("decision must be 'accept' or 'decline'")
+
+        resolved_call_id = str(call_id or "").strip()
+        resolved_turn_id = str(turn_id or "").strip()
+        resolved_request_id = str(request_id or "").strip()
+        if not resolved_call_id or not resolved_turn_id or not resolved_request_id:
+            snapshot = self.thread_read(str(thread_id))
+            pending = snapshot.get("pendingApproval")
+            if not isinstance(pending, dict):
+                raise AppServerClientError("thread has no pending approval")
+            pending_call_id = str(pending.get("callId") or "").strip()
+            if resolved_call_id and resolved_call_id != pending_call_id:
+                raise AppServerClientError("callId does not match the pending approval")
+            resolved_call_id = pending_call_id
+            resolved_turn_id = str(pending.get("turnId") or "").strip()
+            resolved_request_id = str(pending.get("requestId") or "").strip()
+
+        if not resolved_call_id or not resolved_turn_id or not resolved_request_id:
+            raise AppServerClientError("pending approval is missing durable request identity")
+
         return dict(
             self.request(
                 "approval/respond",
                 {
                     "threadId": str(thread_id),
-                    "turnId": str(turn_id),
-                    "requestId": str(request_id),
-                    "callId": str(call_id),
+                    "turnId": resolved_turn_id,
+                    "requestId": resolved_request_id,
+                    "callId": resolved_call_id,
                     "decision": resolved_decision,
                 },
             )
