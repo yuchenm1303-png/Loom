@@ -133,7 +133,11 @@ class WeChatRemoteBridge:
             supplied = parts[1].strip()
         if not expected or supplied != expected:
             return True
-        self.state.bind(message.external_user_id, message.open_kf_id)
+        self.state.bind(
+            message.external_user_id,
+            message.open_kf_id,
+            paired_at_unix=message.send_time,
+        )
         self.pairing_code = ""
         self._send(
             "✅ 已绑定到这台 Loom。\n\n"
@@ -154,6 +158,13 @@ class WeChatRemoteBridge:
             return
         if message.open_kf_id != binding.open_kf_id:
             self.log("[remote-wechat] ignored message from a different customer-service account")
+            return
+        if (
+            binding.paired_at_unix
+            and message.send_time
+            and message.send_time < binding.paired_at_unix
+        ):
+            self.log("[remote-wechat] ignored a message that predates the pairing boundary")
             return
 
         text = message.text.strip()
