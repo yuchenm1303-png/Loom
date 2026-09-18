@@ -277,3 +277,31 @@ def test_messages_older_than_pairing_boundary_are_never_executed(tmp_path):
 
     bridge.handle_message(_message("这是绑定后的新任务", msgid="new", send_time=101))
     assert app.turn_starts == [("thread-1", "这是绑定后的新任务")]
+
+
+def test_turn_completion_strips_internal_inline_sticker_marker(tmp_path):
+    state = WeChatRemoteStateStore(tmp_path)
+    state.bind("wx-user", "wk-loom")
+    state.set_thread_id("thread-1")
+    wechat = FakeWeChat()
+    app = FakeAppClient()
+    bridge = WeChatRemoteBridge(
+        app_client=app,
+        wechat=wechat,
+        state=state,
+        workspace=tmp_path,
+    )
+
+    bridge.on_notification(
+        "turn/completed",
+        {
+            "threadId": "thread-1",
+            "turn": {
+                "id": "turn-1",
+                "status": "completed",
+                "finalText": "完成 [[AI_LEDGER_INLINE_STICKER:ok]]",
+                "error": "",
+            },
+        },
+    )
+    assert wechat.sent[-1][2] == "完成"
