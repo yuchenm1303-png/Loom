@@ -46,6 +46,11 @@ class WeixinMonitor:
         binding = self.state.binding
         if binding is None:
             raise RuntimeError("Weixin monitor cannot run before QR binding")
+        if (
+            self.credentials.ilink_bot_id != binding.ilink_bot_id
+            or self.credentials.ilink_user_id != binding.ilink_user_id
+        ):
+            raise RuntimeError("Weixin credentials do not match the persisted QR binding")
         response = self.api.get_updates(
             self.credentials,
             get_updates_buf=self.state.get_updates_buf,
