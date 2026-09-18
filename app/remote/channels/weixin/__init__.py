@@ -11,7 +11,7 @@ from .api import (
 from .auth import WeixinQrAuthenticator, display_qrcode
 from .channel import WeixinChannel
 from .monitor import WeixinMonitor
-from .state import WeixinBinding, WeixinCredentialStore, WeixinRemoteStateStore
+from .state import (\n    WeixinBinding,\n    WeixinCredentialStore,\n    WeixinRemoteInstanceLock,\n    WeixinRemoteStateStore,\n)
 
 __all__ = [
     "DEFAULT_ILINK_BASE_URL",
@@ -26,6 +26,7 @@ __all__ = [
     "WeixinInboundMessage",
     "WeixinMonitor",
     "WeixinQrAuthenticator",
+    "WeixinRemoteInstanceLock",
     "WeixinRemoteStateStore",
     "display_qrcode",
     "redact_sensitive",
