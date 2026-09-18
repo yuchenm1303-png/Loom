@@ -165,6 +165,39 @@
   box-shadow: inset 1px 0 0 rgba(255,255,255,.012);
 }
 
+/* A turn/start prompt anchors the turn, but later user messages are steering
+   events. Keep those messages at their real position in the live item stream so
+   the transcript reads chronologically instead of hoisting every user bubble to
+   the top of the turn. */
+.turn-process-content .entry-steering-user {
+  align-items: flex-end;
+  margin: 4px 0 3px;
+}
+
+.turn-process-content .entry-steering-user .message-meta {
+  display: inline-flex !important;
+}
+
+/* Settled turns collapse tool/reasoning detail, but user-authored steering must
+   remain visible. The recap disappears while the process is expanded, where the
+   same messages return to their exact chronological position. */
+.turn-guidance-recap {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 9px;
+}
+
+.turn-guidance-recap .transcript-entry {
+  animation: none;
+}
+
+.turn-guidance-recap .user-message {
+  border-color: rgba(139,124,246,.18);
+  background: linear-gradient(145deg, rgba(42,37,54,.96), rgba(32,30,40,.96));
+}
+
 .turn-final-answer {
   animation: turn-final-answer-in 180ms cubic-bezier(.2,.78,.2,1) both;
 }
