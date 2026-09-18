@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from app.ai import AIMessage, MessageRole, ModelContextLimits, ModelResponse, ModelUsage, ToolCall
 from app.ai.errors import AIResponseError
 from app.agent_runtime.context_budget import estimate_tokens, prepare_context
-from app.agent_runtime.context_compaction import SUMMARIZATION_PROMPT, build_compacted_history
+from app.agent_runtime.context_compaction import build_compacted_history, summarization_prompt
 
 
 class ScriptedExecutor:
@@ -169,9 +169,35 @@ def test_compaction_request_uses_codex_prompt_as_final_user_message_and_no_tools
     request = runtime.model_executor.requests[0][1]
     assert request.tools == ()
     assert request.messages[-1].role is MessageRole.USER
-    assert request.messages[-1].content == SUMMARIZATION_PROMPT
+    assert request.messages[-1].content == summarization_prompt("latin")
     assert request.messages[0].role is MessageRole.SYSTEM
     assert runtime.commits[-1]["retained"] == ()
+
+
+def test_chinese_compaction_request_requires_chinese_summary_language():
+    runtime = FakeRuntime([ModelResponse(text="中文摘要：任务仍在继续。")])
+    session = Session(_history())
+    session.messages.append(AIMessage(role=MessageRole.USER, content="继续检查这个问题"))
+
+    prepare_context(runtime, session, Step(), Token())
+
+    prompt = str(runtime.model_executor.requests[0][1].messages[-1].content)
+    assert "Write the entire handoff summary in Chinese" in prompt
+
+
+def test_wrong_language_compaction_summary_is_retried_before_checkpoint():
+    runtime = FakeRuntime([
+        ModelResponse(text="This handoff accidentally switched to English."),
+        ModelResponse(text="中文摘要：任务仍在继续。"),
+    ])
+    session = Session(_history())
+    session.messages.append(AIMessage(role=MessageRole.USER, content="继续检查这个问题"))
+
+    _messages, metadata = prepare_context(runtime, session, Step(), Token())
+
+    assert len(runtime.model_executor.requests) == 2
+    assert runtime.commits[-1]["summary"].startswith("中文摘要")
+    assert metadata["compaction_attempts"] == 2
 
 
 def test_completed_compaction_does_not_invent_semantic_finish_reason_retries():

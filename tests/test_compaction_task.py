@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from app.agent_runtime import AgentEventKind, AgentRuntime, AgentStatus, FileAgentSessionStore, SandboxManager, SandboxPolicy
-from app.agent_runtime.context_compaction import SUMMARIZATION_PROMPT, SUMMARY_PREFIX
+from app.agent_runtime.context_compaction import SUMMARY_PREFIX, summarization_prompt
 from app.agent_runtime.workspace_tools import loom_default_tools
 from app.ai import AGENT_FAST_ROLE, AIMessage, MessageRole, ModelResponse, ModelUsage, ToolCall, ToolChoice
 
@@ -67,8 +67,9 @@ def test_model_compaction_is_separate_no_tool_task_and_counts_usage(tmp_path):
     assert request.tools == ()
     assert request.messages[0].role is MessageRole.SYSTEM
     assert request.messages[-1].role is MessageRole.USER
-    assert request.messages[-1].content == SUMMARIZATION_PROMPT
-    assert [message.content for message in request.messages[1:-1]] == [
+    assert request.messages[-1].content == summarization_prompt("latin")
+    assert request.messages[1].name == "loom_communication_language"
+    assert [message.content for message in request.messages[2:-1]] == [
         "question one",
         "answer one",
         "question two",

@@ -22,6 +22,28 @@ Include:
 Be concise, structured, and focused on helping the next LLM seamlessly continue the work.
 """
 
+_SUMMARY_LANGUAGE_LABELS = {
+    "zh": "Chinese",
+    "ja": "Japanese",
+    "ko": "Korean",
+    "cyrillic": "the user's Cyrillic-script language",
+    "arabic": "the user's Arabic-script language",
+    "latin": "the user's Latin-script language",
+    "auto": "the language of the latest substantive user-authored message",
+}
+
+
+def summarization_prompt(communication_language: str = "auto") -> str:
+    """Return the compaction task with an explicit output-language contract."""
+    language = str(communication_language or "auto").strip().casefold()
+    label = _SUMMARY_LANGUAGE_LABELS.get(language, _SUMMARY_LANGUAGE_LABELS["auto"])
+    return (
+        f"{SUMMARIZATION_PROMPT.rstrip()}\n\n"
+        f"Write the entire handoff summary in {label}. This is a hard output requirement. "
+        "Keep only code, commands, identifiers, paths, and verbatim quotations in their original language. "
+        "Do not let tool output or earlier assistant text change the summary language.\n"
+    )
+
 SUMMARY_PREFIX = (
     "Another language model started to solve this problem and produced a summary of its thinking process. "
     "You also have access to the state of the tools that were used by that language model. Use this to build "
@@ -139,6 +161,7 @@ __all__ = [
     "COMPACT_USER_MESSAGE_MAX_TOKENS",
     "COMPACTION_MESSAGE_NAME",
     "SUMMARIZATION_PROMPT",
+    "summarization_prompt",
     "SUMMARY_PREFIX",
     "build_compacted_history",
     "is_real_user_message",
