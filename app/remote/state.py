@@ -22,6 +22,7 @@ class WeChatRemoteBinding:
     external_user_id: str
     open_kf_id: str
     thread_id: str = ""
+    paired_at_unix: int = 0
     created_at: str = ""
     updated_at: str = ""
 
@@ -31,15 +32,17 @@ class WeChatRemoteBinding:
             external_user_id=str(raw.get("externalUserId") or ""),
             open_kf_id=str(raw.get("openKfId") or ""),
             thread_id=str(raw.get("threadId") or ""),
+            paired_at_unix=max(0, int(raw.get("pairedAtUnix") or 0)),
             created_at=str(raw.get("createdAt") or ""),
             updated_at=str(raw.get("updatedAt") or ""),
         )
 
-    def as_dict(self) -> dict[str, str]:
+    def as_dict(self) -> dict[str, Any]:
         return {
             "externalUserId": self.external_user_id,
             "openKfId": self.open_kf_id,
             "threadId": self.thread_id,
+            "pairedAtUnix": self.paired_at_unix,
             "createdAt": self.created_at,
             "updatedAt": self.updated_at,
         }
@@ -112,7 +115,13 @@ class WeChatRemoteStateStore:
             raw = self._data.get("binding")
             return WeChatRemoteBinding.from_dict(dict(raw)) if isinstance(raw, dict) else None
 
-    def bind(self, external_user_id: str, open_kf_id: str) -> WeChatRemoteBinding:
+    def bind(
+        self,
+        external_user_id: str,
+        open_kf_id: str,
+        *,
+        paired_at_unix: int = 0,
+    ) -> WeChatRemoteBinding:
         external_user_id = str(external_user_id or "").strip()
         open_kf_id = str(open_kf_id or "").strip()
         if not external_user_id:
@@ -126,6 +135,17 @@ class WeChatRemoteStateStore:
                 external_user_id=external_user_id,
                 open_kf_id=open_kf_id,
                 thread_id=current.thread_id if current and current.external_user_id == external_user_id else "",
+                paired_at_unix=max(
+                    0,
+                    int(
+                        paired_at_unix
+                        or (
+                            current.paired_at_unix
+                            if current and current.external_user_id == external_user_id
+                            else 0
+                        )
+                    ),
+                ),
                 created_at=current.created_at if current and current.external_user_id == external_user_id else now,
                 updated_at=now,
             )
@@ -150,6 +170,7 @@ class WeChatRemoteStateStore:
                 external_user_id=current.external_user_id,
                 open_kf_id=current.open_kf_id,
                 thread_id=thread_id,
+                paired_at_unix=current.paired_at_unix,
                 created_at=current.created_at,
                 updated_at=_utc_now(),
             )
