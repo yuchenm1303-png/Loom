@@ -163,12 +163,18 @@ class AgentRuntime:
         system_prompt: str = DEFAULT_AGENT_SYSTEM_PROMPT,
         workspace_dir: str | Path | None = None,
         permission_mode: PermissionMode | str | None = None,
+        session_id: str | None = None,
     ) -> AgentSession:
         profile = str(profile_id or "").strip().casefold()
         prompt = str(system_prompt or "").strip()
         if not profile or not prompt:
             raise ValueError("agent session requires profile_id and system_prompt")
-        session_id = str(uuid.uuid4())
+        resolved_session_id = str(session_id or uuid.uuid4()).strip()
+        try:
+            resolved_session_id = str(uuid.UUID(resolved_session_id))
+        except (ValueError, AttributeError) as exc:
+            raise ValueError("agent session id must be a UUID") from exc
+        session_id = resolved_session_id
         now = utc_now()
         if workspace_dir is None:
             workspace = (self.store.session_dir(session_id) / "workspace").resolve()
