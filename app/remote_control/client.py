@@ -23,8 +23,16 @@ class AppServerBackend(Protocol):
         workspace: str | None = None,
         project_id: str = "",
         permission_mode: str | None = None,
+        client_input_id: str = "",
     ) -> dict[str, Any]: ...
-    def turn_start(self, thread_id: str, text: str, attachments=()) -> dict[str, Any]: ...
+    def turn_start(
+        self,
+        thread_id: str,
+        text: str,
+        attachments=(),
+        *,
+        client_input_id: str = "",
+    ) -> dict[str, Any]: ...
     def turn_steer(
         self,
         thread_id: str,
@@ -184,6 +192,7 @@ class RemoteControlClient:
                     self.backend.thread_start,
                     project_id=project,
                     permission_mode=self.policy.new_thread_permission_mode,
+                    client_input_id=str(idempotency_key or ""),
                 )
                 record = started_thread.get("thread")
                 if not isinstance(record, dict) or not record.get("id"):
@@ -194,7 +203,12 @@ class RemoteControlClient:
                 target_thread = str(record["id"])
                 created = True
 
-            started_turn = self._call(self.backend.turn_start, target_thread, text)
+            started_turn = self._call(
+                self.backend.turn_start,
+                target_thread,
+                text,
+                client_input_id=str(idempotency_key or ""),
+            )
             turn = started_turn.get("turn")
             if not isinstance(turn, dict):
                 turn = {}
