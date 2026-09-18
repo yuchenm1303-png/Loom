@@ -116,6 +116,16 @@ worktrees and fork boundaries remain Milestone 2.5.
 
 ## Attachments
 
+`thread/start` and `turn/start` also accept an optional `clientInputId` (maximum 256 characters). When present, App Server treats that write as durably idempotent for 30 days:
+
+- the same `clientInputId` with the same normalized request returns the original thread / turn identity;
+- the same `clientInputId` with a different request is rejected;
+- the mapping survives App Server, Desktop, MCP adapter, and tunnel-client restarts because it is stored under the Loom runtime home in `app_server/idempotency.db`;
+- `turn/start` persists a reserved turn id and staged attachment manifest before Runtime adoption, then uses durable `TURN_STARTED` evidence to decide whether a replay should resume the reserved turn or return the already-adopted one;
+- callers that omit `clientInputId` keep the original non-idempotent protocol behavior.
+
+Successful keyed responses include `idempotentReplay: true|false`. The replay ledger is bounded (30-day retention, 20,000-row cap); clients should generate a fresh id for each logical write rather than reuse human-readable labels.
+
 `turn/start` accepts an optional `attachments` array alongside `input`:
 
 ```json
