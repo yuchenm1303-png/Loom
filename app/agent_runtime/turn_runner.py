@@ -459,6 +459,7 @@ class TurnRunner:
                     Event.TURN_COMPLETED,
                     data={
                         "text": response.text,
+                        "final_step_id": step.step_id,
                         "diff_revision": diff.revision,
                         "changed_paths": list(diff.paths),
                     },
