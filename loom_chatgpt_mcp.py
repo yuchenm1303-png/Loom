@@ -29,7 +29,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--local-attach",
         action=argparse.BooleanOptionalAction,
         default=True,
-        help="attach to the running desktop App Server before falling back to a child process",
+        help=(
+            "attach to the running canonical App Server; use --no-local-attach "
+            "only to start an explicit standalone canonical App Server"
+        ),
     )
     parser.add_argument(
         "--vision",
@@ -40,10 +43,8 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+def _connect_backend(args):
     timeout = max(30.0, float(args.timeout))
-    backend = None
 
     if args.local_attach:
         local_backend = LoomLocalAppServerClient(
@@ -55,33 +56,43 @@ def main(argv: list[str] | None = None) -> int:
                 client_name="loom-chatgpt-mcp",
                 client_version="0.1.0",
             )
-            backend = local_backend
-        except LocalAppServerUnavailable:
+        except LocalAppServerUnavailable as exc:
             local_backend.close()
+            raise SystemExit(
+                "Loom's shared App Server is not running. Start Loom Desktop first. "
+                "Use --no-local-attach only for an explicit standalone/development runtime."
+            ) from exc
+        return local_backend
 
-    if backend is None:
-        config = AppServerProcessConfig(
-            workspace=Path(args.workspace).expanduser().resolve(),
-            provider=args.provider,
-            base_url=args.base_url,
-            model=args.model,
-            home=args.home,
-            timeout_seconds=float(args.timeout),
-            app_server_executable=args.app_server_executable,
-            vision=args.vision,
-        )
-        child_backend = LoomAppServerClient(
-            config.command(),
-            request_timeout_seconds=timeout,
-        )
-        child_backend.subscribe_stderr(
-            lambda text: sys.stderr.write(f"[loom-app-server] {text}\n")
-        )
-        child_backend.start_and_initialize(
-            client_name="loom-chatgpt-mcp",
-            client_version="0.1.0",
-        )
-        backend = child_backend
+    config = AppServerProcessConfig(
+        workspace=Path(args.workspace).expanduser().resolve(),
+        provider=args.provider,
+        base_url=args.base_url,
+        model=args.model,
+        home=args.home,
+        timeout_seconds=float(args.timeout),
+        app_server_executable=args.app_server_executable,
+        vision=args.vision,
+    )
+    command = config.command()
+    command.append("--local-ipc")
+    child_backend = LoomAppServerClient(
+        command,
+        request_timeout_seconds=timeout,
+    )
+    child_backend.subscribe_stderr(
+        lambda text: sys.stderr.write(f"[loom-app-server] {text}\n")
+    )
+    child_backend.start_and_initialize(
+        client_name="loom-chatgpt-mcp",
+        client_version="0.1.0",
+    )
+    return child_backend
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    backend = _connect_backend(args)
 
     try:
         remote = RemoteControlClient(
