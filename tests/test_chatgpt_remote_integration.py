@@ -15,7 +15,7 @@ from app.agent_runtime import (
     ToolResult,
 )
 from app.app_server import LoomAppServerService
-from app.remote_control import RemoteControlClient
+from app.remote_control import RemoteControlClient, approval_fingerprint
 
 
 class ScriptedPlatform:
@@ -172,13 +172,14 @@ def test_chatgpt_remote_cannot_bypass_real_loom_approval_boundary(tmp_path: Path
         pending = pending_snapshot["pendingApproval"]
 
         assert pending_snapshot["thread"]["permissionMode"] == "approval"
-        assert pending["fingerprint"]
+        assert "fingerprint" not in pending
         assert pending["callId"] == "remote-sensitive-call"
         assert calls == []
 
+        fingerprint = approval_fingerprint(thread_id, pending)
         response = remote.approval_respond(
             thread_id=thread_id,
-            fingerprint=pending["fingerprint"],
+            fingerprint=fingerprint,
             decision="accept",
         )
         assert response["ok"] is True
