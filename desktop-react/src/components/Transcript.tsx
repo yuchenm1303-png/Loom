@@ -871,7 +871,7 @@ function TurnProcess({
   const operationCount = summary.steps + intermediateMessages;
 
   return (
-    <section className={`turn-process ${active ? "is-live" : "is-settled"} ${open ? "is-open" : ""}`}>
+    <section className={`turn-process ${active ? "is-live" : "is-settled"} ${open ? "is-open" : ""} ${guidanceItems.length ? "has-guidance" : ""}`.trim()}>
       {!active ? (
         <button
           type="button"
