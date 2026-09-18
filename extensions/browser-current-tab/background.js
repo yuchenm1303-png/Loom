@@ -30,6 +30,11 @@ const OWNED_GROUP_IDS_KEY = "loomOwnedGroupIds";
 // state_revision was still current, so every index the model held turned into
 // "refresh and retry" for no reason the model could see.
 const ELEMENT_IDS_KEY = "loomElementIdsByTab";
+// Whether Loom currently holds a browser session. The HUD's visibility has to be
+// driven by this rather than by whether an action happens to be running: a page
+// load destroys everything in the page, so a HUD that only appears while acting
+// vanishes on every refresh and returns on the next click.
+const SESSION_ACTIVE_KEY = "loomBrowserSessionActive";
 
 const bridgeRuntime = {
   running: false,
@@ -282,6 +287,21 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   void forgetLoomWorkTab(tabId);
 });
 
+async function markSessionActive(active) {
+  const next = Boolean(active);
+  try {
+    // Only on a real transition. storage.set does not diff, so writing the same
+    // value on every command would emit a change event every time - waking the
+    // HUD listener in every page for nothing, and masking whether the HUD can
+    // restore itself on its own after a page load.
+    const stored = await chrome.storage.session.get(SESSION_ACTIVE_KEY);
+    if (Boolean(stored?.[SESSION_ACTIVE_KEY]) === next) return;
+    await chrome.storage.session.set({ [SESSION_ACTIVE_KEY]: next });
+  } catch (cause) {
+    console.warn("[loom-browser-bridge] could not record session state", cause);
+  }
+}
+
 async function releaseTabs() {
   // Only the borrowed ones. Releasing Loom's own tabs too made every new session
   // fail to recognise the tab it had just been working in, so it opened another,
@@ -291,6 +311,7 @@ async function releaseTabs() {
   const stored = await chrome.storage.session.get(ADOPTED_TAB_IDS_KEY);
   const released = Array.isArray(stored[ADOPTED_TAB_IDS_KEY]) ? stored[ADOPTED_TAB_IDS_KEY].length : 0;
   await chrome.storage.session.remove(ADOPTED_TAB_IDS_KEY);
+  await markSessionActive(false);
   return { released };
 }
 
@@ -759,6 +780,11 @@ async function screenshot(args) {
 }
 
 async function dispatchCommand(action, args) {
+  // Any command means Loom is driving this browser, and release_tabs is the one
+  // that ends the session. Recording it here rather than at a session-start hook
+  // keeps the flag true for the whole time commands are arriving, including after
+  // a page load the HUD cannot otherwise know about.
+  if (action !== "release_tabs") await markSessionActive(true);
   switch (action) {
     case "state": return collectStateForTab(await tabFromArgs(args), { showHud: true });
     case "navigate": return navigate(args);
@@ -1355,5 +1381,12 @@ chrome.runtime.onStartup.addListener(() => {
 chrome.action.onClicked.addListener(() => {
   requestInstalledUpdateCheck();
 });
+// Content scripts are untrusted contexts, and storage.session hides from them by
+// default, so the HUD could not read the session flag without this.
+try {
+  chrome.storage.session.setAccessLevel({ accessLevel: "TRUSTED_AND_UNTRUSTED_CONTEXTS" });
+} catch (cause) {
+  console.warn("[loom-browser-bridge] could not expose session state to the HUD", cause);
+}
 startInstalledUpdateWatcher();
 startPolling().catch((cause) => console.warn("[loom-browser-bridge]", cause));

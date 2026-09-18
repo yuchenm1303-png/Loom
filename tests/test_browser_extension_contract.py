@@ -417,3 +417,36 @@ def test_the_bridge_is_not_re_registered_before_every_poll(background):
     assert "REGISTER_INTERVAL_MS" in loop
     assert "bridgeRuntime.registeredAt" in loop
     assert "TAB_COMPLETE_POLL_MS" in _function_body(background, "waitForTabComplete")
+
+
+def test_the_hud_is_driven_by_session_state_not_by_the_current_action(background):
+    """The HUD vanished on every page load and returned on the next click.
+
+    Its visibility came from the per-action host the page action creates and then
+    deletes on a timer, and a page load destroys everything in the page, so
+    between actions - and after any reload the user performed themselves - there
+    was nothing left to show. Session state lives in the extension instead, so a
+    freshly injected content script can restore the HUD with no action at all.
+    """
+
+    hud = (EXTENSION / "browser-hud.js").read_text(encoding="utf-8")
+    assert "SESSION_ACTIVE_KEY" in background
+    assert "chrome.storage.session.setAccessLevel" in background, (
+        "content scripts cannot read storage.session without this"
+    )
+
+    # Set on any command, cleared when the browser is handed back.
+    dispatch = _function_body(background, "dispatchCommand")
+    assert 'if (action !== "release_tabs") await markSessionActive(true)' in dispatch
+    assert "markSessionActive(false)" in _function_body(background, "releaseTabs")
+    # Only on a transition, or every command wakes the listener in every page.
+    mark = _function_body(background, "markSessionActive")
+    assert "=== next) return" in mark
+
+    # The content script restores itself and follows later changes.
+    assert "void refreshSession()" in _function_body(hud, "begin")
+    assert "chrome.storage.session.get(SESSION_ACTIVE_KEY)" in _function_body(hud, "refreshSession")
+    assert "chrome.storage.onChanged.addListener" in _function_body(hud, "watchSession")
+    apply_body = _function_body(hud, "applySession")
+    assert "classList.add('live')" in apply_body
+    assert "classList.remove('live')" in apply_body, "nothing hides the HUD when the session ends"

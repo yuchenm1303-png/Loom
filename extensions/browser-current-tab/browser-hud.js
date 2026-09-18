@@ -2,12 +2,13 @@
   'use strict';
 
   const INSTALL_KEY = '__loomBrowserHudRuntimeV2';
-  const GENERATION = '0.1.9';
+  const GENERATION = '0.1.12';
   const SOURCE_HOST_ID = 'loom-browser-page-hud-root';
   const HOST_ID = 'loom-browser-hud-root-v2';
   const LEGACY_HOST_IDS = ['loom-browser-hud-root', 'loom-browser-computer-hud-root'];
   const LEGACY_LAYER_ID = 'loom-computer-hud-layer';
   const LEGACY_SUPPRESSOR_ID = 'loom-browser-hud-v2-suppress-legacy';
+  const SESSION_ACTIVE_KEY = 'loomBrowserSessionActive';
 
   const existing = globalThis[INSTALL_KEY];
   if (existing?.generation === GENERATION) {
@@ -194,6 +195,39 @@
     attachSource(document.getElementById(SOURCE_HOST_ID));
   }
 
+  function applySession(active) {
+    // The whole point of the session flag: a page load wipes the HUD out of the
+    // document, and the per-action source host only exists while an action runs,
+    // so visibility driven by that host meant the HUD vanished on every refresh
+    // and came back on the next click. While Loom holds the browser, it shows.
+    if (!active) {
+      renderer?.hud.classList.remove('live');
+      return;
+    }
+    const view = ensureRenderer();
+    view.hud.classList.add('live');
+    place(lastX === null ? null : { x: lastX, y: lastY });
+  }
+
+  async function refreshSession() {
+    try {
+      const stored = await chrome.storage.session.get(SESSION_ACTIVE_KEY);
+      applySession(Boolean(stored?.[SESSION_ACTIVE_KEY]));
+    } catch (_) {
+      // An older worker has not opened session storage to content scripts yet.
+      // Staying hidden is right: nothing here proves a session is running.
+    }
+  }
+
+  function watchSession() {
+    try {
+      chrome.storage.onChanged.addListener((changes, area) => {
+        if (area !== 'session' || !(SESSION_ACTIVE_KEY in changes)) return;
+        applySession(Boolean(changes[SESSION_ACTIVE_KEY].newValue));
+      });
+    } catch (_) {}
+  }
+
   function onResize() {
     if (renderer?.hud.classList.contains('live')) place(null);
   }
@@ -212,6 +246,8 @@
   function begin() {
     ensureRenderer();
     sync();
+    void refreshSession();
+    watchSession();
     documentObserver = new MutationObserver(sync);
     documentObserver.observe(document.documentElement, { childList: true, subtree: true });
     addEventListener('resize', onResize, { passive: true });

@@ -133,6 +133,26 @@ def main() -> None:
         assert backend.go_forward().title == "Second"
         backend.refresh()
 
+        # The HUD is a session indicator, so it has to survive a page load with no
+        # action to bring it back. It used to be driven by the per-action host that
+        # the page action creates and deletes, so every refresh cleared it and the
+        # next click made it reappear.
+        hud_live = ("document.getElementById('loom-browser-hud-root-v2')"
+                    "?.shadowRoot?.getElementById('hud')?.classList.contains('live') === true")
+        assert backend.evaluate(hud_live).get("value") is True
+
+        # The case that actually broke: a reload Loom did not perform. A Loom
+        # navigate ends in a state capture, which rebuilds the per-action host and
+        # lights the HUD as a side effect, so it hid this. Here the page reloads
+        # itself and the only thing that follows is a sleep - no state capture, no
+        # session transition - so the HUD can only be up if it restored itself from
+        # the session flag when the content script re-ran.
+        backend.evaluate("setTimeout(() => location.reload(), 50); true")
+        backend.wait_for(seconds=2.5)
+        assert backend.evaluate(hud_live).get("value") is True, (
+            "the HUD stayed down after a reload the user could have triggered"
+        )
+
         # Downloads must be scoped to the session. The extension can see every
         # download in the browser, so a missing start time reports nothing rather
         # than handing over the user's history.
@@ -175,6 +195,11 @@ def main() -> None:
         assert second.evaluate("document.visibilityState").get("value") == "hidden", (
             "a screenshot left Loom's tab in the foreground"
         )
+
+        # The hide-on-release path is not observable from here: every bridge call is
+        # a command, and a command means Loom is driving, so asking the page whether
+        # the HUD is down turns it back on first. That direction is covered against
+        # the source in tests/test_browser_extension_contract.py.
 
         if created_tab:
             second.close_tab(created_tab)

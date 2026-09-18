@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -17,7 +18,13 @@ def test_browser_hud_is_standalone_and_keeps_dom_target_overlay() -> None:
 
     assert "loom-browser-hud-root-v2" in browser_hud
     assert "__loomBrowserHudRuntimeV2" in browser_hud
-    assert "GENERATION = '0.1.9'" in browser_hud
+    # Not pinned to a literal: GENERATION exists so an already-injected older
+    # runtime disposes itself and hands over, which means it is supposed to change
+    # whenever this file does. Pinning it made every HUD change fail this test for
+    # the one reason that is not a regression.
+    assert re.search(r"GENERATION = '\d+\.\d+\.\d+'", browser_hud)
+    assert "existing?.generation === GENERATION" in browser_hud
+    assert "existing?.dispose?.()" in browser_hud
     assert "cloneNode(true)" not in browser_hud
     assert "sourceObserver.observe" in browser_hud
 
