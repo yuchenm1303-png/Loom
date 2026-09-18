@@ -5,6 +5,7 @@ import anyio
 from mcp import Client
 
 from app.chatgpt_mcp import build_mcp_server
+from app.chatgpt_mcp.ui import THREAD_CONTROL_URI
 from app.remote_control import RemoteControlClient
 
 
@@ -79,7 +80,12 @@ def test_chatgpt_mcp_exposes_only_agent_control_surface():
             }
             assert tools["loom_status"].annotations.read_only_hint is True
             assert tools["loom_task_start"].annotations.read_only_hint is False
+            assert tools["loom_thread_read"].meta["ui"]["resourceUri"] == THREAD_CONTROL_URI
             assert tools["loom_approval_respond"].meta["ui"]["visibility"] == ["app"]
+            assert tools["loom_approval_respond"].meta["openai/widgetAccessible"] is True
+
+            resources = await client.list_resources()
+            assert any(str(resource.uri) == THREAD_CONTROL_URI for resource in resources.resources)
 
             result = await client.call_tool(
                 "loom_task_start",
@@ -92,6 +98,25 @@ def test_chatgpt_mcp_exposes_only_agent_control_surface():
             assert result.is_error is False
             assert result.structured_content["ok"] is True
             assert backend.started_threads == [("project-1", "approval")]
+
+            backend.threads["thread-1"]["thread"]["status"] = "waiting_approval"
+            backend.threads["thread-1"]["thread"]["currentTurnId"] = "turn-approval"
+            backend.threads["thread-1"]["pendingApproval"] = {
+                "turnId": "turn-approval",
+                "requestId": "request-1",
+                "callId": "call-1",
+                "toolName": "exec",
+                "arguments": {"command": "git push"},
+                "approvalStage": "initial",
+                "reason": "external write",
+            }
+            read_result = await client.call_tool(
+                "loom_thread_read",
+                {"thread_id": "thread-1"},
+            )
+            pending = read_result.structured_content["pendingApproval"]
+            assert "fingerprint" not in pending
+            assert read_result.meta["loom/approvalFingerprint"]
 
     anyio.run(scenario)
 
