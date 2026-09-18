@@ -66,9 +66,9 @@ def test_steering_messages_stay_at_their_chronological_position_inside_a_turn() 
     # Only the first user message anchors the top of a turn. Later user messages
     # are steering inputs and must stay in the canonical item stream instead of
     # being hoisted beside the original prompt.
-    assert "let initialUser: TranscriptItem | null = null;" in source
-    assert "const guidanceItems: TranscriptItem[] = [];" in source
-    assert "else guidanceItems.push(item);" in source
+    assert 'String(item.source ?? "").trim().toLowerCase() === "steering"' in source
+    assert 'const initialUser = userItems.find((item) => !isSteeringUserMessage(item)) ?? userItems[0] ?? null;' in source
+    assert "const guidanceItems = userItems.filter((item) => item.id !== initialUser?.id);" in source
     assert "item.id !== initialUser?.id" in source
     assert '|| item.type === "user_message"' in source
     assert "derived.userItems.map" not in source
