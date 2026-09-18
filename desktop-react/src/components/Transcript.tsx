@@ -792,10 +792,22 @@ function elapsedLabel(items: TranscriptItem[]): string {
 }
 
 function finalAssistantForTurn(items: TranscriptItem[]): TranscriptItem | null {
+  const assistants = items.filter((item) => item.type === "assistant_message");
+  if (!assistants.length) return null;
+
+  for (let index = assistants.length - 1; index >= 0; index -= 1) {
+    if (assistants[index].phase === "final_answer") return assistants[index];
+  }
+
+  // New app-server payloads explicitly classify every assistant item. Once that
+  // semantic boundary exists, never promote commentary merely because it is the
+  // last visible model message. The positional fallback is only for legacy
+  // histories written before assistant phases were persisted.
+  if (assistants.some((item) => Boolean(item.phase))) return null;
+
   let fallback: TranscriptItem | null = null;
-  for (let index = items.length - 1; index >= 0; index -= 1) {
-    const item = items[index];
-    if (item.type !== "assistant_message") continue;
+  for (let index = assistants.length - 1; index >= 0; index -= 1) {
+    const item = assistants[index];
     fallback ??= item;
     if (splitReasoning(item.text ?? "").answer.trim()) return item;
   }
