@@ -26,7 +26,8 @@ jobs:
         run: |
           loom --help
           loom-web --help
-          loom-app-server --help\n          loom-chatgpt-mcp --help
+          loom-app-server --help
+          loom-chatgpt-mcp --help
 
   react-desktop-smoke:
     runs-on: ubuntu-24.04
