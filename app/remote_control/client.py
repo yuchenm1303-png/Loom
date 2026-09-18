@@ -254,7 +254,12 @@ class RemoteControlClient:
             )
             return {"ok": True, **result}
 
-        result, replayed = self.idempotency.run(idempotency_key, operation, execute)
+        result, replayed = self._call(
+            self.idempotency.run,
+            idempotency_key,
+            operation,
+            execute,
+        )
         result["idempotentReplay"] = replayed
         return result
 
