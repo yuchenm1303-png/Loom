@@ -45,7 +45,8 @@ desktop-agent = [
 loom = "app.skill_dispatch:main"
 loom-skill = "app.skill_cli:main"
 loom-web = "loom_web:main"
-loom-app-server = "loom_app_server:main"\nloom-chatgpt-mcp = "loom_chatgpt_mcp:main"
+loom-app-server = "loom_app_server:main"
+loom-chatgpt-mcp = "loom_chatgpt_mcp:main"
 
 [tool.setuptools]
 py-modules = ["loom_cli", "loom_web", "loom_app_server", "loom_chatgpt_mcp"]
