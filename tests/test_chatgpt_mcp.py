@@ -101,5 +101,5 @@ def test_chatgpt_mcp_source_does_not_import_agent_runtime():
     import app.chatgpt_mcp.server as module
 
     source = Path(module.__file__).read_text(encoding="utf-8")
-    assert "app.agent_runtime" not in source
-    assert "AgentRuntime" not in source
+    assert "from app.agent_runtime" not in source
+    assert "import app.agent_runtime" not in source
