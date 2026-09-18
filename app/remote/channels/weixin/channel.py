@@ -54,6 +54,10 @@ class WeixinChannel:
         service = self._service
         if service is None:
             raise RuntimeError("WeixinChannel is not attached to LoomRemoteService")
+        binding = self.state.binding
+        if binding is None or message.from_user_id != binding.ilink_user_id:
+            self.log("[remote-weixin] ignored message from an unbound Weixin user")
+            return
         context = message.context_token.strip()
         if not context:
             self.log("[remote-weixin] ignored text message without context token")
