@@ -65,7 +65,7 @@ class _JsonRpcHandler(socketserver.StreamRequestHandler):
 
     def handle(self) -> None:
         owner = self.server.owner
-        self.connection.settimeout(owner.client_timeout_seconds)
+        self.connection.settimeout(owner.auth_timeout_seconds)
         raw_auth = self.rfile.readline(_MAX_MESSAGE_BYTES + 2)
         if not raw_auth or len(raw_auth) > _MAX_MESSAGE_BYTES + 1:
             return
@@ -78,6 +78,10 @@ class _JsonRpcHandler(socketserver.StreamRequestHandler):
             self._write({"ok": False, "error": "unauthorized"})
             return
         self._write({"ok": True, "protocolVersion": _DESCRIPTOR_VERSION})
+        # This is a long-lived local control connection. Restrict the timeout to
+        # authentication; idle remote channels must not lose their shared App
+        # Server attachment merely because no tool call arrived for a while.
+        self.connection.settimeout(None)
 
         controller = owner.controller_factory(owner.service)
         while True:
@@ -121,12 +125,12 @@ class LocalAppServerIpcServer:
         *,
         controller_factory: Callable[[Any], Any],
         runtime_home: str | Path,
-        client_timeout_seconds: float = 300.0,
+        auth_timeout_seconds: float = 10.0,
     ) -> None:
         self.service = service
         self.controller_factory = controller_factory
         self.runtime_home = resolve_runtime_home(runtime_home)
-        self.client_timeout_seconds = max(5.0, float(client_timeout_seconds))
+        self.auth_timeout_seconds = max(1.0, float(auth_timeout_seconds))
         self.token = secrets.token_urlsafe(48)
         self._server: _ThreadingTcpServer | None = None
         self._thread: threading.Thread | None = None
