@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from app.app_server_client import LoomAppServerClient
+from app.agent_runtime.stickers import INLINE_STICKER_VISIBLE_MARKER_RE
 
 from .state import WeChatRemoteStateStore
 from .wechat_customer_service import WeChatCustomerServiceClient, WeChatInboundMessage
@@ -296,7 +297,10 @@ class WeChatRemoteBridge:
             with self._guard:
                 self._pending_approval = None
             status = str(turn.get("status") or "")
-            final_text = str(turn.get("finalText") or "").strip()
+            final_text = INLINE_STICKER_VISIBLE_MARKER_RE.sub(
+                "",
+                str(turn.get("finalText") or ""),
+            ).strip()
             error = str(turn.get("error") or "").strip()
             if status == "completed" and final_text:
                 self._send(final_text)
