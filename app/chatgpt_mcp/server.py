@@ -3,9 +3,15 @@ from __future__ import annotations
 from typing import Any
 
 from mcp.server import MCPServer
-from mcp_types import ToolAnnotations
+from mcp_types import CallToolResult, TextContent, ToolAnnotations
 
-from app.remote_control import RemoteControlClient, RemoteControlError
+from app.remote_control import (
+    RemoteControlClient,
+    RemoteControlError,
+    approval_fingerprint,
+)
+
+from .ui import THREAD_CONTROL_HTML, THREAD_CONTROL_URI
 
 
 _READ_ONLY = ToolAnnotations(
@@ -63,6 +69,17 @@ def build_mcp_server(remote: RemoteControlClient) -> MCPServer:
         ),
     )
 
+    @mcp.resource(
+        THREAD_CONTROL_URI,
+        name="loom_thread_control",
+        title="Loom task",
+        mime_type="text/html;profile=mcp-app",
+    )
+    def loom_thread_control_ui() -> str:
+        """Render Loom thread status and user-controlled approval actions."""
+
+        return THREAD_CONTROL_HTML
+
     @mcp.tool(
         name="loom_status",
         title="Check Loom status",
@@ -97,11 +114,52 @@ def build_mcp_server(remote: RemoteControlClient) -> MCPServer:
         name="loom_thread_read",
         title="Read Loom thread",
         annotations=_READ_ONLY,
+        meta={
+            "ui": {"resourceUri": THREAD_CONTROL_URI},
+            "openai/outputTemplate": THREAD_CONTROL_URI,
+        },
+        structured_output=False,
     )
-    def loom_thread_read(thread_id: str) -> dict[str, Any]:
-        """Read authoritative durable state for one Loom thread."""
+    def loom_thread_read(thread_id: str) -> CallToolResult:
+        """Read authoritative durable state for one Loom thread.
 
-        return _safe_call(remote.thread_read, thread_id)
+        Approval fingerprint data is intentionally kept in MCP result metadata so
+        the app UI can bind its buttons to the displayed request without adding
+        that anti-stale token to the model-visible structured content.
+        """
+
+        result = _safe_call(remote.thread_read, thread_id)
+        private_meta: dict[str, Any] = {}
+        pending = result.get("pendingApproval")
+        if result.get("ok") is True and isinstance(pending, dict):
+            try:
+                private_meta["loom/approvalFingerprint"] = approval_fingerprint(
+                    thread_id,
+                    pending,
+                )
+            except ValueError:
+                pass
+
+        thread = result.get("thread")
+        if result.get("ok") is True and isinstance(thread, dict):
+            status = str(thread.get("status") or "unknown").replace("_", " ")
+            summary = f"Loom thread {thread_id} is {status}."
+            if isinstance(pending, dict):
+                summary += " Loom is waiting for the user's approval."
+        else:
+            error = result.get("error")
+            message = (
+                str(error.get("message") or "unknown error")
+                if isinstance(error, dict)
+                else "unknown error"
+            )
+            summary = f"Could not read Loom thread {thread_id}: {message}"
+
+        return CallToolResult(
+            content=(TextContent(type="text", text=summary),),
+            structured_content=result,
+            _meta=private_meta or None,
+        )
 
     @mcp.tool(
         name="loom_task_start",
@@ -164,7 +222,10 @@ def build_mcp_server(remote: RemoteControlClient) -> MCPServer:
         name="loom_approval_respond",
         title="Respond to Loom approval",
         annotations=_APPROVAL_WRITE,
-        meta={"ui": {"visibility": ["app"]}},
+        meta={
+            "ui": {"visibility": ["app"]},
+            "openai/widgetAccessible": True,
+        },
     )
     def loom_approval_respond(
         thread_id: str,
