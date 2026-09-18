@@ -759,7 +759,10 @@ function Sequence({
             <ActivityFlow items={block.items} keepOpen={keepActivityOpen} />
           </div>
         ) : (
-          <div className={`transcript-entry entry-${block.item.type}`} key={block.item.id}>
+          <div
+            className={`transcript-entry entry-${block.item.type} ${block.item.type === "user_message" ? "entry-steering-user" : ""}`.trim()}
+            key={block.item.id}
+          >
             <ItemView item={block.item} onApproval={onApproval} promptDisabled={promptDisabled} workspace={workspace} />
           </div>
         )
@@ -842,6 +845,7 @@ function changedPaths(items: TranscriptItem[]): string[] {
 function TurnProcess({
   items,
   allItems,
+  guidanceItems,
   active,
   open,
   onOpenChange,
@@ -851,6 +855,7 @@ function TurnProcess({
 }: {
   items: TranscriptItem[];
   allItems: TranscriptItem[];
+  guidanceItems: TranscriptItem[];
   active: boolean;
   open: boolean;
   onOpenChange(open: boolean): void;
@@ -881,6 +886,16 @@ function TurnProcess({
           <ChevronRight size={14} className="turn-process-chevron" aria-hidden="true" />
           <span className="turn-process-rule" aria-hidden="true" />
         </button>
+      ) : null}
+
+      {!active && !open && guidanceItems.length ? (
+        <div className="turn-guidance-recap" aria-label="Guidance added during this turn">
+          {guidanceItems.map((item) => (
+            <div className="transcript-entry entry-user_message entry-steering-user" key={`guidance-${item.id}`}>
+              <ItemView item={item} onApproval={onApproval} promptDisabled={promptDisabled} workspace={workspace} />
+            </div>
+          ))}
+        </div>
       ) : null}
 
       <div className="turn-process-grid">
@@ -920,12 +935,16 @@ const TurnView = memo(function TurnView({
   workspace,
 }: TurnViewProps) {
   const derived = useMemo(() => {
-    const userItems: TranscriptItem[] = [];
+    let initialUser: TranscriptItem | null = null;
+    const guidanceItems: TranscriptItem[] = [];
     const errorItems: TranscriptItem[] = [];
     let latestAssistant: TranscriptItem | null = null;
 
     for (const item of items) {
-      if (item.type === "user_message") userItems.push(item);
+      if (item.type === "user_message") {
+        if (!initialUser) initialUser = item;
+        else guidanceItems.push(item);
+      }
       if (!active && item.type === "error") errorItems.push(item);
       if (item.type === "assistant_message") latestAssistant = item;
     }
@@ -933,15 +952,26 @@ const TurnView = memo(function TurnView({
     const finalAssistant = active ? null : finalAssistantForTurn(items);
     const errorIds = new Set(errorItems.map((item) => item.id));
     const processItems = items.filter((item) => (
-      item.type !== "user_message"
+      item.id !== initialUser?.id
       && item.id !== finalAssistant?.id
       && !errorIds.has(item.id)
     ));
     const hasProcess = processItems.some((item) => (
-      isActivityItem(item) || item.type === "assistant_message" || item.type === "approval"
+      isActivityItem(item)
+      || item.type === "assistant_message"
+      || item.type === "approval"
+      || item.type === "user_message"
     ));
 
-    return { userItems, errorItems, latestAssistant, finalAssistant, processItems, hasProcess };
+    return {
+      initialUser,
+      guidanceItems,
+      errorItems,
+      latestAssistant,
+      finalAssistant,
+      processItems,
+      hasProcess,
+    };
   }, [active, items]);
 
   const [processOpen, setProcessOpen] = useState(active);
@@ -967,16 +997,17 @@ const TurnView = memo(function TurnView({
 
   return (
     <section className={`turn-block ${active ? "is-active" : "is-complete"}`} data-turn-id={turnId}>
-      {derived.userItems.map((item) => (
-        <div className="transcript-entry entry-user_message" key={item.id}>
-          <ItemView item={item} onApproval={onApproval} promptDisabled={promptDisabled} workspace={workspace} />
+      {derived.initialUser ? (
+        <div className="transcript-entry entry-user_message" key={derived.initialUser.id}>
+          <ItemView item={derived.initialUser} onApproval={onApproval} promptDisabled={promptDisabled} workspace={workspace} />
         </div>
-      ))}
+      ) : null}
 
       {derived.hasProcess ? (
         <TurnProcess
           items={derived.processItems}
           allItems={items}
+          guidanceItems={derived.guidanceItems}
           active={active}
           open={processOpen}
           onOpenChange={setProcessOpen}
