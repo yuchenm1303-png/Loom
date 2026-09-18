@@ -71,6 +71,18 @@ Use `--no-local-attach` only when an explicit standalone/development Runtime is 
 
 Invalid metadata, non-loopback addresses, authentication failures, and connection failures also fail closed. At all times the design permits at most one local control endpoint owner per Loom runtime home.
 
+A long-lived ChatGPT / Secure MCP Tunnel adapter also survives a normal Loom Desktop or canonical App Server restart. Before each local App Server request, the adapter rereads the published descriptor and compares its endpoint identity (transport, loopback address, ephemeral port, token, process id, and instance id) with the connection it currently holds. When the canonical endpoint changes, the adapter closes the stale socket, authenticates to the replacement endpoint, and repeats the App Server initialize handshake before sending the new request.
+
+Reconnect does **not** mean blind write replay. If a transport dies after a request may have been sent:
+
+- read-only App Server methods are reconnected and retried once;
+- `thread/start` and `turn/start` are retried only when a non-empty `clientInputId` is present, relying on the durable App Server ledger above;
+- steering, approval responses, interrupts/stops, and other writes are not automatically replayed because their outcome may already have been committed;
+- a missing descriptor reports Loom offline instead of launching a private Runtime;
+- a malformed, unreadable, non-loopback, unreachable, or authentication-failing replacement descriptor fails closed.
+
+This retry policy is deliberately below MCP and above Runtime: ChatGPT tools keep their normal surface, while Loom's canonical App Server remains the only place that decides whether a write is safe to admit or replay.
+
 The shared local endpoint carries request/response control traffic only in this phase. ChatGPT reconstructs authoritative progress with `thread/read`; the existing Desktop stdio client continues receiving App Server notifications directly. The ChatGPT widget may request a follow-up refresh after a user approval, but this is a foreground UX enhancement rather than a background task-completion push channel.
 
 ## Secure MCP Tunnel
