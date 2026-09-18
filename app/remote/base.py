@@ -4,10 +4,11 @@ import re
 from dataclasses import dataclass
 from typing import Protocol
 
-from app.agent_runtime.stickers import (
-    INLINE_STICKER_STRUCTURED_PLAN_BEGIN,
-    INLINE_STICKER_STRUCTURED_PLAN_END,
-    INLINE_STICKER_VISIBLE_MARKER_RE,
+__INLINE_STICKER_STRUCTURED_PLAN_BEGIN = "[[AI_LEDGER_STICKER_PLAN_V1_BEGIN]]"
+__INLINE_STICKER_STRUCTURED_PLAN_END = "[[AI_LEDGER_STICKER_PLAN_V1_END]]"
+__INLINE_STICKER_VISIBLE_MARKER_RE = re.compile(
+    r"\\[\\[AI_LEDGER_INLINE_STICKER:([a-z0-9_]{2,48})\\]\\]",
+    re.I,
 )
 
 
@@ -35,17 +36,17 @@ _GENERIC_AI_LEDGER_MARKER_RE = re.compile(r"\[\[AI_LEDGER_[^\]\r\n]{1,256}\]\]",
 
 def sanitize_remote_text(text: str) -> str:
     value = str(text or "")
-    if INLINE_STICKER_STRUCTURED_PLAN_BEGIN in value:
+    if _INLINE_STICKER_STRUCTURED_PLAN_BEGIN in value:
         while True:
-            start = value.find(INLINE_STICKER_STRUCTURED_PLAN_BEGIN)
+            start = value.find(_INLINE_STICKER_STRUCTURED_PLAN_BEGIN)
             if start < 0:
                 break
-            end = value.find(INLINE_STICKER_STRUCTURED_PLAN_END, start)
+            end = value.find(_INLINE_STICKER_STRUCTURED_PLAN_END, start)
             if end < 0:
                 value = value[:start]
                 break
-            value = value[:start] + value[end + len(INLINE_STICKER_STRUCTURED_PLAN_END) :]
-    value = INLINE_STICKER_VISIBLE_MARKER_RE.sub("", value)
+            value = value[:start] + value[end + len(_INLINE_STICKER_STRUCTURED_PLAN_END) :]
+    value = _INLINE_STICKER_VISIBLE_MARKER_RE.sub("", value)
     value = _GENERIC_AI_LEDGER_MARKER_RE.sub("", value)
     return value.strip()
 
