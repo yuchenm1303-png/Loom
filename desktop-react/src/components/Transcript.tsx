@@ -235,6 +235,11 @@ function groupTurns(items: TranscriptItem[]): TurnBlock[] {
   return blocks;
 }
 
+function isSteeringUserMessage(item: TranscriptItem): boolean {
+  return item.type === "user_message"
+    && String(item.source ?? "").trim().toLowerCase() === "steering";
+}
+
 function sameItemReferences(previous: TranscriptItem[] | undefined, next: TranscriptItem[]): boolean {
   if (!previous || previous.length !== next.length) return false;
   for (let index = 0; index < next.length; index += 1) {
@@ -935,16 +940,15 @@ const TurnView = memo(function TurnView({
   workspace,
 }: TurnViewProps) {
   const derived = useMemo(() => {
-    let initialUser: TranscriptItem | null = null;
-    const guidanceItems: TranscriptItem[] = [];
+    const userItems = items.filter((item) => item.type === "user_message");
+    // Modern histories identify turn/steer input explicitly. The positional
+    // fallback keeps old histories readable if they predate the source field.
+    const initialUser = userItems.find((item) => !isSteeringUserMessage(item)) ?? userItems[0] ?? null;
+    const guidanceItems = userItems.filter((item) => item.id !== initialUser?.id);
     const errorItems: TranscriptItem[] = [];
     let latestAssistant: TranscriptItem | null = null;
 
     for (const item of items) {
-      if (item.type === "user_message") {
-        if (!initialUser) initialUser = item;
-        else guidanceItems.push(item);
-      }
       if (!active && item.type === "error") errorItems.push(item);
       if (item.type === "assistant_message") latestAssistant = item;
     }
