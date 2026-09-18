@@ -265,6 +265,56 @@ def test_interrupt_requires_the_active_turn_identity(tmp_path: Path) -> None:
         runtime.close()
 
 
+def test_turn_records_use_terminal_step_identity_not_last_assistant_position() -> None:
+    session = SimpleNamespace(current_turn_id="turn-1", status=AgentStatus.COMPLETED)
+    common = {
+        "session_id": "thread-1",
+        "turn_id": "turn-1",
+        "created_at": "2026-09-18T12:00:00+00:00",
+    }
+    events = (
+        AgentEvent(
+            event_id="evt-final",
+            kind=AgentEventKind.MODEL_RESPONSE,
+            data={
+                "step_id": "step-final",
+                "text": "Complete task summary",
+                "finish_reason": "stop",
+                "usage": {},
+            },
+            **common,
+        ),
+        AgentEvent(
+            event_id="evt-late-commentary",
+            kind=AgentEventKind.MODEL_RESPONSE,
+            data={
+                "step_id": "step-late",
+                "text": "A later process fragment",
+                "finish_reason": "stop",
+                "usage": {},
+            },
+            **common,
+        ),
+        AgentEvent(
+            event_id="evt-completed",
+            kind=AgentEventKind.TURN_COMPLETED,
+            data={
+                "text": "Complete task summary",
+                "final_step_id": "step-final",
+            },
+            **common,
+        ),
+    )
+
+    turn = _turn_records(session, events)[0]
+    assistants = [item for item in turn["items"] if item["type"] == "assistant_message"]
+
+    assert [item["phase"] for item in assistants] == ["final_answer", "commentary"]
+    assert turn["finalStepId"] == "step-final"
+    assert turn["finalItemId"] == assistants[0]["id"]
+    assert turn["finalItemId"] != assistants[-1]["id"]
+
+
 def test_same_call_retry_reuses_tool_and_approval_item_ids() -> None:
     session = SimpleNamespace(current_turn_id="turn-1", status=AgentStatus.WAITING_APPROVAL)
     common = {
