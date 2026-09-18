@@ -19,6 +19,14 @@ _DESCRIPTOR_NAME = "app-server.json"
 _LOOPBACK_HOST = "127.0.0.1"
 
 
+class LocalAppServerUnavailable(AppServerClientError):
+    """No live desktop App Server endpoint is available to attach to."""
+
+
+class LocalAppServerSecurityError(AppServerClientError):
+    """The published local endpoint failed integrity or authentication checks."""
+
+
 def resolve_runtime_home(value: str | Path | None = None) -> Path:
     if value:
         return Path(value).expanduser().resolve()
@@ -250,7 +258,7 @@ class LoomLocalAppServerClient:
         port = int(descriptor.get("port") or 0)
         token = str(descriptor.get("token") or "")
         if host != _LOOPBACK_HOST or not 1 <= port <= 65535 or not token:
-            raise AppServerClientError("invalid local App Server descriptor")
+            raise LocalAppServerSecurityError("invalid local App Server descriptor")
         sock: socket.socket | None = None
         try:
             sock = socket.create_connection(
@@ -267,16 +275,20 @@ class LoomLocalAppServerClient:
             line = reader.readline()
             hello = json.loads(line) if line else {}
             if not isinstance(hello, dict) or hello.get("ok") is not True:
-                raise AppServerClientError("local App Server authentication failed")
+                raise LocalAppServerSecurityError("local App Server authentication failed")
         except Exception as exc:
             if sock is not None:
                 try:
                     sock.close()
                 except Exception:
                     pass
+            if isinstance(exc, LocalAppServerSecurityError):
+                raise
             if isinstance(exc, AppServerClientError):
                 raise
-            raise AppServerClientError(f"could not connect to local App Server: {exc}") from exc
+            raise LocalAppServerUnavailable(
+                f"could not connect to local App Server: {exc}"
+            ) from exc
         self._socket = sock
         self._reader = reader
         self._writer = writer
@@ -286,11 +298,19 @@ class LoomLocalAppServerClient:
         try:
             raw = json.loads(path.read_text(encoding="utf-8"))
         except FileNotFoundError as exc:
-            raise AppServerClientError("local App Server endpoint is not available") from exc
-        except (OSError, json.JSONDecodeError) as exc:
-            raise AppServerClientError(f"could not read local App Server descriptor: {exc}") from exc
+            raise LocalAppServerUnavailable(
+                "local App Server endpoint is not available"
+            ) from exc
+        except OSError as exc:
+            raise LocalAppServerUnavailable(
+                f"could not read local App Server descriptor: {exc}"
+            ) from exc
+        except json.JSONDecodeError as exc:
+            raise LocalAppServerSecurityError(
+                "local App Server descriptor is invalid JSON"
+            ) from exc
         if not isinstance(raw, dict) or int(raw.get("version") or 0) != _DESCRIPTOR_VERSION:
-            raise AppServerClientError("unsupported local App Server descriptor")
+            raise LocalAppServerSecurityError("unsupported local App Server descriptor")
         return raw
 
     def request(
@@ -457,6 +477,8 @@ class LoomLocalAppServerClient:
 
 __all__ = [
     "LocalAppServerIpcServer",
+    "LocalAppServerSecurityError",
+    "LocalAppServerUnavailable",
     "LoomLocalAppServerClient",
     "local_app_server_descriptor_path",
     "resolve_runtime_home",
