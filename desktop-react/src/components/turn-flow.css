@@ -14,6 +14,18 @@
   width: min(760px, 100%);
 }
 
+/* Steering is user-authored conversation content and should align with normal
+   user bubbles at the transcript edge. Let the process shell span the available
+   width when guidance exists, while keeping non-guidance execution rows at the
+   established readable process width. */
+.turn-process.has-guidance {
+  width: 100%;
+}
+
+.turn-process.has-guidance .turn-process-content > .transcript-entry:not(.entry-steering-user) {
+  width: min(760px, 100%);
+}
+
 .turn-process.is-live .turn-process-grid,
 .turn-process.is-open .turn-process-grid {
   grid-template-rows: 1fr;
