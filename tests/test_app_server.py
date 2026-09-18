@@ -196,6 +196,86 @@ def test_thread_turn_notifications_and_durable_reconstruction(tmp_path: Path) ->
         runtime.close()
 
 
+def test_completed_turn_preserves_authoritative_final_assistant_identity(tmp_path: Path) -> None:
+    tool_calls: list[str] = []
+
+    def inspect_handler(_context: ToolContext, arguments):
+        tool_calls.append(str(arguments["value"]))
+        return ToolResult(ok=True, content="inspection complete")
+
+    inspect = AgentTool(
+        name="inspect_once",
+        description="Read-only inspection used to force a multi-step turn.",
+        input_schema={
+            "type": "object",
+            "properties": {"value": {"type": "string"}},
+            "required": ["value"],
+            "additionalProperties": False,
+        },
+        handler=inspect_handler,
+        effect=ToolEffect.READ_ONLY,
+    )
+    service, runtime, store, _platform, workspace = _build_service(
+        tmp_path,
+        [
+            ModelResponse(
+                text="I am checking the workspace before I summarize it.",
+                tool_calls=(
+                    ToolCall(
+                        call_id="inspect-1",
+                        name="inspect_once",
+                        arguments={"value": "workspace"},
+                    ),
+                ),
+                finish_reason="tool_calls",
+            ),
+            ModelResponse(
+                text="Final task summary: the inspection completed successfully.",
+                finish_reason="stop",
+            ),
+        ],
+        tools=(inspect,),
+    )
+    notifications: list[tuple[str, dict]] = []
+    service.subscribe_notifications(lambda method, params: notifications.append((method, params)))
+    try:
+        thread_id = service.thread_start(
+            {"workspace": str(workspace), "permissionMode": "workspace"}
+        )["thread"]["id"]
+        service.turn_start({"threadId": thread_id, "input": "inspect and summarize"})
+        _wait_until(lambda: thread_id not in service.runtime_status()["activeThreadIds"])
+
+        snapshot = service.thread_read({"threadId": thread_id})
+        turn = snapshot["turns"][0]
+        assistants = [item for item in turn["items"] if item["type"] == "assistant_message"]
+
+        assert tool_calls == ["workspace"]
+        assert len(assistants) == 2
+        assert [item["phase"] for item in assistants] == ["commentary", "final_answer"]
+        assert assistants[0]["stepId"]
+        assert assistants[1]["stepId"]
+        assert turn["finalStepId"] == assistants[1]["stepId"]
+        assert turn["finalItemId"] == assistants[1]["id"]
+        assert snapshot["finalText"] == assistants[1]["text"]
+
+        completed = [
+            params["turn"]
+            for method, params in notifications
+            if method == "turn/completed"
+        ][-1]
+        assert completed["finalStepId"] == assistants[1]["stepId"]
+        assert completed["finalItemId"] == assistants[1]["id"]
+
+        terminal = [
+            event
+            for event in store.events(thread_id)
+            if event.kind.value == "turn_completed"
+        ][-1]
+        assert terminal.data["final_step_id"] == assistants[1]["stepId"]
+    finally:
+        runtime.close()
+
+
 def test_approval_response_runs_through_real_permission_boundary(tmp_path: Path) -> None:
     calls: list[str] = []
 
