@@ -17,6 +17,7 @@ from app.remote.channels.weixin import (
     WeixinCredentialStore,
     WeixinMonitor,
     WeixinQrAuthenticator,
+    WeixinRemoteInstanceLock,
     WeixinRemoteStateStore,
 )
 from app.remote.service import LoomRemoteService
@@ -153,6 +154,12 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit(f"Workspace does not exist or is not a directory: {workspace}")
 
     home = _home(args.home)
+    instance_lock = WeixinRemoteInstanceLock(home)
+    try:
+        instance_lock.acquire()
+    except RuntimeError as exc:
+        raise SystemExit(str(exc)) from exc
+
     state = WeixinRemoteStateStore(home)
     credentials_store = WeixinCredentialStore()
 
@@ -274,6 +281,7 @@ def main(argv: list[str] | None = None) -> int:
     finally:
         _best_effort_notify(api, current_credentials, starting=False)
         app_client.close()
+        instance_lock.release()
     return 0
 
 
