@@ -1,6 +1,7 @@
-import { Check, Copy } from "lucide-react";
+import { Check, Copy, ExternalLink, Maximize2, X } from "lucide-react";
 import { isValidElement, memo, useEffect, useRef, useState, type ReactNode } from "react";
-import ReactMarkdown, { type Components } from "react-markdown";
+import { createPortal } from "react-dom";
+import ReactMarkdown, { defaultUrlTransform, type Components } from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
@@ -8,15 +9,49 @@ import remarkMath from "remark-math";
 import { isChatStickerAssetUrl, splitInlineStickerText } from "../chatStickers";
 import "katex/dist/katex.min.css";
 import "./markdown-message.css";
+import "./user-message-attachments.css";
 import "./stickers.css";
 
 interface MarkdownMessageProps {
   content: string;
   compact?: boolean;
+  workspace?: string;
+}
+
+interface LocalImagePayload {
+  dataUrl: string;
+  path: string;
+  name: string;
+  size: number;
+  mimeType: string;
 }
 
 const STREAM_FRAME_MS = 28;
 const STREAM_MAX_STEP = 18;
+const LOCAL_IMAGE_SUFFIX = /\.(?:png|jpe?g|gif|webp|bmp)$/i;
+
+function localImagePath(value: unknown): string {
+  const raw = String(value ?? "").trim();
+  if (!raw || /^(?:https?:|data:|blob:)/i.test(raw)) return "";
+  const clean = raw.replace(/^<|>$/g, "").split(/[?#]/, 1)[0];
+  if (!LOCAL_IMAGE_SUFFIX.test(clean)) return "";
+  try {
+    return decodeURI(clean);
+  } catch {
+    return clean;
+  }
+}
+
+function singleLineImagePath(value: string): string {
+  const trimmed = String(value || "").trim();
+  if (!trimmed || trimmed.includes("\n")) return "";
+  return localImagePath(trimmed);
+}
+
+function markdownUrlTransform(url: string, _key: string, node: { tagName?: string }): string {
+  if (node.tagName === "img" && localImagePath(url)) return url;
+  return defaultUrlTransform(url);
+}
 
 function nodeText(node: ReactNode): string {
   if (typeof node === "string" || typeof node === "number") return String(node);
@@ -55,10 +90,117 @@ function stickerAwareMarkdown(content: string): string {
     .join("");
 }
 
-function CodeBlock({ children }: { children?: ReactNode }) {
+function LocalImagePreview({
+  source,
+  alt,
+  workspace,
+  compact = false,
+}: {
+  source: string;
+  alt?: string;
+  workspace?: string;
+  compact?: boolean;
+}) {
+  const [payload, setPayload] = useState<LocalImagePayload | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
+  const target = localImagePath(source);
+
+  useEffect(() => {
+    let disposed = false;
+    setPayload(null);
+    setFailed(false);
+    setPreviewing(false);
+    if (!target || !workspace) {
+      setFailed(true);
+      return () => { disposed = true; };
+    }
+    void window.loom.readLocalImage(target, workspace)
+      .then((next) => {
+        if (!disposed) setPayload(next);
+      })
+      .catch(() => {
+        if (!disposed) setFailed(true);
+      });
+    return () => { disposed = true; };
+  }, [target, workspace]);
+
+  useEffect(() => {
+    if (!previewing) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setPreviewing(false);
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [previewing]);
+
+  if (!target || !workspace || failed) {
+    return (
+      <span className="assistant-local-image-fallback" title={target || source}>
+        图片预览不可用
+      </span>
+    );
+  }
+
+  if (!payload) {
+    return <span className="assistant-local-image-loading" role="status">正在加载图片…</span>;
+  }
+
+  const label = alt?.trim() || payload.name;
+  const lightbox = previewing ? createPortal(
+    <div
+      className="user-message-image-lightbox"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) setPreviewing(false);
+      }}
+    >
+      <div className="user-message-image-lightbox-panel" role="dialog" aria-modal="true" aria-label={`查看图片 ${label}`}>
+        <div className="user-message-image-lightbox-toolbar">
+          <strong title={payload.path}>{label}</strong>
+          <div className="user-message-image-lightbox-actions">
+            <button type="button" onClick={() => void window.loom.revealPath(payload.path)} title="在文件夹中查看">
+              <ExternalLink size={15} strokeWidth={1.8} />
+              <span>原文件</span>
+            </button>
+            <button type="button" className="icon-only" onClick={() => setPreviewing(false)} title="关闭图片预览" aria-label="关闭图片预览">
+              <X size={17} strokeWidth={1.9} />
+            </button>
+          </div>
+        </div>
+        <div className="user-message-image-lightbox-canvas">
+          <img src={payload.dataUrl} alt={label} draggable={false} />
+        </div>
+      </div>
+    </div>,
+    document.body,
+  ) : null;
+
+  return (
+    <>
+      <button
+        type="button"
+        className={`assistant-local-image-preview ${compact ? "is-compact" : ""}`}
+        onClick={() => setPreviewing(true)}
+        title={`${label} · 点击放大`}
+        aria-label={`放大查看图片：${label}`}
+      >
+        <img src={payload.dataUrl} alt={label} loading="lazy" decoding="async" draggable={false} />
+        <span className="assistant-local-image-hint" aria-hidden="true">
+          <Maximize2 size={14} strokeWidth={1.8} />
+          <span>查看</span>
+        </span>
+      </button>
+      {lightbox}
+    </>
+  );
+}
+
+function CodeBlock({ children, workspace }: { children?: ReactNode; workspace?: string }) {
   const [copied, setCopied] = useState(false);
   const code = nodeText(children).replace(/\n$/, "");
   const language = languageLabel(children);
+  const imagePath = singleLineImagePath(code);
 
   async function copyCode() {
     try {
@@ -71,21 +213,38 @@ function CodeBlock({ children }: { children?: ReactNode }) {
   }
 
   return (
-    <div className="markdown-code-block">
-      <div className="markdown-code-head">
-        <span>{language}</span>
-        <button type="button" onClick={() => void copyCode()} aria-label="Copy code" title="Copy code">
-          {copied ? <Check size={12} /> : <Copy size={12} />}
-          <span>{copied ? "Copied" : "Copy"}</span>
-        </button>
+    <>
+      <div className="markdown-code-block">
+        <div className="markdown-code-head">
+          <span>{language}</span>
+          <button type="button" onClick={() => void copyCode()} aria-label="Copy code" title="Copy code">
+            {copied ? <Check size={12} /> : <Copy size={12} />}
+            <span>{copied ? "Copied" : "Copy"}</span>
+          </button>
+        </div>
+        <pre>{children}</pre>
       </div>
-      <pre>{children}</pre>
-    </div>
+      {imagePath && workspace ? (
+        <LocalImagePreview source={imagePath} workspace={workspace} />
+      ) : null}
+    </>
   );
 }
 
-const markdownComponents: Components = {
-  a({ href, children, ...props }) {
+function markdownComponents(workspace?: string): Components {
+  return {
+    p({ children }) {
+      const imagePath = singleLineImagePath(nodeText(children));
+      return (
+        <>
+          <p>{children}</p>
+          {imagePath && workspace ? (
+            <LocalImagePreview source={imagePath} workspace={workspace} />
+          ) : null}
+        </>
+      );
+    },
+    a({ href, children, ...props }) {
     const external = Boolean(href && /^(https?:|mailto:)/i.test(href));
     return (
       <a
@@ -98,15 +257,24 @@ const markdownComponents: Components = {
       </a>
     );
   },
-  img({ src, alt, className, ...props }) {
-    const sticker = isChatStickerAssetUrl(src);
-    const classes = [className, sticker ? "assistant-inline-sticker" : ""].filter(Boolean).join(" ");
-    return <img {...props} src={src} alt={alt || ""} className={classes || undefined} draggable={sticker ? false : undefined} />;
-  },
-  pre({ children }) {
-    return <CodeBlock>{children}</CodeBlock>;
-  },
-};
+    img({ src, alt, className, ...props }) {
+      const sticker = isChatStickerAssetUrl(src);
+      if (sticker) {
+        const classes = [className, "assistant-inline-sticker"].filter(Boolean).join(" ");
+        return <img {...props} src={src} alt={alt || ""} className={classes} draggable={false} />;
+      }
+      const local = localImagePath(src);
+      if (local) {
+        return <LocalImagePreview source={local} alt={alt || ""} workspace={workspace} />;
+      }
+      const classes = [className, "assistant-markdown-image"].filter(Boolean).join(" ");
+      return <img {...props} src={src} alt={alt || ""} className={classes} loading="lazy" decoding="async" />;
+    },
+    pre({ children }) {
+      return <CodeBlock workspace={workspace}>{children}</CodeBlock>;
+    },
+  };
+}
 
 function prefersReducedMotion(): boolean {
   return typeof window !== "undefined"
@@ -202,7 +370,15 @@ function useSmoothedMarkdownContent(content: string): string {
   return visible;
 }
 
-const MarkdownRenderer = memo(function MarkdownRenderer({ content, compact }: { content: string; compact: boolean }) {
+const MarkdownRenderer = memo(function MarkdownRenderer({
+  content,
+  compact,
+  workspace,
+}: {
+  content: string;
+  compact: boolean;
+  workspace?: string;
+}) {
   return (
     <div className={`markdown-body ${compact ? "markdown-compact" : ""}`}>
       <ReactMarkdown
@@ -211,7 +387,8 @@ const MarkdownRenderer = memo(function MarkdownRenderer({ content, compact }: { 
           rehypeKatex,
           [rehypeHighlight, { detect: false, ignoreMissing: true }],
         ]}
-        components={markdownComponents}
+        components={markdownComponents(workspace)}
+        urlTransform={markdownUrlTransform}
         skipHtml
       >
         {stickerAwareMarkdown(content)}
@@ -220,7 +397,7 @@ const MarkdownRenderer = memo(function MarkdownRenderer({ content, compact }: { 
   );
 });
 
-export function MarkdownMessage({ content, compact = false }: MarkdownMessageProps) {
+export function MarkdownMessage({ content, compact = false, workspace }: MarkdownMessageProps) {
   const visible = useSmoothedMarkdownContent(content);
-  return <MarkdownRenderer content={visible} compact={compact} />;
+  return <MarkdownRenderer content={visible} compact={compact} workspace={workspace} />;
 }

@@ -689,6 +689,7 @@ export default function App() {
             items={transcriptItems}
             running={transcriptRunning}
             currentTurnId={thread?.currentTurnId}
+            workspace={workspace}
             promptDisabled={conversationDisabled}
             onPrompt={(prompt) => void loom.send(prompt)}
             onApproval={handleApproval}

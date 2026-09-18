@@ -25,6 +25,16 @@ const HTML_ESCAPE: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&
 
 type DiagnosticLogKind = "computer" | "browser";
 
+const LOCAL_IMAGE_MIME_TYPES = new Map<string, string>([
+  [".png", "image/png"],
+  [".jpg", "image/jpeg"],
+  [".jpeg", "image/jpeg"],
+  [".gif", "image/gif"],
+  [".webp", "image/webp"],
+  [".bmp", "image/bmp"],
+]);
+const MAX_INLINE_IMAGE_BYTES = 20 * 1024 * 1024;
+
 interface JsonRpcResponse {
   jsonrpc: "2.0";
   id?: number | string | null;
@@ -327,6 +337,58 @@ async function revealPath(targetPath: string): Promise<boolean> {
     if (error) throw new Error(error);
     return true;
   }
+}
+
+function resolveWorkspaceLocalPath(targetPath: string, workspaceRoot: string): string {
+  const rootValue = String(workspaceRoot || "").trim();
+  const targetValue = String(targetPath || "").trim();
+  if (!rootValue || !targetValue) throw new Error("Local image path and workspace are required");
+
+  const root = path.resolve(rootValue);
+  const target = path.isAbsolute(targetValue)
+    ? path.resolve(targetValue)
+    : path.resolve(root, targetValue);
+  const relative = path.relative(root, target);
+  if (!relative || relative === ".") throw new Error("Local image path must point to a file");
+  if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+    throw new Error("Local image must be inside the active workspace");
+  }
+  return target;
+}
+
+async function readLocalImage(targetPath: string, workspaceRoot: string): Promise<{
+  dataUrl: string;
+  path: string;
+  name: string;
+  size: number;
+  mimeType: string;
+}> {
+  const requested = resolveWorkspaceLocalPath(targetPath, workspaceRoot);
+  const root = await fs.realpath(path.resolve(String(workspaceRoot || "").trim()));
+  const target = await fs.realpath(requested);
+  const realRelative = path.relative(root, target);
+  if (realRelative === ".." || realRelative.startsWith(`..${path.sep}`) || path.isAbsolute(realRelative)) {
+    throw new Error("Local image must be inside the active workspace");
+  }
+
+  const extension = path.extname(target).toLowerCase();
+  const mimeType = LOCAL_IMAGE_MIME_TYPES.get(extension);
+  if (!mimeType) throw new Error("Unsupported local image format");
+
+  const stat = await fs.stat(target);
+  if (!stat.isFile()) throw new Error("Local image path is not a file");
+  if (stat.size > MAX_INLINE_IMAGE_BYTES) {
+    throw new Error("Local image is too large to preview");
+  }
+
+  const bytes = await fs.readFile(target);
+  return {
+    dataUrl: `data:${mimeType};base64,${bytes.toString("base64")}`,
+    path: target,
+    name: path.basename(target),
+    size: stat.size,
+    mimeType,
+  };
 }
 
 class LoomRpcProcess {
@@ -639,6 +701,9 @@ ipcMain.handle("loom:export-computer-logs", () => exportComputerLogs());
 ipcMain.handle("loom:export-browser-logs", () => exportBrowserLogs());
 ipcMain.handle("loom:setup-browser-extension", (_event, browser: "edge" | "chrome" = "edge", extensionConnected = false) => setupBrowserExtension(browser, extensionConnected));
 ipcMain.handle("loom:reveal-path", (_event, targetPath: string) => revealPath(targetPath));
+ipcMain.handle("loom:read-local-image", (_event, targetPath: string, workspaceRoot: string) => (
+  readLocalImage(targetPath, workspaceRoot)
+));
 ipcMain.handle("loom:pick-files", async () => {
   const result = await dialog.showOpenDialog({ title: "Attach files", properties: ["openFile", "multiSelections"] });
   return result.canceled ? [] : result.filePaths;

@@ -59,7 +59,13 @@ DEFAULT_AGENT_SYSTEM_PROMPT = (
     "memory, disk space, the current time, the OS version, whether a program is installed, what is running "
     "-- run that command with exec and answer from its output. Consult LOOM_RUNTIME_STATE for the platform "
     "and shell before composing it. Do not tell the user to go and look it up themselves, and do not report "
-    "a capability as missing before trying the command."
+    "a capability as missing before trying the command.\n"
+    "\n"
+    "When you create or save an image inside the active workspace and seeing it would help the user, show it "
+    "in the final response with Markdown image syntax using a workspace-relative path with forward slashes, "
+    "for example ![preview](artifacts/result.png). If the path contains spaces, wrap the destination in angle "
+    "brackets. Do not embed local images as base64 or file:// URLs, and do not leave the user with only a path "
+    "when the image itself is the deliverable."
 )
 
 
