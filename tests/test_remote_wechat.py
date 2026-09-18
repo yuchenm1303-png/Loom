@@ -305,3 +305,31 @@ def test_turn_completion_strips_internal_inline_sticker_marker(tmp_path):
         },
     )
     assert wechat.sent[-1][2] == "完成"
+
+
+def test_new_thread_is_rejected_while_current_turn_is_active(tmp_path):
+    state = WeChatRemoteStateStore(tmp_path)
+    state.bind("wx-user", "wk-loom")
+    state.set_thread_id("thread-1")
+    wechat = FakeWeChat()
+    app = FakeAppClient()
+    app.threads["thread-1"] = {
+        "thread": {
+            "id": "thread-1",
+            "title": "Remote",
+            "status": "running",
+            "currentTurnId": "turn-1",
+        },
+        "pendingApproval": None,
+    }
+    bridge = WeChatRemoteBridge(
+        app_client=app,
+        wechat=wechat,
+        state=state,
+        workspace=tmp_path,
+    )
+
+    bridge.handle_message(_message("/new"))
+    assert state.binding.thread_id == "thread-1"
+    assert app._next_thread == 0
+    assert "不能直接切换会话" in wechat.sent[-1][2]
