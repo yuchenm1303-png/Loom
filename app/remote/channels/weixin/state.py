@@ -55,6 +55,72 @@ class WeixinBinding:
         }
 
 
+class WeixinRemoteInstanceLock:
+    """Prevent two Weixin Remote processes from polling one Loom home at once."""
+
+    def __init__(self, root: str | Path) -> None:
+        self.root = Path(root).expanduser().resolve()
+        self.path = self.root / "remote" / "weixin.lock"
+        self._handle = None
+
+    def acquire(self) -> None:
+        if self._handle is not None:
+            return
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        handle = self.path.open("a+b")
+        handle.seek(0, os.SEEK_END)
+        if handle.tell() == 0:
+            handle.write(b"\0")
+            handle.flush()
+        handle.seek(0)
+        try:
+            if os.name == "nt":
+                import msvcrt
+
+                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError as exc:
+            handle.close()
+            raise RuntimeError(
+                "Another Loom Weixin Remote is already running for this Loom home. "
+                "Stop the existing loom-remote-wechat process before starting another."
+            ) from exc
+        self._handle = handle
+
+    def release(self) -> None:
+        handle = self._handle
+        self._handle = None
+        if handle is None:
+            return
+        try:
+            handle.seek(0)
+            if os.name == "nt":
+                import msvcrt
+
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        except OSError:
+            pass
+        finally:
+            handle.close()
+
+    def __enter__(self) -> "WeixinRemoteInstanceLock":
+        self.acquire()
+        return self
+
+    def __exit__(self, _exc_type, _exc, _tb) -> None:
+        self.release()
+
+    def __del__(self) -> None:
+        self.release()
+
+
 class WeixinRemoteStateStore:
     """Durable non-secret state for one personal iLink Weixin remote."""
 
@@ -249,5 +315,6 @@ class WeixinCredentialStore:
 __all__ = [
     "WeixinBinding",
     "WeixinCredentialStore",
+    "WeixinRemoteInstanceLock",
     "WeixinRemoteStateStore",
 ]
