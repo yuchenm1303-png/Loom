@@ -71,7 +71,10 @@
   padding: 11px 15px;
 }
 
-.terminal-preference-card .mature-preference-icon {
+/* settings-icon-alignment.css loads late and restores display:grid on icon tiles.
+   Match that selector's settings-shell scope so the compact Terminal rows keep
+   the icon removed and the remaining copy/control stay in the intended 2-column grid. */
+.settings-shell .terminal-preference-card .mature-preference-icon {
   display: none;
 }
 
