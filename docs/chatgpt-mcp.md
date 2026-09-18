@@ -53,9 +53,11 @@ After installing Loom, the entry point is:
 
     loom-chatgpt-mcp --workspace C:\path\to\project
 
-The MCP transport is stdio. The adapter currently launches a Loom App Server child process and speaks the existing versioned JSON-RPC protocol to it.
+The MCP transport is stdio. By default the adapter first looks for the authenticated local App Server endpoint published by Loom Desktop under the Loom runtime home. That endpoint is loopback-only, uses an ephemeral port and a per-process random token, and routes requests into the same App Server service instance that owns Desktop's active turns and pending approvals.
 
-This child-process topology is deliberately transitional. It is suitable for adapter and MCP contract development, but it must not become the final desktop topology because a running Loom Desktop already owns an App Server and active in-memory turn state. The next phase adds a multi-client local App Server IPC transport so Desktop, WeChat Remote, and ChatGPT Remote all attach to the same authoritative service instance.
+If no live desktop endpoint is available, the development adapter falls back to launching its own Loom App Server child process. Use `--no-local-attach` to force that fallback during adapter testing.
+
+The shared local endpoint carries request/response control traffic only in this phase. ChatGPT reconstructs authoritative progress with `thread/read`; the existing Desktop stdio client continues receiving App Server notifications directly.
 
 ## Secure MCP Tunnel
 
@@ -70,6 +72,6 @@ This phase does not:
 - add a second permission or sandbox implementation;
 - make approval/respond model-callable;
 - claim reliable background completion push into ChatGPT;
-- solve the final shared Desktop/Remote local IPC topology.
+- expose the local App Server endpoint beyond loopback or bypass its token handshake.
 
 Those are intentionally kept separate from the first protocol boundary.
