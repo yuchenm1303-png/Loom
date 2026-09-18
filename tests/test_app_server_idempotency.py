@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+import uuid
 from pathlib import Path
 
 import pytest
@@ -369,5 +370,30 @@ def test_client_input_id_is_bounded_before_sqlite_admission(tmp_path: Path):
                     "clientInputId": "x" * 257,
                 }
             )
+    finally:
+        runtime.close()
+
+
+def test_reserved_session_creation_recovers_lock_only_directory(tmp_path: Path):
+    service, runtime, store, _platform, workspace = build_service(tmp_path, [])
+    try:
+        reserved_id = str(uuid.uuid4())
+        directory = store.session_dir(reserved_id)
+        directory.mkdir(parents=True)
+        (directory / ".commit.lock").write_bytes(b"\0")
+
+        session = runtime.create_session(
+            "agent.fast",
+            workspace_dir=workspace,
+            permission_mode=PermissionMode.APPROVAL,
+            session_id=reserved_id,
+        )
+
+        assert session.session_id == reserved_id
+        assert (directory / "session.json").is_file()
+        assert any(
+            event.kind.value == "session_created"
+            for event in store.events(reserved_id)
+        )
     finally:
         runtime.close()
