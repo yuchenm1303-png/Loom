@@ -331,10 +331,8 @@ class LoomLocalAppServerClient:
             self._client_name = str(client_name)
             self._client_version = str(client_version)
             descriptor = self._load_descriptor()
-            identity = self._descriptor_identity(descriptor)
-            if not self.running or identity != self._attached_identity:
-                self._close_transport_locked()
-                self._connect_descriptor_locked(descriptor)
+            self._close_transport_locked()
+            self._connect_descriptor_locked(descriptor)
             result = self._initialize_attached_locked()
             self._auto_initialize = True
             return result
