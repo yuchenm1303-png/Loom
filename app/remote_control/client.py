@@ -7,7 +7,7 @@ from typing import Any, Protocol
 
 from app.app_server_client import AppServerClientError, JsonRpcClientError
 
-from .approvals import approval_fingerprint, approval_fingerprint_matches
+from .approvals import approval_fingerprint_matches
 from .idempotency import IdempotencyStore
 from .policy import RemoteControlPolicy
 
@@ -147,12 +147,6 @@ class RemoteControlClient:
 
     def thread_read(self, thread_id: str) -> dict[str, Any]:
         snapshot = self._call(self.backend.thread_read, str(thread_id))
-        pending = snapshot.get("pendingApproval")
-        if isinstance(pending, dict):
-            pending = copy.deepcopy(pending)
-            pending["fingerprint"] = approval_fingerprint(str(thread_id), pending)
-            snapshot = copy.deepcopy(snapshot)
-            snapshot["pendingApproval"] = pending
         return {"ok": True, **snapshot}
 
     def task_start(
