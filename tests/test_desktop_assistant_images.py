@@ -34,6 +34,7 @@ def test_desktop_renders_assistant_local_images_through_workspace_scoped_ipc() -
     assert 'ipcRenderer.invoke("loom:read-local-image"' in preload
     assert 'ipcMain.handle("loom:read-local-image"' in main
     assert "resolveWorkspaceLocalPath" in main
-    assert 'relative.startsWith("..")' in main
+    assert 'relative.startsWith(`..${path.sep}`)' in main
+    assert 'realRelative.startsWith(`..${path.sep}`)' in main
     assert "MAX_INLINE_IMAGE_BYTES" in main
     assert "workspace={workspace}" in transcript
