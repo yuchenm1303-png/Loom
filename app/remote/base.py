@@ -4,10 +4,15 @@ import re
 from dataclasses import dataclass
 from typing import Protocol
 
-__INLINE_STICKER_STRUCTURED_PLAN_BEGIN = "[[AI_LEDGER_STICKER_PLAN_V1_BEGIN]]"
-__INLINE_STICKER_STRUCTURED_PLAN_END = "[[AI_LEDGER_STICKER_PLAN_V1_END]]"
-__INLINE_STICKER_VISIBLE_MARKER_RE = re.compile(
-    r"\\[\\[AI_LEDGER_INLINE_STICKER:([a-z0-9_]{2,48})\\]\\]",
+
+_INLINE_STICKER_STRUCTURED_PLAN_BEGIN = "[[AI_LEDGER_STICKER_PLAN_V1_BEGIN]]"
+_INLINE_STICKER_STRUCTURED_PLAN_END = "[[AI_LEDGER_STICKER_PLAN_V1_END]]"
+_INLINE_STICKER_VISIBLE_MARKER_RE = re.compile(
+    r"\[\[AI_LEDGER_INLINE_STICKER:([a-z0-9_]{2,48})\]\]",
+    re.I,
+)
+_GENERIC_AI_LEDGER_MARKER_RE = re.compile(
+    r"\[\[AI_LEDGER_[^\]\r\n]{1,256}\]\]",
     re.I,
 )
 
@@ -31,9 +36,6 @@ class RemoteSessionState(Protocol):
     def set_thread_id(self, thread_id: str) -> None: ...
 
 
-_GENERIC_AI_LEDGER_MARKER_RE = re.compile(r"\[\[AI_LEDGER_[^\]\r\n]{1,256}\]\]", re.I)
-
-
 def sanitize_remote_text(text: str) -> str:
     value = str(text or "")
     if _INLINE_STICKER_STRUCTURED_PLAN_BEGIN in value:
@@ -45,7 +47,10 @@ def sanitize_remote_text(text: str) -> str:
             if end < 0:
                 value = value[:start]
                 break
-            value = value[:start] + value[end + len(_INLINE_STICKER_STRUCTURED_PLAN_END) :]
+            value = (
+                value[:start]
+                + value[end + len(_INLINE_STICKER_STRUCTURED_PLAN_END) :]
+            )
     value = _INLINE_STICKER_VISIBLE_MARKER_RE.sub("", value)
     value = _GENERIC_AI_LEDGER_MARKER_RE.sub("", value)
     return value.strip()
