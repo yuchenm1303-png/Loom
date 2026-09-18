@@ -5,9 +5,10 @@ import json
 import pytest
 
 from app.app_server import LoomRpcController
-from app.app_server_client import AppServerClientError
 from app.app_server_local_ipc import (
     LocalAppServerIpcServer,
+    LocalAppServerSecurityError,
+    LocalAppServerUnavailable,
     LoomLocalAppServerClient,
     local_app_server_descriptor_path,
 )
@@ -65,7 +66,7 @@ def test_local_ipc_rejects_tampered_descriptor_token(tmp_path):
 
     client = LoomLocalAppServerClient(tmp_path, request_timeout_seconds=1)
     try:
-        with pytest.raises(AppServerClientError):
+        with pytest.raises(LocalAppServerSecurityError):
             client.connect()
     finally:
         client.close()
@@ -91,5 +92,12 @@ def test_local_client_refuses_non_loopback_descriptor(tmp_path):
     )
 
     client = LoomLocalAppServerClient(tmp_path, request_timeout_seconds=1)
-    with pytest.raises(AppServerClientError):
+    with pytest.raises(LocalAppServerSecurityError):
+        client.connect()
+
+
+def test_missing_local_descriptor_is_the_only_normal_fallback_state(tmp_path):
+    client = LoomLocalAppServerClient(tmp_path, request_timeout_seconds=1)
+
+    with pytest.raises(LocalAppServerUnavailable):
         client.connect()
