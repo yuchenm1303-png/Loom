@@ -47,6 +47,8 @@ def _scrubbed_driver_text(value: Any) -> Any:
     if not isinstance(value, str):
         return _safe_driver_data(value)
     return "\n".join(_safe_stderr_line(line) for line in value.splitlines())
+
+
 _UFO_COMPATIBLE_PROVIDERS = {"openai", "openai-compatible", "openai_compatible"}
 
 
@@ -110,6 +112,11 @@ class ComputerDriverRuntime(ComputerUseRuntime):
         self.computer_driver: ComputerTaskDriver | None = computer_driver
         # None = the active model profile never declared a vision capability.
         self.computer_model_vision: bool | None = None
+        # Tracks only credentials/model copied from the active Loom model. A
+        # deliberate LOOM_UFO_API_* override is not considered inherited and must
+        # remain available for debugging/benchmarking when the active provider is
+        # unsupported by UFO.
+        self._computer_driver_model_inherited = False
         if (
             self.computer_driver is None
             and os.name == "nt"
@@ -123,6 +130,15 @@ class ComputerDriverRuntime(ComputerUseRuntime):
         self._install_driver_task_tool()
         self._sync_driver_model_from_platform()
 
+    def _drop_inherited_driver_model(self, driver: UfoWindowsDriver) -> None:
+        """Fail closed instead of retaining a previously inherited active model."""
+
+        if not bool(getattr(self, "_computer_driver_model_inherited", False)):
+            return
+        driver.close()
+        driver.config = replace(driver.config, api_key="", api_model="")
+        self._computer_driver_model_inherited = False
+
     def _sync_driver_model_from_platform(self) -> None:
         """Reuse the current Loom vision connection in the isolated UFO process.
 
@@ -130,6 +146,10 @@ class ComputerDriverRuntime(ComputerUseRuntime):
         normal desktop driver. Loom already knows the active provider/model/key;
         this bridge copies that RAM-only connection into the UFO sidecar config
         before status checks or task execution.
+
+        Once a model has been inherited, a later hot-switch to an unsupported or
+        incomplete connection must drop that inherited model. Retaining it would
+        make Computer Use silently keep operating with the previous model.
         """
 
         driver = self.computer_driver
@@ -146,6 +166,7 @@ class ComputerDriverRuntime(ComputerUseRuntime):
             if platform is None:
                 break
         if not isinstance(metadata, dict):
+            self._drop_inherited_driver_model(driver)
             return
         declared_vision = metadata.get("vision")
         self.computer_model_vision = (
@@ -157,14 +178,17 @@ class ComputerDriverRuntime(ComputerUseRuntime):
             # readiness reports one clear reason before any task starts.
             if driver.config.api_model:
                 driver.close()
-                driver.config = replace(driver.config, api_model="")
+                driver.config = replace(driver.config, api_key="", api_model="")
+            self._computer_driver_model_inherited = False
             return
         provider = str(metadata.get("provider") or "").strip().casefold().replace("_", "-")
         if provider not in _UFO_COMPATIBLE_PROVIDERS:
+            self._drop_inherited_driver_model(driver)
             return
         api_key = str(metadata.get("api_key") or "").strip()
         api_model = str(metadata.get("model") or "").strip()
         if not api_key or not api_model:
+            self._drop_inherited_driver_model(driver)
             return
         api_base = _ufo_base_url(provider, str(metadata.get("base_url") or ""))
         updated = replace(
@@ -174,12 +198,12 @@ class ComputerDriverRuntime(ComputerUseRuntime):
             api_key=api_key,
             api_model=api_model,
         )
-        if updated == driver.config:
-            return
-        # Model switches are only allowed while Loom has no active turn. Closing an
-        # idle sidecar prevents cached UFO LLM services from retaining old routing.
-        driver.close()
-        driver.config = updated
+        if updated != driver.config:
+            # Model switches are only allowed while Loom has no active turn. Closing an
+            # idle sidecar prevents cached UFO LLM services from retaining old routing.
+            driver.close()
+            driver.config = updated
+        self._computer_driver_model_inherited = True
 
     def _install_driver_task_tool(self) -> None:
         if self.computer_driver_mode == "legacy" or self.computer_driver is None:
