@@ -55,9 +55,17 @@ After installing Loom, the entry point is:
 
     loom-chatgpt-mcp --workspace C:\path\to\project
 
+Start Loom Desktop first for the normal ChatGPT Remote path. For deliberate headless/development use only:
+
+    loom-chatgpt-mcp --workspace C:\path\to\project --no-local-attach
+
 The MCP transport is stdio. By default the adapter first looks for the authenticated local App Server endpoint published by Loom Desktop under the Loom runtime home. That endpoint is loopback-only, uses an ephemeral port and a per-process random token, and routes requests into the same App Server service instance that owns Desktop's active turns and pending approvals.
 
-If no desktop descriptor exists, the development adapter falls back to launching its own Loom App Server child process. Use `--no-local-attach` to force that mode during adapter testing. Once a descriptor has been published, invalid metadata, non-loopback addresses, authentication failures, and connection failures all fail closed. They do not silently create a second Runtime, which prevents a stale or racing desktop endpoint from producing split-brain active turns.
+The default adapter mode requires the canonical shared App Server to already be running, normally because Loom Desktop is open. A missing descriptor is an error rather than an automatic hidden-runtime fallback. This prevents a tunnel process from starting a private Runtime and later racing a newly opened Desktop against the same durable state.
+
+Use `--no-local-attach` only when an explicit standalone/development Runtime is intended. Standalone mode launches its App Server with `--local-ipc`, so it acquires the same OS-level ownership lock and becomes the one canonical App Server for that Loom home. A later Desktop instance therefore cannot silently start a competing local control plane.
+
+Invalid metadata, non-loopback addresses, authentication failures, and connection failures also fail closed. At all times the design permits at most one local control endpoint owner per Loom runtime home.
 
 The shared local endpoint carries request/response control traffic only in this phase. ChatGPT reconstructs authoritative progress with `thread/read`; the existing Desktop stdio client continues receiving App Server notifications directly. The ChatGPT widget may request a follow-up refresh after a user approval, but this is a foreground UX enhancement rather than a background task-completion push channel.
 
