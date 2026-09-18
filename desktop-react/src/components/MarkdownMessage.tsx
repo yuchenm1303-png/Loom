@@ -233,7 +233,18 @@ function CodeBlock({ children, workspace }: { children?: ReactNode; workspace?: 
 
 function markdownComponents(workspace?: string): Components {
   return {
-  a({ href, children, ...props }) {
+    p({ children, ...props }) {
+      const imagePath = singleLineImagePath(nodeText(children));
+      return (
+        <>
+          <p {...props}>{children}</p>
+          {imagePath && workspace ? (
+            <LocalImagePreview source={imagePath} workspace={workspace} />
+          ) : null}
+        </>
+      );
+    },
+    a({ href, children, ...props }) {
     const external = Boolean(href && /^(https?:|mailto:)/i.test(href));
     return (
       <a
