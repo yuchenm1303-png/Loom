@@ -21,6 +21,7 @@ def _prepare_frozen_environment() -> None:
 _prepare_frozen_environment()
 
 from loom_app_server import main as app_server_main
+from loom_chatgpt_mcp import main as chatgpt_mcp_main
 from loom_model_admin import main as model_admin_main
 from loom_model_bridge import main as model_bridge_main
 
@@ -73,7 +74,7 @@ def _self_test() -> int:
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     if not args:
-        sys.stderr.write("usage: python {loom_app_server.py|loom_model_bridge.py|loom_model_admin.py|-c|self-test} ...\n")
+        sys.stderr.write("usage: python {loom_app_server.py|loom_chatgpt_mcp.py|loom_model_bridge.py|loom_model_admin.py|-c|self-test} ...\n")
         return 2
 
     first, rest = args[0], args[1:]
@@ -85,6 +86,8 @@ def main(argv: list[str] | None = None) -> int:
     script = Path(first).name.casefold()
     if script == "loom_app_server.py":
         return app_server_main(_replace_packaged_workspace(rest))
+    if script == "loom_chatgpt_mcp.py":
+        return chatgpt_mcp_main(_replace_packaged_workspace(rest))
     if script == "loom_model_bridge.py":
         return model_bridge_main(rest)
     if script == "loom_model_admin.py":
