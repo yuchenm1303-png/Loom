@@ -7,6 +7,7 @@ import json
 import queue
 import shutil
 import sys
+import time
 import threading
 import traceback
 import uuid
@@ -1056,8 +1057,14 @@ class LoomAppServerService:
             turn_id = entry.object_id
 
             if entry.result is not None:
-                if self._turn_started_durably(session_id, turn_id) or self._is_active(session_id):
+                if self._turn_started_durably(session_id, turn_id):
                     return _with_idempotent_replay(entry.result, True)
+                if self._is_active(session_id):
+                    if self._wait_for_turn_started(session_id, turn_id):
+                        return _with_idempotent_replay(entry.result, True)
+                    raise RuntimeError(
+                        "prepared turn replay conflicts with another active app-server operation"
+                    )
                 return self._resume_prepared_turn(
                     session_id,
                     client_input_id,
@@ -1087,6 +1094,7 @@ class LoomAppServerService:
                 result = self._turn_start_result(session_id, turn_id, staged)
                 payload = {
                     "text": text,
+                    "previousTurnId": session.current_turn_id or "",
                     "staged": _staged_payload(staged),
                 }
                 self.idempotency.prepare(
@@ -1123,8 +1131,12 @@ class LoomAppServerService:
         session = self._load(session_id)
         if session.status is AgentStatus.WAITING_APPROVAL:
             raise RuntimeError("prepared turn replay conflicts with a pending approval")
-        if self._is_active(session_id):
-            return _with_idempotent_replay(entry.result, True)
+        previous_turn_id = str(entry.payload.get("previousTurnId") or "").strip()
+        current_turn_id = str(session.current_turn_id or "").strip()
+        if current_turn_id not in {previous_turn_id, entry.object_id}:
+            raise RuntimeError(
+                "prepared turn replay conflicts with newer thread state"
+            )
 
         staged = _restore_staged_attachments(
             session.workspace_dir,
@@ -1143,6 +1155,20 @@ class LoomAppServerService:
             ),
         )
         return _with_idempotent_replay(entry.result, True)
+
+    def _wait_for_turn_started(
+        self,
+        session_id: str,
+        turn_id: str,
+        *,
+        timeout_seconds: float = 2.0,
+    ) -> bool:
+        deadline = time.monotonic() + max(0.05, float(timeout_seconds))
+        while time.monotonic() < deadline:
+            if self._turn_started_durably(session_id, turn_id):
+                return True
+            time.sleep(0.01)
+        return self._turn_started_durably(session_id, turn_id)
 
     def _turn_started_durably(self, session_id: str, turn_id: str) -> bool:
         try:
