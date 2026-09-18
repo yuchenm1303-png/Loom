@@ -420,7 +420,7 @@ class LoomRpcProcess {
     const spec = this.models.current ?? this.models.ensureInitial();
     const python = resolvePythonExecutable();
     const script = path.join(REPO_ROOT, "loom_app_server.py");
-    const args = [script, "--workspace", REPO_ROOT, "--provider", spec.provider, "--model", spec.model];
+    const args = [script, "--workspace", REPO_ROOT, "--provider", spec.provider, "--model", spec.model, "--local-ipc"];
     if (spec.baseUrl) args.push("--base-url", spec.baseUrl);
     if (spec.reasoning) args.push("--reasoning-kind", spec.reasoning.kind, "--reasoning-value", spec.reasoning.value);
     console.log(`[loom-app-server] launching ${python}`);
