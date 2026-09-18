@@ -89,6 +89,9 @@ class WeixinMonitor:
                 if message.item_types:
                     self.log("[remote-weixin] ignored unsupported non-text message")
                 continue
+            if not message.message_id:
+                self.log("[remote-weixin] ignored message without a stable message id")
+                continue
             if not self.state.accept_message(message.message_id):
                 self.log("[remote-weixin] ignored duplicate message")
                 continue
