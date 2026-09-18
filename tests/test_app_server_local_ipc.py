@@ -19,11 +19,20 @@ class FakeService:
         return {"model": "shared-runtime", "activeThreadIds": []}
 
 
+class FakeController(LoomRpcController):
+    """Exercise the transport without pretending FakeService is a full App Server."""
+
+    def _dispatch(self, method, params):
+        if method == "runtime/status":
+            return self.service.runtime_status()
+        raise ValueError(f"unsupported fake method: {method}")
+
+
 def test_local_ipc_shares_one_service_and_cleans_descriptor(tmp_path):
     service = FakeService()
     server = LocalAppServerIpcServer(
         service,
-        controller_factory=LoomRpcController,
+        controller_factory=FakeController,
         runtime_home=tmp_path,
     )
     descriptor = server.start()
@@ -54,7 +63,7 @@ def test_local_ipc_shares_one_service_and_cleans_descriptor(tmp_path):
 def test_local_ipc_rejects_tampered_descriptor_token(tmp_path):
     server = LocalAppServerIpcServer(
         FakeService(),
-        controller_factory=LoomRpcController,
+        controller_factory=FakeController,
         runtime_home=tmp_path,
     )
     server.start()
