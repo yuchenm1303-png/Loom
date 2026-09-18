@@ -4,8 +4,12 @@ import argparse
 import sys
 from pathlib import Path
 
-from app.app_server_client import AppServerClientError, AppServerProcessConfig, LoomAppServerClient
-from app.app_server_local_ipc import LoomLocalAppServerClient, resolve_runtime_home
+from app.app_server_client import AppServerProcessConfig, LoomAppServerClient
+from app.app_server_local_ipc import (
+    LocalAppServerUnavailable,
+    LoomLocalAppServerClient,
+    resolve_runtime_home,
+)
 from app.chatgpt_mcp import build_mcp_server
 from app.remote_control import RemoteControlClient, RemoteControlPolicy
 
@@ -52,7 +56,7 @@ def main(argv: list[str] | None = None) -> int:
                 client_version="0.1.0",
             )
             backend = local_backend
-        except AppServerClientError:
+        except LocalAppServerUnavailable:
             local_backend.close()
 
     if backend is None:
