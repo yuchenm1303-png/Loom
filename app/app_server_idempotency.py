@@ -218,6 +218,23 @@ class AppServerIdempotencyStore:
             raise RuntimeError("completed idempotency entry disappeared")
         return entry
 
+    def complete_object(self, operation: str, object_id: str) -> bool:
+        """Mark an adopted durable object completed without needing the client id."""
+
+        op = _bounded(operation, "operation", 64)
+        target = _bounded(object_id, "object_id", 128)
+        now = time.time()
+        with self._guard, self._connect() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE app_server_idempotency
+                SET state = 'completed', updated_at = ?
+                WHERE operation = ? AND object_id = ?
+                """,
+                (now, op, target),
+            )
+        return cursor.rowcount > 0
+
     def release_reserved(self, operation: str, client_input_id: str) -> bool:
         """Release only a reservation that never reached prepared state."""
 
@@ -272,6 +289,7 @@ class AppServerIdempotencyStore:
                 DELETE FROM app_server_idempotency
                 WHERE rowid IN (
                     SELECT rowid FROM app_server_idempotency
+                    WHERE state = 'completed'
                     ORDER BY updated_at ASC
                     LIMIT ?
                 )
