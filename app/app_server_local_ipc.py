@@ -16,6 +16,7 @@ from app.app_server_client import AppServerClientError, JsonRpcClientError
 _MAX_MESSAGE_BYTES = 1024 * 1024
 _DESCRIPTOR_VERSION = 1
 _DESCRIPTOR_NAME = "app-server.json"
+_OWNER_LOCK_NAME = "app-server.lock"
 _LOOPBACK_HOST = "127.0.0.1"
 
 
@@ -135,6 +136,8 @@ class LocalAppServerIpcServer:
         self._server: _ThreadingTcpServer | None = None
         self._thread: threading.Thread | None = None
         self._descriptor_path = local_app_server_descriptor_path(self.runtime_home)
+        self._owner_lock_path = self._descriptor_path.with_name(_OWNER_LOCK_NAME)
+        self._owner_lock_file = None
 
     @property
     def running(self) -> bool:
@@ -143,18 +146,85 @@ class LocalAppServerIpcServer:
     def start(self) -> dict[str, Any]:
         if self.running:
             return self.descriptor()
-        server = _ThreadingTcpServer(self)
-        self._server = server
-        descriptor = self.descriptor()
-        self._publish_descriptor(descriptor)
-        thread = threading.Thread(
-            target=server.serve_forever,
-            name="loom-app-server-local-ipc",
-            daemon=True,
-        )
-        self._thread = thread
-        thread.start()
-        return descriptor
+
+        self._acquire_ownership()
+        server: _ThreadingTcpServer | None = None
+        try:
+            server = _ThreadingTcpServer(self)
+            self._server = server
+            descriptor = self.descriptor()
+            self._publish_descriptor(descriptor)
+            thread = threading.Thread(
+                target=server.serve_forever,
+                name="loom-app-server-local-ipc",
+                daemon=True,
+            )
+            self._thread = thread
+            thread.start()
+            return descriptor
+        except BaseException:
+            self._thread = None
+            self._server = None
+            if server is not None:
+                try:
+                    server.server_close()
+                except OSError:
+                    pass
+            self._remove_own_descriptor()
+            self._release_ownership()
+            raise
+
+    def _acquire_ownership(self) -> None:
+        if self._owner_lock_file is not None:
+            return
+
+        target = self._owner_lock_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        handle = target.open("a+b")
+        try:
+            handle.seek(0, os.SEEK_END)
+            if handle.tell() == 0:
+                handle.write(b"\0")
+                handle.flush()
+            handle.seek(0)
+            if os.name == "nt":
+                import msvcrt
+
+                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except (OSError, BlockingIOError) as exc:
+            handle.close()
+            raise RuntimeError(
+                "another Loom App Server already owns the local control endpoint"
+            ) from exc
+
+        try:
+            os.chmod(target, 0o600)
+        except OSError:
+            pass
+        self._owner_lock_file = handle
+
+    def _release_ownership(self) -> None:
+        handle, self._owner_lock_file = self._owner_lock_file, None
+        if handle is None:
+            return
+        try:
+            handle.seek(0)
+            if os.name == "nt":
+                import msvcrt
+
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        except OSError:
+            pass
+        finally:
+            handle.close()
 
     def descriptor(self) -> dict[str, Any]:
         server = self._server
@@ -197,6 +267,7 @@ class LocalAppServerIpcServer:
         if thread is not None:
             thread.join(timeout=2.0)
         self._remove_own_descriptor()
+        self._release_ownership()
 
     def _remove_own_descriptor(self) -> None:
         target = self._descriptor_path
