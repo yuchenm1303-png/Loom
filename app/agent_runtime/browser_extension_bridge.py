@@ -65,6 +65,22 @@ def _load_or_create_install_token() -> str:
     return value
 
 
+class _BridgeServer(ThreadingHTTPServer):
+    """Loopback job server that refuses to share its port on Windows.
+
+    Windows SO_REUSEADDR is not the POSIX one: it lets a second socket bind a port
+    another socket is already listening on. Two Loom instances - a checkout and the
+    installed build - therefore both "started" the bridge, the extension long-polled
+    into whichever one Windows routed it to, and the other sat there queueing
+    commands nobody would ever collect. Neither could tell it had lost.
+
+    On POSIX the flag only permits rebinding during TIME_WAIT, which is still
+    wanted, so this only changes Windows.
+    """
+
+    allow_reuse_address = os.name != "nt"
+
+
 @dataclass(slots=True)
 class _BridgeCommand:
     command_id: str
@@ -128,6 +144,7 @@ class BrowserExtensionBridge:
         self._last_window_id = ""
         self._last_poll_at = 0.0
         self._last_result_at = 0.0
+        self._bind_error = ""
         self._log("bridge.created", host=self.host, port=self.port, command_timeout=self.command_timeout)
 
     @classmethod
@@ -180,15 +197,36 @@ class BrowserExtensionBridge:
                 } if self._last_tab_title or self._last_tab_url else None,
                 "pending_commands": len(self._pending),
                 "queued_commands": len(self._commands),
+                "port_conflict": self._bind_error,
                 "diagnostics": self.diagnostics.status(expose_path=False),
             }
+
+    @property
+    def port_conflict(self) -> str:
+        """Why this bridge has no server, when another process owns its port."""
+
+        with self._condition:
+            return self._bind_error
 
     def start(self) -> None:
         with self._condition:
             if self._server is not None:
                 return
             handler_cls = self._make_handler()
-            self._server = ThreadingHTTPServer((self.host, self.port), handler_cls)
+            try:
+                self._server = _BridgeServer((self.host, self.port), handler_cls)
+            except OSError as exc:
+                # Losing the port must not stop Loom from starting: the browser is
+                # one capability, and the honest outcome is a bridge that reports
+                # why it is unavailable rather than one that silently competes.
+                self._bind_error = (
+                    f"another process already owns the browser bridge port {self.port}. "
+                    "This is usually a second Loom instance - close it, or set "
+                    "LOOM_BROWSER_EXTENSION_PORT to give this one its own port."
+                )
+                self._log("bridge.bind.conflict", port=self.port, error=str(exc))
+                return
+            self._bind_error = ""
             self._server.daemon_threads = True
             self.port = int(self._server.server_address[1])
             self._thread = threading.Thread(
@@ -231,6 +269,11 @@ class BrowserExtensionBridge:
         """
 
         self.start()
+        if self.port_conflict:
+            # Without this the caller waits out the full command timeout and is
+            # told the extension is unresponsive, which sends them to reinstall an
+            # extension that was never the problem.
+            raise BrowserError(self.port_conflict)
         action_name = str(action)
         wait_seconds = self.command_timeout if timeout is None else max(1.0, float(timeout))
         command = _BridgeCommand(

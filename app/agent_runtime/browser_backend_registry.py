@@ -146,8 +146,11 @@ class BrowserBackendRegistryMixin:
                 "requires_extension": True,
                 "browser": str(bridge_status.get("browser") or ""),
                 "current_tab": bridge_status.get("current_tab"),
+                # A port conflict is not a missing extension, and saying so sends
+                # the user to reinstall something that was never broken.
                 "reason": "" if current_connected else (
-                    "Loom Current Tab Bridge is not connected. Enable the Loom browser extension in Edge/Chrome."
+                    str(bridge_status.get("port_conflict") or "")
+                    or "Loom Current Tab Bridge is not connected. Enable the Loom browser extension in Edge/Chrome."
                 ),
             },
             {
