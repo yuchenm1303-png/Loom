@@ -350,7 +350,7 @@ function resolveWorkspaceLocalPath(targetPath: string, workspaceRoot: string): s
     : path.resolve(root, targetValue);
   const relative = path.relative(root, target);
   if (!relative || relative === ".") throw new Error("Local image path must point to a file");
-  if (relative.startsWith("..") || path.isAbsolute(relative)) {
+  if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
     throw new Error("Local image must be inside the active workspace");
   }
   return target;
@@ -363,7 +363,14 @@ async function readLocalImage(targetPath: string, workspaceRoot: string): Promis
   size: number;
   mimeType: string;
 }> {
-  const target = resolveWorkspaceLocalPath(targetPath, workspaceRoot);
+  const requested = resolveWorkspaceLocalPath(targetPath, workspaceRoot);
+  const root = await fs.realpath(path.resolve(String(workspaceRoot || "").trim()));
+  const target = await fs.realpath(requested);
+  const realRelative = path.relative(root, target);
+  if (realRelative === ".." || realRelative.startsWith(`..${path.sep}`) || path.isAbsolute(realRelative)) {
+    throw new Error("Local image must be inside the active workspace");
+  }
+
   const extension = path.extname(target).toLowerCase();
   const mimeType = LOCAL_IMAGE_MIME_TYPES.get(extension);
   if (!mimeType) throw new Error("Unsupported local image format");
