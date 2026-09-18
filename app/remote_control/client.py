@@ -183,6 +183,7 @@ class RemoteControlClient:
 
         def execute() -> dict[str, Any]:
             created = False
+            durable_replay = False
             if thread:
                 snapshot = self._call(self.backend.thread_read, thread)
                 self._ensure_active_control_allowed(snapshot)
@@ -201,7 +202,9 @@ class RemoteControlClient:
                         "App Server did not return a new thread id",
                     )
                 target_thread = str(record["id"])
-                created = True
+                thread_replayed = bool(started_thread.get("idempotentReplay"))
+                durable_replay = durable_replay or thread_replayed
+                created = not thread_replayed
 
             started_turn = self._call(
                 self.backend.turn_start,
@@ -209,6 +212,8 @@ class RemoteControlClient:
                 text,
                 client_input_id=str(idempotency_key or ""),
             )
+            turn_replayed = bool(started_turn.get("idempotentReplay"))
+            durable_replay = durable_replay or turn_replayed
             turn = started_turn.get("turn")
             if not isinstance(turn, dict):
                 turn = {}
@@ -217,6 +222,7 @@ class RemoteControlClient:
                 "createdThread": created,
                 "threadId": target_thread,
                 "turn": turn,
+                "_durableReplay": durable_replay,
             }
 
         result, replayed = self._call(
@@ -225,7 +231,8 @@ class RemoteControlClient:
             operation,
             execute,
         )
-        result["idempotentReplay"] = replayed
+        durable_replay = bool(result.pop("_durableReplay", False))
+        result["idempotentReplay"] = bool(replayed or durable_replay)
         return result
 
     def task_steer(
