@@ -206,6 +206,14 @@ class RemoteControlClient:
                 durable_replay = durable_replay or thread_replayed
                 created = not thread_replayed
 
+                # A durable thread/start replay returns the original creation
+                # result, which may be older than the thread's current
+                # permission mode. Re-read authoritative state before granting
+                # this remote channel a turn so a local permission escalation
+                # cannot be inherited through a stale replay snapshot.
+                snapshot = self._call(self.backend.thread_read, target_thread)
+                self._ensure_active_control_allowed(snapshot)
+
             started_turn = self._call(
                 self.backend.turn_start,
                 target_thread,
