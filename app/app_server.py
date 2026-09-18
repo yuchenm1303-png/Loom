@@ -914,9 +914,10 @@ class LoomAppServerService:
             if entry.result is not None:
                 return _with_idempotent_replay(entry.result, True)
 
-            try:
+            session_path = self.store.session_dir(entry.object_id) / "session.json"
+            if session_path.is_file():
                 session = self.runtime.get_session(entry.object_id)
-            except FileNotFoundError:
+            else:
                 session = self.runtime.create_session(
                     AGENT_FAST_ROLE.role_id,
                     workspace_dir=root,
