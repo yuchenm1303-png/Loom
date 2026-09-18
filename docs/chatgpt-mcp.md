@@ -57,7 +57,7 @@ After installing Loom, the entry point is:
 
 The MCP transport is stdio. By default the adapter first looks for the authenticated local App Server endpoint published by Loom Desktop under the Loom runtime home. That endpoint is loopback-only, uses an ephemeral port and a per-process random token, and routes requests into the same App Server service instance that owns Desktop's active turns and pending approvals.
 
-If no live desktop endpoint is available, the development adapter falls back to launching its own Loom App Server child process. Use `--no-local-attach` to force that fallback during adapter testing. Invalid descriptors, non-loopback addresses, and authentication failures do not trigger fallback; they fail closed so a tampered local endpoint cannot silently cause ChatGPT to control a separate Runtime.
+If no desktop descriptor exists, the development adapter falls back to launching its own Loom App Server child process. Use `--no-local-attach` to force that mode during adapter testing. Once a descriptor has been published, invalid metadata, non-loopback addresses, authentication failures, and connection failures all fail closed. They do not silently create a second Runtime, which prevents a stale or racing desktop endpoint from producing split-brain active turns.
 
 The shared local endpoint carries request/response control traffic only in this phase. ChatGPT reconstructs authoritative progress with `thread/read`; the existing Desktop stdio client continues receiving App Server notifications directly. The ChatGPT widget may request a follow-up refresh after a user approval, but this is a foreground UX enhancement rather than a background task-completion push channel.
 
