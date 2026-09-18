@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, TextIO
 
-from app.agent_runtime import PermissionMode
+from app.agent_runtime import AgentEventKind, PermissionMode
 
 from .app_server_project_move import (
     ProjectMovableJsonRpcStdioServer,
@@ -12,8 +12,28 @@ from .app_server_project_move import (
 )
 
 
+_BROWSER_HUD_TERMINAL_EVENTS = frozenset(
+    {
+        AgentEventKind.TURN_COMPLETED,
+        AgentEventKind.TURN_FAILED,
+        AgentEventKind.TURN_CANCELLED,
+        AgentEventKind.TURN_INTERRUPTED,
+        AgentEventKind.LIMIT_REACHED,
+    }
+)
+
+
 class BrowserPolicyLoomAppServerService(ProjectMovableLoomAppServerService):
     """Production App Server browser wiring with explicit backend selection."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        # HUD lifetime is a turn concern, not a browser-session concern. Browser
+        # sessions intentionally survive between turns so login state and browser_id
+        # remain reusable, while this set tells us which terminal turns actually
+        # need a visual teardown. Keeping it per service also prevents one Loom
+        # session's ordinary completion from hiding another session's browser HUD.
+        self._browser_hud_active_turns: set[tuple[str, str]] = set()
 
     def _apply_capability_settings(self, settings: dict[str, Any]) -> None:
         super()._apply_capability_settings(settings)
@@ -73,6 +93,54 @@ class BrowserPolicyLoomAppServerService(ProjectMovableLoomAppServerService):
             return ""
         except Exception as exc:
             return f"{type(exc).__name__}: {exc}"
+
+    def _on_runtime_event(self, event: Any) -> None:
+        kind = getattr(event, "kind", None)
+        turn_key = (
+            str(getattr(event, "session_id", "") or ""),
+            str(getattr(event, "turn_id", "") or ""),
+        )
+        data = getattr(event, "data", {}) or {}
+
+        if kind is AgentEventKind.TOOL_REQUESTED:
+            tool_name = str(data.get("tool") or "")
+            if tool_name.startswith("browser_") and tool_name != "browser_backends":
+                self._browser_hud_active_turns.add(turn_key)
+
+        # Preserve the normal App Server protocol ordering: the client receives
+        # turn/completed before the best-effort extension cleanup below can wait on
+        # a loopback round trip.
+        super()._on_runtime_event(event)
+
+        if kind not in _BROWSER_HUD_TERMINAL_EVENTS:
+            return
+        used_browser = turn_key in self._browser_hud_active_turns
+        self._browser_hud_active_turns.discard(turn_key)
+        if not used_browser:
+            return
+
+        # Browser sessions intentionally survive a turn so the next user message
+        # can continue with the same tab, login state, and browser_id. The visual
+        # session indicator must not survive the turn, though. Only Current Browser
+        # sessions own the extension HUD; an explicitly isolated browser turn must
+        # never tear down an unrelated Edge HUD.
+        sessions = getattr(self.runtime, "browser_sessions", None)
+        try:
+            owned = sessions.list(event.session_id) if sessions is not None else ()
+        except Exception:
+            owned = ()
+        if not any(str(item.get("backend") or "") == "browser-extension" for item in owned):
+            return
+
+        bridge = getattr(self.runtime, "browser_extension_bridge", None)
+        if bridge is None or not bool(getattr(bridge, "connected", False)):
+            return
+        try:
+            bridge.call("hud_end", {"turn_id": turn_key[1]}, timeout=2.0)
+        except Exception:
+            # Turn completion must never fail merely because Edge closed or the
+            # extension disconnected while the final response was being emitted.
+            pass
 
     @staticmethod
     def _hud_tool_family(tool_name: str) -> str:
