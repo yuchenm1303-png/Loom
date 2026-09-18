@@ -357,3 +357,17 @@ def test_prepared_attachment_replay_uses_original_staged_copy(tmp_path: Path):
         assert len(list(staged_path.parent.iterdir())) == 1
     finally:
         runtime.close()
+
+
+def test_client_input_id_is_bounded_before_sqlite_admission(tmp_path: Path):
+    service, runtime, _store, _platform, workspace = build_service(tmp_path, [])
+    try:
+        with pytest.raises(ValueError, match="clientInputId exceeds 256"):
+            service.thread_start(
+                {
+                    "workspace": str(workspace),
+                    "clientInputId": "x" * 257,
+                }
+            )
+    finally:
+        runtime.close()
