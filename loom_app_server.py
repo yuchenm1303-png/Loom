@@ -52,6 +52,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--timeout", type=float, default=120.0)
     parser.add_argument(
+        "--local-ipc",
+        action="store_true",
+        help="publish an authenticated loopback endpoint for trusted local remote clients",
+    )
+    parser.add_argument(
         "--vision",
         action=argparse.BooleanOptionalAction,
         default=True,
@@ -126,6 +131,7 @@ def main(argv: list[str] | None = None) -> int:
         default_workspace=workspace,
         default_permission_mode=permission_mode,
         vision=bool(args.vision),
+        local_ipc=bool(args.local_ipc),
     )
 
 

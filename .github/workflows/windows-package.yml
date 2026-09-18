@@ -9,6 +9,10 @@ on:
       - "app/connector*.py"
       - "loom_desktop_runtime.py"
       - "loom_app_server.py"
+      - "loom_chatgpt_mcp.py"
+      - "app/chatgpt_mcp/**"
+      - "app/remote_control/**"
+      - "app/app_server_local_ipc.py"
       - "loom_model_bridge.py"
       - "loom_model_admin.py"
       - "pyproject.toml"
@@ -24,6 +28,10 @@ on:
       - "app/connector*.py"
       - "loom_desktop_runtime.py"
       - "loom_app_server.py"
+      - "loom_chatgpt_mcp.py"
+      - "app/chatgpt_mcp/**"
+      - "app/remote_control/**"
+      - "app/app_server_local_ipc.py"
       - "loom_model_bridge.py"
       - "loom_model_admin.py"
       - "pyproject.toml"
@@ -85,8 +93,10 @@ jobs:
           if (-not (Test-Path $browserExtension)) { throw "Packaged Current Tab Bridge extension was not found at $browserExtension" }
           & $runtime self-test
           if ($LASTEXITCODE -ne 0) { throw "Packaged runtime self-test failed with exit code $LASTEXITCODE" }
-          & $runtime -c "import app; import mcp; from mcp.client.streamable_http import streamable_http_client; print('loom-runtime-import-ok')"
+          & $runtime -c "import app; import mcp; from mcp.client.streamable_http import streamable_http_client; from app.app_server_local_ipc import LoomLocalAppServerClient; from app.chatgpt_mcp import build_mcp_server; import loom_chatgpt_mcp; print('loom-runtime-import-ok')"
           if ($LASTEXITCODE -ne 0) { throw "Packaged runtime import smoke failed with exit code $LASTEXITCODE" }
+          & $runtime loom_chatgpt_mcp.py --help
+          if ($LASTEXITCODE -ne 0) { throw "Packaged ChatGPT MCP entrypoint smoke failed with exit code $LASTEXITCODE" }
 
           $oauthConfigured = (-not [string]::IsNullOrWhiteSpace($env:LOOM_GITHUB_CLIENT_ID)) -and (-not [string]::IsNullOrWhiteSpace($env:LOOM_GITHUB_CLIENT_SECRET))
           if ($oauthConfigured) { $env:LOOM_EXPECT_PACKAGED_GITHUB_OAUTH = "1" } else { $env:LOOM_EXPECT_PACKAGED_GITHUB_OAUTH = "0" }
