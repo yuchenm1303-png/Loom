@@ -58,7 +58,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="declare that the selected model can read images",
     )
     parser.add_argument("--corp-id", default=_env("LOOM_WECOM_CORP_ID"))
-    parser.add_argument("--secret", default=_env("LOOM_WECOM_KF_SECRET"))
     parser.add_argument(
         "--open-kfid",
         default=_env("LOOM_WECOM_OPEN_KFID"),
@@ -148,7 +147,11 @@ def main(argv: list[str] | None = None) -> int:
         state.reset_binding()
 
     corp_id = _required(args.corp_id, flag="--corp-id", env_name="LOOM_WECOM_CORP_ID")
-    secret = _required(args.secret, flag="--secret", env_name="LOOM_WECOM_KF_SECRET")
+    secret = _required(
+        _env("LOOM_WECOM_KF_SECRET"),
+        flag="LOOM_WECOM_KF_SECRET",
+        env_name="LOOM_WECOM_KF_SECRET",
+    )
     timeout_seconds = min(30.0, max(5.0, float(args.timeout)))
     open_kfid, wechat = _resolve_open_kf_id(
         corp_id=corp_id,
