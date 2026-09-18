@@ -19,14 +19,14 @@ jobs:
       - name: Install
         run: python -m pip install -e '.[dev,browser]'
       - name: Compile
-        run: python -m compileall -q app loom_cli.py loom_web.py loom_app_server.py run_loom.py
+        run: python -m compileall -q app loom_cli.py loom_web.py loom_app_server.py loom_chatgpt_mcp.py run_loom.py
       - name: Test
         run: python -m pytest
       - name: CLI smoke
         run: |
           loom --help
           loom-web --help
-          loom-app-server --help
+          loom-app-server --help\n          loom-chatgpt-mcp --help
 
   react-desktop-smoke:
     runs-on: ubuntu-24.04
