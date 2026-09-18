@@ -319,20 +319,50 @@ class LoomAppServerClient:
             ]
         return dict(self.request("turn/start", params))
 
+    def turn_steer(
+        self,
+        thread_id: str,
+        turn_id: str,
+        text: str,
+        *,
+        client_input_id: str = "",
+    ) -> dict[str, Any]:
+        params: dict[str, Any] = {
+            "threadId": str(thread_id),
+            "turnId": str(turn_id),
+            "input": str(text),
+        }
+        if client_input_id:
+            params["clientInputId"] = str(client_input_id)
+        return dict(self.request("turn/steer", params))
+
     def turn_interrupt(self, thread_id: str, turn_id: str | None = None) -> dict[str, Any]:
         params: dict[str, Any] = {"threadId": str(thread_id)}
         if turn_id:
             params["turnId"] = str(turn_id)
         return dict(self.request("turn/interrupt", params))
 
-    def approval_respond(self, thread_id: str, call_id: str, *, approved: bool) -> dict[str, Any]:
+    def approval_respond(
+        self,
+        thread_id: str,
+        *,
+        turn_id: str,
+        request_id: str,
+        call_id: str,
+        decision: str,
+    ) -> dict[str, Any]:
+        resolved_decision = str(decision or "").strip()
+        if resolved_decision not in {"accept", "decline"}:
+            raise ValueError("decision must be 'accept' or 'decline'")
         return dict(
             self.request(
                 "approval/respond",
                 {
                     "threadId": str(thread_id),
+                    "turnId": str(turn_id),
+                    "requestId": str(request_id),
                     "callId": str(call_id),
-                    "approved": bool(approved),
+                    "decision": resolved_decision,
                 },
             )
         )
