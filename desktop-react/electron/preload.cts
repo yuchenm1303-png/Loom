@@ -40,6 +40,8 @@ const api = {
   exportBrowserLogs: () => ipcRenderer.invoke("loom:export-browser-logs"),
   setupBrowserExtension: (browser: "edge" | "chrome" = "edge", extensionConnected = false) => ipcRenderer.invoke("loom:setup-browser-extension", browser, extensionConnected),
   revealPath: (targetPath: string) => ipcRenderer.invoke("loom:reveal-path", targetPath),
+  readLocalImage: (targetPath: string, workspaceRoot: string) =>
+    ipcRenderer.invoke("loom:read-local-image", targetPath, workspaceRoot),
   pickDirectory: () => ipcRenderer.invoke("loom:pick-directory"),
   pickFiles: () => ipcRenderer.invoke("loom:pick-files"),
   setZoomFactor: (factor: number) => {
