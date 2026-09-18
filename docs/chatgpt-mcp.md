@@ -63,7 +63,28 @@ The shared local endpoint carries request/response control traffic only in this 
 
 ## Secure MCP Tunnel
 
-The production local connection should place OpenAI Secure MCP Tunnel in front of loom-chatgpt-mcp rather than exposing the Loom App Server or a local port to the public Internet. Tunnel setup is deployment configuration and is not an authorization boundary inside Loom.
+The production local connection should place OpenAI Secure MCP Tunnel in front of `loom-chatgpt-mcp` rather than exposing the Loom App Server or a local port to the public Internet. Tunnel setup is deployment configuration and is not an authorization boundary inside Loom.
+
+The official tunnel client supports a local stdio MCP child directly. The operator needs:
+
+- `CONTROL_PLANE_TUNNEL_ID` for the provisioned tunnel;
+- `CONTROL_PLANE_API_KEY` from an OpenAI Runtime API key principal with Tunnels Read + Use;
+- one `main` MCP binding, which Loom supplies as the `loom-chatgpt-mcp` command.
+
+Do not put an OpenAI admin key into the long-lived runner. Admin credentials are only for tunnel management. Also run exactly one active `tunnel-client` instance per tunnel id when the binding is stdio; multiple runners would create separate MCP children without request affinity.
+
+For a source/development install on Windows:
+
+    $env:CONTROL_PLANE_TUNNEL_ID = "tunnel_<32 lowercase hex>"
+    $env:CONTROL_PLANE_API_KEY = "<runtime API key>"
+    .\scripts\init_chatgpt_tunnel.ps1 -Workspace C:\path\to\workspace
+    tunnel-client run --profile loom-chatgpt
+
+The helper only validates the environment, creates the official `sample_mcp_stdio_local` profile, runs `tunnel-client doctor --explain`, and optionally starts the foreground runner with `-Run`. It never writes the runtime API key into Loom configuration.
+
+For a packaged Loom build, pass `-McpCommand` that invokes the frozen private runtime's `loom_chatgpt_mcp.py` dispatch entrypoint. This keeps Secure MCP Tunnel outside the Loom trust boundary while still letting it attach to the canonical desktop App Server through the authenticated loopback endpoint.
+
+While `tunnel-client run` is healthy, select or paste the matching tunnel in the ChatGPT connector/app settings. Tunnel discovery and every later MCP call require the local runner to remain active.
 
 ## Non-goals of this phase
 
