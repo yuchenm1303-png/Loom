@@ -233,6 +233,21 @@ class AppServerIdempotencyStore:
             )
         return cursor.rowcount == 1
 
+    def discard(self, operation: str, client_input_id: str) -> bool:
+        """Delete a request only when the caller knows no operation was launched."""
+
+        op = _required(operation, "operation")
+        key = _required(client_input_id, "client_input_id")
+        with self._guard, self._connect() as connection:
+            cursor = connection.execute(
+                """
+                DELETE FROM app_server_idempotency
+                WHERE operation = ? AND client_input_id = ?
+                """,
+                (op, key),
+            )
+        return cursor.rowcount == 1
+
     def _prune(self) -> None:
         with self._guard, self._connect() as connection:
             self._prune_locked(connection)
