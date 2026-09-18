@@ -101,3 +101,32 @@ def test_missing_local_descriptor_is_the_only_normal_fallback_state(tmp_path):
 
     with pytest.raises(LocalAppServerUnavailable):
         client.connect()
+
+
+def test_published_but_unreachable_endpoint_fails_closed(tmp_path):
+    import socket
+
+    probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    probe.bind(("127.0.0.1", 0))
+    _host, port = probe.getsockname()
+    probe.close()
+
+    target = local_app_server_descriptor_path(tmp_path)
+    target.parent.mkdir(parents=True)
+    target.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "transport": "jsonl-tcp-loopback",
+                "host": "127.0.0.1",
+                "port": port,
+                "token": "published-but-dead",
+                "pid": 1,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    client = LoomLocalAppServerClient(tmp_path, request_timeout_seconds=1)
+    with pytest.raises(LocalAppServerSecurityError, match="refusing to start a second Runtime"):
+        client.connect()
