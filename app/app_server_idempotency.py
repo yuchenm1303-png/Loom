@@ -93,9 +93,9 @@ class AppServerIdempotencyStore:
         request_hash: str,
         object_id_factory: Callable[[], str],
     ) -> tuple[AppServerIdempotencyEntry, bool]:
-        op = _required(operation, "operation")
-        key = _required(client_input_id, "client_input_id")
-        digest = _required(request_hash, "request_hash")
+        op = _bounded(operation, "operation", 64)
+        key = _bounded(client_input_id, "clientInputId", 256)
+        digest = _bounded(request_hash, "request_hash", 128)
         now = time.time()
 
         with self._guard, self._connect() as connection:
@@ -135,8 +135,8 @@ class AppServerIdempotencyStore:
             return entry, False
 
     def get(self, operation: str, client_input_id: str) -> AppServerIdempotencyEntry | None:
-        op = _required(operation, "operation")
-        key = _required(client_input_id, "client_input_id")
+        op = _bounded(operation, "operation", 64)
+        key = _bounded(client_input_id, "clientInputId", 256)
         with self._guard, self._connect() as connection:
             row = connection.execute(
                 """
@@ -155,8 +155,8 @@ class AppServerIdempotencyStore:
         result: dict[str, Any],
         payload: dict[str, Any] | None = None,
     ) -> AppServerIdempotencyEntry:
-        op = _required(operation, "operation")
-        key = _required(client_input_id, "client_input_id")
+        op = _bounded(operation, "operation", 64)
+        key = _bounded(client_input_id, "clientInputId", 256)
         result_json = _json_object(result, "result")
         payload_json = None if payload is None else _json_object(payload, "payload")
         now = time.time()
@@ -187,8 +187,8 @@ class AppServerIdempotencyStore:
         *,
         result: dict[str, Any] | None = None,
     ) -> AppServerIdempotencyEntry:
-        op = _required(operation, "operation")
-        key = _required(client_input_id, "client_input_id")
+        op = _bounded(operation, "operation", 64)
+        key = _bounded(client_input_id, "clientInputId", 256)
         encoded = None if result is None else _json_object(result, "result")
         now = time.time()
 
@@ -221,8 +221,8 @@ class AppServerIdempotencyStore:
     def release_reserved(self, operation: str, client_input_id: str) -> bool:
         """Release only a reservation that never reached prepared state."""
 
-        op = _required(operation, "operation")
-        key = _required(client_input_id, "client_input_id")
+        op = _bounded(operation, "operation", 64)
+        key = _bounded(client_input_id, "clientInputId", 256)
         with self._guard, self._connect() as connection:
             cursor = connection.execute(
                 """
@@ -236,8 +236,8 @@ class AppServerIdempotencyStore:
     def discard(self, operation: str, client_input_id: str) -> bool:
         """Delete a request only when the caller knows no operation was launched."""
 
-        op = _required(operation, "operation")
-        key = _required(client_input_id, "client_input_id")
+        op = _bounded(operation, "operation", 64)
+        key = _bounded(client_input_id, "clientInputId", 256)
         with self._guard, self._connect() as connection:
             cursor = connection.execute(
                 """
@@ -284,6 +284,13 @@ def _required(value: Any, name: str) -> str:
     text = str(value or "").strip()
     if not text:
         raise ValueError(f"{name} must not be empty")
+    return text
+
+
+def _bounded(value: Any, name: str, limit: int) -> str:
+    text = _required(value, name)
+    if len(text) > int(limit):
+        raise ValueError(f"{name} exceeds {int(limit)} characters")
     return text
 
 
