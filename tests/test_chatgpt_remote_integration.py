@@ -46,7 +46,14 @@ class ServiceBackend:
     def thread_read(self, thread_id):
         return self.service.thread_read({"threadId": thread_id})
 
-    def thread_start(self, *, workspace=None, project_id="", permission_mode=None):
+    def thread_start(
+        self,
+        *,
+        workspace=None,
+        project_id="",
+        permission_mode=None,
+        client_input_id="",
+    ):
         params = {}
         if project_id:
             params["projectId"] = project_id
@@ -54,12 +61,23 @@ class ServiceBackend:
             params["workspace"] = str(workspace)
         if permission_mode:
             params["permissionMode"] = permission_mode
+        if client_input_id:
+            params["clientInputId"] = client_input_id
         return self.service.thread_start(params)
 
-    def turn_start(self, thread_id, text, attachments=()):
+    def turn_start(
+        self,
+        thread_id,
+        text,
+        attachments=(),
+        *,
+        client_input_id="",
+    ):
         params = {"threadId": thread_id, "input": text}
         if attachments:
             params["attachments"] = list(attachments)
+        if client_input_id:
+            params["clientInputId"] = client_input_id
         return self.service.turn_start(params)
 
     def turn_steer(self, thread_id, turn_id, text, *, client_input_id=""):
