@@ -31,6 +31,7 @@ interface TranscriptProps {
   items: TranscriptItem[];
   running?: boolean;
   currentTurnId?: string | null;
+  workspace?: string;
   promptDisabled?: boolean;
   onPrompt?(prompt: string): void;
   onApproval(item: TranscriptItem, approved: boolean): void;
@@ -140,7 +141,7 @@ function Disclosure({ label, children, openByDefault = false }: { label: string;
   );
 }
 
-function LiveReasoning({ reasoning }: { reasoning: string }) {
+function LiveReasoning({ reasoning, workspace }: { reasoning: string; workspace?: string }) {
   const [open, setOpen] = useState(false);
   const hasReasoning = Boolean(reasoning.trim());
 
@@ -162,7 +163,7 @@ function LiveReasoning({ reasoning }: { reasoning: string }) {
         <div className="live-reasoning-grid">
           <div className="live-reasoning-inner">
             <div className="live-reasoning-copy">
-              <MarkdownMessage content={reasoning} compact />
+              <MarkdownMessage content={reasoning} compact workspace={workspace} />
             </div>
           </div>
         </div>
@@ -670,10 +671,12 @@ function ItemView({
   item,
   onApproval,
   promptDisabled,
+  workspace,
 }: {
   item: TranscriptItem;
   onApproval(item: TranscriptItem, approved: boolean): void;
   promptDisabled?: boolean;
+  workspace?: string;
 }) {
   if (item.type === "user_message") {
     const rawText = String(item.text ?? "");
@@ -690,7 +693,7 @@ function ItemView({
     const parsed = splitReasoning(item.text ?? "");
 
     if (parsed.state === "streaming") {
-      return <div className="assistant-message"><LiveReasoning reasoning={parsed.reasoning} /></div>;
+      return <div className="assistant-message"><LiveReasoning reasoning={parsed.reasoning} workspace={workspace} /></div>;
     }
 
     if (!parsed.reasoning && !parsed.answer.trim()) return null;
@@ -702,11 +705,11 @@ function ItemView({
           {parsed.reasoning ? (
             <Disclosure label="Thought process">
               <div className="reasoning-copy">
-                <MarkdownMessage content={parsed.reasoning} compact />
+                <MarkdownMessage content={parsed.reasoning} compact workspace={workspace} />
               </div>
             </Disclosure>
           ) : null}
-          {answer ? <MarkdownMessage content={parsed.answer} /> : null}
+          {answer ? <MarkdownMessage content={parsed.answer} workspace={workspace} /> : null}
         </div>
         <MessageToolbar kind="assistant" item={item} text={answer || parsed.reasoning} />
       </div>
@@ -739,11 +742,13 @@ function Sequence({
   onApproval,
   keepActivityOpen = false,
   promptDisabled,
+  workspace,
 }: {
   items: TranscriptItem[];
   onApproval(item: TranscriptItem, approved: boolean): void;
   keepActivityOpen?: boolean;
   promptDisabled?: boolean;
+  workspace?: string;
 }) {
   const blocks = useMemo(() => groupTranscript(items), [items]);
   return (
@@ -755,7 +760,7 @@ function Sequence({
           </div>
         ) : (
           <div className={`transcript-entry entry-${block.item.type}`} key={block.item.id}>
-            <ItemView item={block.item} onApproval={onApproval} promptDisabled={promptDisabled} />
+            <ItemView item={block.item} onApproval={onApproval} promptDisabled={promptDisabled} workspace={workspace} />
           </div>
         )
       ))}
@@ -842,6 +847,7 @@ function TurnProcess({
   onOpenChange,
   onApproval,
   promptDisabled,
+  workspace,
 }: {
   items: TranscriptItem[];
   allItems: TranscriptItem[];
@@ -850,6 +856,7 @@ function TurnProcess({
   onOpenChange(open: boolean): void;
   onApproval(item: TranscriptItem, approved: boolean): void;
   promptDisabled?: boolean;
+  workspace?: string;
 }) {
   const summary = useMemo(() => activitySummary(items), [items]);
   const intermediateMessages = useMemo(
@@ -879,7 +886,7 @@ function TurnProcess({
       <div className="turn-process-grid">
         <div className="turn-process-inner">
           <div className="turn-process-content">
-            <Sequence items={items} onApproval={onApproval} keepActivityOpen promptDisabled={promptDisabled} />
+            <Sequence items={items} onApproval={onApproval} keepActivityOpen promptDisabled={promptDisabled} workspace={workspace} />
           </div>
         </div>
       </div>
@@ -901,6 +908,7 @@ interface TurnViewProps {
   active: boolean;
   onApproval(item: TranscriptItem, approved: boolean): void;
   promptDisabled?: boolean;
+  workspace?: string;
 }
 
 const TurnView = memo(function TurnView({
@@ -909,6 +917,7 @@ const TurnView = memo(function TurnView({
   active,
   onApproval,
   promptDisabled,
+  workspace,
 }: TurnViewProps) {
   const derived = useMemo(() => {
     const userItems: TranscriptItem[] = [];
@@ -960,7 +969,7 @@ const TurnView = memo(function TurnView({
     <section className={`turn-block ${active ? "is-active" : "is-complete"}`} data-turn-id={turnId}>
       {derived.userItems.map((item) => (
         <div className="transcript-entry entry-user_message" key={item.id}>
-          <ItemView item={item} onApproval={onApproval} promptDisabled={promptDisabled} />
+          <ItemView item={item} onApproval={onApproval} promptDisabled={promptDisabled} workspace={workspace} />
         </div>
       ))}
 
@@ -973,18 +982,19 @@ const TurnView = memo(function TurnView({
           onOpenChange={setProcessOpen}
           onApproval={onApproval}
           promptDisabled={promptDisabled}
+          workspace={workspace}
         />
       ) : null}
 
       {!active && derived.finalAssistant ? (
         <div className="transcript-entry entry-assistant_message turn-final-answer" key={derived.finalAssistant.id}>
-          <ItemView item={derived.finalAssistant} onApproval={onApproval} promptDisabled={promptDisabled} />
+          <ItemView item={derived.finalAssistant} onApproval={onApproval} promptDisabled={promptDisabled} workspace={workspace} />
         </div>
       ) : null}
 
       {!active ? derived.errorItems.map((item) => (
         <div className="transcript-entry entry-error" key={item.id}>
-          <ItemView item={item} onApproval={onApproval} promptDisabled={promptDisabled} />
+          <ItemView item={item} onApproval={onApproval} promptDisabled={promptDisabled} workspace={workspace} />
         </div>
       )) : null}
 
@@ -997,6 +1007,7 @@ const TurnView = memo(function TurnView({
   && previous.items === next.items
   && previous.active === next.active
   && previous.promptDisabled === next.promptDisabled
+  && previous.workspace === next.workspace
 ));
 
 function EmptyState({ disabled, onPrompt }: { disabled?: boolean; onPrompt?(prompt: string): void }) {
@@ -1036,7 +1047,7 @@ function EmptyState({ disabled, onPrompt }: { disabled?: boolean; onPrompt?(prom
   );
 }
 
-export function Transcript({ items, running, currentTurnId, promptDisabled, onPrompt, onApproval }: TranscriptProps) {
+export function Transcript({ items, running, currentTurnId, workspace, promptDisabled, onPrompt, onApproval }: TranscriptProps) {
   const turnBlocks = useStableTurnBlocks(items);
   const activeTurnId = running && currentTurnId ? String(currentTurnId) : "";
 
@@ -1059,10 +1070,11 @@ export function Transcript({ items, running, currentTurnId, promptDisabled, onPr
               active={Boolean(running && block.id === activeTurnId)}
               onApproval={onApproval}
               promptDisabled={promptDisabled}
+              workspace={workspace}
             />
           ) : (
             <div className={`transcript-entry entry-${block.item.type}`} key={block.item.id || `loose-${index}`}>
-              <ItemView item={block.item} onApproval={onApproval} promptDisabled={promptDisabled} />
+              <ItemView item={block.item} onApproval={onApproval} promptDisabled={promptDisabled} workspace={workspace} />
             </div>
           )
         ))}
