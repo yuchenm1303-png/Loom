@@ -77,6 +77,7 @@ def test_steering_messages_stay_at_their_chronological_position_inside_a_turn() 
     # processItems, and Sequence marks them as steering entries while preserving
     # the source order supplied by the runtime.
     assert "guidanceItems={derived.guidanceItems}" in source
+    assert 'guidanceItems.length ? "has-guidance" : ""' in source
     assert 'block.item.type === "user_message" ? "entry-steering-user" : ""' in source
 
 
