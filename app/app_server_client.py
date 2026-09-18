@@ -322,6 +322,8 @@ class LoomAppServerClient:
                 {"path": str(item["path"]), "name": str(item.get("name") or "")}
                 for item in attachments
             ]
+        if client_input_id:
+            params["clientInputId"] = str(client_input_id)
         return dict(self.request("turn/start", params))
 
     def turn_steer(
