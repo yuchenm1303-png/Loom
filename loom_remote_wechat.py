@@ -2,20 +2,24 @@ from __future__ import annotations
 
 import argparse
 import os
-import secrets
 import time
 from pathlib import Path
 
 from app.agent_runtime import PermissionMode
 from app.app_server_client import AppServerProcessConfig, LoomAppServerClient
-from app.remote.bridge import WeChatRemoteBridge
-from app.remote.state import WeChatRemoteStateStore
-from app.remote.wechat_customer_service import (
-    WeChatCustomerServiceClient,
-    WeChatCustomerServiceConfig,
-    WeChatCustomerServiceError,
-    WeChatInboundMessage,
+from app.remote.channels.weixin import (
+    DEFAULT_ILINK_BASE_URL,
+    WeixinApiClient,
+    WeixinApiError,
+    WeixinAuthenticationExpired,
+    WeixinChannel,
+    WeixinCredentials,
+    WeixinCredentialStore,
+    WeixinMonitor,
+    WeixinQrAuthenticator,
+    WeixinRemoteStateStore,
 )
+from app.remote.service import LoomRemoteService
 
 
 def _env(name: str) -> str:
@@ -26,18 +30,9 @@ def _home(value: str | None) -> Path:
     return Path(value or _env("LOOM_HOME") or (Path.home() / ".loom")).expanduser().resolve()
 
 
-def _pairing_code(value: str = "") -> str:
-    supplied = str(value or "").strip()
-    if supplied:
-        if not supplied.isdigit() or not 4 <= len(supplied) <= 12:
-            raise SystemExit("--pairing-code must contain 4 to 12 digits")
-        return supplied
-    return f"{secrets.randbelow(100_000_000):08d}"
-
-
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Use WeChat Customer Service as a personal remote control for Loom"
+        description="Use a personal WeChat account through Tencent iLink as a remote control for Loom"
     )
     parser.add_argument("--workspace", default=".", help="workspace used by new remote Loom threads")
     parser.add_argument("--home", help="Loom state root; defaults to LOOM_HOME or ~/.loom")
@@ -57,82 +52,98 @@ def build_parser() -> argparse.ArgumentParser:
         default=True,
         help="declare that the selected model can read images",
     )
-    parser.add_argument("--corp-id", default=_env("LOOM_WECOM_CORP_ID"))
     parser.add_argument(
-        "--open-kfid",
-        default=_env("LOOM_WECOM_OPEN_KFID"),
-        help="WeChat Customer Service account id; auto-detected when exactly one account exists",
-    )
-    parser.add_argument(
-        "--poll-interval",
+        "--qr-timeout",
         type=float,
-        default=float(_env("LOOM_WECOM_POLL_INTERVAL") or "30"),
-        help="seconds between sync_msg polls; bootstrap polling intentionally stays conservative",
+        default=480.0,
+        help="seconds to wait for QR login confirmation when a login is required",
     )
     parser.add_argument(
-        "--pairing-code",
-        default="",
-        help="optional numeric code used by /bind; generated when omitted",
+        "--ilink-timeout",
+        type=float,
+        default=15.0,
+        help="HTTP timeout in seconds for non-long-poll iLink requests",
     )
     parser.add_argument(
+        "--reset-login",
         "--reset-binding",
+        dest="reset_login",
         action="store_true",
-        help="forget the currently paired WeChat user before starting",
+        help="forget the saved personal-WeChat login and bind again by QR code",
     )
     return parser
 
 
-def _required(value: str, *, flag: str, env_name: str) -> str:
-    text = str(value or "").strip()
-    if text:
-        return text
-    raise SystemExit(f"Missing {flag}. Pass {flag} or set {env_name}.")
+def _restore_credentials(
+    state: WeixinRemoteStateStore,
+    store: WeixinCredentialStore,
+) -> WeixinCredentials | None:
+    binding = state.binding
+    if binding is None:
+        return None
+    token = store.get_bot_token(binding.ilink_bot_id)
+    if not token:
+        return None
+    return WeixinCredentials(
+        bot_token=token,
+        ilink_bot_id=binding.ilink_bot_id,
+        base_url=binding.base_url or DEFAULT_ILINK_BASE_URL,
+        ilink_user_id=binding.ilink_user_id,
+    )
 
 
-def _resolve_open_kf_id(
+def _login(
     *,
-    corp_id: str,
-    secret: str,
-    requested: str,
+    api: WeixinApiClient,
+    state: WeixinRemoteStateStore,
+    store: WeixinCredentialStore,
     timeout_seconds: float,
-) -> tuple[str, WeChatCustomerServiceClient]:
-    discovery = WeChatCustomerServiceClient(
-        WeChatCustomerServiceConfig(
-            corp_id=corp_id,
-            secret=secret,
-            timeout_seconds=timeout_seconds,
-        )
+    existing: WeixinCredentials | None = None,
+) -> WeixinCredentials:
+    old_binding = state.binding
+    local_tokens = [existing.bot_token] if existing is not None and existing.bot_token else []
+    authenticator = WeixinQrAuthenticator(
+        api,
+        log=lambda line: print(line, flush=True),
     )
-    account_id = str(requested or "").strip()
-    if not account_id:
-        accounts = discovery.list_accounts()
-        if not accounts:
-            raise SystemExit(
-                "No WeChat Customer Service account is available. Create one in the "
-                "WeCom admin console and enable API management first."
-            )
-        if len(accounts) > 1:
-            choices = "\n".join(
-                f"  {str(item.get('name') or 'unnamed')}: {str(item.get('open_kfid') or '')}"
-                for item in accounts
-            )
-            raise SystemExit(
-                "Multiple WeChat Customer Service accounts are available. "
-                "Pass --open-kfid or set LOOM_WECOM_OPEN_KFID:\n" + choices
-            )
-        account_id = str(accounts[0].get("open_kfid") or "").strip()
-    if not account_id:
-        raise SystemExit("WeChat Customer Service account has no open_kfid.")
+    credentials = authenticator.login(
+        local_tokens=local_tokens,
+        existing_credentials=existing,
+        timeout_seconds=timeout_seconds,
+    )
 
-    client = WeChatCustomerServiceClient(
-        WeChatCustomerServiceConfig(
-            corp_id=corp_id,
-            secret=secret,
-            open_kf_id=account_id,
-            timeout_seconds=timeout_seconds,
-        )
+    # Persist the secret first; the JSON state only references its bot id.
+    store.set_bot_token(credentials.ilink_bot_id, credentials.bot_token)
+    state.bind_login(
+        credentials.ilink_bot_id,
+        credentials.ilink_user_id,
+        credentials.base_url,
+        bound_at_ms=int(time.time() * 1000),
     )
-    return account_id, client
+    if old_binding is not None and old_binding.ilink_bot_id != credentials.ilink_bot_id:
+        try:
+            store.delete_bot_token(old_binding.ilink_bot_id)
+        except RuntimeError:
+            pass
+    return credentials
+
+
+def _best_effort_notify(
+    api: WeixinApiClient,
+    credentials: WeixinCredentials,
+    *,
+    starting: bool,
+) -> None:
+    try:
+        if starting:
+            api.notify_start(credentials)
+        else:
+            api.notify_stop(credentials)
+    except Exception as exc:
+        print(
+            f"[remote-weixin] lifecycle notification failed: {type(exc).__name__}",
+            flush=True,
+        )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -142,26 +153,38 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit(f"Workspace does not exist or is not a directory: {workspace}")
 
     home = _home(args.home)
-    state = WeChatRemoteStateStore(home)
-    if args.reset_binding:
-        state.reset_binding()
+    state = WeixinRemoteStateStore(home)
+    credentials_store = WeixinCredentialStore()
 
-    corp_id = _required(args.corp_id, flag="--corp-id", env_name="LOOM_WECOM_CORP_ID")
-    secret = _required(
-        _env("LOOM_WECOM_KF_SECRET"),
-        flag="LOOM_WECOM_KF_SECRET",
-        env_name="LOOM_WECOM_KF_SECRET",
-    )
-    timeout_seconds = min(30.0, max(5.0, float(args.timeout)))
-    open_kfid, wechat = _resolve_open_kf_id(
-        corp_id=corp_id,
-        secret=secret,
-        requested=args.open_kfid,
-        timeout_seconds=timeout_seconds,
-    )
+    if args.reset_login:
+        old = state.binding
+        if old is not None:
+            try:
+                credentials_store.delete_bot_token(old.ilink_bot_id)
+            except RuntimeError as exc:
+                raise SystemExit(str(exc)) from exc
+        state.reset()
 
-    interval = max(10.0, float(args.poll_interval))
-    pair_code = "" if state.binding is not None else _pairing_code(args.pairing_code)
+    api = WeixinApiClient(timeout_seconds=max(1.0, float(args.ilink_timeout)))
+    try:
+        credentials = _restore_credentials(state, credentials_store)
+    except RuntimeError as exc:
+        raise SystemExit(str(exc)) from exc
+
+    if credentials is None:
+        print("Loom Weixin Remote needs a one-time personal-WeChat QR login.", flush=True)
+        try:
+            credentials = _login(
+                api=api,
+                state=state,
+                store=credentials_store,
+                timeout_seconds=args.qr_timeout,
+            )
+        except (RuntimeError, TimeoutError, WeixinApiError) as exc:
+            raise SystemExit(f"Weixin QR login failed: {type(exc).__name__}: {exc}") from exc
+        print("✅ Weixin QR login completed and the token was saved to the OS keyring.", flush=True)
+    else:
+        print("Restored the saved personal-WeChat login from the OS keyring.", flush=True)
 
     process_config = AppServerProcessConfig(
         workspace=workspace,
@@ -178,79 +201,78 @@ def main(argv: list[str] | None = None) -> int:
         cwd=Path(__file__).resolve().parent,
         request_timeout_seconds=max(30.0, float(args.timeout) + 10.0),
     )
-    bridge = WeChatRemoteBridge(
+    channel = WeixinChannel(
+        api=api,
+        credentials=credentials,
+        state=state,
+        log=lambda line: print(line, flush=True),
+    )
+    service = LoomRemoteService(
         app_client=app_client,
-        wechat=wechat,
+        channel=channel,
         state=state,
         workspace=workspace,
-        pairing_code=pair_code,
         permission_mode=args.permission_mode,
         log=lambda line: print(line, flush=True),
     )
+    channel.attach_service(service)
 
     app_client.subscribe_stderr(lambda line: print(f"[loom-app-server] {line}", flush=True))
     app_client.subscribe_exit(lambda line: print(f"[loom-app-server] {line}", flush=True))
-    app_client.start_and_initialize(client_name="loom-remote-wechat", client_version="0.1")
+    app_client.start_and_initialize(client_name="loom-remote-wechat", client_version="0.2")
 
-    print("Loom WeChat Remote is running.", flush=True)
+    binding = state.binding
+    print("Loom Weixin Remote is running.", flush=True)
     print(f"Workspace: {workspace}", flush=True)
-    print(f"WeChat Customer Service: {open_kfid}", flush=True)
-    print(f"Polling interval: {interval:g}s", flush=True)
-    try:
-        contact_url = wechat.contact_url(scene="loom-remote")
-    except Exception as exc:
-        contact_url = ""
+    if binding is not None:
         print(
-            f"[remote-wechat] could not create contact URL: {type(exc).__name__}: {exc}",
+            f"Weixin bot: {binding.ilink_bot_id[:12]}… | bound user: {binding.ilink_user_id[:12]}…",
             flush=True,
         )
-    if contact_url:
-        print(f"WeChat entry: {contact_url}", flush=True)
+    print("Only text messages from the QR-authorized WeChat identity will be executed.", flush=True)
 
-    if state.binding is None:
-        print("", flush=True)
-        print("Pair this WeChat remote by sending the following message to the customer-service chat:", flush=True)
-        print(f"  /bind {pair_code}", flush=True)
-        print("Until pairing succeeds, messages from all other WeChat users are ignored.", flush=True)
-    else:
-        binding = state.binding
-        print(
-            f"Paired WeChat user: {binding.external_user_id[:10]}…"
-            + (f" | Loom thread: {binding.thread_id[:8]}" if binding.thread_id else ""),
-            flush=True,
-        )
-
+    current_credentials = credentials
+    _best_effort_notify(api, current_credentials, starting=True)
     try:
         while True:
+            monitor = WeixinMonitor(
+                api=api,
+                state=state,
+                credentials=current_credentials,
+                on_message=channel.handle_inbound,
+                log=lambda line: print(line, flush=True),
+            )
             try:
-                pages = 0
-                while True:
-                    pages += 1
-                    raw_messages, next_cursor, has_more = wechat.sync_messages(
-                        cursor=state.cursor,
-                        limit=100,
-                    )
-                    for raw in raw_messages:
-                        message = WeChatInboundMessage.from_api(raw)
-                        if message is None:
-                            continue
-                        if not state.accept_message(message.message_id):
-                            continue
-                        bridge.handle_message(message)
-                    if next_cursor != state.cursor:
-                        state.set_cursor(next_cursor)
-                    if not has_more or pages >= 20:
-                        break
-            except WeChatCustomerServiceError as exc:
+                monitor.run()
+                break
+            except WeixinAuthenticationExpired:
                 print(
-                    f"[remote-wechat] WeChat API error"
-                    f"{f' {exc.errcode}' if exc.errcode is not None else ''}: {exc}",
+                    "[remote-weixin] saved iLink login is no longer valid; QR login is required again.",
                     flush=True,
                 )
-            time.sleep(interval)
+                stale_bot_id = current_credentials.ilink_bot_id
+                try:
+                    credentials_store.delete_bot_token(stale_bot_id)
+                except RuntimeError:
+                    pass
+                try:
+                    current_credentials = _login(
+                        api=api,
+                        state=state,
+                        store=credentials_store,
+                        timeout_seconds=args.qr_timeout,
+                        existing=None,
+                    )
+                except (RuntimeError, TimeoutError, WeixinApiError) as exc:
+                    raise SystemExit(
+                        f"Weixin re-login failed: {type(exc).__name__}: {exc}"
+                    ) from exc
+                channel.update_credentials(current_credentials)
+                _best_effort_notify(api, current_credentials, starting=True)
     except KeyboardInterrupt:
-        print("\nStopping Loom WeChat Remote.", flush=True)
+        print("\nStopping Loom Weixin Remote.", flush=True)
     finally:
+        _best_effort_notify(api, current_credentials, starting=False)
         app_client.close()
     return 0
 
