@@ -126,12 +126,14 @@ def test_idempotency_key_cannot_silently_replay_a_different_request():
         idempotency_key="same-key",
     )
 
-    with pytest.raises(ValueError):
+    with pytest.raises(RemoteControlError) as exc_info:
         remote.task_start(
             prompt="different request",
             project_id="project-1",
             idempotency_key="same-key",
         )
+
+    assert exc_info.value.code == "invalid_request"
 
 
 def test_remote_cannot_steer_thread_above_channel_permission_ceiling():
