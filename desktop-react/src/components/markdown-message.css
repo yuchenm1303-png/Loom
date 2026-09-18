@@ -251,9 +251,9 @@
 .assistant-markdown-image {
   display: block;
   width: auto;
-  max-width: min(100%, 720px);
+  max-width: min(100%, 520px);
   height: auto;
-  max-height: 560px;
+  max-height: 360px;
   margin: 10px 0 13px;
   object-fit: contain;
   border: 1px solid rgba(255,255,255,.07);
@@ -265,7 +265,7 @@
 .assistant-local-image-preview {
   position: relative;
   width: fit-content;
-  max-width: min(100%, 720px);
+  max-width: min(100%, 520px);
   margin: 10px 0 13px;
   padding: 0;
   overflow: hidden;
@@ -293,17 +293,17 @@
 .assistant-local-image-preview img {
   display: block;
   width: auto;
-  max-width: min(100%, 720px);
+  max-width: min(100%, 520px);
   height: auto;
-  max-height: 560px;
+  max-height: 360px;
   object-fit: contain;
   object-position: center;
 }
 
 .assistant-local-image-preview.is-compact,
 .assistant-local-image-preview.is-compact img {
-  max-width: min(100%, 420px);
-  max-height: 320px;
+  max-width: min(100%, 320px);
+  max-height: 240px;
 }
 
 .assistant-local-image-hint {
