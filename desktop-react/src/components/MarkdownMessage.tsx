@@ -9,6 +9,7 @@ import remarkMath from "remark-math";
 import { isChatStickerAssetUrl, splitInlineStickerText } from "../chatStickers";
 import "katex/dist/katex.min.css";
 import "./markdown-message.css";
+import "./user-message-attachments.css";
 import "./stickers.css";
 
 interface MarkdownMessageProps {
