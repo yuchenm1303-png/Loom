@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -395,5 +396,113 @@ def test_reserved_session_creation_recovers_lock_only_directory(tmp_path: Path):
             event.kind.value == "session_created"
             for event in store.events(reserved_id)
         )
+    finally:
+        runtime.close()
+
+
+def test_prepared_replay_rejects_newer_thread_state(tmp_path: Path):
+    service, runtime, store, platform, workspace = build_service(
+        tmp_path,
+        [ModelResponse(text="newer turn completed")],
+    )
+    try:
+        thread_id = service.thread_start({"workspace": str(workspace)})["thread"]["id"]
+
+        def crash_before_launch(_session_id, _operation):
+            raise KeyboardInterrupt("simulated crash")
+
+        service._launch = crash_before_launch
+        with pytest.raises(KeyboardInterrupt):
+            service.turn_start(
+                {
+                    "threadId": thread_id,
+                    "input": "older prepared input",
+                    "clientInputId": "turn-key-stale-prepared",
+                }
+            )
+
+        rejoined = LoomAppServerService(
+            runtime=runtime,
+            store=store,
+            model="test-model",
+            default_workspace=workspace,
+            default_permission_mode=PermissionMode.APPROVAL,
+        )
+        newer = rejoined.turn_start(
+            {
+                "threadId": thread_id,
+                "input": "newer input from desktop",
+            }
+        )
+        wait_until(lambda: thread_id not in rejoined.runtime_status()["activeThreadIds"])
+        assert len(platform.requests) == 1
+
+        with pytest.raises(RuntimeError, match="newer thread state"):
+            rejoined.turn_start(
+                {
+                    "threadId": thread_id,
+                    "input": "older prepared input",
+                    "clientInputId": "turn-key-stale-prepared",
+                }
+            )
+
+        snapshot = rejoined.thread_read({"threadId": thread_id})
+        assert snapshot["thread"]["currentTurnId"] == newer["turn"]["id"]
+        assert len(platform.requests) == 1
+    finally:
+        runtime.close()
+
+
+def test_duplicate_waits_for_reserved_turn_durable_adoption(tmp_path: Path):
+    service, runtime, _store, platform, workspace = build_service(
+        tmp_path,
+        [ModelResponse(text="adopted")],
+    )
+    try:
+        thread_id = service.thread_start({"workspace": str(workspace)})["thread"]["id"]
+        original_launch = service._launch
+        launch_entered = threading.Event()
+
+        def delayed_launch(session_id, operation):
+            with service._guard:
+                if session_id in service._active_sessions:
+                    raise RuntimeError("thread already has an active app-server operation")
+                service._active_sessions.add(session_id)
+                service._task_errors.pop(session_id, None)
+
+            def delayed_runner():
+                launch_entered.set()
+                time.sleep(0.08)
+                try:
+                    operation()
+                finally:
+                    with service._guard:
+                        service._active_sessions.discard(session_id)
+
+            threading.Thread(target=delayed_runner, daemon=True).start()
+
+        service._launch = delayed_launch
+        first = service.turn_start(
+            {
+                "threadId": thread_id,
+                "input": "one logical input",
+                "clientInputId": "turn-key-adoption-race",
+            }
+        )
+        assert launch_entered.wait(1.0)
+
+        second = service.turn_start(
+            {
+                "threadId": thread_id,
+                "input": "one logical input",
+                "clientInputId": "turn-key-adoption-race",
+            }
+        )
+
+        assert second["turn"]["id"] == first["turn"]["id"]
+        assert second["idempotentReplay"] is True
+        wait_until(lambda: thread_id not in service.runtime_status()["activeThreadIds"])
+        assert len(platform.requests) == 1
+        service._launch = original_launch
     finally:
         runtime.close()
