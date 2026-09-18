@@ -1297,6 +1297,13 @@ class LoomAppServerService:
             return
 
         if kind is AgentEventKind.TURN_STARTED:
+            try:
+                self.idempotency.complete_object("turn/start", event.turn_id)
+            except Exception:
+                # The Runtime event remains authoritative even if replay-ledger
+                # housekeeping fails. Never turn a started user task into a
+                # runtime failure because auxiliary metadata could not update.
+                pass
             self._notify(
                 "turn/started",
                 {
