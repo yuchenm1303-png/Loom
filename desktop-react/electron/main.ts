@@ -95,8 +95,21 @@ function browserLogRoot(): string {
   return configured ? path.resolve(configured) : path.join(REPO_ROOT, ".loom", "logs", "browser-use");
 }
 
+function loomRuntimeHome(): string {
+  // Mirrors _runtime_home() in browser_extension_bridge.py. Both sides have to
+  // resolve the same folder or they pair the extension against different tokens,
+  // which is invisible until the browser reports a working extension as broken.
+  const configured = String(process.env.LOOM_HOME || "").trim();
+  return configured ? path.resolve(configured) : path.join(app.getPath("home"), ".loom");
+}
+
 function browserBridgeTokenPath(): string {
-  return path.join(app.getPath("userData"), "browser", "current-tab-bridge.token");
+  // Deliberately not userData: that directory is named after the build, so the
+  // packaged app and an unpackaged Electron run keep separate tokens, and a
+  // Python server started from a checkout reads a third one from ~/.loom. The
+  // extension can only be paired with one of them, so the other two look like a
+  // broken extension. This is the path the Python bridge already defaults to.
+  return path.join(loomRuntimeHome(), "browser", "current-tab-bridge.token");
 }
 
 function ensureBrowserBridgeToken(): string {
@@ -111,6 +124,16 @@ function ensureBrowserBridgeToken(): string {
   return token;
 }
 
+function unpackedExtensionId(absolutePath: string): string {
+  // Chromium derives an unpacked extension's id from its absolute path: the
+  // first 16 bytes of SHA-256 over the path, each nibble mapped to a-p. Surfacing
+  // it lets Settings name the exact row in edge://extensions, so "the version
+  // never changes" stops being something the user has to investigate - a mismatch
+  // means the browser is loading a different folder than the one Loom maintains.
+  const digest = crypto.createHash("sha256").update(Buffer.from(absolutePath, "utf16le")).digest("hex");
+  return [...digest.slice(0, 32)].map((c) => String.fromCharCode(97 + parseInt(c, 16))).join("");
+}
+
 function browserExtensionSource(): string {
   return app.isPackaged
     ? path.join(process.resourcesPath, "browser-current-tab")
@@ -121,14 +144,26 @@ function browserExtensionTarget(): string {
   // Keep the install folder stable across dev Electron and packaged Loom. The
   // absolute path is important: Chromium's unpacked-extension picker does not
   // expand `~`, and app.getPath("userData") is named "Electron" in development.
-  return path.join(app.getPath("home"), ".loom", "browser", "current-tab-extension");
+  return path.join(loomRuntimeHome(), "browser", "current-tab-extension");
 }
 
 function legacyBrowserExtensionTargets(): string[] {
   const stable = path.resolve(browserExtensionTarget());
-  const candidates = [path.join(app.getPath("userData"), "browser", "current-tab-extension")];
-  return candidates.filter((candidate) => (
-    path.resolve(candidate) !== stable && fsSync.existsSync(path.join(candidate, "manifest.json"))
+  const appData = app.getPath("appData");
+  // Chromium keys an unpacked extension by its absolute path, so an install left
+  // in an older location keeps loading its own copy forever - it cannot be
+  // upgraded in place from somewhere else, only kept in sync. Each build only
+  // knows its own userData name, so listing the historical names explicitly is
+  // what lets the packaged app repair an install left behind by a dev run and
+  // the other way round. Whichever folder the browser actually loaded then has
+  // the current code and the same token.
+  const candidates = [
+    path.join(app.getPath("userData"), "browser", "current-tab-extension"),
+    path.join(appData, "Electron", "browser", "current-tab-extension"),
+    path.join(appData, "Loom", "browser", "current-tab-extension"),
+  ];
+  return [...new Set(candidates.map((candidate) => path.resolve(candidate)))].filter((candidate) => (
+    candidate !== stable && fsSync.existsSync(path.join(candidate, "manifest.json"))
   ));
 }
 
@@ -178,6 +213,13 @@ async function setupBrowserExtension(browser: "edge" | "chrome" = "edge", extens
     manualInstallRequired: !extensionConnected,
     automaticUpdateRequested: extensionConnected,
     migratedLegacyInstalls: Math.max(0, installTargets.length - 1),
+    // Every folder that now holds this version paired with this token, each with
+    // the id the browser will show for it. Any of them is a working install.
+    installedPaths: installTargets.map((installTarget) => ({
+      path: installTarget,
+      extensionId: unpackedExtensionId(path.resolve(installTarget)),
+      primary: path.resolve(installTarget) === path.resolve(target),
+    })),
     extensionPath: target,
     pathCopied: !extensionConnected,
     folderOpened: extensionConnected || !folderError,
