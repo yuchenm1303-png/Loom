@@ -242,6 +242,35 @@ class FileAgentSessionStore:
             internal_workspace.mkdir(parents=True, exist_ok=True)
         self.save(session)
 
+    def create_reserved(self, session: AgentSession) -> None:
+        """Create a session for an authority-reserved UUID.
+
+        A prior failed probe or process crash may have created the directory and
+        lock file before session.json existed. The reserved UUID is already
+        owned by the App Server idempotency ledger, so that empty/infrastructure
+        directory is safe to finish initializing. A real persisted session is
+        never overwritten.
+        """
+
+        directory = self.session_dir(session.session_id)
+        directory.mkdir(parents=True, exist_ok=True)
+        with session_lock(directory):
+            recover(directory)
+            target = directory / "session.json"
+            if target.exists():
+                raise FileExistsError(
+                    f"agent session already exists: {session.session_id}"
+                )
+            for temp in directory.glob(".session.*.tmp"):
+                try:
+                    temp.unlink()
+                except OSError:
+                    pass
+            internal_workspace = (directory / "workspace").resolve()
+            if Path(session.workspace_dir).resolve() == internal_workspace:
+                internal_workspace.mkdir(parents=True, exist_ok=True)
+            self._save(session)
+
     def save(self, session: AgentSession) -> None:
         directory = self.session_dir(session.session_id)
         with session_lock(directory):
