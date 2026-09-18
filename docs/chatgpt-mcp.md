@@ -31,15 +31,17 @@ The first MCP surface is intentionally small:
 - loom_task_stop
 - loom_approval_respond
 
-The approval response tool is declared with UI visibility only. The model must not approve authority requested by its own Loom task.
+The approval response tool is declared with UI visibility only. The model must not approve authority requested by its own Loom task. `loom_thread_read` is bound to the `ui://loom/thread-control.html` MCP Apps resource, which renders task state and explicit Allow / Decline controls in ChatGPT-compatible hosts.
 
 New ChatGPT-remote threads use approval permission mode. Continuing or steering an existing thread is rejected when the thread has a broader active permission mode than the ChatGPT remote policy allows. Stopping a turn remains allowed because it reduces authority rather than adding it.
 
 ## Approval integrity
 
-thread/read projects the durable pending approval and adds a SHA-256 fingerprint over the exact thread, turn, request, call, tool, arguments, and approval stage. approval/respond rereads authoritative thread state and rejects the response when the fingerprint no longer matches.
+`thread/read` projects the durable pending approval into normal structured state. The MCP adapter separately computes a SHA-256 fingerprint over the exact thread, turn, request, call, tool, arguments, and approval stage and returns that fingerprint only in the MCP tool result metadata under `loom/approvalFingerprint`. It is deliberately absent from model-visible `structuredContent`.
 
-This does not replace Loom approval. It prevents a stale remote approval card from approving a different pending action.
+The approval widget reads the fingerprint from host-provided tool-response metadata and passes it to the app-only `loom_approval_respond` tool. Before forwarding any decision, RemoteControl rereads authoritative App Server state and rejects the response when the fingerprint no longer matches.
+
+This does not replace Loom approval. It prevents a stale remote approval card from approving a different pending action, while keeping the approval token out of the ordinary model tool result.
 
 ## Idempotency
 
@@ -57,7 +59,7 @@ The MCP transport is stdio. By default the adapter first looks for the authentic
 
 If no live desktop endpoint is available, the development adapter falls back to launching its own Loom App Server child process. Use `--no-local-attach` to force that fallback during adapter testing. Invalid descriptors, non-loopback addresses, and authentication failures do not trigger fallback; they fail closed so a tampered local endpoint cannot silently cause ChatGPT to control a separate Runtime.
 
-The shared local endpoint carries request/response control traffic only in this phase. ChatGPT reconstructs authoritative progress with `thread/read`; the existing Desktop stdio client continues receiving App Server notifications directly.
+The shared local endpoint carries request/response control traffic only in this phase. ChatGPT reconstructs authoritative progress with `thread/read`; the existing Desktop stdio client continues receiving App Server notifications directly. The ChatGPT widget may request a follow-up refresh after a user approval, but this is a foreground UX enhancement rather than a background task-completion push channel.
 
 ## Secure MCP Tunnel
 
