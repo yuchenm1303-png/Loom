@@ -18,6 +18,15 @@ _DESCRIPTOR_VERSION = 1
 _DESCRIPTOR_NAME = "app-server.json"
 _OWNER_LOCK_NAME = "app-server.lock"
 _LOOPBACK_HOST = "127.0.0.1"
+_READ_ONLY_METHODS = frozenset(
+    {
+        "runtime/status",
+        "project/list",
+        "thread/list",
+        "thread/read",
+    }
+)
+_DURABLE_RETRY_METHODS = frozenset({"thread/start", "turn/start"})
 
 
 class LocalAppServerUnavailable(AppServerClientError):
@@ -133,6 +142,7 @@ class LocalAppServerIpcServer:
         self.runtime_home = resolve_runtime_home(runtime_home)
         self.auth_timeout_seconds = max(1.0, float(auth_timeout_seconds))
         self.token = secrets.token_urlsafe(48)
+        self.instance_id = secrets.token_urlsafe(24)
         self._server: _ThreadingTcpServer | None = None
         self._thread: threading.Thread | None = None
         self._descriptor_path = local_app_server_descriptor_path(self.runtime_home)
@@ -238,6 +248,7 @@ class LocalAppServerIpcServer:
             "port": int(port),
             "token": self.token,
             "pid": os.getpid(),
+            "instanceId": self.instance_id,
         }
 
     def _publish_descriptor(self, descriptor: dict[str, Any]) -> None:
@@ -301,6 +312,9 @@ class LoomLocalAppServerClient:
         self._writer = None
         self._guard = threading.RLock()
         self._next_id = 0
+        self._attached_identity: tuple[Any, ...] | None = None
+        self._client_name = ""
+        self._client_version = ""
 
     @property
     def running(self) -> bool:
@@ -312,29 +326,28 @@ class LoomLocalAppServerClient:
         client_name: str,
         client_version: str = "0.1",
     ) -> dict[str, Any]:
-        self.connect()
-        result = self.request(
-            "initialize",
-            {
-                "protocolVersion": 1,
-                "clientInfo": {"name": str(client_name), "version": str(client_version)},
-            },
-        )
-        self.notify("initialized", {})
-        if not isinstance(result, dict):
-            raise AppServerClientError("local App Server initialize returned an invalid result")
-        return result
+        with self._guard:
+            self._client_name = str(client_name)
+            self._client_version = str(client_version)
+            self._ensure_current_endpoint_locked()
+            return self._initialize_attached_locked()
 
     def connect(self) -> None:
-        if self.running:
-            return
-        descriptor = self._load_descriptor()
+        with self._guard:
+            if self.running:
+                return
+            descriptor = self._load_descriptor()
+            self._connect_descriptor_locked(descriptor)
+
+    def _connect_descriptor_locked(self, descriptor: dict[str, Any]) -> None:
         host = str(descriptor.get("host") or "")
         port = int(descriptor.get("port") or 0)
         token = str(descriptor.get("token") or "")
         if host != _LOOPBACK_HOST or not 1 <= port <= 65535 or not token:
             raise LocalAppServerSecurityError("invalid local App Server descriptor")
         sock: socket.socket | None = None
+        reader = None
+        writer = None
         try:
             sock = socket.create_connection(
                 (host, port),
@@ -352,10 +365,16 @@ class LoomLocalAppServerClient:
             if not isinstance(hello, dict) or hello.get("ok") is not True:
                 raise LocalAppServerSecurityError("local App Server authentication failed")
         except Exception as exc:
+            for stream in (writer, reader):
+                if stream is not None:
+                    try:
+                        stream.close()
+                    except OSError:
+                        pass
             if sock is not None:
                 try:
                     sock.close()
-                except Exception:
+                except OSError:
                     pass
             if isinstance(exc, LocalAppServerSecurityError):
                 raise
@@ -368,6 +387,53 @@ class LoomLocalAppServerClient:
         self._socket = sock
         self._reader = reader
         self._writer = writer
+        self._attached_identity = self._descriptor_identity(descriptor)
+
+    @staticmethod
+    def _descriptor_identity(descriptor: dict[str, Any]) -> tuple[Any, ...]:
+        return (
+            int(descriptor.get("version") or 0),
+            str(descriptor.get("transport") or ""),
+            str(descriptor.get("host") or ""),
+            int(descriptor.get("port") or 0),
+            str(descriptor.get("token") or ""),
+            int(descriptor.get("pid") or 0),
+            str(descriptor.get("instanceId") or ""),
+        )
+
+    def _ensure_current_endpoint_locked(self) -> None:
+        try:
+            descriptor = self._load_descriptor()
+        except (LocalAppServerUnavailable, LocalAppServerSecurityError):
+            self._close_transport_locked()
+            raise
+        identity = self._descriptor_identity(descriptor)
+        if self.running and identity == self._attached_identity:
+            return
+
+        self._close_transport_locked()
+        self._connect_descriptor_locked(descriptor)
+        if self._client_name:
+            self._initialize_attached_locked()
+
+    def _initialize_attached_locked(self) -> dict[str, Any]:
+        if not self.running:
+            raise AppServerClientError("local App Server is not connected")
+        result = self._request_once_locked(
+            "initialize",
+            {
+                "protocolVersion": 1,
+                "clientInfo": {
+                    "name": self._client_name or "loom-local-client",
+                    "version": self._client_version or "0.1",
+                },
+            },
+            timeout_seconds=self.request_timeout_seconds,
+        )
+        self._notify_once_locked("initialized", {})
+        if not isinstance(result, dict):
+            raise AppServerClientError("local App Server initialize returned an invalid result")
+        return result
 
     def _load_descriptor(self) -> dict[str, Any]:
         path = local_app_server_descriptor_path(self.runtime_home)
@@ -378,8 +444,8 @@ class LoomLocalAppServerClient:
                 "local App Server endpoint is not available"
             ) from exc
         except OSError as exc:
-            raise LocalAppServerUnavailable(
-                f"could not read local App Server descriptor: {exc}"
+            raise LocalAppServerSecurityError(
+                f"could not safely read local App Server descriptor: {exc}"
             ) from exc
         except json.JSONDecodeError as exc:
             raise LocalAppServerSecurityError(
@@ -396,60 +462,117 @@ class LoomLocalAppServerClient:
         *,
         timeout_seconds: float | None = None,
     ) -> Any:
-        if not self.running or self._reader is None or self._writer is None:
-            raise AppServerClientError("local App Server is not connected")
         resolved_method = str(method or "").strip()
         if not resolved_method:
             raise ValueError("JSON-RPC method must not be empty")
-        with self._guard:
-            self._next_id += 1
-            request_id = self._next_id
-            payload = {
-                "jsonrpc": "2.0",
-                "id": request_id,
-                "method": resolved_method,
-                "params": params or {},
-            }
-            timeout = self.request_timeout_seconds if timeout_seconds is None else max(
-                1.0, float(timeout_seconds)
-            )
-            self._socket.settimeout(timeout)
-            try:
-                self._writer.write(
-                    json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n"
-                )
-                self._writer.flush()
-                line = self._reader.readline()
-            except (OSError, ValueError) as exc:
-                raise AppServerClientError(f"local App Server request failed: {exc}") from exc
-            if not line:
-                raise AppServerClientError("local App Server connection closed")
-            try:
-                frame = json.loads(line)
-            except json.JSONDecodeError as exc:
-                raise AppServerClientError("local App Server returned invalid JSON") from exc
-            if not isinstance(frame, dict) or frame.get("id") != request_id:
-                raise AppServerClientError("local App Server returned an uncorrelated response")
-            if "error" in frame:
-                raw = frame.get("error") or {}
-                if isinstance(raw, dict):
-                    raise JsonRpcClientError(
-                        code=int(raw.get("code") or -32603),
-                        message=str(raw.get("message") or "JSON-RPC error"),
-                        data=raw.get("data"),
-                    )
-                raise AppServerClientError(str(raw))
-            return frame.get("result")
+        payload = dict(params or {})
 
-    def notify(self, method: str, params: dict[str, Any] | None = None) -> None:
-        if not self.running or self._writer is None:
-            raise AppServerClientError("local App Server is not connected")
-        payload = {"jsonrpc": "2.0", "method": str(method), "params": params or {}}
         with self._guard:
+            self._ensure_current_endpoint_locked()
+            try:
+                return self._request_once_locked(
+                    resolved_method,
+                    payload,
+                    timeout_seconds=timeout_seconds,
+                )
+            except JsonRpcClientError:
+                raise
+            except LocalAppServerSecurityError:
+                raise
+            except AppServerClientError as exc:
+                self._close_transport_locked()
+                if not self._method_is_safe_to_retry(resolved_method, payload):
+                    raise AppServerClientError(
+                        "local App Server connection was lost while handling "
+                        f"{resolved_method}; the write outcome may be unknown, "
+                        "so Loom refused to replay it automatically"
+                    ) from exc
+
+                self._ensure_current_endpoint_locked()
+                return self._request_once_locked(
+                    resolved_method,
+                    payload,
+                    timeout_seconds=timeout_seconds,
+                )
+
+    def _request_once_locked(
+        self,
+        method: str,
+        params: dict[str, Any],
+        *,
+        timeout_seconds: float | None = None,
+    ) -> Any:
+        if not self.running or self._reader is None or self._writer is None or self._socket is None:
+            raise AppServerClientError("local App Server is not connected")
+        self._next_id += 1
+        request_id = self._next_id
+        payload = {
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "method": method,
+            "params": params,
+        }
+        timeout = self.request_timeout_seconds if timeout_seconds is None else max(
+            1.0, float(timeout_seconds)
+        )
+        self._socket.settimeout(timeout)
+        try:
             self._writer.write(
                 json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n"
             )
             self._writer.flush()
+            line = self._reader.readline()
+        except (OSError, ValueError) as exc:
+            raise AppServerClientError(f"local App Server request failed: {exc}") from exc
+        if not line:
+            raise AppServerClientError("local App Server connection closed")
+        try:
+            frame = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise AppServerClientError("local App Server returned invalid JSON") from exc
+        if not isinstance(frame, dict) or frame.get("id") != request_id:
+            raise AppServerClientError("local App Server returned an uncorrelated response")
+        if "error" in frame:
+            raw = frame.get("error") or {}
+            if isinstance(raw, dict):
+                raise JsonRpcClientError(
+                    code=int(raw.get("code") or -32603),
+                    message=str(raw.get("message") or "JSON-RPC error"),
+                    data=raw.get("data"),
+                )
+            raise AppServerClientError(str(raw))
+        return frame.get("result")
+
+    @staticmethod
+    def _method_is_safe_to_retry(method: str, params: dict[str, Any]) -> bool:
+        if method in _READ_ONLY_METHODS:
+            return True
+        if method in _DURABLE_RETRY_METHODS:
+            return bool(str(params.get("clientInputId") or "").strip())
+        return False
+
+    def notify(self, method: str, params: dict[str, Any] | None = None) -> None:
+        resolved_method = str(method or "").strip()
+        if not resolved_method:
+            raise ValueError("JSON-RPC notification method must not be empty")
+        with self._guard:
+            self._ensure_current_endpoint_locked()
+            self._notify_once_locked(resolved_method, dict(params or {}))
+
+    def _notify_once_locked(self, method: str, params: dict[str, Any]) -> None:
+        if not self.running or self._writer is None:
+            raise AppServerClientError("local App Server is not connected")
+        payload = {"jsonrpc": "2.0", "method": method, "params": params}
+        try:
+            self._writer.write(
+                json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n"
+            )
+            self._writer.flush()
+        except (OSError, ValueError) as exc:
+            self._close_transport_locked()
+            raise AppServerClientError(
+                f"local App Server notification failed: {exc}"
+            ) from exc
 
     def runtime_status(self) -> dict[str, Any]:
         return dict(self.request("runtime/status", {}))
@@ -547,9 +670,16 @@ class LoomLocalAppServerClient:
         )
 
     def close(self) -> None:
+        with self._guard:
+            self._close_transport_locked()
+            self._client_name = ""
+            self._client_version = ""
+
+    def _close_transport_locked(self) -> None:
         writer, self._writer = self._writer, None
         reader, self._reader = self._reader, None
         sock, self._socket = self._socket, None
+        self._attached_identity = None
         for stream in (writer, reader):
             if stream is not None:
                 try:
