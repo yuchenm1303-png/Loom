@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import time
+
+import pytest
 from pathlib import Path
 
 from app.ai import ModelResponse, ToolCall
@@ -15,7 +17,11 @@ from app.agent_runtime import (
     ToolResult,
 )
 from app.app_server import LoomAppServerService
-from app.remote_control import RemoteControlClient, approval_fingerprint
+from app.remote_control import (
+    RemoteControlClient,
+    RemoteControlError,
+    approval_fingerprint,
+)
 
 
 class ScriptedPlatform:
@@ -273,5 +279,55 @@ def test_remote_task_start_replays_durably_after_adapter_recreation(tmp_path: Pa
         snapshot = rejoined_service.thread_read({"threadId": first["threadId"]})
         assert len(snapshot["turns"]) == 1
         assert snapshot["finalText"] == "completed exactly once"
+    finally:
+        runtime.close()
+
+
+def test_remote_retry_rechecks_current_permission_after_thread_replay(tmp_path: Path):
+    home = tmp_path / "home"
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    store = FileAgentSessionStore(home)
+    platform = ScriptedPlatform([])
+    runtime = DurableAgentRuntime(
+        platform=platform,
+        store=store,
+        tools=ToolRegistry(),
+        default_permission_mode=PermissionMode.APPROVAL,
+        auto_drain_queue=False,
+    )
+    service = LoomAppServerService(
+        runtime=runtime,
+        store=store,
+        model="test-model",
+        default_workspace=workspace,
+        default_permission_mode=PermissionMode.APPROVAL,
+    )
+    try:
+        project = service.project_create({"root": str(workspace)})["project"]
+        created = service.thread_start(
+            {
+                "projectId": project["id"],
+                "permissionMode": "approval",
+                "clientInputId": "remote-permission-replay-key",
+            }
+        )
+        thread_id = created["thread"]["id"]
+
+        runtime.set_permission_mode(thread_id, PermissionMode.FULL_ACCESS)
+
+        remote = RemoteControlClient(ServiceBackend(service))
+        with pytest.raises(RemoteControlError) as exc_info:
+            remote.task_start(
+                prompt="must not inherit local escalation",
+                project_id=project["id"],
+                idempotency_key="remote-permission-replay-key",
+            )
+
+        assert exc_info.value.code == "permission_denied"
+        snapshot = service.thread_read({"threadId": thread_id})
+        assert snapshot["thread"]["permissionMode"] == "full-access"
+        assert snapshot["turns"] == []
+        assert platform.responses == []
     finally:
         runtime.close()
