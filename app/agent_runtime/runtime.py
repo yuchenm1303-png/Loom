@@ -169,6 +169,7 @@ class AgentRuntime:
         prompt = str(system_prompt or "").strip()
         if not profile or not prompt:
             raise ValueError("agent session requires profile_id and system_prompt")
+        reserved_session_id = session_id is not None
         resolved_session_id = str(session_id or uuid.uuid4()).strip()
         try:
             resolved_session_id = str(uuid.UUID(resolved_session_id))
@@ -194,7 +195,10 @@ class AgentRuntime:
             updated_at=now,
             permission_mode=mode,
         )
-        self.store.create(session)
+        if reserved_session_id:
+            self.store.create_reserved(session)
+        else:
+            self.store.create(session)
         self._record(
             session,
             AgentEventKind.SESSION_CREATED,
