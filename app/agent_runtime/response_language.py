@@ -100,6 +100,17 @@ def infer_user_language(
     return normalize_communication_language(fallback)
 
 
+def text_matches_communication_language(text: str, expected: str) -> bool:
+    """Check a generated prose artifact against a known conversation language."""
+    target = normalize_communication_language(expected)
+    if target == "auto":
+        return True
+    signal = _script_signal(text)
+    # Very short or mostly technical summaries have no reliable script signal;
+    # reject only a positively identified mismatch.
+    return signal is None or signal == target
+
+
 def user_language_label(messages: Iterable[AIMessage], *, fallback: str = "auto") -> str:
     signal = infer_user_language(messages, fallback=fallback)
     return {
@@ -141,5 +152,6 @@ __all__ = [
     "communication_language_message",
     "infer_user_language",
     "normalize_communication_language",
+    "text_matches_communication_language",
     "user_language_label",
 ]

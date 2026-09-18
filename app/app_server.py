@@ -340,6 +340,31 @@ def _apply_event_to_item(item: dict[str, Any], event: AgentEvent) -> None:
         item["error"] = str(data.get("error") or data.get("reason") or kind.value)
 
 
+def _close_unfinished_items_for_terminal_turn(turn: dict[str, Any], items: OrderedDict[str, dict[str, Any]]) -> None:
+    """Project process-local activity as interrupted once its turn is terminal.
+
+    A restart can persist ``tool_started``/``process_started`` without a matching
+    completion observation.  The turn terminal event proves that those handles
+    are no longer live, but it does not prove whether their side effects
+    completed.  Close only the presentation state and retain that uncertainty;
+    never synthesize a successful durable tool/process result.
+    """
+
+    completed_at = turn.get("completedAt")
+    if not completed_at:
+        return
+    active_statuses = {"started", "running", "waiting", "waiting_approval", "pending"}
+    for item in items.values():
+        if str(item.get("status") or "") not in active_statuses:
+            continue
+        if item.get("type") not in {"tool_call", "process", "approval"}:
+            continue
+        item["status"] = "interrupted"
+        item["updatedAt"] = completed_at
+        item["outcomeUnknown"] = True
+        item["terminalReason"] = str(turn.get("status") or "interrupted")
+
+
 def _turn_records(session: Any, events: tuple[AgentEvent, ...]) -> list[dict[str, Any]]:
     turns: OrderedDict[str, dict[str, Any]] = OrderedDict()
     item_maps: dict[str, OrderedDict[str, dict[str, Any]]] = {}
@@ -413,6 +438,7 @@ def _turn_records(session: Any, events: tuple[AgentEvent, ...]) -> list[dict[str
                 approval["updatedAt"] = event.created_at
 
     for turn_id, turn in turns.items():
+        _close_unfinished_items_for_terminal_turn(turn, item_maps[turn_id])
         turn["items"] = list(item_maps[turn_id].values())
         turn["usage"] = usage_by_turn[turn_id]
         if turn["startedAt"] is None and turn["items"]:

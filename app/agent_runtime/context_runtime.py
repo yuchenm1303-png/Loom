@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from app.ai import AIMessage, ChatRequest, MessageRole, ModelResponse, ModelUsage, ToolChoice
 
-from .context_compaction import SUMMARIZATION_PROMPT, build_compacted_history
+from .context_compaction import SUMMARIZATION_PROMPT, build_compacted_history, summarization_prompt
 from .context_state import (
     ContextCheckpoint,
     ContextCheckpointStore,
@@ -213,7 +213,8 @@ class ContextAgentRuntime(SandboxAgentRuntime):
             session.communication_language = communication_language
 
             request_messages: list[AIMessage] = [
-                AIMessage(role=MessageRole.SYSTEM, content=session.system_prompt)
+                AIMessage(role=MessageRole.SYSTEM, content=session.system_prompt),
+                communication_language_message(archived, fallback=communication_language),
             ]
             project_instructions = self.instruction_loader.load(session.workspace_dir)
             if project_instructions:
@@ -226,7 +227,10 @@ class ContextAgentRuntime(SandboxAgentRuntime):
                 )
             request_messages.extend(archived)
             request_messages.append(
-                AIMessage(role=MessageRole.USER, content=SUMMARIZATION_PROMPT)
+                AIMessage(
+                    role=MessageRole.USER,
+                    content=summarization_prompt(communication_language),
+                )
             )
             request = ChatRequest(
                 messages=tuple(request_messages),

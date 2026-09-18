@@ -355,3 +355,92 @@ def test_same_call_retry_reuses_tool_and_approval_item_ids() -> None:
     assert retry["approvalStage"] == "retry"
     assert retry["retryReason"] == "sandbox denied"
     assert "kind" not in retry
+
+
+def test_terminal_turn_closes_orphaned_running_activity_after_restart() -> None:
+    session = SimpleNamespace(current_turn_id="turn-1", status=AgentStatus.CANCELLED)
+    common = {
+        "session_id": "thread-1",
+        "turn_id": "turn-1",
+        "created_at": "2026-09-18T12:00:00+00:00",
+    }
+    events = (
+        AgentEvent(
+            event_id="evt-turn-started",
+            kind=AgentEventKind.TURN_STARTED,
+            data={"source": "user"},
+            **common,
+        ),
+        AgentEvent(
+            event_id="evt-tool-started",
+            kind=AgentEventKind.TOOL_STARTED,
+            data={"call_id": "call-1", "tool": "exec"},
+            **common,
+        ),
+        AgentEvent(
+            event_id="evt-process-started",
+            kind=AgentEventKind.PROCESS_STARTED,
+            data={"process_id": "proc-1", "argv": ["sleep", "12"]},
+            **common,
+        ),
+        AgentEvent(
+            event_id="evt-cancelled",
+            kind=AgentEventKind.TURN_CANCELLED,
+            data={},
+            session_id="thread-1",
+            turn_id="turn-1",
+            created_at="2026-09-18T12:01:00+00:00",
+        ),
+    )
+
+    turn = _turn_records(session, events)[0]
+    activity = {
+        item["type"]: item
+        for item in turn["items"]
+        if item["type"] in {"tool_call", "process"}
+    }
+
+    assert turn["status"] == "cancelled"
+    assert activity["tool_call"]["status"] == "interrupted"
+    assert activity["process"]["status"] == "interrupted"
+    assert activity["tool_call"]["outcomeUnknown"] is True
+    assert activity["process"]["outcomeUnknown"] is True
+    assert activity["process"]["terminalReason"] == "cancelled"
+    assert activity["process"]["updatedAt"] == "2026-09-18T12:01:00+00:00"
+
+
+def test_terminal_projection_preserves_observed_completed_activity() -> None:
+    session = SimpleNamespace(current_turn_id="turn-1", status=AgentStatus.COMPLETED)
+    common = {
+        "session_id": "thread-1",
+        "turn_id": "turn-1",
+        "created_at": "2026-09-18T12:00:00+00:00",
+    }
+    events = (
+        AgentEvent(
+            event_id="evt-process-started",
+            kind=AgentEventKind.PROCESS_STARTED,
+            data={"process_id": "proc-1", "argv": ["echo", "ok"]},
+            **common,
+        ),
+        AgentEvent(
+            event_id="evt-process-exited",
+            kind=AgentEventKind.PROCESS_EXITED,
+            data={"process_id": "proc-1", "returncode": 0},
+            **common,
+        ),
+        AgentEvent(
+            event_id="evt-completed",
+            kind=AgentEventKind.TURN_COMPLETED,
+            data={"text": "done"},
+            **common,
+        ),
+    )
+
+    process = next(
+        item for item in _turn_records(session, events)[0]["items"]
+        if item["type"] == "process"
+    )
+
+    assert process["status"] == "completed"
+    assert "outcomeUnknown" not in process

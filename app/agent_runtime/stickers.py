@@ -56,6 +56,21 @@ INLINE_STICKER_VISIBLE_SUFFIX = "]]"
 INLINE_STICKER_STRUCTURED_PLAN_BEGIN = "[[AI_LEDGER_STICKER_PLAN_V1_BEGIN]]"
 INLINE_STICKER_STRUCTURED_PLAN_END = "[[AI_LEDGER_STICKER_PLAN_V1_END]]"
 INLINE_STICKER_VISIBLE_MARKER_RE = re.compile(r"\[\[AI_LEDGER_INLINE_STICKER:([a-z0-9_]{2,48})\]\]", re.I)
+_DAMAGED_INLINE_STICKER_MARKER_RE = re.compile(
+    r"(?<![\[A-Z0-9_])(?:\[AI|\[IA|AI|IA)_LEDGER_INLINE_STICKER:"
+    r"([a-z0-9_]{2,48})\]{1,2}",
+    re.I,
+)
+_DAMAGED_INLINE_STICKER_PENDING_RE = re.compile(
+    r"(?:\[AI|\[IA|AI|IA)_LEDGER_INLINE_STICKER:[a-z0-9_]{0,96}\]?$",
+    re.I,
+)
+_DAMAGED_INLINE_STICKER_PREFIXES = (
+    "[AI_LEDGER_INLINE_STICKER:",
+    "[IA_LEDGER_INLINE_STICKER:",
+    "AI_LEDGER_INLINE_STICKER:",
+    "IA_LEDGER_INLINE_STICKER:",
+)
 INLINE_STICKER_ASSET_KEY_RE = re.compile(r"^[a-z0-9_]{2,48}$", re.I)
 
 _STICKER_OPT_OUT_RE = re.compile(
@@ -869,9 +884,32 @@ class StickerStreamSanitizer:
     def _drain(self, final: bool) -> str:
         emitted = ""
         while self.pending:
+            # Some compatible providers copy the private marker with one bracket
+            # missing or transpose AI -> IA. Normalize complete near-misses so
+            # the regular policy can render/drop them, and retain an incomplete
+            # suffix across provider chunks instead of leaking it as prose.
+            self.pending = _DAMAGED_INLINE_STICKER_MARKER_RE.sub(
+                lambda match: canonical_marker(match.group(1).casefold()),
+                self.pending,
+            )
             start = self.pending.find("[[")
             if start < 0:
-                keep = 1 if not final and self.pending.endswith("[") else 0
+                damaged = _DAMAGED_INLINE_STICKER_PENDING_RE.search(self.pending)
+                if damaged is None and not final:
+                    upper = self.pending.upper()
+                    damaged_start = -1
+                    for index in range(max(0, len(upper) - 128), len(upper)):
+                        suffix = upper[index:]
+                        if any(prefix.startswith(suffix) for prefix in _DAMAGED_INLINE_STICKER_PREFIXES):
+                            damaged_start = index
+                            break
+                else:
+                    damaged_start = damaged.start() if damaged is not None else -1
+                keep = (
+                    len(self.pending) - damaged_start
+                    if not final and damaged_start >= 0
+                    else (1 if not final and self.pending.endswith("[") else 0)
+                )
                 plain = self.pending[:len(self.pending) - keep] if keep else self.pending
                 if plain:
                     if self.pending_key and not plain.strip() and not final:

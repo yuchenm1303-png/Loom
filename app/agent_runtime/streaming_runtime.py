@@ -37,12 +37,25 @@ _COMPLETE_INLINE_STICKER_RE = re.compile(
     r"\[\[AI_LEDGER_INLINE_STICKER:[a-z0-9_]{2,48}\]\]",
     re.I,
 )
+_DAMAGED_INLINE_STICKER_RE = re.compile(
+    r"(?<![\[A-Z0-9_])(?:\[\[AI|\[AI|\[IA|AI|IA)_LEDGER_INLINE_STICKER:"
+    r"[a-z0-9_]{0,96}\]{0,2}",
+    re.I,
+)
 
 
 def _strip_incomplete_sticker_control_fragments(text: str) -> str:
     """Remove truncated canonical sticker control data without touching valid markers."""
 
     source = str(text or "")
+    # Provider near-misses are control data too. Never persist them as prose.
+    # Preserve exact canonical markers for normal sticker materialization.
+    source = _DAMAGED_INLINE_STICKER_RE.sub(
+        lambda match: match.group(0)
+        if _COMPLETE_INLINE_STICKER_RE.fullmatch(match.group(0))
+        else "",
+        source,
+    )
     if "[[" not in source:
         return source
 

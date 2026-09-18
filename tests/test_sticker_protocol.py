@@ -162,6 +162,29 @@ def test_nonstream_truncated_control_marker_is_removed_before_persisting() -> No
     assert _strip_incomplete_sticker_control_fragments(complete) == complete
 
 
+def test_damaged_provider_sticker_markers_never_persist_as_text() -> None:
+    assert _strip_incomplete_sticker_control_fragments(
+        "继续执行。[IA_LEDGER_INLINE_STICKER:got_it_point]"
+    ) == "继续执行。"
+    assert _strip_incomplete_sticker_control_fragments(
+        "完成 AI_LEDGER_INLINE_STICKER:idea_drawing]] 收尾"
+    ) == "完成  收尾"
+
+
+def test_stream_sanitizer_repairs_damaged_marker_across_chunks() -> None:
+    sanitizer = StickerStreamSanitizer(
+        StickerPreferences(frequency=100, intensity=0, max_per_reply=4, repeat_count=1),
+        StickerContext(user_text="继续", streaming=True),
+    )
+    visible = sanitizer.push("继续执行。[IA_LEDGER_INLINE_STI")
+    visible += sanitizer.push("CKER:got_it_point] 后续步骤。")
+    visible += sanitizer.finish()
+
+    residue = INLINE_STICKER_VISIBLE_MARKER_RE.sub("", visible)
+    assert "LEDGER_INLINE_STICKER" not in residue
+    assert sanitizer.diagnostics()["candidateCount"] == 1
+
+
 def test_nonstream_sidecar_is_removed_before_user_visible_text() -> None:
     body = (
         "第一步已经完成，可以继续下一步。\n\n"

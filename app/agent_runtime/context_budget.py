@@ -11,11 +11,15 @@ from app.ai import AIMessage, ChatRequest, MessageRole, ModelResponse, ModelUsag
 from app.ai.errors import AIResponseError, AITransportError
 from app.ai.execution_control import ModelCancelled
 
-from .context_compaction import SUMMARIZATION_PROMPT, build_compacted_history
+from .context_compaction import build_compacted_history, summarization_prompt
 from .context_limits import ResolvedContextLimits, resolve_context_limits
 from .context_reducer import ContextReductionStats, reduce_tool_outputs
 from .history import repair_tool_history
-from .response_language import communication_language_message, infer_user_language
+from .response_language import (
+    communication_language_message,
+    infer_user_language,
+    text_matches_communication_language,
+)
 from .turn_response_validation import (
     contains_serialized_tool_protocol,
     visible_model_text,
@@ -355,6 +359,7 @@ def _build_summary_request(
     transient: Sequence[AIMessage],
     history: Sequence[AIMessage],
     *,
+    communication_language: str,
     max_output_tokens: int,
 ) -> ChatRequest:
     return ChatRequest(
@@ -362,7 +367,10 @@ def _build_summary_request(
             [
                 *transient,
                 *history,
-                AIMessage(role=MessageRole.USER, content=SUMMARIZATION_PROMPT),
+                AIMessage(
+                    role=MessageRole.USER,
+                    content=summarization_prompt(communication_language),
+                ),
             ]
         ),
         tools=(),
@@ -724,6 +732,7 @@ def prepare_context(rt, session, step, token):
         request = _build_summary_request(
             transient,
             compact_input,
+            communication_language=communication_language,
             max_output_tokens=max_output_tokens,
         )
         request_tokens = estimate_tokens(request.messages)
@@ -785,12 +794,18 @@ def prepare_context(rt, session, step, token):
         # it is re-injected on every later step of the turn.
         candidate_summary = visible_model_text(candidate.text)
         serialized_tool_text = contains_serialized_tool_protocol(candidate_summary)
-        if candidate.tool_calls or serialized_tool_text or not candidate_summary:
+        wrong_language = not text_matches_communication_language(
+            candidate_summary,
+            communication_language,
+        )
+        if candidate.tool_calls or serialized_tool_text or not candidate_summary or wrong_language:
             if response_retries >= rt.limits.model_retries:
                 if candidate.tool_calls:
                     reason = "unexpected tool calls"
                 elif serialized_tool_text:
                     reason = "tool-call markup instead of a summary"
+                elif wrong_language:
+                    reason = f"a summary in the wrong language (expected {communication_language})"
                 else:
                     reason = "an empty summary"
                 raise RuntimeError(
