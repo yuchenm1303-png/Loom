@@ -53,12 +53,18 @@ export function TranscriptScrollController({
   const lastTurnIdRef = useRef(String(currentTurnId ?? ""));
   const lastUserMessageIdRef = useRef("");
   const frameRef = useRef<number | null>(null);
+  const forceBottomRef = useRef(false);
+  const forceSettleFrameRef = useRef<number | null>(null);
   const latestUserId = useMemo(() => latestUserMessageId(items), [items]);
 
   const cancelScheduledScroll = () => {
     if (frameRef.current !== null) {
       cancelAnimationFrame(frameRef.current);
       frameRef.current = null;
+    }
+    if (forceSettleFrameRef.current !== null) {
+      cancelAnimationFrame(forceSettleFrameRef.current);
+      forceSettleFrameRef.current = null;
     }
   };
 
@@ -68,6 +74,29 @@ export function TranscriptScrollController({
       frameRef.current = null;
       if (!stickToBottomRef.current || isPanelResizeActive()) return;
       scroller.scrollTop = scroller.scrollHeight;
+    });
+  };
+
+  const forceBottomAfterThreadSwitch = (scroller: HTMLDivElement) => {
+    cancelScheduledScroll();
+    forceBottomRef.current = true;
+    stickToBottomRef.current = true;
+
+    // The thread's DOM has already committed by layout-effect time, so jump
+    // once immediately, then re-assert the bottom for two paint frames. Browser
+    // scroll anchoring/content clamping can emit a passive scroll while the new
+    // transcript replaces the old one; that event must not be mistaken for a
+    // user intentionally scrolling up.
+    scroller.scrollTop = scroller.scrollHeight;
+    frameRef.current = requestAnimationFrame(() => {
+      frameRef.current = null;
+      scroller.scrollTop = scroller.scrollHeight;
+      forceSettleFrameRef.current = requestAnimationFrame(() => {
+        forceSettleFrameRef.current = null;
+        scroller.scrollTop = scroller.scrollHeight;
+        forceBottomRef.current = false;
+        stickToBottomRef.current = true;
+      });
     });
   };
 
@@ -89,7 +118,10 @@ export function TranscriptScrollController({
     lastTurnIdRef.current = nextTurnId;
     lastUserMessageIdRef.current = latestUserId;
 
-    if (stickToBottomRef.current) scheduleBottomSync(scroller);
+    // Thread identity changes are handled by the dedicated effect below. It
+    // keeps a short force-bottom window so DOM replacement scroll events cannot
+    // cancel the initial jump before the new transcript settles.
+    if (!threadChanged && stickToBottomRef.current) scheduleBottomSync(scroller);
     // Deliberately no per-update cleanup here. Rapid item commits should share
     // the already queued frame instead of repeatedly cancelling and restarting it.
   }, [items, latestUserId, threadId, currentTurnId, running]);
@@ -99,11 +131,10 @@ export function TranscriptScrollController({
     const content = scroller?.querySelector<HTMLElement>(".transcript");
     if (!scroller || !content) return;
 
-    stickToBottomRef.current = true;
-    scheduleBottomSync(scroller);
+    forceBottomAfterThreadSwitch(scroller);
 
     const onScroll = () => {
-      if (isPanelResizeActive()) return;
+      if (isPanelResizeActive() || forceBottomRef.current) return;
       stickToBottomRef.current = isNearBottom(scroller);
     };
     const onPanelResizeEnd = () => {
@@ -115,6 +146,10 @@ export function TranscriptScrollController({
     const observer = typeof ResizeObserver === "undefined"
       ? null
       : new ResizeObserver(() => {
+          if (forceBottomRef.current) {
+            scroller.scrollTop = scroller.scrollHeight;
+            return;
+          }
           if (stickToBottomRef.current) scheduleBottomSync(scroller);
         });
     observer?.observe(scroller);
@@ -124,6 +159,7 @@ export function TranscriptScrollController({
       scroller.removeEventListener("scroll", onScroll);
       window.removeEventListener(PANEL_RESIZE_END_EVENT, onPanelResizeEnd);
       observer?.disconnect();
+      forceBottomRef.current = false;
       cancelScheduledScroll();
     };
   }, [threadId]);
