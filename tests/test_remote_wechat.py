@@ -21,6 +21,7 @@ from app.remote.channels.weixin.channel import WeixinChannel
 from app.remote.channels.weixin.monitor import WeixinMonitor
 from app.remote.channels.weixin.state import (
     WeixinCredentialStore,
+    WeixinRemoteInstanceLock,
     WeixinRemoteStateStore,
 )
 from app.remote.service import LoomRemoteService
@@ -178,6 +179,21 @@ def test_token_is_stored_in_keyring_and_restart_recovers_login(tmp_path, monkeyp
     assert "bot-secret-token" not in reloaded_state.path.read_text(encoding="utf-8")
 
 
+def test_remote_instance_lock_rejects_second_process_for_same_home(tmp_path):
+    first = WeixinRemoteInstanceLock(tmp_path)
+    second = WeixinRemoteInstanceLock(tmp_path)
+    first.acquire()
+    try:
+        with pytest.raises(RuntimeError, match="already running"):
+            second.acquire()
+    finally:
+        first.release()
+
+    # Releasing the first process lease must allow a clean restart.
+    second.acquire()
+    second.release()
+
+
 class FakeQrApi:
     def __init__(self, statuses: list[WeixinQrStatus]) -> None:
         self.statuses = list(statuses)
@@ -329,6 +345,38 @@ def test_monitor_persists_cursor_filters_binding_history_nontext_and_dedupes(tmp
     assert reloaded.accept_message("next") is False
 
 
+def test_monitor_restart_does_not_dispatch_a_seen_message_again(tmp_path):
+    state = _bound_state(tmp_path, bound_at_ms=1000)
+    state.mark_history_ready()
+    assert state.accept_message("already-seen") is True
+
+    reloaded = WeixinRemoteStateStore(tmp_path)
+    api = FakeUpdatesApi(
+        [
+            GetUpdatesResponse(
+                messages=(
+                    _inbound("already-seen", text="must not replay", created_at_ms=1200),
+                ),
+                get_updates_buf="cursor-after-restart",
+                longpolling_timeout_ms=35000,
+            )
+        ]
+    )
+    delivered: list[str] = []
+    monitor = WeixinMonitor(
+        api=api,
+        state=reloaded,
+        credentials=_credentials(),
+        on_message=lambda message: delivered.append(message.message_id),
+        sleep=lambda _seconds: None,
+    )
+
+    monitor.poll_once()
+
+    assert delivered == []
+    assert reloaded.get_updates_buf == "cursor-after-restart"
+
+
 def test_monitor_records_cursor_and_dedupe_before_dispatch_for_at_most_once(tmp_path):
     state = _bound_state(tmp_path, bound_at_ms=1000)
     response = GetUpdatesResponse(
@@ -461,6 +509,26 @@ def test_stop_interrupts_active_turn(tmp_path):
     service.handle_message(_remote_message("/stop"))
     assert app.interrupts == [("thread-1", "turn-1")]
     assert "停止请求" in channel.sent[-1]
+
+
+def test_new_creates_a_new_thread_when_current_thread_is_idle(tmp_path):
+    state, channel, app, service = _service(tmp_path)
+    state.set_thread_id("thread-old")
+    app.threads["thread-old"] = {
+        "thread": {
+            "id": "thread-old",
+            "title": "Remote",
+            "status": "idle",
+            "currentTurnId": None,
+        },
+        "pendingApproval": None,
+    }
+
+    service.handle_message(_remote_message("/new"))
+
+    assert state.thread_id == "thread-1"
+    assert app._next_thread == 1
+    assert "已创建新的 Loom 远程会话" in channel.sent[-1]
 
 
 def test_new_is_rejected_while_running_or_waiting_approval(tmp_path):
