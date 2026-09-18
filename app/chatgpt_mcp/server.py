@@ -156,7 +156,7 @@ def build_mcp_server(remote: RemoteControlClient) -> MCPServer:
             summary = f"Could not read Loom thread {thread_id}: {message}"
 
         return CallToolResult(
-            content=(TextContent(type="text", text=summary),),
+            content=[TextContent(type="text", text=summary)],
             structured_content=result,
             _meta=private_meta or None,
         )
