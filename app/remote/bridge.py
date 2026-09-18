@@ -177,6 +177,16 @@ class WeChatRemoteBridge:
                 return
 
             if command == "/new":
+                current_thread_id = self._thread_id()
+                if current_thread_id:
+                    current = self.app_client.thread_read(current_thread_id)
+                    current_status = str((current.get("thread") or {}).get("status") or "")
+                    if current_status in {"running", "waiting_approval"}:
+                        self._send(
+                            "当前 Loom 任务还没有结束，不能直接切换会话。"
+                            "请先等待完成，或发送 /stop 停止当前任务。"
+                        )
+                        return
                 thread_id = self._create_thread()
                 self._send(f"✅ 已创建新的 Loom 远程会话：{thread_id[:8]}")
                 return
