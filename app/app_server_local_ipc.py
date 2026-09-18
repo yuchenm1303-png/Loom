@@ -315,6 +315,7 @@ class LoomLocalAppServerClient:
         self._attached_identity: tuple[Any, ...] | None = None
         self._client_name = ""
         self._client_version = ""
+        self._auto_initialize = False
 
     @property
     def running(self) -> bool:
@@ -329,8 +330,14 @@ class LoomLocalAppServerClient:
         with self._guard:
             self._client_name = str(client_name)
             self._client_version = str(client_version)
-            self._ensure_current_endpoint_locked()
-            return self._initialize_attached_locked()
+            descriptor = self._load_descriptor()
+            identity = self._descriptor_identity(descriptor)
+            if not self.running or identity != self._attached_identity:
+                self._close_transport_locked()
+                self._connect_descriptor_locked(descriptor)
+            result = self._initialize_attached_locked()
+            self._auto_initialize = True
+            return result
 
     def connect(self) -> None:
         with self._guard:
@@ -343,7 +350,13 @@ class LoomLocalAppServerClient:
         host = str(descriptor.get("host") or "")
         port = int(descriptor.get("port") or 0)
         token = str(descriptor.get("token") or "")
-        if host != _LOOPBACK_HOST or not 1 <= port <= 65535 or not token:
+        transport = str(descriptor.get("transport") or "")
+        if (
+            transport != "jsonl-tcp-loopback"
+            or host != _LOOPBACK_HOST
+            or not 1 <= port <= 65535
+            or not token
+        ):
             raise LocalAppServerSecurityError("invalid local App Server descriptor")
         sock: socket.socket | None = None
         reader = None
@@ -413,7 +426,7 @@ class LoomLocalAppServerClient:
 
         self._close_transport_locked()
         self._connect_descriptor_locked(descriptor)
-        if self._client_name:
+        if self._auto_initialize and self._client_name:
             self._initialize_attached_locked()
 
     def _initialize_attached_locked(self) -> dict[str, Any]:
@@ -674,6 +687,7 @@ class LoomLocalAppServerClient:
             self._close_transport_locked()
             self._client_name = ""
             self._client_version = ""
+            self._auto_initialize = False
 
     def _close_transport_locked(self) -> None:
         writer, self._writer = self._writer, None
