@@ -139,3 +139,35 @@ def test_published_but_unreachable_endpoint_fails_closed(tmp_path):
     client = LoomLocalAppServerClient(tmp_path, request_timeout_seconds=1)
     with pytest.raises(LocalAppServerSecurityError, match="refusing to start a second Runtime"):
         client.connect()
+
+
+def test_only_one_local_app_server_can_own_control_endpoint(tmp_path):
+    first = LocalAppServerIpcServer(
+        FakeService(),
+        controller_factory=FakeController,
+        runtime_home=tmp_path,
+    )
+    second = LocalAppServerIpcServer(
+        FakeService(),
+        controller_factory=FakeController,
+        runtime_home=tmp_path,
+    )
+
+    first.start()
+    try:
+        with pytest.raises(RuntimeError, match="already owns"):
+            second.start()
+    finally:
+        second.close()
+        first.close()
+
+    replacement = LocalAppServerIpcServer(
+        FakeService(),
+        controller_factory=FakeController,
+        runtime_home=tmp_path,
+    )
+    try:
+        descriptor = replacement.start()
+        assert descriptor["host"] == "127.0.0.1"
+    finally:
+        replacement.close()
