@@ -62,6 +62,10 @@ export interface TranscriptItem {
   type: "user_message" | "assistant_message" | "tool_call" | "process" | "file_edit" | "approval" | "error" | string;
   status?: string;
   text?: string;
+  /** Runtime-authored assistant phase. Never infer finality from transcript order. */
+  phase?: "commentary" | "final_answer" | string;
+  /** Stable model-step identity used to correlate the terminal answer. */
+  stepId?: string | null;
   toolName?: string;
   callId?: string;
   arguments?: unknown;
@@ -113,6 +117,11 @@ export interface TurnRecord {
   usage?: Usage;
   startedAt?: string | null;
   completedAt?: string | null;
+  finalText?: string;
+  /** Authoritative model step that completed the turn. */
+  finalStepId?: string | null;
+  /** Authoritative transcript item for the final user-visible answer. */
+  finalItemId?: string | null;
 }
 
 export interface ThreadReadResult {
