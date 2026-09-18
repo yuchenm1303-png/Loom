@@ -60,13 +60,19 @@ class FakeAppClient:
         return {"accepted": True}
 
 
-def _message(text: str, *, msgid: str = "m1", user: str = "wx-user") -> WeChatInboundMessage:
+def _message(
+    text: str,
+    *,
+    msgid: str = "m1",
+    user: str = "wx-user",
+    send_time: int = 1,
+) -> WeChatInboundMessage:
     return WeChatInboundMessage(
         message_id=msgid,
         external_user_id=user,
         open_kf_id="wk-loom",
         text=text,
-        send_time=1,
+        send_time=send_time,
         origin=3,
     )
 
@@ -77,14 +83,16 @@ def test_remote_state_persists_binding_cursor_and_dedupe(tmp_path):
     assert store.accept_message("m-1") is True
     assert store.accept_message("m-1") is False
 
-    bound = store.bind("wx-user", "wk-loom")
+    bound = store.bind("wx-user", "wk-loom", paired_at_unix=123)
     assert bound.external_user_id == "wx-user"
+    assert bound.paired_at_unix == 123
     store.set_thread_id("thread-1")
     store.set_cursor("cursor-2")
 
     reloaded = WeChatRemoteStateStore(tmp_path)
     assert reloaded.binding is not None
     assert reloaded.binding.thread_id == "thread-1"
+    assert reloaded.binding.paired_at_unix == 123
     assert reloaded.cursor == "cursor-2"
     assert reloaded.accept_message("m-1") is False
 
@@ -124,11 +132,12 @@ def test_pairing_then_task_uses_app_server_protocol(tmp_path):
     assert state.binding is None
     assert wechat.sent == []
 
-    bridge.handle_message(_message("/bind 731842", msgid="m2"))
+    bridge.handle_message(_message("/bind 731842", msgid="m2", send_time=100))
     assert state.binding is not None
+    assert state.binding.paired_at_unix == 100
     assert "已绑定" in wechat.sent[-1][2]
 
-    bridge.handle_message(_message("检查 Loom 最新 CI", msgid="m3"))
+    bridge.handle_message(_message("检查 Loom 最新 CI", msgid="m3", send_time=101))
     assert state.binding.thread_id == "thread-1"
     assert app.turn_starts == [("thread-1", "检查 Loom 最新 CI")]
     assert "已开始执行" in wechat.sent[-1][2]
@@ -246,3 +255,25 @@ def test_turn_completion_is_replied_to_paired_user(tmp_path):
         },
     )
     assert wechat.sent[-1][2] == "CI 已修复，测试通过。"
+
+
+def test_messages_older_than_pairing_boundary_are_never_executed(tmp_path):
+    state = WeChatRemoteStateStore(tmp_path)
+    wechat = FakeWeChat()
+    app = FakeAppClient()
+    bridge = WeChatRemoteBridge(
+        app_client=app,
+        wechat=wechat,
+        state=state,
+        workspace=tmp_path,
+        pairing_code="731842",
+    )
+
+    bridge.handle_message(_message("/bind 731842", msgid="bind", send_time=100))
+    assert state.binding is not None
+
+    bridge.handle_message(_message("这是绑定前的历史任务", msgid="old", send_time=99))
+    assert app.turn_starts == []
+
+    bridge.handle_message(_message("这是绑定后的新任务", msgid="new", send_time=101))
+    assert app.turn_starts == [("thread-1", "这是绑定后的新任务")]
