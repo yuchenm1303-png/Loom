@@ -7,6 +7,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DESKTOP_SRC = ROOT / "desktop-react" / "src"
 COMPOSER = DESKTOP_SRC / "components" / "Composer.tsx"
+TRANSCRIPT = DESKTOP_SRC / "components" / "Transcript.tsx"
+TURN_FLOW = DESKTOP_SRC / "components" / "turn-flow.css"
 LOOM_STATE = DESKTOP_SRC / "state" / "useLoom.ts"
 
 
@@ -56,3 +58,40 @@ def test_running_send_is_routed_to_turn_steer_not_a_second_turn_start() -> None:
     assert 'await loom.send(input, attachments);' in source
     assert 'await window.loom.call("turn/steer", {' in source
     assert 'turnId: activeTurn.currentTurnId' in source
+
+
+def test_steering_messages_stay_at_their_chronological_position_inside_a_turn() -> None:
+    source = TRANSCRIPT.read_text(encoding="utf-8")
+
+    # Only the first user message anchors the top of a turn. Later user messages
+    # are steering inputs and must stay in the canonical item stream instead of
+    # being hoisted beside the original prompt.
+    assert 'String(item.source ?? "").trim().toLowerCase() === "steering"' in source
+    assert 'const initialUser = userItems.find((item) => !isSteeringUserMessage(item)) ?? userItems[0] ?? null;' in source
+    assert "const guidanceItems = userItems.filter((item) => item.id !== initialUser?.id);" in source
+    assert "item.id !== initialUser?.id" in source
+    assert '|| item.type === "user_message"' in source
+    assert "derived.userItems.map" not in source
+
+    # TurnProcess receives the same guidance items that remain inside
+    # processItems, and Sequence marks them as steering entries while preserving
+    # the source order supplied by the runtime.
+    assert "guidanceItems={derived.guidanceItems}" in source
+    assert 'guidanceItems.length ? "has-guidance" : ""' in source
+    assert 'block.item.type === "user_message" ? "entry-steering-user" : ""' in source
+
+
+def test_collapsed_turn_keeps_user_steering_visible_without_duplicating_expanded_timeline() -> None:
+    transcript = TRANSCRIPT.read_text(encoding="utf-8")
+    styles = TURN_FLOW.read_text(encoding="utf-8")
+
+    assert "!active && !open && guidanceItems.length" in transcript
+    assert 'className="turn-guidance-recap"' in transcript
+    assert 'aria-label="Guidance added during this turn"' in transcript
+
+    # While expanded, the canonical Sequence owns the steering message and keeps
+    # its timestamp/actions. When folded, the recap stays visible outside the
+    # collapsed process grid.
+    assert ".turn-process-content .entry-steering-user .message-meta" in styles
+    assert "display: inline-flex !important;" in styles
+    assert ".turn-guidance-recap" in styles
