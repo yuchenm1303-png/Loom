@@ -286,8 +286,9 @@ class LoomLocalAppServerClient:
                 raise
             if isinstance(exc, AppServerClientError):
                 raise
-            raise LocalAppServerUnavailable(
-                f"could not connect to local App Server: {exc}"
+            raise LocalAppServerSecurityError(
+                "a local App Server descriptor is published but its endpoint "
+                f"cannot be reached; refusing to start a second Runtime: {exc}"
             ) from exc
         self._socket = sock
         self._reader = reader
