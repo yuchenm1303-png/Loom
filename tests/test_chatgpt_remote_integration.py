@@ -215,3 +215,63 @@ def test_chatgpt_remote_cannot_bypass_real_loom_approval_boundary(tmp_path: Path
         assert completed["pendingApproval"] is None
     finally:
         runtime.close()
+
+
+def test_remote_task_start_replays_durably_after_adapter_recreation(tmp_path: Path):
+    home = tmp_path / "home"
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    store = FileAgentSessionStore(home)
+    platform = ScriptedPlatform([ModelResponse(text="completed exactly once")])
+    runtime = DurableAgentRuntime(
+        platform=platform,
+        store=store,
+        tools=ToolRegistry(),
+        default_permission_mode=PermissionMode.APPROVAL,
+        auto_drain_queue=False,
+    )
+    service = LoomAppServerService(
+        runtime=runtime,
+        store=store,
+        model="test-model",
+        default_workspace=workspace,
+        default_permission_mode=PermissionMode.APPROVAL,
+    )
+    try:
+        project = service.project_create({"root": str(workspace)})["project"]
+        first_remote = RemoteControlClient(ServiceBackend(service))
+        first = first_remote.task_start(
+            prompt="execute once",
+            project_id=project["id"],
+            idempotency_key="remote-restart-key",
+        )
+        wait_until(
+            lambda: first["threadId"] not in service.runtime_status()["activeThreadIds"]
+        )
+
+        # A fresh channel adapter has an empty in-process replay cache. The
+        # authoritative App Server ledger must still return the original work.
+        rejoined_service = LoomAppServerService(
+            runtime=runtime,
+            store=store,
+            model="test-model",
+            default_workspace=workspace,
+            default_permission_mode=PermissionMode.APPROVAL,
+        )
+        second_remote = RemoteControlClient(ServiceBackend(rejoined_service))
+        second = second_remote.task_start(
+            prompt="execute once",
+            project_id=project["id"],
+            idempotency_key="remote-restart-key",
+        )
+
+        assert second["threadId"] == first["threadId"]
+        assert second["turn"]["id"] == first["turn"]["id"]
+        assert second["createdThread"] is False
+        assert second["idempotentReplay"] is True
+        assert len(platform.responses) == 0
+        snapshot = rejoined_service.thread_read({"threadId": first["threadId"]})
+        assert len(snapshot["turns"]) == 1
+        assert snapshot["finalText"] == "completed exactly once"
+    finally:
+        runtime.close()
