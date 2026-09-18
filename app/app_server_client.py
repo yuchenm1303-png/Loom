@@ -258,6 +258,7 @@ class LoomAppServerClient:
         workspace: str | Path | None = None,
         project_id: str = "",
         permission_mode: str | None = None,
+        client_input_id: str = "",
     ) -> dict[str, Any]:
         """Start a thread in a workspace, or in a registered project."""
         if bool(workspace) == bool(project_id):
@@ -269,6 +270,8 @@ class LoomAppServerClient:
         )
         if permission_mode:
             params["permissionMode"] = str(permission_mode)
+        if client_input_id:
+            params["clientInputId"] = str(client_input_id)
         return dict(self.request("thread/start", params))
 
     def thread_resume(self, thread_id: str) -> dict[str, Any]:
@@ -304,6 +307,8 @@ class LoomAppServerClient:
         thread_id: str,
         text: str,
         attachments: Sequence[Mapping[str, Any]] = (),
+        *,
+        client_input_id: str = "",
     ) -> dict[str, Any]:
         """Start a turn, optionally with files the user attached.
 
