@@ -233,11 +233,11 @@ function CodeBlock({ children, workspace }: { children?: ReactNode; workspace?: 
 
 function markdownComponents(workspace?: string): Components {
   return {
-    p({ children, ...props }) {
+    p({ children }) {
       const imagePath = singleLineImagePath(nodeText(children));
       return (
         <>
-          <p {...props}>{children}</p>
+          <p>{children}</p>
           {imagePath && workspace ? (
             <LocalImagePreview source={imagePath} workspace={workspace} />
           ) : null}
