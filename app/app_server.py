@@ -919,12 +919,18 @@ class LoomAppServerService:
             if session_path.is_file():
                 session = self.runtime.get_session(entry.object_id)
             else:
-                session = self.runtime.create_session(
-                    AGENT_FAST_ROLE.role_id,
-                    workspace_dir=root,
-                    permission_mode=mode,
-                    session_id=entry.object_id,
-                )
+                try:
+                    session = self.runtime.create_session(
+                        AGENT_FAST_ROLE.role_id,
+                        workspace_dir=root,
+                        permission_mode=mode,
+                        session_id=entry.object_id,
+                    )
+                except FileExistsError:
+                    # Another App Server adapter sharing this authoritative
+                    # ledger may have completed the same reservation between
+                    # the snapshot check and create_reserved().
+                    session = self.runtime.get_session(entry.object_id)
 
             result = {"thread": self._record(session, active=False)}
             self.idempotency.complete(
