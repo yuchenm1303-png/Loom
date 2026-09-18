@@ -491,10 +491,24 @@ export function useLoom() {
         setTurnActive(false);
         setTurnStartedAt(null);
         if (turn) {
+          const finalItemId = String(turn.finalItemId ?? "");
+          const finalStepId = String(turn.finalStepId ?? "");
+          if (turn.status === "completed" && (finalItemId || finalStepId)) {
+            setItems((current) => current.map((item) => {
+              if (item.turnId !== turn.id || item.type !== "assistant_message") return item;
+              const isFinal = Boolean(
+                (finalItemId && item.id === finalItemId)
+                || (finalStepId && String(item.stepId ?? "") === finalStepId),
+              );
+              const phase = isFinal ? "final_answer" : (item.phase || "commentary");
+              return item.phase === phase ? item : { ...item, phase };
+            }));
+          }
           setActive((current) => current && current.thread.id === activeId
             ? {
                 ...current,
                 pendingApproval: null,
+                turns: (current.turns ?? []).map((entry) => entry.id === turn.id ? { ...entry, ...turn } : entry),
                 thread: {
                   ...current.thread,
                   status: turn.status as ThreadRecord["status"],

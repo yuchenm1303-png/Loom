@@ -179,6 +179,17 @@ def _assistant_item_id(event_id: str) -> str:
     return f"assistant:{event_id}"
 
 
+def _assistant_step_item_id(step_id: str) -> str:
+    return f"assistant:step:{step_id}"
+
+
+def _assistant_item_id_for_event(event: AgentEvent) -> str:
+    step_id = str(event.data.get("step_id") or "").strip()
+    if step_id:
+        return _assistant_step_item_id(step_id)
+    return _assistant_item_id(event.event_id)
+
+
 def _user_item_id(event_id: str) -> str:
     return f"user:{event_id}"
 
@@ -208,7 +219,7 @@ def _event_item_identity(event: AgentEvent) -> tuple[str, str] | None:
     if event.kind is AgentEventKind.USER_MESSAGE:
         return _user_item_id(event.event_id), "user_message"
     if event.kind is AgentEventKind.MODEL_RESPONSE and str(data.get("text") or ""):
-        return _assistant_item_id(event.event_id), "assistant_message"
+        return _assistant_item_id_for_event(event), "assistant_message"
     if event.kind in {
         AgentEventKind.TOOL_REQUESTED,
         AgentEventKind.TOOL_STARTED,
@@ -257,6 +268,8 @@ def _apply_event_to_item(item: dict[str, Any], event: AgentEvent) -> None:
     elif kind is AgentEventKind.MODEL_RESPONSE:
         item["status"] = "completed"
         item["text"] = str(data.get("text") or "")
+        item["stepId"] = str(data.get("step_id") or "") or None
+        item["phase"] = str(data.get("phase") or "commentary")
         item["finishReason"] = str(data.get("finish_reason") or "") or None
         item["responseId"] = str(data.get("response_id") or "") or None
         usage = data.get("usage")
@@ -343,6 +356,8 @@ def _turn_records(session: Any, events: tuple[AgentEvent, ...]) -> list[dict[str
                 "status": "running",
                 "startedAt": None,
                 "completedAt": None,
+                "finalStepId": None,
+                "finalItemId": None,
                 "items": [],
                 "usage": {"inputTokens": 0, "outputTokens": 0, "totalTokens": 0},
             }
@@ -358,6 +373,9 @@ def _turn_records(session: Any, events: tuple[AgentEvent, ...]) -> list[dict[str
         if terminal is not None:
             turn["status"] = terminal
             turn["completedAt"] = event.created_at
+            if event.kind is AgentEventKind.TURN_COMPLETED:
+                turn["finalStepId"] = str(event.data.get("final_step_id") or "") or None
+                turn["_finalText"] = str(event.data.get("text") or "")
 
         if event.kind is AgentEventKind.MODEL_RESPONSE:
             usage = event.data.get("usage")
@@ -401,6 +419,41 @@ def _turn_records(session: Any, events: tuple[AgentEvent, ...]) -> list[dict[str
             turn["startedAt"] = turn["items"][0]["createdAt"]
         if turn_id == session.current_turn_id and turn["completedAt"] is None:
             turn["status"] = session.status.value
+
+        final_item: dict[str, Any] | None = None
+        if turn["status"] == AgentStatus.COMPLETED.value:
+            final_step_id = str(turn.get("finalStepId") or "")
+            if final_step_id:
+                final_item = next(
+                    (
+                        item
+                        for item in reversed(turn["items"])
+                        if item.get("type") == "assistant_message"
+                        and str(item.get("stepId") or "") == final_step_id
+                    ),
+                    None,
+                )
+            if final_item is None:
+                final_text = str(turn.pop("_finalText", "") or "")
+                if final_text:
+                    final_item = next(
+                        (
+                            item
+                            for item in reversed(turn["items"])
+                            if item.get("type") == "assistant_message"
+                            and str(item.get("text") or "") == final_text
+                        ),
+                        None,
+                    )
+            else:
+                turn.pop("_finalText", None)
+
+            if final_item is not None:
+                final_item["phase"] = "final_answer"
+                turn["finalItemId"] = str(final_item.get("id") or "") or None
+        else:
+            turn.pop("_finalText", None)
+
     return list(turns.values())
 
 
@@ -980,7 +1033,7 @@ class LoomAppServerService:
         if kind is AgentEventKind.MODEL_RESPONSE and str(data.get("text") or ""):
             item = _base_item(
                 event,
-                item_id=_assistant_item_id(event.event_id),
+                item_id=_assistant_item_id_for_event(event),
                 item_type="assistant_message",
                 status="started",
             )
@@ -1185,6 +1238,8 @@ class LoomAppServerService:
                 usage = {"inputTokens": 0, "outputTokens": 0, "totalTokens": 0}
                 final_text = str(data.get("text") or "")
                 error = str(data.get("error") or data.get("reason") or "")
+            final_step_id = str(data.get("final_step_id") or "").strip()
+            final_item_id = _assistant_step_item_id(final_step_id) if final_step_id else None
             self._notify(
                 "turn/completed",
                 {
@@ -1195,6 +1250,8 @@ class LoomAppServerService:
                         "status": terminal,
                         "completedAt": event.created_at,
                         "finalText": final_text,
+                        "finalStepId": final_step_id or None,
+                        "finalItemId": final_item_id,
                         "error": error,
                         "usage": usage,
                     },
