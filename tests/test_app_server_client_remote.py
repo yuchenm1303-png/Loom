@@ -12,6 +12,15 @@ class RecordingClient(LoomAppServerClient):
         self.calls.append((method, params or {}))
         return {"accepted": True}
 
+    def thread_read(self, thread_id):
+        return {
+            "pendingApproval": {
+                "turnId": "turn-legacy",
+                "requestId": "request-legacy",
+                "callId": "call-legacy",
+            }
+        }
+
 
 def test_app_server_client_serializes_steer_and_correlated_approval():
     client = RecordingClient()
@@ -49,3 +58,22 @@ def test_app_server_client_serializes_steer_and_correlated_approval():
             "decision": "accept",
         },
     )
+
+
+def test_app_server_client_preserves_legacy_approval_helper():
+    client = RecordingClient()
+
+    client.approval_respond("thread-legacy", "call-legacy", approved=False)
+
+    assert client.calls == [
+        (
+            "approval/respond",
+            {
+                "threadId": "thread-legacy",
+                "turnId": "turn-legacy",
+                "requestId": "request-legacy",
+                "callId": "call-legacy",
+                "decision": "decline",
+            },
+        )
+    ]
