@@ -19,15 +19,21 @@ from app.ai.reasoning_store import ReasoningConfigStore
 
 PRIMARY_SELECTION = "builtin:minimax"
 CQU_SELECTION = "builtin:cqu"
+DEEPSEEK_SELECTION = "builtin:deepseek"
 MINIMAX_SELECTION_PREFIX = "builtin:minimax:"
+DEEPSEEK_SELECTION_PREFIX = "builtin:deepseek:"
 MANAGED_SELECTION_PREFIX = "managed:"
 MANAGED_RELAY_BASE_URL = "https://relay.smirel.com/v1"
 MINIMAX_BASE_URL = "https://api.minimaxi.com/v1"
+DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 MINIMAX_DEFAULT_MODEL = "MiniMax-M3"
 MINIMAX_MODEL_IDS = ("MiniMax-M3", "MiniMax-M2.7", "MiniMax-M2.5")
+DEEPSEEK_DEFAULT_MODEL = "deepseek-flash"
+DEEPSEEK_FALLBACK_MODEL_IDS = ("deepseek-flash", "deepseek-v4-pro")
 CQU_DEFAULT_MODEL = "cqu-default"
 _KEYRING_SERVICE = "loom-agent"
 _MANAGED_RELAY_CREDENTIAL_ALIAS = "managed/relay"
+_DEEPSEEK_CREDENTIAL_ALIAS = "builtin/deepseek"
 _MANAGED_RELAY_KEY_ENV = (
     "LOOM_RELAY_API_KEY",
     "SMIREL_RELAY_API_KEY",
@@ -38,7 +44,13 @@ _MANAGED_RELAY_KEY_ENV = (
 )
 _PRIMARY_MINIMAX_KEY_ENV = ("MINIMAX_API_KEY", "LOOM_PRIMARY_API_KEY", "LOOM_API_KEY")
 _LEGACY_MINIMAX_BASE_URL_ENV = ("LOOM_MINIMAX_BASE_URL", "MINIMAX_BASE_URL")
+_DEEPSEEK_KEY_ENV = ("DEEPSEEK_API_KEY", "LOOM_DEEPSEEK_API_KEY")
+_DEEPSEEK_BASE_URL_ENV = ("LOOM_DEEPSEEK_BASE_URL", "DEEPSEEK_BASE_URL")
 _PROVISIONING_FILE_ENV = "LOOM_RELAY_PROVISIONING_FILE"
+_DEEPSEEK_DISPLAY_NAMES = {
+    "deepseek-flash": "DeepSeek Flash",
+    "deepseek-v4-pro": "DeepSeek V4 Pro",
+}
 _MANAGED_MODEL_DISPLAY_NAMES = {
     MINIMAX_DEFAULT_MODEL.casefold(): "MiniMax",
     "minimax-m2.7": "MiniMax M2.7",
@@ -78,6 +90,12 @@ def _legacy_minimax_base_url(environ: Mapping[str, str] | None = None) -> str:
     ).strip().rstrip("/")
 
 
+def _deepseek_base_url(environ: Mapping[str, str] | None = None) -> str:
+    return str(
+        _key_from_env(_DEEPSEEK_BASE_URL_ENV, environ) or DEEPSEEK_BASE_URL
+    ).strip().rstrip("/")
+
+
 def _credential_get(alias: str) -> str | None:
     try:
         import keyring
@@ -93,7 +111,7 @@ def _credential_set(alias: str, value: str) -> None:
 
         keyring.set_password(_KEYRING_SERVICE, alias, value)
     except Exception as exc:
-        raise RuntimeError(f"could not save the Relay credential in the OS credential store: {exc}") from exc
+        raise RuntimeError(f"could not save the credential in the OS credential store: {exc}") from exc
 
 
 def _provisioning_paths(
@@ -171,6 +189,61 @@ def _normalize_url(value: str) -> str:
 
 def _is_minimax_model(model: str) -> bool:
     return str(model or "").strip().casefold() in _MINIMAX_MODEL_KEYS
+
+
+def _looks_like_deepseek_connection(
+    entry: StoredModel,
+    environ: Mapping[str, str] | None = None,
+) -> bool:
+    if not isinstance(entry, StoredModel):
+        return False
+    endpoint = _normalize_url(_deepseek_base_url(environ))
+    base_url = _normalize_url(entry.base_url)
+    if base_url not in {endpoint, f"{endpoint}/v1"}:
+        return False
+    return str(entry.model or "").strip().casefold().startswith("deepseek-")
+
+
+def _promote_saved_deepseek_key(
+    store: ModelConfigStore,
+    environ: Mapping[str, str] | None = None,
+) -> str:
+    for entry in store.list_models():
+        if not _looks_like_deepseek_connection(entry, environ):
+            continue
+        try:
+            api_key = store.secret_for(entry)
+        except Exception:
+            continue
+        api_key = str(api_key or "").strip()
+        if not api_key:
+            continue
+        try:
+            _credential_set(_DEEPSEEK_CREDENTIAL_ALIAS, api_key)
+        except RuntimeError:
+            pass
+        return api_key
+    return ""
+
+
+def _deepseek_key(
+    store: ModelConfigStore,
+    environ: Mapping[str, str] | None = None,
+) -> str:
+    secret = str(_credential_get(_DEEPSEEK_CREDENTIAL_ALIAS) or "").strip()
+    if secret:
+        return secret
+    promoted = _promote_saved_deepseek_key(store, environ)
+    if promoted:
+        return promoted
+    env_key = _key_from_env(_DEEPSEEK_KEY_ENV, environ)
+    if env_key:
+        try:
+            _credential_set(_DEEPSEEK_CREDENTIAL_ALIAS, env_key)
+        except RuntimeError:
+            pass
+        return env_key
+    return ""
 
 
 def _is_managed_relay_endpoint(value: str, environ: Mapping[str, str] | None = None) -> bool:
@@ -274,6 +347,53 @@ def _fetch_managed_model_ids(
     return models
 
 
+def _deepseek_models_url(environ: Mapping[str, str] | None = None) -> str:
+    return f"{_deepseek_base_url(environ)}/models"
+
+
+def _fetch_deepseek_model_ids(
+    api_key: str,
+    environ: Mapping[str, str] | None = None,
+    timeout: float = 3.5,
+) -> list[str]:
+    api_key = str(api_key or "").strip()
+    if not api_key:
+        return []
+    request = urllib.request.Request(
+        _deepseek_models_url(environ),
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Accept": "application/json",
+            "User-Agent": "Loom/deepseek",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except (OSError, urllib.error.URLError, json.JSONDecodeError):
+        return []
+    if not isinstance(payload, dict):
+        return []
+    data = payload.get("data")
+    if not isinstance(data, list):
+        return []
+
+    models: list[str] = []
+    seen: set[str] = set()
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        model_id = str(item.get("id") or "").strip()
+        if not model_id:
+            continue
+        key = model_id.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        models.append(model_id)
+    return models
+
+
 def _minimax_selection_for_model(model: str) -> str:
     normalized = str(model or "").strip()
     if normalized.casefold() == MINIMAX_DEFAULT_MODEL.casefold():
@@ -288,6 +408,23 @@ def _minimax_model_from_selection(selection: str) -> str | None:
     if value.startswith(MINIMAX_SELECTION_PREFIX):
         model = urllib.parse.unquote(value[len(MINIMAX_SELECTION_PREFIX) :]).strip()
         return model if _is_minimax_model(model) else None
+    return None
+
+
+def _deepseek_selection_for_model(model: str) -> str:
+    normalized = str(model or "").strip()
+    if normalized.casefold() == DEEPSEEK_DEFAULT_MODEL.casefold():
+        return DEEPSEEK_SELECTION
+    return f"{DEEPSEEK_SELECTION_PREFIX}{urllib.parse.quote(normalized, safe='')}"
+
+
+def _deepseek_model_from_selection(selection: str) -> str | None:
+    value = str(selection or "").strip()
+    if value == DEEPSEEK_SELECTION:
+        return DEEPSEEK_DEFAULT_MODEL
+    if value.startswith(DEEPSEEK_SELECTION_PREFIX):
+        model = urllib.parse.unquote(value[len(DEEPSEEK_SELECTION_PREFIX) :]).strip()
+        return model or None
     return None
 
 
@@ -307,6 +444,24 @@ def _managed_model_from_selection(selection: str) -> str | None:
         model = urllib.parse.unquote(value[len(MANAGED_SELECTION_PREFIX) :]).strip()
         return model or None
     return None
+
+
+def _deepseek_profile_id(model: str) -> str:
+    folded = str(model or "").strip().casefold()
+    if folded == "deepseek-flash":
+        return "deepseek-flash"
+    if folded == "deepseek-v4-pro":
+        return "deepseek-v4-pro"
+    digest = hashlib.sha256(folded.encode("utf-8")).hexdigest()[:12]
+    return f"deepseek-{digest}"
+
+
+def _deepseek_display_name(model: str) -> str:
+    value = str(model or "").strip()
+    known = _DEEPSEEK_DISPLAY_NAMES.get(value.casefold())
+    if known:
+        return known
+    return value
 
 
 def _managed_profile_id(model: str) -> str:
@@ -336,6 +491,24 @@ def _safe_minimax(
         "name": _managed_display_name(model),
         "adapter": "openai-compatible",
         "baseUrl": _legacy_minimax_base_url(environ),
+        "model": model,
+    }
+
+
+def _safe_deepseek(
+    model: str = DEEPSEEK_DEFAULT_MODEL,
+    environ: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
+    model = str(model or "").strip()
+    if not model:
+        raise ValueError("DeepSeek model id must not be empty")
+    return {
+        "selection": _deepseek_selection_for_model(model),
+        "id": _deepseek_profile_id(model),
+        "kind": "builtin",
+        "name": _deepseek_display_name(model),
+        "adapter": "openai-compatible",
+        "baseUrl": _deepseek_base_url(environ),
         "model": model,
     }
 
@@ -423,6 +596,21 @@ def _with_reasoning(profile: dict[str, Any], reasoning_store: ReasoningConfigSto
 
 def _managed_profiles(store: ModelConfigStore, environ: Mapping[str, str] | None = None) -> list[dict[str, Any]]:
     profiles: list[dict[str, Any]] = [_safe_minimax(model_id, environ) for model_id in MINIMAX_MODEL_IDS]
+
+    deepseek_key = _deepseek_key(store, environ)
+    deepseek_model_ids = list(DEEPSEEK_FALLBACK_MODEL_IDS)
+    if deepseek_key:
+        discovered = _fetch_deepseek_model_ids(deepseek_key, environ)
+        if discovered:
+            deepseek_model_ids = discovered
+    seen_deepseek: set[str] = set()
+    for model_id in deepseek_model_ids:
+        folded = str(model_id or "").strip().casefold()
+        if not folded or folded in seen_deepseek:
+            continue
+        seen_deepseek.add(folded)
+        profiles.append(_safe_deepseek(model_id, environ))
+
     api_key = _managed_relay_key(store, environ, Path(__file__).resolve().parent)
     if api_key:
         model_ids = _fetch_managed_model_ids(api_key, environ)
@@ -443,6 +631,20 @@ def _base_profile_for_selection(store: ModelConfigStore, selection: str) -> dict
     minimax_model = _minimax_model_from_selection(requested)
     if minimax_model:
         return _safe_minimax(minimax_model)
+    deepseek_model = _deepseek_model_from_selection(requested)
+    if deepseek_model:
+        return _safe_deepseek(deepseek_model)
+    deepseek_model = _deepseek_model_from_selection(requested)
+    if deepseek_model:
+        api_key = _deepseek_key(store)
+        if api_key:
+            official_profile = _with_reasoning(_safe_deepseek(deepseek_model), reasoning_store)
+            return {**official_profile, "provider": "openai-compatible", "apiKey": api_key}
+        raise RuntimeError(
+            "DeepSeek API key is not configured. Set DEEPSEEK_API_KEY once or add a saved "
+            "DeepSeek connection using the official https://api.deepseek.com endpoint."
+        )
+
     managed_model = _managed_model_from_selection(requested)
     if managed_model:
         return _safe_managed(managed_model)
@@ -476,6 +678,8 @@ def _describe_model(
     profile = _base_profile_for_selection(store, selection)
     if _is_minimax_model(requested_model):
         profile = _safe_minimax(requested_model)
+    elif _deepseek_model_from_selection(selection):
+        profile = _safe_deepseek(requested_model)
     profile["model"] = requested_model
     return _with_reasoning(profile, reasoning_store)
 
@@ -595,7 +799,11 @@ def _set_active(
     payload: dict[str, Any],
 ) -> dict[str, Any]:
     selection = str(payload.get("selection") or "").strip() or PRIMARY_SELECTION
-    if _minimax_model_from_selection(selection) or _managed_model_from_selection(selection):
+    if (
+        _minimax_model_from_selection(selection)
+        or _deepseek_model_from_selection(selection)
+        or _managed_model_from_selection(selection)
+    ):
         store.set_active(None)
     else:
         saved = store.model_for_selection(selection)
