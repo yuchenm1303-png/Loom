@@ -131,6 +131,19 @@ def _thread_record(
         "profileId": session.profile_id,
         "workspace": session.workspace_dir,
         "permissionMode": session.permission_mode.value,
+        "modelSelection": getattr(session, "model_selection", "") or None,
+        "model": getattr(session, "model", "") or None,
+        "modelProvider": getattr(session, "model_provider", "") or None,
+        "modelBaseUrl": getattr(session, "model_base_url", "") or None,
+        "modelVision": bool(getattr(session, "model_vision", True)),
+        "reasoning": (
+            {
+                "kind": str(getattr(session, "reasoning_kind", "") or ""),
+                "value": str(getattr(session, "reasoning_value", "") or ""),
+            }
+            if getattr(session, "reasoning_kind", "") and getattr(session, "reasoning_value", "")
+            else None
+        ),
         "status": session.status.value,
         "currentTurnId": session.current_turn_id or None,
         "forkedFromId": getattr(session, "forked_from_id", "") or None,
