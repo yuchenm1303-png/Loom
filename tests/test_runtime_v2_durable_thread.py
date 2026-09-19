@@ -37,6 +37,59 @@ def _runtime(tmp_path, responses=()):
     return runtime, store
 
 
+def test_threads_route_model_calls_to_independent_platforms(tmp_path):
+    project = tmp_path / "project"
+    project.mkdir()
+    default = ScriptedPlatform([])
+    store = FileAgentSessionStore(tmp_path / "state")
+    runtime = AgentRuntime(
+        platform=default,
+        store=store,
+        tools=loom_default_tools(),
+    )
+    first = runtime.create_session("agent.fast", workspace_dir=project)
+    second = runtime.create_session("agent.fast", workspace_dir=project)
+    first_platform = ScriptedPlatform([ModelResponse(text="from model A")])
+    second_platform = ScriptedPlatform([ModelResponse(text="from model B")])
+
+    runtime.set_session_model(first.session_id, first_platform)
+    runtime.set_session_model(second.session_id, second_platform)
+
+    first_result = runtime.start_turn(first.session_id, "first")
+    second_result = runtime.start_turn(second.session_id, "second")
+
+    assert first_result.final_text == "from model A"
+    assert second_result.final_text == "from model B"
+    assert len(first_platform.requests) == 1
+    assert len(second_platform.requests) == 1
+    assert default.requests == []
+
+
+def test_thread_model_metadata_survives_session_reload(tmp_path):
+    project = tmp_path / "project"
+    project.mkdir()
+    runtime, store = _runtime(tmp_path)
+    session = runtime.create_session("agent.fast", workspace_dir=project)
+    session.model_selection = "builtin:deepseek"
+    session.model = "deepseek-flash"
+    session.model_provider = "openai-compatible"
+    session.model_base_url = "https://api.deepseek.com"
+    session.model_vision = True
+    session.reasoning_kind = "openai-effort"
+    session.reasoning_value = "high"
+    store.save(session)
+
+    restored = store.load(session.session_id)
+
+    assert restored.model_selection == "builtin:deepseek"
+    assert restored.model == "deepseek-flash"
+    assert restored.model_provider == "openai-compatible"
+    assert restored.model_base_url == "https://api.deepseek.com"
+    assert restored.model_vision is True
+    assert restored.reasoning_kind == "openai-effort"
+    assert restored.reasoning_value == "high"
+
+
 def test_durable_queue_survives_runtime_restart(tmp_path):
     project = tmp_path / "project"
     project.mkdir()
