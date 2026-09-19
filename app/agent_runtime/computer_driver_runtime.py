@@ -123,7 +123,7 @@ class ComputerDriverRuntime(ComputerUseRuntime):
         self._install_driver_task_tool()
         self._sync_driver_model_from_platform()
 
-    def _sync_driver_model_from_platform(self) -> None:
+    def _sync_driver_model_from_platform(self, session_id: str = "") -> None:
         """Reuse the current Loom vision connection in the isolated UFO process.
 
         Users should not need to provide separate LOOM_UFO_API_* values for the
@@ -135,7 +135,11 @@ class ComputerDriverRuntime(ComputerUseRuntime):
         driver = self.computer_driver
         if not isinstance(driver, UfoWindowsDriver):
             return
-        platform = getattr(self, "platform", None)
+        platform = (
+            self.platform_for_session(session_id)
+            if str(session_id or "").strip()
+            else getattr(self, "platform", None)
+        )
         metadata = None
         for _ in range(3):
             candidate = getattr(platform, "_loom_model_connection", None)
@@ -244,7 +248,7 @@ class ComputerDriverRuntime(ComputerUseRuntime):
         self.tools = ToolRegistry(tuple(rebuilt))
 
     def _driver_ready(self) -> bool:
-        self._sync_driver_model_from_platform()
+        self._sync_driver_model_from_platform(owner_session_id or "")
         driver = self.computer_driver
         if driver is None:
             return False
@@ -352,7 +356,7 @@ class ComputerDriverRuntime(ComputerUseRuntime):
         context: ToolContext,
         arguments: dict[str, Any],
     ) -> ToolResult:
-        self._sync_driver_model_from_platform()
+        self._sync_driver_model_from_platform(context.session_id)
         driver = self.computer_driver
         driver_status = (
             dict(driver.status())
