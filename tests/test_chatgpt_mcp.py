@@ -27,7 +27,14 @@ class FakeBackend:
     def thread_read(self, thread_id):
         return self.threads[thread_id]
 
-    def thread_start(self, *, workspace=None, project_id="", permission_mode=None):
+    def thread_start(
+        self,
+        *,
+        workspace=None,
+        project_id="",
+        permission_mode=None,
+        client_input_id="",
+    ):
         self.started_threads.append((project_id, permission_mode))
         record = {
             "id": "thread-1",
@@ -38,7 +45,14 @@ class FakeBackend:
         self.threads["thread-1"] = {"thread": record, "pendingApproval": None}
         return {"thread": record}
 
-    def turn_start(self, thread_id, text, attachments=()):
+    def turn_start(
+        self,
+        thread_id,
+        text,
+        attachments=(),
+        *,
+        client_input_id="",
+    ):
         self.started_turns.append((thread_id, text))
         return {"turn": {"id": "turn-1", "status": "starting"}}
 

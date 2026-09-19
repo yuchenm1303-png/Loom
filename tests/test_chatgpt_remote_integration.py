@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import time
+
+import pytest
 from pathlib import Path
 
 from app.ai import ModelResponse, ToolCall
@@ -15,7 +17,11 @@ from app.agent_runtime import (
     ToolResult,
 )
 from app.app_server import LoomAppServerService
-from app.remote_control import RemoteControlClient, approval_fingerprint
+from app.remote_control import (
+    RemoteControlClient,
+    RemoteControlError,
+    approval_fingerprint,
+)
 
 
 class ScriptedPlatform:
@@ -46,7 +52,14 @@ class ServiceBackend:
     def thread_read(self, thread_id):
         return self.service.thread_read({"threadId": thread_id})
 
-    def thread_start(self, *, workspace=None, project_id="", permission_mode=None):
+    def thread_start(
+        self,
+        *,
+        workspace=None,
+        project_id="",
+        permission_mode=None,
+        client_input_id="",
+    ):
         params = {}
         if project_id:
             params["projectId"] = project_id
@@ -54,12 +67,23 @@ class ServiceBackend:
             params["workspace"] = str(workspace)
         if permission_mode:
             params["permissionMode"] = permission_mode
+        if client_input_id:
+            params["clientInputId"] = client_input_id
         return self.service.thread_start(params)
 
-    def turn_start(self, thread_id, text, attachments=()):
+    def turn_start(
+        self,
+        thread_id,
+        text,
+        attachments=(),
+        *,
+        client_input_id="",
+    ):
         params = {"threadId": thread_id, "input": text}
         if attachments:
             params["attachments"] = list(attachments)
+        if client_input_id:
+            params["clientInputId"] = client_input_id
         return self.service.turn_start(params)
 
     def turn_steer(self, thread_id, turn_id, text, *, client_input_id=""):
@@ -195,5 +219,115 @@ def test_chatgpt_remote_cannot_bypass_real_loom_approval_boundary(tmp_path: Path
         assert calls == ["approved-only"]
         assert completed["thread"]["status"] == "completed"
         assert completed["pendingApproval"] is None
+    finally:
+        runtime.close()
+
+
+def test_remote_task_start_replays_durably_after_adapter_recreation(tmp_path: Path):
+    home = tmp_path / "home"
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    store = FileAgentSessionStore(home)
+    platform = ScriptedPlatform([ModelResponse(text="completed exactly once")])
+    runtime = DurableAgentRuntime(
+        platform=platform,
+        store=store,
+        tools=ToolRegistry(),
+        default_permission_mode=PermissionMode.APPROVAL,
+        auto_drain_queue=False,
+    )
+    service = LoomAppServerService(
+        runtime=runtime,
+        store=store,
+        model="test-model",
+        default_workspace=workspace,
+        default_permission_mode=PermissionMode.APPROVAL,
+    )
+    try:
+        project = service.project_create({"root": str(workspace)})["project"]
+        first_remote = RemoteControlClient(ServiceBackend(service))
+        first = first_remote.task_start(
+            prompt="execute once",
+            project_id=project["id"],
+            idempotency_key="remote-restart-key",
+        )
+        wait_until(
+            lambda: first["threadId"] not in service.runtime_status()["activeThreadIds"]
+        )
+
+        # A fresh channel adapter has an empty in-process replay cache. The
+        # authoritative App Server ledger must still return the original work.
+        rejoined_service = LoomAppServerService(
+            runtime=runtime,
+            store=store,
+            model="test-model",
+            default_workspace=workspace,
+            default_permission_mode=PermissionMode.APPROVAL,
+        )
+        second_remote = RemoteControlClient(ServiceBackend(rejoined_service))
+        second = second_remote.task_start(
+            prompt="execute once",
+            project_id=project["id"],
+            idempotency_key="remote-restart-key",
+        )
+
+        assert second["threadId"] == first["threadId"]
+        assert second["turn"]["id"] == first["turn"]["id"]
+        assert second["createdThread"] is False
+        assert second["idempotentReplay"] is True
+        assert len(platform.responses) == 0
+        snapshot = rejoined_service.thread_read({"threadId": first["threadId"]})
+        assert len(snapshot["turns"]) == 1
+        assert snapshot["finalText"] == "completed exactly once"
+    finally:
+        runtime.close()
+
+
+def test_remote_retry_rechecks_current_permission_after_thread_replay(tmp_path: Path):
+    home = tmp_path / "home"
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    store = FileAgentSessionStore(home)
+    platform = ScriptedPlatform([])
+    runtime = DurableAgentRuntime(
+        platform=platform,
+        store=store,
+        tools=ToolRegistry(),
+        default_permission_mode=PermissionMode.APPROVAL,
+        auto_drain_queue=False,
+    )
+    service = LoomAppServerService(
+        runtime=runtime,
+        store=store,
+        model="test-model",
+        default_workspace=workspace,
+        default_permission_mode=PermissionMode.APPROVAL,
+    )
+    try:
+        project = service.project_create({"root": str(workspace)})["project"]
+        created = service.thread_start(
+            {
+                "projectId": project["id"],
+                "permissionMode": "approval",
+                "clientInputId": "remote-permission-replay-key",
+            }
+        )
+        thread_id = created["thread"]["id"]
+
+        runtime.set_permission_mode(thread_id, PermissionMode.FULL_ACCESS)
+
+        remote = RemoteControlClient(ServiceBackend(service))
+        with pytest.raises(RemoteControlError) as exc_info:
+            remote.task_start(
+                prompt="must not inherit local escalation",
+                project_id=project["id"],
+                idempotency_key="remote-permission-replay-key",
+            )
+
+        assert exc_info.value.code == "permission_denied"
+        snapshot = service.thread_read({"threadId": thread_id})
+        assert snapshot["thread"]["permissionMode"] == "full-access"
+        assert snapshot["turns"] == []
+        assert platform.responses == []
     finally:
         runtime.close()

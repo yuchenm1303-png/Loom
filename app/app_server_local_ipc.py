@@ -469,6 +469,7 @@ class LoomLocalAppServerClient:
         workspace: str | Path | None = None,
         project_id: str = "",
         permission_mode: str | None = None,
+        client_input_id: str = "",
     ) -> dict[str, Any]:
         if bool(workspace) == bool(project_id):
             raise ValueError("pass exactly one of workspace or project_id")
@@ -479,12 +480,23 @@ class LoomLocalAppServerClient:
         )
         if permission_mode:
             params["permissionMode"] = str(permission_mode)
+        if client_input_id:
+            params["clientInputId"] = str(client_input_id)
         return dict(self.request("thread/start", params))
 
-    def turn_start(self, thread_id: str, text: str, attachments=()) -> dict[str, Any]:
+    def turn_start(
+        self,
+        thread_id: str,
+        text: str,
+        attachments=(),
+        *,
+        client_input_id: str = "",
+    ) -> dict[str, Any]:
         params: dict[str, Any] = {"threadId": str(thread_id), "input": str(text)}
         if attachments:
             params["attachments"] = list(attachments)
+        if client_input_id:
+            params["clientInputId"] = str(client_input_id)
         return dict(self.request("turn/start", params))
 
     def turn_steer(

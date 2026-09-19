@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import io
 import json
 import queue
+import shutil
 import sys
+import time
 import threading
 import traceback
 import uuid
@@ -20,6 +23,7 @@ from app.agent_runtime.shell_environment import (
     build_environment_from_settings,
     set_default_environment_policy,
 )
+from app.app_server_idempotency import AppServerIdempotencyStore
 from app.app_server_protocol import (
     APPROVAL_DECISIONS,
     approval_request_from_event,
@@ -28,9 +32,11 @@ from app.app_server_protocol import (
 from app.projects import UNFILED, ProjectStore, ProjectStoreError
 from app.settings import LoomSettingsStore
 from app.attachments import (
+    ATTACHMENT_DIRNAME,
     MAX_ATTACHMENTS,
     MAX_FILE_BYTES,
     MAX_IMAGE_BYTES,
+    StagedAttachment,
     build_turn_content,
     stage_attachments,
 )
@@ -496,6 +502,91 @@ def _turn_records(session: Any, events: tuple[AgentEvent, ...]) -> list[dict[str
     return list(turns.values())
 
 
+
+def _canonical_request_hash(payload: dict[str, Any]) -> str:
+    encoded = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _with_idempotent_replay(result: dict[str, Any], replayed: bool) -> dict[str, Any]:
+    output = copy.deepcopy(result)
+    output["idempotentReplay"] = bool(replayed)
+    return output
+
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        while True:
+            chunk = handle.read(1024 * 1024)
+            if not chunk:
+                break
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _staged_payload(staged: tuple[StagedAttachment, ...]) -> list[dict[str, Any]]:
+    output: list[dict[str, Any]] = []
+    for item in staged:
+        record = dict(item.as_record())
+        record["sha256"] = _file_sha256(item.path)
+        output.append(record)
+    return output
+
+
+def _restore_staged_attachments(
+    workspace: str | Path,
+    records: Any,
+) -> tuple[StagedAttachment, ...]:
+    if not isinstance(records, list):
+        raise RuntimeError("durable turn replay is missing its staged attachment manifest")
+    root = Path(workspace).expanduser().resolve()
+    restored: list[StagedAttachment] = []
+    for record in records:
+        if not isinstance(record, dict):
+            raise RuntimeError("durable staged attachment record is invalid")
+        relative = str(record.get("path") or "").strip()
+        if not relative:
+            raise RuntimeError("durable staged attachment path is missing")
+        target = (root / relative).resolve()
+        try:
+            target.relative_to(root)
+        except ValueError as exc:
+            raise RuntimeError("durable staged attachment escaped the workspace") from exc
+        if not target.is_file():
+            raise RuntimeError(f"durable staged attachment is missing: {relative}")
+        expected_size = int(record.get("size") or 0)
+        if target.stat().st_size != expected_size:
+            raise RuntimeError(f"durable staged attachment size changed: {relative}")
+        expected_digest = str(record.get("sha256") or "").strip()
+        if not expected_digest or _file_sha256(target) != expected_digest:
+            raise RuntimeError(f"durable staged attachment content changed: {relative}")
+        kind = str(record.get("kind") or "")
+        if kind not in {"image", "file"}:
+            raise RuntimeError("durable staged attachment kind is invalid")
+        restored.append(
+            StagedAttachment(
+                name=str(record.get("name") or target.name),
+                path=target,
+                relative_path=relative,
+                size=expected_size,
+                kind=kind,
+            )
+        )
+    return tuple(restored)
+
+
+def _attachment_staging_directory(workspace: str | Path, turn_id: str) -> Path:
+    root = Path(workspace).expanduser().resolve()
+    return root.joinpath(*ATTACHMENT_DIRNAME.split("/")) / (str(turn_id)[:8] or "turn")
+
+
 class LoomAppServerService:
     """Protocol-facing adapter over the existing Loom AgentRuntime.
 
@@ -529,7 +620,9 @@ class LoomAppServerService:
         runtime_home = self.store.root.parents[1]
         self.projects = ProjectStore(runtime_home)
         self.settings = LoomSettingsStore(runtime_home)
+        self.idempotency = AppServerIdempotencyStore(runtime_home)
         self._guard = threading.RLock()
+        self._idempotency_guard = threading.RLock()
         self._active_sessions: set[str] = set()
         self._task_errors: dict[str, str] = {}
         self._notification_listeners: list[NotificationListener] = []
@@ -810,12 +903,55 @@ class LoomAppServerService:
         mode = PermissionMode(
             str(params.get("permissionMode") or self.default_permission_mode.value)
         )
-        session = self.runtime.create_session(
-            AGENT_FAST_ROLE.role_id,
-            workspace_dir=root,
-            permission_mode=mode,
+        client_input_id = str(params.get("clientInputId") or "").strip()
+        if not client_input_id:
+            session = self.runtime.create_session(
+                AGENT_FAST_ROLE.role_id,
+                workspace_dir=root,
+                permission_mode=mode,
+            )
+            return {"thread": self._record(session, active=False)}
+
+        request_hash = _canonical_request_hash(
+            {
+                "workspace": str(root),
+                "permissionMode": mode.value,
+            }
         )
-        return {"thread": self._record(session, active=False)}
+        with self._idempotency_guard:
+            entry, replayed = self.idempotency.reserve(
+                "thread/start",
+                client_input_id,
+                request_hash,
+                lambda: str(uuid.uuid4()),
+            )
+            if entry.result is not None:
+                return _with_idempotent_replay(entry.result, True)
+
+            session_path = self.store.session_dir(entry.object_id) / "session.json"
+            if session_path.is_file():
+                session = self.runtime.get_session(entry.object_id)
+            else:
+                try:
+                    session = self.runtime.create_session(
+                        AGENT_FAST_ROLE.role_id,
+                        workspace_dir=root,
+                        permission_mode=mode,
+                        session_id=entry.object_id,
+                    )
+                except FileExistsError:
+                    # Another App Server adapter sharing this authoritative
+                    # ledger may have completed the same reservation between
+                    # the snapshot check and create_reserved().
+                    session = self.runtime.get_session(entry.object_id)
+
+            result = {"thread": self._record(session, active=False)}
+            self.idempotency.complete(
+                "thread/start",
+                client_input_id,
+                result=result,
+            )
+            return _with_idempotent_replay(result, replayed)
 
     def thread_resume(self, params: dict[str, Any]) -> dict[str, Any]:
         session_id = self._required_text(params, "threadId")
@@ -882,10 +1018,14 @@ class LoomAppServerService:
         return {"thread": record, "forkedFromId": source.session_id}
 
     def turn_start(self, params: dict[str, Any]) -> dict[str, Any]:
+        client_input_id = str(params.get("clientInputId") or "").strip()
+        if not client_input_id:
+            return self._turn_start_unkeyed(params)
+        return self._turn_start_idempotent(params, client_input_id)
+
+    def _turn_start_unkeyed(self, params: dict[str, Any]) -> dict[str, Any]:
         session_id = self._required_text(params, "threadId")
         attachments = params.get("attachments") or ()
-        # Text is required only when nothing is attached: "look at this" with a
-        # screenshot and no words is a complete request.
         text = str(params.get("input") or "").strip()
         if not text and not attachments:
             raise ValueError("turn/start requires input")
@@ -895,9 +1035,6 @@ class LoomAppServerService:
         if self._is_active(session_id):
             raise RuntimeError("thread already has an active turn")
         turn_id = str(uuid.uuid4())
-
-        # Staging happens on the calling thread so a rejected attachment fails
-        # the request instead of surfacing later as a mid-turn error.
         staged = stage_attachments(
             attachments,
             workspace=session.workspace_dir,
@@ -909,11 +1046,169 @@ class LoomAppServerService:
             ),
         )
         content = build_turn_content(text, staged)
-
         self._launch(
             session_id,
             lambda: self.runtime.start_turn(session_id, content, turn_id=turn_id),
         )
+        return self._turn_start_result(session_id, turn_id, staged)
+
+    def _turn_start_idempotent(
+        self,
+        params: dict[str, Any],
+        client_input_id: str,
+    ) -> dict[str, Any]:
+        session_id = self._required_text(params, "threadId")
+        attachments = params.get("attachments") or ()
+        text = str(params.get("input") or "").strip()
+        if not text and not attachments:
+            raise ValueError("turn/start requires input")
+
+        request_hash = _canonical_request_hash(
+            {
+                "threadId": session_id,
+                "input": text,
+                "attachments": attachments,
+            }
+        )
+        with self._idempotency_guard:
+            entry, replayed = self.idempotency.reserve(
+                "turn/start",
+                client_input_id,
+                request_hash,
+                lambda: str(uuid.uuid4()),
+            )
+            turn_id = entry.object_id
+
+            if entry.result is not None:
+                if self._turn_started_durably(session_id, turn_id):
+                    return _with_idempotent_replay(entry.result, True)
+                if self._is_active(session_id):
+                    if self._wait_for_turn_started(session_id, turn_id):
+                        return _with_idempotent_replay(entry.result, True)
+                    raise RuntimeError(
+                        "prepared turn replay conflicts with another active app-server operation"
+                    )
+                return self._resume_prepared_turn(
+                    session_id,
+                    client_input_id,
+                    entry,
+                )
+
+            session = self._load(session_id)
+            if session.status is AgentStatus.WAITING_APPROVAL:
+                self.idempotency.release_reserved("turn/start", client_input_id)
+                raise RuntimeError("resolve the pending approval before starting another turn")
+            if self._is_active(session_id):
+                self.idempotency.release_reserved("turn/start", client_input_id)
+                raise RuntimeError("thread already has an active turn")
+
+            staging_dir = _attachment_staging_directory(session.workspace_dir, turn_id)
+            if staging_dir.exists():
+                shutil.rmtree(staging_dir, ignore_errors=True)
+
+            try:
+                staged = stage_attachments(
+                    attachments,
+                    workspace=session.workspace_dir,
+                    turn_id=turn_id,
+                    allow_images=self.vision,
+                )
+                content = build_turn_content(text, staged)
+                result = self._turn_start_result(session_id, turn_id, staged)
+                payload = {
+                    "text": text,
+                    "previousTurnId": session.current_turn_id or "",
+                    "staged": _staged_payload(staged),
+                }
+                self.idempotency.prepare(
+                    "turn/start",
+                    client_input_id,
+                    result=result,
+                    payload=payload,
+                )
+                self._launch(
+                    session_id,
+                    lambda: self.runtime.start_turn(
+                        session_id,
+                        content,
+                        turn_id=turn_id,
+                    ),
+                )
+            except Exception:
+                if not self._turn_started_durably(session_id, turn_id):
+                    self.idempotency.discard("turn/start", client_input_id)
+                    if staging_dir.exists():
+                        shutil.rmtree(staging_dir, ignore_errors=True)
+                raise
+
+            return _with_idempotent_replay(result, replayed)
+
+    def _resume_prepared_turn(
+        self,
+        session_id: str,
+        client_input_id: str,
+        entry: Any,
+    ) -> dict[str, Any]:
+        if entry.result is None or entry.payload is None:
+            raise RuntimeError("durable turn replay is missing prepared state")
+        session = self._load(session_id)
+        if session.status is AgentStatus.WAITING_APPROVAL:
+            raise RuntimeError("prepared turn replay conflicts with a pending approval")
+        previous_turn_id = str(entry.payload.get("previousTurnId") or "").strip()
+        current_turn_id = str(session.current_turn_id or "").strip()
+        if current_turn_id not in {previous_turn_id, entry.object_id}:
+            raise RuntimeError(
+                "prepared turn replay conflicts with newer thread state"
+            )
+
+        staged = _restore_staged_attachments(
+            session.workspace_dir,
+            entry.payload.get("staged"),
+        )
+        content = build_turn_content(
+            str(entry.payload.get("text") or ""),
+            staged,
+        )
+        self._launch(
+            session_id,
+            lambda: self.runtime.start_turn(
+                session_id,
+                content,
+                turn_id=entry.object_id,
+            ),
+        )
+        return _with_idempotent_replay(entry.result, True)
+
+    def _wait_for_turn_started(
+        self,
+        session_id: str,
+        turn_id: str,
+        *,
+        timeout_seconds: float = 2.0,
+    ) -> bool:
+        deadline = time.monotonic() + max(0.05, float(timeout_seconds))
+        while time.monotonic() < deadline:
+            if self._turn_started_durably(session_id, turn_id):
+                return True
+            time.sleep(0.01)
+        return self._turn_started_durably(session_id, turn_id)
+
+    def _turn_started_durably(self, session_id: str, turn_id: str) -> bool:
+        try:
+            events = self.store.events(session_id)
+        except Exception:
+            return False
+        return any(
+            event.kind is AgentEventKind.TURN_STARTED and event.turn_id == turn_id
+            for event in events
+        )
+
+    @staticmethod
+    def _turn_start_result(
+        session_id: str,
+        turn_id: str,
+        staged: tuple[StagedAttachment, ...],
+    ) -> dict[str, Any]:
         return {
             "turn": {
                 "id": turn_id,
@@ -1017,11 +1312,17 @@ class LoomAppServerService:
                 with self._guard:
                     self._active_sessions.discard(session_id)
 
-        threading.Thread(
+        worker = threading.Thread(
             target=runner,
             name=f"loom-app-{session_id[:8]}-{uuid.uuid4().hex[:6]}",
             daemon=True,
-        ).start()
+        )
+        try:
+            worker.start()
+        except Exception:
+            with self._guard:
+                self._active_sessions.discard(session_id)
+            raise
 
     @staticmethod
     def _required_text(params: dict[str, Any], key: str) -> str:
@@ -1046,6 +1347,13 @@ class LoomAppServerService:
             return
 
         if kind is AgentEventKind.TURN_STARTED:
+            try:
+                self.idempotency.complete_object("turn/start", event.turn_id)
+            except Exception:
+                # The Runtime event remains authoritative even if replay-ledger
+                # housekeeping fails. Never turn a started user task into a
+                # runtime failure because auxiliary metadata could not update.
+                pass
             self._notify(
                 "turn/started",
                 {
@@ -1413,9 +1721,14 @@ class LoomRpcController:
                     "rename": True,
                     "remove": True,
                     "threadStart": True,
+                    "threadStartClientInputId": True,
                 },
                 "settings": {"get": True, "set": True},
-                "turns": {"start": True, "interrupt": True},
+                "turns": {
+                    "start": True,
+                    "interrupt": True,
+                    "clientInputId": True,
+                },
                 "approvals": True,
                 "approvalProtocol": {
                     "requestTransport": "correlatedNotification",
