@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import Any, Callable, TextIO
 
 from app.ai import ReasoningRequest
+from app.ai.model_selection_store import ModelSelectionStore
+from app.ai.model_store import ModelConfigStore, model_id_from_selection
 from app.agent_runtime import AgentEvent, AgentEventKind, AgentStatus, PermissionMode
 from app.agent_runtime.tools import ToolExposure, ToolRegistry
 from app.attachments import MAX_ATTACHMENTS, MAX_FILE_BYTES, MAX_IMAGE_BYTES
@@ -486,6 +488,16 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
             subscribe(provider_listener)
             setattr(self.runtime, "_provider_streaming_enabled", True)
 
+    def _persist_model_selection(self, selection: str) -> None:
+        value = str(selection or "").strip()
+        if not value:
+            return
+        runtime_home = self.store.root.parents[1]
+        model_store = ModelConfigStore(runtime_home)
+        model_id = model_id_from_selection(value)
+        model_store.set_active(model_id)
+        ModelSelectionStore(runtime_home).set(value)
+
     def _model_runtime_patch(self) -> dict[str, Any]:
         settings = self.settings_store.snapshot()
         attachments_enabled = settings.get("capabilities", {}).get("attachments", True) is not False
@@ -548,6 +560,7 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
             self.runtime.reasoning = reasoning
             self.runtime.reasoning_capability = capability
 
+        self._persist_model_selection(str(params.get("selection") or ""))
         updated = self._model_runtime_patch()
         self._notify(
             "runtime/updated",
