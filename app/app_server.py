@@ -902,7 +902,11 @@ class LoomAppServerService:
             attachments,
             workspace=session.workspace_dir,
             turn_id=turn_id,
-            allow_images=bool(getattr(session, "model_vision", self.vision)),
+            allow_images=(
+                bool(getattr(session, "model_vision", self.vision))
+                if str(getattr(session, "model", "") or "").strip()
+                else bool(self.vision)
+            ),
         )
         content = build_turn_content(text, staged)
 
