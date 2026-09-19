@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ctypes
 import io
+import os
 import platform
 import threading
 import time
@@ -9,6 +10,15 @@ import uuid
 from collections import OrderedDict
 from typing import Protocol
 
+from .computer_semantics import (
+    DEFAULT_BEST_EFFORT_DEADLINE_MS,
+    DEFAULT_REQUIRED_DEADLINE_MS,
+    MAX_BEST_EFFORT_DEADLINE_MS,
+    MAX_REQUIRED_DEADLINE_MS,
+    SemanticLayer,
+    SemanticLayerProvider,
+    SemanticState,
+)
 from .computer_types import (
     ComputerAction,
     ComputerActionType,
@@ -22,6 +32,67 @@ from .computer_types import (
 )
 
 
+#: Semantic-layer request modes accepted by :meth:`observe_layered`.
+SEMANTICS_REQUIRED = "required"
+SEMANTICS_BEST_EFFORT = "best_effort"
+SEMANTICS_SKIP = "skip"
+
+#: Budget for a single native UIA operation on one already-resolved wrapper.
+#: Physical input is always available as a fallback, so waiting longer than this
+#: buys nothing: it only delays the route that was going to work anyway.
+NATIVE_INVOKE_DEADLINE_MS = 1500
+
+
+def _initialize_com_apartment() -> None:
+    """Pre-initialize COM on the semantic worker thread.
+
+    comtypes initializes the apartment lazily on first use, so this is an
+    optimization rather than a requirement; the provider treats a failure here
+    as non-fatal.
+    """
+
+    import comtypes
+
+    comtypes.CoInitializeEx()
+
+
+def _host_process_ids() -> frozenset[int]:
+    """Processes whose windows are Loom's own user interface.
+
+    The desktop app passes its pid when it launches the agent server. Without it
+    this returns empty and self-observation is simply not detected, which is the
+    pre-existing behaviour rather than a failure.
+    """
+
+    raw = str(os.environ.get("LOOM_DESKTOP_HOST_PID") or "").strip()
+    pids: set[int] = set()
+    for part in raw.replace(";", ",").split(","):
+        part = part.strip()
+        if part.isdigit():
+            pids.add(int(part))
+    return frozenset(pids)
+
+
+def _warm_uia_client() -> None:
+    """Build the UI Automation client once, before any caller is waiting.
+
+    Importing pywinauto pulls in comtypes and the UIAutomationClient typelib and
+    constructs the UIA COM client: a few hundred milliseconds, paid once per
+    process, and long enough to blow an observation budget and be mistaken for an
+    unresponsive window.
+
+    This deliberately touches nothing on the desktop. Warmup owns the single
+    worker while it runs, so any real work here would be paid by the first real
+    caller instead of saving it - and UIA calls that look harmless are not:
+    enumerating the eleven top-level windows of an ordinary desktop through
+    ``Desktop.windows()`` measured 70 seconds on the machine this was written on.
+    """
+
+    from pywinauto import Desktop
+
+    Desktop(backend="uia")
+
+
 class ComputerOperator(Protocol):
     name: str
 
@@ -30,6 +101,12 @@ class ComputerOperator(Protocol):
 
     def observe(self) -> ComputerObservation:
         ...
+
+    #: Operators may additionally implement
+    #: ``observe_layered(*, semantics: str, deadline_ms: float)`` to let callers
+    #: say how much they need the expensive semantic layer. It is intentionally
+    #: not part of this Protocol: the store detects it and falls back to
+    #: ``observe`` so embedders with a simpler operator keep working.
 
     def execute(self, action: ComputerAction, observation: ComputerObservation) -> ComputerExecution:
         ...
@@ -121,9 +198,14 @@ class PyWinAutoWindowsOperator:
     def __init__(
         self,
         *,
-        max_controls: int = 300,
+        # Sized to what consumers actually render: the single-loop prompt shows
+        # 40 advisory hints and the observe tool exposes at most 80. Walking 300
+        # controls to display 40 was paying a cross-process round trip per node
+        # for results nobody reads.
+        max_controls: int = 80,
         max_windows: int = 48,
         capture_profile: str = DEFAULT_CAPTURE_PROFILE,
+        semantics: SemanticLayerProvider | None = None,
     ) -> None:
         if not windows_computer_available():
             raise RuntimeError(
@@ -134,6 +216,12 @@ class PyWinAutoWindowsOperator:
         self.dpi_awareness = enable_per_monitor_v2_dpi_awareness()
         self._lock = threading.RLock()
         self._control_maps: OrderedDict[str, dict[str, object]] = OrderedDict()
+        # Every UI Automation call, including native invokes on wrappers, is
+        # dispatched here: one COM apartment, one stuck thread at worst, and a
+        # deadline on a boundary whose latency belongs to the app being driven.
+        self.host_pids = _host_process_ids()
+        self.semantics = semantics or SemanticLayerProvider(initializer=_initialize_com_apartment)
+        self.semantics.warmup(_warm_uia_client)
         self.capture_profile = DEFAULT_CAPTURE_PROFILE
         self.set_capture_profile(capture_profile)
 
@@ -156,13 +244,16 @@ class PyWinAutoWindowsOperator:
             "backend": self.name,
             "platform": platform.system(),
             "dpi_awareness": self.dpi_awareness,
-            "observation": "active-window screenshot + window list + UI Automation controls",
+            "observation": "active-window screenshot + window list, with a deadline-bounded UI Automation layer",
             "pointer_fallback": "Win32 virtual-desktop coordinates",
             "keyboard_fallback": "pyautogui hotkeys + SendInput Unicode text",
             "secure_desktop": False,
             "elevated_window_access": "subject to Windows UIPI/integrity boundaries",
             "capture_profile": self.capture_profile,
             "capture_media_type": profile["media_type"],
+            "semantic_layer": (
+                provider.status() if (provider := getattr(self, "semantics", None)) is not None else {}
+            ),
         }
 
     def _encode(self, image) -> tuple[bytes, str, dict[str, object]]:
@@ -202,6 +293,31 @@ class PyWinAutoWindowsOperator:
         )
 
     def observe(self) -> ComputerObservation:
+        """Observe the desktop with the default (best-effort) semantic layer."""
+
+        return self.observe_layered()
+
+    def observe_layered(
+        self,
+        *,
+        semantics: str = SEMANTICS_BEST_EFFORT,
+        deadline_ms: float = 0.0,
+    ) -> ComputerObservation:
+        """Capture the desktop in cost-ordered layers.
+
+        The frame (geometry plus screenshot) and the top-level window list are
+        cheap, bounded by Loom's own code, and are what every caller actually
+        needs; they are always produced. The semantic layer is expensive, its
+        latency belongs to the application being driven rather than to Loom, and
+        every model-facing path treats it as advisory - so it is requested with
+        a deadline and skipped rather than waited on.
+
+        ``semantics`` selects the mode: ``skip`` never asks, ``best_effort``
+        asks with a UI-latency budget, and ``required`` (the legacy grounder
+        path, which cannot promote a click without a control map) waits longer
+        but is still bounded.
+        """
+
         import win32api
         import win32gui
         from PIL import ImageGrab
@@ -256,12 +372,22 @@ class PyWinAutoWindowsOperator:
                 )
 
             observation_id = uuid.uuid4().hex
+            self_window = self._is_host_window(hwnd)
             uia_started = time.perf_counter()
-            controls, mapping = self._collect_uia_controls(hwnd, observation_id)
+            # Loom's own window is the one case where semantics are guaranteed
+            # worthless: it is Loom's UI, not the task's, and its renderer is
+            # busiest exactly while a turn is streaming - which is when this runs.
+            layer = self._semantic_layer(
+                hwnd,
+                semantics=SEMANTICS_SKIP if self_window else semantics,
+                deadline_ms=deadline_ms,
+                skip_reason="loom_own_window" if self_window else "not_requested",
+            )
             uia_enumeration_ms = round((time.perf_counter() - uia_started) * 1000.0, 3)
-            self._control_maps[observation_id] = mapping
-            while len(self._control_maps) > 4:
-                self._control_maps.popitem(last=False)
+            if layer.mapping:
+                self._control_maps[observation_id] = layer.mapping
+                while len(self._control_maps) > 4:
+                    self._control_maps.popitem(last=False)
 
             return ComputerObservation(
                 observation_id=observation_id,
@@ -270,10 +396,12 @@ class PyWinAutoWindowsOperator:
                 image_media_type=media_type,
                 active_window=active,
                 windows=windows,
-                controls=controls,
+                controls=layer.controls,
+                semantics={**layer.to_dict(), "requested": str(semantics)},
                 metadata={
                     "dpi_awareness": self.dpi_awareness,
                     "control_backend": "uia",
+                    "self_window": self_window,
                     "timings_ms": {
                         "geometry": geometry_ms,
                         "screenshot_capture_and_encode": capture_ms,
@@ -361,6 +489,9 @@ class PyWinAutoWindowsOperator:
     def close(self) -> None:
         with self._lock:
             self._control_maps.clear()
+        provider = getattr(self, "semantics", None)
+        if provider is not None:
+            provider.close()
 
     def _coordinate_action(
         self,
@@ -463,35 +594,72 @@ class PyWinAutoWindowsOperator:
             if index + 1 < count:
                 time.sleep(0.08)
 
+    def _dispatch_uia(self, call, *, deadline_ms: float, default=None):
+        """Run one wrapper operation on the semantic worker, or give up quickly.
+
+        Native invokes are cross-process COM calls just like enumeration, so they
+        can hang for exactly the same reason and must share the same apartment
+        and the same deadline. When no provider is configured (direct unit-test
+        construction of the operator) the call runs inline, because the point of
+        the indirection is the deadline, not the indirection itself.
+        """
+
+        provider = getattr(self, "semantics", None)
+        if provider is None:
+            try:
+                return call()
+            except Exception:
+                return default
+        result = provider.run(call, deadline_ms=deadline_ms)
+        return result.value if result.ok else default
+
     def _native_click(self, wrapper, *, double: bool, right: bool) -> bool:
         if double or right:
             return False
-        try:
+
+        def invoke_once() -> bool:
             invoke = getattr(wrapper, "invoke", None)
             if callable(invoke):
                 invoke()
                 return True
-        except Exception:
-            pass
-        return False
+            return False
+
+        return bool(
+            self._dispatch_uia(
+                invoke_once,
+                deadline_ms=NATIVE_INVOKE_DEADLINE_MS,
+                default=False,
+            )
+        )
 
     def _native_type(self, wrapper, text: str) -> bool:
-        for name in ("set_edit_text", "set_text"):
-            try:
-                method = getattr(wrapper, name, None)
-                if callable(method):
-                    method(text)
-                    return True
-            except Exception:
-                continue
-        return False
+        def set_text_once() -> bool:
+            for name in ("set_edit_text", "set_text"):
+                try:
+                    method = getattr(wrapper, name, None)
+                    if callable(method):
+                        method(text)
+                        return True
+                except Exception:
+                    continue
+            return False
+
+        return bool(
+            self._dispatch_uia(
+                set_text_once,
+                deadline_ms=NATIVE_INVOKE_DEADLINE_MS,
+                default=False,
+            )
+        )
 
     def _wrapper_center(self, wrapper, frame: ComputerFrame) -> ComputerPoint | None:
-        try:
+        def measure() -> ComputerPoint:
             rect = wrapper.rectangle()
-            return ComputerRect(int(rect.left), int(rect.top), int(rect.right), int(rect.bottom)).center_in(frame)
-        except Exception:
-            return None
+            return ComputerRect(
+                int(rect.left), int(rect.top), int(rect.right), int(rect.bottom)
+            ).center_in(frame)
+
+        return self._dispatch_uia(measure, deadline_ms=NATIVE_INVOKE_DEADLINE_MS, default=None)
 
     def _switch_window(self, action: ComputerAction) -> ComputerExecution:
         import pywintypes
@@ -540,8 +708,75 @@ class PyWinAutoWindowsOperator:
             raise RuntimeError(f"Windows refused to activate window: {action.window_id}")
         return ComputerExecution(ok=True, message=f"window switched via {methods[-1]}", action=action, native=True)
 
-    def _collect_uia_controls(self, hwnd: int, observation_id: str) -> tuple[tuple[ComputerControl, ...], dict[str, object]]:
+    def _is_host_window(self, hwnd: int) -> bool:
+        """Whether this window is part of Loom's own user interface."""
+
+        if not self.host_pids:
+            return False
+        try:
+            import win32process
+
+            return int(win32process.GetWindowThreadProcessId(hwnd)[1]) in self.host_pids
+        except Exception:
+            return False
+
+    def _semantic_layer(
+        self,
+        hwnd: int,
+        *,
+        semantics: str,
+        deadline_ms: float,
+        skip_reason: str = "not_requested",
+    ) -> SemanticLayer:
+        """Ask for this window's controls without letting the loop hang on them."""
+
+        mode = str(semantics or SEMANTICS_BEST_EFFORT).strip().casefold()
+        if mode == SEMANTICS_SKIP:
+            return SemanticLayer(state=SemanticState.SKIPPED, reason=skip_reason)
+        if mode == SEMANTICS_REQUIRED:
+            budget = float(deadline_ms or DEFAULT_REQUIRED_DEADLINE_MS)
+            ceiling = float(MAX_REQUIRED_DEADLINE_MS)
+        else:
+            mode = SEMANTICS_BEST_EFFORT
+            budget = float(deadline_ms or DEFAULT_BEST_EFFORT_DEADLINE_MS)
+            ceiling = float(MAX_BEST_EFFORT_DEADLINE_MS)
+
+        window_key = self._window_id(hwnd)
+        # The walk's own budget is whatever the provider decided to wait, so a
+        # window that earned a wider deadline also gets to use it rather than
+        # truncating itself at the default.
+        effective = self.semantics.deadline_for(window_key, budget, ceiling_ms=ceiling)
+        return self.semantics.collect(
+            lambda: self._walk_uia_controls(hwnd, budget_ms=effective),
+            deadline_ms=budget,
+            ceiling_ms=ceiling,
+            window_key=window_key,
+        )
+
+    def _walk_uia_controls(
+        self,
+        hwnd: int,
+        *,
+        budget_ms: float,
+    ) -> tuple[tuple[ComputerControl, ...], dict[str, object], bool]:
+        """Walk one window's UIA subtree, stopping when the budget runs out.
+
+        Every property read here is a cross-process COM round trip whose cost is
+        set by the target application, so the walk checks its own budget between
+        controls and returns what it has. Cheap discriminators (visibility, then
+        geometry) are read before the expensive string properties so a truncated
+        walk still yields usable controls rather than half-filled ones.
+
+        The returned flag reports truncation, which the caller surfaces as a
+        ``partial`` semantic state rather than silently shipping a short list.
+        """
+
         from pywinauto import Desktop
+
+        started = time.perf_counter()
+
+        def exhausted() -> bool:
+            return (time.perf_counter() - started) * 1000.0 >= budget_ms
 
         controls: list[ComputerControl] = []
         mapping: dict[str, object] = {}
@@ -549,14 +784,21 @@ class PyWinAutoWindowsOperator:
             window = Desktop(backend="uia").window(handle=hwnd)
             descendants = window.descendants()
         except Exception:
-            return (), {}
+            return (), {}, False
 
-        for index, wrapper in enumerate(descendants[: self.max_controls]):
+        truncated = False
+        for index, wrapper in enumerate(descendants):
+            if len(controls) >= self.max_controls:
+                truncated = index + 1 < len(descendants)
+                break
+            if exhausted():
+                truncated = True
+                break
             try:
-                rect = wrapper.rectangle()
-                candidate = ComputerRect(int(rect.left), int(rect.top), int(rect.right), int(rect.bottom))
                 if not wrapper.is_visible():
                     continue
+                rect = wrapper.rectangle()
+                candidate = ComputerRect(int(rect.left), int(rect.top), int(rect.right), int(rect.bottom))
                 info = getattr(wrapper, "element_info", None)
                 name = str(getattr(info, "name", "") or getattr(wrapper, "window_text", lambda: "")())
                 control_type = str(getattr(info, "control_type", "") or wrapper.friendly_class_name())
@@ -576,7 +818,7 @@ class PyWinAutoWindowsOperator:
                 )
             )
             mapping[control_id] = wrapper
-        return tuple(controls), mapping
+        return tuple(controls), mapping, truncated
 
     def _enumerate_windows(self, foreground_hwnd: int) -> tuple[ComputerWindow, ...]:
         import win32gui

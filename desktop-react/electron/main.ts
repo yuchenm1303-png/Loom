@@ -493,6 +493,10 @@ class LoomRpcProcess {
         PYTHONUTF8: "1",
         PYTHONPATH: appendPythonPath(process.env.PYTHONPATH),
         LOOM_DESKTOP_PYTHON: python,
+        // Computer Use observes the foreground window, which is sometimes Loom
+        // itself. Knowing which process owns Loom's own windows lets it say so
+        // instead of silently automating its own UI.
+        LOOM_DESKTOP_HOST_PID: String(process.pid),
         LOOM_API_KEY: spec.apiKey,
         LOOM_BROWSER_EXTENSION_TOKEN: ensureBrowserBridgeToken(),
       },

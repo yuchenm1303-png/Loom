@@ -11,6 +11,7 @@ from .browser_runtime_v1 import BrowserRuntime
 from .computer_alibaba import AlibabaGUIPlusGroundingBackend, GUI_PLUS_GROUNDER_ALIASES
 from .computer_diagnostics import ComputerDiagnostics
 from .computer_grounding import ComputerGroundingBackend, UITarsGroundingBackend
+from .computer_semantics import SemanticState
 from .computer_transient import ComputerTransientInputPlatform
 from .computer_types import (
     ComputerAction,
@@ -21,7 +22,13 @@ from .computer_types import (
     ComputerPrediction,
     ComputerTrajectoryEntry,
 )
-from .computer_windows import ComputerOperator, PyWinAutoWindowsOperator, windows_computer_available
+from .computer_windows import (
+    SEMANTICS_BEST_EFFORT,
+    SEMANTICS_REQUIRED,
+    ComputerOperator,
+    PyWinAutoWindowsOperator,
+    windows_computer_available,
+)
 from .memory_store import redact_secrets
 
 
@@ -101,7 +108,15 @@ class ComputerSessionStore:
         self.revision_history_limit = max(2, int(revision_history_limit))
         self.settle_delay = max(0.0, float(settle_delay))
         self.diagnostics = diagnostics or ComputerDiagnostics()
-        self._lock = threading.RLock()
+        # Two different resources were previously guarded by one lock: the single
+        # physical desktop (which genuinely must serialize input injection) and
+        # this store's revision bookkeeping. Holding the same lock across the
+        # observation I/O turned one slow desktop call into a freeze of the whole
+        # subsystem, including status and cancellation. Input is exclusive and
+        # brief; reading state is short; observing holds neither while it waits.
+        # Lock order, where both are needed, is always _input_lock -> _state_lock.
+        self._input_lock = threading.RLock()
+        self._state_lock = threading.RLock()
         self._revision = 0
         self._latest_owner = ""
         self._latest: ComputerObservation | None = None
@@ -112,31 +127,67 @@ class ComputerSessionStore:
             lambda: deque(maxlen=self.trajectory_limit)
         )
 
-    def observe(self, owner_session_id: str) -> ComputerStateSnapshot:
+    def _capture(self, *, semantics: str) -> ComputerObservation:
+        """Capture one observation, asking for the semantic layer by purpose.
+
+        Operators that predate layered observation keep working: they simply
+        produce whatever their single ``observe`` produces.
+        """
+
+        layered = getattr(self.operator, "observe_layered", None)
+        if callable(layered):
+            observation = layered(semantics=semantics)
+        else:
+            observation = self.operator.observe()
+        self._log_semantics(observation)
+        return observation
+
+    def _log_semantics(self, observation: ComputerObservation) -> None:
+        """Make a degraded semantic layer greppable in the event stream.
+
+        The state also rides along inside every logged observation, but the
+        question being asked after a bad run is "was Loom waiting on something?",
+        and that should not require digging through an observation payload.
+        """
+
+        info = dict(getattr(observation, "semantics", None) or {})
+        state = str(info.get("state") or "")
+        if not state or state == SemanticState.READY.value:
+            return
+        self.diagnostics.emit("semantics.degraded", **info)
+
+    def observe(
+        self,
+        owner_session_id: str,
+        *,
+        semantics: str = SEMANTICS_BEST_EFFORT,
+    ) -> ComputerStateSnapshot:
         owner = self._owner(owner_session_id)
         operation_id = self.diagnostics.operation_id()
         started = time.perf_counter()
-        with self._lock:
-            self.diagnostics.emit("observe.started", operation_id=operation_id, owner=owner)
-            try:
-                observation = self.operator.observe()
+        self.diagnostics.emit("observe.started", operation_id=operation_id, owner=owner)
+        try:
+            # Deliberately outside every lock: this is I/O against applications
+            # Loom does not control, and nothing else in the store may wait on it.
+            observation = self._capture(semantics=semantics)
+            with self._state_lock:
                 snapshot = self._publish(owner, observation)
-                self._log_observation(operation_id, "observed", snapshot, started)
-                return snapshot
-            except Exception as exc:
-                self._log_failure("observe.failed", operation_id, started, exc)
-                raise
+            self._log_observation(operation_id, "observed", snapshot, started)
+            return snapshot
+        except Exception as exc:
+            self._log_failure("observe.failed", operation_id, started, exc)
+            raise
 
     def latest(self, owner_session_id: str) -> ComputerStateSnapshot:
         owner = self._owner(owner_session_id)
-        with self._lock:
+        with self._state_lock:
             if self._latest is None or self._latest_owner != owner:
                 raise RuntimeError("no current Computer Use observation for this Loom session")
             return ComputerStateSnapshot(self._revision, self._latest)
 
     def ensure_revision(self, owner_session_id: str, expected_revision: int) -> ComputerStateSnapshot:
         owner = self._owner(owner_session_id)
-        with self._lock:
+        with self._state_lock:
             revision = int(expected_revision)
             if self._latest is not None and self._latest_owner == owner and revision == self._revision:
                 return ComputerStateSnapshot(self._revision, self._latest)
@@ -176,7 +227,7 @@ class ComputerSessionStore:
         owner = self._owner(owner_session_id)
         operation_id = self.diagnostics.operation_id()
         started = time.perf_counter()
-        with self._lock:
+        with self._input_lock:
             self.diagnostics.emit(
                 "action.started",
                 operation_id=operation_id,
@@ -219,7 +270,14 @@ class ComputerSessionStore:
         if action.type in {ComputerActionType.FINISH, ComputerActionType.CALL_USER}:
             after = before
         else:
-            after = self._publish(owner, self.operator.observe())
+            # Post-action verification reads two things from this observation:
+            # whether the pixels changed and whether the foreground window
+            # changed. Neither needs the semantic layer, so it is requested at
+            # best effort and never waited on - this observation used to pay the
+            # full enumeration cost of a window nobody was going to query.
+            observation = self._capture(semantics=SEMANTICS_BEST_EFFORT)
+            with self._state_lock:
+                after = self._publish(owner, observation)
         verification = self._verify(before, after, action, execution)
         self._trajectory[owner].append(
             ComputerTrajectoryEntry(
@@ -241,7 +299,7 @@ class ComputerSessionStore:
             raise RuntimeError("Computer Use visual grounding backend is not configured")
         operation_id = self.diagnostics.operation_id()
         started = time.perf_counter()
-        with self._lock:
+        with self._input_lock:
             self.diagnostics.emit(
                 "step.started",
                 operation_id=operation_id,
@@ -261,7 +319,13 @@ class ComputerSessionStore:
         operation_id: str,
         started: float,
     ) -> ComputerStepOutcome:
-        before = self._publish(owner, self.operator.observe())
+        # The grounder path is the only consumer that cannot do its job without a
+        # control map: _promote_click_to_uia turns a predicted point into a native
+        # invoke target. It therefore asks for semantics explicitly, and is still
+        # bounded - an unavailable layer degrades this step to physical input.
+        observation = self._capture(semantics=SEMANTICS_REQUIRED)
+        with self._state_lock:
+            before = self._publish(owner, observation)
         self._log_observation(operation_id, "before", before, started)
         trajectory: Sequence[ComputerTrajectoryEntry] = tuple(self._trajectory[owner])
         grounder_started = time.perf_counter()
@@ -324,7 +388,9 @@ class ComputerSessionStore:
         execution = self.operator.execute(action, before.observation)
         if self.settle_delay and action.type is not ComputerActionType.WAIT:
             time.sleep(self.settle_delay)
-        after = self._publish(owner, self.operator.observe())
+        observation = self._capture(semantics=SEMANTICS_BEST_EFFORT)
+        with self._state_lock:
+            after = self._publish(owner, observation)
         verification = self._verify(before, after, action, execution)
         if target_label:
             verification["target_label"] = target_label
@@ -512,7 +578,7 @@ class ComputerSessionStore:
 
     def clear_owner(self, owner_session_id: str) -> None:
         owner = self._owner(owner_session_id)
-        with self._lock:
+        with self._state_lock:
             self._trajectory.pop(owner, None)
             self._history.pop(owner, None)
             if self._latest_owner == owner:
@@ -521,7 +587,7 @@ class ComputerSessionStore:
                 self._revision += 1
 
     def close(self) -> None:
-        with self._lock:
+        with self._state_lock:
             self._trajectory.clear()
             self._history.clear()
             self._latest_owner = ""

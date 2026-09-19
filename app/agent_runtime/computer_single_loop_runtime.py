@@ -29,6 +29,32 @@ _POINTER_ACTIONS = frozenset(
     }
 )
 _REPEAT_PIXEL_TOLERANCE = 10
+
+# Windows refuses foreground changes driven by synthetic input, so these
+# combinations reliably inject and just as reliably do nothing: the switcher
+# needs a real, physically held modifier. They are refused rather than executed
+# because "the keys went in" would otherwise be reported as a successful action,
+# and the model would burn a step plus a full re-observation discovering that
+# the foreground window never moved. switch_window is the supported intent and
+# has a real success check, so the refusal points there.
+_WINDOW_SWITCH_HOTKEYS = (
+    frozenset({"alt", "tab"}),
+    frozenset({"alt", "shift", "tab"}),
+    frozenset({"alt", "esc"}),
+    frozenset({"alt", "escape"}),
+    frozenset({"win", "tab"}),
+    frozenset({"winleft", "tab"}),
+    frozenset({"winright", "tab"}),
+    frozenset({"super", "tab"}),
+    frozenset({"command", "tab"}),
+)
+
+
+def _window_switch_hotkey(action: ComputerAction) -> bool:
+    if action.type not in {ComputerActionType.HOTKEY, ComputerActionType.KEY}:
+        return False
+    keys = frozenset(str(key or "").strip().casefold() for key in action.keys)
+    return keys in _WINDOW_SWITCH_HOTKEYS
 _VISUAL_SAMPLE_SIZE = (128, 72)
 _VISUAL_PIXEL_DELTA = 12
 _VISUAL_CHANGE_RATIO = 0.0015
@@ -269,6 +295,7 @@ def _safe_snapshot_data(snapshot: ComputerStateSnapshot) -> dict[str, object]:
         "frame": observation.frame.to_dict(),
         "windows_total": len(observation.windows),
         "controls_total": len(observation.controls),
+        "semantics": dict(observation.semantics),
     }
 
 
@@ -355,6 +382,15 @@ def _model_observation_text(snapshot: ComputerStateSnapshot) -> str:
             "Foreground window: "
             f"id={active.window_id}; title={active.title!r}; process={active.process_name!r}."
         )
+    if observation.metadata.get("self_window"):
+        # Without this the model sees a screenshot of a chat client and has to
+        # infer that the chat client is Loom, that Loom is not the task, and that
+        # the task's application is one of the background windows.
+        lines.append(
+            "This foreground window is Loom's own interface, not the task's application. "
+            "Acting on it would automate the assistant rather than the task. Bring the target "
+            "application forward with switch_window using an id from the list below, then continue there."
+        )
     background = [window for window in observation.windows if not window.foreground][:12]
     if background:
         lines.append(
@@ -379,6 +415,16 @@ def _model_observation_text(snapshot: ComputerStateSnapshot) -> str:
     if hints:
         lines.append("Advisory UIA hints:")
         lines.extend(hints)
+    else:
+        # Say why the hints are missing rather than letting the model infer that
+        # the window is empty. Hints are deadline-bounded, so "not collected" is
+        # a routine outcome on a busy desktop and must not look like evidence.
+        state = str(observation.semantics.get("state") or "")
+        if state in {"unavailable", "partial", "skipped"}:
+            lines.append(
+                "No UIA hints this step (semantic layer was not collected within its latency budget). "
+                "This says nothing about the window's contents: read the screenshot and act on visual coordinates."
+            )
     return "\n".join(lines)
 
 
@@ -655,6 +701,26 @@ class SingleLoopComputerRuntime(ComputerUseRuntime):
                 str(action_payload.get("text") or "")
             )
         action = ComputerAction.from_dict(action_payload)
+
+        if _window_switch_hotkey(action):
+            self._mark_visual_feedback(context)
+            known = [
+                f"{window.window_id} ({window.process_name})"
+                for window in before.observation.windows[:12]
+            ]
+            return ToolResult(
+                False,
+                "Not executed: Windows ignores synthetic Alt+Tab style switching, so this would inject "
+                "keys and leave the foreground window unchanged. Use switch_window with the id of the "
+                "target window instead"
+                + (f"; known windows: {', '.join(known)}." if known else "."),
+                {
+                    "action": action.safe_dict(),
+                    "effect": "not_applicable",
+                    "effect_reason": "synthetic_window_switch_hotkey_refused",
+                    "observation": _safe_snapshot_data(before),
+                },
+            )
 
         if self._should_block_repeat(context, action, before):
             self._mark_visual_feedback(context)

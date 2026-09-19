@@ -228,6 +228,11 @@ class ComputerObservation:
     controls: tuple[ComputerControl, ...] = ()
     metadata: Mapping[str, Any] = field(default_factory=dict)
     image_media_type: str = "image/png"
+    #: How the semantic (UI Automation) layer of this observation was obtained:
+    #: state, reason, timing. Controls are advisory and deadline-bounded, so an
+    #: empty ``controls`` tuple is a normal outcome rather than a failure, and
+    #: consumers need this field to tell "nothing there" from "did not wait".
+    semantics: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         observation_id = str(self.observation_id or "").strip()
@@ -251,6 +256,7 @@ class ComputerObservation:
         object.__setattr__(self, "windows", windows)
         object.__setattr__(self, "controls", controls)
         object.__setattr__(self, "metadata", dict(self.metadata))
+        object.__setattr__(self, "semantics", dict(self.semantics or {}))
 
     @property
     def image_sha256(self) -> str:
@@ -317,6 +323,7 @@ class ComputerObservation:
             "controls": controls,
             "controls_total": len(self.controls),
             "controls_truncated": len(self.controls) > len(controls),
+            "semantics": clean_json(dict(self.semantics)),
             "metadata": clean_json(dict(self.metadata)),
         }
 
