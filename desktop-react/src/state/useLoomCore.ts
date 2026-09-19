@@ -359,12 +359,14 @@ export function useLoom() {
   const addModel = useCallback(async (input: AddModelInput) => {
     setModelBusy(true);
     try {
-      const result = await requireBridge().addModel<ModelRestartResult>({ ...input });
+      const result = active?.thread.id
+        ? await requireBridge().addModel<ModelRestartResult>(active.thread.id, { ...input })
+        : await requireBridge().addModel<ModelRestartResult>({ ...input });
       await applyModelRestart(result);
     } finally {
       setModelBusy(false);
     }
-  }, [applyModelRestart]);
+  }, [active?.thread.id, applyModelRestart]);
 
   const deleteModel = useCallback(async (selection: string) => {
     setModelBusy(true);
