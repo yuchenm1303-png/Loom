@@ -161,6 +161,13 @@ def session_to_dict(session: AgentSession) -> dict[str, Any]:
         "current_turn_id": session.current_turn_id,
         "forked_from_id": session.forked_from_id,
         "communication_language": session.communication_language,
+        "model_selection": session.model_selection,
+        "model": session.model,
+        "model_provider": session.model_provider,
+        "model_base_url": session.model_base_url,
+        "model_vision": session.model_vision,
+        "reasoning_kind": session.reasoning_kind,
+        "reasoning_value": session.reasoning_value,
         "messages": [_message_to_dict(message) for message in session.messages],
         "pending_tool_calls": [_tool_call_to_dict(call) for call in session.pending_tool_calls],
         "pending_step_id": session.pending_step_id,
@@ -191,6 +198,13 @@ def session_from_dict(payload: dict[str, Any]) -> AgentSession:
         current_turn_id=str(payload.get("current_turn_id") or ""),
         forked_from_id=str(payload.get("forked_from_id") or ""),
         communication_language=str(payload.get("communication_language") or "auto"),
+        model_selection=str(payload.get("model_selection") or ""),
+        model=str(payload.get("model") or ""),
+        model_provider=str(payload.get("model_provider") or ""),
+        model_base_url=str(payload.get("model_base_url") or ""),
+        model_vision=bool(payload.get("model_vision", True)),
+        reasoning_kind=str(payload.get("reasoning_kind") or ""),
+        reasoning_value=str(payload.get("reasoning_value") or ""),
         messages=[
             _message_from_dict(dict(item))
             for item in payload.get("messages", [])
