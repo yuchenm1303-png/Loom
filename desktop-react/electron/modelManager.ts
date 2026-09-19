@@ -92,6 +92,9 @@ export const PRIMARY_SELECTION = "builtin:minimax";
 export class DesktopModelManager {
   private currentSpec: ModelLaunchSpec | null = null;
   private recentModels: string[] = [];
+  private registryCache: RegistrySnapshot | null = null;
+  private metadataCache: ModelMetadataSnapshot | null = null;
+  private launchCache = new Map<string, ModelLaunchSpec>();
 
   constructor(private readonly repoRoot: string) {}
 
@@ -108,9 +111,16 @@ export class DesktopModelManager {
     return this.currentSpec;
   }
 
-  registry(): RegistrySnapshot {
+  private metadata(forceRefresh = false): ModelMetadataSnapshot {
+    if (!forceRefresh && this.metadataCache) return this.metadataCache;
+    this.metadataCache = this.runAdmin<ModelMetadataSnapshot>("metadata", {});
+    return this.metadataCache;
+  }
+
+  registry(forceRefresh = false): RegistrySnapshot {
+    if (!forceRefresh && this.registryCache) return this.registryCache;
     const registry = this.runBridge<RegistrySnapshot>("list", {});
-    const metadata = this.runAdmin<ModelMetadataSnapshot>("metadata", {});
+    const metadata = this.metadata(forceRefresh);
     const declared = new Map(metadata.profiles.map((profile) => [profile.selection, profile]));
     const profiles = registry.profiles.map((profile) => {
       const safe = declared.get(profile.selection);
@@ -118,11 +128,12 @@ export class DesktopModelManager {
     });
     const primary = profiles.find((profile) => profile.selection === registry.primary.selection)
       ?? { ...registry.primary, vision: registry.primary.vision ?? true };
-    return { ...registry, primary, profiles };
+    this.registryCache = { ...registry, primary, profiles };
+    return this.registryCache;
   }
 
-  snapshot(): ModelSnapshot {
-    const registry = this.registry();
+  snapshot(forceRefresh = false): ModelSnapshot {
+    const registry = this.registry(forceRefresh);
     const currentProfile = this.currentSpec
       ? registry.profiles.find((profile) => profile.selection === this.currentSpec?.selection)
       : undefined;
@@ -148,20 +159,30 @@ export class DesktopModelManager {
   }
 
   resolve(selection: string): ModelLaunchSpec {
+    const cached = this.launchCache.get(selection);
+    if (cached) return cached;
     const resolved = this.runBridge<ModelLaunchSpec>("resolve", { selection });
-    const metadata = this.runAdmin<ModelMetadataSnapshot>("metadata", {});
-    const safe = metadata.profiles.find((profile) => profile.selection === selection);
-    return { ...resolved, vision: safe?.vision ?? resolved.vision ?? true };
+    const safe = this.metadata().profiles.find((profile) => profile.selection === selection);
+    const next = { ...resolved, vision: safe?.vision ?? resolved.vision ?? true };
+    this.launchCache.set(selection, next);
+    return next;
   }
 
   add(input: AddModelInput): ModelProfile {
-    return this.runBridge<ModelProfile>("save", input as unknown as Record<string, unknown>);
+    const profile = this.runBridge<ModelProfile>("save", input as unknown as Record<string, unknown>);
+    this.registryCache = null;
+    this.metadataCache = null;
+    this.launchCache.delete(profile.selection);
+    return profile;
   }
 
   update(input: EditModelInput): ModelProfile {
     const selection = String(input.selection || "").trim();
     if (!selection) throw new Error("Model profile is required");
     const profile = this.runAdmin<ModelProfile>("update", input as unknown as Record<string, unknown>);
+    this.registryCache = null;
+    this.metadataCache = null;
+    this.launchCache.delete(selection);
     if (this.currentSpec?.selection === selection) {
       this.currentSpec = this.resolve(selection);
     }
@@ -178,12 +199,26 @@ export class DesktopModelManager {
     const value = String(selection || "").trim();
     if (!value) throw new Error("Model profile is required");
     const registry = this.runBridge<RegistrySnapshot>("delete", { selection: value });
+    this.registryCache = null;
+    this.metadataCache = null;
+    this.launchCache.delete(value);
     if (this.currentSpec?.selection === value) this.currentSpec = null;
     return registry;
   }
 
+  markActive(selection: string): void {
+    if (!this.registryCache) return;
+    const active = this.registryCache.profiles.find((profile) => profile.selection === selection);
+    this.registryCache = { ...this.registryCache, activeModelId: active?.id ?? null };
+  }
+
+  persistActive(selection: string): void {
+    this.runBridge<{ selection: string }>("persist-active", { selection });
+  }
+
   setActive(selection: string): void {
-    this.runBridge<RegistrySnapshot>("set-active", { selection });
+    this.markActive(selection);
+    this.persistActive(selection);
   }
 
   setReasoning(kind: string, value: string): ModelReasoningState {
@@ -196,6 +231,17 @@ export class DesktopModelManager {
     });
     if (!profile.reasoning) throw new Error("Selected model does not expose reasoning controls");
     this.currentSpec = { ...current, reasoning: profile.reasoning };
+    this.launchCache.set(current.selection, this.currentSpec);
+    if (this.registryCache) {
+      this.registryCache = {
+        ...this.registryCache,
+        profiles: this.registryCache.profiles.map((item) =>
+          item.selection === current.selection && item.model === current.model
+            ? { ...item, reasoning: profile.reasoning }
+            : item
+        ),
+      };
+    }
     return profile.reasoning;
   }
 
@@ -203,6 +249,7 @@ export class DesktopModelManager {
     const next = this.resolve(selection);
     this.rememberCurrentModel(next.model);
     this.currentSpec = next;
+    this.launchCache.set(selection, next);
     return next;
   }
 
@@ -235,7 +282,7 @@ export class DesktopModelManager {
   }
 
   private runBridge<T>(
-    command: "list" | "resolve" | "describe-model" | "save" | "delete" | "set-active" | "set-reasoning",
+    command: "list" | "resolve" | "describe-model" | "save" | "delete" | "set-active" | "persist-active" | "set-reasoning",
     payload: Record<string, unknown>,
   ): T {
     return this.runPythonBridge<T>("loom_model_bridge.py", command, payload);

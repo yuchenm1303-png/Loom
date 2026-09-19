@@ -6,8 +6,11 @@ from pathlib import Path
 from typing import Any, Callable, TextIO
 
 from app.ai import ReasoningRequest
+from app.ai.model_selection_store import ModelSelectionStore
+from app.ai.model_store import ModelConfigStore, model_id_from_selection
 from app.agent_runtime import AgentEvent, AgentEventKind, AgentStatus, PermissionMode
 from app.agent_runtime.tools import ToolExposure, ToolRegistry
+from app.attachments import MAX_ATTACHMENTS, MAX_FILE_BYTES, MAX_IMAGE_BYTES
 from app.runtime_model_switch import build_runtime_model_platform, validate_runtime_reasoning
 from app.settings import SETTINGS_UPDATE_PREFIX, LoomSettingsStore
 
@@ -485,6 +488,34 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
             subscribe(provider_listener)
             setattr(self.runtime, "_provider_streaming_enabled", True)
 
+    def _persist_model_selection(self, selection: str) -> None:
+        value = str(selection or "").strip()
+        if not value:
+            return
+        runtime_home = self.store.root.parents[1]
+        model_store = ModelConfigStore(runtime_home)
+        model_id = model_id_from_selection(value)
+        model_store.set_active(model_id)
+        ModelSelectionStore(runtime_home).set(value)
+
+    def _model_runtime_patch(self) -> dict[str, Any]:
+        settings = self.settings_store.snapshot()
+        attachments_enabled = settings.get("capabilities", {}).get("attachments", True) is not False
+        reasoning = getattr(self.runtime, "reasoning", None)
+        capability = getattr(self.runtime, "reasoning_capability", None)
+        return {
+            "model": self.model,
+            "attachments": {
+                "images": bool(self.vision and attachments_enabled),
+                "files": bool(attachments_enabled),
+                "maxCount": MAX_ATTACHMENTS,
+                "maxImageBytes": MAX_IMAGE_BYTES,
+                "maxFileBytes": MAX_FILE_BYTES,
+            },
+            "reasoning": reasoning.as_safe_dict() if reasoning is not None else None,
+            "reasoningCapability": dict(capability) if isinstance(capability, dict) else None,
+        }
+
     def runtime_set_model(self, params: dict[str, Any]) -> dict[str, Any]:
         blockers = self._model_change_blockers()
         if blockers:
@@ -529,7 +560,8 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
             self.runtime.reasoning = reasoning
             self.runtime.reasoning_capability = capability
 
-        updated = self.runtime_status()
+        self._persist_model_selection(str(params.get("selection") or ""))
+        updated = self._model_runtime_patch()
         self._notify(
             "runtime/updated",
             {
@@ -540,9 +572,7 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
         return updated
 
     def runtime_set_reasoning(self, params: dict[str, Any]) -> dict[str, Any]:
-        status = super().runtime_status()
-        active = list(status.get("activeThreadIds") or [])
-        if active:
+        if self._model_change_blockers():
             raise RuntimeError("finish or stop the current turn before changing reasoning")
 
         capability = getattr(self.runtime, "reasoning_capability", None)
@@ -566,7 +596,7 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
             )
 
         self.runtime.reasoning = reasoning
-        updated = self.runtime_status()
+        updated = self._model_runtime_patch()
         self._notify(
             "runtime/updated",
             {

@@ -792,9 +792,8 @@ def _delete(
     return _snapshot(store, reasoning_store, selection_store)
 
 
-def _set_active(
+def _persist_active(
     store: ModelConfigStore,
-    reasoning_store: ReasoningConfigStore,
     selection_store: ModelSelectionStore,
     payload: dict[str, Any],
 ) -> dict[str, Any]:
@@ -811,6 +810,16 @@ def _set_active(
             raise ValueError(f"unknown model selection: {selection!r}")
         store.set_active(saved.model_id)
     selection_store.set(selection)
+    return {"selection": selection}
+
+
+def _set_active(
+    store: ModelConfigStore,
+    reasoning_store: ReasoningConfigStore,
+    selection_store: ModelSelectionStore,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    _persist_active(store, selection_store, payload)
     return _snapshot(store, reasoning_store, selection_store)
 
 
@@ -845,10 +854,10 @@ def _set_reasoning(
 
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
-    commands = {"list", "resolve", "describe-model", "save", "delete", "set-active", "set-reasoning"}
+    commands = {"list", "resolve", "describe-model", "save", "delete", "set-active", "persist-active", "set-reasoning"}
     if len(args) != 1 or args[0] not in commands:
         sys.stderr.write(
-            "usage: loom_model_bridge.py {list|resolve|describe-model|save|delete|set-active|set-reasoning}\n"
+            "usage: loom_model_bridge.py {list|resolve|describe-model|save|delete|set-active|persist-active|set-reasoning}\n"
         )
         return 2
 
@@ -880,6 +889,8 @@ def main(argv: list[str] | None = None) -> int:
             result = _delete(store, reasoning_store, selection_store, payload)
         elif command == "set-active":
             result = _set_active(store, reasoning_store, selection_store, payload)
+        elif command == "persist-active":
+            result = _persist_active(store, selection_store, payload)
         else:
             result = _set_reasoning(store, reasoning_store, payload)
         _write({"ok": True, "result": result})

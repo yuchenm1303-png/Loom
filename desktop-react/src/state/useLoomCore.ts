@@ -289,7 +289,7 @@ export function useLoom() {
   }, [active?.thread.archived, active?.thread.id]);
 
   const applyModelRestart = useCallback(async (result: ModelRestartResult) => {
-    setRuntime(result.initialization.runtime ?? {});
+    setRuntime((current) => ({ ...current, ...(result.initialization.runtime ?? {}) }));
     setModels(result.models);
     if (result.hotSwitch) return;
     const preferredId = activeIdRef.current;
@@ -347,7 +347,7 @@ export function useLoom() {
     setModelBusy(true);
     try {
       const result = await requireBridge().setReasoning<ReasoningUpdateResult>(kind, value);
-      setRuntime(result.runtime ?? {});
+      setRuntime((current) => ({ ...current, ...(result.runtime ?? {}) }));
       setModels(result.models);
     } finally {
       setModelBusy(false);
@@ -375,7 +375,7 @@ export function useLoom() {
       const params = message.params ?? {};
       if (message.method === "runtime/updated") {
         const nextRuntime = params.runtime as InitializeResult["runtime"] | undefined;
-        if (nextRuntime) setRuntime(nextRuntime);
+        if (nextRuntime) setRuntime((current) => ({ ...current, ...nextRuntime }));
         return;
       }
 

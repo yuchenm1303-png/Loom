@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import threading
+from types import SimpleNamespace
+
 import pytest
 
 from app.ai import (
@@ -18,6 +21,8 @@ from app.ai import (
 from app.ai.model_store import ModelConfigStore
 from app.ai.reasoning_catalog import reasoning_capability, resolved_reasoning
 from app.ai.reasoning_store import ReasoningConfigStore
+import app.app_server_reasoning as app_server_reasoning
+from app.app_server_reasoning import ReasoningManagedLoomAppServerService
 from loom_app_server import _validate_reasoning_for_runtime
 from loom_model_bridge import _describe_model, _set_reasoning
 
@@ -202,3 +207,52 @@ def test_reasoning_preferences_are_scoped_to_connection_and_model(tmp_path) -> N
     assert second_before["reasoning"]["value"] == "medium"
     assert second["reasoning"]["value"] == "low"
     assert first_again["reasoning"]["value"] == "high"
+
+
+
+def test_hot_model_switch_returns_lightweight_runtime_patch(monkeypatch) -> None:
+    service = object.__new__(ReasoningManagedLoomAppServerService)
+    service._guard = threading.RLock()
+    service.model = "old-model"
+    service.vision = True
+    service.runtime = SimpleNamespace(
+        platform=object(),
+        reasoning=None,
+        reasoning_capability=None,
+        supports_vision=True,
+    )
+    service.settings_store = SimpleNamespace(
+        snapshot=lambda: {"capabilities": {"attachments": True}}
+    )
+    service._model_change_blockers = lambda: []
+    notifications: list[tuple[str, dict[str, object]]] = []
+    service._notify = lambda method, params: notifications.append((method, params))
+
+    platform = object()
+    monkeypatch.setattr(
+        app_server_reasoning,
+        "build_runtime_model_platform",
+        lambda **_kwargs: platform,
+    )
+    monkeypatch.setattr(
+        app_server_reasoning,
+        "validate_runtime_reasoning",
+        lambda **_kwargs: None,
+    )
+
+    result = service.runtime_set_model(
+        {
+            "provider": "openai-compatible",
+            "baseUrl": "https://example.invalid/v1",
+            "model": "new-model",
+            "apiKey": "secret",
+            "vision": False,
+        }
+    )
+
+    assert service.runtime.platform is platform
+    assert service.model == "new-model"
+    assert result["model"] == "new-model"
+    assert result["attachments"]["images"] is False
+    assert "capabilityStatus" not in result
+    assert notifications[-1][0] == "runtime/updated"

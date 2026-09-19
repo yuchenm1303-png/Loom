@@ -133,6 +133,25 @@ def test_builtin_deepseek_profiles_follow_official_model_discovery(tmp_path, mon
     )
 
 
+def test_persist_active_does_not_rebuild_remote_catalog(tmp_path, monkeypatch):
+    store = _store(tmp_path)
+    selection_store = ModelSelectionStore(tmp_path)
+
+    def fail_snapshot(*_args, **_kwargs):
+        raise AssertionError("persist-active must not rebuild the model snapshot")
+
+    monkeypatch.setattr(bridge, "_snapshot", fail_snapshot)
+
+    result = bridge._persist_active(
+        store,
+        selection_store,
+        {"selection": bridge.DEEPSEEK_SELECTION},
+    )
+
+    assert result == {"selection": bridge.DEEPSEEK_SELECTION}
+    assert selection_store.get() == bridge.DEEPSEEK_SELECTION
+
+
 def test_resolve_minimax_uses_official_key_even_when_relay_exists(tmp_path, monkeypatch):
     store = _store(tmp_path)
     reasoning_store = ReasoningConfigStore(tmp_path)
