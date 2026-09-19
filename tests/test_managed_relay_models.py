@@ -88,15 +88,49 @@ def test_managed_profiles_keep_minimax_official_and_relay_separate(tmp_path, mon
     assert by_model["custom-agent"]["baseUrl"] == bridge.MANAGED_RELAY_BASE_URL
 
 
-def test_unprovisioned_profiles_show_official_minimax_models_only(tmp_path, monkeypatch):
+def test_unprovisioned_profiles_show_builtin_minimax_and_deepseek_models(tmp_path, monkeypatch):
     store = _store(tmp_path)
     monkeypatch.setattr(bridge, "_credential_get", lambda _alias: None)
     monkeypatch.setattr(bridge, "_credential_set", lambda _alias, _value: None)
 
     profiles = bridge._managed_profiles(store, {"MINIMAX_API_KEY": "minimax-secret"})
+    by_model = {profile["model"]: profile for profile in profiles}
 
-    assert [profile["model"] for profile in profiles] == list(bridge.MINIMAX_MODEL_IDS)
-    assert all(profile["baseUrl"] == bridge.MINIMAX_BASE_URL for profile in profiles)
+    assert all(model in by_model for model in bridge.MINIMAX_MODEL_IDS)
+    assert all(model in by_model for model in bridge.DEEPSEEK_FALLBACK_MODEL_IDS)
+    assert all(by_model[model]["baseUrl"] == bridge.MINIMAX_BASE_URL for model in bridge.MINIMAX_MODEL_IDS)
+    assert all(by_model[model]["baseUrl"] == bridge.DEEPSEEK_BASE_URL for model in bridge.DEEPSEEK_FALLBACK_MODEL_IDS)
+    assert by_model[bridge.DEEPSEEK_DEFAULT_MODEL]["selection"] == bridge.DEEPSEEK_SELECTION
+
+
+def test_builtin_deepseek_profiles_follow_official_model_discovery(tmp_path, monkeypatch):
+    store = _store(tmp_path)
+    monkeypatch.setattr(bridge, "_deepseek_key", lambda _store, environ=None: "deepseek-secret")
+    monkeypatch.setattr(
+        bridge,
+        "_fetch_deepseek_model_ids",
+        lambda api_key, environ=None, timeout=3.5: [
+            "deepseek-flash",
+            "deepseek-v4-pro",
+            "deepseek-future",
+        ],
+    )
+    monkeypatch.setattr(bridge, "_managed_relay_key", lambda _store, environ=None, repo_root=None: "")
+
+    profiles = bridge._managed_profiles(store)
+    by_model = {profile["model"]: profile for profile in profiles}
+
+    assert by_model["deepseek-flash"]["selection"] == bridge.DEEPSEEK_SELECTION
+    assert by_model["deepseek-v4-pro"]["selection"] == "builtin:deepseek:deepseek-v4-pro"
+    assert by_model["deepseek-future"]["selection"] == "builtin:deepseek:deepseek-future"
+    assert all(
+        by_model[model]["baseUrl"] == bridge.DEEPSEEK_BASE_URL
+        for model in ("deepseek-flash", "deepseek-v4-pro", "deepseek-future")
+    )
+    assert all(
+        by_model[model]["kind"] == "builtin"
+        for model in ("deepseek-flash", "deepseek-v4-pro", "deepseek-future")
+    )
 
 
 def test_resolve_minimax_uses_official_key_even_when_relay_exists(tmp_path, monkeypatch):
@@ -114,6 +148,41 @@ def test_resolve_minimax_uses_official_key_even_when_relay_exists(tmp_path, monk
     assert resolved["baseUrl"] == bridge.MINIMAX_BASE_URL
     assert resolved["apiKey"] == "minimax-secret"
     assert resolved["provider"] == "openai-compatible"
+
+
+def test_resolve_deepseek_uses_official_key(tmp_path, monkeypatch):
+    store = _store(tmp_path)
+    reasoning_store = ReasoningConfigStore(tmp_path)
+    selection_store = ModelSelectionStore(tmp_path)
+
+    monkeypatch.setattr(bridge, "_deepseek_key", lambda _store, environ=None: "deepseek-secret")
+
+    resolved = bridge._resolve(store, reasoning_store, selection_store, bridge.DEEPSEEK_SELECTION)
+
+    assert resolved["name"] == "DeepSeek Flash"
+    assert resolved["model"] == bridge.DEEPSEEK_DEFAULT_MODEL
+    assert resolved["baseUrl"] == bridge.DEEPSEEK_BASE_URL
+    assert resolved["apiKey"] == "deepseek-secret"
+    assert resolved["provider"] == "openai-compatible"
+    assert resolved["reasoning"]["value"] == "high"
+
+
+def test_saved_deepseek_connection_is_promoted_to_builtin_credential(tmp_path, monkeypatch):
+    model_secrets: dict[str, str] = {}
+    builtin_secrets: dict[str, str] = {}
+    store = _store_with_secrets(tmp_path, model_secrets)
+    store.save_model(
+        display_name="DeepSeek",
+        adapter="openai-compatible",
+        base_url=bridge.DEEPSEEK_BASE_URL,
+        model="deepseek-flash",
+        api_key="deepseek-secret",
+    )
+    monkeypatch.setattr(bridge, "_credential_get", lambda alias: builtin_secrets.get(alias))
+    monkeypatch.setattr(bridge, "_credential_set", lambda alias, value: builtin_secrets.__setitem__(alias, value))
+
+    assert bridge._deepseek_key(store) == "deepseek-secret"
+    assert builtin_secrets[bridge._DEEPSEEK_CREDENTIAL_ALIAS] == "deepseek-secret"
 
 
 def test_resolve_cqu_uses_managed_relay_credential(tmp_path, monkeypatch):
