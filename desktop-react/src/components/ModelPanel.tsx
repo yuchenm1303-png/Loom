@@ -60,7 +60,9 @@ function profileSubtitle(profile: ModelProfile): string {
 
 function builtinBadge(profile: ModelProfile): string | null {
   if (profile.kind !== "builtin") return null;
-  return profile.selection === "builtin:minimax" ? "Primary" : "Managed";
+  if (profile.selection === "builtin:minimax") return "Primary";
+  if (profile.selection.startsWith("builtin:deepseek")) return "DeepSeek";
+  return "Managed";
 }
 
 function activeReasoningOption(reasoning: ModelReasoningState): ModelReasoningOption | undefined {

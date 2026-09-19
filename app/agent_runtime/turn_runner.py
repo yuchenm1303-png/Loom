@@ -102,6 +102,7 @@ class TurnRunner:
 
                 recovery_instruction = ""
                 recovery_partial = ""
+                recovery_reasoning = ""
                 attempt = 0
                 while True:
                     sample_steering_revision = _consume_steering_for_sample(rt, session, token)
@@ -120,6 +121,7 @@ class TurnRunner:
                             request_messages.append(AIMessage(
                                 role=MessageRole.ASSISTANT,
                                 content=recovery_partial,
+                                reasoning=recovery_reasoning,
                             ))
                         request_messages.append(AIMessage(
                             role=MessageRole.SYSTEM,
@@ -188,6 +190,7 @@ class TurnRunner:
                             rt._release_step_context(step)
                             recovery_instruction = ""
                             recovery_partial = ""
+                            recovery_reasoning = ""
                             retry_sampling = True
                             break
                         except AIEmptyResponseError as exc:
@@ -222,6 +225,7 @@ class TurnRunner:
                             attempt += 1
                             recovery_instruction = "empty_response"
                             recovery_partial = ""
+                            recovery_reasoning = ""
                             retry_sampling = True
                             break
                         except AIResponseError as exc:
@@ -273,6 +277,7 @@ class TurnRunner:
                             else:
                                 recovery_instruction = "invalid_provider_response"
                             recovery_partial = ""
+                            recovery_reasoning = ""
                             retry_sampling = True
                             break
                         except AITransportError as exc:
@@ -296,6 +301,7 @@ class TurnRunner:
                                 rt._release_step_context(step)
                                 recovery_instruction = ""
                                 recovery_partial = ""
+                                recovery_reasoning = ""
                                 retry_sampling = True
                                 break
                             attempt = next_attempt
@@ -343,12 +349,15 @@ class TurnRunner:
                         )
                     attempt += 1
                     recovery_instruction = invalid_terminal
-                    recovery_partial = (
-                        str(response.text or "")
-                        if invalid_terminal.startswith("incomplete_finish:")
+                    resume_from_partial = (
+                        invalid_terminal.startswith("incomplete_finish:")
                         or invalid_terminal == "unfinished_terminal_text"
-                        else ""
                     )
+                    recovery_partial = str(response.text or "") if resume_from_partial else ""
+                    # The replayed assistant turn must carry the reasoning that
+                    # produced it, or a thinking-mode provider rejects the whole
+                    # request rather than continuing from it.
+                    recovery_reasoning = response.reasoning if resume_from_partial else ""
 
                 if rt._cancel_if_requested(session, token):
                     return rt._result(session)
@@ -386,7 +395,12 @@ class TurnRunner:
                         reason = response.finish_reason.casefold()
                         incomplete = reason not in _COMPLETE_FINISH_REASONS
                         calls = () if incomplete else response.tool_calls
-                        session.messages.append(AIMessage(role=MessageRole.ASSISTANT, content=response.text, tool_calls=calls))
+                        session.messages.append(AIMessage(
+                            role=MessageRole.ASSISTANT,
+                            content=response.text,
+                            tool_calls=calls,
+                            reasoning=response.reasoning,
+                        ))
                         rt._record(session, Event.MODEL_RESPONSE, data={
                             "step_id": step.step_id,
                             "text": response.text,
@@ -412,6 +426,7 @@ class TurnRunner:
                     rt._release_step_context(step)
                     recovery_instruction = ""
                     recovery_partial = ""
+                    recovery_reasoning = ""
                     continue
                 if incomplete:
                     raise RuntimeError(f"model response did not complete: {reason}")
