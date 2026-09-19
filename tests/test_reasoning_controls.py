@@ -68,6 +68,19 @@ def test_minimax_m3_hosted_catalog_uses_safe_thinking_modes() -> None:
     assert _option_values(capability) == ["disabled", "adaptive"]
 
 
+def test_deepseek_catalog_exposes_official_thinking_efforts() -> None:
+    capability = reasoning_capability(
+        model="deepseek-flash",
+        adapter="openai-compatible",
+        base_url="https://api.deepseek.com",
+    )
+
+    assert capability is not None
+    assert capability["kind"] == "openai-effort"
+    assert capability["defaultValue"] == "high"
+    assert _option_values(capability) == ["none", "low", "high", "max"]
+
+
 def test_gpt_5_6_sol_catalog_exposes_codex_advanced_efforts() -> None:
     capability = reasoning_capability(
         model="gpt-5.6-sol",
