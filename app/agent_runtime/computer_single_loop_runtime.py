@@ -724,8 +724,14 @@ class SingleLoopComputerRuntime(ComputerUseRuntime):
             )
 
         if action_name == "type" and "text" in action_payload:
+            # The session id is not optional here. Typed text is stashed by the
+            # platform that produced the response, and a session with its own
+            # model has its own platform wrapper; consuming without the session
+            # id looks the handle up in the default platform instead, never
+            # finds it, and fails every type action with "no longer available".
             action_payload["text"] = self.consume_computer_transient(
-                str(action_payload.get("text") or "")
+                str(action_payload.get("text") or ""),
+                context.session_id,
             )
         action = ComputerAction.from_dict(action_payload)
 
