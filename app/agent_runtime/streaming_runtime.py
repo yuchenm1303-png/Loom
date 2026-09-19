@@ -151,6 +151,7 @@ class StreamingAgentRuntime(CodeModeRuntime):
         self._stream_listeners: list[AgentStreamListener] = []
         self._stream_context = ContextVar("loom_stream_context", default=None)
         self._provider_streaming_enabled = False
+        self._streaming_platform_ids: set[int] = set()
 
         self._sticker_guard = threading.RLock()
         self._sticker_streams: dict[tuple[str, str, str], StickerStreamSanitizer] = {}
@@ -163,12 +164,23 @@ class StreamingAgentRuntime(CodeModeRuntime):
         super().__init__(*args, **kwargs)
         self._sticker_preferences = self._load_sticker_preferences()
 
-        enable = getattr(self.platform, "enable_streaming", None)
-        subscribe = getattr(self.platform, "subscribe_stream", None)
+        self._configure_streaming_platform(self.platform)
+
+    def _configure_streaming_platform(self, platform: Any) -> None:
+        identity = id(platform)
+        if identity in self._streaming_platform_ids:
+            return
+        enable = getattr(platform, "enable_streaming", None)
+        subscribe = getattr(platform, "subscribe_stream", None)
         if callable(enable) and callable(subscribe):
             enable()
             subscribe(self._on_provider_stream)
+            self._streaming_platform_ids.add(identity)
             self._provider_streaming_enabled = True
+
+    def set_session_model(self, session_id: str, platform: Any, *, reasoning=None) -> None:
+        super().set_session_model(session_id, platform, reasoning=reasoning)
+        self._configure_streaming_platform(platform)
 
     @property
     def provider_streaming_enabled(self) -> bool:
