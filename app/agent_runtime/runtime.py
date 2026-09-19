@@ -162,6 +162,9 @@ class AgentRuntime:
         self._session_platforms.pop(key, None)
         self._session_reasoning.pop(key, None)
 
+    def has_session_model(self, session_id: str) -> bool:
+        return str(session_id or "").strip() in self._session_platforms
+
     def platform_for_session(self, session_id: str) -> AgentModelPlatform:
         key = str(session_id or "").strip()
         return self._session_platforms.get(key, self.platform)
