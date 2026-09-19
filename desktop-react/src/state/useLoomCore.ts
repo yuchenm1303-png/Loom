@@ -68,6 +68,26 @@ function threadIsRunning(thread?: ThreadRecord | null): boolean {
   return thread?.status === "running" || thread?.status === "waiting_approval";
 }
 
+function modelsForThread(snapshot: ModelSnapshot | null, thread?: ThreadRecord | null): ModelSnapshot | null {
+  if (!snapshot || !thread?.modelSelection) return snapshot;
+  const profile = snapshot.profiles.find((candidate) => candidate.selection === thread.modelSelection);
+  if (!profile) return snapshot;
+  const reasoning = profile.reasoning && thread.reasoning
+    ? { ...profile.reasoning, ...thread.reasoning }
+    : profile.reasoning ?? null;
+  return {
+    ...snapshot,
+    current: {
+      ...profile,
+      model: thread.model || profile.model,
+      provider: thread.modelProvider || profile.adapter,
+      baseUrl: thread.modelBaseUrl || profile.baseUrl,
+      vision: thread.modelVision ?? profile.vision ?? true,
+      reasoning,
+    },
+  };
+}
+
 function turnStartFromRead(result: ThreadReadResult): number | null {
   if (!threadIsRunning(result.thread)) return null;
   const currentTurn = result.thread.currentTurnId
@@ -291,6 +311,11 @@ export function useLoom() {
   const applyModelRestart = useCallback(async (result: ModelRestartResult) => {
     setRuntime((current) => ({ ...current, ...(result.initialization.runtime ?? {}) }));
     setModels(result.models);
+    if (result.thread) {
+      const updated = result.thread;
+      setThreads((current) => current.map((thread) => (thread.id === updated.id ? updated : thread)));
+      setActive((current) => current && current.thread.id === updated.id ? { ...current, thread: updated } : current);
+    }
     if (result.hotSwitch) return;
     const preferredId = activeIdRef.current;
     const list = await refreshThreads();
@@ -304,24 +329,32 @@ export function useLoom() {
   }, [clearActive, openThread, refreshThreads]);
 
   const switchModelProfile = useCallback(async (selection: string) => {
+    if (!active?.thread.id) return;
     setModelBusy(true);
     try {
-      const result = await requireBridge().switchModelProfile<ModelRestartResult>(selection);
+      const result = await requireBridge().switchModelProfile<ModelRestartResult>(active.thread.id, selection);
       await applyModelRestart(result);
     } finally {
       setModelBusy(false);
     }
-  }, [applyModelRestart]);
+  }, [active?.thread.id, applyModelRestart]);
 
   const switchCurrentModel = useCallback(async (model: string) => {
+    if (!active?.thread.id) return;
+    const selection = active.thread.modelSelection || models?.current?.selection || "";
+    if (!selection) return;
     setModelBusy(true);
     try {
-      const result = await requireBridge().switchCurrentModel<ModelRestartResult>(model);
+      const result = await requireBridge().switchCurrentModel<ModelRestartResult>(
+        active.thread.id,
+        selection,
+        model,
+      );
       await applyModelRestart(result);
     } finally {
       setModelBusy(false);
     }
-  }, [applyModelRestart]);
+  }, [active?.thread.id, active?.thread.modelSelection, applyModelRestart, models?.current?.selection]);
 
   const addModel = useCallback(async (input: AddModelInput) => {
     setModelBusy(true);
@@ -344,15 +377,30 @@ export function useLoom() {
   }, [applyModelRestart]);
 
   const setReasoning = useCallback(async (kind: string, value: string) => {
+    if (!active?.thread.id) return;
+    const selection = active.thread.modelSelection || models?.current?.selection || "";
+    const model = active.thread.model || models?.current?.model || "";
+    if (!selection || !model) return;
     setModelBusy(true);
     try {
-      const result = await requireBridge().setReasoning<ReasoningUpdateResult>(kind, value);
+      const result = await requireBridge().setReasoning<ReasoningUpdateResult>(
+        active.thread.id,
+        selection,
+        model,
+        kind,
+        value,
+      );
       setRuntime((current) => ({ ...current, ...(result.runtime ?? {}) }));
       setModels(result.models);
+      if (result.thread) {
+        const updated = result.thread;
+        setThreads((current) => current.map((thread) => (thread.id === updated.id ? updated : thread)));
+        setActive((current) => current && current.thread.id === updated.id ? { ...current, thread: updated } : current);
+      }
     } finally {
       setModelBusy(false);
     }
-  }, []);
+  }, [active?.thread.id, active?.thread.model, active?.thread.modelSelection, models?.current?.model, models?.current?.selection]);
 
   const respondApproval = useCallback(async (item: TranscriptItem, approved: boolean) => {
     if (!active?.thread.id || !item.callId) return;
@@ -555,11 +603,16 @@ export function useLoom() {
     };
   }, [openThread, refreshModels, refreshProjects, refreshThreads]);
 
+  const activeModels = useMemo(
+    () => modelsForThread(models, active?.thread),
+    [active?.thread, models],
+  );
+
   return useMemo(() => ({
     connection,
     error,
     runtime,
-    models,
+    models: activeModels,
     modelBusy,
     threads,
     projects,
@@ -603,7 +656,7 @@ export function useLoom() {
     interrupt,
     items,
     modelBusy,
-    models,
+    activeModels,
     newThread,
     openThread,
     projects,
