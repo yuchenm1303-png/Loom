@@ -49,7 +49,7 @@ loom-app-server = "loom_app_server:main"
 loom-chatgpt-mcp = "loom_chatgpt_mcp:main"
 
 [tool.setuptools]
-py-modules = ["loom_cli", "loom_web", "loom_app_server", "loom_chatgpt_mcp"]
+py-modules = ["loom_cli", "loom_web", "loom_app_server", "loom_chatgpt_mcp", "loom_model_bridge"]
 
 [tool.setuptools.package-data]
 app = ["web_static/*"]
