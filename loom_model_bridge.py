@@ -634,17 +634,6 @@ def _base_profile_for_selection(store: ModelConfigStore, selection: str) -> dict
     deepseek_model = _deepseek_model_from_selection(requested)
     if deepseek_model:
         return _safe_deepseek(deepseek_model)
-    deepseek_model = _deepseek_model_from_selection(requested)
-    if deepseek_model:
-        api_key = _deepseek_key(store)
-        if api_key:
-            official_profile = _with_reasoning(_safe_deepseek(deepseek_model), reasoning_store)
-            return {**official_profile, "provider": "openai-compatible", "apiKey": api_key}
-        raise RuntimeError(
-            "DeepSeek API key is not configured. Set DEEPSEEK_API_KEY once or add a saved "
-            "DeepSeek connection using the official https://api.deepseek.com endpoint."
-        )
-
     managed_model = _managed_model_from_selection(requested)
     if managed_model:
         return _safe_managed(managed_model)
@@ -726,6 +715,17 @@ def _resolve(
         raise RuntimeError(
             "MiniMax API key is not configured. Set MINIMAX_API_KEY for the official "
             "MiniMax endpoint, or add a saved MiniMax connection."
+        )
+
+    deepseek_model = _deepseek_model_from_selection(requested)
+    if deepseek_model:
+        api_key = _deepseek_key(store)
+        if api_key:
+            official_profile = _with_reasoning(_safe_deepseek(deepseek_model), reasoning_store)
+            return {**official_profile, "provider": "openai-compatible", "apiKey": api_key}
+        raise RuntimeError(
+            "DeepSeek API key is not configured. Set DEEPSEEK_API_KEY once or add a saved "
+            "DeepSeek connection using the official https://api.deepseek.com endpoint."
         )
 
     managed_model = _managed_model_from_selection(requested)
