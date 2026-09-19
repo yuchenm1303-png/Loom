@@ -1,5 +1,6 @@
 import {
   ArrowLeft,
+  BrainCircuit,
   Check,
   ChevronRight,
   Cpu,
@@ -10,7 +11,6 @@ import {
   Server,
   SlidersHorizontal,
   Trash2,
-  Zap,
 } from "lucide-react";
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import type {
@@ -91,7 +91,6 @@ function ReasoningControl({
   const denominator = Math.max(1, reasoning.options.length - 1);
   const progress = reasoning.options.length <= 1 ? 0 : displayIndex / denominator;
   const progressPercent = Math.max(0, Math.min(100, progress * 100));
-  const strengthLevel = Math.max(0, Math.min(5, Math.round(progress * 5)));
   const sliderStyle = {
     "--reasoning-progress": `${progressPercent}%`,
     "--reasoning-unfilled": `${100 - progressPercent}%`,
@@ -122,37 +121,41 @@ function ReasoningControl({
   return (
     <section className={`reasoning-card ${locked ? "locked" : ""}`} aria-label="Reasoning strength">
       <div className="reasoning-head">
-        <span className="reasoning-icon"><Zap size={17} fill="currentColor" /></span>
+        <span className="reasoning-icon"><BrainCircuit size={16} strokeWidth={1.85} /></span>
         <div className="reasoning-heading-copy">
-          <strong>{displayOption?.label || reasoning.value}</strong>
-          <span>{modelName}</span>
+          <span className="reasoning-kicker">Reasoning effort</span>
+          <strong>{modelName}</strong>
         </div>
-        <button
-          type="button"
-          className="reasoning-reset"
-          disabled={locked || !canReset}
-          onClick={() => void reset()}
-          title="Reset reasoning"
-          aria-label="Reset reasoning"
-        >
-          <RotateCcw size={15} />
-        </button>
+        <div className="reasoning-head-actions">
+          <span className="reasoning-value">{displayOption?.label || reasoning.value}</span>
+          <button
+            type="button"
+            className="reasoning-reset"
+            disabled={locked || !canReset}
+            onClick={() => void reset()}
+            title="Reset reasoning"
+            aria-label="Reset reasoning"
+          >
+            <RotateCcw size={14} />
+          </button>
+        </div>
       </div>
 
-      <div
-        className="reasoning-slider-shell"
-        data-strength={strengthLevel}
-        style={sliderStyle}
-      >
+      <div className="reasoning-detail">
+        {displayOption?.description || "Choose how much reasoning time Loom should spend before answering."}
+      </div>
+
+      <div className="reasoning-slider-shell" style={sliderStyle}>
         <div className="reasoning-track-base" aria-hidden="true" />
-        <div className="reasoning-energy-track" aria-hidden="true">
-          <span className="reasoning-particle p1" />
-          <span className="reasoning-particle p2" />
-          <span className="reasoning-particle p3" />
-          <span className="reasoning-particle p4" />
-          <span className="reasoning-particle p5" />
-          <span className="reasoning-particle p6" />
-          <span className="reasoning-particle p7" />
+        <div className="reasoning-energy-track" aria-hidden="true" />
+        <div className="reasoning-step-points" aria-hidden="true">
+          {reasoning.options.map((option, index) => (
+            <span
+              key={option.value}
+              className={`reasoning-step-point ${index <= displayIndex ? "active" : ""} ${index === displayIndex ? "current" : ""}`}
+              style={{ left: `${reasoning.options.length <= 1 ? 50 : (index / denominator) * 100}%` }}
+            />
+          ))}
         </div>
         <input
           className="reasoning-range"
@@ -173,7 +176,12 @@ function ReasoningControl({
             }
           }}
         />
-        <span className="reasoning-thumb" aria-hidden="true" />
+        <span className="reasoning-thumb" aria-hidden="true"><span /></span>
+      </div>
+
+      <div className="reasoning-scale" aria-hidden="true">
+        <span>Faster</span>
+        <span>Deeper reasoning</span>
       </div>
 
       {running ? <div className="reasoning-locked-note">Stop the active turn to change reasoning.</div> : null}
@@ -483,14 +491,14 @@ export function ModelPanel({
 
       <div className="model-manager-actions">
         <button type="button" onClick={() => { setView("profiles"); setError(""); }} disabled={locked}>
-          <Cpu size={15} />
+          <span className="model-manager-action-icon"><Cpu size={15} /></span>
           <span><strong>Models</strong><small>{currentModel}</small></span>
-          <ChevronRight size={14} />
+          <ChevronRight className="model-manager-action-chevron" size={14} />
         </button>
         <button type="button" onClick={() => { setView("add"); setError(""); }} disabled={locked}>
-          <Plus size={15} />
+          <span className="model-manager-action-icon"><Plus size={15} /></span>
           <span><strong>Add API / model</strong><small>Custom endpoint + key</small></span>
-          <ChevronRight size={14} />
+          <ChevronRight className="model-manager-action-chevron" size={14} />
         </button>
       </div>
 
