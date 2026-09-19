@@ -485,6 +485,24 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
             subscribe(provider_listener)
             setattr(self.runtime, "_provider_streaming_enabled", True)
 
+    def _model_runtime_patch(self) -> dict[str, Any]:
+        settings = self.settings_store.snapshot()
+        attachments_enabled = settings.get("capabilities", {}).get("attachments", True) is not False
+        reasoning = getattr(self.runtime, "reasoning", None)
+        capability = getattr(self.runtime, "reasoning_capability", None)
+        return {
+            "model": self.model,
+            "attachments": {
+                "images": bool(self.vision and attachments_enabled),
+                "files": bool(attachments_enabled),
+                "maxCount": MAX_ATTACHMENTS,
+                "maxImageBytes": MAX_IMAGE_BYTES,
+                "maxFileBytes": MAX_FILE_BYTES,
+            },
+            "reasoning": reasoning.as_safe_dict() if reasoning is not None else None,
+            "reasoningCapability": dict(capability) if isinstance(capability, dict) else None,
+        }
+
     def runtime_set_model(self, params: dict[str, Any]) -> dict[str, Any]:
         blockers = self._model_change_blockers()
         if blockers:
@@ -529,7 +547,7 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
             self.runtime.reasoning = reasoning
             self.runtime.reasoning_capability = capability
 
-        updated = self.runtime_status()
+        updated = self._model_runtime_patch()
         self._notify(
             "runtime/updated",
             {
@@ -540,9 +558,7 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
         return updated
 
     def runtime_set_reasoning(self, params: dict[str, Any]) -> dict[str, Any]:
-        status = super().runtime_status()
-        active = list(status.get("activeThreadIds") or [])
-        if active:
+        if self._model_change_blockers():
             raise RuntimeError("finish or stop the current turn before changing reasoning")
 
         capability = getattr(self.runtime, "reasoning_capability", None)
@@ -566,7 +582,7 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
             )
 
         self.runtime.reasoning = reasoning
-        updated = self.runtime_status()
+        updated = self._model_runtime_patch()
         self._notify(
             "runtime/updated",
             {
