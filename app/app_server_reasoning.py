@@ -8,6 +8,7 @@ from typing import Any, Callable, TextIO
 from app.ai import ReasoningRequest
 from app.agent_runtime import AgentEvent, AgentEventKind, AgentStatus, PermissionMode
 from app.agent_runtime.tools import ToolExposure, ToolRegistry
+from app.attachments import MAX_ATTACHMENTS, MAX_FILE_BYTES, MAX_IMAGE_BYTES
 from app.runtime_model_switch import build_runtime_model_platform, validate_runtime_reasoning
 from app.settings import SETTINGS_UPDATE_PREFIX, LoomSettingsStore
 
