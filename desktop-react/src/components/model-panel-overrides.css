@@ -1,29 +1,45 @@
 .composer-popover.model-manager-popover {
-  width: min(370px, calc(100vw - 56px));
-  max-height: min(520px, calc(100vh - 96px));
+  width: min(396px, calc(100vw - 40px));
+  max-height: min(560px, calc(100vh - 88px));
   overflow-y: auto;
   scrollbar-width: thin;
-  padding: 8px;
+  padding: 10px;
+  border-color: rgba(255,255,255,.075);
+  background:
+    radial-gradient(120% 70% at 100% 0%, rgba(139,124,246,.045), transparent 50%),
+    linear-gradient(180deg, rgba(20,22,28,.99), rgba(15,17,22,.99));
+  box-shadow:
+    0 24px 60px rgba(0,0,0,.38),
+    0 0 0 1px rgba(0,0,0,.25),
+    inset 0 1px 0 rgba(255,255,255,.025);
 }
 
 .model-manager-popover .composer-popover-head {
   position: sticky;
-  top: -8px;
+  top: -10px;
   z-index: 4;
-  margin: -1px -1px 1px;
-  padding: 7px 4px 8px;
-  background: linear-gradient(180deg, rgba(25,27,34,.995), rgba(25,27,34,.965));
+  margin: -2px -2px 2px;
+  padding: 8px 5px 10px;
+  border-bottom: 1px solid rgba(255,255,255,.045);
+  background:
+    linear-gradient(180deg, rgba(20,22,28,.995) 72%, rgba(20,22,28,.94));
   backdrop-filter: blur(18px);
 }
 
 .model-manager-popover .composer-popover-heading {
-  gap: 8px;
+  gap: 9px;
 }
 
 .model-manager-popover .composer-popover-icon.model {
-  width: 29px;
-  height: 29px;
-  border-radius: 8px;
+  width: 30px;
+  height: 30px;
+  border: 1px solid rgba(255,255,255,.07);
+  border-radius: 9px;
+  color: #aaa2e8;
+  background:
+    radial-gradient(circle at 35% 25%, rgba(182,169,255,.1), transparent 48%),
+    rgba(255,255,255,.022);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.025);
 }
 
 .model-manager-popover .composer-popover-icon.model svg {
@@ -32,8 +48,10 @@
 }
 
 .model-manager-popover .composer-popover-heading strong {
-  font-size: 12.5px;
-  font-weight: 650;
+  color: #e2e5eb;
+  font-size: 12.8px;
+  font-weight: 660;
+  letter-spacing: -.01em;
 }
 
 .model-manager-popover .composer-popover-heading > div > span,
@@ -42,7 +60,15 @@
 }
 
 .model-manager-popover .model-manager-view {
-  gap: 8px;
+  gap: 9px;
+}
+
+.model-manager-popover .model-manager-home {
+  gap: 9px;
+}
+
+.model-manager-popover .reasoning-card {
+  animation: model-panel-enter 180ms cubic-bezier(.2,.82,.2,1) both;
 }
 
 .model-manager-popover .model-manager-actions {
@@ -51,28 +77,187 @@
 }
 
 .model-manager-popover .model-manager-actions > button {
-  min-height: 47px;
-  grid-template-columns: 21px minmax(0, 1fr) 12px;
-  gap: 7px;
-  padding: 7px 9px;
-  border-radius: 10px;
+  position: relative;
+  min-height: 55px;
+  grid-template-columns: 31px minmax(0, 1fr) 14px;
+  gap: 9px;
+  padding: 8px 9px;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,.052);
+  border-radius: 12px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.018), rgba(255,255,255,.01));
+  color: #8e96a4;
+  transform: translateY(0);
+  animation: model-panel-action-enter 190ms cubic-bezier(.2,.82,.2,1) both;
+  transition:
+    transform 160ms cubic-bezier(.2,.8,.2,1),
+    border-color 160ms ease,
+    background 160ms ease,
+    box-shadow 160ms ease;
 }
 
-.model-manager-popover .model-manager-actions > button > svg:first-child {
-  width: 14px;
-  height: 14px;
+.model-manager-popover .model-manager-actions > button:nth-child(1) {
+  animation-delay: 28ms;
+}
+
+.model-manager-popover .model-manager-actions > button:nth-child(2) {
+  animation-delay: 52ms;
+}
+
+.model-manager-popover .model-manager-actions > button::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  background: linear-gradient(110deg, transparent 25%, rgba(139,124,246,.04) 62%, transparent 86%);
+  transform: translateX(-16%);
+  transition: opacity 170ms ease, transform 260ms cubic-bezier(.2,.8,.2,1);
+}
+
+.model-manager-popover .model-manager-actions > button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: rgba(135,126,179,.18);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.028), rgba(255,255,255,.015));
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.025),
+    0 7px 16px rgba(0,0,0,.08);
+}
+
+.model-manager-popover .model-manager-actions > button:hover:not(:disabled)::before {
+  opacity: 1;
+  transform: translateX(5%);
+}
+
+.model-manager-popover .model-manager-actions > button:active:not(:disabled) {
+  transform: translateY(0) scale(.988);
+}
+
+.model-manager-action-icon {
+  position: relative;
+  z-index: 1;
+  width: 29px;
+  height: 29px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255,255,255,.055);
+  border-radius: 9px;
+  color: #858e9d;
+  background: rgba(255,255,255,.018);
+  transition:
+    color 150ms ease,
+    border-color 150ms ease,
+    background 150ms ease,
+    transform 170ms cubic-bezier(.2,.8,.2,1);
+}
+
+.model-manager-popover .model-manager-actions > button:first-child .model-manager-action-icon {
+  color: #9f95df;
+  border-color: rgba(139,124,246,.1);
+  background: rgba(139,124,246,.045);
+}
+
+.model-manager-popover .model-manager-actions > button:hover:not(:disabled) .model-manager-action-icon {
+  transform: scale(1.035);
+  color: #b7aaf4;
+  border-color: rgba(151,135,239,.17);
+  background: rgba(139,124,246,.06);
+}
+
+.model-manager-popover .model-manager-actions > button > span:not(.model-manager-action-icon) {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
 }
 
 .model-manager-popover .model-manager-actions strong {
-  font-size: 10px;
+  color: #cfd3db;
+  font-size: 10.4px;
+  font-weight: 610;
+  line-height: 1.15;
 }
 
 .model-manager-popover .model-manager-actions small {
-  font-size: 8.5px;
+  color: #68717e;
+  font-size: 8.6px;
+  line-height: 1.15;
+}
+
+.model-manager-action-chevron {
+  position: relative;
+  z-index: 1;
+  color: #606875;
+  transition: color 150ms ease, transform 160ms cubic-bezier(.2,.8,.2,1);
+}
+
+.model-manager-popover .model-manager-actions > button:hover:not(:disabled) .model-manager-action-chevron {
+  color: #9a91ca;
+  transform: translateX(2px);
+}
+
+@keyframes model-panel-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(.994);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes model-panel-action-enter {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @media (max-height: 720px) {
   .composer-popover.model-manager-popover {
     max-height: calc(100vh - 68px);
   }
+}
+
+@media (max-width: 460px) {
+  .composer-popover.model-manager-popover {
+    width: calc(100vw - 24px);
+    padding: 8px;
+  }
+
+  .model-manager-popover .composer-popover-head {
+    top: -8px;
+  }
+
+  .model-manager-popover .model-manager-actions {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .model-manager-popover .reasoning-card,
+  .model-manager-popover .model-manager-actions > button,
+  .model-manager-popover .model-manager-actions > button::before,
+  .model-manager-action-icon,
+  .model-manager-action-chevron {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+:root[data-loom-reduced-motion="true"] .model-manager-popover .reasoning-card,
+:root[data-loom-reduced-motion="true"] .model-manager-popover .model-manager-actions > button,
+:root[data-loom-reduced-motion="true"] .model-manager-popover .model-manager-actions > button::before,
+:root[data-loom-reduced-motion="true"] .model-manager-action-icon,
+:root[data-loom-reduced-motion="true"] .model-manager-action-chevron {
+  animation: none !important;
+  transition: none !important;
 }
