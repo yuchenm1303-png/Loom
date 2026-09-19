@@ -94,6 +94,7 @@ export class DesktopModelManager {
   private recentModels: string[] = [];
   private registryCache: RegistrySnapshot | null = null;
   private metadataCache: ModelMetadataSnapshot | null = null;
+  private launchCache = new Map<string, ModelLaunchSpec>();
 
   constructor(private readonly repoRoot: string) {}
 
@@ -158,15 +159,20 @@ export class DesktopModelManager {
   }
 
   resolve(selection: string): ModelLaunchSpec {
+    const cached = this.launchCache.get(selection);
+    if (cached) return cached;
     const resolved = this.runBridge<ModelLaunchSpec>("resolve", { selection });
     const safe = this.metadata().profiles.find((profile) => profile.selection === selection);
-    return { ...resolved, vision: safe?.vision ?? resolved.vision ?? true };
+    const next = { ...resolved, vision: safe?.vision ?? resolved.vision ?? true };
+    this.launchCache.set(selection, next);
+    return next;
   }
 
   add(input: AddModelInput): ModelProfile {
     const profile = this.runBridge<ModelProfile>("save", input as unknown as Record<string, unknown>);
     this.registryCache = null;
     this.metadataCache = null;
+    this.launchCache.delete(profile.selection);
     return profile;
   }
 
@@ -176,6 +182,7 @@ export class DesktopModelManager {
     const profile = this.runAdmin<ModelProfile>("update", input as unknown as Record<string, unknown>);
     this.registryCache = null;
     this.metadataCache = null;
+    this.launchCache.delete(selection);
     if (this.currentSpec?.selection === selection) {
       this.currentSpec = this.resolve(selection);
     }
@@ -192,18 +199,26 @@ export class DesktopModelManager {
     const value = String(selection || "").trim();
     if (!value) throw new Error("Model profile is required");
     const registry = this.runBridge<RegistrySnapshot>("delete", { selection: value });
-    this.registryCache = registry;
+    this.registryCache = null;
     this.metadataCache = null;
+    this.launchCache.delete(value);
     if (this.currentSpec?.selection === value) this.currentSpec = null;
     return registry;
   }
 
-  setActive(selection: string): void {
+  markActive(selection: string): void {
+    if (!this.registryCache) return;
+    const active = this.registryCache.profiles.find((profile) => profile.selection === selection);
+    this.registryCache = { ...this.registryCache, activeModelId: active?.id ?? null };
+  }
+
+  persistActive(selection: string): void {
     this.runBridge<{ selection: string }>("persist-active", { selection });
-    if (this.registryCache) {
-      const active = this.registryCache.profiles.find((profile) => profile.selection === selection);
-      this.registryCache = { ...this.registryCache, activeModelId: active?.id ?? null };
-    }
+  }
+
+  setActive(selection: string): void {
+    this.markActive(selection);
+    this.persistActive(selection);
   }
 
   setReasoning(kind: string, value: string): ModelReasoningState {
@@ -216,6 +231,7 @@ export class DesktopModelManager {
     });
     if (!profile.reasoning) throw new Error("Selected model does not expose reasoning controls");
     this.currentSpec = { ...current, reasoning: profile.reasoning };
+    this.launchCache.set(current.selection, this.currentSpec);
     if (this.registryCache) {
       this.registryCache = {
         ...this.registryCache,
@@ -233,6 +249,7 @@ export class DesktopModelManager {
     const next = this.resolve(selection);
     this.rememberCurrentModel(next.model);
     this.currentSpec = next;
+    this.launchCache.set(selection, next);
     return next;
   }
 
