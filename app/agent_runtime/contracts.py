@@ -146,6 +146,13 @@ class AgentSession:
     current_turn_id: str = ""
     forked_from_id: str = ""
     communication_language: str = "auto"
+    model_selection: str = ""
+    model: str = ""
+    model_provider: str = ""
+    model_base_url: str = ""
+    model_vision: bool = True
+    reasoning_kind: str = ""
+    reasoning_value: str = ""
     messages: list[AIMessage] = field(default_factory=list)
     pending_tool_calls: list[ToolCall] = field(default_factory=list)
     pending_step_id: str = ""
@@ -165,6 +172,13 @@ class AgentSession:
         self.system_prompt = str(self.system_prompt or "").strip()
         self.workspace_dir = str(self.workspace_dir or "").strip()
         self.forked_from_id = str(self.forked_from_id or "").strip()
+        self.model_selection = str(self.model_selection or "").strip()
+        self.model = str(self.model or "").strip()
+        self.model_provider = str(self.model_provider or "").strip().casefold()
+        self.model_base_url = str(self.model_base_url or "").strip().rstrip("/")
+        self.model_vision = bool(self.model_vision)
+        self.reasoning_kind = str(self.reasoning_kind or "").strip()
+        self.reasoning_value = str(self.reasoning_value or "").strip()
         language = str(self.communication_language or "auto").strip().casefold()
         self.communication_language = language if language in {
             "auto", "zh", "ja", "ko", "cyrillic", "arabic", "latin"
