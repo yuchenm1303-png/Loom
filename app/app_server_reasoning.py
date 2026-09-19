@@ -813,6 +813,9 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
             self._install_runtime_platform(platform)
             self.model = model
             self.vision = vision
+            self.default_model_selection = str(params.get("selection") or self.default_model_selection).strip()
+            self.default_model_provider = provider
+            self.default_model_base_url = base_url
             setattr(self.runtime, "supports_vision", vision)
             self.runtime.reasoning = reasoning
             self.runtime.reasoning_capability = capability
