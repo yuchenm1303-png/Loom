@@ -13,6 +13,7 @@ from app.agent_runtime.tools import ToolExposure, ToolRegistry
 from app.attachments import MAX_ATTACHMENTS, MAX_FILE_BYTES, MAX_IMAGE_BYTES
 from app.runtime_model_switch import build_runtime_model_platform, validate_runtime_reasoning
 from app.settings import SETTINGS_UPDATE_PREFIX, LoomSettingsStore
+from loom_model_bridge import resolve_model_spec
 
 from .app_server_thread_management import (
     ManagedStreamingJsonRpcStdioServer,
@@ -63,6 +64,9 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
     """Managed App Server with reasoning, expressions, and desktop settings."""
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
+        self.default_model_selection = str(kwargs.pop("default_model_selection", "") or "").strip()
+        self.default_model_provider = str(kwargs.pop("default_model_provider", "") or "").strip()
+        self.default_model_base_url = str(kwargs.pop("default_model_base_url", "") or "").strip().rstrip("/")
         super().__init__(*args, **kwargs)
         root = Path(getattr(self.store, "root", "")).expanduser().resolve()
         try:
@@ -469,6 +473,259 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
         status["exposedToolCount"] = len(self.runtime.tools.router().all())
         return status
 
+    def _runtime_home(self) -> Path:
+        root = Path(getattr(self.store, "root", "")).expanduser().resolve()
+        try:
+            return root.parents[1]
+        except IndexError:
+            return root.parent
+
+    @staticmethod
+    def _session_reasoning(session: Any) -> ReasoningRequest | None:
+        kind = str(getattr(session, "reasoning_kind", "") or "").strip()
+        value = str(getattr(session, "reasoning_value", "") or "").strip()
+        if not kind or not value:
+            return None
+        return ReasoningRequest.from_values(kind, value)
+
+    def _ensure_thread_model_metadata(self, session: Any) -> Any:
+        if str(getattr(session, "model", "") or "").strip():
+            return session
+        reasoning = getattr(self.runtime, "reasoning", None)
+        session.model_selection = self.default_model_selection
+        session.model = self.model
+        session.model_provider = self.default_model_provider
+        session.model_base_url = self.default_model_base_url
+        session.model_vision = bool(self.vision)
+        session.reasoning_kind = reasoning.kind.value if reasoning is not None else ""
+        session.reasoning_value = reasoning.value if reasoning is not None else ""
+        self.store.save(session)
+        return session
+
+    def _thread_uses_default_model(self, session: Any) -> bool:
+        return (
+            str(getattr(session, "model_selection", "") or "") == self.default_model_selection
+            and str(getattr(session, "model", "") or "") == self.model
+            and str(getattr(session, "model_provider", "") or "") == self.default_model_provider
+            and str(getattr(session, "model_base_url", "") or "").rstrip("/") == self.default_model_base_url
+        )
+
+    def _ensure_thread_model_runtime(self, session: Any) -> Any:
+        session = self._ensure_thread_model_metadata(session)
+        has_model = getattr(self.runtime, "has_session_model", None)
+        if callable(has_model) and has_model(session.session_id):
+            return session
+
+        reasoning = self._session_reasoning(session)
+        if self._thread_uses_default_model(session):
+            self.runtime.set_session_model(
+                session.session_id,
+                self.runtime.platform,
+                reasoning=reasoning,
+            )
+            return session
+
+        selection = str(getattr(session, "model_selection", "") or "").strip()
+        if not selection:
+            raise RuntimeError("thread model selection is missing")
+        spec = resolve_model_spec(
+            selection,
+            model=str(getattr(session, "model", "") or ""),
+            home=self._runtime_home(),
+        )
+        provider = str(spec.get("provider") or "").strip()
+        base_url = str(spec.get("baseUrl") or "").strip()
+        model = str(spec.get("model") or "").strip()
+        api_key = str(spec.get("apiKey") or "").strip()
+        vision = bool(spec.get("vision", getattr(session, "model_vision", True)))
+        validate_runtime_reasoning(
+            model=model,
+            provider=provider,
+            base_url=base_url,
+            reasoning=reasoning,
+        )
+        platform = build_runtime_model_platform(
+            provider=provider,
+            base_url=base_url,
+            model=model,
+            api_key=api_key,
+            vision=vision,
+        )
+        self.runtime.set_session_model(
+            session.session_id,
+            platform,
+            reasoning=reasoning,
+        )
+        return session
+
+    def _thread_model_blocked(self, session: Any) -> bool:
+        return (
+            self._is_active(session.session_id)
+            or session.status in {AgentStatus.RUNNING, AgentStatus.WAITING_APPROVAL}
+        )
+
+    def _thread_runtime_patch(
+        self,
+        session: Any,
+        capability: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        settings = self.settings_store.snapshot()
+        attachments_enabled = settings.get("capabilities", {}).get("attachments", True) is not False
+        reasoning = self._session_reasoning(session)
+        if capability is None:
+            capability = validate_runtime_reasoning(
+                model=str(getattr(session, "model", "") or ""),
+                provider=str(getattr(session, "model_provider", "") or ""),
+                base_url=str(getattr(session, "model_base_url", "") or ""),
+                reasoning=reasoning,
+            )
+        return {
+            "threadId": session.session_id,
+            "model": str(getattr(session, "model", "") or ""),
+            "attachments": {
+                "images": bool(getattr(session, "model_vision", True) and attachments_enabled),
+                "files": bool(attachments_enabled),
+                "maxCount": MAX_ATTACHMENTS,
+                "maxImageBytes": MAX_IMAGE_BYTES,
+                "maxFileBytes": MAX_FILE_BYTES,
+            },
+            "reasoning": reasoning.as_safe_dict() if reasoning is not None else None,
+            "reasoningCapability": dict(capability) if isinstance(capability, dict) else None,
+        }
+
+    def thread_set_model(self, params: dict[str, Any]) -> dict[str, Any]:
+        session_id = self._required_text(params, "threadId")
+        session = self._load(session_id)
+        if self._thread_model_blocked(session):
+            raise RuntimeError("finish or stop this thread's active turn before changing its model")
+
+        selection = str(params.get("selection") or "").strip()
+        provider = str(params.get("provider") or "").strip()
+        base_url = str(params.get("baseUrl") or params.get("base_url") or "").strip().rstrip("/")
+        model = str(params.get("model") or "").strip()
+        api_key = str(params.get("apiKey") or params.get("api_key") or "").strip()
+        if not selection:
+            raise ValueError("selection is required")
+        if not provider:
+            raise ValueError("provider is required")
+        if not model:
+            raise ValueError("model is required")
+        if not api_key:
+            raise ValueError("API key is required")
+
+        reasoning = ReasoningRequest.from_values(
+            params.get("reasoningKind") or params.get("reasoning_kind"),
+            params.get("reasoningValue") or params.get("reasoning_value"),
+        )
+        vision = bool(params.get("vision", True))
+        capability = validate_runtime_reasoning(
+            model=model,
+            provider=provider,
+            base_url=base_url,
+            reasoning=reasoning,
+        )
+        platform = build_runtime_model_platform(
+            provider=provider,
+            base_url=base_url,
+            model=model,
+            api_key=api_key,
+            vision=vision,
+            request_timeout_seconds=float(params.get("timeout") or 120.0),
+        )
+
+        self.runtime.set_session_model(session_id, platform, reasoning=reasoning)
+        session.model_selection = selection
+        session.model = model
+        session.model_provider = provider
+        session.model_base_url = base_url
+        session.model_vision = vision
+        session.reasoning_kind = reasoning.kind.value if reasoning is not None else ""
+        session.reasoning_value = reasoning.value if reasoning is not None else ""
+        self.store.save(session)
+
+        record = self._record(session, active=False)
+        runtime = self._thread_runtime_patch(session, capability)
+        self._notify("thread/updated", {"thread": record, "reason": "model_changed"})
+        return {"thread": record, "runtime": runtime}
+
+    def thread_set_reasoning(self, params: dict[str, Any]) -> dict[str, Any]:
+        session_id = self._required_text(params, "threadId")
+        session = self._ensure_thread_model_metadata(self._load(session_id))
+        if self._thread_model_blocked(session):
+            raise RuntimeError("finish or stop this thread's active turn before changing reasoning")
+
+        reasoning = ReasoningRequest.from_values(params.get("kind"), params.get("value"))
+        if reasoning is None:
+            raise ValueError("reasoning kind and value are required")
+        capability = validate_runtime_reasoning(
+            model=session.model,
+            provider=session.model_provider,
+            base_url=session.model_base_url,
+            reasoning=reasoning,
+        )
+        platform = self.runtime.platform_for_session(session_id)
+        self.runtime.set_session_model(session_id, platform, reasoning=reasoning)
+        session.reasoning_kind = reasoning.kind.value
+        session.reasoning_value = reasoning.value
+        self.store.save(session)
+
+        record = self._record(session, active=False)
+        runtime = self._thread_runtime_patch(session, capability)
+        self._notify("thread/updated", {"thread": record, "reason": "reasoning_changed"})
+        return {"thread": record, "runtime": runtime}
+
+    def thread_start(self, params: dict[str, Any]) -> dict[str, Any]:
+        result = super().thread_start(params)
+        session = self.runtime.get_session(str(result["thread"]["id"]))
+        self._ensure_thread_model_metadata(session)
+        self.runtime.set_session_model(
+            session.session_id,
+            self.runtime.platform,
+            reasoning=self._session_reasoning(session),
+        )
+        result["thread"] = self._record(session, active=False)
+        return result
+
+    def thread_read(self, params: dict[str, Any]) -> dict[str, Any]:
+        session_id = self._required_text(params, "threadId")
+        self._ensure_thread_model_metadata(self._load(session_id))
+        return super().thread_read(params)
+
+    def thread_resume(self, params: dict[str, Any]) -> dict[str, Any]:
+        session_id = self._required_text(params, "threadId")
+        self._ensure_thread_model_metadata(self._load(session_id))
+        return super().thread_resume(params)
+
+    def thread_fork(self, params: dict[str, Any]) -> dict[str, Any]:
+        source_id = self._required_text(params, "threadId")
+        source = self._ensure_thread_model_metadata(self._load(source_id))
+        result = super().thread_fork(params)
+        fork = self.runtime.get_session(str(result["thread"]["id"]))
+        for name in (
+            "model_selection",
+            "model",
+            "model_provider",
+            "model_base_url",
+            "model_vision",
+            "reasoning_kind",
+            "reasoning_value",
+        ):
+            setattr(fork, name, getattr(source, name))
+        self.store.save(fork)
+        if self._thread_uses_default_model(fork):
+            self.runtime.set_session_model(
+                fork.session_id,
+                self.runtime.platform,
+                reasoning=self._session_reasoning(fork),
+            )
+        result["thread"] = self._record(fork, active=False)
+        return result
+
+    def turn_start(self, params: dict[str, Any]) -> dict[str, Any]:
+        session_id = self._required_text(params, "threadId")
+        self._ensure_thread_model_runtime(self._load(session_id))
+        return super().turn_start(params)
+
     def _model_change_blockers(self) -> list[str]:
         with self._guard:
             blockers = set(self._active_sessions)
@@ -689,7 +946,9 @@ class ReasoningManagedLoomRpcController(ManagedStreamingLoomRpcController):
         }
         result["capabilities"]["modelSwitch"] = {
             "hot": True,
+            "scope": "thread",
             "requiresIdleTurn": True,
+            "concurrentThreads": True,
         }
         result["capabilities"]["stickerPreferences"] = {
             "read": True,
@@ -714,6 +973,10 @@ class ReasoningManagedLoomRpcController(ManagedStreamingLoomRpcController):
         return result
 
     def _dispatch(self, method: str, params: dict[str, Any]) -> Any:
+        if method == "thread/set_model":
+            return self.service.thread_set_model(params)
+        if method == "thread/set_reasoning":
+            return self.service.thread_set_reasoning(params)
         if method == "runtime/set_model":
             return self.service.runtime_set_model(params)
         if method == "runtime/set_reasoning":
