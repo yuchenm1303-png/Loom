@@ -51,23 +51,6 @@
   content: "正在等待权限确认…";
 }
 
-/* Give the whole live process a quiet heartbeat even when the latest concrete
-   item has already completed and the model is deciding what to do next. */
-.turn-block.is-active .turn-process-content::before {
-  content: "";
-  position: absolute;
-  left: 10px;
-  bottom: 15px;
-  width: 6px;
-  height: 6px;
-  z-index: 1;
-  border-radius: 50%;
-  background: #a79df3;
-  box-shadow: 0 0 0 0 rgba(167,157,243,.24);
-  pointer-events: none;
-  animation: runtime-live-tail-pulse 1.45s ease-out infinite;
-}
-
 .turn-block.is-active .task-flow-group-icon {
   border-color: rgba(139,124,246,.18);
   color: #9d95df;
@@ -99,12 +82,6 @@
   100% { background-position: 0 0, -100% 0; }
 }
 
-@keyframes runtime-live-tail-pulse {
-  0% { transform: scale(.9); box-shadow: 0 0 0 0 rgba(167,157,243,.25); opacity: .72; }
-  55% { transform: scale(1.06); opacity: 1; }
-  100% { transform: scale(.9); box-shadow: 0 0 0 6px rgba(167,157,243,0); opacity: .72; }
-}
-
 @media (max-width: 760px) {
   .turn-block.is-active .turn-process-content {
     padding-bottom: 39px;
@@ -117,13 +94,11 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .turn-block.is-active .turn-process-content::after,
-  .turn-block.is-active .turn-process-content::before {
+  .turn-block.is-active .turn-process-content::after {
     animation: none !important;
   }
 }
 
-:root[data-loom-reduced-motion="true"] .turn-block.is-active .turn-process-content::after,
-:root[data-loom-reduced-motion="true"] .turn-block.is-active .turn-process-content::before {
+:root[data-loom-reduced-motion="true"] .turn-block.is-active .turn-process-content::after {
   animation: none !important;
 }
