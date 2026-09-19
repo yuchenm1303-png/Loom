@@ -180,7 +180,7 @@ class StreamingAgentRuntime(CodeModeRuntime):
 
     def set_session_model(self, session_id: str, platform: Any, *, reasoning=None) -> None:
         super().set_session_model(session_id, platform, reasoning=reasoning)
-        self._configure_streaming_platform(platform)
+        self._configure_streaming_platform(self.platform_for_session(session_id))
 
     @property
     def provider_streaming_enabled(self) -> bool:
