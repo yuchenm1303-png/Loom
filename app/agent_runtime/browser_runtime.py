@@ -442,6 +442,10 @@ class BrowserRuntime(WebSearchRuntime):
             profile_dir=browser_profile_dir,
         )
 
+    def set_session_model(self, session_id: str, platform: Any, *, reasoning=None) -> None:
+        wrapped = platform if isinstance(platform, _BrowserSecretBoundaryPlatform) else _BrowserSecretBoundaryPlatform(platform)
+        super().set_session_model(session_id, wrapped, reasoning=reasoning)
+
     def _configure_browser_connection(
         self,
         *,
