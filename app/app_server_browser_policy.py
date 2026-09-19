@@ -5,6 +5,7 @@ from typing import Any, TextIO
 
 from app.agent_runtime import PermissionMode
 
+from .app_server_local_ipc import LocalAppServerIpcServer, runtime_home_from_store
 from .app_server_project_move import (
     ProjectMovableJsonRpcStdioServer,
     ProjectMovableLoomAppServerService,
@@ -117,6 +118,7 @@ def serve_browser_policy_managed_streaming_stdio(
     default_workspace: str | Path,
     default_permission_mode: PermissionMode | str,
     vision: bool = True,
+    local_ipc: bool = False,
     reader: TextIO | None = None,
     writer: TextIO | None = None,
 ) -> int:
@@ -130,9 +132,19 @@ def serve_browser_policy_managed_streaming_stdio(
         vision=bool(vision),
     )
     server = BrowserPolicyJsonRpcStdioServer(service)
+    local_server: LocalAppServerIpcServer | None = None
+    if local_ipc:
+        local_server = LocalAppServerIpcServer(
+            service,
+            controller_factory=BrowserPolicyLoomRpcController,
+            runtime_home=runtime_home_from_store(store),
+        )
+        local_server.start()
     try:
         return server.serve(reader=reader, writer=writer)
     finally:
+        if local_server is not None:
+            local_server.close()
         close = getattr(runtime, "close", None)
         if callable(close):
             close()
