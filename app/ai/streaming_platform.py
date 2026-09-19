@@ -104,6 +104,7 @@ class _StreamAccumulator:
         response_id: str = "",
         finish_reason: str = "",
         reasoning_char_count: int = 0,
+        reasoning: str = "",
         chunk_count: int = 0,
     ) -> ModelResponse:
         if not self.completed:
@@ -145,6 +146,7 @@ class _StreamAccumulator:
             usage=usage or ModelUsage(),
             finish_reason=str(finish_reason or self.finish_reason or ""),
             response_id=str(response_id or ""),
+            reasoning=str(reasoning or ""),
         )
 
 
@@ -237,6 +239,7 @@ class StreamingAIPlatform(AIPlatform):
             response_id=str(metadata.get("response_id") or ""),
             finish_reason=str(metadata.get("finish_reason") or ""),
             reasoning_char_count=int(metadata.get("reasoning_char_count") or 0),
+            reasoning=str(metadata.get("reasoning") or ""),
             chunk_count=int(metadata.get("chunk_count") or 0),
         )
         self._publish(

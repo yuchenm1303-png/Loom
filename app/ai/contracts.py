@@ -90,6 +90,10 @@ class AIMessage:
     name: str = ""
     tool_call_id: str = ""
     tool_calls: tuple[ToolCall, ...] = ()
+    # Provider-produced reasoning for an assistant turn. Thinking-mode providers
+    # require their own reasoning to be handed back with the turn that produced
+    # it, so this is transport state Loom must preserve rather than display.
+    reasoning: str = ""
 
     def __post_init__(self) -> None:
         role = MessageRole(self.role)
@@ -121,6 +125,10 @@ class AIMessage:
         object.__setattr__(self, "name", name)
         object.__setattr__(self, "tool_call_id", tool_call_id)
         object.__setattr__(self, "tool_calls", tool_calls)
+        reasoning = str(self.reasoning or "")
+        if reasoning and role is not MessageRole.ASSISTANT:
+            raise ValueError("only assistant messages may carry provider reasoning")
+        object.__setattr__(self, "reasoning", reasoning)
 
     @property
     def uses_vision(self) -> bool:
@@ -222,6 +230,9 @@ class ModelResponse:
     usage: ModelUsage = field(default_factory=ModelUsage)
     finish_reason: str = ""
     response_id: str = ""
+    # Never shown to the user. Carried only so the assistant turn can be replayed
+    # to a thinking-mode provider in the exact shape it demands back.
+    reasoning: str = ""
 
 
 @dataclass(frozen=True, slots=True)

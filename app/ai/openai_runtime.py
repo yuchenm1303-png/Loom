@@ -72,6 +72,11 @@ def _message_payload(
         payload["name"] = message.name
     if message.tool_call_id:
         payload["tool_call_id"] = message.tool_call_id
+    if message.reasoning:
+        # Thinking-mode providers reject a replayed assistant turn whose own
+        # reasoning is missing. Only ever populated from what this provider
+        # itself returned, so a provider that never emits it never receives it.
+        payload["reasoning_content"] = message.reasoning
     if message.tool_calls:
         payload["tool_calls"] = [
             {
@@ -281,8 +286,8 @@ class OpenAIChatBackend:
             raise AIResponseError("AI response choice contained no message")
         text = str(getattr(message, "content", "") or "")
         tool_calls = _parse_tool_calls(message)
+        reasoning = getattr(message, "reasoning_content", None)
         if not text and not tool_calls:
-            reasoning = getattr(message, "reasoning_content", None)
             usage = _usage_from(response)
             raise AIEmptyResponseError(
                 "AI response completed without public text or tool calls",
@@ -299,6 +304,7 @@ class OpenAIChatBackend:
             usage=_usage_from(response),
             finish_reason=str(getattr(choice, "finish_reason", "") or ""),
             response_id=str(getattr(response, "id", "") or ""),
+            reasoning=str(reasoning or ""),
         )
 
     def _effective_structured_mode(self, requested: StructuredOutputMode) -> StructuredOutputMode:

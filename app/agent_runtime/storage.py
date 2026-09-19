@@ -59,6 +59,10 @@ def _message_to_dict(message: AIMessage) -> dict[str, Any]:
         "name": message.name,
         "tool_call_id": message.tool_call_id,
         "tool_calls": [_tool_call_to_dict(call) for call in message.tool_calls],
+        # Persisted because a resumed session still has to replay this assistant
+        # turn to a thinking-mode provider in the shape it requires back. Also
+        # makes the estimator account for reasoning, which is really on the wire.
+        "reasoning": message.reasoning,
     }
 
 
@@ -94,6 +98,7 @@ def _message_from_dict(payload: dict[str, Any]) -> AIMessage:
             for item in payload.get("tool_calls", [])
             if isinstance(item, dict)
         ),
+        reasoning=str(payload.get("reasoning") or ""),
     )
 
 
