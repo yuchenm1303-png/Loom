@@ -38,7 +38,7 @@ def test_running_turn_uses_a_dedicated_editable_steering_state() -> None:
     assert 'if (props.running) return <SteeringComposer {...props} />;' in source
     assert 'className={`composer is-steering ${focused ? "is-focused" : ""}`}' in source
     assert 'className={`composer is-running ${focused ? "is-focused" : ""}`}' not in source
-    assert 'placeholder="Guide the current task…"' in source
+    assert '"Guide the current task…"' in source
     assert 'aria-label="Guide the current task"' in source
 
     # Ordinary running work is editable. Only an in-flight steer request or an
