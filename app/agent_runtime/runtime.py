@@ -89,6 +89,18 @@ class CancellationToken:
 EventListener = Callable[[AgentEvent], None]
 
 
+def _optional_env_int(name: str) -> int | None:
+    """Read a host-declared limit, or ``None`` when the host declared nothing."""
+    raw = str(os.environ.get(name) or "").strip()
+    if not raw:
+        return None
+    try:
+        value = int(raw)
+    except ValueError:
+        return None
+    return value if value > 0 else None
+
+
 class AgentRuntime:
     """Durable tool-using Agent runtime.
 
@@ -120,9 +132,12 @@ class AgentRuntime:
         self.store = store
         self.tools = tools or ToolRegistry()
         self.policy = policy or ToolPolicy()
+        # Only the host may declare a window or an output cap. Defaulting these
+        # to numbers made Loom budget every unknown model as a 32k one; there is
+        # no honest value to invent, so an absent env var declares nothing.
         self.limits = limits or AgentLimits(
-            context_window_tokens=int(os.environ.get("LOOM_CONTEXT_WINDOW_TOKENS", "32768")),
-            output_reserve_tokens=int(os.environ.get("LOOM_OUTPUT_RESERVE_TOKENS", "4096")),
+            context_window_tokens=_optional_env_int("LOOM_CONTEXT_WINDOW_TOKENS"),
+            output_reserve_tokens=_optional_env_int("LOOM_OUTPUT_RESERVE_TOKENS"),
         )
         self.default_permission_mode = PermissionMode(default_permission_mode)
         self.orchestrator = orchestrator or ToolOrchestrator()

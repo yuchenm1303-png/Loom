@@ -68,14 +68,11 @@ def test_default_auto_compact_threshold_uses_raw_window_not_effective_window(mon
     assert resolved.source == "model_profile"
 
 
-def test_legacy_32k_runtime_fallback_is_normalized_to_codex_272k(monkeypatch):
+def test_an_undeclared_window_resolves_to_the_sanity_ceiling_and_says_so(monkeypatch):
     monkeypatch.delenv("LOOM_CONTEXT_WINDOW_TOKENS", raising=False)
     monkeypatch.delenv("LOOM_OUTPUT_RESERVE_TOKENS", raising=False)
     runtime = SimpleNamespace(
-        limits=SimpleNamespace(
-            context_window_tokens=32_768,
-            output_reserve_tokens=4096,
-        ),
+        limits=SimpleNamespace(context_window_tokens=None, output_reserve_tokens=None),
         platform=SimpleNamespace(registry=Registry(None)),
     )
 
@@ -89,6 +86,31 @@ def test_legacy_32k_runtime_fallback_is_normalized_to_codex_272k(monkeypatch):
     assert resolved.input_budget_tokens == 254_304
     assert resolved.auto_compact_token_limit == 244_800
     assert resolved.source == "runtime_fallback"
+    # The numbers above are a sanity ceiling, not a claim about the model, and
+    # compaction decisions must be able to tell the difference.
+    assert resolved.window_known is False
+    assert resolved.output_reserve_declared is False
+
+
+def test_an_explicitly_constructed_window_is_honoured_not_rewritten(monkeypatch):
+    # Previously an explicit 32,768 was silently rewritten to 272,000 by matching
+    # it against the old default. A host that says 32k means 32k.
+    monkeypatch.delenv("LOOM_CONTEXT_WINDOW_TOKENS", raising=False)
+    monkeypatch.delenv("LOOM_OUTPUT_RESERVE_TOKENS", raising=False)
+    runtime = SimpleNamespace(
+        limits=SimpleNamespace(context_window_tokens=32_768, output_reserve_tokens=4096),
+        platform=SimpleNamespace(registry=Registry(None)),
+    )
+
+    resolved = resolve_context_limits(
+        runtime,
+        SimpleNamespace(profile_id="agent.fast"),
+    )
+
+    assert resolved.context_window_tokens == 32_768
+    assert resolved.source == "runtime_limits"
+    assert resolved.window_known is True
+    assert resolved.output_reserve_declared is True
 
 
 def test_body_after_prefix_fails_closed_until_profile_and_window_state_contract_exists(monkeypatch):

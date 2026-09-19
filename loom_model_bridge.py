@@ -10,8 +10,13 @@ import urllib.request
 from pathlib import Path
 from typing import Any, Mapping
 
+from app.ai.model_context import (
+    model_context_limits_from_provider_listing,
+    model_context_limits_to_camel,
+)
 from app.ai.model_selection_store import ModelSelectionStore
 from app.ai.model_store import ModelConfigStore, StoredModel
+from app.ai.profiles import ModelContextLimits
 from app.ai.reasoning import ReasoningRequest
 from app.ai.reasoning_catalog import resolved_reasoning
 from app.ai.reasoning_store import ReasoningConfigStore
@@ -31,6 +36,10 @@ MINIMAX_MODEL_IDS = ("MiniMax-M3", "MiniMax-M2.7", "MiniMax-M2.5")
 DEEPSEEK_DEFAULT_MODEL = "deepseek-flash"
 DEEPSEEK_FALLBACK_MODEL_IDS = ("deepseek-flash", "deepseek-v4-pro")
 CQU_DEFAULT_MODEL = "cqu-default"
+# Context limits a provider published about its own models, keyed by folded
+# model id and filled in as `/models` listings are fetched. Empty until a
+# provider actually says something, so nothing here is ever a guess.
+_DISCOVERED_CONTEXT_LIMITS: dict[str, ModelContextLimits] = {}
 _KEYRING_SERVICE = "loom-agent"
 _MANAGED_RELAY_CREDENTIAL_ALIAS = "managed/relay"
 _DEEPSEEK_CREDENTIAL_ALIAS = "builtin/deepseek"
@@ -344,6 +353,12 @@ def _fetch_managed_model_ids(
             continue
         seen.add(key)
         models.append(model_id)
+        # The provider is the only authority on its own window that does not
+        # require guessing. Remember whatever it publishes; anything it omits
+        # stays undeclared rather than invented.
+        limits = model_context_limits_from_provider_listing(item)
+        if limits.context_window_tokens or limits.output_reserve_tokens:
+            _DISCOVERED_CONTEXT_LIMITS[key] = limits
     return models
 
 
@@ -391,6 +406,12 @@ def _fetch_deepseek_model_ids(
             continue
         seen.add(key)
         models.append(model_id)
+        # The provider is the only authority on its own window that does not
+        # require guessing. Remember whatever it publishes; anything it omits
+        # stays undeclared rather than invented.
+        limits = model_context_limits_from_provider_listing(item)
+        if limits.context_window_tokens or limits.output_reserve_tokens:
+            _DISCOVERED_CONTEXT_LIMITS[key] = limits
     return models
 
 
@@ -493,6 +514,27 @@ def _safe_minimax(
         "baseUrl": _legacy_minimax_base_url(environ),
         "model": model,
     }
+
+
+def _discovered_context_limits(model: str) -> dict[str, Any] | None:
+    """Camel-cased limits this provider published for ``model``, if any."""
+    limits = _DISCOVERED_CONTEXT_LIMITS.get(str(model or "").strip().casefold())
+    if limits is None:
+        return None
+    payload = {
+        key: value
+        for key, value in model_context_limits_to_camel(limits).items()
+        if value is not None
+    }
+    return payload or None
+
+
+def _with_discovered_limits(profile: dict[str, Any]) -> dict[str, Any]:
+    """Attach published limits so the runtime binds a real window, not a guess."""
+    limits = _discovered_context_limits(profile.get("model", ""))
+    if limits is None:
+        return profile
+    return {**profile, "contextLimits": limits}
 
 
 def _safe_deepseek(
@@ -609,7 +651,7 @@ def _managed_profiles(store: ModelConfigStore, environ: Mapping[str, str] | None
         if not folded or folded in seen_deepseek:
             continue
         seen_deepseek.add(folded)
-        profiles.append(_safe_deepseek(model_id, environ))
+        profiles.append(_with_discovered_limits(_safe_deepseek(model_id, environ)))
 
     api_key = _managed_relay_key(store, environ, Path(__file__).resolve().parent)
     if api_key:
@@ -622,7 +664,7 @@ def _managed_profiles(store: ModelConfigStore, environ: Mapping[str, str] | None
             if not folded or folded in seen or _is_minimax_model(model_id):
                 continue
             seen.add(folded)
-            profiles.append(_safe_managed(model_id, environ))
+            profiles.append(_with_discovered_limits(_safe_managed(model_id, environ)))
     return profiles
 
 
@@ -710,7 +752,9 @@ def _resolve(
     if minimax_model:
         api_key = _primary_minimax_key()
         if api_key:
-            official_profile = _with_reasoning(_safe_minimax(minimax_model), reasoning_store)
+            official_profile = _with_reasoning(
+                _with_discovered_limits(_safe_minimax(minimax_model)), reasoning_store
+            )
             return {**official_profile, "provider": "openai-compatible", "apiKey": api_key}
         raise RuntimeError(
             "MiniMax API key is not configured. Set MINIMAX_API_KEY for the official "
@@ -721,7 +765,9 @@ def _resolve(
     if deepseek_model:
         api_key = _deepseek_key(store)
         if api_key:
-            official_profile = _with_reasoning(_safe_deepseek(deepseek_model), reasoning_store)
+            official_profile = _with_reasoning(
+                _with_discovered_limits(_safe_deepseek(deepseek_model)), reasoning_store
+            )
             return {**official_profile, "provider": "openai-compatible", "apiKey": api_key}
         raise RuntimeError(
             "DeepSeek API key is not configured. Set DEEPSEEK_API_KEY once or add a saved "

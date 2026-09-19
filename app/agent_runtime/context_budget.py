@@ -360,7 +360,7 @@ def _build_summary_request(
     history: Sequence[AIMessage],
     *,
     communication_language: str,
-    max_output_tokens: int,
+    max_output_tokens: int | None,
 ) -> ChatRequest:
     return ChatRequest(
         messages=tuple(
@@ -724,7 +724,12 @@ def prepare_context(rt, session, step, token):
     response_attempts = 0
     summary_usage = ModelUsage()
     summary = ""
-    max_output_tokens = max(1, limits.output_reserve_tokens)
+    # Reserve a numeric output budget for the arithmetic below, but only impose
+    # it on the provider when something authoritative declared it. A reasoning
+    # model spends an invented cap on its chain of thought and returns an empty
+    # summary, which this loop then has to reject and retry.
+    output_budget_tokens = max(1, limits.output_reserve_tokens)
+    summary_output_cap = output_budget_tokens if limits.output_reserve_declared else None
     summary_request_ceiling = limits.effective_context_window_tokens
 
     while True:
@@ -733,10 +738,10 @@ def prepare_context(rt, session, step, token):
             transient,
             compact_input,
             communication_language=communication_language,
-            max_output_tokens=max_output_tokens,
+            max_output_tokens=summary_output_cap,
         )
         request_tokens = estimate_tokens(request.messages)
-        if calibrated(request_tokens) + max_output_tokens > summary_request_ceiling:
+        if calibrated(request_tokens) + output_budget_tokens > summary_request_ceiling:
             if len(compact_input) <= 1:
                 raise ContextBudgetExceeded(
                     estimated_tokens=request_tokens,

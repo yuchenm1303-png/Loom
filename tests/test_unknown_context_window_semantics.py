@@ -44,8 +44,9 @@ class InstructionLoader:
 
 @dataclass
 class Limits:
-    context_window_tokens: int = 12_000
-    output_reserve_tokens: int = 1_000
+    # None = the host declared nothing, which is what "unknown window" means.
+    context_window_tokens: int | None = None
+    output_reserve_tokens: int | None = None
     max_messages: int = 160
     max_tool_result_chars: int = 20_000
     model_retries: int = 2
@@ -260,14 +261,16 @@ def test_the_smallest_rejection_wins():
 def test_an_oversized_single_user_item_is_still_clipped_without_a_window():
     # Structural, not a compaction decision: no summary can shrink one item, so
     # the sanity ceiling still applies even with no declared window.
-    giant = AIMessage(role=MessageRole.USER, content="G" * 200_000)
+    # Big enough to exceed the 272k sanity ceiling, which is what the undeclared
+    # path now uses for structural checks.
+    giant = AIMessage(role=MessageRole.USER, content="G" * 900_000)
     runtime = FakeRuntime()
     session = Session([giant])
 
     messages, metadata = prepare_context(runtime, session, Step(), Token())
 
     visible = next(m for m in messages if m.role is MessageRole.USER and not m.name)
-    assert len(str(visible.content)) < 200_000
+    assert len(str(visible.content)) < 900_000
     assert metadata["user_messages_truncated"] == 1
     assert runtime.commits == []
 

@@ -77,30 +77,38 @@ class AgentLimits:
     max_tool_calls: int = 0
     max_messages: int = 160
     max_tool_result_chars: int = 20_000
-    # Match Codex's conservative metadata fallback instead of treating every
-    # unknown/custom provider as a 32k model. Authoritative profile metadata or
-    # explicit runtime overrides still win over this value.
-    context_window_tokens: int = 272_000
-    output_reserve_tokens: int = 4096
+    # ``None`` means the host did not declare this model's limits, which is the
+    # normal case for an arbitrary OpenAI-compatible endpoint. A default number
+    # here would be indistinguishable from a real declaration, and treating one
+    # as the other is what made Loom budget every unknown model as 32k.
+    context_window_tokens: int | None = None
+    output_reserve_tokens: int | None = None
     model_retries: int = 2
 
     def __post_init__(self) -> None:
         if self.model_retries < 0 or self.model_retries > 5:
             raise ValueError("model_retries must be within 0..5")
-        if self.output_reserve_tokens >= self.context_window_tokens:
+        if (
+            self.output_reserve_tokens is not None
+            and self.context_window_tokens is not None
+            and self.output_reserve_tokens >= self.context_window_tokens
+        ):
             raise ValueError("output reserve must be smaller than the context window")
         for name in ("max_model_steps", "max_tool_calls"):
             value = int(getattr(self, name))
             if value < 0:
                 raise ValueError(f"{name} must be non-negative; 0 means unlimited")
             object.__setattr__(self, name, value)
-        for name in (
-            "max_messages",
-            "max_tool_result_chars",
-            "context_window_tokens",
-            "output_reserve_tokens",
-        ):
+        for name in ("max_messages", "max_tool_result_chars"):
             value = int(getattr(self, name))
+            if value < 1:
+                raise ValueError(f"{name} must be positive")
+            object.__setattr__(self, name, value)
+        for name in ("context_window_tokens", "output_reserve_tokens"):
+            raw = getattr(self, name)
+            if raw is None:
+                continue
+            value = int(raw)
             if value < 1:
                 raise ValueError(f"{name} must be positive")
             object.__setattr__(self, name, value)

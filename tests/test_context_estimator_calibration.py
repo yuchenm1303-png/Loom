@@ -272,6 +272,7 @@ def test_missing_model_context_window_is_reported_as_a_fallback():
     runtime = FakeRuntime(
         [ModelResponse(text="summary", finish_reason="stop")],
         profile_cls=_FallbackProfile,
+        limits=Limits(context_window_tokens=None, output_reserve_tokens=None),
     )
     session = Session([AIMessage(role=MessageRole.USER, content="hello")])
 

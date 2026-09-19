@@ -22,6 +22,27 @@ _MAPPING_KEYS = {
 }
 
 
+# Vocabulary used by OpenAI-compatible `/models` listings, which is not Loom's
+# own config vocabulary. Deliberately excludes bare ``max_tokens``: different
+# gateways use it for the context length and for the completion cap, and a wrong
+# guess here is exactly the class of invented limit this exists to avoid.
+_PROVIDER_LISTING_KEYS = {
+    "context_window_tokens": (
+        "context_length",
+        "context_window",
+        "max_context_length",
+        "max_context_window",
+        "max_model_len",
+        "max_input_tokens",
+    ),
+    "output_reserve_tokens": (
+        "max_output_tokens",
+        "max_completion_tokens",
+    ),
+}
+_PROVIDER_LISTING_NESTS = ("limits", "meta", "metadata", "spec")
+
+
 def _optional_int(values: Mapping[str, object], name: str) -> int | None:
     raw = values.get(name)
     if raw is None or raw == "":
@@ -36,6 +57,41 @@ def _first_int(payload: Mapping[str, object], keys: tuple[str, ...]) -> int | No
         if value is not None:
             return value
     return None
+
+
+def model_context_limits_from_provider_listing(entry: object) -> ModelContextLimits:
+    """Read a model's real limits out of the provider's own `/models` entry.
+
+    A provider that publishes its window is the one authority Loom can consult
+    without guessing and without a hard-coded per-model table that rots as
+    gateways rename models. Anything the listing does not state stays ``None``,
+    which leaves the window undeclared rather than invented.
+    """
+
+    if not isinstance(entry, Mapping):
+        return ModelContextLimits()
+
+    scopes: list[Mapping[str, object]] = [entry]
+    for nest in _PROVIDER_LISTING_NESTS:
+        nested = entry.get(nest)
+        if isinstance(nested, Mapping):
+            scopes.append(nested)
+
+    def first(keys: tuple[str, ...]) -> int | None:
+        for scope in scopes:
+            for key in keys:
+                try:
+                    value = _optional_int(scope, key)
+                except (TypeError, ValueError):
+                    continue
+                if value is not None and value > 0:
+                    return value
+        return None
+
+    return ModelContextLimits(
+        context_window_tokens=first(_PROVIDER_LISTING_KEYS["context_window_tokens"]),
+        output_reserve_tokens=first(_PROVIDER_LISTING_KEYS["output_reserve_tokens"]),
+    )
 
 
 def model_context_limits_from_env(
@@ -105,5 +161,6 @@ def model_context_limits_to_camel(limits: ModelContextLimits) -> dict[str, int |
 __all__ = [
     "model_context_limits_from_env",
     "model_context_limits_from_mapping",
+    "model_context_limits_from_provider_listing",
     "model_context_limits_to_camel",
 ]

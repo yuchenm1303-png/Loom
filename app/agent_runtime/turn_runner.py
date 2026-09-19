@@ -135,16 +135,22 @@ class TurnRunner:
                             ),
                         ))
                     context_limits = extra.get("context_limits") if isinstance(extra, dict) else None
+                    if not isinstance(context_limits, dict):
+                        context_limits = {}
+                    # Only impose an output cap that something authoritative asked
+                    # for. Loom's own reserve is input-budget bookkeeping; sending
+                    # it as max_tokens truncates a reasoning model mid-answer,
+                    # because its chain of thought spends the same budget.
                     resolved_output_reserve = (
-                        int(context_limits.get("output_reserve_tokens"))
-                        if isinstance(context_limits, dict) and context_limits.get("output_reserve_tokens")
-                        else rt.limits.output_reserve_tokens
+                        int(context_limits.get("output_reserve_tokens") or 0)
+                        if context_limits.get("output_reserve_declared")
+                        else None
                     )
                     request = ChatRequest(
                         messages=tuple(request_messages),
                         tools=step.tool_router.definitions(),
                         tool_choice=ToolChoice.AUTO,
-                        max_output_tokens=resolved_output_reserve,
+                        max_output_tokens=resolved_output_reserve or None,
                         reasoning=reasoning,
                     )
 
