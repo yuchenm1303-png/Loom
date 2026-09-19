@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { TranscriptItem } from "../types/loom";
+import { useI18n } from "../i18n";
 import { ReviewWorkspace } from "./ReviewWorkspace";
 import "./Inspector.css";
 import "./InspectorMark.css";
@@ -263,6 +264,8 @@ function sectionTitle(tab: Tab): string {
 }
 
 export function Inspector({ items, onClose }: InspectorProps) {
+  const { language } = useI18n();
+  const zh = language === "zh-CN";
   const [tab, setTab] = useState<Tab>("activity");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
@@ -316,13 +319,13 @@ export function Inspector({ items, onClose }: InspectorProps) {
         <header className="runtime-header">
           <div className="runtime-heading">
             <div className="runtime-title-row">
-              <strong>Runtime</strong>
+              <strong>{zh ? "执行详情" : "Activity"}</strong>
               <span className={`runtime-health ${busy ? "live" : failed ? "warning" : "idle"}`}>
                 <span className="runtime-health-dot" />
-                {busy ? "Live" : failed ? "Attention" : "Idle"}
+                {zh ? (busy ? "运行中" : failed ? "含失败记录" : "就绪") : (busy ? "Live" : failed ? "Past errors" : "Idle")}
               </span>
             </div>
-            <span className="runtime-caption">Execution inspector</span>
+            <span className="runtime-caption">{zh ? "工具调用与文件变更" : "Tools and workspace changes"}</span>
           </div>
           <button className="runtime-close" onClick={onClose} title="Close runtime inspector" aria-label="Close runtime inspector">
             <PanelRightClose size={16} strokeWidth={1.8} />
@@ -350,7 +353,7 @@ export function Inspector({ items, onClose }: InspectorProps) {
               }}
             >
               <Icon size={14} strokeWidth={1.75} />
-              <span>{label}</span>
+              <span>{zh ? ({ activity: "活动", computer: "电脑", changes: "文件", terminal: "终端" }[id]) : label}</span>
               {counts[id] > 0 ? <span className="runtime-tab-count">{counts[id]}</span> : null}
             </button>
           ))}

@@ -4,24 +4,24 @@
    values converge on one shared palette without changing component behavior. */
 
 :root {
-  --success: #35ed91;
-  --danger: #ff526b;
+  --success: #75bd99;
+  --danger: #e18492;
   --warning: #f7c85d;
   --info: #73b4ff;
 
-  --semantic-success: #35ed91;
+  --semantic-success: #75bd99;
   --semantic-success-text: #8affbd;
-  --semantic-success-strong: #21ff87;
+  --semantic-success-strong: #95d6b4;
   --semantic-success-soft: rgba(53, 237, 145, 0.14);
   --semantic-success-fill: rgba(37, 210, 124, 0.18);
   --semantic-success-border: rgba(53, 237, 145, 0.40);
-  --semantic-success-glow: rgba(53, 237, 145, 0.22);
+  --semantic-success-glow: rgba(53, 237, 145, 0.06);
 
-  --semantic-danger: #ff526b;
+  --semantic-danger: #e18492;
   --semantic-danger-text: #ff9aaa;
-  --semantic-danger-strong: #ff405d;
+  --semantic-danger-strong: #ed9daa;
   --semantic-danger-soft: rgba(255, 82, 107, 0.14);
-  --semantic-danger-fill: rgba(235, 55, 82, 0.19);
+  --semantic-danger-fill: rgba(235, 55, 82, 0.06);
   --semantic-danger-border: rgba(255, 82, 107, 0.40);
   --semantic-danger-glow: rgba(255, 82, 107, 0.21);
 
@@ -120,7 +120,7 @@
 }
 
 .runtime-event.is-failed {
-  background: linear-gradient(90deg, rgba(255, 82, 107, .17), transparent 74%) !important;
+  background: linear-gradient(90deg, rgba(255, 82, 107, .045), transparent 74%) !important;
 }
 
 .runtime-event.is-failed .runtime-event-icon {

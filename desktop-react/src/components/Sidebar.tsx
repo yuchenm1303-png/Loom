@@ -300,14 +300,15 @@ export function Sidebar({
 
   useEffect(() => {
     const activeProjectIdFromThread = (activeThread?.projectId || "").trim();
-    if (!activeProjectIdFromThread || !collapsedProjectIds.has(activeProjectIdFromThread)) return;
+    if (!activeProjectIdFromThread) return;
     setCollapsedProjectIds((current) => {
+      if (!current.has(activeProjectIdFromThread)) return current;
       const next = new Set(current);
       next.delete(activeProjectIdFromThread);
       persistIds(COLLAPSED_PROJECTS_STORAGE_KEY, next);
       return next;
     });
-  }, [activeThread?.projectId, collapsedProjectIds]);
+  }, [activeThread?.id, activeThread?.projectId]);
 
   const markRead = (threadId: string) => {
     if (unreadIds.has(threadId)) updateStoredSet(UNREAD_STORAGE_KEY, setUnreadIds, threadId, false);

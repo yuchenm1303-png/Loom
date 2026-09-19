@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from "electron";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, shell } from "electron";
 import { ChildProcessWithoutNullStreams, spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -658,6 +658,8 @@ async function loadRenderer(window: BrowserWindow): Promise<void> {
 }
 
 function createWindow(): void {
+  // Match the dark renderer while keeping native drag/resize/window controls.
+  if (process.platform === "win32") nativeTheme.themeSource = "dark";
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 920,
@@ -665,6 +667,7 @@ function createWindow(): void {
     minHeight: 680,
     backgroundColor: "#0d0e11",
     title: "Loom",
+    autoHideMenuBar: true,
     show: false,
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),

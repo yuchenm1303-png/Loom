@@ -2,16 +2,13 @@ import {
   Archive,
   Check,
   Copy,
-  Cpu,
   FileDiff,
   Folder,
-  MessageSquareText,
   PanelLeftClose,
   PanelLeftOpen,
   PanelRightClose,
   PanelRightOpen,
   Settings,
-  ShieldCheck,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useI18n } from "../i18n";
@@ -43,14 +40,6 @@ function workspaceName(workspace: string, fallback: string): string {
   return parts.at(-1) || fallback;
 }
 
-function formatPermission(value: string | undefined, fallback: string): string {
-  if (!value) return fallback;
-  return value
-    .replaceAll("_", " ")
-    .replaceAll("-", " ")
-    .replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
-
 async function copyText(value: string): Promise<void> {
   if (!value) return;
   if (navigator.clipboard?.writeText) {
@@ -74,8 +63,6 @@ export function ThreadHeader({
   status,
   running,
   archived,
-  model,
-  permissionMode,
   sidebarOpen,
   inspectorOpen,
   reviewOpen,
@@ -92,9 +79,10 @@ export function ThreadHeader({
     if (archived) return { label: t("common.archived"), tone: "archived" };
     if (status === "waiting_approval") return { label: t("common.approval"), tone: "approval" };
     if (running) return { label: t("common.working"), tone: "working" };
+    if (connection === "error") return { label: language === "zh-CN" ? "连接中断" : "Disconnected", tone: "error" };
     if (connection === "connecting") return { label: t("common.connecting"), tone: "connecting" };
     return { label: t("common.ready"), tone: "ready" };
-  }, [archived, connection, running, status, t]);
+  }, [archived, connection, running, status, t, language]);
 
   useEffect(() => {
     if (!copied) return;
@@ -114,8 +102,6 @@ export function ThreadHeader({
 
   const workspaceFallback = t("common.workspace");
   const localWorkspace = t("common.localWorkspace");
-  const modelLabel = model || t("common.defaultModel");
-  const permissionLabel = formatPermission(permissionMode, t("common.defaultAccess"));
   const settingsLabel = t("common.openSettings");
   const inspectorLabel = inspectorOpen ? t("common.hideInspector") : t("common.openInspector");
   const sidebarLabel = sidebarOpen
@@ -142,10 +128,6 @@ export function ThreadHeader({
       </div>
 
       <div className="thread-header-main">
-        <div className="thread-header-mark" aria-hidden="true">
-          <MessageSquareText size={15} strokeWidth={1.8} />
-        </div>
-
         <div className="thread-header-copy">
           <div className="thread-title-line">
             <strong title={title}>{title}</strong>
@@ -174,17 +156,6 @@ export function ThreadHeader({
           {archived ? <Archive size={12.5} strokeWidth={1.8} /> : <span className="thread-status-orb" aria-hidden="true" />}
           <span className="thread-status-label">{state.label}</span>
         </span>
-
-        <div className="thread-header-meta">
-          <span className="thread-meta-chip model-chip" title={modelLabel}>
-            <Cpu size={12.5} strokeWidth={1.75} />
-            <span>{modelLabel}</span>
-          </span>
-          <span className="thread-meta-chip permission-chip" title={`${t("common.permission")}: ${permissionLabel}`}>
-            <ShieldCheck size={12.5} strokeWidth={1.75} />
-            <span>{permissionLabel}</span>
-          </span>
-        </div>
 
         <button
           type="button"
