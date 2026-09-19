@@ -173,7 +173,7 @@ class TurnRunner:
                         })
                         try:
                             response = rt.model_executor.execute(
-                                rt.platform,
+                                rt.platform_for_session(session.session_id),
                                 profile_id,
                                 request,
                                 token,
@@ -447,7 +447,12 @@ class TurnRunner:
                     session.pending_tool_calls.extend(calls)
                     session.pending_step_id = step.step_id
                     session.pending_bindings = {
-                        c.call_id: action_binding_digest(step, tool, c, rt.platform)
+                        c.call_id: action_binding_digest(
+                            step,
+                            tool,
+                            c,
+                            rt.platform_for_session(session.session_id),
+                        )
                         for c in calls
                         if (tool := step.tool_router.get(c.name)) is not None
                     }

@@ -729,6 +729,10 @@ class ComputerUseRuntime(BrowserRuntime):
             if self.tools.get(tool.name) is None:
                 self.tools.register(tool)
 
+    def set_session_model(self, session_id: str, platform: Any, *, reasoning=None) -> None:
+        wrapped = platform if isinstance(platform, ComputerTransientInputPlatform) else ComputerTransientInputPlatform(platform)
+        super().set_session_model(session_id, wrapped, reasoning=reasoning)
+
     def computer_set_capture_profile(self, profile: str) -> str:
         """Apply the desktop screenshot-quality preference to the live operator.
 
@@ -773,8 +777,9 @@ class ComputerUseRuntime(BrowserRuntime):
             **operator_status,
         }
 
-    def consume_computer_transient(self, value: str) -> str:
-        consumer = getattr(self.platform, "consume", None)
+    def consume_computer_transient(self, value: str, session_id: str = "") -> str:
+        platform = self.platform_for_session(session_id) if str(session_id or "").strip() else self.platform
+        consumer = getattr(platform, "consume", None)
         if not callable(consumer):
             raise RuntimeError("computer transient input boundary is unavailable")
         return str(consumer(value))

@@ -238,7 +238,10 @@ class ContextAgentRuntime(SandboxAgentRuntime):
                 tool_choice=ToolChoice.NONE,
                 max_output_tokens=self.limits.output_reserve_tokens,
             )
-            response = self.platform.execute_chat(session.profile_id, request)
+            response = self.platform_for_session(session.session_id).execute_chat(
+                session.profile_id,
+                request,
+            )
             if not isinstance(response, ModelResponse):
                 raise TypeError("agent model platform must return ModelResponse")
             if response.tool_calls:

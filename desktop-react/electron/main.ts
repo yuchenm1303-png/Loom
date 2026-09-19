@@ -53,6 +53,7 @@ interface ModelRestartResult {
   initialization: unknown;
   models: ReturnType<DesktopModelManager["snapshot"]>;
   hotSwitch?: boolean;
+  thread?: Record<string, unknown>;
 }
 
 interface ReasoningUpdateResult {
@@ -483,7 +484,7 @@ class LoomRpcProcess {
     const spec = this.models.current ?? this.models.ensureInitial();
     const python = resolvePythonExecutable();
     const script = path.join(REPO_ROOT, "loom_app_server.py");
-    const args = [script, "--workspace", REPO_ROOT, "--provider", spec.provider, "--model", spec.model, "--local-ipc"];
+    const args = [script, "--workspace", REPO_ROOT, "--provider", spec.provider, "--model", spec.model, "--selection", spec.selection, "--local-ipc"];
     if (spec.baseUrl) args.push("--base-url", spec.baseUrl);
     if (spec.reasoning) args.push("--reasoning-kind", spec.reasoning.kind, "--reasoning-value", spec.reasoning.value);
     console.log(`[loom-app-server] launching ${python}`);
@@ -584,6 +585,24 @@ async function changeModel(
       throw fallbackError;
     }
   }
+}
+
+async function changeThreadModel(
+  threadId: string,
+  spec: ModelLaunchSpec,
+): Promise<ModelRestartResult> {
+  const id = String(threadId || "").trim();
+  if (!id) throw new Error("Thread is required");
+  const result = await rpc.call("thread/set_model", {
+    threadId: id,
+    ...runtimeModelParams(spec),
+  }) as { thread?: Record<string, unknown>; runtime?: unknown };
+  return {
+    initialization: { runtime: result.runtime ?? {} },
+    models: modelManager.snapshotFor(spec),
+    hotSwitch: true,
+    thread: result.thread,
+  };
 }
 
 async function deleteModel(selection: string): Promise<ModelRestartResult> {
@@ -728,19 +747,42 @@ ipcMain.handle("loom:pick-directory", async () => {
   return result.canceled || !result.filePaths.length ? "" : result.filePaths[0];
 });
 ipcMain.handle("loom:model-list", () => modelManager.snapshot());
-ipcMain.handle("loom:model-switch", async (_event, selection: string) => {
-  const value = String(selection || "").trim();
-  if (!value) throw new Error("Model profile is required");
-  return changeModel(() => modelManager.useProfile(value), { persistSelection: value });
+ipcMain.handle("loom:model-switch", async (_event, threadOrSelection: string, maybeSelection?: string) => {
+  if (maybeSelection === undefined) {
+    const selection = String(threadOrSelection || "").trim();
+    if (!selection) throw new Error("Model profile is required");
+    return changeModel(() => modelManager.useProfile(selection), { persistSelection: selection });
+  }
+  const selection = String(maybeSelection || "").trim();
+  if (!selection) throw new Error("Model profile is required");
+  return changeThreadModel(threadOrSelection, modelManager.resolve(selection));
 });
-ipcMain.handle("loom:model-switch-current", async (_event, model: string) => {
-  const value = String(model || "").trim();
-  if (!value) throw new Error("Model ID is required");
-  return changeModel(() => modelManager.useModelName(value));
+ipcMain.handle("loom:model-switch-current", async (
+  _event,
+  threadOrModel: string,
+  selectionOrUndefined?: string,
+  modelOrUndefined?: string,
+) => {
+  if (modelOrUndefined === undefined) {
+    const model = String(threadOrModel || "").trim();
+    if (!model) throw new Error("Model ID is required");
+    return changeModel(() => modelManager.useModelName(model));
+  }
+  const selection = String(selectionOrUndefined || "").trim();
+  const model = String(modelOrUndefined || "").trim();
+  if (!selection) throw new Error("Model profile is required");
+  if (!model) throw new Error("Model ID is required");
+  return changeThreadModel(threadOrModel, modelManager.resolveModelNameFor(selection, model));
 });
-ipcMain.handle("loom:model-add", async (_event, input: AddModelInput) => {
-  await rpc.assertRestartSafe();
+ipcMain.handle("loom:model-add", async (_event, threadOrInput: string | AddModelInput, maybeInput?: AddModelInput) => {
+  const threadScoped = typeof threadOrInput === "string";
+  const input = (threadScoped ? maybeInput : threadOrInput) as AddModelInput | undefined;
+  if (!input) throw new Error("Model connection input is required");
   const profile = modelManager.add(input);
+  if (threadScoped) {
+    return changeThreadModel(String(threadOrInput), modelManager.resolve(profile.selection));
+  }
+  await rpc.assertRestartSafe();
   return changeModel(() => modelManager.useProfile(profile.selection), { persistSelection: profile.selection });
 });
 ipcMain.handle("loom:model-update", async (_event, input: EditModelInput) => {
@@ -755,23 +797,47 @@ ipcMain.handle("loom:model-update", async (_event, input: EditModelInput) => {
 });
 ipcMain.handle("loom:model-test", async (_event, selection: string) => modelManager.test(selection));
 ipcMain.handle("loom:model-delete", async (_event, selection: string) => deleteModel(selection));
-ipcMain.handle("loom:reasoning-set", async (_event, kind: string, value: string): Promise<ReasoningUpdateResult> => {
-  const current = modelManager.current ?? modelManager.ensureInitial();
-  const previous = current.reasoning ?? null;
-  const next = modelManager.setReasoning(String(kind || "").trim(), String(value || "").trim());
-  try {
-    const runtime = await rpc.call("runtime/set_reasoning", { kind: next.kind, value: next.value });
-    return { runtime, models: modelManager.snapshot() };
-  } catch (error) {
-    if (previous) {
-      try {
-        modelManager.setReasoning(previous.kind, previous.value);
-      } catch (rollbackError) {
-        console.error("Could not restore previous reasoning setting", rollbackError);
+ipcMain.handle("loom:reasoning-set", async (_event, ...args: string[]): Promise<ReasoningUpdateResult & { thread?: Record<string, unknown> }> => {
+  if (args.length === 2) {
+    const [kind, value] = args;
+    const current = modelManager.current ?? modelManager.ensureInitial();
+    const previous = current.reasoning ?? null;
+    const next = modelManager.setReasoning(String(kind || "").trim(), String(value || "").trim());
+    try {
+      const runtime = await rpc.call("runtime/set_reasoning", { kind: next.kind, value: next.value });
+      return { runtime, models: modelManager.snapshot() };
+    } catch (error) {
+      if (previous) {
+        try {
+          modelManager.setReasoning(previous.kind, previous.value);
+        } catch (rollbackError) {
+          console.error("Could not restore previous reasoning setting", rollbackError);
+        }
       }
+      throw error;
     }
-    throw error;
   }
+
+  const [threadId, selection, model, kind, value] = args;
+  const id = String(threadId || "").trim();
+  const selected = String(selection || "").trim();
+  if (!id) throw new Error("Thread is required");
+  if (!selected) throw new Error("Model profile is required");
+  const result = await rpc.call("thread/set_reasoning", {
+    threadId: id,
+    kind: String(kind || "").trim(),
+    value: String(value || "").trim(),
+  }) as { thread?: Record<string, unknown>; runtime?: unknown };
+  const spec = modelManager.resolveModelNameFor(selected, String(model || "").trim());
+  const runtimeReasoning = (
+    result.runtime
+    && typeof result.runtime === "object"
+    && "reasoning" in result.runtime
+  ) ? (result.runtime as { reasoning?: { kind?: string; value?: string } | null }).reasoning : null;
+  const current = runtimeReasoning && spec.reasoning
+    ? { ...spec, reasoning: { ...spec.reasoning, kind: runtimeReasoning.kind || spec.reasoning.kind, value: runtimeReasoning.value || spec.reasoning.value } }
+    : spec;
+  return { runtime: result.runtime ?? {}, models: modelManager.snapshotFor(current), thread: result.thread };
 });
 
 app.whenReady().then(() => {

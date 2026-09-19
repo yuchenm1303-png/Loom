@@ -713,7 +713,7 @@ export default function App() {
           <Composer
             disabled={!thread || loom.connection !== "ready" || archived}
             running={running}
-            model={loom.runtime.model}
+            model={loom.models?.current?.model || loom.runtime.model}
             modelSnapshot={loom.models}
             modelBusy={loom.modelBusy}
             permissionMode={permissionMode}
@@ -728,7 +728,7 @@ export default function App() {
             onStickerPreferencesChange={async (preferences) => {
               await window.loom.call("sticker/preferences/set", { preferences });
             }}
-            imagesAllowed={attachmentsEnabled && loom.runtime.attachments?.images !== false}
+            imagesAllowed={attachmentsEnabled && loom.models?.current?.vision !== false}
             onSend={loom.send}
             onInterrupt={loom.interrupt}
           />

@@ -41,6 +41,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--provider", choices=["openai", "openai-compatible"])
     parser.add_argument("--base-url")
     parser.add_argument("--model")
+    parser.add_argument("--selection")
     parser.add_argument("--reasoning-kind", choices=["openai-effort", "minimax-thinking"])
     parser.add_argument("--reasoning-value")
     parser.add_argument("--home", help="runtime state root; defaults to ~/.loom")
@@ -128,6 +129,9 @@ def main(argv: list[str] | None = None) -> int:
         runtime=runtime,
         store=store,
         model=model,
+        default_model_selection=str(args.selection or ""),
+        default_model_provider=str(args.provider or ""),
+        default_model_base_url=str(args.base_url or ""),
         default_workspace=workspace,
         default_permission_mode=permission_mode,
         vision=bool(args.vision),

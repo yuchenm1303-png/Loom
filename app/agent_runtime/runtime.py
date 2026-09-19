@@ -129,6 +129,8 @@ class AgentRuntime:
         diff_trackers: DiffTrackerRegistry | None = None,
     ) -> None:
         self.platform = platform
+        self._session_platforms: dict[str, AgentModelPlatform] = {}
+        self._session_reasoning: dict[str, object | None] = {}
         self.store = store
         self.tools = tools or ToolRegistry()
         self.policy = policy or ToolPolicy()
@@ -157,7 +159,40 @@ class AgentRuntime:
         self._captured_steps: dict[tuple[str, str, str], StepContext] = {}
         self._captured_steps_guard = threading.RLock()
 
+    def set_session_model(
+        self,
+        session_id: str,
+        platform: AgentModelPlatform,
+        *,
+        reasoning=None,
+    ) -> None:
+        key = str(session_id or "").strip()
+        if not key:
+            raise ValueError("session_id must not be empty")
+        self._session_platforms[key] = platform
+        self._session_reasoning[key] = reasoning
+
+    def clear_session_model(self, session_id: str) -> None:
+        key = str(session_id or "").strip()
+        self._session_platforms.pop(key, None)
+        self._session_reasoning.pop(key, None)
+
+    def has_session_model(self, session_id: str) -> bool:
+        return str(session_id or "").strip() in self._session_platforms
+
+    def platform_for_session(self, session_id: str) -> AgentModelPlatform:
+        key = str(session_id or "").strip()
+        return self._session_platforms.get(key, self.platform)
+
+    def reasoning_for_session(self, session_id: str):
+        key = str(session_id or "").strip()
+        if key in self._session_reasoning:
+            return self._session_reasoning[key]
+        return getattr(self, "reasoning", None)
+
     def close(self) -> None:
+        self._session_platforms.clear()
+        self._session_reasoning.clear()
         with self._active_tokens_guard:
             tokens = tuple(self._active_tokens.values())
         for token in tokens:
@@ -325,7 +360,7 @@ class AgentRuntime:
                     step,
                     selected_tool,
                     validation_call,
-                    self.platform,
+                    self.platform_for_session(session.session_id),
                 ) != expected
             ):
                 raise ValueError("approval binding changed or is legacy; deny this request and start a new turn")
@@ -483,7 +518,7 @@ class AgentRuntime:
                     execution_step,
                     selected,
                     call,
-                    self.platform,
+                    self.platform_for_session(session.session_id),
                 ) != expected
             ):
                 from .history import repair_tool_history
@@ -649,8 +684,12 @@ class AgentRuntime:
             return False
         return True
 
-    def _model_profile_snapshot(self, profile_id: str) -> dict[str, object] | None:
-        registry = getattr(self.platform, "registry", None)
+    def _model_profile_snapshot(
+        self,
+        profile_id: str,
+        platform: AgentModelPlatform | None = None,
+    ) -> dict[str, object] | None:
+        registry = getattr(platform or self.platform, "registry", None)
         if registry is None:
             return None
         try:
@@ -671,6 +710,7 @@ class AgentRuntime:
         step_id: str | None = None,
     ) -> StepContext:
         model_step = session.model_steps + (1 if next_model_step else 0)
+        platform = self.platform_for_session(session.session_id)
         request_state = RequestStateSnapshot.build(
             system_prompt=session.system_prompt,
             project_instructions=self.instruction_loader.load(session.workspace_dir),
@@ -678,7 +718,7 @@ class AgentRuntime:
                 session.messages,
                 fallback=session.communication_language,
             ),
-            model_profile=self._model_profile_snapshot(session.profile_id),
+            model_profile=self._model_profile_snapshot(session.profile_id, platform),
             context_limits=resolve_context_limits(self, session),
         )
         return replace(StepContext.build(
@@ -691,7 +731,7 @@ class AgentRuntime:
             permission_mode=session.permission_mode,
             tool_router=self.tools.router(),
             request_state=request_state,
-            reasoning=getattr(self, "reasoning", None),
+            reasoning=self.reasoning_for_session(session.session_id),
         ), environment_policy=self.process_store.environment_policy)
 
     def _capture_step_context(
