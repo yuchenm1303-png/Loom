@@ -113,7 +113,9 @@ def resolve_context_limits(rt: Any, session: Any) -> ResolvedContextLimits:
     runtime_window = max(2, int(runtime_window)) if runtime_window else None
     runtime_reserve = getattr(rt.limits, "output_reserve_tokens", None)
     runtime_reserve = max(1, int(runtime_reserve)) if runtime_reserve else None
-    profile_limits = _profile_limits(rt.platform, session.profile_id)
+    platform_for_session = getattr(rt, "platform_for_session", None)
+    platform = platform_for_session(session.session_id) if callable(platform_for_session) else rt.platform
+    profile_limits = _profile_limits(platform, session.profile_id)
 
     env_window = _positive_env("LOOM_CONTEXT_WINDOW_TOKENS")
     env_reserve = _positive_env("LOOM_OUTPUT_RESERVE_TOKENS")
