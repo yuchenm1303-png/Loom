@@ -669,11 +669,13 @@ function MessageToolbar({
 
 function ItemView({
   item,
+  streaming = false,
   onApproval,
   promptDisabled,
   workspace,
 }: {
   item: TranscriptItem;
+  streaming?: boolean;
   onApproval(item: TranscriptItem, approved: boolean): void;
   promptDisabled?: boolean;
   workspace?: string;
@@ -709,7 +711,7 @@ function ItemView({
               </div>
             </Disclosure>
           ) : null}
-          {answer ? <MarkdownMessage content={parsed.answer} workspace={workspace} /> : null}
+          {answer ? <MarkdownMessage content={parsed.answer} workspace={workspace} streaming={streaming && (item.status === "streaming" || isActiveActivityStatus(item.status || "running"))} /> : null}
         </div>
         <MessageToolbar kind="assistant" item={item} text={answer || parsed.reasoning} />
       </div>
@@ -741,12 +743,14 @@ function Sequence({
   items,
   onApproval,
   keepActivityOpen = false,
+  active = false,
   promptDisabled,
   workspace,
 }: {
   items: TranscriptItem[];
   onApproval(item: TranscriptItem, approved: boolean): void;
   keepActivityOpen?: boolean;
+  active?: boolean;
   promptDisabled?: boolean;
   workspace?: string;
 }) {
@@ -760,7 +764,7 @@ function Sequence({
           </div>
         ) : (
           <div className={`transcript-entry entry-${block.item.type}`} key={block.item.id}>
-            <ItemView item={block.item} onApproval={onApproval} promptDisabled={promptDisabled} workspace={workspace} />
+            <ItemView item={block.item} streaming={active} onApproval={onApproval} promptDisabled={promptDisabled} workspace={workspace} />
           </div>
         )
       ))}
@@ -886,7 +890,7 @@ function TurnProcess({
       <div className="turn-process-grid">
         <div className="turn-process-inner">
           <div className="turn-process-content">
-            <Sequence items={items} onApproval={onApproval} keepActivityOpen promptDisabled={promptDisabled} workspace={workspace} />
+            <Sequence items={items} active={active} onApproval={onApproval} keepActivityOpen promptDisabled={promptDisabled} workspace={workspace} />
           </div>
         </div>
       </div>

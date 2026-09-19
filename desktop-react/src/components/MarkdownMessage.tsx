@@ -1,5 +1,5 @@
 import { Check, Copy, ExternalLink, Maximize2, X } from "lucide-react";
-import { isValidElement, memo, useEffect, useRef, useState, type ReactNode } from "react";
+import { isValidElement, memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import ReactMarkdown, { defaultUrlTransform, type Components } from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
@@ -15,6 +15,7 @@ import "./stickers.css";
 interface MarkdownMessageProps {
   content: string;
   compact?: boolean;
+  streaming?: boolean;
   workspace?: string;
 }
 
@@ -301,7 +302,7 @@ function streamStep(backlog: number): number {
  * append-only changes are eased, so reopening a thread never replays a typing
  * animation for old messages.
  */
-function useSmoothedMarkdownContent(content: string): string {
+function useSmoothedMarkdownContent(content: string, streaming: boolean): string {
   const [visible, setVisible] = useState(content);
   const visibleRef = useRef(content);
   const targetRef = useRef(content);
@@ -336,13 +337,16 @@ function useSmoothedMarkdownContent(content: string): string {
         }
 
         const backlog = target.length - current.length;
-        const step = Math.min(STREAM_MAX_STEP, streamStep(backlog));
-        commit(target.slice(0, current.length + step));
+        const step = Math.max(streamStep(backlog), Math.ceil(backlog / 8));
+        let end = current.length + step;
+        // Never split a UTF-16 surrogate pair (emoji, supplementary CJK).
+        if (end < target.length && /[\uD800-\uDBFF]/.test(target[end - 1])) end++;
+        commit(target.slice(0, end));
         if (visibleRef.current !== targetRef.current) schedule();
       }, STREAM_FRAME_MS);
     };
 
-    if (prefersReducedMotion()) {
+    if (!streaming || prefersReducedMotion() || document.documentElement.dataset.loomReducedMotion === "true") {
       cancelTimer();
       commit(content);
       return;
@@ -358,7 +362,7 @@ function useSmoothedMarkdownContent(content: string): string {
     // Do not cancel the scheduled frame when a denser delta arrives. The live
     // timer reads targetRef, so it naturally chases the newest authoritative
     // text instead of repeatedly restarting before it can paint.
-  }, [content]);
+  }, [content, streaming]);
 
   useEffect(() => () => {
     if (timerRef.current !== null) {
@@ -367,27 +371,64 @@ function useSmoothedMarkdownContent(content: string): string {
     }
   }, []);
 
-  return visible;
+  return streaming ? visible : content;
+}
+
+interface StreamNode {
+  type: string;
+  tagName?: string;
+  value?: string;
+  properties?: Record<string, unknown>;
+  children?: StreamNode[];
+}
+
+function rehypeStreamText() {
+  return (tree: StreamNode) => {
+    function visit(node: StreamNode) {
+      if (!node.children || ["pre", "code", "math", "svg"].includes(node.tagName || "")) return;
+      node.children = node.children.flatMap((child): StreamNode[] => {
+        if (child.type !== "text" || !child.value?.trim()) {
+          visit(child);
+          return [child];
+        }
+        const characters = Array.from(child.value);
+        const chunks: StreamNode[] = [];
+        for (let i = 0; i < characters.length; i += 8) {
+          chunks.push({
+            type: "element", tagName: "span",
+            properties: { className: ["stream-text-chunk"] },
+            children: [{ type: "text", value: characters.slice(i, i + 8).join("") }],
+          });
+        }
+        return chunks;
+      });
+    }
+    visit(tree);
+  };
 }
 
 const MarkdownRenderer = memo(function MarkdownRenderer({
   content,
   compact,
   workspace,
+  streaming,
 }: {
   content: string;
   compact: boolean;
   workspace?: string;
+  streaming: boolean;
 }) {
+  const components = useMemo(() => markdownComponents(workspace), [workspace]);
   return (
-    <div className={`markdown-body ${compact ? "markdown-compact" : ""}`}>
+    <div className={`markdown-body ${compact ? "markdown-compact" : ""} ${streaming ? "is-streaming" : ""}`} aria-busy={streaming}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[
+          rehypeStreamText,
           rehypeKatex,
           [rehypeHighlight, { detect: false, ignoreMissing: true }],
         ]}
-        components={markdownComponents(workspace)}
+        components={components}
         urlTransform={markdownUrlTransform}
         skipHtml
       >
@@ -397,7 +438,7 @@ const MarkdownRenderer = memo(function MarkdownRenderer({
   );
 });
 
-export function MarkdownMessage({ content, compact = false, workspace }: MarkdownMessageProps) {
-  const visible = useSmoothedMarkdownContent(content);
-  return <MarkdownRenderer content={visible} compact={compact} workspace={workspace} />;
+export function MarkdownMessage({ content, compact = false, workspace, streaming = false }: MarkdownMessageProps) {
+  const visible = useSmoothedMarkdownContent(content, streaming);
+  return <MarkdownRenderer content={visible} compact={compact} workspace={workspace} streaming={streaming} />;
 }

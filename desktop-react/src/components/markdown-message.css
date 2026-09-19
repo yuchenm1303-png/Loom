@@ -8,7 +8,7 @@
   line-height: inherit;
   white-space: normal;
   overflow-wrap: anywhere;
-  animation: copy-reveal 220ms ease both;
+  /* Streaming motion belongs to newly mounted text chunks, never the body. */
 }
 
 .markdown-body > :first-child { margin-top: 0 !important; }
@@ -385,4 +385,40 @@
     animation: none !important;
     transition: none !important;
   }
+}
+
+/* Inline opacity preserves line wrapping and native text rasterization. No
+   transforms, blur, or permanent compositor layers on message text. */
+.markdown-body.is-streaming .stream-text-chunk {
+  animation: stream-text-reveal 180ms ease-out;
+}
+
+.markdown-body.is-streaming::after {
+  content: "";
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin-left: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  vertical-align: middle;
+  animation: stream-tail-breathe 1.2s ease-in-out infinite;
+}
+
+@keyframes stream-text-reveal {
+  from { opacity: .2; }
+  to { opacity: 1; }
+}
+@keyframes stream-tail-breathe {
+  0%, 100% { opacity: .3; }
+  50% { opacity: .7; }
+}
+
+html[data-loom-reduced-motion="true"] .markdown-body .stream-text-chunk,
+html[data-loom-reduced-motion="true"] .markdown-body::after {
+  animation: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .markdown-body.is-streaming .stream-text-chunk,
+  .markdown-body.is-streaming::after { animation: none; }
 }
