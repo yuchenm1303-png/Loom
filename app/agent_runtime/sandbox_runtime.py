@@ -531,8 +531,8 @@ class SandboxAgentRuntime(DurableAgentRuntime):
             return False
         return True
 
-    def _model_profile_snapshot(self, profile_id: str) -> dict[str, object] | None:
-        registry = getattr(self.platform, "registry", None)
+    def _model_profile_snapshot(self, profile_id: str, platform=None) -> dict[str, object] | None:
+        registry = getattr(platform or self.platform, "registry", None)
         if registry is None:
             return None
         try:
@@ -561,6 +561,7 @@ class SandboxAgentRuntime(DurableAgentRuntime):
             permissions=step.permissions,
             workspace=Path(step.world_state.workspace_dir),
         )
+        platform = self.platform_for_session(session.session_id)
         request_state = RequestStateSnapshot.build(
             system_prompt=session.system_prompt,
             project_instructions=self.instruction_loader.load(session.workspace_dir),
@@ -568,7 +569,7 @@ class SandboxAgentRuntime(DurableAgentRuntime):
                 session.messages,
                 fallback=session.communication_language,
             ),
-            model_profile=self._model_profile_snapshot(session.profile_id),
+            model_profile=self._model_profile_snapshot(session.profile_id, platform),
             context_limits=resolve_context_limits(self, session),
         )
         return replace(
