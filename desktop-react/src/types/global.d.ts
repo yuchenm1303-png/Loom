@@ -23,13 +23,13 @@ export interface LoomBridge {
   call<T = unknown>(method: string, params?: Record<string, unknown>): Promise<T>;
   disconnect(): Promise<void>;
   listModels<T = unknown>(): Promise<T>;
-  switchModelProfile<T = unknown>(selection: string): Promise<T>;
-  switchCurrentModel<T = unknown>(model: string): Promise<T>;
+  switchModelProfile<T = unknown>(threadId: string, selection: string): Promise<T>;
+  switchCurrentModel<T = unknown>(threadId: string, selection: string, model: string): Promise<T>;
   addModel<T = unknown>(input: Record<string, unknown>): Promise<T>;
   updateModel<T = unknown>(input: Record<string, unknown>): Promise<T>;
   testModel<T = unknown>(selection: string): Promise<T>;
   deleteModel<T = unknown>(selection: string): Promise<T>;
-  setReasoning<T = unknown>(kind: string, value: string): Promise<T>;
+  setReasoning<T = unknown>(threadId: string, selection: string, model: string, kind: string, value: string): Promise<T>;
   /** Create a zip archive containing local Computer Use diagnostics and traces. */
   exportComputerLogs(): Promise<ComputerLogExportResult>;
   /** Create a zip archive containing local Browser Use diagnostics and bridge traces. */
