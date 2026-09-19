@@ -46,6 +46,12 @@ export interface ThreadRecord {
   title: string;
   workspace: string;
   permissionMode: string;
+  modelSelection?: string | null;
+  model?: string | null;
+  modelProvider?: string | null;
+  modelBaseUrl?: string | null;
+  modelVision?: boolean;
+  reasoning?: { kind: string; value: string } | null;
   status: ThreadStatus | string;
   currentTurnId?: string | null;
   createdAt: string;
@@ -289,11 +295,13 @@ export interface ModelRestartResult {
   initialization: InitializeResult;
   models: ModelSnapshot;
   hotSwitch?: boolean;
+  thread?: ThreadRecord;
 }
 
 export interface ReasoningUpdateResult {
   runtime: InitializeResult["runtime"];
   models: ModelSnapshot;
+  thread?: ThreadRecord;
 }
 
 export interface InitializeResult {
