@@ -463,7 +463,7 @@ def computer_tools(runtime: "ComputerUseRuntime") -> tuple[AgentTool, ...]:
                 raise ValueError("computer_action action must be an object")
             action_payload = dict(raw_action)
             if str(action_payload.get("type") or "") == "type" and "text" in action_payload:
-                action_payload["text"] = runtime.consume_computer_transient(str(action_payload.get("text") or ""))
+                action_payload["text"] = runtime.consume_computer_transient(str(action_payload.get("text") or ""), context.session_id)
             action = ComputerAction.from_dict(action_payload)
             outcome = _store(runtime).execute(
                 context.session_id,
@@ -519,7 +519,7 @@ def computer_tools(runtime: "ComputerUseRuntime") -> tuple[AgentTool, ...]:
             arguments=_safe_arguments(runtime, arguments),
         )
         try:
-            instruction = runtime.consume_computer_transient(str(arguments["instruction"]))
+            instruction = runtime.consume_computer_transient(str(arguments["instruction"]), context.session_id)
             if len(instruction) > 20_000:
                 raise ValueError("computer_step instruction exceeds 20,000 characters")
             outcome = _store(runtime).step(context.session_id, instruction)
@@ -575,8 +575,8 @@ def computer_tools(runtime: "ComputerUseRuntime") -> tuple[AgentTool, ...]:
         started = time.perf_counter()
         max_steps = _bounded_int(arguments.get("max_steps"), default=8, minimum=1, maximum=40)
         max_retries = _bounded_int(arguments.get("max_retries"), default=2, minimum=0, maximum=5)
-        task = runtime.consume_computer_transient(str(arguments["task"]))
-        stop_when = runtime.consume_computer_transient(str(arguments.get("stop_when") or ""))
+        task = runtime.consume_computer_transient(str(arguments["task"]), context.session_id)
+        stop_when = runtime.consume_computer_transient(str(arguments.get("stop_when") or ""), context.session_id)
         if not task.strip():
             raise ValueError("computer_run_task task must not be empty")
         if len(task) > 20_000:
