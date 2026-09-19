@@ -29,13 +29,16 @@ const api = {
   call: (method: string, params: Record<string, unknown> = {}) => ipcRenderer.invoke("loom:call", method, params),
   disconnect: () => ipcRenderer.invoke("loom:disconnect"),
   listModels: () => ipcRenderer.invoke("loom:model-list"),
-  switchModelProfile: (selection: string) => ipcRenderer.invoke("loom:model-switch", selection),
-  switchCurrentModel: (model: string) => ipcRenderer.invoke("loom:model-switch-current", model),
-  addModel: (input: Record<string, unknown>) => ipcRenderer.invoke("loom:model-add", input),
+  switchModelProfile: (first: string, second?: string) =>
+    second === undefined ? ipcRenderer.invoke("loom:model-switch", first) : ipcRenderer.invoke("loom:model-switch", first, second),
+  switchCurrentModel: (first: string, second?: string, third?: string) =>
+    third === undefined ? ipcRenderer.invoke("loom:model-switch-current", first) : ipcRenderer.invoke("loom:model-switch-current", first, second, third),
+  addModel: (first: string | Record<string, unknown>, second?: Record<string, unknown>) =>
+    typeof first === "string" ? ipcRenderer.invoke("loom:model-add", first, second) : ipcRenderer.invoke("loom:model-add", first),
   updateModel: (input: Record<string, unknown>) => ipcRenderer.invoke("loom:model-update", input),
   testModel: (selection: string) => ipcRenderer.invoke("loom:model-test", selection),
   deleteModel: (selection: string) => ipcRenderer.invoke("loom:model-delete", selection),
-  setReasoning: (kind: string, value: string) => ipcRenderer.invoke("loom:reasoning-set", kind, value),
+  setReasoning: (...args: string[]) => ipcRenderer.invoke("loom:reasoning-set", ...args),
   exportComputerLogs: () => ipcRenderer.invoke("loom:export-computer-logs"),
   exportBrowserLogs: () => ipcRenderer.invoke("loom:export-browser-logs"),
   setupBrowserExtension: (browser: "edge" | "chrome" = "edge", extensionConnected = false) => ipcRenderer.invoke("loom:setup-browser-extension", browser, extensionConnected),
