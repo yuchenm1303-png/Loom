@@ -258,7 +258,7 @@ class MemoryRuntime(MultiAgentRuntime):
             temperature=0.0,
             max_output_tokens=2400,
         )
-        response = self.platform.execute_chat(profile_id, request)
+        response = self.platform_for_session(source_session_id).execute_chat(profile_id, request)
         if not isinstance(response, ModelResponse):
             raise TypeError("memory extraction model must return ModelResponse")
         if response.tool_calls:
