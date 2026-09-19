@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useI18n } from "../i18n";
 import { Composer as ComposerBase } from "./ComposerBase";
 import "./composer.css";
 
@@ -14,6 +15,8 @@ import "./composer.css";
 type ComposerProps = ComponentProps<typeof ComposerBase>;
 
 function SteeringComposer({ onSend, onInterrupt }: ComposerProps) {
+  const { language } = useI18n();
+  const zh = language === "zh-CN";
   const [value, setValue] = useState("");
   const [focused, setFocused] = useState(false);
   const [sending, setSending] = useState(false);
@@ -85,12 +88,12 @@ function SteeringComposer({ onSend, onInterrupt }: ComposerProps) {
   }
 
   const activityLabel = stopping
-    ? "Stopping…"
+    ? (zh ? "正在停止…" : "Stopping…")
     : sending
-      ? "Sending guidance…"
+      ? (zh ? "正在发送…" : "Sending guidance…")
       : acknowledged
-        ? "Guidance received"
-        : "Live steering";
+        ? (zh ? "已收到补充要求" : "Guidance received")
+        : (zh ? "任务进行中" : "Task in progress");
 
   return (
     <div className="composer-wrap live-steering-composer">
@@ -118,7 +121,7 @@ function SteeringComposer({ onSend, onInterrupt }: ComposerProps) {
             onKeyDown={onKeyDown}
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
-            placeholder="Guide the current task…"
+            placeholder={zh ? "补充要求，调整当前任务…" : "Guide the current task…"}
             aria-label="Guide the current task"
             disabled={sending || stopping}
             rows={1}
@@ -157,8 +160,8 @@ function SteeringComposer({ onSend, onInterrupt }: ComposerProps) {
       </form>
       <div className="composer-hint">
         {acknowledged
-          ? "Received. Model generation is superseded immediately; an already-running tool finishes before Loom replans."
-          : "Guide this turn anytime. Loom replaces in-flight model generation immediately, while running tools finish safely before replanning. Stop still ends the turn."}
+          ? (zh ? "已收到，Loom 将根据补充要求继续。" : "Received. Loom will continue with your guidance.")
+          : (zh ? "可以随时补充要求，或点击停止结束任务。" : "Add guidance anytime, or stop to end this task.")}
       </div>
     </div>
   );

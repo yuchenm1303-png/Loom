@@ -18,11 +18,11 @@
   height: 36px;
   overflow: hidden;
   display: grid;
-  grid-template-columns: 14px minmax(0, 1fr) 7px;
+  grid-template-columns: 14px minmax(0, 1fr);
   align-items: center;
   justify-content: stretch;
-  column-gap: 5px;
-  padding-inline: 8px 7px;
+  column-gap: 4px;
+  padding-inline: 5px;
   border: 1px solid transparent;
   border-radius: 10px;
   font-size: 10px;
@@ -58,7 +58,11 @@
 }
 
 .runtime-tab > span:not(.runtime-tab-count) {
-  display: none;
+  display: block;
+  grid-column: 2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .runtime-tab::after {
@@ -70,14 +74,15 @@
   color: inherit;
 }
 
-.runtime-tabs > .runtime-tab:nth-of-type(1)::after { content: "Trace"; }
-.runtime-tabs > .runtime-tab:nth-of-type(2)::after { content: "Use"; }
-.runtime-tabs > .runtime-tab:nth-of-type(3)::after { content: "Files"; }
-.runtime-tabs > .runtime-tab:nth-of-type(4)::after { content: "Shell"; }
+
+
+
+
 
 .runtime-tab-count {
-  grid-column: 3;
-  grid-row: 1;
+  position: absolute;
+  top: 4px;
+  right: 4px;
   justify-self: end;
   align-self: center;
   flex: none;

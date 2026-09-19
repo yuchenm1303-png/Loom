@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { FormEvent, KeyboardEvent as ReactKeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { AddModelInput, Attachment, ModelSnapshot, StickerPreferences } from "../types/loom";
+import { useI18n } from "../i18n";
 import { ModelPanel } from "./ModelPanel";
 import { StickerPanel } from "./StickerPanel";
 import "./composer.css";
@@ -84,8 +85,16 @@ function titleCase(value: string): string {
     .replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
-function permissionPresentation(mode: string): PermissionPresentation {
-  return PERMISSION_PRESENTATION[mode] ?? {
+const PERMISSION_ZH: Record<string, Pick<PermissionPresentation, "label" | "description" | "badge">> = {
+  "read-only": { label: "只读", description: "查看文件和上下文，不修改工作区。", badge: "只读访问" },
+  approval: { label: "按需审批", description: "敏感操作执行前需要你的确认。", badge: "推荐" },
+  workspace: { label: "工作区", description: "允许在当前工作区内编辑文件和执行常规命令。", badge: "工作区访问" },
+  "full-access": { label: "完全访问", description: "允许 Loom 使用本机可用的最高权限。", badge: "最高权限" },
+};
+function permissionPresentation(mode: string, chinese = false): PermissionPresentation {
+  const base = PERMISSION_PRESENTATION[mode];
+  if (base) return chinese ? { ...base, ...PERMISSION_ZH[mode] } : base;
+  return {
     label: titleCase(mode),
     description: "Permission policy exposed by the current Loom runtime.",
     badge: "Runtime",
@@ -140,6 +149,8 @@ export function Composer({
   onSend,
   onInterrupt,
 }: ComposerProps) {
+  const { language } = useI18n();
+  const zh = language === "zh-CN";
   const [value, setValue] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [attachError, setAttachError] = useState("");
@@ -336,7 +347,7 @@ export function Composer({
     }
   }
 
-  const currentPermission = permissionPresentation(permissionMode || "approval");
+  const currentPermission = permissionPresentation(permissionMode || "approval", zh);
   const currentModel = modelSnapshot?.current?.model || model || "Model";
   const stickersOff = stickerPreferences?.frequency === 0;
 
@@ -404,7 +415,7 @@ export function Composer({
             onPaste={(event) => void onPaste(event)}
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
-            placeholder={disabled ? "Open a thread to start" : running ? "Loom is working…" : "Ask Loom to inspect, build, debug, or automate…"}
+            placeholder={zh ? (disabled ? "打开对话，开始工作" : "描述任务，或提出问题…") : (disabled ? "Open a thread to start" : "Describe a task or ask a question…")}
             disabled={disabled || running}
             rows={1}
           />
@@ -415,12 +426,12 @@ export function Composer({
             <button
               type="button"
               className="composer-tool"
-              title="Attach files · or paste and drop them straight into the message"
+              title={zh ? "添加附件，也可以粘贴或拖入文件" : "Attach files, or paste and drop them here"}
               onClick={() => void pickAttachments()}
               disabled={disabled}
             >
               <Paperclip size={15} />
-              <span>Attach</span>
+              <span>{zh ? "附件" : "Attach"}</span>
             </button>
             <span className="composer-divider" />
 
@@ -428,7 +439,7 @@ export function Composer({
               <button
                 type="button"
                 className={`composer-chip permission-chip ${openPanel === "permission" ? "is-open" : ""}`}
-                title="Permission profile"
+                title={zh ? "权限设置" : "Permission profile"}
                 aria-haspopup="menu"
                 aria-expanded={openPanel === "permission"}
                 onClick={() => togglePanel("permission")}
@@ -444,8 +455,8 @@ export function Composer({
                     <div className="composer-popover-heading">
                       <span className="composer-popover-icon permission"><ShieldCheck size={16} /></span>
                       <div>
-                        <strong>Permission profile</strong>
-                        <span>Choose how independently Loom can act in this thread.</span>
+                        <strong>{zh ? "权限设置" : "Permission profile"}</strong>
+                        <span>{zh ? "选择当前对话的操作权限。" : "Choose access for this conversation."}</span>
                       </div>
                     </div>
                     <span className="composer-popover-context">Thread</span>
@@ -453,7 +464,7 @@ export function Composer({
 
                   <div className="composer-option-list">
                     {availablePermissionModes.map((mode) => {
-                      const presentation = permissionPresentation(mode);
+                      const presentation = permissionPresentation(mode, zh);
                       const active = mode === permissionMode;
                       const pending = pendingSelection === mode;
                       return (
@@ -510,8 +521,8 @@ export function Composer({
                     <div className="composer-popover-heading">
                       <span className="composer-popover-icon model"><Cpu size={16} /></span>
                       <div>
-                        <strong>Models</strong>
-                        <span>Switch runtime models, tune reasoning, or connect a custom API.</span>
+                        <strong>{zh ? "模型" : "Models"}</strong>
+                        <span>{zh ? "切换模型、调整推理或连接自定义 API。" : "Switch models, adjust reasoning, or connect an API."}</span>
                       </div>
                     </div>
                     <span className="composer-popover-context">Runtime</span>
@@ -552,7 +563,7 @@ export function Composer({
               <button
                 type="button"
                 className={`composer-chip sticker-chip ${openPanel === "sticker" ? "is-open" : ""}`}
-                title="Chat expression settings"
+                title={zh ? "表情设置" : "Expression settings"} aria-label={zh ? "表情设置" : "Expression settings"}
                 aria-haspopup="dialog"
                 aria-expanded={openPanel === "sticker"}
                 onClick={() => togglePanel("sticker")}
@@ -568,8 +579,8 @@ export function Composer({
                     <div className="composer-popover-heading">
                       <span className="composer-popover-icon model"><Smile size={16} /></span>
                       <div>
-                        <strong>Stickers</strong>
-                        <span>Tune inline expression without changing the message protocol.</span>
+                        <strong>{zh ? "表情" : "Stickers"}</strong>
+                        <span>{zh ? "调整回复中的表情风格与频率。" : "Adjust expression style and frequency."}</span>
                       </div>
                     </div>
                     <span className="composer-popover-context">Runtime</span>
@@ -601,7 +612,7 @@ export function Composer({
           </div>
         </div>
       </form>
-      <div className="composer-hint">Loom can use your workspace and connected tools. Review sensitive actions before approving them.</div>
+      <div className="composer-hint">{zh ? "Enter 发送 · Shift + Enter 换行" : "Enter to send · Shift + Enter for a new line"}</div>
     </div>
   );
 }

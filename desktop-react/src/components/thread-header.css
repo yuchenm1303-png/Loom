@@ -410,3 +410,11 @@
     transition-duration: .001ms !important;
   }
 }
+/* Keep the conversation title primary; model and access live in the composer. */
+.thread-header.polished-thread-header { background: #101115; box-shadow: none; }
+.thread-header .workspace-path-button { border-color: transparent; background: transparent; box-shadow: none; }
+.thread-header .workspace-full-path { display: none; }
+.thread-header .thread-header-icon-button { background: transparent; box-shadow: none; }
+.thread-header .thread-status-chip.ready { background: transparent; border-color: transparent; color: #939b98; }
+.thread-header .thread-status-chip.error { color: #e99b9b; }
+.thread-header .thread-state-dot.error { background: #e99b9b; }

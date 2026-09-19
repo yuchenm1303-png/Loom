@@ -38,3 +38,26 @@
 .composer.has-panel.is-focused {
   transform: none;
 }
+
+/* A single quiet input surface, with focus carried by its border. */
+.composer-wrap { padding: 12px 26px 18px; }
+.composer-wrap::before, .composer::before, .composer::after, .composer-glow { display: none; }
+.composer,
+.composer:hover,
+.composer.is-focused,
+.composer:focus-within:not(.is-focused) {
+  border-radius: 16px;
+  background: #17181d;
+  border-color: #303138;
+  box-shadow: 0 6px 22px rgba(0,0,0,.12);
+}
+.composer.is-focused { border-color: #776e9c; }
+.composer-toolbar { gap: 8px; }
+.composer-left { flex-wrap: wrap; gap: 4px; }
+.composer .composer-spark { display: none; }
+.composer .composer-chip, .composer .composer-tool { border-radius: 7px; }
+.composer .sticker-chip { width: 30px; padding: 0; justify-content: center; }
+.composer .sticker-chip > span, .composer .sticker-chip > .composer-chip-chevron { display: none; }
+.composer .sticker-chip > svg:first-child { width: 16px; height: 16px; }
+.composer-hint { min-height: 16px; margin-top: 8px; color: #8b8d98; }
+.composer .send-button:not(:disabled):not(.stop) { background: #d8d1f0; color: #24212d; box-shadow: none; }

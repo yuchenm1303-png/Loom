@@ -35,16 +35,16 @@
 }
 
 .codex-sidebar .compact-thread-row:hover .compact-thread-main,
-.codex-sidebar .compact-thread-row:focus-within .compact-thread-main,
-.codex-sidebar .compact-thread-row.active .compact-thread-main,
-.codex-sidebar .compact-thread-row.pinned .compact-thread-main {
+.codex-sidebar .compact-thread-row:focus-within .compact-thread-main {
   padding-right: 80px;
 }
 
 /* Project rows had the same invisible action-column reservation. */
 .codex-sidebar .project-group-row {
   position: relative;
-  display: block;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: center;
   min-width: 0;
 }
 
@@ -96,4 +96,24 @@
 html[data-loom-reduced-motion="true"] .codex-sidebar .compact-thread-main,
 html[data-loom-reduced-motion="true"] .codex-sidebar .project-group-main {
   transition: none !important;
+}
+
+/* Project disclosures share the title row; actions remain overlaid. */
+.codex-sidebar .project-group-row:has(.project-rename-input) {
+  grid-template-columns: minmax(0, 1fr);
+}
+.codex-sidebar .project-disclosure-button { grid-column: 1; grid-row: 1; }
+.codex-sidebar .project-group-main { grid-column: 2; grid-row: 1; }
+.codex-sidebar .project-list { gap: 6px; }
+.codex-sidebar .project-thread-list { margin: 0 0 4px 12px; padding-left: 10px; }
+.codex-sidebar .compact-thread-row.active {
+  background: rgba(167, 155, 238, .10);
+  box-shadow: none;
+}
+.codex-sidebar .compact-thread-row.active::before { background: #a79be6; }
+.codex-sidebar .compact-thread-title { font-weight: 450; }
+
+.codex-sidebar .compact-thread-row:not(:hover):not(:focus-within) .thread-quick-actions {
+  opacity: 0;
+  pointer-events: none;
 }
