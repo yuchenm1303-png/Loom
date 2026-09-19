@@ -22,6 +22,13 @@ _MINIMAX_M3_OPTIONS = [
     _option("adaptive", "Adaptive", "Let M3 decide when deeper reasoning is useful."),
 ]
 
+_DEEPSEEK_OPTIONS = [
+    _option("none", "Direct", "Disable thinking mode for the lowest latency."),
+    _option("low", "Low", "Use lighter reasoning for straightforward tasks."),
+    _option("high", "High", "DeepSeek's default reasoning level for agent work."),
+    _option("max", "Max", "Use DeepSeek's maximum supported reasoning effort.", advanced=True),
+]
+
 _OPENAI_STANDARD_OPTIONS = [
     _option("low", "Low", "Fast responses with lighter reasoning."),
     _option("medium", "Medium", "Balances speed and reasoning depth for everyday work."),
@@ -56,6 +63,14 @@ def reasoning_capability(*, model: str, adapter: str, base_url: str = "") -> dic
             "defaultValue": "adaptive",
             "options": list(_MINIMAX_M3_OPTIONS),
             "source": "MiniMax M3 hosted API",
+        }
+
+    if "api.deepseek.com" in endpoint and model_key:
+        return {
+            "kind": ReasoningKind.OPENAI_EFFORT.value,
+            "defaultValue": "high",
+            "options": list(_DEEPSEEK_OPTIONS),
+            "source": "DeepSeek thinking effort",
         }
 
     is_openai_reasoning = (
