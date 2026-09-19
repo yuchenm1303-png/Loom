@@ -748,6 +748,29 @@ def _resolve(
     }
 
 
+def resolve_model_spec(
+    selection: str,
+    *,
+    model: str = "",
+    home: str | Path | None = None,
+) -> dict[str, Any]:
+    """Resolve one model selection for an existing thread without changing defaults."""
+
+    store = ModelConfigStore(home)
+    reasoning_store = ReasoningConfigStore(store.home)
+    selection_store = ModelSelectionStore(store.home)
+    resolved = _resolve(store, reasoning_store, selection_store, selection)
+    requested_model = str(model or "").strip()
+    if requested_model and requested_model != str(resolved.get("model") or ""):
+        described = _describe_model(store, reasoning_store, selection, requested_model)
+        resolved = {
+            **resolved,
+            "model": requested_model,
+            "reasoning": described.get("reasoning"),
+        }
+    return resolved
+
+
 def _read_stdin_object() -> dict[str, Any]:
     raw = sys.stdin.read()
     if not raw.strip():
