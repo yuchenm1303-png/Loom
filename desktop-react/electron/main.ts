@@ -558,7 +558,6 @@ async function changeModel(
   apply: () => ModelLaunchSpec,
   options: { persistSelection?: string } = {},
 ): Promise<ModelRestartResult> {
-  await rpc.assertRestartSafe();
   const previous = modelManager.current ?? modelManager.ensureInitial();
   const next = apply();
   const hadRunningServer = rpc.ready;
@@ -753,7 +752,6 @@ ipcMain.handle("loom:model-update", async (_event, input: EditModelInput) => {
 ipcMain.handle("loom:model-test", async (_event, selection: string) => modelManager.test(selection));
 ipcMain.handle("loom:model-delete", async (_event, selection: string) => deleteModel(selection));
 ipcMain.handle("loom:reasoning-set", async (_event, kind: string, value: string): Promise<ReasoningUpdateResult> => {
-  await rpc.assertRestartSafe();
   const current = modelManager.current ?? modelManager.ensureInitial();
   const previous = current.reasoning ?? null;
   const next = modelManager.setReasoning(String(kind || "").trim(), String(value || "").trim());
