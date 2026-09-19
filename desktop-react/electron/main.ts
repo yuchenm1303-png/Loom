@@ -80,6 +80,7 @@ function initializationFromRuntime(payload: unknown): unknown {
 
 function runtimeModelParams(spec: ModelLaunchSpec): Record<string, unknown> {
   return {
+    selection: spec.selection,
     provider: spec.provider,
     baseUrl: spec.baseUrl,
     model: spec.model,
@@ -554,19 +555,6 @@ function handleRuntimeNotification(payload: JsonRpcResponse): void {
 }
 const rpc = new LoomRpcProcess(handleRuntimeNotification, modelManager);
 
-function persistModelSelectionLater(selection: string | undefined): void {
-  const value = String(selection || "").trim();
-  if (!value) return;
-  modelManager.markActive(value);
-  setImmediate(() => {
-    try {
-      modelManager.persistActive(value);
-    } catch (error) {
-      console.error("Could not persist selected Loom model", error);
-    }
-  });
-}
-
 async function changeModel(
   apply: () => ModelLaunchSpec,
   options: { persistSelection?: string } = {},
@@ -576,7 +564,7 @@ async function changeModel(
   const hadRunningServer = rpc.ready;
   try {
     const initialization = await rpc.setModel(next);
-    persistModelSelectionLater(options.persistSelection);
+    if (options.persistSelection) modelManager.markActive(options.persistSelection);
     return { initialization, models: modelManager.snapshot(), hotSwitch: hadRunningServer };
   } catch (error) {
     modelManager.restore(previous);
@@ -584,7 +572,7 @@ async function changeModel(
     modelManager.restore(next);
     try {
       const initialization = await rpc.restart();
-      persistModelSelectionLater(options.persistSelection);
+      if (options.persistSelection) modelManager.setActive(options.persistSelection);
       return { initialization, models: modelManager.snapshot(), hotSwitch: false };
     } catch (fallbackError) {
       modelManager.restore(previous);
