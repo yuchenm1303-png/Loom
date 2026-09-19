@@ -132,23 +132,23 @@ export class DesktopModelManager {
     return this.registryCache;
   }
 
-  snapshot(forceRefresh = false): ModelSnapshot {
+  snapshotFor(spec: ModelLaunchSpec | null, forceRefresh = false): ModelSnapshot {
     const registry = this.registry(forceRefresh);
-    const currentProfile = this.currentSpec
-      ? registry.profiles.find((profile) => profile.selection === this.currentSpec?.selection)
+    const currentProfile = spec
+      ? registry.profiles.find((profile) => profile.selection === spec.selection)
       : undefined;
-    const current = this.currentSpec
+    const current = spec
       ? {
-          selection: this.currentSpec.selection,
-          id: this.currentSpec.id,
-          kind: this.currentSpec.kind,
-          name: this.currentSpec.name,
-          adapter: this.currentSpec.adapter,
-          baseUrl: this.currentSpec.baseUrl,
-          model: this.currentSpec.model,
-          provider: this.currentSpec.provider,
-          vision: currentProfile?.vision ?? this.currentSpec.vision ?? true,
-          reasoning: this.currentSpec.reasoning ?? null,
+          selection: spec.selection,
+          id: spec.id,
+          kind: spec.kind,
+          name: spec.name,
+          adapter: spec.adapter,
+          baseUrl: spec.baseUrl,
+          model: spec.model,
+          provider: spec.provider,
+          vision: currentProfile?.vision ?? spec.vision ?? true,
+          reasoning: spec.reasoning ?? null,
         }
       : null;
     return {
@@ -156,6 +156,10 @@ export class DesktopModelManager {
       current,
       recentModels: [...this.recentModels],
     };
+  }
+
+  snapshot(forceRefresh = false): ModelSnapshot {
+    return this.snapshotFor(this.currentSpec, forceRefresh);
   }
 
   resolve(selection: string): ModelLaunchSpec {
@@ -251,6 +255,21 @@ export class DesktopModelManager {
     this.currentSpec = next;
     this.launchCache.set(selection, next);
     return next;
+  }
+
+  resolveModelNameFor(selection: string, model: string): ModelLaunchSpec {
+    const value = String(model || "").trim();
+    if (!value) throw new Error("Model ID must not be empty");
+    const current = this.resolve(selection);
+    const described = this.runBridge<ModelProfile>("describe-model", {
+      selection,
+      model: value,
+    });
+    return {
+      ...current,
+      model: value,
+      reasoning: described.reasoning ?? null,
+    };
   }
 
   useModelName(model: string): ModelLaunchSpec {
