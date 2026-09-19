@@ -50,11 +50,38 @@ _WINDOW_SWITCH_HOTKEYS = (
 )
 
 
+# Chords that act on the whole session rather than on the task's application.
+# Each one either destroys the state the task depends on or hands the machine
+# back to the user in a state they did not ask for, and none of them is ever the
+# only way to do something. Refusing costs one step; recovering from "every
+# window is now minimised" costs many, as a real trace showed when Win+D removed
+# the target application from the window list mid-task.
+_DESTRUCTIVE_HOTKEYS: dict[frozenset[str], str] = {
+    frozenset({"win", "d"}): "shows the desktop, minimising every window including the task's",
+    frozenset({"winleft", "d"}): "shows the desktop, minimising every window including the task's",
+    frozenset({"win", "m"}): "minimises every window including the task's",
+    frozenset({"winleft", "m"}): "minimises every window including the task's",
+    frozenset({"win", "l"}): "locks the workstation and ends the session",
+    frozenset({"winleft", "l"}): "locks the workstation and ends the session",
+}
+
+
 def _window_switch_hotkey(action: ComputerAction) -> bool:
     if action.type not in {ComputerActionType.HOTKEY, ComputerActionType.KEY}:
         return False
     keys = frozenset(str(key or "").strip().casefold() for key in action.keys)
     return keys in _WINDOW_SWITCH_HOTKEYS
+
+
+def _destructive_hotkey(action: ComputerAction) -> str:
+    """Why this chord must not be injected, or "" if it is fine."""
+
+    if action.type not in {ComputerActionType.HOTKEY, ComputerActionType.KEY}:
+        return ""
+    keys = frozenset(str(key or "").strip().casefold() for key in action.keys)
+    return _DESTRUCTIVE_HOTKEYS.get(keys, "")
+
+
 _VISUAL_SAMPLE_SIZE = (128, 72)
 _VISUAL_PIXEL_DELTA = 12
 _VISUAL_CHANGE_RATIO = 0.0015
@@ -701,6 +728,22 @@ class SingleLoopComputerRuntime(ComputerUseRuntime):
                 str(action_payload.get("text") or "")
             )
         action = ComputerAction.from_dict(action_payload)
+
+        destructive = _destructive_hotkey(action)
+        if destructive:
+            self._mark_visual_feedback(context)
+            return ToolResult(
+                False,
+                f"Not executed: that shortcut {destructive}. It acts on the whole session rather than on "
+                "the application this task is about. Work with the target window directly - switch_window "
+                "brings a known window forward without disturbing anything else.",
+                {
+                    "action": action.safe_dict(),
+                    "effect": "not_applicable",
+                    "effect_reason": "destructive_global_hotkey_refused",
+                    "observation": _safe_snapshot_data(before),
+                },
+            )
 
         if _window_switch_hotkey(action):
             self._mark_visual_feedback(context)

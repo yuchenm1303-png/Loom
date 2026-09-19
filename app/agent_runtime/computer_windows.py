@@ -56,6 +56,72 @@ def _initialize_com_apartment() -> None:
     comtypes.CoInitializeEx()
 
 
+#: How long to wait for a window to acknowledge a null message before treating
+#: it as not pumping. Activation is interactive, so this is a perceptibility
+#: budget rather than a generous timeout.
+WINDOW_LIVENESS_TIMEOUT_MS = 300
+
+#: Modifier keys that must never be left logically held after an action. A
+#: modifier stuck down makes every later click do something other than click,
+#: which from the user's side is indistinguishable from a dead mouse.
+_MODIFIER_KEYS = ("alt", "ctrl", "shift", "win", "winleft", "winright", "altleft", "altright")
+
+
+def _window_responds(hwnd: int, timeout_ms: int = WINDOW_LIVENESS_TIMEOUT_MS) -> bool | None:
+    """Whether this window's thread is still pumping messages.
+
+    Returns True (responds), False (hung) or None (could not tell).
+
+    This matters far more than it looks. Window activation is built out of
+    synchronous cross-process calls - ShowWindow, BringWindowToTop,
+    SetForegroundWindow - which block until the target's message loop answers,
+    and AttachThreadInput additionally *merges Loom's input queue with the
+    target's*. Attaching to an application that is not pumping, then blocking on
+    it, wedges the merged queue: the user's own mouse and keyboard stop working
+    desktop-wide until the call returns. So liveness is checked before touching
+    a window, and "could not tell" is never treated as "yes".
+    """
+
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        user32 = ctypes.windll.user32
+        is_hung = getattr(user32, "IsHungAppWindow", None)
+        if is_hung is not None:
+            is_hung.argtypes = [wintypes.HWND]
+            is_hung.restype = wintypes.BOOL
+            if bool(is_hung(wintypes.HWND(hwnd))):
+                return False
+
+        send = user32.SendMessageTimeoutW
+        send.argtypes = [
+            wintypes.HWND,
+            wintypes.UINT,
+            wintypes.WPARAM,
+            wintypes.LPARAM,
+            wintypes.UINT,
+            wintypes.UINT,
+            ctypes.POINTER(ctypes.c_size_t),
+        ]
+        send.restype = wintypes.LPARAM
+        result = ctypes.c_size_t(0)
+        WM_NULL = 0x0000
+        SMTO_ABORTIFHUNG = 0x0002
+        ok = send(
+            wintypes.HWND(hwnd),
+            WM_NULL,
+            0,
+            0,
+            SMTO_ABORTIFHUNG,
+            int(timeout_ms),
+            ctypes.byref(result),
+        )
+        return bool(ok)
+    except Exception:
+        return None
+
+
 def _host_process_ids() -> frozenset[int]:
     """Processes whose windows are Loom's own user interface.
 
@@ -554,10 +620,21 @@ class PyWinAutoWindowsOperator:
                 flag = getattr(win32con, "MOUSEEVENTF_HWHEEL", 0x01000)
             win32api.mouse_event(flag, 0, 0, delta, 0)
         elif action.type is ComputerActionType.HOTKEY:
-            pyautogui.hotkey(*action.keys)
+            # pyautogui presses modifiers down, then the key, then releases in
+            # reverse. An exception anywhere in the middle - or a chord Windows
+            # swallows - leaves a modifier logically held, and from then on every
+            # click the user makes is a Win-click or Alt-click instead of a
+            # click. That reads as a dead mouse, so the release is unconditional.
+            try:
+                pyautogui.hotkey(*action.keys)
+            finally:
+                self._release_modifiers()
         elif action.type is ComputerActionType.KEY:
-            for key in action.keys:
-                pyautogui.press(key)
+            try:
+                for key in action.keys:
+                    pyautogui.press(key)
+            finally:
+                self._release_modifiers()
         else:
             raise ValueError(f"unsupported Windows coordinate action: {action.type.value}")
 
@@ -568,6 +645,23 @@ class PyWinAutoWindowsOperator:
             native=False,
             fallback_used=fallback,
         )
+
+    def _release_modifiers(self) -> None:
+        """Force every modifier key up, whatever state the last action left.
+
+        Releasing a key that was not held is a no-op at the Windows level, so
+        this is safe to call unconditionally and cheap enough to always do.
+        """
+
+        try:
+            import pyautogui
+        except Exception:
+            return
+        for key in _MODIFIER_KEYS:
+            try:
+                pyautogui.keyUp(key)
+            except Exception:
+                continue
 
     def _click_point(
         self,
@@ -671,6 +765,18 @@ class PyWinAutoWindowsOperator:
         hwnd = self._parse_window_id(action.window_id)
         if not win32gui.IsWindow(hwnd):
             raise RuntimeError(f"Windows window no longer exists: {action.window_id}")
+
+        # Everything below is a synchronous call into the target's message loop.
+        # Refusing here costs one failed action; proceeding against a window that
+        # is not pumping costs the user their mouse and keyboard.
+        responds = _window_responds(hwnd)
+        if responds is False:
+            raise RuntimeError(
+                f"Windows window {action.window_id} is not responding, so Loom did not try to activate it; "
+                "activating an unresponsive window can freeze desktop input. Pick another window, or ask "
+                "the user to bring this application back themselves."
+            )
+
         if win32gui.IsIconic(hwnd):
             win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
         methods: list[str] = []
@@ -690,13 +796,19 @@ class PyWinAutoWindowsOperator:
             )
             methods.append("SetWindowPos")
 
-        if int(win32gui.GetForegroundWindow()) != hwnd:
+        # The AttachThreadInput escalation is the one step that can take the
+        # user's input down with it, so it is only attempted against a window
+        # that has just proven it is pumping. "Unknown" is not good enough: if
+        # the liveness probe itself could not run, Loom gives up the escalation
+        # rather than gamble the desktop on it.
+        if int(win32gui.GetForegroundWindow()) != hwnd and _window_responds(hwnd) is True:
             current_thread = int(win32api.GetCurrentThreadId())
             target_thread = int(win32process.GetWindowThreadProcessId(hwnd)[0])
-            attached = current_thread != target_thread
+            attached = False
             try:
-                if attached:
+                if current_thread != target_thread:
                     win32process.AttachThreadInput(current_thread, target_thread, True)
+                    attached = True
                 win32gui.BringWindowToTop(hwnd)
                 win32gui.SetForegroundWindow(hwnd)
                 methods.append("AttachThreadInput")
