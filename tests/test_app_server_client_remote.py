@@ -77,3 +77,37 @@ def test_app_server_client_preserves_legacy_approval_helper():
             },
         )
     ]
+
+
+def test_app_server_client_serializes_durable_start_ids():
+    client = RecordingClient()
+
+    client.thread_start(
+        project_id="project-1",
+        permission_mode="approval",
+        client_input_id="task-1",
+    )
+    client.turn_start(
+        "thread-1",
+        "hello",
+        client_input_id="task-1",
+    )
+
+    assert client.calls == [
+        (
+            "thread/start",
+            {
+                "projectId": "project-1",
+                "permissionMode": "approval",
+                "clientInputId": "task-1",
+            },
+        ),
+        (
+            "turn/start",
+            {
+                "threadId": "thread-1",
+                "input": "hello",
+                "clientInputId": "task-1",
+            },
+        ),
+    ]

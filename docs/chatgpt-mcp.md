@@ -45,9 +45,13 @@ This does not replace Loom approval. It prevents a stale remote approval card fr
 
 ## Idempotency
 
-Remote task start and steer accept an idempotency key. Duplicate concurrent calls share one execution, and a key cannot be reused for a different operation. Approval response derives an idempotency identity from the approval fingerprint so UI retries do not execute the response twice.
+Remote task start and steer accept an idempotency key. Duplicate concurrent calls in one adapter process still share one execution, and a key cannot be reused for a different logical request.
 
-The first implementation keeps this replay cache in the adapter process. Moving the replay ledger to durable App Server state is a later hardening step.
+For `loom_task_start`, the same id is now also forwarded to App Server as `clientInputId` for both `thread/start` and `turn/start`. App Server owns a durable SQLite replay ledger under the Loom runtime home, so an MCP adapter or Secure MCP Tunnel restart cannot create a second thread / turn for the same logical task. New-thread task start therefore replays both layers: the original thread identity and the original first-turn identity.
+
+Before Runtime adoption, App Server persists the reserved turn id plus the staged attachment manifest. If a process dies after preparation but before `TURN_STARTED`, the next call resumes that reserved turn from the original staged files. If durable `TURN_STARTED` already exists, the replay returns the original turn and does not re-run the model. A changed request under the same id fails closed.
+
+Approval response continues to derive its retry identity from the approval fingerprint. Steering retains its existing adapter-side idempotency in this phase because it already carries a correlated turn id and has different replay semantics from starting a new turn.
 
 ## Running the development adapter
 

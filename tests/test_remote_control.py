@@ -47,7 +47,14 @@ class FakeBackend:
     def thread_read(self, thread_id):
         return self.threads[thread_id]
 
-    def thread_start(self, *, workspace=None, project_id="", permission_mode=None):
+    def thread_start(
+        self,
+        *,
+        workspace=None,
+        project_id="",
+        permission_mode=None,
+        client_input_id="",
+    ):
         assert workspace is None
         self.started_threads.append((project_id, permission_mode))
         thread_id = f"new-{len(self.started_threads)}"
@@ -60,7 +67,14 @@ class FakeBackend:
         self.threads[thread_id] = {"thread": record, "pendingApproval": None}
         return {"thread": record}
 
-    def turn_start(self, thread_id, text, attachments=()):
+    def turn_start(
+        self,
+        thread_id,
+        text,
+        attachments=(),
+        *,
+        client_input_id="",
+    ):
         self.started_turns.append((thread_id, text))
         turn = {"id": f"turn-{len(self.started_turns)}", "status": "starting"}
         self.threads[thread_id]["thread"]["currentTurnId"] = turn["id"]
@@ -228,10 +242,21 @@ def test_idempotency_store_coalesces_concurrent_duplicate_start():
     entered = threading.Event()
     release = threading.Event()
 
-    def blocking_turn_start(thread_id, text, attachments=()):
+    def blocking_turn_start(
+        thread_id,
+        text,
+        attachments=(),
+        *,
+        client_input_id="",
+    ):
         entered.set()
         assert release.wait(2)
-        return original(thread_id, text, attachments)
+        return original(
+            thread_id,
+            text,
+            attachments,
+            client_input_id=client_input_id,
+        )
 
     backend.turn_start = blocking_turn_start
     remote = RemoteControlClient(backend)

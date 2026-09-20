@@ -23,8 +23,16 @@ class AppServerBackend(Protocol):
         workspace: str | None = None,
         project_id: str = "",
         permission_mode: str | None = None,
+        client_input_id: str = "",
     ) -> dict[str, Any]: ...
-    def turn_start(self, thread_id: str, text: str, attachments=()) -> dict[str, Any]: ...
+    def turn_start(
+        self,
+        thread_id: str,
+        text: str,
+        attachments=(),
+        *,
+        client_input_id: str = "",
+    ) -> dict[str, Any]: ...
     def turn_steer(
         self,
         thread_id: str,
@@ -175,6 +183,7 @@ class RemoteControlClient:
 
         def execute() -> dict[str, Any]:
             created = False
+            durable_replay = False
             if thread:
                 snapshot = self._call(self.backend.thread_read, thread)
                 self._ensure_active_control_allowed(snapshot)
@@ -184,6 +193,7 @@ class RemoteControlClient:
                     self.backend.thread_start,
                     project_id=project,
                     permission_mode=self.policy.new_thread_permission_mode,
+                    client_input_id=str(idempotency_key or ""),
                 )
                 record = started_thread.get("thread")
                 if not isinstance(record, dict) or not record.get("id"):
@@ -192,9 +202,26 @@ class RemoteControlClient:
                         "App Server did not return a new thread id",
                     )
                 target_thread = str(record["id"])
-                created = True
+                thread_replayed = bool(started_thread.get("idempotentReplay"))
+                durable_replay = durable_replay or thread_replayed
+                created = not thread_replayed
 
-            started_turn = self._call(self.backend.turn_start, target_thread, text)
+                # A durable thread/start replay returns the original creation
+                # result, which may be older than the thread's current
+                # permission mode. Re-read authoritative state before granting
+                # this remote channel a turn so a local permission escalation
+                # cannot be inherited through a stale replay snapshot.
+                snapshot = self._call(self.backend.thread_read, target_thread)
+                self._ensure_active_control_allowed(snapshot)
+
+            started_turn = self._call(
+                self.backend.turn_start,
+                target_thread,
+                text,
+                client_input_id=str(idempotency_key or ""),
+            )
+            turn_replayed = bool(started_turn.get("idempotentReplay"))
+            durable_replay = durable_replay or turn_replayed
             turn = started_turn.get("turn")
             if not isinstance(turn, dict):
                 turn = {}
@@ -203,6 +230,7 @@ class RemoteControlClient:
                 "createdThread": created,
                 "threadId": target_thread,
                 "turn": turn,
+                "_durableReplay": durable_replay,
             }
 
         result, replayed = self._call(
@@ -211,7 +239,8 @@ class RemoteControlClient:
             operation,
             execute,
         )
-        result["idempotentReplay"] = replayed
+        durable_replay = bool(result.pop("_durableReplay", False))
+        result["idempotentReplay"] = bool(replayed or durable_replay)
         return result
 
     def task_steer(
