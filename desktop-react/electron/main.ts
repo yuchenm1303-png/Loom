@@ -693,14 +693,15 @@ async function loadRenderer(window: BrowserWindow): Promise<void> {
 }
 
 function createWindow(): void {
-  // Match the dark renderer while keeping native drag/resize/window controls.
-  if (process.platform === "win32") nativeTheme.themeSource = "dark";
+  // Start from the OS preference. The renderer restores the persisted
+  // Appearance choice and can switch native chrome to light/dark explicitly.
+  nativeTheme.themeSource = "system";
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 920,
     minWidth: 1040,
     minHeight: 680,
-    backgroundColor: "#0d0e11",
+    backgroundColor: nativeTheme.shouldUseDarkColors ? "#0d0e11" : "#f7f7f8",
     title: "Loom",
     autoHideMenuBar: true,
     show: false,
@@ -739,6 +740,16 @@ function createWindow(): void {
 ipcMain.handle("loom:connect", () => rpc.connect());
 ipcMain.handle("loom:call", (_event, method: string, params?: Record<string, unknown>) => rpc.call(method, params ?? {}));
 ipcMain.handle("loom:disconnect", () => rpc.stop());
+ipcMain.handle("loom:set-native-theme", (_event, source: "system" | "light" | "dark") => {
+  const next = source === "light" || source === "dark" ? source : "system";
+  nativeTheme.themeSource = next;
+  const resolved = nativeTheme.shouldUseDarkColors ? "dark" : "light";
+  const window = mainWindow;
+  if (window && !window.isDestroyed()) {
+    window.setBackgroundColor(resolved === "dark" ? "#0d0e11" : "#f7f7f8");
+  }
+  return resolved;
+});
 ipcMain.handle("loom:export-computer-logs", () => exportComputerLogs());
 ipcMain.handle("loom:export-browser-logs", () => exportBrowserLogs());
 ipcMain.handle("loom:setup-browser-extension", (_event, browser: "edge" | "chrome" = "edge", extensionConnected = false) => setupBrowserExtension(browser, extensionConnected));
