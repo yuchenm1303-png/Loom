@@ -1012,6 +1012,20 @@ def _resolve(
             "DeepSeek connection using the official https://api.deepseek.com endpoint."
         )
 
+    opencode_model = _opencode_go_model_from_selection(requested)
+    if opencode_model:
+        api_key = _opencode_go_key(store)
+        if api_key:
+            opencode_profile = _with_reasoning(
+                _safe_opencode_go(opencode_model, configured=True),
+                reasoning_store,
+            )
+            return {**opencode_profile, "provider": "opencode-go", "apiKey": api_key}
+        raise RuntimeError(
+            "OpenCode Go API key is not configured. Open the OpenCode Go model group "
+            "in Loom and connect your subscription key."
+        )
+
     managed_model = _managed_model_from_selection(requested)
     if managed_model:
         api_key = _managed_relay_key(store, repo_root=Path(__file__).resolve().parent)
