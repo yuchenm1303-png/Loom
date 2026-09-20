@@ -155,9 +155,12 @@ def test_steering_during_tool_execution_applies_after_safe_boundary_once(tmp_pat
         assert first["accepted"] is True
         assert first["duplicate"] is False
         assert first["delivery"] == "next_safe_boundary"
+        assert first["submittedAt"]
         assert second["accepted"] is True
         assert second["duplicate"] is True
+        assert second["submittedAt"] == first["submittedAt"]
 
+        submitted_at = first["submittedAt"]
         release.set()
         snapshot = _wait_until(
             lambda: (
@@ -178,6 +181,18 @@ def test_steering_during_tool_execution_applies_after_safe_boundary_once(tmp_pat
         ]
         assert len(steering_events) == 1
         assert steering_events[0].data["input_id"] == "steer-safe-boundary-1"
+        assert steering_events[0].data["submitted_at"] == submitted_at
+        # The durable event is written only when the safe boundary is reached,
+        # but the public transcript item must retain the original send time.
+        turn = next(item for item in snapshot["turns"] if item["id"] == turn_id)
+        steering_item = next(
+            item
+            for item in turn["items"]
+            if item.get("type") == "user_message" and item.get("source") == "steering"
+        )
+        assert steering_item["submittedAt"] == submitted_at
+        assert steering_item["createdAt"] == submitted_at
+        assert steering_item["inputId"] == "steer-safe-boundary-1"
 
         second_request_users = [
             message.content
