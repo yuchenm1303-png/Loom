@@ -153,6 +153,12 @@ export class DesktopModelManager {
           baseUrl: spec.baseUrl,
           model: spec.model,
           provider: spec.provider,
+          groupId: currentProfile?.groupId ?? spec.groupId,
+          groupName: currentProfile?.groupName ?? spec.groupName,
+          groupOrder: currentProfile?.groupOrder ?? spec.groupOrder,
+          family: currentProfile?.family ?? spec.family,
+          protocol: currentProfile?.protocol ?? spec.protocol,
+          configured: currentProfile?.configured ?? spec.configured,
           vision: currentProfile?.vision ?? spec.vision ?? true,
           reasoning: spec.reasoning ?? null,
         }
