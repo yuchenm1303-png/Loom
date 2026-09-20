@@ -690,7 +690,11 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
 
         # Selection resolution is authoritative for capabilities and limits.
         # Never combine a resolved provider/model with stale renderer metadata.
-        vision = bool(spec.get("vision", False))
+        # Only OpenCode profiles carry this key at all, so a `False` default did
+        # not mean "resolution says no", it meant "resolution said nothing" --
+        # and it bound DeepSeek, MiniMax, managed and saved models to a
+        # sightless platform that strips images out of the request.
+        vision = bool(spec.get("vision", True))
         context_limits = spec.get("contextLimits")
         capability = validate_runtime_reasoning(
             model=model,

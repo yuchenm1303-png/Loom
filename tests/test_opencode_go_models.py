@@ -133,6 +133,34 @@ def test_opencode_go_profiles_can_be_browsed_before_key_is_configured(monkeypatc
         raise AssertionError("unconfigured OpenCode Go profile unexpectedly resolved")
 
 
+def test_opencode_go_does_not_invent_a_vision_denial(monkeypatch, tmp_path) -> None:
+    """A capability the provider never published must not be reported as absent.
+
+    OpenCode's listing carries ids only.  A hard-coded allowlist here used to
+    answer "cannot see images" on its behalf for every model outside it, and the
+    composer believed it: the image was stripped before the request was built.
+    """
+
+    store, reasoning, selection = _stores(tmp_path)
+    monkeypatch.setattr(
+        bridge,
+        "_fetch_opencode_go_model_ids",
+        lambda: ["grok-4.6", "glm-5.3", "kimi-k3", "mimo-v2-omni"],
+    )
+    monkeypatch.setattr(bridge, "_opencode_go_key", lambda *_args, **_kwargs: "test-provider-key")
+    monkeypatch.setattr(bridge, "_deepseek_key", lambda *_args, **_kwargs: "")
+    monkeypatch.setattr(bridge, "_managed_relay_key", lambda *_args, **_kwargs: "")
+
+    snapshot = bridge._snapshot(store, reasoning, selection)
+    opencode = [
+        profile for profile in snapshot["profiles"]
+        if profile.get("groupId") == "opencode-go"
+    ]
+
+    assert len(opencode) == 4
+    assert all(profile["vision"] is True for profile in opencode)
+
+
 def test_custom_model_name_keeps_opencode_go_provider_identity() -> None:
     current = bridge._opencode_go_selection_for_model("glm-5.3")
     described = bridge._canonical_builtin_selection(current, "minimax-m3")

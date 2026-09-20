@@ -754,7 +754,15 @@ def _safe_opencode_go(model: str, *, configured: bool) -> dict[str, Any]:
     model = str(model or "").strip()
     if not model:
         raise ValueError("OpenCode Go model id must not be empty")
-    vision = model.casefold() in {"deepseek-v4-flash-vision-exp", "mimo-v2-omni"}
+    # OpenCode's `/models` listing publishes ids and nothing else -- no
+    # modalities, no capability block.  A two-model allowlist here was not a
+    # reading of that listing, it was a guess that silently demoted every other
+    # model to "cannot see images": the composer dropped the attachment before
+    # sending and the agent was told nothing arrived.  An undeclared capability
+    # stays undeclared, exactly like the context window above, which for this
+    # field means matching every other group in this module and leaving the
+    # decision to the provider, which does answer -- with an error on the one
+    # request that actually carries an image.
     profile = {
         "selection": _opencode_go_selection_for_model(model),
         "id": "opencode-go-" + hashlib.sha256(model.casefold().encode("utf-8")).hexdigest()[:12],
@@ -769,7 +777,7 @@ def _safe_opencode_go(model: str, *, configured: bool) -> dict[str, Any]:
         "adapter": "opencode-go",
         "baseUrl": OPENCODE_GO_BASE_URL,
         "model": model,
-        "vision": vision,
+        "vision": True,
     }
     discovered = _discovered_context_limits(model)
     if discovered is not None:

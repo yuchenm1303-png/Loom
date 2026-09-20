@@ -310,6 +310,71 @@ def test_thread_model_switch_uses_canonical_server_connection(monkeypatch, tmp_p
     assert notifications[-1][0] == "thread/updated"
 
 
+def test_thread_model_switch_keeps_sight_when_resolution_omits_vision(monkeypatch, tmp_path) -> None:
+    """Silence from selection resolution is not a denial.
+
+    Only OpenCode profiles carry a ``vision`` key, so reading the omission as
+    ``False`` bound DeepSeek, MiniMax, managed and saved models to a platform
+    without VISION -- which strips images out of the request on the way to the
+    provider, leaving the agent to report that nothing was attached.
+    """
+
+    service = object.__new__(ReasoningManagedLoomAppServerService)
+    session = SimpleNamespace(
+        session_id="thread-1",
+        model_selection="builtin:deepseek",
+        model="deepseek-flash",
+        model_provider="openai-compatible",
+        model_base_url="https://api.deepseek.com",
+        model_vision=True,
+        reasoning_kind="",
+        reasoning_value="",
+    )
+    service._load = lambda _session_id: session
+    service._thread_model_blocked = lambda _session: False
+    service._runtime_home = lambda: tmp_path
+    service.runtime = SimpleNamespace(set_session_model=lambda *_args, **_kwargs: None)
+    service.store = SimpleNamespace(save=lambda _value: None)
+    service._record = lambda value, active=False: {"id": value.session_id}
+    service._thread_runtime_patch = lambda _session, _capability=None: {}
+    service._notify = lambda _method, _params: None
+
+    monkeypatch.setattr(
+        app_server_reasoning,
+        "resolve_model_spec",
+        lambda selection, model="", home=None: {
+            "selection": "builtin:deepseek",
+            "provider": "openai-compatible",
+            "baseUrl": "https://api.deepseek.com",
+            "model": "deepseek-v4-pro",
+            "apiKey": "deepseek-secret",
+        },
+    )
+    monkeypatch.setattr(
+        app_server_reasoning,
+        "validate_runtime_reasoning",
+        lambda **_kwargs: None,
+    )
+    captured: dict[str, object] = {}
+
+    def build_platform(**kwargs):
+        captured.update(kwargs)
+        return object()
+
+    monkeypatch.setattr(app_server_reasoning, "build_runtime_model_platform", build_platform)
+
+    service.thread_set_model(
+        {
+            "threadId": "thread-1",
+            "selection": "builtin:deepseek",
+            "model": "deepseek-v4-pro",
+        }
+    )
+
+    assert captured["vision"] is True
+    assert session.model_vision is True
+
+
 def test_hot_model_switch_returns_lightweight_runtime_patch(monkeypatch) -> None:
     service = object.__new__(ReasoningManagedLoomAppServerService)
     service._guard = threading.RLock()
