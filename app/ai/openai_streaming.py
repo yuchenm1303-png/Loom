@@ -11,6 +11,24 @@ from .openai_runtime import OpenAIChatBackend, _retryable_provider_error, _usage
 from .provider_catalog import ProviderAdapter
 
 
+def _normalize_compatible_text_fragment(accumulated: str, fragment: str) -> tuple[str, str]:
+    """Turn non-standard cumulative OpenAI-compatible snapshots into deltas.
+
+    A few relays populate ``delta.content`` with the whole answer-so-far instead
+    of the newly generated suffix. Everything above this transport layer follows
+    the OpenAI contract and appends deltas, so forwarding those snapshots creates
+    triangular repetition (for example ``403403...`` and repeated words) and can
+    even tear Loom's inline-sticker control markers into visible prose.
+
+    Only a strict extension of the text already assembled is treated as a
+    snapshot. Equal/repeated fragments remain ordinary deltas, preserving valid
+    outputs that intentionally repeat the same token or word.
+    """
+    if accumulated and len(fragment) > len(accumulated) and fragment.startswith(accumulated):
+        return fragment[len(accumulated):], fragment
+    return fragment, accumulated + fragment
+
+
 class OpenAIStreamingChatBackend(OpenAIChatBackend):
     """OpenAI Chat backend with end-to-end stream completion metadata.
 
@@ -78,6 +96,9 @@ class OpenAIStreamingChatBackend(OpenAIChatBackend):
         chunk_count = 0
         reasoning_char_count = 0
         reasoning_parts: list[str] = []
+        public_text = ""
+        reasoning_text_so_far = ""
+        compatible = self.connection.adapter is ProviderAdapter.OPENAI_COMPATIBLE
         try:
             for chunk in stream:
                 check_cancelled()
@@ -103,11 +124,24 @@ class OpenAIStreamingChatBackend(OpenAIChatBackend):
                     reasoning = getattr(delta, "reasoning_content", None)
                     if reasoning is not None:
                         reasoning_text = str(reasoning)
-                        reasoning_char_count += len(reasoning_text)
-                        reasoning_parts.append(reasoning_text)
+                        if compatible:
+                            reasoning_text, reasoning_text_so_far = _normalize_compatible_text_fragment(
+                                reasoning_text_so_far,
+                                reasoning_text,
+                            )
+                        else:
+                            reasoning_text_so_far += reasoning_text
+                        if reasoning_text:
+                            reasoning_char_count += len(reasoning_text)
+                            reasoning_parts.append(reasoning_text)
                     text = str(getattr(delta, "content", "") or "")
                     if text:
-                        yield StreamEvent(kind=StreamEventKind.TEXT_DELTA, text_delta=text)
+                        if compatible:
+                            text, public_text = _normalize_compatible_text_fragment(public_text, text)
+                        else:
+                            public_text += text
+                        if text:
+                            yield StreamEvent(kind=StreamEventKind.TEXT_DELTA, text_delta=text)
                     for raw_call in getattr(delta, "tool_calls", None) or ():
                         function = getattr(raw_call, "function", None)
                         raw_index = getattr(raw_call, "index", None)
