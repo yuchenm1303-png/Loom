@@ -10,7 +10,7 @@ from app.ai import AIMessage, ImagePart, MessageRole, TextPart
 
 from .computer_diagnostics import ComputerDiagnostics
 from .computer_runtime import ComputerStateSnapshot, ComputerStepOutcome, ComputerUseRuntime
-from .computer_types import ComputerAction, ComputerActionType
+from .computer_types import ComputerAction, ComputerActionType, ComputerFrame, ComputerPoint
 from .contracts import ToolEffect
 from .tools import AgentTool, ToolContext, ToolExposure, ToolRegistry, ToolResult
 
@@ -339,7 +339,18 @@ def _screen_point(outcome: ComputerStepOutcome) -> dict[str, float] | None:
     point = action.point or action.end_point
     if point is None:
         return None
-    frame = outcome.before.observation.frame
+    return desktop_point(outcome.before.observation.frame, point)
+
+
+def desktop_point(frame: ComputerFrame, point: ComputerPoint) -> dict[str, float] | None:
+    """Express one frame-local point against the whole virtual screen.
+
+    Anything drawing over the real desktop - the HUD overlay above all - needs
+    this conversion rather than the action's own coordinates. A point is
+    normalized against the captured application window, so handing that fraction
+    to a full-screen overlay marks the right fraction of the wrong rectangle.
+    """
+
     screen_x, screen_y = frame.to_screen(point)
     bounds = _virtual_screen_bounds()
     if bounds is None:
