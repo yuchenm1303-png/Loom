@@ -612,7 +612,12 @@ def _patch_service(module: ModuleType) -> None:
 
             title = ""
             last_error = ""
-            platform = getattr(self.runtime, "platform", None)
+            platform_for_session = getattr(self.runtime, "platform_for_session", None)
+            platform = (
+                platform_for_session(thread_id)
+                if callable(platform_for_session)
+                else getattr(self.runtime, "platform", None)
+            )
             execute_structured = getattr(platform, "execute_structured_chat", None)
             execute_chat = getattr(platform, "execute_chat", None)
 

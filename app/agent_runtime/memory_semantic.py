@@ -886,7 +886,6 @@ class SemanticMemoryRuntime(MemoryRuntime):
             4,
             min(64, int(memory_semantic_related_limit)),
         )
-        self._semantic_consolidator = SemanticConsolidator(self.platform)
         self._semantic_pipeline: MemoryPipeline | None = None
         if self.memory_semantic_auto:
             self._semantic_pipeline = MemoryPipeline(
@@ -969,7 +968,10 @@ class SemanticMemoryRuntime(MemoryRuntime):
                 self.memory_semantic_store.complete_noop(job)
                 return
             session = self.store.load(job.source_session_id)
-            plan, usage = self._semantic_consolidator.plan(session.profile_id, bundle)
+            consolidator = SemanticConsolidator(
+                self.platform_for_session(job.source_session_id)
+            )
+            plan, usage = consolidator.plan(session.profile_id, bundle)
             count = self.memory_semantic_store.apply_and_complete(
                 job,
                 plan,

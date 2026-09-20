@@ -291,6 +291,43 @@ def test_default_runtime_semantically_supersedes_old_decision(tmp_path):
     runtime.close()
 
 
+def test_semantic_memory_uses_the_source_threads_model(tmp_path):
+    default_platform = SemanticRoutingPlatform(fail_semantic=True)
+    thread_platform = SemanticRoutingPlatform()
+    runtime, _ = _runtime(tmp_path, default_platform)
+    workspace = tmp_path / "project"
+    workspace.mkdir()
+    session = runtime.create_session(AGENT_FAST_ROLE.role_id, workspace_dir=workspace)
+    runtime.set_session_model(session.session_id, thread_platform)
+
+    _seed(
+        runtime.memory_store,
+        workspace,
+        session_id="seed-session",
+        turn_id="seed-turn",
+        text="This workspace uses pytest for its test suite.",
+        evidence="The user previously chose pytest.",
+    )
+
+    result = runtime.start_turn(
+        session.session_id,
+        "Switch this project from pytest to unittest and remember that decision.",
+    )
+    assert result.status is AgentStatus.COMPLETED
+    _wait_until(
+        lambda: runtime.memory_status(session.session_id)["semantic_completed"] >= 1,
+        timeout=4.0,
+    )
+
+    assert default_platform.requests == []
+    assert any(
+        "semantic long-term memory consolidation stage"
+        in str(request.messages[0].content or "")
+        for _profile, request in thread_platform.requests
+    )
+    runtime.close()
+
+
 def test_semantic_failure_does_not_repeat_stage_one_extraction(tmp_path):
     platform = SemanticRoutingPlatform(fail_semantic=True)
     runtime, _ = _runtime(tmp_path, platform)

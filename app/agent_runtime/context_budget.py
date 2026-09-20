@@ -760,7 +760,7 @@ def prepare_context(rt, session, step, token):
             stream_scope = getattr(rt, "_internal_model_stream_scope", None)
             with stream_scope() if callable(stream_scope) else nullcontext():
                 candidate = rt.model_executor.execute(
-                    rt.platform,
+                    rt.platform_for_session(session.session_id),
                     session.profile_id,
                     request,
                     token,

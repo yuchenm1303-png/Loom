@@ -659,7 +659,12 @@ class ManagedStreamingLoomAppServerService(StreamingLoomAppServerService):
             if not claimed:
                 return
 
-            platform = getattr(self.runtime, "platform", None)
+            platform_for_session = getattr(self.runtime, "platform_for_session", None)
+            platform = (
+                platform_for_session(thread_id)
+                if callable(platform_for_session)
+                else getattr(self.runtime, "platform", None)
+            )
             execute_chat = getattr(platform, "execute_chat", None)
             if not callable(execute_chat):
                 self.thread_library.write(thread_id, {"autoTitleLastError": "platform_unavailable"})

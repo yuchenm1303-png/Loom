@@ -163,6 +163,35 @@ def test_first_completed_turn_generates_and_persists_title(tmp_path: Path) -> No
         runtime.close()
 
 
+def test_auto_title_uses_the_threads_model_not_the_global_default(tmp_path: Path) -> None:
+    service, runtime, _store, default_platform, workspace = _build_service(
+        tmp_path,
+        [],
+    )
+    thread_platform = RecordingPlatform(
+        [
+            ModelResponse(text="线程模型完成了任务。"),
+            ModelResponse(text="线程模型生成标题"),
+        ]
+    )
+    try:
+        thread_id = service.thread_start({"workspace": str(workspace)})["thread"]["id"]
+        runtime.set_session_model(thread_id, thread_platform)
+
+        service.turn_start({"threadId": thread_id, "input": "验证线程级模型路由"})
+        _wait_until(
+            lambda: service.thread_read({"threadId": thread_id})["thread"].get("titleSource")
+            == "auto"
+        )
+        _wait_until(lambda: thread_id not in service.runtime_status()["activeThreadIds"])
+
+        assert default_platform.requests == []
+        assert len(thread_platform.requests) == 2
+        assert any(_is_title_request(request) for request in thread_platform.requests)
+    finally:
+        runtime.close()
+
+
 def test_manual_rename_always_wins_and_skips_auto_title(tmp_path: Path) -> None:
     service, runtime, _store, platform, workspace = _build_service(
         tmp_path,

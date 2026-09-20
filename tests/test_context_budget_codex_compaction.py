@@ -13,8 +13,10 @@ class ScriptedExecutor:
     def __init__(self, responses):
         self.responses = list(responses)
         self.requests = []
+        self.platforms = []
 
-    def execute(self, _platform, profile_id, request, _token):
+    def execute(self, platform, profile_id, request, _token):
+        self.platforms.append(platform)
         self.requests.append((profile_id, request))
         if not self.responses:
             raise AssertionError("scripted compaction executor ran out of responses")
@@ -93,9 +95,14 @@ class FakeRuntime:
         self.limits = Limits()
         self.model_executor = ScriptedExecutor(responses)
         self.platform = Platform()
+        self.session_platform = Platform()
         self.instruction_loader = InstructionLoader()
         self.store = Store()
         self.commits = []
+
+    def platform_for_session(self, session_id):
+        assert session_id == "session-1"
+        return self.session_platform
 
     def _context_envelope(self, _session, _step):
         return Envelope()
@@ -153,11 +160,13 @@ def _set_roomy_profile(runtime, *, auto_compact_token_limit=10_000, tool_output_
         auto_compact_token_limit=auto_compact_token_limit,
         tool_output_token_limit=tool_output_token_limit,
     )
-    runtime.platform = SimpleNamespace(
+    platform = SimpleNamespace(
         registry=SimpleNamespace(
             get=lambda _profile_id: SimpleNamespace(context_limits=context_limits)
         )
     )
+    runtime.platform = platform
+    runtime.session_platform = platform
 
 
 def test_compaction_request_uses_codex_prompt_as_final_user_message_and_no_tools():
@@ -172,6 +181,19 @@ def test_compaction_request_uses_codex_prompt_as_final_user_message_and_no_tools
     assert request.messages[-1].content == summarization_prompt("latin")
     assert request.messages[0].role is MessageRole.SYSTEM
     assert runtime.commits[-1]["retained"] == ()
+    assert runtime.model_executor.platforms == [runtime.session_platform]
+
+
+def test_auto_compaction_never_falls_back_to_global_default_provider():
+    runtime = FakeRuntime([ModelResponse(text="summary")])
+    default_minimax = runtime.platform
+    thread_deepseek = runtime.session_platform
+    session = Session(_history())
+
+    prepare_context(runtime, session, Step(), Token())
+
+    assert default_minimax is not thread_deepseek
+    assert runtime.model_executor.platforms == [thread_deepseek]
 
 
 def test_chinese_compaction_request_requires_chinese_summary_language():
