@@ -3,8 +3,23 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="color-scheme" content="dark" />
+    <meta name="color-scheme" content="dark light" />
     <title>Loom</title>
+    <script>
+      (function () {
+        var preference = "system";
+        try {
+          var stored = JSON.parse(localStorage.getItem("loom.settings.desktop.v2") || "{}");
+          var value = stored && stored.appearance && stored.appearance.theme;
+          if (value === "light" || value === "dark" || value === "system") preference = value;
+        } catch (_) {}
+        var dark = preference === "dark" || (preference === "system" && window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+        var resolved = dark ? "dark" : "light";
+        document.documentElement.dataset.loomThemePreference = preference;
+        document.documentElement.dataset.loomTheme = resolved;
+        document.documentElement.style.colorScheme = resolved;
+      })();
+    </script>
     <style>
       html, body, #root { width: 100%; height: 100%; margin: 0; }
       body { background: #0d0e11; color: #eceef2; font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
@@ -12,6 +27,10 @@
       .boot-sentinel-card { width: min(620px, calc(100% - 48px)); display: grid; gap: 8px; text-align: center; color: #8c93a1; }
       .boot-sentinel-card strong { color: #d8dbe2; font-size: 14px; font-weight: 650; }
       .boot-sentinel-card span { font-size: 11px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+      html[data-loom-theme="light"] body,
+      html[data-loom-theme="light"] .boot-sentinel { background: #f7f7f8; color: #1d2026; }
+      html[data-loom-theme="light"] .boot-sentinel-card { color: #727985; }
+      html[data-loom-theme="light"] .boot-sentinel-card strong { color: #252830; }
     </style>
   </head>
   <body>
