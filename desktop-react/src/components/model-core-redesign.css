@@ -996,3 +996,272 @@
   animation: none !important;
   transition: none !important;
 }
+
+
+/* -------------------------------------------------------------------------- */
+/* Single-surface refinement                                                   */
+/* -------------------------------------------------------------------------- */
+
+.composer-popover.model-manager-popover {
+  width: min(406px, calc(100vw - 32px));
+  border-radius: 17px;
+}
+
+.model-manager-popover .model-manager-view.model-core-home {
+  gap: 0;
+  padding: 17px 18px 14px;
+}
+
+/* Model identity now lives directly on the outer surface. No nested card,
+   no leading icon block: the model name is the semantic anchor. */
+.model-core-identity {
+  position: relative;
+  display: block;
+  padding: 5px 28px 13px;
+  text-align: center;
+}
+
+.model-core-copy {
+  display: grid;
+  gap: 4px;
+  text-align: center;
+}
+
+.model-core-copy strong {
+  color: #e9e9ef;
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1.18;
+  letter-spacing: -.018em;
+}
+
+.model-core-copy small {
+  color: #727985;
+  font-size: 8.8px;
+  line-height: 1.2;
+}
+
+.model-core-provider,
+.model-core-glyph {
+  display: none;
+}
+
+.model-core-health {
+  position: absolute;
+  top: 8px;
+  right: 2px;
+  width: 18px;
+  height: 18px;
+}
+
+.model-core-health i {
+  width: 5px;
+  height: 5px;
+  box-shadow:
+    0 0 0 3px rgba(118, 183, 151, .055),
+    0 0 10px rgba(118, 183, 151, .13);
+}
+
+/* The reasoning control is no longer a card within the card. It is simply
+   the visual instrument sitting on the same surface as the model identity. */
+.model-core-reasoning {
+  position: relative;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.model-core-reasoning::before {
+  display: none;
+}
+
+.model-manager-popover .reasoning-control {
+  padding: 7px 0 9px;
+}
+
+.model-manager-popover .reasoning-control-head {
+  min-height: 19px;
+  padding: 0 1px;
+}
+
+.reasoning-control-eyebrow {
+  color: #7d8490;
+  font-size: 8.15px;
+  letter-spacing: .085em;
+}
+
+.reasoning-control-eyebrow svg {
+  color: #8e84c9;
+}
+
+.model-manager-popover .reasoning-reset {
+  margin-right: -2px;
+  color: #59606b;
+}
+
+.reasoning-thread-shell {
+  min-height: 61px;
+  margin-top: 7px;
+  padding: 0;
+}
+
+.reasoning-thread-lines {
+  top: 4px;
+  left: 9px;
+  right: 9px;
+  height: 28px;
+}
+
+.reasoning-thread-path {
+  stroke-width: .7;
+}
+
+.reasoning-thread-lines > svg > .reasoning-thread-path-a {
+  stroke: rgba(117, 123, 139, .25);
+}
+
+.reasoning-thread-lines > svg > .reasoning-thread-path-b {
+  stroke: rgba(87, 92, 106, .16);
+}
+
+.reasoning-thread-energy .reasoning-thread-path-a {
+  stroke: rgba(164, 148, 248, .9);
+  filter: drop-shadow(0 0 3.5px rgba(139, 124, 246, .24));
+}
+
+.reasoning-thread-energy .reasoning-thread-path-b {
+  stroke: rgba(120, 108, 198, .62);
+}
+
+.reasoning-thread-node {
+  height: 58px;
+  grid-template-rows: 28px minmax(0, 1fr);
+  gap: 4px;
+}
+
+.reasoning-thread-node span {
+  color: inherit;
+  font-size: 8.15px;
+}
+
+.reasoning-thread-node.active {
+  color: #c7bbf3;
+}
+
+.reasoning-thread-node.active i {
+  width: 9px;
+  height: 9px;
+  box-shadow:
+    0 0 0 3px rgba(16, 18, 23, .94),
+    0 0 0 5px rgba(139, 124, 246, .06),
+    0 0 17px rgba(139, 124, 246, .24);
+}
+
+/* Keep the artwork as the final element in the reasoning area. The selected
+   level already appears on the active node and in the metadata above. */
+.model-core-home .reasoning-current {
+  display: none;
+}
+
+.reasoning-managed {
+  padding: 7px 0 9px;
+}
+
+.reasoning-managed-thread {
+  height: 39px;
+  margin: 4px 16px 0;
+}
+
+.reasoning-managed-label {
+  margin-top: -3px;
+  color: #777f8b;
+  font-size: 8px;
+  text-align: center;
+}
+
+/* Navigation is part of the same surface, not another pair of cards. */
+.model-core-nav {
+  display: grid;
+  gap: 0;
+  margin: 8px 0 0;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, .045);
+}
+
+.model-core-nav > button {
+  min-height: 0;
+  border-radius: 9px;
+}
+
+.model-core-nav > button + button {
+  border-top: 0;
+}
+
+.model-core-nav > .model-core-models {
+  min-height: 49px;
+  grid-template-columns: minmax(0, 1fr) 14px;
+  gap: 8px;
+  padding: 8px 7px;
+}
+
+.model-core-models > span {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.model-core-models strong {
+  color: #cbd0d8;
+  font-size: 10.4px;
+  font-weight: 610;
+}
+
+.model-core-models small {
+  color: #626a76;
+  font-size: 8.35px;
+}
+
+.model-core-nav > .model-core-add-api {
+  width: fit-content;
+  min-height: 28px;
+  display: inline-flex;
+  grid-template-columns: none;
+  justify-self: start;
+  gap: 6px;
+  padding: 4px 7px;
+  color: #626a76;
+}
+
+.model-core-add-api strong {
+  color: inherit;
+  font-size: 8.8px;
+  font-weight: 580;
+}
+
+.model-core-add-api:hover:not(:disabled) {
+  color: #9a91ce;
+  background: rgba(139, 124, 246, .025);
+  transform: none;
+}
+
+.model-core-add-api > svg {
+  justify-self: auto !important;
+  color: currentColor !important;
+  transform: none !important;
+}
+
+@media (max-width: 500px) {
+  .composer-popover.model-manager-popover {
+    width: calc(100vw - 20px);
+  }
+
+  .model-manager-popover .model-manager-view.model-core-home {
+    padding: 15px 15px 12px;
+  }
+
+  .model-core-identity {
+    padding-inline: 24px;
+  }
+}
