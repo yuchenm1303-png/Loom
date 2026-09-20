@@ -134,7 +134,7 @@ def summarize_browser_state_payload(
 
 def summarize_bridge_args(action: str, args: dict[str, Any] | None) -> dict[str, Any]:
     data = dict(args or {})
-    if action == "type_text" and "text" in data:
+    if action in {"type_text", "send_text"} and "text" in data:
         text = str(data.pop("text") or "")
         data["text_length"] = len(text)
         data["text_present"] = bool(text)
