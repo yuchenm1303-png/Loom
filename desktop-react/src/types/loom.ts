@@ -68,6 +68,12 @@ export interface TranscriptItem {
   type: "user_message" | "assistant_message" | "tool_call" | "process" | "file_edit" | "approval" | "error" | string;
   status?: string;
   text?: string;
+  /** Runtime origin for user messages, e.g. "user" or same-turn "steering". */
+  source?: string;
+  /** Stable client id for same-turn steering input. */
+  inputId?: string;
+  /** Original user submission time; steering may be consumed later at a safe boundary. */
+  submittedAt?: string;
   /** Runtime-authored assistant phase. Never infer finality from transcript order. */
   phase?: "commentary" | "final_answer" | string;
   /** Stable model-step identity used to correlate the terminal answer. */

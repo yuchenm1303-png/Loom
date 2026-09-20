@@ -477,7 +477,15 @@ class AgentRuntime:
                 continue
             session.messages.append(AIMessage(role=MessageRole.USER, content=item["text"]))
             session.steering_ids.append(item["id"])
-            self._record(session, AgentEventKind.USER_MESSAGE, data={"text": item["text"], "source": "steering", "input_id": item["id"]})
+            event_data = {
+                "text": item["text"],
+                "source": "steering",
+                "input_id": item["id"],
+            }
+            submitted_at = str(item.get("submitted_at") or "").strip()
+            if submitted_at:
+                event_data["submitted_at"] = submitted_at
+            self._record(session, AgentEventKind.USER_MESSAGE, data=event_data)
             consumed = True
         if items:
             self.store.ack_steering(session.session_id, {item["id"] for item in items})

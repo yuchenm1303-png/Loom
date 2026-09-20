@@ -143,7 +143,7 @@ def _patch_runtime_class(runtime_cls: type[Any]) -> None:
                 and session.current_turn_id == resolved_turn_id
                 and str(getattr(session.status, "value", session.status)) == "running"
             ):
-                identifier, duplicate = _submit_once(
+                identifier, duplicate, submitted_at = _submit_once(
                     self.store,
                     session_id=resolved_session_id,
                     turn_id=resolved_turn_id,
@@ -162,6 +162,7 @@ def _patch_runtime_class(runtime_cls: type[Any]) -> None:
                     input_id=identifier,
                     duplicate=duplicate,
                     delivery="model_replan_requested" if sampling else "next_safe_boundary",
+                    submitted_at=submitted_at,
                 )
 
         # WAITING_APPROVAL and terminal/idempotent edge cases stay delegated to
