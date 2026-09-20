@@ -1346,3 +1346,252 @@
 :root[data-loom-reduced-motion="true"] .model-core-title-row > svg {
   transition: none !important;
 }
+
+
+/* -------------------------------------------------------------------------- */
+/* Thread polish: remove popover chrome and give the woven control quiet life. */
+/* -------------------------------------------------------------------------- */
+
+/* The generic composer speech-bubble pointer is visual noise on the model
+   surface (the small white chevron visible at the lower-left in screenshots). */
+.composer-popover.model-manager-popover::before {
+  display: none;
+}
+
+/* The old connection-status dot is intentionally gone from the minimal home. */
+.model-core-home .model-core-health {
+  display: none;
+}
+
+.reasoning-thread-lines {
+  isolation: isolate;
+  filter: drop-shadow(0 0 5px rgba(116, 102, 202, .055));
+  animation: reasoning-thread-breathe 5.8s ease-in-out infinite;
+}
+
+.reasoning-thread-lines::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  left: 5%;
+  right: 5%;
+  top: 50%;
+  height: 16px;
+  transform: translateY(-50%);
+  border-radius: 999px;
+  background:
+    radial-gradient(ellipse at center, rgba(126, 109, 226, .07), transparent 67%);
+  filter: blur(9px);
+  opacity: .55;
+  pointer-events: none;
+}
+
+.reasoning-thread-energy {
+  overflow: hidden;
+}
+
+/* A very soft travelling halo. It only exists inside the active portion
+   because the energy layer itself is clipped at the selected reasoning node. */
+.reasoning-thread-energy::after {
+  content: "";
+  position: absolute;
+  z-index: 3;
+  top: 1px;
+  bottom: 1px;
+  left: -12%;
+  width: 12%;
+  border-radius: 999px;
+  background: rgba(188, 174, 255, .2);
+  filter: blur(8px);
+  opacity: 0;
+  pointer-events: none;
+  animation: reasoning-energy-sweep 5.6s cubic-bezier(.36, 0, .22, 1) infinite;
+}
+
+.reasoning-thread-glint {
+  fill: none;
+  stroke: rgba(221, 214, 255, .92);
+  stroke-width: .95;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+  stroke-dasharray: 3 124;
+  stroke-dashoffset: 127;
+  opacity: .72;
+  filter: drop-shadow(0 0 3px rgba(183, 166, 255, .7));
+  animation: reasoning-thread-glint 5.6s linear infinite;
+}
+
+.reasoning-thread-glint-b {
+  opacity: .44;
+  animation-delay: -2.75s;
+  animation-duration: 6.4s;
+}
+
+.reasoning-thread-node i::before,
+.reasoning-thread-node i::after {
+  content: "";
+  position: absolute;
+  inset: 50%;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  transform: translate(-50%, -50%) scale(1);
+  pointer-events: none;
+}
+
+.reasoning-thread-node i::before {
+  border: 1px solid rgba(153, 140, 220, 0);
+  transition:
+    border-color 170ms ease,
+    transform 220ms cubic-bezier(.2, .8, .2, 1),
+    opacity 170ms ease;
+}
+
+.reasoning-thread-node i::after {
+  background: radial-gradient(circle, rgba(177, 159, 255, .22), transparent 66%);
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(1.7);
+  transition: opacity 180ms ease;
+}
+
+.reasoning-thread-node:hover:not(:disabled) i::before {
+  border-color: rgba(157, 143, 224, .24);
+  transform: translate(-50%, -50%) scale(1.85);
+}
+
+.reasoning-thread-node:hover:not(:disabled) i::after {
+  opacity: .48;
+}
+
+.reasoning-thread-node.active i::before {
+  border-color: rgba(174, 158, 246, .2);
+  animation: reasoning-node-orbit 3.4s ease-in-out infinite;
+}
+
+.reasoning-thread-node.active i::after {
+  opacity: .72;
+  animation: reasoning-node-halo 3.4s ease-in-out infinite;
+}
+
+.reasoning-thread-node.active i {
+  animation: reasoning-node-core 3.4s ease-in-out infinite;
+}
+
+.reasoning-thread-node.active span {
+  text-shadow: 0 0 12px rgba(154, 137, 234, .16);
+}
+
+.reasoning-thread-node:not(.active) span {
+  transition: color 150ms ease, opacity 150ms ease;
+}
+
+.reasoning-thread-node:not(.active):hover span {
+  color: #9299a5;
+}
+
+/* Reasoning changes should feel like energy re-weaving, not a tab switch. */
+.reasoning-thread-energy {
+  transition:
+    clip-path 310ms cubic-bezier(.18, .82, .2, 1),
+    opacity 180ms ease;
+}
+
+@keyframes reasoning-thread-glint {
+  from { stroke-dashoffset: 127; }
+  to { stroke-dashoffset: -127; }
+}
+
+@keyframes reasoning-energy-sweep {
+  0%, 12% {
+    left: -12%;
+    opacity: 0;
+  }
+  18% {
+    opacity: .34;
+  }
+  58% {
+    opacity: .16;
+  }
+  72%, 100% {
+    left: 104%;
+    opacity: 0;
+  }
+}
+
+@keyframes reasoning-thread-breathe {
+  0%, 100% {
+    opacity: .94;
+    filter: drop-shadow(0 0 4px rgba(116, 102, 202, .045));
+  }
+  50% {
+    opacity: 1;
+    filter: drop-shadow(0 0 7px rgba(132, 116, 224, .085));
+  }
+}
+
+@keyframes reasoning-node-core {
+  0%, 100% {
+    box-shadow:
+      0 0 0 3px rgba(16, 18, 23, .94),
+      0 0 0 5px rgba(139, 124, 246, .055),
+      0 0 15px rgba(139, 124, 246, .2);
+  }
+  50% {
+    box-shadow:
+      0 0 0 3px rgba(16, 18, 23, .94),
+      0 0 0 6px rgba(139, 124, 246, .075),
+      0 0 22px rgba(151, 132, 246, .3);
+  }
+}
+
+@keyframes reasoning-node-orbit {
+  0%, 100% {
+    opacity: .45;
+    transform: translate(-50%, -50%) scale(1.55);
+  }
+  50% {
+    opacity: .85;
+    transform: translate(-50%, -50%) scale(2.05);
+  }
+}
+
+@keyframes reasoning-node-halo {
+  0%, 100% {
+    opacity: .48;
+    transform: translate(-50%, -50%) scale(1.55);
+  }
+  50% {
+    opacity: .82;
+    transform: translate(-50%, -50%) scale(2.15);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reasoning-thread-lines,
+  .reasoning-thread-energy::after,
+  .reasoning-thread-glint,
+  .reasoning-thread-node.active i,
+  .reasoning-thread-node.active i::before,
+  .reasoning-thread-node.active i::after {
+    animation: none !important;
+  }
+
+  .reasoning-thread-energy::after,
+  .reasoning-thread-glint {
+    display: none;
+  }
+}
+
+:root[data-loom-reduced-motion="true"] .reasoning-thread-lines,
+:root[data-loom-reduced-motion="true"] .reasoning-thread-energy::after,
+:root[data-loom-reduced-motion="true"] .reasoning-thread-glint,
+:root[data-loom-reduced-motion="true"] .reasoning-thread-node.active i,
+:root[data-loom-reduced-motion="true"] .reasoning-thread-node.active i::before,
+:root[data-loom-reduced-motion="true"] .reasoning-thread-node.active i::after {
+  animation: none !important;
+}
+
+:root[data-loom-reduced-motion="true"] .reasoning-thread-energy::after,
+:root[data-loom-reduced-motion="true"] .reasoning-thread-glint {
+  display: none;
+}
