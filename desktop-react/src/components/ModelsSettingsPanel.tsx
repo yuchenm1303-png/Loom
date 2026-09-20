@@ -187,7 +187,9 @@ const COPY = {
 } as const;
 
 function adapterLabel(value: string): string {
-  return value === "openai" ? "OpenAI" : "OpenAI Compatible";
+  if (value === "openai") return "OpenAI";
+  if (value === "opencode-go") return "OpenCode Go";
+  return "OpenAI Compatible";
 }
 
 function endpointLabel(value: string): string {
