@@ -70,13 +70,11 @@ function activeReasoningOption(reasoning: ModelReasoningState): ModelReasoningOp
 }
 
 function ReasoningControl({
-  modelName,
   reasoning,
   busy,
   running,
   onChange,
 }: {
-  modelName: string;
   reasoning: ModelReasoningState;
   busy?: boolean;
   running?: boolean;
@@ -88,12 +86,9 @@ function ReasoningControl({
   const locked = Boolean(busy || running);
   const displayOption = reasoning.options[displayIndex] ?? reasoning.options[selectedIndex] ?? reasoning.options[0];
   const canReset = reasoning.value !== reasoning.defaultValue;
-  const denominator = Math.max(1, reasoning.options.length - 1);
-  const progress = reasoning.options.length <= 1 ? 0 : displayIndex / denominator;
-  const progressPercent = Math.max(0, Math.min(100, progress * 100));
-  const sliderStyle = {
-    "--reasoning-progress": `${progressPercent}%`,
-    "--reasoning-unfilled": `${100 - progressPercent}%`,
+  const segmentStyle = {
+    "--reasoning-index": String(displayIndex),
+    "--reasoning-count": String(Math.max(1, reasoning.options.length)),
   } as CSSProperties;
 
   useEffect(() => {
@@ -119,74 +114,51 @@ function ReasoningControl({
   }
 
   return (
-    <section className={`reasoning-card ${locked ? "locked" : ""}`} aria-label="Reasoning strength">
-      <div className="reasoning-head">
-        <span className="reasoning-icon"><BrainCircuit size={16} strokeWidth={1.85} /></span>
-        <div className="reasoning-heading-copy">
-          <span className="reasoning-kicker">Reasoning effort</span>
-          <strong>{modelName}</strong>
+    <div className={`reasoning-control ${locked ? "locked" : ""}`}>
+      <div className="reasoning-control-head">
+        <div className="reasoning-control-title">
+          <span className="reasoning-control-icon"><BrainCircuit size={14} strokeWidth={1.9} /></span>
+          <div>
+            <strong>Reasoning</strong>
+            <span key={displayOption?.value || reasoning.value} className="reasoning-control-description">
+              {displayOption?.description || "Choose how much reasoning time Loom should spend before answering."}
+            </span>
+          </div>
         </div>
-        <div className="reasoning-head-actions">
-          <span className="reasoning-value">{displayOption?.label || reasoning.value}</span>
+        {canReset ? (
           <button
             type="button"
             className="reasoning-reset"
-            disabled={locked || !canReset}
+            disabled={locked}
             onClick={() => void reset()}
             title="Reset reasoning"
             aria-label="Reset reasoning"
           >
-            <RotateCcw size={14} />
+            <RotateCcw size={12.5} />
+            <span>Reset</span>
           </button>
-        </div>
+        ) : null}
       </div>
 
-      <div className="reasoning-detail">
-        {displayOption?.description || "Choose how much reasoning time Loom should spend before answering."}
-      </div>
-
-      <div className="reasoning-slider-shell" style={sliderStyle}>
-        <div className="reasoning-track-base" aria-hidden="true" />
-        <div className="reasoning-energy-track" aria-hidden="true" />
-        <div className="reasoning-step-points" aria-hidden="true">
-          {reasoning.options.map((option, index) => (
-            <span
-              key={option.value}
-              className={`reasoning-step-point ${index <= displayIndex ? "active" : ""} ${index === displayIndex ? "current" : ""}`}
-              style={{ left: `${reasoning.options.length <= 1 ? 50 : (index / denominator) * 100}%` }}
-            />
-          ))}
-        </div>
-        <input
-          className="reasoning-range"
-          type="range"
-          min={0}
-          max={Math.max(0, reasoning.options.length - 1)}
-          step={1}
-          value={displayIndex}
-          disabled={locked || reasoning.options.length <= 1}
-          aria-label="Reasoning strength"
-          aria-valuetext={displayOption?.label || reasoning.value}
-          title={displayOption?.description || "Reasoning strength"}
-          onChange={(event) => setDisplayIndex(Number(event.currentTarget.value))}
-          onPointerUp={(event) => void commit(Number(event.currentTarget.value))}
-          onKeyUp={(event) => {
-            if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) {
-              void commit(Number(event.currentTarget.value));
-            }
-          }}
-        />
-        <span className="reasoning-thumb" aria-hidden="true"><span /></span>
-      </div>
-
-      <div className="reasoning-scale" aria-hidden="true">
-        <span>Faster</span>
-        <span>Deeper reasoning</span>
+      <div className="reasoning-segments" style={segmentStyle} role="group" aria-label="Reasoning effort">
+        {reasoning.options.map((option, index) => (
+          <button
+            key={option.value}
+            type="button"
+            className={`reasoning-segment ${index === displayIndex ? "active" : ""}`}
+            disabled={locked || reasoning.options.length <= 1}
+            aria-pressed={index === displayIndex}
+            title={option.description}
+            onClick={() => void commit(index)}
+          >
+            <span>{option.label}</span>
+          </button>
+        ))}
       </div>
 
       {running ? <div className="reasoning-locked-note">Stop the active turn to change reasoning.</div> : null}
       {error ? <div className="composer-popover-error">{error}</div> : null}
-    </section>
+    </div>
   );
 }
 
@@ -473,34 +445,44 @@ export function ModelPanel({
 
   return (
     <div className="model-manager-view model-manager-home">
-      {currentReasoning ? (
-        <ReasoningControl
-          modelName={currentModel}
-          reasoning={currentReasoning}
-          busy={busy}
-          running={running}
-          onChange={onReasoningChange}
-        />
-      ) : (
-        <div className="model-compact-current">
-          <span className="model-compact-icon"><Cpu size={16} /></span>
-          <div><strong>{currentModel}</strong><span>{currentName} · {adapterLabel(currentAdapter)}</span></div>
-          <Check size={14} />
+      <section className={`model-control-card ${locked ? "locked" : ""}`} aria-label={`Current model ${currentModel}`}>
+        <div className="model-control-identity">
+          <span className="model-control-icon"><Cpu size={17} strokeWidth={1.8} /></span>
+          <div className="model-control-copy" key={`${currentSelection}:${currentModel}`}>
+            <span className="model-control-kicker">Current model</span>
+            <strong>{currentModel}</strong>
+            <small>{currentName} · {adapterLabel(currentAdapter)}</small>
+          </div>
+          <span className="model-control-active" title="Active model" aria-label="Active model"><Check size={13} strokeWidth={2.1} /></span>
         </div>
-      )}
 
-      <div className="model-manager-actions">
-        <button type="button" onClick={() => { setView("profiles"); setError(""); }} disabled={locked}>
-          <span className="model-manager-action-icon"><Cpu size={15} /></span>
-          <span><strong>Models</strong><small>{currentModel}</small></span>
-          <ChevronRight className="model-manager-action-chevron" size={14} />
-        </button>
-        <button type="button" onClick={() => { setView("add"); setError(""); }} disabled={locked}>
-          <span className="model-manager-action-icon"><Plus size={15} /></span>
-          <span><strong>Add API / model</strong><small>Custom endpoint + key</small></span>
-          <ChevronRight className="model-manager-action-chevron" size={14} />
-        </button>
-      </div>
+        {currentReasoning ? (
+          <ReasoningControl
+            reasoning={currentReasoning}
+            busy={busy}
+            running={running}
+            onChange={onReasoningChange}
+          />
+        ) : (
+          <div className="model-control-capability-note">
+            <span>Model controls</span>
+            <small>No reasoning control exposed by this provider.</small>
+          </div>
+        )}
+
+        <div className="model-control-actions">
+          <button type="button" onClick={() => { setView("profiles"); setError(""); }} disabled={locked}>
+            <span className="model-control-action-icon"><Cpu size={14.5} /></span>
+            <span className="model-control-action-copy"><strong>Models</strong><small>Switch model</small></span>
+            <ChevronRight size={13.5} />
+          </button>
+          <button type="button" onClick={() => { setView("add"); setError(""); }} disabled={locked}>
+            <span className="model-control-action-icon"><Plus size={14.5} /></span>
+            <span className="model-control-action-copy"><strong>Add model</strong><small>API / endpoint</small></span>
+            <ChevronRight size={13.5} />
+          </button>
+        </div>
+      </section>
 
       {error ? <div className="composer-popover-error">{error}</div> : null}
     </div>
