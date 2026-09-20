@@ -93,7 +93,7 @@ class BrowserPageState:
     url: str
     title: str
     dom: str = ""
-    tabs: tuple[dict[str, str], ...] = ()
+    tabs: tuple[dict[str, object], ...] = ()
     page_info: dict[str, object] | None = None
     errors: tuple[str, ...] = ()
 

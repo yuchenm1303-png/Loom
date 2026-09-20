@@ -118,8 +118,11 @@ def _state_fingerprint(state: BrowserPageState) -> tuple[object, ...]:
     tabs = tuple(
         (
             str(item.get("tab_id") or ""),
+            str(item.get("window_id") or ""),
             redact_browser_url(str(item.get("url") or "")),
             redact_browser_text(str(item.get("title") or "")),
+            bool(item.get("active", False)),
+            bool(item.get("current_window", False)),
         )
         for item in state.tabs
         if isinstance(item, dict)
@@ -163,8 +166,11 @@ def _observation_text(snapshot: BrowserStateSnapshot, *, effect: str, effect_rea
     tabs = [
         {
             "tab_id": str(item.get("tab_id") or "")[:64],
+            "window_id": str(item.get("window_id") or "")[:64],
             "url": redact_browser_url(str(item.get("url") or ""))[:2000],
             "title": redact_browser_text(str(item.get("title") or ""))[:500],
+            "active": bool(item.get("active", False)),
+            "current_window": bool(item.get("current_window", False)),
         }
         for item in state.tabs[:40]
         if isinstance(item, dict)

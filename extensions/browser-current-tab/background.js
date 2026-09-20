@@ -209,13 +209,30 @@ async function tabFromArgs(args = {}) {
   return tab;
 }
 
-async function tabsForWindow(tab) {
-  const tabs = await chrome.tabs.query(typeof tab.windowId === "number" ? { windowId: tab.windowId } : { currentWindow: true });
+// Every window, not only the one holding the tab being driven. Scoping this to
+// one window meant a page the user had opened in a separate window did not
+// exist as far as the model was concerned: no tab id was ever listed for it, so
+// browser_switch_tab had nothing to aim at and no sequence of browser calls
+// could reach it. Observed with a noVNC machine console in its own Edge window
+// - the model could see it in a desktop screenshot, had no way to open it, and
+// fell back to driving the screen instead.
+//
+// Popup and app windows are deliberately included; a console opened as an app
+// window is exactly the case this exists for. Tabs of other profiles and
+// incognito windows remain invisible, which is a browser boundary, not this
+// query's.
+async function listOpenTabs(tab) {
+  const tabs = await chrome.tabs.query({});
   return tabs.map((item) => ({
     tab_id: String(item.id ?? ""),
+    window_id: String(item.windowId ?? ""),
     url: item.url || "",
     title: item.title || "",
     active: item.id === tab.id,
+    // Lets the model tell "another tab next to the one I am driving" from
+    // "another window entirely", which is the difference between switching and
+    // switching plus raising a window.
+    current_window: item.windowId === tab.windowId,
   }));
 }
 
@@ -418,7 +435,7 @@ async function collectStateForTab(tab, options = {}) {
     url: tab.url || "about:blank",
     title: tab.title || "",
     dom: "",
-    tabs: await tabsForWindow(tab),
+    tabs: await listOpenTabs(tab),
     page_info: {
       extension_version: EXTENSION_VERSION,
       tab_id: String(tab.id),
@@ -800,7 +817,11 @@ async function refresh(args) {
 async function switchTab(args) {
   const tabId = Number.parseInt(String(args.tab_id || ""), 10);
   if (!Number.isInteger(tabId)) throw new Error("tab_id must be numeric for the extension backend");
+  const target = await chrome.tabs.get(tabId);
   await chrome.tabs.update(tabId, { active: true });
+  if (typeof target.windowId === "number") {
+    await chrome.windows.update(target.windowId, { focused: true });
+  }
   await markHudTab(tabId);
   return collectStateForTab(await chrome.tabs.get(tabId), { showHud: true });
 }

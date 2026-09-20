@@ -799,7 +799,7 @@ class BrowserExtensionSessionBackend:
     def _state_from_result(self, result: dict[str, Any]) -> BrowserPageState:
         self.state_revision += 1
         tabs_raw = result.get("tabs") or ()
-        tabs: list[dict[str, str]] = []
+        tabs: list[dict[str, object]] = []
         if isinstance(tabs_raw, list):
             for item in tabs_raw[:100]:
                 if not isinstance(item, dict):
@@ -807,8 +807,11 @@ class BrowserExtensionSessionBackend:
                 tabs.append(
                     {
                         "tab_id": str(item.get("tab_id") or item.get("id") or "")[:128],
+                        "window_id": str(item.get("window_id") or "")[:128],
                         "url": str(item.get("url") or "")[:4000],
                         "title": str(item.get("title") or "")[:1000],
+                        "active": bool(item.get("active", False)),
+                        "current_window": bool(item.get("current_window", False)),
                     }
                 )
         errors_raw = result.get("errors") or ()

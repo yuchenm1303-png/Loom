@@ -1515,7 +1515,7 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
             ),
             AgentTool(
                 name="browser_tabs",
-                description="List current tabs with opaque tab IDs, URLs and titles.",
+                description="List tabs across all open browser windows with opaque tab and window IDs, URLs, titles, and active-window status.",
                 input_schema=_schema({"browser_id": _browser_id_schema()}, ("browser_id",)),
                 handler=tabs,
                 effect=sensitive,

@@ -127,6 +127,17 @@ def test_loom_works_beside_the_user_instead_of_taking_the_foreground(background)
     assert "active: true" in _function_body(background, "switchTab")
 
 
+def test_tab_listing_and_explicit_switch_work_across_browser_windows(background):
+    listing = _function_body(background, "listOpenTabs")
+    assert "chrome.tabs.query({})" in listing
+    assert "window_id" in listing
+    assert "current_window" in listing
+
+    switch = _function_body(background, "switchTab")
+    assert "chrome.tabs.get(tabId)" in switch
+    assert "chrome.windows.update(target.windowId, { focused: true })" in switch
+
+
 def test_work_tabs_use_a_named_browser_group(background):
     assert 'LOOM_TAB_GROUP_TITLE = "Loom"' in background
     body = _function_body(background, "placeInLoomGroup")

@@ -65,7 +65,16 @@ class FakeExtensionBridge:
             "url": "https://example.com/",
             "title": "Example",
             "dom": "[0] <button> text=\"Continue\"",
-            "tabs": [{"tab_id": "7", "url": "https://example.com/", "title": "Example"}],
+            "tabs": [
+                {
+                    "tab_id": "7",
+                    "window_id": "11",
+                    "url": "https://example.com/",
+                    "title": "Example",
+                    "active": True,
+                    "current_window": True,
+                }
+            ],
             "page_info": {"element_count": 1, "tab_id": "7"},
         }
 
@@ -76,6 +85,16 @@ def test_extension_backend_maps_browser_actions_to_bridge_commands():
 
     state = backend.start()
     assert state.url == "https://example.com/"
+    assert state.tabs == (
+        {
+            "tab_id": "7",
+            "window_id": "11",
+            "url": "https://example.com/",
+            "title": "Example",
+            "active": True,
+            "current_window": True,
+        },
+    )
     assert backend.state_revision == 1
 
     backend.click(0)
