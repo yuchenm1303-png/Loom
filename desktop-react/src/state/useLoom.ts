@@ -33,7 +33,7 @@ function optimisticSteeringItem(
     threadId,
     turnId,
     type: "user_message",
-    status: "completed",
+    status: "pending",
     text,
     source: "steering",
     inputId,
@@ -130,7 +130,7 @@ export function useLoom() {
     // The normal active-turn path already knows the target id, so the bubble is
     // staged synchronously in the same click/Enter event before any RPC await.
     // The startup race still resolves the authoritative turn first.
-    if (thread.currentTurnId) stage(String(thread.currentTurnId));
+    if (threadIsRunning(thread) && thread.currentTurnId) stage(String(thread.currentTurnId));
 
     try {
       const activeTurn = await resolveActiveTurn(thread.id, thread);
