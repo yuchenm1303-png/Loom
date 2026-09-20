@@ -8,6 +8,7 @@ import {
   Plus,
   RefreshCw,
   RotateCcw,
+  Search,
   Server,
   SlidersHorizontal,
   Trash2,
@@ -100,9 +101,14 @@ function ReasoningControl({
   const locked = Boolean(busy || running);
   const displayOption = reasoning.options[displayIndex] ?? reasoning.options[selectedIndex] ?? reasoning.options[0];
   const canReset = reasoning.value !== reasoning.defaultValue;
-  const segmentStyle = {
+  const optionCount = Math.max(1, reasoning.options.length);
+  const threadProgress = reasoning.options.length <= 1
+    ? 50
+    : 8 + (displayIndex / Math.max(1, reasoning.options.length - 1)) * 84;
+  const threadStyle = {
     "--reasoning-index": String(displayIndex),
-    "--reasoning-count": String(Math.max(1, reasoning.options.length)),
+    "--reasoning-count": String(optionCount),
+    "--reasoning-progress": `${threadProgress}%`,
   } as CSSProperties;
 
   useEffect(() => {
@@ -130,15 +136,10 @@ function ReasoningControl({
   return (
     <div className={`reasoning-control ${locked ? "locked" : ""}`}>
       <div className="reasoning-control-head">
-        <div className="reasoning-control-title">
-          <span className="reasoning-control-icon"><BrainCircuit size={14} strokeWidth={1.9} /></span>
-          <div>
-            <strong>Reasoning</strong>
-            <span key={displayOption?.value || reasoning.value} className="reasoning-control-description">
-              {displayOption?.description || "Choose how much reasoning time Loom should spend before answering."}
-            </span>
-          </div>
-        </div>
+        <span className="reasoning-control-eyebrow">
+          <BrainCircuit size={13.5} strokeWidth={1.8} />
+          Reasoning
+        </span>
         {canReset ? (
           <button
             type="button"
@@ -154,25 +155,49 @@ function ReasoningControl({
         ) : null}
       </div>
 
-      <div className="reasoning-segments" style={segmentStyle} role="group" aria-label="Reasoning effort">
-        {reasoning.options.map((option, index) => (
-          <button
-            key={option.value}
-            type="button"
-            className={`reasoning-segment ${index === displayIndex ? "active" : ""}`}
-            disabled={locked || reasoning.options.length <= 1}
-            aria-pressed={index === displayIndex}
-            title={option.description}
-            onClick={() => void commit(index)}
-          >
-            <span>{option.label}</span>
-          </button>
-        ))}
+      <div className="reasoning-thread-shell" style={threadStyle}>
+        <div className="reasoning-thread-lines" aria-hidden="true">
+          <svg viewBox="0 0 100 18" preserveAspectRatio="none">
+            <path className="reasoning-thread-path reasoning-thread-path-a" d="M1 9 C13 2.6 24 15.4 38 9 S63 2.6 77 9 S91 14 99 9" />
+            <path className="reasoning-thread-path reasoning-thread-path-b" d="M1 9 C13 15.4 24 2.6 38 9 S63 15.4 77 9 S91 4 99 9" />
+          </svg>
+          <div className="reasoning-thread-energy">
+            <svg viewBox="0 0 100 18" preserveAspectRatio="none">
+              <path className="reasoning-thread-path reasoning-thread-path-a" d="M1 9 C13 2.6 24 15.4 38 9 S63 2.6 77 9 S91 14 99 9" />
+              <path className="reasoning-thread-path reasoning-thread-path-b" d="M1 9 C13 15.4 24 2.6 38 9 S63 15.4 77 9 S91 4 99 9" />
+            </svg>
+          </div>
+        </div>
+
+        <div className="reasoning-thread-nodes" role="group" aria-label="Reasoning effort">
+          {reasoning.options.map((option, index) => (
+            <button
+              key={option.value}
+              type="button"
+              className={`reasoning-thread-node ${index === displayIndex ? "active" : ""}`}
+              disabled={locked || reasoning.options.length <= 1}
+              aria-pressed={index === displayIndex}
+              title={option.description}
+              onClick={() => void commit(index)}
+            >
+              <i aria-hidden="true" />
+              <span>{option.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="reasoning-current" key={displayOption?.value || reasoning.value}>
+        <strong>{displayOption?.label || "Provider"}</strong>
+        <span>
+          {displayOption?.description || "Choose how much reasoning time Loom should spend before answering."}
+        </span>
       </div>
 
       {running ? <div className="reasoning-locked-note">Stop the active turn to change reasoning.</div> : null}
       {error ? <div className="composer-popover-error">{error}</div> : null}
     </div>
+
   );
 }
 
@@ -202,6 +227,7 @@ export function ModelPanel({
   const [selectedGroup, setSelectedGroup] = useState("");
   const [providerKey, setProviderKey] = useState("");
   const [providerConfiguring, setProviderConfiguring] = useState(false);
+  const [query, setQuery] = useState("");
 
   const currentModel = snapshot?.current?.model || runtimeModel || "MiniMax-M3";
   const currentName = snapshot?.current?.name || (currentModel.toLowerCase().includes("minimax") ? "MiniMax" : "Current API");
@@ -246,6 +272,28 @@ export function ModelPanel({
   const recent = useMemo(
     () => (snapshot?.recentModels ?? []).filter((item) => item && item !== currentModel).slice(0, 4),
     [currentModel, snapshot?.recentModels],
+  );
+  const recentProfiles = useMemo(
+    () => recent
+      .map((item) => profiles.find((profile) => profile.model === item))
+      .filter((profile): profile is ModelProfile => Boolean(profile))
+      .slice(0, 3),
+    [profiles, recent],
+  );
+  const normalizedQuery = query.trim().toLowerCase();
+  const visibleGroups = useMemo(
+    () => normalizedQuery
+      ? groups.filter((group) => (
+          group.name.toLowerCase().includes(normalizedQuery)
+          || group.profiles.some((profile) => [
+            profile.name,
+            profile.model,
+            profile.family || "",
+            profile.protocol || "",
+          ].some((value) => value.toLowerCase().includes(normalizedQuery)))
+        ))
+      : groups,
+    [groups, normalizedQuery],
   );
   const locked = Boolean(busy || running);
 
@@ -555,100 +603,148 @@ export function ModelPanel({
 
   if (view === "profiles") {
     return (
-      <div className="model-manager-view">
-        <button type="button" className="model-back" onClick={() => { setView("list"); setError(""); }}>
-          <ArrowLeft size={14} /> Back
-        </button>
-        <div className="model-form-heading">
-          <span className="model-form-icon"><Cpu size={17} /></span>
+      <div className="model-manager-view model-library-view">
+        <div className="model-layer-header">
+          <button
+            type="button"
+            className="model-back model-layer-back"
+            onClick={() => { setView("list"); setError(""); setQuery(""); }}
+            aria-label="Back to model controls"
+          >
+            <ArrowLeft size={14} />
+          </button>
           <div>
-            <strong>Model providers</strong>
-            <span>Choose a provider first, then select a model inside that group.</span>
+            <strong>Models</strong>
+            <span>{groups.length} providers · {profiles.length} available</span>
           </div>
         </div>
 
-        <div className="model-profile-list model-group-list">
-          {groups.map((group) => {
-            const active = group.profiles.some(
-              (profile) => profile.selection === currentSelection && profile.model === currentModel,
-            );
-            const connected = (
-              group.id !== "opencode-go"
-              || group.profiles.some((profile) => profile.configured !== false)
-            );
-            return (
-              <div key={group.id} className={`model-profile-row model-group-row ${active ? "active" : ""}`}>
-                <button
-                  type="button"
-                  className="model-profile-main"
-                  disabled={locked}
-                  onClick={() => {
-                    setSelectedGroup(group.id);
-                    setView("group");
-                    setError("");
-                  }}
-                >
-                  <span className="model-profile-icon builtin"><Server size={15} /></span>
-                  <span className="model-profile-copy">
-                    <span className="model-profile-title-row">
-                      <strong>{group.name}</strong>
-                      {active ? <em>Current</em> : null}
-                    </span>
-                    <span>{group.profiles.length} {group.profiles.length === 1 ? "model" : "models"}</span>
-                    <small>
-                      {group.id === "opencode-go"
-                        ? (connected ? "OpenCode Go subscription · connected" : "OpenCode Go subscription · key required")
-                        : group.profiles[0]?.kind === "saved"
-                          ? profileSubtitle(group.profiles[0])
-                          : "Built-in provider group"}
-                    </small>
-                  </span>
-                  <span className="model-profile-action"><ChevronRight size={14} /></span>
-                </button>
-              </div>
-            );
-          })}
-        </div>
+        <label className="model-library-search">
+          <Search size={13.5} strokeWidth={1.8} />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search providers or models"
+            aria-label="Search models"
+          />
+        </label>
 
-        <button type="button" className="model-wide-action" onClick={() => { setView("custom"); setError(""); }} disabled={locked}>
-          <SlidersHorizontal size={15} />
-          <span><strong>Other model ID</strong><small>Same API connection</small></span>
-          <ChevronRight size={14} />
+        {!normalizedQuery && recentProfiles.length ? (
+          <section className="model-library-section model-library-recent">
+            <div className="model-library-label">RECENT</div>
+            <div className="model-recent-models">
+              {recentProfiles.map((profile) => (
+                <button
+                  key={profile.selection}
+                  type="button"
+                  disabled={locked}
+                  onClick={() => void run(() => onSwitchProfile(profile.selection))}
+                >
+                  <span className="model-recent-dot" aria-hidden="true" />
+                  <span>
+                    <strong>{profile.model}</strong>
+                    <small>{profile.groupName || profile.name}</small>
+                  </span>
+                  <ChevronRight size={13} />
+                </button>
+              ))}
+            </div>
+          </section>
+        ) : null}
+
+        <section className="model-library-section">
+          <div className="model-library-label">PROVIDERS</div>
+          <div className="model-profile-list model-group-list">
+            {visibleGroups.map((group) => {
+              const active = group.profiles.some(
+                (profile) => profile.selection === currentSelection && profile.model === currentModel,
+              );
+              const connected = (
+                group.id !== "opencode-go"
+                || group.profiles.some((profile) => profile.configured !== false)
+              );
+              return (
+                <div key={group.id} className={`model-profile-row model-group-row ${active ? "active" : ""}`}>
+                  <button
+                    type="button"
+                    className="model-profile-main"
+                    disabled={locked}
+                    onClick={() => {
+                      setSelectedGroup(group.id);
+                      setView("group");
+                      setError("");
+                    }}
+                  >
+                    <span className="model-profile-icon builtin"><Server size={15} /></span>
+                    <span className="model-profile-copy">
+                      <span className="model-profile-title-row">
+                        <strong>{group.name}</strong>
+                        {active ? <em>Current</em> : null}
+                      </span>
+                      <span>{group.profiles.length} {group.profiles.length === 1 ? "model" : "models"}</span>
+                      <small>
+                        {group.id === "opencode-go"
+                          ? (connected ? "OpenCode Go · connected" : "OpenCode Go · key required")
+                          : group.profiles[0]?.kind === "saved"
+                            ? profileSubtitle(group.profiles[0])
+                            : "Built-in provider"}
+                      </small>
+                    </span>
+                    <span className="model-profile-action"><ChevronRight size={14} /></span>
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+          {normalizedQuery && visibleGroups.length === 0 ? (
+            <div className="model-library-empty">No matching providers or models.</div>
+          ) : null}
+        </section>
+
+        <button
+          type="button"
+          className="model-library-add"
+          onClick={() => { setView("add"); setError(""); }}
+          disabled={locked}
+        >
+          <Plus size={14} />
+          <span><strong>Add connection</strong><small>Custom API or model endpoint</small></span>
+          <ChevronRight size={13} />
         </button>
+
+        <button
+          type="button"
+          className="model-library-custom"
+          onClick={() => { setView("custom"); setError(""); }}
+          disabled={locked}
+        >
+          <SlidersHorizontal size={13.5} />
+          Use another model ID on the current connection
+        </button>
+
         {error ? <div className="composer-popover-error">{error}</div> : null}
       </div>
     );
   }
 
   return (
-    <div className="model-manager-view model-manager-home model-home">
-      <section className={`model-home-summary ${locked ? "locked" : ""}`} aria-label={`Current model ${currentModel}`}>
-        <div className="model-home-topline">
-          <span>Current model</span>
-          <span className="model-home-active"><i aria-hidden="true" /> Active</span>
+    <div className="model-manager-view model-manager-home model-core-home">
+      <section className={`model-core-identity ${locked ? "locked" : ""}`} aria-label={`Current model ${currentModel}`}>
+        <span className="model-core-glyph"><Cpu size={17} strokeWidth={1.65} /></span>
+        <div className="model-core-copy" key={`${currentSelection}:${currentModel}`}>
+          <span className="model-core-provider">{currentGroupName}</span>
+          <strong>{currentModel}</strong>
+          <small>
+            {adapterLabel(currentAdapter)}
+            {currentFamily ? ` · ${currentFamily}` : ""}
+          </small>
         </div>
-
-        <div className="model-home-identity">
-          <span className="model-home-symbol"><Cpu size={18} strokeWidth={1.7} /></span>
-          <div className="model-home-copy" key={`${currentSelection}:${currentModel}`}>
-            <strong>{currentModel}</strong>
-            <div className="model-home-source">
-              <span>{currentGroupName}</span>
-              <i aria-hidden="true" />
-              <span>{adapterLabel(currentAdapter)}</span>
-            </div>
-          </div>
-        </div>
-
-        {(currentFamily || currentProtocol) ? (
-          <div className="model-home-tags" aria-label="Model metadata">
-            {currentFamily ? <span>{currentFamily}</span> : null}
-            {currentProtocol ? <span>{currentProtocol}</span> : null}
-          </div>
-        ) : null}
+        <span className="model-core-health" title="Provider connected" aria-label="Provider connected">
+          <i aria-hidden="true" />
+        </span>
       </section>
 
-      <section className="model-home-controls" aria-label="Model controls">
+      <section className="model-core-reasoning" aria-label="Reasoning control">
         {currentReasoning ? (
           <ReasoningControl
             reasoning={currentReasoning}
@@ -657,47 +753,55 @@ export function ModelPanel({
             onChange={onReasoningChange}
           />
         ) : (
-          <div className="model-home-control-line">
-            <span className="model-home-control-icon"><BrainCircuit size={14.5} strokeWidth={1.8} /></span>
-            <div>
-              <strong>Reasoning</strong>
-              <small>Uses the provider's default behavior</small>
+          <div className="reasoning-managed">
+            <div className="reasoning-control-head">
+              <span className="reasoning-control-eyebrow">
+                <BrainCircuit size={13.5} strokeWidth={1.8} />
+                Reasoning
+              </span>
             </div>
-            <span className="model-home-control-state">Default</span>
+            <div className="reasoning-managed-thread" aria-hidden="true">
+              <span />
+              <i />
+              <span />
+            </div>
+            <div className="reasoning-current">
+              <strong>Provider managed</strong>
+              <span>Reasoning strategy is controlled automatically by this model.</span>
+            </div>
           </div>
         )}
       </section>
 
-      <div className="model-home-actions" aria-label="Model actions">
+      <div className="model-core-nav" aria-label="Model actions">
         <button
           type="button"
-          className="model-home-action model-home-action-primary"
           onClick={() => { setView("profiles"); setError(""); }}
           disabled={locked}
         >
-          <span className="model-home-action-icon"><Cpu size={15} strokeWidth={1.75} /></span>
-          <span className="model-home-action-copy">
-            <strong>Browse models</strong>
+          <span className="model-core-nav-icon"><Cpu size={14.5} strokeWidth={1.75} /></span>
+          <span>
+            <strong>Models</strong>
             <small>{groups.length} providers · {profiles.length} models</small>
           </span>
-          <ChevronRight size={14} strokeWidth={1.8} />
+          <ChevronRight size={14} />
         </button>
 
         <button
           type="button"
-          className="model-home-action"
           onClick={() => { setView("add"); setError(""); }}
           disabled={locked}
         >
-          <span className="model-home-action-icon"><Plus size={15} strokeWidth={1.75} /></span>
-          <span className="model-home-action-copy">
-            <strong>Add model</strong>
-            <small>Custom API connection</small>
+          <span className="model-core-nav-icon"><Plus size={14.5} strokeWidth={1.75} /></span>
+          <span>
+            <strong>Connections</strong>
+            <small>Add a custom API or model</small>
           </span>
-          <ChevronRight size={14} strokeWidth={1.8} />
+          <ChevronRight size={14} />
         </button>
       </div>
 
+      {currentProtocol ? <div className="model-core-protocol">Protocol · {currentProtocol}</div> : null}
       {error ? <div className="composer-popover-error">{error}</div> : null}
     </div>
   );
