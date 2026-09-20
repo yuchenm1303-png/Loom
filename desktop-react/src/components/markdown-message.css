@@ -393,7 +393,7 @@
   animation: stream-text-reveal 180ms ease-out;
 }
 
-.markdown-body.is-streaming::after {
+.markdown-body.is-receiving::after {
   content: "";
   display: inline-block;
   width: 5px;
@@ -420,5 +420,5 @@ html[data-loom-reduced-motion="true"] .markdown-body::after {
 }
 @media (prefers-reduced-motion: reduce) {
   .markdown-body.is-streaming .stream-text-chunk,
-  .markdown-body.is-streaming::after { animation: none; }
+  .markdown-body.is-receiving::after { animation: none; }
 }
