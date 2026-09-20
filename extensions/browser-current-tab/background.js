@@ -720,8 +720,10 @@ function nativeKeyDescriptor(raw) {
     End: "End",
     PageUp: "PageUp",
     PageDown: "PageDown",
+    Insert: "Insert",
+    ContextMenu: "ContextMenu",
   };
-  let code = codes[normalized] || "";
+  let code = codes[normalized] || (/^F(?:[1-9]|1[0-2])$/.test(normalized) ? normalized : "");
   if (!code && /^[A-Za-z]$/.test(normalized)) code = `Key${normalized.toUpperCase()}`;
   if (!code && /^[0-9]$/.test(normalized)) code = `Digit${normalized}`;
   return { key: normalized, code };
@@ -758,7 +760,7 @@ async function sendNativeKeyChord(target, rawKey) {
   }
   const main = nativeKeyDescriptor(mainRaw);
   const printable = Array.from(main.key).length === 1 && main.key !== "\n" && main.key !== "\r" && main.key !== "\t";
-  await dispatchNativeKey(target, "keyDown", main.key, main.code, printable ? main.key : "", mask);
+  await dispatchNativeKey(target, "keyDown", main.key, main.code, printable && mask === 0 ? main.key : "", mask);
   await dispatchNativeKey(target, "keyUp", main.key, main.code, "", mask);
   for (const spec of modifiers.reverse()) {
     mask &= ~spec.bit;
@@ -1641,18 +1643,44 @@ function runPageAction(action, args = {}) {
     const active = document.activeElement instanceof HTMLElement ? document.activeElement : document.body;
     const parts = key.split("+").map((part) => part.trim()).filter(Boolean);
     const main = parts.pop() || key;
-    const init = {
-      key: main,
-      code: main.length === 1 ? `Key${main.toUpperCase()}` : main,
-      bubbles: true,
-      cancelable: true,
-      ctrlKey: parts.some((part) => /^ctrl|control$/i.test(part)),
-      shiftKey: parts.some((part) => /^shift$/i.test(part)),
-      altKey: parts.some((part) => /^alt$/i.test(part)),
-      metaKey: parts.some((part) => /^meta|cmd|command$/i.test(part)),
+    const modifierDefs = [
+      { pattern: /^(ctrl|control)$/i, key: "Control", code: "ControlLeft", field: "ctrlKey" },
+      { pattern: /^shift$/i, key: "Shift", code: "ShiftLeft", field: "shiftKey" },
+      { pattern: /^alt$/i, key: "Alt", code: "AltLeft", field: "altKey" },
+      { pattern: /^(meta|cmd|command)$/i, key: "Meta", code: "MetaLeft", field: "metaKey" },
+    ];
+    const held = {};
+    const emit = (type, eventKey, code = "") => {
+      active.dispatchEvent(new KeyboardEvent(type, {
+        key: eventKey,
+        code,
+        bubbles: true,
+        cancelable: true,
+        ctrlKey: Boolean(held.ctrlKey),
+        shiftKey: Boolean(held.shiftKey),
+        altKey: Boolean(held.altKey),
+        metaKey: Boolean(held.metaKey),
+      }));
     };
-    active.dispatchEvent(new KeyboardEvent("keydown", init));
-    active.dispatchEvent(new KeyboardEvent("keyup", init));
+    const modifiers = [];
+    for (const raw of parts) {
+      const spec = modifierDefs.find((item) => item.pattern.test(raw));
+      if (!spec) throw new Error(`Unsupported key modifier: ${raw}`);
+      held[spec.field] = true;
+      modifiers.push(spec);
+      emit("keydown", spec.key, spec.code);
+    }
+    const aliases = { Esc: "Escape", Del: "Delete", Return: "Enter", Up: "ArrowUp", Down: "ArrowDown", Left: "ArrowLeft", Right: "ArrowRight" };
+    const eventKey = aliases[main] || main;
+    const eventCode = /^[A-Za-z]$/.test(eventKey) ? `Key${eventKey.toUpperCase()}` :
+      /^[0-9]$/.test(eventKey) ? `Digit${eventKey}` :
+      (/^(Enter|Escape|Tab|Backspace|Delete|ArrowUp|ArrowDown|ArrowLeft|ArrowRight|Home|End|PageUp|PageDown|Insert|F(?:[1-9]|1[0-2]))$/.test(eventKey) ? eventKey : "");
+    emit("keydown", eventKey, eventCode);
+    emit("keyup", eventKey, eventCode);
+    for (const spec of modifiers.reverse()) {
+      held[spec.field] = false;
+      emit("keyup", spec.key, spec.code);
+    }
     return true;
   }
 
