@@ -320,5 +320,10 @@ def test_the_hud_emitter_prefers_the_screen_point():
     }
 
     assert S._hud_point("computer_action", {}, result) == (0.468, 0.562)
-    # Without one, the window-local point is still better than nothing.
-    assert S._hud_point("computer_action", {}, {"action": result["action"]}) == (0.5, 0.5)
+    # Without one, the window-local point is worse than nothing. Handing a
+    # fraction of the application window to a full-screen overlay puts the
+    # marker somewhere else entirely, and because a tool-started event never
+    # carries a screen_point while its completion does, the cursor jumped to
+    # that wrong place on every action and snapped back afterwards. The caller
+    # converts the pending point against the live frame instead.
+    assert S._hud_point("computer_action", {}, {"action": result["action"]}) is None

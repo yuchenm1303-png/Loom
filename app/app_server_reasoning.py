@@ -265,6 +265,51 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
             return dict(execution["action"])
         return {}
 
+    def _hud_point_from_live_frame(
+        self,
+        session_id: str,
+        tool_name: str,
+        args: dict[str, Any],
+        result: dict[str, Any],
+    ) -> tuple[float, float] | None:
+        """Convert a pending action's window-local point into desktop space.
+
+        A tool-started event knows where the action is about to go, but only in
+        the coordinates of the window the screenshot covered. The frame needed to
+        convert is the one held by the current observation, so the HUD can show
+        the pointer moving to the real target before the click instead of only
+        catching up afterwards.
+        """
+
+        if not str(tool_name or "").startswith("computer_"):
+            return None
+        try:
+            action = self._hud_action_from_payload(args, result)
+            raw = action.get("point")
+            if not isinstance(raw, dict):
+                raw = action.get("end_point")
+            if not isinstance(raw, dict):
+                return None
+
+            from app.agent_runtime.computer_single_loop_runtime import desktop_point
+            from app.agent_runtime.computer_types import ComputerPoint
+
+            store = getattr(self.runtime, "computer_sessions", None)
+            if store is None:
+                return None
+            frame = store.latest(str(session_id or "")).observation.frame
+            converted = desktop_point(
+                frame,
+                ComputerPoint(float(raw.get("x")), float(raw.get("y"))),
+            )
+            if converted is None:
+                return None
+            return float(converted["x_norm"]), float(converted["y_norm"])
+        except Exception:
+            # The HUD is decoration. Holding the previous position is correct
+            # behaviour when the point cannot be placed truthfully.
+            return None
+
     @classmethod
     def _hud_point(cls, tool_name: str, args: dict[str, Any], result: dict[str, Any]) -> tuple[float, float] | None:
         name = str(tool_name or "")
@@ -280,13 +325,14 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
                 y_norm = screen_point.get("y_norm")
                 if isinstance(x_norm, (int, float)) and isinstance(y_norm, (int, float)):
                     return cls._hud_float(x_norm, 0.52), cls._hud_float(y_norm, 0.46)
-            action = cls._hud_action_from_payload(args, result)
-            point = action.get("point")
-            if isinstance(point, dict):
-                return cls._hud_float(point.get("x"), 0.52), cls._hud_float(point.get("y"), 0.46)
-            end_point = action.get("end_point")
-            if isinstance(end_point, dict):
-                return cls._hud_float(end_point.get("x"), 0.52), cls._hud_float(end_point.get("y"), 0.46)
+            # No screen_point means this event carries no result yet, which is
+            # the case for every tool-started event. The action's own point is
+            # available but is normalized against the captured application
+            # window, and returning it here would hand a window-local fraction
+            # to a full-screen overlay: the cursor jumps somewhere wrong on
+            # start and snaps back on completion, which is what users see as the
+            # marker flying out and returning. The caller converts it properly
+            # using the live frame; None means "no usable point", not "no point".
             return None
         if not name.startswith("browser_"):
             return None
@@ -401,6 +447,8 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
         args = self._hud_call_args(event)
         result = self._hud_result_data(event)
         point = self._hud_point(tool_name, args, result)
+        if point is None:
+            point = self._hud_point_from_live_frame(event.session_id, tool_name, args, result)
         phase, title, thought = self._hud_status_for_event(event.kind, source, tool_name)
         bubble_title = self._hud_tool_label(tool_name, args, result)
         single_loop_computer_action = source == "computer" and tool_name == "computer_action"
