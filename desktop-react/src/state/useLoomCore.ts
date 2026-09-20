@@ -82,7 +82,14 @@ function modelsForThread(snapshot: ModelSnapshot | null, thread?: ThreadRecord |
       model: thread.model || profile.model,
       provider: thread.modelProvider || profile.adapter,
       baseUrl: thread.modelBaseUrl || profile.baseUrl,
-      vision: thread.modelVision ?? profile.vision ?? true,
+      // `profile` is the catalogue entry resolved just now; `modelVision` is a
+      // snapshot taken whenever this thread last switched models. For a
+      // capability the live answer wins -- reading the snapshot first left
+      // threads permanently refusing images after the catalogue was corrected,
+      // with no way back: the block applies before a turn can start, and a turn
+      // is what would have refreshed the record. A saved model's user-declared
+      // `vision: false` reaches us through `profile`, so it still holds.
+      vision: profile.vision ?? thread.modelVision ?? true,
       reasoning,
     },
   };

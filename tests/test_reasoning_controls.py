@@ -375,6 +375,67 @@ def test_thread_model_switch_keeps_sight_when_resolution_omits_vision(monkeypatc
     assert session.model_vision is True
 
 
+def test_thread_runtime_rebuild_heals_a_stale_vision_record(monkeypatch, tmp_path) -> None:
+    """Rebuilding the platform must not leave the old capability on the record.
+
+    The thread's own value is what the composer consults, and it blocks the
+    attachment before a turn can start -- so a thread that recorded
+    ``vision: False`` under an earlier catalogue could never reach the turn that
+    would have refreshed it.
+    """
+
+    service = object.__new__(ReasoningManagedLoomAppServerService)
+    session = SimpleNamespace(
+        session_id="thread-1",
+        model_selection="builtin:opencode-go:grok-4.6",
+        model="grok-4.6",
+        model_provider="opencode-go",
+        model_base_url="https://opencode.ai/zen/go/v1",
+        model_vision=False,
+        reasoning_kind="",
+        reasoning_value="",
+    )
+    saved: list[object] = []
+    service._runtime_home = lambda: tmp_path
+    service._session_reasoning = lambda _session: None
+    service._thread_uses_default_model = lambda _session: False
+    service.runtime = SimpleNamespace(
+        has_session_model=lambda _session_id: False,
+        set_session_model=lambda *_args, **_kwargs: None,
+    )
+    service.store = SimpleNamespace(save=lambda value: saved.append(value))
+
+    monkeypatch.setattr(
+        app_server_reasoning,
+        "resolve_model_spec",
+        lambda selection, model="", home=None: {
+            "provider": "opencode-go",
+            "baseUrl": "https://opencode.ai/zen/go/v1",
+            "model": "grok-4.6",
+            "apiKey": "opencode-secret",
+            "vision": True,
+        },
+    )
+    monkeypatch.setattr(
+        app_server_reasoning,
+        "validate_runtime_reasoning",
+        lambda **_kwargs: None,
+    )
+    captured: dict[str, object] = {}
+
+    def build_platform(**kwargs):
+        captured.update(kwargs)
+        return object()
+
+    monkeypatch.setattr(app_server_reasoning, "build_runtime_model_platform", build_platform)
+
+    service._ensure_thread_model_runtime(session)
+
+    assert captured["vision"] is True
+    assert session.model_vision is True
+    assert saved == [session]
+
+
 def test_hot_model_switch_returns_lightweight_runtime_patch(monkeypatch) -> None:
     service = object.__new__(ReasoningManagedLoomAppServerService)
     service._guard = threading.RLock()

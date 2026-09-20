@@ -606,6 +606,14 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
             platform,
             reasoning=reasoning,
         )
+        # Resolution just rebuilt this thread's platform from the current
+        # catalogue, so a capability recorded when the thread last switched
+        # models is now stale. Leaving it on the record is not harmless: the
+        # composer reads the thread's own value first and would keep refusing
+        # images that the platform above is ready to send.
+        if bool(getattr(session, "model_vision", True)) != vision:
+            session.model_vision = vision
+            self.store.save(session)
         return session
 
     def _thread_model_blocked(self, session: Any) -> bool:
