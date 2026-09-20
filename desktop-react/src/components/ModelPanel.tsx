@@ -187,13 +187,6 @@ function ReasoningControl({
         </div>
       </div>
 
-      <div className="reasoning-current" key={displayOption?.value || reasoning.value}>
-        <strong>{displayOption?.label || "Provider"}</strong>
-        <span>
-          {displayOption?.description || "Choose how much reasoning time Loom should spend before answering."}
-        </span>
-      </div>
-
       {running ? <div className="reasoning-locked-note">Stop the active turn to change reasoning.</div> : null}
       {error ? <div className="composer-popover-error">{error}</div> : null}
     </div>
@@ -235,6 +228,7 @@ export function ModelPanel({
   const currentBaseUrl = snapshot?.current?.baseUrl || "";
   const currentSelection = snapshot?.current?.selection || "";
   const currentReasoning = snapshot?.current?.reasoning ?? null;
+  const currentReasoningOption = currentReasoning ? activeReasoningOption(currentReasoning) : null;
   const currentGroupName = snapshot?.current?.groupName || currentName;
   const currentFamily = snapshot?.current?.family || "";
   const currentProtocol = snapshot?.current?.protocol || "";
@@ -730,13 +724,11 @@ export function ModelPanel({
   return (
     <div className="model-manager-view model-manager-home model-core-home">
       <section className={`model-core-identity ${locked ? "locked" : ""}`} aria-label={`Current model ${currentModel}`}>
-        <span className="model-core-glyph"><Cpu size={17} strokeWidth={1.65} /></span>
         <div className="model-core-copy" key={`${currentSelection}:${currentModel}`}>
-          <span className="model-core-provider">{currentGroupName}</span>
           <strong>{currentModel}</strong>
           <small>
-            {adapterLabel(currentAdapter)}
-            {currentFamily ? ` · ${currentFamily}` : ""}
+            {currentGroupName} · {adapterLabel(currentAdapter)}
+            {currentReasoningOption ? ` · ${currentReasoningOption.label}` : " · Auto"}
           </small>
         </div>
         <span className="model-core-health" title="Provider connected" aria-label="Provider connected">
@@ -765,10 +757,7 @@ export function ModelPanel({
               <i />
               <span />
             </div>
-            <div className="reasoning-current">
-              <strong>Provider managed</strong>
-              <span>Reasoning strategy is controlled automatically by this model.</span>
-            </div>
+            <div className="reasoning-managed-label">Auto</div>
           </div>
         )}
       </section>
@@ -776,10 +765,10 @@ export function ModelPanel({
       <div className="model-core-nav" aria-label="Model actions">
         <button
           type="button"
+          className="model-core-models"
           onClick={() => { setView("profiles"); setError(""); }}
           disabled={locked}
         >
-          <span className="model-core-nav-icon"><Cpu size={14.5} strokeWidth={1.75} /></span>
           <span>
             <strong>Models</strong>
             <small>{groups.length} providers · {profiles.length} models</small>
@@ -789,19 +778,15 @@ export function ModelPanel({
 
         <button
           type="button"
+          className="model-core-add-api"
           onClick={() => { setView("add"); setError(""); }}
           disabled={locked}
         >
-          <span className="model-core-nav-icon"><Plus size={14.5} strokeWidth={1.75} /></span>
-          <span>
-            <strong>Connections</strong>
-            <small>Add a custom API or model</small>
-          </span>
-          <ChevronRight size={14} />
+          <Plus size={13.5} strokeWidth={1.8} />
+          <strong>Add API</strong>
         </button>
       </div>
 
-      {currentProtocol ? <div className="model-core-protocol">Protocol · {currentProtocol}</div> : null}
       {error ? <div className="composer-popover-error">{error}</div> : null}
     </div>
   );
