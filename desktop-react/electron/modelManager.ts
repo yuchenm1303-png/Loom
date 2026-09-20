@@ -24,6 +24,12 @@ export interface ModelProfile {
   adapter: "openai" | "openai-compatible" | string;
   baseUrl: string;
   model: string;
+  groupId?: string;
+  groupName?: string;
+  groupOrder?: number;
+  family?: string;
+  protocol?: string;
+  configured?: boolean;
   vision?: boolean;
   reasoning?: ModelReasoningState | null;
 }
@@ -225,6 +231,23 @@ export class DesktopModelManager {
     this.persistActive(selection);
   }
 
+  setProviderKey(provider: string, apiKey: string): ModelSnapshot {
+    const value = String(provider || "").trim();
+    const secret = String(apiKey || "").trim();
+    if (!value) throw new Error("Provider is required");
+    if (!secret) throw new Error("API key is required");
+    this.runBridge<{ provider: string; configured: boolean }>("set-provider-key", {
+      provider: value,
+      apiKey: secret,
+    });
+    this.registryCache = null;
+    this.metadataCache = null;
+    for (const key of [...this.launchCache.keys()]) {
+      if (key.startsWith("builtin:opencode-go:")) this.launchCache.delete(key);
+    }
+    return this.snapshot(true);
+  }
+
   setReasoning(kind: string, value: string): ModelReasoningState {
     const current = this.currentSpec ?? this.ensureInitial();
     const profile = this.runBridge<ModelProfile>("set-reasoning", {
@@ -312,7 +335,7 @@ export class DesktopModelManager {
   }
 
   private runBridge<T>(
-    command: "list" | "resolve" | "describe-model" | "save" | "delete" | "set-active" | "persist-active" | "set-reasoning",
+    command: "list" | "resolve" | "describe-model" | "save" | "delete" | "set-active" | "persist-active" | "set-reasoning" | "set-provider-key",
     payload: Record<string, unknown>,
   ): T {
     return this.runPythonBridge<T>("loom_model_bridge.py", command, payload);
