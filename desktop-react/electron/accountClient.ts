@@ -1,5 +1,6 @@
 import { app, safeStorage } from "electron";
 import fs from "node:fs/promises";
+import fsSync from "node:fs";
 import path from "node:path";
 
 export interface LoomAccountUser {
@@ -46,13 +47,30 @@ function normalizeBaseUrl(value: string): string {
   return String(value || "").trim().replace(/\/+$/, "");
 }
 
+function configuredAccountBaseUrl(): string {
+  const fromEnvironment = normalizeBaseUrl(process.env.LOOM_ACCOUNT_API_BASE_URL || "");
+  if (fromEnvironment) return fromEnvironment;
+
+  try {
+    const configPath = path.join(app.getPath("home"), ".loom", "account-service.json");
+    if (fsSync.existsSync(configPath)) {
+      const parsed = JSON.parse(fsSync.readFileSync(configPath, "utf8")) as { baseUrl?: string };
+      const fromFile = normalizeBaseUrl(parsed.baseUrl || "");
+      if (fromFile) return fromFile;
+    }
+  } catch {
+    // A malformed optional config file must not stop Loom from starting.
+  }
+
+  return app.isPackaged ? "" : "http://127.0.0.1:8787/v1";
+}
+
 export class LoomAccountClient {
   private memorySession: TokenSession | null = null;
   private readonly baseUrl: string;
 
   constructor() {
-    const configured = normalizeBaseUrl(process.env.LOOM_ACCOUNT_API_BASE_URL || "");
-    this.baseUrl = configured || (app.isPackaged ? "" : "http://127.0.0.1:8787/v1");
+    this.baseUrl = configuredAccountBaseUrl();
   }
 
   private get configured(): boolean {
