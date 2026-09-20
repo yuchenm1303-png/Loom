@@ -59,6 +59,14 @@ class InteractionBackend:
         self.calls.append(("type", index, text, clear))
         return self._state()
 
+    def click_at(self, x: int, y: int, button: str = "left") -> BrowserPageState:
+        self.calls.append(("click_at", x, y, button))
+        return self._state()
+
+    def send_text(self, text: str) -> BrowserPageState:
+        self.calls.append(("send_text", text))
+        return self._state()
+
     def hover(self, index: int) -> BrowserPageState:
         self.calls.append(("hover", index))
         return self._state()
@@ -129,7 +137,14 @@ def test_richer_browser_tools_are_registered_sensitive_and_revision_scoped(tmp_p
     managed = store.start("owner")
     context = _context(workspace)
 
-    expected = {"browser_hover", "browser_press", "browser_select", "browser_drag"}
+    expected = {
+        "browser_hover",
+        "browser_press",
+        "browser_select",
+        "browser_drag",
+        "browser_click_at",
+        "browser_send_text",
+    }
     for name in expected:
         tool = runtime.tools.get(name)
         assert tool is not None
@@ -177,6 +192,34 @@ def test_richer_browser_tools_are_registered_sensitive_and_revision_scoped(tmp_p
         },
     )
     assert ("drag", 1, 2) in calls
+
+    revision = int(result.data["state_revision"])
+    click_at = runtime.tools.get("browser_click_at")
+    assert click_at is not None
+    result = click_at.handler(
+        context,
+        {
+            "browser_id": managed.browser_id,
+            "x": 640,
+            "y": 360,
+            "button": "left",
+            "state_revision": revision,
+        },
+    )
+    assert ("click_at", 640, 360, "left") in calls
+
+    revision = int(result.data["state_revision"])
+    send_text = runtime.tools.get("browser_send_text")
+    assert send_text is not None
+    result = send_text.handler(
+        context,
+        {
+            "browser_id": managed.browser_id,
+            "state_revision": revision,
+            "text": "echo loom\n",
+        },
+    )
+    assert ("send_text", "echo loom\n") in calls
     assert int(result.data["state_revision"]) > revision
     runtime.close()
 

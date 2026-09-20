@@ -115,7 +115,7 @@ The extension bridge writes local JSONL diagnostics to:
 .loom/logs/browser-use/browser-<timestamp>-<pid>.jsonl
 ```
 
-Each event records the bridge lifecycle, extension registration, command queue/dispatch/result timings, tab binding, action name, element index, state revision, URL/title, tab count, DOM size/excerpt, page HUD state, and extension errors. Secret-shaped fields are redacted, screenshot bytes are omitted, and `browser_type` stores text length instead of the typed text payload. DOM excerpts are also omitted from post-`browser_type` diagnostic summaries so newly typed text is not copied into the log through the refreshed page state.
+Each event records the bridge lifecycle, extension registration, command queue/dispatch/result timings, tab binding, action name, element index, state revision, URL/title, tab count, DOM size/excerpt, page HUD state, and extension errors. Secret-shaped fields are redacted, screenshot bytes are omitted, and both `browser_type` and `browser_send_text` store text length instead of the typed text payload. DOM excerpts are also omitted from post-text-input diagnostic summaries so newly typed text is not copied into the log through the refreshed page state.
 
 To export logs from the desktop UI, open Settings → Browser and click **Export browser logs**. Loom will create a zip archive and reveal it in the native file manager. The same helper respects `LOOM_BROWSER_LOG_DIR`, so custom test runs can keep per-case logs in separate folders.
 
@@ -152,12 +152,21 @@ The current extension backend supports:
 - go back;
 - list/switch/close tabs in the current browser window;
 - visible-tab screenshot;
-- hover, key press, select, and basic drag/drop.
+- hover, key press, select, and basic drag/drop;
+- report visible canvas/video/iframe/application surfaces with viewport rectangles;
+- click a visual surface by viewport coordinates with `browser_click_at`;
+- send an entire command/string to the focused visual surface with `browser_send_text`.
 
-Element indexes are still protected by Loom's existing `state_revision` check. After the page changes, ask for `browser_state` again before clicking or typing. The index-to-element mapping lives in `chrome.storage.session` so that it survives the MV3 service worker being evicted between commands.
+Element indexes and visual coordinates are both protected by Loom's existing `state_revision` check. After the page layout changes, ask for `browser_state` again before acting. The index-to-element mapping lives in `chrome.storage.session` so that it survives the MV3 service worker being evicted between commands.
+
+### Native visual input
+
+The extension requests Chromium's `debugger` permission so it can use the DevTools Input domain for coordinate mouse events and keyboard events. That is what lets a real canvas-backed noVNC/RDP/KVM console receive input even though it exposes no HTML input element. The debugger is attached only for the duration of an input action and is detached immediately afterwards. If DevTools or another debugger already owns the tab, Loom falls back to page-dispatched events instead of failing the whole browser session.
+
+For a remote terminal the intended flow is: refresh `browser_state` → use the reported surface rectangle/screenshot to choose a point → `browser_click_at` once to focus the console → `browser_send_text` with the complete command (optionally ending in `\n`). Special chords such as Control+C remain `browser_press`.
 
 ## Limitations
 
-This is a current-tab DOM bridge, not a full desktop GUI driver. It cannot inspect or control `chrome://`, `edge://`, extension pages, operating-system dialogs, file pickers, or browser toolbar UI. Use Computer Use as a fallback for those surfaces.
+This is still a web-tab driver, not an operating-system GUI driver. It can now operate pixel-backed content inside ordinary HTTP/HTTPS tabs, but it cannot inspect or control `chrome://`, `edge://`, extension pages, operating-system dialogs, file pickers, or browser toolbar UI. Use Computer Use as a fallback for those browser/OS surfaces.
 
 It also cannot bypass login, CAPTCHA, MFA, or site security flows. If a site requires user approval, the user should complete that step in the browser and then ask Loom to continue.

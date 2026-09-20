@@ -126,7 +126,7 @@ def summarize_browser_state_payload(
         "dom_chars": len(dom),
         "dom_excerpt": _safe_value(dom[:1600], key="dom_excerpt", max_string=1800)
         if include_dom_excerpt
-        else "[omitted after browser_type]",
+        else "[omitted after browser text input]",
         "errors": _safe_value(errors, key="errors", max_string=1600),
         "page_info": _safe_value(page_info, key="page_info", max_string=1200),
     }
@@ -134,7 +134,7 @@ def summarize_browser_state_payload(
 
 def summarize_bridge_args(action: str, args: dict[str, Any] | None) -> dict[str, Any]:
     data = dict(args or {})
-    if action == "type_text" and "text" in data:
+    if action in {"type_text", "send_text"} and "text" in data:
         text = str(data.pop("text") or "")
         data["text_length"] = len(text)
         data["text_present"] = bool(text)

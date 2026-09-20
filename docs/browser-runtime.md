@@ -20,6 +20,14 @@ Browser state is deliberately LLM-facing and bounded; Loom never dumps a raw bro
 
 browser-use's integer selector indexes represent the current serialized DOM; they are not permanent cross-step element IDs. Loom v1 therefore attaches a monotonically increasing `state_revision` to each model-visible state and caches the exact selector map that produced it. `browser_click` and `browser_type` require that revision. If state has refreshed, the old revision is rejected rather than silently resolving the same integer against a different DOM.
 
+### Visual surfaces
+
+DOM indexes are not enough for canvas/WebGL applications, VNC/RDP/KVM consoles, streamed desktops, maps, and similar surfaces whose meaningful controls are pixels rather than HTML elements. Browser state therefore also reports visible `canvas`, `video`, `iframe`, and `role=application` regions under `page_info.visual_surfaces`, including their viewport rectangles and canvas backing-buffer sizes when available.
+
+`browser_click_at` sends a viewport-coordinate pointer action using the same `state_revision` guard as element clicks. Once that click gives a visual surface keyboard focus, `browser_send_text` sends a whole string in one action; newline becomes Enter and the model no longer needs one `browser_press` call and one state refresh per character. `browser_press` remains the path for individual keys and chords such as Control+C.
+
+The browser-use/CDP backend sends these events through Chromium's Input domain. The current-tab extension does the same through `chrome.debugger` and falls back to page-dispatched pointer/keyboard events when another debugger already owns the tab. Ordinary forms should still use `browser_click` / `browser_type`; the coordinate path is an escape hatch for visual surfaces, not a replacement for DOM automation.
+
 ## Navigation security
 
 Loom performs URL policy checks before explicit navigation and after browser actions. `BrowserSecurityPolicy` canonicalizes percent-encoded and Unicode hostnames, detects normal/decimal/hex/octal IPv4 spellings accepted by platform resolvers, blocks userinfo credentials in URLs, rejects localhost/prohibited hosts, resolves DNS by default, and blocks non-global addresses unless explicitly configured otherwise.
@@ -53,7 +61,9 @@ The initial model-facing tools are:
 - `browser_state`
 - `browser_navigate`
 - `browser_click`
+- `browser_click_at`
 - `browser_type`
+- `browser_send_text`
 - `browser_scroll`
 - `browser_back`
 - `browser_refresh`

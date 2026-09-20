@@ -67,7 +67,7 @@ def test_browser_use_backend_diagnostics_redact_typed_text_and_urls(tmp_path, mo
     assert "typed-secret" not in payload
     assert "header.payload.signature" not in payload
     assert "text_length" in payload
-    assert "[omitted after browser_type]" in payload
+    assert "[omitted after browser text input]" in payload
     assert "cdp_endpoint_exposed" in payload
     assert "profile_path_exposed" in payload
     assert "browser_use.action.completed" in payload

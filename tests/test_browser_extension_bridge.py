@@ -305,13 +305,17 @@ def test_browser_diagnostics_redacts_typed_text(tmp_path):
         "text_length": 21,
         "text_present": True,
     }
+    assert summarize_bridge_args("send_text", {"text": "super secret password"}) == {
+        "text_length": 21,
+        "text_present": True,
+    }
 
     state_summary = summarize_browser_state_payload(
         {"dom": 'Visible page text\n<input value="super secret password">'},
         include_dom_excerpt=False,
     )
     assert state_summary["dom_chars"] > 0
-    assert state_summary["dom_excerpt"] == "[omitted after browser_type]"
+    assert state_summary["dom_excerpt"] == "[omitted after browser text input]"
 
     diagnostics = BrowserDiagnosticLog(root=tmp_path)
     diagnostics.event("browser_type", args=safe_args, api_key="sk-test-123", nested={"token": "abc"}, state=state_summary)

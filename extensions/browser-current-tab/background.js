@@ -674,6 +674,126 @@ async function withElement(args, action, extra = {}, waitMs = 200, options = {})
   );
 }
 
+async function withNativeInput(tabId, run) {
+  const target = { tabId: Number(tabId) };
+  let attached = false;
+  try {
+    await chrome.debugger.attach(target, "1.3");
+    attached = true;
+    await run(target);
+    return { ok: true };
+  } catch (cause) {
+    return {
+      ok: false,
+      error: String(cause && cause.message ? cause.message : cause).slice(0, 500),
+    };
+  } finally {
+    if (attached) await chrome.debugger.detach(target).catch(() => {});
+  }
+}
+
+function nativeKeyDescriptor(raw) {
+  const key = String(raw || "");
+  const aliases = {
+    Esc: "Escape",
+    Del: "Delete",
+    Return: "Enter",
+    Space: " ",
+    Spacebar: " ",
+    Up: "ArrowUp",
+    Down: "ArrowDown",
+    Left: "ArrowLeft",
+    Right: "ArrowRight",
+  };
+  const normalized = aliases[key] || key;
+  const codes = {
+    Enter: "Enter",
+    Escape: "Escape",
+    Tab: "Tab",
+    Backspace: "Backspace",
+    Delete: "Delete",
+    ArrowUp: "ArrowUp",
+    ArrowDown: "ArrowDown",
+    ArrowLeft: "ArrowLeft",
+    ArrowRight: "ArrowRight",
+    Home: "Home",
+    End: "End",
+    PageUp: "PageUp",
+    PageDown: "PageDown",
+    Insert: "Insert",
+    ContextMenu: "ContextMenu",
+  };
+  let code = codes[normalized] || (/^F(?:[1-9]|1[0-2])$/.test(normalized) ? normalized : "");
+  if (!code && /^[A-Za-z]$/.test(normalized)) code = `Key${normalized.toUpperCase()}`;
+  if (!code && /^[0-9]$/.test(normalized)) code = `Digit${normalized}`;
+  return { key: normalized, code };
+}
+
+async function dispatchNativeKey(target, type, key, code = "", text = "", modifiers = 0) {
+  const params = { type, key: String(key || ""), modifiers: Number(modifiers || 0) };
+  if (code) params.code = code;
+  if (text && type === "keyDown") {
+    params.text = text;
+    params.unmodifiedText = text;
+  }
+  await chrome.debugger.sendCommand(target, "Input.dispatchKeyEvent", params);
+}
+
+async function sendNativeKeyChord(target, rawKey) {
+  const parts = String(rawKey || "").split("+").map((part) => part.trim()).filter(Boolean);
+  const mainRaw = parts.pop() || String(rawKey || "");
+  const modifierSpec = [
+    { pattern: /^(ctrl|control)$/i, key: "Control", code: "ControlLeft", bit: 2 },
+    { pattern: /^alt$/i, key: "Alt", code: "AltLeft", bit: 1 },
+    { pattern: /^(meta|cmd|command)$/i, key: "Meta", code: "MetaLeft", bit: 4 },
+    { pattern: /^shift$/i, key: "Shift", code: "ShiftLeft", bit: 8 },
+  ];
+  const modifiers = [];
+  let mask = 0;
+  for (const raw of parts) {
+    const spec = modifierSpec.find((item) => item.pattern.test(raw));
+    if (!spec) throw new Error(`Unsupported key modifier: ${raw}`);
+    if (modifiers.some((item) => item.code === spec.code)) continue;
+    mask |= spec.bit;
+    modifiers.push(spec);
+    await dispatchNativeKey(target, "keyDown", spec.key, spec.code, "", mask);
+  }
+  const main = nativeKeyDescriptor(mainRaw);
+  const printable = Array.from(main.key).length === 1 && main.key !== "\n" && main.key !== "\r" && main.key !== "\t";
+  await dispatchNativeKey(target, "keyDown", main.key, main.code, printable && mask === 0 ? main.key : "", mask);
+  await dispatchNativeKey(target, "keyUp", main.key, main.code, "", mask);
+  for (const spec of modifiers.reverse()) {
+    mask &= ~spec.bit;
+    await dispatchNativeKey(target, "keyUp", spec.key, spec.code, "", mask);
+  }
+}
+
+async function sendNativeText(target, text) {
+  for (const char of Array.from(String(text || ""))) {
+    if (char === "\r") continue;
+    if (char === "\n") {
+      await dispatchNativeKey(target, "keyDown", "Enter", "Enter");
+      await dispatchNativeKey(target, "keyUp", "Enter", "Enter");
+      continue;
+    }
+    if (char === "\t") {
+      await dispatchNativeKey(target, "keyDown", "Tab", "Tab");
+      await dispatchNativeKey(target, "keyUp", "Tab", "Tab");
+      continue;
+    }
+    if (char === "\b") {
+      await dispatchNativeKey(target, "keyDown", "Backspace", "Backspace");
+      await dispatchNativeKey(target, "keyUp", "Backspace", "Backspace");
+      continue;
+    }
+    // Leaving code empty intentionally makes canvas/remote-desktop handlers treat
+    // this like virtual-keyboard input. noVNC, for example, can derive a keysym
+    // directly from KeyboardEvent.key and sends a press+release immediately.
+    await dispatchNativeKey(target, "keyDown", char, "", char);
+    await dispatchNativeKey(target, "keyUp", char);
+  }
+}
+
 async function click(args) {
   return withElement(args, "click", {}, 250);
 }
@@ -684,6 +804,51 @@ async function hover(args) {
 
 async function typeText(args) {
   return withElement(args, "type_text", { text: String(args.text || ""), clear: args.clear !== false }, 200, { canNavigate: false });
+}
+
+async function clickAt(args) {
+  const tab = await actionTab(args);
+  const x = Number(args.x);
+  const y = Number(args.y);
+  const button = String(args.button || "left").toLowerCase();
+  if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0) {
+    throw new Error("click_at requires finite non-negative viewport coordinates");
+  }
+  if (!["left", "right", "middle"].includes(button)) throw new Error("click_at button must be left, right, or middle");
+  const buttons = button === "left" ? 1 : button === "right" ? 2 : 4;
+  return withNavigationWatch(
+    tab.id,
+    async () => {
+      const native = await withNativeInput(tab.id, async (target) => {
+        await chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", { type: "mouseMoved", x, y });
+        await chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", {
+          type: "mousePressed", x, y, button, buttons, clickCount: 1,
+        });
+        await chrome.debugger.sendCommand(target, "Input.dispatchMouseEvent", {
+          type: "mouseReleased", x, y, button, buttons: 0, clickCount: 1,
+        });
+      });
+      if (native.ok) return { ok: true, native_input: true };
+      return inject(tab.id, runPageAction, ["click_at", { x, y, button }]);
+    },
+    180,
+  );
+}
+
+async function sendText(args) {
+  const tab = await actionTab(args);
+  const text = String(args.text || "");
+  if (!text) throw new Error("send_text requires non-empty text");
+  if (text.length > 8000) throw new Error("send_text supports at most 8000 characters per call");
+  return withNavigationWatch(
+    tab.id,
+    async () => {
+      const native = await withNativeInput(tab.id, (target) => sendNativeText(target, text));
+      if (native.ok) return { ok: true, native_input: true };
+      return inject(tab.id, runPageAction, ["send_text", { text }]);
+    },
+    120,
+  );
 }
 
 async function selectOption(args) {
@@ -703,10 +868,16 @@ async function drag(args) {
 
 async function pressKey(args) {
   const tab = await actionTab(args);
-  // Enter in a form field is the usual way a key press turns into a navigation.
+  const key = String(args.key || "");
+  // Prefer CDP input so canvas/WebGL/remote-desktop surfaces receive real browser
+  // keyboard events. If DevTools already owns the tab, fall back to page events.
   return withNavigationWatch(
     tab.id,
-    () => inject(tab.id, runPageAction, ["press_key", { key: String(args.key || "") }]),
+    async () => {
+      const native = await withNativeInput(tab.id, (target) => sendNativeKeyChord(target, key));
+      if (native.ok) return { ok: true, native_input: true };
+      return inject(tab.id, runPageAction, ["press_key", { key }]);
+    },
     150,
   );
 }
@@ -905,8 +1076,10 @@ async function dispatchCommand(action, args) {
     case "state": return collectStateForTab(await actionTab(args), { showHud: true });
     case "navigate": return navigate(args);
     case "click": return click(args);
+    case "click_at": return clickAt(args);
     case "hover": return hover(args);
     case "type_text": return typeText(args);
+    case "send_text": return sendText(args);
     case "select_option": return selectOption(args);
     case "drag": return drag(args);
     case "press_key": return pressKey(args);
@@ -1188,6 +1361,38 @@ function runPageAction(action, args = {}) {
     return picked;
   }
 
+  function collectVisualSurfaces() {
+    const surfaces = [];
+    const selector = "canvas,video,iframe,[role='application']";
+    for (const el of document.querySelectorAll(selector)) {
+      if (!(el instanceof HTMLElement)) continue;
+      const style = visibleStyle(el);
+      if (!style || style.pointerEvents === "none") continue;
+      const rect = el.getBoundingClientRect();
+      if (rect.width < 24 || rect.height < 24) continue;
+      const tag = el.tagName.toLowerCase();
+      const kind = String(el.getAttribute("role") || "").toLowerCase() === "application" ? "application" : tag;
+      const surface = {
+        surface_index: surfaces.length,
+        kind,
+        label: clean(el.getAttribute("aria-label") || el.getAttribute("title") || el.getAttribute("name") || el.id || "", 300),
+        rect: {
+          x: Math.round(rect.left),
+          y: Math.round(rect.top),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height),
+        },
+      };
+      if (el instanceof HTMLCanvasElement) {
+        surface.buffer_width = Number(el.width || 0);
+        surface.buffer_height = Number(el.height || 0);
+      }
+      surfaces.push(surface);
+      if (surfaces.length >= 64) break;
+    }
+    return surfaces;
+  }
+
   function collectPageState(showHud = true) {
     const errors = [];
     const elements = [];
@@ -1222,8 +1427,18 @@ function runPageAction(action, args = {}) {
       errors.push(cause instanceof Error ? cause.message : String(cause));
     }
 
+    let visualSurfaces = [];
+    try {
+      visualSurfaces = collectVisualSurfaces();
+    } catch (cause) {
+      errors.push(cause instanceof Error ? cause.message : String(cause));
+    }
+
     if (showHud) {
-      showStatusHud("Reading current tab", `${elements.length} interactive elements found`);
+      showStatusHud(
+        "Reading current tab",
+        `${elements.length} interactive elements, ${visualSurfaces.length} visual surfaces`,
+      );
     }
 
     const elementLines = elements.map((item) => {
@@ -1241,6 +1456,13 @@ function runPageAction(action, args = {}) {
       return `[${item.index}] <${item.tag}> ${attrs.join(" ")}`;
     });
 
+    const surfaceLines = visualSurfaces.map((item) => {
+      const attrs = [`rect=${item.rect.x},${item.rect.y},${item.rect.width}x${item.rect.height}`];
+      if (item.label) attrs.push(`label="${item.label}"`);
+      if (item.buffer_width && item.buffer_height) attrs.push(`buffer=${item.buffer_width}x${item.buffer_height}`);
+      return `[surface ${item.surface_index}] <${item.kind}> ${attrs.join(" ")}`;
+    });
+
     return {
       url: location.href,
       title: document.title,
@@ -1252,12 +1474,17 @@ function runPageAction(action, args = {}) {
         "Interactive elements:",
         ...elementLines,
         "",
+        "Visual surfaces (use viewport coordinates with browser_click_at; focus one before browser_send_text/browser_press):",
+        ...surfaceLines,
+        "",
         "Visible page text:",
         clean(document.body?.innerText || "", MAX_TEXT),
       ].join("\n"),
       elements,
       page_info: {
         element_count: elements.length,
+        visual_surface_count: visualSurfaces.length,
+        visual_surfaces: visualSurfaces,
         viewport_width: window.innerWidth,
         viewport_height: window.innerHeight,
         scroll_x: Math.round(window.scrollX),
@@ -1298,6 +1525,29 @@ function runPageAction(action, args = {}) {
     return { ok: true, navigation_expected: expected };
   }
 
+  function clickAtInPage() {
+    const x = Number(args.x);
+    const y = Number(args.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) throw new Error("click_at coordinates are invalid");
+    if (x < 0 || y < 0 || x > window.innerWidth || y > window.innerHeight) {
+      throw new Error(`click_at coordinates ${x},${y} are outside viewport ${window.innerWidth}x${window.innerHeight}`);
+    }
+    const target = document.elementFromPoint(x, y);
+    if (!(target instanceof HTMLElement)) throw new Error("click_at found no HTML target at those coordinates");
+    target.focus({ preventScroll: true });
+    showTargetHud(target, `Click at ${Math.round(x)},${Math.round(y)}`, clean(target.getAttribute("aria-label") || target.tagName, 180), "action");
+    const buttonName = String(args.button || "left").toLowerCase();
+    const button = buttonName === "middle" ? 1 : buttonName === "right" ? 2 : 0;
+    const buttons = buttonName === "left" ? 1 : buttonName === "right" ? 2 : 4;
+    const init = { bubbles: true, cancelable: true, clientX: x, clientY: y, button, buttons };
+    if (typeof PointerEvent === "function") target.dispatchEvent(new PointerEvent("pointerdown", { ...init, pointerId: 1, pointerType: "mouse", isPrimary: true }));
+    target.dispatchEvent(new MouseEvent("mousedown", init));
+    target.dispatchEvent(new MouseEvent("mouseup", { ...init, buttons: 0 }));
+    if (typeof PointerEvent === "function") target.dispatchEvent(new PointerEvent("pointerup", { ...init, buttons: 0, pointerId: 1, pointerType: "mouse", isPrimary: true }));
+    target.dispatchEvent(new MouseEvent("click", { ...init, buttons: 0 }));
+    return { ok: true, native_input: false };
+  }
+
   function hoverElement() {
     const el = targetById(args.loom_id);
     showTargetHud(el, `Hover #${Number(args.index)}`, clean(el.innerText || el.getAttribute("aria-label") || el.tagName, 180), "target");
@@ -1328,6 +1578,26 @@ function runPageAction(action, args = {}) {
       return true;
     }
     throw new Error("Target element is not an input, textarea, or contenteditable element");
+  }
+
+  function sendTextInPage() {
+    const text = String(args.text || "");
+    const active = document.activeElement instanceof HTMLElement ? document.activeElement : document.body;
+    if (!(active instanceof HTMLElement)) throw new Error("send_text has no focused page target");
+    showStatusHud(`Send ${text.length} characters`, "Focused visual surface");
+    const emit = (key, code = "") => {
+      const base = { key, code, bubbles: true, cancelable: true };
+      active.dispatchEvent(new KeyboardEvent("keydown", base));
+      active.dispatchEvent(new KeyboardEvent("keyup", base));
+    };
+    for (const char of Array.from(text)) {
+      if (char === "\r") continue;
+      if (char === "\n") emit("Enter", "Enter");
+      else if (char === "\t") emit("Tab", "Tab");
+      else if (char === "\b") emit("Backspace", "Backspace");
+      else emit(char);
+    }
+    return { ok: true, native_input: false };
   }
 
   function selectElement() {
@@ -1373,18 +1643,44 @@ function runPageAction(action, args = {}) {
     const active = document.activeElement instanceof HTMLElement ? document.activeElement : document.body;
     const parts = key.split("+").map((part) => part.trim()).filter(Boolean);
     const main = parts.pop() || key;
-    const init = {
-      key: main,
-      code: main.length === 1 ? `Key${main.toUpperCase()}` : main,
-      bubbles: true,
-      cancelable: true,
-      ctrlKey: parts.some((part) => /^ctrl|control$/i.test(part)),
-      shiftKey: parts.some((part) => /^shift$/i.test(part)),
-      altKey: parts.some((part) => /^alt$/i.test(part)),
-      metaKey: parts.some((part) => /^meta|cmd|command$/i.test(part)),
+    const modifierDefs = [
+      { pattern: /^(ctrl|control)$/i, key: "Control", code: "ControlLeft", field: "ctrlKey" },
+      { pattern: /^shift$/i, key: "Shift", code: "ShiftLeft", field: "shiftKey" },
+      { pattern: /^alt$/i, key: "Alt", code: "AltLeft", field: "altKey" },
+      { pattern: /^(meta|cmd|command)$/i, key: "Meta", code: "MetaLeft", field: "metaKey" },
+    ];
+    const held = {};
+    const emit = (type, eventKey, code = "") => {
+      active.dispatchEvent(new KeyboardEvent(type, {
+        key: eventKey,
+        code,
+        bubbles: true,
+        cancelable: true,
+        ctrlKey: Boolean(held.ctrlKey),
+        shiftKey: Boolean(held.shiftKey),
+        altKey: Boolean(held.altKey),
+        metaKey: Boolean(held.metaKey),
+      }));
     };
-    active.dispatchEvent(new KeyboardEvent("keydown", init));
-    active.dispatchEvent(new KeyboardEvent("keyup", init));
+    const modifiers = [];
+    for (const raw of parts) {
+      const spec = modifierDefs.find((item) => item.pattern.test(raw));
+      if (!spec) throw new Error(`Unsupported key modifier: ${raw}`);
+      held[spec.field] = true;
+      modifiers.push(spec);
+      emit("keydown", spec.key, spec.code);
+    }
+    const aliases = { Esc: "Escape", Del: "Delete", Return: "Enter", Up: "ArrowUp", Down: "ArrowDown", Left: "ArrowLeft", Right: "ArrowRight" };
+    const eventKey = aliases[main] || main;
+    const eventCode = /^[A-Za-z]$/.test(eventKey) ? `Key${eventKey.toUpperCase()}` :
+      /^[0-9]$/.test(eventKey) ? `Digit${eventKey}` :
+      (/^(Enter|Escape|Tab|Backspace|Delete|ArrowUp|ArrowDown|ArrowLeft|ArrowRight|Home|End|PageUp|PageDown|Insert|F(?:[1-9]|1[0-2]))$/.test(eventKey) ? eventKey : "");
+    emit("keydown", eventKey, eventCode);
+    emit("keyup", eventKey, eventCode);
+    for (const spec of modifiers.reverse()) {
+      held[spec.field] = false;
+      emit("keyup", spec.key, spec.code);
+    }
     return true;
   }
 
@@ -1512,8 +1808,10 @@ function runPageAction(action, args = {}) {
       showStatusHud(clean(args.title || "Browser action", 80), clean(args.subtitle || "Browser Use", 140));
       return true;
     case "click": return clickElement();
+    case "click_at": return clickAtInPage();
     case "hover": return hoverElement();
     case "type_text": return typeElement();
+    case "send_text": return sendTextInPage();
     case "select_option": return selectElement();
     case "drag": return dragElement();
     case "press_key": return pressKeyInPage();

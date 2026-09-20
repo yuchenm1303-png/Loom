@@ -99,6 +99,51 @@ class BrowserUseSessionBackend(BrowserUseBackend):
     def state_revision(self) -> int:
         return self._state_revision
 
+    async def _visual_surfaces_async(self, session: Any) -> list[dict[str, Any]]:
+        """Read large coordinate-addressable surfaces that DOM indexes cannot represent."""
+
+        try:
+            cdp = await session.get_or_create_cdp_session()
+            expression = r"""(() => {
+              const rows = [];
+              for (const el of document.querySelectorAll("canvas,video,iframe,[role='application']")) {
+                const rect = el.getBoundingClientRect();
+                const style = getComputedStyle(el);
+                if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0) continue;
+                if (style.pointerEvents === "none" || rect.width < 24 || rect.height < 24) continue;
+                if (rect.bottom < 0 || rect.right < 0 || rect.top > innerHeight || rect.left > innerWidth) continue;
+                const tag = el.tagName.toLowerCase();
+                const kind = (el.getAttribute("role") || "").toLowerCase() === "application" ? "application" : tag;
+                const row = {
+                  surface_index: rows.length,
+                  kind,
+                  label: String(el.getAttribute("aria-label") || el.getAttribute("title") || el.getAttribute("name") || el.id || "").slice(0, 300),
+                  rect: {
+                    x: Math.round(rect.left), y: Math.round(rect.top),
+                    width: Math.round(rect.width), height: Math.round(rect.height)
+                  }
+                };
+                if (tag === "canvas") {
+                  row.buffer_width = Number(el.width || 0);
+                  row.buffer_height = Number(el.height || 0);
+                }
+                rows.push(row);
+                if (rows.length >= 64) break;
+              }
+              return rows;
+            })()"""
+            response = await cdp.cdp_client.send.Runtime.evaluate(
+                params={"expression": expression, "returnByValue": True},
+                session_id=cdp.session_id,
+            )
+            raw = ((response.get("result") or {}).get("value") if isinstance(response, dict) else None)
+            if not isinstance(raw, list):
+                return []
+            return [dict(item) for item in raw if isinstance(item, dict)][:64]
+        except Exception as exc:
+            self._log("browser_use.visual_surfaces.skipped", error=f"{type(exc).__name__}: {exc}")
+            return []
+
     async def _state_async(self) -> BrowserPageState:
         session = await self._ensure_session()
         state = await session.get_browser_state_summary(include_screenshot=False)
@@ -111,10 +156,13 @@ class BrowserUseSessionBackend(BrowserUseBackend):
                 short = target_id[-12:]
                 self._tab_map[short] = target_id
         self._state_revision += 1
+        visual_surfaces = await self._visual_surfaces_async(session)
         serialized = self._with_backend_page_info(
             _serialize_state(state),
             capture_mode="browser_use_snapshot",
             selector_count=len(self._selector_map),
+            visual_surface_count=len(visual_surfaces),
+            visual_surfaces=visual_surfaces,
         )
         self._log(
             "browser_use.selector_snapshot.captured",
@@ -201,6 +249,102 @@ class BrowserUseSessionBackend(BrowserUseBackend):
 
     def press_key(self, key: str) -> BrowserPageState:
         return self._run_state_action("press_key", self._press_key_async(key), args={"key": str(key or "")})
+
+    async def _click_at_async(self, x: int, y: int, *, button: str = "left") -> BrowserPageState:
+        px = int(x)
+        py = int(y)
+        if px < 0 or py < 0:
+            raise ValueError("browser click_at coordinates must be non-negative")
+        wanted = str(button or "left").strip().casefold()
+        if wanted not in {"left", "right", "middle"}:
+            raise ValueError("browser click_at button must be left, right, or middle")
+        bit = {"left": 1, "right": 2, "middle": 4}[wanted]
+        session = await self._ensure_session()
+        cdp = await session.get_or_create_cdp_session()
+        await cdp.cdp_client.send.Input.dispatchMouseEvent(
+            params={"type": "mouseMoved", "x": px, "y": py},
+            session_id=cdp.session_id,
+        )
+        await cdp.cdp_client.send.Input.dispatchMouseEvent(
+            params={
+                "type": "mousePressed",
+                "x": px,
+                "y": py,
+                "button": wanted,
+                "buttons": bit,
+                "clickCount": 1,
+            },
+            session_id=cdp.session_id,
+        )
+        await cdp.cdp_client.send.Input.dispatchMouseEvent(
+            params={
+                "type": "mouseReleased",
+                "x": px,
+                "y": py,
+                "button": wanted,
+                "buttons": 0,
+                "clickCount": 1,
+            },
+            session_id=cdp.session_id,
+        )
+        return await self._state_async()
+
+    def click_at(self, x: int, y: int, button: str = "left") -> BrowserPageState:
+        return self._run_state_action(
+            "click_at",
+            self._click_at_async(x, y, button=button),
+            args={"x": int(x), "y": int(y), "button": str(button)},
+        )
+
+    async def _send_text_async(self, text: str) -> BrowserPageState:
+        value = str(text)
+        if not value:
+            raise ValueError("browser send_text must not be empty")
+        if len(value) > 8000:
+            raise ValueError("browser send_text exceeds 8000 characters")
+        session = await self._ensure_session()
+        cdp = await session.get_or_create_cdp_session()
+
+        async def key_event(event_type: str, key: str, code: str = "", typed: str = "") -> None:
+            params: dict[str, Any] = {"type": event_type, "key": key}
+            if code:
+                params["code"] = code
+            if typed and event_type == "keyDown":
+                params["text"] = typed
+                params["unmodifiedText"] = typed
+            await cdp.cdp_client.send.Input.dispatchKeyEvent(
+                params=params,
+                session_id=cdp.session_id,
+            )
+
+        for char in value:
+            if char == "\r":
+                continue
+            if char == "\n":
+                await key_event("keyDown", "Enter", "Enter")
+                await key_event("keyUp", "Enter", "Enter")
+            elif char == "\t":
+                await key_event("keyDown", "Tab", "Tab")
+                await key_event("keyUp", "Tab", "Tab")
+            elif char == "\b":
+                await key_event("keyDown", "Backspace", "Backspace")
+                await key_event("keyUp", "Backspace", "Backspace")
+            else:
+                # No physical code on purpose: canvas remote-desktop clients such
+                # as noVNC treat this as virtual-keyboard input and derive the
+                # remote keysym from KeyboardEvent.key.
+                await key_event("keyDown", char, typed=char)
+                await key_event("keyUp", char)
+        return await self._state_async()
+
+    def send_text(self, text: str) -> BrowserPageState:
+        value = str(text)
+        return self._run_state_action(
+            "send_text",
+            self._send_text_async(value),
+            args={"text_length": len(value), "text_present": bool(value)},
+            include_dom_excerpt=False,
+        )
 
     async def _select_option_async(self, index: int, value: str) -> BrowserPageState:
         """Pick an option on a select.
