@@ -361,6 +361,7 @@ def _build_summary_request(
     *,
     communication_language: str,
     max_output_tokens: int | None,
+    session_id: str,
 ) -> ChatRequest:
     return ChatRequest(
         messages=tuple(
@@ -376,6 +377,7 @@ def _build_summary_request(
         tools=(),
         tool_choice=ToolChoice.NONE,
         max_output_tokens=max_output_tokens,
+        session_id=session_id,
     )
 
 
@@ -739,6 +741,7 @@ def prepare_context(rt, session, step, token):
             compact_input,
             communication_language=communication_language,
             max_output_tokens=summary_output_cap,
+            session_id=session.session_id,
         )
         request_tokens = estimate_tokens(request.messages)
         if calibrated(request_tokens) + output_budget_tokens > summary_request_ceiling:
