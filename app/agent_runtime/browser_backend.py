@@ -99,6 +99,51 @@ class BrowserUseSessionBackend(BrowserUseBackend):
     def state_revision(self) -> int:
         return self._state_revision
 
+    async def _visual_surfaces_async(self, session: Any) -> list[dict[str, Any]]:
+        """Read large coordinate-addressable surfaces that DOM indexes cannot represent."""
+
+        try:
+            cdp = await session.get_or_create_cdp_session()
+            expression = r"""(() => {
+              const rows = [];
+              for (const el of document.querySelectorAll("canvas,video,iframe,[role='application']")) {
+                const rect = el.getBoundingClientRect();
+                const style = getComputedStyle(el);
+                if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0) continue;
+                if (style.pointerEvents === "none" || rect.width < 24 || rect.height < 24) continue;
+                if (rect.bottom < 0 || rect.right < 0 || rect.top > innerHeight || rect.left > innerWidth) continue;
+                const tag = el.tagName.toLowerCase();
+                const kind = (el.getAttribute("role") || "").toLowerCase() === "application" ? "application" : tag;
+                const row = {
+                  surface_index: rows.length,
+                  kind,
+                  label: String(el.getAttribute("aria-label") || el.getAttribute("title") || el.getAttribute("name") || el.id || "").slice(0, 300),
+                  rect: {
+                    x: Math.round(rect.left), y: Math.round(rect.top),
+                    width: Math.round(rect.width), height: Math.round(rect.height)
+                  }
+                };
+                if (tag === "canvas") {
+                  row.buffer_width = Number(el.width || 0);
+                  row.buffer_height = Number(el.height || 0);
+                }
+                rows.push(row);
+                if (rows.length >= 64) break;
+              }
+              return rows;
+            })()"""
+            response = await cdp.cdp_client.send.Runtime.evaluate(
+                params={"expression": expression, "returnByValue": True},
+                session_id=cdp.session_id,
+            )
+            raw = ((response.get("result") or {}).get("value") if isinstance(response, dict) else None)
+            if not isinstance(raw, list):
+                return []
+            return [dict(item) for item in raw if isinstance(item, dict)][:64]
+        except Exception as exc:
+            self._log("browser_use.visual_surfaces.skipped", error=f"{type(exc).__name__}: {exc}")
+            return []
+
     async def _state_async(self) -> BrowserPageState:
         session = await self._ensure_session()
         state = await session.get_browser_state_summary(include_screenshot=False)
@@ -111,10 +156,13 @@ class BrowserUseSessionBackend(BrowserUseBackend):
                 short = target_id[-12:]
                 self._tab_map[short] = target_id
         self._state_revision += 1
+        visual_surfaces = await self._visual_surfaces_async(session)
         serialized = self._with_backend_page_info(
             _serialize_state(state),
             capture_mode="browser_use_snapshot",
             selector_count=len(self._selector_map),
+            visual_surface_count=len(visual_surfaces),
+            visual_surfaces=visual_surfaces,
         )
         self._log(
             "browser_use.selector_snapshot.captured",
