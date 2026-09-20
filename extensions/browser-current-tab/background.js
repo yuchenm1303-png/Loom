@@ -35,6 +35,14 @@ const ELEMENT_IDS_KEY = "loomElementIdsByTab";
 // load destroys everything in the page, so a HUD that only appears while acting
 // vanishes on every refresh and returns on the next click.
 const SESSION_ACTIVE_KEY = "loomBrowserSessionActive";
+// Which tabs Loom is actually driving. The session flag alone says only that a
+// session exists, and the HUD content script runs in every web page, so a flag
+// with no tab in it lit the full-screen HUD in every tab the user had open and
+// in every tab they opened next. A tab joins this set when a command resolves to
+// it, which is also the moment it becomes the tab the model is looking at.
+const HUD_TAB_IDS_KEY = "loomHudTabIds";
+// The content script cannot see its own tab id, so it asks for it.
+const HUD_TAB_QUERY = "loom-hud-tab-id";
 
 const bridgeRuntime = {
   running: false,
@@ -285,6 +293,50 @@ async function forgetLoomWorkTab(tabId) {
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   void forgetLoomWorkTab(tabId);
+  void forgetHudTab(tabId);
+});
+
+async function hudTabIds() {
+  const stored = await chrome.storage.session.get(HUD_TAB_IDS_KEY);
+  return Array.isArray(stored[HUD_TAB_IDS_KEY]) ? stored[HUD_TAB_IDS_KEY] : [];
+}
+
+async function markHudTab(tabId) {
+  if (!Number.isInteger(tabId)) return;
+  try {
+    const ids = await hudTabIds();
+    // Same reason markSessionActive diffs: storage.set does not, and every write
+    // wakes the HUD listener in every page that holds one.
+    if (ids.includes(tabId)) return;
+    await chrome.storage.session.set({ [HUD_TAB_IDS_KEY]: [...ids, tabId] });
+  } catch (cause) {
+    console.warn("[loom-browser-bridge] could not record the driven tab", cause);
+  }
+}
+
+async function forgetHudTab(tabId) {
+  try {
+    const ids = await hudTabIds();
+    if (!ids.includes(tabId)) return;
+    await chrome.storage.session.set({ [HUD_TAB_IDS_KEY]: ids.filter((id) => id !== tabId) });
+  } catch (_) {}
+}
+
+// The tab a command is really acting on, which is the only tab whose HUD should
+// light up. Deliberately not tabFromArgs itself: navigate resolves the current
+// tab first and may then open a different one, and marking there put the HUD in
+// the user's own page every time Loom opened a tab beside it.
+async function actionTab(args) {
+  const tab = await tabFromArgs(args);
+  await markHudTab(tab.id);
+  return tab;
+}
+
+// Content scripts have no way to learn their own tab id; the sender does.
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.type !== HUD_TAB_QUERY) return false;
+  sendResponse({ tab_id: typeof sender?.tab?.id === "number" ? sender.tab.id : null });
+  return false;
 });
 
 async function markSessionActive(active) {
@@ -311,6 +363,9 @@ async function releaseTabs() {
   const stored = await chrome.storage.session.get(ADOPTED_TAB_IDS_KEY);
   const released = Array.isArray(stored[ADOPTED_TAB_IDS_KEY]) ? stored[ADOPTED_TAB_IDS_KEY].length : 0;
   await chrome.storage.session.remove(ADOPTED_TAB_IDS_KEY);
+  // Loom's own tabs stay Loom's, but nothing is being driven any more, so no tab
+  // keeps the HUD once the browser is handed back.
+  await chrome.storage.session.remove(HUD_TAB_IDS_KEY);
   await markSessionActive(false);
   return { released };
 }
@@ -493,7 +548,10 @@ async function navigate(args) {
   const url = String(args.url || "");
   if (!url) throw new Error("url is required");
   const destination = await resolveNavigationDestination(args, url);
-  if (isInjectableUrl(destination.tab.url || "")) {
+  // Only when this tab is the one being navigated. When a new tab is about to be
+  // created, destination.tab is still whatever the user was reading, and the
+  // status pill belongs on Loom's page, not on theirs.
+  if (!destination.create && isInjectableUrl(destination.tab.url || "")) {
     await inject(destination.tab.id, runPageAction, ["hud_status", { title: "Opening page", subtitle: url }]).catch(() => {});
   }
   // Loom works beside the user, not in front of them. Activating the tab here
@@ -506,6 +564,7 @@ async function navigate(args) {
   const tab = destination.create
     ? await placeInLoomGroup(await chrome.tabs.create({ url, active: false }))
     : await chrome.tabs.update(destination.tab.id, { url });
+  await markHudTab(tab.id);
   await waitForTabComplete(tab.id);
   return collectStateForTab(await chrome.tabs.get(tab.id), { showHud: true });
 }
@@ -553,7 +612,7 @@ async function waitForTabComplete(tabId) {
 }
 
 async function withElement(args, action, extra = {}, waitMs = 200, options = {}) {
-  const tab = await tabFromArgs(args);
+  const tab = await actionTab(args);
   const loomId = await elementRefFor(tab.id, args.index);
   return withNavigationWatch(
     tab.id,
@@ -580,7 +639,7 @@ async function selectOption(args) {
 }
 
 async function drag(args) {
-  const tab = await tabFromArgs(args);
+  const tab = await actionTab(args);
   const payload = {
     source_loom_id: await elementRefFor(tab.id, args.source_index),
     target_loom_id: await elementRefFor(tab.id, args.target_index),
@@ -591,7 +650,7 @@ async function drag(args) {
 }
 
 async function pressKey(args) {
-  const tab = await tabFromArgs(args);
+  const tab = await actionTab(args);
   // Enter in a form field is the usual way a key press turns into a navigation.
   return withNavigationWatch(
     tab.id,
@@ -601,19 +660,19 @@ async function pressKey(args) {
 }
 
 async function scroll(args) {
-  const tab = await tabFromArgs(args);
+  const tab = await actionTab(args);
   await inject(tab.id, runPageAction, ["scroll", { direction: String(args.direction || "down"), amount: Number(args.amount || 700) }]);
   return afterTabAction(tab, 150);
 }
 
 async function goBack(args) {
-  const tab = await tabFromArgs(args);
+  const tab = await actionTab(args);
   if (!isInjectableUrl(tab.url || "")) throw new Error("Cannot go back from a privileged browser page");
   return withNavigationWatch(tab.id, () => inject(tab.id, runPageAction, ["go_back", {}]), 500);
 }
 
 async function goForward(args) {
-  const tab = await tabFromArgs(args);
+  const tab = await actionTab(args);
   await chrome.tabs.goForward(tab.id);
   await waitForTabComplete(tab.id);
   return collectStateForTab(await chrome.tabs.get(tab.id), { showHud: true });
@@ -684,7 +743,7 @@ async function originStorage(args) {
 }
 
 async function listCookies(args) {
-  const tab = await tabFromArgs(args);
+  const tab = await actionTab(args);
   const url = String(tab.url || "");
   if (!isInjectableUrl(url)) throw new Error("Cannot read cookies for a privileged browser page");
   const cookies = await chrome.cookies.getAll({ url });
@@ -692,7 +751,7 @@ async function listCookies(args) {
 }
 
 async function clearCookies(args) {
-  const tab = await tabFromArgs(args);
+  const tab = await actionTab(args);
   const url = String(tab.url || "");
   if (!isInjectableUrl(url)) throw new Error("Cannot clear cookies for a privileged browser page");
   const cookies = await chrome.cookies.getAll({ url });
@@ -721,7 +780,7 @@ async function listDownloads(args = {}) {
 }
 
 async function requireInjectableTab(args) {
-  const tab = await tabFromArgs(args);
+  const tab = await actionTab(args);
   if (!isInjectableUrl(tab.url || "")) {
     throw new Error("Loom cannot inspect chrome://, edge://, extension, file, or other privileged pages.");
   }
@@ -729,7 +788,7 @@ async function requireInjectableTab(args) {
 }
 
 async function refresh(args) {
-  const tab = await tabFromArgs(args);
+  const tab = await actionTab(args);
   if (isInjectableUrl(tab.url || "")) {
     await inject(tab.id, runPageAction, ["hud_status", { title: "Refreshing tab", subtitle: "Browser Use" }]).catch(() => {});
   }
@@ -742,6 +801,7 @@ async function switchTab(args) {
   const tabId = Number.parseInt(String(args.tab_id || ""), 10);
   if (!Number.isInteger(tabId)) throw new Error("tab_id must be numeric for the extension backend");
   await chrome.tabs.update(tabId, { active: true });
+  await markHudTab(tabId);
   return collectStateForTab(await chrome.tabs.get(tabId), { showHud: true });
 }
 
@@ -753,7 +813,7 @@ async function closeTab(args) {
 }
 
 async function screenshot(args) {
-  const tab = await tabFromArgs(args);
+  const tab = await actionTab(args);
   // The one action that cannot run in the background: captureVisibleTab only ever
   // returns the visible tab, so a background capture would silently hand back a
   // picture of whatever the user is reading. Front Loom's tab just long enough,
@@ -786,7 +846,7 @@ async function dispatchCommand(action, args) {
   // a page load the HUD cannot otherwise know about.
   if (action !== "release_tabs") await markSessionActive(true);
   switch (action) {
-    case "state": return collectStateForTab(await tabFromArgs(args), { showHud: true });
+    case "state": return collectStateForTab(await actionTab(args), { showHud: true });
     case "navigate": return navigate(args);
     case "click": return click(args);
     case "hover": return hover(args);
@@ -797,7 +857,7 @@ async function dispatchCommand(action, args) {
     case "scroll": return scroll(args);
     case "go_back": return goBack(args);
     case "refresh": return refresh(args);
-    case "tabs": return collectStateForTab(await tabFromArgs(args), { showHud: true });
+    case "tabs": return collectStateForTab(await actionTab(args), { showHud: true });
     case "switch_tab": return switchTab(args);
     case "close_tab": return closeTab(args);
     case "screenshot": return screenshot(args);

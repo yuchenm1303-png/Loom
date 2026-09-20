@@ -2,13 +2,20 @@
   'use strict';
 
   const INSTALL_KEY = '__loomBrowserHudRuntimeV2';
-  const GENERATION = '0.1.12';
+  const GENERATION = '0.1.13';
   const SOURCE_HOST_ID = 'loom-browser-page-hud-root';
   const HOST_ID = 'loom-browser-hud-root-v2';
   const LEGACY_HOST_IDS = ['loom-browser-hud-root', 'loom-browser-computer-hud-root'];
   const LEGACY_LAYER_ID = 'loom-computer-hud-layer';
   const LEGACY_SUPPRESSOR_ID = 'loom-browser-hud-v2-suppress-legacy';
   const SESSION_ACTIVE_KEY = 'loomBrowserSessionActive';
+  // This script is a content script: it runs in every web page, including the
+  // tabs the user opens for themselves. A session flag alone cannot tell those
+  // apart from the tab Loom is driving, so the HUD showed up everywhere. The
+  // worker publishes the tabs it is actually driving, and each page shows the
+  // HUD only when the tab it lives in is one of them.
+  const HUD_TAB_IDS_KEY = 'loomHudTabIds';
+  const HUD_TAB_QUERY = 'loom-hud-tab-id';
 
   const existing = globalThis[INSTALL_KEY];
   if (existing?.generation === GENERATION) {
@@ -45,6 +52,10 @@
   let lastX = null;
   let lastY = null;
   let lastActionNode = null;
+  let tabId = null;
+  let tabIdRequest = null;
+  let sessionActive = false;
+  let drivenTabs = [];
 
   const phases = ['观察', '分析', '移动', '点击', '完成'];
   const clean = (value, fallback = '') => String(value || fallback).replace(/\s+/g, ' ').trim().slice(0, 220);
@@ -164,7 +175,10 @@
     const isNewAction = presentation.actionNode !== lastActionNode;
     lastActionNode = presentation.actionNode;
     place(presentation.point);
-    view.hud.classList.add('live');
+    // Content is always kept current; whether it is on screen stays the decision
+    // of the session gate, so an action's markup can never reveal the HUD in a
+    // tab Loom is not driving.
+    if (driven()) view.hud.classList.add('live');
     view.title.textContent = 'Loom 正在控制浏览器';
     view.meta.textContent = presentation.title || 'Browser Use';
     view.bubbleTitle.textContent = presentation.title || 'Browser action';
@@ -199,7 +213,7 @@
     // The whole point of the session flag: a page load wipes the HUD out of the
     // document, and the per-action source host only exists while an action runs,
     // so visibility driven by that host meant the HUD vanished on every refresh
-    // and came back on the next click. While Loom holds the browser, it shows.
+    // and came back on the next click. While Loom drives this tab, it shows.
     if (!active) {
       renderer?.hud.classList.remove('live');
       return;
@@ -209,10 +223,42 @@
     place(lastX === null ? null : { x: lastX, y: lastY });
   }
 
+  function driven() {
+    return sessionActive && tabId !== null && drivenTabs.includes(tabId);
+  }
+
+  function syncVisibility() {
+    applySession(driven());
+  }
+
+  const normalizeIds = (value) => (Array.isArray(value) ? value.filter((id) => Number.isInteger(id)) : []);
+
+  // Asked once per page. A content script has no API for its own tab id, and the
+  // answer cannot change under it, so the pending request is shared rather than
+  // repeated for every storage change that arrives before it lands.
+  function ensureTabId() {
+    if (tabIdRequest) return tabIdRequest;
+    tabIdRequest = (async () => {
+      try {
+        const reply = await chrome.runtime.sendMessage({ type: HUD_TAB_QUERY });
+        tabId = Number.isInteger(reply?.tab_id) ? reply.tab_id : null;
+      } catch (_) {
+        // No worker, or an older one that does not answer. Without an identity
+        // this page cannot claim to be a work tab, and staying hidden is right.
+        tabId = null;
+      }
+    })();
+    return tabIdRequest;
+  }
+
   async function refreshSession() {
     try {
+      await ensureTabId();
       const stored = await chrome.storage.session.get(SESSION_ACTIVE_KEY);
-      applySession(Boolean(stored?.[SESSION_ACTIVE_KEY]));
+      sessionActive = Boolean(stored?.[SESSION_ACTIVE_KEY]);
+      const tabs = await chrome.storage.session.get(HUD_TAB_IDS_KEY);
+      drivenTabs = normalizeIds(tabs?.[HUD_TAB_IDS_KEY]);
+      syncVisibility();
     } catch (_) {
       // An older worker has not opened session storage to content scripts yet.
       // Staying hidden is right: nothing here proves a session is running.
@@ -222,8 +268,11 @@
   function watchSession() {
     try {
       chrome.storage.onChanged.addListener((changes, area) => {
-        if (area !== 'session' || !(SESSION_ACTIVE_KEY in changes)) return;
-        applySession(Boolean(changes[SESSION_ACTIVE_KEY].newValue));
+        if (area !== 'session') return;
+        if (!(SESSION_ACTIVE_KEY in changes) && !(HUD_TAB_IDS_KEY in changes)) return;
+        if (SESSION_ACTIVE_KEY in changes) sessionActive = Boolean(changes[SESSION_ACTIVE_KEY].newValue);
+        if (HUD_TAB_IDS_KEY in changes) drivenTabs = normalizeIds(changes[HUD_TAB_IDS_KEY].newValue);
+        void ensureTabId().then(syncVisibility);
       });
     } catch (_) {}
   }
@@ -244,7 +293,11 @@
   }
 
   function begin() {
-    ensureRenderer();
+    // No renderer until this tab turns out to be one Loom drives. This script
+    // loads in every web page, and building the shadow host eagerly put a fixed
+    // full-viewport overlay and two infinite conic-gradient animations into
+    // every tab the user had open to render nothing. Everything that needs the
+    // renderer calls ensureRenderer() itself.
     sync();
     void refreshSession();
     watchSession();

@@ -452,6 +452,58 @@ def test_the_hud_is_driven_by_session_state_not_by_the_current_action(background
     assert "classList.remove('live')" in apply_body, "nothing hides the HUD when the session ends"
 
 
+def test_the_hud_only_shows_in_the_tabs_loom_is_driving(background):
+    """The HUD appeared in every tab, including ones the user opened themselves.
+
+    browser-hud.js is a content script, so it runs in every web page, and its
+    visibility came from a single session-wide boolean with no tab in it: the
+    moment Loom touched the browser, every open tab and every tab opened after
+    that was framed in the full-screen HUD. The worker now publishes the tabs a
+    command actually resolved to, and each page shows the HUD only for its own.
+    """
+
+    hud = (EXTENSION / "browser-hud.js").read_text(encoding="utf-8")
+
+    assert "HUD_TAB_IDS_KEY" in background
+    # Marking is deliberately not inside tabFromArgs: navigate resolves the
+    # current tab before deciding to open a different one, so marking there put
+    # the HUD in the user's own page every time Loom opened a tab beside it.
+    assert "markHudTab" not in _function_body(background, "tabFromArgs")
+    assert "markHudTab" in _function_body(background, "actionTab")
+    assert "actionTab" in _function_body(background, "withElement")
+    assert "actionTab" in _function_body(background, "requireInjectableTab")
+    assert "markHudTab" in _function_body(background, "navigate")
+    assert "HUD_TAB_IDS_KEY" in _function_body(background, "releaseTabs")
+    # A closed tab must not leave its id behind for whatever reuses the number.
+    assert "forgetHudTab" in background
+
+    # A content script has no API for its own tab id, so the sender supplies it.
+    assert "chrome.runtime.onMessage.addListener" in background
+    assert "sender?.tab?.id" in background
+    assert "ensureTabId" in _function_body(hud, "refreshSession")
+    assert "HUD_TAB_IDS_KEY" in _function_body(hud, "refreshSession")
+    assert "HUD_TAB_IDS_KEY" in _function_body(hud, "watchSession")
+    # Without an identity a page cannot claim to be a work tab.
+    driven = _function_body(hud, "driven")
+    assert "sessionActive" in driven
+    assert "tabId !== null" in driven
+    assert "drivenTabs.includes(tabId)" in driven
+    # An action's own markup must not be a second way to become visible.
+    assert "if (driven()) view.hud.classList.add('live')" in _function_body(hud, "renderFromSource")
+
+
+def test_opening_a_tab_beside_the_user_leaves_their_page_untouched(background):
+    """A navigate that creates a tab still painted a status pill on the user's.
+
+    destination.tab is whatever they were reading until the new tab exists, so
+    the "Opening page" pill was injected into their page and then Loom worked
+    somewhere else entirely.
+    """
+
+    body = _function_body(background, "navigate")
+    assert "!destination.create && isInjectableUrl" in body
+
+
 def test_clickable_cards_without_a_role_still_get_an_index(background):
     """A div with a JS handler is clickable on screen and was invisible here.
 
