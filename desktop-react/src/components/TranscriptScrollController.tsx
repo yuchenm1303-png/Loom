@@ -1,4 +1,5 @@
-import { useLayoutEffect, useMemo, useRef } from "react";
+import { ChevronDown } from "lucide-react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { TranscriptItem } from "../types/loom";
 import "./transcript-scroll-stability.css";
 
@@ -10,6 +11,7 @@ interface TranscriptScrollControllerProps {
 }
 
 const BOTTOM_THRESHOLD_PX = 96;
+const SCROLL_EPSILON_PX = 2;
 const PANEL_RESIZE_END_EVENT = "loom:panel-resize-end";
 
 function transcriptScroller(): HTMLDivElement | null {
@@ -36,11 +38,13 @@ function latestUserMessageId(items: TranscriptItem[]): string {
 /**
  * Owns the conversation viewport policy without coupling it to message layout.
  *
- * Important performance rule: item updates never synchronously read scrollHeight.
- * Tool/process events often arrive in small bursts, and forcing layout directly
- * after every React commit made the newly inserted task-flow row feel like a UI
- * hitch. All follow-to-bottom work is now coalesced to at most one rAF callback
- * per frame; ResizeObserver and transcript updates share that same callback.
+ * The important distinction is between "the viewport is temporarily no longer
+ * at the bottom because content grew" and "the user intentionally scrolled up".
+ * Treating both as the same scroll event used to disable auto-follow during
+ * thread swaps and large streaming/layout updates.
+ *
+ * Bottom sync work is coalesced to at most one rAF callback per frame so bursts
+ * of tool/process/streaming updates do not force repeated synchronous layout.
  */
 export function TranscriptScrollController({
   items,
@@ -48,11 +52,14 @@ export function TranscriptScrollController({
   currentTurnId,
   running,
 }: TranscriptScrollControllerProps) {
-  const stickToBottomRef = useRef(true);
+  const followingRef = useRef(true);
+  const forceBottomRef = useRef(false);
   const lastThreadIdRef = useRef(String(threadId ?? ""));
   const lastTurnIdRef = useRef(String(currentTurnId ?? ""));
   const lastUserMessageIdRef = useRef("");
+  const lastScrollTopRef = useRef(0);
   const frameRef = useRef<number | null>(null);
+  const [jumpVisible, setJumpVisible] = useState(false);
   const latestUserId = useMemo(() => latestUserMessageId(items), [items]);
 
   const cancelScheduledScroll = () => {
@@ -62,12 +69,22 @@ export function TranscriptScrollController({
     }
   };
 
-  const scheduleBottomSync = (scroller: HTMLDivElement) => {
+  const scheduleBottomSync = (scroller: HTMLDivElement, force = false) => {
+    if (force) forceBottomRef.current = true;
     if (isPanelResizeActive() || frameRef.current !== null) return;
+
     frameRef.current = requestAnimationFrame(() => {
       frameRef.current = null;
-      if (!stickToBottomRef.current || isPanelResizeActive()) return;
+      if (isPanelResizeActive()) return;
+
+      const forced = forceBottomRef.current;
+      forceBottomRef.current = false;
+      if (!followingRef.current && !forced) return;
+
       scroller.scrollTop = scroller.scrollHeight;
+      lastScrollTopRef.current = scroller.scrollTop;
+      followingRef.current = true;
+      setJumpVisible(false);
     });
   };
 
@@ -82,16 +99,19 @@ export function TranscriptScrollController({
     const userMessageAdded = Boolean(latestUserId) && latestUserId !== lastUserMessageIdRef.current;
 
     if (threadChanged || turnChanged || userMessageAdded) {
-      stickToBottomRef.current = true;
+      // A conversation/turn transition is an explicit request to work at the
+      // newest message. Mark this as forced so the native scroll event caused
+      // by replacing the old transcript cannot cancel the pending bottom sync.
+      followingRef.current = true;
+      setJumpVisible(false);
+      scheduleBottomSync(scroller, true);
+    } else if (followingRef.current) {
+      scheduleBottomSync(scroller);
     }
 
     lastThreadIdRef.current = nextThreadId;
     lastTurnIdRef.current = nextTurnId;
     lastUserMessageIdRef.current = latestUserId;
-
-    if (stickToBottomRef.current) scheduleBottomSync(scroller);
-    // Deliberately no per-update cleanup here. Rapid item commits should share
-    // the already queued frame instead of repeatedly cancelling and restarting it.
   }, [items, latestUserId, threadId, currentTurnId, running]);
 
   useLayoutEffect(() => {
@@ -99,24 +119,46 @@ export function TranscriptScrollController({
     const content = scroller?.querySelector<HTMLElement>(".transcript");
     if (!scroller || !content) return;
 
-    stickToBottomRef.current = true;
-    scheduleBottomSync(scroller);
+    followingRef.current = true;
+    forceBottomRef.current = true;
+    lastScrollTopRef.current = scroller.scrollTop;
+    setJumpVisible(false);
+    scheduleBottomSync(scroller, true);
 
     const onScroll = () => {
       if (isPanelResizeActive()) return;
-      stickToBottomRef.current = isNearBottom(scroller);
+
+      const nextScrollTop = scroller.scrollTop;
+      const nearBottom = isNearBottom(scroller);
+      const movedUp = nextScrollTop < lastScrollTopRef.current - SCROLL_EPSILON_PX;
+
+      // Content growth can make the viewport temporarily far from the bottom
+      // without changing scrollTop. Only an actual upward viewport movement is
+      // allowed to leave follow mode. forceBottomRef protects thread swaps from
+      // the browser clamping the old scrollTop while the new transcript mounts.
+      if (nearBottom) {
+        followingRef.current = true;
+      } else if (movedUp && !forceBottomRef.current) {
+        followingRef.current = false;
+      }
+
+      lastScrollTopRef.current = nextScrollTop;
+      setJumpVisible(!nearBottom && !followingRef.current);
     };
+
     const onPanelResizeEnd = () => {
-      if (stickToBottomRef.current) scheduleBottomSync(scroller);
+      if (followingRef.current || forceBottomRef.current) scheduleBottomSync(scroller);
     };
+
     scroller.addEventListener("scroll", onScroll, { passive: true });
     window.addEventListener(PANEL_RESIZE_END_EVENT, onPanelResizeEnd);
 
     const observer = typeof ResizeObserver === "undefined"
       ? null
       : new ResizeObserver(() => {
-          if (stickToBottomRef.current) scheduleBottomSync(scroller);
+          if (followingRef.current || forceBottomRef.current) scheduleBottomSync(scroller);
         });
+
     observer?.observe(scroller);
     observer?.observe(content);
 
@@ -128,5 +170,32 @@ export function TranscriptScrollController({
     };
   }, [threadId]);
 
-  return null;
+  const jumpToLatest = () => {
+    const scroller = transcriptScroller();
+    if (!scroller) return;
+
+    followingRef.current = true;
+    forceBottomRef.current = false;
+    setJumpVisible(false);
+
+    const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+    scroller.scrollTo({
+      top: scroller.scrollHeight,
+      behavior: running || reducedMotion ? "auto" : "smooth",
+    });
+  };
+
+  return (
+    <button
+      type="button"
+      className={`transcript-jump-latest ${jumpVisible ? "is-visible" : ""}`}
+      onClick={jumpToLatest}
+      aria-label="回到最新消息"
+      title="回到最新消息"
+      aria-hidden={!jumpVisible}
+      tabIndex={jumpVisible ? 0 : -1}
+    >
+      <ChevronDown size={20} strokeWidth={1.8} aria-hidden="true" />
+    </button>
+  );
 }
