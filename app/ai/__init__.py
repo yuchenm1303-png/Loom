@@ -36,6 +36,7 @@ from .errors import (
 )
 from .openai_runtime import OpenAIChatBackend
 from .openai_streaming import OpenAIStreamingChatBackend
+from .opencode_go_runtime import OPENCODE_GO_BASE_URL, OpenCodeGoBackend, opencode_go_protocol
 from .platform import AIPlatform, ChatModelBackend, StructuredModelBackend
 from .profiles import ModelContextLimits, ModelProfile, ModelRegistry
 from .provider_catalog import (
@@ -91,6 +92,8 @@ __all__ = [
     "ModelUsage",
     "OpenAIChatBackend",
     "OpenAIStreamingChatBackend",
+    "OPENCODE_GO_BASE_URL",
+    "OpenCodeGoBackend",
     "ProviderAdapter",
     "ProviderCatalog",
     "ProviderConnection",
@@ -111,5 +114,6 @@ __all__ = [
     "ToolChoice",
     "ToolDefinition",
     "build_ai_platform",
+    "opencode_go_protocol",
     "provider_descriptor",
 ]
