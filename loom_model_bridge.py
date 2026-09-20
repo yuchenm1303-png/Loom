@@ -851,6 +851,16 @@ def _managed_profiles(store: ModelConfigStore, environ: Mapping[str, str] | None
         seen_deepseek.add(folded)
         profiles.append(_with_discovered_limits(_safe_deepseek(model_id, environ)))
 
+    opencode_key = _opencode_go_key(store, environ)
+    opencode_model_ids = _fetch_opencode_go_model_ids() or list(OPENCODE_GO_FALLBACK_MODEL_IDS)
+    seen_opencode: set[str] = set()
+    for model_id in opencode_model_ids:
+        folded = str(model_id or "").strip().casefold()
+        if not folded or folded in seen_opencode:
+            continue
+        seen_opencode.add(folded)
+        profiles.append(_safe_opencode_go(model_id, configured=bool(opencode_key)))
+
     api_key = _managed_relay_key(store, environ, Path(__file__).resolve().parent)
     if api_key:
         model_ids = _fetch_managed_model_ids(api_key, environ)
@@ -874,6 +884,23 @@ def _base_profile_for_selection(store: ModelConfigStore, selection: str) -> dict
     deepseek_model = _deepseek_model_from_selection(requested)
     if deepseek_model:
         return _safe_deepseek(deepseek_model)
+    opencode_model = _opencode_go_model_from_selection(requested)
+    if opencode_model:
+        return _safe_opencode_go(opencode_model, configured=bool(_opencode_go_key(store)))
+    opencode_model = _opencode_go_model_from_selection(requested)
+    if opencode_model:
+        api_key = _opencode_go_key(store)
+        if api_key:
+            opencode_profile = _with_reasoning(
+                _safe_opencode_go(opencode_model, configured=True),
+                reasoning_store,
+            )
+            return {**opencode_profile, "provider": "opencode-go", "apiKey": api_key}
+        raise RuntimeError(
+            "OpenCode Go API key is not configured. Open the OpenCode Go model group "
+            "in Loom and connect your subscription key."
+        )
+
     managed_model = _managed_model_from_selection(requested)
     if managed_model:
         return _safe_managed(managed_model)
@@ -910,6 +937,8 @@ def _describe_model(
         profile = _safe_minimax(requested_model)
     elif _deepseek_model_from_selection(effective_selection):
         profile = _safe_deepseek(requested_model)
+    elif _opencode_go_model_from_selection(effective_selection):
+        profile = _safe_opencode_go(requested_model, configured=bool(_opencode_go_key(store)))
     profile["model"] = requested_model
     return _with_reasoning(profile, reasoning_store)
 
@@ -1079,6 +1108,7 @@ def _persist_active(
     if (
         _minimax_model_from_selection(selection)
         or _deepseek_model_from_selection(selection)
+        or _opencode_go_model_from_selection(selection)
         or _managed_model_from_selection(selection)
     ):
         store.set_active(None)
@@ -1132,10 +1162,10 @@ def _set_reasoning(
 
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
-    commands = {"list", "resolve", "describe-model", "save", "delete", "set-active", "persist-active", "set-reasoning"}
+    commands = {"list", "resolve", "describe-model", "save", "delete", "set-active", "persist-active", "set-reasoning", "set-provider-key"}
     if len(args) != 1 or args[0] not in commands:
         sys.stderr.write(
-            "usage: loom_model_bridge.py {list|resolve|describe-model|save|delete|set-active|persist-active|set-reasoning}\n"
+            "usage: loom_model_bridge.py {list|resolve|describe-model|save|delete|set-active|persist-active|set-reasoning|set-provider-key}\n"
         )
         return 2
 
@@ -1169,6 +1199,8 @@ def main(argv: list[str] | None = None) -> int:
             result = _set_active(store, reasoning_store, selection_store, payload)
         elif command == "persist-active":
             result = _persist_active(store, selection_store, payload)
+        elif command == "set-provider-key":
+            result = _set_provider_key(payload)
         else:
             result = _set_reasoning(store, reasoning_store, payload)
         _write({"ok": True, "result": result})
