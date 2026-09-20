@@ -118,6 +118,13 @@ class FakeRuntime:
         self.store = Store(events)
         self.commits = []
 
+    def platform_for_session(self, _session_id):
+        # Mirrors Runtime.platform_for_session for a runtime with no per-session
+        # model override: it falls back to self.platform. Compaction samples the
+        # model through this rather than through .platform directly, so a double
+        # without it fails every path that compacts.
+        return self.platform
+
     def _context_envelope(self, _session, _step):
         return Envelope()
 
