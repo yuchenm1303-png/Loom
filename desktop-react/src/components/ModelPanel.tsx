@@ -165,6 +165,8 @@ function ReasoningControl({
             <svg viewBox="0 0 100 18" preserveAspectRatio="none">
               <path className="reasoning-thread-path reasoning-thread-path-a" d="M1 9 C13 2.6 24 15.4 38 9 S63 2.6 77 9 S91 14 99 9" />
               <path className="reasoning-thread-path reasoning-thread-path-b" d="M1 9 C13 15.4 24 2.6 38 9 S63 15.4 77 9 S91 4 99 9" />
+              <path className="reasoning-thread-path reasoning-thread-glint reasoning-thread-glint-a" d="M1 9 C13 2.6 24 15.4 38 9 S63 2.6 77 9 S91 14 99 9" />
+              <path className="reasoning-thread-path reasoning-thread-glint reasoning-thread-glint-b" d="M1 9 C13 15.4 24 2.6 38 9 S63 15.4 77 9 S91 4 99 9" />
             </svg>
           </div>
         </div>
@@ -740,9 +742,6 @@ export function ModelPanel({
             {currentReasoningOption ? ` · ${currentReasoningOption.label}` : " · Auto"}
           </small>
         </div>
-        <span className="model-core-health" title="Provider connected" aria-label="Provider connected">
-          <i aria-hidden="true" />
-        </span>
       </button>
 
       <section className="model-core-reasoning" aria-label="Reasoning control">
