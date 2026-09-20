@@ -1260,7 +1260,8 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
             ),
             AgentTool(
                 name="browser_state",
-                description="Refresh the current page and return bounded DOM/tabs plus a new state_revision.",
+                description=("Refresh the current page and return bounded DOM/tabs plus a new state_revision. "
+                    "Canvas/video/iframe/application regions are also reported in page_info.visual_surfaces with viewport rectangles."),
                 input_schema=_schema({"browser_id": _browser_id_schema()}, ("browser_id",)),
                 handler=state,
                 effect=sensitive,
