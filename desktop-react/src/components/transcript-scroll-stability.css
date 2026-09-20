@@ -3,14 +3,77 @@
 /* Transcript viewport stability ---------------------------------------------
    Auto-follow is coordinated in TranscriptScrollController. Native smooth
    scrolling made rapid streaming deltas queue animations and visibly chase the
-   bottom, so the scroller itself stays immediate and deterministic. */
+   bottom, so streaming follow remains immediate and deterministic. */
+
+.conversation-stage {
+  position: relative;
+}
 
 .conversation-stage > .transcript-scroll {
   scroll-behavior: auto !important;
 }
 
+.transcript-jump-latest {
+  position: absolute;
+  z-index: 32;
+  left: 50%;
+  bottom: 16px;
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: var(--panel-raised);
+  color: var(--text-2);
+  box-shadow:
+    0 12px 30px rgba(0, 0, 0, .3),
+    inset 0 1px 0 rgba(255, 255, 255, .045);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, 8px) scale(.96);
+  transition:
+    opacity 160ms ease,
+    transform 190ms cubic-bezier(.2,.78,.2,1),
+    border-color 140ms ease,
+    background 140ms ease,
+    color 140ms ease,
+    box-shadow 140ms ease;
+  cursor: pointer;
+}
+
+.transcript-jump-latest.is-visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translate(-50%, 0) scale(1);
+}
+
+.transcript-jump-latest.is-visible:hover {
+  border-color: var(--border-strong);
+  background: var(--panel-hover);
+  color: var(--text);
+  box-shadow:
+    0 14px 34px rgba(0, 0, 0, .34),
+    inset 0 1px 0 rgba(255, 255, 255, .06);
+  transform: translate(-50%, -1px) scale(1.035);
+}
+
+.transcript-jump-latest.is-visible:active {
+  transform: translate(-50%, 0) scale(.96);
+}
+
+.transcript-jump-latest:focus-visible {
+  outline: 2px solid var(--accent-soft);
+  outline-offset: 3px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .conversation-stage > .transcript-scroll {
     scroll-behavior: auto !important;
+  }
+
+  .transcript-jump-latest {
+    transition: none;
   }
 }
