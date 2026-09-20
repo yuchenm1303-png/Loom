@@ -412,6 +412,109 @@ def test_openai_streaming_backend_requests_usage_and_never_emits_reasoning_conte
     assert metadata["finish_reason"] == "stop"
 
 
+def test_openai_compatible_cumulative_snapshots_are_normalized_to_real_deltas():
+    chunks = [
+        SimpleNamespace(
+            id="resp-cumulative",
+            usage=None,
+            choices=[SimpleNamespace(
+                delta=SimpleNamespace(content="403", reasoning_content="私", tool_calls=[]),
+                finish_reason=None,
+            )],
+        ),
+        SimpleNamespace(
+            id="resp-cumulative",
+            usage=None,
+            choices=[SimpleNamespace(
+                delta=SimpleNamespace(content="403 出来了", reasoning_content="私有", tool_calls=[]),
+                finish_reason=None,
+            )],
+        ),
+        SimpleNamespace(
+            id="resp-cumulative",
+            usage=None,
+            choices=[SimpleNamespace(
+                delta=SimpleNamespace(
+                    content="403 出来了 —— 认证信息",
+                    reasoning_content="私有思考",
+                    tool_calls=[],
+                ),
+                finish_reason="stop",
+            )],
+        ),
+        SimpleNamespace(
+            id="resp-cumulative",
+            choices=[],
+            usage=SimpleNamespace(prompt_tokens=8, completion_tokens=5, total_tokens=13),
+        ),
+    ]
+    completions = RecordingCompletions(chunks)
+    backend = OpenAIStreamingChatBackend(
+        connection=ProviderConnection(
+            provider_id="test-provider",
+            adapter=ProviderAdapter.OPENAI_COMPATIBLE,
+            credential_ref=CredentialRef.runtime("test-key"),
+            base_url="https://example.invalid/v1",
+        ),
+        profile=_profile(),
+        api_key="secret-for-test-only",
+        client=SimpleNamespace(chat=SimpleNamespace(completions=completions)),
+    )
+
+    events = list(backend.stream(_request()))
+
+    text_deltas = [
+        event.text_delta
+        for event in events
+        if event.kind is StreamEventKind.TEXT_DELTA
+    ]
+    assert text_deltas == ["403", " 出来了", " —— 认证信息"]
+    assert "".join(text_deltas) == "403 出来了 —— 认证信息"
+    metadata = backend.last_stream_metadata()
+    assert metadata["reasoning"] == "私有思考"
+    assert metadata["reasoning_char_count"] == len("私有思考")
+
+
+def test_openai_compatible_equal_repeated_deltas_are_preserved():
+    chunks = [
+        SimpleNamespace(
+            id="resp-repeat",
+            usage=None,
+            choices=[SimpleNamespace(
+                delta=SimpleNamespace(content="哈", reasoning_content=None, tool_calls=[]),
+                finish_reason=None,
+            )],
+        ),
+        SimpleNamespace(
+            id="resp-repeat",
+            usage=None,
+            choices=[SimpleNamespace(
+                delta=SimpleNamespace(content="哈", reasoning_content=None, tool_calls=[]),
+                finish_reason="stop",
+            )],
+        ),
+    ]
+    completions = RecordingCompletions(chunks)
+    backend = OpenAIStreamingChatBackend(
+        connection=ProviderConnection(
+            provider_id="test-provider",
+            adapter=ProviderAdapter.OPENAI_COMPATIBLE,
+            credential_ref=CredentialRef.runtime("test-key"),
+            base_url="https://example.invalid/v1",
+        ),
+        profile=_profile(),
+        api_key="secret-for-test-only",
+        client=SimpleNamespace(chat=SimpleNamespace(completions=completions)),
+    )
+
+    events = list(backend.stream(_request()))
+
+    assert [
+        event.text_delta
+        for event in events
+        if event.kind is StreamEventKind.TEXT_DELTA
+    ] == ["哈", "哈"]
+
 def test_reasoning_only_stream_is_classified_without_exposing_reasoning():
     chunks = [
         SimpleNamespace(
