@@ -210,6 +210,96 @@ def test_reasoning_preferences_are_scoped_to_connection_and_model(tmp_path) -> N
 
 
 
+def test_thread_model_switch_uses_canonical_server_connection(monkeypatch, tmp_path) -> None:
+    service = object.__new__(ReasoningManagedLoomAppServerService)
+    session = SimpleNamespace(
+        session_id="thread-1",
+        model_selection="builtin:minimax",
+        model="MiniMax-M3",
+        model_provider="openai-compatible",
+        model_base_url="https://api.minimaxi.com/v1",
+        model_vision=True,
+        reasoning_kind="",
+        reasoning_value="",
+    )
+    installed: dict[str, object] = {}
+    saved: list[object] = []
+    notifications: list[tuple[str, dict[str, object]]] = []
+
+    service._load = lambda _session_id: session
+    service._thread_model_blocked = lambda _session: False
+    service._runtime_home = lambda: tmp_path
+    service.runtime = SimpleNamespace(
+        set_session_model=lambda session_id, platform, reasoning=None: installed.update(
+            session_id=session_id,
+            platform=platform,
+            reasoning=reasoning,
+        )
+    )
+    service.store = SimpleNamespace(save=lambda value: saved.append(value))
+    service._record = lambda value, active=False: {
+        "id": value.session_id,
+        "modelSelection": value.model_selection,
+        "model": value.model,
+        "modelBaseUrl": value.model_base_url,
+    }
+    service._thread_runtime_patch = lambda _session, _capability=None: {"model": _session.model}
+    service._notify = lambda method, params: notifications.append((method, params))
+
+    monkeypatch.setattr(
+        app_server_reasoning,
+        "resolve_model_spec",
+        lambda selection, model="", home=None: {
+            "selection": "builtin:deepseek",
+            "provider": "openai-compatible",
+            "baseUrl": "https://api.deepseek.com",
+            "model": "deepseek-flash",
+            "apiKey": "deepseek-secret",
+            "reasoning": {
+                "kind": "openai-effort",
+                "value": "high",
+            },
+        },
+    )
+    monkeypatch.setattr(
+        app_server_reasoning,
+        "validate_runtime_reasoning",
+        lambda **_kwargs: None,
+    )
+    platform = object()
+    captured: dict[str, object] = {}
+
+    def build_platform(**kwargs):
+        captured.update(kwargs)
+        return platform
+
+    monkeypatch.setattr(app_server_reasoning, "build_runtime_model_platform", build_platform)
+
+    result = service.thread_set_model(
+        {
+            "threadId": "thread-1",
+            "selection": "builtin:minimax",
+            "provider": "openai-compatible",
+            "baseUrl": "https://api.minimaxi.com/v1",
+            "model": "deepseek-flash",
+            "apiKey": "minimax-secret",
+            "reasoningKind": "minimax-thinking",
+            "reasoningValue": "adaptive",
+        }
+    )
+
+    assert captured["base_url"] == "https://api.deepseek.com"
+    assert captured["api_key"] == "deepseek-secret"
+    assert captured["model"] == "deepseek-flash"
+    assert session.model_selection == "builtin:deepseek"
+    assert session.model_base_url == "https://api.deepseek.com"
+    assert session.reasoning_kind == "openai-effort"
+    assert installed["platform"] is platform
+    assert result["thread"]["modelSelection"] == "builtin:deepseek"
+    assert saved == [session]
+    assert notifications[-1][0] == "thread/updated"
+
+
 def test_hot_model_switch_returns_lightweight_runtime_patch(monkeypatch) -> None:
     service = object.__new__(ReasoningManagedLoomAppServerService)
     service._guard = threading.RLock()
