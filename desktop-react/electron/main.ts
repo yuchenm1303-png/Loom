@@ -12,6 +12,7 @@ import {
   type EditModelInput,
   type ModelLaunchSpec,
 } from "./modelManager.js";
+import { LoomAccountClient } from "./accountClient.js";
 import { closeHudOverlayWindow, createHudOverlayWindow, sendHudUpdate } from "./hudWindow.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -555,6 +556,7 @@ function handleRuntimeNotification(payload: JsonRpcResponse): void {
   if (payload.method === "hud/update") sendHudUpdate(payload.params ?? {});
 }
 const rpc = new LoomRpcProcess(handleRuntimeNotification, modelManager);
+const accountClient = new LoomAccountClient();
 
 async function changeModel(
   apply: () => ModelLaunchSpec,
@@ -746,6 +748,14 @@ ipcMain.handle("loom:pick-directory", async () => {
   const result = await dialog.showOpenDialog({ title: "Add project folder", properties: ["openDirectory", "createDirectory"] });
   return result.canceled || !result.filePaths.length ? "" : result.filePaths[0];
 });
+ipcMain.handle("loom:account-status", () => accountClient.status());
+ipcMain.handle("loom:account-login", (_event, email: string, password: string) =>
+  accountClient.login(String(email || ""), String(password || ""))
+);
+ipcMain.handle("loom:account-register", (_event, email: string, password: string) =>
+  accountClient.register(String(email || ""), String(password || ""))
+);
+ipcMain.handle("loom:account-logout", () => accountClient.logout());
 ipcMain.handle("loom:model-list", () => modelManager.snapshot());
 ipcMain.handle("loom:model-switch", async (_event, threadOrSelection: string, maybeSelection?: string) => {
   if (maybeSelection === undefined) {
