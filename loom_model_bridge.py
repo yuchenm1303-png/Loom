@@ -20,11 +20,13 @@ from app.ai.profiles import ModelContextLimits
 from app.ai.reasoning import ReasoningRequest
 from app.ai.reasoning_catalog import resolved_reasoning
 from app.ai.reasoning_store import ReasoningConfigStore
+from app.ai.opencode_go_runtime import OPENCODE_GO_BASE_URL, opencode_go_protocol
 
 
 PRIMARY_SELECTION = "builtin:minimax"
 CQU_SELECTION = "builtin:cqu"
 DEEPSEEK_SELECTION = "builtin:deepseek"
+OPENCODE_GO_SELECTION_PREFIX = "builtin:opencode-go:"
 MINIMAX_SELECTION_PREFIX = "builtin:minimax:"
 DEEPSEEK_SELECTION_PREFIX = "builtin:deepseek:"
 MANAGED_SELECTION_PREFIX = "managed:"
@@ -43,6 +45,7 @@ _DISCOVERED_CONTEXT_LIMITS: dict[str, ModelContextLimits] = {}
 _KEYRING_SERVICE = "loom-agent"
 _MANAGED_RELAY_CREDENTIAL_ALIAS = "managed/relay"
 _DEEPSEEK_CREDENTIAL_ALIAS = "builtin/deepseek"
+_OPENCODE_GO_CREDENTIAL_ALIAS = "builtin/opencode-go"
 _MANAGED_RELAY_KEY_ENV = (
     "LOOM_RELAY_API_KEY",
     "SMIREL_RELAY_API_KEY",
@@ -55,6 +58,7 @@ _PRIMARY_MINIMAX_KEY_ENV = ("MINIMAX_API_KEY", "LOOM_PRIMARY_API_KEY", "LOOM_API
 _LEGACY_MINIMAX_BASE_URL_ENV = ("LOOM_MINIMAX_BASE_URL", "MINIMAX_BASE_URL")
 _DEEPSEEK_KEY_ENV = ("DEEPSEEK_API_KEY", "LOOM_DEEPSEEK_API_KEY")
 _DEEPSEEK_BASE_URL_ENV = ("LOOM_DEEPSEEK_BASE_URL", "DEEPSEEK_BASE_URL")
+_OPENCODE_GO_KEY_ENV = ("OPENCODE_GO_API_KEY", "LOOM_OPENCODE_GO_API_KEY")
 _PROVISIONING_FILE_ENV = "LOOM_RELAY_PROVISIONING_FILE"
 _DEEPSEEK_DISPLAY_NAMES = {
     "deepseek-flash": "DeepSeek Flash",
@@ -255,6 +259,34 @@ def _deepseek_key(
     return ""
 
 
+def _opencode_go_key(
+    store: ModelConfigStore,
+    environ: Mapping[str, str] | None = None,
+) -> str:
+    secret = str(_credential_get(_OPENCODE_GO_CREDENTIAL_ALIAS) or "").strip()
+    if secret:
+        return secret
+    env_key = _key_from_env(_OPENCODE_GO_KEY_ENV, environ)
+    if env_key:
+        try:
+            _credential_set(_OPENCODE_GO_CREDENTIAL_ALIAS, env_key)
+        except RuntimeError:
+            pass
+        return env_key
+    return ""
+
+
+def _set_provider_key(payload: Mapping[str, Any]) -> dict[str, Any]:
+    provider = str(payload.get("provider") or "").strip().casefold()
+    api_key = str(payload.get("apiKey") or payload.get("api_key") or "").strip()
+    if provider != "opencode-go":
+        raise ValueError("only opencode-go built-in credentials are configurable here")
+    if not api_key:
+        raise ValueError("API key must not be empty")
+    _credential_set(_OPENCODE_GO_CREDENTIAL_ALIAS, api_key)
+    return {"provider": provider, "configured": True}
+
+
 def _is_managed_relay_endpoint(value: str, environ: Mapping[str, str] | None = None) -> bool:
     return _normalize_url(value) == _normalize_url(_managed_relay_base_url(environ))
 
@@ -308,6 +340,33 @@ def _managed_relay_key(
             pass
         return env_key
     return ""
+
+
+def _fetch_opencode_go_model_ids(timeout: float = 3.5) -> list[str]:
+    request = urllib.request.Request(
+        f"{OPENCODE_GO_BASE_URL}/models",
+        headers={"Accept": "application/json", "User-Agent": "Loom/0.1 (coding-agent)"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except (OSError, urllib.error.URLError, json.JSONDecodeError):
+        return []
+    data = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(data, list):
+        return []
+    result: list[str] = []
+    seen: set[str] = set()
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        model_id = str(item.get("id") or "").strip()
+        folded = model_id.casefold()
+        if not model_id or folded in seen:
+            continue
+        seen.add(folded)
+        result.append(model_id)
+    return result
 
 
 def _managed_models_url(environ: Mapping[str, str] | None = None) -> str:
