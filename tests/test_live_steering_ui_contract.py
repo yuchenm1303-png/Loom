@@ -100,7 +100,7 @@ def test_running_steer_is_optimistic_and_reconciles_by_client_input_id() -> None
 
     assert "const [optimisticSteers, setOptimisticSteers] = useState<TranscriptItem[]>([]);" in source
     assert "optimisticSteeringItem(thread.id, turnId, inputId, text, localSubmittedAt)" in source
-    assert "if (thread.currentTurnId) stage(String(thread.currentTurnId));" in source
+    assert "if (threadIsRunning(thread) && thread.currentTurnId) stage(String(thread.currentTurnId));" in source
     assert "const durableInputIds = new Set(" in source
     assert "!durableInputIds.has(String(item.inputId ?? \"\"))" in source
     assert "return pending.length ? [...loom.items, ...pending] : loom.items;" in source
