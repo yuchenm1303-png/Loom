@@ -581,3 +581,123 @@
     animation: none;
   }
 }
+
+
+.model-group-list .model-profile-row {
+  min-height: 58px;
+}
+
+.model-group-row .model-profile-main {
+  grid-template-columns: 34px minmax(0, 1fr) 22px;
+  padding: 10px;
+}
+
+.model-group-models {
+  display: grid;
+  gap: 11px;
+  max-height: 300px;
+  overflow-y: auto;
+  padding-right: 2px;
+  scrollbar-width: thin;
+}
+
+.model-family-section {
+  display: grid;
+  gap: 5px;
+}
+
+.model-family-heading {
+  padding: 0 3px;
+  color: #6e7683;
+  font-size: 8.6px;
+  font-weight: 650;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.model-family-section .model-profile-list {
+  max-height: none;
+  overflow: visible;
+  padding-right: 0;
+}
+
+.model-provider-connect {
+  display: grid;
+  gap: 9px;
+  padding: 10px;
+  border: 1px solid rgba(139,124,246,.14);
+  border-radius: 11px;
+  background: linear-gradient(135deg, rgba(139,124,246,.055), rgba(255,255,255,.012));
+}
+
+.model-provider-connect-copy {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  color: #8d85d2;
+}
+
+.model-provider-connect-copy > div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.model-provider-connect-copy strong {
+  color: #d7d3f5;
+  font-size: 10.3px;
+  font-weight: 620;
+}
+
+.model-provider-connect-copy span {
+  color: #777f8c;
+  font-size: 8.8px;
+  line-height: 1.4;
+}
+
+.model-provider-connect-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+}
+
+.model-provider-connect-form input {
+  min-width: 0;
+  height: 32px;
+  padding: 0 9px;
+  border: 1px solid rgba(93,101,117,.38);
+  border-radius: 8px;
+  outline: none;
+  background: #111319;
+  color: #d8dce3;
+  font: inherit;
+  font-size: 9.8px;
+}
+
+.model-provider-connect-form input:focus {
+  border-color: rgba(139,124,246,.42);
+  box-shadow: 0 0 0 3px rgba(139,124,246,.055);
+}
+
+.model-provider-connect-form button {
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 0 10px;
+  border: 1px solid rgba(154,143,244,.25);
+  border-radius: 8px;
+  background: rgba(139,124,246,.11);
+  color: #c9c3f3;
+  font: inherit;
+  font-size: 9.2px;
+  font-weight: 620;
+  cursor: pointer;
+}
+
+.model-provider-connect-form button:disabled {
+  opacity: .45;
+  cursor: default;
+}
