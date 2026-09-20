@@ -757,6 +757,9 @@ ipcMain.handle("loom:account-register", (_event, email: string, password: string
 );
 ipcMain.handle("loom:account-logout", () => accountClient.logout());
 ipcMain.handle("loom:model-list", () => modelManager.snapshot());
+ipcMain.handle("loom:model-provider-key", (_event, provider: string, apiKey: string) =>
+  modelManager.setProviderKey(String(provider || ""), String(apiKey || ""))
+);
 ipcMain.handle("loom:model-switch", async (_event, threadOrSelection: string, maybeSelection?: string) => {
   if (maybeSelection === undefined) {
     const selection = String(threadOrSelection || "").trim();
