@@ -19,7 +19,7 @@ function SteeringComposer({ onSend, onInterrupt }: ComposerProps) {
   const zh = language === "zh-CN";
   const [value, setValue] = useState("");
   const [focused, setFocused] = useState(false);
-  const [sending, setSending] = useState(false);
+  const [pendingSends, setPendingSends] = useState(0);
   const [stopping, setStopping] = useState(false);
   const [acknowledged, setAcknowledged] = useState(false);
   const [error, setError] = useState("");
@@ -42,26 +42,39 @@ function SteeringComposer({ onSend, onInterrupt }: ComposerProps) {
     return () => window.clearTimeout(timer);
   }, [acknowledged]);
 
-  async function submit(event?: FormEvent): Promise<void> {
+  function submit(event?: FormEvent): void {
     event?.preventDefault();
     const input = value.trim();
-    // This surface only exists while a turn is active. Do not inherit the
-    // ordinary-composer `disabled` gate (which also covers transient connection
-    // state): users must be able to type guidance while Loom is working. If the
-    // bridge genuinely cannot deliver the steer, surface that RPC error here.
-    if (!input || sending || stopping) return;
-    setSending(true);
+    // Steering has two clocks: the conversation should react immediately, while
+    // the durable RPC may finish later at a safe boundary. Do not freeze the
+    // composer on that network clock.
+    if (!input || stopping) return;
     setAcknowledged(false);
     setError("");
+
+    let request: Promise<void>;
     try {
-      await onSend(input, []);
-      setValue("");
-      setAcknowledged(true);
+      request = Promise.resolve(onSend(input, []));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
-    } finally {
-      setSending(false);
+      return;
     }
+
+    setValue("");
+    setPendingSends((current) => current + 1);
+    requestAnimationFrame(() => textareaRef.current?.focus());
+
+    void request
+      .then(() => {
+        setAcknowledged(true);
+      })
+      .catch((cause) => {
+        setAcknowledged(false);
+        setError(cause instanceof Error ? cause.message : String(cause));
+      })
+      .finally(() => {
+        setPendingSends((current) => Math.max(0, current - 1));
+      });
   }
 
   async function stop(): Promise<void> {
@@ -89,8 +102,8 @@ function SteeringComposer({ onSend, onInterrupt }: ComposerProps) {
 
   const activityLabel = stopping
     ? (zh ? "正在停止…" : "Stopping…")
-    : sending
-      ? (zh ? "正在发送…" : "Sending guidance…")
+    : pendingSends > 0
+      ? (zh ? "补充要求已发送，正在确认…" : "Guidance sent · confirming…")
       : acknowledged
         ? (zh ? "已收到补充要求" : "Guidance received")
         : (zh ? "任务进行中" : "Task in progress");
@@ -103,7 +116,7 @@ function SteeringComposer({ onSend, onInterrupt }: ComposerProps) {
         // carried rules that suppressed the input row. Steering is its own
         // editable state and must never inherit those semantics again.
         className={`composer is-steering ${focused ? "is-focused" : ""}`}
-        onSubmit={(event) => void submit(event)}
+        onSubmit={submit}
       >
         <span className="composer-glow" aria-hidden="true" />
 
@@ -123,7 +136,7 @@ function SteeringComposer({ onSend, onInterrupt }: ComposerProps) {
             onBlur={() => setFocused(false)}
             placeholder={zh ? "补充要求，调整当前任务…" : "Guide the current task…"}
             aria-label="Guide the current task"
-            disabled={sending || stopping}
+            disabled={stopping}
             rows={1}
           />
         </div>
@@ -139,7 +152,7 @@ function SteeringComposer({ onSend, onInterrupt }: ComposerProps) {
             <button
               type="submit"
               className="send-button"
-              disabled={sending || stopping || !value.trim()}
+              disabled={stopping || !value.trim()}
               title="Guide current task"
               aria-label="Guide current task"
             >
@@ -159,9 +172,11 @@ function SteeringComposer({ onSend, onInterrupt }: ComposerProps) {
         </div>
       </form>
       <div className="composer-hint">
-        {acknowledged
-          ? (zh ? "已收到，Loom 将根据补充要求继续。" : "Received. Loom will continue with your guidance.")
-          : (zh ? "可以随时补充要求，或点击停止结束任务。" : "Add guidance anytime, or stop to end this task.")}
+        {pendingSends > 0
+          ? (zh ? "消息已立即显示，正在后台确认…" : "Shown immediately · confirming in the background…")
+          : acknowledged
+            ? (zh ? "已确认，Loom 将根据补充要求继续。" : "Confirmed. Loom will continue with your guidance.")
+            : (zh ? "可以随时补充要求，或点击停止结束任务。" : "Add guidance anytime, or stop to end this task.")}
       </div>
     </div>
   );
