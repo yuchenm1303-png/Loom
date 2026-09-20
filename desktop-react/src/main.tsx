@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import App from "./App";
 import { BootErrorBoundary } from "./components/BootErrorBoundary";
 import { I18nProvider, bootstrapDocumentLanguage } from "./i18n";
+import { bootstrapTheme } from "./theme";
 import { applyRendererScale, installNativeRendererScaleSync } from "./rendererScale";
 import "./styles.css";
 import "./shell-fix.css";
@@ -26,6 +27,7 @@ import "./components/review-motion.css";
 import "./components/sidebar-clarity-fix.css";
 import "./components/renderer-crispness.css";
 import "./components/model-core-redesign.css";
+import "./theme.css";
 
 const CONVERSATION_WIDTHS: Record<string, string> = {
   focused: "740px",
@@ -139,6 +141,7 @@ try {
   document.documentElement.style.setProperty("--loom-code-line-height", "1.62");
 }
 
+bootstrapTheme();
 installNativeRendererScaleSync();
 bootstrapDocumentLanguage();
 
