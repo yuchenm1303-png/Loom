@@ -43,9 +43,10 @@ def test_running_turn_uses_a_dedicated_editable_steering_state() -> None:
     assert '"Guide the current task…"' in source
     assert 'aria-label="Guide the current task"' in source
 
-    # Ordinary running work is editable. Only an in-flight steer request or an
-    # explicitly requested stop may disable this textarea.
-    assert 'disabled={sending || stopping}' in source
+    # Ordinary running work stays editable even while one or more steer RPCs are
+    # still being confirmed. Only an explicit Stop locks the textarea.
+    assert 'disabled={stopping}' in source
+    assert 'disabled={sending || stopping}' not in source
     assert 'disabled={disabled || sending || stopping}' not in source
     assert 'type="button"\n              className="send-button stop"' in source
 
@@ -91,3 +92,33 @@ def test_steering_uses_submission_time_and_remains_visible_when_process_folds() 
     assert ".turn-process.has-guidance" in styles
     assert ".turn-process-content .entry-steering-user" in styles
     assert ".turn-guidance-recap" in styles
+
+
+
+def test_running_steer_is_optimistic_and_reconciles_by_client_input_id() -> None:
+    source = LOOM_STATE.read_text(encoding="utf-8")
+
+    assert "const [optimisticSteers, setOptimisticSteers] = useState<TranscriptItem[]>([]);" in source
+    assert "optimisticSteeringItem(thread.id, turnId, inputId, text, localSubmittedAt)" in source
+    assert "if (thread.currentTurnId) stage(String(thread.currentTurnId));" in source
+    assert "const durableInputIds = new Set(" in source
+    assert "!durableInputIds.has(String(item.inputId ?? \"\"))" in source
+    assert "return pending.length ? [...loom.items, ...pending] : loom.items;" in source
+    assert 'window.loom.call<SteeringReceipt>("turn/steer", {' in source
+    assert "setOptimisticSteers((current) => current.filter((item) => item.inputId !== inputId));" in source
+    assert "items: visibleItems" in source
+
+
+def test_steering_composer_does_not_wait_for_rpc_before_clearing_and_unlocking() -> None:
+    source = COMPOSER.read_text(encoding="utf-8")
+
+    assert "request = Promise.resolve(onSend(input, []));" in source
+    assert 'setValue("");' in source
+    assert "setPendingSends((current) => current + 1);" in source
+    assert "void request" in source
+    assert ".then(() => {" in source
+    assert "setAcknowledged(true);" in source
+    assert "await onSend(input, []);" not in source
+    assert 'disabled={stopping}' in source
+    assert 'disabled={stopping || !value.trim()}' in source
+    assert "消息已立即显示，正在后台确认…" in source
