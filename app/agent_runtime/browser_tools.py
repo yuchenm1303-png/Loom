@@ -396,6 +396,44 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
 
         return _with_fresh_view(context, store, browser_id, run)
 
+    def click_at(context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
+        context.raise_if_cancelled()
+        store = _store(runtime)
+        browser_id = str(arguments["browser_id"])
+        x = int(arguments["x"])
+        y = int(arguments["y"])
+        button = str(arguments.get("button") or "left").strip().casefold()
+        if x < 0 or y < 0:
+            raise ValueError("browser_click_at coordinates must be non-negative")
+        if button not in {"left", "right", "middle"}:
+            raise ValueError("browser_click_at button must be left, right, or middle")
+
+        def run() -> ToolResult:
+            store.ensure_revision(context.session_id, browser_id, int(arguments["state_revision"]))
+            item = store._owned(context.session_id, browser_id)
+            info = item.last_state.page_info if isinstance(item.last_state.page_info, dict) else {}
+            width = int(info.get("viewport_width") or 0)
+            height = int(info.get("viewport_height") or 0)
+            if width > 0 and height > 0 and (x >= width or y >= height):
+                raise ValueError(
+                    f"browser_click_at coordinates {x},{y} are outside the current viewport {width}x{height}"
+                )
+            snapshot = _backend_snapshot_action(
+                store,
+                context.session_id,
+                browser_id,
+                "click_at",
+                x,
+                y,
+                button,
+            )
+            return _snapshot_result(
+                snapshot,
+                "Browser coordinate click completed. The returned state has a new revision; use it for focused input.",
+            )
+
+        return _with_fresh_view(context, store, browser_id, run)
+
     def type_text(context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
         context.raise_if_cancelled()
         store = _store(runtime)
@@ -420,6 +458,32 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
                 clear=bool(arguments.get("clear", True)),
             )
             return _snapshot_result(store.snapshot(context.session_id, browser_id), "Browser text input completed.")
+
+        return _with_fresh_view(context, store, browser_id, run)
+
+    def send_text(context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
+        context.raise_if_cancelled()
+        store = _store(runtime)
+        browser_id = str(arguments["browser_id"])
+        text = str(arguments["text"])
+        if not text:
+            raise ValueError("browser_send_text text must not be empty")
+        if len(text) > 8000:
+            raise ValueError("browser_send_text text exceeds 8000 characters")
+
+        def run() -> ToolResult:
+            store.ensure_revision(context.session_id, browser_id, int(arguments["state_revision"]))
+            snapshot = _backend_snapshot_action(
+                store,
+                context.session_id,
+                browser_id,
+                "send_text",
+                text,
+            )
+            return _snapshot_result(
+                snapshot,
+                f"Sent {len(text)} character(s) to the currently focused browser surface in one action.",
+            )
 
         return _with_fresh_view(context, store, browser_id, run)
 
@@ -1233,6 +1297,27 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
                 effect=sensitive,
             ),
             AgentTool(
+                name="browser_click_at",
+                description=(
+                    "Click viewport coordinates from the latest browser_state. Use this for canvas, WebGL, VNC/RDP/KVM, "
+                    "maps, remote desktops, and other visual surfaces that do not expose a DOM element index. Coordinates "
+                    "are CSS pixels relative to the visible page viewport and must come from the matching state/screenshot. "
+                    "The action focuses the hit surface so browser_send_text or browser_press can drive it next."
+                ),
+                input_schema=_schema(
+                    {
+                        "browser_id": _browser_id_schema(),
+                        "x": {"type": "integer", "minimum": 0, "maximum": 20000},
+                        "y": {"type": "integer", "minimum": 0, "maximum": 20000},
+                        "button": {"type": "string", "enum": ["left", "right", "middle"]},
+                        "state_revision": revision_schema,
+                    },
+                    ("browser_id", "x", "y", "state_revision"),
+                ),
+                handler=click_at,
+                effect=sensitive,
+            ),
+            AgentTool(
                 name="browser_type",
                 description=(
                     "Type the exact string supplied in text into an element from the latest browser_state. Pass ordinary "
@@ -1250,6 +1335,25 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
                     ("browser_id", "index", "state_revision", "text"),
                 ),
                 handler=type_text,
+                effect=sensitive,
+            ),
+            AgentTool(
+                name="browser_send_text",
+                description=(
+                    "Send a whole string in one tool call to the browser surface that currently owns keyboard focus. "
+                    "This is for canvas/WebGL remote terminals and desktops after browser_click_at has focused them; "
+                    "use browser_type for ordinary input/textarea/contenteditable elements. Newline becomes Enter, Tab "
+                    "and Backspace are preserved, and the entire string shares one state_revision instead of one revision per key."
+                ),
+                input_schema=_schema(
+                    {
+                        "browser_id": _browser_id_schema(),
+                        "state_revision": revision_schema,
+                        "text": {"type": "string", "minLength": 1, "maxLength": 8000},
+                    },
+                    ("browser_id", "state_revision", "text"),
+                ),
+                handler=send_text,
                 effect=sensitive,
             ),
             AgentTool(
@@ -1273,7 +1377,8 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
                 name="browser_press",
                 description=(
                     "Press a keyboard key or combination such as Enter, Escape, Tab, Control+A, or Shift+Tab in the active page. "
-                    "Requires the latest state_revision to avoid acting on stale focus state."
+                    "This also drives the currently focused canvas/remote-desktop surface. Requires the latest "
+                    "state_revision to avoid acting on stale focus state."
                 ),
                 input_schema=_schema(
                     {
