@@ -126,7 +126,7 @@ def summarize_browser_state_payload(
         "dom_chars": len(dom),
         "dom_excerpt": _safe_value(dom[:1600], key="dom_excerpt", max_string=1800)
         if include_dom_excerpt
-        else "[omitted after browser_type]",
+        else "[omitted after browser text input]",
         "errors": _safe_value(errors, key="errors", max_string=1600),
         "page_info": _safe_value(page_info, key="page_info", max_string=1200),
     }
