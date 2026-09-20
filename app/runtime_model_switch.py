@@ -29,7 +29,7 @@ def _text(value: Any) -> str:
 
 
 def _normalized_base_url(adapter: ProviderAdapter, value: str) -> str:
-    if adapter is ProviderAdapter.OPENAI:
+    if adapter in {ProviderAdapter.OPENAI, ProviderAdapter.OPENCODE_GO}:
         return ""
     return _text(value).rstrip("/")
 
@@ -136,7 +136,11 @@ def build_runtime_model_platform(
         adapter = ProviderAdapter(provider_text)
     except ValueError as exc:
         raise ValueError(f"unsupported provider adapter: {provider_text}") from exc
-    if adapter not in {ProviderAdapter.OPENAI, ProviderAdapter.OPENAI_COMPATIBLE}:
+    if adapter not in {
+        ProviderAdapter.OPENAI,
+        ProviderAdapter.OPENAI_COMPATIBLE,
+        ProviderAdapter.OPENCODE_GO,
+    }:
         raise ValueError(f"provider adapter is not executable: {adapter.value}")
 
     selected_model = _text(model)
