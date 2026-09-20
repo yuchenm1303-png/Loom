@@ -15,6 +15,7 @@ from app.agent_runtime.browser_security import BrowserSecurityPolicy
 from app.agent_runtime.browser_session import BrowserError, BrowserLaunchOptions
 from app.agent_runtime.sandbox import SandboxManager, SandboxPolicy
 from app.agent_runtime.storage import FileAgentSessionStore
+from app.agent_runtime.tools import ToolContext
 from app.agent_runtime.workspace_tools import loom_default_tools
 
 
@@ -364,6 +365,39 @@ def test_runtime_can_select_current_tab_extension_backend(tmp_path, monkeypatch)
     finally:
         runtime.close()
     assert FakeExtensionBridge.created[0].stopped is True
+
+
+def test_switch_tab_auto_opens_a_connected_extension_session(tmp_path, monkeypatch):
+    FakeExtensionBridge.created.clear()
+    monkeypatch.setenv("LOOM_BROWSER_BACKEND", "extension")
+    monkeypatch.setattr(browser_runtime_module, "BrowserExtensionBridge", FakeExtensionBridge)
+    runtime = browser_runtime_module.BrowserRuntime(
+        platform=NoopPlatform(),
+        store=FileAgentSessionStore(tmp_path / "state"),
+        tools=loom_default_tools(),
+        sandbox_manager=SandboxManager(policy=SandboxPolicy.OFF),
+        web_search_provider=None,
+        auto_configure_web_search=False,
+        auto_configure_browser=True,
+        browser_security_policy=BrowserSecurityPolicy(resolve_dns=False),
+    )
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    context = ToolContext(session_id="owner", turn_id="turn", workspace=workspace)
+    try:
+        assert runtime.browser_status("owner")["active_sessions"] == 0
+        result = runtime.tools.get("browser_switch_tab").handler(context, {"title": "Example"})
+        assert result.ok is True
+        assert result.data["browser_session_recovered"] is True
+        assert result.data["resolution"] == "title"
+        assert runtime.browser_status("owner")["active_sessions"] == 1
+        assert [name for name, _args in FakeExtensionBridge.created[0].calls] == [
+            "state",
+            "tabs",
+            "switch_tab",
+        ]
+    finally:
+        runtime.close()
 
 
 def test_reconfiguring_in_extension_mode_reuses_the_running_bridge(tmp_path, monkeypatch):

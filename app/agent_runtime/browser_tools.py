@@ -542,10 +542,111 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
         )
 
     def switch_tab(context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
+        """Resolve a tab from fresh state and recover expired extension handles.
+
+        Browser and tab IDs are live handles, not durable identifiers. Models can
+        retain them in conversation history across an App Server or extension
+        restart, so blindly forwarding both made a healthy browser look
+        disconnected. Refresh first, prefer an exact current ID, and allow a URL
+        or title to re-identify the same page when Chrome assigned a new ID.
+        """
+
         context.raise_if_cancelled()
-        browser_id = str(arguments["browser_id"])
-        snapshot = _store(runtime).switch_tab(context.session_id, browser_id, str(arguments["tab_id"]))
-        return _snapshot_result(snapshot, "Browser tab switched.")
+        store = _store(runtime)
+        requested_browser_id = str(arguments.get("browser_id") or "").strip()
+        item = None
+        if requested_browser_id:
+            try:
+                item = store._owned(context.session_id, requested_browser_id)
+            except (KeyError, PermissionError):
+                # A stale handle must never grant access to another task. It may
+                # only fall back to a session already owned by this same task.
+                item = None
+
+        recovered_browser = False
+        if item is None:
+            owned = store.list(context.session_id)
+            if len(owned) == 1:
+                item = store._owned(context.session_id, str(owned[0]["browser_id"]))
+                recovered_browser = bool(requested_browser_id and item.browser_id != requested_browser_id)
+            elif not owned and bool(getattr(runtime, "browser_extension_attached", False)):
+                status = runtime.browser_status(context.session_id).get("extension_bridge") or {}
+                if not bool(status.get("connected")):
+                    raise RuntimeError(
+                        "the Loom browser extension is not connected; open or reload the installed extension"
+                    )
+                factory, external, _label = runtime.browser_session_connection("")
+                downloads_dir = context.resolve_workspace_path(_DOWNLOADS_DIR)
+                downloads_dir.mkdir(parents=True, exist_ok=True)
+
+                def factory_with_downloads(options):
+                    backend = factory(options)
+                    if hasattr(backend, "downloads_dir"):
+                        backend.downloads_dir = str(downloads_dir)
+                    return backend
+
+                item = store.start(
+                    context.session_id,
+                    headless=runtime.browser_headless,
+                    allowed_domains=runtime.effective_allowed_domains(()),
+                    backend_factory=factory_with_downloads,
+                    external_browser=external,
+                )
+                recovered_browser = True
+            elif len(owned) > 1:
+                raise RuntimeError(
+                    "browser_id is stale and this task owns multiple browser sessions; call browser_tabs "
+                    "with the intended current browser_id"
+                )
+            else:
+                raise RuntimeError("browser session is no longer available; call browser_open and retry")
+
+        fresh = store.tabs(context.session_id, item.browser_id)
+        requested_tab_id = str(arguments.get("tab_id") or "").strip()
+        target_url = str(arguments.get("url") or "").strip()
+        target_title = str(arguments.get("title") or "").strip()
+        if not any((requested_tab_id, target_url, target_title)):
+            raise ValueError("browser_switch_tab requires tab_id, url, or title")
+
+        rows = [row for row in fresh.state.tabs if isinstance(row, dict)]
+        matches = [row for row in rows if requested_tab_id and str(row.get("tab_id") or "") == requested_tab_id]
+        resolution = "tab_id"
+        if not matches and target_url:
+            matches = [row for row in rows if str(row.get("url") or "") == target_url]
+            resolution = "url"
+        if not matches and target_title:
+            wanted = target_title.casefold()
+            matches = [row for row in rows if str(row.get("title") or "").strip().casefold() == wanted]
+            resolution = "title"
+            if not matches:
+                matches = [row for row in rows if wanted in str(row.get("title") or "").casefold()]
+                resolution = "title_contains"
+
+        if len(matches) != 1:
+            reason = "no current tab matches the requested target" if not matches else "the requested target matches multiple tabs"
+            return ToolResult(
+                ok=False,
+                content=f"Browser tab was not switched: {reason}. Choose one tab_id from this freshly refreshed list.",
+                data={
+                    **fresh.to_dict(),
+                    "switched": False,
+                    "match_count": len(matches),
+                    "browser_session_recovered": recovered_browser,
+                },
+            )
+
+        resolved_tab_id = str(matches[0].get("tab_id") or "")
+        snapshot = store.switch_tab(context.session_id, item.browser_id, resolved_tab_id)
+        return _snapshot_result(
+            snapshot,
+            "Browser tab switched from a freshly refreshed cross-window tab list.",
+            extra={
+                "switched": True,
+                "resolved_tab_id": resolved_tab_id,
+                "resolution": resolution,
+                "browser_session_recovered": recovered_browser,
+            },
+        )
 
     def close_tab(context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
         context.raise_if_cancelled()
@@ -1522,10 +1623,19 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
             ),
             AgentTool(
                 name="browser_switch_tab",
-                description="Switch focus to a tab ID returned by browser_tabs.",
+                description=(
+                    "Switch to and focus a tab in any open browser window. The tool refreshes the complete tab list "
+                    "before switching, recovers an expired current-browser session when safe, and can re-identify a "
+                    "tab by exact URL or unique title if its tab ID changed. Pass the latest tab_id when available; "
+                    "also pass url or title for restart-safe recovery."
+                ),
                 input_schema=_schema(
-                    {"browser_id": _browser_id_schema(), "tab_id": {"type": "string", "minLength": 1, "maxLength": 128}},
-                    ("browser_id", "tab_id"),
+                    {
+                        "browser_id": _browser_id_schema(),
+                        "tab_id": {"type": "string", "minLength": 1, "maxLength": 128},
+                        "url": {"type": "string", "minLength": 1, "maxLength": 4000},
+                        "title": {"type": "string", "minLength": 1, "maxLength": 1000},
+                    },
                 ),
                 handler=switch_tab,
                 effect=sensitive,

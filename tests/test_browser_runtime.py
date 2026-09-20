@@ -292,6 +292,65 @@ def test_snapshot_revision_fails_closed_after_refresh():
     store.close_all()
 
 
+def test_switch_tab_recovers_stale_browser_id_and_resolves_fresh_url(tmp_path):
+    runtime, _, session, calls, created, workspace = _runtime(
+        tmp_path, [ModelResponse(text="unused")], mode=PermissionMode.FULL_ACCESS
+    )
+    store = runtime.browser_sessions
+    assert store is not None
+    item = store.start(session.session_id)
+    created[0]._tabs.append("tab-other")
+    context = ToolContext(
+        session_id=session.session_id,
+        turn_id="turn-switch",
+        workspace=workspace,
+        permission_mode="full-access",
+    )
+
+    result = runtime.tools.get("browser_switch_tab").handler(
+        context,
+        {
+            "browser_id": "expired-browser-id",
+            "tab_id": "expired-tab-id",
+            "url": "https://example.com/other",
+        },
+    )
+
+    assert result.ok is True
+    assert result.data["browser_id"] == item.browser_id
+    assert result.data["resolved_tab_id"] == "tab-other"
+    assert result.data["resolution"] == "url"
+    assert result.data["browser_session_recovered"] is True
+    assert calls[-2:] == [("tabs",), ("switch_tab", "tab-other")]
+    runtime.close()
+
+
+def test_switch_tab_returns_fresh_candidates_instead_of_raising_for_stale_tab(tmp_path):
+    runtime, _, session, calls, _, workspace = _runtime(
+        tmp_path, [ModelResponse(text="unused")], mode=PermissionMode.FULL_ACCESS
+    )
+    store = runtime.browser_sessions
+    assert store is not None
+    item = store.start(session.session_id)
+    context = ToolContext(
+        session_id=session.session_id,
+        turn_id="turn-switch-miss",
+        workspace=workspace,
+        permission_mode="full-access",
+    )
+
+    result = runtime.tools.get("browser_switch_tab").handler(
+        context, {"browser_id": item.browser_id, "tab_id": "expired-tab-id"}
+    )
+
+    assert result.ok is False
+    assert result.data["switched"] is False
+    assert result.data["match_count"] == 0
+    assert result.data["tabs"][0]["tab_id"] == "tab-main"
+    assert calls[-1] == ("tabs",)
+    runtime.close()
+
+
 def test_type_tool_does_not_echo_typed_secret_and_screenshot_bytes_stay_out_of_result(tmp_path):
     runtime, _, session, _, _, workspace = _runtime(tmp_path, [ModelResponse(text="unused")], mode=PermissionMode.FULL_ACCESS)
     store = runtime.browser_sessions
