@@ -1,0 +1,678 @@
+/* Loom global theme layer.
+   Loaded after component styles so legacy dark-only surfaces can be themed
+   without rewriting every component at once. Dark remains the visual baseline. */
+
+:root {
+  --loom-canvas: #0b0c0f;
+  --loom-sidebar: #101115;
+  --loom-surface: #15171b;
+  --loom-surface-raised: #191b20;
+  --loom-surface-soft: #111318;
+  --loom-border: rgba(255,255,255,.075);
+  --loom-divider: rgba(255,255,255,.055);
+  --loom-shadow: 0 18px 48px rgba(0,0,0,.24);
+  --loom-code-bg: #0e1014;
+}
+
+html[data-loom-theme="dark"] {
+  color-scheme: dark;
+}
+
+html[data-loom-theme="light"] {
+  color-scheme: light;
+  --bg: #f7f7f8;
+  --bg-deep: #f1f2f4;
+  --panel: #ffffff;
+  --panel-raised: #fbfbfc;
+  --panel-soft: #f0f1f3;
+  --panel-hover: #e9ebee;
+  --border: #d8dbe1;
+  --border-soft: #e5e7eb;
+  --border-strong: #c7cbd3;
+  --text: #1b1e24;
+  --text-2: #454b55;
+  --muted: #707783;
+  --faint: #9aa1ab;
+  --accent: #695ad8;
+  --accent-soft: #7567de;
+  --accent-faint: rgba(105,90,216,.09);
+  --success: #39765a;
+  --danger: #b8505d;
+  --warning: #936c2d;
+
+  --loom-canvas: #f7f7f8;
+  --loom-sidebar: #f1f2f4;
+  --loom-surface: #ffffff;
+  --loom-surface-raised: #fbfbfc;
+  --loom-surface-soft: #f3f4f6;
+  --loom-border: rgba(28,31,37,.10);
+  --loom-divider: rgba(28,31,37,.075);
+  --loom-shadow: 0 18px 48px rgba(25,30,40,.10);
+  --loom-code-bg: #f3f4f6;
+}
+
+html.loom-theme-transitioning body,
+html.loom-theme-transitioning .app-shell,
+html.loom-theme-transitioning .workspace,
+html.loom-theme-transitioning .sidebar,
+html.loom-theme-transitioning .thread-header,
+html.loom-theme-transitioning .composer,
+html.loom-theme-transitioning .inspector,
+html.loom-theme-transitioning .settings-host,
+html.loom-theme-transitioning .settings-sidebar,
+html.loom-theme-transitioning .settings-main,
+html.loom-theme-transitioning .settings-card,
+html.loom-theme-transitioning .composer-popover {
+  transition:
+    background-color 220ms ease,
+    background 220ms ease,
+    color 180ms ease,
+    border-color 180ms ease,
+    box-shadow 220ms ease !important;
+}
+
+html[data-loom-reduced-motion="true"].loom-theme-transitioning body,
+html[data-loom-reduced-motion="true"].loom-theme-transitioning .app-shell {
+  transition: none !important;
+}
+
+html[data-loom-theme="light"],
+html[data-loom-theme="light"] body,
+html[data-loom-theme="light"] #root,
+html[data-loom-theme="light"] .app-shell,
+html[data-loom-theme="light"] .workspace {
+  background: var(--bg);
+  color: var(--text);
+}
+
+html[data-loom-theme="light"] ::selection {
+  background: rgba(105,90,216,.18);
+  color: #1b1e24;
+}
+
+html[data-loom-theme="light"] * {
+  scrollbar-color: #c8ccd3 transparent;
+}
+
+html[data-loom-theme="light"] *::-webkit-scrollbar-thumb {
+  background: #c8ccd3;
+}
+
+html[data-loom-theme="light"] *::-webkit-scrollbar-thumb:hover {
+  background: #b7bcc5;
+}
+
+/* Sidebar */
+html[data-loom-theme="light"] .sidebar,
+html[data-loom-theme="light"] .sidebar.sidebar.compact-sidebar {
+  background:
+    radial-gradient(260px 120px at 12% -42px, rgba(105,90,216,.055), transparent 72%),
+    linear-gradient(180deg, #f4f5f6 0%, #eff1f3 100%) !important;
+  border-right-color: rgba(28,31,37,.09) !important;
+  box-shadow: inset -1px 0 rgba(255,255,255,.72);
+}
+
+html[data-loom-theme="light"] .compact-sidebar::before {
+  background: linear-gradient(180deg, rgba(255,255,255,.52), transparent 24%);
+}
+
+html[data-loom-theme="light"] .codex-sidebar-topbar,
+html[data-loom-theme="light"] .compact-sidebar-header {
+  border-bottom-color: rgba(28,31,37,.07);
+}
+
+html[data-loom-theme="light"] .codex-sidebar-brand,
+html[data-loom-theme="light"] .codex-sidebar-brand span,
+html[data-loom-theme="light"] .compact-sidebar-header > strong {
+  color: #20232a;
+}
+
+html[data-loom-theme="light"] .codex-sidebar-brand:hover,
+html[data-loom-theme="light"] .compact-sidebar-actions button:hover,
+html[data-loom-theme="light"] .sidebar-secondary-action:hover,
+html[data-loom-theme="light"] .thread-row:hover,
+html[data-loom-theme="light"] .project-row:hover,
+html[data-loom-theme="light"] .workspace-group-header:hover {
+  background: rgba(28,31,37,.045) !important;
+}
+
+html[data-loom-theme="light"] .codex-sidebar .codex-sidebar-topbar .compact-sidebar-actions {
+  border-color: rgba(28,31,37,.085);
+  background: rgba(255,255,255,.46);
+}
+
+html[data-loom-theme="light"] .codex-sidebar .sidebar-new-conversation {
+  color: #282c33;
+  background: rgba(255,255,255,.64);
+  border-color: rgba(28,31,37,.09);
+}
+
+html[data-loom-theme="light"] .codex-sidebar .sidebar-new-conversation:hover {
+  color: #23262c;
+  background: #fff !important;
+  border-color: rgba(105,90,216,.18) !important;
+}
+
+html[data-loom-theme="light"] .compact-sidebar-actions button,
+html[data-loom-theme="light"] .compact-search button,
+html[data-loom-theme="light"] .sidebar-section-title button,
+html[data-loom-theme="light"] .project-group-actions button,
+html[data-loom-theme="light"] .thread-quick-actions button,
+html[data-loom-theme="light"] .workspace-group-header button,
+html[data-loom-theme="light"] .sidebar-secondary-action {
+  color: #69717d;
+}
+
+html[data-loom-theme="light"] .thread-row,
+html[data-loom-theme="light"] .project-row,
+html[data-loom-theme="light"] .workspace-group-header,
+html[data-loom-theme="light"] .sidebar-section-title {
+  color: #4e5560;
+}
+
+/* Header + transcript */
+html[data-loom-theme="light"] .thread-header,
+html[data-loom-theme="light"] .thread-header.polished-thread-header {
+  border-bottom-color: rgba(28,31,37,.08);
+  background: rgba(250,250,251,.90) !important;
+  box-shadow: inset 0 1px rgba(255,255,255,.82);
+}
+
+html[data-loom-theme="light"] .thread-header.polished-thread-header::before {
+  background: linear-gradient(90deg, rgba(105,90,216,.16), rgba(28,31,37,.07) 26%, transparent 72%);
+}
+
+html[data-loom-theme="light"] .thread-title-line strong,
+html[data-loom-theme="light"] .thread-heading strong {
+  color: #20232a;
+}
+
+html[data-loom-theme="light"] .thread-heading span,
+html[data-loom-theme="light"] .thread-header-copy span {
+  color: #747b86;
+}
+
+html[data-loom-theme="light"] .thread-header-mark {
+  color: #6e60cf;
+  border-color: rgba(105,90,216,.16);
+  background: rgba(105,90,216,.06);
+  box-shadow: inset 0 1px rgba(255,255,255,.72), 0 8px 20px rgba(33,37,45,.05);
+}
+
+html[data-loom-theme="light"] .transcript-scroll {
+  background:
+    radial-gradient(ellipse at 50% -12%, rgba(105,90,216,.04), transparent 48%),
+    var(--bg);
+}
+
+html[data-loom-theme="light"] .ambient-grid {
+  background-image:
+    linear-gradient(rgba(28,31,37,.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(28,31,37,.022) 1px, transparent 1px);
+}
+
+html[data-loom-theme="light"] .user-message {
+  border-color: #d8d3ec;
+  background: linear-gradient(145deg, #f1eff9, #eceaf5);
+  color: #24212d;
+  box-shadow: 0 8px 22px rgba(32,28,48,.06), inset 0 1px rgba(255,255,255,.65);
+}
+
+html[data-loom-theme="light"] .user-message:hover {
+  border-color: #cbc4e3;
+  box-shadow: 0 10px 28px rgba(32,28,48,.08);
+}
+
+html[data-loom-theme="light"] .assistant-message,
+html[data-loom-theme="light"] .assistant-copy {
+  color: var(--text);
+}
+
+html[data-loom-theme="light"] .streaming-placeholder,
+html[data-loom-theme="light"] .reasoning-copy {
+  color: #6f7784;
+}
+
+html[data-loom-theme="light"] .reasoning-copy {
+  border-left-color: #d3d6dc;
+}
+
+html[data-loom-theme="light"] .activity-row:hover {
+  background: rgba(28,31,37,.035);
+  border-color: rgba(28,31,37,.07);
+}
+
+html[data-loom-theme="light"] .activity-icon-shell {
+  color: #6d7480;
+  border-color: #d8dbe1;
+  background: #f2f3f5;
+}
+
+html[data-loom-theme="light"] .activity-title {
+  color: #343941;
+}
+
+html[data-loom-theme="light"] .activity-status {
+  background: rgba(28,31,37,.035);
+}
+
+/* Composer + model controls */
+html[data-loom-theme="light"] .composer-wrap {
+  background: linear-gradient(to bottom, rgba(247,247,248,0), rgba(247,247,248,.94) 32%, var(--bg) 70%);
+}
+
+html[data-loom-theme="light"] .composer {
+  border-color: #d5d9df;
+  background: linear-gradient(180deg, rgba(255,255,255,.99), rgba(248,249,250,.99));
+  box-shadow: 0 16px 42px rgba(27,31,40,.10), inset 0 1px rgba(255,255,255,.85);
+}
+
+html[data-loom-theme="light"] .composer:hover {
+  border-color: #c8ccd4;
+}
+
+html[data-loom-theme="light"] .composer.is-focused,
+html[data-loom-theme="light"] .composer:focus-within {
+  border-color: rgba(105,90,216,.48);
+  background: #fff;
+  box-shadow:
+    0 20px 48px rgba(27,31,40,.11),
+    0 0 0 1px rgba(105,90,216,.06),
+    0 0 30px rgba(105,90,216,.045),
+    inset 0 1px rgba(255,255,255,.9);
+}
+
+html[data-loom-theme="light"] .composer textarea,
+html[data-loom-theme="light"] .composer input {
+  color: #20232a;
+}
+
+html[data-loom-theme="light"] .composer textarea::placeholder,
+html[data-loom-theme="light"] .composer input::placeholder {
+  color: #969da7;
+}
+
+html[data-loom-theme="light"] .composer-chip,
+html[data-loom-theme="light"] .composer-tool,
+html[data-loom-theme="light"] .composer-keycap {
+  color: #646c78;
+}
+
+html[data-loom-theme="light"] .composer-popover,
+html[data-loom-theme="light"] .composer-popover.model-manager-popover {
+  border-color: rgba(28,31,37,.11);
+  background:
+    radial-gradient(115% 62% at 74% -8%, rgba(105,90,216,.045), transparent 54%),
+    linear-gradient(180deg, rgba(255,255,255,.995), rgba(247,248,250,.995));
+  box-shadow:
+    0 30px 76px rgba(27,31,40,.14),
+    0 8px 24px rgba(27,31,40,.07),
+    inset 0 1px rgba(255,255,255,.84);
+  color: #24272e;
+}
+
+html[data-loom-theme="light"] .composer-popover::before {
+  border-right-color: rgba(28,31,37,.11);
+  border-bottom-color: rgba(28,31,37,.11);
+  background: #f8f9fa;
+}
+
+html[data-loom-theme="light"] .model-core-copy strong,
+html[data-loom-theme="light"] .model-core-title,
+html[data-loom-theme="light"] .model-manager-popover strong {
+  color: #24272e;
+}
+
+html[data-loom-theme="light"] .model-core-copy span,
+html[data-loom-theme="light"] .model-manager-popover p,
+html[data-loom-theme="light"] .model-manager-popover small {
+  color: #737b86;
+}
+
+html[data-loom-theme="light"] .model-core-glyph {
+  color: #695ad8;
+  background: rgba(105,90,216,.055);
+}
+
+/* Markdown */
+html[data-loom-theme="light"] .markdown-body {
+  color: #343941;
+}
+
+html[data-loom-theme="light"] .markdown-body h1,
+html[data-loom-theme="light"] .markdown-body h2,
+html[data-loom-theme="light"] .markdown-body h3,
+html[data-loom-theme="light"] .markdown-body h4,
+html[data-loom-theme="light"] .markdown-body h5,
+html[data-loom-theme="light"] .markdown-body h6,
+html[data-loom-theme="light"] .markdown-body strong {
+  color: #20232a;
+}
+
+html[data-loom-theme="light"] .markdown-body em {
+  color: #414751;
+}
+
+html[data-loom-theme="light"] .markdown-body del,
+html[data-loom-theme="light"] .markdown-body blockquote {
+  color: #747c87;
+}
+
+html[data-loom-theme="light"] .markdown-body a {
+  color: #6253ca;
+  border-bottom-color: rgba(98,83,202,.28);
+}
+
+html[data-loom-theme="light"] .markdown-body :not(pre) > code {
+  border-color: rgba(28,31,37,.09);
+  background: #f0f1f3;
+  color: #574aad;
+}
+
+html[data-loom-theme="light"] .markdown-code-block {
+  border-color: #d8dbe1;
+  background: var(--loom-code-bg);
+  box-shadow: inset 0 1px rgba(255,255,255,.72), 0 8px 24px rgba(27,31,40,.05);
+}
+
+html[data-loom-theme="light"] .markdown-code-head {
+  border-bottom-color: #dde0e5;
+  color: #737b86;
+  background: #eef0f2;
+}
+
+html[data-loom-theme="light"] .markdown-code-block pre {
+  color: #38404a;
+}
+
+html[data-loom-theme="light"] .markdown-body hr {
+  background: linear-gradient(90deg, #d9dce1, #cfd3d9 45%, transparent 100%);
+}
+
+/* Inspector */
+html[data-loom-theme="light"] .inspector,
+html[data-loom-theme="light"] .inspector.runtime-inspector {
+  border-left-color: rgba(28,31,37,.08);
+  background:
+    radial-gradient(circle at 84% -4%, rgba(105,90,216,.05), transparent 29%),
+    linear-gradient(180deg, #f6f7f8 0%, #f1f2f4 100%);
+}
+
+html[data-loom-theme="light"] .inspector.runtime-inspector::before {
+  background: linear-gradient(110deg, transparent 18%, rgba(255,255,255,.55) 50%, transparent 82%);
+}
+
+html[data-loom-theme="light"] .runtime-header,
+html[data-loom-theme="light"] .inspector-tabs {
+  border-bottom-color: rgba(28,31,37,.075);
+}
+
+html[data-loom-theme="light"] .runtime-title-row strong,
+html[data-loom-theme="light"] .inspector-header strong,
+html[data-loom-theme="light"] .inspector-row-title {
+  color: #363b44;
+}
+
+html[data-loom-theme="light"] .runtime-caption,
+html[data-loom-theme="light"] .inspector-row-meta,
+html[data-loom-theme="light"] .inspector-empty {
+  color: #7b828d;
+}
+
+html[data-loom-theme="light"] .runtime-health {
+  color: #69717d;
+  border-color: #d8dbe1;
+  background: rgba(255,255,255,.62);
+}
+
+html[data-loom-theme="light"] .inspector-tabs button:hover,
+html[data-loom-theme="light"] .inspector-tabs button.active,
+html[data-loom-theme="light"] .inspector-row:hover {
+  background: rgba(28,31,37,.045);
+  color: #4d545f;
+}
+
+/* Settings */
+html[data-loom-theme="light"] .settings-shell {
+  --settings-accent: #695ad8;
+  --settings-accent-soft: rgba(105,90,216,.08);
+  --settings-panel: #ffffff;
+  --settings-panel-strong: #f8f9fa;
+  --settings-border: rgba(28,31,37,.10);
+  --settings-divider: rgba(28,31,37,.075);
+  color: #20232a;
+}
+
+html[data-loom-theme="light"] .settings-host,
+html[data-loom-theme="light"] .settings-main {
+  background: #f7f7f8;
+}
+
+html[data-loom-theme="light"] .settings-sidebar {
+  border-right-color: rgba(28,31,37,.085);
+  background: #f0f1f3;
+}
+
+html[data-loom-theme="light"] .settings-back {
+  color: #5d6570;
+}
+
+html[data-loom-theme="light"] .settings-back:hover,
+html[data-loom-theme="light"] .settings-nav button:hover {
+  color: #25282f;
+  background: rgba(28,31,37,.045);
+}
+
+html[data-loom-theme="light"] .settings-sidebar-title strong,
+html[data-loom-theme="light"] .settings-page-heading h1,
+html[data-loom-theme="light"] .settings-section-heading h2,
+html[data-loom-theme="light"] .settings-detail-row strong,
+html[data-loom-theme="light"] .mature-preference-copy strong,
+html[data-loom-theme="light"] .general-overview-card strong,
+html[data-loom-theme="light"] .general-default-card strong {
+  color: #20232a;
+}
+
+html[data-loom-theme="light"] .settings-sidebar-title span:not(.settings-brand-orb),
+html[data-loom-theme="light"] .settings-page-heading p,
+html[data-loom-theme="light"] .settings-section-heading p,
+html[data-loom-theme="light"] .settings-detail-row span,
+html[data-loom-theme="light"] .mature-preference-copy span {
+  color: #737b86;
+}
+
+html[data-loom-theme="light"] .settings-search {
+  border-color: rgba(28,31,37,.09);
+  background: rgba(255,255,255,.65);
+  color: #707883;
+}
+
+html[data-loom-theme="light"] .settings-search:focus-within {
+  border-color: rgba(105,90,216,.25);
+  background: #fff;
+}
+
+html[data-loom-theme="light"] .settings-search input,
+html[data-loom-theme="light"] .mature-input,
+html[data-loom-theme="light"] .mature-select {
+  color: #2a2e35;
+}
+
+html[data-loom-theme="light"] .settings-nav button {
+  color: #5f6671;
+}
+
+html[data-loom-theme="light"] .settings-nav button.active {
+  color: #24272e;
+  border-color: rgba(28,31,37,.065);
+  background: rgba(255,255,255,.72);
+  box-shadow: inset 2px 0 #695ad8;
+}
+
+html[data-loom-theme="light"] .settings-sidebar-footer {
+  border-top-color: rgba(28,31,37,.07);
+}
+
+html[data-loom-theme="light"] .settings-sidebar-footer strong {
+  color: #454b55;
+}
+
+html[data-loom-theme="light"] .settings-card,
+html[data-loom-theme="light"] .general-overview-card,
+html[data-loom-theme="light"] .general-default-card,
+html[data-loom-theme="light"] .general-theme-card,
+html[data-loom-theme="light"] .general-quick-card,
+html[data-loom-theme="light"] .mature-model-card,
+html[data-loom-theme="light"] .settings-option-card,
+html[data-loom-theme="light"] .permission-card,
+html[data-loom-theme="light"] .appearance-overview-card {
+  border-color: rgba(28,31,37,.09);
+  background: #fff;
+  box-shadow: none;
+}
+
+html[data-loom-theme="light"] .settings-detail-row,
+html[data-loom-theme="light"] .capability-row,
+html[data-loom-theme="light"] .plugin-row,
+html[data-loom-theme="light"] .mature-preference-row,
+html[data-loom-theme="light"] .mature-shortcut-row,
+html[data-loom-theme="light"] .general-preference-row,
+html[data-loom-theme="light"] .language-settings-dock {
+  border-color: rgba(28,31,37,.07);
+}
+
+html[data-loom-theme="light"] .settings-detail-row code,
+html[data-loom-theme="light"] .mature-select,
+html[data-loom-theme="light"] .mature-input,
+html[data-loom-theme="light"] .mature-code-preview,
+html[data-loom-theme="light"] .mature-diagnostics-preview,
+html[data-loom-theme="light"] .appearance-reading-preview {
+  border-color: rgba(28,31,37,.085);
+  background: #f4f5f6;
+  color: #3f454f;
+}
+
+html[data-loom-theme="light"] .mature-action-button,
+html[data-loom-theme="light"] .mature-model-card button,
+html[data-loom-theme="light"] .general-copy-button,
+html[data-loom-theme="light"] .general-reset-button {
+  border-color: rgba(28,31,37,.09);
+  background: #f4f5f6;
+  color: #4a505a;
+}
+
+html[data-loom-theme="light"] .mature-action-button:hover:not(:disabled),
+html[data-loom-theme="light"] .mature-model-card button:hover:not(:disabled),
+html[data-loom-theme="light"] .general-copy-button:hover,
+html[data-loom-theme="light"] .general-reset-button:hover {
+  background: #eceef1;
+  border-color: rgba(28,31,37,.14);
+}
+
+html[data-loom-theme="light"] .settings-switch {
+  border-color: rgba(28,31,37,.12);
+  background: #d8dce2;
+}
+
+html[data-loom-theme="light"] .settings-switch.on {
+  border-color: rgba(105,90,216,.34);
+  background: #695ad8;
+}
+
+html[data-loom-theme="light"] .capability-icon,
+html[data-loom-theme="light"] .model-summary-icon,
+html[data-loom-theme="light"] .mature-preference-icon,
+html[data-loom-theme="light"] .general-default-card-icon,
+html[data-loom-theme="light"] .general-overview-icon {
+  color: #6659ba;
+  border-color: rgba(105,90,216,.12);
+  background: rgba(105,90,216,.055);
+}
+
+html[data-loom-theme="light"] .appearance-overview-copy strong {
+  color: #23262c;
+}
+
+html[data-loom-theme="light"] .appearance-overview-copy p {
+  color: #747c87;
+}
+
+html[data-loom-theme="light"] .appearance-overview-meta span,
+html[data-loom-theme="light"] .appearance-segmented {
+  border-color: rgba(28,31,37,.085);
+  background: #f4f5f6;
+  color: #69717d;
+}
+
+html[data-loom-theme="light"] .appearance-segmented button {
+  color: #707883;
+}
+
+html[data-loom-theme="light"] .appearance-segmented button:hover {
+  color: #343941;
+  background: rgba(28,31,37,.045);
+}
+
+html[data-loom-theme="light"] .appearance-segmented button.active {
+  color: #584bad;
+  background: rgba(105,90,216,.085);
+}
+
+html[data-loom-theme="light"] .appearance-workspace-preview {
+  border-color: rgba(28,31,37,.10);
+  background: #f7f7f8;
+}
+
+html[data-loom-theme="light"] .appearance-preview-sidebar,
+html[data-loom-theme="light"] .appearance-preview-inspector {
+  background: #eef0f2;
+}
+
+html[data-loom-theme="light"] .appearance-preview-sidebar {
+  border-right-color: rgba(28,31,37,.08);
+}
+
+html[data-loom-theme="light"] .appearance-preview-inspector {
+  border-left-color: rgba(28,31,37,.08);
+}
+
+html[data-loom-theme="light"] .appearance-preview-sidebar::before,
+html[data-loom-theme="light"] .appearance-preview-sidebar::after,
+html[data-loom-theme="light"] .appearance-preview-inspector::before,
+html[data-loom-theme="light"] .appearance-preview-inspector::after {
+  background: rgba(28,31,37,.09);
+}
+
+html[data-loom-theme="light"] .appearance-preview-main {
+  background:
+    radial-gradient(circle at 50% 0%, rgba(105,90,216,.05), transparent 60%),
+    #f9f9fa;
+}
+
+html[data-loom-theme="light"] .appearance-preview-main span {
+  background: rgba(28,31,37,.11);
+}
+
+html[data-loom-theme="light"] .appearance-preview-main span:nth-child(3) {
+  background: rgba(105,90,216,.22);
+}
+
+html[data-loom-theme="light"] .appearance-reading-preview-label,
+html[data-loom-theme="light"] .appearance-code-preview-head {
+  color: #777f89;
+}
+
+html[data-loom-theme="light"] .appearance-reading-preview-message {
+  color: #343941;
+}
+
+html[data-loom-theme="light"] .appearance-reading-preview-message strong {
+  color: #20232a;
+}
+
+html[data-loom-theme="light"] .settings-toast {
+  border-color: rgba(28,31,37,.10);
+  background: rgba(255,255,255,.96);
+  color: #343941;
+  box-shadow: 0 10px 28px rgba(27,31,40,.10);
+}
