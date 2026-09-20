@@ -50,10 +50,11 @@ def _submit_once(
     turn_id: str,
     text: str,
     input_id: str,
-) -> tuple[str, bool]:
-    """Durably enqueue one steering input, deduplicated by client id."""
+) -> tuple[str, bool, str]:
+    """Durably enqueue one steering input with its original submission time."""
 
     from app.agent_runtime.journal import atomic_json, session_lock
+    from app.agent_runtime.storage import utc_now
 
     directory = store.session_dir(session_id)
     with session_lock(directory):
@@ -66,12 +67,23 @@ def _submit_once(
             same_text = str(item.get("text") or "") == text
             if not same_turn or not same_text:
                 raise ValueError("clientInputId was already used for different steering input")
-            return input_id, True
+            submitted_at = str(item.get("submitted_at") or "").strip()
+            if not submitted_at:
+                submitted_at = utc_now()
+                item["submitted_at"] = submitted_at
+                atomic_json(path, items)
+            return input_id, True, submitted_at
         if len(items) >= 100 or len(text) > 100_000:
             raise ValueError("steering inbox limit reached")
-        items.append({"id": input_id, "turn_id": turn_id, "text": text})
+        submitted_at = utc_now()
+        items.append({
+            "id": input_id,
+            "turn_id": turn_id,
+            "text": text,
+            "submitted_at": submitted_at,
+        })
         atomic_json(path, items)
-    return input_id, False
+    return input_id, False, submitted_at
 
 
 def _receipt(
@@ -79,6 +91,7 @@ def _receipt(
     input_id: str,
     duplicate: bool,
     delivery: str,
+    submitted_at: str | None = None,
     resume_required: bool = False,
     applied: bool = False,
 ) -> dict[str, Any]:
@@ -87,6 +100,7 @@ def _receipt(
         "input_id": input_id,
         "duplicate": bool(duplicate),
         "delivery": delivery,
+        "submittedAt": str(submitted_at or "") or None,
         "resume_required": bool(resume_required),
         "applied": bool(applied),
     }
@@ -124,6 +138,7 @@ def _consumed_duplicate(
             input_id=input_id,
             duplicate=True,
             delivery="applied",
+            submitted_at=str(data.get("submitted_at") or event.created_at or "") or None,
             applied=True,
         )
     raise ValueError("clientInputId was already used for different steering input")
@@ -193,7 +208,7 @@ def _patch_runtime_class(runtime_cls: type[Any]) -> None:
                 and not token.cancelled
                 and session.status is AgentStatus.RUNNING
             ):
-                identifier, duplicate = _submit_once(
+                identifier, duplicate, submitted_at = _submit_once(
                     self.store,
                     session_id=resolved_session_id,
                     turn_id=resolved_turn_id,
@@ -204,6 +219,7 @@ def _patch_runtime_class(runtime_cls: type[Any]) -> None:
                     input_id=identifier,
                     duplicate=duplicate,
                     delivery="next_safe_boundary",
+                    submitted_at=submitted_at,
                 )
 
         # WAITING_APPROVAL has no active token: the worker intentionally returned
@@ -232,7 +248,7 @@ def _patch_runtime_class(runtime_cls: type[Any]) -> None:
                     and not token.cancelled
                     and session.status is AgentStatus.RUNNING
                 ):
-                    identifier, duplicate = _submit_once(
+                    identifier, duplicate, submitted_at = _submit_once(
                         self.store,
                         session_id=resolved_session_id,
                         turn_id=resolved_turn_id,
@@ -243,6 +259,7 @@ def _patch_runtime_class(runtime_cls: type[Any]) -> None:
                         input_id=identifier,
                         duplicate=duplicate,
                         delivery="next_safe_boundary",
+                        submitted_at=submitted_at,
                     )
 
             session = self.store.load(resolved_session_id)
@@ -265,7 +282,7 @@ def _patch_runtime_class(runtime_cls: type[Any]) -> None:
             if not pending_calls or not any(call.call_id == approval_call_id for call in pending_calls):
                 raise RuntimeError("pending approval state is inconsistent")
 
-            identifier, duplicate = _submit_once(
+            identifier, duplicate, submitted_at = _submit_once(
                 self.store,
                 session_id=resolved_session_id,
                 turn_id=resolved_turn_id,
@@ -315,6 +332,7 @@ def _patch_runtime_class(runtime_cls: type[Any]) -> None:
                 input_id=identifier,
                 duplicate=duplicate,
                 delivery="approval_superseded",
+                submitted_at=submitted_at,
                 resume_required=True,
                 applied=True,
             )
