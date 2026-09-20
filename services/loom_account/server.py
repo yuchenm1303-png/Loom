@@ -298,19 +298,55 @@ class AccountStore:
                 """,
                 (hashed, now),
             ).fetchone()
-        if row is None:
-            raise AccountError(
-                HTTPStatus.UNAUTHORIZED,
-                "INVALID_REFRESH_TOKEN",
-                "This sign-in session is no longer valid.",
+            if row is None:
+                raise AccountError(
+                    HTTPStatus.UNAUTHORIZED,
+                    "INVALID_REFRESH_TOKEN",
+                    "This sign-in session is no longer valid.",
+                )
+            if str(row["status"]) != "active":
+                raise AccountError(
+                    HTTPStatus.FORBIDDEN,
+                    "ACCOUNT_DISABLED",
+                    "This account is not active.",
+                )
+
+            access_token = _new_token("loom_access")
+            next_refresh = _new_token("loom_refresh")
+            updated = db.execute(
+                """
+                UPDATE sessions
+                SET access_hash = ?, access_expires_at = ?, refresh_hash = ?,
+                    refresh_expires_at = ?, last_used_at = ?
+                WHERE id = ?
+                  AND refresh_hash = ?
+                  AND revoked_at IS NULL
+                  AND refresh_expires_at > ?
+                """,
+                (
+                    _token_hash(access_token),
+                    now + self.config.access_ttl_seconds,
+                    _token_hash(next_refresh),
+                    now + self.config.refresh_ttl_seconds,
+                    now,
+                    str(row["session_id"]),
+                    hashed,
+                    now,
+                ),
             )
-        if str(row["status"]) != "active":
-            raise AccountError(
-                HTTPStatus.FORBIDDEN,
-                "ACCOUNT_DISABLED",
-                "This account is not active.",
-            )
-        tokens = self._issue_session(int(row["user_id"]), session_id=str(row["session_id"]))
+            if updated.rowcount != 1:
+                raise AccountError(
+                    HTTPStatus.UNAUTHORIZED,
+                    "INVALID_REFRESH_TOKEN",
+                    "This sign-in session is no longer valid.",
+                )
+
+        tokens = {
+            "access_token": access_token,
+            "refresh_token": next_refresh,
+            "expires_in": self.config.access_ttl_seconds,
+            "token_type": "Bearer",
+        }
         return tokens, self._safe_user(row)
 
     def revoke_refresh_token(self, refresh_token: str) -> None:
