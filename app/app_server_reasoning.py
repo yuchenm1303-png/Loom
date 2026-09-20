@@ -647,24 +647,45 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
         if self._thread_model_blocked(session):
             raise RuntimeError("finish or stop this thread's active turn before changing its model")
 
-        selection = str(params.get("selection") or "").strip()
-        provider = str(params.get("provider") or "").strip()
-        base_url = str(params.get("baseUrl") or params.get("base_url") or "").strip().rstrip("/")
-        model = str(params.get("model") or "").strip()
-        api_key = str(params.get("apiKey") or params.get("api_key") or "").strip()
-        if not selection:
+        requested_selection = str(params.get("selection") or "").strip()
+        requested_model = str(params.get("model") or "").strip()
+        if not requested_selection:
             raise ValueError("selection is required")
+        if not requested_model:
+            raise ValueError("model is required")
+
+        # Resolve the connection again inside the App Server and treat that
+        # result as authoritative. The renderer used to be able to send
+        # selection=builtin:minimax with model=deepseek-flash while retaining
+        # MiniMax's base URL/API key. That mixed identity made the UI appear to
+        # switch providers even though the actual request still hit MiniMax.
+        spec = resolve_model_spec(
+            requested_selection,
+            model=requested_model,
+            home=self._runtime_home(),
+        )
+        selection = str(spec.get("selection") or requested_selection).strip()
+        provider = str(spec.get("provider") or "").strip()
+        base_url = str(spec.get("baseUrl") or "").strip().rstrip("/")
+        model = str(spec.get("model") or requested_model).strip()
+        api_key = str(spec.get("apiKey") or "").strip()
         if not provider:
             raise ValueError("provider is required")
-        if not model:
-            raise ValueError("model is required")
         if not api_key:
             raise ValueError("API key is required")
 
-        reasoning = ReasoningRequest.from_values(
-            params.get("reasoningKind") or params.get("reasoning_kind"),
-            params.get("reasoningValue") or params.get("reasoning_value"),
-        )
+        resolved_reasoning = spec.get("reasoning")
+        if isinstance(resolved_reasoning, dict):
+            reasoning = ReasoningRequest.from_values(
+                resolved_reasoning.get("kind"),
+                resolved_reasoning.get("value"),
+            )
+        else:
+            reasoning = ReasoningRequest.from_values(
+                params.get("reasoningKind") or params.get("reasoning_kind"),
+                params.get("reasoningValue") or params.get("reasoning_value"),
+            )
+
         vision = bool(params.get("vision", True))
         capability = validate_runtime_reasoning(
             model=model,
