@@ -382,7 +382,7 @@ class BrowserExtensionBridge:
             command_id=command.command_id,
             action=action_name,
             elapsed_ms=elapsed_ms,
-            result=summarize_browser_state_payload(result, include_dom_excerpt=action_name != "type_text")
+            result=summarize_browser_state_payload(result, include_dom_excerpt=action_name not in {"type_text", "send_text"})
             if action_name != "screenshot"
             else {"png_base64": "[bytes omitted]"},
         )
