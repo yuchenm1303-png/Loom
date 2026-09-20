@@ -27,6 +27,7 @@ import {
   ShieldAlert,
   ShieldCheck,
   Sparkles,
+  Sun,
   Terminal,
   Type,
   Wrench,
@@ -40,6 +41,7 @@ import {
   type ShortcutCommandId,
   type ShortcutSettings,
 } from "../keyboardShortcuts";
+import { applyThemePreference, type LoomThemePreference } from "../theme";
 import type {
   InitializeResult,
   LoomSettings,
@@ -79,6 +81,7 @@ type CapabilityKey =
   | "codeMode";
 
 type AppearanceSettings = {
+  theme: LoomThemePreference;
   scale: "90" | "100" | "110" | "120" | "130";
   density: "compact" | "comfortable" | "spacious";
   reducedMotion: boolean;
@@ -179,6 +182,7 @@ const DEFAULT_CAPABILITIES: Record<CapabilityKey, boolean> = {
 };
 
 const DEFAULT_APPEARANCE: AppearanceSettings = {
+  theme: "system",
   scale: "100",
   density: "comfortable",
   reducedMotion: false,
@@ -427,6 +431,7 @@ function setNestedSetting(settings: DesktopSettings, path: string, value: unknow
 
 function applyAppearance(settings: DesktopSettings): void {
   const appearance = { ...DEFAULT_APPEARANCE, ...(settings.appearance ?? {}) } as AppearanceSettings;
+  applyThemePreference(appearance.theme);
   document.documentElement.style.setProperty("zoom", String(Number(appearance.scale) / 100));
   document.documentElement.dataset.loomReducedMotion = String(appearance.reducedMotion);
   document.documentElement.dataset.loomDensity = appearance.density;
@@ -800,6 +805,7 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
     const appearance = { ...DEFAULT_APPEARANCE, ...(settings.appearance ?? {}) } as AppearanceSettings;
     const densityLabel = titleCase(appearance.density);
     const widthLabel = titleCase(appearance.conversationWidth);
+    const themeLabel = appearance.theme === "system" ? "System theme" : `${titleCase(appearance.theme)} theme`;
     return (
       <>
         <div className="settings-page-heading settings-heading-with-action">
@@ -812,7 +818,7 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
             <span className="settings-eyebrow">Live workspace</span>
             <strong>{appearance.scale}% scale · {densityLabel} density</strong>
             <p>Layout, message typography, motion, and code preferences update immediately. The preview reflects the current reading profile.</p>
-            <div className="appearance-overview-meta"><span>{widthLabel} conversation</span><span>{appearance.chatFontSize}px chat text</span><span>{appearance.ambientEffects ? "Ambient on" : "Ambient off"}</span></div>
+            <div className="appearance-overview-meta"><span>{themeLabel}</span><span>{widthLabel} conversation</span><span>{appearance.chatFontSize}px chat text</span><span>{appearance.ambientEffects ? "Ambient on" : "Ambient off"}</span></div>
           </div>
           <div className="appearance-workspace-preview" aria-hidden="true">
             <div className="appearance-preview-sidebar" />
@@ -820,6 +826,42 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
             <div className="appearance-preview-inspector" />
           </div>
         </div>
+
+        <Section title="Theme" caption="Choose Loom's overall surface palette. System follows your operating system and updates automatically.">
+          <div className="appearance-theme-picker" role="radiogroup" aria-label="Loom theme">
+            {([
+              { value: "system", label: "System", detail: "Follow your device", icon: Monitor },
+              { value: "light", label: "Light", detail: "Bright neutral workspace", icon: Sun },
+              { value: "dark", label: "Dark", detail: "Focused low-light workspace", icon: Moon },
+            ] as const).map((option) => {
+              const Icon = option.icon;
+              const active = appearance.theme === option.value;
+              return (
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={active}
+                  className={`appearance-theme-option ${active ? "active" : ""}`}
+                  key={option.value}
+                  onClick={() => void saveSetting("appearance.theme", option.value, `Theme set to ${option.label}.`)}
+                >
+                  <span className={`appearance-theme-preview ${option.value}`} aria-hidden="true">
+                    <i className="appearance-theme-preview-sidebar" />
+                    <i className="appearance-theme-preview-content"><b /><b /><b /></i>
+                  </span>
+                  <span className="appearance-theme-option-copy">
+                    <span className="appearance-theme-option-title">
+                      <Icon size={15} strokeWidth={1.8} />
+                      <strong>{option.label}</strong>
+                      {active ? <Check size={14} className="appearance-theme-check" /> : null}
+                    </span>
+                    <span>{option.detail}</span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </Section>
 
         <Section title="Interface" caption="Global sizing and motion preferences. Changes apply immediately and persist across restarts.">
           <div className="settings-card mature-preference-list">
