@@ -86,12 +86,16 @@ def test_scroll_stays_on_the_cheap_path(background):
     assert "afterTabAction" in body
 
 
-def test_navigation_reuses_only_an_exact_existing_page(background):
+def test_navigation_reuses_a_tokenized_page_across_all_windows(background):
     body = _function_body(background, "resolveNavigationDestination")
     assert "new URL(url).href" in body
-    assert "chrome.tabs.query" in body
+    assert "chrome.tabs.query({})" in body
     assert "new URL(candidate.url).href === targetUrl" in body
-    assert ".origin ===" not in body
+    assert "existing.origin === target.origin" in body
+    assert "existing.pathname === target.pathname" in body
+    assert "search.length" in body
+    assert "target.search ? (exact || samePage) : (samePage || exact)" in body
+    assert "preserveUrl: true" in body
     assert "args.new_tab" in body
 
 
@@ -112,7 +116,7 @@ def test_loom_works_beside_the_user_instead_of_taking_the_foreground(background)
     """
 
     navigate = _function_body(background, "navigate")
-    assert "active: true" not in navigate, "navigate steals the foreground from the user"
+    assert "active: true" not in navigate, "new navigation steals the foreground from the user"
     assert "chrome.tabs.create({ url, active: false })" in navigate
     assert "chrome.tabs.update(destination.tab.id, { url })" in navigate
 
@@ -125,6 +129,10 @@ def test_loom_works_beside_the_user_instead_of_taking_the_foreground(background)
 
     # An explicit switch is still an explicit switch.
     assert "active: true" in _function_body(background, "switchTab")
+    # Reusing a page the user explicitly asked for fronts its existing window.
+    reuse = _function_body(background, "focusExistingTab")
+    assert "active: true" in reuse
+    assert "chrome.windows.update" in reuse
 
 
 def test_tab_listing_and_explicit_switch_work_across_browser_windows(background):
@@ -181,7 +189,7 @@ def test_tab_ownership_is_explicit_and_session_scoped(background):
     # matching on the group title would claim any tab the user put in a group
     # they happened to name the same thing.
     assert "group?.title" not in ownership
-    assert "placeInLoomGroup(exact" in resolver
+    assert "placeInLoomGroup(reusable" in resolver
 
 
 def test_adopting_a_user_tab_makes_the_adoption_visible(background):
@@ -194,10 +202,10 @@ def test_adopting_a_user_tab_makes_the_adoption_visible(background):
     """
 
     resolver = _function_body(background, "resolveNavigationDestination")
-    assert "markLoomWorkTab(exact)" not in resolver, (
+    assert "markLoomWorkTab(reusable)" not in resolver, (
         "adopting a user tab without grouping it leaves the takeover invisible"
     )
-    assert "placeInLoomGroup(exact" in resolver
+    assert "placeInLoomGroup(reusable" in resolver
 
 
 def test_only_borrowed_tabs_are_handed_back_when_the_session_closes(background):

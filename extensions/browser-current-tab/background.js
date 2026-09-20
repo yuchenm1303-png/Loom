@@ -580,10 +580,21 @@ async function navigate(args) {
   // back afterwards.
   const tab = destination.create
     ? await placeInLoomGroup(await chrome.tabs.create({ url, active: false }))
-    : await chrome.tabs.update(destination.tab.id, { url });
+    : destination.preserveUrl
+      ? await focusExistingTab(destination.tab)
+      : await chrome.tabs.update(destination.tab.id, { url });
   await markHudTab(tab.id);
-  await waitForTabComplete(tab.id);
+  if (!destination.preserveUrl) await waitForTabComplete(tab.id);
   return collectStateForTab(await chrome.tabs.get(tab.id), { showHud: true });
+}
+
+async function focusExistingTab(tab) {
+  const adopted = (await isLoomWorkTab(tab)) ? tab : await placeInLoomGroup(tab, { adopted: true });
+  const active = await chrome.tabs.update(adopted.id, { active: true });
+  if (typeof active.windowId === "number") {
+    await chrome.windows.update(active.windowId, { focused: true });
+  }
+  return chrome.tabs.get(active.id);
 }
 
 async function resolveNavigationDestination(args, url) {
@@ -591,21 +602,45 @@ async function resolveNavigationDestination(args, url) {
   if (args.new_tab) return { create: true, tab: current };
   let targetUrl = "";
   try { targetUrl = new URL(url).href; } catch (_) { return { create: !(await isLoomWorkTab(current)), tab: current }; }
-  const candidates = await chrome.tabs.query(
-    typeof current.windowId === "number" ? { windowId: current.windowId } : { currentWindow: true },
-  );
+  // Navigation is convenience-first: an existing page in any normal browser
+  // window is preferable to a duplicate Loom tab. Query strings and fragments
+  // often contain rotating console/OAuth/session tokens, so origin + pathname is
+  // the stable identity used after an exact match.
+  const candidates = await chrome.tabs.query({});
   const exact = candidates.find((candidate) => {
     if (!isInjectableUrl(candidate.url || "")) return false;
     try { return new URL(candidate.url).href === targetUrl; } catch (_) { return false; }
   });
+  const target = new URL(targetUrl);
+  const samePage = candidates
+    .filter((candidate) => {
+      if (!isInjectableUrl(candidate.url || "")) return false;
+      try {
+        const existing = new URL(candidate.url);
+        return existing.origin === target.origin && existing.pathname === target.pathname;
+      } catch (_) {
+        return false;
+      }
+    })
+    // Prefer the live token-bearing console over a tokenless duplicate. Tokens
+    // stay inside the extension and are never copied into a tool argument.
+    .sort((left, right) => {
+      const leftQuery = (() => { try { return new URL(left.url).search.length; } catch (_) { return 0; } })();
+      const rightQuery = (() => { try { return new URL(right.url).search.length; } catch (_) { return 0; } })();
+      return rightQuery - leftQuery || Number(Boolean(right.active)) - Number(Boolean(left.active));
+    })[0];
   // Reusing a page the user already has open beats opening a duplicate, but it
   // also hands that tab to Loom: the next navigate to a different URL replaces
   // whatever is on it. Adopting it into the visible Loom group is the only thing
   // that tells the user their tab is now a work tab, so adopt and group together.
-  if (exact) {
+  // When the request omitted a query, a richer same-page URL is usually the
+  // authenticated live session and must beat an exact tokenless duplicate.
+  const reusable = target.search ? (exact || samePage) : (samePage || exact);
+  if (reusable) {
     return {
       create: false,
-      tab: (await isLoomWorkTab(exact)) ? exact : await placeInLoomGroup(exact, { adopted: true }),
+      tab: (await isLoomWorkTab(reusable)) ? reusable : await placeInLoomGroup(reusable, { adopted: true }),
+      preserveUrl: true,
     };
   }
   if (await isLoomWorkTab(current)) return { create: false, tab: current };
