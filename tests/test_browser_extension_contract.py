@@ -39,6 +39,7 @@ def test_manifest_requests_the_permission_screenshots_actually_need(manifest):
     assert "<all_urls>" in origins
     assert "scripting" in (manifest.get("permissions") or [])
     assert "tabs" in (manifest.get("permissions") or [])
+    assert "debugger" in (manifest.get("permissions") or [])
 
 
 def test_manifest_stays_manifest_v3_with_a_service_worker(manifest):
@@ -63,7 +64,7 @@ def test_extension_has_no_public_development_credential(background):
 
 @pytest.mark.parametrize(
     "handler",
-    ["withElement", "drag", "pressKey", "goBack"],
+    ["withElement", "drag", "pressKey", "clickAt", "sendText", "goBack"],
 )
 def test_actions_that_can_navigate_wait_for_the_navigation(background, handler):
     """A click that follows a link must not return the previous page.
@@ -547,3 +548,46 @@ def test_clickable_cards_without_a_role_still_get_an_index(background):
     # The style is computed once per element, not once for visibility and again
     # for the cursor.
     assert "visibleStyle" in _function_body(background, "visible")
+
+
+def test_visual_surfaces_are_exposed_and_have_native_coordinate_input(background):
+    """Canvas/VNC/WebGL pages need a visual path when there is no DOM control."""
+
+    state = _function_body(background, "collectPageState")
+    surfaces = _function_body(background, "collectVisualSurfaces")
+    assert "visual_surfaces" in state
+    assert "Visual surfaces" in state
+    assert "canvas,video,iframe,[role='application']" in surfaces
+    assert "getBoundingClientRect" in surfaces
+
+    click = _function_body(background, "clickAt")
+    assert "Input.dispatchMouseEvent" in click
+    assert '"click_at"' in click
+    fallback = _function_body(background, "clickAtInPage")
+    assert "elementFromPoint" in fallback
+    assert "pointerdown" in fallback
+
+
+def test_focused_surface_text_is_one_action_and_uses_native_keyboard_input(background):
+    send = _function_body(background, "sendText")
+    assert "sendNativeText" in send
+    assert '"send_text"' in send
+    native = _function_body(background, "sendNativeText")
+    assert "Input.dispatchKeyEvent" not in native  # helper owns the raw protocol call
+    assert "dispatchNativeKey" in native
+    assert '"Enter"' in native
+
+    key = _function_body(background, "dispatchNativeKey")
+    assert "Input.dispatchKeyEvent" in key
+    assert "chrome.debugger.sendCommand" in key
+
+
+def test_native_input_has_a_page_event_fallback_when_devtools_owns_the_tab(background):
+    native = _function_body(background, "withNativeInput")
+    assert "chrome.debugger.attach" in native
+    assert "chrome.debugger.detach" in native
+    assert "ok: false" in native
+
+    send = _function_body(background, "sendText")
+    assert "if (native.ok)" in send
+    assert "runPageAction" in send
