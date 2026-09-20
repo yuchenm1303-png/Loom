@@ -209,6 +209,9 @@ export function ModelPanel({
   const currentBaseUrl = snapshot?.current?.baseUrl || "";
   const currentSelection = snapshot?.current?.selection || "";
   const currentReasoning = snapshot?.current?.reasoning ?? null;
+  const currentGroupName = snapshot?.current?.groupName || currentName;
+  const currentFamily = snapshot?.current?.family || "";
+  const currentProtocol = snapshot?.current?.protocol || "";
   const profiles = snapshot?.profiles ?? [];
   const groups = useMemo<ModelGroup[]>(() => {
     const grouped = new Map<string, ModelGroup>();
@@ -618,18 +621,34 @@ export function ModelPanel({
   }
 
   return (
-    <div className="model-manager-view model-manager-home">
-      <section className={`model-control-card ${locked ? "locked" : ""}`} aria-label={`Current model ${currentModel}`}>
-        <div className="model-control-identity">
-          <span className="model-control-icon"><Cpu size={17} strokeWidth={1.8} /></span>
-          <div className="model-control-copy" key={`${currentSelection}:${currentModel}`}>
-            <span className="model-control-kicker">Current model</span>
-            <strong>{currentModel}</strong>
-            <small>{currentName} · {adapterLabel(currentAdapter)}</small>
-          </div>
-          <span className="model-control-active" title="Active model" aria-label="Active model"><Check size={13} strokeWidth={2.1} /></span>
+    <div className="model-manager-view model-manager-home model-home">
+      <section className={`model-home-summary ${locked ? "locked" : ""}`} aria-label={`Current model ${currentModel}`}>
+        <div className="model-home-topline">
+          <span>Current model</span>
+          <span className="model-home-active"><i aria-hidden="true" /> Active</span>
         </div>
 
+        <div className="model-home-identity">
+          <span className="model-home-symbol"><Cpu size={18} strokeWidth={1.7} /></span>
+          <div className="model-home-copy" key={`${currentSelection}:${currentModel}`}>
+            <strong>{currentModel}</strong>
+            <div className="model-home-source">
+              <span>{currentGroupName}</span>
+              <i aria-hidden="true" />
+              <span>{adapterLabel(currentAdapter)}</span>
+            </div>
+          </div>
+        </div>
+
+        {(currentFamily || currentProtocol) ? (
+          <div className="model-home-tags" aria-label="Model metadata">
+            {currentFamily ? <span>{currentFamily}</span> : null}
+            {currentProtocol ? <span>{currentProtocol}</span> : null}
+          </div>
+        ) : null}
+      </section>
+
+      <section className="model-home-controls" aria-label="Model controls">
         {currentReasoning ? (
           <ReasoningControl
             reasoning={currentReasoning}
@@ -638,27 +657,49 @@ export function ModelPanel({
             onChange={onReasoningChange}
           />
         ) : (
-          <div className="model-control-capability-note">
-            <span>Model controls</span>
-            <small>No reasoning control exposed by this provider.</small>
+          <div className="model-home-control-line">
+            <span className="model-home-control-icon"><BrainCircuit size={14.5} strokeWidth={1.8} /></span>
+            <div>
+              <strong>Reasoning</strong>
+              <small>Uses the provider's default behavior</small>
+            </div>
+            <span className="model-home-control-state">Default</span>
           </div>
         )}
-
-        <div className="model-control-actions">
-          <button type="button" onClick={() => { setView("profiles"); setError(""); }} disabled={locked}>
-            <span className="model-control-action-icon"><Cpu size={14.5} /></span>
-            <span className="model-control-action-copy"><strong>Models</strong><small>Switch model</small></span>
-            <ChevronRight size={13.5} />
-          </button>
-          <button type="button" onClick={() => { setView("add"); setError(""); }} disabled={locked}>
-            <span className="model-control-action-icon"><Plus size={14.5} /></span>
-            <span className="model-control-action-copy"><strong>Add model</strong><small>API / endpoint</small></span>
-            <ChevronRight size={13.5} />
-          </button>
-        </div>
       </section>
+
+      <div className="model-home-actions" aria-label="Model actions">
+        <button
+          type="button"
+          className="model-home-action model-home-action-primary"
+          onClick={() => { setView("profiles"); setError(""); }}
+          disabled={locked}
+        >
+          <span className="model-home-action-icon"><Cpu size={15} strokeWidth={1.75} /></span>
+          <span className="model-home-action-copy">
+            <strong>Browse models</strong>
+            <small>{groups.length} providers · {profiles.length} models</small>
+          </span>
+          <ChevronRight size={14} strokeWidth={1.8} />
+        </button>
+
+        <button
+          type="button"
+          className="model-home-action"
+          onClick={() => { setView("add"); setError(""); }}
+          disabled={locked}
+        >
+          <span className="model-home-action-icon"><Plus size={15} strokeWidth={1.75} /></span>
+          <span className="model-home-action-copy">
+            <strong>Add model</strong>
+            <small>Custom API connection</small>
+          </span>
+          <ChevronRight size={14} strokeWidth={1.8} />
+        </button>
+      </div>
 
       {error ? <div className="composer-popover-error">{error}</div> : null}
     </div>
   );
+
 }
