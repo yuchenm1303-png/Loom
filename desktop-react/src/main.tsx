@@ -25,6 +25,7 @@ import "./components/runtime-live-feedback.css";
 import "./components/review-motion.css";
 import "./components/sidebar-clarity-fix.css";
 import "./components/renderer-crispness.css";
+import "./components/model-core-redesign.css";
 
 const CONVERSATION_WIDTHS: Record<string, string> = {
   focused: "740px",
