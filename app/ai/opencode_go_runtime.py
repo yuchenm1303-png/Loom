@@ -77,6 +77,15 @@ def _usage(input_tokens: int = 0, output_tokens: int = 0) -> ModelUsage:
     )
 
 
+class _OpenCodeGoChatBackend(OpenAIStreamingChatBackend):
+    """OpenAI-compatible chat with OpenCode coding-agent identity headers."""
+
+    def _request_kwargs(self, request: ChatRequest) -> dict[str, Any]:
+        kwargs = super()._request_kwargs(request)
+        kwargs["extra_headers"] = _session_headers(request)
+        return kwargs
+
+
 class _OpenCodeGoResponsesBackend:
     def __init__(
         self,
@@ -596,7 +605,7 @@ class OpenCodeGoBackend:
                 base_url=OPENCODE_GO_BASE_URL,
                 display_name=connection.display_name,
             )
-            self.backend = OpenAIStreamingChatBackend(
+            self.backend = _OpenCodeGoChatBackend(
                 connection=compatible,
                 profile=profile,
                 api_key=api_key,
