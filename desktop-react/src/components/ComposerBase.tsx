@@ -524,10 +524,9 @@ export function Composer({
                       <span className="composer-popover-icon model"><Cpu size={16} /></span>
                       <div>
                         <strong>{zh ? "模型" : "Models"}</strong>
-                        <span>{zh ? "切换模型、调整推理或连接自定义 API。" : "Switch models, adjust reasoning, or connect an API."}</span>
+                        <span>{zh ? "选择当前会话使用的模型" : "Choose the model for this conversation"}</span>
                       </div>
                     </div>
-                    <span className="composer-popover-context">Runtime</span>
                   </div>
 
                   <ModelPanel
