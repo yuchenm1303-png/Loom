@@ -138,6 +138,16 @@ class RecordingCompletions:
         return iter(self.chunks)
 
 
+class TransparentPlatformWrapper:
+    """Mirror Loom's transparent runtime platform adapters."""
+
+    def __init__(self, delegate) -> None:
+        self._delegate = delegate
+
+    def __getattr__(self, name):
+        return getattr(self._delegate, name)
+
+
 class ProviderFailure(Exception):
     def __init__(self, status_code: int, message: str) -> None:
         super().__init__(message)
@@ -289,6 +299,46 @@ def _runtime(tmp_path: Path):
         auto_configure_web_search=False,
     )
     return runtime, store, platform, workspace
+
+
+def test_streaming_runtime_subscribes_once_through_transparent_wrappers(tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    store = FileAgentSessionStore(tmp_path / "home")
+    base = NormalizedStreamingPlatform()
+    first = TransparentPlatformWrapper(base)
+    runtime = StreamingAgentRuntime(
+        platform=first,
+        store=store,
+        tools=ToolRegistry(),
+        mcp_servers=(),
+        auto_configure_browser=False,
+        auto_configure_web_search=False,
+    )
+    observed = []
+    runtime.subscribe_stream(observed.append)
+
+    # BrowserRuntime adds another transparent adapter after StreamingAgentRuntime
+    # has already subscribed the underlying platform. Reconfiguring through the
+    # new wrapper must not register the same provider listener a second time.
+    second = TransparentPlatformWrapper(first)
+    runtime._configure_streaming_platform(second)
+    assert len(base.listeners) == 1
+
+    binding = runtime._stream_context.set(
+        _ModelStreamContext("session", "turn", "step", AGENT_FAST_ROLE.role_id)
+    )
+    try:
+        base.execute_chat(AGENT_FAST_ROLE.role_id, _request())
+    finally:
+        runtime._stream_context.reset(binding)
+        runtime.close()
+
+    assert [
+        event.data["delta"]
+        for event in observed
+        if event.kind is AgentStreamEventKind.ASSISTANT_TEXT_DELTA
+    ] == ["Hel", "lo"]
 
 
 def test_internal_model_scope_never_emits_user_facing_stream(tmp_path):

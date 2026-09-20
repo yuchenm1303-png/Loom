@@ -167,16 +167,28 @@ class StreamingAgentRuntime(CodeModeRuntime):
         self._configure_streaming_platform(self.platform)
 
     def _configure_streaming_platform(self, platform: Any) -> None:
-        identity = id(platform)
-        if identity in self._streaming_platform_ids:
-            return
         enable = getattr(platform, "enable_streaming", None)
         subscribe = getattr(platform, "subscribe_stream", None)
-        if callable(enable) and callable(subscribe):
-            enable()
-            subscribe(self._on_provider_stream)
-            self._streaming_platform_ids.add(identity)
-            self._provider_streaming_enabled = True
+        if not callable(enable) or not callable(subscribe):
+            return
+
+        # Runtime model platforms are wrapped by several transparent adapters
+        # (ComputerTransientInputPlatform, _BrowserSecretBoundaryPlatform, ...).
+        # Their __getattr__ returns the *same bound subscribe_stream method* from
+        # the underlying StreamingAIPlatform. Deduplicating by the outer wrapper
+        # id therefore subscribes _on_provider_stream again every time another
+        # wrapper/session binding is installed, making every provider delta appear
+        # twice (and corrupting split sticker markers). Key the subscription by
+        # the object that actually owns subscribe_stream instead.
+        owner = getattr(subscribe, "__self__", None)
+        identity = id(owner if owner is not None else platform)
+        if identity in self._streaming_platform_ids:
+            return
+
+        enable()
+        subscribe(self._on_provider_stream)
+        self._streaming_platform_ids.add(identity)
+        self._provider_streaming_enabled = True
 
     def set_session_model(self, session_id: str, platform: Any, *, reasoning=None) -> None:
         super().set_session_model(session_id, platform, reasoning=reasoning)
