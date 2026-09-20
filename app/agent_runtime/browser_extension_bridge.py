@@ -606,7 +606,7 @@ class BrowserExtensionSessionBackend:
             action=action,
             state_revision=self.state_revision,
             tab_id=self._tab_id,
-            state=summarize_browser_state_payload(result, include_dom_excerpt=action != "type_text"),
+            state=summarize_browser_state_payload(result, include_dom_excerpt=action not in {"type_text", "send_text"}),
         )
         return state
 
@@ -624,6 +624,20 @@ class BrowserExtensionSessionBackend:
             "type_text",
             self._target_args({"index": int(index), "text": str(text), "clear": bool(clear)}),
         )
+
+    def click_at(self, x: int, y: int, *, button: str = "left") -> BrowserPageState:
+        return self._call_state(
+            "click_at",
+            self._target_args({"x": int(x), "y": int(y), "button": str(button)}),
+        )
+
+    def send_text(self, text: str) -> BrowserPageState:
+        value = str(text)
+        if not value:
+            raise ValueError("browser send_text must not be empty")
+        if len(value) > 8000:
+            raise ValueError("browser send_text exceeds 8000 characters")
+        return self._call_state("send_text", self._target_args({"text": value}))
 
     def scroll(self, direction: str, amount: int) -> BrowserPageState:
         return self._call_state("scroll", self._target_args({"direction": str(direction), "amount": int(amount)}))
