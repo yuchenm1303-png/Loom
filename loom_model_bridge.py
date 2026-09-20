@@ -676,6 +676,9 @@ def _safe_minimax(
         "id": _managed_profile_id(model),
         "kind": "builtin",
         "name": _managed_display_name(model),
+        "groupId": "minimax",
+        "groupName": "MiniMax",
+        "groupOrder": 10,
         "adapter": "openai-compatible",
         "baseUrl": _legacy_minimax_base_url(environ),
         "model": model,
@@ -715,6 +718,9 @@ def _safe_deepseek(
         "id": _deepseek_profile_id(model),
         "kind": "builtin",
         "name": _deepseek_display_name(model),
+        "groupId": "deepseek",
+        "groupName": "DeepSeek",
+        "groupOrder": 20,
         "adapter": "openai-compatible",
         "baseUrl": _deepseek_base_url(environ),
         "model": model,
@@ -735,6 +741,29 @@ def _safe_managed(model: str, environ: Mapping[str, str] | None = None) -> dict[
         "adapter": "openai-compatible",
         "baseUrl": _managed_relay_base_url(environ),
         "model": model,
+    }
+
+
+def _safe_opencode_go(model: str, *, configured: bool) -> dict[str, Any]:
+    model = str(model or "").strip()
+    if not model:
+        raise ValueError("OpenCode Go model id must not be empty")
+    vision = model.casefold() in {"deepseek-v4-flash-vision-exp", "mimo-v2-omni"}
+    return {
+        "selection": _opencode_go_selection_for_model(model),
+        "id": "opencode-go-" + hashlib.sha256(model.casefold().encode("utf-8")).hexdigest()[:12],
+        "kind": "builtin",
+        "name": _opencode_go_display_name(model),
+        "groupId": "opencode-go",
+        "groupName": "OpenCode Go",
+        "groupOrder": 30,
+        "family": _opencode_go_family(model),
+        "protocol": opencode_go_protocol(model),
+        "configured": bool(configured),
+        "adapter": "opencode-go",
+        "baseUrl": OPENCODE_GO_BASE_URL,
+        "model": model,
+        "vision": vision,
     }
 
 
@@ -759,6 +788,9 @@ def _safe_saved(entry: StoredModel) -> dict[str, Any]:
         "id": entry.model_id,
         "kind": "saved",
         "name": entry.display_name,
+        "groupId": f"saved:{entry.model_id}",
+        "groupName": "Custom APIs",
+        "groupOrder": 100,
         "adapter": entry.adapter.value,
         "baseUrl": entry.base_url,
         "model": entry.model,
