@@ -53,6 +53,40 @@ OPENCODE_GO_FALLBACK_MODEL_IDS = (
     "omen-alpha",
 )
 CQU_DEFAULT_MODEL = "cqu-default"
+# OpenCode Go models that accepted an image when asked, recorded 2026-09-20 by
+# `python scripts/probe_opencode_vision.py`.  The listing carries no modality
+# field, so this is the gateway's own answer to one image request per model
+# rather than a reading of published metadata -- rerun the probe and refresh
+# this set when OpenCode adds or renames models.
+#
+# Everything absent here either said so plainly ("Model only supports text":
+# deepseek-v4-flash; "does not support image": glm-5.1/5.2/5.3; grok-4.6, which
+# serves text on the same endpoint and fails only when an image is attached) or
+# was unreachable at probe time and so cannot be used at all, with or without
+# images.  `mimo-v2-omni` is the one carried over unverified: it was already
+# declared here before the probe existed and was down when the probe ran.
+_OPENCODE_GO_VISION_MODELS = frozenset(
+    {
+        "deepseek-flash",
+        "deepseek-v4-flash-vision-exp",
+        "deepseek-v4-pro",
+        "deepseek-v4.1-flash",
+        "glm-5.3-flash",
+        "gpt-5.6-luna",
+        "kimi-k2.6",
+        "kimi-k2.7-code",
+        "kimi-k3",
+        "longcat-2.0",
+        "mimo-v2-omni",
+        "mimo-v2.5",
+        "minimax-m2.5",
+        "minimax-m2.7",
+        "minimax-m3",
+        "muse-spark-1.2-contributor",
+        "muse-spark-1.3-contributor",
+        "omen-alpha",
+    }
+)
 # Context limits a provider published about its own models, keyed by folded
 # model id and filled in as `/models` listings are fetched. Empty until a
 # provider actually says something, so nothing here is ever a guess.
@@ -754,15 +788,6 @@ def _safe_opencode_go(model: str, *, configured: bool) -> dict[str, Any]:
     model = str(model or "").strip()
     if not model:
         raise ValueError("OpenCode Go model id must not be empty")
-    # OpenCode's `/models` listing publishes ids and nothing else -- no
-    # modalities, no capability block.  A two-model allowlist here was not a
-    # reading of that listing, it was a guess that silently demoted every other
-    # model to "cannot see images": the composer dropped the attachment before
-    # sending and the agent was told nothing arrived.  An undeclared capability
-    # stays undeclared, exactly like the context window above, which for this
-    # field means matching every other group in this module and leaving the
-    # decision to the provider, which does answer -- with an error on the one
-    # request that actually carries an image.
     profile = {
         "selection": _opencode_go_selection_for_model(model),
         "id": "opencode-go-" + hashlib.sha256(model.casefold().encode("utf-8")).hexdigest()[:12],
@@ -777,7 +802,7 @@ def _safe_opencode_go(model: str, *, configured: bool) -> dict[str, Any]:
         "adapter": "opencode-go",
         "baseUrl": OPENCODE_GO_BASE_URL,
         "model": model,
-        "vision": True,
+        "vision": model.casefold() in _OPENCODE_GO_VISION_MODELS,
     }
     discovered = _discovered_context_limits(model)
     if discovered is not None:
