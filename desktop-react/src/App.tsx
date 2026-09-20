@@ -7,6 +7,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
+import { AccountDialog } from "./components/AccountDialog";
 import { Composer } from "./components/Composer";
 import { Inspector } from "./components/Inspector";
 import { LanguageSettingsDock } from "./components/LanguageSettingsDock";
@@ -33,6 +34,7 @@ import {
   readShortcutSettings,
   type ShortcutSettings,
 } from "./keyboardShortcuts";
+import { useAccount } from "./state/useAccount";
 import { useLoom } from "./state/useLoom";
 import type { ThreadRecord, TranscriptItem } from "./types/loom";
 
@@ -150,6 +152,7 @@ function clearPanelWidth(key: string): void {
 
 export default function App() {
   const loom = useLoom();
+  const account = useAccount();
   const { t } = useI18n();
   const shellRef = useRef<HTMLDivElement | null>(null);
   const resizeRef = useRef<ResizeSession | null>(null);
@@ -164,6 +167,7 @@ export default function App() {
   }, [inspectorOpen]);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [sidebarWidth, setSidebarWidth] = useState(() => readPanelWidth(
@@ -684,6 +688,8 @@ export default function App() {
           inspectorOpen={inspectorVisible}
           reviewOpen={reviewOpen}
           reviewCount={changedFileCount}
+          accountAuthenticated={account.account.authenticated}
+          onOpenAccount={() => setAccountOpen(true)}
           onOpenSettings={() => setSettingsOpen(true)}
           onToggleSidebar={() => setSidebarOpen((open) => !open)}
           onToggleInspector={toggleInspector}
@@ -769,6 +775,17 @@ export default function App() {
       />
       <ReviewWorkspace items={loom.items} open={reviewOpen} onClose={() => setReviewOpen(false)} />
       <ReviewInteractionBridge onOpen={focusReviewFile} />
+      <AccountDialog
+        open={accountOpen}
+        account={account.account}
+        ready={account.ready}
+        busy={account.busy}
+        error={account.error}
+        onClose={() => setAccountOpen(false)}
+        onLogin={account.login}
+        onRegister={account.register}
+        onLogout={account.logout}
+      />
     </div>
   );
 }

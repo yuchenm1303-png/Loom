@@ -1,0 +1,308 @@
+.thread-account-button {
+  position: relative;
+}
+
+.thread-account-button.signed-in {
+  color: var(--text, #eef2f5);
+}
+
+.thread-account-dot {
+  position: absolute;
+  right: 5px;
+  bottom: 5px;
+  width: 5px;
+  height: 5px;
+  border: 1px solid var(--panel, #11151a);
+  border-radius: 50%;
+  background: #58bd88;
+  box-shadow: 0 0 0 2px rgba(88, 189, 136, .08);
+}
+
+.loom-account-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(5, 8, 12, .48);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.loom-account-dialog {
+  position: relative;
+  width: min(430px, calc(100vw - 32px));
+  padding: 28px;
+  border: 1px solid color-mix(in srgb, var(--border, #2a3139) 86%, transparent);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--panel, #11151a) 96%, transparent);
+  box-shadow: 0 28px 90px rgba(0, 0, 0, .34);
+}
+
+.loom-account-close {
+  position: absolute;
+  top: 15px;
+  right: 15px;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  color: var(--muted, #8b96a1);
+  cursor: pointer;
+}
+
+.loom-account-close:hover {
+  background: color-mix(in srgb, currentColor 8%, transparent);
+  color: var(--text, #eef2f5);
+}
+
+.loom-account-header {
+  display: grid;
+  grid-template-columns: 42px 1fr;
+  gap: 13px;
+  padding-right: 26px;
+}
+
+.loom-account-mark {
+  width: 42px;
+  height: 42px;
+  border: 1px solid color-mix(in srgb, var(--border, #2a3139) 88%, transparent);
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  color: var(--text, #eef2f5);
+  background: color-mix(in srgb, var(--panel-strong, #171c22) 92%, transparent);
+}
+
+.loom-account-header h2 {
+  margin: 0;
+  color: var(--text, #eef2f5);
+  font-size: 1.14rem;
+  font-weight: 680;
+  letter-spacing: -.025em;
+}
+
+.loom-account-header p {
+  margin: 6px 0 0;
+  color: var(--muted, #87929d);
+  font-size: .76rem;
+  line-height: 1.55;
+}
+
+.loom-account-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  margin-top: 24px;
+  padding: 4px;
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--text, #fff) 5%, transparent);
+}
+
+.loom-account-tabs button {
+  height: 34px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted, #8c97a2);
+  font: inherit;
+  font-size: .75rem;
+  font-weight: 620;
+  cursor: pointer;
+}
+
+.loom-account-tabs button.active {
+  background: color-mix(in srgb, var(--panel-strong, #1b2026) 96%, transparent);
+  color: var(--text, #eef2f5);
+  box-shadow: 0 1px 4px rgba(0,0,0,.16);
+}
+
+.loom-account-form {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  margin-top: 19px;
+}
+
+.loom-account-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  color: var(--muted-strong, #a5afb8);
+  font-size: .73rem;
+  font-weight: 610;
+}
+
+.loom-account-form input {
+  height: 43px;
+  padding: 0 12px;
+  border: 1px solid color-mix(in srgb, var(--border, #303842) 95%, transparent);
+  border-radius: 10px;
+  outline: none;
+  background: color-mix(in srgb, var(--panel-strong, #0c1014) 94%, transparent);
+  color: var(--text, #eef2f5);
+  font: inherit;
+  font-size: .84rem;
+}
+
+.loom-account-form input:focus {
+  border-color: color-mix(in srgb, #58a6d8 70%, var(--border, #303842));
+  box-shadow: 0 0 0 3px rgba(66, 153, 211, .11);
+}
+
+.loom-account-primary-button,
+.loom-account-secondary-button {
+  min-height: 42px;
+  border-radius: 10px;
+  font: inherit;
+  font-size: .78rem;
+  font-weight: 680;
+  cursor: pointer;
+}
+
+.loom-account-primary-button {
+  margin-top: 2px;
+  border: 1px solid color-mix(in srgb, var(--text, #f0f3f5) 88%, transparent);
+  background: var(--text, #eef2f5);
+  color: var(--background, #11151a);
+}
+
+.loom-account-primary-button:disabled,
+.loom-account-secondary-button:disabled {
+  opacity: .55;
+  cursor: wait;
+}
+
+.loom-account-error {
+  margin: 0;
+  padding: 9px 10px;
+  border: 1px solid rgba(211, 91, 103, .24);
+  border-radius: 9px;
+  background: rgba(211, 91, 103, .07);
+  color: #d97983;
+  font-size: .72rem;
+  line-height: 1.45;
+}
+
+.loom-account-footnote,
+.loom-account-security-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  color: var(--muted, #7f8a95);
+  font-size: .68rem;
+  line-height: 1.5;
+}
+
+.loom-account-footnote {
+  margin: 16px 0 0;
+}
+
+.loom-account-footnote svg,
+.loom-account-security-note svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+.loom-account-state,
+.loom-account-unconfigured {
+  margin-top: 24px;
+  padding: 18px;
+  border: 1px solid color-mix(in srgb, var(--border, #303842) 84%, transparent);
+  border-radius: 12px;
+  color: var(--muted, #8b96a1);
+  background: color-mix(in srgb, var(--panel-strong, #10151a) 90%, transparent);
+  font-size: .76rem;
+}
+
+.loom-account-unconfigured {
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  gap: 7px 10px;
+}
+
+.loom-account-unconfigured strong {
+  color: var(--text, #eef2f5);
+  font-size: .79rem;
+}
+
+.loom-account-unconfigured p {
+  grid-column: 1 / -1;
+  margin: 4px 0 0;
+  line-height: 1.55;
+}
+
+.loom-account-signed-in {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  margin-top: 24px;
+}
+
+.loom-account-profile {
+  display: grid;
+  grid-template-columns: 42px 1fr 20px;
+  gap: 12px;
+  align-items: center;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--border, #303842) 85%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--panel-strong, #10151a) 91%, transparent);
+}
+
+.loom-account-avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, #4d99ca 18%, var(--panel-strong, #111));
+  color: #79b7df;
+  font-weight: 720;
+}
+
+.loom-account-profile div {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.loom-account-profile strong,
+.loom-account-profile span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.loom-account-profile strong {
+  color: var(--text, #eef2f5);
+  font-size: .79rem;
+}
+
+.loom-account-profile div span {
+  color: var(--muted, #87929d);
+  font-size: .69rem;
+}
+
+.loom-account-profile > svg {
+  color: #5ebf8e;
+}
+
+.loom-account-security-note {
+  padding: 0 3px;
+}
+
+.loom-account-secondary-button {
+  border: 1px solid color-mix(in srgb, var(--border, #303842) 90%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: transparent;
+  color: var(--text, #e8edf1);
+}
