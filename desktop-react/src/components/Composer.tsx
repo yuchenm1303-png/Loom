@@ -61,11 +61,13 @@ function SteeringComposer({ onSend, onInterrupt }: ComposerProps) {
     }
 
     setValue("");
-    setAcknowledged(true);
     setPendingSends((current) => current + 1);
     requestAnimationFrame(() => textareaRef.current?.focus());
 
     void request
+      .then(() => {
+        setAcknowledged(true);
+      })
       .catch((cause) => {
         setAcknowledged(false);
         setError(cause instanceof Error ? cause.message : String(cause));
@@ -170,9 +172,11 @@ function SteeringComposer({ onSend, onInterrupt }: ComposerProps) {
         </div>
       </form>
       <div className="composer-hint">
-        {acknowledged
-          ? (zh ? "已收到，Loom 将根据补充要求继续。" : "Received. Loom will continue with your guidance.")
-          : (zh ? "可以随时补充要求，或点击停止结束任务。" : "Add guidance anytime, or stop to end this task.")}
+        {pendingSends > 0
+          ? (zh ? "消息已立即显示，正在后台确认…" : "Shown immediately · confirming in the background…")
+          : acknowledged
+            ? (zh ? "已确认，Loom 将根据补充要求继续。" : "Confirmed. Loom will continue with your guidance.")
+            : (zh ? "可以随时补充要求，或点击停止结束任务。" : "Add guidance anytime, or stop to end this task.")}
       </div>
     </div>
   );
