@@ -1,15 +1,21 @@
 from __future__ import annotations
 
-from .execution_control import check_cancelled, note_progress
-
 import json
 import threading
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable
 
-from .contracts import ChatRequest, ModelResponse, ModelUsage, StreamEvent, StreamEventKind, ToolCall
+from .contracts import (
+    ChatRequest,
+    ModelResponse,
+    ModelUsage,
+    StreamEvent,
+    StreamEventKind,
+    ToolCall,
+)
 from .errors import AIEmptyResponseError, AIResponseError, AITransportError
+from .execution_control import check_cancelled, note_progress
 from .platform import AIPlatform
 
 
@@ -187,6 +193,7 @@ class StreamingAIPlatform(AIPlatform):
         if not self.prefer_streaming:
             return super().execute_chat(profile_id, request)
 
+        request = self._normalize_chat_request(profile_id, request)
         self._require_chat_capabilities(profile_id, request, streaming=True)
         profile, backend = self._backend_for(profile_id)
         stream_method = getattr(backend, "stream", None)

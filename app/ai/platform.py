@@ -1,11 +1,22 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from dataclasses import replace
 from typing import Any, Protocol
 
 from .capabilities import ModelCapability
-from .contracts import ChatRequest, ModelResponse, StreamEvent, StructuredRequest
+from .contracts import (
+    AIMessage,
+    ChatRequest,
+    ImagePart,
+    ModelResponse,
+    StreamEvent,
+    StructuredRequest,
+    TextPart,
+)
 from .profiles import ModelProfile, ModelRegistry
+
+_UNSUPPORTED_IMAGE_PLACEHOLDER = "[image omitted because the current model does not support image input]"
 
 
 class StructuredModelBackend(Protocol):
@@ -68,7 +79,41 @@ class AIPlatform:
             required.add(ModelCapability.STRUCTURED_OUTPUT)
         return self.registry.require(profile_id, capabilities=required)
 
+    def _normalize_chat_request(self, profile_id: str, request: ChatRequest) -> ChatRequest:
+        """Project unsupported media out of a request without mutating history.
+
+        A durable conversation can legitimately contain images from an earlier
+        turn and later continue on a text-only model.  Capability validation
+        must describe the request that will actually be sent, not every medium
+        ever stored in the transcript.  Match Codex's context normalization:
+        retain the message boundary and replace each unsupported image with a
+        visible text fragment in this request copy only.
+        """
+
+        profile = self.registry.get(profile_id)
+        if ModelCapability.VISION in profile.capabilities or not request.uses_vision:
+            return request
+
+        changed = False
+        messages: list[AIMessage] = []
+        for message in request.messages:
+            if not message.uses_vision:
+                messages.append(message)
+                continue
+            assert not isinstance(message.content, str)
+            content = tuple(
+                TextPart(_UNSUPPORTED_IMAGE_PLACEHOLDER)
+                if isinstance(part, ImagePart)
+                else part
+                for part in message.content
+            )
+            messages.append(replace(message, content=content))
+            changed = True
+
+        return replace(request, messages=tuple(messages)) if changed else request
+
     def execute_chat(self, profile_id: str, request: ChatRequest) -> ModelResponse:
+        request = self._normalize_chat_request(profile_id, request)
         self._require_chat_capabilities(profile_id, request)
         _profile, backend = self._backend_for(profile_id)
         complete = getattr(backend, "complete", None)
@@ -84,6 +129,9 @@ class AIPlatform:
         profile_id: str,
         request: StructuredRequest,
     ) -> dict[str, Any]:
+        normalized_chat = self._normalize_chat_request(profile_id, request.chat)
+        if normalized_chat is not request.chat:
+            request = replace(request, chat=normalized_chat)
         self._require_chat_capabilities(profile_id, request.chat, structured=True)
         _profile, backend = self._backend_for(profile_id)
         complete_structured = getattr(backend, "complete_structured", None)
@@ -95,6 +143,7 @@ class AIPlatform:
         return result
 
     def stream_chat(self, profile_id: str, request: ChatRequest) -> Iterator[StreamEvent]:
+        request = self._normalize_chat_request(profile_id, request)
         self._require_chat_capabilities(profile_id, request, streaming=True)
         _profile, backend = self._backend_for(profile_id)
         stream = getattr(backend, "stream", None)
