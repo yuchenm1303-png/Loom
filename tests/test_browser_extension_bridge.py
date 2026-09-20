@@ -146,7 +146,12 @@ def test_extension_bridge_serves_long_poll_commands_and_results():
 def test_extension_bridge_timeout_removes_command_before_late_reconnect():
     bridge = BrowserExtensionBridge(port=0, token="test-token", command_timeout=1, poll_timeout=1)
     try:
-        with pytest.raises(BrowserError, match="did not respond"):
+        # Nothing ever polled this bridge, so the message is about the extension
+        # not collecting commands. A command the extension did collect and then
+        # failed to finish says something different on purpose - sending someone
+        # to reinstall a working extension because a page was slow is how a real
+        # 45-second browser_open got reported as a broken install.
+        with pytest.raises(BrowserError, match="not collecting commands"):
             bridge.call("click", {"index": 4})
 
         status = bridge.status()
@@ -166,6 +171,55 @@ def test_extension_bridge_timeout_removes_command_before_late_reconnect():
         assert payload == {"ok": True, "command": None}
     finally:
         bridge.stop()
+
+
+def test_a_command_nobody_collects_fails_long_before_the_command_timeout():
+    """An absent extension used to cost the full 45 seconds, every call.
+
+    Measured in real sessions: three browser_open calls spent 45-47s each to
+    report a broken install. A live extension re-polls the moment each poll
+    returns, so it stamps the bridge at least once per poll_timeout; silence
+    past that window means the queue has no reader and waiting longer only
+    delays the same answer.
+    """
+
+    bridge = BrowserExtensionBridge(port=0, token="test-token", command_timeout=30, poll_timeout=1)
+    started = time.monotonic()
+    try:
+        with pytest.raises(BrowserError, match="not collecting commands"):
+            bridge.call("state", {})
+    finally:
+        bridge.stop()
+    assert time.monotonic() - started < 10, "an absent extension still waits out the command timeout"
+
+
+def test_a_command_the_extension_collected_keeps_the_whole_window():
+    """A slow page is not a broken install, and must not be reported as one.
+
+    The old timeout said "install/enable the extension" whichever had happened,
+    so a page that took too long sent the user to reinstall something that was
+    working. The phase was already computed for the log; only the message did
+    not use it.
+    """
+
+    bridge = BrowserExtensionBridge(port=0, token="test-token", command_timeout=3, poll_timeout=1)
+
+    def collect() -> None:
+        time.sleep(0.3)
+        with bridge._condition:
+            for command in bridge._commands:
+                command.dispatched_at = time.monotonic()
+            bridge._last_poll_at = time.monotonic()
+
+    threading.Thread(target=collect, daemon=True).start()
+    started = time.monotonic()
+    try:
+        with pytest.raises(BrowserError, match="collected this click command but did not finish"):
+            bridge.call("click", {"index": 1})
+    finally:
+        bridge.stop()
+    # It waited: the page was given its whole window rather than failed early.
+    assert time.monotonic() - started >= 2.5
 
 
 def test_extension_bridge_does_not_enable_page_cors():

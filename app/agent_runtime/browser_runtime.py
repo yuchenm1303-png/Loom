@@ -294,11 +294,18 @@ class BrowserSessionStore(BrowserSessionManager):
         super().__init__(*args, **kwargs)
         self.filter_unsafe_background_tabs = bool(filter_unsafe_background_tabs)
 
-    def _validated_state(self, state: BrowserPageState, options: BrowserLaunchOptions) -> BrowserPageState:
-        # The active tab is always fail-closed. CDP attachment creates/switches to a
-        # neutral about:blank work tab before the first state capture, so any later
-        # active private/internal destination indicates an actual navigation escape.
-        checked = super()._validated_state(state, options)
+    def _validated_state(
+        self,
+        state: BrowserPageState,
+        options: BrowserLaunchOptions,
+        *,
+        origin: str = "update",
+    ) -> BrowserPageState:
+        # The active tab is always fail-closed once Loom is driving. CDP attachment
+        # creates/switches to a neutral about:blank work tab before the first state
+        # capture, so any later active private/internal destination indicates an
+        # actual navigation escape.
+        checked = super()._validated_state(state, options, origin=origin)
         safe_tabs: list[dict[str, str]] = []
         for tab in checked.tabs:
             url = str(tab.get("url", "")) if isinstance(tab, dict) else ""
@@ -308,7 +315,13 @@ class BrowserSessionStore(BrowserSessionManager):
             try:
                 self.url_policy.validate(url, allowed_domains=options.allowed_domains)
             except BrowserURLPolicyError:
-                if self.filter_unsafe_background_tabs or options.external_browser:
+                # At start the tab list is whatever the browser already had open.
+                # A freshly launched browser-use profile opens on chrome://new-tab-page,
+                # so refusing the whole session over a background tab refused to
+                # open Loom's own browser - and the user's window always has a few.
+                # Hiding them is what this list already does everywhere else; only
+                # the timing was missing.
+                if origin == "start" or self.filter_unsafe_background_tabs or options.external_browser:
                     # Existing Chrome/Edge can contain localhost, chrome:// and
                     # extension tabs that Loom must neither expose nor control. They
                     # stay open in the user's browser but disappear from model state.

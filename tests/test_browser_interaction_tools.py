@@ -4,7 +4,7 @@ import pytest
 
 from app.agent_runtime.browser_runtime import BrowserRuntime
 from app.agent_runtime.browser_security import BrowserSecurityPolicy
-from app.agent_runtime.browser_session import BrowserLaunchOptions, BrowserPageState
+from app.agent_runtime.browser_session import BrowserError, BrowserLaunchOptions, BrowserPageState
 from app.agent_runtime.contracts import ToolEffect
 from app.agent_runtime.sandbox import SandboxManager, SandboxPolicy
 from app.agent_runtime.storage import FileAgentSessionStore
@@ -182,6 +182,16 @@ def test_richer_browser_tools_are_registered_sensitive_and_revision_scoped(tmp_p
 
 
 def test_extended_element_action_rejects_stale_revision_before_backend_call(tmp_path):
+    """A stale revision never reaches the backend, and comes back recoverable.
+
+    Refusing it is the invariant: the index means nothing against a page the
+    model has not seen. What changed is the shape of the refusal. It used to
+    raise a bare sentence telling the model to call browser_state and retry,
+    which cost two further round trips - and in a real session the model spent
+    the first of them repeating the identical call. The refusal now carries the
+    re-read page, so the next turn can act instead of asking what changed.
+    """
+
     runtime, calls, workspace = _runtime(tmp_path)
     store = runtime.browser_sessions
     assert store is not None
@@ -191,12 +201,82 @@ def test_extended_element_action_rejects_stale_revision_before_backend_call(tmp_
 
     hover = runtime.tools.get("browser_hover")
     assert hover is not None
-    with pytest.raises(RuntimeError, match="stale browser state_revision"):
-        hover.handler(
-            _context(workspace),
-            {"browser_id": managed.browser_id, "index": 1, "state_revision": stale},
-        )
+    result = hover.handler(
+        _context(workspace),
+        {"browser_id": managed.browser_id, "index": 1, "state_revision": stale},
+    )
+    assert result.ok is False
+    assert "stale browser state_revision" in result.content
+    # The whole point of attaching it: the model can pick an index straight away.
+    assert int(result.data["state_revision"]) > stale
+    assert "dom" in result.data
     assert ("hover", 1) not in calls
+    runtime.close()
+
+
+def test_a_replaced_element_comes_back_with_the_page_already_re_read(tmp_path):
+    """The most common browser failure there is: 18 of 104 clicks in real logs.
+
+    The element id is stamped on the DOM node when the page is captured, so any
+    re-render invalidates it even though the button is still on screen in the
+    same place. The old failure was one sentence - call browser_state and retry
+    - which cost three round trips: 35 seconds of wall clock for 0.55 seconds of
+    browser work, with the model spending the first of them repeating the
+    identical call. Re-reading is the cheap part and now travels with the error.
+
+    It stays a failure. Retrying the same index against a re-rendered page is how
+    a click lands on the wrong element, so choosing again is the model's job.
+    """
+
+    runtime, calls, workspace = _runtime(tmp_path)
+    store = runtime.browser_sessions
+    assert store is not None
+    managed = store.start("owner")
+    item = store._owned("owner", managed.browser_id)
+    revision = store.snapshot("owner", managed.browser_id).state_revision
+
+    def stale_click(index: int):
+        calls.append(("click", index))
+        raise BrowserError("Element is no longer available. Refresh browser_state and retry.")
+
+    item.backend.click = stale_click
+
+    click = runtime.tools.get("browser_click")
+    result = click.handler(
+        _context(workspace),
+        {"browser_id": managed.browser_id, "index": 1, "state_revision": revision},
+    )
+
+    assert result.ok is False
+    assert "no longer available" in result.content
+    assert "state_revision" in result.content
+    # The recovery the model would otherwise have spent a turn asking for.
+    assert int(result.data["state_revision"]) > revision
+    assert result.data["dom"]
+    assert ("state",) in calls
+    runtime.close()
+
+
+def test_an_unrelated_browser_failure_is_not_dressed_up_as_a_stale_view(tmp_path):
+    """Only a stale view earns the re-read; everything else raises as before."""
+
+    runtime, calls, workspace = _runtime(tmp_path)
+    store = runtime.browser_sessions
+    managed = store.start("owner")
+    item = store._owned("owner", managed.browser_id)
+    revision = store.snapshot("owner", managed.browser_id).state_revision
+
+    def broken_click(index: int):
+        raise BrowserError("net::ERR_CONNECTION_REFUSED")
+
+    item.backend.click = broken_click
+
+    click = runtime.tools.get("browser_click")
+    with pytest.raises(BrowserError, match="ERR_CONNECTION_REFUSED"):
+        click.handler(
+            _context(workspace),
+            {"browser_id": managed.browser_id, "index": 1, "state_revision": revision},
+        )
     runtime.close()
 
 

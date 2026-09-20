@@ -26,6 +26,14 @@ from .browser_session import (
 
 DEFAULT_EXTENSION_HOST = "127.0.0.1"
 DEFAULT_EXTENSION_PORT = 39222
+# How often a command still waiting re-checks whether anything is there to
+# collect it. Short enough that giving up early is actually early, long enough
+# not to spin.
+_TIMEOUT_POLL_INTERVAL_SECONDS = 1.0
+# Slack on top of poll_timeout before silence counts as "no reader". The
+# extension re-polls the moment each poll returns, so one missed window is
+# already generous.
+_POLL_SILENCE_GRACE_SECONDS = 5.0
 
 
 def _runtime_home() -> Path:
@@ -254,6 +262,37 @@ class BrowserExtensionBridge:
             server.server_close()
         self._log("bridge.stopped")
 
+    def _await_result(self, command: "_BridgeCommand", wait_seconds: float) -> bool:
+        """Wait for a result, giving up early on a command nothing will collect.
+
+        Waiting out the full window was right for a command the extension is
+        working on and wrong for one nobody is there to take: with the extension
+        disabled, every call sat for 45 seconds before failing, which is how a
+        browser_open came to cost three quarters of a minute to report a broken
+        install. A live extension re-polls as soon as each poll returns, so it
+        stamps _last_poll_at at least once per poll_timeout; silence past that
+        window means the queue has no reader.
+        """
+
+        deadline = time.monotonic() + wait_seconds
+        silence_limit = self.poll_timeout + _POLL_SILENCE_GRACE_SECONDS
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return command.event.is_set()
+            if command.event.wait(min(remaining, _TIMEOUT_POLL_INTERVAL_SECONDS)):
+                return True
+            with self._condition:
+                # Dispatched means the extension has it; how long the page then
+                # takes is the page's business and gets the whole window.
+                # dispatched_at is 0.0 until collected, never None.
+                if command.dispatched_at:
+                    continue
+                last_poll = self._last_poll_at
+            silent_for = time.monotonic() - last_poll if last_poll else None
+            if silent_for is None or silent_for > silence_limit:
+                return False
+
     def call(
         self,
         action: str,
@@ -294,7 +333,7 @@ class BrowserExtensionBridge:
             self._commands.append(command)
             self._pending[command.command_id] = command
             self._condition.notify_all()
-        if not command.event.wait(wait_seconds):
+        if not self._await_result(command, wait_seconds):
             with self._condition:
                 # A command that timed out before the extension collected it must
                 # disappear from both indexes. Leaving it in _commands lets an
@@ -305,16 +344,30 @@ class BrowserExtensionBridge:
                     command.cancelled = True
                     self._commands[:] = [queued for queued in self._commands if queued is not command]
                 phase = "dispatched" if command.dispatched_at else "queued"
+                silent_ms = int((time.monotonic() - self._last_poll_at) * 1000) if self._last_poll_at else -1
+            elapsed_ms = int((time.monotonic() - command.created_at) * 1000)
             self._log(
                 "bridge.command.timeout",
                 command_id=command.command_id,
                 action=action_name,
                 phase=phase,
-                elapsed_ms=int((time.monotonic() - command.created_at) * 1000),
+                elapsed_ms=elapsed_ms,
+                poll_silent_ms=silent_ms,
             )
+            # These are different failures and the advice differs. Sending someone
+            # to reinstall a working extension because a page was slow is how a
+            # real 45-second browser_open got reported as a broken install.
+            if phase == "dispatched":
+                raise BrowserError(
+                    f"the browser extension collected this {action_name} command but did not finish it "
+                    f"within {elapsed_ms // 1000}s. The extension is connected; the page is most likely "
+                    "still loading, showing a modal dialog, or blocked on a permission prompt. Retry, or "
+                    "use browser_state to see where the tab actually is."
+                )
             raise BrowserError(
-                "browser extension did not respond. Install/enable extensions/browser-current-tab "
-                "and make sure its bridge URL/token match Loom."
+                "the Loom browser extension is not collecting commands "
+                f"({'never polled this bridge' if silent_ms < 0 else f'last poll {silent_ms // 1000}s ago'}). "
+                "Install/enable extensions/browser-current-tab and make sure its bridge URL/token match Loom."
             )
         elapsed_ms = int((time.monotonic() - command.created_at) * 1000)
         if command.error:

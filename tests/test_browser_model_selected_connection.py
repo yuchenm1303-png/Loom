@@ -166,6 +166,102 @@ def test_an_external_session_hides_privileged_tabs_the_runtime_default_would_rej
     assert [tab["url"] for tab in checked.tabs] == ["https://example.com/"]
 
 
+def _policy_store():
+    """A store with the URL policy and nothing else.
+
+    Deliberately not the `runtime` fixture above: that one needs the browser-use
+    package to hand back a session store, so every test using it is skipped in
+    substance wherever the extra is not installed. Validation is pure policy and
+    needs no backend at all.
+    """
+
+    from app.agent_runtime.browser_runtime import BrowserSessionStore
+
+    return BrowserSessionStore(
+        lambda options: None,
+        url_policy=BrowserSecurityPolicy(resolve_dns=False),
+        filter_unsafe_background_tabs=False,
+    )
+
+
+def test_attaching_to_a_browser_sitting_on_a_new_tab_page_is_not_a_policy_refusal():
+    """Opening the browser failed because of the page it was already on.
+
+    The attached page goes through the same URL policy as a navigation, and a
+    new-tab page is not http, so browser_open raised "browser navigation only
+    allows http/https URLs" - naming, to the model, the perfectly valid https
+    URL it had just asked for. Seen in real sessions six times in thirty
+    seconds, once for a call that passed no URL at all, which no reading of that
+    message could explain. Loom never navigated anywhere; that is simply where
+    the browser was.
+
+    The page still must not be read. Dropping the DOM is what withholds it.
+    """
+
+    from app.agent_runtime.browser_session import BrowserPageState
+
+    store = _policy_store()
+    state = BrowserPageState(
+        url="edge://newtab",
+        title="New tab",
+        dom="<html>whatever the browser's own page contains</html>",
+        tabs=({"tab_id": "1", "url": "edge://newtab"}, {"tab_id": "2", "url": "https://github.com/"}),
+    )
+
+    checked = store._validated_state(state, BrowserLaunchOptions(headless=True), origin="start")
+
+    assert checked.dom == ""
+    assert checked.page_info["recovery"]["action"] == "browser_navigate"
+    assert any("browser_navigate" in message for message in checked.errors)
+    # The tab list is what the browser already had open, not something Loom did.
+    assert [tab["url"] for tab in checked.tabs] == ["https://github.com/"]
+
+
+def test_a_blocked_http_page_keeps_its_address_out_of_the_attached_state():
+    """A browser-internal page can be named; a refused destination cannot.
+
+    Saying "this is edge://newtab" costs nothing and explains the situation. A
+    session scoped to one set of domains must not learn the address of a page
+    outside them just because the user happened to have it open.
+    """
+
+    from app.agent_runtime.browser_session import BrowserPageState
+
+    store = _policy_store()
+    state = BrowserPageState(url="http://192.168.1.1/admin", title="Router admin", dom="<secret>")
+
+    checked = store._validated_state(state, BrowserLaunchOptions(headless=True), origin="start")
+
+    assert checked.url == ""
+    assert checked.title == ""
+    assert checked.dom == ""
+    assert "192.168.1.1" not in " ".join(checked.errors)
+
+
+def test_a_navigation_loom_performs_still_fails_closed():
+    """Tolerating the page it attached to must not tolerate where it goes next.
+
+    This is the boundary the start-time allowance is carved out of: a click that
+    escapes to a private address still tears the session down.
+    """
+
+    from app.agent_runtime.browser_session import BrowserPageState, BrowserURLPolicyError
+
+    store = _policy_store()
+    state = BrowserPageState(url="http://192.168.1.1/admin", title="Router", dom="<secret>")
+
+    with pytest.raises(BrowserURLPolicyError):
+        store._validated_state(state, BrowserLaunchOptions(headless=True))
+
+
+def test_a_refused_url_says_which_url_was_refused():
+    policy = BrowserSecurityPolicy(resolve_dns=False)
+    with pytest.raises(Exception, match="edge://newtab"):
+        policy.validate("edge://newtab")
+    with pytest.raises(Exception, match="empty URL"):
+        policy.validate("")
+
+
 def test_attachable_browsers_are_not_probed_until_the_user_allows_it(runtime):
     assert runtime.browser_attachable_browsers() == ()
 

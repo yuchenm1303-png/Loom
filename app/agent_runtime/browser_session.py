@@ -6,6 +6,7 @@ import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Protocol, Sequence
+from urllib.parse import urlsplit
 
 from .storage import utc_now
 
@@ -252,7 +253,7 @@ class BrowserSessionManager:
         try:
             backend = factory(options)
             state = backend.start()
-            state = self._validated_state(state, options)
+            state = self._validated_state(state, options, origin="start")
             now = utc_now()
             managed = ManagedBrowserSession(
                 browser_id=str(uuid.uuid4()),
@@ -440,12 +441,84 @@ class BrowserSessionManager:
         item.updated_at = utc_now()
         return checked
 
-    def _validated_state(self, state: BrowserPageState, options: BrowserLaunchOptions) -> BrowserPageState:
+    def _validated_state(
+        self,
+        state: BrowserPageState,
+        options: BrowserLaunchOptions,
+        *,
+        origin: str = "update",
+    ) -> BrowserPageState:
         if not isinstance(state, BrowserPageState):
             raise TypeError("browser backend must return BrowserPageState")
         if state.url and state.url != "about:blank":
-            self.url_policy.validate(state.url, allowed_domains=options.allowed_domains)
+            try:
+                self.url_policy.validate(state.url, allowed_domains=options.allowed_domains)
+            except BrowserURLPolicyError as exc:
+                # Where the browser already was is not a navigation Loom made,
+                # and refusing the attach over it meant the browser could not be
+                # opened at all while the user happened to be sitting on a new
+                # tab page. What came back said only that http/https was
+                # required, so the model retried the URL it had asked for -
+                # observed six times in thirty seconds, once with no URL at all,
+                # which no reading of that message could explain.
+                #
+                # The page still must not be read. Dropping the DOM is what
+                # withholds it; the session survives, and browser_navigate moves
+                # somewhere Loom may actually work. A navigation Loom performs
+                # later is a different matter and still fails closed below.
+                if origin != "start":
+                    raise
+                return _unreadable_start_state(state, exc)
         return state
+
+
+def _browser_internal(url: str) -> bool:
+    """A page belonging to the browser itself - a new tab, settings, devtools.
+
+    These carry no site content, so naming one back costs nothing and tells the
+    model exactly why the page cannot be read. A blocked http(s) destination is
+    the opposite case: the host is the thing policy refused, and a session
+    scoped to one set of domains must not learn the address of a page outside
+    them just because the user had it open.
+    """
+
+    scheme = urlsplit(str(url or "")).scheme.casefold()
+    return bool(scheme) and scheme not in {"http", "https"}
+
+
+def _unreadable_start_state(state: BrowserPageState, reason: Exception) -> BrowserPageState:
+    """The attached page, with the page itself withheld.
+
+    Loom is connected and every other tool works; only this one page is off
+    limits. Saying so - and saying what to do instead - is the difference
+    between one browser_navigate and a retry loop against an error that named
+    no URL. The shape follows what the extension already returns for a
+    privileged page it cannot inject into.
+    """
+
+    internal = _browser_internal(state.url)
+    info = dict(state.page_info or {})
+    info["readable"] = False
+    info["recovery"] = {
+        "action": "browser_navigate",
+        "automatic": True,
+        "creates_loom_work_tab": False,
+        "reason": "attached_page_outside_policy",
+    }
+    detail = str(reason) if internal else "this page is outside the policy for this browser session"
+    return BrowserPageState(
+        url=state.url if internal else "",
+        title=state.title if internal else "",
+        dom="",
+        tabs=state.tabs,
+        page_info=info,
+        errors=tuple(state.errors)
+        + (
+            f"Loom attached to the browser but cannot read the page it was on: {detail}. "
+            "The browser session is open and working - continue automatically with browser_navigate "
+            "to the destination you need. Do not ask the user to switch tabs.",
+        ),
+    )
 
 
 def _key(value: str, name: str) -> str:

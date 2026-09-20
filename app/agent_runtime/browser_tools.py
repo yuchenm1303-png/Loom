@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import uuid
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable
 
 from .browser_session import BrowserTextNotFoundError
 from .contracts import ToolEffect
@@ -35,6 +35,66 @@ def _snapshot_result(
     extra: dict[str, Any] | None = None,
 ) -> ToolResult:
     return ToolResult(ok=True, content=message, data={**snapshot.to_dict(), **(extra or {})})
+
+
+# The three ways the model's view of a page goes stale: the DOM node behind an
+# index was replaced, the index is gone entirely, or the revision it held has
+# been superseded. All three are the same situation to recover from.
+_STALE_VIEW_MARKERS = (
+    "element is no longer available",
+    "element index is not available",
+    "stale browser state_revision",
+)
+
+
+def _is_stale_view(error: Exception) -> bool:
+    text = str(error).casefold()
+    return any(marker in text for marker in _STALE_VIEW_MARKERS)
+
+
+def _with_fresh_view(
+    context: ToolContext,
+    store: "BrowserSessionStore",
+    browser_id: str,
+    action: Callable[[], ToolResult],
+) -> ToolResult:
+    """Run an element action; when the view is stale, fail with the current page.
+
+    A stale view used to come back as one sentence telling the model to call
+    browser_state and retry. Measured on a real session, that cost three round
+    trips - 35 seconds of wall clock for 0.55 seconds of actual browser work -
+    and the model spent the first of them repeating the identical call, because
+    nothing in the message distinguished "your indexes are old" from "that click
+    did not land". Re-reading the page is the cheap part, so it happens here and
+    travels back attached to the failure: the next turn can act instead of
+    asking what changed.
+
+    Still a failure, deliberately. Retrying the same index against a re-rendered
+    page is how a click lands on the wrong element, so choosing again is the
+    model's job.
+    """
+
+    try:
+        return action()
+    except Exception as exc:
+        if not _is_stale_view(exc):
+            raise
+        try:
+            snapshot = store.snapshot(context.session_id, browser_id, refresh=True)
+        except Exception:
+            # The re-read is a courtesy. If the page cannot be read at all the
+            # original error is the honest one to report.
+            raise exc from None
+        return ToolResult(
+            ok=False,
+            content=(
+                f"{exc} Loom has already re-read the page: this result carries the current state at "
+                f"state_revision {snapshot.state_revision}. Choose the element again from the indexes "
+                "below and send the next action with that revision. Do not repeat the previous call "
+                "unchanged - the index it used no longer points at what you saw."
+            ),
+            data=snapshot.to_dict(),
+        )
 
 
 _MAX_EVAL_VALUE_CHARS = 30_000
@@ -328,15 +388,18 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
         context.raise_if_cancelled()
         store = _store(runtime)
         browser_id = str(arguments["browser_id"])
-        store.ensure_revision(context.session_id, browser_id, int(arguments["state_revision"]))
-        store.click(context.session_id, browser_id, int(arguments["index"]))
-        return _snapshot_result(store.snapshot(context.session_id, browser_id), "Browser click completed.")
+
+        def run() -> ToolResult:
+            store.ensure_revision(context.session_id, browser_id, int(arguments["state_revision"]))
+            store.click(context.session_id, browser_id, int(arguments["index"]))
+            return _snapshot_result(store.snapshot(context.session_id, browser_id), "Browser click completed.")
+
+        return _with_fresh_view(context, store, browser_id, run)
 
     def type_text(context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
         context.raise_if_cancelled()
         store = _store(runtime)
         browser_id = str(arguments["browser_id"])
-        store.ensure_revision(context.session_id, browser_id, int(arguments["state_revision"]))
         text = str(arguments["text"])
         if text.startswith(_RETIRED_TRANSIENT_PREFIX):
             raise ValueError(
@@ -346,76 +409,97 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
             )
         if len(text) > 20_000:
             raise ValueError("browser_type text exceeds 20,000 characters")
-        store.type_text(
-            context.session_id,
-            browser_id,
-            int(arguments["index"]),
-            text,
-            clear=bool(arguments.get("clear", True)),
-        )
-        return _snapshot_result(store.snapshot(context.session_id, browser_id), "Browser text input completed.")
+
+        def run() -> ToolResult:
+            store.ensure_revision(context.session_id, browser_id, int(arguments["state_revision"]))
+            store.type_text(
+                context.session_id,
+                browser_id,
+                int(arguments["index"]),
+                text,
+                clear=bool(arguments.get("clear", True)),
+            )
+            return _snapshot_result(store.snapshot(context.session_id, browser_id), "Browser text input completed.")
+
+        return _with_fresh_view(context, store, browser_id, run)
 
     def hover(context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
         context.raise_if_cancelled()
         store = _store(runtime)
         browser_id = str(arguments["browser_id"])
-        store.ensure_revision(context.session_id, browser_id, int(arguments["state_revision"]))
-        snapshot = _backend_snapshot_action(
-            store,
-            context.session_id,
-            browser_id,
-            "hover",
-            int(arguments["index"]),
-        )
-        return _snapshot_result(snapshot, "Browser hover completed.")
+
+        def run() -> ToolResult:
+            store.ensure_revision(context.session_id, browser_id, int(arguments["state_revision"]))
+            snapshot = _backend_snapshot_action(
+                store,
+                context.session_id,
+                browser_id,
+                "hover",
+                int(arguments["index"]),
+            )
+            return _snapshot_result(snapshot, "Browser hover completed.")
+
+        return _with_fresh_view(context, store, browser_id, run)
 
     def press_key(context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
         context.raise_if_cancelled()
         store = _store(runtime)
         browser_id = str(arguments["browser_id"])
-        store.ensure_revision(context.session_id, browser_id, int(arguments["state_revision"]))
         key = str(arguments["key"] or "").strip()
         if not key:
             raise ValueError("browser_press key must not be empty")
-        snapshot = _backend_snapshot_action(
-            store,
-            context.session_id,
-            browser_id,
-            "press_key",
-            key,
-        )
-        return _snapshot_result(snapshot, "Browser key press completed.")
+
+        def run() -> ToolResult:
+            store.ensure_revision(context.session_id, browser_id, int(arguments["state_revision"]))
+            snapshot = _backend_snapshot_action(
+                store,
+                context.session_id,
+                browser_id,
+                "press_key",
+                key,
+            )
+            return _snapshot_result(snapshot, "Browser key press completed.")
+
+        return _with_fresh_view(context, store, browser_id, run)
 
     def select_option(context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
         context.raise_if_cancelled()
         store = _store(runtime)
         browser_id = str(arguments["browser_id"])
-        store.ensure_revision(context.session_id, browser_id, int(arguments["state_revision"]))
         value = str(arguments["value"])
-        snapshot = _backend_snapshot_action(
-            store,
-            context.session_id,
-            browser_id,
-            "select_option",
-            int(arguments["index"]),
-            value,
-        )
-        return _snapshot_result(snapshot, "Browser dropdown selection completed.")
+
+        def run() -> ToolResult:
+            store.ensure_revision(context.session_id, browser_id, int(arguments["state_revision"]))
+            snapshot = _backend_snapshot_action(
+                store,
+                context.session_id,
+                browser_id,
+                "select_option",
+                int(arguments["index"]),
+                value,
+            )
+            return _snapshot_result(snapshot, "Browser dropdown selection completed.")
+
+        return _with_fresh_view(context, store, browser_id, run)
 
     def drag(context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
         context.raise_if_cancelled()
         store = _store(runtime)
         browser_id = str(arguments["browser_id"])
-        store.ensure_revision(context.session_id, browser_id, int(arguments["state_revision"]))
-        snapshot = _backend_snapshot_action(
-            store,
-            context.session_id,
-            browser_id,
-            "drag",
-            int(arguments["source_index"]),
-            int(arguments["target_index"]),
-        )
-        return _snapshot_result(snapshot, "Browser drag-and-drop completed.")
+
+        def run() -> ToolResult:
+            store.ensure_revision(context.session_id, browser_id, int(arguments["state_revision"]))
+            snapshot = _backend_snapshot_action(
+                store,
+                context.session_id,
+                browser_id,
+                "drag",
+                int(arguments["source_index"]),
+                int(arguments["target_index"]),
+            )
+            return _snapshot_result(snapshot, "Browser drag-and-drop completed.")
+
+        return _with_fresh_view(context, store, browser_id, run)
 
     def scroll(context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
         context.raise_if_cancelled()
@@ -885,23 +969,27 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
     def dropdown_options(context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
         store = _store(runtime)
         browser_id = str(arguments["browser_id"])
-        store.ensure_revision(context.session_id, browser_id, int(arguments["state_revision"]))
-        item = store._owned(context.session_id, browser_id)
-        reader = getattr(item.backend, "dropdown_options", None)
-        if not callable(reader):
-            raise RuntimeError(
-                f"browser backend {item.backend.backend_name!r} does not support dropdown_options"
+
+        def run() -> ToolResult:
+            store.ensure_revision(context.session_id, browser_id, int(arguments["state_revision"]))
+            item = store._owned(context.session_id, browser_id)
+            reader = getattr(item.backend, "dropdown_options", None)
+            if not callable(reader):
+                raise RuntimeError(
+                    f"browser backend {item.backend.backend_name!r} does not support dropdown_options"
+                )
+            options = list(reader(int(arguments["index"])))
+            return ToolResult(
+                ok=True,
+                content=(
+                    f"Read {len(options)} option(s). Pass one option's text to browser_select."
+                    if options
+                    else "That element exposed no options; it may not be a select."
+                ),
+                data={"browser_id": browser_id, "index": int(arguments["index"]), "options": options},
             )
-        options = list(reader(int(arguments["index"])))
-        return ToolResult(
-            ok=True,
-            content=(
-                f"Read {len(options)} option(s). Pass one option's text to browser_select."
-                if options
-                else "That element exposed no options; it may not be a select."
-            ),
-            data={"browser_id": browser_id, "index": int(arguments["index"]), "options": options},
-        )
+
+        return _with_fresh_view(context, store, browser_id, run)
 
     def upload_file(context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
         context.raise_if_cancelled()

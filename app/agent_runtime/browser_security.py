@@ -100,6 +100,31 @@ _OPAQUE_SCHEME = re.compile(
 )
 
 
+def _describe(value: str) -> str:
+    """The refused URL in a form that is safe to put in an error message.
+
+    Query strings and fragments carry access tokens, so only the scheme, host
+    and path survive. Naming it at all is the point: the message used to say
+    only that http/https was required, and the URL being refused is very often
+    not the one the caller passed - it can be the page the browser was already
+    sitting on, or a tab in the background. Read literally, the old message sent
+    the model back to retry the perfectly valid URL it had just asked for.
+    """
+
+    text = str(value or "").strip()
+    if not text:
+        return "an empty URL"
+    try:
+        parsed = urlsplit(text)
+    except ValueError:
+        return "an unparsable URL"
+    if not parsed.scheme:
+        return text[:120]
+    host = parsed.hostname or ""
+    tail = f"//{host}" if host else ""
+    return f"{parsed.scheme}:{tail}{parsed.path or ''}"[:120]
+
+
 def _with_default_scheme(value: str) -> str:
     """Accept the address form people and models actually write.
 
@@ -144,7 +169,9 @@ class BrowserSecurityPolicy:
         value = _with_default_scheme(str(url or "").strip())
         parsed = urlsplit(value)
         if parsed.scheme.casefold() not in {"http", "https"}:
-            raise BrowserURLPolicyError("browser navigation only allows http/https URLs")
+            raise BrowserURLPolicyError(
+                f"browser navigation only allows http/https URLs, and this is {_describe(value)}"
+            )
         if parsed.username is not None or parsed.password is not None:
             raise BrowserURLPolicyError("browser navigation URLs must not contain userinfo credentials")
 
