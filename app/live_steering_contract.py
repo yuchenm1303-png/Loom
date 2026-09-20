@@ -445,6 +445,7 @@ def patch(module: Any) -> None:
             "inputId": str(receipt.get("input_id") or client_input_id),
             "duplicate": bool(receipt.get("duplicate")),
             "delivery": str(receipt.get("delivery") or "next_safe_boundary"),
+            "submittedAt": str(receipt.get("submittedAt") or "") or None,
             "applied": bool(receipt.get("applied")),
         }
 
