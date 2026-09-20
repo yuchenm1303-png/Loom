@@ -202,6 +202,102 @@ class BrowserUseSessionBackend(BrowserUseBackend):
     def press_key(self, key: str) -> BrowserPageState:
         return self._run_state_action("press_key", self._press_key_async(key), args={"key": str(key or "")})
 
+    async def _click_at_async(self, x: int, y: int, *, button: str = "left") -> BrowserPageState:
+        px = int(x)
+        py = int(y)
+        if px < 0 or py < 0:
+            raise ValueError("browser click_at coordinates must be non-negative")
+        wanted = str(button or "left").strip().casefold()
+        if wanted not in {"left", "right", "middle"}:
+            raise ValueError("browser click_at button must be left, right, or middle")
+        bit = {"left": 1, "right": 2, "middle": 4}[wanted]
+        session = await self._ensure_session()
+        cdp = await session.get_or_create_cdp_session()
+        await cdp.cdp_client.send.Input.dispatchMouseEvent(
+            params={"type": "mouseMoved", "x": px, "y": py},
+            session_id=cdp.session_id,
+        )
+        await cdp.cdp_client.send.Input.dispatchMouseEvent(
+            params={
+                "type": "mousePressed",
+                "x": px,
+                "y": py,
+                "button": wanted,
+                "buttons": bit,
+                "clickCount": 1,
+            },
+            session_id=cdp.session_id,
+        )
+        await cdp.cdp_client.send.Input.dispatchMouseEvent(
+            params={
+                "type": "mouseReleased",
+                "x": px,
+                "y": py,
+                "button": wanted,
+                "buttons": 0,
+                "clickCount": 1,
+            },
+            session_id=cdp.session_id,
+        )
+        return await self._state_async()
+
+    def click_at(self, x: int, y: int, *, button: str = "left") -> BrowserPageState:
+        return self._run_state_action(
+            "click_at",
+            self._click_at_async(x, y, button=button),
+            args={"x": int(x), "y": int(y), "button": str(button)},
+        )
+
+    async def _send_text_async(self, text: str) -> BrowserPageState:
+        value = str(text)
+        if not value:
+            raise ValueError("browser send_text must not be empty")
+        if len(value) > 8000:
+            raise ValueError("browser send_text exceeds 8000 characters")
+        session = await self._ensure_session()
+        cdp = await session.get_or_create_cdp_session()
+
+        async def key_event(event_type: str, key: str, code: str = "", typed: str = "") -> None:
+            params: dict[str, Any] = {"type": event_type, "key": key}
+            if code:
+                params["code"] = code
+            if typed and event_type == "keyDown":
+                params["text"] = typed
+                params["unmodifiedText"] = typed
+            await cdp.cdp_client.send.Input.dispatchKeyEvent(
+                params=params,
+                session_id=cdp.session_id,
+            )
+
+        for char in value:
+            if char == "\r":
+                continue
+            if char == "\n":
+                await key_event("keyDown", "Enter", "Enter")
+                await key_event("keyUp", "Enter", "Enter")
+            elif char == "\t":
+                await key_event("keyDown", "Tab", "Tab")
+                await key_event("keyUp", "Tab", "Tab")
+            elif char == "\b":
+                await key_event("keyDown", "Backspace", "Backspace")
+                await key_event("keyUp", "Backspace", "Backspace")
+            else:
+                # No physical code on purpose: canvas remote-desktop clients such
+                # as noVNC treat this as virtual-keyboard input and derive the
+                # remote keysym from KeyboardEvent.key.
+                await key_event("keyDown", char, typed=char)
+                await key_event("keyUp", char)
+        return await self._state_async()
+
+    def send_text(self, text: str) -> BrowserPageState:
+        value = str(text)
+        return self._run_state_action(
+            "send_text",
+            self._send_text_async(value),
+            args={"text_length": len(value), "text_present": bool(value)},
+            include_dom_excerpt=False,
+        )
+
     async def _select_option_async(self, index: int, value: str) -> BrowserPageState:
         """Pick an option on a select.
 
