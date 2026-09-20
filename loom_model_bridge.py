@@ -838,7 +838,23 @@ def _with_reasoning(profile: dict[str, Any], reasoning_store: ReasoningConfigSto
 
 
 def _managed_profiles(store: ModelConfigStore, environ: Mapping[str, str] | None = None) -> list[dict[str, Any]]:
-    profiles: list[dict[str, Any]] = [_safe_minimax(model_id, environ) for model_id in MINIMAX_MODEL_IDS]
+    # Different providers may intentionally expose the same model id. Keep
+    # selection/provider as the real identity. OpenCode goes first so legacy
+    # code that collapses by bare model id still resolves official built-ins
+    # (MiniMax/DeepSeek) last, preserving historical behavior.
+    profiles: list[dict[str, Any]] = []
+
+    opencode_key = _opencode_go_key(store, environ)
+    opencode_model_ids = _fetch_opencode_go_model_ids() or list(OPENCODE_GO_FALLBACK_MODEL_IDS)
+    seen_opencode: set[str] = set()
+    for model_id in opencode_model_ids:
+        folded = str(model_id or "").strip().casefold()
+        if not folded or folded in seen_opencode:
+            continue
+        seen_opencode.add(folded)
+        profiles.append(_safe_opencode_go(model_id, configured=bool(opencode_key)))
+
+    profiles.extend(_safe_minimax(model_id, environ) for model_id in MINIMAX_MODEL_IDS)
 
     deepseek_key = _deepseek_key(store, environ)
     deepseek_model_ids = list(DEEPSEEK_FALLBACK_MODEL_IDS)
@@ -853,16 +869,6 @@ def _managed_profiles(store: ModelConfigStore, environ: Mapping[str, str] | None
             continue
         seen_deepseek.add(folded)
         profiles.append(_with_discovered_limits(_safe_deepseek(model_id, environ)))
-
-    opencode_key = _opencode_go_key(store, environ)
-    opencode_model_ids = _fetch_opencode_go_model_ids() or list(OPENCODE_GO_FALLBACK_MODEL_IDS)
-    seen_opencode: set[str] = set()
-    for model_id in opencode_model_ids:
-        folded = str(model_id or "").strip().casefold()
-        if not folded or folded in seen_opencode:
-            continue
-        seen_opencode.add(folded)
-        profiles.append(_safe_opencode_go(model_id, configured=bool(opencode_key)))
 
     api_key = _managed_relay_key(store, environ, Path(__file__).resolve().parent)
     if api_key:
@@ -890,6 +896,7 @@ def _base_profile_for_selection(store: ModelConfigStore, selection: str) -> dict
     opencode_model = _opencode_go_model_from_selection(requested)
     if opencode_model:
         return _safe_opencode_go(opencode_model, configured=bool(_opencode_go_key(store)))
+
     opencode_model = _opencode_go_model_from_selection(requested)
     if opencode_model:
         api_key = _opencode_go_key(store)
@@ -936,12 +943,12 @@ def _describe_model(
         raise ValueError("model must not be empty")
     effective_selection = _canonical_builtin_selection(selection, requested_model)
     profile = _base_profile_for_selection(store, effective_selection)
-    if _is_minimax_model(requested_model):
+    if _opencode_go_model_from_selection(effective_selection):
+        profile = _safe_opencode_go(requested_model, configured=bool(_opencode_go_key(store)))
+    elif _is_minimax_model(requested_model):
         profile = _safe_minimax(requested_model)
     elif _deepseek_model_from_selection(effective_selection):
         profile = _safe_deepseek(requested_model)
-    elif _opencode_go_model_from_selection(effective_selection):
-        profile = _safe_opencode_go(requested_model, configured=bool(_opencode_go_key(store)))
     profile["model"] = requested_model
     return _with_reasoning(profile, reasoning_store)
 
