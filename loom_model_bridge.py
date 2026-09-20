@@ -604,10 +604,10 @@ def _canonical_builtin_selection(selection: str, model: str) -> str:
     if not is_provider_builtin:
         return current
 
-    if _is_minimax_model(requested):
-        return _minimax_selection_for_model(requested)
     if current.startswith(OPENCODE_GO_SELECTION_PREFIX):
         return _opencode_go_selection_for_model(requested)
+    if _is_minimax_model(requested):
+        return _minimax_selection_for_model(requested)
     if requested.casefold().startswith("deepseek-"):
         return _deepseek_selection_for_model(requested)
     if requested.casefold() == CQU_DEFAULT_MODEL.casefold():
