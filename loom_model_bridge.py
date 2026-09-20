@@ -897,20 +897,6 @@ def _base_profile_for_selection(store: ModelConfigStore, selection: str) -> dict
     if opencode_model:
         return _safe_opencode_go(opencode_model, configured=bool(_opencode_go_key(store)))
 
-    opencode_model = _opencode_go_model_from_selection(requested)
-    if opencode_model:
-        api_key = _opencode_go_key(store)
-        if api_key:
-            opencode_profile = _with_reasoning(
-                _safe_opencode_go(opencode_model, configured=True),
-                reasoning_store,
-            )
-            return {**opencode_profile, "provider": "opencode-go", "apiKey": api_key}
-        raise RuntimeError(
-            "OpenCode Go API key is not configured. Open the OpenCode Go model group "
-            "in Loom and connect your subscription key."
-        )
-
     managed_model = _managed_model_from_selection(requested)
     if managed_model:
         return _safe_managed(managed_model)
