@@ -20,6 +20,7 @@ import {
 import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { TranscriptItem } from "../types/loom";
 import { MarkdownMessage } from "./MarkdownMessage";
+import { StreamingPresentation } from "./StreamingPresentation";
 import { TurnArtifactsPreview } from "./TurnArtifactsPreview";
 import { UserMessageContent, parseUserMessageContent } from "./UserMessageContent";
 import "./activity-flow.css";
@@ -141,7 +142,7 @@ function Disclosure({ label, children, openByDefault = false }: { label: string;
   );
 }
 
-function LiveReasoning({ reasoning, workspace }: { reasoning: string; workspace?: string }) {
+function LiveReasoning({ reasoning, workspace, streaming, messageKey, interrupted }: { reasoning: string; workspace?: string; streaming: boolean; messageKey: string; interrupted: boolean }) {
   const [open, setOpen] = useState(false);
   const hasReasoning = Boolean(reasoning.trim());
 
@@ -163,7 +164,7 @@ function LiveReasoning({ reasoning, workspace }: { reasoning: string; workspace?
         <div className="live-reasoning-grid">
           <div className="live-reasoning-inner">
             <div className="live-reasoning-copy">
-              <MarkdownMessage content={reasoning} compact workspace={workspace} />
+              <MarkdownMessage content={reasoning} compact workspace={workspace} streaming={streaming} messageKey={messageKey} interrupted={interrupted} />
             </div>
           </div>
         </div>
@@ -693,9 +694,11 @@ function ItemView({
 
   if (item.type === "assistant_message") {
     const parsed = splitReasoning(item.text ?? "");
+    const interrupted = ["interrupted", "cancelled", "failed"].includes(item.status || "");
+    const live = streaming && !interrupted && (item.status === "streaming" || isActiveActivityStatus(item.status || "running"));
 
     if (parsed.state === "streaming") {
-      return <div className="assistant-message"><LiveReasoning reasoning={parsed.reasoning} workspace={workspace} /></div>;
+      return <div className="assistant-message"><LiveReasoning reasoning={parsed.reasoning} workspace={workspace} streaming={live} messageKey={`${item.id}:reasoning`} interrupted={interrupted} /></div>;
     }
 
     if (!parsed.reasoning && !parsed.answer.trim()) return null;
@@ -707,11 +710,11 @@ function ItemView({
           {parsed.reasoning ? (
             <Disclosure label="Thought process">
               <div className="reasoning-copy">
-                <MarkdownMessage content={parsed.reasoning} compact workspace={workspace} />
+                <MarkdownMessage content={parsed.reasoning} compact workspace={workspace} messageKey={`${item.id}:reasoning`} interrupted={interrupted} />
               </div>
             </Disclosure>
           ) : null}
-          {answer ? <MarkdownMessage content={parsed.answer} workspace={workspace} streaming={streaming && (item.status === "streaming" || isActiveActivityStatus(item.status || "running"))} /> : null}
+          {answer ? <MarkdownMessage content={parsed.answer} workspace={workspace} streaming={live} messageKey={`${item.id}:answer`} interrupted={interrupted} /> : null}
         </div>
         <MessageToolbar kind="assistant" item={item} text={answer || parsed.reasoning} />
       </div>
@@ -970,6 +973,7 @@ const TurnView = memo(function TurnView({
   );
 
   return (
+    <StreamingPresentation>
     <section className={`turn-block ${active ? "is-active" : "is-complete"}`} data-turn-id={turnId}>
       {derived.userItems.map((item) => (
         <div className="transcript-entry entry-user_message" key={item.id}>
@@ -1005,6 +1009,7 @@ const TurnView = memo(function TurnView({
       {!active ? <TurnArtifacts items={items} /> : null}
       {showPendingThinking ? <PendingThinking /> : null}
     </section>
+    </StreamingPresentation>
   );
 }, (previous, next) => (
   previous.turnId === next.turnId

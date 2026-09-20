@@ -1,0 +1,82 @@
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { advanceStreamingText } from "./streamingText";
+
+// Scoped to a mounted turn: moving its final answer must not lose paint progress.
+// Leaving a thread discards this state, so reopening history never replays it.
+type Snapshot = { visible: string };
+const PresentationContext = createContext<Map<string, Snapshot> | null>(null);
+
+export function StreamingPresentation({ children }: { children: ReactNode }) {
+  const [snapshots] = useState(() => new Map<string, Snapshot>());
+  return <PresentationContext.Provider value={snapshots}>{children}</PresentationContext.Provider>;
+}
+
+function reducedMotion() {
+  return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+    || document.documentElement.dataset.loomReducedMotion === "true";
+}
+
+export function useStreamingPresentation(content: string, streaming: boolean, messageKey?: string, interrupted = false) {
+  const snapshots = useContext(PresentationContext);
+  const [initial] = useState(() => {
+    const saved = messageKey ? snapshots?.get(messageKey) : undefined;
+    return saved && content.startsWith(saved.visible) ? saved.visible : streaming ? "" : content;
+  });
+  const [visible, setVisible] = useState(initial);
+  const [reduce, setReduce] = useState(reducedMotion);
+  const visibleRef = useRef(initial);
+  const targetRef = useRef(content);
+  const frameRef = useRef<number | null>(null);
+  const animate = useRef(streaming || initial !== content);
+
+  useLayoutEffect(() => {
+    if (messageKey) snapshots?.set(messageKey, { visible });
+  }, [visible, messageKey, snapshots]);
+
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const sync = () => setReduce(Boolean(reducedMotion()));
+    media.addEventListener("change", sync);
+    const observer = new MutationObserver(sync);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-loom-reduced-motion"] });
+    return () => { media.removeEventListener("change", sync); observer.disconnect(); };
+  }, []);
+
+  useLayoutEffect(() => {
+    targetRef.current = content;
+    animate.current ||= streaming;
+    const commit = (next: string) => {
+      visibleRef.current = next;
+      setVisible(next);
+    };
+    const cancel = () => {
+      if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
+      frameRef.current = null;
+    };
+    if (reduce || interrupted || !animate.current || !content.startsWith(visibleRef.current)) {
+      cancel();
+      commit(content);
+      return;
+    }
+    const tick = () => {
+      frameRef.current = null;
+      commit(advanceStreamingText(visibleRef.current, targetRef.current));
+    };
+    if (frameRef.current === null && visibleRef.current !== content) frameRef.current = requestAnimationFrame(tick);
+    // A subsequent frame is scheduled only after React commits this paint.
+    // Slow Markdown parsing must not accumulate several unseen frame advances.
+    // Provider deltas update the target without cancelling an existing frame.
+  }, [content, visible, streaming, reduce, interrupted]);
+
+  useEffect(() => () => {
+    if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
+    frameRef.current = null;
+  }, []);
+
+  return {
+    visible: reduce || interrupted ? content : visible,
+    painting: !reduce && !interrupted && (streaming || visible !== content),
+    // Already visible content must not reanimate when moved out of the process area.
+    fadeFrom: initial.length,
+  };
+}
