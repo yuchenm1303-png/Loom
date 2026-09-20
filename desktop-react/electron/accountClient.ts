@@ -47,15 +47,28 @@ function normalizeBaseUrl(value: string): string {
   return String(value || "").trim().replace(/\/+$/, "");
 }
 
+function safeAccountBaseUrl(value: string): string {
+  const normalized = normalizeBaseUrl(value);
+  if (!normalized) return "";
+  try {
+    const parsed = new URL(normalized);
+    const loopback = parsed.hostname === "127.0.0.1" || parsed.hostname === "localhost" || parsed.hostname === "::1";
+    if (parsed.protocol === "https:" || loopback) return normalized;
+  } catch {
+    return "";
+  }
+  return "";
+}
+
 function configuredAccountBaseUrl(): string {
-  const fromEnvironment = normalizeBaseUrl(process.env.LOOM_ACCOUNT_API_BASE_URL || "");
+  const fromEnvironment = safeAccountBaseUrl(process.env.LOOM_ACCOUNT_API_BASE_URL || "");
   if (fromEnvironment) return fromEnvironment;
 
   try {
     const configPath = path.join(app.getPath("home"), ".loom", "account-service.json");
     if (fsSync.existsSync(configPath)) {
       const parsed = JSON.parse(fsSync.readFileSync(configPath, "utf8")) as { baseUrl?: string };
-      const fromFile = normalizeBaseUrl(parsed.baseUrl || "");
+      const fromFile = safeAccountBaseUrl(parsed.baseUrl || "");
       if (fromFile) return fromFile;
     }
   } catch {
