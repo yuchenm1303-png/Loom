@@ -5,6 +5,8 @@ import time
 from collections.abc import Iterator
 from typing import Any
 
+import httpx
+
 from .contracts import (
     AIMessage,
     ChatRequest,
@@ -37,6 +39,26 @@ _RETRYABLE_ERROR_FRAGMENTS = (
     "timeout",
 )
 _PROVIDER_RETRY_DELAYS_SECONDS = (0.35, 0.9)
+
+# A dead connection says nothing about whether the request was acceptable: the
+# provider never produced a response, so nothing was committed and resending is
+# always safe. These must be recognised by type. Matching their text against the
+# fragments above is what let ``RemoteProtocolError: peer closed connection
+# without sending complete message body`` -- the most ordinary way a long SSE
+# response dies -- be classified as permanent, so a single network blip killed a
+# whole turn while the retry budget above went untouched.
+_RETRYABLE_TRANSPORT_ERRORS: tuple[type[BaseException], ...] = (
+    httpx.TransportError,
+    ConnectionError,
+    TimeoutError,
+)
+# Two transport failures are not transient: a base_url Loom cannot speak, and a
+# request Loom itself malformed. Both fail identically however often they are
+# resent, so retrying only delays the real error.
+_PERMANENT_TRANSPORT_ERRORS: tuple[type[BaseException], ...] = (
+    httpx.UnsupportedProtocol,
+    httpx.LocalProtocolError,
+)
 
 
 def _message_payload(
@@ -161,9 +183,32 @@ def _provider_status_code(exc: BaseException) -> int | None:
     return None
 
 
+def _transport_failure(exc: BaseException) -> bool:
+    """True when the connection failed, rather than the provider rejecting the request.
+
+    Provider SDKs re-raise the underlying httpx failure wrapped in a type of
+    their own (``openai`` raises ``APIConnectionError`` *from* it), so the
+    explicit cause chain is part of the evidence. ``__context__`` is not: an
+    unrelated exception that merely happened to be in flight says nothing about
+    this one.
+    """
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, _PERMANENT_TRANSPORT_ERRORS):
+            return False
+        if isinstance(current, _RETRYABLE_TRANSPORT_ERRORS):
+            return True
+        current = current.__cause__
+    return False
+
+
 def _retryable_provider_error(exc: BaseException) -> bool:
     status = _provider_status_code(exc)
     if status in _RETRYABLE_STATUS_CODES:
+        return True
+    if _transport_failure(exc):
         return True
     message = str(exc).casefold()
     return any(fragment in message for fragment in _RETRYABLE_ERROR_FRAGMENTS)

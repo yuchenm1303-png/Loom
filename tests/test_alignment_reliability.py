@@ -564,6 +564,47 @@ def test_stream_retry_does_not_duplicate_tool_side_effect(tmp_path):
     rt.close()
 
 
+def test_peer_disconnect_mid_stream_is_survived_by_the_turn(tmp_path):
+    """The production failure, end to end: a relay drops a streaming response.
+
+    Classified by message text this reads as permanent, so the turn used to die
+    on the first attempt -- losing, in one observed case, 168 model steps of work
+    to a connection that had been alive for four seconds.
+    """
+    import httpx
+
+    from app.ai.errors import AITransportError
+    from app.ai.openai_runtime import _retryable_provider_error
+
+    dropped = httpx.RemoteProtocolError(
+        "peer closed connection without sending complete message body "
+        "(incomplete chunked read)"
+    )
+
+    class P:
+        count = 0
+
+        def execute_chat(self, profile, request):
+            self.count += 1
+            if self.count == 1:
+                raise AITransportError(
+                    f"AI stream failed via provider 'loom-primary': "
+                    f"{type(dropped).__name__}: {dropped}",
+                    retryable=_retryable_provider_error(dropped),
+                )
+            return ModelResponse(text="done")
+
+    platform = P()
+    rt = make_runtime(tmp_path, platform)
+    session = rt.create_session("agent.fast")
+
+    result = rt.start_turn(session.session_id, "work")
+
+    assert result.status is AgentStatus.COMPLETED
+    assert platform.count == 2
+    rt.close()
+
+
 def test_permanent_transport_failure_is_not_retried_by_turn_runner(tmp_path):
     from app.ai.errors import AITransportError
 

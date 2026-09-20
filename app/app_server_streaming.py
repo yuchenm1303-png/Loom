@@ -243,7 +243,13 @@ class StreamingLoomAppServerService(LoomAppServerService):
                 return dict(state)
         return None
 
-    def _clear_turn_tool_streams(self, event: AgentEvent, *, close_started: bool) -> None:
+    def _clear_turn_tool_streams(
+        self,
+        event: AgentEvent,
+        *,
+        close_started: bool,
+        status: str = "",
+    ) -> None:
         with self._guard:
             stale = [
                 (key, dict(state))
@@ -273,7 +279,7 @@ class StreamingLoomAppServerService(LoomAppServerService):
                         "threadId": event.session_id,
                         "turnId": event.turn_id,
                         "type": "tool_call",
-                        "status": event.kind.value.removeprefix("turn_"),
+                        "status": status or event.kind.value.removeprefix("turn_"),
                         "updatedAt": event.created_at,
                         "callId": call_id,
                         "toolName": str(state.get("tool_name") or "") or None,
@@ -291,10 +297,19 @@ class StreamingLoomAppServerService(LoomAppServerService):
                 for key in stale:
                     self._streamed_assistant_steps.discard(key)
             for _, _, step_id in stale:
+                # A retry re-samples the same model step, so the next attempt
+                # streams into this very item id. ``text`` is the one delta field
+                # the renderer appends to rather than replaces, so the abandoned
+                # attempt's partial answer has to be cleared here; otherwise the
+                # retry's text is rendered welded onto it until the canonical
+                # response finally lands and overwrites the pair.
                 self._notify("item/completed", {"item": {"id": _assistant_step_item_id(step_id),
                     "threadId": event.session_id, "turnId": event.turn_id,
-                    "type": "assistant_message", "status": "interrupted", "updatedAt": event.created_at}})
-            self._clear_turn_tool_streams(event, close_started=True)
+                    "type": "assistant_message", "status": "interrupted", "text": "",
+                    "updatedAt": event.created_at}})
+            # ``model_requested`` is not a turn outcome, so the shared status
+            # derivation would stamp these tool items with that event's own name.
+            self._clear_turn_tool_streams(event, close_started=True, status="interrupted")
         if event.kind is AgentEventKind.MODEL_RESPONSE and str(event.data.get("text") or ""):
             step_id = str(event.data.get("step_id") or "").strip()
             key = (event.session_id, event.turn_id, step_id)

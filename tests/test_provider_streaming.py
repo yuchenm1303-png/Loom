@@ -4,6 +4,8 @@ import time
 from pathlib import Path
 from types import SimpleNamespace
 
+import httpx
+import openai
 import pytest
 
 from app.agent_runtime import (
@@ -36,7 +38,7 @@ from app.ai import (
     ToolDefinition,
 )
 from app.ai.openai_streaming import OpenAIStreamingChatBackend
-from app.ai.openai_runtime import _message_payload
+from app.ai.openai_runtime import _message_payload, _retryable_provider_error
 from app.ai.errors import AIEmptyResponseError, AITransportError
 from app.ai.streaming_platform import (
     ProviderStreamEvent,
@@ -164,6 +166,25 @@ class FailingCompletions:
         raise self.error
 
 
+class DisconnectingCompletions:
+    """A stream that dies part-way through its body, as a dropped SSE response does."""
+
+    def __init__(self, chunks, error: BaseException) -> None:
+        self.chunks = list(chunks)
+        self.error = error
+        self.calls = 0
+
+    def create(self, **_kwargs):
+        self.calls += 1
+
+        def stream():
+            for chunk in self.chunks:
+                yield chunk
+            raise self.error
+
+        return stream()
+
+
 def _profile() -> ModelProfile:
     return ModelProfile(
         profile_id=AGENT_FAST_ROLE.role_id,
@@ -283,6 +304,72 @@ def test_permanent_provider_rejection_preserves_non_retryable_classification():
 
     assert failure.value.retryable is False
     assert completions.calls == 1
+
+
+def _streaming_backend(completions) -> OpenAIStreamingChatBackend:
+    return OpenAIStreamingChatBackend(
+        connection=ProviderConnection(
+            provider_id="test-provider",
+            adapter=ProviderAdapter.OPENAI_COMPATIBLE,
+            credential_ref=CredentialRef.runtime("test-key"),
+            base_url="https://example.invalid/v1",
+        ),
+        profile=_profile(),
+        api_key="secret-for-test-only",
+        client=SimpleNamespace(chat=SimpleNamespace(completions=completions)),
+    )
+
+
+def test_peer_closing_the_stream_mid_body_is_retryable():
+    # The exact failure a relay produces when it drops a long answer: no status
+    # code, no error body, and a message that matches none of the retryable
+    # fragments. Classified by text it reads as a permanent rejection and ends
+    # the turn, which is how one blip used to kill a 90-minute run.
+    completions = DisconnectingCompletions(
+        [
+            SimpleNamespace(
+                id="resp-dropped",
+                usage=None,
+                choices=[
+                    SimpleNamespace(
+                        delta=SimpleNamespace(content="half an ans", reasoning_content=None, tool_calls=[]),
+                        finish_reason=None,
+                    )
+                ],
+            )
+        ],
+        httpx.RemoteProtocolError(
+            "peer closed connection without sending complete message body "
+            "(incomplete chunked read)"
+        ),
+    )
+
+    with pytest.raises(AITransportError) as failure:
+        list(_streaming_backend(completions).stream(_request()))
+
+    assert failure.value.retryable is True
+    assert "RemoteProtocolError" in str(failure.value)
+
+
+def test_sdk_wrapped_connection_failure_is_retryable():
+    # The SDK hides the httpx failure inside its own type, so the classification
+    # has to follow the explicit cause chain to find the transport underneath.
+    http_request = httpx.Request("POST", "https://example.invalid/v1/chat/completions")
+    try:
+        try:
+            raise httpx.ConnectError("connection reset by peer", request=http_request)
+        except httpx.ConnectError as cause:
+            raise openai.APIConnectionError(request=http_request) from cause
+    except openai.APIConnectionError as exc:
+        wrapped = exc
+
+    assert _retryable_provider_error(wrapped) is True
+
+
+def test_locally_malformed_request_is_not_retryable():
+    # Loom built this request badly; resending builds it badly again.
+    assert _retryable_provider_error(httpx.LocalProtocolError("Illegal header value")) is False
+    assert _retryable_provider_error(httpx.UnsupportedProtocol("Request URL has no scheme")) is False
 
 
 def _runtime(tmp_path: Path):

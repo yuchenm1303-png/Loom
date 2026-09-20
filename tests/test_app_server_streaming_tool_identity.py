@@ -200,3 +200,59 @@ def test_superseded_model_stream_tombstones_transient_assistant_and_tool_items(t
         key[:3] == ("thread-1", "turn-1", "step-1")
         for key in service._streamed_tool_calls
     )
+
+
+def test_retrying_a_model_step_clears_the_abandoned_attempts_streamed_text(tmp_path) -> None:
+    runtime = _RuntimeStub()
+    service = StreamingLoomAppServerService(
+        runtime=runtime,
+        store=SimpleNamespace(root=tmp_path),
+        model="test-model",
+        default_workspace=tmp_path,
+        default_permission_mode=PermissionMode.WORKSPACE,
+    )
+    observed: list[tuple[str, dict[str, object]]] = []
+    service.subscribe_notifications(lambda method, params: observed.append((method, params)))
+
+    assert runtime.stream_listener is not None
+    assert runtime.runtime_listener is not None
+    runtime.stream_listener(_assistant_stream_event("half an ans"))
+    runtime.stream_listener(
+        _stream_event(call_id="call-dropped", fragment='{"value":"partial"}', tool="echo")
+    )
+
+    # A transport retry re-samples the same step, so this arrives with the same
+    # step_id the abandoned attempt streamed into.
+    runtime.runtime_listener(
+        _runtime_event(
+            AgentEventKind.MODEL_REQUESTED,
+            event_id="evt-retry",
+            data={"step_id": "step-1", "attempt": 1},
+        )
+    )
+
+    closed = [
+        params["item"]
+        for method, params in observed
+        if method == "item/completed" and params["item"]["id"] == "assistant:step:step-1"
+    ]
+    assert len(closed) == 1
+    assert closed[0]["status"] == "interrupted"
+    # The renderer appends text deltas, so leaving the dead attempt's partial
+    # answer in place would weld the retry's answer onto the end of it.
+    assert closed[0]["text"] == ""
+
+    dropped_tool = [
+        params["item"]
+        for method, params in observed
+        if method == "item/completed" and params["item"]["id"] == "tool:call-dropped"
+    ]
+    assert len(dropped_tool) == 1
+    # Not "model_requested": the item is being abandoned, not reporting an outcome.
+    assert dropped_tool[0]["status"] == "interrupted"
+
+    assert ("thread-1", "turn-1", "step-1") not in service._streamed_assistant_steps
+    assert not any(
+        key[:3] == ("thread-1", "turn-1", "step-1")
+        for key in service._streamed_tool_calls
+    )
