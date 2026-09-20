@@ -27,6 +27,7 @@ export interface LoomBridge {
   accountRegister<T = unknown>(email: string, password: string): Promise<T>;
   accountLogout<T = unknown>(): Promise<T>;
   listModels<T = unknown>(): Promise<T>;
+  setModelProviderKey<T = unknown>(provider: string, apiKey: string): Promise<T>;
   switchModelProfile<T = unknown>(selection: string): Promise<T>;
   switchModelProfile<T = unknown>(threadId: string, selection: string): Promise<T>;
   switchCurrentModel<T = unknown>(model: string): Promise<T>;

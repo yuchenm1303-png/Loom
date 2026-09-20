@@ -728,6 +728,7 @@ export default function App() {
             onPermissionModeChange={loom.setPermissionMode}
             onModelProfileChange={loom.switchModelProfile}
             onCustomModelChange={loom.switchCurrentModel}
+            onConfigureModelProvider={loom.configureModelProvider}
             onAddModel={loom.addModel}
             onDeleteModel={loom.deleteModel}
             onReasoningChange={loom.setReasoning}

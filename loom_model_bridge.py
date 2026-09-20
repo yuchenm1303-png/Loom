@@ -20,11 +20,13 @@ from app.ai.profiles import ModelContextLimits
 from app.ai.reasoning import ReasoningRequest
 from app.ai.reasoning_catalog import resolved_reasoning
 from app.ai.reasoning_store import ReasoningConfigStore
+from app.ai.opencode_go_runtime import OPENCODE_GO_BASE_URL, opencode_go_protocol
 
 
 PRIMARY_SELECTION = "builtin:minimax"
 CQU_SELECTION = "builtin:cqu"
 DEEPSEEK_SELECTION = "builtin:deepseek"
+OPENCODE_GO_SELECTION_PREFIX = "builtin:opencode-go:"
 MINIMAX_SELECTION_PREFIX = "builtin:minimax:"
 DEEPSEEK_SELECTION_PREFIX = "builtin:deepseek:"
 MANAGED_SELECTION_PREFIX = "managed:"
@@ -35,6 +37,21 @@ MINIMAX_DEFAULT_MODEL = "MiniMax-M3"
 MINIMAX_MODEL_IDS = ("MiniMax-M3", "MiniMax-M2.7", "MiniMax-M2.5")
 DEEPSEEK_DEFAULT_MODEL = "deepseek-flash"
 DEEPSEEK_FALLBACK_MODEL_IDS = ("deepseek-flash", "deepseek-v4-pro")
+OPENCODE_GO_FALLBACK_MODEL_IDS = (
+    "minimax-m3", "minimax-m2.7", "minimax-m2.5",
+    "kimi-k3", "kimi-k2.7-code", "kimi-k2.6", "kimi-k2.5",
+    "longcat-2.0",
+    "glm-5.3-flash", "glm-5.3", "glm-5.2", "glm-5.1", "glm-5",
+    "deepseek-v4-pro", "deepseek-v4.1-flash", "deepseek-v4-flash",
+    "deepseek-flash", "deepseek-v4-flash-vision-exp",
+    "qwen3.8-max", "qwen3.8-flash", "qwen3.7-max", "qwen3.7-plus",
+    "qwen3.6-plus", "qwen3.5-plus",
+    "mimo-v2.5-pro", "mimo-v2.5", "mimo-v2-pro", "mimo-v2-omni",
+    "hy4-preview", "hy3", "hy3-preview",
+    "gpt-5.6-luna", "grok-4.6", "grok-4.5",
+    "muse-spark-1.3-contributor", "muse-spark-1.2-contributor",
+    "omen-alpha",
+)
 CQU_DEFAULT_MODEL = "cqu-default"
 # Context limits a provider published about its own models, keyed by folded
 # model id and filled in as `/models` listings are fetched. Empty until a
@@ -43,6 +60,7 @@ _DISCOVERED_CONTEXT_LIMITS: dict[str, ModelContextLimits] = {}
 _KEYRING_SERVICE = "loom-agent"
 _MANAGED_RELAY_CREDENTIAL_ALIAS = "managed/relay"
 _DEEPSEEK_CREDENTIAL_ALIAS = "builtin/deepseek"
+_OPENCODE_GO_CREDENTIAL_ALIAS = "builtin/opencode-go"
 _MANAGED_RELAY_KEY_ENV = (
     "LOOM_RELAY_API_KEY",
     "SMIREL_RELAY_API_KEY",
@@ -55,6 +73,7 @@ _PRIMARY_MINIMAX_KEY_ENV = ("MINIMAX_API_KEY", "LOOM_PRIMARY_API_KEY", "LOOM_API
 _LEGACY_MINIMAX_BASE_URL_ENV = ("LOOM_MINIMAX_BASE_URL", "MINIMAX_BASE_URL")
 _DEEPSEEK_KEY_ENV = ("DEEPSEEK_API_KEY", "LOOM_DEEPSEEK_API_KEY")
 _DEEPSEEK_BASE_URL_ENV = ("LOOM_DEEPSEEK_BASE_URL", "DEEPSEEK_BASE_URL")
+_OPENCODE_GO_KEY_ENV = ("OPENCODE_GO_API_KEY", "LOOM_OPENCODE_GO_API_KEY")
 _PROVISIONING_FILE_ENV = "LOOM_RELAY_PROVISIONING_FILE"
 _DEEPSEEK_DISPLAY_NAMES = {
     "deepseek-flash": "DeepSeek Flash",
@@ -255,6 +274,34 @@ def _deepseek_key(
     return ""
 
 
+def _opencode_go_key(
+    store: ModelConfigStore,
+    environ: Mapping[str, str] | None = None,
+) -> str:
+    secret = str(_credential_get(_OPENCODE_GO_CREDENTIAL_ALIAS) or "").strip()
+    if secret:
+        return secret
+    env_key = _key_from_env(_OPENCODE_GO_KEY_ENV, environ)
+    if env_key:
+        try:
+            _credential_set(_OPENCODE_GO_CREDENTIAL_ALIAS, env_key)
+        except RuntimeError:
+            pass
+        return env_key
+    return ""
+
+
+def _set_provider_key(payload: Mapping[str, Any]) -> dict[str, Any]:
+    provider = str(payload.get("provider") or "").strip().casefold()
+    api_key = str(payload.get("apiKey") or payload.get("api_key") or "").strip()
+    if provider != "opencode-go":
+        raise ValueError("only opencode-go built-in credentials are configurable here")
+    if not api_key:
+        raise ValueError("API key must not be empty")
+    _credential_set(_OPENCODE_GO_CREDENTIAL_ALIAS, api_key)
+    return {"provider": provider, "configured": True}
+
+
 def _is_managed_relay_endpoint(value: str, environ: Mapping[str, str] | None = None) -> bool:
     return _normalize_url(value) == _normalize_url(_managed_relay_base_url(environ))
 
@@ -308,6 +355,33 @@ def _managed_relay_key(
             pass
         return env_key
     return ""
+
+
+def _fetch_opencode_go_model_ids(timeout: float = 3.5) -> list[str]:
+    request = urllib.request.Request(
+        f"{OPENCODE_GO_BASE_URL}/models",
+        headers={"Accept": "application/json", "User-Agent": "Loom/0.1 (coding-agent)"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except (OSError, urllib.error.URLError, json.JSONDecodeError):
+        return []
+    data = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(data, list):
+        return []
+    result: list[str] = []
+    seen: set[str] = set()
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        model_id = str(item.get("id") or "").strip()
+        folded = model_id.casefold()
+        if not model_id or folded in seen:
+            continue
+        seen.add(folded)
+        result.append(model_id)
+    return result
 
 
 def _managed_models_url(environ: Mapping[str, str] | None = None) -> str:
@@ -449,6 +523,60 @@ def _deepseek_model_from_selection(selection: str) -> str | None:
     return None
 
 
+def _opencode_go_selection_for_model(model: str) -> str:
+    normalized = str(model or "").strip()
+    if not normalized:
+        raise ValueError("OpenCode Go model id must not be empty")
+    return f"{OPENCODE_GO_SELECTION_PREFIX}{urllib.parse.quote(normalized, safe='')}"
+
+
+def _opencode_go_model_from_selection(selection: str) -> str | None:
+    value = str(selection or "").strip()
+    if not value.startswith(OPENCODE_GO_SELECTION_PREFIX):
+        return None
+    model = urllib.parse.unquote(value[len(OPENCODE_GO_SELECTION_PREFIX) :]).strip()
+    return model or None
+
+
+def _opencode_go_family(model: str) -> str:
+    value = str(model or "").strip().casefold()
+    for prefix, family in (
+        ("gpt-", "GPT"),
+        ("grok-", "Grok"),
+        ("deepseek-", "DeepSeek"),
+        ("glm-", "GLM"),
+        ("kimi-", "Kimi"),
+        ("minimax-", "MiniMax"),
+        ("qwen", "Qwen"),
+        ("mimo-", "MiMo"),
+        ("muse-", "Muse"),
+        ("hy", "Hunyuan"),
+        ("longcat-", "LongCat"),
+    ):
+        if value.startswith(prefix):
+            return family
+    return "Other"
+
+
+def _opencode_go_display_name(model: str) -> str:
+    value = str(model or "").strip()
+    special = {
+        "gpt-5.6-luna": "GPT 5.6 Luna",
+        "grok-4.6": "Grok 4.6",
+        "grok-4.5": "Grok 4.5",
+        "deepseek-v4.1-flash": "DeepSeek V4.1 Flash",
+        "deepseek-v4-pro": "DeepSeek V4 Pro",
+        "deepseek-v4-flash": "DeepSeek V4 Flash",
+        "deepseek-flash": "DeepSeek Flash",
+        "deepseek-v4-flash-vision-exp": "DeepSeek V4 Flash Vision Exp",
+        "longcat-2.0": "LongCat 2.0",
+        "omen-alpha": "Omen Alpha",
+    }
+    if value.casefold() in special:
+        return special[value.casefold()]
+    return value.replace("-", " ").title().replace("Qwen3.", "Qwen 3.").replace("Glm ", "GLM ").replace("Mimo ", "MiMo ")
+
+
 def _canonical_builtin_selection(selection: str, model: str) -> str:
     """Keep built-in model identity and provider routing inseparable.
 
@@ -470,11 +598,14 @@ def _canonical_builtin_selection(selection: str, model: str) -> str:
         or current.startswith(MINIMAX_SELECTION_PREFIX)
         or current == DEEPSEEK_SELECTION
         or current.startswith(DEEPSEEK_SELECTION_PREFIX)
+        or current.startswith(OPENCODE_GO_SELECTION_PREFIX)
         or current == CQU_SELECTION
     )
     if not is_provider_builtin:
         return current
 
+    if current.startswith(OPENCODE_GO_SELECTION_PREFIX):
+        return _opencode_go_selection_for_model(requested)
     if _is_minimax_model(requested):
         return _minimax_selection_for_model(requested)
     if requested.casefold().startswith("deepseek-"):
@@ -545,6 +676,9 @@ def _safe_minimax(
         "id": _managed_profile_id(model),
         "kind": "builtin",
         "name": _managed_display_name(model),
+        "groupId": "minimax",
+        "groupName": "MiniMax",
+        "groupOrder": 10,
         "adapter": "openai-compatible",
         "baseUrl": _legacy_minimax_base_url(environ),
         "model": model,
@@ -584,6 +718,9 @@ def _safe_deepseek(
         "id": _deepseek_profile_id(model),
         "kind": "builtin",
         "name": _deepseek_display_name(model),
+        "groupId": "deepseek",
+        "groupName": "DeepSeek",
+        "groupOrder": 20,
         "adapter": "openai-compatible",
         "baseUrl": _deepseek_base_url(environ),
         "model": model,
@@ -601,9 +738,35 @@ def _safe_managed(model: str, environ: Mapping[str, str] | None = None) -> dict[
         "id": _managed_profile_id(model),
         "kind": "builtin",
         "name": _managed_display_name(model),
+        "groupId": "managed-relay",
+        "groupName": "Managed models",
+        "groupOrder": 40,
         "adapter": "openai-compatible",
         "baseUrl": _managed_relay_base_url(environ),
         "model": model,
+    }
+
+
+def _safe_opencode_go(model: str, *, configured: bool) -> dict[str, Any]:
+    model = str(model or "").strip()
+    if not model:
+        raise ValueError("OpenCode Go model id must not be empty")
+    vision = model.casefold() in {"deepseek-v4-flash-vision-exp", "mimo-v2-omni"}
+    return {
+        "selection": _opencode_go_selection_for_model(model),
+        "id": "opencode-go-" + hashlib.sha256(model.casefold().encode("utf-8")).hexdigest()[:12],
+        "kind": "builtin",
+        "name": _opencode_go_display_name(model),
+        "groupId": "opencode-go",
+        "groupName": "OpenCode Go",
+        "groupOrder": 30,
+        "family": _opencode_go_family(model),
+        "protocol": opencode_go_protocol(model),
+        "configured": bool(configured),
+        "adapter": "opencode-go",
+        "baseUrl": OPENCODE_GO_BASE_URL,
+        "model": model,
+        "vision": vision,
     }
 
 
@@ -628,6 +791,9 @@ def _safe_saved(entry: StoredModel) -> dict[str, Any]:
         "id": entry.model_id,
         "kind": "saved",
         "name": entry.display_name,
+        "groupId": f"saved:{entry.model_id}",
+        "groupName": "Custom APIs",
+        "groupOrder": 100,
         "adapter": entry.adapter.value,
         "baseUrl": entry.base_url,
         "model": entry.model,
@@ -672,7 +838,23 @@ def _with_reasoning(profile: dict[str, Any], reasoning_store: ReasoningConfigSto
 
 
 def _managed_profiles(store: ModelConfigStore, environ: Mapping[str, str] | None = None) -> list[dict[str, Any]]:
-    profiles: list[dict[str, Any]] = [_safe_minimax(model_id, environ) for model_id in MINIMAX_MODEL_IDS]
+    # Different providers may intentionally expose the same model id. Keep
+    # selection/provider as the real identity. OpenCode goes first so legacy
+    # code that collapses by bare model id still resolves official built-ins
+    # (MiniMax/DeepSeek) last, preserving historical behavior.
+    profiles: list[dict[str, Any]] = []
+
+    opencode_key = _opencode_go_key(store, environ)
+    opencode_model_ids = _fetch_opencode_go_model_ids() or list(OPENCODE_GO_FALLBACK_MODEL_IDS)
+    seen_opencode: set[str] = set()
+    for model_id in opencode_model_ids:
+        folded = str(model_id or "").strip().casefold()
+        if not folded or folded in seen_opencode:
+            continue
+        seen_opencode.add(folded)
+        profiles.append(_safe_opencode_go(model_id, configured=bool(opencode_key)))
+
+    profiles.extend(_safe_minimax(model_id, environ) for model_id in MINIMAX_MODEL_IDS)
 
     deepseek_key = _deepseek_key(store, environ)
     deepseek_model_ids = list(DEEPSEEK_FALLBACK_MODEL_IDS)
@@ -711,6 +893,10 @@ def _base_profile_for_selection(store: ModelConfigStore, selection: str) -> dict
     deepseek_model = _deepseek_model_from_selection(requested)
     if deepseek_model:
         return _safe_deepseek(deepseek_model)
+    opencode_model = _opencode_go_model_from_selection(requested)
+    if opencode_model:
+        return _safe_opencode_go(opencode_model, configured=bool(_opencode_go_key(store)))
+
     managed_model = _managed_model_from_selection(requested)
     if managed_model:
         return _safe_managed(managed_model)
@@ -743,7 +929,9 @@ def _describe_model(
         raise ValueError("model must not be empty")
     effective_selection = _canonical_builtin_selection(selection, requested_model)
     profile = _base_profile_for_selection(store, effective_selection)
-    if _is_minimax_model(requested_model):
+    if _opencode_go_model_from_selection(effective_selection):
+        profile = _safe_opencode_go(requested_model, configured=bool(_opencode_go_key(store)))
+    elif _is_minimax_model(requested_model):
         profile = _safe_minimax(requested_model)
     elif _deepseek_model_from_selection(effective_selection):
         profile = _safe_deepseek(requested_model)
@@ -808,6 +996,20 @@ def _resolve(
         raise RuntimeError(
             "DeepSeek API key is not configured. Set DEEPSEEK_API_KEY once or add a saved "
             "DeepSeek connection using the official https://api.deepseek.com endpoint."
+        )
+
+    opencode_model = _opencode_go_model_from_selection(requested)
+    if opencode_model:
+        api_key = _opencode_go_key(store)
+        if api_key:
+            opencode_profile = _with_reasoning(
+                _safe_opencode_go(opencode_model, configured=True),
+                reasoning_store,
+            )
+            return {**opencode_profile, "provider": "opencode-go", "apiKey": api_key}
+        raise RuntimeError(
+            "OpenCode Go API key is not configured. Open the OpenCode Go model group "
+            "in Loom and connect your subscription key."
         )
 
     managed_model = _managed_model_from_selection(requested)
@@ -916,6 +1118,7 @@ def _persist_active(
     if (
         _minimax_model_from_selection(selection)
         or _deepseek_model_from_selection(selection)
+        or _opencode_go_model_from_selection(selection)
         or _managed_model_from_selection(selection)
     ):
         store.set_active(None)
@@ -969,10 +1172,10 @@ def _set_reasoning(
 
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
-    commands = {"list", "resolve", "describe-model", "save", "delete", "set-active", "persist-active", "set-reasoning"}
+    commands = {"list", "resolve", "describe-model", "save", "delete", "set-active", "persist-active", "set-reasoning", "set-provider-key"}
     if len(args) != 1 or args[0] not in commands:
         sys.stderr.write(
-            "usage: loom_model_bridge.py {list|resolve|describe-model|save|delete|set-active|persist-active|set-reasoning}\n"
+            "usage: loom_model_bridge.py {list|resolve|describe-model|save|delete|set-active|persist-active|set-reasoning|set-provider-key}\n"
         )
         return 2
 
@@ -1006,6 +1209,8 @@ def main(argv: list[str] | None = None) -> int:
             result = _set_active(store, reasoning_store, selection_store, payload)
         elif command == "persist-active":
             result = _persist_active(store, selection_store, payload)
+        elif command == "set-provider-key":
+            result = _set_provider_key(payload)
         else:
             result = _set_reasoning(store, reasoning_store, payload)
         _write({"ok": True, "result": result})

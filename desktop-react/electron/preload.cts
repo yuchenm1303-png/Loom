@@ -33,6 +33,7 @@ const api = {
   accountRegister: (email: string, password: string) => ipcRenderer.invoke("loom:account-register", email, password),
   accountLogout: () => ipcRenderer.invoke("loom:account-logout"),
   listModels: () => ipcRenderer.invoke("loom:model-list"),
+  setModelProviderKey: (provider: string, apiKey: string) => ipcRenderer.invoke("loom:model-provider-key", provider, apiKey),
   switchModelProfile: (first: string, second?: string) =>
     second === undefined ? ipcRenderer.invoke("loom:model-switch", first) : ipcRenderer.invoke("loom:model-switch", first, second),
   switchCurrentModel: (first: string, second?: string, third?: string) =>

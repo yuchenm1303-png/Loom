@@ -38,7 +38,7 @@ def _configure_protocol_stdio() -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Loom local app-server (stdio JSON-RPC)")
-    parser.add_argument("--provider", choices=["openai", "openai-compatible"])
+    parser.add_argument("--provider", choices=["openai", "openai-compatible", "opencode-go"])
     parser.add_argument("--base-url")
     parser.add_argument("--model")
     parser.add_argument("--selection")

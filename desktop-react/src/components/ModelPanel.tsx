@@ -22,7 +22,14 @@ import type {
 } from "../types/loom";
 import "./model-panel.css";
 
-type ModelView = "list" | "profiles" | "add" | "custom";
+type ModelView = "list" | "profiles" | "group" | "add" | "custom";
+
+interface ModelGroup {
+  id: string;
+  name: string;
+  order: number;
+  profiles: ModelProfile[];
+}
 
 interface ModelPanelProps {
   runtimeModel?: string;
@@ -31,6 +38,7 @@ interface ModelPanelProps {
   running?: boolean;
   onSwitchProfile(selection: string): Promise<void> | void;
   onSwitchCurrent(model: string): Promise<void> | void;
+  onConfigureProvider(provider: string, apiKey: string): Promise<void> | void;
   onAddModel(input: AddModelInput): Promise<void> | void;
   onDeleteModel(selection: string): Promise<void> | void;
   onReasoningChange(kind: string, value: string): Promise<void> | void;
@@ -47,11 +55,16 @@ function endpointLabel(baseUrl: string): string {
 }
 
 function adapterLabel(adapter: string): string {
-  return adapter === "openai" ? "OpenAI" : "OpenAI-compatible";
+  if (adapter === "openai") return "OpenAI";
+  if (adapter === "opencode-go") return "OpenCode Go";
+  return "OpenAI-compatible";
 }
 
 function profileSubtitle(profile: ModelProfile): string {
   if (profile.kind === "builtin") {
+    if (profile.adapter === "opencode-go") {
+      return `OpenCode Go · ${profile.family || "Model"} · ${profile.protocol || "auto"}`;
+    }
     if (profile.baseUrl.includes("relay.smirel.com")) return "Built-in managed · Smirel Relay";
     return `Built-in · ${endpointLabel(profile.baseUrl)}`;
   }
@@ -62,6 +75,7 @@ function builtinBadge(profile: ModelProfile): string | null {
   if (profile.kind !== "builtin") return null;
   if (profile.selection === "builtin:minimax") return "Primary";
   if (profile.selection.startsWith("builtin:deepseek")) return "DeepSeek";
+  if (profile.selection.startsWith("builtin:opencode-go:")) return "Go";
   return "Managed";
 }
 
@@ -169,6 +183,7 @@ export function ModelPanel({
   running,
   onSwitchProfile,
   onSwitchCurrent,
+  onConfigureProvider,
   onAddModel,
   onDeleteModel,
   onReasoningChange,
@@ -184,6 +199,9 @@ export function ModelPanel({
   const [apiKey, setApiKey] = useState("");
   const [confirmDelete, setConfirmDelete] = useState("");
   const [pendingDelete, setPendingDelete] = useState("");
+  const [selectedGroup, setSelectedGroup] = useState("");
+  const [providerKey, setProviderKey] = useState("");
+  const [providerConfiguring, setProviderConfiguring] = useState(false);
 
   const currentModel = snapshot?.current?.model || runtimeModel || "MiniMax-M3";
   const currentName = snapshot?.current?.name || (currentModel.toLowerCase().includes("minimax") ? "MiniMax" : "Current API");
@@ -192,6 +210,36 @@ export function ModelPanel({
   const currentSelection = snapshot?.current?.selection || "";
   const currentReasoning = snapshot?.current?.reasoning ?? null;
   const profiles = snapshot?.profiles ?? [];
+  const groups = useMemo<ModelGroup[]>(() => {
+    const grouped = new Map<string, ModelGroup>();
+    for (const profile of profiles) {
+      const id = profile.groupId || profile.selection;
+      const existing = grouped.get(id);
+      if (existing) {
+        existing.profiles.push(profile);
+        continue;
+      }
+      grouped.set(id, {
+        id,
+        name: profile.groupName || profile.name,
+        order: profile.groupOrder ?? 1000,
+        profiles: [profile],
+      });
+    }
+    return [...grouped.values()]
+      .map((group) => ({
+        ...group,
+        profiles: [...group.profiles].sort((a, b) => {
+          const family = String(a.family || "").localeCompare(String(b.family || ""));
+          return family || a.name.localeCompare(b.name);
+        }),
+      }))
+      .sort((a, b) => a.order - b.order || a.name.localeCompare(b.name));
+  }, [profiles]);
+  const activeGroup = useMemo(
+    () => groups.find((group) => group.id === selectedGroup) ?? null,
+    [groups, selectedGroup],
+  );
   const recent = useMemo(
     () => (snapshot?.recentModels ?? []).filter((item) => item && item !== currentModel).slice(0, 4),
     [currentModel, snapshot?.recentModels],
@@ -220,6 +268,21 @@ export function ModelPanel({
       return;
     }
     await run(() => onSwitchCurrent(value));
+  }
+
+  async function configureProvider(provider: string) {
+    const key = providerKey.trim();
+    if (!key || providerConfiguring) return;
+    setError("");
+    setProviderConfiguring(true);
+    try {
+      await onConfigureProvider(provider, key);
+      setProviderKey("");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setProviderConfiguring(false);
+    }
   }
 
   async function submitAdd() {
@@ -368,6 +431,125 @@ export function ModelPanel({
     );
   }
 
+  if (view === "group" && activeGroup) {
+    const families = new Map<string, ModelProfile[]>();
+    for (const profile of activeGroup.profiles) {
+      const family = profile.family || (activeGroup.id === "opencode-go" ? "Other" : "");
+      const list = families.get(family) ?? [];
+      list.push(profile);
+      families.set(family, list);
+    }
+    const familyEntries = [...families.entries()];
+    const needsProviderKey = (
+      activeGroup.id === "opencode-go"
+      && activeGroup.profiles.every((profile) => profile.configured === false)
+    );
+
+    return (
+      <div className="model-manager-view">
+        <button type="button" className="model-back" onClick={() => { setView("profiles"); setError(""); }}>
+          <ArrowLeft size={14} /> Back
+        </button>
+        <div className="model-form-heading">
+          <span className="model-form-icon"><Server size={17} /></span>
+          <div>
+            <strong>{activeGroup.name}</strong>
+            <span>{activeGroup.profiles.length} models · choose the exact model for this conversation.</span>
+          </div>
+        </div>
+
+        {needsProviderKey ? (
+          <div className="model-provider-connect">
+            <div className="model-provider-connect-copy">
+              <KeyRound size={16} />
+              <div>
+                <strong>Connect OpenCode Go</strong>
+                <span>One subscription key unlocks this whole model group. It is stored in your OS credential store.</span>
+              </div>
+            </div>
+            <div className="model-provider-connect-form">
+              <input
+                type="password"
+                value={providerKey}
+                onChange={(event) => setProviderKey(event.target.value)}
+                placeholder="OpenCode Go subscription key"
+                autoComplete="off"
+              />
+              <button
+                type="button"
+                disabled={!providerKey.trim() || providerConfiguring}
+                onClick={() => void configureProvider("opencode-go")}
+              >
+                {providerConfiguring ? <RefreshCw size={13} className="model-spin" /> : <KeyRound size={13} />}
+                Connect
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        <div className="model-group-models">
+          {familyEntries.map(([family, familyProfiles]) => (
+            <section className="model-family-section" key={family || activeGroup.id}>
+              {family ? <div className="model-family-heading">{family}</div> : null}
+              <div className="model-profile-list">
+                {familyProfiles.map((profile) => {
+                  const exactActive = profile.selection === currentSelection && profile.model === currentModel;
+                  const profileReasoning = profile.reasoning ? activeReasoningOption(profile.reasoning) : null;
+                  const badge = builtinBadge(profile);
+                  const deletable = profile.kind === "saved";
+                  const deleting = pendingDelete === profile.selection;
+                  const confirming = confirmDelete === profile.selection;
+                  return (
+                    <div
+                      key={profile.selection}
+                      className={`model-profile-row ${exactActive ? "active" : ""} ${deletable ? "deletable" : ""} ${confirming ? "confirm-delete" : ""}`}
+                    >
+                      <button
+                        type="button"
+                        className="model-profile-main"
+                        disabled={locked || exactActive || deleting || needsProviderKey}
+                        onClick={() => void run(() => onSwitchProfile(profile.selection))}
+                      >
+                        <span className={`model-profile-icon ${profile.kind}`}><Server size={15} /></span>
+                        <span className="model-profile-copy">
+                          <span className="model-profile-title-row">
+                            <strong>{profile.name}</strong>
+                            {badge ? <em>{badge}</em> : null}
+                            {profileReasoning ? <em className="model-reasoning-badge">{profileReasoning.label}</em> : null}
+                          </span>
+                          <span>{profile.model}</span>
+                          <small>{profileSubtitle(profile)}</small>
+                        </span>
+                        <span className="model-profile-action">
+                          {exactActive ? <Check size={14} /> : busy ? <RefreshCw size={13} className="model-spin" /> : <ChevronRight size={14} />}
+                        </span>
+                      </button>
+                      {deletable ? (
+                        <button
+                          type="button"
+                          className={`model-profile-delete ${confirming ? "confirm" : ""}`}
+                          disabled={locked || Boolean(pendingDelete)}
+                          title={confirming ? `Click again to delete ${profile.name}` : `Delete ${profile.name}`}
+                          aria-label={confirming ? `Confirm delete ${profile.name}` : `Delete ${profile.name}`}
+                          onClick={() => void deleteProfile(profile)}
+                        >
+                          {deleting ? <RefreshCw size={13} className="model-spin" /> : <Trash2 size={13} />}
+                        </button>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          ))}
+        </div>
+
+        {confirmDelete ? <div className="model-delete-note">Click the trash icon again to delete this saved API connection.</div> : null}
+        {error ? <div className="composer-popover-error">{error}</div> : null}
+      </div>
+    );
+  }
+
   if (view === "profiles") {
     return (
       <div className="model-manager-view">
@@ -377,56 +559,49 @@ export function ModelPanel({
         <div className="model-form-heading">
           <span className="model-form-icon"><Cpu size={17} /></span>
           <div>
-            <strong>Models</strong>
-            <span>Choose a saved connection or use another model ID.</span>
+            <strong>Model providers</strong>
+            <span>Choose a provider first, then select a model inside that group.</span>
           </div>
         </div>
 
-        <div className="model-profile-list">
-          {profiles.map((profile) => {
-            const exactActive = profile.selection === currentSelection && profile.model === currentModel;
-            const profileReasoning = profile.reasoning ? activeReasoningOption(profile.reasoning) : null;
-            const badge = builtinBadge(profile);
-            const deletable = profile.kind === "saved";
-            const deleting = pendingDelete === profile.selection;
-            const confirming = confirmDelete === profile.selection;
+        <div className="model-profile-list model-group-list">
+          {groups.map((group) => {
+            const active = group.profiles.some(
+              (profile) => profile.selection === currentSelection && profile.model === currentModel,
+            );
+            const connected = (
+              group.id !== "opencode-go"
+              || group.profiles.some((profile) => profile.configured !== false)
+            );
             return (
-              <div
-                key={profile.selection}
-                className={`model-profile-row ${exactActive ? "active" : ""} ${deletable ? "deletable" : ""} ${confirming ? "confirm-delete" : ""}`}
-              >
+              <div key={group.id} className={`model-profile-row model-group-row ${active ? "active" : ""}`}>
                 <button
                   type="button"
                   className="model-profile-main"
-                  disabled={locked || exactActive || deleting}
-                  onClick={() => void run(() => onSwitchProfile(profile.selection))}
+                  disabled={locked}
+                  onClick={() => {
+                    setSelectedGroup(group.id);
+                    setView("group");
+                    setError("");
+                  }}
                 >
-                  <span className={`model-profile-icon ${profile.kind}`}><Server size={15} /></span>
+                  <span className="model-profile-icon builtin"><Server size={15} /></span>
                   <span className="model-profile-copy">
                     <span className="model-profile-title-row">
-                      <strong>{profile.name}</strong>
-                      {badge ? <em>{badge}</em> : null}
-                      {profileReasoning ? <em className="model-reasoning-badge">{profileReasoning.label}</em> : null}
+                      <strong>{group.name}</strong>
+                      {active ? <em>Current</em> : null}
                     </span>
-                    <span>{profile.model}</span>
-                    <small>{profileSubtitle(profile)}</small>
+                    <span>{group.profiles.length} {group.profiles.length === 1 ? "model" : "models"}</span>
+                    <small>
+                      {group.id === "opencode-go"
+                        ? (connected ? "OpenCode Go subscription · connected" : "OpenCode Go subscription · key required")
+                        : group.profiles[0]?.kind === "saved"
+                          ? profileSubtitle(group.profiles[0])
+                          : "Built-in provider group"}
+                    </small>
                   </span>
-                  <span className="model-profile-action">
-                    {exactActive ? <Check size={14} /> : busy ? <RefreshCw size={13} className="model-spin" /> : <ChevronRight size={14} />}
-                  </span>
+                  <span className="model-profile-action"><ChevronRight size={14} /></span>
                 </button>
-                {deletable ? (
-                  <button
-                    type="button"
-                    className={`model-profile-delete ${confirming ? "confirm" : ""}`}
-                    disabled={locked || Boolean(pendingDelete)}
-                    title={confirming ? `Click again to delete ${profile.name}` : `Delete ${profile.name}`}
-                    aria-label={confirming ? `Confirm delete ${profile.name}` : `Delete ${profile.name}`}
-                    onClick={() => void deleteProfile(profile)}
-                  >
-                    {deleting ? <RefreshCw size={13} className="model-spin" /> : <Trash2 size={13} />}
-                  </button>
-                ) : null}
               </div>
             );
           })}
@@ -437,7 +612,6 @@ export function ModelPanel({
           <span><strong>Other model ID</strong><small>Same API connection</small></span>
           <ChevronRight size={14} />
         </button>
-        {confirmDelete ? <div className="model-delete-note">Click the trash icon again to delete this saved API connection.</div> : null}
         {error ? <div className="composer-popover-error">{error}</div> : null}
       </div>
     );

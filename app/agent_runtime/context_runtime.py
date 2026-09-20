@@ -237,6 +237,7 @@ class ContextAgentRuntime(SandboxAgentRuntime):
                 tools=(),
                 tool_choice=ToolChoice.NONE,
                 max_output_tokens=self.limits.output_reserve_tokens,
+                session_id=session.session_id,
             )
             response = self.platform_for_session(session.session_id).execute_chat(
                 session.profile_id,

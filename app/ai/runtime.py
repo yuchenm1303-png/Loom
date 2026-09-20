@@ -7,6 +7,7 @@ from .capabilities import ModelCapability
 from .configuration import AIConfiguration
 from .credential_resolver import CredentialResolver
 from .openai_streaming import OpenAIStreamingChatBackend
+from .opencode_go_runtime import OpenCodeGoBackend
 from .profiles import ModelProfile
 from .provider_catalog import ProviderAdapter, ProviderConnection
 from .streaming_platform import StreamingAIPlatform
@@ -60,6 +61,13 @@ def build_ai_platform(
                 profile=profile,
                 api_key=secret,
                 client=client,
+                request_timeout_seconds=request_timeout_seconds,
+            )
+        elif connection.adapter is ProviderAdapter.OPENCODE_GO:
+            backend = OpenCodeGoBackend(
+                connection=connection,
+                profile=profile,
+                api_key=secret,
                 request_timeout_seconds=request_timeout_seconds,
             )
         else:  # pragma: no cover - catalog blocks non-executable adapters today

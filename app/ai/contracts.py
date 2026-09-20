@@ -162,6 +162,7 @@ class ChatRequest:
     temperature: float | None = None
     max_output_tokens: int | None = None
     reasoning: ReasoningRequest | None = None
+    session_id: str = ""
 
     def __post_init__(self) -> None:
         messages = tuple(self.messages)
@@ -184,6 +185,7 @@ class ChatRequest:
         reasoning = self.reasoning
         if reasoning is not None and not isinstance(reasoning, ReasoningRequest):
             raise TypeError("reasoning must be ReasoningRequest or None")
+        session_id = str(self.session_id or "").strip()
         object.__setattr__(self, "messages", messages)
         object.__setattr__(self, "tools", tools)
         object.__setattr__(self, "tool_choice", tool_choice)
@@ -191,6 +193,7 @@ class ChatRequest:
             object.__setattr__(self, "temperature", float(temperature))
         if max_output_tokens is not None:
             object.__setattr__(self, "max_output_tokens", int(max_output_tokens))
+        object.__setattr__(self, "session_id", session_id)
 
     @property
     def uses_vision(self) -> bool:

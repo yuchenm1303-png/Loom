@@ -152,6 +152,7 @@ class TurnRunner:
                         tool_choice=ToolChoice.AUTO,
                         max_output_tokens=resolved_output_reserve or None,
                         reasoning=reasoning,
+                        session_id=session.session_id,
                     )
 
                     # Transport retries are retries of this exact request, not a

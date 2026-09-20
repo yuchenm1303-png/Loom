@@ -356,6 +356,16 @@ export function useLoom() {
     }
   }, [active?.thread.id, active?.thread.modelSelection, applyModelRestart, models?.current?.selection]);
 
+  const configureModelProvider = useCallback(async (provider: string, apiKey: string) => {
+    setModelBusy(true);
+    try {
+      const snapshot = await requireBridge().setModelProviderKey<ModelSnapshot>(provider, apiKey);
+      setModels(snapshot);
+    } finally {
+      setModelBusy(false);
+    }
+  }, []);
+
   const addModel = useCallback(async (input: AddModelInput) => {
     setModelBusy(true);
     try {
@@ -642,6 +652,7 @@ export function useLoom() {
     setPermissionMode,
     switchModelProfile,
     switchCurrentModel,
+    configureModelProvider,
     addModel,
     deleteModel,
     setReasoning,
@@ -651,6 +662,7 @@ export function useLoom() {
     addModel,
     archiveThread,
     connection,
+    configureModelProvider,
     deleteModel,
     deleteThread,
     error,
