@@ -265,9 +265,16 @@ export class DesktopModelManager {
       selection,
       model: value,
     });
+    // describe-model is allowed to canonicalize a known built-in model onto
+    // its owning provider. Never keep the old connection while only changing
+    // the visible model name: that can make the UI say DeepSeek while requests
+    // still use MiniMax credentials/base URL.
+    const connection = described.selection && described.selection !== current.selection
+      ? this.resolve(described.selection)
+      : current;
     return {
-      ...current,
-      model: value,
+      ...connection,
+      model: described.model || value,
       reasoning: described.reasoning ?? null,
     };
   }
@@ -281,12 +288,16 @@ export class DesktopModelManager {
       selection: current.selection,
       model: value,
     });
+    const connection = described.selection && described.selection !== current.selection
+      ? this.resolve(described.selection)
+      : current;
     const next: ModelLaunchSpec = {
-      ...current,
-      model: value,
+      ...connection,
+      model: described.model || value,
       reasoning: described.reasoning ?? null,
     };
     this.currentSpec = next;
+    this.launchCache.set(next.selection, next);
     return next;
   }
 
