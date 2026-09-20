@@ -57,8 +57,9 @@ def test_running_send_is_routed_to_turn_steer_not_a_second_turn_start() -> None:
     assert 'const running = Boolean(loom.turnActive || threadIsRunning(thread));' in source
     assert 'if (!running) {' in source
     assert 'await loom.send(input, attachments);' in source
-    assert 'await window.loom.call("turn/steer", {' in source
-    assert 'turnId: activeTurn.currentTurnId' in source
+    assert 'window.loom.call<SteeringReceipt>("turn/steer", {' in source
+    assert 'await window.loom.call("turn/steer", {' not in source
+    assert 'turnId,' in source
 
 
 
