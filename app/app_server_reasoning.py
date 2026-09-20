@@ -784,7 +784,17 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
 
     def _install_runtime_platform(self, platform: Any) -> None:
         self.runtime.platform = platform
-        setattr(self.runtime, "_provider_streaming_enabled", False)
+
+        # StreamingAgentRuntime owns provider-stream subscription lifecycle. Do
+        # not recreate that wiring here: doing so bypasses its de-duplication and
+        # can register the same listener twice through transparent platform
+        # wrappers after a model switch.
+        configure = getattr(self.runtime, "_configure_streaming_platform", None)
+        if callable(configure):
+            configure(platform)
+            return
+
+        # Lightweight test/legacy runtimes may not expose the centralized hook.
         enable = getattr(platform, "enable_streaming", None)
         subscribe = getattr(platform, "subscribe_stream", None)
         provider_listener = getattr(self.runtime, "_on_provider_stream", None)
