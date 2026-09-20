@@ -723,9 +723,18 @@ export function ModelPanel({
 
   return (
     <div className="model-manager-view model-manager-home model-core-home">
-      <section className={`model-core-identity ${locked ? "locked" : ""}`} aria-label={`Current model ${currentModel}`}>
+      <button
+        type="button"
+        className={`model-core-identity model-core-selector ${locked ? "locked" : ""}`}
+        aria-label={`Choose model. Current model ${currentModel}`}
+        disabled={locked}
+        onClick={() => { setView("profiles"); setError(""); }}
+      >
         <div className="model-core-copy" key={`${currentSelection}:${currentModel}`}>
-          <strong>{currentModel}</strong>
+          <span className="model-core-title-row">
+            <strong>{currentModel}</strong>
+            <ChevronRight size={13} strokeWidth={1.8} aria-hidden="true" />
+          </span>
           <small>
             {currentGroupName} · {adapterLabel(currentAdapter)}
             {currentReasoningOption ? ` · ${currentReasoningOption.label}` : " · Auto"}
@@ -734,7 +743,7 @@ export function ModelPanel({
         <span className="model-core-health" title="Provider connected" aria-label="Provider connected">
           <i aria-hidden="true" />
         </span>
-      </section>
+      </button>
 
       <section className="model-core-reasoning" aria-label="Reasoning control">
         {currentReasoning ? (
@@ -761,31 +770,6 @@ export function ModelPanel({
           </div>
         )}
       </section>
-
-      <div className="model-core-nav" aria-label="Model actions">
-        <button
-          type="button"
-          className="model-core-models"
-          onClick={() => { setView("profiles"); setError(""); }}
-          disabled={locked}
-        >
-          <span>
-            <strong>Models</strong>
-            <small>{groups.length} providers · {profiles.length} models</small>
-          </span>
-          <ChevronRight size={14} />
-        </button>
-
-        <button
-          type="button"
-          className="model-core-add-api"
-          onClick={() => { setView("add"); setError(""); }}
-          disabled={locked}
-        >
-          <Plus size={13.5} strokeWidth={1.8} />
-          <strong>Add API</strong>
-        </button>
-      </div>
 
       {error ? <div className="composer-popover-error">{error}</div> : null}
     </div>
