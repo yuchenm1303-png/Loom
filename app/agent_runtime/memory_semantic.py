@@ -689,6 +689,8 @@ class SemanticConsolidator:
         self,
         profile_id: str,
         bundle: SemanticBundle,
+        *,
+        session_id: str,
     ) -> tuple[SemanticPlan, ModelUsage]:
         payload = {
             "extraction_id": bundle.extraction_id,
@@ -713,6 +715,7 @@ class SemanticConsolidator:
             tool_choice=ToolChoice.NONE,
             temperature=0.0,
             max_output_tokens=3000,
+            session_id=session_id,
         )
         response = self.platform.execute_chat(profile_id, request)
         if not isinstance(response, ModelResponse):
@@ -971,7 +974,11 @@ class SemanticMemoryRuntime(MemoryRuntime):
             consolidator = SemanticConsolidator(
                 self.platform_for_session(job.source_session_id)
             )
-            plan, usage = consolidator.plan(session.profile_id, bundle)
+            plan, usage = consolidator.plan(
+                session.profile_id,
+                bundle,
+                session_id=session.session_id,
+            )
             count = self.memory_semantic_store.apply_and_complete(
                 job,
                 plan,

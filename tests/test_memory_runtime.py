@@ -92,6 +92,7 @@ def test_memory_extraction_filters_system_context_and_redacts_secrets(tmp_path):
     assert result.extraction.candidate_count == 2
     assert len(result.consolidated) == 2
     extraction_request = platform.requests[0][1]
+    assert extraction_request.session_id == session.session_id
     supplied = extraction_request.messages[-1].content
     assert isinstance(supplied, str)
     assert "do-not-copy" not in supplied

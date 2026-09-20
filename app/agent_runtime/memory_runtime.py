@@ -257,6 +257,7 @@ class MemoryRuntime(MultiAgentRuntime):
             tool_choice=ToolChoice.NONE,
             temperature=0.0,
             max_output_tokens=2400,
+            session_id=source_session_id,
         )
         response = self.platform_for_session(source_session_id).execute_chat(profile_id, request)
         if not isinstance(response, ModelResponse):

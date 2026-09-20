@@ -141,6 +141,7 @@ def test_first_completed_turn_generates_and_persists_title(tmp_path: Path) -> No
         assert title_request.tools == ()
         assert title_request.max_output_tokens == 48
         assert title_request.temperature == 0.2
+        assert title_request.session_id == thread_id
         title_prompt = str(title_request.messages[-1].content)
         assert "自动总结并生成简短标题" in title_prompt
         # Only the user's first message. Titles are generated as soon as the
@@ -188,6 +189,7 @@ def test_auto_title_uses_the_threads_model_not_the_global_default(tmp_path: Path
         assert default_platform.requests == []
         assert len(thread_platform.requests) == 2
         assert any(_is_title_request(request) for request in thread_platform.requests)
+        assert all(request.session_id == thread_id for request in thread_platform.requests)
     finally:
         runtime.close()
 

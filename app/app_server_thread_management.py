@@ -221,6 +221,7 @@ def _build_auto_title_request(session: Any) -> ChatRequest | None:
         tool_choice=ToolChoice.NONE,
         temperature=0.2,
         max_output_tokens=48,
+        session_id=str(getattr(session, "session_id", "") or ""),
     )
 
 

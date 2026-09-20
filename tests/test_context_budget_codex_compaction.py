@@ -177,6 +177,7 @@ def test_compaction_request_uses_codex_prompt_as_final_user_message_and_no_tools
 
     request = runtime.model_executor.requests[0][1]
     assert request.tools == ()
+    assert request.session_id == session.session_id
     assert request.messages[-1].role is MessageRole.USER
     assert request.messages[-1].content == summarization_prompt("latin")
     assert request.messages[0].role is MessageRole.SYSTEM
