@@ -701,3 +701,406 @@
   opacity: .45;
   cursor: default;
 }
+
+
+/* -------------------------------------------------------------------------
+   Model manager home — one integrated control surface, not nested cards.
+   ------------------------------------------------------------------------- */
+
+.model-home {
+  gap: 0;
+  margin: 0 -2px -2px;
+}
+
+.model-home-summary {
+  position: relative;
+  overflow: hidden;
+  padding: 16px 13px 15px;
+  border: 0;
+  border-bottom: 1px solid rgba(255,255,255,.055);
+  background:
+    radial-gradient(120% 100% at 0% 0%, rgba(129,118,238,.085), transparent 52%),
+    linear-gradient(180deg, rgba(255,255,255,.018), rgba(255,255,255,0));
+}
+
+.model-home-summary::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 14px;
+  right: 14px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(171,162,244,.24), transparent);
+  opacity: .8;
+}
+
+.model-home-summary.locked {
+  opacity: .66;
+}
+
+.model-home-topline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  color: #686f7d;
+  font-size: 8.3px;
+  font-weight: 680;
+  letter-spacing: .095em;
+  text-transform: uppercase;
+}
+
+.model-home-active {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #8d95a3;
+  letter-spacing: .045em;
+}
+
+.model-home-active i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #72b997;
+  box-shadow: 0 0 0 3px rgba(114,185,151,.08);
+}
+
+.model-home-identity {
+  display: grid;
+  grid-template-columns: 39px minmax(0, 1fr);
+  gap: 11px;
+  align-items: center;
+}
+
+.model-home-symbol {
+  width: 39px;
+  height: 39px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(159,149,235,.14);
+  border-radius: 12px;
+  background:
+    linear-gradient(145deg, rgba(139,124,246,.10), rgba(139,124,246,.025)),
+    rgba(255,255,255,.018);
+  color: #a79eea;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.04),
+    0 8px 22px rgba(0,0,0,.12);
+}
+
+.model-home-copy {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.model-home-copy > strong {
+  color: #eceef4;
+  font-size: 14.5px;
+  line-height: 1.15;
+  font-weight: 670;
+  letter-spacing: -.025em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-home-source {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #7c8491;
+  font-size: 9.5px;
+  line-height: 1.25;
+  overflow: hidden;
+}
+
+.model-home-source span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-home-source i {
+  width: 3px;
+  height: 3px;
+  flex: none;
+  border-radius: 50%;
+  background: #4d535e;
+}
+
+.model-home-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: 11px 0 0 50px;
+}
+
+.model-home-tags span {
+  padding: 3px 6px;
+  border: 1px solid rgba(255,255,255,.045);
+  border-radius: 6px;
+  background: rgba(255,255,255,.018);
+  color: #6e7582;
+  font-size: 8px;
+  font-weight: 570;
+  letter-spacing: .015em;
+}
+
+.model-home-controls {
+  padding: 4px 7px;
+  border-bottom: 1px solid rgba(255,255,255,.052);
+}
+
+.model-home-control-line {
+  min-height: 51px;
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  gap: 9px;
+  align-items: center;
+  padding: 7px 6px;
+}
+
+.model-home-control-icon {
+  width: 29px;
+  height: 29px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  color: #7f8797;
+  background: rgba(255,255,255,.025);
+}
+
+.model-home-control-line > div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.model-home-control-line strong {
+  color: #cfd3db;
+  font-size: 10.5px;
+  font-weight: 610;
+}
+
+.model-home-control-line small {
+  color: #676f7c;
+  font-size: 8.8px;
+  line-height: 1.35;
+}
+
+.model-home-control-state {
+  padding: 3px 6px;
+  border-radius: 6px;
+  background: rgba(255,255,255,.025);
+  color: #737b88;
+  font-size: 8px;
+  font-weight: 620;
+}
+
+.model-home-actions {
+  display: grid;
+  padding: 5px 0 0;
+}
+
+.model-home-action {
+  width: 100%;
+  min-height: 52px;
+  display: grid;
+  grid-template-columns: 31px minmax(0, 1fr) 18px;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: #737b88;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background 150ms ease,
+    color 150ms ease,
+    transform 140ms cubic-bezier(.2,.8,.2,1);
+}
+
+.model-home-action + .model-home-action {
+  border-top: 1px solid rgba(255,255,255,.038);
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+.model-home-action:hover:not(:disabled) {
+  background: rgba(255,255,255,.032);
+  color: #a8afba;
+  transform: translateX(1px);
+}
+
+.model-home-action:active:not(:disabled) {
+  transform: translateX(1px) scale(.995);
+}
+
+.model-home-action:disabled {
+  opacity: .48;
+  cursor: default;
+}
+
+.model-home-action-icon {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  color: #8d94a2;
+  background: rgba(255,255,255,.025);
+  transition: background 150ms ease, color 150ms ease;
+}
+
+.model-home-action-primary .model-home-action-icon {
+  color: #aaa1ee;
+  background: rgba(139,124,246,.065);
+}
+
+.model-home-action:hover:not(:disabled) .model-home-action-icon {
+  color: #c1c7d1;
+  background: rgba(255,255,255,.045);
+}
+
+.model-home-action-primary:hover:not(:disabled) .model-home-action-icon {
+  color: #c4bcff;
+  background: rgba(139,124,246,.10);
+}
+
+.model-home-action-copy {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.model-home-action-copy strong {
+  color: #d3d7de;
+  font-size: 10.6px;
+  font-weight: 620;
+  letter-spacing: -.005em;
+}
+
+.model-home-action-copy small {
+  color: #656d79;
+  font-size: 8.7px;
+}
+
+.model-home-action > svg {
+  justify-self: end;
+  opacity: .66;
+}
+
+/* Reasoning is flattened into the integrated control strip on the home view. */
+.model-home-controls .reasoning-control {
+  display: grid;
+  gap: 8px;
+  padding: 8px 6px 10px;
+  border: 0;
+  background: transparent;
+}
+
+.model-home-controls .reasoning-control-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.model-home-controls .reasoning-control-title {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 29px minmax(0,1fr);
+  gap: 9px;
+  align-items: center;
+}
+
+.model-home-controls .reasoning-control-icon {
+  width: 29px;
+  height: 29px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  background: rgba(255,255,255,.025);
+  color: #8e96a5;
+}
+
+.model-home-controls .reasoning-control-title > div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.model-home-controls .reasoning-control-title strong {
+  color: #cfd3db;
+  font-size: 10.5px;
+  font-weight: 610;
+}
+
+.model-home-controls .reasoning-control-description {
+  color: #676f7c;
+  font-size: 8.8px;
+  line-height: 1.35;
+}
+
+.model-home-controls .reasoning-reset {
+  min-height: 26px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 7px;
+  border: 0;
+  border-radius: 7px;
+  background: rgba(255,255,255,.025);
+  color: #727a87;
+  font: inherit;
+  font-size: 8px;
+  cursor: pointer;
+}
+
+.model-home-controls .reasoning-segments {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(var(--reasoning-count), minmax(0,1fr));
+  gap: 3px;
+  padding: 3px;
+  border-radius: 9px;
+  background: rgba(255,255,255,.025);
+}
+
+.model-home-controls .reasoning-segment {
+  min-width: 0;
+  height: 27px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #727a87;
+  font: inherit;
+  font-size: 8.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.model-home-controls .reasoning-segment.active {
+  background: rgba(139,124,246,.10);
+  color: #b9b1f4;
+  box-shadow: inset 0 0 0 1px rgba(155,144,240,.10);
+}
+
+.model-home-controls .reasoning-locked-note {
+  color: #6b7280;
+  font-size: 8.4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .model-home-action,
+  .model-home-action-icon {
+    transition: none;
+  }
+}
