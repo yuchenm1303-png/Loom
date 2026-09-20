@@ -9,6 +9,7 @@ import {
   PanelRightClose,
   PanelRightOpen,
   Settings,
+  UserRound,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useI18n } from "../i18n";
@@ -28,6 +29,8 @@ interface ThreadHeaderProps {
   inspectorOpen: boolean;
   reviewOpen: boolean;
   reviewCount?: number;
+  accountAuthenticated?: boolean;
+  onOpenAccount(): void;
   onOpenSettings(): void;
   onToggleSidebar(): void;
   onToggleInspector(): void;
@@ -67,6 +70,8 @@ export function ThreadHeader({
   inspectorOpen,
   reviewOpen,
   reviewCount = 0,
+  accountAuthenticated = false,
+  onOpenAccount,
   onOpenSettings,
   onToggleSidebar,
   onToggleInspector,
@@ -171,6 +176,17 @@ export function ThreadHeader({
         </button>
 
         <span className="thread-header-divider" aria-hidden="true" />
+
+        <button
+          type="button"
+          className={`thread-header-icon-button thread-account-button ${accountAuthenticated ? "signed-in" : ""}`}
+          onClick={onOpenAccount}
+          title={language === "zh-CN" ? "Loom 账号" : "Loom account"}
+          aria-label={language === "zh-CN" ? "Loom 账号" : "Loom account"}
+        >
+          <UserRound size={16} strokeWidth={1.75} />
+          {accountAuthenticated ? <span className="thread-account-dot" aria-hidden="true" /> : null}
+        </button>
 
         <button
           type="button"
