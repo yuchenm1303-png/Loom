@@ -44,12 +44,16 @@ _PIXEL_PNG = base64.b64decode(
 _DATA_URL = "data:image/png;base64," + base64.b64encode(_PIXEL_PNG).decode("ascii")
 
 # Phrases an upstream uses to say the model itself cannot read images, as
-# opposed to the gateway saying it could not reach the model at all.
+# opposed to the gateway saying it could not reach the model at all.  Checked
+# before the unreachable markers: "no endpoints found that support image input"
+# contains both, and it is a statement about images -- hy3, hy4-preview and
+# mimo-v2.5-pro all answer text on the same endpoint that returns it.
 _NO_VISION_MARKERS = (
     "only supports text",
     "does not support image",
     "not support image",
     "image input is not",
+    "no endpoints found that support image",
 )
 _UNREACHABLE_MARKERS = (
     "model is unavailable",
@@ -78,10 +82,7 @@ def _post(path: str, payload: dict, headers: dict[str, str]) -> tuple[int, str]:
         return 0, f"{type(exc).__name__}: {exc}"
 
 
-def probe(model: str, api_key: str) -> tuple[str, int, str]:
-    """Send ``model`` one image and report the protocol, status and reason."""
-
-    protocol = opencode_go_protocol(model)
+def _headers(model: str, api_key: str) -> dict[str, str]:
     headers = {
         "Authorization": "Bearer " + api_key,
         "Content-Type": "application/json",
@@ -89,6 +90,50 @@ def probe(model: str, api_key: str) -> tuple[str, int, str]:
         "User-Agent": "Loom/0.1 (coding-agent)",
         "x-opencode-session": str(uuid.uuid4()),
     }
+    if opencode_go_protocol(model) == "messages":
+        # This endpoint speaks Anthropic's dialect and rejects the bearer token
+        # on its own; the runtime sends all three of these and so must a probe.
+        # Omitting them reads back as "Missing API key", which is easy to
+        # mistake for a capability answer.
+        headers["x-api-key"] = api_key
+        headers["anthropic-version"] = "2023-06-01"
+    return headers
+
+
+def probe_text(model: str, api_key: str) -> bool:
+    """Control request: is this model reachable at all right now?"""
+
+    protocol = opencode_go_protocol(model)
+    headers = _headers(model, api_key)
+    prompt = "say ok"
+    if protocol == "responses":
+        status, _ = _post(
+            "/responses",
+            {"model": model, "input": [
+                {"role": "user", "content": [{"type": "input_text", "text": prompt}]}]},
+            headers,
+        )
+    elif protocol == "messages":
+        status, _ = _post(
+            "/messages",
+            {"model": model, "max_tokens": 16,
+             "messages": [{"role": "user", "content": prompt}]},
+            headers,
+        )
+    else:
+        status, _ = _post(
+            "/chat/completions",
+            {"model": model, "messages": [{"role": "user", "content": prompt}]},
+            headers,
+        )
+    return status == 200
+
+
+def probe(model: str, api_key: str) -> tuple[str, int, str]:
+    """Send ``model`` one image and report the protocol, status and reason."""
+
+    protocol = opencode_go_protocol(model)
+    headers = _headers(model, api_key)
 
     if protocol == "responses":
         status, detail = _post(
@@ -108,9 +153,6 @@ def probe(model: str, api_key: str) -> tuple[str, int, str]:
             headers,
         )
     elif protocol == "messages":
-        # This endpoint speaks Anthropic's dialect and rejects the bearer token
-        # on its own; the runtime sends all three of these and so must a probe.
-        headers = {**headers, "x-api-key": api_key, "anthropic-version": "2023-06-01"}
         status, detail = _post(
             "/messages",
             {
@@ -148,14 +190,26 @@ def probe(model: str, api_key: str) -> tuple[str, int, str]:
     return protocol, status, detail
 
 
-def classify(status: int, detail: str) -> str:
+def classify(status: int, detail: str, *, text_works: bool) -> str:
+    """Name what the gateway actually demonstrated about this model.
+
+    The image request alone cannot tell "refuses images" from "is not running
+    today" -- both arrive as a 400 from the same gateway. The text request is
+    the control: only a model that answers text has shown us anything about
+    images by failing on them.
+    """
+
     if status == 200:
         return "VISION"
-    folded = detail.casefold()
-    if any(marker in folded for marker in _UNREACHABLE_MARKERS):
+    if not text_works:
         return "UNREACHABLE"
+    folded = detail.casefold()
     if any(marker in folded for marker in _NO_VISION_MARKERS):
         return "TEXT-ONLY"
+    if any(marker in folded for marker in _UNREACHABLE_MARKERS):
+        return "UNREACHABLE"
+    # Text went through and the image did not, but the gateway did not say why.
+    # Reproducible, and still weaker evidence than a model saying it plainly.
     return "REFUSED"
 
 
@@ -174,7 +228,10 @@ def main() -> int:
     verdicts: dict[str, list[str]] = {}
     for model in models:
         protocol, status, detail = probe(model, api_key)
-        verdict = classify(status, detail)
+        # Only pay for the control when the image failed; a 200 has already
+        # proven the model is both reachable and able to read images.
+        text_works = True if status == 200 else probe_text(model, api_key)
+        verdict = classify(status, detail, text_works=text_works)
         verdicts.setdefault(verdict, []).append(model)
         reason = "" if status == 200 else f"  {status} {detail[:88]}"
         print(f"{verdict:12s} {model:32s} {protocol:16s}{reason}")

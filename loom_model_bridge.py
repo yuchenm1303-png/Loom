@@ -59,12 +59,27 @@ CQU_DEFAULT_MODEL = "cqu-default"
 # rather than a reading of published metadata -- rerun the probe and refresh
 # this set when OpenCode adds or renames models.
 #
-# Everything absent here either said so plainly ("Model only supports text":
-# deepseek-v4-flash; "does not support image": glm-5.1/5.2/5.3; grok-4.6, which
-# serves text on the same endpoint and fails only when an image is attached) or
-# was unreachable at probe time and so cannot be used at all, with or without
-# images.  `mimo-v2-omni` is the one carried over unverified: it was already
-# declared here before the probe existed and was down when the probe ran.
+# Every model absent here was also asked for plain text, which is what makes
+# the image failure mean anything: a gateway 400 on its own cannot tell a model
+# that refuses images from one that is simply not running today.
+#
+#   answers text, states the limit   deepseek-v4-flash ("only supports text"),
+#                                    glm-5.1/5.2/5.3 ("does not support image
+#                                    inputs"), hy3, hy4-preview, mimo-v2.5-pro
+#                                    ("no endpoints found that support image
+#                                    input")
+#   answers text, refuses silently   grok-4.6 and qwen3.6-plus/3.7-plus/
+#                                    3.7-max/3.8-flash/3.8-max -- reproducible,
+#                                    but the gateway never says why.  MiniMax
+#                                    accepts the identical payload on the same
+#                                    `messages` endpoint, so the shape is not
+#                                    what these are rejecting
+#   answers nothing                  grok-4.5, glm-5, kimi-k2.5, mimo-v2-pro,
+#                                    hy3-preview, qwen3.5-plus: unusable with
+#                                    or without images, so this flag is moot
+#
+# `mimo-v2-omni` is the one entry carried over unverified: it predates the
+# probe and was down when the probe ran.
 _OPENCODE_GO_VISION_MODELS = frozenset(
     {
         "deepseek-flash",
