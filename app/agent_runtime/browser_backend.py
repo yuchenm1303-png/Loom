@@ -241,7 +241,7 @@ class BrowserUseSessionBackend(BrowserUseBackend):
         )
         return await self._state_async()
 
-    def click_at(self, x: int, y: int, *, button: str = "left") -> BrowserPageState:
+    def click_at(self, x: int, y: int, button: str = "left") -> BrowserPageState:
         return self._run_state_action(
             "click_at",
             self._click_at_async(x, y, button=button),
