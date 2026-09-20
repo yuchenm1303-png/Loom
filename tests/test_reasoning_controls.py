@@ -255,6 +255,11 @@ def test_thread_model_switch_uses_canonical_server_connection(monkeypatch, tmp_p
             "baseUrl": "https://api.deepseek.com",
             "model": "deepseek-flash",
             "apiKey": "deepseek-secret",
+            "vision": False,
+            "contextLimits": {
+                "contextWindowTokens": 65_536,
+                "autoCompactTokenLimit": 49_152,
+            },
             "reasoning": {
                 "kind": "openai-effort",
                 "value": "high",
@@ -291,6 +296,11 @@ def test_thread_model_switch_uses_canonical_server_connection(monkeypatch, tmp_p
     assert captured["base_url"] == "https://api.deepseek.com"
     assert captured["api_key"] == "deepseek-secret"
     assert captured["model"] == "deepseek-flash"
+    assert captured["vision"] is False
+    assert captured["context_limits"] == {
+        "contextWindowTokens": 65_536,
+        "autoCompactTokenLimit": 49_152,
+    }
     assert session.model_selection == "builtin:deepseek"
     assert session.model_base_url == "https://api.deepseek.com"
     assert session.reasoning_kind == "openai-effort"

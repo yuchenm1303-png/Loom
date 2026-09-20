@@ -381,6 +381,9 @@ def _fetch_opencode_go_model_ids(timeout: float = 3.5) -> list[str]:
             continue
         seen.add(folded)
         result.append(model_id)
+        limits = model_context_limits_from_provider_listing(item)
+        if limits.context_window_tokens or limits.output_reserve_tokens:
+            _DISCOVERED_CONTEXT_LIMITS[folded] = limits
     return result
 
 
@@ -752,7 +755,7 @@ def _safe_opencode_go(model: str, *, configured: bool) -> dict[str, Any]:
     if not model:
         raise ValueError("OpenCode Go model id must not be empty")
     vision = model.casefold() in {"deepseek-v4-flash-vision-exp", "mimo-v2-omni"}
-    return {
+    profile = {
         "selection": _opencode_go_selection_for_model(model),
         "id": "opencode-go-" + hashlib.sha256(model.casefold().encode("utf-8")).hexdigest()[:12],
         "kind": "builtin",
@@ -767,6 +770,24 @@ def _safe_opencode_go(model: str, *, configured: bool) -> dict[str, Any]:
         "baseUrl": OPENCODE_GO_BASE_URL,
         "model": model,
         "vision": vision,
+    }
+    discovered = _discovered_context_limits(model)
+    if discovered is not None:
+        return {**profile, "contextLimits": discovered}
+    # OpenCode's model listing currently publishes IDs but no context-window
+    # metadata.  Treating that omission as Codex's roomy 272k fallback allowed
+    # large requests to be sent until the relay closed the socket.  This is a
+    # provider safety envelope, not a claim about the upstream model's maximum:
+    # compact early until OpenCode publishes an authoritative value.
+    return {
+        **profile,
+        "contextLimits": {
+            "contextWindowTokens": 65_536,
+            "effectiveContextPercent": 90,
+            "autoCompactTokenLimit": 49_152,
+            "outputReserveTokens": 8_192,
+            "toolOutputTokenLimit": 4_000,
+        },
     }
 
 

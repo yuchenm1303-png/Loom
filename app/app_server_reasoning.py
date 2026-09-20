@@ -586,6 +586,7 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
         model = str(spec.get("model") or "").strip()
         api_key = str(spec.get("apiKey") or "").strip()
         vision = bool(spec.get("vision", getattr(session, "model_vision", True)))
+        context_limits = spec.get("contextLimits")
         validate_runtime_reasoning(
             model=model,
             provider=provider,
@@ -598,6 +599,7 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
             model=model,
             api_key=api_key,
             vision=vision,
+            context_limits=context_limits if isinstance(context_limits, dict) else None,
         )
         self.runtime.set_session_model(
             session.session_id,
@@ -686,7 +688,10 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
                 params.get("reasoningValue") or params.get("reasoning_value"),
             )
 
-        vision = bool(params.get("vision", True))
+        # Selection resolution is authoritative for capabilities and limits.
+        # Never combine a resolved provider/model with stale renderer metadata.
+        vision = bool(spec.get("vision", False))
+        context_limits = spec.get("contextLimits")
         capability = validate_runtime_reasoning(
             model=model,
             provider=provider,
@@ -700,6 +705,7 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
             api_key=api_key,
             vision=vision,
             request_timeout_seconds=float(params.get("timeout") or 120.0),
+            context_limits=context_limits if isinstance(context_limits, dict) else None,
         )
 
         self.runtime.set_session_model(session_id, platform, reasoning=reasoning)
@@ -872,6 +878,7 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
             params.get("reasoningValue") or params.get("reasoning_value"),
         )
         vision = bool(params.get("vision", True))
+        context_limits = params.get("contextLimits") or params.get("context_limits")
         timeout = float(params.get("timeout") or 120.0)
         capability = validate_runtime_reasoning(
             model=model,
@@ -886,6 +893,7 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
             api_key=api_key,
             vision=vision,
             request_timeout_seconds=timeout,
+            context_limits=context_limits if isinstance(context_limits, dict) else None,
         )
 
         with self._guard:

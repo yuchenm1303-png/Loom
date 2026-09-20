@@ -31,6 +31,13 @@ export interface ModelProfile {
   protocol?: string;
   configured?: boolean;
   vision?: boolean;
+  contextLimits?: {
+    contextWindowTokens?: number;
+    effectiveContextPercent?: number;
+    autoCompactTokenLimit?: number;
+    outputReserveTokens?: number;
+    toolOutputTokenLimit?: number;
+  };
   reasoning?: ModelReasoningState | null;
 }
 
@@ -160,6 +167,7 @@ export class DesktopModelManager {
           protocol: currentProfile?.protocol ?? spec.protocol,
           configured: currentProfile?.configured ?? spec.configured,
           vision: currentProfile?.vision ?? spec.vision ?? true,
+          contextLimits: currentProfile?.contextLimits ?? spec.contextLimits,
           reasoning: spec.reasoning ?? null,
         }
       : null;

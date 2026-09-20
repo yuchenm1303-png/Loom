@@ -88,6 +88,7 @@ function runtimeModelParams(spec: ModelLaunchSpec): Record<string, unknown> {
     model: spec.model,
     apiKey: spec.apiKey,
     vision: spec.vision !== false,
+    contextLimits: spec.contextLimits,
     reasoningKind: spec.reasoning?.kind ?? "",
     reasoningValue: spec.reasoning?.value ?? "",
   };
@@ -599,6 +600,19 @@ async function changeThreadModel(
     threadId: id,
     ...runtimeModelParams(spec),
   }) as { thread?: Record<string, unknown>; runtime?: unknown };
+  const confirmedSelection = String(result.thread?.modelSelection ?? "");
+  const confirmedModel = String(result.thread?.model ?? "");
+  const confirmedVision = result.thread?.modelVision;
+  if (
+    confirmedSelection !== spec.selection
+    || confirmedModel !== spec.model
+    || (typeof confirmedVision === "boolean" && confirmedVision !== (spec.vision !== false))
+  ) {
+    throw new Error(
+      `Model switch was not confirmed by the runtime (requested ${spec.selection}/${spec.model}, `
+      + `received ${confirmedSelection || "unknown"}/${confirmedModel || "unknown"}).`,
+    );
+  }
   return {
     initialization: { runtime: result.runtime ?? {} },
     models: modelManager.snapshotFor(spec),
