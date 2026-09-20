@@ -28,6 +28,7 @@ const api = {
   connect: () => ipcRenderer.invoke("loom:connect"),
   call: (method: string, params: Record<string, unknown> = {}) => ipcRenderer.invoke("loom:call", method, params),
   disconnect: () => ipcRenderer.invoke("loom:disconnect"),
+  setNativeTheme: (source: "system" | "light" | "dark") => ipcRenderer.invoke("loom:set-native-theme", source),
   accountStatus: () => ipcRenderer.invoke("loom:account-status"),
   accountLogin: (email: string, password: string) => ipcRenderer.invoke("loom:account-login", email, password),
   accountRegister: (email: string, password: string) => ipcRenderer.invoke("loom:account-register", email, password),
