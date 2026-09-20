@@ -7,6 +7,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DESKTOP_SRC = ROOT / "desktop-react" / "src"
 COMPOSER = DESKTOP_SRC / "components" / "Composer.tsx"
+TRANSCRIPT = DESKTOP_SRC / "components" / "Transcript.tsx"
+TURN_FLOW = DESKTOP_SRC / "components" / "turn-flow.css"
 LOOM_STATE = DESKTOP_SRC / "state" / "useLoom.ts"
 
 
@@ -56,3 +58,36 @@ def test_running_send_is_routed_to_turn_steer_not_a_second_turn_start() -> None:
     assert 'await loom.send(input, attachments);' in source
     assert 'await window.loom.call("turn/steer", {' in source
     assert 'turnId: activeTurn.currentTurnId' in source
+
+
+
+def test_steering_bubbles_are_not_hoisted_next_to_the_initial_prompt() -> None:
+    source = TRANSCRIPT.read_text(encoding="utf-8")
+
+    assert 'String(item.source ?? "").trim().toLowerCase() === "steering"' in source
+    assert "function placeSteeringAtSubmissionTime(items: TranscriptItem[]): TranscriptItem[]" in source
+    assert "const orderedItems = placeSteeringAtSubmissionTime(items);" in source
+    assert 'const initialUser = userItems.find((item) => !isSteeringUserMessage(item)) ?? userItems[0] ?? null;' in source
+    assert "const guidanceItems = userItems.filter((item) => item.id !== initialUser?.id);" in source
+    assert "item.id !== initialUser?.id" in source
+    assert '|| item.type === "user_message"' in source
+
+    # Regression guard for the old behavior that rendered every same-turn user
+    # message above the execution process.
+    assert "derived.userItems.map" not in source
+    assert 'isSteeringUserMessage(block.item) ? "entry-steering-user" : ""' in source
+
+
+def test_steering_uses_submission_time_and_remains_visible_when_process_folds() -> None:
+    source = TRANSCRIPT.read_text(encoding="utf-8")
+    styles = TURN_FLOW.read_text(encoding="utf-8")
+
+    assert "const value = item.submittedAt ?? item.createdAt;" in source
+    assert "candidateAt > submittedAt" in source
+    assert 'guidanceItems={derived.guidanceItems}' in source
+    assert '!active && !open && guidanceItems.length' in source
+    assert 'className="turn-guidance-recap"' in source
+
+    assert ".turn-process.has-guidance" in styles
+    assert ".turn-process-content .entry-steering-user" in styles
+    assert ".turn-guidance-recap" in styles
