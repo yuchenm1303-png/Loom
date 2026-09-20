@@ -37,6 +37,21 @@ MINIMAX_DEFAULT_MODEL = "MiniMax-M3"
 MINIMAX_MODEL_IDS = ("MiniMax-M3", "MiniMax-M2.7", "MiniMax-M2.5")
 DEEPSEEK_DEFAULT_MODEL = "deepseek-flash"
 DEEPSEEK_FALLBACK_MODEL_IDS = ("deepseek-flash", "deepseek-v4-pro")
+OPENCODE_GO_FALLBACK_MODEL_IDS = (
+    "minimax-m3", "minimax-m2.7", "minimax-m2.5",
+    "kimi-k3", "kimi-k2.7-code", "kimi-k2.6", "kimi-k2.5",
+    "longcat-2.0",
+    "glm-5.3-flash", "glm-5.3", "glm-5.2", "glm-5.1", "glm-5",
+    "deepseek-v4-pro", "deepseek-v4.1-flash", "deepseek-v4-flash",
+    "deepseek-flash", "deepseek-v4-flash-vision-exp",
+    "qwen3.8-max", "qwen3.8-flash", "qwen3.7-max", "qwen3.7-plus",
+    "qwen3.6-plus", "qwen3.5-plus",
+    "mimo-v2.5-pro", "mimo-v2.5", "mimo-v2-pro", "mimo-v2-omni",
+    "hy4-preview", "hy3", "hy3-preview",
+    "gpt-5.6-luna", "grok-4.6", "grok-4.5",
+    "muse-spark-1.3-contributor", "muse-spark-1.2-contributor",
+    "omen-alpha",
+)
 CQU_DEFAULT_MODEL = "cqu-default"
 # Context limits a provider published about its own models, keyed by folded
 # model id and filled in as `/models` listings are fetched. Empty until a
@@ -508,6 +523,60 @@ def _deepseek_model_from_selection(selection: str) -> str | None:
     return None
 
 
+def _opencode_go_selection_for_model(model: str) -> str:
+    normalized = str(model or "").strip()
+    if not normalized:
+        raise ValueError("OpenCode Go model id must not be empty")
+    return f"{OPENCODE_GO_SELECTION_PREFIX}{urllib.parse.quote(normalized, safe='')}"
+
+
+def _opencode_go_model_from_selection(selection: str) -> str | None:
+    value = str(selection or "").strip()
+    if not value.startswith(OPENCODE_GO_SELECTION_PREFIX):
+        return None
+    model = urllib.parse.unquote(value[len(OPENCODE_GO_SELECTION_PREFIX) :]).strip()
+    return model or None
+
+
+def _opencode_go_family(model: str) -> str:
+    value = str(model or "").strip().casefold()
+    for prefix, family in (
+        ("gpt-", "GPT"),
+        ("grok-", "Grok"),
+        ("deepseek-", "DeepSeek"),
+        ("glm-", "GLM"),
+        ("kimi-", "Kimi"),
+        ("minimax-", "MiniMax"),
+        ("qwen", "Qwen"),
+        ("mimo-", "MiMo"),
+        ("muse-", "Muse"),
+        ("hy", "Hunyuan"),
+        ("longcat-", "LongCat"),
+    ):
+        if value.startswith(prefix):
+            return family
+    return "Other"
+
+
+def _opencode_go_display_name(model: str) -> str:
+    value = str(model or "").strip()
+    special = {
+        "gpt-5.6-luna": "GPT 5.6 Luna",
+        "grok-4.6": "Grok 4.6",
+        "grok-4.5": "Grok 4.5",
+        "deepseek-v4.1-flash": "DeepSeek V4.1 Flash",
+        "deepseek-v4-pro": "DeepSeek V4 Pro",
+        "deepseek-v4-flash": "DeepSeek V4 Flash",
+        "deepseek-flash": "DeepSeek Flash",
+        "deepseek-v4-flash-vision-exp": "DeepSeek V4 Flash Vision Exp",
+        "longcat-2.0": "LongCat 2.0",
+        "omen-alpha": "Omen Alpha",
+    }
+    if value.casefold() in special:
+        return special[value.casefold()]
+    return value.replace("-", " ").title().replace("Qwen3.", "Qwen 3.").replace("Glm ", "GLM ").replace("Mimo ", "MiMo ")
+
+
 def _canonical_builtin_selection(selection: str, model: str) -> str:
     """Keep built-in model identity and provider routing inseparable.
 
@@ -529,6 +598,7 @@ def _canonical_builtin_selection(selection: str, model: str) -> str:
         or current.startswith(MINIMAX_SELECTION_PREFIX)
         or current == DEEPSEEK_SELECTION
         or current.startswith(DEEPSEEK_SELECTION_PREFIX)
+        or current.startswith(OPENCODE_GO_SELECTION_PREFIX)
         or current == CQU_SELECTION
     )
     if not is_provider_builtin:
@@ -536,6 +606,8 @@ def _canonical_builtin_selection(selection: str, model: str) -> str:
 
     if _is_minimax_model(requested):
         return _minimax_selection_for_model(requested)
+    if current.startswith(OPENCODE_GO_SELECTION_PREFIX):
+        return _opencode_go_selection_for_model(requested)
     if requested.casefold().startswith("deepseek-"):
         return _deepseek_selection_for_model(requested)
     if requested.casefold() == CQU_DEFAULT_MODEL.casefold():
