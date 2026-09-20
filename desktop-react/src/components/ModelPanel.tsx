@@ -22,7 +22,14 @@ import type {
 } from "../types/loom";
 import "./model-panel.css";
 
-type ModelView = "list" | "profiles" | "add" | "custom";
+type ModelView = "list" | "profiles" | "group" | "add" | "custom";
+
+interface ModelGroup {
+  id: string;
+  name: string;
+  order: number;
+  profiles: ModelProfile[];
+}
 
 interface ModelPanelProps {
   runtimeModel?: string;
@@ -31,6 +38,7 @@ interface ModelPanelProps {
   running?: boolean;
   onSwitchProfile(selection: string): Promise<void> | void;
   onSwitchCurrent(model: string): Promise<void> | void;
+  onConfigureProvider(provider: string, apiKey: string): Promise<void> | void;
   onAddModel(input: AddModelInput): Promise<void> | void;
   onDeleteModel(selection: string): Promise<void> | void;
   onReasoningChange(kind: string, value: string): Promise<void> | void;
@@ -47,11 +55,16 @@ function endpointLabel(baseUrl: string): string {
 }
 
 function adapterLabel(adapter: string): string {
-  return adapter === "openai" ? "OpenAI" : "OpenAI-compatible";
+  if (adapter === "openai") return "OpenAI";
+  if (adapter === "opencode-go") return "OpenCode Go";
+  return "OpenAI-compatible";
 }
 
 function profileSubtitle(profile: ModelProfile): string {
   if (profile.kind === "builtin") {
+    if (profile.adapter === "opencode-go") {
+      return `OpenCode Go · ${profile.family || "Model"} · ${profile.protocol || "auto"}`;
+    }
     if (profile.baseUrl.includes("relay.smirel.com")) return "Built-in managed · Smirel Relay";
     return `Built-in · ${endpointLabel(profile.baseUrl)}`;
   }
@@ -62,6 +75,7 @@ function builtinBadge(profile: ModelProfile): string | null {
   if (profile.kind !== "builtin") return null;
   if (profile.selection === "builtin:minimax") return "Primary";
   if (profile.selection.startsWith("builtin:deepseek")) return "DeepSeek";
+  if (profile.selection.startsWith("builtin:opencode-go:")) return "Go";
   return "Managed";
 }
 
@@ -169,6 +183,7 @@ export function ModelPanel({
   running,
   onSwitchProfile,
   onSwitchCurrent,
+  onConfigureProvider,
   onAddModel,
   onDeleteModel,
   onReasoningChange,
@@ -184,6 +199,9 @@ export function ModelPanel({
   const [apiKey, setApiKey] = useState("");
   const [confirmDelete, setConfirmDelete] = useState("");
   const [pendingDelete, setPendingDelete] = useState("");
+  const [selectedGroup, setSelectedGroup] = useState("");
+  const [providerKey, setProviderKey] = useState("");
+  const [providerConfiguring, setProviderConfiguring] = useState(false);
 
   const currentModel = snapshot?.current?.model || runtimeModel || "MiniMax-M3";
   const currentName = snapshot?.current?.name || (currentModel.toLowerCase().includes("minimax") ? "MiniMax" : "Current API");
@@ -192,6 +210,36 @@ export function ModelPanel({
   const currentSelection = snapshot?.current?.selection || "";
   const currentReasoning = snapshot?.current?.reasoning ?? null;
   const profiles = snapshot?.profiles ?? [];
+  const groups = useMemo<ModelGroup[]>(() => {
+    const grouped = new Map<string, ModelGroup>();
+    for (const profile of profiles) {
+      const id = profile.groupId || profile.selection;
+      const existing = grouped.get(id);
+      if (existing) {
+        existing.profiles.push(profile);
+        continue;
+      }
+      grouped.set(id, {
+        id,
+        name: profile.groupName || profile.name,
+        order: profile.groupOrder ?? 1000,
+        profiles: [profile],
+      });
+    }
+    return [...grouped.values()]
+      .map((group) => ({
+        ...group,
+        profiles: [...group.profiles].sort((a, b) => {
+          const family = String(a.family || "").localeCompare(String(b.family || ""));
+          return family || a.name.localeCompare(b.name);
+        }),
+      }))
+      .sort((a, b) => a.order - b.order || a.name.localeCompare(b.name));
+  }, [profiles]);
+  const activeGroup = useMemo(
+    () => groups.find((group) => group.id === selectedGroup) ?? null,
+    [groups, selectedGroup],
+  );
   const recent = useMemo(
     () => (snapshot?.recentModels ?? []).filter((item) => item && item !== currentModel).slice(0, 4),
     [currentModel, snapshot?.recentModels],
@@ -220,6 +268,21 @@ export function ModelPanel({
       return;
     }
     await run(() => onSwitchCurrent(value));
+  }
+
+  async function configureProvider(provider: string) {
+    const key = providerKey.trim();
+    if (!key || providerConfiguring) return;
+    setError("");
+    setProviderConfiguring(true);
+    try {
+      await onConfigureProvider(provider, key);
+      setProviderKey("");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setProviderConfiguring(false);
+    }
   }
 
   async function submitAdd() {
