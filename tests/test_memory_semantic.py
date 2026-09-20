@@ -320,6 +320,11 @@ def test_semantic_memory_uses_the_source_threads_model(tmp_path):
     )
 
     assert default_platform.requests == []
+    assert thread_platform.requests
+    assert all(
+        request.session_id == session.session_id
+        for _profile, request in thread_platform.requests
+    )
     assert any(
         "semantic long-term memory consolidation stage"
         in str(request.messages[0].content or "")
