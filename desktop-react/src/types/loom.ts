@@ -167,6 +167,12 @@ export interface ModelProfile {
   adapter: string;
   baseUrl: string;
   model: string;
+  groupId?: string;
+  groupName?: string;
+  groupOrder?: number;
+  family?: string;
+  protocol?: string;
+  configured?: boolean;
   vision?: boolean;
   reasoning?: ModelReasoningState | null;
 }
