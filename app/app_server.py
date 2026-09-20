@@ -278,6 +278,16 @@ def _apply_event_to_item(item: dict[str, Any], event: AgentEvent) -> None:
         item["status"] = "completed"
         item["text"] = str(data.get("text") or "")
         item["source"] = str(data.get("source") or "user")
+        input_id = str(data.get("input_id") or "").strip()
+        if input_id:
+            item["inputId"] = input_id
+        submitted_at = str(data.get("submitted_at") or "").strip()
+        if submitted_at:
+            item["submittedAt"] = submitted_at
+            # Steering becomes durable when the runtime reaches a safe boundary,
+            # but its conversation position belongs to the user's original send
+            # time. Preserve that time as the public item creation point.
+            item["createdAt"] = submitted_at
     elif kind is AgentEventKind.MODEL_RESPONSE:
         item["status"] = "completed"
         item["text"] = str(data.get("text") or "")
