@@ -750,14 +750,14 @@ async function sendNativeKeyChord(target, rawKey) {
   let mask = 0;
   for (const raw of parts) {
     const spec = modifierSpec.find((item) => item.pattern.test(raw));
-    if (!spec) throw new Error(\`Unsupported key modifier: \${raw}\`);
+    if (!spec) throw new Error(`Unsupported key modifier: ${raw}`);
     if (modifiers.some((item) => item.code === spec.code)) continue;
     mask |= spec.bit;
     modifiers.push(spec);
     await dispatchNativeKey(target, "keyDown", spec.key, spec.code, "", mask);
   }
   const main = nativeKeyDescriptor(mainRaw);
-  const printable = Array.from(main.key).length === 1 && main.key !== "\\n" && main.key !== "\\r" && main.key !== "\\t";
+  const printable = Array.from(main.key).length === 1 && main.key !== "\n" && main.key !== "\r" && main.key !== "\t";
   await dispatchNativeKey(target, "keyDown", main.key, main.code, printable ? main.key : "", mask);
   await dispatchNativeKey(target, "keyUp", main.key, main.code, "", mask);
   for (const spec of modifiers.reverse()) {
@@ -768,18 +768,18 @@ async function sendNativeKeyChord(target, rawKey) {
 
 async function sendNativeText(target, text) {
   for (const char of Array.from(String(text || ""))) {
-    if (char === "\\r") continue;
-    if (char === "\\n") {
+    if (char === "\r") continue;
+    if (char === "\n") {
       await dispatchNativeKey(target, "keyDown", "Enter", "Enter");
       await dispatchNativeKey(target, "keyUp", "Enter", "Enter");
       continue;
     }
-    if (char === "\\t") {
+    if (char === "\t") {
       await dispatchNativeKey(target, "keyDown", "Tab", "Tab");
       await dispatchNativeKey(target, "keyUp", "Tab", "Tab");
       continue;
     }
-    if (char === "\\b") {
+    if (char === "\b") {
       await dispatchNativeKey(target, "keyDown", "Backspace", "Backspace");
       await dispatchNativeKey(target, "keyUp", "Backspace", "Backspace");
       continue;
@@ -1528,12 +1528,12 @@ function runPageAction(action, args = {}) {
     const y = Number(args.y);
     if (!Number.isFinite(x) || !Number.isFinite(y)) throw new Error("click_at coordinates are invalid");
     if (x < 0 || y < 0 || x > window.innerWidth || y > window.innerHeight) {
-      throw new Error(\`click_at coordinates \${x},\${y} are outside viewport \${window.innerWidth}x\${window.innerHeight}\`);
+      throw new Error(`click_at coordinates ${x},${y} are outside viewport ${window.innerWidth}x${window.innerHeight}`);
     }
     const target = document.elementFromPoint(x, y);
     if (!(target instanceof HTMLElement)) throw new Error("click_at found no HTML target at those coordinates");
     target.focus({ preventScroll: true });
-    showTargetHud(target, \`Click at \${Math.round(x)},\${Math.round(y)}\`, clean(target.getAttribute("aria-label") || target.tagName, 180), "action");
+    showTargetHud(target, `Click at ${Math.round(x)},${Math.round(y)}`, clean(target.getAttribute("aria-label") || target.tagName, 180), "action");
     const buttonName = String(args.button || "left").toLowerCase();
     const button = buttonName === "middle" ? 1 : buttonName === "right" ? 2 : 0;
     const buttons = buttonName === "left" ? 1 : buttonName === "right" ? 2 : 4;
@@ -1582,17 +1582,17 @@ function runPageAction(action, args = {}) {
     const text = String(args.text || "");
     const active = document.activeElement instanceof HTMLElement ? document.activeElement : document.body;
     if (!(active instanceof HTMLElement)) throw new Error("send_text has no focused page target");
-    showStatusHud(\`Send \${text.length} characters\`, "Focused visual surface");
+    showStatusHud(`Send ${text.length} characters`, "Focused visual surface");
     const emit = (key, code = "") => {
       const base = { key, code, bubbles: true, cancelable: true };
       active.dispatchEvent(new KeyboardEvent("keydown", base));
       active.dispatchEvent(new KeyboardEvent("keyup", base));
     };
     for (const char of Array.from(text)) {
-      if (char === "\\r") continue;
-      if (char === "\\n") emit("Enter", "Enter");
-      else if (char === "\\t") emit("Tab", "Tab");
-      else if (char === "\\b") emit("Backspace", "Backspace");
+      if (char === "\r") continue;
+      if (char === "\n") emit("Enter", "Enter");
+      else if (char === "\t") emit("Tab", "Tab");
+      else if (char === "\b") emit("Backspace", "Backspace");
       else emit(char);
     }
     return { ok: true, native_input: false };
