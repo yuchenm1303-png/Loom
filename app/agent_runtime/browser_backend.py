@@ -1,8 +1,17 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Any
 
+from .browser_keys import (
+    KEY_INTERVAL_BUDGET_SECONDS,
+    KEY_INTERVAL_SECONDS,
+    NAMED_KEY_CODES,
+    SHIFT_MODIFIER,
+    SHIFT_VIRTUAL_KEY,
+    character_key,
+)
 from .browser_session import BrowserError, BrowserLaunchOptions, BrowserPageState
 from .browser_use_backend import BrowserUseBackend, _serialize_state
 
@@ -305,10 +314,21 @@ class BrowserUseSessionBackend(BrowserUseBackend):
         session = await self._ensure_session()
         cdp = await session.get_or_create_cdp_session()
 
-        async def key_event(event_type: str, key: str, code: str = "", typed: str = "") -> None:
-            params: dict[str, Any] = {"type": event_type, "key": key}
+        async def key_event(
+            event_type: str,
+            key: str,
+            code: str = "",
+            typed: str = "",
+            *,
+            virtual_key: int = 0,
+            modifiers: int = 0,
+        ) -> None:
+            params: dict[str, Any] = {"type": event_type, "key": key, "modifiers": int(modifiers)}
             if code:
                 params["code"] = code
+            if virtual_key:
+                params["windowsVirtualKeyCode"] = int(virtual_key)
+                params["nativeVirtualKeyCode"] = int(virtual_key)
             if typed and event_type == "keyDown":
                 params["text"] = typed
                 params["unmodifiedText"] = typed
@@ -317,24 +337,42 @@ class BrowserUseSessionBackend(BrowserUseBackend):
                 session_id=cdp.session_id,
             )
 
+        async def named_key(key: str) -> None:
+            virtual_key = NAMED_KEY_CODES.get(key, 0)
+            await key_event("keyDown", key, key, virtual_key=virtual_key)
+            await key_event("keyUp", key, key, virtual_key=virtual_key)
+
+        async def character(char: str) -> None:
+            code, virtual_key, shift = character_key(char)
+            modifiers = SHIFT_MODIFIER if shift else 0
+            if shift:
+                await key_event(
+                    "keyDown",
+                    "Shift",
+                    "ShiftLeft",
+                    virtual_key=SHIFT_VIRTUAL_KEY,
+                    modifiers=SHIFT_MODIFIER,
+                )
+            await key_event("keyDown", char, code, char, virtual_key=virtual_key, modifiers=modifiers)
+            await key_event("keyUp", char, code, virtual_key=virtual_key, modifiers=modifiers)
+            if shift:
+                await key_event("keyUp", "Shift", "ShiftLeft", virtual_key=SHIFT_VIRTUAL_KEY)
+
+        paced = 0.0
         for char in value:
             if char == "\r":
                 continue
             if char == "\n":
-                await key_event("keyDown", "Enter", "Enter")
-                await key_event("keyUp", "Enter", "Enter")
+                await named_key("Enter")
             elif char == "\t":
-                await key_event("keyDown", "Tab", "Tab")
-                await key_event("keyUp", "Tab", "Tab")
+                await named_key("Tab")
             elif char == "\b":
-                await key_event("keyDown", "Backspace", "Backspace")
-                await key_event("keyUp", "Backspace", "Backspace")
+                await named_key("Backspace")
             else:
-                # No physical code on purpose: canvas remote-desktop clients such
-                # as noVNC treat this as virtual-keyboard input and derive the
-                # remote keysym from KeyboardEvent.key.
-                await key_event("keyDown", char, typed=char)
-                await key_event("keyUp", char)
+                await character(char)
+            if paced < KEY_INTERVAL_BUDGET_SECONDS:
+                await asyncio.sleep(KEY_INTERVAL_SECONDS)
+                paced += KEY_INTERVAL_SECONDS
         return await self._state_async()
 
     def send_text(self, text: str) -> BrowserPageState:

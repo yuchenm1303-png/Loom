@@ -735,12 +735,94 @@ function nativeKeyDescriptor(raw) {
   let code = codes[normalized] || (/^F(?:[1-9]|1[0-2])$/.test(normalized) ? normalized : "");
   if (!code && /^[A-Za-z]$/.test(normalized)) code = `Key${normalized.toUpperCase()}`;
   if (!code && /^[0-9]$/.test(normalized)) code = `Digit${normalized}`;
-  return { key: normalized, code };
+  if (!code && normalized === " ") code = "Space";
+  return { key: normalized, code, virtualKey: virtualKeyFor(normalized) };
 }
 
-async function dispatchNativeKey(target, type, key, code = "", text = "", modifiers = 0) {
+// KeyboardEvent.keyCode is 0 unless the virtual-key code is sent, and a page
+// that reads the keyboard rather than a field notices. noVNC falls back to
+// keyCode when code is missing, so leaving both empty is what made typed text
+// land in its untracked virtual-keyboard path instead of the normal one.
+const NAMED_VIRTUAL_KEYS = {
+  Enter: 13,
+  Escape: 27,
+  Tab: 9,
+  Backspace: 8,
+  Delete: 46,
+  ArrowUp: 38,
+  ArrowDown: 40,
+  ArrowLeft: 37,
+  ArrowRight: 39,
+  Home: 36,
+  End: 35,
+  PageUp: 33,
+  PageDown: 34,
+  Insert: 45,
+  ContextMenu: 93,
+  " ": 32,
+};
+
+function virtualKeyFor(key) {
+  if (Object.prototype.hasOwnProperty.call(NAMED_VIRTUAL_KEYS, key)) return NAMED_VIRTUAL_KEYS[key];
+  if (/^F(?:[1-9]|1[0-2])$/.test(key)) return 111 + Number(key.slice(1));
+  if (/^[A-Za-z]$/.test(key)) return key.toUpperCase().charCodeAt(0);
+  if (/^[0-9]$/.test(key)) return key.charCodeAt(0);
+  return PUNCTUATION_KEYS[key] ? PUNCTUATION_KEYS[key][1] : 0;
+}
+
+// US layout. A character with no physical key here - CJK, emoji - keeps the
+// text-only event it has always had, because naming a key it did not come from
+// would be worse than naming none.
+const SHIFTED_CHARACTERS = {
+  "!": "1", "@": "2", "#": "3", "$": "4", "%": "5",
+  "^": "6", "&": "7", "*": "8", "(": "9", ")": "0",
+  _: "-", "+": "=", "{": "[", "}": "]", "|": "\\",
+  ":": ";", '"': "'", "~": "`", "<": ",", ">": ".", "?": "/",
+};
+
+const PUNCTUATION_KEYS = {
+  " ": ["Space", 32],
+  "-": ["Minus", 189],
+  "=": ["Equal", 187],
+  "[": ["BracketLeft", 219],
+  "]": ["BracketRight", 221],
+  "\\": ["Backslash", 220],
+  ";": ["Semicolon", 186],
+  "'": ["Quote", 222],
+  "`": ["Backquote", 192],
+  ",": ["Comma", 188],
+  ".": ["Period", 190],
+  "/": ["Slash", 191],
+};
+
+const SHIFT_MODIFIER = 8;
+const SHIFT_VIRTUAL_KEY = 16;
+
+// A canvas client forwards every key straight to the guest, and QEMU's emulated
+// PS/2 keyboard has a shallow queue: a burst sent with no gap is dropped rather
+// than delivered quickly. The budget keeps a long paste - which belongs to an
+// ordinary page that never needed the pacing - from sleeping for minutes.
+const KEY_INTERVAL_MS = 12;
+const KEY_INTERVAL_BUDGET_MS = 3000;
+
+function characterKeyDescriptor(char) {
+  const shifted = Object.prototype.hasOwnProperty.call(SHIFTED_CHARACTERS, char);
+  const base = shifted ? SHIFTED_CHARACTERS[char] : char;
+  if (/^[a-z]$/.test(base)) return { code: `Key${base.toUpperCase()}`, virtualKey: base.toUpperCase().charCodeAt(0), shift: shifted };
+  if (/^[A-Z]$/.test(base)) return { code: `Key${base}`, virtualKey: base.charCodeAt(0), shift: true };
+  if (/^[0-9]$/.test(base)) return { code: `Digit${base}`, virtualKey: base.charCodeAt(0), shift: shifted };
+  const mapped = PUNCTUATION_KEYS[base];
+  if (!mapped) return { code: "", virtualKey: 0, shift: shifted };
+  return { code: mapped[0], virtualKey: mapped[1], shift: shifted };
+}
+
+async function dispatchNativeKey(target, type, key, code = "", text = "", modifiers = 0, virtualKey = 0) {
   const params = { type, key: String(key || ""), modifiers: Number(modifiers || 0) };
   if (code) params.code = code;
+  if (virtualKey) {
+    params.windowsVirtualKeyCode = Number(virtualKey);
+    params.nativeVirtualKeyCode = Number(virtualKey);
+  }
   if (text && type === "keyDown") {
     params.text = text;
     params.unmodifiedText = text;
@@ -752,10 +834,10 @@ async function sendNativeKeyChord(target, rawKey) {
   const parts = String(rawKey || "").split("+").map((part) => part.trim()).filter(Boolean);
   const mainRaw = parts.pop() || String(rawKey || "");
   const modifierSpec = [
-    { pattern: /^(ctrl|control)$/i, key: "Control", code: "ControlLeft", bit: 2 },
-    { pattern: /^alt$/i, key: "Alt", code: "AltLeft", bit: 1 },
-    { pattern: /^(meta|cmd|command)$/i, key: "Meta", code: "MetaLeft", bit: 4 },
-    { pattern: /^shift$/i, key: "Shift", code: "ShiftLeft", bit: 8 },
+    { pattern: /^(ctrl|control)$/i, key: "Control", code: "ControlLeft", bit: 2, virtualKey: 17 },
+    { pattern: /^alt$/i, key: "Alt", code: "AltLeft", bit: 1, virtualKey: 18 },
+    { pattern: /^(meta|cmd|command)$/i, key: "Meta", code: "MetaLeft", bit: 4, virtualKey: 91 },
+    { pattern: /^shift$/i, key: "Shift", code: "ShiftLeft", bit: 8, virtualKey: SHIFT_VIRTUAL_KEY },
   ];
   const modifiers = [];
   let mask = 0;
@@ -765,41 +847,51 @@ async function sendNativeKeyChord(target, rawKey) {
     if (modifiers.some((item) => item.code === spec.code)) continue;
     mask |= spec.bit;
     modifiers.push(spec);
-    await dispatchNativeKey(target, "keyDown", spec.key, spec.code, "", mask);
+    await dispatchNativeKey(target, "keyDown", spec.key, spec.code, "", mask, spec.virtualKey);
   }
   const main = nativeKeyDescriptor(mainRaw);
   const printable = Array.from(main.key).length === 1 && main.key !== "\n" && main.key !== "\r" && main.key !== "\t";
-  await dispatchNativeKey(target, "keyDown", main.key, main.code, printable && mask === 0 ? main.key : "", mask);
-  await dispatchNativeKey(target, "keyUp", main.key, main.code, "", mask);
+  await dispatchNativeKey(target, "keyDown", main.key, main.code, printable && mask === 0 ? main.key : "", mask, main.virtualKey);
+  await dispatchNativeKey(target, "keyUp", main.key, main.code, "", mask, main.virtualKey);
   for (const spec of modifiers.reverse()) {
     mask &= ~spec.bit;
-    await dispatchNativeKey(target, "keyUp", spec.key, spec.code, "", mask);
+    await dispatchNativeKey(target, "keyUp", spec.key, spec.code, "", mask, spec.virtualKey);
   }
 }
 
 async function sendNativeText(target, text) {
+  let paced = 0;
   for (const char of Array.from(String(text || ""))) {
     if (char === "\r") continue;
     if (char === "\n") {
-      await dispatchNativeKey(target, "keyDown", "Enter", "Enter");
-      await dispatchNativeKey(target, "keyUp", "Enter", "Enter");
-      continue;
+      await dispatchNativeKey(target, "keyDown", "Enter", "Enter", "", 0, NAMED_VIRTUAL_KEYS.Enter);
+      await dispatchNativeKey(target, "keyUp", "Enter", "Enter", "", 0, NAMED_VIRTUAL_KEYS.Enter);
+    } else if (char === "\t") {
+      await dispatchNativeKey(target, "keyDown", "Tab", "Tab", "", 0, NAMED_VIRTUAL_KEYS.Tab);
+      await dispatchNativeKey(target, "keyUp", "Tab", "Tab", "", 0, NAMED_VIRTUAL_KEYS.Tab);
+    } else if (char === "\b") {
+      await dispatchNativeKey(target, "keyDown", "Backspace", "Backspace", "", 0, NAMED_VIRTUAL_KEYS.Backspace);
+      await dispatchNativeKey(target, "keyUp", "Backspace", "Backspace", "", 0, NAMED_VIRTUAL_KEYS.Backspace);
+    } else {
+      // Name the physical key the character came from. A page that reads the
+      // keyboard instead of a field - a VNC console, a game, a canvas editor -
+      // resolves KeyboardEvent.code first, and an event without one lands in a
+      // fallback path that tracks nothing.
+      const descriptor = characterKeyDescriptor(char);
+      const mask = descriptor.shift ? SHIFT_MODIFIER : 0;
+      if (descriptor.shift) {
+        await dispatchNativeKey(target, "keyDown", "Shift", "ShiftLeft", "", SHIFT_MODIFIER, SHIFT_VIRTUAL_KEY);
+      }
+      await dispatchNativeKey(target, "keyDown", char, descriptor.code, char, mask, descriptor.virtualKey);
+      await dispatchNativeKey(target, "keyUp", char, descriptor.code, "", mask, descriptor.virtualKey);
+      if (descriptor.shift) {
+        await dispatchNativeKey(target, "keyUp", "Shift", "ShiftLeft", "", 0, SHIFT_VIRTUAL_KEY);
+      }
     }
-    if (char === "\t") {
-      await dispatchNativeKey(target, "keyDown", "Tab", "Tab");
-      await dispatchNativeKey(target, "keyUp", "Tab", "Tab");
-      continue;
+    if (paced < KEY_INTERVAL_BUDGET_MS) {
+      await new Promise((resolve) => setTimeout(resolve, KEY_INTERVAL_MS));
+      paced += KEY_INTERVAL_MS;
     }
-    if (char === "\b") {
-      await dispatchNativeKey(target, "keyDown", "Backspace", "Backspace");
-      await dispatchNativeKey(target, "keyUp", "Backspace", "Backspace");
-      continue;
-    }
-    // Leaving code empty intentionally makes canvas/remote-desktop handlers treat
-    // this like virtual-keyboard input. noVNC, for example, can derive a keysym
-    // directly from KeyboardEvent.key and sends a press+release immediately.
-    await dispatchNativeKey(target, "keyDown", char, "", char);
-    await dispatchNativeKey(target, "keyUp", char);
   }
 }
 
@@ -844,11 +936,21 @@ async function clickAt(args) {
   );
 }
 
+// Keyboard input reaches a page through whatever holds focus, and a page whose
+// keyboard lives on a canvas loses that the moment anything else takes it. This
+// is best effort by design: it only acts when nothing is focused at all, and a
+// page that cannot be injected keeps whatever focus it already had.
+async function restoreVisualSurfaceFocus(tab) {
+  if (!isInjectableUrl(tab.url || "")) return;
+  await inject(tab.id, runPageAction, ["focus_visual_surface", {}]).catch(() => {});
+}
+
 async function sendText(args) {
   const tab = await actionTab(args);
   const text = String(args.text || "");
   if (!text) throw new Error("send_text requires non-empty text");
   if (text.length > 8000) throw new Error("send_text supports at most 8000 characters per call");
+  await restoreVisualSurfaceFocus(tab);
   return withNavigationWatch(
     tab.id,
     async () => {
@@ -878,6 +980,7 @@ async function drag(args) {
 async function pressKey(args) {
   const tab = await actionTab(args);
   const key = String(args.key || "");
+  await restoreVisualSurfaceFocus(tab);
   // Prefer CDP input so canvas/WebGL/remote-desktop surfaces receive real browser
   // keyboard events. If DevTools already owns the tab, fall back to page events.
   return withNavigationWatch(
@@ -1052,10 +1155,37 @@ async function closeTab(args) {
 
 async function screenshot(args) {
   const tab = await actionTab(args);
-  // The one action that cannot run in the background: captureVisibleTab only ever
-  // returns the visible tab, so a background capture would silently hand back a
-  // picture of whatever the user is reading. Front Loom's tab just long enough,
-  // then put the user back where they were.
+  // CDP composites on demand, which is the only way to be sure the picture shows
+  // the page as it is now. captureVisibleTab hands back whatever the compositor
+  // last painted for that window, and a window the user is not looking at may
+  // not have painted since the page changed: on a VNC console two captures 26
+  // seconds and a keystroke apart came back byte-identical while the remote
+  // screen had moved on, so the model kept re-trying input that had worked.
+  let composited = "";
+  await withNativeInput(tab.id, async (target) => {
+    // Compositing a tab nobody is looking at can take a while, and an older
+    // Chromium can leave the command outstanding until the tab is shown. The
+    // painted-frame path below is a worse answer but always an answer.
+    const capture = chrome.debugger
+      .sendCommand(target, "Page.captureScreenshot", { format: "png" })
+      .catch(() => null);
+    const result = await Promise.race([
+      capture,
+      new Promise((resolve) => setTimeout(() => resolve(null), 4000)),
+    ]);
+    composited = String((result && result.data) || "");
+  });
+  if (composited) {
+    if (isInjectableUrl(tab.url || "")) {
+      await inject(tab.id, runPageAction, ["hud_status", { title: "Screenshot captured", subtitle: "Saved into Loom workspace" }]).catch(() => {});
+    }
+    return { png_base64: composited, full_page: false };
+  }
+
+  // DevTools already owns the tab. captureVisibleTab only ever returns the
+  // visible tab, so a background capture would silently hand back a picture of
+  // whatever the user is reading. Front Loom's tab just long enough, then put
+  // the user back where they were.
   let restore = null;
   if (!tab.active) {
     const [previous] = await chrome.tabs.query({ active: true, windowId: tab.windowId });
@@ -1404,6 +1534,35 @@ function runPageAction(action, args = {}) {
     return surfaces;
   }
 
+  function focusVisualSurface() {
+    const activeTag = () => (document.activeElement instanceof HTMLElement ? document.activeElement.tagName.toLowerCase() : "");
+    const active = document.activeElement;
+    if (active && active !== document.body && active !== document.documentElement) {
+      return { focused: activeTag(), changed: false };
+    }
+    // Nothing holds focus, so keystrokes are about to be delivered to the
+    // document and stop there. A canvas client - noVNC and everything shaped
+    // like it - listens on its own element and focuses itself only on a real
+    // mouse press, so anything that took focus away since the last click turns
+    // every later key into a silent no-op that still reports success. Handing
+    // focus back to the surface that fills the view is the whole fix; page
+    // handlers bound to document or body still see the events, because they
+    // bubble out of the surface either way.
+    let best = null;
+    for (const el of document.querySelectorAll("canvas,video,[role='application']")) {
+      if (!(el instanceof HTMLElement)) continue;
+      const style = visibleStyle(el);
+      if (!style || style.pointerEvents === "none") continue;
+      const rect = el.getBoundingClientRect();
+      const area = rect.width * rect.height;
+      if (area < window.innerWidth * window.innerHeight * 0.25) continue;
+      if (!best || area > best.area) best = { el, area };
+    }
+    if (!best) return { focused: activeTag(), changed: false };
+    best.el.focus({ preventScroll: true });
+    return { focused: activeTag(), changed: document.activeElement === best.el };
+  }
+
   function collectPageState(showHud = true) {
     const errors = [];
     const elements = [];
@@ -1596,17 +1755,45 @@ function runPageAction(action, args = {}) {
     const active = document.activeElement instanceof HTMLElement ? document.activeElement : document.body;
     if (!(active instanceof HTMLElement)) throw new Error("send_text has no focused page target");
     showStatusHud(`Send ${text.length} characters`, "Focused visual surface");
-    const emit = (key, code = "") => {
-      const base = { key, code, bubbles: true, cancelable: true };
+    // Same physical-key naming as the CDP path: a handler that reads
+    // KeyboardEvent.code and keyCode must not be able to tell which path the
+    // keystroke arrived through.
+    const shifted = {
+      "!": "1", "@": "2", "#": "3", "$": "4", "%": "5",
+      "^": "6", "&": "7", "*": "8", "(": "9", ")": "0",
+      _: "-", "+": "=", "{": "[", "}": "]", "|": "\\",
+      ":": ";", '"': "'", "~": "`", "<": ",", ">": ".", "?": "/",
+    };
+    const punctuation = {
+      " ": ["Space", 32], "-": ["Minus", 189], "=": ["Equal", 187],
+      "[": ["BracketLeft", 219], "]": ["BracketRight", 221], "\\": ["Backslash", 220],
+      ";": ["Semicolon", 186], "'": ["Quote", 222], "`": ["Backquote", 192],
+      ",": ["Comma", 188], ".": ["Period", 190], "/": ["Slash", 191],
+    };
+    const describe = (char) => {
+      const isShifted = Object.prototype.hasOwnProperty.call(shifted, char);
+      const base = isShifted ? shifted[char] : char;
+      if (/^[a-z]$/.test(base)) return { code: `Key${base.toUpperCase()}`, keyCode: base.toUpperCase().charCodeAt(0), shift: isShifted };
+      if (/^[A-Z]$/.test(base)) return { code: `Key${base}`, keyCode: base.charCodeAt(0), shift: true };
+      if (/^[0-9]$/.test(base)) return { code: `Digit${base}`, keyCode: base.charCodeAt(0), shift: isShifted };
+      const mapped = punctuation[base];
+      if (!mapped) return { code: "", keyCode: 0, shift: isShifted };
+      return { code: mapped[0], keyCode: mapped[1], shift: isShifted };
+    };
+    const emit = (key, code = "", keyCode = 0, shift = false) => {
+      const base = { key, code, keyCode, which: keyCode, shiftKey: shift, bubbles: true, cancelable: true };
       active.dispatchEvent(new KeyboardEvent("keydown", base));
       active.dispatchEvent(new KeyboardEvent("keyup", base));
     };
     for (const char of Array.from(text)) {
       if (char === "\r") continue;
-      if (char === "\n") emit("Enter", "Enter");
-      else if (char === "\t") emit("Tab", "Tab");
-      else if (char === "\b") emit("Backspace", "Backspace");
-      else emit(char);
+      if (char === "\n") emit("Enter", "Enter", 13);
+      else if (char === "\t") emit("Tab", "Tab", 9);
+      else if (char === "\b") emit("Backspace", "Backspace", 8);
+      else {
+        const descriptor = describe(char);
+        emit(char, descriptor.code, descriptor.keyCode, descriptor.shift);
+      }
     }
     return { ok: true, native_input: false };
   }
@@ -1820,6 +2007,7 @@ function runPageAction(action, args = {}) {
       return true;
     case "click": return clickElement();
     case "click_at": return clickAtInPage();
+    case "focus_visual_surface": return focusVisualSurface();
     case "hover": return hoverElement();
     case "type_text": return typeElement();
     case "send_text": return sendTextInPage();

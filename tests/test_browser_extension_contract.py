@@ -612,6 +612,67 @@ def test_focused_surface_text_is_one_action_and_uses_native_keyboard_input(backg
     assert "chrome.debugger.sendCommand" in key
 
 
+def test_typed_characters_name_the_physical_key_they_came_from(background):
+    """A canvas client reads KeyboardEvent.code, not the text of the event.
+
+    browser_press always sent the physical key and browser_send_text sent none,
+    which is why single presses reached a noVNC console and typed commands were
+    silently dropped there while the call reported success.
+    """
+
+    native = _function_body(background, "sendNativeText")
+    assert "characterKeyDescriptor" in native
+    assert "descriptor.code" in native
+    assert "descriptor.virtualKey" in native
+    assert "SHIFT_MODIFIER" in native
+
+    descriptor = _function_body(background, "characterKeyDescriptor")
+    assert "Key${base.toUpperCase()}" in descriptor
+    assert "Digit${base}" in descriptor
+    assert "PUNCTUATION_KEYS" in descriptor
+
+    raw = _function_body(background, "dispatchNativeKey")
+    assert "windowsVirtualKeyCode" in raw
+    assert "nativeVirtualKeyCode" in raw
+
+    fallback = _function_body(background, "sendTextInPage")
+    assert "keyCode" in fallback  # the page-event path must match the CDP one
+
+
+def test_typing_is_paced_for_remote_desktops_but_bounded(background):
+    """QEMU's emulated keyboard drops a burst sent with no gap between keys."""
+
+    native = _function_body(background, "sendNativeText")
+    assert "KEY_INTERVAL_MS" in native
+    assert "KEY_INTERVAL_BUDGET_MS" in native
+
+
+def test_keyboard_actions_hand_focus_back_to_a_visual_surface(background):
+    """Keys reach a canvas client only while its element holds focus."""
+
+    for name in ("sendText", "pressKey"):
+        assert "restoreVisualSurfaceFocus" in _function_body(background, name)
+
+    restore = _function_body(background, "restoreVisualSurfaceFocus")
+    assert "focus_visual_surface" in restore
+    assert "isInjectableUrl" in restore
+
+    focus = _function_body(background, "focusVisualSurface")
+    assert "document.activeElement" in focus
+    assert "preventScroll" in focus
+
+
+def test_screenshots_composite_on_demand_rather_than_reusing_a_painted_frame(background):
+    """captureVisibleTab returns the last painted frame of a window nobody is
+    looking at: two captures of a live VNC console came back byte-identical."""
+
+    body = _function_body(background, "screenshot")
+    assert "Page.captureScreenshot" in body
+    # The painted-frame path stays as the fallback for a tab DevTools owns, so
+    # what matters is which one is reached first.
+    assert body.index("Page.captureScreenshot") < body.index("chrome.tabs.captureVisibleTab")
+
+
 def test_native_input_has_a_page_event_fallback_when_devtools_owns_the_tab(background):
     native = _function_body(background, "withNativeInput")
     assert "chrome.debugger.attach" in native
