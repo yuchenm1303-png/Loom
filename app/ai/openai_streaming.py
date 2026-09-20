@@ -6,7 +6,7 @@ from typing import Any
 
 from .contracts import ChatRequest, ModelUsage, StreamEvent, StreamEventKind
 from .errors import AITransportError
-from .execution_control import current_control, check_cancelled, ModelCancelled
+from .execution_control import current_control, check_cancelled, note_progress, ModelCancelled
 from .openai_runtime import OpenAIChatBackend, _retryable_provider_error, _usage_from
 from .provider_catalog import ProviderAdapter
 
@@ -102,6 +102,11 @@ class OpenAIStreamingChatBackend(OpenAIChatBackend):
         try:
             for chunk in stream:
                 check_cancelled()
+                # Every chunk counts as progress, including the reasoning-only
+                # ones below that never leave this loop as a StreamEvent. This
+                # is what lets the executor tell a model that is thinking hard
+                # from a connection that has died.
+                note_progress()
                 chunk_count += 1
                 chunk_id = str(getattr(chunk, "id", "") or "").strip()
                 if chunk_id:

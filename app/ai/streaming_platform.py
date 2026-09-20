@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .execution_control import check_cancelled
+from .execution_control import check_cancelled, note_progress
 
 import json
 import threading
@@ -198,6 +198,10 @@ class StreamingAIPlatform(AIPlatform):
         try:
             for raw_event in stream:
                 check_cancelled()
+                # Backends that are not the OpenAI-compatible one report their
+                # progress here. That one reports per raw chunk instead, because
+                # its reasoning deltas never reach this loop at all.
+                note_progress()
                 if not isinstance(raw_event, StreamEvent):
                     raise TypeError("streaming model backend must yield StreamEvent values")
                 accumulator.consume(raw_event)
