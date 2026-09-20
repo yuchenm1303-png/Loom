@@ -449,6 +449,41 @@ def _deepseek_model_from_selection(selection: str) -> str | None:
     return None
 
 
+def _canonical_builtin_selection(selection: str, model: str) -> str:
+    """Keep built-in model identity and provider routing inseparable.
+
+    "Other model ID" intentionally keeps the current connection for saved and
+    managed endpoints. Built-in MiniMax/DeepSeek profiles are different: their
+    credentials and base URLs are provider-owned. If a known built-in model is
+    entered while another built-in provider is active, carry the provider
+    selection with the model instead of manufacturing a mixed identity such as
+    builtin:minimax + deepseek-flash.
+    """
+
+    current = str(selection or "").strip()
+    requested = str(model or "").strip()
+    if not requested:
+        return current
+
+    is_provider_builtin = (
+        current == PRIMARY_SELECTION
+        or current.startswith(MINIMAX_SELECTION_PREFIX)
+        or current == DEEPSEEK_SELECTION
+        or current.startswith(DEEPSEEK_SELECTION_PREFIX)
+        or current == CQU_SELECTION
+    )
+    if not is_provider_builtin:
+        return current
+
+    if _is_minimax_model(requested):
+        return _minimax_selection_for_model(requested)
+    if requested.casefold().startswith("deepseek-"):
+        return _deepseek_selection_for_model(requested)
+    if requested.casefold() == CQU_DEFAULT_MODEL.casefold():
+        return CQU_SELECTION
+    return current
+
+
 def _managed_selection_for_model(model: str) -> str:
     normalized = str(model or "").strip()
     folded = normalized.casefold()
@@ -706,10 +741,11 @@ def _describe_model(
     requested_model = str(model or "").strip()
     if not requested_model:
         raise ValueError("model must not be empty")
-    profile = _base_profile_for_selection(store, selection)
+    effective_selection = _canonical_builtin_selection(selection, requested_model)
+    profile = _base_profile_for_selection(store, effective_selection)
     if _is_minimax_model(requested_model):
         profile = _safe_minimax(requested_model)
-    elif _deepseek_model_from_selection(selection):
+    elif _deepseek_model_from_selection(effective_selection):
         profile = _safe_deepseek(requested_model)
     profile["model"] = requested_model
     return _with_reasoning(profile, reasoning_store)
@@ -800,17 +836,27 @@ def resolve_model_spec(
     model: str = "",
     home: str | Path | None = None,
 ) -> dict[str, Any]:
-    """Resolve one model selection for an existing thread without changing defaults."""
+    """Resolve one thread model without allowing a built-in provider/model split."""
 
     store = ModelConfigStore(home)
     reasoning_store = ReasoningConfigStore(store.home)
     selection_store = ModelSelectionStore(store.home)
-    resolved = _resolve(store, reasoning_store, selection_store, selection)
     requested_model = str(model or "").strip()
+    effective_selection = (
+        _canonical_builtin_selection(selection, requested_model)
+        if requested_model
+        else str(selection or "").strip()
+    )
+    resolved = _resolve(store, reasoning_store, selection_store, effective_selection)
     if requested_model and requested_model != str(resolved.get("model") or ""):
-        described = _describe_model(store, reasoning_store, selection, requested_model)
+        described = _describe_model(store, reasoning_store, effective_selection, requested_model)
         resolved = {
             **resolved,
+            "selection": str(described.get("selection") or resolved.get("selection") or effective_selection),
+            "id": str(described.get("id") or resolved.get("id") or ""),
+            "name": str(described.get("name") or resolved.get("name") or ""),
+            "adapter": str(described.get("adapter") or resolved.get("adapter") or ""),
+            "baseUrl": str(described.get("baseUrl") or resolved.get("baseUrl") or ""),
             "model": requested_model,
             "reasoning": described.get("reasoning"),
         }
