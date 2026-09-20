@@ -115,7 +115,7 @@ The extension bridge writes local JSONL diagnostics to:
 .loom/logs/browser-use/browser-<timestamp>-<pid>.jsonl
 ```
 
-Each event records the bridge lifecycle, extension registration, command queue/dispatch/result timings, tab binding, action name, element index, state revision, URL/title, tab count, DOM size/excerpt, page HUD state, and extension errors. Secret-shaped fields are redacted, screenshot bytes are omitted, and `browser_type` stores text length instead of the typed text payload. DOM excerpts are also omitted from post-`browser_type` diagnostic summaries so newly typed text is not copied into the log through the refreshed page state.
+Each event records the bridge lifecycle, extension registration, command queue/dispatch/result timings, tab binding, action name, element index, state revision, URL/title, tab count, DOM size/excerpt, page HUD state, and extension errors. Secret-shaped fields are redacted, screenshot bytes are omitted, and both `browser_type` and `browser_send_text` store text length instead of the typed text payload. DOM excerpts are also omitted from post-text-input diagnostic summaries so newly typed text is not copied into the log through the refreshed page state.
 
 To export logs from the desktop UI, open Settings → Browser and click **Export browser logs**. Loom will create a zip archive and reveal it in the native file manager. The same helper respects `LOOM_BROWSER_LOG_DIR`, so custom test runs can keep per-case logs in separate folders.
 
