@@ -314,3 +314,56 @@ def test_discovery_never_reports_a_control_channel_url(monkeypatch):
     assert endpoint is not None
     assert endpoint["browser"] == "Chrome/141.0"
     assert "secret-token" not in repr(endpoint)
+
+
+def test_tabs_hidden_by_policy_are_counted_rather_than_silently_dropped():
+    """Silence read as "that page is not open".
+
+    A console served from a LAN address, or any chrome:// page, vanished from
+    the tab list with nothing to say it had been there - so a model looking for
+    a page it could see on screen concluded the tab did not exist and went
+    hunting elsewhere. The addresses stay withheld, which is the filter's whole
+    purpose; their absence does not have to be withheld too.
+    """
+
+    from app.agent_runtime.browser_session import BrowserPageState
+
+    store = _policy_store()
+    store.filter_unsafe_background_tabs = True
+    state = BrowserPageState(
+        url="https://example.com/",
+        title="Example",
+        dom="page",
+        tabs=(
+            {"tab_id": "1", "url": "https://example.com/"},
+            {"tab_id": "2", "url": "http://192.168.1.50:6080/vnc.html"},
+            {"tab_id": "3", "url": "chrome://settings/"},
+        ),
+    )
+
+    checked = store._validated_state(state, BrowserLaunchOptions(headless=True, external_browser=True))
+
+    assert [tab["url"] for tab in checked.tabs] == ["https://example.com/"]
+    assert checked.page_info["hidden_tab_count"] == 2
+    note = checked.errors[-1]
+    assert "2 open tab(s) are not listed" in note
+    # The count is the whole disclosure. The addresses are not.
+    assert "192.168.1.50" not in note and "chrome://settings" not in note
+
+
+def test_a_fully_visible_tab_list_gains_no_note():
+    from app.agent_runtime.browser_session import BrowserPageState
+
+    store = _policy_store()
+    store.filter_unsafe_background_tabs = True
+    state = BrowserPageState(
+        url="https://example.com/",
+        title="Example",
+        dom="page",
+        tabs=({"tab_id": "1", "url": "https://example.com/"},),
+    )
+
+    checked = store._validated_state(state, BrowserLaunchOptions(headless=True, external_browser=True))
+
+    assert checked.errors == ()
+    assert "hidden_tab_count" not in (checked.page_info or {})

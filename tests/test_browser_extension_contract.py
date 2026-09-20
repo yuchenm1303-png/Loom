@@ -147,6 +147,36 @@ def test_tab_listing_and_explicit_switch_work_across_browser_windows(background)
     assert "chrome.windows.update(target.windowId, { focused: true })" in switch
 
 
+def test_the_driven_window_is_listed_first_so_truncation_cuts_the_rest(background):
+    """The list is capped downstream, so its order decides what survives.
+
+    chrome.tabs.query returns tabs grouped by window in window-creation order,
+    which left the window actually being driven behind however many tabs happen
+    to sit in older windows.
+    """
+
+    listing = _function_body(background, "listOpenTabs")
+    assert ".sort(" in listing
+    assert "Number(right.current_window) - Number(left.current_window)" in listing
+
+
+@pytest.mark.parametrize("handler", ["focusExistingTab", "switchTab"])
+def test_raising_a_window_never_fails_a_switch_that_already_worked(background, handler):
+    """The tab is activated before the window is raised.
+
+    A window closed or dragged between the two calls would otherwise turn a
+    switch that had already taken effect into a failed tool call. Every other
+    focus change in this file is best-effort for the same reason.
+    """
+
+    body = _function_body(background, handler)
+    assert "chrome.windows.update" in body
+    focus = body.index("chrome.windows.update")
+    assert ".catch(() => {})" in body[focus:focus + 120], (
+        f"{handler} fails the whole call when raising the window does not work"
+    )
+
+
 def test_work_tabs_use_a_named_browser_group(background):
     assert 'LOOM_TAB_GROUP_TITLE = "Loom"' in background
     body = _function_body(background, "placeInLoomGroup")

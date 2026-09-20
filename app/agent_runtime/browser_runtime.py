@@ -330,13 +330,26 @@ class BrowserSessionStore(BrowserSessionManager):
             safe_tabs.append(tab)
         if len(safe_tabs) == len(checked.tabs):
             return checked
+        hidden = len(checked.tabs) - len(safe_tabs)
+        # Say that something was hidden, without saying what. Silence here reads
+        # as "that page is not open", so a console served from a LAN address or
+        # a chrome:// page simply appeared not to exist, and the model would go
+        # on hunting for a tab the tab list had quietly removed. The addresses
+        # stay withheld - that is the point of the filter - but their absence
+        # does not have to be a secret too.
+        note = (
+            f"{hidden} open tab(s) are not listed: they are browser-internal pages, or addresses "
+            "outside this session's URL policy (private/local networks, blocked hosts). They stay "
+            "open in the browser and Loom will not drive them. If a page you expect is missing, it "
+            "is one of these - ask the user rather than assuming it is closed."
+        )
         return BrowserPageState(
             url=checked.url,
             title=checked.title,
             dom=checked.dom,
             tabs=tuple(safe_tabs),
-            page_info=checked.page_info,
-            errors=checked.errors,
+            page_info={**(checked.page_info or {}), "hidden_tab_count": hidden},
+            errors=tuple(checked.errors) + (note,),
         )
 
     def snapshot(self, owner_session_id: str, browser_id: str, *, refresh: bool = False) -> BrowserStateSnapshot:

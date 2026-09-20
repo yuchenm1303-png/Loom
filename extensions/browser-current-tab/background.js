@@ -223,7 +223,7 @@ async function tabFromArgs(args = {}) {
 // query's.
 async function listOpenTabs(tab) {
   const tabs = await chrome.tabs.query({});
-  return tabs.map((item) => ({
+  const rows = tabs.map((item) => ({
     tab_id: String(item.id ?? ""),
     window_id: String(item.windowId ?? ""),
     url: item.url || "",
@@ -234,6 +234,12 @@ async function listOpenTabs(tab) {
     // switching plus raising a window.
     current_window: item.windowId === tab.windowId,
   }));
+  // The list is capped further down the pipeline, so the order decides what
+  // survives being cut. Chrome returns tabs grouped by window in whatever order
+  // the windows were created, which puts the window being driven at the mercy
+  // of how many tabs happen to sit in older windows. Stable sort, so tab order
+  // inside each window is still the order on screen.
+  return rows.sort((left, right) => Number(right.current_window) - Number(left.current_window));
 }
 
 async function applyInstalledUpdateAtCommandBoundary() {
@@ -591,8 +597,11 @@ async function navigate(args) {
 async function focusExistingTab(tab) {
   const adopted = (await isLoomWorkTab(tab)) ? tab : await placeInLoomGroup(tab, { adopted: true });
   const active = await chrome.tabs.update(adopted.id, { active: true });
+  // Best effort, like every other focus change here. The tab is already
+  // activated by this point, so a window that was closed or is being dragged
+  // out from under us must not turn a navigation that worked into a failure.
   if (typeof active.windowId === "number") {
-    await chrome.windows.update(active.windowId, { focused: true });
+    await chrome.windows.update(active.windowId, { focused: true }).catch(() => {});
   }
   return chrome.tabs.get(active.id);
 }
@@ -1025,8 +1034,10 @@ async function switchTab(args) {
   if (!Number.isInteger(tabId)) throw new Error("tab_id must be numeric for the extension backend");
   const target = await chrome.tabs.get(tabId);
   await chrome.tabs.update(tabId, { active: true });
+  // The switch has already happened; raising the window is the finishing touch
+  // and not worth failing the call over.
   if (typeof target.windowId === "number") {
-    await chrome.windows.update(target.windowId, { focused: true });
+    await chrome.windows.update(target.windowId, { focused: true }).catch(() => {});
   }
   await markHudTab(tabId);
   return collectStateForTab(await chrome.tabs.get(tabId), { showHud: true });
