@@ -625,7 +625,7 @@ class BrowserExtensionSessionBackend:
             self._target_args({"index": int(index), "text": str(text), "clear": bool(clear)}),
         )
 
-    def click_at(self, x: int, y: int, *, button: str = "left") -> BrowserPageState:
+    def click_at(self, x: int, y: int, button: str = "left") -> BrowserPageState:
         return self._call_state(
             "click_at",
             self._target_args({"x": int(x), "y": int(y), "button": str(button)}),
