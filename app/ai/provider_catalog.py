@@ -24,6 +24,7 @@ class ProviderAdapter(str, Enum):
 
     OPENAI = "openai"
     OPENAI_COMPATIBLE = "openai-compatible"
+    OPENCODE_GO = "opencode-go"
     ANTHROPIC = "anthropic"
     GEMINI = "gemini"
 
@@ -50,6 +51,11 @@ _PROVIDER_DESCRIPTORS: dict[ProviderAdapter, ProviderDescriptor] = {
         adapter=ProviderAdapter.OPENAI_COMPATIBLE,
         executable=True,
         base_url_policy=BaseUrlPolicy.REQUIRED,
+    ),
+    ProviderAdapter.OPENCODE_GO: ProviderDescriptor(
+        adapter=ProviderAdapter.OPENCODE_GO,
+        executable=True,
+        base_url_policy=BaseUrlPolicy.FORBIDDEN,
     ),
     ProviderAdapter.ANTHROPIC: ProviderDescriptor(
         adapter=ProviderAdapter.ANTHROPIC,
