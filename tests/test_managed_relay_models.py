@@ -186,6 +186,63 @@ def test_resolve_deepseek_uses_official_key(tmp_path, monkeypatch):
     assert resolved["reasoning"]["value"] == "high"
 
 
+def test_builtin_model_name_switch_carries_deepseek_provider_identity(tmp_path, monkeypatch):
+    store = _store(tmp_path)
+    reasoning_store = ReasoningConfigStore(tmp_path)
+
+    described = bridge._describe_model(
+        store,
+        reasoning_store,
+        bridge.PRIMARY_SELECTION,
+        bridge.DEEPSEEK_DEFAULT_MODEL,
+    )
+
+    assert described["selection"] == bridge.DEEPSEEK_SELECTION
+    assert described["model"] == bridge.DEEPSEEK_DEFAULT_MODEL
+    assert described["baseUrl"] == bridge.DEEPSEEK_BASE_URL
+
+
+def test_resolve_model_spec_cannot_mix_minimax_selection_with_deepseek_model(tmp_path, monkeypatch):
+    store = _store(tmp_path)
+    monkeypatch.setattr(bridge, "ModelConfigStore", lambda home=None: store)
+    monkeypatch.setattr(bridge, "_deepseek_key", lambda _store, environ=None: "deepseek-secret")
+
+    resolved = bridge.resolve_model_spec(
+        bridge.PRIMARY_SELECTION,
+        model=bridge.DEEPSEEK_DEFAULT_MODEL,
+        home=tmp_path,
+    )
+
+    assert resolved["selection"] == bridge.DEEPSEEK_SELECTION
+    assert resolved["model"] == bridge.DEEPSEEK_DEFAULT_MODEL
+    assert resolved["baseUrl"] == bridge.DEEPSEEK_BASE_URL
+    assert resolved["apiKey"] == "deepseek-secret"
+
+
+def test_saved_connection_keeps_its_provider_for_custom_model_ids(tmp_path):
+    secrets: dict[str, str] = {}
+    store = _store_with_secrets(tmp_path, secrets)
+    saved = store.save_model(
+        display_name="Private compatible API",
+        adapter="openai-compatible",
+        base_url="https://example.invalid/v1",
+        model="custom-model",
+        api_key="private-secret",
+    )
+    reasoning_store = ReasoningConfigStore(tmp_path)
+
+    described = bridge._describe_model(
+        store,
+        reasoning_store,
+        saved.selection,
+        bridge.DEEPSEEK_DEFAULT_MODEL,
+    )
+
+    assert described["selection"] == saved.selection
+    assert described["baseUrl"] == "https://example.invalid/v1"
+    assert described["model"] == bridge.DEEPSEEK_DEFAULT_MODEL
+
+
 def test_saved_deepseek_connection_is_promoted_to_builtin_credential(tmp_path, monkeypatch):
     model_secrets: dict[str, str] = {}
     builtin_secrets: dict[str, str] = {}
