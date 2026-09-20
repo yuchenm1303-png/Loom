@@ -996,3 +996,620 @@
   animation: none !important;
   transition: none !important;
 }
+
+
+/* -------------------------------------------------------------------------- */
+/* Single-surface refinement                                                   */
+/* -------------------------------------------------------------------------- */
+
+.composer-popover.model-manager-popover {
+  width: min(406px, calc(100vw - 32px));
+  border-radius: 17px;
+}
+
+.model-manager-popover .model-manager-view.model-core-home {
+  gap: 0;
+  padding: 17px 18px 14px;
+}
+
+/* Model identity now lives directly on the outer surface. No nested card,
+   no leading icon block: the model name is the semantic anchor. */
+.model-core-identity {
+  position: relative;
+  display: block;
+  padding: 5px 28px 13px;
+  text-align: center;
+}
+
+.model-core-copy {
+  display: grid;
+  gap: 4px;
+  text-align: center;
+}
+
+.model-core-copy strong {
+  color: #e9e9ef;
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1.18;
+  letter-spacing: -.018em;
+}
+
+.model-core-copy small {
+  color: #727985;
+  font-size: 8.8px;
+  line-height: 1.2;
+}
+
+.model-core-provider,
+.model-core-glyph {
+  display: none;
+}
+
+.model-core-health {
+  position: absolute;
+  top: 8px;
+  right: 2px;
+  width: 18px;
+  height: 18px;
+}
+
+.model-core-health i {
+  width: 5px;
+  height: 5px;
+  box-shadow:
+    0 0 0 3px rgba(118, 183, 151, .055),
+    0 0 10px rgba(118, 183, 151, .13);
+}
+
+/* The reasoning control is no longer a card within the card. It is simply
+   the visual instrument sitting on the same surface as the model identity. */
+.model-core-reasoning {
+  position: relative;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.model-core-reasoning::before {
+  display: none;
+}
+
+.model-manager-popover .reasoning-control {
+  padding: 7px 0 9px;
+}
+
+.model-manager-popover .reasoning-control-head {
+  min-height: 19px;
+  padding: 0 1px;
+}
+
+.reasoning-control-eyebrow {
+  color: #7d8490;
+  font-size: 8.15px;
+  letter-spacing: .085em;
+}
+
+.reasoning-control-eyebrow svg {
+  color: #8e84c9;
+}
+
+.model-manager-popover .reasoning-reset {
+  margin-right: -2px;
+  color: #59606b;
+}
+
+.reasoning-thread-shell {
+  min-height: 67px;
+  margin-top: 8px;
+  padding: 0 1px;
+}
+
+.reasoning-thread-lines {
+  top: 3px;
+  left: 7px;
+  right: 7px;
+  height: 32px;
+}
+
+.reasoning-thread-path {
+  stroke-width: 1.08;
+}
+
+.reasoning-thread-lines > svg > .reasoning-thread-path-a {
+  stroke: rgba(132, 138, 154, .4);
+}
+
+.reasoning-thread-lines > svg > .reasoning-thread-path-b {
+  stroke: rgba(98, 104, 120, .26);
+}
+
+.reasoning-thread-energy .reasoning-thread-path-a {
+  stroke: rgba(178, 162, 255, .97);
+  stroke-width: 1.34;
+  filter:
+    drop-shadow(0 0 4.5px rgba(149, 132, 246, .3))
+    drop-shadow(0 0 10px rgba(139, 124, 246, .11));
+}
+
+.reasoning-thread-energy .reasoning-thread-path-b {
+  stroke: rgba(139, 125, 224, .8);
+  stroke-width: 1.22;
+  filter: drop-shadow(0 0 5px rgba(118, 103, 211, .1));
+}
+
+.reasoning-thread-node {
+  height: 62px;
+  grid-template-rows: 31px minmax(0, 1fr);
+  gap: 4px;
+}
+
+.reasoning-thread-node span {
+  color: inherit;
+  font-size: 8.45px;
+  font-weight: 580;
+  letter-spacing: -.005em;
+}
+
+.reasoning-thread-node.active {
+  color: #c7bbf3;
+}
+
+.reasoning-thread-node.active i {
+  width: 11px;
+  height: 11px;
+  border-color: rgba(190, 174, 255, .82);
+  background: #aa98ff;
+  box-shadow:
+    0 0 0 3px rgba(16, 18, 23, .95),
+    0 0 0 7px rgba(139, 124, 246, .075),
+    0 0 20px rgba(147, 130, 247, .3);
+}
+
+/* Keep the artwork as the final element in the reasoning area. The selected
+   level already appears on the active node and in the metadata above. */
+.model-core-home .reasoning-current {
+  display: none;
+}
+
+.reasoning-managed {
+  padding: 7px 0 9px;
+}
+
+.reasoning-managed-thread {
+  height: 39px;
+  margin: 4px 16px 0;
+}
+
+.reasoning-managed-label {
+  margin-top: -3px;
+  color: #777f8b;
+  font-size: 8px;
+  text-align: center;
+}
+
+/* Navigation is part of the same surface, not another pair of cards. */
+.model-core-nav {
+  display: grid;
+  gap: 0;
+  margin: 8px 0 0;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, .045);
+}
+
+.model-core-nav > button {
+  min-height: 0;
+  border-radius: 9px;
+}
+
+.model-core-nav > button + button {
+  border-top: 0;
+}
+
+.model-core-nav > .model-core-models {
+  min-height: 49px;
+  grid-template-columns: minmax(0, 1fr) 14px;
+  gap: 8px;
+  padding: 8px 7px;
+}
+
+.model-core-models > span {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.model-core-models strong {
+  color: #cbd0d8;
+  font-size: 10.4px;
+  font-weight: 610;
+}
+
+.model-core-models small {
+  color: #626a76;
+  font-size: 8.35px;
+}
+
+.model-core-nav > .model-core-add-api {
+  width: fit-content;
+  min-height: 28px;
+  display: inline-flex;
+  grid-template-columns: none;
+  justify-self: start;
+  gap: 6px;
+  padding: 4px 7px;
+  color: #626a76;
+}
+
+.model-core-add-api strong {
+  color: inherit;
+  font-size: 8.8px;
+  font-weight: 580;
+}
+
+.model-core-add-api:hover:not(:disabled) {
+  color: #9a91ce;
+  background: rgba(139, 124, 246, .025);
+  transform: none;
+}
+
+.model-core-add-api > svg {
+  justify-self: auto !important;
+  color: currentColor !important;
+  transform: none !important;
+}
+
+@media (max-width: 500px) {
+  .composer-popover.model-manager-popover {
+    width: calc(100vw - 20px);
+  }
+
+  .model-manager-popover .model-manager-view.model-core-home {
+    padding: 15px 15px 12px;
+  }
+
+  .model-core-identity {
+    padding-inline: 24px;
+  }
+}
+
+
+/* -------------------------------------------------------------------------- */
+/* Minimal home: the model label itself is the model-picker trigger.           */
+/* -------------------------------------------------------------------------- */
+
+.model-core-selector {
+  width: 100%;
+  box-sizing: border-box;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  appearance: none;
+  transition: opacity 140ms ease;
+}
+
+.model-core-selector:disabled {
+  cursor: default;
+}
+
+.model-core-selector:not(:disabled):hover .model-core-copy strong {
+  color: #f0eff7;
+}
+
+.model-core-selector:not(:disabled):hover .model-core-title-row > svg {
+  color: #a89ee0;
+  transform: translateX(2px);
+}
+
+.model-core-selector:focus-visible {
+  outline: 1px solid rgba(169, 153, 239, .28);
+  outline-offset: 3px;
+  border-radius: 9px;
+}
+
+.model-core-title-row {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+}
+
+.model-core-title-row strong {
+  min-width: 0;
+  transition: color 140ms ease;
+}
+
+.model-core-title-row > svg {
+  flex: none;
+  color: #646b76;
+  transition:
+    color 140ms ease,
+    transform 160ms cubic-bezier(.2, .8, .2, 1);
+}
+
+/* The picker and API-management entry now live behind the model label.
+   The first surface contains only model identity + reasoning. */
+.model-core-home .model-core-nav {
+  display: none;
+}
+
+.model-manager-popover .model-manager-view.model-core-home {
+  padding-bottom: 15px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .model-core-selector,
+  .model-core-copy strong,
+  .model-core-title-row > svg {
+    transition: none !important;
+  }
+}
+
+:root[data-loom-reduced-motion="true"] .model-core-selector,
+:root[data-loom-reduced-motion="true"] .model-core-copy strong,
+:root[data-loom-reduced-motion="true"] .model-core-title-row > svg {
+  transition: none !important;
+}
+
+
+/* -------------------------------------------------------------------------- */
+/* Thread polish: remove popover chrome and give the woven control quiet life. */
+/* -------------------------------------------------------------------------- */
+
+/* The generic composer speech-bubble pointer is visual noise on the model
+   surface (the small white chevron visible at the lower-left in screenshots). */
+.composer-popover.model-manager-popover::before {
+  display: none;
+}
+
+/* The old connection-status dot is intentionally gone from the minimal home. */
+.model-core-home .model-core-health {
+  display: none;
+}
+
+.reasoning-thread-lines {
+  isolation: isolate;
+  filter: drop-shadow(0 0 6px rgba(123, 108, 214, .075));
+  -webkit-mask-image: linear-gradient(90deg, transparent 0%, rgba(0,0,0,.94) 7%, #000 15%, #000 85%, rgba(0,0,0,.94) 93%, transparent 100%);
+  mask-image: linear-gradient(90deg, transparent 0%, rgba(0,0,0,.94) 7%, #000 15%, #000 85%, rgba(0,0,0,.94) 93%, transparent 100%);
+  animation: reasoning-thread-breathe 6.2s ease-in-out infinite;
+}
+
+.reasoning-thread-lines::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  left: 4%;
+  right: 4%;
+  top: 50%;
+  height: 21px;
+  transform: translateY(-50%);
+  border-radius: 999px;
+  background:
+    radial-gradient(ellipse at center, rgba(134, 116, 233, .115), transparent 68%);
+  filter: blur(10px);
+  opacity: .72;
+  pointer-events: none;
+}
+
+.reasoning-thread-energy {
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 10%, #000 96%, transparent 100%);
+  mask-image: linear-gradient(90deg, transparent 0%, #000 10%, #000 96%, transparent 100%);
+}
+
+/* A very soft travelling halo. It only exists inside the active portion
+   because the energy layer itself is clipped at the selected reasoning node. */
+.reasoning-thread-energy::after {
+  content: "";
+  position: absolute;
+  z-index: 3;
+  top: 1px;
+  bottom: 1px;
+  left: -12%;
+  width: 12%;
+  border-radius: 999px;
+  background: rgba(188, 174, 255, .2);
+  filter: blur(8px);
+  opacity: 0;
+  pointer-events: none;
+  animation: reasoning-energy-sweep 5.6s cubic-bezier(.36, 0, .22, 1) infinite;
+}
+
+.reasoning-thread-glint {
+  fill: none;
+  stroke: rgba(235, 230, 255, .97);
+  stroke-width: 1.38;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+  stroke-dasharray: 4 128;
+  stroke-dashoffset: 132;
+  opacity: .74;
+  filter:
+    drop-shadow(0 0 4px rgba(193, 179, 255, .72))
+    drop-shadow(0 0 10px rgba(139, 124, 246, .16));
+  animation: reasoning-thread-glint 6.1s linear infinite;
+}
+
+.reasoning-thread-glint-b {
+  opacity: .42;
+  animation-delay: -3.1s;
+  animation-duration: 7s;
+}
+
+.reasoning-thread-node i::before,
+.reasoning-thread-node i::after {
+  content: "";
+  position: absolute;
+  inset: 50%;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  transform: translate(-50%, -50%) scale(1);
+  pointer-events: none;
+}
+
+.reasoning-thread-node i::before {
+  border: 1px solid rgba(153, 140, 220, 0);
+  transition:
+    border-color 170ms ease,
+    transform 220ms cubic-bezier(.2, .8, .2, 1),
+    opacity 170ms ease;
+}
+
+.reasoning-thread-node i::after {
+  background: radial-gradient(circle, rgba(177, 159, 255, .22), transparent 66%);
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(1.7);
+  transition: opacity 180ms ease;
+}
+
+.reasoning-thread-node:hover:not(:disabled) i::before {
+  border-color: rgba(157, 143, 224, .24);
+  transform: translate(-50%, -50%) scale(1.85);
+}
+
+.reasoning-thread-node:hover:not(:disabled) i::after {
+  opacity: .48;
+}
+
+.reasoning-thread-node.active i::before {
+  border-color: rgba(174, 158, 246, .2);
+  animation: reasoning-node-orbit 3.4s ease-in-out infinite;
+}
+
+.reasoning-thread-node.active i::after {
+  opacity: .72;
+  animation: reasoning-node-halo 3.4s ease-in-out infinite;
+}
+
+.reasoning-thread-node.active i {
+  animation: reasoning-node-core 3.4s ease-in-out infinite;
+}
+
+.reasoning-thread-node.active span {
+  color: #d2c9fb;
+  text-shadow:
+    0 0 12px rgba(154, 137, 234, .18),
+    0 0 22px rgba(139, 124, 246, .08);
+}
+
+.reasoning-thread-node:not(.active) span {
+  transition: color 150ms ease, opacity 150ms ease;
+}
+
+.reasoning-thread-node:not(.active):hover span {
+  color: #9299a5;
+}
+
+/* Reasoning changes should feel like energy re-weaving, not a tab switch. */
+.reasoning-thread-energy {
+  transition:
+    clip-path 380ms cubic-bezier(.16, .84, .22, 1),
+    opacity 220ms ease;
+}
+
+@keyframes reasoning-thread-glint {
+  from { stroke-dashoffset: 127; }
+  to { stroke-dashoffset: -127; }
+}
+
+@keyframes reasoning-energy-sweep {
+  0%, 12% {
+    left: -12%;
+    opacity: 0;
+  }
+  18% {
+    opacity: .34;
+  }
+  58% {
+    opacity: .16;
+  }
+  72%, 100% {
+    left: 104%;
+    opacity: 0;
+  }
+}
+
+@keyframes reasoning-thread-breathe {
+  0%, 100% {
+    opacity: .94;
+    filter: drop-shadow(0 0 4px rgba(116, 102, 202, .045));
+  }
+  50% {
+    opacity: 1;
+    filter: drop-shadow(0 0 7px rgba(132, 116, 224, .085));
+  }
+}
+
+@keyframes reasoning-node-core {
+  0%, 100% {
+    box-shadow:
+      0 0 0 3px rgba(16, 18, 23, .94),
+      0 0 0 5px rgba(139, 124, 246, .055),
+      0 0 15px rgba(139, 124, 246, .2);
+  }
+  50% {
+    box-shadow:
+      0 0 0 3px rgba(16, 18, 23, .94),
+      0 0 0 6px rgba(139, 124, 246, .075),
+      0 0 22px rgba(151, 132, 246, .3);
+  }
+}
+
+@keyframes reasoning-node-orbit {
+  0%, 100% {
+    opacity: .45;
+    transform: translate(-50%, -50%) scale(1.55);
+  }
+  50% {
+    opacity: .85;
+    transform: translate(-50%, -50%) scale(2.05);
+  }
+}
+
+@keyframes reasoning-node-halo {
+  0%, 100% {
+    opacity: .48;
+    transform: translate(-50%, -50%) scale(1.55);
+  }
+  50% {
+    opacity: .82;
+    transform: translate(-50%, -50%) scale(2.15);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reasoning-thread-lines,
+  .reasoning-thread-energy::after,
+  .reasoning-thread-glint,
+  .reasoning-thread-node.active i,
+  .reasoning-thread-node.active i::before,
+  .reasoning-thread-node.active i::after {
+    animation: none !important;
+  }
+
+  .reasoning-thread-energy::after,
+  .reasoning-thread-glint {
+    display: none;
+  }
+}
+
+:root[data-loom-reduced-motion="true"] .reasoning-thread-lines,
+:root[data-loom-reduced-motion="true"] .reasoning-thread-energy::after,
+:root[data-loom-reduced-motion="true"] .reasoning-thread-glint,
+:root[data-loom-reduced-motion="true"] .reasoning-thread-node.active i,
+:root[data-loom-reduced-motion="true"] .reasoning-thread-node.active i::before,
+:root[data-loom-reduced-motion="true"] .reasoning-thread-node.active i::after {
+  animation: none !important;
+}
+
+:root[data-loom-reduced-motion="true"] .reasoning-thread-energy::after,
+:root[data-loom-reduced-motion="true"] .reasoning-thread-glint {
+  display: none;
+}

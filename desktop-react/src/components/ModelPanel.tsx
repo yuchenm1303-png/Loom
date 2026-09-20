@@ -165,6 +165,8 @@ function ReasoningControl({
             <svg viewBox="0 0 100 18" preserveAspectRatio="none">
               <path className="reasoning-thread-path reasoning-thread-path-a" d="M1 9 C13 2.6 24 15.4 38 9 S63 2.6 77 9 S91 14 99 9" />
               <path className="reasoning-thread-path reasoning-thread-path-b" d="M1 9 C13 15.4 24 2.6 38 9 S63 15.4 77 9 S91 4 99 9" />
+              <path className="reasoning-thread-path reasoning-thread-glint reasoning-thread-glint-a" d="M1 9 C13 2.6 24 15.4 38 9 S63 2.6 77 9 S91 14 99 9" />
+              <path className="reasoning-thread-path reasoning-thread-glint reasoning-thread-glint-b" d="M1 9 C13 15.4 24 2.6 38 9 S63 15.4 77 9 S91 4 99 9" />
             </svg>
           </div>
         </div>
@@ -185,13 +187,6 @@ function ReasoningControl({
             </button>
           ))}
         </div>
-      </div>
-
-      <div className="reasoning-current" key={displayOption?.value || reasoning.value}>
-        <strong>{displayOption?.label || "Provider"}</strong>
-        <span>
-          {displayOption?.description || "Choose how much reasoning time Loom should spend before answering."}
-        </span>
       </div>
 
       {running ? <div className="reasoning-locked-note">Stop the active turn to change reasoning.</div> : null}
@@ -235,6 +230,7 @@ export function ModelPanel({
   const currentBaseUrl = snapshot?.current?.baseUrl || "";
   const currentSelection = snapshot?.current?.selection || "";
   const currentReasoning = snapshot?.current?.reasoning ?? null;
+  const currentReasoningOption = currentReasoning ? activeReasoningOption(currentReasoning) : null;
   const currentGroupName = snapshot?.current?.groupName || currentName;
   const currentFamily = snapshot?.current?.family || "";
   const currentProtocol = snapshot?.current?.protocol || "";
@@ -729,20 +725,24 @@ export function ModelPanel({
 
   return (
     <div className="model-manager-view model-manager-home model-core-home">
-      <section className={`model-core-identity ${locked ? "locked" : ""}`} aria-label={`Current model ${currentModel}`}>
-        <span className="model-core-glyph"><Cpu size={17} strokeWidth={1.65} /></span>
+      <button
+        type="button"
+        className={`model-core-identity model-core-selector ${locked ? "locked" : ""}`}
+        aria-label={`Choose model. Current model ${currentModel}`}
+        disabled={locked}
+        onClick={() => { setView("profiles"); setError(""); }}
+      >
         <div className="model-core-copy" key={`${currentSelection}:${currentModel}`}>
-          <span className="model-core-provider">{currentGroupName}</span>
-          <strong>{currentModel}</strong>
+          <span className="model-core-title-row">
+            <strong>{currentModel}</strong>
+            <ChevronRight size={13} strokeWidth={1.8} aria-hidden="true" />
+          </span>
           <small>
-            {adapterLabel(currentAdapter)}
-            {currentFamily ? ` · ${currentFamily}` : ""}
+            {currentGroupName} · {adapterLabel(currentAdapter)}
+            {currentReasoningOption ? ` · ${currentReasoningOption.label}` : " · Auto"}
           </small>
         </div>
-        <span className="model-core-health" title="Provider connected" aria-label="Provider connected">
-          <i aria-hidden="true" />
-        </span>
-      </section>
+      </button>
 
       <section className="model-core-reasoning" aria-label="Reasoning control">
         {currentReasoning ? (
@@ -765,43 +765,11 @@ export function ModelPanel({
               <i />
               <span />
             </div>
-            <div className="reasoning-current">
-              <strong>Provider managed</strong>
-              <span>Reasoning strategy is controlled automatically by this model.</span>
-            </div>
+            <div className="reasoning-managed-label">Auto</div>
           </div>
         )}
       </section>
 
-      <div className="model-core-nav" aria-label="Model actions">
-        <button
-          type="button"
-          onClick={() => { setView("profiles"); setError(""); }}
-          disabled={locked}
-        >
-          <span className="model-core-nav-icon"><Cpu size={14.5} strokeWidth={1.75} /></span>
-          <span>
-            <strong>Models</strong>
-            <small>{groups.length} providers · {profiles.length} models</small>
-          </span>
-          <ChevronRight size={14} />
-        </button>
-
-        <button
-          type="button"
-          onClick={() => { setView("add"); setError(""); }}
-          disabled={locked}
-        >
-          <span className="model-core-nav-icon"><Plus size={14.5} strokeWidth={1.75} /></span>
-          <span>
-            <strong>Connections</strong>
-            <small>Add a custom API or model</small>
-          </span>
-          <ChevronRight size={14} />
-        </button>
-      </div>
-
-      {currentProtocol ? <div className="model-core-protocol">Protocol · {currentProtocol}</div> : null}
       {error ? <div className="composer-popover-error">{error}</div> : null}
     </div>
   );
