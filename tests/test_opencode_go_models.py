@@ -80,3 +80,11 @@ def test_opencode_go_profiles_can_be_browsed_before_key_is_configured(monkeypatc
         assert "OpenCode Go API key is not configured" in str(exc)
     else:
         raise AssertionError("unconfigured OpenCode Go profile unexpectedly resolved")
+
+
+def test_custom_model_name_keeps_opencode_go_provider_identity() -> None:
+    current = bridge._opencode_go_selection_for_model("glm-5.3")
+    described = bridge._canonical_builtin_selection(current, "minimax-m3")
+
+    assert bridge._opencode_go_model_from_selection(described) == "minimax-m3"
+    assert bridge._minimax_model_from_selection(described) is None
