@@ -22,6 +22,8 @@ export interface LoomBridge {
   connect(): Promise<unknown>;
   call<T = unknown>(method: string, params?: Record<string, unknown>): Promise<T>;
   disconnect(): Promise<void>;
+  /** Keep Electron native controls in sync with Loom theme. */
+  setNativeTheme(source: "system" | "light" | "dark"): Promise<"light" | "dark">;
   accountStatus<T = unknown>(): Promise<T>;
   accountLogin<T = unknown>(email: string, password: string): Promise<T>;
   accountRegister<T = unknown>(email: string, password: string): Promise<T>;
