@@ -1265,3 +1265,84 @@
     padding-inline: 24px;
   }
 }
+
+
+/* -------------------------------------------------------------------------- */
+/* Minimal home: the model label itself is the model-picker trigger.           */
+/* -------------------------------------------------------------------------- */
+
+.model-core-selector {
+  width: 100%;
+  box-sizing: border-box;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  appearance: none;
+  transition: opacity 140ms ease;
+}
+
+.model-core-selector:disabled {
+  cursor: default;
+}
+
+.model-core-selector:not(:disabled):hover .model-core-copy strong {
+  color: #f0eff7;
+}
+
+.model-core-selector:not(:disabled):hover .model-core-title-row > svg {
+  color: #a89ee0;
+  transform: translateX(2px);
+}
+
+.model-core-selector:focus-visible {
+  outline: 1px solid rgba(169, 153, 239, .28);
+  outline-offset: 3px;
+  border-radius: 9px;
+}
+
+.model-core-title-row {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+}
+
+.model-core-title-row strong {
+  min-width: 0;
+  transition: color 140ms ease;
+}
+
+.model-core-title-row > svg {
+  flex: none;
+  color: #646b76;
+  transition:
+    color 140ms ease,
+    transform 160ms cubic-bezier(.2, .8, .2, 1);
+}
+
+/* The picker and API-management entry now live behind the model label.
+   The first surface contains only model identity + reasoning. */
+.model-core-home .model-core-nav {
+  display: none;
+}
+
+.model-manager-popover .model-manager-view.model-core-home {
+  padding-bottom: 15px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .model-core-selector,
+  .model-core-copy strong,
+  .model-core-title-row > svg {
+    transition: none !important;
+  }
+}
+
+:root[data-loom-reduced-motion="true"] .model-core-selector,
+:root[data-loom-reduced-motion="true"] .model-core-copy strong,
+:root[data-loom-reduced-motion="true"] .model-core-title-row > svg {
+  transition: none !important;
+}
