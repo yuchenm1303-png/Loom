@@ -295,6 +295,7 @@ def _build_auto_title_request(module: ModuleType, session: Any, *, user_prompt: 
         tool_choice=ToolChoice.NONE,
         temperature=0.2,
         max_output_tokens=48,
+        session_id=str(getattr(session, "session_id", "") or ""),
     )
     return (
         StructuredRequest(
@@ -326,6 +327,7 @@ def _build_plain_auto_title_request(structured: Any) -> Any:
         tool_choice=ToolChoice.NONE,
         temperature=structured.chat.temperature,
         max_output_tokens=structured.chat.max_output_tokens,
+        session_id=structured.chat.session_id,
     )
 
 
