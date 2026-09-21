@@ -2640,9 +2640,7 @@ html[data-loom-theme="light"] :is(
   .context-window-panel,
   .context-usage-panel,
   .thread-header [class*="context"][role="dialog"],
-  .thread-header [class*="context"][role="menu"],
-  .thread-header [class*="context"][class*="popover"],
-  .thread-header [class*="context"][class*="panel"]
+  .thread-header [class*="context"][role="menu"]
 ) {
   width: min(360px, calc(100vw - 28px));
   padding: 14px !important;
