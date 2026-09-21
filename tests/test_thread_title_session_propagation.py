@@ -13,6 +13,7 @@ from app.thread_title_override import (
     _metadata_display_title,
     _metadata_title_blocks_auto_title,
     _safe_initial_title_from_prompt,
+    _sanitize_generated_title,
 )
 
 
@@ -167,3 +168,15 @@ def test_title_version_upgrade_resets_exhausted_legacy_retry_budget(tmp_path: Pa
     assert upgraded["title"] == ""
     assert upgraded["titleSource"] == "pending"
     assert upgraded["autoTitleAttempts"] == 0
+
+
+def test_generated_title_rejects_prompt_clause_without_task_shape() -> None:
+    prompt = "右上角的标签数字和文字重叠，请仔细检查并优化一下"
+    assert _sanitize_generated_title(
+        "右上角的标签数字和文字重叠",
+        source_prompt=prompt,
+    ) == ""
+    assert _sanitize_generated_title(
+        "修复标签数字文字重叠",
+        source_prompt=prompt,
+    ) == "修复标签数字文字重叠"

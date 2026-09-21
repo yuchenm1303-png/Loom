@@ -18,6 +18,7 @@ _AUTO_TITLE_MAX_ATTEMPTS = 3
 _AUTO_TITLE_MAX_CHARS = 36
 _AUTO_TITLE_PROMPT_MAX_BYTES = 960
 _AUTO_TITLE_RECENT_MESSAGES = 8
+_AUTO_TITLE_RETRY_DELAYS = (0.35, 1.2)
 _AUTO_TITLE_SCHEMA = {
     "type": "object",
     "properties": {
@@ -41,6 +42,9 @@ _AUTO_TITLE_ATTACHMENT_RE = re.compile(
 _AUTO_TITLE_CONVERSATIONAL_RE = re.compile(
     r"^(?:请|帮我|麻烦|你能|你可以|能否|可以|可否|为什么|怎么|如何|我想|please\b|can\s+you\b|could\s+you\b|would\s+you\b|i\s+(?:need|want|would\s+like)\b)",
     re.IGNORECASE,
+)
+_AUTO_TITLE_ACTION_RE = re.compile(
+    r"^(?:修复|优化|检查|排查|调整|改进|对齐|添加|移除|删除|设计|实现|更新|验证|解决|改善|支持|处理|整理|重构|接入|完善|恢复|统一|简化|增强|迁移|分析|定位)"
 )
 _AUTO_TITLE_PREFIX_RE = re.compile(
     r"^(?:title|conversation\s+title|thread\s+title|标题|对话标题|会话标题)\s*[:：\-–—]\s*",
@@ -148,16 +152,34 @@ def _sanitize_title_line(value: str) -> str:
 
 
 def _title_looks_like_raw_prompt(title: str, prompt: str = "") -> bool:
-    folded = " ".join(str(title or "").casefold().split())
-    prompt_folded = " ".join(str(prompt or "").casefold().split())
+    title_text = str(title or "").strip()
+    prompt_text = str(prompt or "").strip()
+    folded = " ".join(title_text.casefold().split())
+    prompt_folded = " ".join(prompt_text.casefold().split())
     if not folded or folded in _GENERIC_AUTO_TITLES:
         return True
-    if _AUTO_TITLE_CONVERSATIONAL_RE.match(str(title or "").strip()):
+    if _AUTO_TITLE_CONVERSATIONAL_RE.match(title_text):
         return True
     if folded.endswith(("吗", "么", "呢", "吧", "?", "？")):
         return True
     if prompt_folded and folded == prompt_folded:
         return True
+
+    # Reject short CJK clauses lifted verbatim from the prompt unless the
+    # model has rewritten them into an explicit task phrase. This catches the
+    # old sidebar failure mode ("右上角的标签数字和文字重叠…") without rejecting
+    # useful generated titles such as "修复标签数字文字重叠".
+    compact_title = re.sub(r"[\W_]+", "", title_text.casefold())
+    compact_prompt = re.sub(r"[\W_]+", "", prompt_text.casefold())
+    if (
+        _has_cjk(title_text)
+        and len(compact_title) >= 6
+        and compact_prompt
+        and compact_title in compact_prompt
+        and not _AUTO_TITLE_ACTION_RE.match(title_text)
+    ):
+        return True
+
     if prompt_folded and len(folded) >= 18 and folded in prompt_folded:
         return True
     return False
@@ -687,8 +709,24 @@ def _patch_service(module: ModuleType) -> None:
                     source_prompt=source_prompt,
                 )
                 metadata = self.thread_library.read(thread_id)
-                reason = "auto_title_retry" if bool(metadata.get("autoTitlePending")) else "auto_title_unavailable"
+                pending = bool(metadata.get("autoTitlePending"))
+                reason = "auto_title_retry" if pending else "auto_title_unavailable"
                 _notify_thread_updated(self, thread_id, reason)
+
+                # Transient provider errors and malformed title samples should
+                # heal without requiring the user to reopen the conversation.
+                # The detached timer is bounded; the normal scheduler re-checks
+                # manual renames, committed titles, sub-agents, and attempt limits.
+                attempts = max(0, int(metadata.get("autoTitleAttempts") or 0))
+                if pending and 1 <= attempts <= len(_AUTO_TITLE_RETRY_DELAYS):
+                    timer = threading.Timer(
+                        _AUTO_TITLE_RETRY_DELAYS[attempts - 1],
+                        self._schedule_auto_title,
+                        args=(thread_id,),
+                        kwargs={"user_prompt": source_prompt},
+                    )
+                    timer.daemon = True
+                    timer.start()
             except Exception:
                 pass
 

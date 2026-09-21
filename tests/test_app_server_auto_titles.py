@@ -378,3 +378,37 @@ def test_existing_bad_auto_title_is_hidden_and_can_regenerate(tmp_path: Path) ->
         assert metadata["autoTitleLastError"] == ""
     finally:
         runtime.close()
+
+
+def test_failed_title_attempt_retries_automatically(tmp_path: Path) -> None:
+    service, runtime, _store, platform, workspace = _build_service(
+        tmp_path,
+        [
+            ModelResponse(text="normal assistant response"),
+            ModelResponse(text='{"title":"右上角的标签数字和文字重叠"}'),
+            ModelResponse(text='{"title":"修复标签数字文字重叠"}'),
+        ],
+    )
+    try:
+        thread_id = service.thread_start({"workspace": str(workspace)})["thread"]["id"]
+        service.turn_start(
+            {
+                "threadId": thread_id,
+                "input": "右上角的标签数字和文字重叠，请仔细检查并优化一下",
+            }
+        )
+
+        metadata = _wait_until(
+            lambda: (
+                service.thread_library.read(thread_id)
+                if service.thread_library.read(thread_id).get("titleSource") == "auto"
+                else None
+            ),
+            timeout=4.0,
+        )
+        assert metadata["title"] == "修复标签数字文字重叠"
+        assert metadata["autoTitleAttempts"] == 2
+        title_requests = [request for request in platform.requests if _is_title_request(request)]
+        assert len(title_requests) == 2
+    finally:
+        runtime.close()
