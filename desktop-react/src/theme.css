@@ -676,3 +676,302 @@ html[data-loom-theme="light"] .settings-toast {
   color: #343941;
   box-shadow: 0 10px 28px rgba(27,31,40,.10);
 }
+
+/* Light theme readability pass -------------------------------------------- */
+/* A few late desktop polish files intentionally use dark-theme literals.
+   Keep those components crisp in light mode without weakening the dark theme.
+   Text tokens below target comfortable contrast for small UI copy on the
+   #f1f2f4–#ffffff surfaces used by Loom's light palette. */
+
+html[data-loom-theme="light"] {
+  --text-2: #3f4650;
+  --muted: #606874;
+  --faint: #737c88;
+
+  --loom-text-primary: #20242b;
+  --loom-text-secondary: #4a515c;
+  --loom-text-muted: #626a75;
+  --loom-text-faint: #737c88;
+
+  --semantic-success: #39765a;
+  --semantic-success-text: #2f6d50;
+  --semantic-success-strong: #39765a;
+  --semantic-success-soft: rgba(57,118,90,.10);
+  --semantic-success-fill: rgba(57,118,90,.11);
+  --semantic-success-border: rgba(57,118,90,.30);
+  --semantic-success-glow: rgba(57,118,90,.08);
+
+  --semantic-danger: #b14c5a;
+  --semantic-danger-text: #a13f4d;
+  --semantic-danger-strong: #b14c5a;
+  --semantic-danger-soft: rgba(177,76,90,.09);
+  --semantic-danger-fill: rgba(177,76,90,.08);
+  --semantic-danger-border: rgba(177,76,90,.28);
+  --semantic-danger-glow: rgba(177,76,90,.08);
+
+  --semantic-info: #3f70b5;
+  --semantic-info-text: #35649f;
+  --semantic-info-soft: rgba(63,112,181,.09);
+  --semantic-info-border: rgba(63,112,181,.25);
+}
+
+/* Sidebar hierarchy: inactive items remain quieter than the active thread,
+   but no longer inherit pale dark-theme text on a pale surface. */
+html[data-loom-theme="light"] .codex-sidebar .compact-thread-title {
+  color: var(--loom-text-secondary);
+}
+
+html[data-loom-theme="light"] .codex-sidebar .compact-thread-row:hover .compact-thread-title,
+html[data-loom-theme="light"] .codex-sidebar .compact-thread-row:focus-within .compact-thread-title {
+  color: #282d34;
+}
+
+html[data-loom-theme="light"] .codex-sidebar .compact-thread-row.active {
+  background: rgba(105,90,216,.105);
+  border-color: rgba(105,90,216,.10);
+}
+
+html[data-loom-theme="light"] .codex-sidebar .compact-thread-row.active .compact-thread-title,
+html[data-loom-theme="light"] .codex-sidebar .compact-thread-row.unread .compact-thread-title {
+  color: #2d3138;
+}
+
+html[data-loom-theme="light"] .codex-sidebar .compact-thread-dot {
+  border-color: #89919c;
+}
+
+html[data-loom-theme="light"] .codex-sidebar .compact-thread-row.active .compact-thread-dot {
+  border-color: #7164ca;
+  background: #7164ca;
+}
+
+html[data-loom-theme="light"] .codex-sidebar .project-group-main,
+html[data-loom-theme="light"] .codex-sidebar .project-group.is-collapsed .project-group-main {
+  color: #414852;
+}
+
+html[data-loom-theme="light"] .codex-sidebar .project-group-main:hover,
+html[data-loom-theme="light"] .codex-sidebar .project-group-row:focus-within .project-group-main {
+  color: #252a31;
+  background: rgba(28,31,37,.045);
+}
+
+html[data-loom-theme="light"] .codex-sidebar .project-group-main span {
+  color: inherit;
+}
+
+html[data-loom-theme="light"] .codex-sidebar .project-group-main small,
+html[data-loom-theme="light"] .codex-sidebar .workspace-group-header > span.workspace-group-count {
+  color: #68717c;
+}
+
+html[data-loom-theme="light"] .codex-sidebar .project-disclosure-chevron,
+html[data-loom-theme="light"] .codex-sidebar .project-group-main > svg:not(.project-disclosure-chevron),
+html[data-loom-theme="light"] .codex-sidebar .workspace-group-header > span.workspace-group-label {
+  color: #59626d !important;
+}
+
+html[data-loom-theme="light"] .codex-sidebar .project-thread-list {
+  border-left-color: rgba(28,31,37,.105);
+}
+
+html[data-loom-theme="light"] .codex-sidebar .sidebar-section-title {
+  color: #626a75;
+}
+
+html[data-loom-theme="light"] .codex-sidebar .recent-section .sidebar-section-title {
+  color: #4a515c;
+}
+
+html[data-loom-theme="light"] .codex-sidebar .compact-sidebar-footer > button,
+html[data-loom-theme="light"] .codex-sidebar .compact-sidebar-empty {
+  color: #626a75;
+}
+
+html[data-loom-theme="light"] .codex-sidebar .compact-sidebar-footer > button:hover {
+  color: #30353d;
+  background: rgba(28,31,37,.045);
+}
+
+html[data-loom-theme="light"] .codex-sidebar .archive-count {
+  color: #626a75;
+  background: rgba(28,31,37,.055);
+}
+
+/* Tool / process timeline. */
+html[data-loom-theme="light"] .task-flow {
+  --flow-text: #4b535f;
+  --flow-muted: #626a75;
+  --flow-faint: #737c88;
+  --flow-hover: rgba(28,31,37,.04);
+}
+
+html[data-loom-theme="light"] .task-flow-row {
+  color: var(--flow-muted);
+}
+
+html[data-loom-theme="light"] .task-flow-row.is-expandable:hover {
+  color: #424952;
+  background: var(--flow-hover);
+}
+
+html[data-loom-theme="light"] .task-flow-chevron,
+html[data-loom-theme="light"] .task-flow-group-chevron {
+  color: #707985;
+}
+
+html[data-loom-theme="light"] .task-flow-row-icon,
+html[data-loom-theme="light"] .task-flow-group-icon {
+  color: #626b76;
+  border-color: #d5d9df;
+  background: linear-gradient(180deg, #f7f8f9, #eef0f2);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.88);
+}
+
+html[data-loom-theme="light"] .task-flow-row.is-expandable:hover .task-flow-row-icon,
+html[data-loom-theme="light"] .task-flow-row-wrap.is-open .task-flow-row-icon {
+  color: #4f5863;
+  border-color: #c9ced5;
+  background: #eceef1;
+}
+
+html[data-loom-theme="light"] .task-flow-row:has(.task-flow-status.running) .task-flow-row-icon,
+html[data-loom-theme="light"] .task-flow-row:has(.task-flow-status.started) .task-flow-row-icon,
+html[data-loom-theme="light"] .task-flow-group.is-running .task-flow-group-icon {
+  color: #6254bd;
+  border-color: rgba(105,90,216,.25);
+  background: #f1effa;
+}
+
+html[data-loom-theme="light"] .task-flow-verb {
+  color: #525b66;
+}
+
+html[data-loom-theme="light"] .task-flow-primary,
+html[data-loom-theme="light"] .task-flow-primary.code,
+html[data-loom-theme="light"] .task-flow-path {
+  color: #4a535f;
+}
+
+html[data-loom-theme="light"] .task-flow-group-header,
+html[data-loom-theme="light"] .task-flow-group.is-settled .task-flow-group-header {
+  color: #626a75;
+}
+
+html[data-loom-theme="light"] .task-flow-group-title,
+html[data-loom-theme="light"] .task-flow-group.is-settled .task-flow-group-title {
+  color: #414852;
+}
+
+html[data-loom-theme="light"] .task-flow-group.is-settled .task-flow-group-icon,
+html[data-loom-theme="light"] .task-flow-group .task-flow-row-icon {
+  color: #69727d;
+}
+
+html[data-loom-theme="light"] .task-flow-group-summary,
+html[data-loom-theme="light"] .task-flow-compact-summary,
+html[data-loom-theme="light"] .task-flow-summary-pill,
+html[data-loom-theme="light"] .task-flow-summary-more {
+  color: #626b76;
+}
+
+html[data-loom-theme="light"] .task-flow-summary-pill,
+html[data-loom-theme="light"] .task-flow-summary-file,
+html[data-loom-theme="light"] .task-flow-summary-more {
+  border-color: #d9dde2;
+  background: #f5f6f7;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.85);
+}
+
+html[data-loom-theme="light"] .task-flow-summary-file {
+  color: #525b66;
+}
+
+html[data-loom-theme="light"] .task-flow-inline-detail pre {
+  border-color: #d8dce2;
+  background: #f4f5f6;
+  color: #424a55;
+  scrollbar-color: #c3c8d0 transparent;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.82);
+}
+
+/* Turn summaries and live-tail copy. */
+html[data-loom-theme="light"] .turn-process-header {
+  color: #626a75;
+}
+
+html[data-loom-theme="light"] .turn-process-header:hover {
+  color: #333941;
+  background: rgba(28,31,37,.035);
+}
+
+html[data-loom-theme="light"] .turn-process.is-settled .turn-process-header {
+  border-color: rgba(28,31,37,.085);
+  background: rgba(255,255,255,.62);
+  box-shadow: inset 0 1px rgba(255,255,255,.9), 0 8px 20px rgba(27,31,40,.045);
+}
+
+html[data-loom-theme="light"] .turn-process-time {
+  color: #424a54;
+}
+
+html[data-loom-theme="light"] .turn-process-meta {
+  color: #626a75;
+}
+
+html[data-loom-theme="light"] .turn-process-meta::before {
+  background: #8b939e;
+}
+
+html[data-loom-theme="light"] .turn-process-chevron {
+  color: #6e7783;
+}
+
+html[data-loom-theme="light"] .turn-process-rule {
+  background: linear-gradient(90deg, rgba(105,90,216,.19), rgba(28,31,37,.10) 40%, rgba(28,31,37,.035) 76%, transparent);
+}
+
+html[data-loom-theme="light"] .turn-block.is-active .turn-process-content::after {
+  color: #59626e;
+  border-color: rgba(105,90,216,.17);
+  background:
+    radial-gradient(circle at 13px 50%, rgba(105,90,216,.88) 0 2.5px, transparent 3px),
+    linear-gradient(105deg, rgba(105,90,216,.035), rgba(255,255,255,.62) 42%, rgba(105,90,216,.08) 52%, rgba(255,255,255,.50) 62%, rgba(105,90,216,.025));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.88), 0 6px 18px rgba(27,31,40,.045);
+}
+
+/* Composer guidance and compact toolbar are intentionally secondary, not faint. */
+html[data-loom-theme="light"] .composer textarea::placeholder,
+html[data-loom-theme="light"] .composer input::placeholder {
+  color: #68717c;
+  opacity: 1;
+}
+
+html[data-loom-theme="light"] .composer-chip,
+html[data-loom-theme="light"] .composer-tool,
+html[data-loom-theme="light"] .composer-keycap {
+  color: #59626e;
+}
+
+html[data-loom-theme="light"] .composer-keycap {
+  border-color: #d8dce2;
+  background: #f3f4f6;
+}
+
+html[data-loom-theme="light"] .composer-hint {
+  color: #626a75;
+}
+
+/* Error/success surfaces use darker semantic foregrounds in light mode. */
+html[data-loom-theme="light"] .error-row {
+  color: var(--semantic-danger-text) !important;
+  border-color: var(--semantic-danger-border) !important;
+  background: rgba(177,76,90,.07) !important;
+}
+
+html[data-loom-theme="light"] .error-icon {
+  color: var(--semantic-danger-text) !important;
+  border-color: var(--semantic-danger-border) !important;
+  background: var(--semantic-danger-soft) !important;
+}
+
