@@ -298,6 +298,10 @@ function AgentCard({ agent }: { agent: AgentCardState }) {
   const hasDetail = Boolean(agent.finalText || agent.error || agent.events.length > 1);
   const latestEvent = agent.events.at(-1);
 
+  useEffect(() => {
+    if (status === "failed") setOpen(true);
+  }, [status]);
+
   return (
     <article className={`sub-agent-card status-${status} ${open ? "is-open" : ""}`}>
       <button
@@ -390,6 +394,10 @@ export function SubAgentWorkspace({
     [transcriptAgents],
   );
   const [liveSnapshots, setLiveSnapshots] = useState<Record<string, unknown>[]>([]);
+
+  useEffect(() => {
+    if (!active) setLiveSnapshots([]);
+  }, [active, threadId]);
 
   useEffect(() => {
     if (!active || !threadId || !knownAgentIds.length || !window.loom?.call) return;
