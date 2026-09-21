@@ -21,6 +21,9 @@ import { useI18n } from "../i18n";
 import { ModelPanel } from "./ModelPanel";
 import { StickerPanel } from "./StickerPanel";
 import "./composer.css";
+import "./composer-attachment-polish.css";
+import "./composer-stability.css";
+import "./composer-control-pills.css";
 
 interface ComposerProps {
   disabled?: boolean;

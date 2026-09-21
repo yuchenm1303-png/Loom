@@ -245,3 +245,21 @@ small { font-size: var(--loom-font-micro) !important; }
   .run-progress-phase { font-size: 12.5px !important; }
   .run-progress-meta { font-size: 11.5px !important; }
 }
+
+
+/* Compensate card geometry for the enlarged model-profile text above: three-line
+   cards (title + count + subtitle) need ~76-80px, while .model-library-view
+   .model-group-row .model-profile-main is min-height:56px and
+   .model-profile-row is min-height:62px, so the subtitle used to overflow
+   outside the card border onto the next card. Use :has() so two-line cards
+   (no <small> subtitle) keep their original compact height. */
+.model-profile-copy > span,
+.model-profile-copy small { min-height: 18px; display: inline-block; }
+.model-profile-row:has(.model-profile-copy small) { min-height: 80px; }
+.model-profile-main:has(.model-profile-copy small) { min-height: 78px; }
+.model-group-row:has(.model-profile-copy small) { min-height: 80px; }
+.model-library-view .model-group-row:has(.model-profile-copy small) { min-height: 80px; }
+.model-library-view .model-group-row .model-profile-main:has(.model-profile-copy small) { min-height: 78px; }
+.model-manager-popover .model-profile-row:has(.model-profile-copy small) { min-height: 74px; }
+.model-manager-popover .model-group-row:has(.model-profile-copy small) { min-height: 74px; }
+.model-manager-popover .model-profile-main:has(.model-profile-copy small) { min-height: 72px; }
