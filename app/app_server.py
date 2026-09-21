@@ -591,11 +591,33 @@ class LoomAppServerService:
             session = self.runtime.get_session(session.session_id)
         return session
 
+    def _is_sub_agent_session(self, session_id: str) -> bool:
+        """Return whether a durable session belongs to the internal agent graph.
+
+        Sub-agents are real durable Loom sessions, but they are implementation
+        details of a parent conversation rather than top-level conversations in
+        the desktop library.
+        """
+
+        graph = getattr(self.runtime, "agent_graph", None)
+        getter = getattr(graph, "get", None)
+        if not callable(getter):
+            return False
+        try:
+            return getter(str(session_id or "").strip()) is not None
+        except Exception:
+            # Conversation listing should stay available even if graph metadata
+            # is temporarily unreadable; do not turn a sidebar refresh into a
+            # runtime failure.
+            return False
+
     def _list_session_objects(self) -> list[Any]:
         sessions: list[Any] = []
         if self.store.root.is_dir():
             for directory in self.store.root.iterdir():
                 if not (directory / "session.json").is_file():
+                    continue
+                if self._is_sub_agent_session(directory.name):
                     continue
                 try:
                     sessions.append(self.store.load(directory.name))
