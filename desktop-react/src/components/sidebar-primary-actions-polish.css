@@ -1,0 +1,265 @@
+/* Primary sidebar actions --------------------------------------------------
+   New conversation is the main action; Add project is a clear secondary
+   action. Keep both tactile and readable in both themes without looking like
+   generic grey rows. */
+
+.codex-sidebar .codex-sidebar-primary {
+  gap: 7px;
+  padding: 10px 4px 14px;
+}
+
+.codex-sidebar .sidebar-new-conversation,
+.codex-sidebar .sidebar-secondary-action {
+  position: relative;
+  min-height: 46px;
+  height: 46px;
+  padding: 0 12px 0 10px;
+  gap: 10px;
+  overflow: hidden;
+  border-radius: 14px;
+  border: 1px solid transparent;
+  text-align: left;
+  cursor: pointer;
+  transform: translateY(0) scale(1);
+  transition:
+    transform 160ms cubic-bezier(.2,.78,.2,1),
+    background 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    color 160ms ease;
+}
+
+.codex-sidebar .sidebar-new-conversation::after,
+.codex-sidebar .sidebar-secondary-action::after {
+  display: none !important;
+  content: none !important;
+}
+
+.codex-sidebar .sidebar-new-conversation::before,
+.codex-sidebar .sidebar-secondary-action::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  background: linear-gradient(
+    110deg,
+    transparent 18%,
+    rgba(255,255,255,.22) 48%,
+    transparent 74%
+  );
+  transform: translateX(-42%);
+  transition:
+    opacity 180ms ease,
+    transform 420ms cubic-bezier(.2,.75,.2,1);
+}
+
+.codex-sidebar .sidebar-new-conversation:hover::before,
+.codex-sidebar .sidebar-secondary-action:hover::before {
+  opacity: .5;
+  transform: translateX(48%);
+}
+
+.codex-sidebar .sidebar-new-conversation > svg,
+.codex-sidebar .sidebar-secondary-action > svg {
+  position: relative;
+  z-index: 1;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  box-sizing: content-box;
+  padding: 6px;
+  margin: 0;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  opacity: 1;
+  transform: none;
+  transition:
+    transform 170ms cubic-bezier(.2,.8,.2,1),
+    color 160ms ease,
+    background 160ms ease,
+    border-color 160ms ease,
+    box-shadow 180ms ease;
+}
+
+.codex-sidebar .sidebar-new-conversation > span,
+.codex-sidebar .sidebar-secondary-action > span {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+  flex: 1 1 auto;
+  font-size: 14px;
+  line-height: 1.2;
+  font-weight: 650;
+  letter-spacing: -.006em;
+}
+
+.codex-sidebar .sidebar-new-conversation {
+  color: var(--text, #f1f2f5);
+  border-color: color-mix(in srgb, var(--accent, #8b7cf6) 23%, var(--loom-border) 77%);
+  background:
+    linear-gradient(180deg,
+      color-mix(in srgb, var(--accent, #8b7cf6) 11%, var(--loom-surface) 89%),
+      color-mix(in srgb, var(--accent, #8b7cf6) 5%, var(--loom-surface) 95%));
+  box-shadow:
+    0 4px 12px rgba(24, 21, 45, .08),
+    inset 0 1px 0 rgba(255,255,255,.08);
+}
+
+.codex-sidebar .sidebar-new-conversation > svg {
+  color: var(--accent, #8b7cf6);
+  border-color: color-mix(in srgb, var(--accent, #8b7cf6) 18%, transparent);
+  background: color-mix(in srgb, var(--accent, #8b7cf6) 10%, transparent);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.10);
+}
+
+.codex-sidebar .sidebar-new-conversation:hover {
+  color: var(--text, #fff);
+  border-color: color-mix(in srgb, var(--accent, #8b7cf6) 38%, var(--loom-border) 62%);
+  background:
+    linear-gradient(180deg,
+      color-mix(in srgb, var(--accent, #8b7cf6) 16%, var(--loom-surface) 84%),
+      color-mix(in srgb, var(--accent, #8b7cf6) 8%, var(--loom-surface) 92%));
+  box-shadow:
+    0 8px 20px rgba(70, 55, 150, .13),
+    inset 0 1px 0 rgba(255,255,255,.12);
+  transform: translateY(-1px);
+}
+
+.codex-sidebar .sidebar-new-conversation:hover > svg {
+  color: color-mix(in srgb, var(--accent, #8b7cf6) 88%, white 12%);
+  border-color: color-mix(in srgb, var(--accent, #8b7cf6) 28%, transparent);
+  background: color-mix(in srgb, var(--accent, #8b7cf6) 15%, transparent);
+  transform: scale(1.045);
+}
+
+.codex-sidebar .sidebar-secondary-action {
+  color: var(--text-2, #c5c9d0);
+  border-color: var(--loom-border);
+  background:
+    linear-gradient(180deg,
+      color-mix(in srgb, var(--loom-surface) 96%, white 4%),
+      var(--loom-surface-soft));
+  box-shadow:
+    0 2px 8px rgba(20, 23, 31, .055),
+    inset 0 1px 0 rgba(255,255,255,.055);
+}
+
+.codex-sidebar .sidebar-secondary-action > svg {
+  color: var(--muted, #9299a5);
+  border-color: var(--loom-border);
+  background: var(--loom-surface-raised);
+}
+
+.codex-sidebar .sidebar-secondary-action:hover {
+  color: var(--text, #f2f3f5);
+  border-color: color-mix(in srgb, var(--accent, #8b7cf6) 20%, var(--loom-border) 80%);
+  background:
+    linear-gradient(180deg,
+      color-mix(in srgb, var(--accent, #8b7cf6) 7%, var(--loom-surface) 93%),
+      color-mix(in srgb, var(--accent, #8b7cf6) 3%, var(--loom-surface-soft) 97%));
+  box-shadow:
+    0 6px 16px rgba(25, 27, 38, .08),
+    inset 0 1px 0 rgba(255,255,255,.08);
+  transform: translateY(-1px);
+}
+
+.codex-sidebar .sidebar-secondary-action:hover > svg {
+  color: var(--accent, #8b7cf6);
+  border-color: color-mix(in srgb, var(--accent, #8b7cf6) 18%, var(--loom-border) 82%);
+  background: color-mix(in srgb, var(--accent, #8b7cf6) 9%, var(--loom-surface-raised) 91%);
+  transform: scale(1.035);
+}
+
+.codex-sidebar .sidebar-new-conversation:active,
+.codex-sidebar .sidebar-secondary-action:active {
+  transform: translateY(0) scale(.985);
+  transition-duration: 80ms;
+}
+
+.codex-sidebar .sidebar-new-conversation:focus-visible,
+.codex-sidebar .sidebar-secondary-action:focus-visible {
+  outline: none;
+  border-color: color-mix(in srgb, var(--accent, #8b7cf6) 42%, var(--loom-border) 58%);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--accent, #8b7cf6) 13%, transparent),
+    0 6px 16px rgba(50, 42, 110, .10);
+}
+
+/* Light theme needs a little more separation from the sidebar canvas. */
+html[data-loom-theme="light"] .codex-sidebar .sidebar-new-conversation {
+  color: #242733;
+  border-color: rgba(105,90,216,.18);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.99), rgba(250,249,255,.97));
+  box-shadow:
+    0 4px 13px rgba(36, 39, 53, .07),
+    0 1px 2px rgba(36, 39, 53, .035),
+    inset 0 1px 0 rgba(255,255,255,.95);
+}
+
+html[data-loom-theme="light"] .codex-sidebar .sidebar-new-conversation:hover {
+  border-color: rgba(105,90,216,.30);
+  background:
+    linear-gradient(180deg, #ffffff, #f7f5ff);
+  box-shadow:
+    0 8px 20px rgba(69, 55, 148, .10),
+    0 2px 5px rgba(36, 39, 53, .045);
+}
+
+html[data-loom-theme="light"] .codex-sidebar .sidebar-new-conversation > svg {
+  color: #695ad8;
+  border-color: rgba(105,90,216,.12);
+  background: rgba(105,90,216,.075);
+}
+
+html[data-loom-theme="light"] .codex-sidebar .sidebar-secondary-action {
+  color: #555c68;
+  border-color: rgba(38,42,51,.085);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.82), rgba(247,248,250,.92));
+  box-shadow:
+    0 2px 8px rgba(35, 39, 49, .035),
+    inset 0 1px 0 rgba(255,255,255,.84);
+}
+
+html[data-loom-theme="light"] .codex-sidebar .sidebar-secondary-action > svg {
+  color: #737b88;
+  border-color: rgba(38,42,51,.075);
+  background: rgba(255,255,255,.74);
+}
+
+html[data-loom-theme="light"] .codex-sidebar .sidebar-secondary-action:hover {
+  color: #2f3340;
+  border-color: rgba(105,90,216,.18);
+  background:
+    linear-gradient(180deg, #ffffff, #f7f6fc);
+  box-shadow:
+    0 6px 16px rgba(40, 44, 56, .065);
+}
+
+html[data-loom-theme="light"] .codex-sidebar .sidebar-secondary-action:hover > svg {
+  color: #695ad8;
+  border-color: rgba(105,90,216,.14);
+  background: rgba(105,90,216,.065);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .codex-sidebar .sidebar-new-conversation,
+  .codex-sidebar .sidebar-secondary-action,
+  .codex-sidebar .sidebar-new-conversation::before,
+  .codex-sidebar .sidebar-secondary-action::before,
+  .codex-sidebar .sidebar-new-conversation > svg,
+  .codex-sidebar .sidebar-secondary-action > svg {
+    transition-duration: .001ms !important;
+  }
+}
+
+html[data-loom-reduced-motion="true"] .codex-sidebar .sidebar-new-conversation,
+html[data-loom-reduced-motion="true"] .codex-sidebar .sidebar-secondary-action,
+html[data-loom-reduced-motion="true"] .codex-sidebar .sidebar-new-conversation::before,
+html[data-loom-reduced-motion="true"] .codex-sidebar .sidebar-secondary-action::before,
+html[data-loom-reduced-motion="true"] .codex-sidebar .sidebar-new-conversation > svg,
+html[data-loom-reduced-motion="true"] .codex-sidebar .sidebar-secondary-action > svg {
+  transition-duration: .001ms !important;
+}
