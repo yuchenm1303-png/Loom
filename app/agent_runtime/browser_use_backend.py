@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Coroutine
 
 from .browser_diagnostics import BrowserDiagnosticLog, summarize_bridge_args, summarize_browser_state_payload
+from .browser_page_hud import PageHud, hud_presentation
 from .browser_session import (
     BrowserBackend,
     BrowserError,
@@ -34,6 +35,12 @@ _WAIT_RUNNER_MARGIN = 10.0
 # are what a model is asking about.
 _NETWORK_LOG_LIMIT = 500
 _NETWORK_BODY_CHARS = 30_000
+# The HUD is an announcement, not a step of the action. It gets its own small
+# budget so a page that is slow to evaluate scripts delays nothing that matters.
+_HUD_TIMEOUT_SECONDS = 5.0
+# start has no session to draw into yet, and close is taking the page away.
+# screenshot draws its own, after the capture, so the HUD cannot photobomb it.
+_HUD_SILENT_ACTIONS = frozenset({"start", "close", "screenshot"})
 
 
 class _AsyncLoopThread:
@@ -114,6 +121,7 @@ class BrowserUseBackend(BrowserBackend):
             )
         self._runner = _AsyncLoopThread(name="loom-browser-use")
         self._session: Any | None = None
+        self._page_hud = PageHud()
         self._closed = False
         self._log("browser_use.loop.started", thread="loom-browser-use")
 
@@ -179,6 +187,7 @@ class BrowserUseBackend(BrowserBackend):
             state_revision=self.state_revision,
             args=summarize_bridge_args(action, args),
         )
+        self._announce_action(action, args)
         try:
             state = self._runner.run(coroutine, timeout=timeout or self.action_timeout_seconds)
         except Exception as exc:
@@ -315,7 +324,9 @@ class BrowserUseBackend(BrowserBackend):
 
     async def _state_async(self) -> BrowserPageState:
         session = await self._ensure_session()
-        await self._show_page_hud("Reading page", "Browser Use")
+        # Deliberately no HUD here. Every action ends by re-reading state, so
+        # announcing it overwrote each action's own line with "Reading page"
+        # before the user could read it. The announcement belongs to the action.
         started = time.monotonic()
         state = await session.get_browser_state_summary(include_screenshot=False)
         serialized = self._with_backend_page_info(_serialize_state(state), capture_mode="browser_use_summary")
@@ -365,8 +376,10 @@ class BrowserUseBackend(BrowserBackend):
     async def _navigate_async(self, url: str, *, new_tab: bool) -> BrowserPageState:
         from browser_use.browser.events import NavigateToUrlEvent
 
-        await self._show_page_hud("Navigating", "Browser Use")
         await self._dispatch(NavigateToUrlEvent(url=url, new_tab=new_tab))
+        # A page load takes the HUD with it, and the announcement for this
+        # action was made against the document that just went away.
+        await self._show_page_hud("Navigated", str(url)[:160])
         return await self._state_async()
 
     def navigate(self, url: str, *, new_tab: bool = False) -> BrowserPageState:
@@ -426,13 +439,27 @@ class BrowserUseBackend(BrowserBackend):
     async def _scroll_async(self, direction: str, amount: int) -> BrowserPageState:
         from browser_use.browser.events import ScrollEvent
 
-        await self._show_page_hud(f"Scroll {direction}", f"{amount}px")
         await self._dispatch(ScrollEvent(direction=direction, amount=amount, node=None))
         return await self._state_async()
 
-    async def _show_page_hud(self, title: str, subtitle: str, *, node: Any | None = None) -> None:
-        """Best-effort page-local HUD for isolated/CDP browser-use sessions."""
+    async def _show_page_hud(
+        self,
+        title: str,
+        subtitle: str,
+        *,
+        node: Any | None = None,
+        point: tuple[float, float] | None = None,
+        click: bool = False,
+    ) -> None:
+        """Show the automation HUD inside the page Loom is driving.
 
+        Best effort in every sense: a page that refuses script evaluation, a
+        session that is still starting, a build without the HUD asset. None of
+        those are reasons to fail the action the user asked for.
+        """
+
+        if self._session is None:
+            return
         try:
             session = await self._ensure_session()
             cdp = await session.get_or_create_cdp_session()
@@ -444,39 +471,45 @@ class BrowserUseBackend(BrowserBackend):
                 )
                 remote = resolved.get("object") if isinstance(resolved, dict) else None
                 object_id = str((remote or {}).get("objectId") or "")
-            function = r"""function(title, subtitle, target) {
-              const old = document.getElementById('__loom_browser_use_hud');
-              if (old) old.remove();
-              const host = document.createElement('div');
-              host.id = '__loom_browser_use_hud';
-              host.style.cssText = 'all:initial;position:fixed;inset:0;z-index:2147483647;pointer-events:none';
-              const root = host.attachShadow({mode:'closed'});
-              const rect = target && target.getBoundingClientRect ? target.getBoundingClientRect() : null;
-              const frame = rect ? `<div class="frame" style="left:${Math.max(2,rect.left-4)}px;top:${Math.max(2,rect.top-4)}px;width:${Math.max(18,rect.width+8)}px;height:${Math.max(18,rect.height+8)}px"></div>` : '';
-              root.innerHTML = `<style>.pill{position:fixed;top:16px;right:16px;padding:9px 12px;border-radius:10px;background:#111827;color:white;font:12px/1.35 system-ui;box-shadow:0 8px 24px #0005}.pill b{display:block;font-size:13px}.pill span{color:#cbd5e1}.frame{position:fixed;box-sizing:border-box;border:2px solid #7c3aed;border-radius:7px;box-shadow:0 0 0 3px #7c3aed33}</style>${frame}<div class="pill"><b></b><span></span></div>`;
-              root.querySelector('b').textContent = String(title || 'Browser Use');
-              root.querySelector('span').textContent = String(subtitle || 'Browser Use');
-              document.documentElement.appendChild(host);
-              setTimeout(() => host.remove(), 2200);
-            }"""
-            if object_id:
-                await cdp.cdp_client.send.Runtime.callFunctionOn(
-                    params={
-                        "objectId": object_id,
-                        "functionDeclaration": function,
-                        "arguments": [
-                            {"value": str(title)[:120]},
-                            {"value": str(subtitle)[:180]},
-                            {"objectId": object_id},
-                        ],
-                        "returnByValue": True,
-                    }
-                )
-            else:
-                expression = f"({function})({json.dumps(str(title)[:120])}, {json.dumps(str(subtitle)[:180])}, null)"
-                await cdp.cdp_client.send.Runtime.evaluate(params={"expression": expression})
+            await self._page_hud.present(
+                cdp,
+                title=title,
+                subtitle=subtitle,
+                point=point,
+                object_id=object_id,
+                click=click,
+            )
         except Exception as exc:
             self._log("browser_use.hud.skipped", error=f"{type(exc).__name__}: {exc}")
+
+    async def _hide_page_hud(self) -> None:
+        if self._session is None:
+            return
+        try:
+            session = await self._ensure_session()
+            cdp = await session.get_or_create_cdp_session()
+            await self._page_hud.hide(cdp)
+        except Exception as exc:
+            self._log("browser_use.hud.skipped", error=f"{type(exc).__name__}: {exc}")
+
+    def _announce_action(self, action: str, args: dict[str, Any] | None) -> None:
+        """Put every action on the page HUD, not the handful that remembered to.
+
+        Announcing at the one place every action passes through is what makes
+        this a property of the backend rather than of whoever wrote the action:
+        a new action is visible the day it is added.
+        """
+
+        if self._session is None or action in _HUD_SILENT_ACTIONS:
+            return
+        title, subtitle, point, click = hud_presentation(action, args or {})
+        try:
+            self._runner.run(
+                self._show_page_hud(title, subtitle, point=point, click=click),
+                timeout=_HUD_TIMEOUT_SECONDS,
+            )
+        except Exception as exc:
+            self._log("browser_use.hud.skipped", action=action, error=f"{type(exc).__name__}: {exc}")
 
     def scroll(self, direction: str, amount: int) -> BrowserPageState:
         return self._run_state_action(
@@ -958,7 +991,12 @@ class BrowserUseBackend(BrowserBackend):
 
     async def _screenshot_async(self, *, full_page: bool) -> bytes:
         session = await self._ensure_session()
+        # The HUD is drawn in the page, so a capture taken while it is up
+        # returns a picture of Loom's own overlay sitting on the page. Hide it
+        # for the capture, then say what just happened.
+        await self._hide_page_hud()
         data = await session.take_screenshot(full_page=full_page)
+        await self._show_page_hud("Screenshot captured", "Saved into the Loom workspace")
         return bytes(data)
 
     def screenshot(self, *, full_page: bool = False) -> bytes:

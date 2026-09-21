@@ -99,7 +99,10 @@ class BrowserPolicyLoomRpcController(ProjectMovableLoomRpcController):
         result = super()._initialize(params)
         hud = dict(result.get("capabilities", {}).get("automationHud") or {})
         hud["sources"] = ["computer"]
-        hud["browserPresentation"] = "page-local-extension"
+        # Page-local in every mode now: the extension renders it from a content
+        # script, and a browser Loom launched or attached to gets the same asset
+        # injected over CDP. It stopped being an extension-only capability.
+        hud["browserPresentation"] = "page-local"
         result["capabilities"]["automationHud"] = hud
         return result
 

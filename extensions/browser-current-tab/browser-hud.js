@@ -2,7 +2,7 @@
   'use strict';
 
   const INSTALL_KEY = '__loomBrowserHudRuntimeV2';
-  const GENERATION = '0.1.13';
+  const GENERATION = '0.1.14';
   const SOURCE_HOST_ID = 'loom-browser-page-hud-root';
   const HOST_ID = 'loom-browser-hud-root-v2';
   const LEGACY_HOST_IDS = ['loom-browser-hud-root', 'loom-browser-computer-hud-root'];
@@ -56,6 +56,7 @@
   let tabIdRequest = null;
   let sessionActive = false;
   let drivenTabs = [];
+  let standalone = false;
 
   const phases = ['观察', '分析', '移动', '点击', '完成'];
   const clean = (value, fallback = '') => String(value || fallback).replace(/\s+/g, ' ').trim().slice(0, 220);
@@ -224,7 +225,36 @@
   }
 
   function driven() {
-    return sessionActive && tabId !== null && drivenTabs.includes(tabId);
+    return standalone || (sessionActive && tabId !== null && drivenTabs.includes(tabId));
+  }
+
+  // Loom also drives browsers that contain no extension at all: one it launched
+  // itself, or one it attached to over CDP. There this file is injected through
+  // the protocol rather than loaded as a content script, so there is no worker
+  // to ask for a tab id and no session storage to read, and the session gate can
+  // only ever answer "not a work tab". The injector is by construction the thing
+  // driving the page, so it says so by calling present() and the gate steps
+  // aside. Content-script pages never reach this and keep deciding as before.
+  function present(payload) {
+    const data = payload && typeof payload === 'object' ? payload : {};
+    standalone = true;
+    const view = ensureRenderer();
+    const title = clean(data.title, 'Browser Use');
+    const subtitle = clean(data.subtitle, 'Browser Use');
+    const x = Number(data.x);
+    const y = Number(data.y);
+    const point = Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
+    place(point);
+    view.hud.classList.add('live');
+    view.title.textContent = 'Loom 正在控制浏览器';
+    view.meta.textContent = title;
+    view.bubbleTitle.textContent = title;
+    view.confidence.textContent = point ? 'DOM exact' : 'browser';
+    view.source.textContent = point ? 'browser + CDP' : 'browser runtime';
+    view.thought.textContent = subtitle;
+    renderTimeline(Number.isInteger(data.phase) ? clamp(data.phase, 0, phases.length - 1) : phaseFor(title));
+    if (data.click) pulseClick();
+    return true;
   }
 
   function syncVisibility() {
@@ -306,7 +336,7 @@
     addEventListener('resize', onResize, { passive: true });
   }
 
-  globalThis[INSTALL_KEY] = { generation: GENERATION, sync, hide, dispose };
+  globalThis[INSTALL_KEY] = { generation: GENERATION, sync, hide, dispose, present };
   if (document.documentElement) begin();
   else addEventListener('DOMContentLoaded', begin, { once: true });
 })();

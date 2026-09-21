@@ -42,7 +42,9 @@ def test_browser_hud_keeps_dom_target_and_owns_its_visual_lifecycle():
 
     assert "userTakesOver" not in source
     assert "event.isTrusted" not in source
-    assert "globalThis[INSTALL_KEY] = { generation: GENERATION, sync, hide, dispose }" in source
+    # present() is what a browser with no extension in it calls: the asset is
+    # injected over CDP there, so the exported surface is the whole interface.
+    assert "globalThis[INSTALL_KEY] = { generation: GENERATION, sync, hide, dispose, present }" in source
     assert "existing?.dispose?.()" in source
 
 
@@ -51,3 +53,16 @@ def test_browser_hud_does_not_reenable_desktop_overlay_for_browser_tools():
     assert 'return "computer" if name.startswith("computer_") else ""' in policy
     assert 'if str(tool_name or "").startswith("browser_"):' in policy
     assert "return None" in policy
+    # ...which is only defensible while the page-local HUD reaches every browser,
+    # not only the one with the extension in it. It did not, and a browser Loom
+    # launched itself then ran with no HUD of either kind.
+    assert '"page-local"' in policy
+
+
+def test_the_page_hud_reaches_browsers_that_have_no_extension():
+    backend = (ROOT / "app" / "agent_runtime" / "browser_use_backend.py").read_text(encoding="utf-8")
+    driver = (ROOT / "app" / "agent_runtime" / "browser_page_hud.py").read_text(encoding="utf-8")
+
+    assert "self._announce_action(action, args)" in backend
+    assert "browser-hud.js" in driver
+    assert "addScriptToEvaluateOnNewDocument" in driver

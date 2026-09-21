@@ -121,7 +121,9 @@ To export logs from the desktop UI, open Settings → Browser and click **Export
 
 ## Page-local browser HUD
 
-The extension renders browser automation feedback inside the web page itself instead of using the desktop full-screen Computer Use overlay.
+Browser automation feedback is drawn inside the web page itself instead of in the desktop full-screen Computer Use overlay.
+
+This is not an extension feature. The extension loads `browser-hud.js` as a content script and decides visibility from the tab list its worker publishes; a browser Loom launched itself, or attached to over CDP, has no extension in it, so the runtime injects the same asset over the protocol and calls its `present()` entry point directly (`app/agent_runtime/browser_page_hud.py`). Either way there is one HUD implementation, and every browser action announces itself — the announcement is made where all actions pass through, so a new action is visible the day it is added rather than when someone remembers to add a HUD call. Typed text never reaches the overlay; only its length does.
 
 For read-only state collection, the page shows a compact top-right pill such as "Reading current tab". For element actions, the page draws a small target frame directly around the DOM element that Loom is about to hover, click, type into, select, or drag from. The HUD uses `pointer-events: none`, does not dim the whole page, and automatically disappears after the action.
 

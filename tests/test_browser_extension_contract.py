@@ -662,6 +662,28 @@ def test_keyboard_actions_hand_focus_back_to_a_visual_surface(background):
     assert "preventScroll" in focus
 
 
+def test_every_input_path_announces_itself_on_the_page_hud(background):
+    """The CDP input paths never reach runPageAction, so they drew nothing.
+
+    What the user saw during a click into a canvas was the HUD line for the
+    page-state read that happened to run next to it, not the click.
+    """
+
+    for name in ("clickAt", "sendText", "pressKey"):
+        assert "announceAction" in _function_body(background, name)
+
+    announce = _function_body(background, "announceAction")
+    assert "hud_point" in announce
+    assert "isInjectableUrl" in announce
+
+    point = _function_body(background, "hudPointInPage")
+    assert "showRectHud" in point
+
+    # Typed text must never be handed to something that prints it on screen.
+    send = _function_body(background, "sendText")
+    assert "announceAction(tab, `Send ${text.length} characters`" in send
+
+
 def test_screenshots_composite_on_demand_rather_than_reusing_a_painted_frame(background):
     """captureVisibleTab returns the last painted frame of a window nobody is
     looking at: two captures of a live VNC console came back byte-identical."""

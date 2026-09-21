@@ -917,6 +917,7 @@ async function clickAt(args) {
   }
   if (!["left", "right", "middle"].includes(button)) throw new Error("click_at button must be left, right, or middle");
   const buttons = button === "left" ? 1 : button === "right" ? 2 : 4;
+  await announceAction(tab, `Click at ${Math.round(x)},${Math.round(y)}`, "Browser Use", { x, y });
   return withNavigationWatch(
     tab.id,
     async () => {
@@ -936,6 +937,21 @@ async function clickAt(args) {
   );
 }
 
+// The CDP input paths never reach runPageAction, so the actions that matter
+// most - a click into a canvas, a typed command, a key - used to run with no
+// HUD at all, and the page-state read around them announced itself instead of
+// the action. Announcing here keeps every action visible in the page whichever
+// path delivers it.
+async function announceAction(tab, title, subtitle, point = null) {
+  if (!isInjectableUrl(tab.url || "")) return;
+  const payload = { title, subtitle };
+  if (point && Number.isFinite(point.x) && Number.isFinite(point.y)) {
+    payload.x = Number(point.x);
+    payload.y = Number(point.y);
+  }
+  await inject(tab.id, runPageAction, ["hud_point", payload]).catch(() => {});
+}
+
 // Keyboard input reaches a page through whatever holds focus, and a page whose
 // keyboard lives on a canvas loses that the moment anything else takes it. This
 // is best effort by design: it only acts when nothing is focused at all, and a
@@ -950,6 +966,9 @@ async function sendText(args) {
   const text = String(args.text || "");
   if (!text) throw new Error("send_text requires non-empty text");
   if (text.length > 8000) throw new Error("send_text supports at most 8000 characters per call");
+  // Never the text itself: the HUD is drawn in the page the user is watching,
+  // which is exactly where a password being typed must not be reprinted.
+  await announceAction(tab, `Send ${text.length} characters`, "Focused surface");
   await restoreVisualSurfaceFocus(tab);
   return withNavigationWatch(
     tab.id,
@@ -980,6 +999,7 @@ async function drag(args) {
 async function pressKey(args) {
   const tab = await actionTab(args);
   const key = String(args.key || "");
+  await announceAction(tab, `Press ${key || "key"}`, "Browser keyboard action");
   await restoreVisualSurfaceFocus(tab);
   // Prefer CDP input so canvas/WebGL/remote-desktop surfaces receive real browser
   // keyboard events. If DevTools already owns the tab, fall back to page events.
@@ -1439,8 +1459,15 @@ function runPageAction(action, args = {}) {
   }
 
   function showTargetHud(el, title, subtitle = "Browser Use", variant = "target") {
+    return showRectHud(el.getBoundingClientRect(), title, subtitle, variant);
+  }
+
+  // A coordinate action has no element to frame, and framing whatever sits
+  // under the point is wrong for the surfaces coordinates exist for: a click
+  // into a VNC canvas would outline the whole console and park the cursor in
+  // the middle of it, nowhere near where the click landed.
+  function showRectHud(rect, title, subtitle = "Browser Use", variant = "target") {
     const { host, root } = ensureHud();
-    const rect = el.getBoundingClientRect();
     const pad = 4;
     const x = Math.max(2, Math.round(rect.left - pad));
     const y = Math.max(2, Math.round(rect.top - pad));
@@ -1693,6 +1720,19 @@ function runPageAction(action, args = {}) {
     const expected = navigationExpectedFor(el);
     el.click();
     return { ok: true, navigation_expected: expected };
+  }
+
+  function hudPointInPage() {
+    const title = clean(args.title || "Browser action", 120);
+    const subtitle = clean(args.subtitle || "Browser Use", 180);
+    const x = Number(args.x);
+    const y = Number(args.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+      showStatusHud(title, subtitle);
+      return true;
+    }
+    showRectHud({ left: x - 9, top: y - 9, width: 18, height: 18 }, title, subtitle, "action");
+    return true;
   }
 
   function clickAtInPage() {
@@ -2005,6 +2045,7 @@ function runPageAction(action, args = {}) {
     case "hud_status":
       showStatusHud(clean(args.title || "Browser action", 80), clean(args.subtitle || "Browser Use", 140));
       return true;
+    case "hud_point": return hudPointInPage();
     case "click": return clickElement();
     case "click_at": return clickAtInPage();
     case "focus_visual_surface": return focusVisualSurface();

@@ -504,6 +504,11 @@ class LoomRpcProcess {
         LOOM_DESKTOP_HOST_PID: String(process.pid),
         LOOM_API_KEY: spec.apiKey,
         LOOM_BROWSER_EXTENSION_TOKEN: ensureBrowserBridgeToken(),
+        // The page HUD is the extension's asset, and a browser Loom launches
+        // has no extension in it: the runtime injects the same file over CDP.
+        // A packaged build keeps it next to the extension rather than inside
+        // the Python package, so the path comes from whoever knows the layout.
+        LOOM_BROWSER_HUD_ASSET: path.join(browserExtensionSource(), "browser-hud.js"),
       },
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
