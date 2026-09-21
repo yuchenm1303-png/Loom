@@ -30,7 +30,8 @@ OPENCODE_GO_SELECTION_PREFIX = "builtin:opencode-go:"
 MINIMAX_SELECTION_PREFIX = "builtin:minimax:"
 DEEPSEEK_SELECTION_PREFIX = "builtin:deepseek:"
 MANAGED_SELECTION_PREFIX = "managed:"
-MANAGED_RELAY_BASE_URL = "https://relay.smirel.com/v1"
+MANAGED_RELAY_BASE_URL = "https://muxway.dev/v1"
+LEGACY_MANAGED_RELAY_BASE_URL = "https://relay.smirel.com/v1"
 MINIMAX_BASE_URL = "https://api.minimaxi.com/v1"
 DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 MINIMAX_DEFAULT_MODEL = "MiniMax-M3"
@@ -108,6 +109,7 @@ _OPENCODE_GO_VISION_MODELS = frozenset(
 _DISCOVERED_CONTEXT_LIMITS: dict[str, ModelContextLimits] = {}
 _KEYRING_SERVICE = "loom-agent"
 _MANAGED_RELAY_CREDENTIAL_ALIAS = "managed/relay"
+_MANAGED_RELAY_BASE_URL_ALIAS = "managed/relay-base-url"
 _DEEPSEEK_CREDENTIAL_ALIAS = "builtin/deepseek"
 _OPENCODE_GO_CREDENTIAL_ALIAS = "builtin/opencode-go"
 _MANAGED_RELAY_KEY_ENV = (
@@ -143,9 +145,33 @@ _MANAGED_MODEL_IDS = {
 _MINIMAX_MODEL_KEYS = frozenset(model.casefold() for model in MINIMAX_MODEL_IDS)
 
 
+def _canonical_managed_relay_base_url(value: str) -> str:
+    candidate = str(value or "").strip().rstrip("/")
+    if not candidate:
+        return MANAGED_RELAY_BASE_URL
+    parsed = urllib.parse.urlparse(candidate)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ValueError("Relay base URL must be a complete http/https URL")
+    if candidate.casefold() == LEGACY_MANAGED_RELAY_BASE_URL.casefold():
+        return MANAGED_RELAY_BASE_URL
+    return candidate
+
+
 def _managed_relay_base_url(environ: Mapping[str, str] | None = None) -> str:
     env = os.environ if environ is None else environ
-    return str(env.get("LOOM_RELAY_BASE_URL") or MANAGED_RELAY_BASE_URL).strip().rstrip("/")
+    explicit = str(env.get("LOOM_RELAY_BASE_URL") or "").strip()
+    if explicit:
+        return _canonical_managed_relay_base_url(explicit)
+    stored = str(_credential_get(_MANAGED_RELAY_BASE_URL_ALIAS) or "").strip()
+    if stored:
+        canonical = _canonical_managed_relay_base_url(stored)
+        if canonical != stored.rstrip("/"):
+            try:
+                _credential_set(_MANAGED_RELAY_BASE_URL_ALIAS, canonical)
+            except RuntimeError:
+                pass
+        return canonical
+    return MANAGED_RELAY_BASE_URL
 
 
 def _key_from_env(names: tuple[str, ...], environ: Mapping[str, str] | None = None) -> str:
@@ -221,16 +247,16 @@ def _provisioning_paths(
     return unique
 
 
-def _read_provisioning_file(path: Path) -> str:
+def _read_provisioning_file(path: Path) -> tuple[str, str]:
     raw = path.read_text(encoding="utf-8").strip()
     if not raw:
-        return ""
+        return "", ""
     if not raw.startswith("{"):
-        return raw
+        return raw, ""
     payload = json.loads(raw)
     if not isinstance(payload, dict):
         raise ValueError("Relay provisioning file must contain a JSON object")
-    return str(
+    api_key = str(
         payload.get("apiKey")
         or payload.get("api_key")
         or payload.get("relayApiKey")
@@ -238,6 +264,9 @@ def _read_provisioning_file(path: Path) -> str:
         or payload.get("key")
         or ""
     ).strip()
+    raw_base_url = str(payload.get("baseUrl") or payload.get("base_url") or "").strip()
+    base_url = _canonical_managed_relay_base_url(raw_base_url) if raw_base_url else ""
+    return api_key, base_url
 
 
 def _consume_provisioned_relay_key(
@@ -248,9 +277,11 @@ def _consume_provisioned_relay_key(
     for path in _provisioning_paths(home, environ, repo_root):
         if not path.is_file():
             continue
-        api_key = _read_provisioning_file(path)
+        api_key, base_url = _read_provisioning_file(path)
         if not api_key:
             continue
+        if base_url:
+            _credential_set(_MANAGED_RELAY_BASE_URL_ALIAS, base_url)
         _credential_set(_MANAGED_RELAY_CREDENTIAL_ALIAS, api_key)
         try:
             path.unlink()
@@ -354,6 +385,12 @@ def _set_provider_key(payload: Mapping[str, Any]) -> dict[str, Any]:
         # returned to the renderer.
         provider = "managed-relay"
         alias = _MANAGED_RELAY_CREDENTIAL_ALIAS
+        raw_base_url = str(payload.get("baseUrl") or payload.get("base_url") or "").strip()
+        if raw_base_url:
+            _credential_set(
+                _MANAGED_RELAY_BASE_URL_ALIAS,
+                _canonical_managed_relay_base_url(raw_base_url),
+            )
     else:
         raise ValueError("unsupported built-in provider credential")
 
@@ -791,9 +828,12 @@ def _safe_deepseek(
 
 def _managed_group(model: str) -> tuple[str, str, int]:
     folded = str(model or "").strip().casefold()
-    if folded.startswith(("gpt-", "chatgpt-", "codex-", "o1", "o3", "o4")):
+    normalized = "-".join(folded.replace("_", "-").split())
+    while "--" in normalized:
+        normalized = normalized.replace("--", "-")
+    if normalized.startswith(("gpt-", "chatgpt-", "codex-", "o1", "o3", "o4")):
         return "managed-relay:openai", "OpenAI", 40
-    return "managed-relay", "Smirel Relay", 45
+    return "managed-relay", "Muxway Relay", 45
 
 
 def _safe_managed(
@@ -969,8 +1009,9 @@ def _managed_profiles(store: ModelConfigStore, environ: Mapping[str, str] | None
     api_key = _managed_relay_key(store, environ, Path(__file__).resolve().parent)
     if api_key:
         model_ids = _fetch_managed_model_ids(api_key, environ)
-        if not model_ids:
-            model_ids = [CQU_DEFAULT_MODEL]
+        # Do not invent a fallback model when discovery fails. A stale phantom
+        # cqu-default hid endpoint/key problems and made the UI disagree with
+        # the Relay catalog. An empty or unavailable catalog stays empty.
         # Provider identity is part of model identity. A Relay model may have
         # the same bare model id as OpenCode Go or another provider and still
         # needs to remain selectable through the Relay credential.

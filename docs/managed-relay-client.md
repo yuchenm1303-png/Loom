@@ -1,14 +1,14 @@
-# Managed Smirel Relay customer packaging
+# Managed Muxway Relay customer packaging
 
 Loom built-in models are designed to be customer-installable without exposing upstream model keys.
 
 The runtime flow is:
 
 ```text
-Loom desktop → customer/device Relay credential → relay.smirel.com → server-side model entitlement → upstream provider
+Loom desktop → customer/device Relay credential → muxway.dev → server-side model entitlement → upstream provider
 ```
 
-The customer/device credential is a TermRelay API key controlled by Smirel. It is not a CQU, MiniMax, OpenAI, Claude, or other upstream provider key. Upstream keys stay only on the Relay server.
+The customer/device credential is a TermRelay API key controlled by the Muxway deployment. It is not a CQU, MiniMax, OpenAI, Claude, or other upstream provider key. Upstream keys stay only on the Relay server.
 
 ## Server setup
 
@@ -47,7 +47,7 @@ Put `loom-relay-credential.json` next to `loom_model_bridge.py` in the customer 
 
 On first launch, Loom consumes the provisioning file, writes the credential to the OS credential store under the alias `managed/relay`, and then deletes the plaintext provisioning file on a best-effort basis.
 
-After that, the customer does not need to enter any key. Loom calls `https://relay.smirel.com/v1/models` with the stored Relay credential and shows only models allowed for that customer group.
+After that, the customer does not need to enter any key. Loom calls `https://muxway.dev/v1/models` with the stored Relay credential and shows only models allowed for that customer group. The provisioning `baseUrl` is persisted alongside the managed Relay connection metadata so custom deployments keep using the endpoint they were packaged for.
 
 ## Updating or disabling access
 

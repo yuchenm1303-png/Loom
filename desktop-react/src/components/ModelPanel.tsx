@@ -66,7 +66,7 @@ function profileSubtitle(profile: ModelProfile): string {
     if (profile.adapter === "opencode-go") {
       return `OpenCode Go · ${profile.family || "Model"} · ${profile.protocol || "auto"}`;
     }
-    if (profile.baseUrl.includes("relay.smirel.com")) return "Built-in managed · Smirel Relay";
+    if (profile.groupId?.startsWith("managed-relay")) return `Built-in managed · ${endpointLabel(profile.baseUrl)}`;
     return `Built-in · ${endpointLabel(profile.baseUrl)}`;
   }
   return `${adapterLabel(profile.adapter)} · ${endpointLabel(profile.baseUrl)}`;

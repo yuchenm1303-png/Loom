@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 from urllib import error, request
 
-DEFAULT_BASE_URL = "https://relay.smirel.com/v1"
+DEFAULT_BASE_URL = "https://muxway.dev/v1"
 DEFAULT_KEY_ENV = "LOOM_RELAY_API_KEY"
 
 
@@ -85,7 +85,7 @@ def main(argv: list[str] | None = None) -> int:
         default="loom-relay-credential.json",
         help="Provisioning file path to create. Put this next to loom_model_bridge.py in the customer package.",
     )
-    parser.add_argument("--base-url", default=DEFAULT_BASE_URL, help="Smirel Relay OpenAI-compatible base URL.")
+    parser.add_argument("--base-url", default=DEFAULT_BASE_URL, help="Muxway Relay OpenAI-compatible base URL.")
     parser.add_argument("--key-env", default=DEFAULT_KEY_ENV, help="Environment variable containing the customer Relay key.")
     parser.add_argument("--validate", action="store_true", help="Call /models before writing and print the allowed model IDs.")
     args = parser.parse_args(argv)
