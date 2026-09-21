@@ -21,6 +21,7 @@ const SUB_AGENT_TOOLS = new Set([
 ]);
 
 type AgentStatus = "starting" | "running" | "waiting" | "completed" | "failed" | "closed" | "idle";
+type AgentFilter = "all" | "active" | "done";
 
 interface AgentEventSummary {
   id: string;
@@ -257,6 +258,19 @@ function normalizedStatus(agent: AgentCardState): AgentStatus {
   return session === "idle" ? "idle" : "completed";
 }
 
+function isActiveStatus(status: AgentStatus): boolean {
+  return status === "starting" || status === "running" || status === "waiting";
+}
+
+function statusRank(status: AgentStatus): number {
+  if (status === "running" || status === "starting") return 0;
+  if (status === "waiting") return 1;
+  if (status === "failed") return 2;
+  if (status === "idle") return 3;
+  if (status === "completed") return 4;
+  return 5;
+}
+
 function statusCopy(status: AgentStatus): string {
   if (status === "starting") return "正在创建";
   if (status === "running") return "正在工作";
@@ -454,18 +468,39 @@ export function SubAgentWorkspace({
     () => mergeLiveSnapshots(transcriptAgents, liveSnapshots),
     [liveSnapshots, transcriptAgents],
   );
+  const [filter, setFilter] = useState<AgentFilter>("all");
   const counts = useMemo(() => {
     let running = 0;
     let completed = 0;
     let failed = 0;
     for (const agent of agents) {
       const status = normalizedStatus(agent);
-      if (status === "running" || status === "starting" || status === "waiting") running += 1;
+      if (isActiveStatus(status)) running += 1;
       else if (status === "failed") failed += 1;
       else completed += 1;
     }
     return { running, completed, failed };
   }, [agents]);
+
+  const sortedAgents = useMemo(
+    () => [...agents].sort((left, right) => (
+      statusRank(normalizedStatus(left)) - statusRank(normalizedStatus(right))
+    )),
+    [agents],
+  );
+  const visibleAgents = useMemo(
+    () => sortedAgents.filter((agent) => {
+      const status = normalizedStatus(agent);
+      if (filter === "active") return isActiveStatus(status);
+      if (filter === "done") return !isActiveStatus(status);
+      return true;
+    }),
+    [filter, sortedAgents],
+  );
+
+  useEffect(() => {
+    if (filter === "active" && counts.running === 0) setFilter("all");
+  }, [counts.running, filter]);
 
   if (!agents.length && !docked) return null;
 
@@ -493,8 +528,31 @@ export function SubAgentWorkspace({
         ) : null}
       </div>
 
+      {agents.length ? (
+        <div className="sub-agent-toolbar">
+          <div className="sub-agent-filter" role="tablist" aria-label="筛选子代理">
+            <button type="button" role="tab" aria-selected={filter === "all"} className={filter === "all" ? "active" : ""} onClick={() => setFilter("all")}>
+              全部 <span>{agents.length}</span>
+            </button>
+            <button type="button" role="tab" aria-selected={filter === "active"} className={filter === "active" ? "active" : ""} onClick={() => setFilter("active")}>
+              进行中 <span>{counts.running}</span>
+            </button>
+            <button type="button" role="tab" aria-selected={filter === "done"} className={filter === "done" ? "active" : ""} onClick={() => setFilter("done")}>
+              已结束 <span>{agents.length - counts.running}</span>
+            </button>
+          </div>
+          <span className="sub-agent-toolbar-note">
+            {counts.running ? "优先显示正在工作的代理" : "任务状态已同步"}
+          </span>
+        </div>
+      ) : null}
+
       <div className={`sub-agent-grid ${agents.length ? "" : "is-empty"}`.trim()}>
-        {agents.length ? agents.map((agent) => <AgentCard key={agent.key} agent={agent} />) : (
+        {agents.length ? (
+          visibleAgents.length ? visibleAgents.map((agent) => <AgentCard key={agent.key} agent={agent} />) : (
+            <div className="sub-agent-filter-empty">当前筛选下没有子代理</div>
+          )
+        ) : (
           <div className="sub-agent-empty-state">
             <div className="sub-agent-empty-visual" aria-hidden="true">
               <span className="sub-agent-empty-orbit orbit-one" />
