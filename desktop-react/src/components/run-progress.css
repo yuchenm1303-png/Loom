@@ -411,35 +411,41 @@ html[data-loom-theme="light"] .run-progress-track {
 
 
 
-/* Top run strip: vertical rhythm + clipping fix -------------------------- */
-/* The live status row contains animated dots/icons that extend beyond the
-   text line box. Give the row real breathing room and never clip vertically. */
+/* Top run strip: optical vertical alignment + clipping fix ---------------- */
+/* The strip sits directly under the thread header, so mathematical centering
+   reads too high. Give it a little more room above the text and one pixel more
+   optical weight below, while keeping animated rings unclipped. */
 .conversation-stage > .run-progress-frame.top {
   align-self: stretch;
-  min-height: 42px;
+  min-height: 48px;
   overflow: visible;
 }
 
 .run-progress-frame.top {
-  min-height: 42px;
-  padding-top: 7px;
-  padding-bottom: 7px;
+  min-height: 48px;
+  padding-top: 9px;
+  padding-bottom: 8px;
+  box-sizing: border-box;
 }
 
 .run-progress-frame.top .run-progress-inline {
-  min-height: 28px;
+  min-height: 31px;
   overflow: visible;
+  align-items: center;
 }
 
 .run-progress-frame.top .run-progress-primary,
 .run-progress-frame.top .run-progress-meta {
-  min-height: 28px;
+  min-height: 31px;
+  align-items: center;
   overflow: visible;
 }
 
 .run-progress-brand {
-  min-height: 22px;
-  line-height: 1.25;
+  min-height: 23px;
+  display: inline-flex;
+  align-items: center;
+  line-height: 1.2;
 }
 
 .run-progress-brand svg {
@@ -447,22 +453,22 @@ html[data-loom-theme="light"] .run-progress-track {
 }
 
 .run-progress-phase {
-  min-height: 22px;
+  min-height: 24px;
   display: inline-flex;
   align-items: center;
-  line-height: 1.3;
+  line-height: 1.22;
 }
 
 .run-progress-meta {
-  min-height: 22px;
-  line-height: 1.25;
+  min-height: 24px;
+  line-height: 1.2;
 }
 
 .run-progress-meta-item {
-  min-height: 22px;
+  min-height: 23px;
   display: inline-flex;
   align-items: center;
-  line-height: 1.25;
+  line-height: 1.2;
 }
 
 /* Keep the animated dot/ring visible outside its own 7px geometry. */
@@ -470,26 +476,26 @@ html[data-loom-theme="light"] .run-progress-track {
   margin-inline: 2px 1px;
 }
 
-/* Light theme: preserve the clean no-banner treatment, but make the strip feel
-   intentionally separated from the first task row. */
+/* Light theme: a quiet white strip with enough top breathing room that the
+   status copy no longer looks trapped against the header above. */
 html[data-loom-theme="light"] .run-progress-frame.top {
-  min-height: 42px;
-  padding-top: 7px;
-  padding-bottom: 7px;
+  min-height: 48px;
+  padding-top: 9px;
+  padding-bottom: 8px;
   border-bottom-color: rgba(28,31,37,.075);
   background:
-    linear-gradient(180deg, rgba(255,255,255,.84), rgba(250,251,252,.74));
+    linear-gradient(180deg, rgba(255,255,255,.94), rgba(250,251,252,.82));
   box-shadow:
-    inset 0 1px rgba(255,255,255,.96),
+    inset 0 1px rgba(255,255,255,.98),
     0 1px 0 rgba(28,31,37,.018);
 }
 
 html[data-loom-theme="light"] .run-progress-inline {
-  min-height: 28px;
+  min-height: 31px;
 }
 
 html[data-loom-theme="light"] .run-progress-primary {
-  gap: 9px;
+  gap: 10px;
 }
 
 html[data-loom-theme="light"] .run-progress-brand {
@@ -540,16 +546,18 @@ html[data-loom-theme="light"] .run-progress-live-dot {
 
 @media (max-width: 900px) {
   .run-progress-frame.top {
-    min-height: 62px;
+    min-height: 66px;
+    padding-top: 9px;
+    padding-bottom: 8px;
   }
 
   .run-progress-frame.top .run-progress-inline {
-    min-height: 48px;
-    row-gap: 2px;
+    min-height: 49px;
+    row-gap: 3px;
   }
 
   .run-progress-frame.top .run-progress-meta {
-    min-height: 20px;
+    min-height: 21px;
     padding-left: 20px;
   }
 }
