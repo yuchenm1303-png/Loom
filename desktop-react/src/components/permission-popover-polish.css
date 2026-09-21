@@ -1,0 +1,354 @@
+/* Permission popover refinement ------------------------------------------ */
+/* This panel is used in the composer, so it should read like a compact access
+   selector rather than a stack of disabled settings rows. */
+
+.permission-popover {
+  width: min(520px, calc(100vw - 32px));
+  padding: 14px;
+  border-radius: 18px;
+  overflow: visible;
+}
+
+.permission-popover .composer-popover-head {
+  align-items: center;
+  min-height: 54px;
+  padding: 2px 2px 12px;
+  gap: 14px;
+}
+
+.permission-popover .composer-popover-heading {
+  align-items: center;
+  gap: 11px;
+}
+
+.permission-popover .composer-popover-icon.permission {
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  color: #9f94f3;
+  border-color: rgba(139,124,246,.18);
+  background: rgba(139,124,246,.075);
+  box-shadow: inset 0 1px rgba(255,255,255,.06);
+}
+
+.permission-popover .composer-popover-heading > div {
+  gap: 4px;
+}
+
+.permission-popover .composer-popover-heading strong {
+  font-size: 14px;
+  line-height: 1.2;
+  font-weight: 680;
+  letter-spacing: -.01em;
+}
+
+.permission-popover .composer-popover-heading span:not(.composer-popover-icon) {
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.permission-popover .composer-popover-context {
+  margin: 0;
+  padding: 5px 9px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: .01em;
+}
+
+.permission-popover .composer-option-list {
+  gap: 7px;
+  padding-top: 10px;
+}
+
+.permission-popover .permission-option {
+  min-height: 72px;
+  padding: 10px 11px;
+  grid-template-columns: 40px minmax(0,1fr) 28px;
+  gap: 11px;
+  border-radius: 13px;
+  border-color: transparent;
+  transform: translateY(0);
+  transition:
+    transform 145ms cubic-bezier(.2,.78,.2,1),
+    background 160ms ease,
+    border-color 160ms ease,
+    box-shadow 170ms ease,
+    opacity 150ms ease;
+}
+
+.permission-popover .permission-option:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.permission-popover .permission-option.active {
+  border-color: rgba(139,124,246,.23);
+  background:
+    linear-gradient(90deg, rgba(139,124,246,.115), rgba(139,124,246,.045) 72%, rgba(139,124,246,.025));
+  box-shadow:
+    inset 3px 0 0 rgba(143,129,244,.78),
+    0 5px 16px rgba(61,49,124,.055);
+}
+
+.permission-popover .composer-option-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  transition:
+    transform 150ms ease,
+    background 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.permission-popover .permission-option:hover:not(:disabled) .composer-option-icon {
+  transform: scale(1.035);
+}
+
+.permission-popover .composer-option-title-row {
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.permission-popover .composer-option-title-row strong {
+  font-size: 13px;
+  font-weight: 670;
+  line-height: 1.2;
+}
+
+.permission-popover .permission-badge {
+  min-height: 20px;
+  padding: 0 7px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  font-size: 9.5px;
+  font-weight: 660;
+}
+
+.permission-popover .composer-option-description {
+  max-width: 390px;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.permission-popover .composer-option-check {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+}
+
+.permission-popover .permission-option.active .composer-option-check {
+  color: #afa6fa;
+  background: rgba(139,124,246,.10);
+  box-shadow: inset 0 0 0 1px rgba(139,124,246,.08);
+}
+
+/* A running turn locks selection, but locked choices still need to be readable.
+   Do not use the generic 58% disabled-row opacity here. */
+.permission-popover.is-locked .permission-option:disabled {
+  opacity: 1;
+  cursor: not-allowed;
+}
+
+.permission-popover.is-locked .permission-option:disabled:not(.active) {
+  opacity: .76;
+}
+
+.permission-popover.is-locked .permission-option:disabled:not(.active) .composer-option-description {
+  opacity: .86;
+}
+
+.permission-popover .permission-footnote {
+  min-height: 42px;
+  margin-top: 10px;
+  padding: 10px 4px 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  border-top: 1px solid rgba(255,255,255,.055);
+  color: #777f8d;
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+
+.permission-popover .permission-footnote > svg {
+  flex: none;
+  margin-top: 1px;
+  color: #8d84d7;
+}
+
+.permission-popover .permission-footnote > span {
+  min-width: 0;
+}
+
+/* Light theme ------------------------------------------------------------- */
+html[data-loom-theme="light"] .permission-popover {
+  border-color: rgba(28,31,37,.10);
+  background:
+    radial-gradient(520px 190px at 18% -8%, rgba(105,90,216,.055), transparent 62%),
+    #ffffff;
+  box-shadow:
+    0 30px 78px rgba(27,31,40,.15),
+    0 8px 24px rgba(27,31,40,.065),
+    inset 0 1px rgba(255,255,255,.96);
+}
+
+html[data-loom-theme="light"] .permission-popover::before {
+  background: #fff;
+}
+
+html[data-loom-theme="light"] .permission-popover .composer-popover-head {
+  border-bottom-color: #e5e7eb;
+}
+
+html[data-loom-theme="light"] .permission-popover .composer-popover-icon.permission {
+  color: #695ad8;
+  border-color: rgba(105,90,216,.14);
+  background: rgba(105,90,216,.075);
+  box-shadow: inset 0 1px rgba(255,255,255,.92);
+}
+
+html[data-loom-theme="light"] .permission-popover .composer-popover-heading strong {
+  color: #252932;
+}
+
+html[data-loom-theme="light"] .permission-popover .composer-popover-heading span:not(.composer-popover-icon) {
+  color: #707985;
+}
+
+html[data-loom-theme="light"] .permission-popover .composer-popover-context {
+  border-color: #e0e3e7;
+  background: #f5f6f8;
+  color: #6f7782;
+}
+
+html[data-loom-theme="light"] .permission-popover .permission-option {
+  color: #2d323a;
+}
+
+html[data-loom-theme="light"] .permission-popover .permission-option:hover:not(:disabled) {
+  border-color: rgba(28,31,37,.075);
+  background: #f8f9fb;
+  box-shadow: 0 4px 12px rgba(27,31,40,.045);
+}
+
+html[data-loom-theme="light"] .permission-popover .permission-option.active {
+  border-color: rgba(105,90,216,.20);
+  background:
+    linear-gradient(90deg, rgba(105,90,216,.090), rgba(105,90,216,.035) 76%, rgba(105,90,216,.015));
+  box-shadow:
+    inset 3px 0 0 rgba(105,90,216,.58),
+    0 6px 16px rgba(74,60,151,.055);
+}
+
+html[data-loom-theme="light"] .permission-popover .composer-option-title-row strong {
+  color: #343943;
+}
+
+html[data-loom-theme="light"] .permission-popover .composer-option-description {
+  color: #737c87;
+}
+
+html[data-loom-theme="light"] .permission-popover .composer-option-icon {
+  border-color: #dde1e6;
+  background: #ffffff;
+  color: #68717c;
+  box-shadow:
+    0 2px 7px rgba(27,31,40,.035),
+    inset 0 1px rgba(255,255,255,.96);
+}
+
+html[data-loom-theme="light"] .permission-popover .composer-option-icon.safe {
+  color: #438064;
+  border-color: rgba(57,118,90,.16);
+  background: rgba(57,118,90,.055);
+}
+
+html[data-loom-theme="light"] .permission-popover .composer-option-icon.recommended {
+  color: #695ad8;
+  border-color: rgba(105,90,216,.17);
+  background: rgba(105,90,216,.070);
+}
+
+html[data-loom-theme="light"] .permission-popover .composer-option-icon.flexible {
+  color: #536d97;
+  border-color: rgba(83,109,151,.15);
+  background: rgba(83,109,151,.050);
+}
+
+html[data-loom-theme="light"] .permission-popover .composer-option-icon.danger {
+  color: #b65060;
+  border-color: rgba(182,80,96,.16);
+  background: rgba(182,80,96,.050);
+}
+
+html[data-loom-theme="light"] .permission-popover .permission-badge {
+  background: #f7f8fa;
+  border-color: #e0e3e7;
+  color: #717985;
+}
+
+html[data-loom-theme="light"] .permission-popover .permission-badge.safe {
+  color: #39765a;
+  border-color: rgba(57,118,90,.15);
+  background: rgba(57,118,90,.045);
+}
+
+html[data-loom-theme="light"] .permission-popover .permission-badge.recommended {
+  color: #5e50bd;
+  border-color: rgba(105,90,216,.17);
+  background: rgba(105,90,216,.060);
+}
+
+html[data-loom-theme="light"] .permission-popover .permission-badge.flexible {
+  color: #536d97;
+  border-color: rgba(83,109,151,.14);
+  background: rgba(83,109,151,.045);
+}
+
+html[data-loom-theme="light"] .permission-popover .permission-badge.danger {
+  color: #aa4857;
+  border-color: rgba(182,80,96,.15);
+  background: rgba(182,80,96,.045);
+}
+
+html[data-loom-theme="light"] .permission-popover .permission-option.active .composer-option-check {
+  color: #695ad8;
+  background: rgba(105,90,216,.075);
+  box-shadow: inset 0 0 0 1px rgba(105,90,216,.045);
+}
+
+html[data-loom-theme="light"] .permission-popover .permission-footnote {
+  border-top-color: #e7e9ed;
+  color: #707985;
+}
+
+html[data-loom-theme="light"] .permission-popover .permission-footnote > svg {
+  color: #695ad8;
+}
+
+@media (max-width: 620px) {
+  .permission-popover {
+    width: min(460px, calc(100vw - 20px));
+    padding: 12px;
+  }
+
+  .permission-popover .permission-option {
+    grid-template-columns: 38px minmax(0,1fr) 26px;
+    min-height: 68px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .permission-popover .permission-option,
+  .permission-popover .composer-option-icon {
+    transition-duration: .001ms !important;
+  }
+}
+
+html[data-loom-reduced-motion="true"] .permission-popover .permission-option,
+html[data-loom-reduced-motion="true"] .permission-popover .composer-option-icon {
+  transition-duration: .001ms !important;
+}
