@@ -178,7 +178,7 @@ def _title_looks_like_raw_prompt(title: str, prompt: str = "") -> bool:
         # Near-verbatim first-clause copies (for example dropping only "的/和")
         # are just as poor as exact copies. Compare against individual source
         # clauses so a long follow-up instruction does not hide that similarity.
-        for clause in re.split(r"[，。！？!?；;：:\\n]+", prompt_text):
+        for clause in re.split(r"[，。！？!?；;：:\n]+", prompt_text):
             compact_clause = re.sub(r"[\W_]+", "", clause.casefold())
             if not compact_clause:
                 continue
