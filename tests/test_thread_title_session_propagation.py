@@ -1,10 +1,18 @@
 from __future__ import annotations
 
+from pathlib import Path
 from types import ModuleType, SimpleNamespace
+
+from app.ai import AIMessage, MessageRole
+from app.app_server_thread_management import ThreadLibraryStore
 
 from app.thread_title_override import (
     _build_auto_title_request,
     _build_plain_auto_title_request,
+    _auto_title_prompt,
+    _metadata_display_title,
+    _metadata_title_blocks_auto_title,
+    _safe_initial_title_from_prompt,
 )
 
 
@@ -23,3 +31,139 @@ def test_thread_title_structured_and_plain_requests_preserve_session_id() -> Non
 
     plain = _build_plain_auto_title_request(structured)
     assert plain.session_id == session.session_id
+
+
+
+def _fake_title_module() -> ModuleType:
+    module = ModuleType("fake_title_module")
+    module.MessageRole = MessageRole
+    module._message_text = lambda message: str(message.content)
+    return module
+
+
+def test_provisional_title_never_clips_the_user_prompt() -> None:
+    assert _safe_initial_title_from_prompt("你能看见这个图片吗 [1 image attached]") == "新对话"
+    assert _safe_initial_title_from_prompt("Can you inspect this screenshot?") == "New conversation"
+
+
+def test_title_prompt_uses_recent_context_and_strips_attachment_boilerplate() -> None:
+    module = _fake_title_module()
+    session = SimpleNamespace(
+        session_id="thread-context-1",
+        messages=(
+            AIMessage(role=MessageRole.USER, content="右上角标签数字和文字重叠 [1 image attached]"),
+            AIMessage(role=MessageRole.ASSISTANT, content="已经定位到 badge 的布局和宽度计算。"),
+        ),
+    )
+
+    prompt, source_prompt = _auto_title_prompt(
+        module,
+        session,
+        user_prompt="右上角标签数字和文字重叠 [1 image attached]",
+    )
+
+    assert source_prompt == "右上角标签数字和文字重叠"
+    assert "[1 image attached]" not in prompt
+    assert 'role="assistant"' in prompt
+    assert "badge" in prompt
+
+
+def test_legacy_fallback_is_retryable_and_never_displayed_as_raw_prompt() -> None:
+    metadata = {
+        "title": "你能看见这个图片吗 Attached image",
+        "titleSource": "auto",
+        "autoTitleFallback": True,
+        "autoTitlePending": False,
+        "autoTitleSourcePrompt": "你能看见这个图片吗 [1 image attached]",
+        "autoTitleVersion": 4,
+        "autoTitleAttempts": 2,
+    }
+
+    assert _metadata_title_blocks_auto_title(metadata) is False
+    assert _metadata_display_title(metadata) == ("新对话", "fallback")
+
+    valid = {
+        "title": "修复标签文字重叠",
+        "titleSource": "auto",
+        "autoTitleFallback": False,
+        "autoTitleSourcePrompt": "右上角标签数字和文字重叠",
+    }
+    assert _metadata_title_blocks_auto_title(valid) is True
+    assert _metadata_display_title(valid) == ("修复标签文字重叠", "auto")
+
+
+class _SessionDirStore:
+    def __init__(self, root: Path) -> None:
+        self.root = root
+
+    def session_dir(self, session_id: str) -> Path:
+        return self.root / session_id
+
+
+def test_title_state_machine_retries_without_persisting_prompt_fallback(tmp_path: Path) -> None:
+    session_id = "title-state"
+    directory = tmp_path / session_id
+    directory.mkdir()
+    (directory / "session.json").write_text("{}", encoding="utf-8")
+    store = ThreadLibraryStore(_SessionDirStore(tmp_path))
+
+    assert store.mark_auto_title_pending(
+        session_id,
+        source_prompt="你能看见这个图片吗 [1 image attached]",
+    )
+    pending = store.read(session_id)
+    assert pending["title"] == ""
+    assert pending["titleSource"] == "pending"
+    assert pending["autoTitlePending"] is True
+
+    assert store.claim_auto_title_attempt(
+        session_id,
+        source_prompt="你能看见这个图片吗",
+    )
+    store.finish_auto_title_attempt(
+        session_id,
+        "temporary_failure",
+        source_prompt="你能看见这个图片吗",
+    )
+    retry = store.read(session_id)
+    assert retry["title"] == ""
+    assert retry["autoTitlePending"] is True
+    assert retry["autoTitleFallback"] is False
+    assert retry["autoTitleAttempts"] == 1
+
+    assert store.write_auto_title_if_untitled(
+        session_id,
+        "检查图片内容",
+        source_prompt="你能看见这个图片吗",
+    )
+    complete = store.read(session_id)
+    assert complete["title"] == "检查图片内容"
+    assert complete["titleSource"] == "auto"
+    assert complete["autoTitlePending"] is False
+
+
+def test_title_version_upgrade_resets_exhausted_legacy_retry_budget(tmp_path: Path) -> None:
+    session_id = "legacy-title-state"
+    directory = tmp_path / session_id
+    directory.mkdir()
+    (directory / "session.json").write_text("{}", encoding="utf-8")
+    store = ThreadLibraryStore(_SessionDirStore(tmp_path))
+    store.write(
+        session_id,
+        {
+            "title": "右上角的标签数字和文字重叠",
+            "titleSource": "auto",
+            "autoTitleFallback": True,
+            "autoTitleVersion": 4,
+            "autoTitleAttempts": 99,
+        },
+    )
+
+    assert store.mark_auto_title_pending(
+        session_id,
+        source_prompt="右上角的标签数字和文字重叠，请优化一下",
+    )
+    upgraded = store.read(session_id)
+    assert upgraded["title"] == ""
+    assert upgraded["titleSource"] == "pending"
+    assert upgraded["autoTitleAttempts"] == 0
