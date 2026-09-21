@@ -13,7 +13,7 @@ _TARGET_MODULE = "app.app_server_thread_management"
 _INSTALLED = False
 _PATCHED = False
 
-_AUTO_TITLE_VERSION = 2
+_AUTO_TITLE_VERSION = 3
 _AUTO_TITLE_MAX_ATTEMPTS = 2
 _AUTO_TITLE_MAX_CHARS = 36
 _AUTO_TITLE_PROMPT_MAX_BYTES = 960
@@ -64,6 +64,7 @@ _GENERIC_AUTO_TITLES = {
     "帮助",
     "生成标题中",
     "生成标题中…",
+    "整理对话主题",
 }
 
 
@@ -175,6 +176,10 @@ def _heuristic_title_from_prompt(prompt: str) -> str:
         return "优化顶栏视觉"
     if "消息" in text and any(token in text for token in ("按钮", "时间", "气泡", "回复")):
         return "优化消息操作栏"
+    if "余额" in text and any(token in text for token in ("管理员", "后台", "自定义", "调账", "后门")):
+        return "添加管理员余额调账"
+    if "termrelay" in folded and any(token in text for token in ("验收", "调度", "计费", "扣费")):
+        return "验收 TermRelay 调度计费"
 
     line = re.split(r"[。.!！?？\n\r]", text, maxsplit=1)[0]
     line = re.sub(
@@ -196,7 +201,21 @@ def _safe_initial_title_from_prompt(prompt: str) -> str:
     if title and not _title_looks_like_raw_prompt(title, text):
         return title
     if _has_cjk(text):
-        return "整理对话主题"
+        # A title model may be unavailable, reasoning-only, or lack structured
+        # output support.  Keep the first display title useful in those cases
+        # instead of exposing an internal action label such as "整理对话主题".
+        # A short source-derived phrase is deliberately under the raw-prompt
+        # rejection threshold and remains easy for the model title to replace.
+        line = re.split(r"[。.!！?？,，;；\n\r]", text, maxsplit=1)[0]
+        line = re.sub(
+            r"^(?:帮我|请|麻烦|仔细|直接|继续|看看|看一下|给我|给|把这个|这个|现在|你可以|能不能|可以|是不是|为什么)",
+            "",
+            line,
+        ).strip()
+        line = re.sub(r"(?:一下|一下吧|吧|呢|吗|么|好些)$", "", line).strip()
+        if line:
+            return _sanitize_title_line(line[:16])
+        return "新任务"
     return "New Task"
 
 
