@@ -421,3 +421,125 @@ html[data-loom-theme="light"] .context-meter-chip.is-compacting .context-meter-v
     font-size: 10px;
   }
 }
+
+
+/* Compaction stage progress ------------------------------------------------ */
+.context-meter-compaction-track {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 2px;
+  width: 42px;
+  height: 6px;
+  flex: 0 0 42px;
+  align-items: stretch;
+}
+
+.context-meter-compaction-step {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--panel-hover, rgba(255,255,255,.09));
+  transition:
+    background 180ms ease,
+    opacity 180ms ease,
+    transform 180ms ease;
+}
+
+.context-meter-compaction-step.done {
+  background: var(--accent, #695ad8);
+  opacity: .82;
+}
+
+.context-meter-compaction-step.active {
+  background: color-mix(in srgb, var(--accent, #695ad8) 22%, var(--panel-hover, rgba(255,255,255,.09)));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent, #695ad8) 18%, transparent);
+}
+
+.context-meter-compaction-step.active::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -80%;
+  width: 72%;
+  border-radius: inherit;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--accent, #695ad8) 72%, white 28%),
+    transparent
+  );
+  animation: context-meter-stage-sweep 1.15s cubic-bezier(.45,.05,.2,1) infinite;
+}
+
+@keyframes context-meter-stage-sweep {
+  from { transform: translateX(0); opacity: .30; }
+  42% { opacity: .92; }
+  to { transform: translateX(270%); opacity: .24; }
+}
+
+.context-meter-chip.is-compacting .context-meter-compaction-track {
+  width: 42px;
+  flex-basis: 42px;
+}
+
+.context-meter-chip.is-compacting .context-meter-value {
+  min-width: 0;
+  max-width: 64px;
+}
+
+html[data-loom-theme="light"] .context-meter-compaction-step {
+  background: #e3e6eb;
+}
+
+html[data-loom-theme="light"] .context-meter-compaction-step.done {
+  background: #695ad8;
+  opacity: .88;
+}
+
+html[data-loom-theme="light"] .context-meter-compaction-step.active {
+  background: rgba(105,90,216,.13);
+  box-shadow: inset 0 0 0 1px rgba(105,90,216,.12);
+}
+
+html[data-loom-theme="light"] .context-meter-compaction-step.active::after {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(105,90,216,.74),
+    rgba(151,137,232,.92),
+    transparent
+  );
+}
+
+@media (max-width: 1180px) {
+  .context-meter-chip.is-compacting .context-meter-compaction-track {
+    width: 38px;
+    flex-basis: 38px;
+  }
+
+  .context-meter-chip.is-compacting .context-meter-value {
+    max-width: 58px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .context-meter-compaction-step,
+  .context-meter-compaction-step.active::after {
+    transition: none !important;
+    animation: none !important;
+  }
+
+  .context-meter-compaction-step.active {
+    background: var(--accent, #695ad8);
+    opacity: .62;
+  }
+}
+
+html[data-loom-reduced-motion="true"] .context-meter-compaction-step,
+html[data-loom-reduced-motion="true"] .context-meter-compaction-step.active::after {
+  transition: none !important;
+  animation: none !important;
+}
