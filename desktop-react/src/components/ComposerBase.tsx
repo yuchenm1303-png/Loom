@@ -423,7 +423,7 @@ export function Composer({
           />
         </div>
 
-        <div className="composer-toolbar">
+        <div className="composer-toolbar composer-toolbar-idle">
           <div className="composer-left">
             <button
               type="button"
@@ -604,7 +604,7 @@ export function Composer({
           </div>
 
           <div className="composer-right">
-            {!running ? <span className="composer-keycap">Enter ↵</span> : <span className="composer-running-label"><i /> {stopping ? "Stopping…" : "Working"}</span>}
+            {!running ? <span className="composer-keycap">Enter ↵</span> : <span className="composer-running-label" role="status"><i aria-hidden="true" /><span className="composer-running-copy">{stopping ? (zh ? "正在停止…" : "Stopping…") : (zh ? "任务进行中" : "Working")}</span></span>}
             {running ? (
               <button type="button" className="send-button stop" disabled={stopping} onClick={() => void handleInterrupt()} title="Stop current turn" aria-label="Stop current turn">
                 <Square size={12} fill="currentColor" />

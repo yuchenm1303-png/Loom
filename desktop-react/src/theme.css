@@ -3041,3 +3041,540 @@ html[data-loom-theme="light"] .thread-header :is(
     transition: none !important;
   }
 }
+
+
+/* Light theme: composer control-bar refinement --------------------------- */
+/* Treat the composer footer as one coherent control bar: shared heights,
+   quieter default buttons, explicit active states, and a status pill that
+   aligns optically with the action cluster. */
+
+html[data-loom-theme="light"] .composer {
+  padding: 13px 14px 10px;
+  border-radius: 20px;
+  border-color: #d8dce2;
+  background: linear-gradient(180deg, rgba(255,255,255,.995), rgba(249,250,251,.995));
+  box-shadow:
+    0 10px 30px rgba(27,31,40,.07),
+    inset 0 1px rgba(255,255,255,.96);
+}
+
+html[data-loom-theme="light"] .composer:hover {
+  border-color: #cfd4db;
+}
+
+html[data-loom-theme="light"] .composer.is-focused,
+html[data-loom-theme="light"] .composer:focus-within {
+  border-color: rgba(105,90,216,.38);
+  background: #ffffff;
+  box-shadow:
+    0 13px 34px rgba(27,31,40,.075),
+    0 0 0 2px rgba(105,90,216,.04),
+    inset 0 1px rgba(255,255,255,.98);
+}
+
+html[data-loom-theme="light"] .composer-input-row {
+  min-height: 47px;
+  align-items: flex-start;
+}
+
+html[data-loom-theme="light"] .composer textarea {
+  min-height: 44px;
+  padding: 2px 2px 8px;
+  font-size: 14px;
+  line-height: 1.55;
+  letter-spacing: 0;
+}
+
+html[data-loom-theme="light"] .composer textarea::placeholder {
+  color: #69727d;
+}
+
+/* Shared footer geometry. */
+html[data-loom-theme="light"] .composer-toolbar {
+  min-height: 38px;
+  margin-top: 2px;
+  padding-top: 2px;
+  gap: 12px;
+  align-items: center;
+}
+
+html[data-loom-theme="light"] .composer-left,
+html[data-loom-theme="light"] .composer-right {
+  min-height: 36px;
+  height: 36px;
+  align-items: center;
+}
+
+html[data-loom-theme="light"] .composer-left {
+  gap: 3px;
+  flex-wrap: nowrap;
+}
+
+html[data-loom-theme="light"] .composer-right {
+  gap: 6px;
+}
+
+html[data-loom-theme="light"] .composer-control-anchor {
+  min-height: 32px;
+  align-items: center;
+}
+
+/* Quiet controls by default; surface appears on hover/open, not all the time. */
+html[data-loom-theme="light"] .composer .composer-tool,
+html[data-loom-theme="light"] .composer .composer-chip {
+  height: 32px;
+  min-height: 32px;
+  padding: 0 8px;
+  gap: 6px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: #59636f;
+  font-size: 10.8px;
+  font-weight: 560;
+  line-height: 1;
+  box-shadow: none;
+}
+
+html[data-loom-theme="light"] .composer .composer-tool svg,
+html[data-loom-theme="light"] .composer .composer-chip svg {
+  color: #65707c;
+  opacity: .92;
+}
+
+html[data-loom-theme="light"] .composer .composer-tool:hover:not(:disabled),
+html[data-loom-theme="light"] .composer .composer-chip:hover:not(:disabled) {
+  border-color: rgba(28,31,37,.075);
+  background: #f4f6f8;
+  color: #30363e;
+  transform: none;
+}
+
+html[data-loom-theme="light"] .composer .composer-tool:hover:not(:disabled) svg,
+html[data-loom-theme="light"] .composer .composer-chip:hover:not(:disabled) svg {
+  color: #5246af;
+}
+
+html[data-loom-theme="light"] .composer .composer-chip.is-open {
+  border-color: rgba(105,90,216,.17);
+  background: rgba(105,90,216,.065);
+  color: #5144ad;
+  box-shadow: none;
+}
+
+html[data-loom-theme="light"] .composer .composer-chip.is-open svg {
+  color: #6253ca;
+}
+
+html[data-loom-theme="light"] .composer .composer-tool:active:not(:disabled),
+html[data-loom-theme="light"] .composer .composer-chip:active:not(:disabled) {
+  transform: scale(.975);
+}
+
+html[data-loom-theme="light"] .composer .composer-tool:disabled,
+html[data-loom-theme="light"] .composer .composer-chip:disabled {
+  color: #9aa1aa;
+  opacity: 1;
+}
+
+html[data-loom-theme="light"] .composer .composer-divider {
+  width: 1px;
+  height: 18px;
+  margin: 0 4px;
+  background: #e0e4e9;
+}
+
+html[data-loom-theme="light"] .composer .sticker-chip {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 9px;
+}
+
+/* Key hint is subordinate to the real action buttons. */
+html[data-loom-theme="light"] .composer .composer-keycap {
+  height: 28px;
+  min-height: 28px;
+  padding: 0 9px;
+  border: 1px solid #dce0e5;
+  border-bottom-color: #d3d8de;
+  border-radius: 8px;
+  background: #f7f8fa;
+  color: #747d88;
+  font-size: 10px;
+  font-weight: 540;
+  line-height: 1;
+  box-shadow: inset 0 1px rgba(255,255,255,.95);
+}
+
+html[data-loom-theme="light"] .composer.is-focused .composer-keycap {
+  color: #626b76;
+  border-color: #d4d9df;
+}
+
+/* Running status gets its own stable 32px capsule instead of loose text. */
+html[data-loom-theme="light"] .composer-status-zone {
+  display: flex;
+  align-items: center;
+  min-height: 36px;
+}
+
+html[data-loom-theme="light"] .composer-running-label {
+  height: 32px;
+  min-height: 32px;
+  padding: 0 10px;
+  gap: 8px;
+  display: inline-flex;
+  align-items: center;
+  align-self: center;
+  border: 1px solid rgba(105,90,216,.12);
+  border-radius: 999px;
+  background: rgba(105,90,216,.055);
+  color: #5d51b6;
+  font-size: 10.8px;
+  font-weight: 610;
+  line-height: 1;
+  letter-spacing: .002em;
+  transform: none;
+}
+
+html[data-loom-theme="light"] .composer-running-copy {
+  height: 100%;
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
+  transform: translateY(-.35px);
+}
+
+html[data-loom-theme="light"] .composer-running-label i {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 6px;
+  margin: 0;
+  align-self: center;
+  border-radius: 50%;
+  background: #7567de;
+  box-shadow: 0 0 0 3px rgba(105,90,216,.08);
+  transform: none;
+  animation: composer-status-breathe-refined 1.8s ease-in-out infinite;
+}
+
+@keyframes composer-status-breathe-refined {
+  0%, 100% {
+    opacity: .66;
+    box-shadow: 0 0 0 2px rgba(105,90,216,.055);
+  }
+  50% {
+    opacity: 1;
+    box-shadow: 0 0 0 4px rgba(105,90,216,.09);
+  }
+}
+
+/* Action cluster: one clear primary button, one clear destructive stop button. */
+html[data-loom-theme="light"] .composer .send-button {
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  border-radius: 11px;
+  border: 1px solid transparent;
+  box-shadow: none;
+}
+
+html[data-loom-theme="light"] .composer .send-button:not(:disabled):not(.stop) {
+  border-color: rgba(105,90,216,.15);
+  background: #695ad8;
+  color: #ffffff;
+  box-shadow: 0 5px 13px rgba(105,90,216,.17);
+}
+
+html[data-loom-theme="light"] .composer .send-button:hover:not(:disabled):not(.stop) {
+  background: #5f51c9;
+  transform: translateY(-1px);
+  box-shadow: 0 7px 16px rgba(105,90,216,.21);
+}
+
+html[data-loom-theme="light"] .composer .send-button:active:not(:disabled) {
+  transform: scale(.96);
+}
+
+html[data-loom-theme="light"] .composer .send-button:disabled {
+  border-color: #e0e4e8;
+  background: #edf0f3;
+  color: #a1a8b1;
+  opacity: 1;
+  box-shadow: none;
+}
+
+html[data-loom-theme="light"] .composer .send-button.stop {
+  border-color: rgba(177,76,90,.18);
+  background: rgba(177,76,90,.085);
+  color: #a74452;
+  box-shadow: none;
+}
+
+html[data-loom-theme="light"] .composer .send-button.stop:hover:not(:disabled) {
+  border-color: rgba(177,76,90,.26);
+  background: rgba(177,76,90,.12);
+  color: #963846;
+  transform: translateY(-1px);
+}
+
+html[data-loom-theme="light"] .composer .send-button.stop:disabled {
+  border-color: rgba(177,76,90,.10);
+  background: rgba(177,76,90,.045);
+  color: #c59aa1;
+}
+
+/* Steering has slightly more breathing room because its left side is status,
+   not a cluster of configuration controls. */
+html[data-loom-theme="light"] .composer-toolbar-steering {
+  margin-top: 3px;
+}
+
+html[data-loom-theme="light"] .live-steering-composer .composer-right {
+  gap: 7px;
+}
+
+html[data-loom-theme="light"] .composer-hint {
+  margin-top: 7px;
+  color: #747d88;
+  font-size: 9.5px;
+}
+
+@media (max-width: 760px) {
+  html[data-loom-theme="light"] .composer-toolbar {
+    gap: 8px;
+  }
+
+  html[data-loom-theme="light"] .composer-left {
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  html[data-loom-theme="light"] .composer-left::-webkit-scrollbar {
+    display: none;
+  }
+
+  html[data-loom-theme="light"] .composer-running-label {
+    padding-inline: 8px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-loom-theme="light"] .composer-running-label i {
+    animation: none !important;
+  }
+}
+
+
+/* Light theme: artifact path accent --------------------------------------- */
+/* File paths are actionable identifiers, not code blocks. In light mode use a
+   soft Loom-purple tag so they read as interactive metadata instead of a dark
+   terminal fragment. */
+html[data-loom-theme="light"] .turn-artifacts-file-strip code {
+  padding: 4px 8px;
+  border: 1px solid rgba(105,90,216,.14);
+  border-radius: 7px;
+  background: rgba(105,90,216,.075) !important;
+  color: #584abd !important;
+  box-shadow: inset 0 1px rgba(255,255,255,.72);
+}
+
+html[data-loom-theme="light"] .turn-artifacts-file-strip button:hover code {
+  border-color: rgba(105,90,216,.22);
+  background: rgba(105,90,216,.11) !important;
+  color: #4f42ae !important;
+}
+
+html[data-loom-theme="light"] .turn-artifacts-file-strip button > svg {
+  color: #6659c2;
+}
+
+html[data-loom-theme="light"] .turn-artifacts-file-strip button:hover > svg {
+  color: #5548b4;
+}
+
+
+/* Light theme: sidebar rename + task-flow shimmer ------------------------ */
+/* Sidebar rename ----------------------------------------------------------- */
+/* The inline editor and quick-action reveal were still using the dark sidebar
+   treatment. In light mode make editing read as a soft purple focus state. */
+html[data-loom-theme="light"] .compact-thread-row.renaming {
+  border-radius: 9px;
+  background: rgba(105,90,216,.045);
+}
+
+html[data-loom-theme="light"] .compact-thread-row.renaming .rename-main {
+  min-height: 31px;
+}
+
+html[data-loom-theme="light"] .compact-thread-rename {
+  height: 27px;
+  padding: 0 8px;
+  border: 1px solid rgba(105,90,216,.24);
+  border-radius: 7px;
+  background: rgba(105,90,216,.075);
+  color: #3f368f;
+  caret-color: #695ad8;
+  font-size: 12.5px;
+  box-shadow:
+    0 0 0 2px rgba(105,90,216,.055),
+    inset 0 1px rgba(255,255,255,.82);
+  transition:
+    border-color 140ms ease,
+    background 140ms ease,
+    box-shadow 160ms ease;
+}
+
+html[data-loom-theme="light"] .compact-thread-rename:focus {
+  border-color: rgba(105,90,216,.38);
+  background: rgba(105,90,216,.09);
+  box-shadow:
+    0 0 0 3px rgba(105,90,216,.085),
+    inset 0 1px rgba(255,255,255,.9);
+}
+
+html[data-loom-theme="light"] .thread-quick-actions {
+  background: linear-gradient(
+    90deg,
+    rgba(247,248,250,0),
+    rgba(247,248,250,.90) 20%,
+    rgba(247,248,250,.98) 44%,
+    rgba(247,248,250,1) 100%
+  );
+}
+
+html[data-loom-theme="light"] .compact-thread-row.active .thread-quick-actions {
+  background: linear-gradient(
+    90deg,
+    rgba(240,238,251,0),
+    rgba(240,238,251,.92) 20%,
+    rgba(240,238,251,.98) 44%,
+    rgba(240,238,251,1) 100%
+  );
+}
+
+html[data-loom-theme="light"] .thread-quick-actions button {
+  color: #727b86;
+  background: transparent;
+}
+
+html[data-loom-theme="light"] .thread-quick-actions button:hover:not(:disabled) {
+  color: #5144ad;
+  background: rgba(105,90,216,.08);
+}
+
+html[data-loom-theme="light"] .thread-quick-actions button.is-active {
+  color: #5d50bc;
+  background: rgba(105,90,216,.075);
+}
+
+/* Running task-flow shimmer ------------------------------------------------ */
+/* White surfaces need a chromatic sweep, not a white highlight. Keep the
+   moving band narrow and saturated enough to be legible without making the
+   command row look selected. */
+html[data-loom-theme="light"] .task-flow-row:has(.task-flow-status.running),
+html[data-loom-theme="light"] .task-flow-row:has(.task-flow-status.started) {
+  background:
+    linear-gradient(
+      90deg,
+      rgba(105,90,216,.070) 0%,
+      rgba(105,90,216,.030) 38%,
+      rgba(105,90,216,.010) 70%,
+      transparent 100%
+    );
+  box-shadow:
+    inset 2px 0 0 rgba(105,90,216,.34),
+    inset 0 1px rgba(255,255,255,.76);
+}
+
+html[data-loom-theme="light"] .task-flow-row:has(.task-flow-status.running)::after,
+html[data-loom-theme="light"] .task-flow-row:has(.task-flow-status.started)::after {
+  left: -42%;
+  width: 42%;
+  background: linear-gradient(
+    103deg,
+    transparent 0%,
+    rgba(105,90,216,0) 16%,
+    rgba(105,90,216,.08) 30%,
+    rgba(123,104,226,.20) 43%,
+    rgba(162,146,244,.34) 49%,
+    rgba(255,255,255,.96) 52%,
+    rgba(158,142,242,.28) 55%,
+    rgba(105,90,216,.14) 64%,
+    rgba(105,90,216,.035) 78%,
+    transparent 100%
+  );
+  filter: blur(.05px);
+  opacity: .95;
+  transform: translateX(0) skewX(-10deg);
+  animation: task-flow-shimmer-light 1.85s cubic-bezier(.38,0,.22,1) infinite;
+}
+
+html[data-loom-theme="light"] .task-flow-row:has(.task-flow-status.running) .task-flow-status-dot,
+html[data-loom-theme="light"] .task-flow-row:has(.task-flow-status.started) .task-flow-status-dot {
+  background: #695ad8;
+  box-shadow: 0 0 0 0 rgba(105,90,216,.28);
+  animation: task-flow-pulse-light 1.65s ease-out infinite;
+}
+
+html[data-loom-theme="light"] .task-flow-row:has(.task-flow-status.running) .task-flow-row-icon,
+html[data-loom-theme="light"] .task-flow-row:has(.task-flow-status.started) .task-flow-row-icon {
+  color: #5c4fba;
+  border-color: rgba(105,90,216,.28);
+  background:
+    radial-gradient(circle at 34% 22%, rgba(255,255,255,.82), transparent 46%),
+    rgba(105,90,216,.09);
+  box-shadow:
+    inset 0 1px rgba(255,255,255,.90),
+    0 0 0 3px rgba(105,90,216,.025);
+}
+
+html[data-loom-theme="light"] .task-flow-group.is-running .task-flow-group-icon {
+  color: #5e50bb;
+  border-color: rgba(105,90,216,.28);
+  background: rgba(105,90,216,.085);
+  animation: task-flow-group-breathe-light 1.9s ease-in-out infinite;
+}
+
+@keyframes task-flow-shimmer-light {
+  0% {
+    transform: translateX(0) skewX(-10deg);
+    opacity: 0;
+  }
+  8% { opacity: .42; }
+  34% { opacity: .98; }
+  70% { opacity: .82; }
+  100% {
+    transform: translateX(342%) skewX(-10deg);
+    opacity: 0;
+  }
+}
+
+@keyframes task-flow-pulse-light {
+  0% { box-shadow: 0 0 0 0 rgba(105,90,216,.30); }
+  70%, 100% { box-shadow: 0 0 0 5px rgba(105,90,216,0); }
+}
+
+@keyframes task-flow-group-breathe-light {
+  0%, 100% {
+    box-shadow:
+      inset 0 1px rgba(255,255,255,.88),
+      0 0 0 rgba(105,90,216,0);
+  }
+  50% {
+    box-shadow:
+      inset 0 1px rgba(255,255,255,.94),
+      0 0 16px rgba(105,90,216,.12);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-loom-theme="light"] .task-flow-row:has(.task-flow-status.running)::after,
+  html[data-loom-theme="light"] .task-flow-row:has(.task-flow-status.started)::after,
+  html[data-loom-theme="light"] .task-flow-row:has(.task-flow-status.running) .task-flow-status-dot,
+  html[data-loom-theme="light"] .task-flow-row:has(.task-flow-status.started) .task-flow-status-dot,
+  html[data-loom-theme="light"] .task-flow-group.is-running .task-flow-group-icon {
+    animation: none !important;
+  }
+}
