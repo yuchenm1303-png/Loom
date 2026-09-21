@@ -10,6 +10,7 @@ from app.app_server_thread_management import (
     _sanitize_generated_title,
 )
 from app.thread_title_override import _AUTO_TITLE_VERSION as AUTO_TITLE_VERSION
+from app.thread_title_override import _metadata_display_title, _safe_initial_title_from_prompt
 
 
 def _is_title_request(request) -> bool:
@@ -87,6 +88,30 @@ def test_generated_title_sanitizer_rejects_leaked_reasoning() -> None:
     assert _sanitize_generated_title("think>Let me analyze this conversation to create a concise title") == ""
     assert _sanitize_generated_title("Let me analyze this conversation to create a concise title") == ""
     assert _sanitize_generated_title("<think>internal notes</think>\n标题：Loom 标题修复") == "Loom 标题修复"
+
+
+def test_initial_title_fallback_describes_the_actual_task() -> None:
+    prompt = "给管理员账号做一下余额的后门吧，不用充值直接自定义余额这些，我要拿来测试"
+
+    assert _safe_initial_title_from_prompt(prompt) == "添加管理员余额调账"
+    assert _safe_initial_title_from_prompt(
+        "请对 TermRelay 做一次完整的客户 API 调用链路安全性、调度和计费验收"
+    ) == "验收 TermRelay 调度计费"
+    assert _safe_initial_title_from_prompt("请设计一个新的库存同步机制，并补充测试") == "设计一个新的库存同步机制"
+
+
+def test_legacy_generic_fallback_self_heals_from_source_prompt() -> None:
+    title, source = _metadata_display_title(
+        {
+            "title": "整理对话主题",
+            "titleSource": "auto",
+            "autoTitleFallback": True,
+            "autoTitleSourcePrompt": "给管理员账号做一下余额的后门吧，不用充值直接自定义余额这些",
+        }
+    )
+
+    assert title == "添加管理员余额调账"
+    assert source == "auto"
 
 
 def test_first_completed_turn_generates_and_persists_title(tmp_path: Path) -> None:
