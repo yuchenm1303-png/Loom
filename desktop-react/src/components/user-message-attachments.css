@@ -429,3 +429,41 @@ html[data-loom-reduced-motion="true"] .user-message-image-lightbox {
     display: none;
   }
 }
+
+
+/* Light theme: clean long-message collapse fade -------------------------- */
+/* The collapsed message text already uses a CSS mask. The dark-theme overlay
+   below it was showing up as a gray/black bar on light message bubbles, so
+   light mode relies on the mask alone. */
+html[data-loom-theme="light"] .user-message-copy-shell.is-collapsed::after {
+  display: none;
+}
+
+html[data-loom-theme="light"] .user-message-copy-shell.is-collapsible.is-collapsed .user-message-text {
+  -webkit-mask-image: linear-gradient(
+    180deg,
+    #000 0%,
+    #000 82%,
+    rgba(0,0,0,.92) 87%,
+    rgba(0,0,0,.58) 94%,
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    180deg,
+    #000 0%,
+    #000 82%,
+    rgba(0,0,0,.92) 87%,
+    rgba(0,0,0,.58) 94%,
+    transparent 100%
+  );
+}
+
+html[data-loom-theme="light"] .user-message-collapse-toggle {
+  color: #707887;
+}
+
+html[data-loom-theme="light"] .user-message-collapse-toggle:hover {
+  color: #5b4ec0;
+  border-color: rgba(105,90,216,.16);
+  background: rgba(105,90,216,.055);
+}

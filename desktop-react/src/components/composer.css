@@ -946,3 +946,64 @@
   color: #e08e97;
   font-size: 11.5px;
 }
+
+
+/* Running-state baseline polish ------------------------------------------- */
+/* Keep the inline running status optically centered whether it is rendered on
+   the left or right side of the toolbar. The dot breathes without changing
+   geometry, so the label no longer appears to bob against adjacent controls. */
+.composer-running-label {
+  min-height: 30px;
+  height: 30px;
+  padding: 0 2px;
+  display: inline-flex;
+  align-items: center;
+  align-self: center;
+  gap: 7px;
+  line-height: 1;
+  white-space: nowrap;
+  transform: translateY(-.5px);
+}
+
+.composer-running-label i {
+  width: 6px;
+  height: 6px;
+  margin: 0;
+  flex: 0 0 6px;
+  display: block;
+  align-self: center;
+  transform: none;
+  animation: composer-running-dot 1.8s ease-in-out infinite;
+}
+
+@keyframes composer-running-dot {
+  0%, 100% {
+    opacity: .62;
+    box-shadow: 0 0 0 2px rgba(139,124,246,.055);
+  }
+  50% {
+    opacity: 1;
+    box-shadow: 0 0 0 4px rgba(139,124,246,.095);
+  }
+}
+
+html[data-loom-theme="light"] .composer-running-label {
+  color: #6558b8;
+}
+
+html[data-loom-theme="light"] .composer-running-label i {
+  background: #7567de;
+  box-shadow: 0 0 0 2px rgba(105,90,216,.07);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .composer-running-label i {
+    animation: none !important;
+    opacity: .9;
+  }
+}
+
+html[data-loom-reduced-motion="true"] .composer-running-label i {
+  animation: none !important;
+  opacity: .9;
+}
