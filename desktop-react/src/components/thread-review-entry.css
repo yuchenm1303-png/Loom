@@ -144,3 +144,46 @@ html[data-loom-theme="light"] .thread-agent-count {
     display: none;
   }
 }
+
+/* The agents entry is a permanent workspace affordance, even before delegation. */
+.thread-agent-button.is-empty {
+  color: #7f8793;
+  background: rgba(22,24,30,.42);
+  border-color: rgba(255,255,255,.042);
+}
+
+.thread-agent-button.is-empty > svg {
+  color: #7770b7;
+  opacity: .88;
+}
+
+.thread-agent-button.is-empty:hover {
+  color: #d6d9df;
+  background: rgba(139,124,246,.045);
+  border-color: rgba(139,124,246,.11);
+}
+
+.thread-agent-button.is-empty:hover > svg {
+  color: #aaa1ef;
+  opacity: 1;
+}
+
+.thread-agent-button.has-agents {
+  border-color: rgba(139,124,246,.09);
+}
+
+html[data-loom-theme="light"] .thread-agent-button.is-empty {
+  color: #7d858f;
+  background: rgba(255,255,255,.48);
+  border-color: rgba(28,31,37,.06);
+}
+
+html[data-loom-theme="light"] .thread-agent-button.is-empty > svg {
+  color: #7166bd;
+}
+
+html[data-loom-theme="light"] .thread-agent-button.is-empty:hover {
+  color: #4f5661;
+  background: rgba(105,90,216,.045);
+  border-color: rgba(105,90,216,.12);
+}
