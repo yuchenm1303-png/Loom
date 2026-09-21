@@ -904,6 +904,15 @@ def prepare_context(rt, session, step, token):
         if input_budget is not None and limits.window_known
         else None
     )
+    # A deliberately tiny/custom auto-compaction threshold can sit below the
+    # irreducible fixed request prefix. In that case no replacement could ever
+    # satisfy the threshold, so use it as a trigger only—not as a postcondition.
+    irreducible_floor = calibrated(fixed_tokens) + max(1, limits.safety_tokens)
+    if (
+        immediate_recompact_limit is not None
+        and immediate_recompact_limit <= irreducible_floor
+    ):
+        immediate_recompact_limit = None
     if (
         (input_budget is not None and calibrated(estimated_after) > input_budget)
         or (
