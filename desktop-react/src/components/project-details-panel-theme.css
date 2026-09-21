@@ -1,0 +1,468 @@
+/* Light theme completion for the project details panel.
+   ProjectDetailsPanel / ProjectDetailsGitView / ProjectAgentFilesCard are authored
+   dark-first (hardcoded literals plus dark gradients), so dark mode stays exactly
+   as it is and light mode is finished here. Imported from main.tsx after
+   ./theme.css so these rules land last; every selector is scoped with
+   html[data-loom-theme="light"] so the attribute selector also outranks the
+   component rules regardless of load order. */
+
+/* Panel shell -------------------------------------------------------------- */
+html[data-loom-theme="light"] .project-details-panel {
+  color: var(--text, #1b1e24);
+  background:
+    radial-gradient(circle at 12% 0%, rgba(105, 90, 216, .05), transparent 32%),
+    linear-gradient(180deg, #f8f9fb, #f3f4f7);
+  border-left-color: #dfe2e7;
+  box-shadow: -18px 0 46px rgba(25, 30, 40, .1);
+}
+
+html[data-loom-theme="light"] .project-details-header {
+  border-bottom-color: #e6e9ee;
+}
+
+html[data-loom-theme="light"] .project-details-mark {
+  color: #5c4fc4;
+  background:
+    linear-gradient(180deg, rgba(105, 90, 216, .1), rgba(105, 90, 216, .04)),
+    #ffffff;
+  border-color: rgba(105, 90, 216, .18);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .9);
+}
+
+html[data-loom-theme="light"] .project-details-title > span {
+  color: #695ad8;
+}
+
+html[data-loom-theme="light"] .project-details-title strong {
+  color: #22262e;
+}
+
+html[data-loom-theme="light"] .project-details-title code {
+  color: #7c8493;
+}
+
+/* Shared control buttons --------------------------------------------------- */
+html[data-loom-theme="light"] .project-details-close,
+html[data-loom-theme="light"] .project-card-heading button,
+html[data-loom-theme="light"] .project-instructions-actions button,
+html[data-loom-theme="light"] .project-empty-threads button {
+  border-color: #dcdfe5;
+  background: #ffffff;
+  color: #4a515c;
+}
+
+html[data-loom-theme="light"] .project-details-close:hover,
+html[data-loom-theme="light"] .project-card-heading button:hover,
+html[data-loom-theme="light"] .project-instructions-actions button:hover,
+html[data-loom-theme="light"] .project-empty-threads button:hover {
+  border-color: rgba(105, 90, 216, .28);
+  background: rgba(105, 90, 216, .075);
+  color: #3b3567;
+}
+
+html[data-loom-theme="light"] .project-instructions-actions button.primary {
+  border-color: rgba(105, 90, 216, .32);
+  background: linear-gradient(180deg, #7567de, #6455cf);
+  color: #ffffff;
+}
+
+/* Cards -------------------------------------------------------------------- */
+html[data-loom-theme="light"] .project-overview-card,
+html[data-loom-theme="light"] .project-workspace-card,
+html[data-loom-theme="light"] .project-instructions-card,
+html[data-loom-theme="light"] .project-thread-card,
+html[data-loom-theme="light"] .project-roadmap-card,
+html[data-loom-theme="light"] .project-running-guard {
+  border-color: #e3e6eb;
+  background: linear-gradient(180deg, #ffffff, #fafbfc);
+  box-shadow: 0 1px 2px rgba(25, 30, 40, .045);
+}
+
+html[data-loom-theme="light"] .project-overview-card span,
+html[data-loom-theme="light"] .project-card-heading span,
+html[data-loom-theme="light"] .project-roadmap-card > span,
+html[data-loom-theme="light"] .project-subheading span {
+  color: #7a8290;
+}
+
+html[data-loom-theme="light"] .project-overview-card strong {
+  color: #1f242c;
+}
+
+html[data-loom-theme="light"] .project-overview-card small,
+html[data-loom-theme="light"] .project-roadmap-card small {
+  color: #6f7784;
+}
+
+html[data-loom-theme="light"] .project-card-heading strong {
+  color: #232830;
+}
+
+html[data-loom-theme="light"] .project-card-heading > svg {
+  color: #695ad8;
+}
+
+html[data-loom-theme="light"] .project-subheading small {
+  color: #7c8490;
+}
+
+/* Warning / guard states keep their semantics on white. */
+html[data-loom-theme="light"] .project-running-guard {
+  color: #a8414e;
+  border-color: rgba(184, 80, 93, .22);
+  background:
+    linear-gradient(180deg, rgba(184, 80, 93, .07), rgba(184, 80, 93, .03)),
+    #ffffff;
+}
+
+html[data-loom-theme="light"] .project-running-guard svg {
+  color: var(--danger, #b8505d);
+}
+
+html[data-loom-theme="light"] .project-workspace-warning,
+html[data-loom-theme="light"] .project-agent-files-warning {
+  border-color: rgba(184, 80, 93, .22);
+  color: #a8414e;
+  background: rgba(184, 80, 93, .06);
+}
+
+/* Workspace stats ---------------------------------------------------------- */
+html[data-loom-theme="light"] .project-workspace-stat {
+  border-color: #e6e9ee;
+  background: #f5f6f8;
+}
+
+html[data-loom-theme="light"] .project-workspace-stat svg {
+  color: #695ad8;
+}
+
+html[data-loom-theme="light"] .project-workspace-stat span {
+  color: #7a8290;
+}
+
+html[data-loom-theme="light"] .project-workspace-stat strong {
+  color: #1f242c;
+}
+
+html[data-loom-theme="light"] .project-workspace-stat small {
+  color: #848b98;
+}
+
+/* Changed files ------------------------------------------------------------ */
+html[data-loom-theme="light"] .project-changed-file {
+  border-color: #e6e9ee;
+  background: #ffffff;
+  color: #333a44;
+}
+
+html[data-loom-theme="light"] .project-changed-file:hover {
+  border-color: rgba(57, 118, 90, .3);
+  background: rgba(57, 118, 90, .07);
+}
+
+html[data-loom-theme="light"] .project-changed-file:disabled:hover {
+  border-color: #e6e9ee;
+  background: #ffffff;
+}
+
+html[data-loom-theme="light"] .project-changed-file > span {
+  color: var(--success, #39765a);
+  background: rgba(57, 118, 90, .1);
+  border-color: rgba(57, 118, 90, .18);
+}
+
+html[data-loom-theme="light"] .project-changed-file code {
+  color: #444c58;
+}
+
+html[data-loom-theme="light"] .project-changed-file svg {
+  color: #848b98;
+}
+
+html[data-loom-theme="light"] .project-muted-line {
+  color: #6f7784;
+  background: #f6f7f9;
+}
+
+/* File tree ---------------------------------------------------------------- */
+html[data-loom-theme="light"] .project-file-tree {
+  border-color: #e4e7ec;
+  background: #ffffff;
+}
+
+html[data-loom-theme="light"] .project-file-entry {
+  color: #59636f;
+}
+
+html[data-loom-theme="light"] .project-file-entry:hover {
+  background: rgba(28, 31, 37, .04);
+  color: #22262e;
+}
+
+html[data-loom-theme="light"] .project-file-entry.directory svg {
+  color: #6253ca;
+}
+
+html[data-loom-theme="light"] .project-file-entry.file svg {
+  color: #848b98;
+}
+
+html[data-loom-theme="light"] .project-file-entry small {
+  color: #8b939d;
+}
+
+/* Instructions ------------------------------------------------------------- */
+html[data-loom-theme="light"] .project-instructions-card p {
+  color: #5c6470;
+}
+
+html[data-loom-theme="light"] .project-instructions-card textarea {
+  border-color: #dcdfe5;
+  color: #2c323b;
+  background: #f7f8fa;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .9);
+}
+
+html[data-loom-theme="light"] .project-instructions-card textarea:focus {
+  border-color: rgba(105, 90, 216, .42);
+  box-shadow:
+    0 0 0 3px rgba(105, 90, 216, .12),
+    inset 0 1px 0 rgba(255, 255, 255, .9);
+}
+
+html[data-loom-theme="light"] .project-instructions-card textarea::placeholder {
+  color: #9aa1ab;
+}
+
+html[data-loom-theme="light"] .project-instructions-actions span {
+  color: #6f7784;
+}
+
+/* Thread list -------------------------------------------------------------- */
+html[data-loom-theme="light"] .project-thread-entry {
+  color: #4a515c;
+}
+
+html[data-loom-theme="light"] .project-thread-entry:hover {
+  background: rgba(28, 31, 37, .04);
+  border-color: #e4e7ec;
+}
+
+html[data-loom-theme="light"] .project-thread-entry.selected {
+  color: #252b34;
+  background: rgba(105, 90, 216, .09);
+  border-color: rgba(105, 90, 216, .2);
+}
+
+html[data-loom-theme="light"] .project-thread-entry svg {
+  color: #7c8490;
+}
+
+html[data-loom-theme="light"] .project-thread-entry small {
+  color: #7d8691;
+}
+
+html[data-loom-theme="light"] .project-thread-dot {
+  background: #c3c8d1;
+}
+
+html[data-loom-theme="light"] .project-thread-dot.busy {
+  background: var(--success, #39765a);
+  box-shadow: 0 0 12px rgba(57, 118, 90, .35);
+}
+
+html[data-loom-theme="light"] .project-empty-threads {
+  color: #6f7784;
+}
+
+html[data-loom-theme="light"] .project-roadmap-card small {
+  border-color: #e3e6eb;
+  background: #f5f6f8;
+  color: #6f7784;
+}
+
+/* Git toolbar -------------------------------------------------------------- */
+html[data-loom-theme="light"] .project-git-toolbar button,
+html[data-loom-theme="light"] .project-commit-actions button,
+html[data-loom-theme="light"] .project-stage-file-action {
+  border-color: #dcdfe5;
+  background: #ffffff;
+  color: #4a515c;
+}
+
+html[data-loom-theme="light"] .project-git-toolbar button:hover,
+html[data-loom-theme="light"] .project-commit-actions button:hover,
+html[data-loom-theme="light"] .project-stage-file-action:hover {
+  border-color: rgba(105, 90, 216, .26);
+  background: rgba(105, 90, 216, .075);
+  color: #3b3567;
+}
+
+html[data-loom-theme="light"] .project-stage-section {
+  border-color: #e4e7ec;
+  background: #f7f8fa;
+}
+
+html[data-loom-theme="light"] .project-stage-section header span {
+  color: #3a4149;
+}
+
+html[data-loom-theme="light"] .project-stage-section header small {
+  color: #2f6a4f;
+  background: rgba(57, 118, 90, .1);
+  border-color: rgba(57, 118, 90, .18);
+}
+
+html[data-loom-theme="light"] .project-stage-section.unstaged header small {
+  color: #8a6320;
+  background: rgba(147, 108, 45, .1);
+  border-color: rgba(147, 108, 45, .2);
+}
+
+html[data-loom-theme="light"] .project-stage-file-main {
+  border-color: #e4e7ec;
+  background: #ffffff;
+  color: #333a44;
+}
+
+html[data-loom-theme="light"] .project-stage-file-main:hover {
+  border-color: rgba(57, 118, 90, .28);
+  background: rgba(57, 118, 90, .07);
+}
+
+html[data-loom-theme="light"] .project-stage-file-main code {
+  color: #444c58;
+}
+
+html[data-loom-theme="light"] .project-stage-file-main svg {
+  color: #848b98;
+}
+
+html[data-loom-theme="light"] .project-git-badge {
+  color: var(--success, #39765a);
+  background: rgba(57, 118, 90, .1);
+  border-color: rgba(57, 118, 90, .18);
+}
+
+html[data-loom-theme="light"] .project-git-badge.unstaged {
+  color: #8a6320;
+  background: rgba(147, 108, 45, .1);
+  border-color: rgba(147, 108, 45, .2);
+}
+
+/* Commit box --------------------------------------------------------------- */
+html[data-loom-theme="light"] .project-commit-box {
+  border-color: rgba(105, 90, 216, .16);
+  background:
+    linear-gradient(180deg, rgba(105, 90, 216, .045), rgba(105, 90, 216, .015)),
+    #f9f9fc;
+}
+
+html[data-loom-theme="light"] .project-commit-heading span {
+  color: #695ad8;
+}
+
+html[data-loom-theme="light"] .project-commit-heading strong {
+  color: #232830;
+}
+
+html[data-loom-theme="light"] .project-commit-heading small {
+  color: #7c8490;
+}
+
+html[data-loom-theme="light"] .project-commit-box textarea {
+  border-color: #dcdfe5;
+  color: #2c323b;
+  background: #ffffff;
+}
+
+html[data-loom-theme="light"] .project-commit-box textarea:focus {
+  border-color: rgba(105, 90, 216, .42);
+  box-shadow: 0 0 0 3px rgba(105, 90, 216, .12);
+}
+
+html[data-loom-theme="light"] .project-commit-actions button.primary {
+  border-color: rgba(57, 118, 90, .34);
+  background: linear-gradient(180deg, #457f63, #39765a);
+  color: #ffffff;
+}
+
+/* Agent files card --------------------------------------------------------- */
+html[data-loom-theme="light"] .project-agent-files-card {
+  border-color: #e3e6eb;
+  background: linear-gradient(180deg, #ffffff, #fafbfc);
+  box-shadow: 0 1px 2px rgba(25, 30, 40, .045);
+}
+
+html[data-loom-theme="light"] .project-agent-files-help {
+  color: #5c6470;
+}
+
+html[data-loom-theme="light"] .project-agent-file-tabs > button {
+  border-color: #e4e7ec;
+  background: #f7f8fa;
+  color: #4a515c;
+}
+
+html[data-loom-theme="light"] .project-agent-file-tabs > button:hover,
+html[data-loom-theme="light"] .project-agent-file-tabs > button.active {
+  color: #3b3567;
+  border-color: rgba(105, 90, 216, .24);
+  background: rgba(105, 90, 216, .08);
+}
+
+html[data-loom-theme="light"] .project-agent-file-tabs svg {
+  color: #695ad8;
+}
+
+html[data-loom-theme="light"] .project-agent-file-tabs small {
+  color: #7d8691;
+}
+
+html[data-loom-theme="light"] .project-agent-file-tabs small.exists {
+  color: var(--success, #39765a);
+}
+
+html[data-loom-theme="light"] .project-agent-file-tabs small.missing {
+  color: #9aa1ab;
+}
+
+html[data-loom-theme="light"] .project-agent-file-empty-tabs {
+  color: #737c87;
+  background: #f6f7f9;
+}
+
+html[data-loom-theme="light"] .project-agent-file-viewer {
+  border-color: #e4e7ec;
+  background: #ffffff;
+}
+
+html[data-loom-theme="light"] .project-agent-file-meta {
+  color: #3a4149;
+  background: #f7f8fa;
+  border-bottom-color: #e6e9ee;
+}
+
+html[data-loom-theme="light"] .project-agent-file-meta small {
+  color: #7c8490;
+}
+
+html[data-loom-theme="light"] .project-agent-file-viewer pre {
+  color: #3f454f;
+}
+
+html[data-loom-theme="light"] .project-agent-file-empty {
+  color: #737c87;
+}
+
+html[data-loom-theme="light"] .project-agent-file-empty svg {
+  color: #695ad8;
+}
+
+html[data-loom-theme="light"] .project-agent-file-empty strong {
+  color: #333a44;
+}
+
+html[data-loom-theme="light"] .project-agent-file-empty span {
+  color: #7c8490;
+}
