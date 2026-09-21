@@ -66,6 +66,15 @@ export function ContextMeter({ report, compacting, progress, busy, onCompact }: 
     ? `上下文预算 ${percent}%（${formatTokens(report.usedTokens)} / ${formatTokens(budget)}）`
     : `Context budget ${percent}% (${formatTokens(report.usedTokens)} / ${formatTokens(budget)})`;
 
+  const compactionStage = (() => {
+    const stage = String(progress?.stage || "queued").toLowerCase();
+    if (stage === "preparing") return { index: 1, label: zh ? "整理" : "Preparing" };
+    if (stage === "summarizing") return { index: 2, label: zh ? "生成摘要" : "Summarizing" };
+    if (stage === "completed") return { index: 3, label: zh ? "完成" : "Done" };
+    if (stage === "failed") return { index: 0, label: zh ? "失败" : "Failed" };
+    return { index: 0, label: zh ? "排队" : "Queued" };
+  })();
+
   return (
     <div className="context-meter" ref={rootRef}>
       <button
@@ -76,18 +85,34 @@ export function ContextMeter({ report, compacting, progress, busy, onCompact }: 
         aria-label={summary}
         aria-expanded={open}
       >
-        <span className="context-meter-track" aria-hidden="true">
-          {segments.map((segment) => (
-            <span
-              key={segment.key}
-              className={`context-meter-fill ${segment.key}`}
-              style={{ width: `${Math.min(100, (segment.tokens / budget) * 100)}%` }}
-            />
-          ))}
-        </span>
+        {compacting ? (
+          <span
+            className={`context-meter-compaction-track stage-${compactionStage.index}`}
+            aria-hidden="true"
+          >
+            {[0, 1, 2].map((step) => (
+              <span
+                key={step}
+                className={`context-meter-compaction-step ${
+                  step < compactionStage.index ? "done" : step === compactionStage.index ? "active" : ""
+                }`}
+              />
+            ))}
+          </span>
+        ) : (
+          <span className="context-meter-track" aria-hidden="true">
+            {segments.map((segment) => (
+              <span
+                key={segment.key}
+                className={`context-meter-fill ${segment.key}`}
+                style={{ width: `${Math.min(100, (segment.tokens / budget) * 100)}%` }}
+              />
+            ))}
+          </span>
+        )}
         <span className="context-meter-value">
           {compacting ? <Loader2 size={12} strokeWidth={2} className="context-meter-spin" /> : null}
-          {compacting ? (zh ? "压缩中" : "Compacting") : `${percent}%`}
+          {compacting ? compactionStage.label : `${percent}%`}
         </span>
         {report.pressure.blinded ? <span className="context-meter-alarm" aria-hidden="true" /> : null}
       </button>
