@@ -12,6 +12,10 @@
   --loom-font-ui: 13.5px;
   --loom-font-meta: 12.5px;
   --loom-font-micro: 11.5px;
+  /* Count badges are pills pinned to fixed corner geometry, not body copy.
+     They keep their own compact optical step so the 11.5px micro floor cannot
+     widen them past the pill and onto the label they sit next to. */
+  --loom-font-badge: 9.5px;
 }
 
 body {
@@ -177,7 +181,7 @@ body {
 .runtime-caption { font-size: 12px !important; }
 .runtime-health { font-size: 10.5px !important; }
 .runtime-tab { font-size: 12px !important; }
-.runtime-tab-count { font-size: var(--loom-font-micro) !important; }
+.runtime-tab-count { font-size: var(--loom-font-badge) !important; }
 .runtime-section-bar { font-size: var(--loom-font-micro) !important; }
 .runtime-empty strong { font-size: 14px !important; }
 .runtime-empty p { font-size: 13.5px !important; line-height: 1.6 !important; }

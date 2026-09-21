@@ -28,7 +28,7 @@
   width: calc(
     (100% - (var(--runtime-tabs-pad-x) * 2) - (var(--runtime-tabs-gap) * 3)) / 4
   );
-  height: 36px;
+  height: 45px;
   border: 1px solid rgba(255,255,255,.07);
   border-radius: 11px;
   background:
@@ -65,7 +65,11 @@
   position: relative;
   z-index: 1;
   min-width: 0;
-  height: 36px;
+  /* 45px keeps a clear band above the icon/label row: the corner count badge is
+     11px tall at top 3px (bottom edge 14px), while the 15px content row is
+     vertically centred from 15px down. The two bands can never intersect -- at
+     any panel width and any count width. */
+  height: 45px;
   overflow: hidden;
   display: flex;
   align-items: center;
@@ -140,16 +144,19 @@
   line-height: 1.2;
 }
 
-/* Counts are supplementary corner badges, never a third layout column. This
-   keeps all four tab labels on one baseline even when one count is three digits. */
+/* Counts are supplementary corner badges, never a third layout column. They live
+   in the tab's top band (top 3px..14px) while the icon/label row starts at
+   15px, so a three-digit "99+" pill stays clear of the label instead of being
+   pushed onto it -- the pill is sized for its own text and never needs layout
+   room in the row. */
 .runtime-tab-count {
   position: absolute;
   top: 3px;
   right: 3px;
   min-width: 15px;
-  height: 14px;
+  height: 11px;
   margin: 0;
-  padding: 0 3px;
+  padding: 0 4px;
   display: inline-grid;
   place-items: center;
   overflow: hidden;
@@ -158,7 +165,7 @@
   background: rgba(255,255,255,.045);
   color: #858e9b;
   box-shadow: inset 0 1px rgba(255,255,255,.025);
-  font-size: 7.5px;
+  font-size: var(--loom-font-badge, 9.5px);
   font-weight: 680;
   line-height: 1;
   font-variant-numeric: tabular-nums;
@@ -239,27 +246,16 @@ html[data-loom-theme="light"] .runtime-tab.active .runtime-tab-count {
     --runtime-tabs-pad-x: 6px;
   }
 
+  /* Tab height and the count badge are deliberately not shrunk here: the badge
+     band, not the pill size, is what keeps the count clear of the label, so a
+     narrower panel must not collapse it. */
   .runtime-tab {
-    height: 35px;
     padding: 0 5px;
     font-size: 10px;
   }
 
   .runtime-tab-content {
     gap: 5px;
-  }
-
-  .runtime-tab-count {
-    top: 3px;
-    right: 3px;
-    min-width: 14px;
-    height: 13px;
-    padding-inline: 2px;
-    font-size: 7px;
-  }
-
-  .runtime-tab-glider {
-    height: 35px;
   }
 
   .runtime-tab-content > svg {
@@ -278,11 +274,6 @@ html[data-loom-theme="light"] .runtime-tab.active .runtime-tab-count {
 
   .runtime-tab-content {
     gap: 4px;
-  }
-
-  .runtime-tab-count {
-    right: 2px;
-    top: 2px;
   }
 }
 

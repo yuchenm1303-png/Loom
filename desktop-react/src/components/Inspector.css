@@ -2,7 +2,9 @@
   position: relative;
   isolation: isolate;
   overflow: hidden;
-  grid-template-rows: 61px 47px minmax(0, 1fr);
+  /* The tab row reserves the badge band: 45px of tab inside 6px both sides.
+     See .runtime-tab / .runtime-tab-count for the corner-badge geometry. */
+  grid-template-rows: 61px 57px minmax(0, 1fr);
   background:
     radial-gradient(circle at 84% -4%, rgba(139, 124, 246, .075), transparent 29%),
     linear-gradient(180deg, #101116 0%, #0e1014 100%);
