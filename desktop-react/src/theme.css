@@ -3580,3 +3580,153 @@ html[data-loom-theme="light"] .task-flow-group.is-running .task-flow-group-icon 
     animation: none !important;
   }
 }
+
+
+/* Light theme: refined sidebar edit state -------------------------------- */
+/* Make active/rename rows feel integrated with the sidebar instead of like
+   stacked glossy pills. Editing is signaled by a thin purple focus treatment,
+   not a filled lavender slab. */
+
+html[data-loom-theme="light"] .compact-thread-row {
+  border-radius: 10px;
+}
+
+html[data-loom-theme="light"] .compact-thread-row.active {
+  background:
+    linear-gradient(180deg, rgba(105,90,216,.050), rgba(105,90,216,.032));
+  border-color: rgba(105,90,216,.07);
+  box-shadow:
+    inset 2px 0 0 rgba(105,90,216,.22),
+    inset 0 1px rgba(255,255,255,.72);
+}
+
+html[data-loom-theme="light"] .compact-thread-row.renaming {
+  background:
+    linear-gradient(180deg, rgba(105,90,216,.038), rgba(105,90,216,.022));
+  border-color: rgba(105,90,216,.08);
+  box-shadow:
+    inset 2px 0 0 rgba(105,90,216,.26),
+    inset 0 1px rgba(255,255,255,.76);
+}
+
+html[data-loom-theme="light"] .compact-thread-row.renaming .rename-main {
+  min-height: 33px;
+  align-items: center;
+}
+
+html[data-loom-theme="light"] .compact-thread-row.renaming .compact-thread-dot {
+  border-color: rgba(105,90,216,.48);
+  background: #695ad8;
+  box-shadow: none;
+}
+
+/* Embedded editor: mostly white, only a quiet purple edge. */
+html[data-loom-theme="light"] .compact-thread-rename {
+  height: 29px;
+  padding: 0 9px;
+  border: 1px solid rgba(105,90,216,.16);
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.94), rgba(250,250,253,.88));
+  color: #373d46;
+  caret-color: #695ad8;
+  font-size: 12.7px;
+  font-weight: 540;
+  box-shadow:
+    inset 0 1px rgba(255,255,255,.96),
+    0 1px 2px rgba(27,31,40,.035);
+  transition:
+    border-color 140ms ease,
+    background 140ms ease,
+    box-shadow 160ms ease,
+    color 140ms ease;
+}
+
+html[data-loom-theme="light"] .compact-thread-rename:hover {
+  border-color: rgba(105,90,216,.21);
+  background: #ffffff;
+}
+
+html[data-loom-theme="light"] .compact-thread-rename:focus {
+  border-color: rgba(105,90,216,.30);
+  background: #ffffff;
+  color: #2f353d;
+  box-shadow:
+    0 0 0 2px rgba(105,90,216,.055),
+    0 2px 7px rgba(48,42,112,.055),
+    inset 0 1px rgba(255,255,255,.98);
+}
+
+html[data-loom-theme="light"] .compact-thread-rename::selection {
+  background: rgba(105,90,216,.16);
+  color: #2f353d;
+}
+
+/* The action reveal should feel like a continuation of the row, not a second
+   toolbar pasted on top. */
+html[data-loom-theme="light"] .thread-quick-actions {
+  top: 2px;
+  right: 2px;
+  height: 27px;
+  gap: 2px;
+  padding-left: 18px;
+  padding-right: 1px;
+  background: linear-gradient(
+    90deg,
+    rgba(248,249,251,0) 0%,
+    rgba(248,249,251,.62) 22%,
+    rgba(248,249,251,.90) 48%,
+    rgba(248,249,251,.99) 100%
+  );
+}
+
+html[data-loom-theme="light"] .compact-thread-row.active .thread-quick-actions,
+html[data-loom-theme="light"] .compact-thread-row.renaming .thread-quick-actions {
+  background: linear-gradient(
+    90deg,
+    rgba(246,245,252,0) 0%,
+    rgba(246,245,252,.64) 22%,
+    rgba(246,245,252,.90) 48%,
+    rgba(246,245,252,.99) 100%
+  );
+}
+
+html[data-loom-theme="light"] .thread-quick-actions button {
+  width: 25px;
+  height: 25px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: #77808b;
+  box-shadow: none;
+  transition:
+    color 120ms ease,
+    background 120ms ease,
+    border-color 120ms ease,
+    transform 120ms ease;
+}
+
+html[data-loom-theme="light"] .thread-quick-actions button:hover:not(:disabled) {
+  color: #5144ad;
+  border-color: rgba(105,90,216,.10);
+  background: rgba(105,90,216,.055);
+}
+
+html[data-loom-theme="light"] .thread-quick-actions button.is-active {
+  color: #5548b3;
+  border-color: rgba(105,90,216,.09);
+  background: rgba(105,90,216,.050);
+}
+
+html[data-loom-theme="light"] .thread-quick-actions button:active:not(:disabled) {
+  transform: scale(.965);
+}
+
+/* Pinned action remains visible but quiet when the row is not hovered. */
+html[data-loom-theme="light"] .compact-thread-row.pinned:not(:hover):not(:focus-within) .thread-quick-actions {
+  opacity: .72;
+}
+
+html[data-loom-theme="light"] .compact-thread-row.pinned:not(:hover):not(:focus-within) .thread-quick-actions button:not(.is-active) {
+  opacity: .42;
+}
