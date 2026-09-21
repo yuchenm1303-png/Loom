@@ -66,6 +66,47 @@
   color: #ffe7eb !important;
 }
 
+/* The dark-first semantic palette must not force near-white code onto the
+   light review surface. Keep the same meaning while restoring readable
+   contrast for the complete line, including the <code> child. */
+html[data-loom-theme="light"] .review-code-row.is-add,
+html[data-loom-theme="light"] .review-code-row.is-add code,
+html[data-loom-theme="light"] .inline-diff-row.is-add,
+html[data-loom-theme="light"] .inline-diff-row.is-add code {
+  background: rgba(47, 122, 88, .085) !important;
+  color: #285b44 !important;
+}
+
+html[data-loom-theme="light"] .review-code-row.is-delete,
+html[data-loom-theme="light"] .review-code-row.is-delete code,
+html[data-loom-theme="light"] .inline-diff-row.is-delete,
+html[data-loom-theme="light"] .inline-diff-row.is-delete code {
+  background: rgba(178, 75, 90, .08) !important;
+  color: #7f3440 !important;
+}
+
+html[data-loom-theme="light"] .review-code-row.is-add .review-line-number,
+html[data-loom-theme="light"] .inline-diff-row.is-add .inline-diff-number {
+  color: #4d896b !important;
+}
+
+html[data-loom-theme="light"] .review-code-row.is-delete .review-line-number,
+html[data-loom-theme="light"] .inline-diff-row.is-delete .inline-diff-number {
+  color: #a9616c !important;
+}
+
+html[data-loom-theme="light"] .review-code-row.is-add .review-line-marker,
+html[data-loom-theme="light"] .inline-diff-row.is-add .inline-diff-marker {
+  color: #2f7a58 !important;
+  text-shadow: none;
+}
+
+html[data-loom-theme="light"] .review-code-row.is-delete .review-line-marker,
+html[data-loom-theme="light"] .inline-diff-row.is-delete .inline-diff-marker {
+  color: #b24b5a !important;
+  text-shadow: none;
+}
+
 .review-code-row.is-add .review-line-number,
 .inline-diff-row.is-add .inline-diff-number {
   color: rgba(92, 247, 160, 0.82) !important;
