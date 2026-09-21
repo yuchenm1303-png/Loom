@@ -44,6 +44,16 @@ class RecordingPlatform:
         return self.responses.pop(0)
 
 
+class StructuredRejectingPlatform(RecordingPlatform):
+    def __init__(self, responses) -> None:
+        super().__init__(responses)
+        self.structured_requests = []
+
+    def execute_structured_chat(self, _profile_id, request):
+        self.structured_requests.append(request)
+        raise ValueError("profile lacks structured_output")
+
+
 def _build_service(tmp_path: Path, responses):
     home = tmp_path / "home"
     workspace = tmp_path / "workspace"
@@ -158,6 +168,7 @@ def test_first_completed_turn_generates_and_persists_title(tmp_path: Path) -> No
         assert metadata["autoTitleAttempts"] == 1
         assert metadata["autoTitleGeneratedAt"]
 
+        _wait_until(lambda: thread_id not in service.runtime_status()["activeThreadIds"])
         assert len(platform.requests) == 2
         # By predicate, not by position: the title request races the turn, so
         # "the last call" is not reliably the title call.
@@ -215,6 +226,66 @@ def test_auto_title_uses_the_threads_model_not_the_global_default(tmp_path: Path
         assert len(thread_platform.requests) == 2
         assert any(_is_title_request(request) for request in thread_platform.requests)
         assert all(request.session_id == thread_id for request in thread_platform.requests)
+    finally:
+        runtime.close()
+
+
+def test_auto_title_prefers_plain_chat_over_structured_capability(tmp_path: Path) -> None:
+    service, runtime, _store, _default_platform, workspace = _build_service(tmp_path, [])
+    platform = StructuredRejectingPlatform(
+        [
+            ModelResponse(text="normal assistant response"),
+            ModelResponse(text='{"title":"添加管理员余额调账"}'),
+        ]
+    )
+    try:
+        thread_id = service.thread_start({"workspace": str(workspace)})["thread"]["id"]
+        runtime.set_session_model(thread_id, platform)
+
+        service.turn_start(
+            {
+                "threadId": thread_id,
+                "input": "给管理员账号增加一个可审计的余额调账入口",
+            }
+        )
+        record = _wait_until(
+            lambda: (
+                service.thread_read({"threadId": thread_id})["thread"]
+                if service.thread_read({"threadId": thread_id})["thread"].get("customTitle")
+                else None
+            )
+        )
+
+        assert record["title"] == "添加管理员余额调账"
+        assert platform.structured_requests == []
+    finally:
+        runtime.close()
+
+
+def test_stale_title_result_cannot_replace_a_newer_source_prompt(tmp_path: Path) -> None:
+    service, runtime, _store, _platform, workspace = _build_service(tmp_path, [])
+    try:
+        thread_id = service.thread_start({"workspace": str(workspace)})["thread"]["id"]
+        assert service.thread_library.mark_auto_title_pending(
+            thread_id,
+            source_prompt="first task",
+        )
+        service.thread_library.write(
+            thread_id,
+            {
+                "autoTitleSourcePrompt": "newer task",
+                "autoTitlePendingSourcePrompt": "newer task",
+            },
+        )
+
+        assert service.thread_library.write_auto_title_if_untitled(
+            thread_id,
+            "Old generated title",
+            source_prompt="first task",
+        ) is False
+        metadata = service.thread_library.read(thread_id)
+        assert metadata["autoTitleSourcePrompt"] == "newer task"
+        assert metadata["title"] != "Old generated title"
     finally:
         runtime.close()
 

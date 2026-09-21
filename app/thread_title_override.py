@@ -13,7 +13,7 @@ _TARGET_MODULE = "app.app_server_thread_management"
 _INSTALLED = False
 _PATCHED = False
 
-_AUTO_TITLE_VERSION = 3
+_AUTO_TITLE_VERSION = 4
 _AUTO_TITLE_MAX_ATTEMPTS = 2
 _AUTO_TITLE_MAX_CHARS = 36
 _AUTO_TITLE_PROMPT_MAX_BYTES = 960
@@ -469,7 +469,14 @@ def _patch_thread_library(module: ModuleType) -> None:
             self._write_unlocked(session_id, payload)
             return True
 
-    def write_auto_title_if_untitled(self: Any, session_id: str, title: str) -> bool:
+    def write_auto_title_if_untitled(
+        self: Any,
+        session_id: str,
+        title: str,
+        *args: Any,
+        source_prompt: str = "",
+        **kwargs: Any,
+    ) -> bool:
         with self._guard:
             payload = self._read_unlocked(session_id)
             if bool(payload.get("autoTitleDisabled")):
@@ -480,8 +487,13 @@ def _patch_thread_library(module: ModuleType) -> None:
             if _metadata_title_blocks_auto_title(payload):
                 return False
 
-            source_prompt = str(payload.get("autoTitleSourcePrompt") or payload.get("autoTitlePendingSourcePrompt") or "")
-            clean_title = _sanitize_generated_title(title, source_prompt=source_prompt)
+            stored_source = _clean_title_context(
+                payload.get("autoTitleSourcePrompt") or payload.get("autoTitlePendingSourcePrompt") or ""
+            )
+            expected_source = _clean_title_context(source_prompt)
+            if expected_source and stored_source != expected_source:
+                return False
+            clean_title = _sanitize_generated_title(title, source_prompt=stored_source)
             if not clean_title:
                 return False
             payload.update(
@@ -507,10 +519,13 @@ def _patch_thread_library(module: ModuleType) -> None:
             if title_source == "manual":
                 return
 
+            stored_source = _clean_title_context(
+                payload.get("autoTitleSourcePrompt") or payload.get("autoTitlePendingSourcePrompt") or ""
+            )
             clean_source = _clean_title_context(source_prompt)
-            if not clean_source:
-                clean_source = str(payload.get("autoTitleSourcePrompt") or payload.get("autoTitlePendingSourcePrompt") or "")
-            clean_source = _clean_title_context(clean_source)
+            if clean_source and stored_source and clean_source != stored_source:
+                return
+            clean_source = clean_source or stored_source
             fallback = _sanitize_generated_title(payload.get("title"), source_prompt=clean_source) or _safe_initial_title_from_prompt(clean_source)
             payload.update(
                 {
@@ -642,17 +657,24 @@ def _patch_service(module: ModuleType) -> None:
             execute_structured = getattr(platform, "execute_structured_chat", None)
             execute_chat = getattr(platform, "execute_chat", None)
 
-            if callable(execute_structured):
-                try:
-                    payload = execute_structured(session.profile_id, request)
-                    title = _parse_auto_title_payload(payload, source_prompt=source_prompt)
-                except Exception as exc:
-                    last_error = f"{type(exc).__name__}: {exc}"
-
-            if not title and callable(execute_chat):
+            # The normal chat lane is the compatibility baseline: every model
+            # capable of running the task already supports it. Requiring native
+            # structured output first made title generation fail on otherwise
+            # healthy profiles and surfaced the deterministic fallback too often.
+            if callable(execute_chat):
                 try:
                     response = execute_chat(session.profile_id, _build_plain_auto_title_request(request))
                     title = _parse_auto_title_payload(getattr(response, "text", ""), source_prompt=source_prompt)
+                except Exception as exc:
+                    last_error = f"{type(exc).__name__}: {exc}"
+
+            # Native structured output is an optional recovery lane, not a
+            # prerequisite. Models advertising it can still rescue malformed
+            # plain JSON without penalising profiles that do not implement it.
+            if not title and callable(execute_structured):
+                try:
+                    payload = execute_structured(session.profile_id, request)
+                    title = _parse_auto_title_payload(payload, source_prompt=source_prompt)
                 except Exception as exc:
                     last_error = f"{type(exc).__name__}: {exc}"
 
@@ -665,7 +687,11 @@ def _patch_service(module: ModuleType) -> None:
                 _notify_thread_updated(self, thread_id, "auto_title_fallback")
                 return
 
-            if self.thread_library.write_auto_title_if_untitled(thread_id, title):
+            if self.thread_library.write_auto_title_if_untitled(
+                thread_id,
+                title,
+                source_prompt=source_prompt,
+            ):
                 _notify_thread_updated(self, thread_id, "auto_title")
             else:
                 self.thread_library.finish_auto_title_attempt(thread_id, "title_not_committed", source_prompt=source_prompt)
