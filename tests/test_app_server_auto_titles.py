@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
-from app.ai import ModelResponse, ToolChoice
+from app.ai import MessageRole, ModelResponse, ToolChoice
 from app.agent_runtime import DurableAgentRuntime, FileAgentSessionStore, PermissionMode, ToolRegistry
 from app.app_server_thread_management import (
     ManagedStreamingLoomAppServerService,
@@ -20,15 +20,11 @@ def _is_title_request(request) -> bool:
 
 
 class RecordingPlatform:
-    """Scripted platform that routes by request kind, not by call order.
+    """Scripted platform that separates normal turns from detached title calls.
 
-    Auto-titling fires as soon as the first prompt arrives, concurrently with
-    the turn itself, so "first response is the reply, second is the title" is a
-    race: whichever thread reached the platform first took the wrong one.
-
-    The convention these tests already used is kept -- the *last* scripted
-    response is the title, the rest belong to turns -- but it is now honoured by
-    request kind rather than by arrival order.
+    Mature auto-titling runs only after the active task reaches a terminal state,
+    so cosmetic metadata never competes with the user's model request. Routing
+    by request kind keeps the fixture resilient if scheduling details change.
     """
 
     def __init__(self, responses) -> None:
@@ -100,14 +96,14 @@ def test_generated_title_sanitizer_rejects_leaked_reasoning() -> None:
     assert _sanitize_generated_title("<think>internal notes</think>\n标题：Loom 标题修复") == "Loom 标题修复"
 
 
-def test_initial_title_fallback_describes_the_actual_task() -> None:
-    prompt = "给管理员账号做一下余额的后门吧，不用充值直接自定义余额这些，我要拿来测试"
-
-    assert _safe_initial_title_from_prompt(prompt) == "添加管理员余额调账"
+def test_provisional_title_never_clips_or_heuristically_rewrites_the_prompt() -> None:
+    assert _safe_initial_title_from_prompt(
+        "给管理员账号做一下余额的后门吧，不用充值直接自定义余额这些，我要拿来测试"
+    ) == "新对话"
     assert _safe_initial_title_from_prompt(
         "请对 TermRelay 做一次完整的客户 API 调用链路安全性、调度和计费验收"
-    ) == "验收 TermRelay 调度计费"
-    assert _safe_initial_title_from_prompt("请设计一个新的库存同步机制，并补充测试") == "设计一个新的库存同步机制"
+    ) == "新对话"
+    assert _safe_initial_title_from_prompt("Please inspect the browser bridge") == "New conversation"
 
 
 def test_legacy_generic_fallback_self_heals_from_source_prompt() -> None:
@@ -120,8 +116,8 @@ def test_legacy_generic_fallback_self_heals_from_source_prompt() -> None:
         }
     )
 
-    assert title == "添加管理员余额调账"
-    assert source == "auto"
+    assert title == "新对话"
+    assert source == "fallback"
 
 
 def test_first_completed_turn_generates_and_persists_title(tmp_path: Path) -> None:
@@ -139,7 +135,7 @@ def test_first_completed_turn_generates_and_persists_title(tmp_path: Path) -> No
             {"workspace": str(workspace), "permissionMode": "workspace"}
         )["thread"]["id"]
 
-        # Before the first turn finishes, Loom still has the zero-cost first-message fallback.
+        # While the task runs, Loom exposes only a neutral provisional label.
         service.turn_start(
             {
                 "threadId": thread_id,
@@ -178,19 +174,16 @@ def test_first_completed_turn_generates_and_persists_title(tmp_path: Path) -> No
         assert title_request.max_output_tokens == 48
         assert title_request.temperature == 0.2
         assert title_request.session_id == thread_id
-        title_prompt = str(title_request.messages[-1].content)
-        assert "自动总结并生成简短标题" in title_prompt
-        # Only the user's first message. Titles are generated as soon as the
-        # prompt arrives, so there is no assistant reply to include yet -- and
-        # waiting for one is what used to leave threads untitled for a whole
-        # turn.
-        assert "已经把 Loom 的会话标题逻辑接好了" not in title_prompt
-        # The request is a single user message asking for strict JSON; there is
-        # no system message any more. Keeping leaked reasoning out of a title is
-        # now the sanitizer's job, covered by
-        # test_generated_title_sanitizer_rejects_leaked_reasoning.
-        assert len(title_request.messages) == 1
-        assert '{"title"' in title_prompt
+        assert len(title_request.messages) == 3
+        assert title_request.messages[0].role is MessageRole.SYSTEM
+        title_context = str(title_request.messages[1].content)
+        assert "自动总结并生成简短标题" in title_context
+        # The detached call runs after the first turn, so the assistant outcome
+        # can disambiguate terse prompts without changing the canonical source.
+        assert "已经把 Loom 的会话标题逻辑接好了" in title_context
+        assert '{"title"' in str(title_request.messages[-1].content)
+        assert not _is_title_request(platform.requests[0])
+        assert _is_title_request(platform.requests[1])
 
         assert any(
             method == "thread/updated" and params.get("reason") == "auto_title"
@@ -310,7 +303,8 @@ def test_follow_up_cannot_replace_pending_title_source(tmp_path: Path) -> None:
         metadata = service.thread_library.read(thread_id)
         assert metadata["autoTitleSourcePrompt"] == first_prompt
         assert metadata["autoTitlePendingSourcePrompt"] == first_prompt
-        assert metadata["title"] == _safe_initial_title_from_prompt(first_prompt)
+        assert metadata["title"] == ""
+        assert _metadata_display_title(metadata) == ("新对话", "pending")
         assert service.thread_library.claim_auto_title_attempt(
             thread_id,
             source_prompt="继续",
@@ -378,9 +372,9 @@ def test_existing_bad_auto_title_is_hidden_and_can_regenerate(tmp_path: Path) ->
         )
         assert regenerated["title"] == "Loom 标题清洗修复"
         metadata = service.thread_library.read(thread_id)
-        # Seeded at 1, and regenerating is itself an attempt. The counter caps
-        # retries; it is not reset by success, so 2 is the honest value.
-        assert metadata["autoTitleAttempts"] == 2
+        # Version-5 migration resets legacy fallback retry debt before the new
+        # semantic generator gets one honest attempt.
+        assert metadata["autoTitleAttempts"] == 1
         assert metadata["autoTitleLastError"] == ""
     finally:
         runtime.close()

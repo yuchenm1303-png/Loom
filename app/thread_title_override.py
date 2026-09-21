@@ -276,7 +276,7 @@ def _auto_title_prompt(module: ModuleType, session: Any, *, user_prompt: str = "
     prefix = "Canonical first user request:\n<request>"
     middle = "</request>\n\nRecent substantive conversation:\n<conversation>\n"
     suffix = "\n</conversation>"
-    fixed_bytes = len((instructions + "\n\n" + prefix + middle + suffix).encode("utf-8"))
+    fixed_bytes = len((prefix + middle + suffix).encode("utf-8"))
     available = max(96, _AUTO_TITLE_PROMPT_MAX_BYTES - fixed_bytes)
     source_budget = max(64, int(available * 0.55))
     recent_budget = max(32, available - source_budget)
@@ -314,7 +314,7 @@ def _build_auto_title_request(module: ModuleType, session: Any, *, user_prompt: 
         ),
         tools=(),
         tool_choice=ToolChoice.NONE,
-        temperature=0.1,
+        temperature=0.2,
         max_output_tokens=48,
         session_id=str(getattr(session, "session_id", "") or ""),
     )
@@ -376,10 +376,12 @@ def _metadata_display_title(metadata: dict[str, Any]) -> tuple[str, str]:
     if title_source == "manual" and custom_title:
         return custom_title, "manual"
 
-    if title_source == "auto" and not bool(metadata.get("autoTitleFallback")):
-        title = _sanitize_generated_title(custom_title, source_prompt=source_prompt)
-        if title:
-            return title, "auto"
+    if title_source == "auto":
+        if not bool(metadata.get("autoTitleFallback")):
+            title = _sanitize_generated_title(custom_title, source_prompt=source_prompt)
+            if title:
+                return title, "auto"
+        return _placeholder_title(source_prompt or custom_title), "fallback"
 
     if title_source in {"pending", "fallback"} or metadata.get("autoTitlePending") or metadata.get("autoTitleFallback"):
         return _placeholder_title(source_prompt or custom_title), (
@@ -732,19 +734,23 @@ def _patch_service(module: ModuleType) -> None:
             execute_structured = getattr(platform, "execute_structured_chat", None)
             execute_chat = getattr(platform, "execute_chat", None)
 
-            if callable(execute_structured):
-                try:
-                    structured_payload = execute_structured(session.profile_id, request)
-                    title = _parse_auto_title_payload(structured_payload, source_prompt=source_prompt)
-                except Exception as exc:
-                    errors.append(f"structured:{type(exc).__name__}: {exc}")
-
-            if not title and callable(execute_chat):
+            # Plain chat is Loom's compatibility baseline across OpenAI-compatible
+            # providers. Native structured output is a recovery lane, matching the
+            # stricter Codex contract without making it a requirement for every
+            # configured model.
+            if callable(execute_chat):
                 try:
                     response = execute_chat(session.profile_id, _build_plain_auto_title_request(request))
                     title = _parse_auto_title_payload(getattr(response, "text", ""), source_prompt=source_prompt)
                 except Exception as exc:
                     errors.append(f"plain:{type(exc).__name__}: {exc}")
+
+            if not title and callable(execute_structured):
+                try:
+                    structured_payload = execute_structured(session.profile_id, request)
+                    title = _parse_auto_title_payload(structured_payload, source_prompt=source_prompt)
+                except Exception as exc:
+                    errors.append(f"structured:{type(exc).__name__}: {exc}")
 
             if not title:
                 finish("; ".join(errors) or "empty_or_invalid_title")
