@@ -47,7 +47,7 @@ Put `loom-relay-credential.json` next to `loom_model_bridge.py` in the customer 
 
 On first launch, Loom consumes the provisioning file, writes the credential to the OS credential store under the alias `managed/relay`, and then deletes the plaintext provisioning file on a best-effort basis.
 
-After that, the customer does not need to enter any key. Loom calls `https://relay.smirel.com/v1/models` with the stored Relay credential and shows only models allowed for that customer group.
+After that, the customer does not need to enter any key. Loom calls `https://muxway.dev/v1/models` with the stored Relay credential and shows only models allowed for that customer group. The provisioning `baseUrl` is persisted alongside the managed Relay connection metadata so custom deployments keep using the endpoint they were packaged for.
 
 ## Updating or disabling access
 
