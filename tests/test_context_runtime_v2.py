@@ -19,6 +19,7 @@ from app.ai.execution_control import ModelCancelled
 from app.agent_runtime.context_budget import ContextBudgetExceeded, estimate_tokens, prepare_context
 from app.agent_runtime.context_compaction import build_compacted_history
 from app.agent_runtime.context_limits import resolve_context_limits
+from app.agent_runtime.tools import ToolResult
 
 
 class ScriptedExecutor:
@@ -215,6 +216,43 @@ def test_model_profile_context_window_beats_conservative_runtime_fallback(monkey
     assert resolved.output_reserve_tokens == 1000
     assert resolved.auto_compact_token_limit == 6000
     assert resolved.tool_output_token_limit == 1500
+
+
+def test_default_tool_output_limit_scales_with_model_window(monkeypatch):
+    monkeypatch.delenv("LOOM_CONTEXT_WINDOW_TOKENS", raising=False)
+    monkeypatch.delenv("LOOM_OUTPUT_RESERVE_TOKENS", raising=False)
+    runtime = FakeRuntime(
+        context_limits=ModelContextLimits(
+            context_window_tokens=54_000,
+            effective_context_percent=95,
+            output_reserve_tokens=1000,
+        )
+    )
+    session = Session([AIMessage(role=MessageRole.USER, content="hello")])
+
+    resolved = resolve_context_limits(runtime, session)
+
+    # Codex currently budgets about 10k tool-result tokens in a 272k window.
+    # A ~51k effective Loom window should therefore keep roughly 1.9k, not 6k.
+    assert 1700 <= resolved.tool_output_token_limit <= 2000
+
+
+def test_tool_result_model_payload_is_token_bounded_and_keeps_tail():
+    result = ToolResult(
+        ok=False,
+        content="BEGIN\n" + ("middle-line\n" * 2000) + "FINAL ERROR: compiler failed\n",
+        data={"exit_code": 1, "verbose": "x" * 4000},
+    )
+
+    payload = result.model_payload(max_tokens=1200)
+
+    assert "BEGIN" in payload
+    assert "FINAL ERROR: compiler failed" in payload
+    assert "middle of tool output omitted from model context" in payload
+    assert '"truncated":true' in payload
+    assert '"truncation":"head_tail"' in payload
+    assert '"exact_result_remains_in_durable_transcript":true' in payload
+    assert len(payload.encode("utf-8")) <= 1200 * 3 + 96
 
 
 def test_default_auto_compact_limit_uses_raw_window_with_effective_hard_cap(monkeypatch):
