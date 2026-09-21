@@ -368,9 +368,20 @@ export function isSubAgentToolItem(item: TranscriptItem): boolean {
   return item.type === "tool_call" && SUB_AGENT_TOOLS.has(stringValue(item.toolName));
 }
 
-export function SubAgentWorkspace({ items }: { items: TranscriptItem[] }) {
+export function SubAgentWorkspace({
+  items,
+  active = false,
+}: {
+  items: TranscriptItem[];
+  active?: boolean;
+}) {
   const transcriptAgents = useMemo(() => aggregateAgents(items), [items]);
   const threadId = String(items.find((item) => item.threadId)?.threadId || "");
+  const knownAgentIds = useMemo(
+    () => transcriptAgents.map((agent) => agent.sessionId).filter(Boolean),
+    [transcriptAgents],
+  );
+  const knownAgentIdsKey = knownAgentIds.join("|");
   const transcriptHasLiveAgent = useMemo(
     () => transcriptAgents.some((agent) => {
       const status = normalizedStatus(agent);
@@ -381,18 +392,19 @@ export function SubAgentWorkspace({ items }: { items: TranscriptItem[] }) {
   const [liveSnapshots, setLiveSnapshots] = useState<Record<string, unknown>[]>([]);
 
   useEffect(() => {
-    if (!threadId || !window.loom?.call) return;
+    if (!active || !threadId || !knownAgentIds.length || !window.loom?.call) return;
 
     let disposed = false;
     let timer: number | null = null;
     let failures = 0;
+    const allowedIds = new Set(knownAgentIds);
 
-    const schedule = (delay: number) => {
+    function schedule(delay: number) {
       if (disposed) return;
       timer = window.setTimeout(() => void refresh(), delay);
-    };
+    }
 
-    const refresh = async () => {
+    async function refresh() {
       try {
         const result = await window.loom.call<{ agents?: unknown[] }>("agent/list", {
           threadId,
@@ -401,7 +413,11 @@ export function SubAgentWorkspace({ items }: { items: TranscriptItem[] }) {
         if (disposed) return;
 
         const snapshots = Array.isArray(result?.agents)
-          ? result.agents.map(objectValue).filter((value): value is Record<string, unknown> => Boolean(value))
+          ? result.agents
+              .map(objectValue)
+              .filter((value): value is Record<string, unknown> => (
+                Boolean(value) && allowedIds.has(stringValue(value?.session_id))
+              ))
           : [];
         setLiveSnapshots(snapshots);
         failures = 0;
@@ -412,14 +428,14 @@ export function SubAgentWorkspace({ items }: { items: TranscriptItem[] }) {
         failures += 1;
         if (transcriptHasLiveAgent && failures < 4) schedule(2200);
       }
-    };
+    }
 
     void refresh();
     return () => {
       disposed = true;
       if (timer !== null) window.clearTimeout(timer);
     };
-  }, [threadId, transcriptHasLiveAgent]);
+  }, [active, knownAgentIdsKey, threadId, transcriptHasLiveAgent]);
 
   const agents = useMemo(
     () => mergeLiveSnapshots(transcriptAgents, liveSnapshots),
