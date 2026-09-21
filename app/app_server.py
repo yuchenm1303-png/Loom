@@ -883,6 +883,29 @@ class LoomAppServerService:
             "error": session.error,
         }
 
+    def agent_list(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Return live sub-agent state for one visible parent conversation."""
+
+        session_id = self._required_text(params, "threadId")
+        self._load(session_id)
+        control = getattr(self.runtime, "agent_control", None)
+        list_tree = getattr(control, "list_tree", None)
+        if not callable(list_tree):
+            return {"threadId": session_id, "agents": [], "count": 0}
+
+        include_closed = bool(params.get("includeClosed", True))
+        snapshots = list_tree(session_id, include_closed=include_closed)
+        agents = [
+            snapshot.to_dict()
+            for snapshot in snapshots
+            if callable(getattr(snapshot, "to_dict", None))
+        ]
+        return {
+            "threadId": session_id,
+            "agents": agents,
+            "count": len(agents),
+        }
+
     def thread_fork(self, params: dict[str, Any]) -> dict[str, Any]:
         source_id = self._required_text(params, "threadId")
         source = self._load(source_id)
@@ -1446,6 +1469,9 @@ class LoomRpcController:
                     "remove": True,
                     "threadStart": True,
                 },
+                "agents": {
+                    "list": callable(getattr(getattr(self.service.runtime, "agent_control", None), "list_tree", None)),
+                },
                 "settings": {"get": True, "set": True},
                 "turns": {"start": True, "interrupt": True},
                 "approvals": True,
@@ -1487,6 +1513,7 @@ class LoomRpcController:
             "thread/list": self.service.thread_list,
             "thread/read": self.service.thread_read,
             "thread/fork": self.service.thread_fork,
+            "agent/list": self.service.agent_list,
             "turn/start": self.service.turn_start,
             "turn/interrupt": self.service.turn_interrupt,
             "turn/steer": self.service.turn_steer,
