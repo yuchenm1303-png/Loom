@@ -67,12 +67,10 @@
   min-width: 0;
   height: 36px;
   overflow: hidden;
-  display: grid;
-  grid-template-columns: 15px minmax(0, 1fr);
+  display: flex;
   align-items: center;
-  justify-content: stretch;
-  column-gap: 6px;
-  padding: 0 8px;
+  justify-content: center;
+  padding: 0 7px;
   border: 1px solid transparent;
   border-radius: 11px;
   background: transparent;
@@ -105,38 +103,41 @@
   box-shadow: none;
 }
 
-.runtime-tab > svg {
-  grid-column: 1;
-  grid-row: 1;
+.runtime-tab-content {
+  min-width: 0;
+  max-width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
+  line-height: 1.2;
+  pointer-events: none;
+}
+
+.runtime-tab-content > svg {
   width: 15px;
   height: 15px;
   min-width: 15px;
-  flex: none;
-  justify-self: center;
+  flex: 0 0 15px;
   color: inherit;
   transition:
     color 150ms ease,
     transform 180ms cubic-bezier(.22,1,.36,1);
 }
 
-.runtime-tab.active > svg {
+.runtime-tab.active .runtime-tab-content > svg {
   color: #aaa2ef;
   transform: translateY(-.25px);
 }
 
-.runtime-tab > span:not(.runtime-tab-count) {
-  min-width: 0;
-  display: block;
-  grid-column: 2;
-  grid-row: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.runtime-tab-label {
+  flex: 0 0 auto;
+  min-width: max-content;
+  overflow: visible;
+  text-overflow: clip;
   white-space: nowrap;
   line-height: 1.2;
-}
-
-.runtime-tab:has(.runtime-tab-count) > span:not(.runtime-tab-count) {
-  padding-right: 12px;
 }
 
 /* Counts are supplementary corner badges, never a third layout column. This
@@ -211,7 +212,7 @@ html[data-loom-theme="light"] .runtime-tab.active {
   box-shadow: none;
 }
 
-html[data-loom-theme="light"] .runtime-tab.active > svg {
+html[data-loom-theme="light"] .runtime-tab.active .runtime-tab-content > svg {
   color: #6253ca;
 }
 
@@ -240,10 +241,12 @@ html[data-loom-theme="light"] .runtime-tab.active .runtime-tab-count {
 
   .runtime-tab {
     height: 35px;
-    grid-template-columns: 14px minmax(0, 1fr);
-    column-gap: 5px;
-    padding: 0 7px;
+    padding: 0 5px;
     font-size: 10px;
+  }
+
+  .runtime-tab-content {
+    gap: 5px;
   }
 
   .runtime-tab-count {
@@ -255,41 +258,38 @@ html[data-loom-theme="light"] .runtime-tab.active .runtime-tab-count {
     font-size: 7px;
   }
 
-  .runtime-tab:has(.runtime-tab-count) > span:not(.runtime-tab-count) {
-    padding-right: 10px;
-  }
-
   .runtime-tab-glider {
     height: 35px;
   }
 
-  .runtime-tab > svg {
+  .runtime-tab-content > svg {
     width: 14px;
     height: 14px;
     min-width: 14px;
+    flex-basis: 14px;
   }
 }
 
 @media (max-width: 900px) {
   .runtime-tab {
-    column-gap: 4px;
-    padding-inline: 6px;
+    padding-inline: 4px;
+    font-size: 9.5px;
+  }
+
+  .runtime-tab-content {
+    gap: 4px;
   }
 
   .runtime-tab-count {
     right: 2px;
     top: 2px;
   }
-
-  .runtime-tab:has(.runtime-tab-count) > span:not(.runtime-tab-count) {
-    padding-right: 9px;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .runtime-tab-glider,
   .runtime-tab,
-  .runtime-tab > svg,
+  .runtime-tab-content > svg,
   .runtime-tab-count {
     transition: none !important;
   }
@@ -297,7 +297,7 @@ html[data-loom-theme="light"] .runtime-tab.active .runtime-tab-count {
 
 html[data-loom-reduced-motion="true"] .runtime-tab-glider,
 html[data-loom-reduced-motion="true"] .runtime-tab,
-html[data-loom-reduced-motion="true"] .runtime-tab > svg,
+html[data-loom-reduced-motion="true"] .runtime-tab-content > svg,
 html[data-loom-reduced-motion="true"] .runtime-tab-count {
   transition: none !important;
 }
