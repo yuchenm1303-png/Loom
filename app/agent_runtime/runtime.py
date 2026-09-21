@@ -21,6 +21,7 @@ from .contracts import (
     AgentStatus,
     PendingToolApproval,
     PermissionMode,
+    ToolEffect,
 )
 from .diff_tracker import DiffTrackerRegistry
 from .model_execution import ModelExecutor
@@ -496,6 +497,15 @@ class AgentRuntime:
         extra: dict[str, object] = {}
         if captured and request_state.context_limits is not None:
             extra["context_limits"] = request_state.context_limits.as_dict()
+        from .execution_guidance import model_execution_guidance
+        guidance, guidance_metadata = model_execution_guidance(
+            self.store.events(session.session_id),
+            turn_id=session.current_turn_id,
+            tool_calls=session.tool_calls,
+        )
+        if guidance is not None:
+            messages.append(guidance)
+            extra.update(guidance_metadata)
         return [*messages, *session.messages], extra
 
     def steer(self, session_id: str, text: str, *, turn_id: str) -> None:
@@ -686,10 +696,28 @@ class AgentRuntime:
             return False
         call = prepared.call
         tool = prepared.tool
+        from .execution_guidance import recent_read_only_repeat_count, tool_call_fingerprint
+        call_fingerprint = tool_call_fingerprint(call)
+        repeat_count = (
+            recent_read_only_repeat_count(
+                self.store.events(session.session_id),
+                turn_id=session.current_turn_id,
+                fingerprint=call_fingerprint,
+            )
+            if tool.effect is ToolEffect.READ_ONLY
+            else 0
+        )
         self._record(
             session,
             AgentEventKind.TOOL_STARTED,
-            data={"call_id": call.call_id, "tool": call.name, "step_id": step.step_id},
+            data={
+                "call_id": call.call_id,
+                "tool": call.name,
+                "step_id": step.step_id,
+                "effect": tool.effect.value,
+                "call_fingerprint": call_fingerprint,
+                "repeat_count": repeat_count,
+            },
         )
         tracker = self.diff_trackers.for_turn(session.session_id, session.current_turn_id)
         diff_revision_before = tracker.revision

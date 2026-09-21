@@ -323,6 +323,17 @@ class CodeModeRuntime(SkillRuntime):
                 },
             }
 
+        from .execution_guidance import recent_read_only_repeat_count, tool_call_fingerprint
+        call_fingerprint = tool_call_fingerprint(nested_call)
+        repeat_count = (
+            recent_read_only_repeat_count(
+                self.store.events(session.session_id),
+                turn_id=session.current_turn_id,
+                fingerprint=call_fingerprint,
+            )
+            if prepared.tool.effect is ToolEffect.READ_ONLY
+            else 0
+        )
         self._record(
             session,
             AgentEventKind.TOOL_STARTED,
@@ -332,6 +343,9 @@ class CodeModeRuntime(SkillRuntime):
                 "step_id": step.step_id,
                 "nested": True,
                 "parent_call_id": parent_call_id,
+                "effect": prepared.tool.effect.value,
+                "call_fingerprint": call_fingerprint,
+                "repeat_count": repeat_count,
             },
         )
         tracker = self.diff_trackers.for_turn(session.session_id, session.current_turn_id)
