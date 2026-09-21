@@ -130,6 +130,30 @@ class ToolContext:
             self.emit_event(AgentEventKind(kind), dict(data))
 
 
+def _approx_model_tokens(value: str) -> int:
+    """Cheap tokenizer-independent bound used for model-visible tool payloads."""
+
+    return max(1, (len(str(value or "").encode("utf-8")) + 2) // 3)
+
+
+def _truncate_middle_for_model(value: str, max_tokens: int) -> str:
+    """Retain both the beginning and the outcome-bearing tail of a tool result."""
+
+    text = str(value or "")
+    budget = max(1, int(max_tokens))
+    if _approx_model_tokens(text) <= budget:
+        return text
+
+    marker = "\n\n[... middle of tool output omitted from model context ...]\n\n"
+    byte_budget = max(24, budget * 3 - len(marker.encode("utf-8")))
+    raw = text.encode("utf-8")
+    head_budget = byte_budget * 3 // 5
+    tail_budget = byte_budget - head_budget
+    head = raw[:head_budget].decode("utf-8", errors="ignore")
+    tail = raw[-tail_budget:].decode("utf-8", errors="ignore") if tail_budget else ""
+    return head + marker + tail
+
+
 @dataclass(frozen=True, slots=True)
 class ToolResult:
     ok: bool
@@ -146,23 +170,77 @@ class ToolResult:
             raise TypeError("tool result data must be JSON serializable") from exc
         object.__setattr__(self, "content", content)
 
-    def model_payload(self, *, max_chars: int) -> str:
-        limit = max(1, int(max_chars))
+    def model_payload(
+        self,
+        *,
+        max_tokens: int | None = None,
+        max_chars: int | None = None,
+    ) -> str:
+        """Return the bounded copy stored in active model history.
+
+        The durable TOOL_COMPLETED/TOOL_FAILED event stores the original content
+        and data separately and remains authoritative. Model history can therefore
+        keep a compact, explicitly recoverable projection from the moment the
+        result is recorded, matching Codex's history-boundary truncation model.
+
+        max_chars remains as a compatibility fallback for callers outside the
+        agent runtime. New runtime code should pass max_tokens.
+        """
+
         payload: dict[str, Any] = {
             "ok": bool(self.ok),
             "content": self.content,
             "data": self.data,
         }
         serialized = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
-        if len(serialized) <= limit:
+
+        if max_tokens is not None:
+            token_limit = max(128, int(max_tokens))
+            original_tokens = _approx_model_tokens(serialized)
+            if original_tokens <= token_limit:
+                return serialized
+
+            # Reserve room for the JSON envelope and recovery metadata, then keep
+            # a head+tail preview. Command/test failures usually live at the tail.
+            preview_budget = max(96, token_limit - 180)
+            preview = _truncate_middle_for_model(self.content, preview_budget)
+            projected = {
+                "ok": bool(self.ok),
+                "content": preview,
+                "data": {
+                    "truncated": True,
+                    "truncation": "head_tail",
+                    "original_approx_tokens": original_tokens,
+                    "model_context_token_limit": token_limit,
+                    "exact_result_remains_in_durable_transcript": True,
+                },
+            }
+            bounded = json.dumps(projected, ensure_ascii=False, separators=(",", ":"))
+            if _approx_model_tokens(bounded) > token_limit:
+                tighter_budget = max(
+                    32,
+                    preview_budget - (_approx_model_tokens(bounded) - token_limit) - 16,
+                )
+                projected["content"] = _truncate_middle_for_model(self.content, tighter_budget)
+                bounded = json.dumps(projected, ensure_ascii=False, separators=(",", ":"))
+            return bounded
+
+        if max_chars is None:
             return serialized
-        reserve = 180
-        truncated = self.content[: max(0, limit - reserve)]
+        char_limit = max(1, int(max_chars))
+        if len(serialized) <= char_limit:
+            return serialized
+        reserve = 220
+        preview = self.content[: max(0, char_limit - reserve)]
         return json.dumps(
             {
                 "ok": bool(self.ok),
-                "content": truncated,
-                "data": {"truncated": True},
+                "content": preview,
+                "data": {
+                    "truncated": True,
+                    "truncation": "legacy_char_prefix",
+                    "exact_result_remains_in_durable_transcript": True,
+                },
             },
             ensure_ascii=False,
             separators=(",", ":"),

@@ -352,8 +352,12 @@ export function Inspector({ items, onClose }: InspectorProps) {
                 setExpandedId(null);
               }}
             >
-              <Icon size={14} strokeWidth={1.75} />
-              <span>{zh ? ({ activity: "活动", computer: "电脑", changes: "文件", terminal: "终端" }[id]) : label}</span>
+              <span className="runtime-tab-content">
+                <Icon size={14} strokeWidth={1.75} />
+                <span className="runtime-tab-label">
+                  {zh ? ({ activity: "活动", computer: "电脑", changes: "文件", terminal: "终端" }[id]) : label}
+                </span>
+              </span>
               {counts[id] > 0 ? (
                 <span
                   className="runtime-tab-count"

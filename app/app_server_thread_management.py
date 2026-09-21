@@ -16,6 +16,7 @@ from app.agent_runtime.context_limits import resolve_context_limits
 from app.agent_runtime.context_report import (
     context_report_from_request,
     empty_context_report,
+    post_compaction_context_report,
 )
 
 from .app_server import JsonRpcError, _message_text, _thread_record  # noqa: F401 (re-exported for override layers)
@@ -742,31 +743,38 @@ class ManagedStreamingLoomAppServerService(StreamingLoomAppServerService):
         last_compacted_at = ""
         latest_request: AgentEvent | None = None
         latest_checkpoint: AgentEvent | None = None
-        latest_request_index = -1
-        latest_checkpoint_index = -1
-        for index, event in enumerate(events):
+        for event in events:
             if event.kind is AgentEventKind.CONTEXT_CHECKPOINTED:
                 compactions += 1
                 last_compacted_at = event.created_at
+                # A checkpoint rewrites the active history. Any request sampled
+                # before it no longer measures the current context.
+                latest_request = None
                 latest_checkpoint = event
-                latest_checkpoint_index = index
             elif event.kind is AgentEventKind.MODEL_REQUESTED:
                 latest_request = event
-                latest_request_index = index
+                latest_checkpoint = None
 
-        checkpoint_context = (
-            latest_checkpoint.data.get("context_after_compaction")
-            if latest_checkpoint is not None and isinstance(latest_checkpoint.data, dict)
-            else None
-        )
-        checkpoint_is_newer = latest_checkpoint_index > latest_request_index
-        if checkpoint_is_newer and isinstance(checkpoint_context, dict):
-            report = context_report_from_request(
-                checkpoint_context,
-                compactions=compactions,
-                last_compacted_at=last_compacted_at,
-                measured_at=latest_checkpoint.created_at,
-            )
+        if latest_request is None and latest_checkpoint is not None:
+            data = latest_checkpoint.data if isinstance(latest_checkpoint.data, dict) else {}
+            checkpoint_context = data.get("context_after_compaction")
+            if isinstance(checkpoint_context, dict):
+                report = context_report_from_request(
+                    checkpoint_context,
+                    compactions=compactions,
+                    last_compacted_at=last_compacted_at,
+                    measured_at=latest_checkpoint.created_at,
+                )
+                report["measurementPending"] = True
+            else:
+                report = post_compaction_context_report(
+                    resolve_context_limits(self.runtime, session).as_dict(),
+                    estimated_tokens=int(data.get("replacement_estimated_tokens") or 0),
+                    message_count=int(data.get("replacement_messages") or 0),
+                    compactions=compactions,
+                    last_compacted_at=last_compacted_at,
+                    measured_at=latest_checkpoint.created_at,
+                )
         elif latest_request is None:
             # No model step has run, so there is no measured request to report.
             # The budget is still knowable, and showing it beats showing nothing.
@@ -778,10 +786,6 @@ class ManagedStreamingLoomAppServerService(StreamingLoomAppServerService):
                 last_compacted_at=last_compacted_at,
                 measured_at=latest_request.created_at,
             )
-            if checkpoint_is_newer:
-                # Old checkpoints lack a post-compaction snapshot. Do not label
-                # their pre-compaction request as the current measured context.
-                report["accounting"] = "stale_pre_compaction"
         report["threadId"] = session_id
         return {"context": report}
 

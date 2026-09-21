@@ -73,6 +73,57 @@ def empty_context_report(limits: Mapping[str, Any]) -> dict[str, Any]:
             "compactions": 0,
             "lastCompactedAt": "",
             "measuredAt": "",
+            "measurementPending": False,
+        }
+    )
+    return record
+
+
+def post_compaction_context_report(
+    limits: Mapping[str, Any],
+    *,
+    estimated_tokens: int,
+    message_count: int,
+    compactions: int,
+    last_compacted_at: str,
+    measured_at: str,
+) -> dict[str, Any]:
+    """Report a checkpoint replacement before the next real model request.
+
+    A checkpoint rewrites the active history, so a MODEL_REQUESTED measurement
+    from before it is stale by definition. Until another request is sent, expose
+    a clearly-labelled estimate of the new canonical replacement instead of
+    combining a fresh compaction count with old usage.
+    """
+
+    record = limits_record(limits)
+    budget = record["inputBudgetTokens"]
+    used = max(0, _int(estimated_tokens))
+    free = max(0, budget - used)
+    record.update(
+        {
+            "usedTokens": used,
+            "usedPercent": _percent(used, budget),
+            "freeTokens": free,
+            "accounting": "post_compaction_estimate",
+            "messageCount": max(0, _int(message_count)),
+            "segments": [
+                {"key": "conversation", "tokens": used},
+                {"key": "toolSchemas", "tokens": 0},
+                {"key": "free", "tokens": free},
+            ],
+            "pressure": {
+                "schemaMode": "",
+                "toolsOmitted": [],
+                "toolOutputsReduced": 0,
+                "toolOutputsCollapsed": 0,
+                "userMessagesTruncated": 0,
+                "blinded": False,
+            },
+            "compactions": max(0, int(compactions)),
+            "lastCompactedAt": str(last_compacted_at or ""),
+            "measuredAt": str(measured_at or ""),
+            "measurementPending": True,
         }
     )
     return record
@@ -143,6 +194,7 @@ def context_report_from_request(
             "compactions": max(0, int(compactions)),
             "lastCompactedAt": str(last_compacted_at or ""),
             "measuredAt": str(measured_at or ""),
+            "measurementPending": False,
         }
     )
     return record
@@ -152,4 +204,5 @@ __all__ = [
     "context_report_from_request",
     "empty_context_report",
     "limits_record",
+    "post_compaction_context_report",
 ]

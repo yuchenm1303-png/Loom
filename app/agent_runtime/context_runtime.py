@@ -130,6 +130,7 @@ class ContextAgentRuntime(SandboxAgentRuntime):
         )
         if not replacement:
             raise ValueError("context checkpoint replacement must not be empty")
+        replacement_estimated_tokens = estimate_tokens(replacement)
         checkpoint = self.checkpoint_store.create(
             session_id=session.session_id,
             summary=text,
@@ -148,6 +149,11 @@ class ContextAgentRuntime(SandboxAgentRuntime):
                 "archived_messages": checkpoint.archived_message_count,
                 "retained_messages": checkpoint.retained_message_count,
                 "replacement_messages": len(replacement),
+                # This estimate covers the newly committed canonical replacement
+                # only. The next real model request supersedes it with a full
+                # request measurement including transient context/tool schemas.
+                "replacement_estimated_tokens": replacement_estimated_tokens,
+                "measurement_pending": True,
                 "world_state_digest": checkpoint.world_state_digest,
                 "history_repaired": repaired.changed,
                 "summary_source": summary_source,

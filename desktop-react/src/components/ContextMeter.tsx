@@ -52,10 +52,10 @@ export function ContextMeter({ report, compacting, progress, busy, onCompact }: 
   if (!report) return null;
 
   const budget = Math.max(1, report.inputBudgetTokens);
-  const stale = report.accounting === "stale_pre_compaction";
   const segments = report.segments.filter((segment) => segment.key !== "free");
   const level = tone(report);
   const percent = Math.round(report.usedPercent);
+  const measurementPending = Boolean(report.measurementPending);
 
   const segmentLabel = (key: string): string => {
     if (key === "conversation") return zh ? "对话与指令" : "Conversation";
@@ -63,11 +63,13 @@ export function ContextMeter({ report, compacting, progress, busy, onCompact }: 
     return zh ? "空闲" : "Free";
   };
 
-  const summary = stale
-    ? (zh ? "压缩后上下文预算待测量" : "Context budget pending measurement after compaction")
+  const summary = measurementPending
+    ? zh
+      ? `压缩后估算 ~${percent}%（${formatTokens(report.usedTokens)} / ${formatTokens(budget)}），等待下一次模型请求实测`
+      : `Post-compaction estimate ~${percent}% (${formatTokens(report.usedTokens)} / ${formatTokens(budget)}); waiting for the next measured request`
     : zh
-    ? `上下文预算 ${percent}%（${formatTokens(report.usedTokens)} / ${formatTokens(budget)}）`
-    : `Context budget ${percent}% (${formatTokens(report.usedTokens)} / ${formatTokens(budget)})`;
+      ? `上下文预算 ${percent}%（${formatTokens(report.usedTokens)} / ${formatTokens(budget)}）`
+      : `Context budget ${percent}% (${formatTokens(report.usedTokens)} / ${formatTokens(budget)})`;
 
   const compactionStage = (() => {
     const stage = String(progress?.stage || "queued").toLowerCase();
@@ -86,7 +88,7 @@ export function ContextMeter({ report, compacting, progress, busy, onCompact }: 
     const stage = String(progress?.stage || "").toLowerCase();
     if (stage === "preparing") return zh ? "正在整理需要保留与归档的历史内容。" : "Preparing the history that will be retained and archived.";
     if (stage === "summarizing") return zh ? "正在生成交接摘要，完成后会自动刷新上下文预算。" : "Generating the handoff summary. The context budget will refresh when it finishes.";
-    if (stage === "completed") return zh ? "上下文压缩已完成，新的预算已经生效。" : "Context compaction is complete and the refreshed budget is active.";
+    if (stage === "completed") return zh ? "上下文压缩已完成；当前显示压缩后估算，下一次模型请求会自动校准。" : "Context compaction is complete. The meter shows a post-compaction estimate until the next model request calibrates it.";
     if (stage === "failed") return zh ? "本次压缩没有完成，可以稍后重试。" : "This compaction did not complete. You can try again later.";
     return zh ? "压缩任务已创建，正在等待开始。" : "The compaction task is queued and waiting to start.";
   })();
@@ -115,7 +117,7 @@ export function ContextMeter({ report, compacting, progress, busy, onCompact }: 
               />
             ))}
           </span>
-        ) : stale ? null : (
+        ) : (
           <span className="context-meter-track" aria-hidden="true">
             {segments.map((segment) => (
               <span
@@ -128,9 +130,9 @@ export function ContextMeter({ report, compacting, progress, busy, onCompact }: 
         )}
         <span className="context-meter-value">
           {compacting ? <Loader2 size={12} strokeWidth={2} className="context-meter-spin" /> : null}
-          {compacting ? compactionStage.label : stale ? (zh ? "待测量" : "Pending") : `${percent}%`}
+          {compacting ? compactionStage.label : `${measurementPending ? "~" : ""}${percent}%`}
         </span>
-        {!stale && report.pressure.blinded ? <span className="context-meter-alarm" aria-hidden="true" /> : null}
+        {report.pressure.blinded ? <span className="context-meter-alarm" aria-hidden="true" /> : null}
       </button>
 
       {open ? (
@@ -138,11 +140,11 @@ export function ContextMeter({ report, compacting, progress, busy, onCompact }: 
           <header className="context-meter-panel-head">
             <span>{zh ? "上下文预算" : "Context budget"}</span>
             <strong>
-              {stale ? (zh ? "压缩后待测量" : "Pending after compaction") : `${formatTokens(report.usedTokens)} / ${formatTokens(budget)}`}
+              {measurementPending ? "~" : ""}{formatTokens(report.usedTokens)} / {formatTokens(budget)}
             </strong>
           </header>
 
-          {!stale ? <ul className="context-meter-rows">
+          <ul className="context-meter-rows">
             {report.segments.map((segment) => (
               <li key={segment.key} className={`context-meter-row ${segment.key}`}>
                 <span className="context-meter-swatch" aria-hidden="true" />
@@ -157,7 +159,7 @@ export function ContextMeter({ report, compacting, progress, busy, onCompact }: 
                 </span>
               </li>
             ))}
-          </ul> : null}
+          </ul>
 
           <dl className="context-meter-facts">
             <div>
@@ -175,6 +177,14 @@ export function ContextMeter({ report, compacting, progress, busy, onCompact }: 
               <dd>{report.compactions}</dd>
             </div>
           </dl>
+
+          {measurementPending ? (
+            <p className="context-meter-note">
+              {zh
+                ? "压缩前的用量已经作废。这里是新历史的估算值；下一次真实模型请求会替换为实测值。"
+                : "The pre-compaction measurement is invalidated. This is an estimate of the new history and will be replaced by the next real model request."}
+            </p>
+          ) : null}
 
           {progress ? (
             <section
@@ -224,7 +234,7 @@ export function ContextMeter({ report, compacting, progress, busy, onCompact }: 
             </section>
           ) : null}
 
-          {!stale && report.pressure.blinded ? (
+          {report.pressure.blinded ? (
             <p className="context-meter-alert">
               {zh
                 ? `已折叠 ${report.pressure.toolOutputsCollapsed} 条工具结果 —— 模型读不到这些命令的输出了。压缩或换更大窗口的模型可以恢复。`
@@ -232,7 +242,7 @@ export function ContextMeter({ report, compacting, progress, busy, onCompact }: 
             </p>
           ) : null}
 
-          {!stale && report.pressure.toolsOmitted.length ? (
+          {report.pressure.toolsOmitted.length ? (
             <p className="context-meter-note">
               {zh
                 ? `为腾出预算，${report.pressure.toolsOmitted.length} 个工具已转为按需搜索（仍可用）。`

@@ -75,7 +75,9 @@ class ApprovalKind(str, Enum):
 class AgentLimits:
     max_model_steps: int = 0
     max_tool_calls: int = 0
-    max_messages: int = 160
+    # 0 means unlimited. Context rollover is token-driven by default, matching
+    # Codex; a host may still set a positive message cap as an explicit guard.
+    max_messages: int = 0
     max_tool_result_chars: int = 20_000
     # ``None`` means the host did not declare this model's limits, which is the
     # normal case for an arbitrary OpenAI-compatible endpoint. A default number
@@ -99,11 +101,14 @@ class AgentLimits:
             if value < 0:
                 raise ValueError(f"{name} must be non-negative; 0 means unlimited")
             object.__setattr__(self, name, value)
-        for name in ("max_messages", "max_tool_result_chars"):
-            value = int(getattr(self, name))
-            if value < 1:
-                raise ValueError(f"{name} must be positive")
-            object.__setattr__(self, name, value)
+        max_messages = int(self.max_messages)
+        if max_messages < 0:
+            raise ValueError("max_messages must be non-negative; 0 means unlimited")
+        object.__setattr__(self, "max_messages", max_messages)
+        max_tool_result_chars = int(self.max_tool_result_chars)
+        if max_tool_result_chars < 1:
+            raise ValueError("max_tool_result_chars must be positive")
+        object.__setattr__(self, "max_tool_result_chars", max_tool_result_chars)
         for name in ("context_window_tokens", "output_reserve_tokens"):
             raw = getattr(self, name)
             if raw is None:

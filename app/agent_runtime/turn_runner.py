@@ -110,8 +110,14 @@ class TurnRunner:
                     # tool calls from this response share one immutable world.
                     step = rt._capture_step_context(session, next_model_step=True)
                     messages, extra = rt._prepare_model_request(session, step, token)
-                    if _history_message_count(messages) > rt.limits.max_messages:
-                        return rt._limit(session, "context message limit reached; no safe compaction boundary")
+                    if (
+                        rt.limits.max_messages > 0
+                        and _history_message_count(messages) > rt.limits.max_messages
+                    ):
+                        return rt._limit(
+                            session,
+                            "context message limit reached; no safe compaction boundary",
+                        )
                     reasoning = step.reasoning
                     profile_id = step.world_state.profile_id
                     tool_names = _exposed_tool_names(step)

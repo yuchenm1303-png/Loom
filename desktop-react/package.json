@@ -94,7 +94,7 @@
         }
       ],
       "requestedExecutionLevel": "asInvoker",
-      "icon": "build/icon.svg"
+      "icon": "build/icon.png"
     },
     "nsis": {
       "oneClick": false,

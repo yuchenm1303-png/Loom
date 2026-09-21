@@ -128,6 +128,43 @@ def test_an_unmeasured_thread_reports_its_budget_rather_than_nothing() -> None:
     assert report["usedTokens"] == 0
     assert report["freeTokens"] == 50_790
     assert report["pressure"]["blinded"] is False
+    assert report["measurementPending"] is False
+
+
+def test_checkpoint_invalidates_the_pre_compaction_meter_snapshot(tmp_path: Path) -> None:
+    service, runtime, workspace = _build_service(tmp_path, [])
+    try:
+        thread_id = service.thread_start(
+            {"workspace": str(workspace), "permissionMode": "workspace"}
+        )["thread"]["id"]
+        session = runtime.store.load(thread_id)
+        runtime._record(
+            session,
+            AgentEventKind.MODEL_REQUESTED,
+            data=dict(_RECORDED_REQUEST),
+        )
+        runtime._record(
+            session,
+            AgentEventKind.CONTEXT_CHECKPOINTED,
+            data={
+                "checkpoint_id": "ctx-new",
+                "archived_messages": 40,
+                "retained_messages": 2,
+                "replacement_messages": 3,
+                "replacement_estimated_tokens": 4_200,
+            },
+        )
+
+        report = service.thread_context({"threadId": thread_id})["context"]
+        assert report["measurementPending"] is True
+        assert report["accounting"] == "post_compaction_estimate"
+        assert report["usedTokens"] == 4_200
+        assert report["usedTokens"] != _RECORDED_REQUEST["calibrated_input_tokens_after"]
+        assert report["pressure"]["toolOutputsCollapsed"] == 0
+        assert report["pressure"]["blinded"] is False
+        assert report["compactions"] == 1
+    finally:
+        runtime.close()
 
 
 def test_thread_context_reports_the_last_real_request(tmp_path: Path) -> None:
@@ -179,27 +216,9 @@ def test_checkpoint_replaces_stale_request_usage_with_compacted_estimate(tmp_pat
 
         assert report["usedTokens"] == 12_000
         assert report["accounting"] == "post_compaction_estimate"
+        assert report["measurementPending"] is True
         assert report["pressure"]["blinded"] is False
         assert report["compactions"] == 1
-    finally:
-        runtime.close()
-
-
-def test_legacy_checkpoint_marks_pre_compaction_usage_stale(tmp_path: Path) -> None:
-    service, runtime, workspace = _build_service(tmp_path, [])
-    try:
-        thread_id = service.thread_start({"workspace": str(workspace)})["thread"]["id"]
-        session = runtime.store.load(thread_id)
-        runtime._record(session, AgentEventKind.MODEL_REQUESTED, data=dict(_RECORDED_REQUEST))
-        runtime._record(
-            session,
-            AgentEventKind.CONTEXT_CHECKPOINTED,
-            data={"checkpoint_id": "ctx-legacy"},
-        )
-
-        report = service.thread_context({"threadId": thread_id})["context"]
-
-        assert report["accounting"] == "stale_pre_compaction"
     finally:
         runtime.close()
 
