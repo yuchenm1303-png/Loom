@@ -43,6 +43,49 @@ def test_durable_tool_result_can_list_and_recover_without_rerunning(tmp_path):
     assert exact.data["result_data"] == {"exit_code": 0}
 
 
+def test_durable_tool_result_supports_exact_chunk_recovery(tmp_path):
+    store = FileAgentSessionStore(tmp_path)
+    session_id = "33333333-3333-3333-3333-333333333333"
+    content = "A" * 1800 + "MIDDLE" + "Z" * 1800
+    store.append_event(
+        AgentEvent(
+            event_id="event-chunk",
+            session_id=session_id,
+            turn_id="turn-1",
+            kind=AgentEventKind.TOOL_COMPLETED,
+            created_at=utc_now(),
+            data={
+                "call_id": "call-long",
+                "tool": "exec",
+                "ok": True,
+                "content": content,
+                "data": {"exit_code": 0},
+            },
+        )
+    )
+    tool = durable_tool_result_tool(store)
+
+    first = tool.handler(
+        _context(tmp_path, session_id),
+        {"call_id": "call-long", "offset": 0, "max_chars": 1000},
+    )
+    second = tool.handler(
+        _context(tmp_path, session_id),
+        {
+            "call_id": "call-long",
+            "offset": first.data["next_offset"],
+            "max_chars": 1000,
+        },
+    )
+
+    assert first.content == content[:1000]
+    assert first.data["has_more"] is True
+    assert first.data["next_offset"] == 1000
+    assert second.content == content[1000:2000]
+    assert second.data["content_offset"] == 1000
+    assert second.data["total_chars"] == len(content)
+
+
 def test_run_scratch_directory_is_outside_workspace_and_scoped_to_turn(tmp_path):
     store = FileAgentSessionStore(tmp_path)
     session_id = "22222222-2222-2222-2222-222222222222"
