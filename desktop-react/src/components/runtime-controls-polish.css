@@ -304,3 +304,160 @@ html[data-loom-reduced-motion="true"] .runtime-review-button,
 html[data-loom-reduced-motion="true"] .computer-log-export-button {
   transition-duration: .001ms !important;
 }
+
+
+/* Empty-state mark contrast + per-view identity --------------------------- */
+/* InspectorMark.css was designed against the dark inspector. In light mode
+   one orbit used a near-white stroke, so the entire mark washed out. Reuse the
+   per-view tone variables here so all four empty states stay legible and feel
+   intentionally distinct without becoming heavy. */
+.runtime-empty-visual {
+  overflow: visible;
+}
+
+.runtime-empty-visual::before {
+  width: 60px;
+  height: 60px;
+  background:
+    radial-gradient(
+      circle,
+      rgba(var(--empty-tone-rgb), .15) 0%,
+      rgba(var(--empty-tone-rgb), .055) 46%,
+      transparent 74%
+    );
+  opacity: .9;
+}
+
+.runtime-empty-visual::after {
+  border-color: rgba(var(--empty-tone-rgb), .22);
+}
+
+.runtime-empty .runtime-orbit-one {
+  border-color: rgba(var(--empty-tone-rgb), .18);
+}
+
+.runtime-empty .runtime-orbit-two {
+  border-color: rgba(var(--empty-tone-rgb), .24);
+}
+
+.runtime-empty .runtime-orbit-one::before,
+.runtime-empty .runtime-orbit-two::before,
+.runtime-empty .runtime-orbit-dot {
+  background: var(--empty-tone);
+  box-shadow: 0 0 9px rgba(var(--empty-tone-rgb), .28);
+}
+
+.runtime-empty-icon {
+  width: 42px;
+  height: 42px;
+  border: 1px solid rgba(var(--empty-tone-rgb), .14);
+  border-radius: 14px;
+  background:
+    linear-gradient(
+      145deg,
+      rgba(var(--empty-tone-rgb), .10),
+      rgba(var(--empty-tone-rgb), .035)
+    );
+  color: var(--empty-tone);
+  box-shadow:
+    0 7px 18px rgba(var(--empty-tone-rgb), .07),
+    inset 0 1px rgba(255,255,255,.07);
+}
+
+.runtime-empty-glyph {
+  width: 29px;
+  height: 29px;
+  stroke-width: 1.95;
+  filter: drop-shadow(0 1px 2px rgba(var(--empty-tone-rgb), .10));
+}
+
+.runtime-empty:hover .runtime-empty-icon {
+  color: var(--empty-tone);
+  border-color: rgba(var(--empty-tone-rgb), .22);
+  background:
+    linear-gradient(
+      145deg,
+      rgba(var(--empty-tone-rgb), .13),
+      rgba(var(--empty-tone-rgb), .045)
+    );
+}
+
+.runtime-empty:hover .runtime-orbit-one {
+  border-color: rgba(var(--empty-tone-rgb), .24);
+}
+
+.runtime-empty:hover .runtime-orbit-two,
+.runtime-empty:hover .runtime-empty-visual::after {
+  border-color: rgba(var(--empty-tone-rgb), .30);
+}
+
+html[data-loom-theme="light"] .runtime-empty-visual::before {
+  background:
+    radial-gradient(
+      circle,
+      rgba(var(--empty-tone-rgb), .115) 0%,
+      rgba(var(--empty-tone-rgb), .042) 48%,
+      transparent 74%
+    );
+  opacity: 1;
+}
+
+html[data-loom-theme="light"] .runtime-empty-visual::after {
+  border-color: rgba(var(--empty-tone-rgb), .20);
+}
+
+html[data-loom-theme="light"] .runtime-empty .runtime-orbit-one {
+  border-color: rgba(var(--empty-tone-rgb), .17);
+}
+
+html[data-loom-theme="light"] .runtime-empty .runtime-orbit-two {
+  border-color: rgba(var(--empty-tone-rgb), .22);
+}
+
+html[data-loom-theme="light"] .runtime-empty .runtime-orbit-one::before,
+html[data-loom-theme="light"] .runtime-empty .runtime-orbit-two::before,
+html[data-loom-theme="light"] .runtime-empty .runtime-orbit-dot {
+  background: color-mix(in srgb, var(--empty-tone) 88%, #ffffff 12%);
+  box-shadow:
+    0 0 0 2px rgba(var(--empty-tone-rgb), .055),
+    0 0 8px rgba(var(--empty-tone-rgb), .18);
+}
+
+html[data-loom-theme="light"] .runtime-empty-icon {
+  border-color: rgba(var(--empty-tone-rgb), .16);
+  background:
+    linear-gradient(
+      145deg,
+      #ffffff 0%,
+      rgba(var(--empty-tone-rgb), .065) 100%
+    );
+  color: color-mix(in srgb, var(--empty-tone) 88%, #2f3540 12%);
+  box-shadow:
+    0 7px 18px rgba(var(--empty-tone-rgb), .075),
+    0 1px 3px rgba(31,35,42,.035),
+    inset 0 1px rgba(255,255,255,.98);
+}
+
+html[data-loom-theme="light"] .runtime-empty-glyph {
+  filter: drop-shadow(0 1px 1px rgba(var(--empty-tone-rgb), .09));
+}
+
+html[data-loom-theme="light"] .runtime-empty:hover .runtime-empty-icon {
+  color: color-mix(in srgb, var(--empty-tone) 94%, #252b34 6%);
+  border-color: rgba(var(--empty-tone-rgb), .24);
+  background:
+    linear-gradient(
+      145deg,
+      #ffffff 0%,
+      rgba(var(--empty-tone-rgb), .085) 100%
+    );
+}
+
+html[data-loom-theme="light"] .runtime-empty:hover .runtime-orbit-one {
+  border-color: rgba(var(--empty-tone-rgb), .23);
+}
+
+html[data-loom-theme="light"] .runtime-empty:hover .runtime-orbit-two,
+html[data-loom-theme="light"] .runtime-empty:hover .runtime-empty-visual::after {
+  border-color: rgba(var(--empty-tone-rgb), .28);
+}
