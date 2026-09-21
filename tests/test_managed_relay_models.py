@@ -32,7 +32,10 @@ def _store_with_secrets(
 
 def test_relay_provisioning_file_is_stored_and_deleted(tmp_path, monkeypatch):
     provision = tmp_path / "relay-credential.json"
-    provision.write_text(json.dumps({"apiKey": "relay-secret"}), encoding="utf-8")
+    provision.write_text(
+        json.dumps({"apiKey": "relay-secret", "baseUrl": "https://muxway.dev/v1"}),
+        encoding="utf-8",
+    )
     saved: dict[str, str] = {}
 
     monkeypatch.setattr(bridge, "_credential_get", lambda alias: saved.get(alias))
@@ -42,6 +45,8 @@ def test_relay_provisioning_file_is_stored_and_deleted(tmp_path, monkeypatch):
 
     assert bridge._managed_relay_key(store, {bridge._PROVISIONING_FILE_ENV: str(provision)}) == "relay-secret"
     assert saved[bridge._MANAGED_RELAY_CREDENTIAL_ALIAS] == "relay-secret"
+    assert saved[bridge._MANAGED_RELAY_BASE_URL_ALIAS] == "https://muxway.dev/v1"
+    assert bridge._managed_relay_base_url({}) == "https://muxway.dev/v1"
     assert not provision.exists()
 
 
@@ -323,3 +328,39 @@ def test_bridge_delete_saved_model_resets_selection(tmp_path, monkeypatch):
     assert selection_store.get() == bridge.PRIMARY_SELECTION
     assert snapshot["activeModelId"] == "minimax-primary"
     assert deleted == [entry.credential_alias]
+
+
+def test_managed_relay_defaults_to_muxway(monkeypatch):
+    monkeypatch.setattr(bridge, "_credential_get", lambda _alias: None)
+    assert bridge.MANAGED_RELAY_BASE_URL == "https://muxway.dev/v1"
+    assert bridge._managed_relay_base_url({}) == "https://muxway.dev/v1"
+
+
+def test_legacy_smirel_endpoint_migrates_to_muxway(monkeypatch):
+    saved = {bridge._MANAGED_RELAY_BASE_URL_ALIAS: bridge.LEGACY_MANAGED_RELAY_BASE_URL}
+    monkeypatch.setattr(bridge, "_credential_get", lambda alias: saved.get(alias))
+    monkeypatch.setattr(bridge, "_credential_set", lambda alias, value: saved.__setitem__(alias, value))
+
+    assert bridge._managed_relay_base_url({}) == "https://muxway.dev/v1"
+    assert saved[bridge._MANAGED_RELAY_BASE_URL_ALIAS] == "https://muxway.dev/v1"
+
+
+def test_managed_codex_display_names_are_grouped_as_openai():
+    for model in ("Codex Auto Review", "codex-auto-review", "codex_auto_review"):
+        profile = bridge._safe_managed(model, configured=True)
+        assert profile["groupId"] == "managed-relay:openai"
+        assert profile["groupName"] == "OpenAI"
+
+
+def test_failed_managed_catalog_does_not_invent_cqu_model(tmp_path, monkeypatch):
+    store = _store(tmp_path)
+    monkeypatch.setattr(bridge, "_fetch_opencode_go_model_ids", lambda: [])
+    monkeypatch.setattr(bridge, "_opencode_go_key", lambda *_args, **_kwargs: "")
+    monkeypatch.setattr(bridge, "_deepseek_key", lambda *_args, **_kwargs: "")
+    monkeypatch.setattr(bridge, "_managed_relay_key", lambda *_args, **_kwargs: "relay-secret")
+    monkeypatch.setattr(bridge, "_fetch_managed_model_ids", lambda *_args, **_kwargs: [])
+
+    profiles = bridge._managed_profiles(store)
+
+    assert all(profile.get("model") != bridge.CQU_DEFAULT_MODEL for profile in profiles)
+    assert all(not str(profile.get("groupId") or "").startswith("managed-relay") for profile in profiles)
