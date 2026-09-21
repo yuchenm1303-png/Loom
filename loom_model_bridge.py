@@ -53,7 +53,6 @@ OPENCODE_GO_FALLBACK_MODEL_IDS = (
     "omen-alpha",
 )
 CQU_DEFAULT_MODEL = "cqu-default"
-MANAGED_RELAY_SETUP_MODEL = "__managed_relay_setup__"
 # OpenCode Go models that accepted an image when asked, recorded 2026-09-20 by
 # `python scripts/probe_opencode_vision.py`.  The listing carries no modality
 # field, so this is the gateway's own answer to one image request per model
@@ -792,9 +791,7 @@ def _safe_deepseek(
 
 def _managed_group(model: str) -> tuple[str, str, int]:
     folded = str(model or "").strip().casefold()
-    if folded != MANAGED_RELAY_SETUP_MODEL.casefold() and folded.startswith(
-        ("gpt-", "chatgpt-", "codex-", "o1", "o3", "o4")
-    ):
+    if folded.startswith(("gpt-", "chatgpt-", "codex-", "o1", "o3", "o4")):
         return "managed-relay:openai", "OpenAI", 40
     return "managed-relay", "Smirel Relay", 45
 
@@ -812,19 +809,17 @@ def _safe_managed(
         return _safe_minimax(model, environ)
 
     group_id, group_name, group_order = _managed_group(model)
-    setup_only = model.casefold() == MANAGED_RELAY_SETUP_MODEL.casefold()
     profile: dict[str, Any] = {
         "selection": _managed_selection_for_model(model),
         "id": _managed_profile_id(model),
         "kind": "builtin",
-        "name": "Connect Smirel Relay" if setup_only else _managed_display_name(model),
+        "name": _managed_display_name(model),
         "groupId": group_id,
         "groupName": group_name,
         "groupOrder": group_order,
         "adapter": "openai-compatible",
         "baseUrl": _managed_relay_base_url(environ),
         "model": model,
-        "setupOnly": setup_only,
     }
     if configured is not None:
         profile["configured"] = bool(configured)
@@ -990,13 +985,6 @@ def _managed_profiles(store: ModelConfigStore, environ: Mapping[str, str] | None
                     _safe_managed(model_id, environ, configured=True)
                 )
             )
-    else:
-        # Keep the provider discoverable before a credential exists so the
-        # desktop can offer a secure "Connect" surface. The setup-only profile
-        # is never enabled as an inference target.
-        profiles.append(
-            _safe_managed(MANAGED_RELAY_SETUP_MODEL, environ, configured=False)
-        )
     return profiles
 
 
