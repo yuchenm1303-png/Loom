@@ -191,20 +191,18 @@ export function ThreadHeader({
           />
         ) : null}
 
-        {agentCount > 0 || agentsOpen ? (
-          <button
-            type="button"
-            className={`thread-review-button thread-agent-button ${agentsOpen ? "active" : ""}`}
-            onClick={onToggleAgents}
-            title={agentsTitle}
-            aria-label={agentsTitle}
-            aria-pressed={agentsOpen}
-          >
-            <Bot size={14.5} strokeWidth={1.8} />
-            <span className="thread-agent-label">{agentsLabel}</span>
-            {agentCount > 0 ? <span className="thread-agent-count">{agentCount}</span> : null}
-          </button>
-        ) : null}
+        <button
+          type="button"
+          className={`thread-review-button thread-agent-button ${agentsOpen ? "active" : ""} ${agentCount > 0 ? "has-agents" : "is-empty"}`}
+          onClick={onToggleAgents}
+          title={agentsTitle}
+          aria-label={agentsTitle}
+          aria-pressed={agentsOpen}
+        >
+          <Bot size={14.5} strokeWidth={1.8} />
+          <span className="thread-agent-label">{agentsLabel}</span>
+          {agentCount > 0 ? <span className="thread-agent-count">{agentCount}</span> : null}
+        </button>
 
         <button
           type="button"
