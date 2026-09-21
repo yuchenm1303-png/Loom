@@ -3793,3 +3793,373 @@ html[data-loom-theme="light"] .compact-thread-row:not(.renaming) .thread-quick-a
   top: 50%;
   transform: translateY(-50%);
 }
+
+
+/* Light theme: account dialog + runtime inspector completion ------------- */
+/* Account dialog ----------------------------------------------------------- */
+html[data-loom-theme="light"] .loom-account-backdrop {
+  background: rgba(35,39,46,.30);
+  backdrop-filter: blur(10px) saturate(104%);
+  -webkit-backdrop-filter: blur(10px) saturate(104%);
+}
+
+html[data-loom-theme="light"] .loom-account-dialog {
+  border-color: rgba(28,31,37,.10);
+  background:
+    radial-gradient(520px 180px at 0% 0%, rgba(105,90,216,.045), transparent 62%),
+    #ffffff;
+  color: #30363e;
+  box-shadow:
+    0 30px 80px rgba(27,31,40,.20),
+    0 8px 26px rgba(27,31,40,.08),
+    inset 0 1px rgba(255,255,255,.98);
+}
+
+html[data-loom-theme="light"] .loom-account-close {
+  color: #68717c;
+}
+
+html[data-loom-theme="light"] .loom-account-close:hover {
+  background: rgba(28,31,37,.045);
+  color: #30363e;
+}
+
+html[data-loom-theme="light"] .loom-account-mark {
+  border-color: rgba(105,90,216,.15);
+  background: rgba(105,90,216,.075);
+  color: #6253ca;
+  box-shadow: inset 0 1px rgba(255,255,255,.90);
+}
+
+html[data-loom-theme="light"] .loom-account-header h2 {
+  color: #23282f;
+}
+
+html[data-loom-theme="light"] .loom-account-header p {
+  color: #6c7580;
+}
+
+html[data-loom-theme="light"] .loom-account-tabs {
+  border: 1px solid #e0e3e7;
+  background: #f1f3f5;
+  box-shadow: inset 0 1px rgba(255,255,255,.82);
+}
+
+html[data-loom-theme="light"] .loom-account-tabs button {
+  color: #68717c;
+}
+
+html[data-loom-theme="light"] .loom-account-tabs button:hover {
+  color: #343a42;
+}
+
+html[data-loom-theme="light"] .loom-account-tabs button.active {
+  border: 1px solid rgba(105,90,216,.13);
+  background: #ffffff;
+  color: #5144ad;
+  box-shadow:
+    0 2px 6px rgba(27,31,40,.06),
+    inset 0 1px rgba(255,255,255,.98);
+}
+
+html[data-loom-theme="light"] .loom-account-form label {
+  color: #626b76;
+}
+
+html[data-loom-theme="light"] .loom-account-form input {
+  border-color: #d8dde3;
+  background: #f8f9fb;
+  color: #30363e;
+  box-shadow: inset 0 1px rgba(255,255,255,.92);
+}
+
+html[data-loom-theme="light"] .loom-account-form input::placeholder {
+  color: #8a929d;
+}
+
+html[data-loom-theme="light"] .loom-account-form input:hover {
+  border-color: #cbd1d8;
+  background: #ffffff;
+}
+
+html[data-loom-theme="light"] .loom-account-form input:focus {
+  border-color: rgba(105,90,216,.34);
+  background: #ffffff;
+  box-shadow:
+    0 0 0 3px rgba(105,90,216,.075),
+    inset 0 1px rgba(255,255,255,.98);
+}
+
+html[data-loom-theme="light"] .loom-account-primary-button {
+  border-color: rgba(105,90,216,.18);
+  background: #695ad8;
+  color: #ffffff;
+  box-shadow: 0 7px 18px rgba(105,90,216,.17);
+  transition:
+    background 140ms ease,
+    box-shadow 160ms ease,
+    transform 130ms ease;
+}
+
+html[data-loom-theme="light"] .loom-account-primary-button:hover:not(:disabled) {
+  background: #5f51c9;
+  box-shadow: 0 9px 22px rgba(105,90,216,.21);
+  transform: translateY(-1px);
+}
+
+html[data-loom-theme="light"] .loom-account-primary-button:active:not(:disabled) {
+  transform: scale(.985);
+}
+
+html[data-loom-theme="light"] .loom-account-primary-button:disabled {
+  border-color: #e0e3e7;
+  background: #edf0f3;
+  color: #9aa1aa;
+  box-shadow: none;
+  opacity: 1;
+}
+
+html[data-loom-theme="light"] .loom-account-footnote,
+html[data-loom-theme="light"] .loom-account-security-note {
+  color: #707985;
+}
+
+html[data-loom-theme="light"] .loom-account-footnote svg,
+html[data-loom-theme="light"] .loom-account-security-note svg {
+  color: #67717d;
+}
+
+html[data-loom-theme="light"] .loom-account-state,
+html[data-loom-theme="light"] .loom-account-unconfigured,
+html[data-loom-theme="light"] .loom-account-profile {
+  border-color: #d9dde3;
+  background: #f7f8fa;
+  color: #68717c;
+}
+
+html[data-loom-theme="light"] .loom-account-unconfigured strong,
+html[data-loom-theme="light"] .loom-account-profile strong {
+  color: #30363e;
+}
+
+html[data-loom-theme="light"] .loom-account-profile div span {
+  color: #737c87;
+}
+
+html[data-loom-theme="light"] .loom-account-avatar {
+  background: rgba(105,90,216,.08);
+  color: #6253ca;
+}
+
+html[data-loom-theme="light"] .loom-account-secondary-button {
+  border-color: #d9dde3;
+  background: #ffffff;
+  color: #59626d;
+}
+
+html[data-loom-theme="light"] .loom-account-secondary-button:hover:not(:disabled) {
+  border-color: rgba(105,90,216,.18);
+  background: rgba(105,90,216,.05);
+  color: #5144ad;
+}
+
+/* Runtime inspector -------------------------------------------------------- */
+html[data-loom-theme="light"] .inspector.runtime-inspector {
+  background:
+    radial-gradient(circle at 84% -4%, rgba(105,90,216,.035), transparent 28%),
+    linear-gradient(180deg, #fafbfc 0%, #f5f6f8 100%);
+}
+
+html[data-loom-theme="light"] .runtime-header {
+  border-bottom-color: #dde1e6;
+  background: rgba(255,255,255,.48);
+}
+
+html[data-loom-theme="light"] .runtime-title-row strong {
+  color: #30363e;
+}
+
+html[data-loom-theme="light"] .runtime-caption {
+  color: #737c87;
+}
+
+html[data-loom-theme="light"] .runtime-health {
+  border-color: #d9dde3;
+  background: #f6f7f9;
+  color: #68717c;
+}
+
+html[data-loom-theme="light"] .runtime-health.live {
+  border-color: rgba(105,90,216,.16);
+  background: rgba(105,90,216,.06);
+  color: #5d50b5;
+}
+
+html[data-loom-theme="light"] .runtime-health.warning {
+  border-color: rgba(177,76,90,.18);
+  background: rgba(177,76,90,.06);
+  color: #a34553;
+}
+
+html[data-loom-theme="light"] .runtime-close {
+  color: #6f7883;
+}
+
+html[data-loom-theme="light"] .runtime-close:hover {
+  color: #343a42;
+  border-color: #d9dde3;
+  background: #ffffff;
+}
+
+/* Tabs: remove the black selected slab. */
+html[data-loom-theme="light"] .runtime-tabs {
+  border-bottom-color: #dde1e6;
+  background: #f1f3f5;
+}
+
+html[data-loom-theme="light"] .runtime-tab-glider {
+  border-color: rgba(105,90,216,.14);
+  background:
+    linear-gradient(180deg, #ffffff, #fafaff);
+  box-shadow:
+    0 3px 9px rgba(27,31,40,.065),
+    inset 0 1px rgba(255,255,255,.98);
+}
+
+html[data-loom-theme="light"] .runtime-tab {
+  color: #737c87;
+}
+
+html[data-loom-theme="light"] .runtime-tab:hover {
+  color: #3f4650;
+}
+
+html[data-loom-theme="light"] .runtime-tab.active {
+  color: #4f44ad;
+}
+
+html[data-loom-theme="light"] .runtime-tab.active svg {
+  color: #6253ca;
+}
+
+html[data-loom-theme="light"] .runtime-tab-count {
+  background: #e8ebef;
+  color: #68717c;
+}
+
+html[data-loom-theme="light"] .runtime-tab.active .runtime-tab-count {
+  background: rgba(105,90,216,.09);
+  color: #5d50b7;
+}
+
+/* Stream chrome. */
+html[data-loom-theme="light"] .runtime-section-bar {
+  border-bottom-color: #e0e3e7;
+  color: #66707b;
+  background: rgba(255,255,255,.60);
+}
+
+html[data-loom-theme="light"] .runtime-section-bar span:last-child {
+  color: #59626d;
+}
+
+html[data-loom-theme="light"] .runtime-scroll {
+  scrollbar-color: #c9ced5 transparent;
+}
+
+html[data-loom-theme="light"] .runtime-scroll::-webkit-scrollbar-thumb {
+  background: #c9ced5;
+}
+
+/* Event rows remain mostly surface-free; hover becomes a quiet gray wash. */
+html[data-loom-theme="light"] .runtime-event:hover {
+  border-color: rgba(28,31,37,.06);
+  background: rgba(28,31,37,.032);
+}
+
+html[data-loom-theme="light"] .runtime-event.is-running {
+  border-color: rgba(105,90,216,.08);
+  background: linear-gradient(90deg, rgba(105,90,216,.060), rgba(105,90,216,.012) 76%, transparent);
+}
+
+html[data-loom-theme="light"] .runtime-event.is-failed {
+  border-color: rgba(177,76,90,.07);
+  background: linear-gradient(90deg, rgba(177,76,90,.060), rgba(177,76,90,.008) 72%, transparent);
+}
+
+html[data-loom-theme="light"] .runtime-event:not(:last-child)::after {
+  background: linear-gradient(to bottom, #d9dde3, rgba(217,221,227,.28));
+}
+
+/* Icons become light tiles instead of repeated black squares. */
+html[data-loom-theme="light"] .runtime-event-icon {
+  border-color: #d8dde3;
+  background: #ffffff;
+  color: #65707c;
+  box-shadow:
+    inset 0 1px rgba(255,255,255,.98),
+    0 2px 6px rgba(27,31,40,.035);
+}
+
+html[data-loom-theme="light"] .runtime-event:hover .runtime-event-icon {
+  color: #5144ad;
+  border-color: rgba(105,90,216,.18);
+  background: #fbfaff;
+  transform: translateY(-1px);
+}
+
+html[data-loom-theme="light"] .runtime-event.is-running .runtime-event-icon {
+  color: #5c4fba;
+  border-color: rgba(105,90,216,.20);
+  background: rgba(105,90,216,.07);
+}
+
+html[data-loom-theme="light"] .runtime-event.is-failed .runtime-event-icon {
+  color: #a74452;
+  border-color: rgba(177,76,90,.20);
+  background: rgba(177,76,90,.055);
+}
+
+html[data-loom-theme="light"] .runtime-event-title {
+  color: #4b545f;
+}
+
+html[data-loom-theme="light"] .runtime-event:hover .runtime-event-title {
+  color: #30363e;
+}
+
+html[data-loom-theme="light"] .runtime-event-subtitle {
+  color: #737c87;
+}
+
+html[data-loom-theme="light"] .runtime-event-chevron {
+  color: #747d88;
+}
+
+html[data-loom-theme="light"] .runtime-event:hover .runtime-event-chevron,
+html[data-loom-theme="light"] .runtime-event-chevron.open {
+  color: #5d50b8;
+}
+
+/* Expanded payloads are code/details, but do not need a terminal-black slab. */
+html[data-loom-theme="light"] .runtime-event-detail pre {
+  border-color: #d9dde3;
+  background: #f6f7f9;
+  color: #46505b;
+  box-shadow: inset 0 1px rgba(255,255,255,.94);
+  scrollbar-color: #c7ccd3 transparent;
+}
+
+html[data-loom-theme="light"] .runtime-footer {
+  border-top-color: #e0e3e7;
+  background: rgba(255,255,255,.68);
+  color: #6f7883;
+}
+
+html[data-loom-theme="light"] .runtime-stream-mark i {
+  background: #9aa2ac;
+}
+
+html[data-loom-theme="light"] .runtime-stream-mark.live i {
+  background: #695ad8;
+}
