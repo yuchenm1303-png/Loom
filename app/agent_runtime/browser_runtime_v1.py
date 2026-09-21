@@ -354,20 +354,21 @@ class BrowserRuntime(_BrowserRuntime):
         result: ToolResult,
         *,
         failed: bool,
+        step=None,
     ) -> None:
         if call.name == "browser_close" and result.ok:
             self._clear_browser_feedback(session.session_id)
-            super()._append_tool_result(session, call, result, failed=failed)
+            super()._append_tool_result(session, call, result, failed=failed, step=step)
             return
 
         if call.name == "browser_screenshot":
             self._capture_screenshot_feedback(session, result)
-            super()._append_tool_result(session, call, result, failed=failed)
+            super()._append_tool_result(session, call, result, failed=failed, step=step)
             return
 
         snapshot = _snapshot_from_tool_result(result) if call.name.startswith("browser_") else None
         if snapshot is None:
-            super()._append_tool_result(session, call, result, failed=failed)
+            super()._append_tool_result(session, call, result, failed=failed, step=step)
             return
 
         before = self._browser_feedback.get(session.session_id)
@@ -384,6 +385,7 @@ class BrowserRuntime(_BrowserRuntime):
             call,
             _compact_result(result, snapshot, effect=effect, effect_reason=reason),
             failed=failed,
+            step=step,
         )
 
     def _prepare_model_request(self, session, step, token):

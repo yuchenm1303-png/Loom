@@ -440,6 +440,7 @@ class AgentRuntime:
                         call,
                         ToolResult(ok=False, content="Tool call denied by the user."),
                         failed=True,
+                        step=step,
                     )
 
                 if not self._process_pending_tools(session, token, step=step):
@@ -560,8 +561,13 @@ class AgentRuntime:
             if self.store.pending_steering(session.session_id, session.current_turn_id):
                 while session.pending_tool_calls:
                     abandoned = session.pending_tool_calls.pop(0)
-                    self._append_tool_result(session, abandoned, ToolResult(False,
-                        "Not executed: new user steering arrived; reconsider this action."), failed=True)
+                    self._append_tool_result(
+                        session,
+                        abandoned,
+                        ToolResult(False, "Not executed: new user steering arrived; reconsider this action."),
+                        failed=True,
+                        step=execution_step,
+                    )
                 self._consume_steering(session)
                 break
             if self._cancel_if_requested(session, token):
@@ -601,6 +607,7 @@ class AgentRuntime:
                     call,
                     ToolResult(ok=False, content=f"Invalid tool request: {exc}"),
                     failed=True,
+                    step=execution_step,
                 )
                 continue
 
@@ -623,6 +630,7 @@ class AgentRuntime:
                     call,
                     ToolResult(ok=False, content=f"Tool call blocked by permissions. {prepared.reason}"),
                     failed=True,
+                    step=execution_step,
                 )
                 continue
 
@@ -676,6 +684,7 @@ class AgentRuntime:
                 call,
                 ToolResult(ok=False, content=f"Invalid tool request: {exc}"),
                 failed=True,
+                step=step,
             )
             return True
         if prepared.decision is PermissionDecision.DENY:
@@ -764,7 +773,7 @@ class AgentRuntime:
                     "truncated": snapshot.truncated,
                 },
             )
-        self._append_tool_result(session, call, result, failed=not result.ok)
+        self._append_tool_result(session, call, result, failed=not result.ok, step=step)
         if self._cancel_if_requested(session, token):
             return False
         return True
@@ -898,8 +907,19 @@ class AgentRuntime:
         result: ToolResult,
         *,
         failed: bool,
+        step: StepContext | None = None,
     ) -> None:
-        model_payload = result.model_payload(max_chars=self.limits.max_tool_result_chars)
+        # Use the same immutable model limits that governed the tool call whenever
+        # possible. The durable event below keeps the exact result; only active
+        # model history gets the bounded projection.
+        context_limits = (
+            step.request_state.context_limits
+            if step is not None and step.request_state.context_limits is not None
+            else resolve_context_limits(self, session)
+        )
+        model_payload = result.model_payload(
+            max_tokens=context_limits.tool_output_token_limit,
+        )
         session.messages.append(
             AIMessage(
                 role=MessageRole.TOOL,

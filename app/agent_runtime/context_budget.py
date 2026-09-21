@@ -197,6 +197,28 @@ def _latest_provider_context_tokens(rt, session) -> int | None:
     return None
 
 
+def _local_tokens_after_latest_model_message(messages: Sequence[AIMessage]) -> int:
+    """Estimate locally appended history not covered by the latest provider usage.
+
+    Provider usage is sampled when a model response completes. Tool outputs,
+    steering, and a following user message can be appended before the next model
+    request. Codex adds those post-response items to its active-context clock;
+    Loom must do the same or its compaction meter lags one tool step behind.
+    """
+
+    last_assistant = next(
+        (
+            index
+            for index in range(len(messages) - 1, -1, -1)
+            if messages[index].role is MessageRole.ASSISTANT
+        ),
+        -1,
+    )
+    if last_assistant < 0 or last_assistant + 1 >= len(messages):
+        return 0
+    return estimate_tokens(messages[last_assistant + 1 :])
+
+
 def _observed_context_ceiling(rt, session) -> int | None:
     """Smallest request size this provider has already refused as too long.
 
@@ -498,8 +520,10 @@ def _fit_replacement_message_limit(
     transient_count: int,
     max_messages: int,
 ) -> tuple[AIMessage, ...]:
-    """Keep the newest compacted user context plus the summary under a hard cap."""
+    """Keep the newest compacted user context plus the summary under an optional hard cap."""
     items = tuple(replacement)
+    if int(max_messages) <= 0:
+        return items
     allowed = max(1, int(max_messages) - int(transient_count))
     while len(items) > allowed and len(items) > 1:
         items = items[1:]
@@ -596,7 +620,10 @@ def prepare_context(rt, session, step, token):
         active_context_tokens = estimated_before
         accounting_source = "fallback_estimate"
     else:
-        active_context_tokens = provider_tokens
+        post_model_tokens = _local_tokens_after_latest_model_message(canonical_history)
+        active_context_tokens = provider_tokens + calibrated(post_model_tokens)
+        # Keep the public accounting-source contract stable: provider usage is
+        # still authoritative, with locally appended items estimated on top.
         accounting_source = "provider_usage"
 
     # If one giant user item is the only canonical history, summarization cannot
@@ -643,22 +670,18 @@ def prepare_context(rt, session, step, token):
             )
             return emergency_visible, metadata
 
-    # A single oversized tool observation may be projected to a bounded preview,
-    # but Loom must not bulk-collapse historical observations just to avoid a
-    # semantic handoff. If bounded previews still do not fit, the request falls
-    # through to compaction below. This keeps the model from continuing while
-    # blind to a large set of command results.
-    projected_history = canonical_history
-    projected_visible = visible_messages
-    estimated_projected = estimated_before
-    reduction_stats = ContextReductionStats()
-    if input_budget is not None and calibrated(estimated_before) > input_budget:
-        projected_history, reduction_stats = reduce_tool_outputs(
-            canonical_history,
-            per_output_token_limit=limits.tool_output_token_limit,
-        )
-        projected_visible = [*transient, *projected_history]
-        estimated_projected = estimate_tokens(projected_visible, tools)
+    # Apply the model's per-tool history policy on every request, not only after
+    # the whole prompt has already overflowed. New tool results are bounded when
+    # they enter session history; this second pass also normalizes legacy/resumed
+    # histories created before that boundary existed. Durable events keep the
+    # exact observations. We still do not bulk-collapse old results into blind
+    # stubs merely to dodge semantic compaction.
+    projected_history, reduction_stats = reduce_tool_outputs(
+        canonical_history,
+        per_output_token_limit=limits.tool_output_token_limit,
+    )
+    projected_visible = [*transient, *projected_history]
+    estimated_projected = estimate_tokens(projected_visible, tools)
 
     calibrated_active_context_tokens = active_context_tokens
     if accounting_source == "fallback_estimate":
@@ -681,20 +704,21 @@ def prepare_context(rt, session, step, token):
             calibrated(estimated_projected),
         )
 
-    # Keep Loom's legacy message-count safety cap as a secondary compaction
-    # trigger. It is not the normal token clock, but compacting here prevents the
-    # outer TurnRunner guard from terminating a turn when a safe checkpoint can
-    # still reduce the request.
-    # A provider that already rejected this history as too long outranks every
-    # local budget below, so that verdict forces one compaction pass.
+    # A positive host-configured message cap remains an optional secondary
+    # guard, but the default rollover policy is token-driven like Codex. A
+    # provider rejection outranks every local budget and forces one compaction.
     forced_compaction = _consume_forced_compaction(rt, session)
+    message_count_fits = (
+        rt.limits.max_messages <= 0
+        or len(projected_visible) <= rt.limits.max_messages
+    )
     hard_request_fits = (
         not forced_compaction
         and (
             input_budget is None
             or calibrated(estimated_projected) <= input_budget
         )
-        and len(projected_visible) <= rt.limits.max_messages
+        and message_count_fits
     )
     # Codex leaves `auto_compact_token_limit` unset for a model it has no metadata
     # for, so this trigger simply never fires there. Guessing a threshold instead
@@ -924,7 +948,10 @@ def prepare_context(rt, session, step, token):
             immediate_recompact_limit is not None
             and calibrated(estimated_after) >= immediate_recompact_limit
         )
-        or len(compacted_visible) > rt.limits.max_messages
+        or (
+            rt.limits.max_messages > 0
+            and len(compacted_visible) > rt.limits.max_messages
+        )
     ):
         raise ContextBudgetExceeded(
             estimated_tokens=estimated_after,

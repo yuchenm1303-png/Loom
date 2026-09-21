@@ -16,14 +16,21 @@ _UNKNOWN_WINDOW_SANITY_CEILING = 272_000
 # because an undeclared cap is Loom's bookkeeping, not the user's choice.
 _UNDECLARED_OUTPUT_RESERVE_TOKENS = 4096
 
+# Current Codex model metadata budgets roughly 10k tokens for one tool result in
+# a 272k context window. Scale that policy for smaller Loom/provider windows
+# instead of letting one observation consume an arbitrary fixed fraction.
+_CODEX_REFERENCE_CONTEXT_TOKENS = 272_000
+_CODEX_REFERENCE_TOOL_OUTPUT_TOKENS = 10_000
+_MIN_TOOL_OUTPUT_TOKENS = 1_200
+
 
 @dataclass(frozen=True, slots=True)
 class ResolvedContextLimits:
     """One model step's resolved context window and compaction threshold.
 
-    ``tool_output_token_limit`` is the request-only budget used to keep very
-    large historical tool observations from forcing a full model compaction.
-    Durable history remains unchanged. ``recent_user_token_limit`` is retained
+    ``tool_output_token_limit`` is the model-history budget applied as each
+    tool observation is recorded and again when legacy history is projected.
+    Durable event history remains unchanged. ``recent_user_token_limit`` is retained
     for compatibility with existing product/runtime contracts.
     """
 
@@ -189,11 +196,22 @@ def resolve_context_limits(rt: Any, session: Any) -> ResolvedContextLimits:
     auto_compact = max(1, min(auto_compact, effective_window))
 
     configured_tool = getattr(profile_limits, "tool_output_token_limit", None)
-    tool_output_limit = (
-        max(256, int(configured_tool))
-        if configured_tool is not None
-        else min(6000, max(1200, input_budget // 8))
-    )
+    if configured_tool is not None:
+        tool_output_limit = max(256, int(configured_tool))
+    else:
+        # Codex applies a model-specific truncation policy when tool output is
+        # recorded into active history. Loom providers often expose much smaller
+        # windows, so preserve approximately the same share of context rather
+        # than using the old 6k cap for every model. A ~50k effective window now
+        # keeps about 1.8k tokens per result; a 272k window keeps 10k.
+        scaled_tool_limit = (
+            effective_window * _CODEX_REFERENCE_TOOL_OUTPUT_TOKENS
+            // _CODEX_REFERENCE_CONTEXT_TOKENS
+        )
+        tool_output_limit = min(
+            _CODEX_REFERENCE_TOOL_OUTPUT_TOKENS,
+            max(_MIN_TOOL_OUTPUT_TOKENS, scaled_tool_limit),
+        )
     recent_user_limit = min(20_000, max(2_000, input_budget // 2))
 
     return ResolvedContextLimits(
