@@ -30,6 +30,7 @@ export interface ModelProfile {
   family?: string;
   protocol?: string;
   configured?: boolean;
+  setupOnly?: boolean;
   vision?: boolean;
   contextLimits?: {
     contextWindowTokens?: number;
@@ -257,7 +258,13 @@ export class DesktopModelManager {
     this.registryCache = null;
     this.metadataCache = null;
     for (const key of [...this.launchCache.keys()]) {
-      if (key.startsWith("builtin:opencode-go:")) this.launchCache.delete(key);
+      if (
+        key.startsWith("builtin:opencode-go:")
+        || key.startsWith("managed:")
+        || key === "builtin:cqu"
+      ) {
+        this.launchCache.delete(key);
+      }
     }
     return this.snapshot(true);
   }
