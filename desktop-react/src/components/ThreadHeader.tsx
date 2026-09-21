@@ -1,5 +1,6 @@
 import {
   Archive,
+  Bot,
   Check,
   Copy,
   FileDiff,
@@ -31,6 +32,8 @@ interface ThreadHeaderProps {
   inspectorOpen: boolean;
   reviewOpen: boolean;
   reviewCount?: number;
+  agentsOpen?: boolean;
+  agentCount?: number;
   accountAuthenticated?: boolean;
   context?: ContextReport | null;
   compacting?: boolean;
@@ -40,6 +43,7 @@ interface ThreadHeaderProps {
   onToggleSidebar(): void;
   onToggleInspector(): void;
   onToggleReview(): void;
+  onToggleAgents(): void;
 }
 
 function workspaceName(workspace: string, fallback: string): string {
@@ -75,6 +79,8 @@ export function ThreadHeader({
   inspectorOpen,
   reviewOpen,
   reviewCount = 0,
+  agentsOpen = false,
+  agentCount = 0,
   accountAuthenticated = false,
   context = null,
   compacting = false,
@@ -84,6 +90,7 @@ export function ThreadHeader({
   onToggleSidebar,
   onToggleInspector,
   onToggleReview,
+  onToggleAgents,
 }: ThreadHeaderProps) {
   const { language, t } = useI18n();
   const [copied, setCopied] = useState(false);
@@ -122,6 +129,8 @@ export function ThreadHeader({
     : (language === "zh-CN" ? "展开会话侧栏" : "Open conversation sidebar");
   const reviewLabel = language === "zh-CN" ? "审查" : "Review";
   const reviewTitle = language === "zh-CN" ? "审查当前对话中的文件更改" : "Review file changes from this conversation";
+  const agentsLabel = language === "zh-CN" ? "子代理" : "Agents";
+  const agentsTitle = language === "zh-CN" ? "打开子代理工作区" : "Open sub-agent workspace";
 
   return (
     <header className="thread-header polished-thread-header">
@@ -177,6 +186,21 @@ export function ThreadHeader({
             busy={running}
             onCompact={onCompactContext}
           />
+        ) : null}
+
+        {agentCount > 0 || agentsOpen ? (
+          <button
+            type="button"
+            className={`thread-review-button thread-agent-button ${agentsOpen ? "active" : ""}`}
+            onClick={onToggleAgents}
+            title={agentsTitle}
+            aria-label={agentsTitle}
+            aria-pressed={agentsOpen}
+          >
+            <Bot size={14.5} strokeWidth={1.8} />
+            <span className="thread-agent-label">{agentsLabel}</span>
+            {agentCount > 0 ? <span className="thread-agent-count">{agentCount}</span> : null}
+          </button>
         ) : null}
 
         <button
