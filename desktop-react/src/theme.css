@@ -1396,3 +1396,434 @@ html[data-loom-theme="light"] .review-summary-footer svg {
   color: #695ad8;
 }
 
+
+
+/* Light theme: models settings manager ------------------------------------ */
+/* ModelsSettingsPanel is a newer surface than the legacy model-summary cards.
+   Its component stylesheet is dark-first, so light mode needs explicit
+   overrides for the entire manager rather than isolated patches. */
+
+html[data-loom-theme="light"] .models-settings-manager {
+  color: #343a42;
+}
+
+html[data-loom-theme="light"] .models-settings-heading h1,
+html[data-loom-theme="light"] .models-section-heading h2 {
+  color: #20242b;
+}
+
+html[data-loom-theme="light"] .models-settings-heading p,
+html[data-loom-theme="light"] .models-section-heading p {
+  color: #68717c;
+}
+
+html[data-loom-theme="light"] .models-lock-banner {
+  border-color: rgba(174,124,42,.18);
+  background: rgba(174,124,42,.07);
+  color: #9b702e;
+}
+
+html[data-loom-theme="light"] .models-error-banner {
+  border-color: rgba(177,76,90,.20);
+  background: rgba(177,76,90,.065);
+  color: #a13f4d;
+}
+
+/* Primary active-model surface ------------------------------------------- */
+html[data-loom-theme="light"] .models-active-card {
+  border-color: rgba(105,90,216,.17);
+  background:
+    radial-gradient(520px 180px at 0% 0%, rgba(105,90,216,.065), transparent 62%),
+    linear-gradient(180deg, #ffffff 0%, #f8f9fb 100%);
+  box-shadow:
+    inset 0 1px rgba(255,255,255,.96),
+    0 10px 28px rgba(27,31,40,.055);
+}
+
+html[data-loom-theme="light"] .models-active-icon {
+  border-color: rgba(105,90,216,.16);
+  background: rgba(105,90,216,.075);
+  color: #6253ca;
+}
+
+html[data-loom-theme="light"] .models-active-copy > strong {
+  color: #23282f;
+}
+
+html[data-loom-theme="light"] .models-active-copy > span {
+  color: #69727d;
+}
+
+html[data-loom-theme="light"] .models-ready-badge {
+  border-color: rgba(57,118,90,.18);
+  background: rgba(57,118,90,.08);
+  color: #347052;
+}
+
+html[data-loom-theme="light"] .models-test-button,
+html[data-loom-theme="light"] .models-profile-actions button,
+html[data-loom-theme="light"] .models-other-model-row button,
+html[data-loom-theme="light"] .models-modal-actions button {
+  border-color: #d9dde3;
+  background: #f7f8fa;
+  color: #505965;
+  box-shadow: inset 0 1px rgba(255,255,255,.92);
+}
+
+html[data-loom-theme="light"] .models-test-button:hover:not(:disabled),
+html[data-loom-theme="light"] .models-profile-actions button:hover:not(:disabled),
+html[data-loom-theme="light"] .models-other-model-row button:hover:not(:disabled),
+html[data-loom-theme="light"] .models-modal-actions button:hover:not(:disabled) {
+  border-color: rgba(105,90,216,.20);
+  background: #ffffff;
+  color: #30363e;
+}
+
+html[data-loom-theme="light"] .models-primary-action {
+  border-color: rgba(105,90,216,.20);
+  background: rgba(105,90,216,.09);
+  color: #584bad;
+}
+
+html[data-loom-theme="light"] .models-primary-action:hover:not(:disabled) {
+  border-color: rgba(105,90,216,.28);
+  background: rgba(105,90,216,.13);
+  color: #4e42a7;
+}
+
+html[data-loom-theme="light"] .models-active-meta {
+  border-top-color: rgba(28,31,37,.08);
+  border-bottom-color: rgba(28,31,37,.08);
+}
+
+html[data-loom-theme="light"] .models-active-meta > div + div {
+  border-left-color: rgba(28,31,37,.075);
+}
+
+html[data-loom-theme="light"] .models-active-meta span,
+html[data-loom-theme="light"] .models-profile-data span {
+  color: #747d88;
+}
+
+html[data-loom-theme="light"] .models-active-meta code,
+html[data-loom-theme="light"] .models-profile-data code {
+  color: #4c5561;
+}
+
+html[data-loom-theme="light"] .models-active-meta strong {
+  color: #424a54;
+}
+
+html[data-loom-theme="light"] .models-capability-row > span {
+  border-color: rgba(28,31,37,.075);
+  background: #f5f6f8;
+  color: #606a75;
+}
+
+html[data-loom-theme="light"] .models-capability-row > span svg {
+  color: #68768a;
+}
+
+html[data-loom-theme="light"] .models-reasoning-row {
+  border-top-color: rgba(28,31,37,.075);
+}
+
+html[data-loom-theme="light"] .models-reasoning-row > div {
+  color: #6253ca;
+}
+
+html[data-loom-theme="light"] .models-reasoning-row strong {
+  color: #3f4650;
+}
+
+html[data-loom-theme="light"] .models-reasoning-row small {
+  color: #737c87;
+}
+
+html[data-loom-theme="light"] .models-reasoning-row select,
+html[data-loom-theme="light"] .models-form-grid select {
+  border-color: #d7dce2;
+  background: #ffffff;
+  color: #353c45;
+  color-scheme: light;
+}
+
+html[data-loom-theme="light"] .models-test-result {
+  border-top-color: rgba(28,31,37,.075);
+  color: #347052;
+}
+
+html[data-loom-theme="light"] .models-test-result.error {
+  color: #a13f4d;
+}
+
+html[data-loom-theme="light"] .models-test-result span {
+  color: #6e7782;
+}
+
+/* Search + filters -------------------------------------------------------- */
+html[data-loom-theme="light"] .models-search {
+  border-color: #d8dde3;
+  background: #ffffff;
+  color: #707985;
+  box-shadow: inset 0 1px rgba(255,255,255,.95);
+}
+
+html[data-loom-theme="light"] .models-search:focus-within {
+  border-color: rgba(105,90,216,.28);
+  box-shadow: 0 0 0 3px rgba(105,90,216,.065);
+}
+
+html[data-loom-theme="light"] .models-search input {
+  color: #30363e;
+}
+
+html[data-loom-theme="light"] .models-search input::placeholder {
+  color: #858d98;
+}
+
+html[data-loom-theme="light"] .models-filter {
+  border-color: #d9dde3;
+  background: #f1f3f5;
+}
+
+html[data-loom-theme="light"] .models-filter button {
+  color: #68717c;
+}
+
+html[data-loom-theme="light"] .models-filter button:hover {
+  color: #343a42;
+  background: rgba(255,255,255,.65);
+}
+
+html[data-loom-theme="light"] .models-filter button.active {
+  background: #ffffff;
+  color: #4f44ad;
+  box-shadow:
+    0 1px 4px rgba(27,31,40,.08),
+    inset 0 1px rgba(255,255,255,.96);
+}
+
+/* Model cards ------------------------------------------------------------- */
+html[data-loom-theme="light"] .models-profile-card {
+  border-color: #d9dde3;
+  background: #ffffff;
+  box-shadow:
+    inset 0 1px rgba(255,255,255,.96),
+    0 6px 18px rgba(27,31,40,.035);
+}
+
+html[data-loom-theme="light"] .models-profile-card:hover {
+  border-color: #cbd1d8;
+  background: #fbfcfd;
+  box-shadow:
+    0 9px 24px rgba(27,31,40,.055),
+    inset 0 1px rgba(255,255,255,.96);
+}
+
+html[data-loom-theme="light"] .models-profile-card.active {
+  border-color: rgba(105,90,216,.25);
+  box-shadow:
+    inset 3px 0 0 #695ad8,
+    0 7px 20px rgba(27,31,40,.045);
+}
+
+html[data-loom-theme="light"] .models-profile-icon {
+  border-color: rgba(105,90,216,.14);
+  background: rgba(105,90,216,.07);
+  color: #6253ca;
+}
+
+html[data-loom-theme="light"] .models-profile-title strong {
+  color: #2c3239;
+}
+
+html[data-loom-theme="light"] .models-profile-title span {
+  color: #727b86;
+}
+
+html[data-loom-theme="light"] .models-kind-badge {
+  border-color: rgba(28,31,37,.075);
+  background: #f4f5f7;
+  color: #69727d;
+}
+
+html[data-loom-theme="light"] .models-kind-badge.saved {
+  border-color: rgba(105,90,216,.14);
+  background: rgba(105,90,216,.065);
+  color: #6255b8;
+}
+
+html[data-loom-theme="light"] .models-profile-data > div {
+  background: #f6f7f9;
+  box-shadow: inset 0 0 0 1px rgba(28,31,37,.025);
+}
+
+html[data-loom-theme="light"] .models-card-diagnostic {
+  color: #347052;
+}
+
+html[data-loom-theme="light"] .models-card-diagnostic.error {
+  color: #a13f4d;
+}
+
+html[data-loom-theme="light"] .models-profile-actions button.active {
+  color: #347052;
+  border-color: rgba(57,118,90,.16);
+  background: rgba(57,118,90,.07);
+}
+
+html[data-loom-theme="light"] .models-profile-actions button.danger {
+  color: #a7535f;
+}
+
+html[data-loom-theme="light"] .models-profile-actions button.danger.confirm {
+  border-color: rgba(177,76,90,.22);
+  background: rgba(177,76,90,.08);
+  color: #a13f4d;
+}
+
+html[data-loom-theme="light"] .models-empty-state {
+  border-color: #d6dbe1;
+  color: #747d88;
+  background: rgba(255,255,255,.55);
+}
+
+/* Recent / manual model areas -------------------------------------------- */
+html[data-loom-theme="light"] .models-recent-panel {
+  border-color: #d9dde3;
+  background: #ffffff;
+  box-shadow: inset 0 1px rgba(255,255,255,.95);
+}
+
+html[data-loom-theme="light"] .models-other-model-row input,
+html[data-loom-theme="light"] .models-form-grid input,
+html[data-loom-theme="light"] .models-secret-field {
+  border-color: #d7dce2;
+  background: #ffffff;
+  color: #30363e;
+}
+
+html[data-loom-theme="light"] .models-other-model-row input::placeholder,
+html[data-loom-theme="light"] .models-form-grid input::placeholder,
+html[data-loom-theme="light"] .models-secret-field input::placeholder {
+  color: #8a929d;
+}
+
+html[data-loom-theme="light"] .models-recent-chips button {
+  border-color: #d9dde3;
+  background: #f7f8fa;
+  color: #626b76;
+}
+
+html[data-loom-theme="light"] .models-recent-chips button:hover:not(:disabled) {
+  border-color: rgba(105,90,216,.20);
+  background: rgba(105,90,216,.055);
+  color: #5548b3;
+}
+
+html[data-loom-theme="light"] .models-recent-empty {
+  color: #747c87;
+}
+
+/* Add/edit model modal ---------------------------------------------------- */
+html[data-loom-theme="light"] .models-modal-backdrop {
+  background: rgba(32,35,42,.26);
+  backdrop-filter: blur(5px);
+}
+
+html[data-loom-theme="light"] .models-modal {
+  border-color: #d6dbe1;
+  background:
+    radial-gradient(520px 180px at 0% 0%, rgba(105,90,216,.055), transparent 60%),
+    #ffffff;
+  color: #343a42;
+  box-shadow:
+    0 28px 80px rgba(27,31,40,.18),
+    inset 0 1px rgba(255,255,255,.96);
+}
+
+html[data-loom-theme="light"] .models-modal-head strong {
+  color: #282e36;
+}
+
+html[data-loom-theme="light"] .models-modal-head span {
+  color: #737c87;
+}
+
+html[data-loom-theme="light"] .models-modal-icon {
+  border-color: rgba(105,90,216,.15);
+  background: rgba(105,90,216,.07);
+  color: #6253ca;
+}
+
+html[data-loom-theme="light"] .models-modal-head > button {
+  color: #68717c;
+}
+
+html[data-loom-theme="light"] .models-modal-head > button:hover {
+  background: rgba(28,31,37,.045);
+  color: #30363e;
+}
+
+html[data-loom-theme="light"] .models-form-grid > label > span {
+  color: #606a75;
+}
+
+html[data-loom-theme="light"] .models-secret-field {
+  color: #727b86;
+}
+
+html[data-loom-theme="light"] .models-form-switch {
+  border-color: #d9dde3;
+  background: #f7f8fa;
+}
+
+html[data-loom-theme="light"] .models-form-switch > div {
+  color: #6253ca;
+}
+
+html[data-loom-theme="light"] .models-form-switch strong {
+  color: #363d46;
+}
+
+html[data-loom-theme="light"] .models-form-switch small {
+  color: #737c87;
+}
+
+html[data-loom-theme="light"] .models-form-switch > button {
+  border-color: #cfd5dc;
+  background: #dfe3e8;
+}
+
+html[data-loom-theme="light"] .models-form-switch > button i {
+  background: #87909b;
+}
+
+html[data-loom-theme="light"] .models-form-switch > button.on {
+  border-color: rgba(105,90,216,.30);
+  background: rgba(105,90,216,.18);
+}
+
+html[data-loom-theme="light"] .models-form-switch > button.on i {
+  background: #695ad8;
+}
+
+html[data-loom-theme="light"] .models-key-note {
+  background: #f5f6f8;
+  color: #69727d;
+}
+
+html[data-loom-theme="light"] .models-modal-actions button.primary {
+  border-color: rgba(105,90,216,.22);
+  background: rgba(105,90,216,.10);
+  color: #584bad;
+}
+
+/* Responsive separators must also stop inheriting dark borders. */
+@media (max-width: 1050px) {
+  html[data-loom-theme="light"] .models-active-meta > div:nth-child(3),
+  html[data-loom-theme="light"] .models-active-meta > div:nth-child(4) {
+    border-top-color: rgba(28,31,37,.075);
+  }
+}
