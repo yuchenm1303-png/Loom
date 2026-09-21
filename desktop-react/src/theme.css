@@ -3365,3 +3365,31 @@ html[data-loom-theme="light"] .composer-hint {
     animation: none !important;
   }
 }
+
+
+/* Light theme: artifact path accent --------------------------------------- */
+/* File paths are actionable identifiers, not code blocks. In light mode use a
+   soft Loom-purple tag so they read as interactive metadata instead of a dark
+   terminal fragment. */
+html[data-loom-theme="light"] .turn-artifacts-file-strip code {
+  padding: 4px 8px;
+  border: 1px solid rgba(105,90,216,.14);
+  border-radius: 7px;
+  background: rgba(105,90,216,.075) !important;
+  color: #584abd !important;
+  box-shadow: inset 0 1px rgba(255,255,255,.72);
+}
+
+html[data-loom-theme="light"] .turn-artifacts-file-strip button:hover code {
+  border-color: rgba(105,90,216,.22);
+  background: rgba(105,90,216,.11) !important;
+  color: #4f42ae !important;
+}
+
+html[data-loom-theme="light"] .turn-artifacts-file-strip button > svg {
+  color: #6659c2;
+}
+
+html[data-loom-theme="light"] .turn-artifacts-file-strip button:hover > svg {
+  color: #5548b4;
+}
