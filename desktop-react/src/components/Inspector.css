@@ -129,66 +129,39 @@
 .runtime-tabs {
   position: relative;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   align-items: center;
-  padding: 7px 8px;
+  padding: 6px 7px;
   border-bottom: 1px solid rgba(255,255,255,.055);
   background: rgba(12,14,18,.38);
 }
 
 .runtime-tab-glider {
   position: absolute;
-  left: 8px;
-  top: 7px;
-  width: calc((100% - 16px) / 3);
-  height: 32px;
-  border: 1px solid #252a34;
-  border-radius: 8px;
-  background: linear-gradient(180deg, #1a1d24, #171a20);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.025), 0 4px 14px rgba(0,0,0,.13);
-  transition: transform 230ms cubic-bezier(.2,.78,.2,1);
   pointer-events: none;
+  will-change: transform;
 }
 
 .runtime-tab {
   position: relative;
   z-index: 1;
-  height: 32px;
   min-width: 0;
   border: 0;
-  border-radius: 8px;
   background: transparent;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  padding: 0 6px;
   color: #707886;
-  font-size: 9px;
   cursor: pointer;
-  transition: color 150ms ease, transform 150ms ease;
 }
 .runtime-tab:hover { color: #abb1bc; }
-.runtime-tab:active { transform: scale(.97); }
-.runtime-tab.active { color: #cbd0da; }
+.runtime-tab:active { transform: scale(.975); }
+.runtime-tab.active {
+  background: transparent;
+  color: #cbd0da;
+  box-shadow: none;
+}
 .runtime-tab.active svg { color: #aaa2ef; }
 
 .runtime-tab-count {
-  min-width: 15px;
-  height: 15px;
-  display: inline-grid;
-  place-items: center;
-  padding: 0 4px;
-  border-radius: 999px;
-  background: #252934;
-  color: #89919f;
-  font-size: 8px;
   font-variant-numeric: tabular-nums;
-  transition: background 150ms ease, color 150ms ease;
-}
-.runtime-tab.active .runtime-tab-count {
-  color: #bab4ef;
-  background: rgba(139,124,246,.13);
 }
 
 .runtime-body {
@@ -224,6 +197,7 @@
   scrollbar-width: thin;
   scrollbar-color: #2a2e37 transparent;
   overscroll-behavior: contain;
+  contain: layout paint style;
 }
 .runtime-scroll::-webkit-scrollbar { width: 6px; }
 .runtime-scroll::-webkit-scrollbar-track { background: transparent; }
