@@ -401,7 +401,9 @@ def test_projected_tool_reduction_prevents_stale_provider_usage_compaction(monke
     messages, metadata = prepare_context(runtime, session, Step(), Token())
 
     assert metadata["token_accounting_source"] == "provider_usage"
-    assert metadata["active_context_tokens"] == 4500
+    # The current meter includes tool output appended after the provider's last
+    # usage sample, while the compaction decision uses the bounded projection.
+    assert metadata["active_context_tokens"] > 4500
     assert metadata["tool_outputs_reduced"] == 1
     assert metadata.get("auto_compacted") is not True
     assert runtime.model_executor.requests == []
