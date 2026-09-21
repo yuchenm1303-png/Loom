@@ -1,5 +1,6 @@
 import { RotateCcw } from "lucide-react";
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -256,12 +257,12 @@ export default function App() {
     setSelectedProjectId("");
   }
 
-  function openAgents(): void {
+  const openAgents = useCallback(() => {
     setReviewOpen(false);
     setInspectorOpen(false);
     setSelectedProjectId("");
     setAgentsOpen(true);
-  }
+  }, []);
 
   function toggleAgents(): void {
     if (agentsOpen) {
@@ -298,7 +299,7 @@ export default function App() {
     const openFromActivity = () => openAgents();
     window.addEventListener("loom:sub-agents-open", openFromActivity);
     return () => window.removeEventListener("loom:sub-agents-open", openFromActivity);
-  }, []);
+  }, [openAgents]);
 
   useEffect(() => {
     const threadId = String(thread?.id || "");
@@ -306,7 +307,7 @@ export default function App() {
     if (autoOpenedAgentsForThreadRef.current === threadId) return;
     autoOpenedAgentsForThreadRef.current = threadId;
     openAgents();
-  }, [agentCount, running, thread?.id]);
+  }, [agentCount, openAgents, running, thread?.id]);
 
   useEffect(() => {
     if (!selectedProjectId) return;
