@@ -276,7 +276,7 @@ html[data-loom-theme="light"] .runtime-tab.active svg {
 
 /* Slightly soften the empty-state icon too, so the refreshed chips do not sit
    below a heavy black tile. */
-html[data-loom-theme="light"] .runtime-empty-icon {
+html[data-loom-theme="light"] .runtime-empty .runtime-empty-icon {
   border-color: rgba(105,90,216,.11);
   background:
     linear-gradient(145deg, #ffffff, #f6f4ff);
@@ -423,7 +423,7 @@ html[data-loom-theme="light"] .runtime-empty .runtime-orbit-dot {
     0 0 8px rgba(var(--empty-tone-rgb), .18);
 }
 
-html[data-loom-theme="light"] .runtime-empty-icon {
+html[data-loom-theme="light"] .runtime-empty .runtime-empty-icon {
   border-color: rgba(var(--empty-tone-rgb), .16);
   background:
     linear-gradient(
@@ -438,11 +438,11 @@ html[data-loom-theme="light"] .runtime-empty-icon {
     inset 0 1px rgba(255,255,255,.98);
 }
 
-html[data-loom-theme="light"] .runtime-empty-glyph {
+html[data-loom-theme="light"] .runtime-empty .runtime-empty-glyph {
   filter: drop-shadow(0 1px 1px rgba(var(--empty-tone-rgb), .09));
 }
 
-html[data-loom-theme="light"] .runtime-empty:hover .runtime-empty-icon {
+html[data-loom-theme="light"] .runtime-empty.runtime-empty:hover .runtime-empty-icon {
   color: color-mix(in srgb, var(--empty-tone) 94%, #252b34 6%);
   border-color: rgba(var(--empty-tone-rgb), .24);
   background:
