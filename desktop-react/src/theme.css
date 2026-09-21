@@ -3478,37 +3478,38 @@ html[data-loom-theme="light"] .task-flow-row:has(.task-flow-status.started) {
   background:
     linear-gradient(
       90deg,
-      rgba(105,90,216,.070) 0%,
-      rgba(105,90,216,.030) 38%,
-      rgba(105,90,216,.010) 70%,
+      rgba(105,90,216,.040) 0%,
+      rgba(105,90,216,.018) 42%,
+      rgba(105,90,216,.006) 72%,
       transparent 100%
     );
   box-shadow:
-    inset 2px 0 0 rgba(105,90,216,.34),
-    inset 0 1px rgba(255,255,255,.76);
+    inset 1px 0 0 rgba(105,90,216,.22),
+    inset 0 1px rgba(255,255,255,.58);
 }
 
 html[data-loom-theme="light"] .task-flow-row:has(.task-flow-status.running)::after,
 html[data-loom-theme="light"] .task-flow-row:has(.task-flow-status.started)::after {
-  left: -42%;
-  width: 42%;
+  left: -54%;
+  width: 54%;
   background: linear-gradient(
-    103deg,
+    100deg,
     transparent 0%,
-    rgba(105,90,216,0) 16%,
-    rgba(105,90,216,.08) 30%,
-    rgba(123,104,226,.20) 43%,
-    rgba(162,146,244,.34) 49%,
-    rgba(255,255,255,.96) 52%,
-    rgba(158,142,242,.28) 55%,
-    rgba(105,90,216,.14) 64%,
-    rgba(105,90,216,.035) 78%,
-    transparent 100%
+    rgba(105,90,216,0) 24%,
+    rgba(105,90,216,.025) 34%,
+    rgba(105,90,216,.065) 44%,
+    rgba(126,109,224,.105) 49%,
+    rgba(170,158,242,.145) 52%,
+    rgba(126,109,224,.095) 55%,
+    rgba(105,90,216,.050) 61%,
+    rgba(105,90,216,.015) 70%,
+    transparent 82%
   );
-  filter: blur(.05px);
-  opacity: .95;
-  transform: translateX(0) skewX(-10deg);
-  animation: task-flow-shimmer-light 1.85s cubic-bezier(.38,0,.22,1) infinite;
+  filter: blur(1.6px);
+  opacity: .82;
+  transform: translateX(0) skewX(-6deg);
+  mix-blend-mode: multiply;
+  animation: task-flow-shimmer-light 2.55s cubic-bezier(.32,.02,.18,1) infinite;
 }
 
 html[data-loom-theme="light"] .task-flow-row:has(.task-flow-status.running) .task-flow-status-dot,
@@ -3539,14 +3540,15 @@ html[data-loom-theme="light"] .task-flow-group.is-running .task-flow-group-icon 
 
 @keyframes task-flow-shimmer-light {
   0% {
-    transform: translateX(0) skewX(-10deg);
+    transform: translateX(0) skewX(-6deg);
     opacity: 0;
   }
-  8% { opacity: .42; }
-  34% { opacity: .98; }
-  70% { opacity: .82; }
+  12% { opacity: .34; }
+  34% { opacity: .72; }
+  58% { opacity: .82; }
+  78% { opacity: .48; }
   100% {
-    transform: translateX(342%) skewX(-10deg);
+    transform: translateX(292%) skewX(-6deg);
     opacity: 0;
   }
 }
