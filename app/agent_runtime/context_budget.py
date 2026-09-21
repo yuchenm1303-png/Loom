@@ -880,10 +880,15 @@ def prepare_context(rt, session, step, token):
             input_budget,
             calibrated(fixed_tokens) + max(1, limits.safety_tokens),
         )
-        post_compaction_target_tokens = min(
-            input_budget,
-            max(fixed_floor, trigger * 3 // 4),
-        )
+        # Only impose a healthy low-water mark when the configured trigger is
+        # actually above the irreducible request prefix. Tiny custom thresholds
+        # are valid trigger/test knobs; treating them as a retention target would
+        # discard every retained user message even after a successful compact.
+        if trigger > fixed_floor:
+            post_compaction_target_tokens = min(
+                input_budget,
+                max(fixed_floor, trigger * 3 // 4),
+            )
 
     compacted_visible = [*transient, *replacement]
     estimated_after = estimate_tokens(compacted_visible, tools)
