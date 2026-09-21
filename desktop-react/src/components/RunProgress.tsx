@@ -1,4 +1,4 @@
-import { Activity, Clock3, FileDiff, Terminal, Wrench } from "lucide-react";
+import { Activity, Bot, Clock3, FileDiff, Terminal, Wrench } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useI18n, type LoomLanguage } from "../i18n";
 import type { TranscriptItem } from "../types/loom";
@@ -18,6 +18,7 @@ interface RunStats {
   tools: number;
   commands: number;
   files: number;
+  agents: number;
 }
 
 function isRunningStatus(status?: string): boolean {
@@ -57,6 +58,9 @@ function runStats(items: TranscriptItem[]): RunStats {
     tools: activityItems.filter((item) => item.type === "tool_call").length,
     commands: activityItems.filter((item) => item.type === "process").length,
     files: filePaths.size,
+    agents: activityItems.filter((item) => (
+      item.type === "tool_call" && item.toolName === "spawn_agent"
+    )).length,
   };
 }
 
@@ -72,7 +76,14 @@ function phaseFor(items: TranscriptItem[], threadStatus: string | undefined, lan
   if (runningActivity?.type === "approval") return zh ? "等待权限确认" : "Waiting for approval";
   if (runningActivity?.type === "process") return zh ? "正在运行命令" : "Running command";
   if (runningActivity?.type === "file_edit") return zh ? "正在编辑文件" : "Editing files";
-  if (runningActivity?.type === "tool_call") return zh ? "正在使用工具" : "Using tools";
+  if (runningActivity?.type === "tool_call") {
+    if (runningActivity.toolName === "spawn_agent") return zh ? "正在派出子代理" : "Spawning a sub-agent";
+    if (runningActivity.toolName === "wait_agent") return zh ? "正在等待子代理" : "Waiting for sub-agent";
+    if (runningActivity.toolName === "send_agent_message") return zh ? "正在协调子代理" : "Coordinating sub-agent";
+    if (runningActivity.toolName === "list_agents") return zh ? "正在检查子代理" : "Checking sub-agents";
+    if (runningActivity.toolName === "close_agent") return zh ? "正在关闭子代理" : "Closing sub-agent";
+    return zh ? "正在使用工具" : "Using tools";
+  }
 
   // During a live turn there is often a short gap between one completed runtime
   // item and the next item/assistant delta. Do not call that gap "preparing the
@@ -84,7 +95,12 @@ function phaseFor(items: TranscriptItem[], threadStatus: string | undefined, lan
   );
 
   if (latestActivity?.type === "process") return zh ? "正在分析命令结果" : "Analyzing command result";
-  if (latestActivity?.type === "tool_call") return zh ? "正在处理工具结果" : "Processing tool result";
+  if (latestActivity?.type === "tool_call") {
+    if (["spawn_agent", "wait_agent", "send_agent_message", "list_agents", "close_agent"].includes(String(latestActivity.toolName || ""))) {
+      return zh ? "正在汇总子代理进度" : "Reviewing sub-agent progress";
+    }
+    return zh ? "正在处理工具结果" : "Processing tool result";
+  }
   if (latestActivity?.type === "file_edit") return zh ? "正在检查文件修改" : "Reviewing file changes";
 
   const latestAssistant = [...items].reverse().find((item) => item.type === "assistant_message");
@@ -144,6 +160,7 @@ export function RunProgress({ items, startedAt, threadStatus, currentTurnId, tot
           <span className="run-progress-meta-item"><Clock3 size={12} strokeWidth={1.8} />{zh ? "用时" : "Elapsed"} {formatElapsed(elapsedSeconds)}</span>
           <span className="run-progress-meta-dot" aria-hidden="true" />
           <span className="run-progress-meta-item">{stats.activity ? (zh ? `${stats.activity} 个过程项` : `${stats.activity} steps`) : (zh ? "准备中" : "Preparing")}</span>
+          {stats.agents ? <><span className="run-progress-meta-dot" aria-hidden="true" /><span className="run-progress-meta-item subtle" title={zh ? "本轮派出的子代理" : "Sub-agents spawned this turn"}><Bot size={11} />{stats.agents}</span></> : null}
           {stats.commands ? <><span className="run-progress-meta-dot" aria-hidden="true" /><span className="run-progress-meta-item subtle"><Terminal size={11} />{stats.commands}</span></> : null}
           {stats.tools ? <><span className="run-progress-meta-dot" aria-hidden="true" /><span className="run-progress-meta-item subtle"><Wrench size={11} />{stats.tools}</span></> : null}
           {stats.files ? <><span className="run-progress-meta-dot" aria-hidden="true" /><span className="run-progress-meta-item subtle"><FileDiff size={11} />{stats.files}</span></> : null}
