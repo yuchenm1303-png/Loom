@@ -362,3 +362,62 @@ html[data-loom-theme="light"] .context-meter-compact {
     animation: none !important;
   }
 }
+
+
+/* Compacting chip: keep progress copy inside the pill --------------------- */
+.context-meter-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.context-meter-chip.is-compacting {
+  gap: 5px;
+  padding-inline: 8px;
+}
+
+.context-meter-chip.is-compacting .context-meter-track {
+  width: 42px;
+  flex: 0 0 42px;
+}
+
+.context-meter-chip.is-compacting .context-meter-value {
+  gap: 3px;
+  flex: 0 0 auto;
+  font-size: 10.25px;
+  font-weight: 580;
+  line-height: 1;
+  letter-spacing: -.018em;
+}
+
+.context-meter-chip.is-compacting .context-meter-value .context-meter-spin {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 10px;
+}
+
+html[data-loom-theme="light"] .context-meter-chip.is-compacting {
+  color: #59636f;
+}
+
+html[data-loom-theme="light"] .context-meter-chip.is-compacting .context-meter-value {
+  color: #4f5863;
+}
+
+@media (max-width: 1180px) {
+  .context-meter-chip.is-compacting {
+    gap: 4px;
+    padding-inline: 7px;
+  }
+
+  .context-meter-chip.is-compacting .context-meter-track {
+    width: 38px;
+    flex-basis: 38px;
+  }
+
+  .context-meter-chip.is-compacting .context-meter-value {
+    font-size: 10px;
+  }
+}
