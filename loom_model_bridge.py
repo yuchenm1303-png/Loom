@@ -53,6 +53,7 @@ OPENCODE_GO_FALLBACK_MODEL_IDS = (
     "omen-alpha",
 )
 CQU_DEFAULT_MODEL = "cqu-default"
+MANAGED_RELAY_SETUP_MODEL = "__managed_relay_setup__"
 # OpenCode Go models that accepted an image when asked, recorded 2026-09-20 by
 # `python scripts/probe_opencode_vision.py`.  The listing carries no modality
 # field, so this is the gateway's own answer to one image request per model
@@ -343,11 +344,21 @@ def _opencode_go_key(
 def _set_provider_key(payload: Mapping[str, Any]) -> dict[str, Any]:
     provider = str(payload.get("provider") or "").strip().casefold()
     api_key = str(payload.get("apiKey") or payload.get("api_key") or "").strip()
-    if provider != "opencode-go":
-        raise ValueError("only opencode-go built-in credentials are configurable here")
     if not api_key:
         raise ValueError("API key must not be empty")
-    _credential_set(_OPENCODE_GO_CREDENTIAL_ALIAS, api_key)
+
+    if provider == "opencode-go":
+        alias = _OPENCODE_GO_CREDENTIAL_ALIAS
+    elif provider in {"managed-relay", "smirel-relay", "openai-relay"}:
+        # Managed Relay keys are customer/group credentials. They are stored in
+        # the OS credential store and never written into the model registry or
+        # returned to the renderer.
+        provider = "managed-relay"
+        alias = _MANAGED_RELAY_CREDENTIAL_ALIAS
+    else:
+        raise ValueError("unsupported built-in provider credential")
+
+    _credential_set(alias, api_key)
     return {"provider": provider, "configured": True}
 
 
@@ -779,24 +790,45 @@ def _safe_deepseek(
     }
 
 
-def _safe_managed(model: str, environ: Mapping[str, str] | None = None) -> dict[str, Any]:
+def _managed_group(model: str) -> tuple[str, str, int]:
+    folded = str(model or "").strip().casefold()
+    if folded != MANAGED_RELAY_SETUP_MODEL.casefold() and folded.startswith(
+        ("gpt-", "chatgpt-", "codex-", "o1", "o3", "o4")
+    ):
+        return "managed-relay:openai", "OpenAI", 40
+    return "managed-relay", "Smirel Relay", 45
+
+
+def _safe_managed(
+    model: str,
+    environ: Mapping[str, str] | None = None,
+    *,
+    configured: bool | None = None,
+) -> dict[str, Any]:
     model = str(model or "").strip()
     if not model:
         raise ValueError("managed model id must not be empty")
     if _is_minimax_model(model):
         return _safe_minimax(model, environ)
-    return {
+
+    group_id, group_name, group_order = _managed_group(model)
+    setup_only = model.casefold() == MANAGED_RELAY_SETUP_MODEL.casefold()
+    profile: dict[str, Any] = {
         "selection": _managed_selection_for_model(model),
         "id": _managed_profile_id(model),
         "kind": "builtin",
-        "name": _managed_display_name(model),
-        "groupId": "managed-relay",
-        "groupName": "Managed models",
-        "groupOrder": 40,
+        "name": "Connect Smirel Relay" if setup_only else _managed_display_name(model),
+        "groupId": group_id,
+        "groupName": group_name,
+        "groupOrder": group_order,
         "adapter": "openai-compatible",
         "baseUrl": _managed_relay_base_url(environ),
         "model": model,
+        "setupOnly": setup_only,
     }
+    if configured is not None:
+        profile["configured"] = bool(configured)
+    return profile
 
 
 def _safe_opencode_go(model: str, *, configured: bool) -> dict[str, Any]:
@@ -944,13 +976,27 @@ def _managed_profiles(store: ModelConfigStore, environ: Mapping[str, str] | None
         model_ids = _fetch_managed_model_ids(api_key, environ)
         if not model_ids:
             model_ids = [CQU_DEFAULT_MODEL]
-        seen = {str(profile.get("model") or "").strip().casefold() for profile in profiles}
+        # Provider identity is part of model identity. A Relay model may have
+        # the same bare model id as OpenCode Go or another provider and still
+        # needs to remain selectable through the Relay credential.
+        seen: set[str] = set()
         for model_id in model_ids:
             folded = str(model_id or "").strip().casefold()
             if not folded or folded in seen or _is_minimax_model(model_id):
                 continue
             seen.add(folded)
-            profiles.append(_with_discovered_limits(_safe_managed(model_id, environ)))
+            profiles.append(
+                _with_discovered_limits(
+                    _safe_managed(model_id, environ, configured=True)
+                )
+            )
+    else:
+        # Keep the provider discoverable before a credential exists so the
+        # desktop can offer a secure "Connect" surface. The setup-only profile
+        # is never enabled as an inference target.
+        profiles.append(
+            _safe_managed(MANAGED_RELAY_SETUP_MODEL, environ, configured=False)
+        )
     return profiles
 
 
@@ -968,7 +1014,12 @@ def _base_profile_for_selection(store: ModelConfigStore, selection: str) -> dict
 
     managed_model = _managed_model_from_selection(requested)
     if managed_model:
-        return _safe_managed(managed_model)
+        return _safe_managed(
+            managed_model,
+            configured=bool(
+                _managed_relay_key(store, repo_root=Path(__file__).resolve().parent)
+            ),
+        )
     saved = store.model_for_selection(requested)
     if saved is None:
         raise ValueError(f"unknown model selection: {requested!r}")
