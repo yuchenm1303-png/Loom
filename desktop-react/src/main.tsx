@@ -29,6 +29,7 @@ import "./components/renderer-crispness.css";
 import "./components/model-core-redesign.css";
 import "./theme.css";
 import "./components/sidebar-primary-actions-polish.css";
+import "./components/permission-popover-polish.css";
 
 const CONVERSATION_WIDTHS: Record<string, string> = {
   focused: "740px",
