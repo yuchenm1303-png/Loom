@@ -6,6 +6,7 @@ import {
   Eye,
   FolderCog,
   KeyRound,
+  LockKeyhole,
   Paperclip,
   X,
   FileText,
@@ -452,7 +453,7 @@ export function Composer({
               </button>
 
               {openPanel === "permission" ? (
-                <div className="composer-popover permission-popover" role="menu" aria-label="Permission profiles">
+                <div className={`composer-popover permission-popover ${running ? "is-locked" : ""}`} role="menu" aria-label="Permission profiles">
                   <div className="composer-popover-head">
                     <div className="composer-popover-heading">
                       <span className="composer-popover-icon permission"><ShieldCheck size={16} /></span>
@@ -461,7 +462,7 @@ export function Composer({
                         <span>{zh ? "选择当前对话的操作权限。" : "Choose access for this conversation."}</span>
                       </div>
                     </div>
-                    <span className="composer-popover-context">Thread</span>
+                    <span className="composer-popover-context">{zh ? "当前对话" : "Thread"}</span>
                   </div>
 
                   <div className="composer-option-list">
@@ -496,8 +497,17 @@ export function Composer({
                   </div>
 
                   {panelError ? <div className="composer-popover-error">{panelError}</div> : null}
-                  <div className="composer-popover-footnote">
-                    Changes apply to the next turn. Active work must finish before the profile can change.
+                  <div className="composer-popover-footnote permission-footnote">
+                    <LockKeyhole size={13} strokeWidth={1.8} />
+                    <span>
+                      {zh
+                        ? (running
+                          ? "当前任务结束后才能切换权限；新权限会从下一轮开始生效。"
+                          : "权限切换会从下一轮开始生效，不会改变已经执行中的操作。")
+                        : (running
+                          ? "Finish the active turn before changing access. The new profile applies from the next turn."
+                          : "Permission changes apply from the next turn and do not alter work already in progress.")}
+                    </span>
                   </div>
                 </div>
               ) : null}
