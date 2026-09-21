@@ -19,6 +19,7 @@ import { SettingsComputerLogExport } from "./components/SettingsComputerLogExpor
 import { SettingsMemoryBridge } from "./components/SettingsMemoryBridge";
 import { SettingsPage } from "./components/SettingsPage";
 import { Sidebar } from "./components/Sidebar";
+import { SubAgentDock } from "./components/SubAgentDock";
 import { ThreadHeader } from "./components/ThreadHeader";
 import { Transcript } from "./components/Transcript";
 import { TranscriptScrollController } from "./components/TranscriptScrollController";
@@ -112,6 +113,24 @@ function reviewFileCount(items: TranscriptItem[]): number {
   return keys.size;
 }
 
+function subAgentCount(items: TranscriptItem[]): number {
+  const agents = new Set<string>();
+  let fallback = 0;
+
+  for (const item of items) {
+    if (item.type !== "tool_call" || String(item.toolName || "") !== "spawn_agent") continue;
+    const result = item.result && typeof item.result === "object" && !Array.isArray(item.result)
+      ? item.result as Record<string, unknown>
+      : null;
+    const sessionId = typeof result?.session_id === "string" ? result.session_id.trim() : "";
+    const callId = String(item.callId || item.id || "").trim();
+    if (sessionId || callId) agents.add(sessionId || callId);
+    else fallback += 1;
+  }
+
+  return agents.size + fallback;
+}
+
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.min(Math.max(value, minimum), Math.max(minimum, maximum));
 }
@@ -169,6 +188,8 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
+  const [agentsOpen, setAgentsOpen] = useState(false);
+  const autoOpenedAgentsForThreadRef = useRef("");
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [sidebarWidth, setSidebarWidth] = useState(() => readPanelWidth(
     SIDEBAR_WIDTH_KEY,
@@ -198,14 +219,16 @@ export default function App() {
   const attachmentsEnabled = capabilitySettings.attachments !== false;
   const stickersEnabled = capabilitySettings.stickers !== false;
   const changedFileCount = reviewFileCount(loom.items);
+  const agentCount = subAgentCount(loom.items);
   const selectedProject = selectedProjectId
     ? loom.projects.find((project) => project.id === selectedProjectId) ?? null
     : null;
   const projectDetailsOpen = Boolean(selectedProject);
-  const inspectorVisible = inspectorOpen && !reviewOpen && !projectDetailsOpen;
+  const inspectorVisible = inspectorOpen && !reviewOpen && !projectDetailsOpen && !agentsOpen;
 
   function focusReviewFile(path?: string): void {
     const normalized = normalizeReviewPath(path);
+    setAgentsOpen(false);
     setSelectedProjectId("");
     setInspectorOpen(false);
     setReviewOpen(true);
@@ -224,6 +247,7 @@ export default function App() {
 
   function openProjectDetails(projectId: string): void {
     setReviewOpen(false);
+    setAgentsOpen(false);
     setInspectorOpen(false);
     setSelectedProjectId(projectId);
   }
@@ -232,16 +256,33 @@ export default function App() {
     setSelectedProjectId("");
   }
 
+  function openAgents(): void {
+    setReviewOpen(false);
+    setInspectorOpen(false);
+    setSelectedProjectId("");
+    setAgentsOpen(true);
+  }
+
+  function toggleAgents(): void {
+    if (agentsOpen) {
+      setAgentsOpen(false);
+      return;
+    }
+    openAgents();
+  }
+
   function toggleReview(): void {
     if (reviewOpen) {
       setReviewOpen(false);
       return;
     }
+    setAgentsOpen(false);
     focusReviewFile();
   }
 
   function toggleInspector(): void {
     setReviewOpen(false);
+    setAgentsOpen(false);
     setSelectedProjectId("");
     setInspectorOpen((open) => !open);
   }
@@ -249,7 +290,23 @@ export default function App() {
   useEffect(() => {
     setDismissedApprovalIds(new Set());
     setReviewOpen(false);
+    setAgentsOpen(false);
+    autoOpenedAgentsForThreadRef.current = "";
   }, [thread?.id]);
+
+  useEffect(() => {
+    const openFromActivity = () => openAgents();
+    window.addEventListener("loom:sub-agents-open", openFromActivity);
+    return () => window.removeEventListener("loom:sub-agents-open", openFromActivity);
+  }, []);
+
+  useEffect(() => {
+    const threadId = String(thread?.id || "");
+    if (!threadId || !running || agentCount <= 0) return;
+    if (autoOpenedAgentsForThreadRef.current === threadId) return;
+    autoOpenedAgentsForThreadRef.current = threadId;
+    openAgents();
+  }, [agentCount, running, thread?.id]);
 
   useEffect(() => {
     if (!selectedProjectId) return;
@@ -631,7 +688,7 @@ export default function App() {
   return (
     <div
       ref={shellRef}
-      className={`app-shell workspace-panels ${sidebarOpen ? "sidebar-open" : "sidebar-closed"} ${inspectorVisible ? "inspector-open" : "inspector-closed"} ${reviewOpen ? "with-review" : ""} ${projectDetailsOpen ? "with-project-details" : ""} ${resizingPanel ? "is-resizing" : ""}`}
+      className={`app-shell workspace-panels ${sidebarOpen ? "sidebar-open" : "sidebar-closed"} ${inspectorVisible ? "inspector-open" : "inspector-closed"} ${reviewOpen ? "with-review" : ""} ${agentsOpen ? "with-agents" : ""} ${projectDetailsOpen ? "with-project-details" : ""} ${resizingPanel ? "is-resizing" : ""}`}
       style={layoutStyle}
     >
       <Sidebar
@@ -688,6 +745,8 @@ export default function App() {
           inspectorOpen={inspectorVisible}
           reviewOpen={reviewOpen}
           reviewCount={changedFileCount}
+          agentsOpen={agentsOpen}
+          agentCount={agentCount}
           accountAuthenticated={account.account.authenticated}
           context={loom.context}
           compacting={loom.compacting}
@@ -697,6 +756,7 @@ export default function App() {
           onToggleSidebar={() => setSidebarOpen((open) => !open)}
           onToggleInspector={toggleInspector}
           onToggleReview={toggleReview}
+          onToggleAgents={toggleAgents}
         />
 
         <div className={`conversation-stage ${running ? "is-running" : ""}`}>
@@ -778,6 +838,12 @@ export default function App() {
         onSetInstructions={loom.setProjectInstructions}
       />
       <ReviewWorkspace items={loom.items} open={reviewOpen} onClose={() => setReviewOpen(false)} />
+      <SubAgentDock
+        items={loom.items}
+        open={agentsOpen}
+        active={Boolean(running)}
+        onClose={() => setAgentsOpen(false)}
+      />
       <ReviewInteractionBridge onOpen={focusReviewFile} />
       <AccountDialog
         open={accountOpen}
