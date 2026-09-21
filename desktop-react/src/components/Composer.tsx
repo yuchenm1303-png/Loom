@@ -141,10 +141,11 @@ function SteeringComposer({ onSend, onInterrupt }: ComposerProps) {
           />
         </div>
 
-        <div className="composer-toolbar">
-          <div className="composer-left">
+        <div className="composer-toolbar composer-toolbar-steering">
+          <div className="composer-left composer-status-zone">
             <span className="composer-running-label" role="status" aria-live="polite">
-              <i /> {activityLabel}
+              <i aria-hidden="true" />
+              <span className="composer-running-copy">{activityLabel}</span>
             </span>
           </div>
           <div className="composer-right">
