@@ -4,6 +4,11 @@ from collections.abc import Sequence
 
 from app.ai import ToolCall
 
+from .contracts import AgentEvent, AgentEventKind
+
+
+RUNTIME_COMMENTARY_TOOL_INTERVAL = 8
+
 
 def _category(calls: Sequence[ToolCall]) -> str:
     names = {str(call.name or "").casefold() for call in calls}
@@ -57,4 +62,40 @@ def runtime_tool_commentary(
     return prefix + messages[category]
 
 
-__all__ = ["runtime_tool_commentary"]
+def should_emit_runtime_tool_commentary(
+    events: Sequence[AgentEvent],
+    *,
+    turn_id: str,
+    tool_interval: int = RUNTIME_COMMENTARY_TOOL_INTERVAL,
+) -> bool:
+    """Throttle synthetic commentary while keeping silent runs observable.
+
+    A model-authored progress message and a previous runtime fallback both reset
+    the counter.  This gives a silent turn one immediate preamble, then at most
+    one fallback per bounded batch of tools instead of one sentence before every
+    tool-only model response.
+    """
+
+    relevant = [event for event in events if event.turn_id == turn_id]
+    last_visible_response = -1
+    for index, event in enumerate(relevant):
+        if event.kind is not AgentEventKind.MODEL_RESPONSE:
+            continue
+        if str(event.data.get("text") or "").strip():
+            last_visible_response = index
+
+    if last_visible_response < 0:
+        return True
+    tools_since = sum(
+        1
+        for event in relevant[last_visible_response + 1 :]
+        if event.kind is AgentEventKind.TOOL_STARTED
+    )
+    return tools_since >= max(1, int(tool_interval))
+
+
+__all__ = [
+    "RUNTIME_COMMENTARY_TOOL_INTERVAL",
+    "runtime_tool_commentary",
+    "should_emit_runtime_tool_commentary",
+]

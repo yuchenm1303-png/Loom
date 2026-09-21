@@ -379,16 +379,23 @@ class TurnRunner:
                     # it verbatim leaves the user staring at an unexplained command stream.
                     # Supply a safe, language-aware preamble without reflecting arguments,
                     # which may contain credentials, into the public transcript.
-                    from .tool_commentary import runtime_tool_commentary
-                    response = replace(
-                        response,
-                        text=runtime_tool_commentary(
-                            response.tool_calls,
-                            communication_language=session.communication_language,
-                            continuing=session.tool_calls > 0,
-                        ),
+                    from .tool_commentary import (
+                        runtime_tool_commentary,
+                        should_emit_runtime_tool_commentary,
                     )
-                    runtime_authored_commentary = True
+                    if should_emit_runtime_tool_commentary(
+                        rt.store.events(session.session_id),
+                        turn_id=session.current_turn_id,
+                    ):
+                        response = replace(
+                            response,
+                            text=runtime_tool_commentary(
+                                response.tool_calls,
+                                communication_language=session.communication_language,
+                                continuing=session.tool_calls > 0,
+                            ),
+                        )
+                        runtime_authored_commentary = True
 
                 # Serialize the final sample-acceptance boundary against steering
                 # submission. ModelExecutor already notices guidance during token
