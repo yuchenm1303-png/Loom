@@ -35,10 +35,6 @@ _PROVIDER_LISTING_KEYS = {
         "max_model_len",
         "max_input_tokens",
     ),
-    "output_reserve_tokens": (
-        "max_output_tokens",
-        "max_completion_tokens",
-    ),
 }
 _PROVIDER_LISTING_NESTS = ("limits", "meta", "metadata", "spec")
 
@@ -88,9 +84,12 @@ def model_context_limits_from_provider_listing(entry: object) -> ModelContextLim
                     return value
         return None
 
+    # ``max_output_tokens`` is a capability ceiling, not a declaration that
+    # every request should reserve or send that amount. Codex keeps those
+    # concepts separate; Loom must do the same or a 384k output-capable model
+    # loses 384k of input budget before the conversation starts.
     return ModelContextLimits(
         context_window_tokens=first(_PROVIDER_LISTING_KEYS["context_window_tokens"]),
-        output_reserve_tokens=first(_PROVIDER_LISTING_KEYS["output_reserve_tokens"]),
     )
 
 
