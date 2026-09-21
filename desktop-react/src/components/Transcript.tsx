@@ -21,6 +21,7 @@ import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "reac
 import type { TranscriptItem } from "../types/loom";
 import { MarkdownMessage } from "./MarkdownMessage";
 import { StreamingPresentation } from "./StreamingPresentation";
+import { SubAgentWorkspace, isSubAgentToolItem } from "./SubAgentWorkspace";
 import { TurnArtifactsPreview } from "./TurnArtifactsPreview";
 import { UserMessageContent, parseUserMessageContent } from "./UserMessageContent";
 import "./activity-flow.css";
@@ -794,9 +795,21 @@ function Sequence({
   promptDisabled?: boolean;
   workspace?: string;
 }) {
-  const blocks = useMemo(() => groupTranscript(items), [items]);
+  const subAgentItems = useMemo(() => items.filter(isSubAgentToolItem), [items]);
+  const visibleItems = useMemo(
+    () => subAgentItems.length ? items.filter((item) => !isSubAgentToolItem(item)) : items,
+    [items, subAgentItems.length],
+  );
+  const blocks = useMemo(() => groupTranscript(visibleItems), [visibleItems]);
+
   return (
     <>
+      {subAgentItems.length ? (
+        <div className="transcript-entry entry-sub-agent-workspace">
+          <SubAgentWorkspace items={subAgentItems} />
+        </div>
+      ) : null}
+
       {blocks.map((block, index) => (
         block.kind === "activity" ? (
           <div className="transcript-entry entry-activity" key={`activity-${block.items[0]?.id ?? index}`}>
