@@ -107,6 +107,7 @@ _OPENCODE_GO_VISION_MODELS = frozenset(
 # model id and filled in as `/models` listings are fetched. Empty until a
 # provider actually says something, so nothing here is ever a guess.
 _DISCOVERED_CONTEXT_LIMITS: dict[str, ModelContextLimits] = {}
+_MANAGED_RELAY_CATALOG_ERROR = ""
 _KEYRING_SERVICE = "loom-agent"
 _MANAGED_RELAY_CREDENTIAL_ALIAS = "managed/relay"
 _MANAGED_RELAY_BASE_URL_ALIAS = "managed/relay-base-url"
@@ -492,8 +493,11 @@ def _fetch_managed_model_ids(
     environ: Mapping[str, str] | None = None,
     timeout: float = 3.5,
 ) -> list[str]:
+    global _MANAGED_RELAY_CATALOG_ERROR
+    _MANAGED_RELAY_CATALOG_ERROR = ""
     api_key = str(api_key or "").strip()
     if not api_key:
+        _MANAGED_RELAY_CATALOG_ERROR = "Relay credential is missing."
         return []
     request = urllib.request.Request(
         _managed_models_url(environ),
@@ -505,13 +509,24 @@ def _fetch_managed_model_ids(
     )
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-    except (OSError, urllib.error.URLError, json.JSONDecodeError):
+            raw = response.read().decode("utf-8")
+    except urllib.error.HTTPError as exc:
+        _MANAGED_RELAY_CATALOG_ERROR = f"Model catalog request returned HTTP {exc.code}."
+        return []
+    except (OSError, urllib.error.URLError):
+        _MANAGED_RELAY_CATALOG_ERROR = "Model catalog request could not reach the Relay."
+        return []
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        _MANAGED_RELAY_CATALOG_ERROR = "Relay returned an invalid model catalog response."
         return []
     if not isinstance(payload, dict):
+        _MANAGED_RELAY_CATALOG_ERROR = "Relay returned an invalid model catalog response."
         return []
     data = payload.get("data")
     if not isinstance(data, list):
+        _MANAGED_RELAY_CATALOG_ERROR = "Relay model catalog did not contain a data list."
         return []
     models: list[str] = []
     seen: set[str] = set()
@@ -836,6 +851,26 @@ def _managed_group(model: str) -> tuple[str, str, int]:
     return "managed-relay", "Muxway Relay", 45
 
 
+def _safe_managed_catalog_status(
+    environ: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
+    return {
+        "selection": "managed:__catalog_status__",
+        "id": "managed-relay-catalog-status",
+        "kind": "builtin",
+        "name": "Model catalog unavailable",
+        "groupId": "managed-relay",
+        "groupName": "Muxway Relay",
+        "groupOrder": 45,
+        "adapter": "openai-compatible",
+        "baseUrl": _managed_relay_base_url(environ),
+        "model": "",
+        "configured": True,
+        "setupOnly": True,
+        "statusMessage": _MANAGED_RELAY_CATALOG_ERROR or "Model catalog is currently unavailable.",
+    }
+
+
 def _safe_managed(
     model: str,
     environ: Mapping[str, str] | None = None,
@@ -1009,9 +1044,12 @@ def _managed_profiles(store: ModelConfigStore, environ: Mapping[str, str] | None
     api_key = _managed_relay_key(store, environ, Path(__file__).resolve().parent)
     if api_key:
         model_ids = _fetch_managed_model_ids(api_key, environ)
+        if not model_ids:
+            profiles.append(_safe_managed_catalog_status(environ))
         # Do not invent a fallback model when discovery fails. A stale phantom
         # cqu-default hid endpoint/key problems and made the UI disagree with
-        # the Relay catalog. An empty or unavailable catalog stays empty.
+        # the Relay catalog. An empty or unavailable catalog is represented by
+        # a non-selectable provider-status row instead of disappearing.
         # Provider identity is part of model identity. A Relay model may have
         # the same bare model id as OpenCode Go or another provider and still
         # needs to remain selectable through the Relay credential.

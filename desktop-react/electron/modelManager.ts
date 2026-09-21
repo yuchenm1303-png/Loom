@@ -31,6 +31,7 @@ export interface ModelProfile {
   protocol?: string;
   configured?: boolean;
   setupOnly?: boolean;
+  statusMessage?: string;
   vision?: boolean;
   contextLimits?: {
     contextWindowTokens?: number;

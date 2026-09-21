@@ -479,8 +479,10 @@ export function ModelPanel({
   }
 
   if (view === "group" && activeGroup) {
+    const selectableProfiles = activeGroup.profiles.filter((profile) => !profile.setupOnly);
+    const statusProfiles = activeGroup.profiles.filter((profile) => profile.setupOnly && profile.statusMessage);
     const families = new Map<string, ModelProfile[]>();
-    for (const profile of activeGroup.profiles) {
+    for (const profile of selectableProfiles) {
       const family = profile.family || (activeGroup.id === "opencode-go" ? "Other" : "");
       const list = families.get(family) ?? [];
       list.push(profile);
@@ -501,7 +503,7 @@ export function ModelPanel({
           <span className="model-form-icon"><Server size={17} /></span>
           <div>
             <strong>{activeGroup.name}</strong>
-            <span>{activeGroup.profiles.length} models · choose the exact model for this conversation.</span>
+            <span>{selectableProfiles.length} models · choose the exact model for this conversation.</span>
           </div>
         </div>
 
@@ -533,6 +535,12 @@ export function ModelPanel({
             </div>
           </div>
         ) : null}
+
+        {statusProfiles.map((profile) => (
+          <div className="composer-popover-error" key={profile.id}>
+            {profile.statusMessage}
+          </div>
+        ))}
 
         <div className="model-group-models">
           {familyEntries.map(([family, familyProfiles]) => (
@@ -659,6 +667,8 @@ export function ModelPanel({
                 group.id !== "opencode-go"
                 || group.profiles.some((profile) => profile.configured !== false)
               );
+              const selectableCount = group.profiles.filter((profile) => !profile.setupOnly).length;
+              const statusProfile = group.profiles.find((profile) => profile.setupOnly && profile.statusMessage);
               return (
                 <div key={group.id} className={`model-profile-row model-group-row ${active ? "active" : ""}`}>
                   <button
@@ -677,13 +687,15 @@ export function ModelPanel({
                         <strong>{group.name}</strong>
                         {active ? <em>Current</em> : null}
                       </span>
-                      <span>{group.profiles.length} {group.profiles.length === 1 ? "model" : "models"}</span>
+                      <span>{selectableCount} {selectableCount === 1 ? "model" : "models"}</span>
                       <small>
-                        {group.id === "opencode-go"
-                          ? (connected ? "OpenCode Go · connected" : "OpenCode Go · key required")
-                          : group.profiles[0]?.kind === "saved"
-                            ? profileSubtitle(group.profiles[0])
-                            : "Built-in provider"}
+                        {statusProfile
+                          ? `${endpointLabel(statusProfile.baseUrl)} · catalog unavailable`
+                          : group.id === "opencode-go"
+                            ? (connected ? "OpenCode Go · connected" : "OpenCode Go · key required")
+                            : group.profiles[0]?.kind === "saved"
+                              ? profileSubtitle(group.profiles[0])
+                              : "Built-in provider"}
                       </small>
                     </span>
                     <span className="model-profile-action"><ChevronRight size={14} /></span>

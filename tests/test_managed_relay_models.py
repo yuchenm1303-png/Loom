@@ -359,8 +359,22 @@ def test_failed_managed_catalog_does_not_invent_cqu_model(tmp_path, monkeypatch)
     monkeypatch.setattr(bridge, "_deepseek_key", lambda *_args, **_kwargs: "")
     monkeypatch.setattr(bridge, "_managed_relay_key", lambda *_args, **_kwargs: "relay-secret")
     monkeypatch.setattr(bridge, "_fetch_managed_model_ids", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(
+        bridge,
+        "_MANAGED_RELAY_CATALOG_ERROR",
+        "Model catalog request returned HTTP 403.",
+    )
 
     profiles = bridge._managed_profiles(store)
+    relay_profiles = [
+        profile
+        for profile in profiles
+        if str(profile.get("groupId") or "").startswith("managed-relay")
+    ]
 
     assert all(profile.get("model") != bridge.CQU_DEFAULT_MODEL for profile in profiles)
-    assert all(not str(profile.get("groupId") or "").startswith("managed-relay") for profile in profiles)
+    assert len(relay_profiles) == 1
+    assert relay_profiles[0]["setupOnly"] is True
+    assert relay_profiles[0]["model"] == ""
+    assert relay_profiles[0]["groupName"] == "Muxway Relay"
+    assert relay_profiles[0]["statusMessage"] == "Model catalog request returned HTTP 403."
