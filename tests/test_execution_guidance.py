@@ -5,6 +5,7 @@ from app.agent_runtime.contracts import AgentEvent, AgentEventKind
 from app.agent_runtime.execution_guidance import (
     model_execution_guidance,
     recent_read_only_repeat_count,
+    recent_tool_repeat_count,
     tool_call_fingerprint,
 )
 
@@ -86,3 +87,44 @@ def test_guidance_reports_new_repeat_once_and_advances_thresholds():
     message, metadata = model_execution_guidance(delivered, turn_id="turn-1", tool_calls=40)
     assert message is None
     assert metadata == {}
+
+
+def test_sensitive_repeat_is_advisory_even_across_other_sensitive_calls():
+    events = (
+        _event(
+            AgentEventKind.TOOL_STARTED,
+            tool="exec",
+            effect="sensitive",
+            call_fingerprint="same-ssh-probe",
+        ),
+        _event(
+            AgentEventKind.TOOL_STARTED,
+            tool="exec",
+            effect="sensitive",
+            call_fingerprint="different-command",
+        ),
+    )
+
+    assert recent_tool_repeat_count(
+        events,
+        turn_id="turn-1",
+        fingerprint="same-ssh-probe",
+    ) == 1
+
+    repeated = (*events, _event(
+        AgentEventKind.TOOL_STARTED,
+        tool="exec",
+        effect="sensitive",
+        call_fingerprint="same-ssh-probe",
+        repeat_count=1,
+    ))
+    message, metadata = model_execution_guidance(
+        repeated,
+        turn_id="turn-1",
+        tool_calls=3,
+    )
+
+    assert message is not None
+    assert "sensitive operation" in message.content
+    assert "durable result" in message.content
+    assert metadata == {"duplicate_sensitive_calls": 1}

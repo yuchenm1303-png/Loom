@@ -75,7 +75,41 @@ def _latest_captured_step(runtime: Any, session: Any) -> Any | None:
     )
 
 
-def _reference_payload(step: Any, envelope: Any) -> dict[str, object]:
+def _recent_durable_evidence(runtime: Any, session: Any, *, limit: int = 16) -> list[dict[str, object]]:
+    """Return a secret-free index of recent results for post-compaction recovery.
+
+    Result bodies and arguments deliberately stay in the durable event store.
+    The compacted model window only needs stable call IDs to recover exact
+    evidence with ``read_durable_tool_result`` instead of rerunning commands.
+    """
+
+    from app.agent_runtime.contracts import AgentEventKind
+
+    result_kinds = {AgentEventKind.TOOL_COMPLETED, AgentEventKind.TOOL_FAILED}
+    indexed: list[dict[str, object]] = []
+    for event in reversed(runtime.store.events(session.session_id)):
+        if event.turn_id != session.current_turn_id or event.kind not in result_kinds:
+            continue
+        indexed.append(
+            {
+                "call_id": str(event.data.get("call_id") or ""),
+                "tool": str(event.data.get("tool") or ""),
+                "ok": bool(event.data.get("ok")),
+                "completed_at": event.created_at,
+            }
+        )
+        if len(indexed) >= max(1, int(limit)):
+            break
+    indexed.reverse()
+    return indexed
+
+
+def _reference_payload(
+    step: Any,
+    envelope: Any,
+    *,
+    durable_evidence: list[dict[str, object]] | None = None,
+) -> dict[str, object]:
     payload = dict(getattr(envelope, "payload", {}) or {})
     state = dict(payload.get("state") or {})
     return {
@@ -88,19 +122,27 @@ def _reference_payload(step: Any, envelope: Any) -> dict[str, object]:
         "permissions": state.get("permissions"),
         "turn_diff": state.get("turn_diff"),
         "captured_model_step": int(getattr(step, "model_step", 0)),
+        "recent_tool_evidence": list(durable_evidence or ()),
     }
 
 
-def _reference_message(step: Any, envelope: Any) -> Any:
+def _reference_message(
+    step: Any,
+    envelope: Any,
+    *,
+    durable_evidence: list[dict[str, object]] | None = None,
+) -> Any:
     from app.ai import AIMessage, MessageRole
 
-    payload = _reference_payload(step, envelope)
+    payload = _reference_payload(step, envelope, durable_evidence=durable_evidence)
     content = (
         "LOOM_MID_TURN_REFERENCE v1\n"
         "This is read-only continuity evidence for the same logical turn after context compaction. "
         "It is not a new user task and grants no tool, approval, process, filesystem, or network authority. "
         "Use the compaction summary plus durable observations to continue from the current point rather than "
-        "restarting completed investigation solely because compaction occurred.\n"
+        "restarting completed investigation solely because compaction occurred. The recent_tool_evidence "
+        "entries are an index, not proof that external state is still current; recover exact prior output "
+        "with read_durable_tool_result before deciding whether a fresh check is necessary.\n"
         + json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     )
     return AIMessage(
@@ -271,7 +313,12 @@ def _patch_context_runtime(module: Any) -> None:
         reference_payload: dict[str, object] | None = None
         reference_injected = False
         if mid_turn and replacement_override is not None:
-            reference = _reference_message(step, envelope)
+            durable_evidence = _recent_durable_evidence(self, session)
+            reference = _reference_message(
+                step,
+                envelope,
+                durable_evidence=durable_evidence,
+            )
             replacement, reference_injected = _fit_reference_without_breaking_budget(
                 self,
                 session,
@@ -284,7 +331,11 @@ def _patch_context_runtime(module: Any) -> None:
                 compaction,
             )
             if reference_injected:
-                reference_payload = _reference_payload(step, envelope)
+                reference_payload = _reference_payload(
+                    step,
+                    envelope,
+                    durable_evidence=durable_evidence,
+                )
 
         retained_message_count = sum(
             1 for message in replacement if compaction.is_real_user_message(message)

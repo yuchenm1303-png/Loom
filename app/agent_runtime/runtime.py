@@ -696,17 +696,26 @@ class AgentRuntime:
             return False
         call = prepared.call
         tool = prepared.tool
-        from .execution_guidance import recent_read_only_repeat_count, tool_call_fingerprint
+        from .execution_guidance import (
+            recent_read_only_repeat_count,
+            recent_tool_repeat_count,
+            tool_call_fingerprint,
+        )
         call_fingerprint = tool_call_fingerprint(call)
-        repeat_count = (
-            recent_read_only_repeat_count(
+        if tool.effect is ToolEffect.READ_ONLY:
+            repeat_count = recent_read_only_repeat_count(
                 self.store.events(session.session_id),
                 turn_id=session.current_turn_id,
                 fingerprint=call_fingerprint,
             )
-            if tool.effect is ToolEffect.READ_ONLY
-            else 0
-        )
+        elif tool.effect is ToolEffect.SENSITIVE:
+            repeat_count = recent_tool_repeat_count(
+                self.store.events(session.session_id),
+                turn_id=session.current_turn_id,
+                fingerprint=call_fingerprint,
+            )
+        else:
+            repeat_count = 0
         self._record(
             session,
             AgentEventKind.TOOL_STARTED,

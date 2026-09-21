@@ -4,6 +4,7 @@ import json
 
 from app.agent_continuity_contract import COMPACTION_REFERENCE_MESSAGE_NAME
 from app.agent_runtime import (
+    AgentEventKind,
     AgentStatus,
     ContextAgentRuntime,
     FileAgentSessionStore,
@@ -45,6 +46,11 @@ def test_midturn_compaction_keeps_same_turn_reference_and_summary_last(tmp_path)
     runtime.store.save(session)
 
     captured = runtime._capture_step_context(session, next_model_step=True, step_id="step-before-compact")
+    runtime._record(
+        session,
+        AgentEventKind.TOOL_COMPLETED,
+        data={"call_id": "call-status", "tool": "exec", "ok": True, "content": "secret output"},
+    )
     repair = repair_tool_history(session.messages)
     replacement = build_compacted_history(
         tuple(repair.messages),
@@ -79,6 +85,15 @@ def test_midturn_compaction_keeps_same_turn_reference_and_summary_last(tmp_path)
     assert payload["identity"]["step_id"] == captured.step_id
     assert payload["state_digest"] == checkpoint.world_state_digest
     assert payload["kind"] == "mid_turn_compaction_reference"
+    assert payload["recent_tool_evidence"] == [
+        {
+            "call_id": "call-status",
+            "tool": "exec",
+            "ok": True,
+            "completed_at": payload["recent_tool_evidence"][0]["completed_at"],
+        }
+    ]
+    assert "secret output" not in str(reference.content)
 
     events = runtime.store.events(session.session_id)
     compacted = [event for event in events if event.kind.value == "context_checkpointed"][-1]
