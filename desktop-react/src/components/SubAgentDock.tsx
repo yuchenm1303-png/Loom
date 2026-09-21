@@ -58,6 +58,7 @@ export function SubAgentDock({ items, open, active, onClose }: SubAgentDockProps
     pointerId: number;
     startX: number;
     startWidth: number;
+    currentWidth: number;
   } | null>(null);
 
   useEffect(() => {
@@ -70,7 +71,10 @@ export function SubAgentDock({ items, open, active, onClose }: SubAgentDockProps
   useEffect(() => {
     const handleResize = () => setWidth((current) => clampWidth(current));
     window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      document.body.classList.remove("loom-agent-dock-resizing");
+    };
   }, []);
 
   useEffect(() => {
@@ -92,6 +96,7 @@ export function SubAgentDock({ items, open, active, onClose }: SubAgentDockProps
       pointerId: event.pointerId,
       startX: event.clientX,
       startWidth: width,
+      currentWidth: width,
     };
     event.currentTarget.setPointerCapture(event.pointerId);
     document.body.classList.add("loom-agent-dock-resizing");
@@ -101,7 +106,9 @@ export function SubAgentDock({ items, open, active, onClose }: SubAgentDockProps
   const moveResize = (event: ReactPointerEvent<HTMLDivElement>) => {
     const session = resizeRef.current;
     if (!session || session.pointerId !== event.pointerId) return;
-    setWidth(clampWidth(session.startWidth + (session.startX - event.clientX)));
+    const next = clampWidth(session.startWidth + (session.startX - event.clientX));
+    session.currentWidth = next;
+    setWidth(next);
     event.preventDefault();
   };
 
@@ -113,7 +120,7 @@ export function SubAgentDock({ items, open, active, onClose }: SubAgentDockProps
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
     document.body.classList.remove("loom-agent-dock-resizing");
-    persistDockWidth(width);
+    persistDockWidth(session.currentWidth);
   };
 
   const resizeWithKeyboard = (event: ReactKeyboardEvent<HTMLDivElement>) => {
