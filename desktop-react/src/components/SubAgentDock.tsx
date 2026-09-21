@@ -33,7 +33,7 @@ export function SubAgentDock({ items, open, active, onClose }: SubAgentDockProps
     <aside className="sub-agent-dock" aria-label="子代理工作区">
       <SubAgentWorkspace
         items={agentItems}
-        active={active}
+        active={active || open}
         docked
         onClose={onClose}
       />
