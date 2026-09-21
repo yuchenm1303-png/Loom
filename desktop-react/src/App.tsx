@@ -751,6 +751,7 @@ export default function App() {
           accountAuthenticated={account.account.authenticated}
           context={loom.context}
           compacting={loom.compacting}
+          compactionProgress={loom.compactionProgress}
           onCompactContext={() => void loom.compactContext()}
           onOpenAccount={() => setAccountOpen(true)}
           onOpenSettings={() => setSettingsOpen(true)}

@@ -664,6 +664,20 @@ def prepare_context(rt, session, step, token):
         # budget comparison here.
         calibrated_active_context_tokens = calibrated(estimated_projected)
 
+    # Provider usage describes the request that produced the most recent model
+    # response.  Once this step has projected large tool observations down to
+    # previews/stubs, that old number no longer describes the request we are
+    # deciding whether to send.  Keeping it as the meter's observed usage is
+    # useful, but using it as the compaction clock would turn request-local tool
+    # shedding into a semantic checkpoint anyway.  That is exactly the failure
+    # mode the reducer exists to prevent.
+    compaction_context_tokens = calibrated_active_context_tokens
+    if reduction_stats.tool_outputs_reduced or reduction_stats.tool_outputs_collapsed:
+        compaction_context_tokens = min(
+            calibrated_active_context_tokens,
+            calibrated(estimated_projected),
+        )
+
     # Keep Loom's legacy message-count safety cap as a secondary compaction
     # trigger. It is not the normal token clock, but compacting here prevents the
     # outer TurnRunner guard from terminating a turn when a safe checkpoint can
@@ -684,7 +698,7 @@ def prepare_context(rt, session, step, token):
     # is what made a 21k conversation compact four times in three minutes.
     token_limit_reached = (
         limits.window_known
-        and calibrated_active_context_tokens >= limits.auto_compact_token_limit
+        and compaction_context_tokens >= limits.auto_compact_token_limit
     )
     if hard_request_fits and not token_limit_reached:
         return projected_visible, _metadata(

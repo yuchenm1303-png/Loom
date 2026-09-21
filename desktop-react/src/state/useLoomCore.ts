@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   AddModelInput,
+  ContextCompactionProgress,
   ContextReport,
   InitializeResult,
   ModelRestartResult,
@@ -121,7 +122,8 @@ export function useLoom() {
   const [turnActive, setTurnActive] = useState(false);
   const [turnStartedAt, setTurnStartedAt] = useState<number | null>(null);
   const [context, setContext] = useState<ContextReport | null>(null);
-  const [compacting, setCompacting] = useState(false);
+  const [compactionProgress, setCompactionProgress] = useState<ContextCompactionProgress | null>(null);
+  const compacting = compactionProgress?.status === "started" || compactionProgress?.status === "running";
   const activeIdRef = useRef("");
   const threadViewRef = useRef<ThreadView>("active");
   const itemIndexRef = useRef<Map<string, number>>(new Map());
@@ -142,7 +144,7 @@ export function useLoom() {
     setTurnActive(false);
     setTurnStartedAt(null);
     setContext(null);
-    setCompacting(false);
+    setCompactionProgress(null);
   }, [installItems]);
 
   const refreshContext = useCallback(async (threadId: string) => {
@@ -163,18 +165,29 @@ export function useLoom() {
   const compactContext = useCallback(async (keepRecent?: number) => {
     const threadId = activeIdRef.current;
     if (!threadId) return;
-    setCompacting(true);
+    const optimistic: ContextCompactionProgress = {
+      threadId,
+      operationId: "pending",
+      status: "started",
+      stage: "queued",
+      message: "Context compaction queued",
+      startedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    setCompactionProgress(optimistic);
     try {
-      await requireBridge().call("thread/compact", {
+      const result = await requireBridge().call<{
+        operationId: string;
+        startedAt: string;
+      }>("thread/compact", {
         threadId,
         ...(keepRecent ? { keepRecent } : {}),
       });
-      // Compaction ends with a checkpoint, which arrives as context/updated. If
-      // the summarizing model never answers, no event ever comes, so release the
-      // control rather than leaving the user with a spinner they cannot cancel.
-      window.setTimeout(() => setCompacting(false), 120_000);
+      setCompactionProgress((current) => current && current.threadId === threadId
+        ? { ...current, operationId: result.operationId, startedAt: result.startedAt || current.startedAt }
+        : current);
     } catch (error) {
-      setCompacting(false);
+      setCompactionProgress(null);
       throw error;
     }
   }, []);
@@ -251,7 +264,7 @@ export function useLoom() {
     setTurnActive(running);
     setTurnStartedAt(running ? turnStartFromRead(result) : null);
     setContext(null);
-    setCompacting(false);
+    setCompactionProgress(null);
     void refreshContext(result.thread.id);
   }, [installItems, refreshContext]);
 
@@ -545,10 +558,13 @@ export function useLoom() {
         const report = params.context as ContextReport | undefined;
         if (report) {
           setContext(report);
-          // A checkpoint is the only thing that ends a manual compaction, and
-          // the report carries the new count, so no extra round trip is needed.
-          setCompacting(false);
         }
+        return;
+      }
+
+      if (message.method === "context/compaction") {
+        const progress = params as unknown as ContextCompactionProgress;
+        if (progress.threadId === activeId) setCompactionProgress(progress);
         return;
       }
 
@@ -697,6 +713,7 @@ export function useLoom() {
     turnStartedAt,
     context,
     compacting,
+    compactionProgress,
     compactContext,
     refreshContext,
     openThread,
@@ -726,6 +743,7 @@ export function useLoom() {
     addModel,
     archiveThread,
     compacting,
+    compactionProgress,
     compactContext,
     connection,
     context,

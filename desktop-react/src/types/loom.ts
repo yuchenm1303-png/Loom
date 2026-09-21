@@ -184,6 +184,17 @@ export interface ContextReport {
   measuredAt: string;
 }
 
+export interface ContextCompactionProgress {
+  threadId: string;
+  operationId: string;
+  status: "started" | "running" | "completed" | "failed";
+  stage: "queued" | "preparing" | "summarizing" | "completed" | "failed" | string;
+  message: string;
+  error?: string;
+  startedAt: string;
+  updatedAt: string;
+}
+
 export interface ModelReasoningOption {
   value: string;
   label: string;

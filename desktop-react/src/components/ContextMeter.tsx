@@ -1,12 +1,13 @@
 import { Layers, Loader2, Wrench } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useI18n } from "../i18n";
-import type { ContextReport } from "../types/loom";
+import type { ContextCompactionProgress, ContextReport } from "../types/loom";
 import "./context-meter.css";
 
 interface ContextMeterProps {
   report: ContextReport | null;
   compacting: boolean;
+  progress: ContextCompactionProgress | null;
   busy: boolean;
   onCompact(): void;
 }
@@ -26,7 +27,7 @@ function tone(report: ContextReport): "calm" | "warm" | "hot" {
   return "calm";
 }
 
-export function ContextMeter({ report, compacting, busy, onCompact }: ContextMeterProps) {
+export function ContextMeter({ report, compacting, progress, busy, onCompact }: ContextMeterProps) {
   const { language } = useI18n();
   const zh = language === "zh-CN";
   const [open, setOpen] = useState(false);
@@ -84,7 +85,10 @@ export function ContextMeter({ report, compacting, busy, onCompact }: ContextMet
             />
           ))}
         </span>
-        <span className="context-meter-value">{percent}%</span>
+        <span className="context-meter-value">
+          {compacting ? <Loader2 size={12} strokeWidth={2} className="context-meter-spin" /> : null}
+          {compacting ? (zh ? "压缩中" : "Compacting") : `${percent}%`}
+        </span>
         {report.pressure.blinded ? <span className="context-meter-alarm" aria-hidden="true" /> : null}
       </button>
 
@@ -151,7 +155,6 @@ export function ContextMeter({ report, compacting, busy, onCompact }: ContextMet
             type="button"
             className="context-meter-compact"
             onClick={() => {
-              setOpen(false);
               onCompact();
             }}
             disabled={compacting || busy}
@@ -161,6 +164,18 @@ export function ContextMeter({ report, compacting, busy, onCompact }: ContextMet
               ? zh ? "正在压缩…" : "Compacting…"
               : zh ? "立即压缩上下文" : "Compact context now"}
           </button>
+          {progress ? (
+            <p className={`context-meter-note context-meter-progress ${progress.status}`} role="status">
+              <strong>
+                {progress.stage === "queued" ? (zh ? "已排队" : "Queued") : null}
+                {progress.stage === "preparing" ? (zh ? "正在整理历史" : "Preparing history") : null}
+                {progress.stage === "summarizing" ? (zh ? "正在生成交接摘要" : "Generating handoff summary") : null}
+                {progress.stage === "completed" ? (zh ? "压缩完成" : "Compaction complete") : null}
+                {progress.stage === "failed" ? (zh ? "压缩失败" : "Compaction failed") : null}
+              </strong>
+              {progress.error ? ` · ${progress.error}` : ""}
+            </p>
+          ) : null}
           {busy && !compacting ? (
             <p className="context-meter-note">
               {zh ? "当前回合结束后才能手动压缩。" : "Manual compaction waits for the current turn to finish."}

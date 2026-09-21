@@ -14,7 +14,7 @@ from app.agent_runtime import (
 )
 from app.agent_runtime.context_report import context_report_from_request, empty_context_report
 from app.app_server_thread_management import ManagedStreamingLoomAppServerService
-from app.ai import ModelResponse
+from app.ai import AIMessage, MessageRole, ModelResponse
 
 
 # A real request payload from a 64k-window session, trimmed to the fields the
@@ -227,5 +227,37 @@ def test_manual_compaction_validates_how_much_history_it_is_asked_to_keep(tmp_pa
             service.thread_compact({"threadId": thread_id, "keepRecent": 0})
         with pytest.raises(ValueError, match="keepRecent"):
             service.thread_compact({"threadId": thread_id, "keepRecent": 500})
+    finally:
+        runtime.close()
+
+
+def test_manual_compaction_publishes_visible_lifecycle(tmp_path: Path) -> None:
+    service, runtime, workspace = _build_service(tmp_path, [ModelResponse(text="handoff summary")])
+    notifications: list[tuple[str, dict]] = []
+    service.subscribe_notifications(lambda method, params: notifications.append((method, params)))
+    try:
+        thread_id = service.thread_start(
+            {"workspace": str(workspace), "permissionMode": "workspace"}
+        )["thread"]["id"]
+        session = runtime.store.load(thread_id)
+        session.messages.append(AIMessage(role=MessageRole.USER, content="work already completed"))
+        runtime.store.save(session)
+        runtime.compact_context_with_model = lambda _session_id, keep_recent=24: object()  # type: ignore[attr-defined]
+
+        result = service.thread_compact({"threadId": thread_id})
+        assert result["operationId"]
+        _wait_until(lambda: not service._is_active(thread_id))
+
+        progress = [params for method, params in notifications if method == "context/compaction"]
+        assert progress
+        assert progress[-1]["status"] != "failed", progress[-1]["error"]
+        assert {item["stage"] for item in progress} >= {
+            "queued",
+            "preparing",
+            "summarizing",
+            "completed",
+        }, progress
+        assert all(item["operationId"] == result["operationId"] for item in progress)
+        assert not any(item["status"] == "failed" for item in progress)
     finally:
         runtime.close()

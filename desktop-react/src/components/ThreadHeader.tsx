@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useI18n } from "../i18n";
-import type { ContextReport } from "../types/loom";
+import type { ContextCompactionProgress, ContextReport } from "../types/loom";
 import { ContextMeter } from "./ContextMeter";
 import "./thread-header.css";
 import "./thread-review-entry.css";
@@ -37,6 +37,7 @@ interface ThreadHeaderProps {
   accountAuthenticated?: boolean;
   context?: ContextReport | null;
   compacting?: boolean;
+  compactionProgress?: ContextCompactionProgress | null;
   onCompactContext?(): void;
   onOpenAccount(): void;
   onOpenSettings(): void;
@@ -84,6 +85,7 @@ export function ThreadHeader({
   accountAuthenticated = false,
   context = null,
   compacting = false,
+  compactionProgress = null,
   onCompactContext,
   onOpenAccount,
   onOpenSettings,
@@ -183,6 +185,7 @@ export function ThreadHeader({
           <ContextMeter
             report={context}
             compacting={compacting}
+            progress={compactionProgress}
             busy={running}
             onCompact={onCompactContext}
           />

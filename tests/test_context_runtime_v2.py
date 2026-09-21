@@ -326,6 +326,47 @@ def test_provider_usage_is_primary_auto_compact_signal(monkeypatch):
     assert metadata["auto_compacted"] is True
 
 
+def test_projected_tool_reduction_prevents_stale_provider_usage_compaction(monkeypatch):
+    """A previous full request must not override the smaller request we can send now."""
+    monkeypatch.delenv("LOOM_CONTEXT_WINDOW_TOKENS", raising=False)
+    monkeypatch.delenv("LOOM_OUTPUT_RESERVE_TOKENS", raising=False)
+    limits = ModelContextLimits(
+        context_window_tokens=10_000,
+        effective_context_percent=100,
+        output_reserve_tokens=1000,
+        auto_compact_token_limit=4000,
+        tool_output_token_limit=500,
+    )
+    call = ToolCall(call_id="call-large", name="read_file", arguments={"path": "large.log"})
+    session = Session(
+        [
+            AIMessage(role=MessageRole.USER, content="inspect the log"),
+            AIMessage(role=MessageRole.ASSISTANT, content="", tool_calls=(call,)),
+            AIMessage(
+                role=MessageRole.TOOL,
+                content="x" * 30_000,
+                name="read_file",
+                tool_call_id="call-large",
+            ),
+        ]
+    )
+    runtime = FakeRuntime(
+        context_limits=limits,
+        responses=(),
+        events=[_event("model_response", total_tokens=4500)],
+    )
+
+    messages, metadata = prepare_context(runtime, session, Step(), Token())
+
+    assert metadata["token_accounting_source"] == "provider_usage"
+    assert metadata["active_context_tokens"] == 4500
+    assert metadata["tool_outputs_reduced"] == 1
+    assert metadata.get("auto_compacted") is not True
+    assert runtime.model_executor.requests == []
+    assert runtime.commits == []
+    assert next(message for message in messages if message.role is MessageRole.TOOL).content != "x" * 30_000
+
+
 def test_checkpoint_invalidates_stale_provider_usage(monkeypatch):
     monkeypatch.delenv("LOOM_CONTEXT_WINDOW_TOKENS", raising=False)
     monkeypatch.delenv("LOOM_OUTPUT_RESERVE_TOKENS", raising=False)

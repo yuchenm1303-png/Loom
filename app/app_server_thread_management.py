@@ -773,14 +773,71 @@ class ManagedStreamingLoomAppServerService(StreamingLoomAppServerService):
         if session.status in {AgentStatus.RUNNING, AgentStatus.WAITING_APPROVAL}:
             raise RuntimeError("cannot compact context while a turn is active")
 
-        # Compaction is a model call, so it runs like a turn does. The result
-        # reaches the UI as the ordinary context/updated notification the
-        # checkpoint event already produces.
-        self._launch(
-            session_id,
-            lambda: self.runtime.compact_context_with_model(session_id, keep_recent=keep_recent),
-        )
-        return {"threadId": session_id, "started": True, "keepRecent": keep_recent}
+        operation_id = uuid.uuid4().hex
+        started_at = _utc_now()
+
+        def publish(status: str, stage: str, message: str, *, error: str = "") -> None:
+            self._notify(
+                "context/compaction",
+                {
+                    "threadId": session_id,
+                    "operationId": operation_id,
+                    "status": status,
+                    "stage": stage,
+                    "message": message,
+                    "error": error,
+                    "startedAt": started_at,
+                    "updatedAt": _utc_now(),
+                },
+            )
+
+        def compact() -> None:
+            publish("running", "preparing", "Preparing conversation history")
+            try:
+                publish("running", "summarizing", "Generating the handoff summary")
+                checkpoint = self.runtime.compact_context_with_model(
+                    session_id,
+                    keep_recent=keep_recent,
+                )
+            except Exception as exc:
+                publish(
+                    "failed",
+                    "failed",
+                    "Context compaction failed",
+                    error=f"{type(exc).__name__}: {exc}",
+                )
+                raise
+            publish(
+                "completed",
+                "completed",
+                "Context checkpoint created",
+            )
+            _ = checkpoint
+
+        # Compaction is a detached model call.  Its own lifecycle notification
+        # makes progress and failure visible instead of asking the client to
+        # infer completion from a spinner timeout.
+        publish("started", "queued", "Context compaction queued")
+        try:
+            self._launch(
+                session_id,
+                compact,
+            )
+        except Exception as exc:
+            publish(
+                "failed",
+                "failed",
+                "Context compaction failed to start",
+                error=f"{type(exc).__name__}: {exc}",
+            )
+            raise
+        return {
+            "threadId": session_id,
+            "operationId": operation_id,
+            "started": True,
+            "keepRecent": keep_recent,
+            "startedAt": started_at,
+        }
 
     def _context_counts_for(self, session_id: str) -> tuple[int, str]:
         """Compactions so far: scanned once per session, then kept current.
