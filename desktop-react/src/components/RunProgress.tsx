@@ -160,7 +160,21 @@ export function RunProgress({ items, startedAt, threadStatus, currentTurnId, tot
           <span className="run-progress-meta-item"><Clock3 size={12} strokeWidth={1.8} />{zh ? "用时" : "Elapsed"} {formatElapsed(elapsedSeconds)}</span>
           <span className="run-progress-meta-dot" aria-hidden="true" />
           <span className="run-progress-meta-item">{stats.activity ? (zh ? `${stats.activity} 个过程项` : `${stats.activity} steps`) : (zh ? "准备中" : "Preparing")}</span>
-          {stats.agents ? <><span className="run-progress-meta-dot" aria-hidden="true" /><span className="run-progress-meta-item subtle" title={zh ? "本轮派出的子代理" : "Sub-agents spawned this turn"}><Bot size={11} />{stats.agents}</span></> : null}
+          {stats.agents ? (
+            <>
+              <span className="run-progress-meta-dot" aria-hidden="true" />
+              <button
+                type="button"
+                className="run-progress-agent-button"
+                onClick={() => window.dispatchEvent(new Event("loom:sub-agents-open"))}
+                title={zh ? "打开子代理工作区" : "Open sub-agent workspace"}
+              >
+                <Bot size={11} />
+                <span>{stats.agents}</span>
+                <span>{zh ? "子代理" : "agents"}</span>
+              </button>
+            </>
+          ) : null}
           {stats.commands ? <><span className="run-progress-meta-dot" aria-hidden="true" /><span className="run-progress-meta-item subtle"><Terminal size={11} />{stats.commands}</span></> : null}
           {stats.tools ? <><span className="run-progress-meta-dot" aria-hidden="true" /><span className="run-progress-meta-item subtle"><Wrench size={11} />{stats.tools}</span></> : null}
           {stats.files ? <><span className="run-progress-meta-dot" aria-hidden="true" /><span className="run-progress-meta-item subtle"><FileDiff size={11} />{stats.files}</span></> : null}
