@@ -70,7 +70,7 @@ export function ContextMeter({ report, compacting, progress, busy, onCompact }: 
     <div className="context-meter" ref={rootRef}>
       <button
         type="button"
-        className={`context-meter-chip ${level}`}
+        className={`context-meter-chip ${level} ${compacting ? "is-compacting" : ""}`}
         onClick={() => setOpen((value) => !value)}
         title={summary}
         aria-label={summary}
