@@ -226,6 +226,8 @@ export interface ModelProfile {
   family?: string;
   protocol?: string;
   configured?: boolean;
+  setupOnly?: boolean;
+  statusMessage?: string;
   vision?: boolean;
   reasoning?: ModelReasoningState | null;
 }
