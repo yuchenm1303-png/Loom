@@ -3041,3 +3041,327 @@ html[data-loom-theme="light"] .thread-header :is(
     transition: none !important;
   }
 }
+
+
+/* Light theme: composer control-bar refinement --------------------------- */
+/* Treat the composer footer as one coherent control bar: shared heights,
+   quieter default buttons, explicit active states, and a status pill that
+   aligns optically with the action cluster. */
+
+html[data-loom-theme="light"] .composer {
+  padding: 13px 14px 10px;
+  border-radius: 20px;
+  border-color: #d8dce2;
+  background: linear-gradient(180deg, rgba(255,255,255,.995), rgba(249,250,251,.995));
+  box-shadow:
+    0 10px 30px rgba(27,31,40,.07),
+    inset 0 1px rgba(255,255,255,.96);
+}
+
+html[data-loom-theme="light"] .composer:hover {
+  border-color: #cfd4db;
+}
+
+html[data-loom-theme="light"] .composer.is-focused,
+html[data-loom-theme="light"] .composer:focus-within {
+  border-color: rgba(105,90,216,.38);
+  background: #ffffff;
+  box-shadow:
+    0 13px 34px rgba(27,31,40,.075),
+    0 0 0 2px rgba(105,90,216,.04),
+    inset 0 1px rgba(255,255,255,.98);
+}
+
+html[data-loom-theme="light"] .composer-input-row {
+  min-height: 47px;
+  align-items: flex-start;
+}
+
+html[data-loom-theme="light"] .composer textarea {
+  min-height: 44px;
+  padding: 2px 2px 8px;
+  font-size: 14px;
+  line-height: 1.55;
+  letter-spacing: 0;
+}
+
+html[data-loom-theme="light"] .composer textarea::placeholder {
+  color: #69727d;
+}
+
+/* Shared footer geometry. */
+html[data-loom-theme="light"] .composer-toolbar {
+  min-height: 38px;
+  margin-top: 2px;
+  padding-top: 2px;
+  gap: 12px;
+  align-items: center;
+}
+
+html[data-loom-theme="light"] .composer-left,
+html[data-loom-theme="light"] .composer-right {
+  min-height: 36px;
+  height: 36px;
+  align-items: center;
+}
+
+html[data-loom-theme="light"] .composer-left {
+  gap: 3px;
+  flex-wrap: nowrap;
+}
+
+html[data-loom-theme="light"] .composer-right {
+  gap: 6px;
+}
+
+html[data-loom-theme="light"] .composer-control-anchor {
+  min-height: 32px;
+  align-items: center;
+}
+
+/* Quiet controls by default; surface appears on hover/open, not all the time. */
+html[data-loom-theme="light"] .composer .composer-tool,
+html[data-loom-theme="light"] .composer .composer-chip {
+  height: 32px;
+  min-height: 32px;
+  padding: 0 8px;
+  gap: 6px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: #59636f;
+  font-size: 10.8px;
+  font-weight: 560;
+  line-height: 1;
+  box-shadow: none;
+}
+
+html[data-loom-theme="light"] .composer .composer-tool svg,
+html[data-loom-theme="light"] .composer .composer-chip svg {
+  color: #65707c;
+  opacity: .92;
+}
+
+html[data-loom-theme="light"] .composer .composer-tool:hover:not(:disabled),
+html[data-loom-theme="light"] .composer .composer-chip:hover:not(:disabled) {
+  border-color: rgba(28,31,37,.075);
+  background: #f4f6f8;
+  color: #30363e;
+  transform: none;
+}
+
+html[data-loom-theme="light"] .composer .composer-tool:hover:not(:disabled) svg,
+html[data-loom-theme="light"] .composer .composer-chip:hover:not(:disabled) svg {
+  color: #5246af;
+}
+
+html[data-loom-theme="light"] .composer .composer-chip.is-open {
+  border-color: rgba(105,90,216,.17);
+  background: rgba(105,90,216,.065);
+  color: #5144ad;
+  box-shadow: none;
+}
+
+html[data-loom-theme="light"] .composer .composer-chip.is-open svg {
+  color: #6253ca;
+}
+
+html[data-loom-theme="light"] .composer .composer-tool:active:not(:disabled),
+html[data-loom-theme="light"] .composer .composer-chip:active:not(:disabled) {
+  transform: scale(.975);
+}
+
+html[data-loom-theme="light"] .composer .composer-tool:disabled,
+html[data-loom-theme="light"] .composer .composer-chip:disabled {
+  color: #9aa1aa;
+  opacity: 1;
+}
+
+html[data-loom-theme="light"] .composer .composer-divider {
+  width: 1px;
+  height: 18px;
+  margin: 0 4px;
+  background: #e0e4e9;
+}
+
+html[data-loom-theme="light"] .composer .sticker-chip {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 9px;
+}
+
+/* Key hint is subordinate to the real action buttons. */
+html[data-loom-theme="light"] .composer .composer-keycap {
+  height: 28px;
+  min-height: 28px;
+  padding: 0 9px;
+  border: 1px solid #dce0e5;
+  border-bottom-color: #d3d8de;
+  border-radius: 8px;
+  background: #f7f8fa;
+  color: #747d88;
+  font-size: 10px;
+  font-weight: 540;
+  line-height: 1;
+  box-shadow: inset 0 1px rgba(255,255,255,.95);
+}
+
+html[data-loom-theme="light"] .composer.is-focused .composer-keycap {
+  color: #626b76;
+  border-color: #d4d9df;
+}
+
+/* Running status gets its own stable 32px capsule instead of loose text. */
+html[data-loom-theme="light"] .composer-status-zone {
+  display: flex;
+  align-items: center;
+  min-height: 36px;
+}
+
+html[data-loom-theme="light"] .composer-running-label {
+  height: 32px;
+  min-height: 32px;
+  padding: 0 10px;
+  gap: 8px;
+  display: inline-flex;
+  align-items: center;
+  align-self: center;
+  border: 1px solid rgba(105,90,216,.12);
+  border-radius: 999px;
+  background: rgba(105,90,216,.055);
+  color: #5d51b6;
+  font-size: 10.8px;
+  font-weight: 610;
+  line-height: 1;
+  letter-spacing: .002em;
+  transform: none;
+}
+
+html[data-loom-theme="light"] .composer-running-copy {
+  height: 100%;
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
+  transform: translateY(-.35px);
+}
+
+html[data-loom-theme="light"] .composer-running-label i {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 6px;
+  margin: 0;
+  align-self: center;
+  border-radius: 50%;
+  background: #7567de;
+  box-shadow: 0 0 0 3px rgba(105,90,216,.08);
+  transform: none;
+  animation: composer-status-breathe-refined 1.8s ease-in-out infinite;
+}
+
+@keyframes composer-status-breathe-refined {
+  0%, 100% {
+    opacity: .66;
+    box-shadow: 0 0 0 2px rgba(105,90,216,.055);
+  }
+  50% {
+    opacity: 1;
+    box-shadow: 0 0 0 4px rgba(105,90,216,.09);
+  }
+}
+
+/* Action cluster: one clear primary button, one clear destructive stop button. */
+html[data-loom-theme="light"] .composer .send-button {
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  border-radius: 11px;
+  border: 1px solid transparent;
+  box-shadow: none;
+}
+
+html[data-loom-theme="light"] .composer .send-button:not(:disabled):not(.stop) {
+  border-color: rgba(105,90,216,.15);
+  background: #695ad8;
+  color: #ffffff;
+  box-shadow: 0 5px 13px rgba(105,90,216,.17);
+}
+
+html[data-loom-theme="light"] .composer .send-button:hover:not(:disabled):not(.stop) {
+  background: #5f51c9;
+  transform: translateY(-1px);
+  box-shadow: 0 7px 16px rgba(105,90,216,.21);
+}
+
+html[data-loom-theme="light"] .composer .send-button:active:not(:disabled) {
+  transform: scale(.96);
+}
+
+html[data-loom-theme="light"] .composer .send-button:disabled {
+  border-color: #e0e4e8;
+  background: #edf0f3;
+  color: #a1a8b1;
+  opacity: 1;
+  box-shadow: none;
+}
+
+html[data-loom-theme="light"] .composer .send-button.stop {
+  border-color: rgba(177,76,90,.18);
+  background: rgba(177,76,90,.085);
+  color: #a74452;
+  box-shadow: none;
+}
+
+html[data-loom-theme="light"] .composer .send-button.stop:hover:not(:disabled) {
+  border-color: rgba(177,76,90,.26);
+  background: rgba(177,76,90,.12);
+  color: #963846;
+  transform: translateY(-1px);
+}
+
+html[data-loom-theme="light"] .composer .send-button.stop:disabled {
+  border-color: rgba(177,76,90,.10);
+  background: rgba(177,76,90,.045);
+  color: #c59aa1;
+}
+
+/* Steering has slightly more breathing room because its left side is status,
+   not a cluster of configuration controls. */
+html[data-loom-theme="light"] .composer-toolbar-steering {
+  margin-top: 3px;
+}
+
+html[data-loom-theme="light"] .live-steering-composer .composer-right {
+  gap: 7px;
+}
+
+html[data-loom-theme="light"] .composer-hint {
+  margin-top: 7px;
+  color: #747d88;
+  font-size: 9.5px;
+}
+
+@media (max-width: 760px) {
+  html[data-loom-theme="light"] .composer-toolbar {
+    gap: 8px;
+  }
+
+  html[data-loom-theme="light"] .composer-left {
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  html[data-loom-theme="light"] .composer-left::-webkit-scrollbar {
+    display: none;
+  }
+
+  html[data-loom-theme="light"] .composer-running-label {
+    padding-inline: 8px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-loom-theme="light"] .composer-running-label i {
+    animation: none !important;
+  }
+}
