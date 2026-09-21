@@ -44,6 +44,12 @@ export interface ThreadRecord {
   /** Empty when no project claims this thread's workspace. */
   projectId?: string;
   title: string;
+  /** True only for a committed manual/model title, never the neutral provisional label. */
+  customTitle?: boolean;
+  /** Server-owned title lifecycle; pending/fallback labels are intentionally non-semantic. */
+  titleSource?: "manual" | "auto" | "pending" | "fallback" | string;
+  autoTitlePending?: boolean;
+  autoTitleFallback?: boolean;
   workspace: string;
   permissionMode: string;
   modelSelection?: string | null;

@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-"""Compatibility shim for the retired title rescue layer.
+"""Compatibility shim for the retired title-rescue layer.
 
-The current title path is intentionally simple and Codex-like: derive a readable
-title from the first user prompt immediately, then let a detached model request
-refine it when available. There is no long-lived pending title state to rescue.
+Retries, legacy migration, manual-rename race protection, and neutral fallback
+display are all owned by :mod:`app.thread_title_override`. Keeping this module
+as a no-op preserves compatibility without reintroducing a second title state
+machine.
 """
 
 
