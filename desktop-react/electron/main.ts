@@ -19,7 +19,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const DESKTOP_ROOT = path.resolve(__dirname, "..");
 const REPO_ROOT = path.resolve(DESKTOP_ROOT, "..");
-const DEV_WINDOW_ICON = path.join(DESKTOP_ROOT, "build", "icon-dev.png");
+const DEV_WINDOW_ICON = path.join(DESKTOP_ROOT, "build", "icon.png");
 const REPO_VENV_PYTHON = process.platform === "win32"
   ? path.join(REPO_ROOT, ".venv", "Scripts", "python.exe")
   : path.join(REPO_ROOT, ".venv", "bin", "python");
