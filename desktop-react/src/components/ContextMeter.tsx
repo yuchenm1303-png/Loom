@@ -75,6 +75,19 @@ export function ContextMeter({ report, compacting, progress, busy, onCompact }: 
     return { index: 0, label: zh ? "排队" : "Queued" };
   })();
 
+  const compactionSteps = zh
+    ? ["排队", "整理历史", "生成摘要"]
+    : ["Queued", "Prepare", "Summarize"];
+
+  const compactionDescription = (() => {
+    const stage = String(progress?.stage || "").toLowerCase();
+    if (stage === "preparing") return zh ? "正在整理需要保留与归档的历史内容。" : "Preparing the history that will be retained and archived.";
+    if (stage === "summarizing") return zh ? "正在生成交接摘要，完成后会自动刷新上下文预算。" : "Generating the handoff summary. The context budget will refresh when it finishes.";
+    if (stage === "completed") return zh ? "上下文压缩已完成，新的预算已经生效。" : "Context compaction is complete and the refreshed budget is active.";
+    if (stage === "failed") return zh ? "本次压缩没有完成，可以稍后重试。" : "This compaction did not complete. You can try again later.";
+    return zh ? "压缩任务已创建，正在等待开始。" : "The compaction task is queued and waiting to start.";
+  })();
+
   return (
     <div className="context-meter" ref={rootRef}>
       <button
@@ -160,6 +173,54 @@ export function ContextMeter({ report, compacting, progress, busy, onCompact }: 
             </div>
           </dl>
 
+          {progress ? (
+            <section
+              className={`context-meter-progress-card ${progress.status} stage-${compactionStage.index}`}
+              role="status"
+              aria-live="polite"
+            >
+              <div className="context-meter-progress-head">
+                <span>{zh ? "压缩进度" : "Compaction progress"}</span>
+                <strong>
+                  {compacting ? <Loader2 size={12} strokeWidth={2} className="context-meter-spin" /> : null}
+                  {compactionStage.label}
+                </strong>
+              </div>
+
+              <div className="context-meter-progress-rail" aria-hidden="true">
+                {compactionSteps.map((step, index) => {
+                  const completed = compactionStage.index > index;
+                  const active = compacting && compactionStage.index === index;
+                  const failed = progress.stage === "failed" && index === compactionStage.index;
+                  return (
+                    <span
+                      key={step}
+                      className={`context-meter-progress-segment ${
+                        completed ? "done" : active ? "active" : failed ? "failed" : ""
+                      }`}
+                    >
+                      <i />
+                    </span>
+                  );
+                })}
+              </div>
+
+              <div className="context-meter-progress-labels" aria-hidden="true">
+                {compactionSteps.map((step, index) => (
+                  <span
+                    key={step}
+                    className={index < compactionStage.index ? "done" : index === compactionStage.index ? "active" : ""}
+                  >
+                    {step}
+                  </span>
+                ))}
+              </div>
+
+              <p>{compactionDescription}</p>
+              {progress.error ? <small>{progress.error}</small> : null}
+            </section>
+          ) : null}
+
           {report.pressure.blinded ? (
             <p className="context-meter-alert">
               {zh
@@ -189,18 +250,6 @@ export function ContextMeter({ report, compacting, progress, busy, onCompact }: 
               ? zh ? "正在压缩…" : "Compacting…"
               : zh ? "立即压缩上下文" : "Compact context now"}
           </button>
-          {progress ? (
-            <p className={`context-meter-note context-meter-progress ${progress.status}`} role="status">
-              <strong>
-                {progress.stage === "queued" ? (zh ? "已排队" : "Queued") : null}
-                {progress.stage === "preparing" ? (zh ? "正在整理历史" : "Preparing history") : null}
-                {progress.stage === "summarizing" ? (zh ? "正在生成交接摘要" : "Generating handoff summary") : null}
-                {progress.stage === "completed" ? (zh ? "压缩完成" : "Compaction complete") : null}
-                {progress.stage === "failed" ? (zh ? "压缩失败" : "Compaction failed") : null}
-              </strong>
-              {progress.error ? ` · ${progress.error}` : ""}
-            </p>
-          ) : null}
           {busy && !compacting ? (
             <p className="context-meter-note">
               {zh ? "当前回合结束后才能手动压缩。" : "Manual compaction waits for the current turn to finish."}
