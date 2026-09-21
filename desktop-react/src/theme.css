@@ -975,3 +975,211 @@ html[data-loom-theme="light"] .error-icon {
   background: var(--semantic-danger-soft) !important;
 }
 
+/* Light theme control-surface polish -------------------------------------- */
+/* Empty state cards, header controls, and composer actions still inherit
+   dark-surface literals from their component styles. Keep light mode airy and
+   clearly interactive without turning every secondary control into a gray slab. */
+
+/* Empty workspace hero. */
+html[data-loom-theme="light"] .empty-kicker {
+  color: #6b5ed0;
+}
+
+html[data-loom-theme="light"] .empty-state > h1 {
+  color: #20242b;
+  text-shadow: none;
+}
+
+html[data-loom-theme="light"] .empty-state > p {
+  color: #626b76;
+}
+
+/* Starter actions become white product cards rather than dark buttons. */
+html[data-loom-theme="light"] .starter-card {
+  border-color: #d9dde3;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.99), rgba(248,249,251,.99));
+  color: #20242b;
+  box-shadow:
+    0 7px 20px rgba(27,31,40,.045),
+    inset 0 1px 0 rgba(255,255,255,.96);
+}
+
+html[data-loom-theme="light"] .starter-card::before {
+  background: radial-gradient(circle at 16% 0%, rgba(105,90,216,.095), transparent 46%);
+}
+
+html[data-loom-theme="light"] .starter-card:hover:not(:disabled) {
+  border-color: rgba(105,90,216,.26);
+  background:
+    linear-gradient(180deg, #ffffff, #fafafe);
+  box-shadow:
+    0 12px 30px rgba(27,31,40,.075),
+    0 0 0 1px rgba(105,90,216,.035),
+    inset 0 1px 0 rgba(255,255,255,.98);
+}
+
+html[data-loom-theme="light"] .starter-card:focus-visible {
+  outline: 2px solid rgba(105,90,216,.30);
+  outline-offset: 2px;
+}
+
+html[data-loom-theme="light"] .starter-icon {
+  color: #6557c8;
+  border-color: rgba(105,90,216,.16);
+  background: rgba(105,90,216,.075);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.9);
+}
+
+html[data-loom-theme="light"] .starter-card:hover:not(:disabled) .starter-icon {
+  color: #5749b9;
+  border-color: rgba(105,90,216,.25);
+  background: rgba(105,90,216,.105);
+}
+
+html[data-loom-theme="light"] .starter-eyebrow {
+  color: #7164cc !important;
+}
+
+html[data-loom-theme="light"] .starter-content strong {
+  color: #2a2f36;
+}
+
+html[data-loom-theme="light"] .starter-content > span:last-child {
+  color: #68717c;
+}
+
+html[data-loom-theme="light"] .starter-arrow {
+  color: #8a929d;
+}
+
+html[data-loom-theme="light"] .starter-card:hover:not(:disabled) .starter-arrow {
+  color: #6253ca;
+}
+
+/* Header status and action controls. */
+html[data-loom-theme="light"] .thread-status-chip {
+  color: #626a75;
+  border-color: rgba(28,31,37,.085);
+  background: rgba(255,255,255,.58);
+  box-shadow: inset 0 1px rgba(255,255,255,.9);
+}
+
+html[data-loom-theme="light"] .thread-header .thread-status-chip.ready {
+  color: #52665b;
+}
+
+html[data-loom-theme="light"] .thread-review-button {
+  color: #59626d;
+  border-color: #d9dde3;
+  background: rgba(255,255,255,.72);
+  box-shadow: inset 0 1px rgba(255,255,255,.94);
+}
+
+html[data-loom-theme="light"] .thread-review-button > svg {
+  color: #69727d;
+}
+
+html[data-loom-theme="light"] .thread-review-button:hover {
+  color: #30363e;
+  border-color: rgba(105,90,216,.22);
+  background: #ffffff;
+}
+
+html[data-loom-theme="light"] .thread-review-button:hover > svg {
+  color: #6253ca;
+}
+
+html[data-loom-theme="light"] .thread-review-button.active {
+  color: #584bad;
+  border-color: rgba(105,90,216,.24);
+  background: rgba(105,90,216,.085);
+}
+
+html[data-loom-theme="light"] .thread-review-button.active > svg {
+  color: #6253ca;
+}
+
+html[data-loom-theme="light"] .thread-review-count {
+  color: #347052;
+  background: rgba(57,118,90,.10);
+}
+
+html[data-loom-theme="light"] .thread-header-icon-button {
+  color: #66707b;
+}
+
+html[data-loom-theme="light"] .thread-header-icon-button:hover {
+  color: #30363e;
+  border-color: rgba(28,31,37,.07);
+  background: rgba(28,31,37,.045);
+}
+
+html[data-loom-theme="light"] .thread-header-icon-button.active {
+  color: #6253ca;
+  border-color: rgba(105,90,216,.12);
+  background: rgba(105,90,216,.075);
+}
+
+html[data-loom-theme="light"] .thread-header-divider {
+  background: linear-gradient(180deg, transparent, rgba(28,31,37,.11), transparent);
+}
+
+html[data-loom-theme="light"] .workspace-path-button {
+  color: #626b76;
+}
+
+html[data-loom-theme="light"] .workspace-path-button > svg,
+html[data-loom-theme="light"] .workspace-copy-icon {
+  color: #68717c;
+}
+
+html[data-loom-theme="light"] .workspace-leaf {
+  color: #5a636e;
+}
+
+html[data-loom-theme="light"] .workspace-path-button:not(:disabled):hover {
+  color: #343a42;
+  background: rgba(28,31,37,.035);
+  border-color: rgba(105,90,216,.12);
+}
+
+/* Sidebar search / utility buttons should read as controls, not disabled icons. */
+html[data-loom-theme="light"] .codex-sidebar .compact-sidebar-actions button {
+  color: #606a75;
+  border-color: rgba(28,31,37,.09);
+  background: rgba(255,255,255,.70);
+}
+
+html[data-loom-theme="light"] .codex-sidebar .compact-sidebar-actions button:hover,
+html[data-loom-theme="light"] .codex-sidebar .compact-sidebar-actions button.active {
+  color: #30363e;
+  border-color: rgba(105,90,216,.18);
+  background: #ffffff;
+}
+
+/* Composer action states: accent when actionable, deliberately pale when not. */
+html[data-loom-theme="light"] .composer .send-button:not(:disabled):not(.stop) {
+  background: #695ad8;
+  color: #ffffff;
+  box-shadow: 0 5px 14px rgba(105,90,216,.18);
+}
+
+html[data-loom-theme="light"] .composer .send-button:hover:not(:disabled):not(.stop) {
+  background: #5f51c9;
+  box-shadow: 0 7px 18px rgba(105,90,216,.22);
+}
+
+html[data-loom-theme="light"] .composer .send-button:disabled {
+  opacity: 1;
+  color: #a0a7b0;
+  background: #e5e8ec;
+  box-shadow: inset 0 0 0 1px rgba(28,31,37,.035);
+}
+
+html[data-loom-theme="light"] .composer .send-button.stop {
+  color: #9f3f4d;
+  background: rgba(177,76,90,.10);
+  box-shadow: inset 0 0 0 1px rgba(177,76,90,.18);
+}
+
