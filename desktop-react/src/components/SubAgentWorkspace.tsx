@@ -5,6 +5,7 @@ import {
   CircleAlert,
   Loader2,
   MessageSquare,
+  X,
   XCircle,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -375,9 +376,13 @@ export function isSubAgentToolItem(item: TranscriptItem): boolean {
 export function SubAgentWorkspace({
   items,
   active = false,
+  docked = false,
+  onClose,
 }: {
   items: TranscriptItem[];
   active?: boolean;
+  docked?: boolean;
+  onClose?(): void;
 }) {
   const transcriptAgents = useMemo(() => aggregateAgents(items), [items]);
   const threadId = String(items.find((item) => item.threadId)?.threadId || "");
@@ -465,7 +470,7 @@ export function SubAgentWorkspace({
   if (!agents.length) return null;
 
   return (
-    <section className={`sub-agent-workspace ${counts.running ? "is-live" : ""}`} aria-label="子代理工作区">
+    <section className={`sub-agent-workspace ${counts.running ? "is-live" : ""} ${docked ? "is-docked" : ""}`.trim()} aria-label="子代理工作区">
       <div className="sub-agent-workspace-header">
         <span className="sub-agent-workspace-mark" aria-hidden="true">
           <Bot size={15} />
@@ -480,6 +485,11 @@ export function SubAgentWorkspace({
           {counts.completed ? <span>{counts.completed} 已完成</span> : null}
           {counts.failed ? <span className="is-failed">{counts.failed} 失败</span> : null}
         </span>
+        {docked && onClose ? (
+          <button type="button" className="sub-agent-workspace-close" onClick={onClose} title="关闭子代理工作区" aria-label="关闭子代理工作区">
+            <X size={16} strokeWidth={1.8} />
+          </button>
+        ) : null}
       </div>
 
       <div className="sub-agent-grid">
