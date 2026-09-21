@@ -643,22 +643,18 @@ def prepare_context(rt, session, step, token):
             )
             return emergency_visible, metadata
 
-    # A single oversized tool observation may be projected to a bounded preview,
-    # but Loom must not bulk-collapse historical observations just to avoid a
-    # semantic handoff. If bounded previews still do not fit, the request falls
-    # through to compaction below. This keeps the model from continuing while
-    # blind to a large set of command results.
-    projected_history = canonical_history
-    projected_visible = visible_messages
-    estimated_projected = estimated_before
-    reduction_stats = ContextReductionStats()
-    if input_budget is not None and calibrated(estimated_before) > input_budget:
-        projected_history, reduction_stats = reduce_tool_outputs(
-            canonical_history,
-            per_output_token_limit=limits.tool_output_token_limit,
-        )
-        projected_visible = [*transient, *projected_history]
-        estimated_projected = estimate_tokens(projected_visible, tools)
+    # Apply the model's per-tool history policy on every request, not only after
+    # the whole prompt has already overflowed. New tool results are bounded when
+    # they enter session history; this second pass also normalizes legacy/resumed
+    # histories created before that boundary existed. Durable events keep the
+    # exact observations. We still do not bulk-collapse old results into blind
+    # stubs merely to dodge semantic compaction.
+    projected_history, reduction_stats = reduce_tool_outputs(
+        canonical_history,
+        per_output_token_limit=limits.tool_output_token_limit,
+    )
+    projected_visible = [*transient, *projected_history]
+    estimated_projected = estimate_tokens(projected_visible, tools)
 
     calibrated_active_context_tokens = active_context_tokens
     if accounting_source == "fallback_estimate":
@@ -681,20 +677,21 @@ def prepare_context(rt, session, step, token):
             calibrated(estimated_projected),
         )
 
-    # Keep Loom's legacy message-count safety cap as a secondary compaction
-    # trigger. It is not the normal token clock, but compacting here prevents the
-    # outer TurnRunner guard from terminating a turn when a safe checkpoint can
-    # still reduce the request.
-    # A provider that already rejected this history as too long outranks every
-    # local budget below, so that verdict forces one compaction pass.
+    # A positive host-configured message cap remains an optional secondary
+    # guard, but the default rollover policy is token-driven like Codex. A
+    # provider rejection outranks every local budget and forces one compaction.
     forced_compaction = _consume_forced_compaction(rt, session)
+    message_count_fits = (
+        rt.limits.max_messages <= 0
+        or len(projected_visible) <= rt.limits.max_messages
+    )
     hard_request_fits = (
         not forced_compaction
         and (
             input_budget is None
             or calibrated(estimated_projected) <= input_budget
         )
-        and len(projected_visible) <= rt.limits.max_messages
+        and message_count_fits
     )
     # Codex leaves `auto_compact_token_limit` unset for a model it has no metadata
     # for, so this trigger simply never fires there. Guessing a threshold instead
