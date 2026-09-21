@@ -467,7 +467,7 @@ export function SubAgentWorkspace({
     return { running, completed, failed };
   }, [agents]);
 
-  if (!agents.length) return null;
+  if (!agents.length && !docked) return null;
 
   return (
     <section className={`sub-agent-workspace ${counts.running ? "is-live" : ""} ${docked ? "is-docked" : ""}`.trim()} aria-label="子代理工作区">
@@ -484,6 +484,7 @@ export function SubAgentWorkspace({
           {counts.running ? <b>{counts.running} 运行中</b> : null}
           {counts.completed ? <span>{counts.completed} 已完成</span> : null}
           {counts.failed ? <span className="is-failed">{counts.failed} 失败</span> : null}
+          {!agents.length ? <span className="is-empty">0 个代理</span> : null}
         </span>
         {docked && onClose ? (
           <button type="button" className="sub-agent-workspace-close" onClick={onClose} title="关闭子代理工作区" aria-label="关闭子代理工作区">
@@ -492,8 +493,25 @@ export function SubAgentWorkspace({
         ) : null}
       </div>
 
-      <div className="sub-agent-grid">
-        {agents.map((agent) => <AgentCard key={agent.key} agent={agent} />)}
+      <div className={`sub-agent-grid ${agents.length ? "" : "is-empty"}`.trim()}>
+        {agents.length ? agents.map((agent) => <AgentCard key={agent.key} agent={agent} />) : (
+          <div className="sub-agent-empty-state">
+            <div className="sub-agent-empty-visual" aria-hidden="true">
+              <span className="sub-agent-empty-orbit orbit-one" />
+              <span className="sub-agent-empty-orbit orbit-two" />
+              <span className="sub-agent-empty-core"><Bot size={22} strokeWidth={1.65} /></span>
+              <span className="sub-agent-empty-dot dot-one" />
+              <span className="sub-agent-empty-dot dot-two" />
+            </div>
+            <strong>暂无子代理</strong>
+            <p>当 Loom 把复杂任务分派给子代理时，它们会在这里出现，并持续显示运行状态与结果。</p>
+            <div className="sub-agent-empty-chips" aria-hidden="true">
+              <span>独立上下文</span>
+              <span>并行执行</span>
+              <span>结果汇总</span>
+            </div>
+          </div>
+        )}
       </div>
     </section>
   );
