@@ -849,3 +849,160 @@ html[data-loom-theme="light"] .sub-agent-inline-copy {
 html[data-loom-theme="light"] .sub-agent-inline-action {
   color: #969da6;
 }
+
+/* Empty dock state -------------------------------------------------------- */
+.sub-agent-workspace-summary .is-empty {
+  color: #707884;
+}
+
+.sub-agent-workspace.is-docked .sub-agent-grid.is-empty {
+  display: grid;
+  place-items: center;
+  padding: 28px 24px 72px;
+  overflow: hidden;
+}
+
+.sub-agent-empty-state {
+  width: min(300px, 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  color: #7d8591;
+}
+
+.sub-agent-empty-visual {
+  position: relative;
+  width: 92px;
+  height: 92px;
+  margin-bottom: 13px;
+  display: grid;
+  place-items: center;
+}
+
+.sub-agent-empty-core {
+  position: relative;
+  z-index: 3;
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(139,124,246,.19);
+  border-radius: 13px;
+  background:
+    linear-gradient(145deg, rgba(139,124,246,.10), rgba(139,124,246,.025)),
+    #121419;
+  color: #9d94e7;
+  box-shadow:
+    inset 0 1px rgba(255,255,255,.035),
+    0 12px 28px rgba(0,0,0,.16);
+}
+
+.sub-agent-empty-orbit {
+  position: absolute;
+  border: 1px solid rgba(139,124,246,.09);
+  border-radius: 50%;
+}
+
+.sub-agent-empty-orbit.orbit-one {
+  inset: 12px;
+}
+
+.sub-agent-empty-orbit.orbit-two {
+  inset: 22px;
+  border-style: dashed;
+  border-color: rgba(255,255,255,.055);
+}
+
+.sub-agent-empty-dot {
+  position: absolute;
+  z-index: 4;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #8f85db;
+  box-shadow: 0 0 8px rgba(139,124,246,.30);
+}
+
+.sub-agent-empty-dot.dot-one {
+  top: 16px;
+  right: 22px;
+}
+
+.sub-agent-empty-dot.dot-two {
+  left: 19px;
+  bottom: 22px;
+  opacity: .58;
+}
+
+.sub-agent-empty-state > strong {
+  margin-bottom: 6px;
+  color: #c7cbd2;
+  font-size: 12.5px;
+  font-weight: 660;
+}
+
+.sub-agent-empty-state > p {
+  max-width: 270px;
+  margin: 0;
+  color: #727b87;
+  font-size: 10.8px;
+  line-height: 1.65;
+}
+
+.sub-agent-empty-chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 14px;
+}
+
+.sub-agent-empty-chips span {
+  min-height: 22px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 8px;
+  border: 1px solid rgba(255,255,255,.05);
+  border-radius: 999px;
+  background: rgba(255,255,255,.016);
+  color: #656e7a;
+  font-size: 9.2px;
+}
+
+html[data-loom-theme="light"] .sub-agent-workspace-summary .is-empty {
+  color: #8a929c;
+}
+
+html[data-loom-theme="light"] .sub-agent-empty-core {
+  border-color: rgba(105,90,216,.15);
+  background:
+    linear-gradient(145deg, rgba(105,90,216,.075), rgba(105,90,216,.018)),
+    #ffffff;
+  color: #6658c8;
+  box-shadow:
+    inset 0 1px rgba(255,255,255,.98),
+    0 10px 24px rgba(44,48,57,.065);
+}
+
+html[data-loom-theme="light"] .sub-agent-empty-orbit {
+  border-color: rgba(105,90,216,.10);
+}
+
+html[data-loom-theme="light"] .sub-agent-empty-orbit.orbit-two {
+  border-color: rgba(31,35,42,.075);
+}
+
+html[data-loom-theme="light"] .sub-agent-empty-state > strong {
+  color: #4b525c;
+}
+
+html[data-loom-theme="light"] .sub-agent-empty-state > p {
+  color: #7d858f;
+}
+
+html[data-loom-theme="light"] .sub-agent-empty-chips span {
+  border-color: rgba(31,35,42,.065);
+  background: rgba(31,35,42,.018);
+  color: #858d97;
+}
