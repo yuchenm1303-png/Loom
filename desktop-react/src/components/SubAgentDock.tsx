@@ -108,7 +108,9 @@ export function SubAgentDock({ items, open, active, onClose }: SubAgentDockProps
     if (!session || session.pointerId !== event.pointerId) return;
     const next = clampWidth(session.startWidth + (session.startX - event.clientX));
     session.currentWidth = next;
-    setWidth(next);
+    const translated = session.startWidth - next;
+    event.currentTarget.style.transform = `translateX(${translated}px)`;
+    event.currentTarget.setAttribute("aria-valuenow", String(next));
     event.preventDefault();
   };
 
@@ -116,9 +118,12 @@ export function SubAgentDock({ items, open, active, onClose }: SubAgentDockProps
     const session = resizeRef.current;
     if (!session || session.pointerId !== event.pointerId) return;
     resizeRef.current = null;
+    event.currentTarget.style.transform = "";
+    event.currentTarget.setAttribute("aria-valuenow", String(session.currentWidth));
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
+    setWidth(session.currentWidth);
     document.body.classList.remove("loom-agent-dock-resizing");
     persistDockWidth(session.currentWidth);
   };
