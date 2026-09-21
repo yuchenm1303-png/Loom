@@ -66,3 +66,55 @@ html[data-loom-theme="light"] .sub-agent-dock {
 html[data-loom-reduced-motion="true"] .sub-agent-dock {
   animation: none !important;
 }
+
+/* Resizable persistent dock ------------------------------------------------ */
+.sub-agent-dock-resizer {
+  position: absolute;
+  z-index: 7;
+  inset: 0 auto 0 -4px;
+  width: 9px;
+  cursor: col-resize;
+  touch-action: none;
+  outline: none;
+}
+
+.sub-agent-dock-resizer::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 4px;
+  width: 2px;
+  height: 52px;
+  border-radius: 999px;
+  background: rgba(139,124,246,0);
+  transform: translateY(-50%);
+  transition: background 140ms ease, height 160ms cubic-bezier(.2,.8,.2,1);
+}
+
+.sub-agent-dock-resizer:hover::before,
+.sub-agent-dock-resizer:focus-visible::before,
+body.loom-agent-dock-resizing .sub-agent-dock-resizer::before {
+  height: 72px;
+  background: rgba(139,124,246,.34);
+}
+
+body.loom-agent-dock-resizing {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+
+body.loom-agent-dock-resizing * {
+  cursor: col-resize !important;
+}
+
+html[data-loom-theme="light"] .sub-agent-dock-resizer:hover::before,
+html[data-loom-theme="light"] .sub-agent-dock-resizer:focus-visible::before,
+html[data-loom-theme="light"] body.loom-agent-dock-resizing .sub-agent-dock-resizer::before {
+  background: rgba(105,90,216,.28);
+}
+
+@media (max-width: 720px) {
+  .sub-agent-dock-resizer {
+    display: none;
+  }
+}
