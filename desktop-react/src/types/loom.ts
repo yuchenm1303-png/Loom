@@ -184,6 +184,8 @@ export interface ContextReport {
   compactions: number;
   lastCompactedAt: string;
   measuredAt: string;
+  /** True after compaction until the next real model request replaces the estimate. */
+  measurementPending?: boolean;
 }
 
 export interface ContextCompactionProgress {

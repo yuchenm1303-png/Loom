@@ -376,3 +376,46 @@ def test_oversized_tool_output_is_projected_before_full_compaction():
     assert metadata["tool_outputs_reduced"] == 1
     assert metadata["estimated_tokens_saved"] > 0
     assert metadata.get("auto_compacted") is not True
+
+
+def test_many_tool_outputs_compact_instead_of_bulk_collapsing_and_blinding_the_model():
+    history = [AIMessage(role=MessageRole.USER, content="inspect all of these results")]
+    for index in range(12):
+        call = ToolCall(
+            call_id=f"call-many-{index}",
+            name="read_workspace_text",
+            arguments={"path": f"file-{index}.txt"},
+        )
+        history.extend(
+            [
+                AIMessage(role=MessageRole.ASSISTANT, content="", tool_calls=(call,)),
+                AIMessage(
+                    role=MessageRole.TOOL,
+                    content=(f"result-{index}\n" + ("x" * 6_000)),
+                    name="read_workspace_text",
+                    tool_call_id=call.call_id,
+                ),
+            ]
+        )
+    history.append(AIMessage(role=MessageRole.USER, content="continue"))
+
+    runtime = FakeRuntime([ModelResponse(text="handoff summary")])
+    _set_roomy_profile(
+        runtime,
+        auto_compact_token_limit=10_000,
+        tool_output_token_limit=1_000,
+    )
+    session = Session(history)
+
+    messages, metadata = prepare_context(runtime, session, Step(), Token())
+
+    assert runtime.commits
+    assert metadata["auto_compacted"] is True
+    assert metadata["pre_compaction_tool_outputs_reduced"] > 0
+    # Bulk collapse is no longer used as an escape hatch for an over-budget
+    # request. The compacted request itself contains no historical tool outputs,
+    # so the current pressure report must not claim the agent is blind.
+    assert metadata["pre_compaction_tool_outputs_collapsed"] == 0
+    assert metadata["tool_outputs_reduced"] == 0
+    assert metadata["tool_outputs_collapsed"] == 0
+    assert not any(message.role is MessageRole.TOOL for message in messages)

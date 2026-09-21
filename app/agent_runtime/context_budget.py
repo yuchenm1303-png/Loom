@@ -605,6 +605,11 @@ def prepare_context(rt, session, step, token):
     # Also structural: one oversized user item cannot be summarized into a
     # smaller history, so the sanity ceiling applies here too.
     hard_target = max(1, limits.input_budget_tokens - limits.safety_tokens)
+    # Request-local projections are estimated in Loom's raw fallback-token
+    # units. Convert the calibrated provider budget back before passing it to a
+    # raw estimator; mixing those units caused aggressive over-trimming when
+    # Loom's estimator ran high relative to the provider.
+    raw_hard_target = max(1, int(hard_target / calibration))
     if calibrated(estimated_before) > hard_target:
         emergency = _single_user_emergency_projection(
             transient,
@@ -612,7 +617,7 @@ def prepare_context(rt, session, step, token):
             tools,
             # The projection searches in raw estimator units, so the target has
             # to be converted back out of provider accounting.
-            target_tokens=max(1, int(hard_target / calibration)),
+            target_tokens=raw_hard_target,
         )
         if emergency is not None:
             emergency_visible, emergency_tokens = emergency
@@ -638,11 +643,11 @@ def prepare_context(rt, session, step, token):
             )
             return emergency_visible, metadata
 
-    # Large historical tool observations should not force a semantic handoff by
-    # themselves. Project bounded previews/collapsed stubs into this request copy
-    # first; the canonical durable transcript remains untouched. This reducer is
-    # only invoked when the raw request no longer fits, so roomy model windows
-    # still receive full recent tool observations.
+    # A single oversized tool observation may be projected to a bounded preview,
+    # but Loom must not bulk-collapse historical observations just to avoid a
+    # semantic handoff. If bounded previews still do not fit, the request falls
+    # through to compaction below. This keeps the model from continuing while
+    # blind to a large set of command results.
     projected_history = canonical_history
     projected_visible = visible_messages
     estimated_projected = estimated_before
@@ -651,8 +656,6 @@ def prepare_context(rt, session, step, token):
         projected_history, reduction_stats = reduce_tool_outputs(
             canonical_history,
             per_output_token_limit=limits.tool_output_token_limit,
-            target_total_tokens=hard_target,
-            estimate_total=lambda history: estimate_tokens([*transient, *history], tools),
         )
         projected_visible = [*transient, *projected_history]
         estimated_projected = estimate_tokens(projected_visible, tools)
@@ -862,13 +865,51 @@ def prepare_context(rt, session, step, token):
         transient_count=len(transient),
         max_messages=rt.limits.max_messages,
     )
+
+    # A successful checkpoint should buy meaningful runway, not merely squeeze
+    # under the hard ceiling. Aim for 75% of the next auto-compaction threshold
+    # while never asking compaction to shrink fixed instructions/tool schemas.
+    # If that soft target is unattainable, trim the oldest retained real-user
+    # messages until only the summary remains; the hard checks below still guard
+    # against an immediate compaction loop.
+    post_compaction_trimmed_messages = 0
+    post_compaction_target_tokens = input_budget
+    if input_budget is not None and limits.window_known:
+        trigger = min(input_budget, limits.auto_compact_token_limit)
+        fixed_floor = min(
+            input_budget,
+            calibrated(fixed_tokens) + max(1, limits.safety_tokens),
+        )
+        post_compaction_target_tokens = min(
+            input_budget,
+            max(fixed_floor, trigger * 3 // 4),
+        )
+
     compacted_visible = [*transient, *replacement]
     estimated_after = estimate_tokens(compacted_visible, tools)
+    while (
+        post_compaction_target_tokens is not None
+        and calibrated(estimated_after) > post_compaction_target_tokens
+        and len(replacement) > 1
+    ):
+        replacement = replacement[1:]
+        post_compaction_trimmed_messages += 1
+        compacted_visible = [*transient, *replacement]
+        estimated_after = estimate_tokens(compacted_visible, tools)
     # Judge the compacted result by whatever gate let the request in, so an
     # unbudgeted session cannot be failed for producing a history it would have
     # been allowed to send uncompacted. The message cap always applies.
+    immediate_recompact_limit = (
+        min(input_budget, limits.auto_compact_token_limit)
+        if input_budget is not None and limits.window_known
+        else None
+    )
     if (
         (input_budget is not None and calibrated(estimated_after) > input_budget)
+        or (
+            immediate_recompact_limit is not None
+            and calibrated(estimated_after) >= immediate_recompact_limit
+        )
         or len(compacted_visible) > rt.limits.max_messages
     ):
         raise ContextBudgetExceeded(
@@ -876,7 +917,12 @@ def prepare_context(rt, session, step, token):
             input_budget_tokens=limits.input_budget_tokens,
             tool_schema_tokens=estimate_tool_schema_tokens(tools),
             message_count=len(compacted_visible),
-            reason="Codex replacement history still exceeds the current model request budget",
+            reason=(
+                "compacted history would immediately hit the next auto-compaction threshold"
+                if immediate_recompact_limit is not None
+                and calibrated(estimated_after) >= immediate_recompact_limit
+                else "Codex replacement history still exceeds the current model request budget"
+            ),
         )
 
     rt._commit_compaction_locked(
@@ -900,7 +946,10 @@ def prepare_context(rt, session, step, token):
         estimated_after=estimated_after,
         active_context_tokens=calibrated_active_context_tokens,
         token_accounting_source=accounting_source,
-        reduction_stats=reduction_stats,
+        # The request being returned now contains the compacted replacement, not
+        # the pre-compaction tool previews. Reporting those old reduction stats
+        # made the UI claim the freshly compacted agent was still blind.
+        reduction_stats=ContextReductionStats(),
         calibration=calibration,
         calibration_samples=calibration_samples,
         input_budget=input_budget,
@@ -911,6 +960,10 @@ def prepare_context(rt, session, step, token):
             "compaction_attempts": response_attempts,
             "compaction_trimmed_messages": trimmed_messages,
             "forced_by_provider_context_error": forced_compaction,
+            "pre_compaction_tool_outputs_reduced": reduction_stats.tool_outputs_reduced,
+            "pre_compaction_tool_outputs_collapsed": reduction_stats.tool_outputs_collapsed,
+            "post_compaction_target_tokens": post_compaction_target_tokens,
+            "post_compaction_trimmed_messages": post_compaction_trimmed_messages,
         }
     )
     return committed_visible, metadata
