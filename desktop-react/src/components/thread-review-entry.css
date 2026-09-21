@@ -80,3 +80,67 @@
     transition-duration: .001ms !important;
   }
 }
+
+
+.thread-agent-button {
+  min-width: 78px;
+}
+
+.thread-agent-button > svg {
+  color: #9188dc;
+}
+
+.thread-agent-button:hover > svg,
+.thread-agent-button.active > svg {
+  color: #b6adf6;
+}
+
+.thread-agent-count {
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(139,124,246,.10);
+  color: #aaa1ef;
+  font-size: 9.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+html[data-loom-theme="light"] .thread-agent-button {
+  border-color: rgba(28,31,37,.075);
+  background: rgba(255,255,255,.66);
+  color: #69727d;
+}
+
+html[data-loom-theme="light"] .thread-agent-button > svg {
+  color: #695ad8;
+}
+
+html[data-loom-theme="light"] .thread-agent-button:hover,
+html[data-loom-theme="light"] .thread-agent-button.active {
+  border-color: rgba(105,90,216,.16);
+  background: rgba(105,90,216,.055);
+  color: #5146ad;
+}
+
+html[data-loom-theme="light"] .thread-agent-count {
+  background: rgba(105,90,216,.085);
+  color: #5a4db8;
+}
+
+@media (max-width: 1120px) {
+  .thread-agent-button {
+    min-width: 32px;
+    width: 32px;
+    padding: 0;
+  }
+
+  .thread-agent-label,
+  .thread-agent-count {
+    display: none;
+  }
+}
