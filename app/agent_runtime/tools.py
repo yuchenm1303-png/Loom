@@ -356,9 +356,24 @@ class ToolValidationUnavailable(RuntimeError):
     """
 
 
+# A browser call whose URL carried a credential is rewritten to carry this
+# marker instead of being executed: the redacted URL still reaches durable
+# history, the secret never reaches the browser. No tool declares the marker, so
+# validation refuses the call on its own - but "Additional properties are not
+# allowed" tells the model nothing it can act on, and it spent its next turns
+# guessing at the schema instead of at the URL.
+BLOCKED_SENSITIVE_INPUT_ARGUMENT = "_loom_blocked_sensitive_input"
+
+
 def validate_tool_arguments(schema: dict[str, Any], arguments: dict[str, Any]) -> None:
     if not isinstance(arguments, dict):
         raise ValueError("tool arguments must be a JSON object")
+    if BLOCKED_SENSITIVE_INPUT_ARGUMENT in arguments:
+        raise ValueError(
+            "this call was refused before it reached the browser because its URL carried "
+            "something credential-shaped (a token, key, password, or session id). The secret "
+            "is not available to you. Reach the page another way, or ask the user to open it."
+        )
     if schema.get("type") != "object":
         raise ValueError("tool root schema must be type=object")
     try:

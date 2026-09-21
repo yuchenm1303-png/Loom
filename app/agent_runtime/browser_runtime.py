@@ -23,7 +23,7 @@ from .browser_session import (
 )
 from .browser_use_backend import browser_use_available
 from .memory_store import redact_secrets
-from .tools import ToolRegistry
+from .tools import BLOCKED_SENSITIVE_INPUT_ARGUMENT, ToolRegistry
 from .web_search_runtime import WebSearchRuntime
 
 
@@ -96,7 +96,7 @@ _JWT_RE = re.compile(r"\b[A-Za-z0-9_-]{12,}\.[A-Za-z0-9_-]{12,}\.[A-Za-z0-9_-]{8
 _PROVIDER_TOKEN_RE = re.compile(
     r"\b(?:ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|xox[baprs]-[A-Za-z0-9-]{12,})\b"
 )
-_BLOCKED_SECRET_ARGUMENT = "_loom_blocked_sensitive_input"
+_BLOCKED_SECRET_ARGUMENT = BLOCKED_SENSITIVE_INPUT_ARGUMENT
 
 
 def redact_browser_text(value: str) -> str:
@@ -110,20 +110,45 @@ def redact_browser_text(value: str) -> str:
 
 
 def redact_browser_url(value: str) -> str:
-    raw = redact_browser_text(str(value or ""))
+    return _redact_browser_url(value)[0]
+
+
+def _redact_browser_url(value: str) -> tuple[str, bool]:
+    """The safe URL, plus whether anything was actually redacted.
+
+    Rebuilding the query re-encodes it, so a URL that merely carries a space, a
+    plus, or a non-ASCII search term comes back different from the one that went
+    in without a single character having been hidden. Callers that refuse a call
+    on the strength of that difference were answering "was this URL normalized",
+    not "did this URL carry a secret", and every Chinese search URL the model
+    tried was blocked as though it held a credential.
+    """
+
+    raw = str(value or "")
+    text = redact_browser_text(raw)
+    redacted = text != raw
     try:
-        parsed = urlsplit(raw)
+        parsed = urlsplit(text)
     except ValueError:
-        return raw
+        return text, redacted
     if not parsed.scheme or not parsed.netloc:
-        return raw
+        return text, redacted
     pairs: list[tuple[str, str]] = []
     for key, item in parse_qsl(parsed.query, keep_blank_values=True):
-        pairs.append((key, "[REDACTED]" if _SENSITIVE_QUERY_KEY.search(key) else redact_browser_text(item)))
+        if _SENSITIVE_QUERY_KEY.search(key):
+            pairs.append((key, "[REDACTED]"))
+            redacted = True
+            continue
+        safe_item = redact_browser_text(item)
+        redacted = redacted or safe_item != item
+        pairs.append((key, safe_item))
     fragment = redact_browser_text(parsed.fragment)
+    redacted = redacted or fragment != parsed.fragment
     if any(term in fragment.casefold() for term in ("access_token", "refresh_token", "id_token", "api_key=")):
         fragment = "[REDACTED]"
-    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, urlencode(pairs, doseq=True), fragment))
+        redacted = True
+    safe = urlunsplit((parsed.scheme, parsed.netloc, parsed.path, urlencode(pairs, doseq=True), fragment))
+    return safe, redacted
 
 
 def _safe_state_dict(state: BrowserPageState, *, max_dom_chars: int = 30_000) -> dict[str, object]:
@@ -157,8 +182,8 @@ def _sanitize_browser_tool_call(call: ToolCall) -> ToolCall:
 
     if call.name in {"browser_open", "browser_navigate"} and "url" in arguments:
         raw_url = str(arguments.get("url") or "")
-        safe_url = redact_browser_url(raw_url)
-        if safe_url != raw_url:
+        safe_url, redacted = _redact_browser_url(raw_url)
+        if redacted:
             arguments["url"] = safe_url
             blocked = True
 

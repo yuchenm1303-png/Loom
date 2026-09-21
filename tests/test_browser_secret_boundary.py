@@ -219,6 +219,53 @@ def test_secret_shaped_browser_urls_are_still_redacted_and_blocked(tool_name):
     assert sanitized.arguments["_loom_blocked_sensitive_input"] is True
 
 
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://www.bing.com/search?q=WorkBuddy+国际版+下载&setlang=zh-CN",
+        "https://www.google.com/search?q=中文 翻译",
+        "https://example.com/a?next=https://example.org/b&t=1+2",
+    ],
+)
+def test_urls_that_only_need_re_encoding_are_not_treated_as_secrets(url):
+    """Rebuilding the query re-encodes it; that is not evidence of a secret.
+
+    The sanitizer used to compare the redacted URL against the original, so any
+    query carrying a space, a plus, or a non-ASCII term came back different and
+    was refused. Every Chinese search the model tried died on "Additional
+    properties are not allowed", with nothing in it about URLs or secrets.
+    """
+
+    sanitized = _sanitize_browser_tool_call(
+        ToolCall(call_id="search", name="browser_open", arguments={"url": url})
+    )
+
+    assert "_loom_blocked_sensitive_input" not in sanitized.arguments
+    assert sanitized.arguments["url"] == url
+
+
+def test_a_refused_url_says_why_instead_of_naming_an_unexpected_property():
+    """The model has to learn something it can act on from the refusal."""
+
+    from app.agent_runtime.tools import validate_tool_arguments
+
+    sanitized = _sanitize_browser_tool_call(
+        ToolCall(
+            call_id="secret",
+            name="browser_open",
+            arguments={"url": "https://example.com/c?access_token=supersecret"},
+        )
+    )
+    schema = {"type": "object", "properties": {"url": {"type": "string"}}, "additionalProperties": False}
+
+    with pytest.raises(ValueError) as caught:
+        validate_tool_arguments(schema, dict(sanitized.arguments))
+
+    message = str(caught.value)
+    assert "credential-shaped" in message
+    assert "supersecret" not in message
+
+
 def test_secret_shaped_browser_url_is_scrubbed_and_blocked_before_durable_state(tmp_path):
     """The sanitizer is wired into the runtime, not merely present in the module.
 
