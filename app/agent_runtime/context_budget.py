@@ -520,8 +520,10 @@ def _fit_replacement_message_limit(
     transient_count: int,
     max_messages: int,
 ) -> tuple[AIMessage, ...]:
-    """Keep the newest compacted user context plus the summary under a hard cap."""
+    """Keep the newest compacted user context plus the summary under an optional hard cap."""
     items = tuple(replacement)
+    if int(max_messages) <= 0:
+        return items
     allowed = max(1, int(max_messages) - int(transient_count))
     while len(items) > allowed and len(items) > 1:
         items = items[1:]
@@ -946,7 +948,10 @@ def prepare_context(rt, session, step, token):
             immediate_recompact_limit is not None
             and calibrated(estimated_after) >= immediate_recompact_limit
         )
-        or len(compacted_visible) > rt.limits.max_messages
+        or (
+            rt.limits.max_messages > 0
+            and len(compacted_visible) > rt.limits.max_messages
+        )
     ):
         raise ContextBudgetExceeded(
             estimated_tokens=estimated_after,
