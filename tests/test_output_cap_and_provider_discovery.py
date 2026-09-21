@@ -130,14 +130,14 @@ def test_a_published_window_is_read_from_the_listing(entry, window):
 
 
 @pytest.mark.parametrize(
-    "entry,reserve",
+    "entry",
     [
-        ({"id": "m", "max_output_tokens": 8_192}, 8_192),
-        ({"id": "m", "max_completion_tokens": 64_000}, 64_000),
+        {"id": "m", "max_output_tokens": 8_192},
+        {"id": "m", "max_completion_tokens": 64_000},
     ],
 )
-def test_a_published_output_limit_is_read_from_the_listing(entry, reserve):
-    assert model_context_limits_from_provider_listing(entry).output_reserve_tokens == reserve
+def test_a_published_output_ceiling_is_not_mistaken_for_request_reserve(entry):
+    assert model_context_limits_from_provider_listing(entry).output_reserve_tokens is None
 
 
 def test_bare_max_tokens_is_ignored_because_gateways_disagree_about_it():
@@ -179,7 +179,7 @@ def test_a_discovered_window_makes_the_window_known():
 
     assert resolved.window_known is True
     assert resolved.context_window_tokens == 65_536
-    assert resolved.output_reserve_declared is True
+    assert resolved.output_reserve_declared is False
     assert resolved.source == "model_profile"
 
 

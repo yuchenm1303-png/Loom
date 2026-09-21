@@ -36,7 +36,7 @@ def test_opencode_go_profiles_are_grouped_without_exposing_secret(monkeypatch, t
     assert "secret-present" not in repr(snapshot)
 
 
-def test_opencode_go_uses_safe_context_envelope_when_provider_omits_limits(
+def test_opencode_go_uses_model_catalog_when_provider_omits_limits(
     monkeypatch, tmp_path
 ) -> None:
     store, reasoning, selection = _stores(tmp_path)
@@ -52,13 +52,9 @@ def test_opencode_go_uses_safe_context_envelope_when_provider_omits_limits(
         bridge._opencode_go_selection_for_model("deepseek-v4.1-flash"),
     )
 
-    assert resolved["contextLimits"] == {
-        "contextWindowTokens": 65_536,
-        "effectiveContextPercent": 90,
-        "autoCompactTokenLimit": 49_152,
-        "outputReserveTokens": 8_192,
-        "toolOutputTokenLimit": 4_000,
-    }
+    assert resolved["contextLimits"] == {"contextWindowTokens": 1_000_000}
+    assert resolved["contextLimitsSource"] == "models.dev/opencode-go"
+    assert resolved["maxOutputTokens"] == 384_000
 
 
 def test_opencode_go_prefers_provider_published_context_limits(monkeypatch) -> None:
@@ -84,7 +80,29 @@ def test_opencode_go_prefers_provider_published_context_limits(monkeypatch) -> N
     assert bridge._fetch_opencode_go_model_ids() == ["future-model"]
     profile = bridge._safe_opencode_go("future-model", configured=True)
     assert profile["contextLimits"]["contextWindowTokens"] == 131_072
-    assert profile["contextLimits"]["outputReserveTokens"] == 16_384
+    assert "outputReserveTokens" not in profile["contextLimits"]
+
+
+def test_every_current_opencode_go_model_has_catalog_limits() -> None:
+    profiles = [
+        bridge._safe_opencode_go(model, configured=True)
+        for model in bridge.OPENCODE_GO_FALLBACK_MODEL_IDS
+    ]
+
+    assert len(profiles) == 37
+    assert all(profile["contextLimitsSource"] == "models.dev/opencode-go" for profile in profiles)
+    assert all(profile["contextLimits"]["contextWindowTokens"] >= 200_000 for profile in profiles)
+
+
+def test_catalog_aliases_share_the_verified_model_limits() -> None:
+    alias = bridge._safe_opencode_go("deepseek-flash", configured=True)
+    canonical = bridge._safe_opencode_go("deepseek-v4.1-flash", configured=True)
+    preview = bridge._safe_opencode_go("hy3-preview", configured=True)
+
+    assert alias["contextLimits"] == canonical["contextLimits"] == {
+        "contextWindowTokens": 1_000_000
+    }
+    assert preview["contextLimits"] == {"contextWindowTokens": 256_000}
 
 
 def test_opencode_go_resolve_uses_one_provider_key_for_all_models(monkeypatch, tmp_path) -> None:

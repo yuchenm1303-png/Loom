@@ -16,11 +16,12 @@ from app.ai.model_context import (
 )
 from app.ai.model_selection_store import ModelSelectionStore
 from app.ai.model_store import ModelConfigStore, StoredModel
+from app.ai.opencode_go_catalog import opencode_go_model_limits
+from app.ai.opencode_go_runtime import OPENCODE_GO_BASE_URL, opencode_go_protocol
 from app.ai.profiles import ModelContextLimits
 from app.ai.reasoning import ReasoningRequest
 from app.ai.reasoning_catalog import resolved_reasoning
 from app.ai.reasoning_store import ReasoningConfigStore
-from app.ai.opencode_go_runtime import OPENCODE_GO_BASE_URL, opencode_go_protocol
 
 
 PRIMARY_SELECTION = "builtin:minimax"
@@ -924,11 +925,20 @@ def _safe_opencode_go(model: str, *, configured: bool) -> dict[str, Any]:
     discovered = _discovered_context_limits(model)
     if discovered is not None:
         return {**profile, "contextLimits": discovered}
-    # OpenCode's model listing currently publishes IDs but no context-window
-    # metadata.  Treating that omission as Codex's roomy 272k fallback allowed
-    # large requests to be sent until the relay closed the socket.  This is a
-    # provider safety envelope, not a claim about the upstream model's maximum:
-    # compact early until OpenCode publishes an authoritative value.
+    catalog = opencode_go_model_limits(model)
+    if catalog is not None:
+        # Models.dev publishes both maximum context and maximum possible output.
+        # Only the context belongs in this budget profile. A model's theoretical
+        # output ceiling is not output reserved by every request; conflating the
+        # two can erase hundreds of thousands of usable input tokens.
+        return {
+            **profile,
+            "contextLimits": {"contextWindowTokens": catalog.context_tokens},
+            "contextLimitsSource": "models.dev/opencode-go",
+            "maxOutputTokens": catalog.max_output_tokens,
+        }
+    # Truly unknown future models retain a conservative safety envelope until
+    # either OpenCode publishes limits or the bundled catalog is refreshed.
     return {
         **profile,
         "contextLimits": {
