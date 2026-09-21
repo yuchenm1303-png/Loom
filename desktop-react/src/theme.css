@@ -3393,3 +3393,188 @@ html[data-loom-theme="light"] .turn-artifacts-file-strip button > svg {
 html[data-loom-theme="light"] .turn-artifacts-file-strip button:hover > svg {
   color: #5548b4;
 }
+
+
+/* Light theme: sidebar rename + task-flow shimmer ------------------------ */
+/* Sidebar rename ----------------------------------------------------------- */
+/* The inline editor and quick-action reveal were still using the dark sidebar
+   treatment. In light mode make editing read as a soft purple focus state. */
+html[data-loom-theme="light"] .compact-thread-row.renaming {
+  border-radius: 9px;
+  background: rgba(105,90,216,.045);
+}
+
+html[data-loom-theme="light"] .compact-thread-row.renaming .rename-main {
+  min-height: 31px;
+}
+
+html[data-loom-theme="light"] .compact-thread-rename {
+  height: 27px;
+  padding: 0 8px;
+  border: 1px solid rgba(105,90,216,.24);
+  border-radius: 7px;
+  background: rgba(105,90,216,.075);
+  color: #3f368f;
+  caret-color: #695ad8;
+  font-size: 12.5px;
+  box-shadow:
+    0 0 0 2px rgba(105,90,216,.055),
+    inset 0 1px rgba(255,255,255,.82);
+  transition:
+    border-color 140ms ease,
+    background 140ms ease,
+    box-shadow 160ms ease;
+}
+
+html[data-loom-theme="light"] .compact-thread-rename:focus {
+  border-color: rgba(105,90,216,.38);
+  background: rgba(105,90,216,.09);
+  box-shadow:
+    0 0 0 3px rgba(105,90,216,.085),
+    inset 0 1px rgba(255,255,255,.9);
+}
+
+html[data-loom-theme="light"] .thread-quick-actions {
+  background: linear-gradient(
+    90deg,
+    rgba(247,248,250,0),
+    rgba(247,248,250,.90) 20%,
+    rgba(247,248,250,.98) 44%,
+    rgba(247,248,250,1) 100%
+  );
+}
+
+html[data-loom-theme="light"] .compact-thread-row.active .thread-quick-actions {
+  background: linear-gradient(
+    90deg,
+    rgba(240,238,251,0),
+    rgba(240,238,251,.92) 20%,
+    rgba(240,238,251,.98) 44%,
+    rgba(240,238,251,1) 100%
+  );
+}
+
+html[data-loom-theme="light"] .thread-quick-actions button {
+  color: #727b86;
+  background: transparent;
+}
+
+html[data-loom-theme="light"] .thread-quick-actions button:hover:not(:disabled) {
+  color: #5144ad;
+  background: rgba(105,90,216,.08);
+}
+
+html[data-loom-theme="light"] .thread-quick-actions button.is-active {
+  color: #5d50bc;
+  background: rgba(105,90,216,.075);
+}
+
+/* Running task-flow shimmer ------------------------------------------------ */
+/* White surfaces need a chromatic sweep, not a white highlight. Keep the
+   moving band narrow and saturated enough to be legible without making the
+   command row look selected. */
+html[data-loom-theme="light"] .task-flow-row:has(.task-flow-status.running),
+html[data-loom-theme="light"] .task-flow-row:has(.task-flow-status.started) {
+  background:
+    linear-gradient(
+      90deg,
+      rgba(105,90,216,.070) 0%,
+      rgba(105,90,216,.030) 38%,
+      rgba(105,90,216,.010) 70%,
+      transparent 100%
+    );
+  box-shadow:
+    inset 2px 0 0 rgba(105,90,216,.34),
+    inset 0 1px rgba(255,255,255,.76);
+}
+
+html[data-loom-theme="light"] .task-flow-row:has(.task-flow-status.running)::after,
+html[data-loom-theme="light"] .task-flow-row:has(.task-flow-status.started)::after {
+  left: -42%;
+  width: 42%;
+  background: linear-gradient(
+    103deg,
+    transparent 0%,
+    rgba(105,90,216,0) 16%,
+    rgba(105,90,216,.08) 30%,
+    rgba(123,104,226,.20) 43%,
+    rgba(162,146,244,.34) 49%,
+    rgba(255,255,255,.96) 52%,
+    rgba(158,142,242,.28) 55%,
+    rgba(105,90,216,.14) 64%,
+    rgba(105,90,216,.035) 78%,
+    transparent 100%
+  );
+  filter: blur(.05px);
+  opacity: .95;
+  transform: translateX(0) skewX(-10deg);
+  animation: task-flow-shimmer-light 1.85s cubic-bezier(.38,0,.22,1) infinite;
+}
+
+html[data-loom-theme="light"] .task-flow-row:has(.task-flow-status.running) .task-flow-status-dot,
+html[data-loom-theme="light"] .task-flow-row:has(.task-flow-status.started) .task-flow-status-dot {
+  background: #695ad8;
+  box-shadow: 0 0 0 0 rgba(105,90,216,.28);
+  animation: task-flow-pulse-light 1.65s ease-out infinite;
+}
+
+html[data-loom-theme="light"] .task-flow-row:has(.task-flow-status.running) .task-flow-row-icon,
+html[data-loom-theme="light"] .task-flow-row:has(.task-flow-status.started) .task-flow-row-icon {
+  color: #5c4fba;
+  border-color: rgba(105,90,216,.28);
+  background:
+    radial-gradient(circle at 34% 22%, rgba(255,255,255,.82), transparent 46%),
+    rgba(105,90,216,.09);
+  box-shadow:
+    inset 0 1px rgba(255,255,255,.90),
+    0 0 0 3px rgba(105,90,216,.025);
+}
+
+html[data-loom-theme="light"] .task-flow-group.is-running .task-flow-group-icon {
+  color: #5e50bb;
+  border-color: rgba(105,90,216,.28);
+  background: rgba(105,90,216,.085);
+  animation: task-flow-group-breathe-light 1.9s ease-in-out infinite;
+}
+
+@keyframes task-flow-shimmer-light {
+  0% {
+    transform: translateX(0) skewX(-10deg);
+    opacity: 0;
+  }
+  8% { opacity: .42; }
+  34% { opacity: .98; }
+  70% { opacity: .82; }
+  100% {
+    transform: translateX(342%) skewX(-10deg);
+    opacity: 0;
+  }
+}
+
+@keyframes task-flow-pulse-light {
+  0% { box-shadow: 0 0 0 0 rgba(105,90,216,.30); }
+  70%, 100% { box-shadow: 0 0 0 5px rgba(105,90,216,0); }
+}
+
+@keyframes task-flow-group-breathe-light {
+  0%, 100% {
+    box-shadow:
+      inset 0 1px rgba(255,255,255,.88),
+      0 0 0 rgba(105,90,216,0);
+  }
+  50% {
+    box-shadow:
+      inset 0 1px rgba(255,255,255,.94),
+      0 0 16px rgba(105,90,216,.12);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-loom-theme="light"] .task-flow-row:has(.task-flow-status.running)::after,
+  html[data-loom-theme="light"] .task-flow-row:has(.task-flow-status.started)::after,
+  html[data-loom-theme="light"] .task-flow-row:has(.task-flow-status.running) .task-flow-status-dot,
+  html[data-loom-theme="light"] .task-flow-row:has(.task-flow-status.started) .task-flow-status-dot,
+  html[data-loom-theme="light"] .task-flow-group.is-running .task-flow-group-icon {
+    animation: none !important;
+  }
+}
