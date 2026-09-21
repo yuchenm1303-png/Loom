@@ -232,7 +232,10 @@ def _fit_reference_without_breaking_budget(
     def fits(items: tuple[Any, ...]) -> bool:
         visible = [*transient, *items]
         return (
-            len(visible) <= runtime.limits.max_messages
+            (
+                runtime.limits.max_messages <= 0
+                or len(visible) <= runtime.limits.max_messages
+            )
             and estimate_tokens(visible, tools) <= limits.input_budget_tokens
         )
 
