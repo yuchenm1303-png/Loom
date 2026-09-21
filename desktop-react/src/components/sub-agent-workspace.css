@@ -751,3 +751,101 @@ html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-card {
     grid-row: 1;
   }
 }
+
+
+/* Transcript keeps only a lightweight pointer into the persistent side dock. */
+.sub-agent-inline-notice {
+  width: fit-content;
+  max-width: min(620px, 100%);
+  min-height: 31px;
+  padding: 3px 7px 3px 4px;
+  border: 1px solid rgba(139,124,246,.10);
+  border-radius: 9px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: rgba(139,124,246,.026);
+  color: #7c8490;
+  cursor: pointer;
+  text-align: left;
+  transition: color 130ms ease, border-color 130ms ease, background 130ms ease, transform 130ms ease;
+}
+
+.sub-agent-inline-notice:hover {
+  color: #bfc4cd;
+  border-color: rgba(139,124,246,.18);
+  background: rgba(139,124,246,.055);
+  transform: translateX(1px);
+}
+
+.sub-agent-inline-icon {
+  width: 23px;
+  height: 23px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(139,124,246,.14);
+  border-radius: 7px;
+  color: #9e95e8;
+  background: rgba(139,124,246,.045);
+}
+
+.sub-agent-inline-copy {
+  color: #989faa;
+  font-size: 10.8px;
+  font-weight: 610;
+}
+
+.sub-agent-inline-count {
+  min-width: 18px;
+  height: 18px;
+  padding-inline: 5px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #aaa1ef;
+  background: rgba(139,124,246,.075);
+  font-size: 9px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.sub-agent-inline-action {
+  color: #666e7a;
+  font-size: 9.8px;
+}
+
+.sub-agent-inline-notice > svg {
+  color: #625a9e;
+}
+
+.sub-agent-inline-notice.is-running .sub-agent-inline-icon {
+  box-shadow: 0 0 0 0 rgba(139,124,246,.16);
+  animation: sub-agent-pulse 1.8s ease-out infinite;
+}
+
+html[data-loom-theme="light"] .sub-agent-inline-notice {
+  border-color: rgba(105,90,216,.09);
+  background: rgba(105,90,216,.025);
+  color: #747d88;
+}
+
+html[data-loom-theme="light"] .sub-agent-inline-notice:hover {
+  border-color: rgba(105,90,216,.15);
+  background: rgba(105,90,216,.05);
+  color: #4f5661;
+}
+
+html[data-loom-theme="light"] .sub-agent-inline-icon {
+  border-color: rgba(105,90,216,.12);
+  background: rgba(105,90,216,.04);
+  color: #6557c9;
+}
+
+html[data-loom-theme="light"] .sub-agent-inline-copy {
+  color: #69727d;
+}
+
+html[data-loom-theme="light"] .sub-agent-inline-action {
+  color: #969da6;
+}
