@@ -195,6 +195,13 @@ body.loom-panel-resizing * {
   .thread-review-button { min-width: 32px; width: 32px; padding: 0; }
   .thread-review-label,
   .thread-review-count { display: none; }
+  /* The agents entry reuses .thread-review-button, so the rule above also forces its
+     box down to 32px. Its label is only hidden by the viewport media query
+     (max-width: 1120px), which never fires while the viewport stays wide and it is
+     the *workspace column* that narrows (right dock / inspector open). Without this
+     the label keeps laying out inside a 32px box and spills over the neighbours. */
+  .thread-agent-label,
+  .thread-agent-count { display: none; }
 }
 
 @container loom-workspace (max-width: 680px) {
