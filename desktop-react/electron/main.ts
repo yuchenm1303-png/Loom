@@ -19,6 +19,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const DESKTOP_ROOT = path.resolve(__dirname, "..");
 const REPO_ROOT = path.resolve(DESKTOP_ROOT, "..");
+const DEV_WINDOW_ICON = path.join(DESKTOP_ROOT, "build", "icon-dev.png");
 const REPO_VENV_PYTHON = process.platform === "win32"
   ? path.join(REPO_ROOT, ".venv", "Scripts", "python.exe")
   : path.join(REPO_ROOT, ".venv", "bin", "python");
@@ -696,6 +697,9 @@ function createWindow(): void {
   // Start from the OS preference. The renderer restores the persisted
   // Appearance choice and can switch native chrome to light/dark explicitly.
   nativeTheme.themeSource = "system";
+  const windowIcon = !app.isPackaged && process.platform === "win32" && fsSync.existsSync(DEV_WINDOW_ICON)
+    ? DEV_WINDOW_ICON
+    : undefined;
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 920,
@@ -703,6 +707,7 @@ function createWindow(): void {
     minHeight: 680,
     backgroundColor: nativeTheme.shouldUseDarkColors ? "#0d0e11" : "#f7f7f8",
     title: "Loom",
+    icon: windowIcon,
     autoHideMenuBar: true,
     show: false,
     webPreferences: {
@@ -877,6 +882,8 @@ ipcMain.handle("loom:reasoning-set", async (_event, ...args: string[]): Promise<
     : spec;
   return { runtime: result.runtime ?? {}, models: modelManager.snapshotFor(current), thread: result.thread };
 });
+
+app.setName("Loom");
 
 app.whenReady().then(() => {
   // Keep the packaged executable, taskbar grouping, Start menu shortcut, and
