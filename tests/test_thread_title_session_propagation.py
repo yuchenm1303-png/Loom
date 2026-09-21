@@ -177,6 +177,14 @@ def test_generated_title_rejects_prompt_clause_without_task_shape() -> None:
         source_prompt=prompt,
     ) == ""
     assert _sanitize_generated_title(
+        "右上角标签数字文字重叠",
+        source_prompt=prompt,
+    ) == ""
+    assert _sanitize_generated_title(
+        "标签数字文字重叠",
+        source_prompt=prompt,
+    ) == ""
+    assert _sanitize_generated_title(
         "修复标签数字文字重叠",
         source_prompt=prompt,
     ) == "修复标签数字文字重叠"

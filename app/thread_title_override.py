@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import difflib
 import importlib.abc
 import importlib.machinery
 import json
@@ -171,14 +172,19 @@ def _title_looks_like_raw_prompt(title: str, prompt: str = "") -> bool:
     # useful generated titles such as "修复标签数字文字重叠".
     compact_title = re.sub(r"[\W_]+", "", title_text.casefold())
     compact_prompt = re.sub(r"[\W_]+", "", prompt_text.casefold())
-    if (
-        _has_cjk(title_text)
-        and len(compact_title) >= 6
-        and compact_prompt
-        and compact_title in compact_prompt
-        and not _AUTO_TITLE_ACTION_RE.match(title_text)
-    ):
-        return True
+    if _has_cjk(title_text) and len(compact_title) >= 6 and not _AUTO_TITLE_ACTION_RE.match(title_text):
+        if compact_prompt and compact_title in compact_prompt:
+            return True
+        # Near-verbatim first-clause copies (for example dropping only "的/和")
+        # are just as poor as exact copies. Compare against individual source
+        # clauses so a long follow-up instruction does not hide that similarity.
+        for clause in re.split(r"[，。！？!?；;：:\\n]+", prompt_text):
+            compact_clause = re.sub(r"[\W_]+", "", clause.casefold())
+            if not compact_clause:
+                continue
+            similarity = difflib.SequenceMatcher(None, compact_title, compact_clause).ratio()
+            if similarity >= 0.72:
+                return True
 
     if prompt_folded and len(folded) >= 18 and folded in prompt_folded:
         return True
