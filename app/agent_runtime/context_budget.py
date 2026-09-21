@@ -620,7 +620,9 @@ def prepare_context(rt, session, step, token):
     else:
         post_model_tokens = _local_tokens_after_latest_model_message(canonical_history)
         active_context_tokens = provider_tokens + calibrated(post_model_tokens)
-        accounting_source = "provider_usage_plus_local"
+        # Keep the public accounting-source contract stable: provider usage is
+        # still authoritative, with locally appended items estimated on top.
+        accounting_source = "provider_usage"
 
     # If one giant user item is the only canonical history, summarization cannot
     # safely archive a smaller history first. Use a request-only projection and
