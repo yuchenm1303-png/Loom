@@ -3730,3 +3730,66 @@ html[data-loom-theme="light"] .compact-thread-row.pinned:not(:hover):not(:focus-
 html[data-loom-theme="light"] .compact-thread-row.pinned:not(:hover):not(:focus-within) .thread-quick-actions button:not(.is-active) {
   opacity: .42;
 }
+
+
+/* Light theme: sidebar edit vertical alignment --------------------------- */
+/* Center the rename editor and quick-action rail from the row's actual box
+   instead of pinning the action rail to a fixed top offset. */
+html[data-loom-theme="light"] .compact-thread-row.renaming {
+  min-height: 35px;
+}
+
+html[data-loom-theme="light"] .compact-thread-row.renaming .compact-thread-main.rename-main {
+  min-height: 33px;
+  height: 33px;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+html[data-loom-theme="light"] .compact-thread-row.renaming .compact-thread-rename {
+  height: 29px;
+  align-self: center;
+  margin: 0;
+}
+
+html[data-loom-theme="light"] .compact-thread-row.renaming .compact-thread-dot {
+  align-self: center;
+  justify-self: center;
+}
+
+html[data-loom-theme="light"] .thread-quick-actions {
+  top: 50%;
+  right: 3px;
+  height: 29px;
+  min-height: 29px;
+  padding-top: 0;
+  padding-bottom: 0;
+  transform: translateY(-50%);
+  align-items: center;
+}
+
+html[data-loom-theme="light"] .thread-quick-actions button {
+  width: 25px;
+  height: 25px;
+  min-width: 25px;
+  min-height: 25px;
+  margin: 0;
+  align-self: center;
+}
+
+html[data-loom-theme="light"] .compact-thread-row.renaming .thread-quick-actions {
+  background: linear-gradient(
+    90deg,
+    rgba(246,245,252,0) 0%,
+    rgba(246,245,252,.58) 20%,
+    rgba(246,245,252,.88) 46%,
+    rgba(246,245,252,.985) 100%
+  );
+}
+
+/* Keep normal/active rows on the same vertical rhythm so switching into rename
+   does not make the action rail jump by a pixel. */
+html[data-loom-theme="light"] .compact-thread-row:not(.renaming) .thread-quick-actions {
+  top: 50%;
+  transform: translateY(-50%);
+}
