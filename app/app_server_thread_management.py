@@ -631,7 +631,7 @@ class ManagedStreamingLoomAppServerService(StreamingLoomAppServerService):
 
     def _schedule_auto_title(self, thread_id: str) -> None:
         thread_id = str(thread_id or "").strip()
-        if not thread_id:
+        if not thread_id or self._is_sub_agent_session(thread_id):
             return
         with self._auto_title_guard:
             if thread_id in self._auto_title_inflight:
