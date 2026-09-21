@@ -879,6 +879,10 @@ ipcMain.handle("loom:reasoning-set", async (_event, ...args: string[]): Promise<
 });
 
 app.whenReady().then(() => {
+  // Keep the packaged executable, taskbar grouping, Start menu shortcut, and
+  // Windows notifications on the same application identity. electron-builder
+  // stamps the executable with the icon configured for this appId.
+  if (process.platform === "win32") app.setAppUserModelId("com.loom.agent");
   createWindow();
   createHudOverlayWindow();
 });
