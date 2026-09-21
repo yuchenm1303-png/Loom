@@ -234,6 +234,7 @@ class AgentRuntime:
         system_prompt: str = DEFAULT_AGENT_SYSTEM_PROMPT,
         workspace_dir: str | Path | None = None,
         permission_mode: PermissionMode | str | None = None,
+        emit_session_created: bool = True,
     ) -> AgentSession:
         profile = str(profile_id or "").strip().casefold()
         prompt = str(system_prompt or "").strip()
@@ -260,15 +261,16 @@ class AgentRuntime:
             permission_mode=mode,
         )
         self.store.create(session)
-        self._record(
-            session,
-            AgentEventKind.SESSION_CREATED,
-            data={
-                "profile_id": profile,
-                "workspace_dir": str(workspace),
-                "permission_mode": mode.value,
-            },
-        )
+        if emit_session_created:
+            self._record(
+                session,
+                AgentEventKind.SESSION_CREATED,
+                data={
+                    "profile_id": profile,
+                    "workspace_dir": str(workspace),
+                    "permission_mode": mode.value,
+                },
+            )
         return session
 
     def get_session(self, session_id: str) -> AgentSession:
