@@ -385,8 +385,10 @@ def test_failed_title_attempt_retries_automatically(tmp_path: Path) -> None:
         tmp_path,
         [
             ModelResponse(text="normal assistant response"),
-            ModelResponse(text='{"title":"右上角的标签数字和文字重叠"}'),
+            # RecordingPlatform takes title samples from the end so the first
+            # detached attempt receives the malformed/near-verbatim candidate.
             ModelResponse(text='{"title":"修复标签数字文字重叠"}'),
+            ModelResponse(text='{"title":"右上角的标签数字和文字重叠"}'),
         ],
     )
     try:
