@@ -1,0 +1,314 @@
+/* Runtime inspector control polish --------------------------------------- */
+/* The inspector has four views (Activity / Computer / Files / Terminal).
+   Their small chips and action buttons should share one mature, light-weight
+   control language instead of falling back to dark grey browser-like pills. */
+
+.runtime-inspector {
+  --runtime-accent: 113, 96, 218;
+  --runtime-accent-strong: #695ad8;
+  --runtime-accent-soft: rgba(105, 90, 216, .075);
+  --runtime-accent-border: rgba(105, 90, 216, .16);
+}
+
+.runtime-empty-activity {
+  --empty-tone-rgb: 105, 90, 216;
+  --empty-tone: #695ad8;
+}
+
+.runtime-empty-computer {
+  --empty-tone-rgb: 102, 89, 224;
+  --empty-tone: #6659df;
+}
+
+.runtime-empty-changes {
+  --empty-tone-rgb: 78, 114, 166;
+  --empty-tone: #4e72a6;
+}
+
+.runtime-empty-terminal {
+  --empty-tone-rgb: 72, 132, 102;
+  --empty-tone: #488466;
+}
+
+/* Empty-state labels ------------------------------------------------------ */
+/* These are informational chips, not disabled buttons. Keep them soft,
+   readable and clearly separate from the actual actions in the section bar. */
+.runtime-empty-chips {
+  margin-top: 17px;
+  gap: 7px;
+}
+
+.runtime-empty-chips span {
+  min-height: 25px;
+  height: 25px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(var(--empty-tone-rgb), .12);
+  border-radius: 999px;
+  background:
+    linear-gradient(
+      180deg,
+      rgba(var(--empty-tone-rgb), .060),
+      rgba(var(--empty-tone-rgb), .025)
+    );
+  color: color-mix(in srgb, var(--empty-tone) 58%, #aeb5c0 42%);
+  font-size: 9px;
+  font-weight: 620;
+  line-height: 1;
+  letter-spacing: .018em;
+  box-shadow:
+    inset 0 1px rgba(255,255,255,.035),
+    0 1px 2px rgba(0,0,0,.035);
+  cursor: default;
+  user-select: none;
+}
+
+/* Real actions in the section bar ---------------------------------------- */
+.runtime-section-actions button,
+.runtime-review-button,
+.computer-log-export-button {
+  position: relative;
+  min-height: 26px;
+  height: 26px;
+  padding: 0 9px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  overflow: hidden;
+  border: 1px solid rgba(139,124,246,.14);
+  border-radius: 9px;
+  background:
+    linear-gradient(180deg, rgba(139,124,246,.075), rgba(139,124,246,.030));
+  color: #aaa2eb;
+  font-size: 8.5px;
+  font-weight: 680;
+  line-height: 1;
+  letter-spacing: .025em;
+  text-transform: none;
+  box-shadow:
+    inset 0 1px rgba(255,255,255,.035),
+    0 1px 2px rgba(0,0,0,.045);
+  transform: translateY(0) scale(1);
+  transition:
+    transform 145ms cubic-bezier(.2,.8,.2,1),
+    color 150ms ease,
+    border-color 160ms ease,
+    background 160ms ease,
+    box-shadow 170ms ease,
+    opacity 140ms ease;
+  cursor: pointer;
+}
+
+.runtime-section-actions button::before,
+.runtime-review-button::before,
+.computer-log-export-button::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  background:
+    linear-gradient(
+      110deg,
+      transparent 18%,
+      rgba(255,255,255,.10) 49%,
+      transparent 76%
+    );
+  transform: translateX(-38%);
+  transition:
+    opacity 150ms ease,
+    transform 360ms cubic-bezier(.2,.75,.2,1);
+}
+
+.runtime-section-actions button:hover:not(:disabled),
+.runtime-review-button:hover:not(:disabled),
+.computer-log-export-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  color: #d7d3fa;
+  border-color: rgba(139,124,246,.24);
+  background:
+    linear-gradient(180deg, rgba(139,124,246,.12), rgba(139,124,246,.050));
+  box-shadow:
+    0 5px 13px rgba(0,0,0,.10),
+    inset 0 1px rgba(255,255,255,.045);
+}
+
+.runtime-section-actions button:hover:not(:disabled)::before,
+.runtime-review-button:hover:not(:disabled)::before,
+.computer-log-export-button:hover:not(:disabled)::before {
+  opacity: .8;
+  transform: translateX(40%);
+}
+
+.runtime-section-actions button:active:not(:disabled),
+.runtime-review-button:active:not(:disabled),
+.computer-log-export-button:active:not(:disabled) {
+  transform: translateY(0) scale(.97);
+  transition-duration: 80ms;
+}
+
+.runtime-section-actions button:focus-visible,
+.runtime-review-button:focus-visible,
+.computer-log-export-button:focus-visible {
+  outline: none;
+  border-color: rgba(139,124,246,.30);
+  box-shadow:
+    0 0 0 3px rgba(139,124,246,.07),
+    inset 0 1px rgba(255,255,255,.04);
+}
+
+.runtime-section-actions button:disabled,
+.runtime-review-button:disabled,
+.computer-log-export-button:disabled {
+  cursor: wait;
+  opacity: .58;
+  transform: none;
+}
+
+/* Tabs: keep them quiet until selected, avoid old grey-button appearance. */
+.runtime-tab {
+  border: 1px solid transparent;
+  border-radius: 10px;
+  color: #747c89;
+  background: transparent;
+  box-shadow: none;
+  transition:
+    transform 140ms cubic-bezier(.2,.8,.2,1),
+    color 150ms ease,
+    border-color 150ms ease,
+    background 150ms ease,
+    box-shadow 160ms ease;
+}
+
+.runtime-tab:hover:not(.active) {
+  color: #9ba3af;
+  border-color: rgba(255,255,255,.045);
+  background: rgba(255,255,255,.022);
+  transform: translateY(-1px);
+}
+
+.runtime-tab.active {
+  color: #c7c2f5;
+  border-color: rgba(139,124,246,.16);
+  background:
+    linear-gradient(180deg, rgba(139,124,246,.10), rgba(139,124,246,.045));
+  box-shadow:
+    inset 0 1px rgba(255,255,255,.04),
+    0 4px 12px rgba(0,0,0,.075);
+}
+
+.runtime-tab.active svg {
+  color: #9d92ee;
+}
+
+/* Light theme ------------------------------------------------------------- */
+html[data-loom-theme="light"] .runtime-empty-chips span {
+  border-color: rgba(var(--empty-tone-rgb), .13);
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255,255,255,.98),
+      rgba(var(--empty-tone-rgb), .045)
+    );
+  color: color-mix(in srgb, var(--empty-tone) 70%, #65707c 30%);
+  box-shadow:
+    0 2px 6px rgba(31,35,42,.035),
+    inset 0 1px rgba(255,255,255,.98);
+}
+
+html[data-loom-theme="light"] .runtime-section-actions button,
+html[data-loom-theme="light"] .runtime-review-button,
+html[data-loom-theme="light"] .computer-log-export-button {
+  border-color: rgba(105,90,216,.14);
+  background:
+    linear-gradient(180deg, #ffffff, #f7f5ff);
+  color: #6255c1;
+  box-shadow:
+    0 2px 6px rgba(31,35,42,.035),
+    inset 0 1px rgba(255,255,255,.98);
+}
+
+html[data-loom-theme="light"] .runtime-section-actions button::before,
+html[data-loom-theme="light"] .runtime-review-button::before,
+html[data-loom-theme="light"] .computer-log-export-button::before {
+  background:
+    linear-gradient(
+      110deg,
+      transparent 18%,
+      rgba(255,255,255,.92) 49%,
+      transparent 76%
+    );
+}
+
+html[data-loom-theme="light"] .runtime-section-actions button:hover:not(:disabled),
+html[data-loom-theme="light"] .runtime-review-button:hover:not(:disabled),
+html[data-loom-theme="light"] .computer-log-export-button:hover:not(:disabled) {
+  color: #5144ad;
+  border-color: rgba(105,90,216,.23);
+  background:
+    linear-gradient(180deg, #ffffff, #f1efff);
+  box-shadow:
+    0 5px 13px rgba(42,45,54,.065),
+    inset 0 1px rgba(255,255,255,.98);
+}
+
+html[data-loom-theme="light"] .runtime-tab {
+  color: #66707c;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+html[data-loom-theme="light"] .runtime-tab:hover:not(.active) {
+  color: #3e4650;
+  border-color: rgba(31,35,42,.065);
+  background: #f7f8fa;
+}
+
+html[data-loom-theme="light"] .runtime-tab.active {
+  color: #5d50bf;
+  border-color: rgba(105,90,216,.16);
+  background:
+    linear-gradient(180deg, #ffffff, #f5f3ff);
+  box-shadow:
+    0 4px 12px rgba(58,48,121,.07),
+    inset 0 1px rgba(255,255,255,.98);
+}
+
+html[data-loom-theme="light"] .runtime-tab.active svg {
+  color: #695ad8;
+}
+
+/* Slightly soften the empty-state icon too, so the refreshed chips do not sit
+   below a heavy black tile. */
+html[data-loom-theme="light"] .runtime-empty-icon {
+  border-color: rgba(105,90,216,.11);
+  background:
+    linear-gradient(145deg, #ffffff, #f6f4ff);
+  color: #7869db;
+  box-shadow:
+    0 7px 18px rgba(71,58,148,.06),
+    inset 0 1px rgba(255,255,255,.98);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .runtime-tab,
+  .runtime-section-actions button,
+  .runtime-review-button,
+  .computer-log-export-button,
+  .runtime-section-actions button::before,
+  .runtime-review-button::before,
+  .computer-log-export-button::before {
+    transition-duration: .001ms !important;
+  }
+}
+
+html[data-loom-reduced-motion="true"] .runtime-tab,
+html[data-loom-reduced-motion="true"] .runtime-section-actions button,
+html[data-loom-reduced-motion="true"] .runtime-review-button,
+html[data-loom-reduced-motion="true"] .computer-log-export-button {
+  transition-duration: .001ms !important;
+}
