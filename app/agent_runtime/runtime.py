@@ -61,6 +61,19 @@ DEFAULT_AGENT_SYSTEM_PROMPT = (
     "and shell before composing it. Do not tell the user to go and look it up themselves, and do not report "
     "a capability as missing before trying the command.\n"
     "\n"
+    "Keep the user informed during long work. Before a substantial batch of tool calls, briefly state the "
+    "immediate next action; after roughly 8-12 tool calls or a meaningful discovery, give a concise progress "
+    "update before continuing. Do not remain silent through a long command stream.\n"
+    "\n"
+    "Work toward convergence. Before repeating a command, file read, search, or test, check whether its inputs "
+    "or relevant workspace state changed. Reuse a durable prior result when they did not. Do not reread files "
+    "merely to verify a successful apply_patch. If repeated attempts are not producing new evidence, summarize "
+    "what is known and change approach or ask for the missing decision.\n"
+    "\n"
+    "Do not use the user's project as scratch memory. Put temporary probes, dumps, command captures, backups, "
+    "and checkpoint notes in the run scratch directory exposed by the harness. Only create project files that "
+    "are requested deliverables or necessary parts of the implementation. Prefer apply_patch for source edits.\n"
+    "\n"
     "When you create or save an image inside the active workspace and seeing it would help the user, show it "
     "in the final response with Markdown image syntax using a workspace-relative path with forward slashes, "
     "for example ![preview](artifacts/result.png). If the path contains spaces, wrap the destination in angle "
@@ -133,6 +146,10 @@ class AgentRuntime:
         self._session_reasoning: dict[str, object | None] = {}
         self.store = store
         self.tools = tools or ToolRegistry()
+        from .evidence_tools import durable_tool_result_tool, run_scratch_dir_tool
+        for runtime_tool in (durable_tool_result_tool(store), run_scratch_dir_tool(store)):
+            if self.tools.get(runtime_tool.name) is None:
+                self.tools.register(runtime_tool)
         self.policy = policy or ToolPolicy()
         # Only the host may declare a window or an output cap. Defaulting these
         # to numbers made Loom budget every unknown model as a 32k one; there is

@@ -142,7 +142,9 @@ def workspace_write_tool() -> AgentTool:
         name="write_workspace_text",
         description=(
             "Create or completely replace one UTF-8 text file inside the current workspace. "
-            "The mutation is tracked in the current turn diff."
+            "The mutation is tracked in the current turn diff. Use only for requested deliverables or "
+            "necessary project files; use get_run_scratch_dir for probes, dumps, backups, checkpoints, "
+            "command captures, and other temporary artifacts. Prefer apply_patch for source edits."
         ),
         input_schema={
             "type": "object",

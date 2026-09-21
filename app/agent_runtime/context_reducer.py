@@ -10,8 +10,9 @@ from app.ai import AIMessage, MessageRole
 
 _TOOL_OMITTED = (
     "Tool output was reduced in the active model context because the request was near its context "
-    "limit. The durable Loom transcript still contains the recorded result; re-read or rerun the "
-    "source when exact details are needed."
+    "limit. The durable Loom transcript still contains the recorded result. Use "
+    "read_durable_tool_result with this message's tool_call_id to recover it; do not rerun the "
+    "source unless its inputs or relevant workspace state changed."
 )
 _USER_OMITTED = "[Earlier user message omitted from the active model context after compaction.]"
 

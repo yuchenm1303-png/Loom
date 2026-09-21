@@ -18,6 +18,8 @@ Include:
 - Important context, constraints, or user preferences
 - What remains to be done (clear next steps)
 - Any critical data, examples, or references needed to continue
+- Call IDs for critical tool evidence that may need exact recovery
+- Work already completed or verified that must not be repeated
 
 Be concise, structured, and focused on helping the next LLM seamlessly continue the work.
 """
