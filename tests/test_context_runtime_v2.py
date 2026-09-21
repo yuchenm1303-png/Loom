@@ -239,7 +239,7 @@ def test_default_auto_compact_limit_uses_raw_window_with_effective_hard_cap(monk
     assert resolved.auto_compact_token_limit == 8000
 
 
-def test_normal_projection_does_not_silently_reduce_tool_output(monkeypatch):
+def test_normal_projection_proactively_bounds_legacy_tool_output(monkeypatch):
     monkeypatch.delenv("LOOM_CONTEXT_WINDOW_TOKENS", raising=False)
     monkeypatch.delenv("LOOM_OUTPUT_RESERVE_TOKENS", raising=False)
     call = ToolCall(call_id="call-1", name="read_file", arguments={"path": "large.log"})
@@ -261,10 +261,14 @@ def test_normal_projection_does_not_silently_reduce_tool_output(monkeypatch):
     messages, metadata = prepare_context(runtime, session, Step(), Token())
 
     visible_tool = next(message for message in messages if message.role is MessageRole.TOOL)
-    assert visible_tool.content == canonical_tool_output
+    assert visible_tool.content != canonical_tool_output
+    assert "middle of tool output omitted for context budget" in visible_tool.content
+    # The request projection is bounded, but canonical/durable session history is
+    # not destructively rewritten by context budgeting.
     assert session.messages[-1].content == canonical_tool_output
     assert runtime.model_executor.requests == []
-    assert metadata["tool_outputs_reduced"] == 0
+    assert metadata["tool_outputs_reduced"] == 1
+    assert metadata["estimated_tokens_saved"] > 0
     assert metadata["user_messages_truncated"] == 0
 
 
