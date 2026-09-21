@@ -376,3 +376,34 @@ def test_oversized_tool_output_is_projected_before_full_compaction():
     assert metadata["tool_outputs_reduced"] == 1
     assert metadata["estimated_tokens_saved"] > 0
     assert metadata.get("auto_compacted") is not True
+
+
+def test_many_tool_outputs_trigger_compaction_instead_of_blind_continuation():
+    history = [AIMessage(role=MessageRole.USER, content="inspect the workspace")]
+    for index in range(10):
+        call = ToolCall(
+            call_id=f"call-{index}",
+            name="read_workspace_text",
+            arguments={"path": f"file-{index}.txt"},
+        )
+        history.extend(
+            (
+                AIMessage(role=MessageRole.ASSISTANT, content="", tool_calls=(call,)),
+                AIMessage(
+                    role=MessageRole.TOOL,
+                    content="x" * 4_500,
+                    name="read_workspace_text",
+                    tool_call_id=call.call_id,
+                ),
+            )
+        )
+    history.append(AIMessage(role=MessageRole.USER, content="continue"))
+    runtime = FakeRuntime([ModelResponse(text="summary")])
+    _set_roomy_profile(runtime, auto_compact_token_limit=10_000, tool_output_token_limit=1_000)
+    session = Session(history)
+
+    _messages, metadata = prepare_context(runtime, session, Step(), Token())
+
+    assert runtime.commits
+    assert metadata["auto_compacted"] is True
+    assert metadata["tool_outputs_collapsed"] == 0

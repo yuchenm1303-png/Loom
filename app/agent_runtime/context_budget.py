@@ -638,11 +638,10 @@ def prepare_context(rt, session, step, token):
             )
             return emergency_visible, metadata
 
-    # Large historical tool observations should not force a semantic handoff by
-    # themselves. Project bounded previews/collapsed stubs into this request copy
-    # first; the canonical durable transcript remains untouched. This reducer is
-    # only invoked when the raw request no longer fits, so roomy model windows
-    # still receive full recent tool observations.
+    # A single oversized tool observation can be previewed without forcing a
+    # semantic handoff. Do not collapse *multiple* observations merely to make
+    # the request fit: that hides evidence from the model and then masks the
+    # very budget pressure that should trigger compaction.
     projected_history = canonical_history
     projected_visible = visible_messages
     estimated_projected = estimated_before
@@ -651,8 +650,6 @@ def prepare_context(rt, session, step, token):
         projected_history, reduction_stats = reduce_tool_outputs(
             canonical_history,
             per_output_token_limit=limits.tool_output_token_limit,
-            target_total_tokens=hard_target,
-            estimate_total=lambda history: estimate_tokens([*transient, *history], tools),
         )
         projected_visible = [*transient, *projected_history]
         estimated_projected = estimate_tokens(projected_visible, tools)

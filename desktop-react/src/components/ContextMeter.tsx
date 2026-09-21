@@ -52,6 +52,7 @@ export function ContextMeter({ report, compacting, progress, busy, onCompact }: 
   if (!report) return null;
 
   const budget = Math.max(1, report.inputBudgetTokens);
+  const stale = report.accounting === "stale_pre_compaction";
   const segments = report.segments.filter((segment) => segment.key !== "free");
   const level = tone(report);
   const percent = Math.round(report.usedPercent);
@@ -62,7 +63,9 @@ export function ContextMeter({ report, compacting, progress, busy, onCompact }: 
     return zh ? "空闲" : "Free";
   };
 
-  const summary = zh
+  const summary = stale
+    ? (zh ? "压缩后上下文预算待测量" : "Context budget pending measurement after compaction")
+    : zh
     ? `上下文预算 ${percent}%（${formatTokens(report.usedTokens)} / ${formatTokens(budget)}）`
     : `Context budget ${percent}% (${formatTokens(report.usedTokens)} / ${formatTokens(budget)})`;
 
@@ -112,7 +115,7 @@ export function ContextMeter({ report, compacting, progress, busy, onCompact }: 
               />
             ))}
           </span>
-        ) : (
+        ) : stale ? null : (
           <span className="context-meter-track" aria-hidden="true">
             {segments.map((segment) => (
               <span
@@ -125,9 +128,9 @@ export function ContextMeter({ report, compacting, progress, busy, onCompact }: 
         )}
         <span className="context-meter-value">
           {compacting ? <Loader2 size={12} strokeWidth={2} className="context-meter-spin" /> : null}
-          {compacting ? compactionStage.label : `${percent}%`}
+          {compacting ? compactionStage.label : stale ? (zh ? "待测量" : "Pending") : `${percent}%`}
         </span>
-        {report.pressure.blinded ? <span className="context-meter-alarm" aria-hidden="true" /> : null}
+        {!stale && report.pressure.blinded ? <span className="context-meter-alarm" aria-hidden="true" /> : null}
       </button>
 
       {open ? (
@@ -135,11 +138,11 @@ export function ContextMeter({ report, compacting, progress, busy, onCompact }: 
           <header className="context-meter-panel-head">
             <span>{zh ? "上下文预算" : "Context budget"}</span>
             <strong>
-              {formatTokens(report.usedTokens)} / {formatTokens(budget)}
+              {stale ? (zh ? "压缩后待测量" : "Pending after compaction") : `${formatTokens(report.usedTokens)} / ${formatTokens(budget)}`}
             </strong>
           </header>
 
-          <ul className="context-meter-rows">
+          {!stale ? <ul className="context-meter-rows">
             {report.segments.map((segment) => (
               <li key={segment.key} className={`context-meter-row ${segment.key}`}>
                 <span className="context-meter-swatch" aria-hidden="true" />
@@ -154,7 +157,7 @@ export function ContextMeter({ report, compacting, progress, busy, onCompact }: 
                 </span>
               </li>
             ))}
-          </ul>
+          </ul> : null}
 
           <dl className="context-meter-facts">
             <div>
@@ -221,7 +224,7 @@ export function ContextMeter({ report, compacting, progress, busy, onCompact }: 
             </section>
           ) : null}
 
-          {report.pressure.blinded ? (
+          {!stale && report.pressure.blinded ? (
             <p className="context-meter-alert">
               {zh
                 ? `已折叠 ${report.pressure.toolOutputsCollapsed} 条工具结果 —— 模型读不到这些命令的输出了。压缩或换更大窗口的模型可以恢复。`
@@ -229,7 +232,7 @@ export function ContextMeter({ report, compacting, progress, busy, onCompact }: 
             </p>
           ) : null}
 
-          {report.pressure.toolsOmitted.length ? (
+          {!stale && report.pressure.toolsOmitted.length ? (
             <p className="context-meter-note">
               {zh
                 ? `为腾出预算，${report.pressure.toolsOmitted.length} 个工具已转为按需搜索（仍可用）。`

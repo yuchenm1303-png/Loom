@@ -741,14 +741,33 @@ class ManagedStreamingLoomAppServerService(StreamingLoomAppServerService):
         compactions = 0
         last_compacted_at = ""
         latest_request: AgentEvent | None = None
-        for event in events:
+        latest_checkpoint: AgentEvent | None = None
+        latest_request_index = -1
+        latest_checkpoint_index = -1
+        for index, event in enumerate(events):
             if event.kind is AgentEventKind.CONTEXT_CHECKPOINTED:
                 compactions += 1
                 last_compacted_at = event.created_at
+                latest_checkpoint = event
+                latest_checkpoint_index = index
             elif event.kind is AgentEventKind.MODEL_REQUESTED:
                 latest_request = event
+                latest_request_index = index
 
-        if latest_request is None:
+        checkpoint_context = (
+            latest_checkpoint.data.get("context_after_compaction")
+            if latest_checkpoint is not None and isinstance(latest_checkpoint.data, dict)
+            else None
+        )
+        checkpoint_is_newer = latest_checkpoint_index > latest_request_index
+        if checkpoint_is_newer and isinstance(checkpoint_context, dict):
+            report = context_report_from_request(
+                checkpoint_context,
+                compactions=compactions,
+                last_compacted_at=last_compacted_at,
+                measured_at=latest_checkpoint.created_at,
+            )
+        elif latest_request is None:
             # No model step has run, so there is no measured request to report.
             # The budget is still knowable, and showing it beats showing nothing.
             report = empty_context_report(resolve_context_limits(self.runtime, session).as_dict())
@@ -759,6 +778,10 @@ class ManagedStreamingLoomAppServerService(StreamingLoomAppServerService):
                 last_compacted_at=last_compacted_at,
                 measured_at=latest_request.created_at,
             )
+            if checkpoint_is_newer:
+                # Old checkpoints lack a post-compaction snapshot. Do not label
+                # their pre-compaction request as the current measured context.
+                report["accounting"] = "stale_pre_compaction"
         report["threadId"] = session_id
         return {"context": report}
 

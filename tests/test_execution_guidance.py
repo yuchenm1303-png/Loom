@@ -62,7 +62,7 @@ def test_guidance_reports_new_repeat_once_and_advances_thresholds():
     events = (
         _event(
             AgentEventKind.MODEL_REQUESTED,
-            convergence_checkpoint=20,
+            convergence_checkpoint=16,
         ),
         _event(
             AgentEventKind.TOOL_STARTED,
@@ -73,18 +73,19 @@ def test_guidance_reports_new_repeat_once_and_advances_thresholds():
         ),
     )
 
-    message, metadata = model_execution_guidance(events, turn_id="turn-1", tool_calls=40)
+    message, metadata = model_execution_guidance(events, turn_id="turn-1", tool_calls=32)
 
     assert message is not None
     assert "read_workspace_text" in message.content
-    assert "40 tool calls" in message.content
+    assert "32 tool calls" in message.content
+    assert "direct verification" in message.content
     assert metadata == {
         "duplicate_read_only_calls": 1,
-        "convergence_checkpoint": 40,
+        "convergence_checkpoint": 32,
     }
 
     delivered = (*events, _event(AgentEventKind.MODEL_REQUESTED, **metadata))
-    message, metadata = model_execution_guidance(delivered, turn_id="turn-1", tool_calls=40)
+    message, metadata = model_execution_guidance(delivered, turn_id="turn-1", tool_calls=32)
     assert message is None
     assert metadata == {}
 
