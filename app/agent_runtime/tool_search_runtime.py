@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import math
 import re
 import threading
 from dataclasses import replace
 from typing import Any
 
+from .context_budget import estimate_tokens
 from .context_limits import resolve_context_limits
 from .contracts import AgentSession, AgentStatus, ToolEffect
 from .mcp_configured_runtime import ConfiguredMCPRuntime
@@ -284,9 +286,15 @@ class ToolSearchRuntime(ConfiguredMCPRuntime):
             if step.request_state.captured and frozen_limits is not None
             else resolve_context_limits(self, session)
         )
+        # Definitions and observations compete for one input budget. Measure what
+        # canonical history already needs so the planner sheds definitions before
+        # the context reducer has to start collapsing the agent's own results.
         plan = plan_tool_schema_pressure(
             base_router,
-            max_schema_tokens=schema_token_budget(limits.input_budget_tokens),
+            max_schema_tokens=schema_token_budget(
+                limits.input_budget_tokens,
+                conversation_tokens=self._conversation_pressure(session),
+            ),
             pinned_names=activations,
             allow_shedding=True,
         )
@@ -308,6 +316,17 @@ class ToolSearchRuntime(ConfiguredMCPRuntime):
                 tool_names=tuple(tool.name for tool in router.all()),
             ),
         )
+
+    def _conversation_pressure(self, session: AgentSession) -> int:
+        """Canonical history size, restated in the provider's token accounting.
+
+        Deliberately excludes tool schemas: this is the number the schema budget
+        is being weighed against, so counting definitions on both sides would
+        make the planner shed against its own footprint.
+        """
+        raw = estimate_tokens(tuple(session.messages))
+        calibration = self.estimator_calibration(session.session_id)
+        return int(math.ceil(raw * calibration))
 
     def _prepare_model_request(self, session, step, token):
         messages, extra = super()._prepare_model_request(session, step, token)

@@ -14,6 +14,7 @@ from app.agent_runtime import (
 )
 from app.agent_runtime.tool_schema_budget import (
     plan_tool_schema_pressure,
+    schema_token_budget,
 )
 from app.ai import AGENT_FAST_ROLE, ModelResponse, ToolCall
 
@@ -115,6 +116,60 @@ def test_schema_pressure_sheds_only_with_discovery_and_keeps_pinned_tool():
     assert set(plan.omitted_names).isdisjoint({"tool_search", "zebra_special_action"})
 
 
+def test_definitions_keep_their_ceiling_until_the_conversation_needs_the_room():
+    budget = 50_790  # a real 64k-window session's input budget
+
+    # Nothing measured, and a roomy conversation, both keep the plain ceiling.
+    assert schema_token_budget(budget) == 10_158
+    assert schema_token_budget(budget, conversation_tokens=budget // 2) == 10_158
+
+    # Past the ceiling's worth of headroom, definitions start giving way...
+    squeezed = schema_token_budget(budget, conversation_tokens=48_758)
+    assert squeezed == 2_032
+
+    # ...but never all the way: an agent with no callable tools is a worse
+    # outcome than a crowded request the hard budget can report precisely.
+    assert schema_token_budget(budget, conversation_tokens=budget * 2) == 1_200
+
+
+def test_a_crowded_conversation_sheds_definitions_instead_of_observations():
+    """The priority inversion this fixes.
+
+    Definitions and observations are paid for out of the same budget. Held at a
+    flat twenty percent, definitions won: Loom kept schemas for tools the agent
+    was not using and let the reducer collapse the results of the commands it had
+    just run, so the agent could no longer see its own work.
+    """
+
+    search = _tool("tool_search")
+    # Sized to sit inside the plain ceiling, so only the conversation's own
+    # pressure can be what moves the planner here.
+    fillers = tuple(_tool(f"bulk_tool_{index}", enum_size=260) for index in range(4))
+    router = ToolRegistry((search, *fillers)).router()
+    budget = 50_790
+
+    roomy = plan_tool_schema_pressure(
+        router,
+        max_schema_tokens=schema_token_budget(budget, conversation_tokens=10_000),
+        allow_shedding=True,
+    )
+    crowded = plan_tool_schema_pressure(
+        router,
+        max_schema_tokens=schema_token_budget(budget, conversation_tokens=48_758),
+        allow_shedding=True,
+    )
+
+    # With room, every tool stays directly callable at full fidelity.
+    assert roomy.mode == "full"
+    assert roomy.omitted_names == ()
+    # Crowded, the planner gives the tokens back to the conversation.
+    assert crowded.mode == "structural"
+    assert crowded.omitted_names
+    assert crowded.planned_schema_tokens < roomy.planned_schema_tokens
+    # Discovery survives, so nothing shed becomes unreachable.
+    assert "tool_search" in {tool.name for tool in crowded.router.all()}
+
+
 def test_a_squeezed_browser_keeps_the_ordinary_driving_loop():
     """Schema pressure must preserve normal DOM driving, not every escape hatch.
 
@@ -166,6 +221,45 @@ def test_a_squeezed_browser_keeps_the_ordinary_driving_loop():
             "browser_scroll",
             "browser_screenshot",
         }.issubset(visible)
+    finally:
+        runtime.close()
+
+
+def test_a_crowded_history_reaches_the_planner_through_the_runtime(tmp_path: Path):
+    """The wiring, not just the arithmetic: pressure has to arrive at the plan.
+
+    ``schema_token_budget`` can be perfectly tuned and still change nothing if
+    the runtime never tells it how big the conversation is.
+    """
+
+    from app.ai import AIMessage, MessageRole
+
+    tools = tuple(_tool(f"bulk_tool_{index}", enum_size=90) for index in range(8))
+    runtime = ToolSearchRuntime(
+        platform=RecordingPlatform([ModelResponse(text="unused")]),
+        store=FileAgentSessionStore(tmp_path / "state"),
+        tools=ToolRegistry(tools),
+        mcp_servers=(),
+        auto_configure_browser=False,
+        auto_configure_web_search=False,
+    )
+    try:
+        session = runtime.create_session(
+            AGENT_FAST_ROLE.role_id,
+            workspace_dir=tmp_path,
+            permission_mode=PermissionMode.FULL_ACCESS,
+        )
+        empty = runtime._conversation_pressure(session)
+
+        session.messages = [
+            AIMessage(role=MessageRole.USER, content="x" * 4_000)
+            for _ in range(40)
+        ]
+        crowded = runtime._conversation_pressure(session)
+
+        assert empty == 0 or empty < crowded
+        # ~160k characters of history is real pressure, not a rounding artefact.
+        assert crowded > 40_000
     finally:
         runtime.close()
 

@@ -43,6 +43,10 @@ _CAPABILITY_ACTION_NAMES = frozenset(
 )
 
 
+_MIN_SCHEMA_TOKENS = 1_200
+_MAX_SCHEMA_TOKENS = 12_000
+
+
 @dataclass(frozen=True, slots=True)
 class ToolSchemaPlan:
     router: ToolRouter
@@ -67,16 +71,39 @@ class ToolSchemaPlan:
         }
 
 
-def schema_token_budget(input_budget_tokens: int) -> int:
+def schema_token_budget(
+    input_budget_tokens: int,
+    *,
+    conversation_tokens: int = 0,
+) -> int:
     """Bound fixed tool-schema overhead before it crowds out task context.
 
     Twenty percent is deliberately a soft budget, not a hard provider limit. It
     leaves most of the window for instructions, conversation, observations and
     output headroom while still allowing a substantial direct tool surface.
+
+    That ceiling only holds while there is room. Definitions and observations are
+    paid for out of the same input budget, and they are not worth the same: an
+    omitted tool stays reachable through ``tool_search``, while a collapsed
+    observation is simply gone from the model's view -- it can no longer read the
+    result of the command it just ran. Holding definitions at a flat twenty
+    percent inverted that: on a small window Loom kept 8k of definitions for
+    tools the agent was not using, and blinded it instead.
+
+    ``conversation_tokens`` is what canonical history already needs, in the
+    provider's own accounting. Zero means no measurement is available yet, which
+    keeps the plain ceiling.
     """
 
     budget = max(1, int(input_budget_tokens))
-    return max(1_200, min(12_000, budget // 5))
+    ceiling = max(_MIN_SCHEMA_TOKENS, min(_MAX_SCHEMA_TOKENS, budget // 5))
+    conversation = max(0, int(conversation_tokens))
+    if conversation <= 0:
+        return ceiling
+    # The floor is deliberately not zero. Shedding every definition would leave
+    # the agent unable to act at all, which is a worse failure than a crowded
+    # request the hard context budget can still report precisely.
+    return max(_MIN_SCHEMA_TOKENS, min(ceiling, budget - conversation))
 
 
 def estimate_tool_schema_tokens(tools: Iterable[AgentTool]) -> int:

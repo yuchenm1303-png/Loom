@@ -158,6 +158,27 @@ class AgentRuntime:
         # state after a sampled action has already been admitted.
         self._captured_steps: dict[tuple[str, str, str], StepContext] = {}
         self._captured_steps_guard = threading.RLock()
+        # Measuring the fallback estimator's bias costs a full event-log scan.
+        # ``prepare_context`` pays for it once per model step; anything earlier in
+        # the step that needs to compare estimated tokens against the budget --
+        # the tool-schema planner does -- reads the published value instead of
+        # scanning the log a second time.
+        self._estimator_calibration: dict[str, float] = {}
+        self._estimator_calibration_guard = threading.Lock()
+
+    def _publish_estimator_calibration(self, session_id: str, calibration: float) -> None:
+        with self._estimator_calibration_guard:
+            self._estimator_calibration[str(session_id)] = float(calibration)
+
+    def estimator_calibration(self, session_id: str) -> float:
+        """This session's measured estimator bias, or 1.0 before one is observed.
+
+        1.0 means "trust the estimator as-is", which is the honest starting point:
+        no model step has completed yet, so there is no provider accounting to
+        compare against.
+        """
+        with self._estimator_calibration_guard:
+            return float(self._estimator_calibration.get(str(session_id), 1.0))
 
     def set_session_model(
         self,

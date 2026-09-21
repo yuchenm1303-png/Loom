@@ -557,6 +557,9 @@ def prepare_context(rt, session, step, token):
     visible_messages = [*transient, *canonical_history]
     estimated_before = estimate_tokens(visible_messages, tools)
     calibration, calibration_samples = _estimator_calibration(rt, session)
+    publish_calibration = getattr(rt, "_publish_estimator_calibration", None)
+    if callable(publish_calibration):
+        publish_calibration(session.session_id, calibration)
 
     def calibrated(raw_tokens: int) -> int:
         """Raw estimator tokens restated in this provider's own accounting."""
