@@ -32,6 +32,30 @@ interface ModelGroup {
   profiles: ModelProfile[];
 }
 
+interface ProviderCredentialTarget {
+  provider: string;
+  label: string;
+  placeholder: string;
+}
+
+function providerCredentialTarget(groupId: string): ProviderCredentialTarget | null {
+  if (groupId === "opencode-go") {
+    return {
+      provider: "opencode-go",
+      label: "OpenCode Go",
+      placeholder: "OpenCode Go subscription key",
+    };
+  }
+  if (groupId === "managed-relay" || groupId.startsWith("managed-relay:")) {
+    return {
+      provider: "managed-relay",
+      label: "Muxway Relay",
+      placeholder: "Muxway group API key",
+    };
+  }
+  return null;
+}
+
 interface ModelPanelProps {
   runtimeModel?: string;
   snapshot: ModelSnapshot | null;
@@ -489,9 +513,16 @@ export function ModelPanel({
       families.set(family, list);
     }
     const familyEntries = [...families.entries()];
-    const needsProviderKey = (
-      activeGroup.id === "opencode-go"
-      && activeGroup.profiles.every((profile) => profile.configured === false)
+    const credentialTarget = providerCredentialTarget(activeGroup.id);
+    const catalogUnauthorized = statusProfiles.some(
+      (profile) => profile.statusMessage?.includes("HTTP 401"),
+    );
+    const needsProviderKey = Boolean(
+      credentialTarget
+      && (
+        activeGroup.profiles.every((profile) => profile.configured === false)
+        || catalogUnauthorized
+      )
     );
 
     return (
@@ -512,8 +543,12 @@ export function ModelPanel({
             <div className="model-provider-connect-copy">
               <KeyRound size={16} />
               <div>
-                <strong>Connect OpenCode Go</strong>
-                <span>One subscription key unlocks this whole model group. It is stored in your OS credential store.</span>
+                <strong>{catalogUnauthorized ? `Reconnect ${credentialTarget?.label}` : `Connect ${credentialTarget?.label}`}</strong>
+                <span>
+                  {catalogUnauthorized
+                    ? "The saved credential was rejected by the provider. Enter the current group key to replace it securely."
+                    : "The key is stored in your OS credential store and is never written into the model registry."}
+                </span>
               </div>
             </div>
             <div className="model-provider-connect-form">
@@ -521,13 +556,13 @@ export function ModelPanel({
                 type="password"
                 value={providerKey}
                 onChange={(event) => setProviderKey(event.target.value)}
-                placeholder="OpenCode Go subscription key"
+                placeholder={credentialTarget?.placeholder || "Provider key"}
                 autoComplete="off"
               />
               <button
                 type="button"
                 disabled={!providerKey.trim() || providerConfiguring}
-                onClick={() => void configureProvider("opencode-go")}
+                onClick={() => credentialTarget && void configureProvider(credentialTarget.provider)}
               >
                 {providerConfiguring ? <RefreshCw size={13} className="model-spin" /> : <KeyRound size={13} />}
                 Connect
@@ -663,12 +698,14 @@ export function ModelPanel({
               const active = group.profiles.some(
                 (profile) => profile.selection === currentSelection && profile.model === currentModel,
               );
-              const connected = (
-                group.id !== "opencode-go"
-                || group.profiles.some((profile) => profile.configured !== false)
-              );
+              const credentialTarget = providerCredentialTarget(group.id);
               const selectableCount = group.profiles.filter((profile) => !profile.setupOnly).length;
               const statusProfile = group.profiles.find((profile) => profile.setupOnly && profile.statusMessage);
+              const authRejected = Boolean(statusProfile?.statusMessage?.includes("HTTP 401"));
+              const connected = (
+                !credentialTarget
+                || (!authRejected && group.profiles.some((profile) => profile.configured !== false))
+              );
               return (
                 <div key={group.id} className={`model-profile-row model-group-row ${active ? "active" : ""}`}>
                   <button
@@ -690,9 +727,9 @@ export function ModelPanel({
                       <span>{selectableCount} {selectableCount === 1 ? "model" : "models"}</span>
                       <small>
                         {statusProfile
-                          ? `${endpointLabel(statusProfile.baseUrl)} · catalog unavailable`
-                          : group.id === "opencode-go"
-                            ? (connected ? "OpenCode Go · connected" : "OpenCode Go · key required")
+                          ? `${endpointLabel(statusProfile.baseUrl)} · ${authRejected ? "authentication required" : "catalog unavailable"}`
+                          : credentialTarget
+                            ? (connected ? `${credentialTarget.label} · connected` : `${credentialTarget.label} · key required`)
                             : group.profiles[0]?.kind === "saved"
                               ? profileSubtitle(group.profiles[0])
                               : "Built-in provider"}
