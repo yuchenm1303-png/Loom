@@ -197,6 +197,28 @@ def _latest_provider_context_tokens(rt, session) -> int | None:
     return None
 
 
+def _local_tokens_after_latest_model_message(messages: Sequence[AIMessage]) -> int:
+    """Estimate locally appended history not covered by the latest provider usage.
+
+    Provider usage is sampled when a model response completes. Tool outputs,
+    steering, and a following user message can be appended before the next model
+    request. Codex adds those post-response items to its active-context clock;
+    Loom must do the same or its compaction meter lags one tool step behind.
+    """
+
+    last_assistant = next(
+        (
+            index
+            for index in range(len(messages) - 1, -1, -1)
+            if messages[index].role is MessageRole.ASSISTANT
+        ),
+        -1,
+    )
+    if last_assistant < 0 or last_assistant + 1 >= len(messages):
+        return 0
+    return estimate_tokens(messages[last_assistant + 1 :])
+
+
 def _observed_context_ceiling(rt, session) -> int | None:
     """Smallest request size this provider has already refused as too long.
 
@@ -596,8 +618,9 @@ def prepare_context(rt, session, step, token):
         active_context_tokens = estimated_before
         accounting_source = "fallback_estimate"
     else:
-        active_context_tokens = provider_tokens
-        accounting_source = "provider_usage"
+        post_model_tokens = _local_tokens_after_latest_model_message(canonical_history)
+        active_context_tokens = provider_tokens + calibrated(post_model_tokens)
+        accounting_source = "provider_usage_plus_local"
 
     # If one giant user item is the only canonical history, summarization cannot
     # safely archive a smaller history first. Use a request-only projection and
