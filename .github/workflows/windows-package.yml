@@ -5,17 +5,14 @@ on:
   pull_request:
     paths:
       - "desktop-react/**"
-      - "app/__init__.py"
-      - "app/connector*.py"
-      - "loom_desktop_runtime.py"
-      - "loom_app_server.py"
-      - "loom_chatgpt_mcp.py"
-      - "app/chatgpt_mcp/**"
-      - "app/remote_control/**"
-      - "app/app_server_local_ipc.py"
-      - "loom_model_bridge.py"
-      - "loom_model_admin.py"
+      # build-windows-runtime.mjs collects the entire app package with
+      # PyInstaller, so every app change can alter the packaged runtime.
+      - "app/**"
+      - "loom_*.py"
+      # Electron ships this extension as an extraResource.
+      - "extensions/browser-current-tab/**"
       - "pyproject.toml"
+      - "requirements*.txt"
       - ".github/workflows/windows-package.yml"
   push:
     branches:
@@ -24,17 +21,11 @@ on:
       - "v*"
     paths:
       - "desktop-react/**"
-      - "app/__init__.py"
-      - "app/connector*.py"
-      - "loom_desktop_runtime.py"
-      - "loom_app_server.py"
-      - "loom_chatgpt_mcp.py"
-      - "app/chatgpt_mcp/**"
-      - "app/remote_control/**"
-      - "app/app_server_local_ipc.py"
-      - "loom_model_bridge.py"
-      - "loom_model_admin.py"
+      - "app/**"
+      - "loom_*.py"
+      - "extensions/browser-current-tab/**"
       - "pyproject.toml"
+      - "requirements*.txt"
       - ".github/workflows/windows-package.yml"
 
 permissions:
