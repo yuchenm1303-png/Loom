@@ -9,7 +9,7 @@
   height: 68px;
   padding: 0 14px 0 18px;
   gap: 18px;
-  overflow: hidden;
+  overflow: visible;
   border-bottom: 1px solid rgba(255, 255, 255, .055);
   background:
     linear-gradient(180deg, rgba(16, 17, 21, .985), rgba(11, 12, 15, .97));
@@ -418,3 +418,141 @@
 .thread-header .thread-status-chip.ready { background: transparent; border-color: transparent; color: #939b98; }
 .thread-header .thread-status-chip.error { color: #e99b9b; }
 .thread-header .thread-state-dot.error { background: #e99b9b; }
+
+
+/* Header context popover layering + motion -------------------------------- */
+/* Header popovers must be allowed to escape the fixed 68px header. Keep the
+   header above the conversation stage and give context/detail popovers a
+   predictable stacking surface. */
+.thread-header.polished-thread-header {
+  isolation: isolate;
+  z-index: 40;
+}
+
+.thread-header-main,
+.polished-thread-header-actions {
+  position: relative;
+}
+
+.thread-header-main {
+  z-index: 1;
+}
+
+.polished-thread-header-actions {
+  z-index: 3;
+  overflow: visible;
+}
+
+/* Context controls may be supplied by runtime-specific header extensions.
+   These selectors intentionally key off "context" so unrelated header buttons
+   and menus are left alone. */
+.thread-header [class*="context"][aria-expanded] {
+  position: relative;
+  z-index: 4;
+  transform-origin: center;
+  transition:
+    color 150ms ease,
+    border-color 150ms ease,
+    background 150ms ease,
+    box-shadow 170ms ease,
+    transform 150ms cubic-bezier(.2,.8,.2,1);
+}
+
+.thread-header [class*="context"][aria-expanded="true"] {
+  transform: translateY(-1px);
+}
+
+.thread-header [class*="context"][role="dialog"],
+.thread-header [class*="context"][role="menu"],
+.thread-header [class*="context"][class*="popover"],
+.thread-header [class*="context"][class*="panel"] {
+  position: absolute;
+  z-index: 90;
+  transform-origin: top right;
+  animation: header-context-popover-in 190ms cubic-bezier(.2,.82,.2,1) both;
+  will-change: opacity, transform;
+}
+
+.thread-header [class*="context"].closing,
+.thread-header [class*="context"].is-closing,
+.thread-header [class*="context"][data-state="closed"] {
+  pointer-events: none;
+  animation: header-context-popover-out 155ms cubic-bezier(.4,0,1,1) both;
+}
+
+@keyframes header-context-popover-in {
+  from {
+    opacity: 0;
+    transform: translateY(-7px) scale(.975);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes header-context-popover-out {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-5px) scale(.982);
+  }
+}
+
+/* Light-theme context window: a quiet floating card rather than another
+   heavy toolbar surface. */
+html[data-loom-theme="light"] .thread-header [class*="context"][role="dialog"],
+html[data-loom-theme="light"] .thread-header [class*="context"][role="menu"],
+html[data-loom-theme="light"] .thread-header [class*="context"][class*="popover"],
+html[data-loom-theme="light"] .thread-header [class*="context"][class*="panel"] {
+  border-color: rgba(28,31,37,.10) !important;
+  background:
+    radial-gradient(120% 80% at 82% -12%, rgba(105,90,216,.065), transparent 52%),
+    linear-gradient(180deg, rgba(255,255,255,.985), rgba(247,248,250,.985)) !important;
+  color: #30363e;
+  box-shadow:
+    0 22px 58px rgba(27,31,40,.14),
+    0 7px 22px rgba(27,31,40,.07),
+    inset 0 1px rgba(255,255,255,.94) !important;
+  backdrop-filter: blur(18px) saturate(112%);
+}
+
+html[data-loom-theme="light"] .thread-header [class*="context"][aria-expanded] {
+  border-color: rgba(28,31,37,.085);
+  background: rgba(255,255,255,.72);
+  color: #59626d;
+  box-shadow: inset 0 1px rgba(255,255,255,.92);
+}
+
+html[data-loom-theme="light"] .thread-header [class*="context"][aria-expanded]:hover,
+html[data-loom-theme="light"] .thread-header [class*="context"][aria-expanded="true"] {
+  border-color: rgba(105,90,216,.20);
+  background: #fff;
+  color: #4f44ae;
+  box-shadow:
+    0 7px 20px rgba(27,31,40,.07),
+    inset 0 1px rgba(255,255,255,.96);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .thread-header [class*="context"][aria-expanded],
+  .thread-header [class*="context"][role="dialog"],
+  .thread-header [class*="context"][role="menu"],
+  .thread-header [class*="context"][class*="popover"],
+  .thread-header [class*="context"][class*="panel"] {
+    animation: none !important;
+    transition-duration: .001ms !important;
+  }
+}
+
+html[data-loom-reduced-motion="true"] .thread-header [class*="context"][aria-expanded],
+html[data-loom-reduced-motion="true"] .thread-header [class*="context"][role="dialog"],
+html[data-loom-reduced-motion="true"] .thread-header [class*="context"][role="menu"],
+html[data-loom-reduced-motion="true"] .thread-header [class*="context"][class*="popover"],
+html[data-loom-reduced-motion="true"] .thread-header [class*="context"][class*="panel"] {
+  animation: none !important;
+  transition-duration: .001ms !important;
+}
