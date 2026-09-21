@@ -11,6 +11,7 @@ from app.agent_runtime import (
     AgentTool,
     DurableAgentRuntime,
     FileAgentSessionStore,
+    MultiAgentRuntime,
     PermissionMode,
     ToolContext,
     ToolEffect,
@@ -420,6 +421,58 @@ def test_thread_fork_persists_provenance_and_canonical_history(tmp_path: Path) -
         # Prove provenance is not only an in-memory protocol field.
         reloaded_store = FileAgentSessionStore(tmp_path / "home")
         assert reloaded_store.load(fork_id).forked_from_id == source_id
+    finally:
+        runtime.close()
+
+
+def test_sub_agent_sessions_stay_out_of_top_level_thread_list(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    store = FileAgentSessionStore(home)
+    platform = RecordingPlatform([ModelResponse(text="delegated work complete")])
+    runtime = MultiAgentRuntime(
+        platform=platform,
+        store=store,
+        tools=ToolRegistry(),
+        default_permission_mode=PermissionMode.WORKSPACE,
+        auto_drain_queue=False,
+    )
+    service = LoomAppServerService(
+        runtime=runtime,
+        store=store,
+        model="test-model",
+        default_workspace=workspace,
+        default_permission_mode=PermissionMode.WORKSPACE,
+    )
+    notifications: list[tuple[str, dict]] = []
+    service.subscribe_notifications(lambda method, params: notifications.append((method, params)))
+    try:
+        parent_id = service.thread_start({"workspace": str(workspace)})["thread"]["id"]
+        child = runtime.agent_control.spawn(
+            parent_id,
+            "Handle one delegated check.",
+            history_mode="none",
+            background=False,
+        )
+        child_id = child.node.session_id
+
+        listed_ids = {
+            thread["id"]
+            for thread in service.thread_list({"limit": 100})["threads"]
+        }
+        assert parent_id in listed_ids
+        assert child_id not in listed_ids
+        assert not any(
+            method == "thread/started"
+            and str(params.get("thread", {}).get("id") or "") == child_id
+            for method, params in notifications
+        )
+
+        # The child remains a real durable session for AgentGraph control even
+        # though the conversation library intentionally hides it.
+        assert store.load(child_id).session_id == child_id
+        assert runtime.agent_graph.get(child_id) is not None
     finally:
         runtime.close()
 
