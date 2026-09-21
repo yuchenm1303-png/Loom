@@ -473,6 +473,12 @@ def test_sub_agent_sessions_stay_out_of_top_level_thread_list(tmp_path: Path) ->
         # though the conversation library intentionally hides it.
         assert store.load(child_id).session_id == child_id
         assert runtime.agent_graph.get(child_id) is not None
+
+        agent_state = service.agent_list({"threadId": parent_id})
+        assert agent_state["count"] == 1
+        assert agent_state["agents"][0]["session_id"] == child_id
+        assert agent_state["agents"][0]["session_status"] == "completed"
+        assert agent_state["agents"][0]["final_text"] == "delegated work complete"
     finally:
         runtime.close()
 
