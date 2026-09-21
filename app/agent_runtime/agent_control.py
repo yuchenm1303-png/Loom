@@ -149,6 +149,7 @@ class AgentControl:
             system_prompt=self._child_system_prompt(parent, role),
             workspace_dir=parent.workspace_dir,
             permission_mode=parent.permission_mode,
+            emit_session_created=False,
         )
         child.messages = self._inherited_history(
             parent,
