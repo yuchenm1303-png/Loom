@@ -270,7 +270,6 @@ def _stored_title_prompt(thread_library: Any, session_id: str) -> str:
         "autoTitleSourcePrompt",
         "autoTitlePendingSourcePrompt",
         "autoTitlePendingSource",
-        "autoTitlePendingSourcePrompt",
     ):
         value = _clean_title_context(metadata.get(key))
         if value:
@@ -410,21 +409,28 @@ def _patch_thread_library(module: ModuleType) -> None:
         clean_source = _clean_title_context(source_prompt)
         if not clean_source:
             return False
-        initial_title = _safe_initial_title_from_prompt(clean_source)
         with self._guard:
             payload = self._read_unlocked(session_id)
             if bool(payload.get("autoTitleDisabled")):
                 return False
             if _metadata_title_blocks_auto_title(payload):
                 return False
+            # A thread title describes the task, not whichever follow-up happened
+            # to trigger a retry. Once captured, the first valid prompt is the
+            # immutable source for every fallback and model-generated title.
+            stored_source = _clean_title_context(
+                payload.get("autoTitleSourcePrompt") or payload.get("autoTitlePendingSourcePrompt") or ""
+            )
+            canonical_source = stored_source or clean_source
+            initial_title = _safe_initial_title_from_prompt(canonical_source)
             payload.update(
                 {
                     "title": initial_title,
                     "titleSource": "auto",
                     "autoTitlePending": True,
                     "autoTitleFallback": True,
-                    "autoTitleSourcePrompt": clean_source,
-                    "autoTitlePendingSourcePrompt": clean_source,
+                    "autoTitleSourcePrompt": canonical_source,
+                    "autoTitlePendingSourcePrompt": canonical_source,
                     "autoTitlePendingAt": _utc_now(),
                     "autoTitleVersion": _AUTO_TITLE_VERSION,
                     "autoTitleLastError": "",
@@ -441,10 +447,13 @@ def _patch_thread_library(module: ModuleType) -> None:
             if _metadata_title_blocks_auto_title(payload):
                 return False
 
-            clean_source = _clean_title_context(source_prompt)
-            if not clean_source:
-                clean_source = str(payload.get("autoTitleSourcePrompt") or payload.get("autoTitlePendingSourcePrompt") or "")
-            clean_source = _clean_title_context(clean_source)
+            stored_source = _clean_title_context(
+                payload.get("autoTitleSourcePrompt") or payload.get("autoTitlePendingSourcePrompt") or ""
+            )
+            requested_source = _clean_title_context(source_prompt)
+            if stored_source and requested_source and stored_source != requested_source:
+                return False
+            clean_source = stored_source or requested_source
             if not clean_source:
                 return False
 
@@ -625,15 +634,20 @@ def _patch_service(module: ModuleType) -> None:
         ).start()
 
     def generate_auto_title(self: Any, thread_id: str, user_prompt: str = "") -> None:
-        source_prompt = _clean_title_context(user_prompt)
+        source_prompt = ""
         try:
             try:
                 session = self.store.load(thread_id)
             except (FileNotFoundError, OSError, ValueError, json.JSONDecodeError):
                 return
 
-            if not source_prompt:
-                source_prompt = _stored_title_prompt(self.thread_library, thread_id) or _first_user_prompt(module, session)
+            # Metadata owns the source once the first turn has registered it.
+            # The argument is only a bootstrap fallback for a brand-new thread.
+            source_prompt = (
+                _stored_title_prompt(self.thread_library, thread_id)
+                or _first_user_prompt(module, session)
+                or _clean_title_context(user_prompt)
+            )
             source_prompt = _clean_title_context(source_prompt)
             request, request_source = _build_auto_title_request(module, session, user_prompt=source_prompt)
             source_prompt = _clean_title_context(request_source or source_prompt)
@@ -723,7 +737,8 @@ def _patch_service(module: ModuleType) -> None:
             try:
                 if self.thread_library.mark_auto_title_pending(thread_id, source_prompt=user_prompt):
                     _notify_thread_updated(self, thread_id, "auto_title_initial")
-                self._schedule_auto_title(thread_id, user_prompt=user_prompt)
+                canonical_prompt = _stored_title_prompt(self.thread_library, thread_id) or user_prompt
+                self._schedule_auto_title(thread_id, user_prompt=canonical_prompt)
             except Exception:
                 # Title generation is decorative metadata. It must never break the
                 # actual agent turn.

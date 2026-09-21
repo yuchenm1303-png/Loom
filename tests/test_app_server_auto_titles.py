@@ -290,6 +290,35 @@ def test_stale_title_result_cannot_replace_a_newer_source_prompt(tmp_path: Path)
         runtime.close()
 
 
+def test_follow_up_cannot_replace_pending_title_source(tmp_path: Path) -> None:
+    service, runtime, _store, _platform, workspace = _build_service(tmp_path, [])
+    try:
+        thread_id = service.thread_start({"workspace": str(workspace)})["thread"]["id"]
+        first_prompt = "修复 token 统计一直显示的问题"
+        assert service.thread_library.mark_auto_title_pending(
+            thread_id,
+            source_prompt=first_prompt,
+        )
+
+        # A later turn may arrive while generation is pending or being retried.
+        # It must not silently redefine what the task is about.
+        assert service.thread_library.mark_auto_title_pending(
+            thread_id,
+            source_prompt="继续",
+        )
+
+        metadata = service.thread_library.read(thread_id)
+        assert metadata["autoTitleSourcePrompt"] == first_prompt
+        assert metadata["autoTitlePendingSourcePrompt"] == first_prompt
+        assert metadata["title"] == _safe_initial_title_from_prompt(first_prompt)
+        assert service.thread_library.claim_auto_title_attempt(
+            thread_id,
+            source_prompt="继续",
+        ) is False
+    finally:
+        runtime.close()
+
+
 def test_manual_rename_always_wins_and_skips_auto_title(tmp_path: Path) -> None:
     service, runtime, _store, platform, workspace = _build_service(
         tmp_path,
