@@ -1827,3 +1827,1217 @@ html[data-loom-theme="light"] .models-modal-actions button.primary {
     border-top-color: rgba(28,31,37,.075);
   }
 }
+
+
+/* Light theme: settings-wide surface completion -------------------------- */
+/* A number of newer Settings modules are intentionally authored dark-first.
+   Bring the remaining late-loaded surfaces into the same light palette without
+   changing any dark-theme presentation. */
+
+/* -------------------------------------------------------------------------- */
+/* Shared light settings controls                                               */
+/* -------------------------------------------------------------------------- */
+
+html[data-loom-theme="light"] .settings-tool-count {
+  border-color: #d8dde3;
+  background: #ffffff;
+  color: #525b66;
+  box-shadow:
+    0 3px 10px rgba(27,31,40,.035),
+    inset 0 1px rgba(255,255,255,.96);
+}
+
+html[data-loom-theme="light"] .settings-sidebar-top > .language-settings-dock {
+  border-color: rgba(28,31,37,.085);
+  background: rgba(255,255,255,.58);
+}
+
+html[data-loom-theme="light"] .language-settings-copy strong {
+  color: #343a42;
+}
+
+html[data-loom-theme="light"] .language-settings-copy span {
+  color: #727b86;
+}
+
+html[data-loom-theme="light"] .language-settings-options {
+  border-color: #d6dbe1;
+  background: #eef1f4;
+  box-shadow: inset 0 1px rgba(255,255,255,.92);
+}
+
+html[data-loom-theme="light"] .language-settings-options button {
+  color: #68717c;
+}
+
+html[data-loom-theme="light"] .language-settings-options button:hover {
+  color: #343a42;
+  background: rgba(255,255,255,.72);
+}
+
+html[data-loom-theme="light"] .language-settings-options button.active {
+  color: #5144ad;
+  background: #ffffff;
+  box-shadow:
+    0 1px 5px rgba(27,31,40,.09),
+    inset 0 0 0 1px rgba(105,90,216,.13);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Capabilities                                                                */
+/* -------------------------------------------------------------------------- */
+
+html[data-loom-theme="light"] .capability-list.settings-card {
+  border-color: #d9dde3;
+  background: #ffffff;
+  box-shadow:
+    inset 0 1px rgba(255,255,255,.96),
+    0 7px 20px rgba(27,31,40,.035);
+}
+
+html[data-loom-theme="light"] .capability-list .capability-row {
+  border-bottom-color: rgba(28,31,37,.075);
+  background: transparent;
+}
+
+html[data-loom-theme="light"] .capability-list .capability-row:hover {
+  background: #fafbfc;
+}
+
+html[data-loom-theme="light"] .capability-list .capability-icon,
+html[data-loom-theme="light"] .capability-list .capability-row:nth-child(1) .capability-icon,
+html[data-loom-theme="light"] .capability-list .capability-row:nth-child(2) .capability-icon {
+  border-color: rgba(105,90,216,.15);
+  background: rgba(105,90,216,.07);
+  color: #6253ca;
+}
+
+html[data-loom-theme="light"] .capability-list .capability-title-line strong,
+html[data-loom-language="zh-CN"][data-loom-theme="light"] .capability-list .capability-row:nth-child(2) .capability-title-line > strong::after,
+html[data-loom-language="zh-CN"][data-loom-theme="light"] .capability-list .capability-row:nth-child(3) .capability-title-line > strong::after,
+html[data-loom-language="zh-CN"][data-loom-theme="light"] .capability-list .capability-row:nth-child(6) .capability-title-line > strong::after,
+html[data-loom-language="zh-CN"][data-loom-theme="light"] .capability-list .capability-row:nth-child(7) .capability-title-line > strong::after {
+  color: #343a42;
+}
+
+html[data-loom-theme="light"] .capability-list .capability-copy > span,
+html[data-loom-language="zh-CN"][data-loom-theme="light"] .capability-list .capability-copy > span::after {
+  color: #68717c;
+}
+
+html[data-loom-theme="light"] .capability-list .settings-row-link {
+  color: #737c87;
+}
+
+html[data-loom-theme="light"] .capability-list .settings-row-link:hover {
+  color: #5347b1;
+  background: rgba(105,90,216,.06);
+}
+
+/* -------------------------------------------------------------------------- */
+/* General runtime overview                                                    */
+/* -------------------------------------------------------------------------- */
+
+html[data-loom-theme="light"] .general-heading-status {
+  border-color: #d8dde3;
+  background: rgba(255,255,255,.70);
+  color: #5d6671;
+  box-shadow: inset 0 1px rgba(255,255,255,.95);
+}
+
+html[data-loom-theme="light"] .general-overview-card {
+  border-color: rgba(105,90,216,.14);
+  background:
+    radial-gradient(420px 220px at 6% 0%, rgba(105,90,216,.07), transparent 68%),
+    radial-gradient(360px 200px at 94% 120%, rgba(79,105,177,.035), transparent 70%),
+    linear-gradient(180deg, #ffffff, #f8f9fb);
+  box-shadow:
+    0 12px 32px rgba(27,31,40,.055),
+    inset 0 1px rgba(255,255,255,.96);
+}
+
+html[data-loom-theme="light"] .general-overview-card::after {
+  background: linear-gradient(90deg, transparent, rgba(105,90,216,.18) 18%, rgba(28,31,37,.035) 48%, transparent 84%);
+}
+
+html[data-loom-theme="light"] .general-overview-copy strong {
+  color: #252b32;
+}
+
+html[data-loom-theme="light"] .general-overview-copy p {
+  color: #69727d;
+}
+
+html[data-loom-theme="light"] .general-stat {
+  border-color: #dce0e5;
+  background: #f6f7f9;
+  box-shadow: inset 0 1px rgba(255,255,255,.94);
+}
+
+html[data-loom-theme="light"] .general-stat > svg {
+  color: #6558be;
+}
+
+html[data-loom-theme="light"] .general-stat span {
+  color: #737c87;
+}
+
+html[data-loom-theme="light"] .general-stat strong {
+  color: #343b44;
+}
+
+html[data-loom-theme="light"] .general-default-card {
+  border-color: #d9dde3;
+  background: #ffffff;
+  box-shadow:
+    inset 0 1px rgba(255,255,255,.95),
+    0 5px 16px rgba(27,31,40,.03);
+}
+
+html[data-loom-theme="light"] button.general-default-card:hover {
+  border-color: rgba(105,90,216,.19);
+  background: #fbfaff;
+  box-shadow:
+    0 9px 24px rgba(27,31,40,.055),
+    inset 0 1px rgba(255,255,255,.96);
+}
+
+html[data-loom-theme="light"] .general-default-card label {
+  color: #747d88;
+}
+
+html[data-loom-theme="light"] .general-default-card strong {
+  color: #30363e;
+}
+
+html[data-loom-theme="light"] .general-default-card p {
+  color: #707985;
+}
+
+html[data-loom-theme="light"] .general-copy-button {
+  border-color: #d9dde3;
+  background: #f5f6f8;
+  color: #606a75;
+}
+
+html[data-loom-theme="light"] .general-copy-button:hover {
+  border-color: rgba(105,90,216,.18);
+  background: rgba(105,90,216,.055);
+  color: #5548b3;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Memory                                                                      */
+/* -------------------------------------------------------------------------- */
+
+html[data-loom-theme="light"] .memory-stat-card {
+  border-color: #d9dde3;
+  background:
+    radial-gradient(circle at 82% 12%, rgba(105,90,216,.055), transparent 42%),
+    linear-gradient(180deg, #ffffff, #f7f8fa);
+  box-shadow:
+    inset 0 1px rgba(255,255,255,.96),
+    0 6px 18px rgba(27,31,40,.035);
+}
+
+html[data-loom-theme="light"] .memory-stat-card span {
+  color: #737c87;
+}
+
+html[data-loom-theme="light"] .memory-stat-card strong {
+  color: #2d333b;
+}
+
+html[data-loom-theme="light"] .memory-stat-card small {
+  color: #747d88;
+}
+
+html[data-loom-theme="light"] .memory-preference-row {
+  border-bottom-color: rgba(28,31,37,.075);
+}
+
+html[data-loom-theme="light"] .memory-preference-icon {
+  border-color: rgba(105,90,216,.15);
+  background: rgba(105,90,216,.07);
+  color: #6253ca;
+}
+
+html[data-loom-theme="light"] .memory-preference-row strong {
+  color: #343a42;
+}
+
+html[data-loom-theme="light"] .memory-preference-row span:not(.memory-preference-icon) {
+  color: #68717c;
+}
+
+html[data-loom-theme="light"] .memory-refresh-button {
+  border-color: #d9dde3;
+  background: #ffffff;
+  color: #59626d;
+}
+
+html[data-loom-theme="light"] .memory-refresh-button:hover:not(:disabled) {
+  color: #5144ad;
+  border-color: rgba(105,90,216,.20);
+  background: rgba(105,90,216,.055);
+}
+
+html[data-loom-theme="light"] .memory-browser {
+  border-color: #d7dce2;
+  background: #ffffff;
+  box-shadow:
+    0 12px 34px rgba(27,31,40,.07),
+    inset 0 1px rgba(255,255,255,.96);
+}
+
+html[data-loom-theme="light"] .memory-search-box {
+  border-bottom-color: #dde1e6;
+  background: #f7f8fa;
+  color: #727b86;
+}
+
+html[data-loom-theme="light"] .memory-search-box:focus-within {
+  color: #6253ca;
+  box-shadow: inset 0 -1px rgba(105,90,216,.22);
+}
+
+html[data-loom-theme="light"] .memory-search-box input {
+  color: #30363e;
+}
+
+html[data-loom-theme="light"] .memory-search-box input::placeholder {
+  color: #858d98;
+}
+
+html[data-loom-theme="light"] .memory-search-box button {
+  color: #737c87;
+}
+
+html[data-loom-theme="light"] .memory-search-box button:hover {
+  background: rgba(28,31,37,.045);
+  color: #30363e;
+}
+
+html[data-loom-theme="light"] .memory-list {
+  border-right-color: #dde1e6;
+  scrollbar-color: #c9ced5 transparent;
+}
+
+html[data-loom-theme="light"] .memory-row {
+  border-bottom-color: #e0e3e7;
+}
+
+html[data-loom-theme="light"] .memory-row:hover {
+  background: #fafbfc;
+}
+
+html[data-loom-theme="light"] .memory-row.selected {
+  background: linear-gradient(90deg, rgba(105,90,216,.085), rgba(105,90,216,.025));
+  box-shadow: inset 3px 0 #695ad8;
+}
+
+html[data-loom-theme="light"] .memory-row-badges span {
+  border-color: #d9dde3;
+  background: #f4f5f7;
+  color: #69727d;
+}
+
+html[data-loom-theme="light"] .memory-row-main strong {
+  color: #30363e;
+}
+
+html[data-loom-theme="light"] .memory-row-main small {
+  color: #747d88;
+}
+
+html[data-loom-theme="light"] .memory-row-open {
+  color: #79828d;
+}
+
+html[data-loom-theme="light"] .memory-row-open:hover:not(:disabled) {
+  color: #5a4dbc;
+  background: rgba(105,90,216,.055);
+}
+
+html[data-loom-theme="light"] .memory-list-empty,
+html[data-loom-theme="light"] .memory-empty-state,
+html[data-loom-theme="light"] .memory-detail-placeholder {
+  color: #737c87;
+}
+
+html[data-loom-theme="light"] .memory-list-empty strong,
+html[data-loom-theme="light"] .memory-empty-state strong,
+html[data-loom-theme="light"] .memory-detail-placeholder strong {
+  color: #3d444d;
+}
+
+html[data-loom-theme="light"] .memory-list-empty span,
+html[data-loom-theme="light"] .memory-empty-state span,
+html[data-loom-theme="light"] .memory-detail-placeholder span {
+  color: #75808b;
+}
+
+html[data-loom-theme="light"] .memory-empty-state {
+  border-color: #d8dde3;
+  background: rgba(255,255,255,.52);
+}
+
+html[data-loom-theme="light"] .memory-detail {
+  scrollbar-color: #c9ced5 transparent;
+}
+
+html[data-loom-theme="light"] .memory-detail-head span {
+  color: #6253ca;
+}
+
+html[data-loom-theme="light"] .memory-detail-head strong {
+  color: #2d333b;
+}
+
+html[data-loom-theme="light"] .memory-detail-head button {
+  border-color: #d9dde3;
+  background: #f6f7f9;
+  color: #6b7480;
+}
+
+html[data-loom-theme="light"] .memory-detail-head button:hover {
+  color: #30363e;
+  background: #ffffff;
+}
+
+html[data-loom-theme="light"] .memory-detail-copy {
+  border-color: rgba(105,90,216,.14);
+  background: rgba(105,90,216,.045);
+  color: #404852;
+}
+
+html[data-loom-theme="light"] .memory-detail-meta > div {
+  border-color: #dce0e5;
+  background: #f7f8fa;
+}
+
+html[data-loom-theme="light"] .memory-detail-meta span {
+  color: #75808b;
+}
+
+html[data-loom-theme="light"] .memory-detail-meta strong {
+  color: #424a54;
+}
+
+html[data-loom-theme="light"] .memory-evidence-heading {
+  color: #59626d;
+}
+
+html[data-loom-theme="light"] .memory-evidence-heading span {
+  background: #eef1f4;
+  color: #68717c;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Skills                                                                      */
+/* -------------------------------------------------------------------------- */
+
+html[data-loom-theme="light"] .skills-hero-card {
+  border-color: rgba(105,90,216,.15);
+  background:
+    radial-gradient(circle at 8% 10%, rgba(105,90,216,.09), transparent 34%),
+    linear-gradient(135deg, rgba(105,90,216,.035), rgba(255,255,255,.7)),
+    #ffffff;
+  box-shadow:
+    0 12px 32px rgba(27,31,40,.055),
+    inset 0 1px rgba(255,255,255,.96);
+}
+
+html[data-loom-theme="light"] .skills-hero-copy span {
+  color: #6253ca;
+}
+
+html[data-loom-theme="light"] .skills-hero-copy strong {
+  color: #2c3239;
+}
+
+html[data-loom-theme="light"] .skills-hero-copy p {
+  color: #68717c;
+}
+
+html[data-loom-theme="light"] .skills-hero-icon {
+  border-color: rgba(105,90,216,.16);
+  background: rgba(105,90,216,.08);
+  color: #6253ca;
+  box-shadow: none;
+}
+
+html[data-loom-theme="light"] .skills-quick-actions button,
+html[data-loom-theme="light"] .skills-command-strip button,
+html[data-loom-theme="light"] .skills-install-grid button,
+html[data-loom-theme="light"] .skills-row-actions button {
+  border-color: #d9dde3;
+  background: #f7f8fa;
+  color: #59626d;
+}
+
+html[data-loom-theme="light"] .skills-quick-actions button:hover,
+html[data-loom-theme="light"] .skills-command-strip button:hover,
+html[data-loom-theme="light"] .skills-install-grid button:hover,
+html[data-loom-theme="light"] .skills-row-actions button:hover {
+  border-color: rgba(105,90,216,.20);
+  background: rgba(105,90,216,.06);
+  color: #5144ad;
+}
+
+html[data-loom-theme="light"] .skills-stat-card {
+  border-color: #d9dde3;
+  background: linear-gradient(180deg, #ffffff, #f7f8fa);
+  box-shadow: inset 0 1px rgba(255,255,255,.95);
+}
+
+html[data-loom-theme="light"] .skills-stat-card > span {
+  color: #717a85;
+}
+
+html[data-loom-theme="light"] .skills-stat-card strong {
+  color: #30363e;
+}
+
+html[data-loom-theme="light"] .skills-stat-card small {
+  color: #747d88;
+}
+
+html[data-loom-theme="light"] .skills-source-card {
+  border-color: #dce0e5;
+  background: #f8f9fb;
+}
+
+html[data-loom-theme="light"] .skills-source-card > span:first-child,
+html[data-loom-theme="light"] .skills-runtime-item > span:first-child {
+  border-color: rgba(105,90,216,.14);
+  background: rgba(105,90,216,.07);
+  color: #6253ca;
+}
+
+html[data-loom-theme="light"] .skills-source-card strong,
+html[data-loom-theme="light"] .skills-runtime-item strong,
+html[data-loom-theme="light"] .skills-name-cell strong {
+  color: #343a42;
+}
+
+html[data-loom-theme="light"] .skills-source-card code,
+html[data-loom-theme="light"] .skills-runtime-item code,
+html[data-loom-theme="light"] .skills-table-row code {
+  border-color: #d9dde3;
+  background: #f4f5f7;
+  color: #525b66;
+}
+
+html[data-loom-theme="light"] .skills-source-card p,
+html[data-loom-theme="light"] .skills-runtime-item p {
+  color: #6e7782;
+}
+
+html[data-loom-theme="light"] .skills-command-strip label {
+  border-color: #d9dde3;
+  background: #ffffff;
+  color: #727b86;
+}
+
+html[data-loom-theme="light"] .skills-command-strip input {
+  color: #30363e;
+}
+
+html[data-loom-theme="light"] .skills-command-strip input::placeholder {
+  color: #858d98;
+}
+
+html[data-loom-theme="light"] .skills-install-grid button {
+  background: #ffffff;
+  box-shadow:
+    inset 0 1px rgba(255,255,255,.95),
+    0 5px 16px rgba(27,31,40,.03);
+}
+
+html[data-loom-theme="light"] .skills-install-grid button strong {
+  color: #30363e;
+}
+
+html[data-loom-theme="light"] .skills-install-grid button span {
+  color: #707985;
+}
+
+html[data-loom-theme="light"] .skills-install-grid button svg {
+  color: #6253ca;
+}
+
+html[data-loom-theme="light"] .skills-security-row {
+  border-bottom-color: rgba(28,31,37,.075);
+  color: #48515b;
+}
+
+html[data-loom-theme="light"] .skills-security-row span {
+  color: #48515b;
+}
+
+html[data-loom-theme="light"] .skills-table {
+  border-color: #d9dde3;
+  background: #ffffff;
+}
+
+html[data-loom-theme="light"] .skills-table-head {
+  color: #68717c;
+  background: #f1f3f5;
+  border-bottom-color: #d9dde3;
+}
+
+html[data-loom-theme="light"] .skills-table-row {
+  border-bottom-color: #e0e3e7;
+}
+
+html[data-loom-theme="light"] .skills-table-row > span {
+  color: #68717c;
+}
+
+html[data-loom-theme="light"] .skills-name-cell svg {
+  color: #695ad8;
+}
+
+html[data-loom-theme="light"] .skills-footer-strip {
+  border-color: #d9dde3;
+  background: #f7f8fa;
+  color: #68717c;
+}
+
+html[data-loom-theme="light"] .skills-footer-strip svg {
+  color: #6253ca;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Keyboard shortcuts                                                          */
+/* -------------------------------------------------------------------------- */
+
+html[data-loom-theme="light"] .shortcuts-overview-card {
+  border-color: #d8dde3;
+  background:
+    radial-gradient(420px 180px at 0% 0%, rgba(105,90,216,.055), transparent 58%),
+    #ffffff;
+  box-shadow:
+    0 8px 24px rgba(27,31,40,.045),
+    inset 0 1px rgba(255,255,255,.96);
+}
+
+html[data-loom-theme="light"] .shortcuts-overview-icon,
+html[data-loom-theme="light"] .shortcut-command-icon {
+  border-color: rgba(105,90,216,.14);
+  background: rgba(105,90,216,.07);
+  color: #6253ca;
+}
+
+html[data-loom-theme="light"] .shortcuts-overview-copy > strong {
+  color: #30363e;
+}
+
+html[data-loom-theme="light"] .shortcuts-overview-copy > p {
+  color: #68717c;
+}
+
+html[data-loom-theme="light"] .shortcuts-overview-stats {
+  border-color: #d9dde3;
+  background: #f7f8fa;
+}
+
+html[data-loom-theme="light"] .shortcuts-overview-stats > div + div {
+  border-left-color: #d9dde3;
+}
+
+html[data-loom-theme="light"] .shortcuts-overview-stats strong {
+  color: #343a42;
+}
+
+html[data-loom-theme="light"] .shortcuts-overview-stats span {
+  color: #727b86;
+}
+
+html[data-loom-theme="light"] .shortcut-search {
+  border-color: #d9dde3;
+  background: #ffffff;
+  color: #727b86;
+}
+
+html[data-loom-theme="light"] .shortcut-search:focus-within {
+  color: #6253ca;
+  border-color: rgba(105,90,216,.25);
+  box-shadow: 0 0 0 3px rgba(105,90,216,.055);
+}
+
+html[data-loom-theme="light"] .shortcut-search input {
+  color: #30363e;
+}
+
+html[data-loom-theme="light"] .shortcut-search input::placeholder {
+  color: #858d98;
+}
+
+html[data-loom-theme="light"] .shortcut-group-title {
+  color: #66707b;
+}
+
+html[data-loom-theme="light"] .shortcut-group-title span:last-child {
+  color: #737c87;
+}
+
+html[data-loom-theme="light"] .shortcut-command-list,
+html[data-loom-theme="light"] .shortcut-fixed-list {
+  border-color: #d9dde3;
+  background: #ffffff;
+}
+
+html[data-loom-theme="light"] .shortcut-command-row + .shortcut-command-row,
+html[data-loom-theme="light"] .shortcut-fixed-row + .shortcut-fixed-row {
+  border-top-color: #e0e3e7;
+}
+
+html[data-loom-theme="light"] .shortcut-command-row:hover {
+  background: #fafbfc;
+}
+
+html[data-loom-theme="light"] .shortcut-command-row.recording {
+  background: rgba(105,90,216,.045);
+}
+
+html[data-loom-theme="light"] .shortcut-command-copy strong,
+html[data-loom-theme="light"] .shortcut-fixed-row > div strong {
+  color: #343a42;
+}
+
+html[data-loom-theme="light"] .shortcut-command-copy span,
+html[data-loom-theme="light"] .shortcut-fixed-row > div span {
+  color: #707985;
+}
+
+html[data-loom-theme="light"] .shortcut-reset-one {
+  color: #747d88;
+}
+
+html[data-loom-theme="light"] .shortcut-reset-one:hover {
+  background: rgba(28,31,37,.045);
+  color: #30363e;
+}
+
+html[data-loom-theme="light"] .shortcut-recorder {
+  border-color: #d9dde3;
+  background: #f5f6f8;
+  color: #4f5863;
+}
+
+html[data-loom-theme="light"] .shortcut-recorder:hover {
+  border-color: rgba(105,90,216,.18);
+  background: #ffffff;
+}
+
+html[data-loom-theme="light"] .shortcut-recorder.active {
+  border-color: rgba(105,90,216,.32);
+  background: rgba(105,90,216,.065);
+}
+
+html[data-loom-theme="light"] .shortcut-recording-copy {
+  color: #5a4dbc;
+}
+
+html[data-loom-theme="light"] .shortcut-key-sequence kbd,
+html[data-loom-theme="light"] .shortcut-fixed-row .shortcut-key-sequence kbd {
+  border-color: #d6dbe1;
+  background: #ffffff;
+  color: #424a54;
+  box-shadow:
+    0 1px 2px rgba(27,31,40,.045),
+    inset 0 -1px rgba(28,31,37,.035);
+}
+
+html[data-loom-theme="light"] .shortcut-fixed-badge {
+  border-color: #d9dde3;
+  background: #f4f5f7;
+  color: #69727d;
+}
+
+html[data-loom-theme="light"] .shortcut-empty {
+  border-color: #d7dce2;
+  color: #737c87;
+  background: rgba(255,255,255,.45);
+}
+
+html[data-loom-theme="light"] .shortcuts-callout {
+  border-color: rgba(105,90,216,.14);
+  background: rgba(105,90,216,.045);
+  color: #6253ca;
+}
+
+html[data-loom-theme="light"] .shortcuts-callout strong {
+  color: #3f4650;
+}
+
+html[data-loom-theme="light"] .shortcuts-callout span {
+  color: #69727d;
+}
+
+
+/* Light theme: context budget dashboard ---------------------------------- */
+/* The context widget can be supplied by different desktop/runtime revisions.
+   These aliases deliberately cover the known naming variants and make the
+   light theme robust when the widget is upgraded independently. */
+
+html[data-loom-theme="light"] :is(
+  .context-budget-trigger,
+  .context-window-trigger,
+  .context-usage-trigger,
+  .context-budget-summary,
+  .context-window-summary,
+  .context-usage-summary
+) {
+  min-height: 34px;
+  border: 1px solid rgba(28,31,37,.085) !important;
+  border-radius: 999px !important;
+  background: rgba(255,255,255,.86) !important;
+  color: #505965 !important;
+  box-shadow:
+    0 3px 10px rgba(27,31,40,.035),
+    inset 0 1px rgba(255,255,255,.96) !important;
+  backdrop-filter: blur(10px);
+}
+
+html[data-loom-theme="light"] :is(
+  .context-budget-trigger,
+  .context-window-trigger,
+  .context-usage-trigger,
+  .context-budget-summary,
+  .context-window-summary,
+  .context-usage-summary
+):hover {
+  border-color: rgba(105,90,216,.20) !important;
+  background: #ffffff !important;
+  color: #343a42 !important;
+  box-shadow:
+    0 7px 18px rgba(27,31,40,.065),
+    inset 0 1px rgba(255,255,255,.98) !important;
+}
+
+html[data-loom-theme="light"] :is(
+  .context-budget-trigger,
+  .context-window-trigger,
+  .context-usage-trigger,
+  .context-budget-summary,
+  .context-window-summary,
+  .context-usage-summary
+)[aria-expanded="true"] {
+  border-color: rgba(105,90,216,.24) !important;
+  background: rgba(105,90,216,.06) !important;
+  color: #5144ad !important;
+}
+
+/* Popover / panel shell. */
+html[data-loom-theme="light"] :is(
+  .context-budget-popover,
+  .context-window-popover,
+  .context-usage-popover,
+  .context-budget-panel,
+  .context-window-panel,
+  .context-usage-panel,
+  .thread-header [class*="context"][role="dialog"],
+  .thread-header [class*="context"][role="menu"],
+  .thread-header [class*="context"][class*="popover"],
+  .thread-header [class*="context"][class*="panel"]
+) {
+  width: min(360px, calc(100vw - 28px));
+  padding: 14px !important;
+  border: 1px solid rgba(28,31,37,.10) !important;
+  border-radius: 18px !important;
+  background:
+    radial-gradient(120% 88% at 92% -18%, rgba(105,90,216,.065), transparent 52%),
+    linear-gradient(180deg, rgba(255,255,255,.992), rgba(248,249,251,.992)) !important;
+  color: #30363e !important;
+  box-shadow:
+    0 24px 64px rgba(27,31,40,.14),
+    0 7px 22px rgba(27,31,40,.065),
+    inset 0 1px rgba(255,255,255,.97) !important;
+  backdrop-filter: blur(20px) saturate(112%);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Neutralize dark nested cards/chips left behind by older dark-first versions. */
+html[data-loom-theme="light"] :is(
+  .context-budget-popover,
+  .context-window-popover,
+  .context-usage-popover,
+  .context-budget-panel,
+  .context-window-panel,
+  .context-usage-panel
+) :is(
+  [class*="summary"],
+  [class*="metric"],
+  [class*="stat"],
+  [class*="meta"],
+  [class*="breakdown"],
+  [class*="legend"],
+  [class*="compact"]
+) {
+  border-color: rgba(28,31,37,.075) !important;
+  color: #525b66;
+}
+
+html[data-loom-theme="light"] :is(
+  .context-budget-popover,
+  .context-window-popover,
+  .context-usage-popover,
+  .context-budget-panel,
+  .context-window-panel,
+  .context-usage-panel
+) :is(
+  [class*="card"],
+  [class*="pill"],
+  [class*="chip"],
+  [class*="box"]
+) {
+  border-color: #dce0e5 !important;
+  background: #f6f7f9 !important;
+  color: #525b66 !important;
+  box-shadow: inset 0 1px rgba(255,255,255,.92) !important;
+}
+
+/* Header: treat the primary budget as the one strong number. */
+html[data-loom-theme="light"] :is(
+  .context-budget-title,
+  .context-window-title,
+  .context-usage-title,
+  [class*="context"] [class*="title"]
+) {
+  color: #59626d !important;
+  font-size: 12px;
+  font-weight: 620;
+  letter-spacing: .005em;
+}
+
+html[data-loom-theme="light"] :is(
+  .context-budget-total,
+  .context-window-total,
+  .context-usage-total,
+  [class*="context"] [class*="total"]
+) {
+  color: #252b32 !important;
+  font-weight: 740;
+  letter-spacing: -.018em;
+}
+
+html[data-loom-theme="light"] :is(
+  .context-budget-percent,
+  .context-window-percent,
+  .context-usage-percent,
+  [class*="context"] [class*="percent"]
+) {
+  color: #626b76 !important;
+  font-weight: 650;
+}
+
+/* One calm segmented budget bar instead of a heavy progress slab. */
+html[data-loom-theme="light"] :is(
+  .context-budget-track,
+  .context-window-track,
+  .context-usage-track,
+  [class*="context"] [class*="track"]
+) {
+  height: 7px !important;
+  overflow: hidden;
+  border: 0 !important;
+  border-radius: 999px !important;
+  background: #e9ecf0 !important;
+  box-shadow: inset 0 1px 2px rgba(27,31,40,.055) !important;
+}
+
+html[data-loom-theme="light"] :is(
+  .context-budget-track,
+  .context-window-track,
+  .context-usage-track,
+  [class*="context"] [class*="track"]
+) > * {
+  min-width: 2px;
+  height: 100%;
+  border-radius: 999px;
+}
+
+/* Breakdown rows. */
+html[data-loom-theme="light"] :is(
+  .context-budget-row,
+  .context-window-row,
+  .context-usage-row,
+  [class*="context"] [class*="budget-row"],
+  [class*="context"] [class*="usage-row"],
+  [class*="context"] [class*="breakdown-row"]
+) {
+  min-height: 30px;
+  padding: 3px 2px;
+  border-radius: 8px;
+  color: #505965 !important;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+html[data-loom-theme="light"] :is(
+  .context-budget-row,
+  .context-window-row,
+  .context-usage-row,
+  [class*="context"] [class*="budget-row"],
+  [class*="context"] [class*="usage-row"],
+  [class*="context"] [class*="breakdown-row"]
+):hover {
+  background: rgba(28,31,37,.028);
+  color: #343a42 !important;
+}
+
+html[data-loom-theme="light"] :is(
+  .context-budget-row,
+  .context-window-row,
+  .context-usage-row
+) strong,
+html[data-loom-theme="light"] [class*="context"] :is(
+  [class*="budget-row"],
+  [class*="usage-row"],
+  [class*="breakdown-row"]
+) strong {
+  color: #30363e;
+  font-weight: 650;
+}
+
+html[data-loom-theme="light"] :is(
+  .context-budget-row,
+  .context-window-row,
+  .context-usage-row
+) small,
+html[data-loom-theme="light"] [class*="context"] :is(
+  [class*="budget-row"],
+  [class*="usage-row"],
+  [class*="breakdown-row"]
+) small {
+  color: #737c87;
+}
+
+/* Make legend swatches look intentional on white instead of muddy blocks. */
+html[data-loom-theme="light"] :is(
+  .context-budget-swatch,
+  .context-window-swatch,
+  .context-usage-swatch,
+  [class*="context"] [class*="swatch"],
+  [class*="context"] [class*="dot"]
+) {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 3px;
+  box-shadow: 0 0 0 1px rgba(28,31,37,.045);
+}
+
+/* Secondary window/threshold/compaction metrics are one compact strip. */
+html[data-loom-theme="light"] :is(
+  .context-budget-stats,
+  .context-window-stats,
+  .context-usage-stats,
+  .context-budget-meta-grid,
+  .context-window-meta-grid,
+  [class*="context"] [class*="stats"],
+  [class*="context"] [class*="meta-grid"]
+) {
+  margin-top: 10px;
+  padding-top: 11px;
+  border-top: 1px solid rgba(28,31,37,.075);
+}
+
+html[data-loom-theme="light"] :is(
+  .context-budget-stats,
+  .context-window-stats,
+  .context-usage-stats,
+  .context-budget-meta-grid,
+  .context-window-meta-grid
+) > *,
+html[data-loom-theme="light"] [class*="context"] :is(
+  [class*="stats"],
+  [class*="meta-grid"]
+) > * {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+html[data-loom-theme="light"] :is(
+  .context-budget-stats,
+  .context-window-stats,
+  .context-usage-stats,
+  .context-budget-meta-grid,
+  .context-window-meta-grid
+) span,
+html[data-loom-theme="light"] [class*="context"] :is(
+  [class*="stats"],
+  [class*="meta-grid"]
+) span {
+  color: #727b86;
+}
+
+html[data-loom-theme="light"] :is(
+  .context-budget-stats,
+  .context-window-stats,
+  .context-usage-stats,
+  .context-budget-meta-grid,
+  .context-window-meta-grid
+) strong,
+html[data-loom-theme="light"] [class*="context"] :is(
+  [class*="stats"],
+  [class*="meta-grid"]
+) strong {
+  color: #3c444e;
+}
+
+/* Manual compaction action. This also removes the remaining black button/card
+   visible in the light-theme screenshots. */
+html[data-loom-theme="light"] :is(
+  .context-compact-button,
+  .context-budget-action,
+  .context-window-action,
+  .context-usage-action,
+  [class*="context"] [class*="compact-button"],
+  [class*="context"] [class*="action-button"]
+) {
+  min-height: 38px;
+  border: 1px solid #d9dde3 !important;
+  border-radius: 11px !important;
+  background: #f6f7f9 !important;
+  color: #59626d !important;
+  box-shadow: inset 0 1px rgba(255,255,255,.94) !important;
+  transition:
+    color 140ms ease,
+    background 140ms ease,
+    border-color 140ms ease,
+    box-shadow 160ms ease,
+    transform 130ms cubic-bezier(.2,.8,.2,1);
+}
+
+html[data-loom-theme="light"] :is(
+  .context-compact-button,
+  .context-budget-action,
+  .context-window-action,
+  .context-usage-action,
+  [class*="context"] [class*="compact-button"],
+  [class*="context"] [class*="action-button"]
+):hover:not(:disabled) {
+  border-color: rgba(105,90,216,.22) !important;
+  background: rgba(105,90,216,.06) !important;
+  color: #5144ad !important;
+  box-shadow:
+    0 5px 15px rgba(27,31,40,.05),
+    inset 0 1px rgba(255,255,255,.96) !important;
+  transform: translateY(-1px);
+}
+
+html[data-loom-theme="light"] :is(
+  .context-compact-button,
+  .context-budget-action,
+  .context-window-action,
+  .context-usage-action,
+  [class*="context"] [class*="compact-button"],
+  [class*="context"] [class*="action-button"]
+):disabled {
+  border-color: #e0e3e7 !important;
+  background: #f7f8fa !important;
+  color: #9299a3 !important;
+  opacity: 1 !important;
+  cursor: default;
+  box-shadow: none !important;
+}
+
+html[data-loom-theme="light"] :is(
+  .context-budget-note,
+  .context-window-note,
+  .context-usage-note,
+  .context-budget-footnote,
+  .context-window-footnote,
+  [class*="context"] [class*="footnote"],
+  [class*="context"] [class*="note"]
+) {
+  color: #737c87 !important;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+/* Kill dark remnants from compact context controls when their implementation
+   does not expose a more specific semantic class. */
+html[data-loom-theme="light"] .thread-header :is(
+  [class*="context"],
+  [class*="budget"]
+) button:not(.thread-header-icon-button):not(.thread-review-button) {
+  border-color: #d9dde3;
+  color: #59626d;
+}
+
+html[data-loom-theme="light"] .thread-header :is(
+  [class*="context"],
+  [class*="budget"]
+) button:not(.thread-header-icon-button):not(.thread-review-button):not(:disabled) {
+  background: rgba(255,255,255,.84);
+}
+
+html[data-loom-theme="light"] .thread-header :is(
+  [class*="context"],
+  [class*="budget"]
+) button:not(.thread-header-icon-button):not(.thread-review-button):disabled {
+  background: #f5f6f8;
+  color: #949ba5;
+}
+
+/* Motion: quick enough to feel attached to the trigger, soft enough not to pop. */
+:is(
+  .context-budget-popover,
+  .context-window-popover,
+  .context-usage-popover,
+  .context-budget-panel,
+  .context-window-panel,
+  .context-usage-panel
+) {
+  transform-origin: top right;
+  animation: loom-context-panel-enter 175ms cubic-bezier(.18,.82,.22,1) both;
+}
+
+:is(
+  .context-budget-popover,
+  .context-window-popover,
+  .context-usage-popover,
+  .context-budget-panel,
+  .context-window-panel,
+  .context-usage-panel
+).closing,
+:is(
+  .context-budget-popover,
+  .context-window-popover,
+  .context-usage-popover,
+  .context-budget-panel,
+  .context-window-panel,
+  .context-usage-panel
+)[data-state="closed"] {
+  pointer-events: none;
+  animation: loom-context-panel-exit 135ms cubic-bezier(.4,0,1,1) both;
+}
+
+@keyframes loom-context-panel-enter {
+  from { opacity: 0; transform: translateY(-5px) scale(.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes loom-context-panel-exit {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to { opacity: 0; transform: translateY(-3px) scale(.99); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :is(
+    .context-budget-popover,
+    .context-window-popover,
+    .context-usage-popover,
+    .context-budget-panel,
+    .context-window-panel,
+    .context-usage-panel
+  ) {
+    animation: none !important;
+    transition: none !important;
+  }
+}
