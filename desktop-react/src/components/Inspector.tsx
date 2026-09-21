@@ -332,22 +332,21 @@ export function Inspector({ items, onClose }: InspectorProps) {
           </button>
         </header>
 
-        <div className="runtime-tabs" role="tablist" aria-label="Runtime views" style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}>
-          <span
-            className="runtime-tab-glider"
-            style={{
-              width: `calc((100% - 16px) / ${tabs.length})`,
-              transform: `translateX(${tabIndex * 100}%)`,
-            }}
-            aria-hidden="true"
-          />
+        <div
+          className={`runtime-tabs runtime-tabs-index-${tabIndex}`}
+          role="tablist"
+          aria-label="Runtime views"
+        >
+          <span className="runtime-tab-glider" aria-hidden="true" />
           {tabs.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
               role="tab"
               aria-selected={tab === id}
               className={`runtime-tab ${tab === id ? "active" : ""}`}
+              type="button"
               onClick={() => {
+                if (id === tab) return;
                 setTab(id);
                 setExpandedId(null);
               }}
