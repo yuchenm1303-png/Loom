@@ -806,7 +806,7 @@ function Sequence({
     <>
       {subAgentItems.length ? (
         <div className="transcript-entry entry-sub-agent-workspace">
-          <SubAgentWorkspace items={subAgentItems} />
+          <SubAgentWorkspace items={subAgentItems} active={active} />
         </div>
       ) : null}
 
