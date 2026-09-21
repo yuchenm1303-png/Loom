@@ -1,14 +1,14 @@
-# Managed Smirel Relay customer packaging
+# Managed Muxway Relay customer packaging
 
 Loom built-in models are designed to be customer-installable without exposing upstream model keys.
 
 The runtime flow is:
 
 ```text
-Loom desktop → customer/device Relay credential → relay.smirel.com → server-side model entitlement → upstream provider
+Loom desktop → customer/device Relay credential → muxway.dev → server-side model entitlement → upstream provider
 ```
 
-The customer/device credential is a TermRelay API key controlled by Smirel. It is not a CQU, MiniMax, OpenAI, Claude, or other upstream provider key. Upstream keys stay only on the Relay server.
+The customer/device credential is a TermRelay API key controlled by the Muxway deployment. It is not a CQU, MiniMax, OpenAI, Claude, or other upstream provider key. Upstream keys stay only on the Relay server.
 
 ## Server setup
 
