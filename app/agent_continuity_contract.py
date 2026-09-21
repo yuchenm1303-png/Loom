@@ -258,6 +258,56 @@ def _patch_context_runtime(module: Any) -> None:
     if getattr(cls, "_loom_midturn_continuity_installed", False):
         return
 
+    def compacted_context_record(
+        runtime: Any,
+        session: Any,
+        step: Any,
+        envelope: Any,
+        communication_language: str,
+        replacement: tuple[Any, ...],
+    ) -> dict[str, Any]:
+        from app.ai import AIMessage, MessageRole
+        from app.agent_runtime.context_budget import estimate_tokens, estimate_tool_schema_tokens
+        from app.agent_runtime.context_limits import resolve_context_limits
+
+        request_state = getattr(step, "request_state", None)
+        captured = bool(getattr(request_state, "captured", False))
+        transient = [
+            message
+            for message in runtime._request_context_messages(session, step, envelope)
+            if message.name != "loom_communication_language"
+        ]
+        project_instructions = (
+            request_state.project_instructions
+            if captured
+            else runtime.instruction_loader.load(session.workspace_dir)
+        )
+        if project_instructions:
+            transient.append(
+                AIMessage(role=MessageRole.USER, name="loom_project_instructions", content=project_instructions)
+            )
+        transient.append(module.communication_language_message((), fallback=communication_language))
+        tools = step.tool_router.definitions()
+        limits = (
+            request_state.context_limits
+            if captured and request_state.context_limits is not None
+            else resolve_context_limits(runtime, session)
+        )
+        visible = (*transient, *replacement)
+        estimated = estimate_tokens(visible, tools)
+        return {
+            "context_limits": limits.as_dict(),
+            "estimated_input_tokens_after": estimated,
+            "calibrated_input_tokens_after": estimated,
+            "active_context_tokens": estimated,
+            "token_accounting_source": "post_compaction_estimate",
+            "tool_schema_tokens": estimate_tool_schema_tokens(tools),
+            "message_count": len(visible),
+            "tool_outputs_reduced": 0,
+            "tool_outputs_collapsed": 0,
+            "user_messages_truncated": 0,
+        }
+
     def commit_compaction_locked(
         self: Any,
         session: Any,
@@ -337,6 +387,46 @@ def _patch_context_runtime(module: Any) -> None:
                     durable_evidence=durable_evidence,
                 )
 
+        # A checkpoint is useful only if its replacement leaves an operable
+        # request. Prefer more headroom by dropping the oldest retained user
+        # messages, but keep the newest user request and the handoff summary.
+        context_after = compacted_context_record(
+            self, session, step, envelope, communication_language, replacement
+        )
+        limits_after = context_after["context_limits"]
+        hard_budget = int(limits_after["input_budget_tokens"])
+        auto_limit = int(limits_after["auto_compact_token_limit"])
+        safety = int(limits_after["safety_tokens"])
+        # Some test/provider profiles intentionally use a tiny explicit trigger
+        # to request immediate compaction. It is not a feasible post-compaction
+        # target; the actual model input budget remains the hard constraint.
+        target = hard_budget - safety
+        if auto_limit >= hard_budget // 2:
+            target = min(target, auto_limit * 4 // 5)
+        target = max(1, target)
+        while int(context_after["calibrated_input_tokens_after"]) > target:
+            real_users = [
+                index for index, message in enumerate(replacement)
+                if compaction.is_real_user_message(message)
+            ]
+            if len(real_users) <= 1:
+                break
+            oldest = real_users[0]
+            replacement = tuple(message for index, message in enumerate(replacement) if index != oldest)
+            context_after = compacted_context_record(
+                self, session, step, envelope, communication_language, replacement
+            )
+        if int(context_after["calibrated_input_tokens_after"]) > hard_budget:
+            from app.agent_runtime.context_budget import ContextBudgetExceeded
+
+            raise ContextBudgetExceeded(
+                estimated_tokens=int(context_after["calibrated_input_tokens_after"]),
+                input_budget_tokens=hard_budget,
+                tool_schema_tokens=int(context_after["tool_schema_tokens"]),
+                message_count=int(context_after["message_count"]),
+                reason="compacted history still exceeds the model input budget",
+            )
+
         retained_message_count = sum(
             1 for message in replacement if compaction.is_real_user_message(message)
         )
@@ -361,6 +451,7 @@ def _patch_context_runtime(module: Any) -> None:
                 "world_state_digest": checkpoint.world_state_digest,
                 "history_repaired": repaired.changed,
                 "summary_source": summary_source,
+                "context_after_compaction": context_after,
                 "compaction_phase": "mid_turn" if mid_turn else "standalone",
                 "continuity_reference_injected": reference_injected,
                 "continuity_reference": reference_payload,

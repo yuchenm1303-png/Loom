@@ -190,6 +190,39 @@ def test_thread_context_reports_the_last_real_request(tmp_path: Path) -> None:
         runtime.close()
 
 
+def test_checkpoint_replaces_stale_request_usage_with_compacted_estimate(tmp_path: Path) -> None:
+    service, runtime, workspace = _build_service(tmp_path, [ModelResponse(text="done")])
+    try:
+        thread_id = service.thread_start({"workspace": str(workspace)})["thread"]["id"]
+        session = runtime.store.load(thread_id)
+        runtime._record(session, AgentEventKind.MODEL_REQUESTED, data=dict(_RECORDED_REQUEST))
+        compacted = dict(_RECORDED_REQUEST)
+        compacted.update(
+            {
+                "calibrated_input_tokens_after": 12_000,
+                "active_context_tokens": 12_000,
+                "token_accounting_source": "post_compaction_estimate",
+                "tool_outputs_reduced": 0,
+                "tool_outputs_collapsed": 0,
+            }
+        )
+        runtime._record(
+            session,
+            AgentEventKind.CONTEXT_CHECKPOINTED,
+            data={"checkpoint_id": "ctx-new", "context_after_compaction": compacted},
+        )
+
+        report = service.thread_context({"threadId": thread_id})["context"]
+
+        assert report["usedTokens"] == 12_000
+        assert report["accounting"] == "post_compaction_estimate"
+        assert report["measurementPending"] is True
+        assert report["pressure"]["blinded"] is False
+        assert report["compactions"] == 1
+    finally:
+        runtime.close()
+
+
 def test_the_meter_updates_live_without_a_second_round_trip(tmp_path: Path) -> None:
     service, runtime, workspace = _build_service(tmp_path, [ModelResponse(text="done")])
     notifications: list[tuple[str, dict]] = []

@@ -757,14 +757,24 @@ class ManagedStreamingLoomAppServerService(StreamingLoomAppServerService):
 
         if latest_request is None and latest_checkpoint is not None:
             data = latest_checkpoint.data if isinstance(latest_checkpoint.data, dict) else {}
-            report = post_compaction_context_report(
-                resolve_context_limits(self.runtime, session).as_dict(),
-                estimated_tokens=int(data.get("replacement_estimated_tokens") or 0),
-                message_count=int(data.get("replacement_messages") or 0),
-                compactions=compactions,
-                last_compacted_at=last_compacted_at,
-                measured_at=latest_checkpoint.created_at,
-            )
+            checkpoint_context = data.get("context_after_compaction")
+            if isinstance(checkpoint_context, dict):
+                report = context_report_from_request(
+                    checkpoint_context,
+                    compactions=compactions,
+                    last_compacted_at=last_compacted_at,
+                    measured_at=latest_checkpoint.created_at,
+                )
+                report["measurementPending"] = True
+            else:
+                report = post_compaction_context_report(
+                    resolve_context_limits(self.runtime, session).as_dict(),
+                    estimated_tokens=int(data.get("replacement_estimated_tokens") or 0),
+                    message_count=int(data.get("replacement_messages") or 0),
+                    compactions=compactions,
+                    last_compacted_at=last_compacted_at,
+                    measured_at=latest_checkpoint.created_at,
+                )
         elif latest_request is None:
             # No model step has run, so there is no measured request to report.
             # The budget is still knowable, and showing it beats showing nothing.
