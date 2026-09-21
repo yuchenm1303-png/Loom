@@ -96,6 +96,16 @@ def test_agent_tool_loop_completes(tmp_path):
     assert AgentEventKind.TURN_COMPLETED in kinds
     requested = [event for event in store.events(session.session_id) if event.kind is AgentEventKind.MODEL_REQUESTED]
     assert requested[-1].data["step_id"]
+    responses = [event for event in store.events(session.session_id) if event.kind is AgentEventKind.MODEL_RESPONSE]
+    assert responses[0].data["phase"] == "commentary"
+    assert responses[0].data["runtime_authored"] is True
+    assert responses[0].data["text"]
+    assert responses[-1].data["phase"] == "final_answer"
+    assert responses[-1].data["runtime_authored"] is False
+    assert any(
+        message.role.value == "assistant" and str(message.content).strip()
+        for message in platform.requests[1][1].messages
+    )
 
 
 def test_native_workspace_binding_is_persisted(tmp_path):

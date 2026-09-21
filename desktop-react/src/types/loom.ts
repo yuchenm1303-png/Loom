@@ -76,6 +76,8 @@ export interface TranscriptItem {
   submittedAt?: string;
   /** Runtime-authored assistant phase. Never infer finality from transcript order. */
   phase?: "commentary" | "final_answer" | string;
+  /** True when Loom supplied a safe progress preamble for a tool-only model response. */
+  runtimeAuthored?: boolean;
   /** Stable model-step identity used to correlate the terminal answer. */
   stepId?: string | null;
   toolName?: string;

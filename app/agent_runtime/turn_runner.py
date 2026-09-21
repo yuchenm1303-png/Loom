@@ -373,6 +373,23 @@ class TurnRunner:
                 if not response.text and not response.tool_calls:
                     raise RuntimeError("agent model response contained neither text nor tool calls")
 
+                runtime_authored_commentary = False
+                if response.tool_calls and not str(response.text or "").strip():
+                    # A tool-only response is valid at the provider layer, but accepting
+                    # it verbatim leaves the user staring at an unexplained command stream.
+                    # Supply a safe, language-aware preamble without reflecting arguments,
+                    # which may contain credentials, into the public transcript.
+                    from .tool_commentary import runtime_tool_commentary
+                    response = replace(
+                        response,
+                        text=runtime_tool_commentary(
+                            response.tool_calls,
+                            communication_language=session.communication_language,
+                            continuing=session.tool_calls > 0,
+                        ),
+                    )
+                    runtime_authored_commentary = True
+
                 # Serialize the final sample-acceptance boundary against steering
                 # submission. ModelExecutor already notices guidance during token
                 # generation; this closes the final race after the provider has
@@ -417,6 +434,9 @@ class TurnRunner:
                                 {"call_id": c.call_id, "name": c.name, "arguments": c.arguments}
                                 for c in calls
                             ],
+                            "phase": "commentary" if calls else "final_answer",
+                            "runtime_authored": runtime_authored_commentary,
+                            "silent_tool_fallback": runtime_authored_commentary,
                             "compaction_echo_removed": compaction_echo_removed,
                             "usage": {
                                 "input_tokens": response.usage.input_tokens,
