@@ -543,3 +543,247 @@ html[data-loom-reduced-motion="true"] .context-meter-compaction-step.active::aft
   transition: none !important;
   animation: none !important;
 }
+
+
+/* Detailed compaction progress card --------------------------------------- */
+.context-meter-progress-card {
+  margin: 0 0 10px;
+  padding: 10px 10px 9px;
+  border: 1px solid color-mix(in srgb, var(--accent, #695ad8) 13%, var(--border, rgba(255,255,255,.09)));
+  border-radius: 10px;
+  background:
+    linear-gradient(180deg,
+      color-mix(in srgb, var(--accent, #695ad8) 5%, transparent),
+      color-mix(in srgb, var(--accent, #695ad8) 2%, transparent));
+}
+
+.context-meter-progress-head {
+  min-height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.context-meter-progress-head > span {
+  color: var(--muted, #9aa1ab);
+  font-size: 10.5px;
+  font-weight: 560;
+}
+
+.context-meter-progress-head strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text, #e8eaee);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.context-meter-progress-rail {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.context-meter-progress-segment {
+  position: relative;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--panel-hover, rgba(255,255,255,.08));
+}
+
+.context-meter-progress-segment.done {
+  background: color-mix(in srgb, var(--accent, #695ad8) 78%, transparent);
+}
+
+.context-meter-progress-segment.active {
+  background: color-mix(in srgb, var(--accent, #695ad8) 15%, var(--panel-hover, rgba(255,255,255,.08)));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent, #695ad8) 15%, transparent);
+}
+
+.context-meter-progress-segment.active i {
+  position: absolute;
+  inset-block: 0;
+  left: -45%;
+  width: 44%;
+  border-radius: inherit;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--accent, #695ad8) 70%, white 30%),
+    transparent
+  );
+  animation: context-meter-progress-sweep 1.25s cubic-bezier(.42,.05,.18,1) infinite;
+}
+
+.context-meter-progress-segment.failed {
+  background: color-mix(in srgb, var(--danger, #b8505d) 18%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--danger, #b8505d) 24%, transparent);
+}
+
+.context-meter-progress-labels {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  margin-bottom: 7px;
+}
+
+.context-meter-progress-labels span {
+  min-width: 0;
+  color: var(--faint, #737c88);
+  font-size: 9.5px;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.context-meter-progress-labels span:nth-child(2) {
+  text-align: center;
+}
+
+.context-meter-progress-labels span:last-child {
+  text-align: right;
+}
+
+.context-meter-progress-labels span.done {
+  color: color-mix(in srgb, var(--accent, #695ad8) 72%, var(--muted, #9aa1ab));
+}
+
+.context-meter-progress-labels span.active {
+  color: var(--accent, #695ad8);
+  font-weight: 620;
+}
+
+.context-meter-progress-card p {
+  margin: 0;
+  color: var(--muted, #9aa1ab);
+  font-size: 10.5px;
+  line-height: 1.45;
+}
+
+.context-meter-progress-card small {
+  display: block;
+  margin-top: 5px;
+  color: var(--danger, #b8505d);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.context-meter-progress-card.completed {
+  border-color: color-mix(in srgb, var(--success, #39765a) 18%, var(--border, rgba(255,255,255,.09)));
+  background:
+    linear-gradient(180deg,
+      color-mix(in srgb, var(--success, #39765a) 5%, transparent),
+      color-mix(in srgb, var(--success, #39765a) 2%, transparent));
+}
+
+.context-meter-progress-card.completed .context-meter-progress-segment {
+  background: color-mix(in srgb, var(--success, #39765a) 72%, transparent);
+}
+
+.context-meter-progress-card.failed {
+  border-color: color-mix(in srgb, var(--danger, #b8505d) 22%, var(--border, rgba(255,255,255,.09)));
+  background:
+    linear-gradient(180deg,
+      color-mix(in srgb, var(--danger, #b8505d) 5%, transparent),
+      color-mix(in srgb, var(--danger, #b8505d) 2%, transparent));
+}
+
+@keyframes context-meter-progress-sweep {
+  from { transform: translateX(0); opacity: .28; }
+  45% { opacity: .92; }
+  to { transform: translateX(330%); opacity: .20; }
+}
+
+html[data-loom-theme="light"] .context-meter-progress-card {
+  border-color: rgba(105,90,216,.12);
+  background:
+    linear-gradient(180deg, rgba(105,90,216,.045), rgba(105,90,216,.018));
+  box-shadow: inset 0 1px rgba(255,255,255,.76);
+}
+
+html[data-loom-theme="light"] .context-meter-progress-head > span {
+  color: #737c87;
+}
+
+html[data-loom-theme="light"] .context-meter-progress-head strong {
+  color: #4f44ad;
+}
+
+html[data-loom-theme="light"] .context-meter-progress-segment {
+  background: #e5e8ec;
+}
+
+html[data-loom-theme="light"] .context-meter-progress-segment.done {
+  background: rgba(105,90,216,.72);
+}
+
+html[data-loom-theme="light"] .context-meter-progress-segment.active {
+  background: rgba(105,90,216,.12);
+  box-shadow: inset 0 0 0 1px rgba(105,90,216,.10);
+}
+
+html[data-loom-theme="light"] .context-meter-progress-segment.active i {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(105,90,216,.62),
+    rgba(151,137,232,.86),
+    transparent
+  );
+}
+
+html[data-loom-theme="light"] .context-meter-progress-labels span {
+  color: #9199a3;
+}
+
+html[data-loom-theme="light"] .context-meter-progress-labels span.done {
+  color: #7569bf;
+}
+
+html[data-loom-theme="light"] .context-meter-progress-labels span.active {
+  color: #5d50b7;
+}
+
+html[data-loom-theme="light"] .context-meter-progress-card p {
+  color: #6f7883;
+}
+
+html[data-loom-theme="light"] .context-meter-progress-card.completed {
+  border-color: rgba(57,118,90,.14);
+  background:
+    linear-gradient(180deg, rgba(57,118,90,.045), rgba(57,118,90,.016));
+}
+
+html[data-loom-theme="light"] .context-meter-progress-card.completed .context-meter-progress-head strong {
+  color: #39765a;
+}
+
+html[data-loom-theme="light"] .context-meter-progress-card.completed .context-meter-progress-segment {
+  background: rgba(57,118,90,.64);
+}
+
+html[data-loom-theme="light"] .context-meter-progress-card.failed {
+  border-color: rgba(184,80,93,.16);
+  background:
+    linear-gradient(180deg, rgba(184,80,93,.045), rgba(184,80,93,.016));
+}
+
+html[data-loom-theme="light"] .context-meter-progress-card.failed .context-meter-progress-head strong {
+  color: #a74452;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .context-meter-progress-segment.active i {
+    animation: none !important;
+  }
+}
+
+html[data-loom-reduced-motion="true"] .context-meter-progress-segment.active i {
+  animation: none !important;
+}
