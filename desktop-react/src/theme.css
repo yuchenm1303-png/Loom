@@ -4163,3 +4163,318 @@ html[data-loom-theme="light"] .runtime-stream-mark i {
 html[data-loom-theme="light"] .runtime-stream-mark.live i {
   background: #695ad8;
 }
+
+
+/* Light theme: review workspace completion ------------------------------- */
+/* The review workspace is authored dark-first. Keep dark mode intact and
+   provide a complete light rendering for the full-screen diff experience. */
+
+html[data-loom-theme="light"] .review-workspace {
+  background: #f7f8fa;
+  color: #30363e;
+}
+
+/* Top chrome -------------------------------------------------------------- */
+html[data-loom-theme="light"] .review-topbar {
+  border-bottom-color: #dde1e6;
+  background:
+    radial-gradient(480px 160px at 0% 0%, rgba(105,90,216,.045), transparent 62%),
+    #ffffff;
+  box-shadow: inset 0 1px rgba(255,255,255,.98);
+}
+
+html[data-loom-theme="light"] .review-heading-icon {
+  border-color: rgba(105,90,216,.15);
+  background: rgba(105,90,216,.07);
+  color: #6253ca;
+  box-shadow: inset 0 1px rgba(255,255,255,.90);
+}
+
+html[data-loom-theme="light"] .review-heading strong {
+  color: #242a31;
+}
+
+html[data-loom-theme="light"] .review-heading span {
+  color: #6d7681;
+}
+
+html[data-loom-theme="light"] .review-summary {
+  color: #68717c;
+}
+
+html[data-loom-theme="light"] .review-summary span:first-child {
+  border-right-color: #dde1e6;
+}
+
+html[data-loom-theme="light"] .review-additions,
+html[data-loom-theme="light"] .review-file-stats b,
+html[data-loom-theme="light"] .review-tree-stats b {
+  color: #2f7a58 !important;
+}
+
+html[data-loom-theme="light"] .review-deletions,
+html[data-loom-theme="light"] .review-file-stats em,
+html[data-loom-theme="light"] .review-tree-stats em {
+  color: #b24b5a !important;
+}
+
+html[data-loom-theme="light"] .review-close {
+  color: #6f7883;
+}
+
+html[data-loom-theme="light"] .review-close:hover {
+  color: #343a42;
+  background: #f4f5f7;
+  border-color: #dce0e5;
+}
+
+/* Secondary toolbar ------------------------------------------------------- */
+html[data-loom-theme="light"] .review-toolbar {
+  border-bottom-color: #e0e3e7;
+  background: #fafbfc;
+}
+
+html[data-loom-theme="light"] .review-round-label {
+  color: #3d444d;
+}
+
+html[data-loom-theme="light"] .review-round-label i {
+  background: #695ad8;
+  box-shadow: 0 0 0 3px rgba(105,90,216,.07);
+}
+
+html[data-loom-theme="light"] .review-file-navigation button,
+html[data-loom-theme="light"] .review-file-actions button {
+  border-color: #d9dde3;
+  background: #ffffff;
+  color: #626b76;
+  box-shadow: inset 0 1px rgba(255,255,255,.96);
+}
+
+html[data-loom-theme="light"] .review-file-navigation button:hover:not(:disabled),
+html[data-loom-theme="light"] .review-file-actions button:hover:not(:disabled) {
+  border-color: rgba(105,90,216,.19);
+  background: rgba(105,90,216,.055);
+  color: #5144ad;
+}
+
+html[data-loom-theme="light"] .review-file-navigation button:disabled,
+html[data-loom-theme="light"] .review-file-actions button:disabled {
+  border-color: #e2e5e9;
+  background: #f6f7f9;
+  color: #a0a7b0;
+  opacity: 1;
+}
+
+html[data-loom-theme="light"] .review-file-navigation span {
+  color: #68717c;
+}
+
+/* Main diff area ---------------------------------------------------------- */
+html[data-loom-theme="light"] .review-diff-panel {
+  background: #ffffff;
+}
+
+html[data-loom-theme="light"] .review-file-header {
+  border-bottom-color: #e0e3e7;
+  background: #fafbfc;
+}
+
+html[data-loom-theme="light"] .review-file-title {
+  color: #59636f;
+}
+
+html[data-loom-theme="light"] .review-file-title > svg {
+  color: #6253ca;
+}
+
+html[data-loom-theme="light"] .review-file-title strong {
+  color: #30363e;
+}
+
+html[data-loom-theme="light"] .review-file-actions > span {
+  color: #737c87;
+}
+
+html[data-loom-theme="light"] .review-diff-scroll,
+html[data-loom-theme="light"] .review-files-scroll {
+  scrollbar-color: #c7ccd3 transparent;
+}
+
+html[data-loom-theme="light"] .review-diff-scroll::-webkit-scrollbar-thumb,
+html[data-loom-theme="light"] .review-files-scroll::-webkit-scrollbar-thumb {
+  background: #c7ccd3;
+}
+
+html[data-loom-theme="light"] .review-diff-table {
+  background: #ffffff;
+}
+
+html[data-loom-theme="light"] .review-code-row {
+  color: #3f4852;
+}
+
+html[data-loom-theme="light"] .review-code-row:hover {
+  background: rgba(28,31,37,.018);
+}
+
+html[data-loom-theme="light"] .review-code-row.is-add {
+  background: rgba(47,122,88,.085);
+  color: #285b44;
+}
+
+html[data-loom-theme="light"] .review-code-row.is-delete {
+  background: rgba(178,75,90,.080);
+  color: #7f3440;
+}
+
+html[data-loom-theme="light"] .review-line-number {
+  border-right-color: #e2e5e9;
+  color: #9299a3;
+}
+
+html[data-loom-theme="light"] .review-code-row.is-add .review-line-number {
+  color: #5c9b7c;
+}
+
+html[data-loom-theme="light"] .review-code-row.is-delete .review-line-number {
+  color: #c07b85;
+}
+
+html[data-loom-theme="light"] .review-line-marker {
+  color: #9097a1;
+}
+
+html[data-loom-theme="light"] .review-code-row.is-add .review-line-marker {
+  color: #2f7a58;
+}
+
+html[data-loom-theme="light"] .review-code-row.is-delete .review-line-marker {
+  color: #b24b5a;
+}
+
+html[data-loom-theme="light"] .review-fold-row,
+html[data-loom-theme="light"] .review-hunk-row,
+html[data-loom-theme="light"] .review-meta-row {
+  border-top-color: #e1e4e8;
+  border-bottom-color: #e1e4e8;
+}
+
+html[data-loom-theme="light"] .review-fold-row {
+  border-color: #dce0e5;
+  background: #f7f8fa;
+}
+
+html[data-loom-theme="light"] .review-fold-row span {
+  color: #707985;
+}
+
+html[data-loom-theme="light"] .review-hunk-row {
+  background: rgba(105,90,216,.055);
+  color: #5d52a4;
+}
+
+html[data-loom-theme="light"] .review-meta-row {
+  color: #737c87;
+}
+
+html[data-loom-theme="light"] .review-empty-diff {
+  color: #737c87;
+}
+
+/* File tree --------------------------------------------------------------- */
+html[data-loom-theme="light"] .review-files-panel {
+  border-left-color: #dde1e6;
+  background: #f8f9fb;
+}
+
+html[data-loom-theme="light"] .review-file-search {
+  border-color: #d9dde3;
+  background: #ffffff;
+  color: #747d88;
+  box-shadow: inset 0 1px rgba(255,255,255,.95);
+}
+
+html[data-loom-theme="light"] .review-file-search:focus-within {
+  border-color: rgba(105,90,216,.26);
+  box-shadow:
+    0 0 0 3px rgba(105,90,216,.06),
+    inset 0 1px rgba(255,255,255,.98);
+}
+
+html[data-loom-theme="light"] .review-file-search input {
+  color: #30363e;
+}
+
+html[data-loom-theme="light"] .review-file-search input::placeholder {
+  color: #8b939d;
+}
+
+html[data-loom-theme="light"] .review-file-search button {
+  color: #747d88;
+}
+
+html[data-loom-theme="light"] .review-file-search button:hover {
+  color: #5144ad;
+  background: rgba(105,90,216,.055);
+}
+
+html[data-loom-theme="light"] .review-directory-row {
+  color: #59636f;
+}
+
+html[data-loom-theme="light"] .review-directory-row svg {
+  color: #68788d;
+}
+
+html[data-loom-theme="light"] .review-directory-row small {
+  color: #7d8691;
+}
+
+html[data-loom-theme="light"] .review-directory-files button {
+  color: #616b76;
+}
+
+html[data-loom-theme="light"] .review-directory-files button:hover {
+  color: #343a42;
+  background: rgba(28,31,37,.035);
+}
+
+html[data-loom-theme="light"] .review-directory-files button.active {
+  color: #4d419f;
+  background: rgba(105,90,216,.075);
+  border-color: rgba(105,90,216,.16);
+  box-shadow: inset 2px 0 rgba(105,90,216,.32);
+}
+
+html[data-loom-theme="light"] .review-directory-files button > svg {
+  color: #6e7f98;
+}
+
+html[data-loom-theme="light"] .review-directory-files button.active > svg {
+  color: #6253ca;
+}
+
+html[data-loom-theme="light"] .review-files-empty {
+  color: #737c87;
+}
+
+/* Preserve diff semantics without turning the code pane into a dark terminal. */
+html[data-loom-theme="light"] .review-code-row code {
+  color: inherit;
+  background: transparent;
+}
+
+html[data-loom-theme="light"] .review-diff-scroll {
+  background:
+    linear-gradient(90deg, rgba(28,31,37,.018), transparent 80px),
+    #ffffff;
+}
+
+/* Responsive split keeps a visible but quiet divider in light mode. */
+@media (max-width: 900px) {
+  html[data-loom-theme="light"] .review-files-panel {
+    border-top-color: #dde1e6;
+    border-left-color: transparent;
+  }
+}
