@@ -7,7 +7,7 @@ import {
   MessageSquare,
   XCircle,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { TranscriptItem } from "../types/loom";
 import "./sub-agent-workspace.css";
 
@@ -205,6 +205,43 @@ function aggregateAgents(items: TranscriptItem[]): AgentCardState[] {
   return [...agents.values()];
 }
 
+function mergeLiveSnapshots(
+  agents: AgentCardState[],
+  snapshots: Record<string, unknown>[],
+): AgentCardState[] {
+  if (!snapshots.length) return agents;
+
+  const byId = new Map<string, AgentCardState>();
+  const pending = agents.filter((agent) => !agent.sessionId);
+  for (const agent of agents) {
+    if (agent.sessionId) byId.set(agent.sessionId, agent);
+  }
+
+  let pendingIndex = 0;
+  for (const snapshot of snapshots) {
+    const sessionId = stringValue(snapshot.session_id);
+    if (!sessionId) continue;
+
+    let agent = byId.get(sessionId);
+    if (!agent && pendingIndex < pending.length) {
+      agent = { ...pending[pendingIndex], key: sessionId, sessionId };
+      pendingIndex += 1;
+    }
+    agent ??= emptyAgent(sessionId);
+    byId.set(sessionId, mergeSnapshot(agent, snapshot));
+  }
+
+  const unresolved = pending.slice(pendingIndex);
+  return [...byId.values(), ...unresolved];
+}
+
+function snapshotIsLive(snapshot: Record<string, unknown>): boolean {
+  const status = stringValue(snapshot.session_status).toLowerCase();
+  return boolValue(snapshot.execution_running)
+    || status === "running"
+    || status === "waiting_approval";
+}
+
 function normalizedStatus(agent: AgentCardState): AgentStatus {
   const fallback = agent.fallbackStatus.toLowerCase();
   const session = agent.sessionStatus.toLowerCase();
@@ -332,7 +369,62 @@ export function isSubAgentToolItem(item: TranscriptItem): boolean {
 }
 
 export function SubAgentWorkspace({ items }: { items: TranscriptItem[] }) {
-  const agents = useMemo(() => aggregateAgents(items), [items]);
+  const transcriptAgents = useMemo(() => aggregateAgents(items), [items]);
+  const threadId = String(items.find((item) => item.threadId)?.threadId || "");
+  const transcriptHasLiveAgent = useMemo(
+    () => transcriptAgents.some((agent) => {
+      const status = normalizedStatus(agent);
+      return status === "starting" || status === "running" || status === "waiting";
+    }),
+    [transcriptAgents],
+  );
+  const [liveSnapshots, setLiveSnapshots] = useState<Record<string, unknown>[]>([]);
+
+  useEffect(() => {
+    if (!threadId || !window.loom?.call) return;
+
+    let disposed = false;
+    let timer: number | null = null;
+    let failures = 0;
+
+    const schedule = (delay: number) => {
+      if (disposed) return;
+      timer = window.setTimeout(() => void refresh(), delay);
+    };
+
+    const refresh = async () => {
+      try {
+        const result = await window.loom.call<{ agents?: unknown[] }>("agent/list", {
+          threadId,
+          includeClosed: true,
+        });
+        if (disposed) return;
+
+        const snapshots = Array.isArray(result?.agents)
+          ? result.agents.map(objectValue).filter((value): value is Record<string, unknown> => Boolean(value))
+          : [];
+        setLiveSnapshots(snapshots);
+        failures = 0;
+
+        if (snapshots.length && !snapshots.some(snapshotIsLive)) return;
+        if (snapshots.some(snapshotIsLive) || transcriptHasLiveAgent) schedule(1100);
+      } catch {
+        failures += 1;
+        if (transcriptHasLiveAgent && failures < 4) schedule(2200);
+      }
+    };
+
+    void refresh();
+    return () => {
+      disposed = true;
+      if (timer !== null) window.clearTimeout(timer);
+    };
+  }, [threadId, transcriptHasLiveAgent]);
+
+  const agents = useMemo(
+    () => mergeLiveSnapshots(transcriptAgents, liveSnapshots),
+    [liveSnapshots, transcriptAgents],
+  );
   const counts = useMemo(() => {
     let running = 0;
     let completed = 0;
