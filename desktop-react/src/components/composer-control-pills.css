@@ -244,3 +244,68 @@ html[data-loom-theme="light"] .composer .model-chip > svg:not(.composer-chip-che
 :root[data-loom-reduced-motion="true"] .composer .composer-chip::before {
   display: none !important;
 }
+
+
+/* Model chip text-fit + glyph clipping fix -------------------------------- */
+/* The button shell should not own text ellipsis. Model names live in a child
+   span, so give that span the shrinking/ellipsis contract and keep enough
+   line box for descenders such as g/p/y. */
+.composer .model-chip {
+  min-width: 0;
+  max-width: min(292px, 38vw);
+  flex: 0 1 auto;
+  overflow: hidden;
+}
+
+.composer .model-chip > span {
+  min-width: 0;
+  max-width: 100%;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.28;
+  padding-block: 1px 2px;
+}
+
+.composer .model-chip > svg:not(.composer-chip-chevron),
+.composer .model-chip > .composer-chip-chevron {
+  flex: 0 0 auto;
+}
+
+/* General chips also need a real line box; line-height:1 can clip glyph
+   descenders when the control is rendered at fractional Windows scaling. */
+.composer .composer-chip {
+  line-height: 1.24;
+}
+
+html[data-loom-theme="light"] .composer .composer-chip {
+  line-height: 1.24;
+}
+
+html[data-loom-theme="light"] .composer .model-chip > span {
+  line-height: 1.28;
+}
+
+/* Let long model names use available toolbar space before truncating. */
+@media (min-width: 1200px) {
+  .composer .model-chip {
+    max-width: 320px;
+  }
+}
+
+@media (max-width: 980px) {
+  .composer .model-chip {
+    max-width: min(230px, 34vw);
+  }
+}
+
+@media (max-width: 760px) {
+  .composer .model-chip {
+    max-width: min(178px, 42vw);
+  }
+
+  .composer .model-chip > span {
+    line-height: 1.3;
+  }
+}

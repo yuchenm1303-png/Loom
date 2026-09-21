@@ -72,7 +72,7 @@
   align-items: center;
   justify-content: stretch;
   column-gap: 6px;
-  padding: 0 7px;
+  padding: 0 8px;
   border: 1px solid transparent;
   border-radius: 11px;
   background: transparent;
@@ -132,42 +132,48 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  line-height: 1.2;
 }
 
+.runtime-tab:has(.runtime-tab-count) > span:not(.runtime-tab-count) {
+  padding-right: 12px;
+}
+
+/* Counts are supplementary corner badges, never a third layout column. This
+   keeps all four tab labels on one baseline even when one count is three digits. */
 .runtime-tab-count {
   position: absolute;
-  top: 5px;
-  right: 5px;
-  width: 5px;
-  min-width: 5px;
-  height: 5px;
+  top: 3px;
+  right: 3px;
+  min-width: 15px;
+  height: 14px;
   margin: 0;
-  padding: 0;
-  display: block;
+  padding: 0 3px;
+  display: inline-grid;
+  place-items: center;
   overflow: hidden;
-  border: 0;
+  border: 1px solid rgba(255,255,255,.055);
   border-radius: 999px;
-  background: rgba(139,124,246,.50);
-  color: transparent;
-  box-shadow: 0 0 0 2px rgba(139,124,246,.06);
-  font-size: 0;
-  line-height: 0;
+  background: rgba(255,255,255,.045);
+  color: #858e9b;
+  box-shadow: inset 0 1px rgba(255,255,255,.025);
+  font-size: 7.5px;
+  font-weight: 680;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
   transition:
-    width 180ms cubic-bezier(.22,1,.36,1),
-    height 180ms cubic-bezier(.22,1,.36,1),
+    color 150ms ease,
     background 150ms ease,
-    box-shadow 180ms ease,
+    border-color 150ms ease,
     transform 180ms cubic-bezier(.22,1,.36,1);
 }
 
 .runtime-tab.active .runtime-tab-count {
-  width: 6px;
-  height: 6px;
-  background: #a99eff;
-  box-shadow:
-    0 0 0 3px rgba(139,124,246,.085),
-    0 0 8px rgba(139,124,246,.13);
-  transform: translate(-.25px, -.25px);
+  border-color: rgba(139,124,246,.13);
+  background: rgba(139,124,246,.09);
+  color: #aaa1eb;
+  transform: translateY(-.25px);
 }
 
 /* Light theme: white segmented surface, no black selected slab. */
@@ -210,15 +216,19 @@ html[data-loom-theme="light"] .runtime-tab.active > svg {
 }
 
 html[data-loom-theme="light"] .runtime-tab-count {
-  background: rgba(105,90,216,.36);
-  box-shadow: 0 0 0 2px rgba(105,90,216,.045);
+  border-color: rgba(31,35,42,.07);
+  background: #eef0f3;
+  color: #747d88;
+  box-shadow:
+    inset 0 1px rgba(255,255,255,.88),
+    0 1px 2px rgba(31,35,42,.025);
 }
 
 html[data-loom-theme="light"] .runtime-tab.active .runtime-tab-count {
-  background: #695ad8;
-  box-shadow:
-    0 0 0 3px rgba(105,90,216,.07),
-    0 0 7px rgba(105,90,216,.09);
+  border-color: rgba(105,90,216,.12);
+  background: rgba(105,90,216,.085);
+  color: #5d50b7;
+  box-shadow: inset 0 1px rgba(255,255,255,.7);
 }
 
 /* Keep tab geometry stable while the inspector itself becomes narrower. */
@@ -232,8 +242,21 @@ html[data-loom-theme="light"] .runtime-tab.active .runtime-tab-count {
     height: 35px;
     grid-template-columns: 14px minmax(0, 1fr);
     column-gap: 5px;
-    padding: 0 6px;
+    padding: 0 7px;
     font-size: 10px;
+  }
+
+  .runtime-tab-count {
+    top: 3px;
+    right: 3px;
+    min-width: 14px;
+    height: 13px;
+    padding-inline: 2px;
+    font-size: 7px;
+  }
+
+  .runtime-tab:has(.runtime-tab-count) > span:not(.runtime-tab-count) {
+    padding-right: 10px;
   }
 
   .runtime-tab-glider {
@@ -250,12 +273,16 @@ html[data-loom-theme="light"] .runtime-tab.active .runtime-tab-count {
 @media (max-width: 900px) {
   .runtime-tab {
     column-gap: 4px;
-    padding-inline: 7px;
+    padding-inline: 6px;
   }
 
   .runtime-tab-count {
-    right: 5px;
-    top: 5px;
+    right: 2px;
+    top: 2px;
+  }
+
+  .runtime-tab:has(.runtime-tab-count) > span:not(.runtime-tab-count) {
+    padding-right: 9px;
   }
 }
 

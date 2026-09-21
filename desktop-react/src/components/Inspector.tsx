@@ -354,7 +354,15 @@ export function Inspector({ items, onClose }: InspectorProps) {
             >
               <Icon size={14} strokeWidth={1.75} />
               <span>{zh ? ({ activity: "活动", computer: "电脑", changes: "文件", terminal: "终端" }[id]) : label}</span>
-              {counts[id] > 0 ? <span className="runtime-tab-count">{counts[id]}</span> : null}
+              {counts[id] > 0 ? (
+                <span
+                  className="runtime-tab-count"
+                  title={`${counts[id]} ${counts[id] === 1 ? "event" : "events"}`}
+                  aria-label={`${counts[id]} ${counts[id] === 1 ? "event" : "events"}`}
+                >
+                  {counts[id] > 99 ? "99+" : counts[id]}
+                </span>
+              ) : null}
             </button>
           ))}
         </div>

@@ -168,7 +168,8 @@
   transform: none;
 }
 
-/* Tabs: keep them quiet until selected, avoid old grey-button appearance. */
+/* Tabs: the moving glider owns the selected surface. Individual tabs only
+   carry text/icon state so we never render a second competing pill. */
 .runtime-tab {
   border: 1px solid transparent;
   border-radius: 10px;
@@ -177,27 +178,21 @@
   box-shadow: none;
   transition:
     transform 140ms cubic-bezier(.2,.8,.2,1),
-    color 150ms ease,
-    border-color 150ms ease,
-    background 150ms ease,
-    box-shadow 160ms ease;
+    color 150ms ease;
 }
 
 .runtime-tab:hover:not(.active) {
   color: #9ba3af;
-  border-color: rgba(255,255,255,.045);
-  background: rgba(255,255,255,.022);
-  transform: translateY(-1px);
+  border-color: transparent;
+  background: transparent;
+  transform: none;
 }
 
 .runtime-tab.active {
   color: #c7c2f5;
-  border-color: rgba(139,124,246,.16);
-  background:
-    linear-gradient(180deg, rgba(139,124,246,.10), rgba(139,124,246,.045));
-  box-shadow:
-    inset 0 1px rgba(255,255,255,.04),
-    0 4px 12px rgba(0,0,0,.075);
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
 }
 
 .runtime-tab.active svg {
@@ -264,18 +259,15 @@ html[data-loom-theme="light"] .runtime-tab {
 
 html[data-loom-theme="light"] .runtime-tab:hover:not(.active) {
   color: #3e4650;
-  border-color: rgba(31,35,42,.065);
-  background: #f7f8fa;
+  border-color: transparent;
+  background: transparent;
 }
 
 html[data-loom-theme="light"] .runtime-tab.active {
   color: #5d50bf;
-  border-color: rgba(105,90,216,.16);
-  background:
-    linear-gradient(180deg, #ffffff, #f5f3ff);
-  box-shadow:
-    0 4px 12px rgba(58,48,121,.07),
-    inset 0 1px rgba(255,255,255,.98);
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
 }
 
 html[data-loom-theme="light"] .runtime-tab.active svg {
@@ -311,115 +303,4 @@ html[data-loom-reduced-motion="true"] .runtime-section-actions button,
 html[data-loom-reduced-motion="true"] .runtime-review-button,
 html[data-loom-reduced-motion="true"] .computer-log-export-button {
   transition-duration: .001ms !important;
-}
-
-
-/* Runtime tab count badges ------------------------------------------------ */
-/* Older inspector styles positioned the event counters outside the compact
-   tab surface. Once the tab itself became a rounded pill with overflow
-   clipping, only the top edge of those counters remained visible. Keep the
-   badge inside the tab layout and explicitly reset every legacy positioning
-   property so all four views render their counts consistently. */
-.runtime-tabs {
-  overflow: visible;
-}
-
-.runtime-tab {
-  min-height: 34px;
-  height: 34px;
-  overflow: visible !important;
-  display: grid !important;
-  grid-template-columns: 14px minmax(0, 1fr) max-content !important;
-  align-items: center;
-  column-gap: 6px;
-  padding: 0 7px !important;
-}
-
-.runtime-tab > span:not(.runtime-tab-count) {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.runtime-tab-count {
-  position: static !important;
-  inset: auto !important;
-  top: auto !important;
-  right: auto !important;
-  bottom: auto !important;
-  left: auto !important;
-  transform: none !important;
-  translate: none !important;
-  float: none !important;
-
-  min-width: 16px !important;
-  width: auto !important;
-  height: 16px !important;
-  padding: 0 4px !important;
-  margin: 0 !important;
-  box-sizing: border-box;
-
-  display: inline-grid !important;
-  place-items: center;
-  justify-self: end;
-  align-self: center;
-
-  overflow: visible !important;
-  border: 1px solid rgba(255,255,255,.055);
-  border-radius: 999px;
-  background: rgba(255,255,255,.045);
-  color: #8f97a4;
-  box-shadow: inset 0 1px rgba(255,255,255,.03);
-
-  font-size: 8px !important;
-  font-weight: 680;
-  line-height: 1 !important;
-  font-variant-numeric: tabular-nums;
-  text-align: center;
-  opacity: 1 !important;
-  visibility: visible !important;
-  pointer-events: none;
-  z-index: 2;
-}
-
-.runtime-tab.active .runtime-tab-count {
-  border-color: rgba(139,124,246,.14);
-  background: rgba(139,124,246,.10);
-  color: #b0a7f2;
-}
-
-html[data-loom-theme="light"] .runtime-tab-count {
-  border-color: rgba(31,35,42,.075);
-  background: #edf0f3;
-  color: #69737e;
-  box-shadow:
-    inset 0 1px rgba(255,255,255,.9),
-    0 1px 2px rgba(31,35,42,.025);
-}
-
-html[data-loom-theme="light"] .runtime-tab.active .runtime-tab-count {
-  border-color: rgba(105,90,216,.13);
-  background: rgba(105,90,216,.085);
-  color: #5e51ba;
-}
-
-@container (max-width: 330px) {
-  .runtime-tab {
-    grid-template-columns: 14px max-content !important;
-    justify-content: center;
-    column-gap: 4px;
-    padding-inline: 4px !important;
-  }
-
-  .runtime-tab > span:not(.runtime-tab-count) {
-    display: none;
-  }
-
-  .runtime-tab-count {
-    min-width: 15px !important;
-    height: 15px !important;
-    padding-inline: 3px !important;
-    font-size: 7.5px !important;
-  }
 }

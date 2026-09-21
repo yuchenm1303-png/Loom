@@ -603,12 +603,12 @@ export function ModelPanel({
                         <span className={`model-profile-icon ${profile.kind}`}><Server size={15} /></span>
                         <span className="model-profile-copy">
                           <span className="model-profile-title-row">
-                            <strong>{profile.name}</strong>
+                            <strong title={profile.name}>{profile.name}</strong>
                             {badge ? <em>{badge}</em> : null}
                             {profileReasoning ? <em className="model-reasoning-badge">{profileReasoning.label}</em> : null}
                           </span>
-                          <span>{profile.model}</span>
-                          <small>{profileSubtitle(profile)}</small>
+                          <span title={profile.model}>{profile.model}</span>
+                          <small title={profileSubtitle(profile)}>{profileSubtitle(profile)}</small>
                         </span>
                         <span className="model-profile-action">
                           {exactActive ? <Check size={14} /> : busy ? <RefreshCw size={13} className="model-spin" /> : <ChevronRight size={14} />}
@@ -681,8 +681,8 @@ export function ModelPanel({
                 >
                   <span className="model-recent-dot" aria-hidden="true" />
                   <span>
-                    <strong>{profile.model}</strong>
-                    <small>{profile.groupName || profile.name}</small>
+                    <strong title={profile.model}>{profile.model}</strong>
+                    <small title={profile.groupName || profile.name}>{profile.groupName || profile.name}</small>
                   </span>
                   <ChevronRight size={13} />
                 </button>
@@ -721,7 +721,7 @@ export function ModelPanel({
                     <span className="model-profile-icon builtin"><Server size={15} /></span>
                     <span className="model-profile-copy">
                       <span className="model-profile-title-row">
-                        <strong>{group.name}</strong>
+                        <strong title={group.name}>{group.name}</strong>
                         {active ? <em>Current</em> : null}
                       </span>
                       <span>{selectableCount} {selectableCount === 1 ? "model" : "models"}</span>
@@ -783,7 +783,7 @@ export function ModelPanel({
       >
         <div className="model-core-copy" key={`${currentSelection}:${currentModel}`}>
           <span className="model-core-title-row">
-            <strong>{currentModel}</strong>
+            <strong title={currentModel}>{currentModel}</strong>
             <ChevronRight size={13} strokeWidth={1.8} aria-hidden="true" />
           </span>
           <small>
