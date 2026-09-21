@@ -332,3 +332,80 @@
     opacity: .36;
   }
 }
+
+/* Light theme: clean inline run progress -----------------------------------
+   The default run strip is intentionally dark for the dark theme. In light
+   mode keep the same live information, but remove the banner treatment so the
+   status reads as part of the page instead of a dark block. */
+html[data-loom-theme="light"] .run-progress-frame.top {
+  padding-top: 6px;
+  padding-bottom: 5px;
+  border-bottom-color: rgba(28,31,37,.065);
+  background: transparent;
+  backdrop-filter: none;
+}
+
+html[data-loom-theme="light"] .run-progress-frame.bottom {
+  background: transparent;
+}
+
+html[data-loom-theme="light"] .run-progress-inline {
+  color: #4b535e;
+}
+
+html[data-loom-theme="light"] .run-progress-live-dot {
+  background: #695ad8;
+  box-shadow: 0 0 0 3px rgba(105,90,216,.08);
+}
+
+html[data-loom-theme="light"] .run-progress-live-dot::after {
+  border-color: rgba(105,90,216,.14);
+}
+
+html[data-loom-theme="light"] .run-progress-brand {
+  color: #59626d;
+}
+
+html[data-loom-theme="light"] .run-progress-brand svg {
+  color: #695ad8;
+  opacity: .9;
+}
+
+html[data-loom-theme="light"] .run-progress-divider {
+  background: linear-gradient(180deg, transparent, rgba(28,31,37,.14), transparent);
+}
+
+html[data-loom-theme="light"] .run-progress-phase {
+  color: #30363e;
+}
+
+html[data-loom-theme="light"] .run-progress-meta {
+  color: #737c87;
+}
+
+html[data-loom-theme="light"] .run-progress-meta-item:first-child {
+  color: #5f6873;
+}
+
+html[data-loom-theme="light"] .run-progress-meta-item svg {
+  color: #77808b;
+}
+
+html[data-loom-theme="light"] .run-progress-meta-item.subtle {
+  color: #737c87;
+}
+
+html[data-loom-theme="light"] .run-progress-meta-item.subtle svg {
+  color: #7b848f;
+}
+
+html[data-loom-theme="light"] .run-progress-meta-dot {
+  background: #c5cad1;
+}
+
+/* The animated underline makes sense on the dark banner, but looks like a
+   second separator on white. Hide it and keep only the live status dot. */
+html[data-loom-theme="light"] .run-progress-track {
+  display: none;
+}
+
