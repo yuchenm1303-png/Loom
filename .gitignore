@@ -31,3 +31,55 @@ venv/
 # time, then copied into Vite's dist output. Do not commit generated binaries.
 /desktop-react/.cache/chat-stickers/
 /desktop-react/public/chat-stickers/
+
+# Loom dev runs write one log per launch (root plus desktop-react/), so they
+# keep reappearing with fresh suffixes such as electron.log.69-dev.
+/desktop-react/*.log*
+
+# Local debugging scratch ---------------------------------------------------
+# One-off probes, streamed command output, captured screenshots and checkpoint
+# notes accumulate at the repository root during local debugging: 460+ files
+# and ~109 MB by the last audit (including a 99 MB directory listing in
+# n1.txt). They are not product sources, so they are kept out of history.
+# Root-anchored (" /") so real sources such as scripts/*.sh are unaffected;
+# use `git add -f <path>` for the rare scratch file that really belongs in the
+# repository, or move durable notes under docs/.
+/*.log*
+/*.out
+/*.txt
+/*.sh
+/*.ps1
+/*.bat
+/*.bak
+/*.patch
+/*.json
+/*.yaml
+/*.yml
+/*.png
+/*.md
+!/README.md
+/CF
+/n1.txt
+/diag/
+/e2e/
+/artifacts/
+/browser-screenshots/
+/tr-work/
+/label-date-generator/
+/.tmp-*/
+
+# Relay / gateway credential material --------------------------------------
+# Local proxy subscriptions, clash configs, QR payloads and the gist helper
+# scripts carry live SOCKS5 / Trojan credentials and server addresses. None of
+# them has ever been committed; they are listed explicitly (in addition to the
+# extension rules above) so a later change to those blanket rules cannot
+# quietly re-admit them.
+/vietnam-proxy.yaml
+/vietnam-socks5.yaml
+/ny-clash.yaml
+/gist_payload.json
+/make_qr.py
+/make_qr_ny.py
+/update_gist.py
+/scripts/remote_probe.sh
+/scripts/setup_ny_gateway.sh
