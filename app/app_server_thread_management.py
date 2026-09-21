@@ -12,6 +12,11 @@ from typing import Any, TextIO
 
 from app.ai import AIMessage, ChatRequest, MessageRole, ToolChoice
 from app.agent_runtime import AgentEvent, AgentEventKind, AgentStatus, PermissionMode
+from app.agent_runtime.context_limits import resolve_context_limits
+from app.agent_runtime.context_report import (
+    context_report_from_request,
+    empty_context_report,
+)
 
 from .app_server import JsonRpcError, _message_text, _thread_record  # noqa: F401 (re-exported for override layers)
 from .app_server_streaming import (
@@ -390,6 +395,9 @@ class ManagedStreamingLoomAppServerService(StreamingLoomAppServerService):
         self.thread_library = ThreadLibraryStore(self.store)
         self._auto_title_guard = threading.RLock()
         self._auto_title_inflight: set[str] = set()
+        # Compaction counts change only when a checkpoint is recorded, so they
+        # are cached rather than rescanned on every model step.
+        self._context_counts: dict[str, tuple[int, str]] = {}
 
     def _session_or_rpc_error(self, thread_id: str) -> Any:
         thread_id = str(thread_id or "").strip()
@@ -710,11 +718,119 @@ class ManagedStreamingLoomAppServerService(StreamingLoomAppServerService):
             with self._auto_title_guard:
                 self._auto_title_inflight.discard(thread_id)
 
+    def _context_history(self, session_id: str) -> tuple[int, str]:
+        """How often this thread has been compacted, and when it last was."""
+        try:
+            events = self.store.events(session_id)
+        except Exception:
+            return 0, ""
+        count = 0
+        last = ""
+        for event in events:
+            if event.kind is AgentEventKind.CONTEXT_CHECKPOINTED:
+                count += 1
+                last = event.created_at
+        return count, last
+
+    def thread_context(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Report what this thread's active model context is currently made of."""
+        session_id = self._required_text(params, "threadId")
+        session = self._load(session_id)
+        events = self.store.events(session_id)
+
+        compactions = 0
+        last_compacted_at = ""
+        latest_request: AgentEvent | None = None
+        for event in events:
+            if event.kind is AgentEventKind.CONTEXT_CHECKPOINTED:
+                compactions += 1
+                last_compacted_at = event.created_at
+            elif event.kind is AgentEventKind.MODEL_REQUESTED:
+                latest_request = event
+
+        if latest_request is None:
+            # No model step has run, so there is no measured request to report.
+            # The budget is still knowable, and showing it beats showing nothing.
+            report = empty_context_report(resolve_context_limits(self.runtime, session).as_dict())
+        else:
+            report = context_report_from_request(
+                latest_request.data if isinstance(latest_request.data, dict) else {},
+                compactions=compactions,
+                last_compacted_at=last_compacted_at,
+                measured_at=latest_request.created_at,
+            )
+        report["threadId"] = session_id
+        return {"context": report}
+
+    def thread_compact(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Compact this thread's history now, rather than waiting for the threshold."""
+        session_id = self._required_text(params, "threadId")
+        raw_keep = params.get("keepRecent")
+        keep_recent = 24 if raw_keep in (None, "") else int(raw_keep)
+        if keep_recent < 2 or keep_recent > 200:
+            raise ValueError("thread/compact keepRecent must be within 2..200")
+        session = self._load(session_id)
+        if session.status in {AgentStatus.RUNNING, AgentStatus.WAITING_APPROVAL}:
+            raise RuntimeError("cannot compact context while a turn is active")
+
+        # Compaction is a model call, so it runs like a turn does. The result
+        # reaches the UI as the ordinary context/updated notification the
+        # checkpoint event already produces.
+        self._launch(
+            session_id,
+            lambda: self.runtime.compact_context_with_model(session_id, keep_recent=keep_recent),
+        )
+        return {"threadId": session_id, "started": True, "keepRecent": keep_recent}
+
+    def _context_counts_for(self, session_id: str) -> tuple[int, str]:
+        """Compactions so far: scanned once per session, then kept current.
+
+        Seeding lazily rather than starting at zero matters after a restart. A
+        thread that has already been compacted 48 times would otherwise report
+        zero on its next model step, and the meter would visibly un-count them.
+        """
+        cached = self._context_counts.get(session_id)
+        if cached is not None:
+            return cached
+        history = self._context_history(session_id)
+        self._context_counts[session_id] = history
+        return history
+
+    def _publish_context(self, event: AgentEvent) -> None:
+        if event.kind is AgentEventKind.MODEL_REQUESTED:
+            # The request payload already carries every number the meter shows,
+            # so the live update costs nothing beyond the notification itself.
+            compactions, last_compacted_at = self._context_counts_for(event.session_id)
+            report = context_report_from_request(
+                event.data if isinstance(event.data, dict) else {},
+                compactions=compactions,
+                last_compacted_at=last_compacted_at,
+                measured_at=event.created_at,
+            )
+        else:
+            # A checkpoint just changed the count and rewrote history, so this
+            # one reads from durable state rather than from the event.
+            try:
+                report = self.thread_context({"threadId": event.session_id})["context"]
+            except Exception:
+                return
+            self._context_counts[event.session_id] = (
+                int(report.get("compactions") or 0),
+                str(report.get("lastCompactedAt") or ""),
+            )
+        report["threadId"] = event.session_id
+        self._notify("context/updated", {"threadId": event.session_id, "context": report})
+
     def _on_runtime_event(self, event: AgentEvent) -> None:
         # Preserve the streaming/durable notification path, then title the
         # completed conversation in a detached daemon task. The visible answer
         # is never delayed by title generation.
         super()._on_runtime_event(event)
+        if event.kind in {
+            AgentEventKind.MODEL_REQUESTED,
+            AgentEventKind.CONTEXT_CHECKPOINTED,
+        }:
+            self._publish_context(event)
         if event.kind is AgentEventKind.TURN_COMPLETED:
             self._schedule_auto_title(event.session_id)
 
@@ -732,6 +848,10 @@ class ManagedStreamingLoomRpcController(StreamingLoomRpcController):
             "permissionMode": True,
             "autoTitle": True,
         }
+        result["capabilities"]["context"] = {
+            "report": True,
+            "manualCompaction": True,
+        }
         return result
 
     def _dispatch(self, method: str, params: dict[str, Any]) -> Any:
@@ -740,6 +860,8 @@ class ManagedStreamingLoomRpcController(StreamingLoomRpcController):
             "thread/archive": self.service.thread_archive,
             "thread/delete": self.service.thread_delete,
             "thread/set_permission_mode": self.service.thread_set_permission_mode,
+            "thread/context": self.service.thread_context,
+            "thread/compact": self.service.thread_compact,
         }
         handler = handlers.get(method)
         if handler is not None:

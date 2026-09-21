@@ -689,6 +689,9 @@ export default function App() {
           reviewOpen={reviewOpen}
           reviewCount={changedFileCount}
           accountAuthenticated={account.account.authenticated}
+          context={loom.context}
+          compacting={loom.compacting}
+          onCompactContext={() => void loom.compactContext()}
           onOpenAccount={() => setAccountOpen(true)}
           onOpenSettings={() => setSettingsOpen(true)}
           onToggleSidebar={() => setSidebarOpen((open) => !open)}

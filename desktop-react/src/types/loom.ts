@@ -144,6 +144,46 @@ export interface ThreadReadResult {
   error?: string;
 }
 
+export type ContextSegmentKey = "conversation" | "toolSchemas" | "free";
+
+export interface ContextSegment {
+  key: ContextSegmentKey;
+  tokens: number;
+}
+
+/** What the model had to give up to make the last request fit. */
+export interface ContextPressure {
+  schemaMode: string;
+  toolsOmitted: string[];
+  toolOutputsReduced: number;
+  toolOutputsCollapsed: number;
+  userMessagesTruncated: number;
+  /** Tool results were collapsed: the agent can no longer read its own output. */
+  blinded: boolean;
+}
+
+export interface ContextReport {
+  threadId?: string;
+  windowTokens: number | null;
+  effectiveWindowTokens: number;
+  inputBudgetTokens: number;
+  outputReserveTokens: number;
+  autoCompactTokens: number;
+  toolOutputTokenLimit: number;
+  windowKnown: boolean;
+  limitsSource: string;
+  usedTokens: number;
+  usedPercent: number;
+  freeTokens: number;
+  accounting: string;
+  messageCount: number;
+  segments: ContextSegment[];
+  pressure: ContextPressure;
+  compactions: number;
+  lastCompactedAt: string;
+  measuredAt: string;
+}
+
 export interface ModelReasoningOption {
   value: string;
   label: string;

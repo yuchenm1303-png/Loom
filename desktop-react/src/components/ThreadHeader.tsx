@@ -13,6 +13,8 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useI18n } from "../i18n";
+import type { ContextReport } from "../types/loom";
+import { ContextMeter } from "./ContextMeter";
 import "./thread-header.css";
 import "./thread-review-entry.css";
 
@@ -30,6 +32,9 @@ interface ThreadHeaderProps {
   reviewOpen: boolean;
   reviewCount?: number;
   accountAuthenticated?: boolean;
+  context?: ContextReport | null;
+  compacting?: boolean;
+  onCompactContext?(): void;
   onOpenAccount(): void;
   onOpenSettings(): void;
   onToggleSidebar(): void;
@@ -71,6 +76,9 @@ export function ThreadHeader({
   reviewOpen,
   reviewCount = 0,
   accountAuthenticated = false,
+  context = null,
+  compacting = false,
+  onCompactContext,
   onOpenAccount,
   onOpenSettings,
   onToggleSidebar,
@@ -161,6 +169,15 @@ export function ThreadHeader({
           {archived ? <Archive size={12.5} strokeWidth={1.8} /> : <span className="thread-status-orb" aria-hidden="true" />}
           <span className="thread-status-label">{state.label}</span>
         </span>
+
+        {onCompactContext ? (
+          <ContextMeter
+            report={context}
+            compacting={compacting}
+            busy={running}
+            onCompact={onCompactContext}
+          />
+        ) : null}
 
         <button
           type="button"

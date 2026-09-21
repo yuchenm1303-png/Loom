@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   AddModelInput,
+  ContextReport,
   InitializeResult,
   ModelRestartResult,
   ModelSnapshot,
@@ -119,6 +120,8 @@ export function useLoom() {
   const [items, setItems] = useState<TranscriptItem[]>([]);
   const [turnActive, setTurnActive] = useState(false);
   const [turnStartedAt, setTurnStartedAt] = useState<number | null>(null);
+  const [context, setContext] = useState<ContextReport | null>(null);
+  const [compacting, setCompacting] = useState(false);
   const activeIdRef = useRef("");
   const threadViewRef = useRef<ThreadView>("active");
   const itemIndexRef = useRef<Map<string, number>>(new Map());
@@ -138,7 +141,43 @@ export function useLoom() {
     installItems([]);
     setTurnActive(false);
     setTurnStartedAt(null);
+    setContext(null);
+    setCompacting(false);
   }, [installItems]);
+
+  const refreshContext = useCallback(async (threadId: string) => {
+    if (!threadId) return null;
+    try {
+      const result = await requireBridge().call<{ context: ContextReport }>("thread/context", { threadId });
+      // A slow report for a thread the user already left must not overwrite the
+      // one they are looking at now.
+      if (activeIdRef.current !== threadId) return null;
+      setContext(result.context ?? null);
+      return result.context ?? null;
+    } catch {
+      // An older app server without the context capability simply has no meter.
+      return null;
+    }
+  }, []);
+
+  const compactContext = useCallback(async (keepRecent?: number) => {
+    const threadId = activeIdRef.current;
+    if (!threadId) return;
+    setCompacting(true);
+    try {
+      await requireBridge().call("thread/compact", {
+        threadId,
+        ...(keepRecent ? { keepRecent } : {}),
+      });
+      // Compaction ends with a checkpoint, which arrives as context/updated. If
+      // the summarizing model never answers, no event ever comes, so release the
+      // control rather than leaving the user with a spinner they cannot cancel.
+      window.setTimeout(() => setCompacting(false), 120_000);
+    } catch (error) {
+      setCompacting(false);
+      throw error;
+    }
+  }, []);
 
   const refreshThreads = useCallback(async (viewOverride?: ThreadView) => {
     const view = viewOverride ?? threadViewRef.current;
@@ -211,7 +250,10 @@ export function useLoom() {
     const running = threadIsRunning(result.thread);
     setTurnActive(running);
     setTurnStartedAt(running ? turnStartFromRead(result) : null);
-  }, [installItems]);
+    setContext(null);
+    setCompacting(false);
+    void refreshContext(result.thread.id);
+  }, [installItems, refreshContext]);
 
   const ensureSelection = useCallback(async (list: ThreadRecord[], preferredId = activeIdRef.current) => {
     if (preferredId && list.some((thread) => thread.id === preferredId)) return;
@@ -499,6 +541,17 @@ export function useLoom() {
       if (message.method === "thread/started" && threadViewRef.current === "active") void refreshThreads("active");
       if (!activeId || threadId !== activeId) return;
 
+      if (message.method === "context/updated") {
+        const report = params.context as ContextReport | undefined;
+        if (report) {
+          setContext(report);
+          // A checkpoint is the only thing that ends a manual compaction, and
+          // the report carries the new count, so no extra round trip is needed.
+          setCompacting(false);
+        }
+        return;
+      }
+
       if (message.method === "item/started") {
         const item = params.item as TranscriptItem | undefined;
         if (item) {
@@ -642,6 +695,10 @@ export function useLoom() {
     items,
     turnActive,
     turnStartedAt,
+    context,
+    compacting,
+    compactContext,
+    refreshContext,
     openThread,
     newThread,
     renameThread,
@@ -668,7 +725,10 @@ export function useLoom() {
     active,
     addModel,
     archiveThread,
+    compacting,
+    compactContext,
     connection,
+    context,
     configureModelProvider,
     deleteModel,
     deleteThread,
@@ -683,6 +743,7 @@ export function useLoom() {
     projects,
     projectsSupported,
     createProject,
+    refreshContext,
     refreshProjects,
     removeProject,
     renameProject,
