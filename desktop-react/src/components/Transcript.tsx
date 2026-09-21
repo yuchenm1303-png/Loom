@@ -1,6 +1,7 @@
 import {
   ArrowUpRight,
   BrainCircuit,
+  Bot,
   Bug,
   Check,
   ChevronRight,
@@ -21,7 +22,7 @@ import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "reac
 import type { TranscriptItem } from "../types/loom";
 import { MarkdownMessage } from "./MarkdownMessage";
 import { StreamingPresentation } from "./StreamingPresentation";
-import { SubAgentWorkspace, isSubAgentToolItem } from "./SubAgentWorkspace";
+import { isSubAgentToolItem } from "./SubAgentWorkspace";
 import { TurnArtifactsPreview } from "./TurnArtifactsPreview";
 import { UserMessageContent, parseUserMessageContent } from "./UserMessageContent";
 import "./activity-flow.css";
@@ -566,6 +567,29 @@ function ActivityFlow({ items, keepOpen = false }: { items: TranscriptItem[]; ke
   );
 }
 
+function SubAgentActivityNotice({ items }: { items: TranscriptItem[] }) {
+  const spawned = items.filter((item) => String(item.toolName || "") === "spawn_agent");
+  const count = spawned.length || items.length;
+  const running = items.some((item) => isActiveActivityStatus(itemStatus(item)));
+
+  return (
+    <button
+      type="button"
+      className={`sub-agent-inline-notice ${running ? "is-running" : ""}`}
+      onClick={() => window.dispatchEvent(new Event("loom:sub-agents-open"))}
+      title="在右侧打开子代理工作区"
+    >
+      <span className="sub-agent-inline-icon" aria-hidden="true"><Bot size={13} /></span>
+      <span className="sub-agent-inline-copy">
+        {running ? "子代理正在并行工作" : "本轮使用了子代理"}
+      </span>
+      <span className="sub-agent-inline-count">{count}</span>
+      <span className="sub-agent-inline-action">查看工作区</span>
+      <ChevronRight size={12} aria-hidden="true" />
+    </button>
+  );
+}
+
 function messageTimestamp(item: TranscriptItem): string {
   const value = item.createdAt || item.updatedAt;
   if (!value) return "";
@@ -806,7 +830,7 @@ function Sequence({
     <>
       {subAgentItems.length ? (
         <div className="transcript-entry entry-sub-agent-workspace">
-          <SubAgentWorkspace items={subAgentItems} active={active} />
+          <SubAgentActivityNotice items={subAgentItems} />
         </div>
       ) : null}
 
