@@ -18,6 +18,7 @@ import { ReviewWorkspace } from "./ReviewWorkspace";
 import "./Inspector.css";
 import "./InspectorMark.css";
 import "./ComputerLogExport.css";
+import "./runtime-controls-polish.css";
 
 interface InspectorProps {
   items: TranscriptItem[];
@@ -194,7 +195,7 @@ function iconOf(item: TranscriptItem): IconComponent {
 function EmptyState({ tab }: { tab: Tab }) {
   const copy = emptyCopy[tab];
   return (
-    <div className="runtime-empty">
+    <div className={`runtime-empty runtime-empty-${tab}`}>
       <div className="runtime-empty-visual" aria-hidden="true">
         <span className="runtime-orbit runtime-orbit-one" />
         <span className="runtime-orbit runtime-orbit-two" />
