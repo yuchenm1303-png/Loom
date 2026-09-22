@@ -1,6 +1,5 @@
 import {
   ArrowLeft,
-  BrainCircuit,
   Check,
   ChevronRight,
   Cpu,
@@ -161,10 +160,7 @@ function ReasoningControl({
   return (
     <div className={`reasoning-control ${locked ? "locked" : ""}`}>
       <div className="reasoning-control-head">
-        <span className="reasoning-control-eyebrow">
-          <BrainCircuit size={13.5} strokeWidth={1.8} />
-          Reasoning
-        </span>
+        <span className="reasoning-control-eyebrow">Reasoning</span>
         {canReset ? (
           <button
             type="button"
@@ -185,15 +181,25 @@ function ReasoningControl({
           <svg viewBox="0 0 100 18" preserveAspectRatio="none">
             <path className="reasoning-thread-path reasoning-thread-path-a" d="M1 9 C13 2.6 24 15.4 38 9 S63 2.6 77 9 S91 14 99 9" />
             <path className="reasoning-thread-path reasoning-thread-path-b" d="M1 9 C13 15.4 24 2.6 38 9 S63 15.4 77 9 S91 4 99 9" />
+            <path className="reasoning-thread-path reasoning-thread-path-c" d="M1 9 C16 8 24 4.4 38 9 S61 13.6 77 9 S92 7 99 9" />
           </svg>
           <div className="reasoning-thread-energy">
             <svg viewBox="0 0 100 18" preserveAspectRatio="none">
               <path className="reasoning-thread-path reasoning-thread-path-a" d="M1 9 C13 2.6 24 15.4 38 9 S63 2.6 77 9 S91 14 99 9" />
               <path className="reasoning-thread-path reasoning-thread-path-b" d="M1 9 C13 15.4 24 2.6 38 9 S63 15.4 77 9 S91 4 99 9" />
+              <path className="reasoning-thread-path reasoning-thread-path-c" d="M1 9 C16 8 24 4.4 38 9 S61 13.6 77 9 S92 7 99 9" />
               <path className="reasoning-thread-path reasoning-thread-glint reasoning-thread-glint-a" d="M1 9 C13 2.6 24 15.4 38 9 S63 2.6 77 9 S91 14 99 9" />
               <path className="reasoning-thread-path reasoning-thread-glint reasoning-thread-glint-b" d="M1 9 C13 15.4 24 2.6 38 9 S63 15.4 77 9 S91 4 99 9" />
             </svg>
           </div>
+        </div>
+
+        <div className="reasoning-thread-particles" aria-hidden="true">
+          <i />
+          <i />
+          <i />
+          <i />
+          <i />
         </div>
 
         <div className="reasoning-thread-nodes" role="group" aria-label="Reasoning effort">
@@ -805,10 +811,7 @@ export function ModelPanel({
         ) : (
           <div className="reasoning-managed">
             <div className="reasoning-control-head">
-              <span className="reasoning-control-eyebrow">
-                <BrainCircuit size={13.5} strokeWidth={1.8} />
-                Reasoning
-              </span>
+              <span className="reasoning-control-eyebrow">Reasoning</span>
             </div>
             <div className="reasoning-managed-thread" aria-hidden="true">
               <span />
