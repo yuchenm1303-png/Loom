@@ -81,33 +81,34 @@
   min-width: 0;
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-start;
-  gap: 6px;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .user-message-image-preview {
   position: relative;
   width: fit-content;
-  max-width: min(100%, 150px);
+  max-width: min(100%, 220px);
   margin: 0;
   padding: 0;
   overflow: hidden;
-  border: 1px solid rgba(255,255,255,.065);
-  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,.075);
+  border-radius: 13px;
   appearance: none;
-  background: rgba(8,9,12,.48);
+  background: transparent;
   color: inherit;
   font: inherit;
   text-align: left;
   cursor: zoom-in;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.018);
-  transition: border-color 130ms ease, background 130ms ease, transform 130ms cubic-bezier(.2,.78,.2,1);
+  box-shadow: 0 4px 14px rgba(0,0,0,.08);
+  transition: border-color 130ms ease, transform 130ms cubic-bezier(.2,.78,.2,1), box-shadow 130ms ease;
 }
 
 .user-message-image-preview:hover {
-  border-color: rgba(167,154,255,.24);
-  background: rgba(11,12,16,.64);
+  border-color: rgba(167,154,255,.28);
   transform: translateY(-1px);
+  box-shadow: 0 7px 18px rgba(0,0,0,.12);
 }
 
 .user-message-image-preview:focus-visible,
@@ -119,34 +120,35 @@
 .user-message-image-preview img {
   display: block;
   width: auto;
-  max-width: 150px;
+  max-width: 220px;
   height: auto;
-  max-height: 112px;
+  max-height: 164px;
   object-fit: contain;
   object-position: center;
 }
 
 .user-message-image-open-hint {
   position: absolute;
-  right: 5px;
-  bottom: 5px;
-  min-height: 22px;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 0 6px;
-  border: 1px solid rgba(255,255,255,.10);
-  border-radius: 7px;
-  background: rgba(12,13,18,.78);
-  color: #ddd9f2;
-  font-size: 9.5px;
-  line-height: 1;
-  font-weight: 600;
+  right: 7px;
+  bottom: 7px;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 999px;
+  background: rgba(12,13,18,.72);
+  color: #f0edff;
   opacity: 0;
   transform: translateY(2px);
   pointer-events: none;
   backdrop-filter: blur(8px);
   transition: opacity 120ms ease, transform 120ms ease;
+}
+
+.user-message-image-open-hint > span {
+  display: none;
 }
 
 .user-message-image-preview:hover .user-message-image-open-hint,
@@ -158,21 +160,21 @@
 .user-message-attachment-card {
   min-width: 0;
   width: fit-content;
-  max-width: min(100%, 238px);
-  min-height: 42px;
+  max-width: min(100%, 198px);
+  min-height: 38px;
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) 14px;
+  grid-template-columns: 24px minmax(0, 1fr) 12px;
   align-items: center;
-  gap: 8px;
-  padding: 6px 8px 6px 7px;
+  gap: 7px;
+  padding: 5px 7px 5px 6px;
   border: 1px solid rgba(255,255,255,.058);
   border-radius: 9px;
   appearance: none;
-  background: rgba(15,17,22,.50);
+  background: rgba(15,17,22,.46);
   color: inherit;
   font: inherit;
   text-align: left;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.016);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.014);
 }
 
 .user-message-attachment-card.is-clickable {
@@ -187,8 +189,8 @@
 }
 
 .user-message-file-icon {
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   display: grid;
   place-items: center;
   border: 1px solid rgba(139,124,246,.13);
@@ -199,8 +201,8 @@
 }
 
 .user-message-file-icon svg {
-  width: 15px;
-  height: 15px;
+  width: 13px;
+  height: 13px;
 }
 
 .user-message-attachment-card:hover .user-message-file-icon {
@@ -403,16 +405,16 @@ html[data-loom-reduced-motion="true"] .user-message-image-lightbox {
   }
 
   .user-message-image-preview {
-    max-width: 132px;
+    max-width: 184px;
   }
 
   .user-message-image-preview img {
-    max-width: 132px;
-    max-height: 100px;
+    max-width: 184px;
+    max-height: 138px;
   }
 
   .user-message-attachment-card {
-    max-width: min(100%, 220px);
+    max-width: min(100%, 188px);
   }
 
   .user-message-image-lightbox {
@@ -466,4 +468,71 @@ html[data-loom-theme="light"] .user-message-collapse-toggle:hover {
   color: #5b4ec0;
   border-color: rgba(105,90,216,.16);
   background: rgba(105,90,216,.055);
+}
+
+
+/* Media messages -----------------------------------------------------------
+   Keep image/file attachments outside the text bubble, like modern chat UIs.
+   The text keeps its familiar bubble treatment while images read as media. */
+.user-message.has-attachments {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  overflow: visible;
+}
+
+.user-message.has-attachments:hover {
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.user-message.has-attachments .user-message-content {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.user-message.has-attachments .user-message-copy-shell {
+  width: fit-content;
+  max-width: 100%;
+  padding: 10px 14px;
+  border: 1px solid #373443;
+  border-radius: 16px 16px 5px 16px;
+  background: linear-gradient(145deg, #26232f, #211f29);
+  box-shadow: 0 8px 22px rgba(0,0,0,.10), inset 0 1px 0 rgba(255,255,255,.025);
+}
+
+.user-message.has-attachments .user-message-attachment-list {
+  max-width: 100%;
+}
+
+html[data-loom-theme="light"] .user-message.has-attachments {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+html[data-loom-theme="light"] .user-message.has-attachments:hover {
+  border-color: transparent;
+  box-shadow: none;
+}
+
+html[data-loom-theme="light"] .user-message.has-attachments .user-message-copy-shell {
+  border-color: #d8d3ec;
+  background: linear-gradient(145deg, #f1eff9, #eceaf5);
+  color: #24212d;
+  box-shadow: 0 8px 22px rgba(32,28,48,.06), inset 0 1px rgba(255,255,255,.65);
+}
+
+html[data-loom-theme="light"] .user-message-image-preview {
+  border-color: rgba(28,31,37,.11);
+  background: #fff;
+  box-shadow: 0 4px 14px rgba(32,28,48,.06);
+}
+
+html[data-loom-theme="light"] .user-message-image-preview:hover {
+  border-color: rgba(105,90,216,.24);
+  box-shadow: 0 7px 18px rgba(32,28,48,.09);
 }
