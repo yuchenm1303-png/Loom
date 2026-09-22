@@ -26,6 +26,7 @@ import {
   resolveComposerFiles,
 } from "./composerAttachments";
 import { StickerPanel } from "./StickerPanel";
+import { QuoteReplyBar, formatQuotedPrompt, useQuoteReply } from "./quoteReply";
 import "./composer.css";
 import "./composer-attachment-polish.css";
 import "./composer-stability.css";
@@ -153,6 +154,7 @@ export function Composer({
   const [panelError, setPanelError] = useState("");
   const [stopping, setStopping] = useState(false);
   const [stopError, setStopError] = useState("");
+  const [quote, setQuote] = useQuoteReply();
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const composerRootRef = useRef<HTMLDivElement | null>(null);
 
@@ -183,6 +185,11 @@ export function Composer({
     textarea.style.height = "0px";
     textarea.style.height = `${Math.min(textarea.scrollHeight, 180)}px`;
   }, [value]);
+
+  useEffect(() => {
+    if (!quote) return;
+    requestAnimationFrame(() => textareaRef.current?.focus());
+  }, [quote]);
 
   useEffect(() => {
     function handlePointerDown(event: PointerEvent) {
@@ -250,11 +257,13 @@ export function Composer({
 
   async function submit(event?: FormEvent) {
     event?.preventDefault();
-    const input = value.trim();
+    const typedInput = value.trim();
+    const input = formatQuotedPrompt(quote, typedInput);
     const sendable = attachments.filter((item) => imagesAllowed || !item.isImage);
-    // An attachment alone is a complete message; an empty composer is not.
-    if ((!input && !sendable.length) || disabled || running) return;
+    // A quote or attachment can carry context on its own; a truly empty composer cannot.
+    if ((!typedInput && !quote && !sendable.length) || disabled || running) return;
     setValue("");
+    setQuote(null);
     setAttachments([]);
     setAttachError("");
     setOpenPanel(null);
@@ -314,6 +323,7 @@ export function Composer({
       >
         <span className="composer-glow" aria-hidden="true" />
 
+        {quote ? <QuoteReplyBar quote={quote} onClear={() => setQuote(null)} /> : null}
         <ComposerAttachmentStrip attachments={attachments} imagesAllowed={imagesAllowed} onRemove={removeAttachment} />
 
         {attachError ? <p className="composer-attach-error">{attachError}</p> : null}
@@ -334,7 +344,11 @@ export function Composer({
             onPaste={(event) => void onPaste(event)}
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
-            placeholder={zh ? (disabled ? "打开对话，开始工作" : "描述任务，或提出问题…") : (disabled ? "Open a thread to start" : "Describe a task or ask a question…")}
+            placeholder={quote
+              ? (zh ? "针对引用内容继续提问…" : "Ask about the quoted content…")
+              : zh
+                ? (disabled ? "打开对话，开始工作" : "描述任务，或提出问题…")
+                : (disabled ? "Open a thread to start" : "Describe a task or ask a question…")}
             disabled={disabled || running}
             rows={1}
           />
@@ -536,7 +550,7 @@ export function Composer({
                 <Square size={12} fill="currentColor" />
               </button>
             ) : (
-              <button type="submit" className="send-button" disabled={disabled || (!value.trim() && !attachments.some((item) => imagesAllowed || !item.isImage))} title="Send" aria-label="Send message">
+              <button type="submit" className="send-button" disabled={disabled || (!value.trim() && !quote && !attachments.some((item) => imagesAllowed || !item.isImage))} title="Send" aria-label="Send message">
                 <ArrowUp size={17} strokeWidth={2.2} />
               </button>
             )}
