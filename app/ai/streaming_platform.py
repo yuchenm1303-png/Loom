@@ -215,9 +215,9 @@ class StreamingAIPlatform(AIPlatform):
         try:
             for raw_event in stream:
                 check_cancelled()
-                # Backends that are not the OpenAI-compatible one report their
-                # progress here. That one reports per raw chunk instead, because
-                # its reasoning deltas never reach this loop at all.
+                # Backends report normalized progress here. The OpenAI-compatible
+                # backend also reports per raw chunk so long reasoning periods
+                # remain distinguishable from a dead connection.
                 note_progress()
                 if not isinstance(raw_event, StreamEvent):
                     raise TypeError("streaming model backend must yield StreamEvent values")
