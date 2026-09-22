@@ -37,6 +37,7 @@ interface ContextState {
   quoteText: string;
   image: HTMLImageElement | null;
   imagePath: string;
+  filePath: string;
   link: HTMLAnchorElement | null;
   codeText: string;
 }
@@ -217,12 +218,16 @@ export function GlobalContextMenu() {
         ? (selectedInMessage && windowSelection ? windowSelection : messageText)
         : selectionText;
       const image = imageFromTarget(target);
+      const filePath = target.closest<HTMLElement>("[data-loom-file-path]")?.dataset.loomFilePath || "";
       const link = target.closest<HTMLAnchorElement>("a[href]");
       const codeText = target.closest("pre")?.innerText?.trim() || "";
+      const targetRect = target.getBoundingClientRect();
+      const anchorX = event.clientX || Math.min(targetRect.left + 24, targetRect.right);
+      const anchorY = event.clientY || Math.min(targetRect.bottom, window.innerHeight - 8);
 
       setState({
-        x: event.clientX,
-        y: event.clientY,
+        x: anchorX,
+        y: anchorY,
         target,
         editable,
         password,
@@ -233,10 +238,11 @@ export function GlobalContextMenu() {
         quoteText,
         image,
         imagePath: imagePathFromElement(image),
+        filePath,
         link,
         codeText,
       });
-      setPosition({ x: event.clientX, y: event.clientY });
+      setPosition({ x: anchorX, y: anchorY });
     };
 
     const close = () => setState(null);
@@ -371,7 +377,7 @@ export function GlobalContextMenu() {
     }
 
     const href = state.link?.href || "";
-    if (href && /^https?:/i.test(href)) {
+    if (href && /^(https?:|mailto:)/i.test(href)) {
       items.push({
         id: "open-link",
         label: zh ? "在浏览器中打开链接" : "Open link in browser",
@@ -411,6 +417,21 @@ export function GlobalContextMenu() {
         group: 2,
         run: () => window.loom.revealPath(state.imagePath),
       });
+    } else if (state.filePath) {
+      items.push({
+        id: "reveal-file",
+        label: zh ? "在文件夹中显示" : "Show in folder",
+        icon: <ExternalLink size={15} strokeWidth={1.75} />,
+        group: 2,
+        run: () => window.loom.revealPath(state.filePath),
+      });
+      items.push({
+        id: "copy-file-path",
+        label: zh ? "复制文件路径" : "Copy file path",
+        icon: <Link2 size={15} strokeWidth={1.75} />,
+        group: 2,
+        run: () => writeText(state.filePath),
+      });
     }
 
     if (selected && !state.password) {
@@ -445,7 +466,9 @@ export function GlobalContextMenu() {
       ? (zh ? "你的消息" : "Your message")
       : state.image
         ? (zh ? "图片" : "Image")
-        : "";
+        : state.selectionText
+          ? (zh ? "所选内容" : "Selection")
+          : "";
 
   return createPortal(
     <div
