@@ -51,6 +51,8 @@ const api = {
   revealPath: (targetPath: string) => ipcRenderer.invoke("loom:reveal-path", targetPath),
   readLocalImage: (targetPath: string, workspaceRoot: string) =>
     ipcRenderer.invoke("loom:read-local-image", targetPath, workspaceRoot),
+  readLocalMedia: (targetPath: string, workspaceRoot: string) =>
+    ipcRenderer.invoke("loom:read-local-media", targetPath, workspaceRoot),
   pickDirectory: () => ipcRenderer.invoke("loom:pick-directory"),
   pickFiles: () => ipcRenderer.invoke("loom:pick-files"),
   setZoomFactor: (factor: number) => {

@@ -56,6 +56,14 @@ export interface LoomBridge {
     size: number;
     mimeType: string;
   }>;
+  /** Read a workspace-confined audio/video file on demand for in-app playback. */
+  readLocalMedia(targetPath: string, workspaceRoot: string): Promise<{
+    dataUrl: string;
+    path: string;
+    name: string;
+    size: number;
+    mimeType: string;
+  }>;
   /** Native folder picker. Resolves to "" when the user cancels. */
   pickDirectory(): Promise<string>;
   /** Native file picker. Resolves to [] when the user cancels. */

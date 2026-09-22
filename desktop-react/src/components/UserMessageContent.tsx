@@ -9,6 +9,9 @@ import {
   FileSpreadsheet,
   FileText,
   Maximize2,
+  Music2,
+  Play,
+  Video,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -35,6 +38,8 @@ const IMAGE_MARKER = /^\[\d+ images? attached\]$/i;
 const MANIFEST_LINE = /^-\s+(.+?)\s+—\s+(\.loom\/attachments\/.+?)\s+\((image, shown above|read it with the file tools)(?:;\s+extracted text:\s+(\.loom\/attachments\/.+?\.extracted\.txt))?\)$/i;
 const LONG_MESSAGE_CHAR_THRESHOLD = 420;
 const LONG_MESSAGE_LINE_THRESHOLD = 9;
+const AUDIO_EXTENSIONS = new Set(["mp3", "wav", "m4a", "aac", "flac", "ogg", "opus"]);
+const VIDEO_EXTENSIONS = new Set(["mp4", "webm", "mov", "m4v"]);
 const INLINE_VIEW_EXTENSIONS = new Set([
   "pdf", "txt", "md", "log", "json", "xml", "csv", "html", "htm", "css", "scss", "js", "jsx", "ts", "tsx",
   "py", "java", "kt", "kts", "go", "rs", "c", "h", "cpp", "hpp", "cs", "php", "rb", "swift", "vue", "svelte",
@@ -87,6 +92,8 @@ export function parseUserMessageContent(raw: string): ParsedUserMessage {
 function iconFor(attachment: DisplayAttachment): LucideIcon {
   if (attachment.kind === "image") return FileImage;
   if (["zip", "rar", "7z", "tar", "gz", "bz2", "xz"].includes(attachment.extension)) return FileArchive;
+  if (AUDIO_EXTENSIONS.has(attachment.extension)) return Music2;
+  if (VIDEO_EXTENSIONS.has(attachment.extension)) return Video;
   if (["csv", "xls", "xlsx", "ods"].includes(attachment.extension)) return FileSpreadsheet;
   if ([
     "js", "jsx", "ts", "tsx", "py", "java", "kt", "kts", "go", "rs", "c", "h", "cpp", "hpp",
@@ -167,6 +174,67 @@ function FileAttachmentCard({ attachment }: { attachment: DisplayAttachment }) {
         <span>{attachment.kind === "image" ? "图片" : `${typeLabel(attachment)}${attachment.extractedPath ? " · 已解析" : ""}`}</span>
       </span>
       <span className="user-message-file-open" aria-hidden="true"><ExternalLink size={14} strokeWidth={1.8} /></span>
+    </button>
+  );
+}
+
+function MediaAttachmentPreview({ attachment, workspace }: { attachment: DisplayAttachment; workspace?: string }) {
+  const video = VIDEO_EXTENSIONS.has(attachment.extension);
+  const [source, setSource] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [failed, setFailed] = useState(false);
+
+  async function load(): Promise<void> {
+    if (loading || source) return;
+    const workspaceRoot = String(workspace || workspacePathFromHeader()).trim();
+    if (!workspaceRoot) {
+      setFailed(true);
+      return;
+    }
+    setLoading(true);
+    setFailed(false);
+    try {
+      const result = await window.loom.readLocalMedia(attachment.path, workspaceRoot);
+      setSource(result.dataUrl);
+    } catch {
+      setFailed(true);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (source) {
+    return (
+      <div className={`user-message-media-preview ${video ? "is-video" : "is-audio"}`}>
+        <div className="user-message-media-head">
+          {video ? <Video size={14} /> : <Music2 size={14} />}
+          <strong title={attachment.name}>{attachment.name}</strong>
+          <button type="button" onClick={() => void revealAttachment(attachment)} title="在文件夹中查看">
+            <ExternalLink size={13} />
+          </button>
+        </div>
+        {video
+          ? <video src={source} controls preload="metadata" playsInline />
+          : <audio src={source} controls preload="metadata" />}
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      className="user-message-attachment-card is-clickable is-media"
+      onClick={() => void load()}
+      title={failed ? "无法内联预览，点击重试" : `播放 ${attachment.name}`}
+    >
+      <span className="user-message-file-icon" aria-hidden="true">
+        {video ? <Video size={18} /> : <Music2 size={18} />}
+      </span>
+      <span className="user-message-file-copy">
+        <strong>{attachment.name}</strong>
+        <span>{failed ? "预览不可用" : loading ? "正在载入…" : video ? "视频" : "音频"}</span>
+      </span>
+      <span className="user-message-file-open" aria-hidden="true"><Play size={13} /></span>
     </button>
   );
 }
@@ -281,11 +349,16 @@ export function UserMessageContent({ parsed, workspace }: { parsed: ParsedUserMe
     <div className="user-message-content">
       {parsed.attachments.length ? (
         <div className="user-message-attachment-list" aria-label="Attached files">
-          {parsed.attachments.map((attachment, index) => (
-            attachment.kind === "image"
-              ? <ImageAttachmentPreview attachment={attachment} workspace={workspace} key={`${attachment.path}-${index}`} />
-              : <FileAttachmentCard attachment={attachment} key={`${attachment.path}-${index}`} />
-          ))}
+          {parsed.attachments.map((attachment, index) => {
+            const key = `${attachment.path}-${index}`;
+            if (attachment.kind === "image") {
+              return <ImageAttachmentPreview attachment={attachment} workspace={workspace} key={key} />;
+            }
+            if (AUDIO_EXTENSIONS.has(attachment.extension) || VIDEO_EXTENSIONS.has(attachment.extension)) {
+              return <MediaAttachmentPreview attachment={attachment} workspace={workspace} key={key} />;
+            }
+            return <FileAttachmentCard attachment={attachment} key={key} />;
+          })}
         </div>
       ) : null}
       {parsed.text ? (

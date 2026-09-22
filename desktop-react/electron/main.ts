@@ -36,6 +36,20 @@ const LOCAL_IMAGE_MIME_TYPES = new Map<string, string>([
   [".bmp", "image/bmp"],
 ]);
 const MAX_INLINE_IMAGE_BYTES = 20 * 1024 * 1024;
+const LOCAL_MEDIA_MIME_TYPES = new Map<string, string>([
+  [".mp3", "audio/mpeg"],
+  [".wav", "audio/wav"],
+  [".m4a", "audio/mp4"],
+  [".aac", "audio/aac"],
+  [".flac", "audio/flac"],
+  [".ogg", "audio/ogg"],
+  [".opus", "audio/ogg"],
+  [".mp4", "video/mp4"],
+  [".webm", "video/webm"],
+  [".mov", "video/quicktime"],
+  [".m4v", "video/mp4"],
+]);
+const MAX_INLINE_MEDIA_BYTES = 32 * 1024 * 1024;
 
 interface JsonRpcResponse {
   jsonrpc: "2.0";
@@ -385,6 +399,38 @@ async function readLocalImage(targetPath: string, workspaceRoot: string): Promis
   if (stat.size > MAX_INLINE_IMAGE_BYTES) {
     throw new Error("Local image is too large to preview");
   }
+
+  const bytes = await fs.readFile(target);
+  return {
+    dataUrl: `data:${mimeType};base64,${bytes.toString("base64")}`,
+    path: target,
+    name: path.basename(target),
+    size: stat.size,
+    mimeType,
+  };
+}
+
+
+async function readLocalMedia(targetPath: string, workspaceRoot: string): Promise<{
+  dataUrl: string;
+  path: string;
+  name: string;
+  size: number;
+  mimeType: string;
+}> {
+  const requested = resolveWorkspaceLocalPath(targetPath, workspaceRoot);
+  const root = await fs.realpath(path.resolve(String(workspaceRoot || "").trim()));
+  const target = await fs.realpath(requested);
+  const realRelative = path.relative(root, target);
+  if (realRelative === ".." || realRelative.startsWith(`..${path.sep}`) || path.isAbsolute(realRelative)) {
+    throw new Error("Local media must be inside the active workspace");
+  }
+
+  const mimeType = LOCAL_MEDIA_MIME_TYPES.get(path.extname(target).toLowerCase());
+  if (!mimeType) throw new Error("Unsupported local media format");
+  const stat = await fs.stat(target);
+  if (!stat.isFile()) throw new Error("Local media path is not a file");
+  if (stat.size > MAX_INLINE_MEDIA_BYTES) throw new Error("Local media is too large to preview");
 
   const bytes = await fs.readFile(target);
   return {
@@ -766,6 +812,9 @@ ipcMain.handle("loom:setup-browser-extension", (_event, browser: "edge" | "chrom
 ipcMain.handle("loom:reveal-path", (_event, targetPath: string) => revealPath(targetPath));
 ipcMain.handle("loom:read-local-image", (_event, targetPath: string, workspaceRoot: string) => (
   readLocalImage(targetPath, workspaceRoot)
+));
+ipcMain.handle("loom:read-local-media", (_event, targetPath: string, workspaceRoot: string) => (
+  readLocalMedia(targetPath, workspaceRoot)
 ));
 ipcMain.handle("loom:pick-files", async () => {
   const result = await dialog.showOpenDialog({ title: "Attach files", properties: ["openFile", "multiSelections"] });
