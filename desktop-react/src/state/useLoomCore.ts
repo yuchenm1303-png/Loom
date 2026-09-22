@@ -448,7 +448,7 @@ export function useLoom() {
     } else {
       clearActive();
     }
-  }, [clearActive, flushPendingItemDeltas, openThread, refreshThreads, scheduleItemDeltaFlush]);
+  }, [clearActive, openThread, refreshThreads]);
 
   const switchModelProfile = useCallback(async (selection: string) => {
     if (!active?.thread.id) return;
@@ -721,7 +721,7 @@ export function useLoom() {
       }
     });
     return unsubscribe;
-  }, [clearActive, openThread, refreshThreads]);
+  }, [clearActive, flushPendingItemDeltas, openThread, refreshThreads, scheduleItemDeltaFlush]);
 
   useEffect(() => {
     let disposed = false;
