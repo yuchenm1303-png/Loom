@@ -662,14 +662,19 @@ export function useLoom() {
         const thread = params.thread as ThreadRecord | undefined;
         if (thread && threadViewRef.current === "active" && !thread.archived) {
           threadListRequestRef.current += 1;
-          setThreads((current) => {
-            const exists = current.some((entry) => entry.id === thread.id);
-            const next = exists
-              ? current.map((entry) => (entry.id === thread.id ? thread : entry))
-              : [thread, ...current];
-            threadsRef.current = next;
-            return next;
-          });
+          const exists = threadsRef.current.some((entry) => entry.id === thread.id);
+          const next = exists
+            ? threadsRef.current.map((entry) => (entry.id === thread.id ? thread : entry))
+            : [thread, ...threadsRef.current];
+          threadsRef.current = next;
+          setThreads(next);
+          if (!exists) {
+            setThreadCounts((counts) => ({
+              active: counts.active + 1,
+              archived: counts.archived,
+              all: counts.all + 1,
+            }));
+          }
         }
         return;
       }
