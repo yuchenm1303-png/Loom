@@ -331,9 +331,11 @@ export function useLoom() {
   }, [clearActive, openThread]);
 
   const setThreadView = useCallback(async (view: ThreadView) => {
+    const navigationId = ++navigationRef.current;
     threadViewRef.current = view;
     setThreadViewState(view);
     const list = await refreshThreads(view);
+    if (navigationRef.current !== navigationId || threadViewRef.current !== view) return;
     await ensureSelection(list);
   }, [ensureSelection, refreshThreads]);
 
