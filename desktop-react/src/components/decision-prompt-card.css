@@ -10,7 +10,19 @@
 .decision-card-head { display: flex; align-items: flex-start; gap: 11px; padding: 15px 16px 13px; border-bottom: 1px solid var(--border-soft); }
 .decision-card-icon { flex: 0 0 auto; width: 30px; height: 30px; display: grid; place-items: center; border-radius: 9px; background: var(--accent-faint); color: var(--accent-soft); }
 .decision-card-heading { min-width: 0; display: grid; gap: 4px; }
-.decision-card-heading strong { color: var(--text); font-size: 13px; line-height: 1.4; font-weight: 680; }
+.decision-card-title-row { min-width: 0; display: flex; align-items: center; gap: 7px; }
+.decision-card-heading strong { min-width: 0; color: var(--text); font-size: 13px; line-height: 1.4; font-weight: 680; }
+.decision-mode-badge {
+  flex: 0 0 auto;
+  padding: 2px 6px;
+  border: 1px solid color-mix(in srgb, var(--accent) 16%, var(--border-soft));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent-faint) 72%, transparent);
+  color: var(--accent-soft);
+  font-size: 8.5px;
+  line-height: 1.2;
+  font-weight: 680;
+}
 .decision-card-heading p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.55; }
 .decision-options { display: grid; gap: 7px; padding: 10px; }
 .decision-option {
