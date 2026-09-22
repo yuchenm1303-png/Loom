@@ -914,3 +914,39 @@ def test_streaming_platform_accumulates_visible_reasoning_separately_from_answer
         for event in observed
         if event.kind is ProviderStreamEventKind.TEXT_DELTA
     ] == ["Done."]
+
+
+
+def test_official_openai_replay_reasoning_is_not_published_as_visible_reasoning():
+    chunks = [
+        SimpleNamespace(
+            id="resp-openai-private",
+            usage=None,
+            choices=[
+                SimpleNamespace(
+                    delta=SimpleNamespace(
+                        content="Answer.",
+                        reasoning_content="replay-only state",
+                        tool_calls=[],
+                    ),
+                    finish_reason="stop",
+                )
+            ],
+        )
+    ]
+    completions = RecordingCompletions(chunks)
+    backend = OpenAIStreamingChatBackend(
+        connection=ProviderConnection(
+            provider_id="test-provider",
+            adapter=ProviderAdapter.OPENAI,
+            credential_ref=CredentialRef.runtime("test-key"),
+        ),
+        profile=_profile(),
+        api_key="secret-for-test-only",
+        client=SimpleNamespace(chat=SimpleNamespace(completions=completions)),
+    )
+
+    events = list(backend.stream(_request()))
+
+    assert not any(event.kind is StreamEventKind.REASONING_DELTA for event in events)
+    assert backend.last_stream_metadata()["reasoning"] == "replay-only state"
