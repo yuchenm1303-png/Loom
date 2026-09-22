@@ -12,6 +12,9 @@ interface TranscriptScrollControllerProps {
 
 const BOTTOM_THRESHOLD_PX = 96;
 const SCROLL_EPSILON_PX = 2;
+const LIVE_FOLLOW_MAX_DISTANCE_PX = 240;
+const LIVE_FOLLOW_MAX_STEP_PX = 54;
+const LIVE_FOLLOW_EASE = 0.38;
 const PANEL_RESIZE_END_EVENT = "loom:panel-resize-end";
 
 function transcriptScroller(): HTMLDivElement | null {
@@ -73,7 +76,7 @@ export function TranscriptScrollController({
     if (force) forceBottomRef.current = true;
     if (isPanelResizeActive() || frameRef.current !== null) return;
 
-    frameRef.current = requestAnimationFrame(() => {
+    const step = () => {
       frameRef.current = null;
       if (isPanelResizeActive()) return;
 
@@ -81,11 +84,38 @@ export function TranscriptScrollController({
       forceBottomRef.current = false;
       if (!followingRef.current && !forced) return;
 
-      scroller.scrollTop = scroller.scrollHeight;
+      const target = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+      const distance = target - scroller.scrollTop;
+      const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+        || document.documentElement.dataset.loomReducedMotion === "true";
+      const easeLiveGrowth = Boolean(
+        running
+        && !forced
+        && !reducedMotion
+        && distance > SCROLL_EPSILON_PX
+        && distance <= LIVE_FOLLOW_MAX_DISTANCE_PX
+      );
+
+      if (easeLiveGrowth) {
+        const delta = Math.min(
+          LIVE_FOLLOW_MAX_STEP_PX,
+          Math.max(2, distance * LIVE_FOLLOW_EASE),
+        );
+        scroller.scrollTop = Math.min(target, scroller.scrollTop + delta);
+      } else {
+        scroller.scrollTop = target;
+      }
+
       lastScrollTopRef.current = scroller.scrollTop;
       followingRef.current = true;
       setJumpVisible(false);
-    });
+
+      if (easeLiveGrowth && target - scroller.scrollTop > SCROLL_EPSILON_PX) {
+        frameRef.current = requestAnimationFrame(step);
+      }
+    };
+
+    frameRef.current = requestAnimationFrame(step);
   };
 
   useLayoutEffect(() => {
