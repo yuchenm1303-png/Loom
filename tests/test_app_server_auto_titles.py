@@ -220,7 +220,7 @@ def test_first_completed_turn_generates_and_persists_title(tmp_path: Path) -> No
         title_request = next(r for r in platform.requests if _is_title_request(r))
         assert title_request.tool_choice is ToolChoice.NONE
         assert title_request.tools == ()
-        assert title_request.max_output_tokens == 192
+        assert title_request.max_output_tokens == 1024
         assert title_request.temperature == 0.2
         assert title_request.session_id == thread_id
         assert len(title_request.messages) == 2
@@ -526,6 +526,11 @@ def test_empty_title_response_records_cause_without_unsupported_structured_retry
         assert metadata["autoTitleAttempts"] == 3
         assert metadata["autoTitleLastError"] == "plain:empty:finish=length:chars=0"
         assert platform.structured_requests == []
+        assert [
+            request.max_output_tokens
+            for request in platform.requests
+            if _is_title_request(request)
+        ] == [1024, 2048, 4096]
     finally:
         runtime.close()
 

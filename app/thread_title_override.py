@@ -7,6 +7,7 @@ import json
 import re
 import sys
 import threading
+from dataclasses import replace
 from types import ModuleType
 from typing import Any
 
@@ -14,8 +15,9 @@ _TARGET_MODULE = "app.app_server_thread_management"
 _INSTALLED = False
 _PATCHED = False
 
-_AUTO_TITLE_VERSION = 7
+_AUTO_TITLE_VERSION = 8
 _AUTO_TITLE_MAX_ATTEMPTS = 3
+_AUTO_TITLE_OUTPUT_BUDGETS = (1024, 2048, 4096)
 _AUTO_TITLE_MAX_CHARS = 36
 _AUTO_TITLE_PROMPT_MAX_BYTES = 960
 _AUTO_TITLE_RETRY_DELAYS = (0.35, 1.2)
@@ -311,16 +313,25 @@ def _auto_title_prompt(module: ModuleType, session: Any, *, user_prompt: str = "
 
 def _build_auto_title_request(module: ModuleType, session: Any, *, user_prompt: str = "") -> tuple[Any | None, str]:
     from app.ai import AIMessage, ChatRequest, MessageRole, StructuredOutputMode, StructuredRequest, ToolChoice
-    from app.ai.reasoning import ReasoningKind, ReasoningRequest
+    from app.ai.model_reasoning_catalog import canonical_reasoning_spec
+    from app.ai.reasoning import ReasoningRequest
 
     prompt, source_prompt = _auto_title_prompt(module, session, user_prompt=user_prompt)
     if not prompt:
         return None, ""
-    # MiniMax M3 defaults to adaptive thinking. A short metadata task must not
-    # spend its entire output allowance on reasoning before emitting a title.
+    # Title generation is a short metadata task. Disable hidden thinking only
+    # on models that advertise an explicit no-thinking mode; otherwise leave
+    # the model's reasoning contract untouched and allow enough output budget
+    # for a public title after its internal reasoning.
     reasoning = None
-    if str(getattr(session, "reasoning_kind", "") or "") == ReasoningKind.MINIMAX_THINKING.value:
-        reasoning = ReasoningRequest(ReasoningKind.MINIMAX_THINKING, "disabled")
+    reasoning_kind = str(getattr(session, "reasoning_kind", "") or "")
+    model = str(getattr(session, "model", "") or "")
+    spec = canonical_reasoning_spec(model)
+    if spec and spec.kind.value == reasoning_kind:
+        for no_thinking_value in ("none", "disabled"):
+            if no_thinking_value in spec.values:
+                reasoning = ReasoningRequest(spec.kind, no_thinking_value)
+                break
     chat = ChatRequest(
         messages=(
             AIMessage(role=MessageRole.SYSTEM, content=_thread_title_instructions()),
@@ -329,7 +340,7 @@ def _build_auto_title_request(module: ModuleType, session: Any, *, user_prompt: 
         tools=(),
         tool_choice=ToolChoice.NONE,
         temperature=0.2,
-        max_output_tokens=192,
+        max_output_tokens=1024,
         reasoning=reasoning,
         session_id=str(getattr(session, "session_id", "") or ""),
     )
@@ -782,6 +793,7 @@ def _patch_service(module: ModuleType) -> None:
 
             if not self.thread_library.claim_auto_title_attempt(thread_id, source_prompt=source_prompt):
                 return
+            attempt = max(1, int(self.thread_library.read(thread_id).get("autoTitleAttempts") or 1))
 
             title = ""
             errors: list[str] = []
@@ -797,7 +809,14 @@ def _patch_service(module: ModuleType) -> None:
             # the selected profile may not support structured output at all.
             if callable(execute_chat):
                 try:
-                    response = execute_chat(session.profile_id, _build_plain_auto_title_request(request))
+                    plain_request = _build_plain_auto_title_request(request)
+                    plain_request = replace(
+                        plain_request,
+                        max_output_tokens=_AUTO_TITLE_OUTPUT_BUDGETS[
+                            min(attempt - 1, len(_AUTO_TITLE_OUTPUT_BUDGETS) - 1)
+                        ],
+                    )
+                    response = execute_chat(session.profile_id, plain_request)
                     raw_text = getattr(response, "text", "")
                     title = _parse_auto_title_payload(raw_text, source_prompt=source_prompt)
                     if not title:

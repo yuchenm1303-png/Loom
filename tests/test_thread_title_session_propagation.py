@@ -38,6 +38,7 @@ def test_thread_title_structured_and_plain_requests_preserve_session_id() -> Non
 def test_minimax_title_request_disables_thinking_without_changing_turn_setting() -> None:
     session = SimpleNamespace(
         session_id="thread-minimax",
+        model="minimax-m3",
         reasoning_kind="minimax-thinking",
         reasoning_value="adaptive",
     )
@@ -49,6 +50,40 @@ def test_minimax_title_request_disables_thinking_without_changing_turn_setting()
     assert plain.reasoning is not None
     assert plain.reasoning.value == "disabled"
     assert session.reasoning_value == "adaptive"
+
+
+def test_deepseek_title_request_uses_supported_no_thinking_mode() -> None:
+    session = SimpleNamespace(
+        session_id="thread-deepseek",
+        model="deepseek-v4-flash-vision-exp",
+        reasoning_kind="openai-effort",
+        reasoning_value="low",
+    )
+    structured, _ = _build_auto_title_request(
+        ModuleType("fake_title_module"), session, user_prompt="检查 Loom 的联网搜索配置",
+    )
+    plain = _build_plain_auto_title_request(structured)
+
+    assert plain.max_output_tokens == 1024
+    assert plain.reasoning is not None
+    assert plain.reasoning.value == "none"
+    assert session.reasoning_value == "low"
+
+
+def test_title_request_preserves_reasoning_when_model_has_no_direct_mode() -> None:
+    session = SimpleNamespace(
+        session_id="thread-reasoning-only",
+        model="deepseek-v4-flash",
+        reasoning_kind="openai-effort",
+        reasoning_value="low",
+    )
+    structured, _ = _build_auto_title_request(
+        ModuleType("fake_title_module"), session, user_prompt="检查 Loom 的联网搜索配置",
+    )
+    plain = _build_plain_auto_title_request(structured)
+
+    assert plain.reasoning is None
+    assert plain.max_output_tokens == 1024
 
 
 
