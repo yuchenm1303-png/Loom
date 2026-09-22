@@ -31,6 +31,7 @@ import "./activity-flow.css";
 import "./message-actions.css";
 import "./task-flow-folding.css";
 import "./turn-flow.css";
+import "./conversation-motion.css";
 
 interface TranscriptProps {
   items: TranscriptItem[];
@@ -400,7 +401,7 @@ function ActivityGlyph({ item, size = 13 }: { item: TranscriptItem; size?: numbe
   return <Wrench size={size} />;
 }
 
-const ActivityRow = memo(function ActivityRow({ item }: { item: TranscriptItem }) {
+const ActivityRow = memo(function ActivityRow({ item, visualIndex = 0 }: { item: TranscriptItem; visualIndex?: number }) {
   const [open, setOpen] = useState(false);
   const status = itemStatus(item);
   const stats = useMemo(() => item.type === "file_edit" ? diffStats(item.diff) : null, [item.diff, item.type]);
@@ -409,10 +410,14 @@ const ActivityRow = memo(function ActivityRow({ item }: { item: TranscriptItem }
   const detail = useMemo(() => open ? activityDetail(item) : "", [item, open]);
 
   return (
-    <div className={`task-flow-row-wrap ${open ? "is-open" : ""}`}>
+    <div
+      className={`task-flow-row-wrap ${open ? "is-open" : ""}`}
+      style={{ animationDelay: `${Math.min(visualIndex, 3) * 18}ms` }}
+      data-kind={item.type}
+    >
       <button
         type="button"
-        className={`task-flow-row ${active ? "is-active" : ""} ${expandable ? "is-expandable" : "no-detail"}`.trim()}
+        className={`task-flow-row task-flow-kind-${item.type} ${active ? "is-active" : "is-resting"} ${expandable ? "is-expandable" : "no-detail"}`.trim()}
         onClick={() => expandable && setOpen((value) => !value)}
         aria-expanded={expandable ? open : undefined}
         disabled={!expandable}
@@ -565,7 +570,7 @@ function ActivityFlow({ items, keepOpen = false }: { items: TranscriptItem[]; ke
       <div className="task-flow-group-grid">
         <div className="task-flow-group-inner">
           <div className="task-flow-list">
-            {compactItems.map((item) => <ActivityRow key={item.id} item={item} />)}
+            {compactItems.map((item, index) => <ActivityRow key={item.id} item={item} visualIndex={index} />)}
           </div>
         </div>
       </div>
