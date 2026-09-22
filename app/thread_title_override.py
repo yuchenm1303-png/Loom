@@ -15,7 +15,7 @@ _TARGET_MODULE = "app.app_server_thread_management"
 _INSTALLED = False
 _PATCHED = False
 
-_AUTO_TITLE_VERSION = 8
+_AUTO_TITLE_VERSION = 9
 _AUTO_TITLE_MAX_ATTEMPTS = 3
 _AUTO_TITLE_OUTPUT_BUDGETS = (1024, 2048, 4096)
 _AUTO_TITLE_MAX_CHARS = 36
@@ -69,6 +69,12 @@ _AUTO_TITLE_OPEN_THINK_RE = re.compile(r"^\s*<?\s*think\s*>", re.IGNORECASE)
 _AUTO_TITLE_CLOSE_THINK_RE = re.compile(r"<\s*/\s*think\s*>", re.IGNORECASE)
 _AUTO_TITLE_REASONING_LINE_RE = re.compile(
     r"^(?:<?\s*think\s*>|analysis\s*[:>]|reasoning\s*[:>]|思考\s*[:：>]|让我(?:先)?(?:分析|想)|let\s+me\s+(?:analyze|think)|i\s+(?:need|will|should|can)\b|we\s+(?:need|should|can)\b|the\s+user\s+(?:is|wants|asked)|this\s+conversation\b)",
+    re.IGNORECASE,
+)
+_AUTO_TITLE_ANSWER_RE = re.compile(
+    r"^(?:你好[！!，,。\s]|您好[！!，,。\s]|我是|我(?:无法|不能|可以|会|将|已经)|"
+    r"当前(?:会话|对话)|抱歉[，,！!。\s]|当然[，,！!。\s]|"
+    r"hello[!,.:\s]|hi[!,.:\s]|i\s+(?:am|cannot|can't|can|will)\b)",
     re.IGNORECASE,
 )
 _GREETING_RE = re.compile(r"^(?:你好|您好|嗨|哈喽|hello|hi|hey)\s*[。.!！?？]*$", re.IGNORECASE)
@@ -147,7 +153,9 @@ def _thread_title_instructions() -> str:
         "under five words where possible. Preserve product names, repo names, ticket references, "
         "acronyms, and code terms exactly. Do not use later messages to change the subject. "
         "Ignore greetings, politeness, conversational framing, and attachment boilerplate. Do not copy "
-        "a question or full user sentence. Do not answer the request. Do not use quotes, markdown, XML "
+        "a question or full user sentence. Do not answer the request. For example, '你是什么模型呢' "
+        "becomes '询问模型身份', and '我们需要设计一个电力报价系统' becomes '设计电力报价系统'. "
+        "Do not use quotes, markdown, XML "
         "tags, reasoning, analysis, chain-of-thought, or trailing punctuation."
     )
 
@@ -157,8 +165,6 @@ def _sanitize_title_line(value: str) -> str:
     line = line.strip(" \t`'\"“”‘’[]【】<>《》")
     line = " ".join(line.split())
     line = re.sub(r"[。.!！?？;；,:：]+$", "", line).strip()
-    if len(line) > _AUTO_TITLE_MAX_CHARS:
-        line = line[:_AUTO_TITLE_MAX_CHARS].rstrip(" -–—:：,，。.!！?？")
     return line
 
 
@@ -169,6 +175,11 @@ def _title_has_invalid_structure(value: Any) -> bool:
     if not title or _AUTO_TITLE_JSON_FRAGMENT_RE.match(title):
         return True
     return title.count("{") != title.count("}") or title.count("[") != title.count("]")
+
+
+def _title_is_answer_like(value: Any) -> bool:
+    title = str(value or "").strip()
+    return bool(_AUTO_TITLE_ANSWER_RE.match(title))
 
 
 def _title_looks_like_raw_prompt(title: str, prompt: str = "") -> bool:
@@ -229,6 +240,8 @@ def _sanitize_generated_title(value: Any, *, source_prompt: str = "") -> str:
     for item in raw.splitlines():
         line = _sanitize_title_line(item)
         if not line:
+            continue
+        if len(line) > _AUTO_TITLE_MAX_CHARS or _title_is_answer_like(line):
             continue
         if _title_has_invalid_structure(line):
             continue
@@ -387,7 +400,11 @@ def _metadata_has_committed_title(metadata: dict[str, Any]) -> bool:
     if title_source == "manual":
         return True
     if title_source == "auto":
-        return not bool(metadata.get("autoTitleFallback")) and not _title_has_invalid_structure(title)
+        return (
+            not bool(metadata.get("autoTitleFallback"))
+            and not _title_has_invalid_structure(title)
+            and not _title_is_answer_like(title)
+        )
     return bool(title and title_source not in {"pending", "fallback"})
 
 
@@ -416,10 +433,13 @@ def _metadata_display_title(metadata: dict[str, Any]) -> tuple[str, str]:
         and custom_title
         and not bool(metadata.get("autoTitleFallback"))
         and not _title_has_invalid_structure(custom_title)
+        and not _title_is_answer_like(custom_title)
     ):
         return custom_title, "auto"
 
-    if title_source == "auto" and custom_title and _title_has_invalid_structure(custom_title):
+    if title_source == "auto" and custom_title and (
+        _title_has_invalid_structure(custom_title) or _title_is_answer_like(custom_title)
+    ):
         return _placeholder_title(source_prompt or custom_title), "fallback"
 
     if title_source in {"pending", "fallback"} or metadata.get("autoTitlePending") or metadata.get("autoTitleFallback"):

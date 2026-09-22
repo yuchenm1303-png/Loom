@@ -19,6 +19,7 @@ from app.thread_title_override import _AUTO_TITLE_VERSION as AUTO_TITLE_VERSION
 from app.thread_title_override import (
     _clean_title_context,
     _metadata_display_title,
+    _metadata_title_blocks_auto_title,
     _parse_auto_title_payload,
     _safe_initial_title_from_prompt,
 )
@@ -134,6 +135,23 @@ def test_generated_title_rejects_truncated_structured_output() -> None:
         '{"title":"删除残留应用"}',
         source_prompt=prompt,
     ) == "删除残留应用"
+
+
+def test_answer_to_first_question_is_not_accepted_as_a_title() -> None:
+    prompt = "你好，你是什么模型呢"
+    answer = "你好！我是 OpenAI 的 AI 助手。当前对话没有提供具体的模型名称"
+    assert _parse_auto_title_payload(answer, source_prompt=prompt) == ""
+    assert _parse_auto_title_payload("询问模型身份", source_prompt=prompt) == "询问模型身份"
+
+    metadata = {
+        "title": answer,
+        "titleSource": "auto",
+        "autoTitleVersion": AUTO_TITLE_VERSION - 1,
+        "autoTitleSourcePrompt": prompt,
+    }
+    title, source = _metadata_display_title(metadata)
+    assert (title, source) == ("新对话", "fallback")
+    assert _metadata_title_blocks_auto_title(metadata) is False
 
 
 def test_title_context_removes_real_attachment_manifest() -> None:
