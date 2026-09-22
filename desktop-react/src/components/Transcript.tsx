@@ -32,6 +32,7 @@ import "./turn-flow.css";
 
 interface TranscriptProps {
   items: TranscriptItem[];
+  loading?: boolean;
   running?: boolean;
   currentTurnId?: string | null;
   workspace?: string;
@@ -1160,19 +1161,19 @@ function EmptyState({ disabled, onPrompt }: { disabled?: boolean; onPrompt?(prom
   );
 }
 
-export function Transcript({ items, running, currentTurnId, workspace, promptDisabled, onPrompt, onApproval }: TranscriptProps) {
+export function Transcript({ items, loading = false, running, currentTurnId, workspace, promptDisabled, onPrompt, onApproval }: TranscriptProps) {
   const turnBlocks = useStableTurnBlocks(items);
   const activeTurnId = running && currentTurnId ? String(currentTurnId) : "";
 
   return (
-    <div className="transcript-scroll">
+    <div className="transcript-scroll" aria-busy={loading}>
       <div className="chat-ambient" aria-hidden="true">
         <span className="ambient-glow glow-one" />
         <span className="ambient-glow glow-two" />
         <span className="ambient-grid" />
       </div>
       <main className="transcript" aria-live="polite">
-        {!items.length ? (
+        {loading && !items.length ? null : !items.length ? (
           <EmptyState disabled={promptDisabled} onPrompt={onPrompt} />
         ) : turnBlocks.map((block, index) => (
           block.kind === "turn" ? (

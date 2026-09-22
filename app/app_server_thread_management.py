@@ -476,6 +476,18 @@ class ManagedStreamingLoomAppServerService(StreamingLoomAppServerService):
             },
         }
 
+    def thread_start(self, params: dict[str, Any]) -> dict[str, Any]:
+        payload = super().thread_start(params)
+        thread = payload.get("thread")
+        if isinstance(thread, dict):
+            thread_id = str(thread.get("id") or "").strip()
+            if thread_id:
+                try:
+                    payload["thread"] = self._managed_record(self.store.load(thread_id))
+                except (FileNotFoundError, OSError, ValueError, json.JSONDecodeError):
+                    pass
+        return payload
+
     def thread_read(self, params: dict[str, Any]) -> dict[str, Any]:
         payload = super().thread_read(params)
         thread = payload.get("thread")

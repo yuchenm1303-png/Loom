@@ -18,6 +18,13 @@ import type {
 import { buildApprovalResponse } from "./approvalProtocol";
 
 type ThreadView = "active" | "archived";
+
+interface CachedThreadView {
+  read: ThreadReadResult;
+  items: TranscriptItem[];
+}
+
+const THREAD_VIEW_CACHE_LIMIT = 8;
 type ThreadCounts = { active: number; archived: number; all: number };
 type ThreadListResult = { threads: ThreadRecord[]; counts?: Partial<ThreadCounts> };
 
@@ -121,16 +128,38 @@ export function useLoom() {
   const [items, setItems] = useState<TranscriptItem[]>([]);
   const [turnActive, setTurnActive] = useState(false);
   const [turnStartedAt, setTurnStartedAt] = useState<number | null>(null);
+  const [threadLoading, setThreadLoading] = useState(false);
   const [context, setContext] = useState<ContextReport | null>(null);
   const [compactionProgress, setCompactionProgress] = useState<ContextCompactionProgress | null>(null);
   const compacting = compactionProgress?.status === "started" || compactionProgress?.status === "running";
   const activeIdRef = useRef("");
   const threadViewRef = useRef<ThreadView>("active");
+  const threadsRef = useRef<ThreadRecord[]>([]);
+  const navigationRef = useRef(0);
+  const threadListRequestRef = useRef(0);
+  const threadViewCacheRef = useRef<Map<string, CachedThreadView>>(new Map());
   const itemIndexRef = useRef<Map<string, number>>(new Map());
 
   useEffect(() => {
     activeIdRef.current = active?.thread.id ?? "";
   }, [active?.thread.id]);
+
+  useEffect(() => {
+    threadsRef.current = threads;
+  }, [threads]);
+
+  useEffect(() => {
+    const threadId = active?.thread.id;
+    if (!threadId) return;
+    const cache = threadViewCacheRef.current;
+    cache.delete(threadId);
+    cache.set(threadId, { read: active, items });
+    while (cache.size > THREAD_VIEW_CACHE_LIMIT) {
+      const oldest = cache.keys().next().value as string | undefined;
+      if (!oldest) break;
+      cache.delete(oldest);
+    }
+  }, [active, items]);
 
   const installItems = useCallback((next: TranscriptItem[]) => {
     itemIndexRef.current = buildItemIndex(next);
@@ -138,11 +167,13 @@ export function useLoom() {
   }, []);
 
   const clearActive = useCallback(() => {
+    navigationRef.current += 1;
     activeIdRef.current = "";
     setActive(null);
     installItems([]);
     setTurnActive(false);
     setTurnStartedAt(null);
+    setThreadLoading(false);
     setContext(null);
     setCompactionProgress(null);
   }, [installItems]);
@@ -194,8 +225,15 @@ export function useLoom() {
 
   const refreshThreads = useCallback(async (viewOverride?: ThreadView) => {
     const view = viewOverride ?? threadViewRef.current;
+    const requestId = ++threadListRequestRef.current;
     const result = await requireBridge().call<ThreadListResult>("thread/list", { view, limit: 100 });
     const next = result.threads ?? [];
+
+    // A list request can be slower than a user navigation. Never let an older
+    // active/archive refresh overwrite a newer view or a just-created thread.
+    if (requestId !== threadListRequestRef.current || view !== threadViewRef.current) return next;
+
+    threadsRef.current = next;
     setThreads(next);
     if (result.counts) {
       setThreadCounts((current) => ({
@@ -256,16 +294,69 @@ export function useLoom() {
   }, []);
 
   const openThread = useCallback(async (threadId: string) => {
-    const result = await requireBridge().call<ThreadReadResult>("thread/read", { threadId });
-    activeIdRef.current = result.thread.id;
-    setActive(result);
-    installItems(flattenItems(result.turns ?? []));
-    const running = threadIsRunning(result.thread);
-    setTurnActive(running);
-    setTurnStartedAt(running ? turnStartFromRead(result) : null);
+    const targetId = String(threadId || "").trim();
+    if (!targetId) return;
+
+    const navigationId = ++navigationRef.current;
+    const knownThread = threadsRef.current.find((thread) => thread.id === targetId) ?? null;
+    const cache = threadViewCacheRef.current;
+    const cached = cache.get(targetId) ?? null;
+    if (cached) {
+      cache.delete(targetId);
+      cache.set(targetId, cached);
+    }
+
+    // Switch the visible shell immediately instead of leaving the previous
+    // conversation on screen while disk history is being reconstructed. A
+    // recently visited thread can paint its last hydrated transcript at once;
+    // input stays locked until the authoritative read reconciles it.
+    activeIdRef.current = targetId;
+    setThreadLoading(true);
     setContext(null);
     setCompactionProgress(null);
-    void refreshContext(result.thread.id);
+    if (cached) {
+      const cachedThread = knownThread
+        ? { ...cached.read.thread, ...knownThread }
+        : cached.read.thread;
+      setActive({ ...cached.read, thread: cachedThread });
+      installItems(cached.items);
+      const running = threadIsRunning(cachedThread);
+      setTurnActive(running);
+      setTurnStartedAt(running ? turnStartFromRead(cached.read) : null);
+    } else if (knownThread) {
+      setActive({
+        thread: knownThread,
+        turns: [],
+        pendingApproval: null,
+        finalText: "",
+        error: "",
+      });
+      installItems([]);
+      const running = threadIsRunning(knownThread);
+      setTurnActive(running);
+      setTurnStartedAt(running ? Date.now() : null);
+    }
+
+    try {
+      const result = await requireBridge().call<ThreadReadResult>("thread/read", {
+        threadId: targetId,
+        includeMessages: false,
+        includeEvents: false,
+      });
+      if (navigationRef.current !== navigationId || activeIdRef.current !== targetId) return;
+
+      activeIdRef.current = result.thread.id;
+      setActive(result);
+      installItems(flattenItems(result.turns ?? []));
+      const running = threadIsRunning(result.thread);
+      setTurnActive(running);
+      setTurnStartedAt(running ? turnStartFromRead(result) : null);
+      void refreshContext(result.thread.id);
+    } finally {
+      if (navigationRef.current === navigationId && activeIdRef.current === targetId) {
+        setThreadLoading(false);
+      }
+    }
   }, [installItems, refreshContext]);
 
   const ensureSelection = useCallback(async (list: ThreadRecord[], preferredId = activeIdRef.current) => {
@@ -278,24 +369,69 @@ export function useLoom() {
   }, [clearActive, openThread]);
 
   const setThreadView = useCallback(async (view: ThreadView) => {
+    const navigationId = ++navigationRef.current;
     threadViewRef.current = view;
     setThreadViewState(view);
     const list = await refreshThreads(view);
+    if (navigationRef.current !== navigationId || threadViewRef.current !== view) return;
     await ensureSelection(list);
   }, [ensureSelection, refreshThreads]);
 
   const newThread = useCallback(async (workspace?: string, projectId?: string) => {
+    const navigationId = ++navigationRef.current;
     const params: Record<string, unknown> = projectId?.trim()
       ? { projectId: projectId.trim() }
       : workspace?.trim()
         ? { workspace: workspace.trim() }
         : {};
-    const result = await requireBridge().call<{ thread: ThreadRecord }>("thread/start", params);
-    threadViewRef.current = "active";
-    setThreadViewState("active");
-    await refreshThreads("active");
-    await openThread(result.thread.id);
-  }, [openThread, refreshThreads]);
+
+    setThreadLoading(true);
+    try {
+      const result = await requireBridge().call<{ thread: ThreadRecord }>("thread/start", params);
+      const created = { ...result.thread, archived: false };
+
+      threadViewRef.current = "active";
+      setThreadViewState("active");
+
+      // Creating a thread already returns the complete empty-thread record.
+      // Put it in the library locally instead of blocking on thread/list and
+      // then reading the same empty thread back from disk.
+      threadListRequestRef.current += 1;
+      const existed = threadsRef.current.some((thread) => thread.id === created.id);
+      const nextThreads = [created, ...threadsRef.current.filter((thread) => thread.id !== created.id)];
+      threadsRef.current = nextThreads;
+      setThreads(nextThreads);
+      if (!existed) {
+        setThreadCounts((counts) => ({
+          active: counts.active + 1,
+          archived: counts.archived,
+          all: counts.all + 1,
+        }));
+      }
+
+      // The user may have clicked another conversation while thread/start was
+      // in flight. Keep the created conversation in the sidebar, but do not
+      // steal focus back from the newer navigation.
+      if (navigationRef.current !== navigationId) return;
+
+      activeIdRef.current = created.id;
+      setActive({
+        thread: created,
+        turns: [],
+        pendingApproval: null,
+        finalText: "",
+        error: "",
+      });
+      installItems([]);
+      setTurnActive(false);
+      setTurnStartedAt(null);
+      setContext(null);
+      setCompactionProgress(null);
+      void refreshContext(created.id);
+    } finally {
+      if (navigationRef.current === navigationId) setThreadLoading(false);
+    }
+  }, [installItems, refreshContext]);
 
   const renameThread = useCallback(async (threadId: string, title: string) => {
     const result = await requireBridge().call<{ thread: ThreadRecord }>("thread/rename", { threadId, title });
@@ -527,12 +663,22 @@ export function useLoom() {
       }
       if (message.method === "thread/deleted") {
         const deletedId = String(params.threadId ?? "");
+        threadViewCacheRef.current.delete(deletedId);
         setThreads((current) => current.filter((entry) => entry.id !== deletedId));
         if (deletedId && deletedId === activeId) clearActive();
         return;
       }
       if (message.method === "turn/started") {
         const turn = params.turn as TurnRecord | undefined;
+        if (turn) {
+          setThreads((current) => {
+            const next = current.map((entry) => entry.id === threadId
+              ? { ...entry, status: "running", currentTurnId: turn.id }
+              : entry);
+            threadsRef.current = next;
+            return next;
+          });
+        }
         if (turn && threadId === activeId) {
           setActive((current) => current && current.thread.id === activeId
             ? {
@@ -551,7 +697,26 @@ export function useLoom() {
         }
         return;
       }
-      if (message.method === "thread/started" && threadViewRef.current === "active") void refreshThreads("active");
+      if (message.method === "thread/started") {
+        const thread = params.thread as ThreadRecord | undefined;
+        if (thread && threadViewRef.current === "active" && !thread.archived) {
+          threadListRequestRef.current += 1;
+          const exists = threadsRef.current.some((entry) => entry.id === thread.id);
+          const next = exists
+            ? threadsRef.current.map((entry) => (entry.id === thread.id ? thread : entry))
+            : [thread, ...threadsRef.current];
+          threadsRef.current = next;
+          setThreads(next);
+          if (!exists) {
+            setThreadCounts((counts) => ({
+              active: counts.active + 1,
+              archived: counts.archived,
+              all: counts.all + 1,
+            }));
+          }
+        }
+        return;
+      }
       if (!activeId || threadId !== activeId) return;
 
       if (message.method === "context/updated") {
@@ -627,6 +792,19 @@ export function useLoom() {
         setTurnActive(false);
         setTurnStartedAt(null);
         if (turn) {
+          setThreads((current) => {
+            const next = current.map((entry) => entry.id === threadId
+              ? {
+                  ...entry,
+                  status: turn.status as ThreadRecord["status"],
+                  currentTurnId: turn.id,
+                  updatedAt: turn.completedAt || entry.updatedAt,
+                  usage: turn.usage ?? entry.usage,
+                }
+              : entry);
+            threadsRef.current = next;
+            return next;
+          });
           const finalItemId = String(turn.finalItemId ?? "");
           const finalStepId = String(turn.finalStepId ?? "");
           if (turn.status === "completed" && (finalItemId || finalStepId)) {
@@ -653,11 +831,10 @@ export function useLoom() {
               }
             : current);
         }
-        void refreshThreads();
       }
     });
     return unsubscribe;
-  }, [clearActive, openThread, refreshThreads]);
+  }, [clearActive, openThread]);
 
   useEffect(() => {
     let disposed = false;
@@ -670,13 +847,13 @@ export function useLoom() {
         const initialized = await bridge.connect() as InitializeResult;
         if (disposed) return;
         setRuntime(initialized.runtime ?? {});
-        await refreshModels();
-        if (disposed) return;
-        await refreshProjects();
-        if (disposed) return;
         threadViewRef.current = "active";
         setThreadViewState("active");
-        const list = await refreshThreads("active");
+        const [, , list] = await Promise.all([
+          refreshModels(),
+          refreshProjects(),
+          refreshThreads("active"),
+        ]);
         if (disposed) return;
         setConnection("ready");
         if (list.length) await openThread(list[0].id);
@@ -711,6 +888,7 @@ export function useLoom() {
     items,
     turnActive,
     turnStartedAt,
+    threadLoading,
     context,
     compacting,
     compactionProgress,
@@ -778,6 +956,7 @@ export function useLoom() {
     threadCounts,
     threads,
     threadView,
+    threadLoading,
     turnActive,
     turnStartedAt,
   ]);

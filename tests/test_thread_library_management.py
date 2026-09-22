@@ -52,6 +52,9 @@ def test_thread_library_rename_archive_restore_and_read_only_boundary(tmp_path: 
         second = service.thread_start({"workspace": str(workspace)})["thread"]
         first_id = first["id"]
         second_id = second["id"]
+        assert first["archived"] is False
+        assert first["customTitle"] is False
+        assert first["titleSource"] == "fallback"
 
         renamed = service.thread_rename(
             {"threadId": first_id, "title": "  Memory   investigation  "}
