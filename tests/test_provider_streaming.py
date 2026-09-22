@@ -543,6 +543,12 @@ def test_openai_streaming_backend_requests_usage_and_never_emits_reasoning_conte
     assert events[-1].kind is StreamEventKind.COMPLETED
     assert completions.calls[0]["stream"] is True
     assert completions.calls[0]["stream_options"] == {"include_usage": True}
+    reasoning_deltas = [
+        event.reasoning_delta
+        for event in events
+        if event.kind is StreamEventKind.REASONING_DELTA
+    ]
+    assert reasoning_deltas == ["private", "still-private"]
     metadata = backend.last_stream_metadata()
     assert metadata["usage"].total_tokens == 10
     assert metadata["response_id"] == "resp-openai"
@@ -607,6 +613,13 @@ def test_openai_compatible_cumulative_snapshots_are_normalized_to_real_deltas():
     ]
     assert text_deltas == ["403", " 出来了", " —— 认证信息"]
     assert "".join(text_deltas) == "403 出来了 —— 认证信息"
+    reasoning_deltas = [
+        event.reasoning_delta
+        for event in events
+        if event.kind is StreamEventKind.REASONING_DELTA
+    ]
+    assert reasoning_deltas == ["私", "有", "思考"]
+    assert "".join(reasoning_deltas) == "私有思考"
     metadata = backend.last_stream_metadata()
     assert metadata["reasoning"] == "私有思考"
     assert metadata["reasoning_char_count"] == len("私有思考")
