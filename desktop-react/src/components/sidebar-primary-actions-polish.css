@@ -263,3 +263,189 @@ html[data-loom-reduced-motion="true"] .codex-sidebar .sidebar-new-conversation >
 html[data-loom-reduced-motion="true"] .codex-sidebar .sidebar-secondary-action > svg {
   transition-duration: .001ms !important;
 }
+
+
+/* -------------------------------------------------------------------------- */
+/* Unified primary actions                                                    */
+/* -------------------------------------------------------------------------- */
+/* New conversation and Add project are one control family. The primary action
+   keeps a slightly stronger accent, but geometry, icon treatment and motion
+   stay identical so the pair reads as a designed set rather than two widgets. */
+
+.codex-sidebar .codex-sidebar-primary {
+  gap: 8px;
+  padding: 10px 4px 14px;
+}
+
+.codex-sidebar .sidebar-new-conversation,
+.codex-sidebar .sidebar-secondary-action {
+  box-sizing: border-box;
+  min-height: 50px;
+  height: 50px;
+  padding: 0 13px 0 10px;
+  gap: 11px;
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--loom-border) 92%, var(--accent, #8b7cf6) 8%);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--loom-surface-raised) 96%, var(--accent, #8b7cf6) 4%),
+      color-mix(in srgb, var(--loom-surface) 97%, var(--accent, #8b7cf6) 3%)
+    );
+  color: var(--text-2, #c9cdd5);
+  box-shadow:
+    0 3px 10px rgba(15,18,26,.055),
+    inset 0 1px 0 rgba(255,255,255,.055);
+}
+
+.codex-sidebar .sidebar-new-conversation::before,
+.codex-sidebar .sidebar-secondary-action::before {
+  background:
+    linear-gradient(
+      105deg,
+      transparent 16%,
+      rgba(170,157,246,.065) 48%,
+      transparent 78%
+    );
+  opacity: 0;
+}
+
+.codex-sidebar .sidebar-new-conversation:hover::before,
+.codex-sidebar .sidebar-secondary-action:hover::before {
+  opacity: 1;
+}
+
+.codex-sidebar .sidebar-new-conversation > svg,
+.codex-sidebar .sidebar-secondary-action > svg {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 17px;
+  padding: 7px;
+  border-radius: 10px;
+  color: #9c91e2;
+  border: 1px solid rgba(139,124,246,.105);
+  background:
+    linear-gradient(145deg, rgba(139,124,246,.09), rgba(139,124,246,.045));
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.055),
+    0 2px 7px rgba(25,22,52,.035);
+}
+
+.codex-sidebar .sidebar-new-conversation > span,
+.codex-sidebar .sidebar-secondary-action > span {
+  font-size: 13.6px;
+  line-height: 1;
+  font-weight: 625;
+  letter-spacing: -.008em;
+}
+
+.codex-sidebar .sidebar-new-conversation {
+  color: var(--text, #eef0f3);
+  border-color: color-mix(in srgb, var(--accent, #8b7cf6) 18%, var(--loom-border) 82%);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--loom-surface-raised) 93%, var(--accent, #8b7cf6) 7%),
+      color-mix(in srgb, var(--loom-surface) 96%, var(--accent, #8b7cf6) 4%)
+    );
+  box-shadow:
+    0 4px 12px rgba(29,24,62,.065),
+    inset 0 1px 0 rgba(255,255,255,.07);
+}
+
+.codex-sidebar .sidebar-new-conversation > svg {
+  color: #aa9ef0;
+  border-color: rgba(139,124,246,.15);
+  background:
+    linear-gradient(145deg, rgba(139,124,246,.125), rgba(139,124,246,.065));
+}
+
+.codex-sidebar .sidebar-secondary-action {
+  color: color-mix(in srgb, var(--text-2, #c5c9d0) 92%, var(--accent, #8b7cf6) 8%);
+}
+
+.codex-sidebar .sidebar-new-conversation:hover,
+.codex-sidebar .sidebar-secondary-action:hover {
+  color: var(--text, #f3f4f6);
+  border-color: color-mix(in srgb, var(--accent, #8b7cf6) 27%, var(--loom-border) 73%);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--loom-surface-raised) 90%, var(--accent, #8b7cf6) 10%),
+      color-mix(in srgb, var(--loom-surface) 95%, var(--accent, #8b7cf6) 5%)
+    );
+  box-shadow:
+    0 7px 18px rgba(38,29,92,.09),
+    inset 0 1px 0 rgba(255,255,255,.08);
+  transform: translateY(-1px);
+}
+
+.codex-sidebar .sidebar-new-conversation:hover > svg,
+.codex-sidebar .sidebar-secondary-action:hover > svg {
+  color: #b9aef8;
+  border-color: rgba(155,141,235,.20);
+  background:
+    linear-gradient(145deg, rgba(139,124,246,.16), rgba(139,124,246,.085));
+  transform: scale(1.035);
+}
+
+/* Light: both cards use the same white surface and lavender icon tile.
+   Hierarchy comes from tint strength, not from turning Add project gray. */
+html[data-loom-theme="light"] .codex-sidebar .sidebar-new-conversation,
+html[data-loom-theme="light"] .codex-sidebar .sidebar-secondary-action {
+  color: #343842;
+  border-color: rgba(44,48,58,.095);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.96), rgba(249,250,252,.94));
+  box-shadow:
+    0 4px 12px rgba(38,42,52,.045),
+    0 1px 2px rgba(38,42,52,.025),
+    inset 0 1px 0 rgba(255,255,255,.98);
+}
+
+html[data-loom-theme="light"] .codex-sidebar .sidebar-new-conversation {
+  color: #292d36;
+  border-color: rgba(105,90,216,.16);
+  background:
+    linear-gradient(180deg, #ffffff, rgba(249,248,255,.97));
+  box-shadow:
+    0 5px 14px rgba(64,52,137,.065),
+    0 1px 2px rgba(38,42,52,.025),
+    inset 0 1px 0 rgba(255,255,255,.98);
+}
+
+html[data-loom-theme="light"] .codex-sidebar .sidebar-new-conversation > svg,
+html[data-loom-theme="light"] .codex-sidebar .sidebar-secondary-action > svg {
+  color: #695ad8;
+  border-color: rgba(105,90,216,.115);
+  background:
+    linear-gradient(145deg, rgba(105,90,216,.085), rgba(105,90,216,.045));
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.78),
+    0 2px 6px rgba(66,53,144,.035);
+}
+
+html[data-loom-theme="light"] .codex-sidebar .sidebar-secondary-action > svg {
+  color: #7165c9;
+  background:
+    linear-gradient(145deg, rgba(105,90,216,.065), rgba(105,90,216,.032));
+}
+
+html[data-loom-theme="light"] .codex-sidebar .sidebar-new-conversation:hover,
+html[data-loom-theme="light"] .codex-sidebar .sidebar-secondary-action:hover {
+  color: #282c35;
+  border-color: rgba(105,90,216,.23);
+  background:
+    linear-gradient(180deg, #ffffff, #f7f6fc);
+  box-shadow:
+    0 7px 18px rgba(58,48,122,.075),
+    0 2px 4px rgba(38,42,52,.025);
+}
+
+html[data-loom-theme="light"] .codex-sidebar .sidebar-new-conversation:hover > svg,
+html[data-loom-theme="light"] .codex-sidebar .sidebar-secondary-action:hover > svg {
+  color: #5f50c8;
+  border-color: rgba(105,90,216,.17);
+  background:
+    linear-gradient(145deg, rgba(105,90,216,.105), rgba(105,90,216,.055));
+}
