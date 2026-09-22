@@ -327,14 +327,10 @@ function StatusIcon({ status }: { status: AgentStatus }) {
 
 function AgentCard({ agent }: { agent: AgentCardState }) {
   const status = normalizedStatus(agent);
-  const [open, setOpen] = useState(status === "failed");
+  const [open, setOpen] = useState(false);
   const hasDetail = Boolean(agent.finalText || agent.error || agent.events.length > 1);
   const latestEvent = agent.events.at(-1);
   const preview = taskPreview(agent.task, latestEvent);
-
-  useEffect(() => {
-    if (status === "failed") setOpen(true);
-  }, [status]);
 
   return (
     <article className={`sub-agent-card status-${status} ${open ? "is-open" : ""}`}>
