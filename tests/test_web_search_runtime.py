@@ -161,10 +161,12 @@ def test_tavily_provider_uses_bearer_auth_and_parses_scores():
 
 
 def test_web_search_provider_env_detection_is_explicit_and_secret_safe():
+    builtin = web_search_provider_from_env({})
     brave = web_search_provider_from_env({"BRAVE_SEARCH_API_KEY": "b-key"})
     tavily = web_search_provider_from_env({"TAVILY_API_KEY": "t-key"})
     disabled = web_search_provider_from_env({"LOOM_WEB_SEARCH_PROVIDER": "off"})
 
+    assert builtin is not None and builtin.provider_name == "duckduckgo"
     assert brave is not None and brave.provider_name == "brave"
     assert tavily is not None and tavily.provider_name == "tavily"
     assert disabled is None
