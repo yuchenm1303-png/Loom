@@ -38,7 +38,7 @@ def test_running_turn_uses_a_dedicated_editable_steering_state() -> None:
     source = COMPOSER.read_text(encoding="utf-8")
 
     assert 'if (props.running) return <SteeringComposer {...props} />;' in source
-    assert 'className={`composer is-steering ${focused ? "is-focused" : ""}`}' in source
+    assert 'className={`composer is-steering ${focused ? "is-focused" : ""} ${dragging ? "is-dragging" : ""}`}' in source
     assert 'className={`composer is-running ${focused ? "is-focused" : ""}`}' not in source
     assert '"Guide the current task…"' in source
     assert 'aria-label="Guide the current task"' in source
@@ -60,6 +60,8 @@ def test_running_send_is_routed_to_turn_steer_not_a_second_turn_start() -> None:
     assert 'window.loom.call<SteeringReceipt>("turn/steer", {' in source
     assert 'await window.loom.call("turn/steer", {' not in source
     assert 'turnId,' in source
+    assert 'attachments,' in source
+    assert 'displayText' in source
 
 
 
@@ -113,13 +115,16 @@ def test_running_steer_is_optimistic_and_reconciles_by_client_input_id() -> None
 def test_steering_composer_does_not_wait_for_rpc_before_clearing_and_unlocking() -> None:
     source = COMPOSER.read_text(encoding="utf-8")
 
-    assert "request = Promise.resolve(onSend(input, []));" in source
+    assert "request = Promise.resolve(onSend(input, sendable.map((item) => ({ path: item.path, name: item.name }))));" in source
     assert 'setValue("");' in source
     assert "setPendingSends((current) => current + 1);" in source
     assert "void request" in source
     assert ".then(() => {" in source
     assert "setAcknowledged(true);" in source
     assert "await onSend(input, []);" not in source
+    assert "resolveComposerFiles" in source
+    assert "pickAttachments" in source
+    assert "onPaste={(event) => void onPaste(event)}" in source
     assert 'disabled={stopping}' in source
-    assert 'disabled={stopping || !value.trim()}' in source
+    assert 'disabled={stopping || (!value.trim() && !attachments.some((item) => imagesAllowed || !item.isImage))}' in source
     assert "消息已立即显示，正在后台确认…" in source

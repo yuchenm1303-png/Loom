@@ -19,6 +19,8 @@ function delay(ms: number): Promise<void> {
 type SteeringReceipt = {
   inputId?: string;
   submittedAt?: string | null;
+  displayText?: string | null;
+  attachments?: Array<{ name?: string; path?: string; kind?: string }>;
 };
 
 function optimisticSteeringItem(
@@ -109,10 +111,7 @@ export function useLoom() {
       return;
     }
     if (!thread?.id || thread.archived) return;
-    if (!text) return;
-    if (attachments.length) {
-      throw new Error("Attachments cannot be added while steering an active turn. Send them in the next turn.");
-    }
+    if (!text && !attachments.length) return;
 
     const inputId = steeringInputId();
     const localSubmittedAt = new Date().toISOString();
@@ -140,14 +139,20 @@ export function useLoom() {
         threadId: activeTurn.id,
         turnId,
         input: text,
+        attachments,
         clientInputId: inputId,
       });
 
       const submittedAt = String(receipt?.submittedAt ?? "").trim();
-      if (submittedAt) {
+      const displayText = String(receipt?.displayText ?? "").trim();
+      if (submittedAt || displayText) {
         setOptimisticSteers((current) => current.map((item) => (
           item.inputId === inputId
-            ? { ...item, submittedAt, createdAt: submittedAt }
+            ? {
+                ...item,
+                ...(submittedAt ? { submittedAt, createdAt: submittedAt } : {}),
+                ...(displayText ? { text: displayText } : {}),
+              }
             : item
         )));
       }

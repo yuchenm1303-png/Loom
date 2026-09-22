@@ -15,6 +15,7 @@ replayed and no already-observed side effect is rolled back implicitly.
 
 import importlib.abc
 import importlib.machinery
+import hashlib
 import json
 import sys
 import threading
@@ -36,6 +37,46 @@ _STEERING_PROMPT = (
 )
 
 
+def _content_record(content: Any) -> Any:
+    from app.ai import ImagePart, TextPart
+
+    if isinstance(content, str):
+        return content
+    output: list[dict[str, Any]] = []
+    for part in content:
+        if isinstance(part, TextPart):
+            output.append({"type": "text", "text": part.text})
+        elif isinstance(part, ImagePart):
+            output.append({"type": "image", "image_url": part.image_url, "detail": part.detail})
+        else:
+            raise TypeError("unsupported steering content part")
+    return output
+
+
+def _content_from_record(raw: Any) -> Any:
+    from app.ai import ImagePart, TextPart
+
+    if not isinstance(raw, list):
+        return str(raw or "")
+    parts = []
+    for item in raw:
+        if not isinstance(item, dict):
+            raise ValueError("invalid steering content")
+        kind = str(item.get("type") or "")
+        if kind == "text":
+            parts.append(TextPart(str(item.get("text") or "")))
+        elif kind == "image":
+            parts.append(ImagePart(str(item.get("image_url") or ""), detail=str(item.get("detail") or "auto")))
+        else:
+            raise ValueError(f"unsupported steering content type: {kind!r}")
+    return tuple(parts)
+
+
+def _content_digest(record: Any) -> str:
+    payload = json.dumps(record, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
 def _input_id(value: Any) -> str:
     text = str(value or "").strip()
     if len(text) > 128:
@@ -50,6 +91,8 @@ def _submit_once(
     turn_id: str,
     text: str,
     input_id: str,
+    content_record: Any | None = None,
+    content_digest: str = "",
 ) -> tuple[str, bool, str]:
     """Durably enqueue one steering input with its original submission time."""
 
@@ -65,7 +108,9 @@ def _submit_once(
                 continue
             same_turn = str(item.get("turn_id") or "") == turn_id
             same_text = str(item.get("text") or "") == text
-            if not same_turn or not same_text:
+            stored_digest = str(item.get("content_digest") or "")
+            same_content = not content_digest or not stored_digest or stored_digest == content_digest
+            if not same_turn or not same_text or not same_content:
                 raise ValueError("clientInputId was already used for different steering input")
             submitted_at = str(item.get("submitted_at") or "").strip()
             if not submitted_at:
@@ -80,6 +125,8 @@ def _submit_once(
             "id": input_id,
             "turn_id": turn_id,
             "text": text,
+            "content": content_record if content_record is not None else text,
+            "content_digest": content_digest,
             "submitted_at": submitted_at,
         })
         atomic_json(path, items)
@@ -113,6 +160,7 @@ def _consumed_duplicate(
     turn_id: str,
     text: str,
     input_id: str,
+    content_digest: str = "",
 ) -> dict[str, Any] | None:
     """Return idempotent success for guidance that is already in history.
 
@@ -132,7 +180,12 @@ def _consumed_duplicate(
             continue
         if str(data.get("input_id") or "") != input_id:
             continue
-        if event.turn_id != turn_id or str(data.get("text") or "") != text:
+        event_digest = str(data.get("content_digest") or "")
+        if (
+            event.turn_id != turn_id
+            or str(data.get("text") or "") != text
+            or (content_digest and event_digest and content_digest != event_digest)
+        ):
             raise ValueError("clientInputId was already used for different steering input")
         return _receipt(
             input_id=input_id,
@@ -160,6 +213,8 @@ def _patch_runtime_class(runtime_cls: type[Any]) -> None:
 
     from app.agent_runtime.contracts import AgentEventKind, AgentStatus
     from app.agent_runtime.tools import ToolResult
+    from app.agent_runtime.turn_input import normalize_turn_input
+    from app.ai import AIMessage, MessageRole
 
     def model_system_prompt(self: Any, session: Any, step: Any) -> str:
         value = str(original_system_prompt(self, session, step))
@@ -167,17 +222,42 @@ def _patch_runtime_class(runtime_cls: type[Any]) -> None:
             return value
         return f"{value}\n\n{_STEERING_PROMPT}"
 
+
+    def consume_steering(self: Any, session: Any) -> bool:
+        items = self.store.pending_steering(session.session_id, session.current_turn_id)
+        consumed = False
+        for item in items:
+            if item["id"] in session.steering_ids:
+                continue
+            content = _content_from_record(item.get("content", item.get("text", "")))
+            session.messages.append(AIMessage(role=MessageRole.USER, content=content))
+            session.steering_ids.append(item["id"])
+            event_data = {
+                "text": str(item.get("text") or ""),
+                "source": "steering",
+                "input_id": item["id"],
+                "content_digest": str(item.get("content_digest") or ""),
+            }
+            submitted_at = str(item.get("submitted_at") or "").strip()
+            if submitted_at:
+                event_data["submitted_at"] = submitted_at
+            self._record(session, AgentEventKind.USER_MESSAGE, data=event_data)
+            consumed = True
+        if items:
+            self.store.ack_steering(session.session_id, {item["id"] for item in items})
+        return consumed
+
     def steer(
         self: Any,
         session_id: str,
-        text: str,
+        content: Any,
         *,
         turn_id: str,
         input_id: str | None = None,
     ) -> dict[str, Any]:
-        value = str(text or "").strip()
-        if not value:
-            raise ValueError("steering input must not be empty")
+        normalized_content, value = normalize_turn_input(content)
+        content_record = _content_record(normalized_content)
+        digest = _content_digest(content_record)
         resolved_session_id = str(session_id or "").strip()
         resolved_turn_id = str(turn_id or "").strip()
         if not resolved_session_id or not resolved_turn_id:
@@ -198,6 +278,7 @@ def _patch_runtime_class(runtime_cls: type[Any]) -> None:
                 turn_id=resolved_turn_id,
                 text=value,
                 input_id=resolved_input_id,
+                content_digest=digest,
             )
             if consumed is not None:
                 return consumed
@@ -214,6 +295,8 @@ def _patch_runtime_class(runtime_cls: type[Any]) -> None:
                     turn_id=resolved_turn_id,
                     text=value,
                     input_id=resolved_input_id,
+                    content_record=content_record,
+                    content_digest=digest,
                 )
                 return _receipt(
                     input_id=identifier,
@@ -269,6 +352,7 @@ def _patch_runtime_class(runtime_cls: type[Any]) -> None:
                 turn_id=resolved_turn_id,
                 text=value,
                 input_id=resolved_input_id,
+                content_digest=digest,
             )
             if consumed is not None:
                 return consumed
@@ -288,6 +372,7 @@ def _patch_runtime_class(runtime_cls: type[Any]) -> None:
                 turn_id=resolved_turn_id,
                 text=value,
                 input_id=resolved_input_id,
+                content_digest=digest,
             )
 
             # The user's new direction supersedes this sampled action set. All
@@ -378,6 +463,7 @@ def _patch_runtime_class(runtime_cls: type[Any]) -> None:
         return result
 
     runtime_cls._model_system_prompt = model_system_prompt
+    runtime_cls._consume_steering = consume_steering
     runtime_cls.steer = steer
     runtime_cls.resume_steered_turn = resume_steered_turn
     runtime_cls._loom_live_steering_installed = True
@@ -397,13 +483,28 @@ def patch(module: Any) -> None:
         _patch_runtime_class(type(self.runtime))
 
     def turn_steer(self: Any, params: dict[str, Any]) -> dict[str, Any]:
+        from app.attachments import build_turn_content, stage_attachments
+        from app.agent_runtime.turn_input import turn_input_text
+
         session_id = self._required_text(params, "threadId")
         turn_id = self._required_text(params, "turnId")
-        text = self._required_text(params, "input")
+        text = str(params.get("input") or "").strip()
+        attachments = params.get("attachments") or ()
+        if not text and not attachments:
+            raise ValueError("turn/steer requires input or attachments")
         client_input_id = _input_id(params.get("clientInputId"))
+        session = self._load(session_id)
+        staged = stage_attachments(
+            attachments,
+            workspace=session.workspace_dir,
+            turn_id=turn_id,
+            allow_images=bool(getattr(session, "model_vision", self.vision)),
+        )
+        content = build_turn_content(text, staged)
+        display_text = turn_input_text(content)
         receipt = self.runtime.steer(
             session_id,
-            text,
+            content,
             turn_id=turn_id,
             input_id=client_input_id,
         )
@@ -447,6 +548,8 @@ def patch(module: Any) -> None:
             "delivery": str(receipt.get("delivery") or "next_safe_boundary"),
             "submittedAt": str(receipt.get("submittedAt") or "") or None,
             "applied": bool(receipt.get("applied")),
+            "displayText": display_text,
+            "attachments": [item.as_record() for item in staged],
         }
 
     def initialize(self: Any, params: dict[str, Any]) -> dict[str, Any]:
@@ -459,7 +562,7 @@ def patch(module: Any) -> None:
             "delivery": "safeBoundary",
             "idempotencyKey": "clientInputId",
             "approvalSupersedesPending": True,
-            "attachments": False,
+            "attachments": True,
         }
         capabilities["turns"] = turns
         result["capabilities"] = capabilities
