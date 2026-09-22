@@ -50,6 +50,8 @@ export interface LoomBridge {
   revealPath(targetPath: string): Promise<boolean>;
   /** Copy an image source to the native OS clipboard. */
   copyImageSource(source: string): Promise<boolean>;
+  /** Read plain text from the native OS clipboard. */
+  readClipboardText(): Promise<string>;
   /** Open a safe http(s) or mailto URL with the system handler. */
   openExternal(url: string): Promise<boolean>;
   /** Read a workspace-confined local image for safe in-app preview. */
