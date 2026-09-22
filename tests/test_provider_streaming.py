@@ -860,3 +860,57 @@ def test_web_snapshot_exposes_transient_partial_assistant_without_persisting_it(
     with service._guard:
         service._active_sessions.discard(session.session_id)
     runtime.close()
+
+
+
+def test_streaming_platform_accumulates_visible_reasoning_separately_from_answer():
+    chunks = [
+        SimpleNamespace(
+            id="resp-reasoning",
+            usage=None,
+            choices=[
+                SimpleNamespace(
+                    delta=SimpleNamespace(
+                        content=None,
+                        reasoning_content="Inspecting ",
+                        tool_calls=[],
+                    ),
+                    finish_reason=None,
+                )
+            ],
+        ),
+        SimpleNamespace(
+            id="resp-reasoning",
+            usage=None,
+            choices=[
+                SimpleNamespace(
+                    delta=SimpleNamespace(
+                        content="Done.",
+                        reasoning_content="the code.",
+                        tool_calls=[],
+                    ),
+                    finish_reason="stop",
+                )
+            ],
+        ),
+    ]
+    backend = _streaming_backend(RecordingCompletions(chunks))
+    platform = StreamingAIPlatform(prefer_streaming=True)
+    platform.register(_profile(), backend)
+    observed = []
+    platform.subscribe_stream(observed.append)
+
+    result = platform.execute_chat(AGENT_FAST_ROLE.role_id, _request())
+
+    assert result.text == "Done."
+    assert result.visible_reasoning == "Inspecting the code."
+    assert [
+        event.reasoning_delta
+        for event in observed
+        if event.kind is ProviderStreamEventKind.REASONING_DELTA
+    ] == ["Inspecting ", "the code."]
+    assert [
+        event.text_delta
+        for event in observed
+        if event.kind is ProviderStreamEventKind.TEXT_DELTA
+    ] == ["Done."]
