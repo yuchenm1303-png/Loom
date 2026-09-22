@@ -220,10 +220,10 @@ def test_first_completed_turn_generates_and_persists_title(tmp_path: Path) -> No
         title_request = next(r for r in platform.requests if _is_title_request(r))
         assert title_request.tool_choice is ToolChoice.NONE
         assert title_request.tools == ()
-        assert title_request.max_output_tokens == 48
+        assert title_request.max_output_tokens == 192
         assert title_request.temperature == 0.2
         assert title_request.session_id == thread_id
-        assert len(title_request.messages) == 3
+        assert len(title_request.messages) == 2
         assert title_request.messages[0].role is MessageRole.SYSTEM
         title_context = str(title_request.messages[1].content)
         assert "自动总结并生成简短标题" in title_context
@@ -231,7 +231,7 @@ def test_first_completed_turn_generates_and_persists_title(tmp_path: Path) -> No
         # the task from the canonical user request without waiting for an
         # assistant outcome.
         assert "已经把 Loom 的会话标题逻辑接好了" not in title_context
-        assert '{"title"' in str(title_request.messages[-1].content)
+        assert 'First user request:' in str(title_request.messages[-1].content)
         assert len([request for request in platform.requests if _is_title_request(request)]) == 1
         assert len([request for request in platform.requests if not _is_title_request(request)]) == 1
 
@@ -500,6 +500,32 @@ def test_structural_debris_title_is_hidden_and_all_record_paths_agree(tmp_path: 
         assert list_record["titleSource"] == "fallback"
         assert list_record["customTitle"] is False
         assert "Attached files" not in list_record["title"]
+    finally:
+        runtime.close()
+
+
+def test_empty_title_response_records_cause_without_unsupported_structured_retry(tmp_path: Path) -> None:
+    service, runtime, _store, _default_platform, workspace = _build_service(tmp_path, [])
+    platform = StructuredRejectingPlatform(
+        [ModelResponse(text="normal assistant response"),
+         ModelResponse(text="", finish_reason="length"),
+         ModelResponse(text="", finish_reason="length"),
+         ModelResponse(text="", finish_reason="length")]
+    )
+    try:
+        thread_id = service.thread_start({"workspace": str(workspace)})["thread"]["id"]
+        runtime.set_session_model(thread_id, platform)
+        service.turn_start({"threadId": thread_id, "input": "修复下拉框文字和箭头的对齐"})
+        metadata = _wait_until(
+            lambda: (
+                service.thread_library.read(thread_id)
+                if service.thread_library.read(thread_id).get("autoTitleFallback")
+                else None
+            ), timeout=4.0,
+        )
+        assert metadata["autoTitleAttempts"] == 3
+        assert metadata["autoTitleLastError"] == "plain:empty:finish=length:chars=0"
+        assert platform.structured_requests == []
     finally:
         runtime.close()
 

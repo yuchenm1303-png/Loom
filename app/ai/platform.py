@@ -15,6 +15,7 @@ from .contracts import (
     TextPart,
 )
 from .profiles import ModelProfile, ModelRegistry
+from .reasoning_text import merge_visible_reasoning, split_inline_reasoning
 
 _UNSUPPORTED_IMAGE_PLACEHOLDER = "[image omitted because the current model does not support image input]"
 
@@ -122,6 +123,16 @@ class AIPlatform:
         result = complete(request)
         if not isinstance(result, ModelResponse):
             raise TypeError("chat model backend must return ModelResponse")
+        public_text, inline_reasoning = split_inline_reasoning(result.text)
+        if inline_reasoning:
+            result = replace(
+                result,
+                text=public_text,
+                visible_reasoning=merge_visible_reasoning(
+                    result.visible_reasoning,
+                    inline_reasoning,
+                ),
+            )
         return result
 
     def execute_structured_chat(

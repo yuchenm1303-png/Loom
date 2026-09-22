@@ -14,11 +14,10 @@ _TARGET_MODULE = "app.app_server_thread_management"
 _INSTALLED = False
 _PATCHED = False
 
-_AUTO_TITLE_VERSION = 6
+_AUTO_TITLE_VERSION = 7
 _AUTO_TITLE_MAX_ATTEMPTS = 3
 _AUTO_TITLE_MAX_CHARS = 36
 _AUTO_TITLE_PROMPT_MAX_BYTES = 960
-_AUTO_TITLE_RECENT_MESSAGES = 8
 _AUTO_TITLE_RETRY_DELAYS = (0.35, 1.2)
 _AUTO_TITLE_SCHEMA = {
     "type": "object",
@@ -139,12 +138,12 @@ def _escape_prompt_text(value: str) -> str:
 
 def _thread_title_instructions() -> str:
     return (
-        f"Generate one concise task title of at most {_AUTO_TITLE_MAX_CHARS} characters. "
+        f"Summarize the first user request as one concise title of at most {_AUTO_TITLE_MAX_CHARS} characters. "
         "Describe the concrete task or problem, not the wording of the request. Write in the user's "
         "language. Prefer an action-object phrase: for Chinese, usually 4-12 Chinese characters such "
         "as 修复…, 优化…, 检查…, 排查…, or 对齐…; for English, start with an imperative verb and use "
         "under five words where possible. Preserve product names, repo names, ticket references, "
-        "acronyms, and code terms exactly. Use recent conversation only to disambiguate the task. "
+        "acronyms, and code terms exactly. Do not use later messages to change the subject. "
         "Ignore greetings, politeness, conversational framing, and attachment boilerplate. Do not copy "
         "a question or full user sentence. Do not answer the request. Do not use quotes, markdown, XML "
         "tags, reasoning, analysis, chain-of-thought, or trailing punctuation."
@@ -299,66 +298,29 @@ def _first_user_prompt(module: ModuleType, session: Any) -> str:
     return ""
 
 
-def _recent_title_messages(module: ModuleType, session: Any, *, source_prompt: str) -> list[tuple[str, str]]:
-    rows: list[tuple[str, str]] = []
-    source_skipped = False
-    for message in getattr(session, "messages", ()):
-        if message.role is module.MessageRole.USER:
-            role = "user"
-        elif message.role is module.MessageRole.ASSISTANT:
-            role = "assistant"
-        else:
-            continue
-        text = _clean_title_context(_message_text(module, message))
-        if not text:
-            continue
-        if role == "user" and not source_skipped and text == source_prompt:
-            source_skipped = True
-            continue
-        rows.append((role, text))
-    return rows[-_AUTO_TITLE_RECENT_MESSAGES:]
-
-
 def _auto_title_prompt(module: ModuleType, session: Any, *, user_prompt: str = "") -> tuple[str, str]:
     source_prompt = _clean_title_context(user_prompt) or _first_user_prompt(module, session)
     if not source_prompt:
         return "", ""
 
-    instructions = _thread_title_instructions()
-    prefix = "Canonical first user request:\n<request>"
-    middle = "</request>\n\nRecent substantive conversation:\n<conversation>\n"
-    suffix = "\n</conversation>"
-    fixed_bytes = len((prefix + middle + suffix).encode("utf-8"))
-    available = max(96, _AUTO_TITLE_PROMPT_MAX_BYTES - fixed_bytes)
-    source_budget = max(64, int(available * 0.55))
-    recent_budget = max(32, available - source_budget)
-
-    source_text = _truncate_utf8(_escape_prompt_text(source_prompt), source_budget)
-    rows = _recent_title_messages(module, session, source_prompt=source_prompt)
-    rendered_reversed: list[str] = []
-    remaining = recent_budget
-    for role, text in reversed(rows):
-        open_tag = f'<message role="{role}">'
-        close_tag = "</message>"
-        overhead = len((open_tag + close_tag + "\n").encode("utf-8"))
-        if remaining <= overhead:
-            break
-        body = _truncate_utf8(_escape_prompt_text(text), remaining - overhead)
-        if not body:
-            continue
-        rendered_reversed.append(f"{open_tag}{body}{close_tag}")
-        remaining -= len((open_tag + body + close_tag + "\n").encode("utf-8"))
-    rendered = "\n".join(reversed(rendered_reversed))
-
-    prompt = f"{prefix}{source_text}{middle}{rendered}{suffix}"
+    prefix, suffix = "First user request:\n<request>", "</request>"
+    budget = _AUTO_TITLE_PROMPT_MAX_BYTES - len((prefix + suffix).encode("utf-8"))
+    source_text = _truncate_utf8(_escape_prompt_text(source_prompt), budget)
+    prompt = f"{prefix}{source_text}{suffix}"
     return prompt, source_prompt
 
 def _build_auto_title_request(module: ModuleType, session: Any, *, user_prompt: str = "") -> tuple[Any | None, str]:
     from app.ai import AIMessage, ChatRequest, MessageRole, StructuredOutputMode, StructuredRequest, ToolChoice
+    from app.ai.reasoning import ReasoningKind, ReasoningRequest
 
     prompt, source_prompt = _auto_title_prompt(module, session, user_prompt=user_prompt)
     if not prompt:
         return None, ""
+    # MiniMax M3 defaults to adaptive thinking. A short metadata task must not
+    # spend its entire output allowance on reasoning before emitting a title.
+    reasoning = None
+    if str(getattr(session, "reasoning_kind", "") or "") == ReasoningKind.MINIMAX_THINKING.value:
+        reasoning = ReasoningRequest(ReasoningKind.MINIMAX_THINKING, "disabled")
     chat = ChatRequest(
         messages=(
             AIMessage(role=MessageRole.SYSTEM, content=_thread_title_instructions()),
@@ -367,7 +329,8 @@ def _build_auto_title_request(module: ModuleType, session: Any, *, user_prompt: 
         tools=(),
         tool_choice=ToolChoice.NONE,
         temperature=0.2,
-        max_output_tokens=48,
+        max_output_tokens=192,
+        reasoning=reasoning,
         session_id=str(getattr(session, "session_id", "") or ""),
     )
     return (
@@ -381,23 +344,15 @@ def _build_auto_title_request(module: ModuleType, session: Any, *, user_prompt: 
     )
 
 def _build_plain_auto_title_request(structured: Any) -> Any:
-    from app.ai import AIMessage, ChatRequest, MessageRole, ToolChoice
+    from app.ai import ChatRequest, ToolChoice
 
     return ChatRequest(
-        messages=(
-            *structured.chat.messages,
-            AIMessage(
-                role=MessageRole.USER,
-                content=(
-                    "Return exactly one JSON object matching this schema and nothing else:\n"
-                    '{"title":"concise task title"}'
-                ),
-            ),
-        ),
+        messages=structured.chat.messages,
         tools=(),
         tool_choice=ToolChoice.NONE,
         temperature=structured.chat.temperature,
         max_output_tokens=structured.chat.max_output_tokens,
+        reasoning=structured.chat.reasoning,
         session_id=structured.chat.session_id,
     )
 
@@ -836,26 +791,23 @@ def _patch_service(module: ModuleType) -> None:
                 if callable(platform_for_session)
                 else getattr(self.runtime, "platform", None)
             )
-            execute_structured = getattr(platform, "execute_structured_chat", None)
             execute_chat = getattr(platform, "execute_chat", None)
 
-            # Plain chat is Loom's compatibility baseline across OpenAI-compatible
-            # providers. Native structured output is a recovery lane, matching the
-            # stricter Codex contract without making it a requirement for every
-            # configured model.
+            # A title needs one line of text, not a JSON protocol. In particular,
+            # the selected profile may not support structured output at all.
             if callable(execute_chat):
                 try:
                     response = execute_chat(session.profile_id, _build_plain_auto_title_request(request))
-                    title = _parse_auto_title_payload(getattr(response, "text", ""), source_prompt=source_prompt)
+                    raw_text = getattr(response, "text", "")
+                    title = _parse_auto_title_payload(raw_text, source_prompt=source_prompt)
+                    if not title:
+                        category = "empty" if not str(raw_text or "").strip() else "invalid"
+                        reason = str(getattr(response, "finish_reason", "") or "unknown")[:40]
+                        errors.append(f"plain:{category}:finish={reason}:chars={len(str(raw_text or ''))}")
                 except Exception as exc:
                     errors.append(f"plain:{type(exc).__name__}: {exc}")
-
-            if not title and callable(execute_structured):
-                try:
-                    structured_payload = execute_structured(session.profile_id, request)
-                    title = _parse_auto_title_payload(structured_payload, source_prompt=source_prompt)
-                except Exception as exc:
-                    errors.append(f"structured:{type(exc).__name__}: {exc}")
+            else:
+                errors.append("plain:unavailable")
 
             if not title:
                 finish("; ".join(errors) or "empty_or_invalid_title")

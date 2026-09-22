@@ -83,6 +83,33 @@ class FakeStreamBackend:
         }
 
 
+class InlineThinkingStreamBackend:
+    def stream(self, _request):
+        # Deliberately split both tags at awkward provider chunk boundaries.
+        for value in ("<thi", "nk>Inspecting ", "the code.</thi", "nk>\nDone"):
+            yield StreamEvent(kind=StreamEventKind.TEXT_DELTA, text_delta=value)
+        yield StreamEvent(kind=StreamEventKind.COMPLETED, finish_reason="stop")
+
+    def last_stream_metadata(self):
+        return {"finish_reason": "stop"}
+
+
+class InlineThinkingToolStreamBackend:
+    def stream(self, _request):
+        yield StreamEvent(kind=StreamEventKind.TEXT_DELTA, text_delta="<think>Need the shell")
+        yield StreamEvent(
+            kind=StreamEventKind.TOOL_CALL_DELTA,
+            tool_call_index=0,
+            tool_call_id="call-inline-think",
+            tool_name="echo",
+            arguments_delta='{"value":"ok"}',
+        )
+        yield StreamEvent(kind=StreamEventKind.COMPLETED, finish_reason="tool_calls")
+
+    def last_stream_metadata(self):
+        return {"finish_reason": "tool_calls"}
+
+
 class NormalizedStreamingPlatform:
     """Small Runtime-facing platform that emits provider-normalized deltas."""
 
@@ -488,6 +515,60 @@ def test_streaming_platform_opt_out_keeps_legacy_completion_path():
     assert result.text == "legacy"
     assert backend.complete_calls == 1
     assert backend.stream_calls == 0
+
+
+def test_streaming_platform_demuxes_inline_thinking_across_chunks():
+    platform = StreamingAIPlatform(prefer_streaming=True)
+    platform.register(_profile(), InlineThinkingStreamBackend())
+    observed = []
+    platform.subscribe_stream(observed.append)
+
+    result = platform.execute_chat(AGENT_FAST_ROLE.role_id, _request())
+
+    assert result.text == "\nDone"
+    assert result.visible_reasoning == "Inspecting the code."
+    assert "<think" not in result.text
+    assert "<think" not in result.visible_reasoning
+    assert "".join(
+        event.reasoning_delta
+        for event in observed
+        if event.kind is ProviderStreamEventKind.REASONING_DELTA
+    ) == "Inspecting the code."
+    assert "".join(
+        event.text_delta
+        for event in observed
+        if event.kind is ProviderStreamEventKind.TEXT_DELTA
+    ) == "\nDone"
+
+
+def test_non_streaming_platform_promotes_inline_thinking_to_visible_reasoning():
+    class Backend:
+        def complete(self, _request):
+            return ModelResponse(
+                text="<thinking>检查配置</thinking>\n\n配置正常。",
+                visible_reasoning="provider summary",
+                finish_reason="stop",
+            )
+
+    platform = StreamingAIPlatform(prefer_streaming=False)
+    platform.register(_profile(), Backend())
+
+    result = platform.execute_chat(AGENT_FAST_ROLE.role_id, _request())
+
+    assert result.text == "配置正常。"
+    assert result.visible_reasoning == "provider summary\n\n检查配置"
+
+
+def test_unclosed_inline_thinking_remains_visible_on_tool_only_response():
+    platform = StreamingAIPlatform(prefer_streaming=True)
+    platform.register(_profile(), InlineThinkingToolStreamBackend())
+
+    result = platform.execute_chat(AGENT_FAST_ROLE.role_id, _request())
+
+    assert result.text == ""
+    assert result.visible_reasoning == "Need the shell"
+    assert len(result.tool_calls) == 1
+    assert result.tool_calls[0].name == "echo"
 
 
 def test_openai_streaming_backend_requests_usage_and_never_emits_reasoning_content():

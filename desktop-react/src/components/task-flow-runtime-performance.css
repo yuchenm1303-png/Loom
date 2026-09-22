@@ -3,16 +3,13 @@
    already occupies its final layout box, while only opacity/transform animate
    on the compositor. Historical task flows never replay these entrance effects. */
 
-.turn-process.is-live .entry-activity {
-  animation: loom-task-flow-shell-in 170ms cubic-bezier(.2,.78,.2,1) both;
-  transform-origin: left top;
-}
-
-/* activity-flow.css also animates .task-flow itself. The live shell already
-   owns that entrance here, so disable the nested duplicate transform/opacity
-   animation and keep one compositor animation instead of two. */
+/* Transcript entries and task-flow shells both have generic entrance effects.
+   A live activity row used to inherit those two effects and add its own row
+   animation, producing a dark/bright composite flash on light surfaces. The
+   row is now the sole owner of live task-flow entrance motion. */
+.turn-process.is-live .entry-activity,
 .turn-process.is-live .task-flow {
-  animation: none;
+  animation: none !important;
 }
 
 .turn-process.is-live .task-flow-row-wrap {
@@ -34,17 +31,6 @@
    compositor without the tiny blur. */
 .task-flow-row::after {
   filter: none !important;
-}
-
-@keyframes loom-task-flow-shell-in {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
 }
 
 @keyframes loom-task-flow-row-in {

@@ -63,17 +63,11 @@
   outline-offset: 1px;
 }
 
-.task-flow-row:has(.task-flow-status.running),
-.task-flow-row:has(.task-flow-status.started),
-.task-flow-row:has(.task-flow-status.streaming),
-.task-flow-row:has(.task-flow-status.streaming_arguments) {
+.task-flow-row.is-active {
   background: linear-gradient(90deg, rgba(139,124,246,.018), rgba(139,124,246,.006) 48%, transparent 78%);
 }
 
-.task-flow-row:has(.task-flow-status.running)::after,
-.task-flow-row:has(.task-flow-status.started)::after,
-.task-flow-row:has(.task-flow-status.streaming)::after,
-.task-flow-row:has(.task-flow-status.streaming_arguments)::after {
+.task-flow-row.is-active::after {
   content: "";
   position: absolute;
   z-index: 0;
@@ -137,10 +131,7 @@
   background: #181b21;
 }
 
-.task-flow-row:has(.task-flow-status.running) .task-flow-row-icon,
-.task-flow-row:has(.task-flow-status.started) .task-flow-row-icon,
-.task-flow-row:has(.task-flow-status.streaming) .task-flow-row-icon,
-.task-flow-row:has(.task-flow-status.streaming_arguments) .task-flow-row-icon {
+.task-flow-row.is-active .task-flow-row-icon {
   color: #a59de4;
   border-color: rgba(139,124,246,.22);
   background: linear-gradient(180deg, rgba(31,29,43,.9), rgba(19,20,27,.9));
@@ -488,10 +479,7 @@
   .task-flow-status.started .task-flow-status-dot,
   .task-flow-status.streaming .task-flow-status-dot,
   .task-flow-status.streaming_arguments .task-flow-status-dot,
-  .task-flow-row:has(.task-flow-status.running)::after,
-  .task-flow-row:has(.task-flow-status.started)::after,
-  .task-flow-row:has(.task-flow-status.streaming)::after,
-  .task-flow-row:has(.task-flow-status.streaming_arguments)::after,
+  .task-flow-row.is-active::after,
   .task-flow-group.is-running .task-flow-group-icon {
     animation: none !important;
   }

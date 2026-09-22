@@ -835,8 +835,7 @@ html[data-loom-theme="light"] .task-flow-row-wrap.is-open .task-flow-row-icon {
   background: #eceef1;
 }
 
-html[data-loom-theme="light"] .task-flow-row:has(.task-flow-status.running) .task-flow-row-icon,
-html[data-loom-theme="light"] .task-flow-row:has(.task-flow-status.started) .task-flow-row-icon,
+html[data-loom-theme="light"] .task-flow-row.is-active .task-flow-row-icon,
 html[data-loom-theme="light"] .task-flow-group.is-running .task-flow-group-icon {
   color: #6254bd;
   border-color: rgba(105,90,216,.25);
@@ -3471,23 +3470,15 @@ html[data-loom-theme="light"] .thread-quick-actions button.is-active {
 /* White surfaces need a chromatic sweep, not a white highlight. Keep the
    moving band narrow and saturated enough to be legible without making the
    command row look selected. */
-html[data-loom-theme="light"] .task-flow-row:has(.task-flow-status.running),
-html[data-loom-theme="light"] .task-flow-row:has(.task-flow-status.started) {
-  background:
-    linear-gradient(
-      90deg,
-      rgba(105,90,216,.040) 0%,
-      rgba(105,90,216,.018) 42%,
-      rgba(105,90,216,.006) 72%,
-      transparent 100%
-    );
-  box-shadow:
-    inset 1px 0 0 rgba(105,90,216,.22),
-    inset 0 1px rgba(255,255,255,.58);
+html[data-loom-theme="light"] .task-flow-row.is-active {
+  /* Keep the row surface identical across streaming lifecycle states. Motion
+     belongs to the accent band/icon/dot, so completion cannot flash the row
+     from a filled dark surface back to white. */
+  background: transparent;
+  box-shadow: none;
 }
 
-html[data-loom-theme="light"] .task-flow-row:has(.task-flow-status.running)::after,
-html[data-loom-theme="light"] .task-flow-row:has(.task-flow-status.started)::after {
+html[data-loom-theme="light"] .task-flow-row.is-active::after {
   left: -54%;
   width: 54%;
   background: linear-gradient(
@@ -3510,15 +3501,13 @@ html[data-loom-theme="light"] .task-flow-row:has(.task-flow-status.started)::aft
   animation: task-flow-shimmer-light 2.55s cubic-bezier(.32,.02,.18,1) infinite;
 }
 
-html[data-loom-theme="light"] .task-flow-row:has(.task-flow-status.running) .task-flow-status-dot,
-html[data-loom-theme="light"] .task-flow-row:has(.task-flow-status.started) .task-flow-status-dot {
+html[data-loom-theme="light"] .task-flow-row.is-active .task-flow-status-dot {
   background: #695ad8;
   box-shadow: 0 0 0 0 rgba(105,90,216,.28);
   animation: task-flow-pulse-light 1.65s ease-out infinite;
 }
 
-html[data-loom-theme="light"] .task-flow-row:has(.task-flow-status.running) .task-flow-row-icon,
-html[data-loom-theme="light"] .task-flow-row:has(.task-flow-status.started) .task-flow-row-icon {
+html[data-loom-theme="light"] .task-flow-row.is-active .task-flow-row-icon {
   color: #5c4fba;
   border-color: rgba(105,90,216,.28);
   background:
@@ -3570,10 +3559,8 @@ html[data-loom-theme="light"] .task-flow-group.is-running .task-flow-group-icon 
 }
 
 @media (prefers-reduced-motion: reduce) {
-  html[data-loom-theme="light"] .task-flow-row:has(.task-flow-status.running)::after,
-  html[data-loom-theme="light"] .task-flow-row:has(.task-flow-status.started)::after,
-  html[data-loom-theme="light"] .task-flow-row:has(.task-flow-status.running) .task-flow-status-dot,
-  html[data-loom-theme="light"] .task-flow-row:has(.task-flow-status.started) .task-flow-status-dot,
+  html[data-loom-theme="light"] .task-flow-row.is-active::after,
+  html[data-loom-theme="light"] .task-flow-row.is-active .task-flow-status-dot,
   html[data-loom-theme="light"] .task-flow-group.is-running .task-flow-group-icon {
     animation: none !important;
   }

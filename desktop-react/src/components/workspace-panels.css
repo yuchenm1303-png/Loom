@@ -173,6 +173,8 @@ body.loom-panel-resizing * {
 
 .runtime-inspector {
   container-type: inline-size;
+  /* Named so the tab-strip query below can only ever measure this panel. */
+  container-name: runtime-inspector;
 }
 
 .runtime-event {
@@ -223,8 +225,16 @@ body.loom-panel-resizing * {
   .polished-thread-header-actions { gap: 2px; }
 }
 
-@container (max-width: 330px) {
-  .runtime-tab > span:not(.runtime-tab-count) { display: none; }
+/* The four runtime tabs are icon + label and *both* live inside .runtime-tab-content.
+   This used to be an unnamed `@container (max-width: 330px)`, which the panel itself
+   satisfied at its own default width (316px: --inspector-width / INSPECTOR_MIN..MAX
+   are 280/316/360), and its `.runtime-tab > span:not(.runtime-tab-count)` selector
+   then hit .runtime-tab-content with higher specificity than the
+   `.runtime-tab-content { display: inline-flex }` base rule -- hiding all four icons
+   *and* their labels and leaving only the count badge visible.
+   Only the text label is droppable, and only below every reachable panel preset. */
+@container runtime-inspector (max-width: 260px) {
+  .runtime-tab-label { display: none; }
   .runtime-tab { gap: 3px; padding-inline: 3px; }
   .runtime-header { padding-inline: 10px; }
 }

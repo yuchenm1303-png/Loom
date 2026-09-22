@@ -1629,6 +1629,12 @@
   min-width: 0;
   gap: 3px;
   overflow: visible;
+  /* Lock to a single-column grid so the title row, model id, and subtitle
+     always stack as separate grid rows. Earlier this was implicit, and a
+     later global rule set child rows to display:inline-block which let
+     them collapse into the same grid track on Windows / Electron and
+     produced visible vertical overlap on the GPT / GLM provider rows. */
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .model-manager-popover .model-profile-title-row {

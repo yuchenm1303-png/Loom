@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import threading
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum
 from typing import Any, Callable
 
@@ -17,6 +17,7 @@ from .contracts import (
 from .errors import AIEmptyResponseError, AIResponseError, AITransportError
 from .execution_control import check_cancelled, note_progress
 from .platform import AIPlatform
+from .reasoning_text import InlineReasoningDemux, merge_visible_reasoning, split_inline_reasoning
 
 
 class ProviderStreamEventKind(str, Enum):
@@ -211,6 +212,7 @@ class StreamingAIPlatform(AIPlatform):
             return super().execute_chat(profile_id, request)
 
         accumulator = _StreamAccumulator()
+        inline_reasoning = InlineReasoningDemux()
         stream = stream_method(request)
         try:
             for raw_event in stream:
@@ -221,34 +223,68 @@ class StreamingAIPlatform(AIPlatform):
                 note_progress()
                 if not isinstance(raw_event, StreamEvent):
                     raise TypeError("streaming model backend must yield StreamEvent values")
-                accumulator.consume(raw_event)
-                if raw_event.kind is StreamEventKind.TEXT_DELTA and raw_event.text_delta:
-                    self._publish(
-                        ProviderStreamEvent(
-                            profile_id=profile.profile_id,
-                            kind=ProviderStreamEventKind.TEXT_DELTA,
-                            text_delta=raw_event.text_delta,
+                normalized_events: list[StreamEvent]
+                if raw_event.kind is StreamEventKind.TEXT_DELTA:
+                    normalized_events = [
+                        StreamEvent(
+                            kind=(
+                                StreamEventKind.REASONING_DELTA
+                                if channel == "reasoning"
+                                else StreamEventKind.TEXT_DELTA
+                            ),
+                            reasoning_delta=value if channel == "reasoning" else "",
+                            text_delta=value if channel == "text" else "",
                         )
-                    )
-                elif raw_event.kind is StreamEventKind.REASONING_DELTA and raw_event.reasoning_delta:
-                    self._publish(
-                        ProviderStreamEvent(
-                            profile_id=profile.profile_id,
-                            kind=ProviderStreamEventKind.REASONING_DELTA,
-                            reasoning_delta=raw_event.reasoning_delta,
+                        for channel, value in inline_reasoning.feed(raw_event.text_delta)
+                        if value
+                    ]
+                elif raw_event.kind is StreamEventKind.COMPLETED:
+                    normalized_events = [
+                        StreamEvent(
+                            kind=(
+                                StreamEventKind.REASONING_DELTA
+                                if channel == "reasoning"
+                                else StreamEventKind.TEXT_DELTA
+                            ),
+                            reasoning_delta=value if channel == "reasoning" else "",
+                            text_delta=value if channel == "text" else "",
                         )
-                    )
-                elif raw_event.kind is StreamEventKind.TOOL_CALL_DELTA:
-                    self._publish(
-                        ProviderStreamEvent(
-                            profile_id=profile.profile_id,
-                            kind=ProviderStreamEventKind.TOOL_CALL_DELTA,
-                            tool_call_index=raw_event.tool_call_index,
-                            tool_call_id=raw_event.tool_call_id,
-                            tool_name=raw_event.tool_name,
-                            arguments_delta=raw_event.arguments_delta,
+                        for channel, value in inline_reasoning.finish()
+                        if value
+                    ]
+                    normalized_events.append(raw_event)
+                else:
+                    normalized_events = [raw_event]
+
+                for event in normalized_events:
+                    accumulator.consume(event)
+                    if event.kind is StreamEventKind.TEXT_DELTA and event.text_delta:
+                        self._publish(
+                            ProviderStreamEvent(
+                                profile_id=profile.profile_id,
+                                kind=ProviderStreamEventKind.TEXT_DELTA,
+                                text_delta=event.text_delta,
+                            )
                         )
-                    )
+                    elif event.kind is StreamEventKind.REASONING_DELTA and event.reasoning_delta:
+                        self._publish(
+                            ProviderStreamEvent(
+                                profile_id=profile.profile_id,
+                                kind=ProviderStreamEventKind.REASONING_DELTA,
+                                reasoning_delta=event.reasoning_delta,
+                            )
+                        )
+                    elif event.kind is StreamEventKind.TOOL_CALL_DELTA:
+                        self._publish(
+                            ProviderStreamEvent(
+                                profile_id=profile.profile_id,
+                                kind=ProviderStreamEventKind.TOOL_CALL_DELTA,
+                                tool_call_index=event.tool_call_index,
+                                tool_call_id=event.tool_call_id,
+                                tool_name=event.tool_name,
+                                arguments_delta=event.arguments_delta,
+                            )
+                        )
         finally:
             close = getattr(stream, "close", None)
             if callable(close):
@@ -271,6 +307,16 @@ class StreamingAIPlatform(AIPlatform):
             reasoning=str(metadata.get("reasoning") or ""),
             chunk_count=int(metadata.get("chunk_count") or 0),
         )
+        public_text, late_inline_reasoning = split_inline_reasoning(result.text)
+        if late_inline_reasoning:
+            result = replace(
+                result,
+                text=public_text,
+                visible_reasoning=merge_visible_reasoning(
+                    result.visible_reasoning,
+                    late_inline_reasoning,
+                ),
+            )
         self._publish(
             ProviderStreamEvent(
                 profile_id=profile.profile_id,

@@ -256,9 +256,20 @@ small { font-size: var(--loom-font-micro) !important; }
    .model-group-row .model-profile-main is min-height:56px and
    .model-profile-row is min-height:62px, so the subtitle used to overflow
    outside the card border onto the next card. Use :has() so two-line cards
-   (no <small> subtitle) keep their original compact height. */
+   (no <small> subtitle) keep their original compact height.
+
+   The .model-profile-copy container is display:grid (single column). Its
+   child <span> and <small> text rows are forced to display:block so each
+   line always occupies its own grid row regardless of any earlier rule that
+   tries to render them inline. Earlier `display: inline-block` here caused
+   the title, model-id, and subtitle to overlap vertically inside the card
+   (visible on the GPT / GLM provider rows in the model manager). */
+.model-profile-copy { grid-template-columns: minmax(0, 1fr); }
 .model-profile-copy > span,
-.model-profile-copy small { min-height: 18px; display: inline-block; }
+.model-profile-copy small {
+  min-height: 18px;
+  display: block;
+}
 .model-profile-row:has(.model-profile-copy small) { min-height: 80px; }
 .model-profile-main:has(.model-profile-copy small) { min-height: 78px; }
 .model-group-row:has(.model-profile-copy small) { min-height: 80px; }

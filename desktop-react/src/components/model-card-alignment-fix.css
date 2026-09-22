@@ -27,6 +27,10 @@
   align-content: center;
   gap: 1px;
   line-height: 1.15;
+  /* Force a single-column grid so child rows (title / model id / subtitle)
+     always stack vertically. The provider rows in the model manager were
+     rendering all three lines on top of each other when this was implicit. */
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .model-profile-title-row,
@@ -44,6 +48,9 @@
 .model-profile-copy > span,
 .model-profile-copy small {
   min-height: 14px;
+  /* Block, not inline-block. The title row already uses flex for its
+     inline badges; the standalone <span> and <small> lines must stack. */
+  display: block;
 }
 
 .model-profile-icon,

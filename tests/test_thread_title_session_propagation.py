@@ -35,6 +35,22 @@ def test_thread_title_structured_and_plain_requests_preserve_session_id() -> Non
     assert plain.session_id == session.session_id
 
 
+def test_minimax_title_request_disables_thinking_without_changing_turn_setting() -> None:
+    session = SimpleNamespace(
+        session_id="thread-minimax",
+        reasoning_kind="minimax-thinking",
+        reasoning_value="adaptive",
+    )
+    structured, _ = _build_auto_title_request(
+        ModuleType("fake_title_module"), session, user_prompt="修复平台筛选下拉框",
+    )
+    plain = _build_plain_auto_title_request(structured)
+
+    assert plain.reasoning is not None
+    assert plain.reasoning.value == "disabled"
+    assert session.reasoning_value == "adaptive"
+
+
 
 def _fake_title_module() -> ModuleType:
     module = ModuleType("fake_title_module")
@@ -48,7 +64,7 @@ def test_provisional_title_never_clips_the_user_prompt() -> None:
     assert _safe_initial_title_from_prompt("Can you inspect this screenshot?") == "New conversation"
 
 
-def test_title_prompt_uses_recent_context_and_strips_attachment_boilerplate() -> None:
+def test_title_prompt_uses_only_first_request_and_strips_attachment_boilerplate() -> None:
     module = _fake_title_module()
     session = SimpleNamespace(
         session_id="thread-context-1",
@@ -66,8 +82,8 @@ def test_title_prompt_uses_recent_context_and_strips_attachment_boilerplate() ->
 
     assert source_prompt == "右上角标签数字和文字重叠"
     assert "[1 image attached]" not in prompt
-    assert 'role="assistant"' in prompt
-    assert "badge" in prompt
+    assert 'role="assistant"' not in prompt
+    assert "badge" not in prompt
 
 
 def test_legacy_fallback_is_retryable_and_never_displayed_as_raw_prompt() -> None:

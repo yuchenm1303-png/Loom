@@ -411,7 +411,7 @@ const ActivityRow = memo(function ActivityRow({ item }: { item: TranscriptItem }
     <div className={`task-flow-row-wrap ${open ? "is-open" : ""}`}>
       <button
         type="button"
-        className={`task-flow-row ${expandable ? "is-expandable" : "no-detail"}`}
+        className={`task-flow-row ${active ? "is-active" : ""} ${expandable ? "is-expandable" : "no-detail"}`.trim()}
         onClick={() => expandable && setOpen((value) => !value)}
         aria-expanded={expandable ? open : undefined}
         disabled={!expandable}
