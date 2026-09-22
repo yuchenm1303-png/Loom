@@ -14,7 +14,7 @@ _TARGET_MODULE = "app.app_server_thread_management"
 _INSTALLED = False
 _PATCHED = False
 
-_AUTO_TITLE_VERSION = 5
+_AUTO_TITLE_VERSION = 6
 _AUTO_TITLE_MAX_ATTEMPTS = 3
 _AUTO_TITLE_MAX_CHARS = 36
 _AUTO_TITLE_PROMPT_MAX_BYTES = 960
@@ -39,6 +39,14 @@ _AUTO_TITLE_CONTROL_RE = re.compile(
 _AUTO_TITLE_ATTACHMENT_RE = re.compile(
     r"\[\s*\d+\s+(?:image|images|file|files)\s+attached\s*\]",
     re.IGNORECASE,
+)
+_AUTO_TITLE_ATTACHMENT_MANIFEST_RE = re.compile(
+    r"(?:\r?\n){2,}Attached files \(already saved in this workspace\):(?:\r?\n.*)*\Z",
+    re.IGNORECASE,
+)
+_AUTO_TITLE_JSON_FRAGMENT_RE = re.compile(
+    r"^(?:[\[\]{}:,]|\{.*|.*\})$",
+    re.DOTALL,
 )
 _AUTO_TITLE_CONVERSATIONAL_RE = re.compile(
     r"^(?:请|帮我|麻烦|你能|你可以|能否|可以|可否|为什么|怎么|如何|我想|please\b|can\s+you\b|could\s+you\b|would\s+you\b|i\s+(?:need|want|would\s+like)\b)",
@@ -108,6 +116,7 @@ def _strip_title_reasoning(value: Any, *, reject_open_block: bool = True) -> str
 
 def _clean_title_context(value: Any) -> str:
     text = _AUTO_TITLE_CONTROL_RE.sub("", str(value or ""))
+    text = _AUTO_TITLE_ATTACHMENT_MANIFEST_RE.sub("", text)
     text = _AUTO_TITLE_ATTACHMENT_RE.sub(" ", text)
     text = _strip_title_reasoning(text, reject_open_block=False)
     return " ".join(text.replace("\x00", " ").split())
@@ -150,6 +159,15 @@ def _sanitize_title_line(value: str) -> str:
     if len(line) > _AUTO_TITLE_MAX_CHARS:
         line = line[:_AUTO_TITLE_MAX_CHARS].rstrip(" -–—:：,，。.!！?？")
     return line
+
+
+def _title_has_invalid_structure(value: Any) -> bool:
+    """Reject protocol debris without re-grading an older title's wording."""
+
+    title = str(value or "").strip()
+    if not title or _AUTO_TITLE_JSON_FRAGMENT_RE.match(title):
+        return True
+    return title.count("{") != title.count("}") or title.count("[") != title.count("]")
 
 
 def _title_looks_like_raw_prompt(title: str, prompt: str = "") -> bool:
@@ -211,6 +229,8 @@ def _sanitize_generated_title(value: Any, *, source_prompt: str = "") -> str:
         line = _sanitize_title_line(item)
         if not line:
             continue
+        if _title_has_invalid_structure(line):
+            continue
         folded = line.casefold()
         if folded in _GENERIC_AUTO_TITLES:
             continue
@@ -233,7 +253,7 @@ def _parse_auto_title_payload(value: Any, *, source_prompt: str = "") -> str:
     if not raw:
         return ""
     stripped = raw.strip()
-    if stripped.startswith("{"):
+    if stripped.startswith(("{", "[")):
         try:
             payload = json.loads(stripped)
             if isinstance(payload, dict):
@@ -241,7 +261,11 @@ def _parse_auto_title_payload(value: Any, *, source_prompt: str = "") -> str:
                 if title:
                     return title
         except json.JSONDecodeError:
-            pass
+            return ""
+        # Structured title requests accept an object with a valid `title`
+        # field only. Never reinterpret arrays, scalars, or schema debris as a
+        # plain title after JSON parsing has begun.
+        return ""
     return _sanitize_generated_title(stripped, source_prompt=source_prompt)
 
 
@@ -397,7 +421,7 @@ def _metadata_has_committed_title(metadata: dict[str, Any]) -> bool:
     if title_source == "manual":
         return True
     if title_source == "auto":
-        return not bool(metadata.get("autoTitleFallback"))
+        return not bool(metadata.get("autoTitleFallback")) and not _title_has_invalid_structure(title)
     return bool(title and title_source not in {"pending", "fallback"})
 
 
@@ -421,8 +445,16 @@ def _metadata_display_title(metadata: dict[str, Any]) -> tuple[str, str]:
     # Never run it through today's semantic validator again: doing so allowed a
     # stricter future validator to turn yesterday's real title into "新对话" on
     # the next user message.
-    if title_source == "auto" and custom_title and not bool(metadata.get("autoTitleFallback")):
+    if (
+        title_source == "auto"
+        and custom_title
+        and not bool(metadata.get("autoTitleFallback"))
+        and not _title_has_invalid_structure(custom_title)
+    ):
         return custom_title, "auto"
+
+    if title_source == "auto" and custom_title and _title_has_invalid_structure(custom_title):
+        return _placeholder_title(source_prompt or custom_title), "fallback"
 
     if title_source in {"pending", "fallback"} or metadata.get("autoTitlePending") or metadata.get("autoTitleFallback"):
         return _placeholder_title(source_prompt or custom_title), (
@@ -629,12 +661,33 @@ def _patch_service(module: ModuleType) -> None:
     if getattr(service_cls, "_loom_first_prompt_titles_installed", False):
         return
 
+    original_record = service_cls._record
     original_turn_start = service_cls.turn_start
     original_thread_read = service_cls.thread_read
     original_runtime_event = service_cls._on_runtime_event
 
+    def record(self: Any, session: Any, *, active: bool = False) -> dict[str, Any]:
+        """Return the same canonical title on every notification path.
+
+        Several mixins publish ``self._record(...)`` directly. Leaving the
+        inherited first-message fallback there allowed a late runtime event to
+        overwrite the active header while the sidebar kept the generated
+        title from ``_managed_record``.
+        """
+
+        result = original_record(self, session, active=active)
+        metadata = self.thread_library.read(session.session_id)
+        display_title, title_source = _display_title_for_session(module, metadata, session)
+        if display_title:
+            result["title"] = display_title
+        result["customTitle"] = title_source in {"manual", "auto"}
+        result["titleSource"] = title_source
+        result["autoTitlePending"] = bool(metadata.get("autoTitlePending")) or title_source == "pending"
+        result["autoTitleFallback"] = bool(metadata.get("autoTitleFallback")) or title_source == "fallback"
+        return result
+
     def managed_record(self: Any, session: Any) -> dict[str, Any]:
-        record = self._record(session, active=self._is_active(session.session_id))
+        record = original_record(self, session, active=self._is_active(session.session_id))
         metadata = self.thread_library.read(session.session_id)
         display_title, title_source = _display_title_for_session(module, metadata, session)
         archived_at = str(metadata.get("archivedAt") or "").strip()
@@ -852,6 +905,7 @@ def _patch_service(module: ModuleType) -> None:
         }:
             self._schedule_auto_title(event.session_id)
 
+    service_cls._record = record
     service_cls._managed_record = managed_record
     service_cls.thread_read = thread_read
     service_cls._schedule_auto_title = schedule_auto_title

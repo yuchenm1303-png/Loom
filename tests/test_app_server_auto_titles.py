@@ -3,14 +3,24 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
-from app.ai import MessageRole, ModelResponse, ToolChoice
-from app.agent_runtime import DurableAgentRuntime, FileAgentSessionStore, PermissionMode, ToolRegistry
+from app.agent_runtime import (
+    DurableAgentRuntime,
+    FileAgentSessionStore,
+    PermissionMode,
+    ToolRegistry,
+)
+from app.ai import AIMessage, MessageRole, ModelResponse, ToolChoice
 from app.app_server_thread_management import (
     ManagedStreamingLoomAppServerService,
     _sanitize_generated_title,
 )
 from app.thread_title_override import _AUTO_TITLE_VERSION as AUTO_TITLE_VERSION
-from app.thread_title_override import _metadata_display_title, _safe_initial_title_from_prompt
+from app.thread_title_override import (
+    _clean_title_context,
+    _metadata_display_title,
+    _parse_auto_title_payload,
+    _safe_initial_title_from_prompt,
+)
 
 
 def _is_title_request(request) -> bool:
@@ -94,6 +104,26 @@ def test_generated_title_sanitizer_rejects_leaked_reasoning() -> None:
     assert _sanitize_generated_title("think>Let me analyze this conversation to create a concise title") == ""
     assert _sanitize_generated_title("Let me analyze this conversation to create a concise title") == ""
     assert _sanitize_generated_title("<think>internal notes</think>\n标题：Loom 标题修复") == "Loom 标题修复"
+
+
+def test_generated_title_rejects_truncated_structured_output() -> None:
+    prompt = "能帮我清除一下这个应用吗，这个系统删不掉"
+    for fragment in ("{", '{"title":', '{"title":"删除残留应用"', "[", "[]"):
+        assert _parse_auto_title_payload(fragment, source_prompt=prompt) == ""
+
+    assert _parse_auto_title_payload(
+        '{"title":"删除残留应用"}',
+        source_prompt=prompt,
+    ) == "删除残留应用"
+
+
+def test_title_context_removes_real_attachment_manifest() -> None:
+    content = (
+        "能帮我清除一下这个应用吗，这个系统删不掉\n\n"
+        "Attached files (already saved in this workspace):\n"
+        "- image.png — .loom-attachments/turn/image.png (image, shown above)"
+    )
+    assert _clean_title_context(content) == "能帮我清除一下这个应用吗，这个系统删不掉"
 
 
 def test_provisional_title_never_clips_or_heuristically_rewrites_the_prompt() -> None:
@@ -379,6 +409,79 @@ def test_existing_bad_auto_title_is_hidden_and_can_regenerate(tmp_path: Path) ->
         # semantic generator gets one honest attempt.
         assert metadata["autoTitleAttempts"] == 1
         assert metadata["autoTitleLastError"] == ""
+    finally:
+        runtime.close()
+
+
+def test_structural_debris_title_is_hidden_and_all_record_paths_agree(tmp_path: Path) -> None:
+    service, runtime, store, _platform, workspace = _build_service(tmp_path, [])
+    try:
+        thread_id = service.thread_start({"workspace": str(workspace)})["thread"]["id"]
+        session = store.load(thread_id)
+        session.messages.append(
+            AIMessage(
+                role=MessageRole.USER,
+                content=(
+                    "能帮我清除一下这个应用吗，这个系统删不掉\n\n"
+                    "Attached files (already saved in this workspace):\n"
+                    "- image.png — .loom-attachments/turn/image.png (image, shown above)"
+                ),
+            )
+        )
+        store.save(session)
+        service.thread_library.write(
+            thread_id,
+            {
+                "title": "{",
+                "titleSource": "auto",
+                "autoTitleSourcePrompt": "能帮我清除一下这个应用吗，这个系统删不掉",
+                "autoTitleVersion": AUTO_TITLE_VERSION - 1,
+                "autoTitleAttempts": 3,
+            },
+        )
+
+        list_record = service._record(session, active=False)
+        managed_record = service._managed_record(session)
+        read_record = service.thread_read({"threadId": thread_id})["thread"]
+        assert list_record["title"] == "新对话"
+        assert managed_record["title"] == "新对话"
+        assert read_record["title"] == "新对话"
+        assert list_record["titleSource"] == "fallback"
+        assert list_record["customTitle"] is False
+        assert "Attached files" not in list_record["title"]
+    finally:
+        runtime.close()
+
+
+def test_truncated_json_title_retries_instead_of_committing_brace(tmp_path: Path) -> None:
+    service, runtime, _store, platform, workspace = _build_service(
+        tmp_path,
+        [
+            ModelResponse(text="normal assistant response"),
+            ModelResponse(text='{"title":"删除残留应用"}'),
+            ModelResponse(text="{"),
+        ],
+    )
+    try:
+        thread_id = service.thread_start({"workspace": str(workspace)})["thread"]["id"]
+        service.turn_start(
+            {
+                "threadId": thread_id,
+                "input": "能帮我清除一下这个应用吗，这个系统删不掉",
+            }
+        )
+
+        metadata = _wait_until(
+            lambda: (
+                service.thread_library.read(thread_id)
+                if service.thread_library.read(thread_id).get("titleSource") == "auto"
+                else None
+            ),
+            timeout=4.0,
+        )
+        assert metadata["title"] == "删除残留应用"
+        assert metadata["autoTitleAttempts"] == 2
+        assert len([request for request in platform.requests if _is_title_request(request)]) == 2
     finally:
         runtime.close()
 
