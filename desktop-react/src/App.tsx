@@ -2,6 +2,7 @@ import { RotateCcw } from "lucide-react";
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -211,7 +212,7 @@ export default function App() {
   const runtimeTurnRunning = thread?.status === "running" || thread?.status === "waiting_approval";
   const running = loom.turnActive || runtimeTurnRunning;
   const archived = Boolean(thread?.archived);
-  const conversationDisabled = !thread || loom.connection !== "ready" || running || archived;
+  const conversationDisabled = !thread || loom.connection !== "ready" || loom.threadLoading || running || archived;
   const threadTitle = thread?.title || (loom.connection === "connecting" ? t("app.startingLoom") : t("app.newConversation"));
   const workspace = thread?.workspace || loom.runtime.defaultWorkspace || "";
   const currentModel = loom.models?.current?.name || loom.models?.current?.model || loom.runtime.model;
@@ -219,8 +220,8 @@ export default function App() {
   const capabilitySettings = loom.runtime.settings?.capabilities ?? {};
   const attachmentsEnabled = capabilitySettings.attachments !== false;
   const stickersEnabled = capabilitySettings.stickers !== false;
-  const changedFileCount = reviewFileCount(loom.items);
-  const agentCount = subAgentCount(loom.items);
+  const changedFileCount = useMemo(() => reviewFileCount(loom.items), [loom.items]);
+  const agentCount = useMemo(() => subAgentCount(loom.items), [loom.items]);
   const selectedProject = selectedProjectId
     ? loom.projects.find((project) => project.id === selectedProjectId) ?? null
     : null;
@@ -454,13 +455,13 @@ export default function App() {
 
     window.addEventListener("keydown", handleShortcut, true);
     return () => window.removeEventListener("keydown", handleShortcut, true);
-  }, [loom, reviewOpen, running, shortcuts]);
+  }, [loom.interrupt, loom.newThread, running, shortcuts]);
 
-  const transcriptItems = loom.items.filter((item) => {
+  const transcriptItems = useMemo(() => loom.items.filter((item) => {
     if (item.type !== "approval") return true;
     if (isResolvedApproval(item)) return false;
     return !dismissedApprovalIds.has(item.id);
-  });
+  }), [dismissedApprovalIds, loom.items]);
   const transcriptRunning = Boolean(
     runtimeTurnRunning
     && thread?.currentTurnId
@@ -765,6 +766,7 @@ export default function App() {
           {running ? <RunProgress {...progressProps} placement="top" /> : null}
           <Transcript
             items={transcriptItems}
+            loading={loom.threadLoading}
             running={transcriptRunning}
             currentTurnId={thread?.currentTurnId}
             workspace={workspace}
@@ -782,7 +784,7 @@ export default function App() {
 
         <div className="composer-stage">
           <Composer
-            disabled={!thread || loom.connection !== "ready" || archived}
+            disabled={!thread || loom.connection !== "ready" || loom.threadLoading || archived}
             running={running}
             model={loom.models?.current?.model || loom.runtime.model}
             modelSnapshot={loom.models}
