@@ -164,6 +164,29 @@
     inset 0 1px 0 rgba(255,255,255,.022);
 }
 
+.task-flow-row.is-executing::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  top: -1px;
+  bottom: -1px;
+  left: -34%;
+  width: 34%;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(
+    104deg,
+    transparent 0%,
+    rgba(169,158,246,.015) 24%,
+    rgba(184,173,255,.115) 48%,
+    rgba(255,255,255,.07) 56%,
+    rgba(162,149,246,.025) 72%,
+    transparent 100%
+  );
+  transform: translate3d(0,0,0) skewX(-11deg);
+  animation: loom-task-running-sheen 2.85s cubic-bezier(.42,0,.28,1) .5s infinite;
+}
+
 .task-flow-row.is-resting {
   color: #868e99;
 }
@@ -194,7 +217,7 @@
 
 .turn-process.is-live .task-flow-row-wrap {
   contain: layout paint style;
-  animation: loom-task-pill-pop 300ms var(--loom-motion-pop) both !important;
+  animation: loom-task-pill-pop 480ms cubic-bezier(.16,.88,.22,1.08) both !important;
   transform-origin: 26px 50%;
 }
 
@@ -221,6 +244,33 @@
 
 .task-flow-inline-detail pre {
   border-radius: 12px;
+}
+
+.task-flow-live-detail {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 11px;
+  border: 1px solid rgba(139,124,246,.095);
+  border-radius: 12px;
+  background:
+    linear-gradient(180deg, rgba(139,124,246,.035), rgba(139,124,246,.012)),
+    rgba(15,17,22,.58);
+  color: #858d99;
+  font-size: 10.5px;
+  line-height: 1.4;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.018);
+}
+
+.task-flow-live-detail-glow {
+  width: 12px;
+  height: 4px;
+  flex: none;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(139,124,246,.24), rgba(190,181,255,.82));
+  transform-origin: left center;
+  animation: loom-live-detail-breathe 1.8s cubic-bezier(.4,0,.2,1) infinite;
 }
 
 .task-flow-group-grid {
@@ -278,27 +328,24 @@
    the expressive motion; this remains the stable global status anchor. */
 .conversation-stage > .run-progress-frame.top {
   min-height: 50px;
-  padding-top: 8px;
-  padding-bottom: 6px;
-  border-bottom: 0;
-  background: linear-gradient(180deg, rgba(11,12,15,.72), rgba(11,12,15,0));
-  backdrop-filter: none;
+  padding: 0;
+  border-bottom: 1px solid rgba(255,255,255,.045);
+  background:
+    linear-gradient(180deg, rgba(18,19,24,.91), rgba(12,13,17,.84));
+  backdrop-filter: blur(12px);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.018);
 }
 
 .conversation-stage > .run-progress-frame.top .run-progress-inline {
-  width: min(var(--content-width, 920px), 100%);
-  min-height: 34px;
-  margin-inline: auto;
-  padding: 3px 10px;
-  border: 1px solid rgba(255,255,255,.055);
-  border-radius: 999px;
-  background:
-    linear-gradient(180deg, rgba(255,255,255,.027), rgba(255,255,255,.009)),
-    rgba(15,17,22,.66);
-  box-shadow:
-    0 7px 22px rgba(0,0,0,.08),
-    inset 0 1px 0 rgba(255,255,255,.024);
-  animation: loom-run-pill-in 280ms var(--loom-motion-pop) both;
+  width: 100%;
+  min-height: 50px;
+  margin: 0;
+  padding: 7px 22px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  animation: loom-run-pill-in 320ms var(--loom-motion-pop) both;
 }
 
 .conversation-stage > .run-progress-frame.top .run-progress-track {
@@ -352,6 +399,25 @@ html[data-loom-theme="light"] .task-flow-row.is-active {
   box-shadow: 0 5px 14px rgba(43,38,66,.045), inset 0 1px rgba(255,255,255,.9);
 }
 
+html[data-loom-theme="light"] .task-flow-row.is-executing::before {
+  background: linear-gradient(
+    104deg,
+    transparent 0%,
+    rgba(105,90,216,.01) 24%,
+    rgba(105,90,216,.10) 48%,
+    rgba(255,255,255,.76) 56%,
+    rgba(105,90,216,.025) 72%,
+    transparent 100%
+  );
+}
+
+html[data-loom-theme="light"] .task-flow-live-detail {
+  border-color: rgba(105,90,216,.10);
+  background: rgba(255,255,255,.66);
+  color: #707986;
+  box-shadow: inset 0 1px rgba(255,255,255,.9);
+}
+
 html[data-loom-theme="light"] .turn-block .inline-thinking,
 html[data-loom-theme="light"] .turn-block .live-reasoning-trigger {
   border-color: rgba(105,90,216,.12);
@@ -365,15 +431,18 @@ html[data-loom-theme="light"] .turn-block .thinking-symbol {
 }
 
 html[data-loom-theme="light"] .conversation-stage > .run-progress-frame.top {
-  border-bottom: 0;
-  background: linear-gradient(180deg, rgba(250,251,252,.92), rgba(250,251,252,0));
-  box-shadow: none;
+  border-bottom: 1px solid rgba(28,31,37,.075);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.97), rgba(249,250,252,.92));
+  box-shadow:
+    inset 0 1px rgba(255,255,255,.98),
+    0 1px 0 rgba(28,31,37,.018);
 }
 
 html[data-loom-theme="light"] .conversation-stage > .run-progress-frame.top .run-progress-inline {
-  border-color: rgba(31,35,42,.075);
-  background: rgba(255,255,255,.86);
-  box-shadow: 0 7px 18px rgba(38,34,60,.055), inset 0 1px rgba(255,255,255,.92);
+  border: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 @keyframes loom-live-message-in {
@@ -405,9 +474,43 @@ html[data-loom-theme="light"] .conversation-stage > .run-progress-frame.top .run
 }
 
 @keyframes loom-task-pill-pop {
-  0% { opacity: 0; transform: translate3d(-4px, 6px, 0) scale(.955); }
-  64% { opacity: 1; transform: translate3d(1px, -1px, 0) scale(1.006); }
-  100% { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+  0% {
+    opacity: 0;
+    transform: translate3d(-9px, 6px, 0) scaleX(.93) scaleY(.97);
+  }
+  42% {
+    opacity: .88;
+    transform: translate3d(-2px, 1px, 0) scaleX(.992) scaleY(.995);
+  }
+  72% {
+    opacity: 1;
+    transform: translate3d(1px, -1px, 0) scaleX(1.006) scaleY(1.003);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes loom-task-running-sheen {
+  0%, 15% {
+    opacity: 0;
+    transform: translate3d(0,0,0) skewX(-11deg);
+  }
+  28% { opacity: .9; }
+  58% {
+    opacity: .74;
+    transform: translate3d(395%,0,0) skewX(-11deg);
+  }
+  68%, 100% {
+    opacity: 0;
+    transform: translate3d(395%,0,0) skewX(-11deg);
+  }
+}
+
+@keyframes loom-live-detail-breathe {
+  0%, 100% { opacity: .34; transform: scaleX(.6); }
+  50% { opacity: .88; transform: scaleX(1); }
 }
 
 @keyframes loom-run-pill-in {
@@ -427,7 +530,7 @@ html[data-loom-theme="light"] .conversation-stage > .run-progress-frame.top .run
 
 @media (max-width: 900px) {
   .conversation-stage > .run-progress-frame.top .run-progress-inline {
-    border-radius: 18px;
+    padding-inline: 18px;
   }
 }
 
@@ -448,6 +551,8 @@ html[data-loom-theme="light"] .conversation-stage > .run-progress-frame.top .run
   .markdown-body.is-receiving > table,
   .markdown-body.is-receiving > blockquote,
   .turn-process.is-live .task-flow-row-wrap,
+  .task-flow-row.is-executing::before,
+  .task-flow-live-detail-glow,
   .task-flow-group.is-running .task-flow-group-icon::after,
   .conversation-stage > .run-progress-frame.top .run-progress-inline,
   .conversation-stage > .run-progress-frame.top .run-progress-live-dot,
@@ -462,6 +567,8 @@ html[data-loom-theme="light"] .conversation-stage > .run-progress-frame.top .run
 :root[data-loom-reduced-motion="true"] .turn-process.is-live .entry-steering-user .user-message,
 :root[data-loom-reduced-motion="true"] .turn-final-answer,
 :root[data-loom-reduced-motion="true"] .turn-process.is-live .task-flow-row-wrap,
+:root[data-loom-reduced-motion="true"] .task-flow-row.is-executing::before,
+:root[data-loom-reduced-motion="true"] .task-flow-live-detail-glow,
 :root[data-loom-reduced-motion="true"] .task-flow-group.is-running .task-flow-group-icon::after,
 :root[data-loom-reduced-motion="true"] .conversation-stage > .run-progress-frame.top .run-progress-inline,
 :root[data-loom-reduced-motion="true"] .conversation-stage > .run-progress-frame.top .run-progress-live-dot,
