@@ -711,6 +711,18 @@ class MemoryStore:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 for memory_id in identifiers:
+                    if session_id and turn_id:
+                        existing_usage = connection.execute(
+                            """
+                            SELECT 1 FROM memory_usage_events
+                            WHERE memory_id = ? AND source_session_id = ?
+                              AND source_turn_id = ? AND route = ?
+                            LIMIT 1
+                            """,
+                            (memory_id, session_id, turn_id, route_name),
+                        ).fetchone()
+                        if existing_usage is not None:
+                            continue
                     updated = connection.execute(
                         """
                         UPDATE memories
@@ -891,6 +903,10 @@ class MemoryStore:
                 fingerprint = str(row["fingerprint"])
                 connection.execute(
                     "DELETE FROM memory_evidence WHERE memory_id = ?",
+                    (key,),
+                )
+                connection.execute(
+                    "DELETE FROM memory_usage_events WHERE memory_id = ?",
                     (key,),
                 )
                 connection.execute(

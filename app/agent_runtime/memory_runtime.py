@@ -464,7 +464,7 @@ class MemoryRuntime(MultiAgentRuntime):
             self.memory_store.record_usage(
                 (hit.record.memory_id for hit in hits),
                 source_session_id=session.session_id,
-                source_turn_id=str(getattr(step, "turn_id", "") or ""),
+                source_turn_id=session.current_turn_id,
                 route="auto_route",
                 scores={hit.record.memory_id: hit.score for hit in hits},
                 reasons={
@@ -480,7 +480,7 @@ class MemoryRuntime(MultiAgentRuntime):
             self.memory_store.record_usage(
                 (record.memory_id for record in records),
                 source_session_id=session.session_id,
-                source_turn_id=str(getattr(step, "turn_id", "") or ""),
+                source_turn_id=session.current_turn_id,
                 route="index_fallback",
                 reasons={
                     record.memory_id: "high-signal fallback from project memory index"
