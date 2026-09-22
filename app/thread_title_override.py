@@ -377,21 +377,34 @@ def _build_plain_auto_title_request(structured: Any) -> Any:
         session_id=structured.chat.session_id,
     )
 
-def _metadata_title_blocks_auto_title(metadata: dict[str, Any]) -> bool:
+def _metadata_has_committed_title(metadata: dict[str, Any]) -> bool:
+    """Whether the conversation already owns a durable title.
+
+    Title quality checks belong at generation time. Once a model title has been
+    accepted and persisted, later turns and future sanitizer changes must not
+    reinterpret it as provisional and erase it. This mirrors manual rename
+    semantics: a committed title is immutable unless the user explicitly
+    renames it.
+
+    autoTitleFallback is the only auto-title state that remains retryable;
+    those records were never successfully committed.
+    """
+
     title = str(metadata.get("title") or "").strip()
+    if not title:
+        return False
     title_source = str(metadata.get("titleSource") or "").strip().casefold()
+    if title_source == "manual":
+        return True
+    if title_source == "auto" and not bool(metadata.get("autoTitleFallback")):
+        return True
+    return bool(title and title_source not in {"pending", "fallback"})
+
+
+def _metadata_title_blocks_auto_title(metadata: dict[str, Any]) -> bool:
     if bool(metadata.get("autoTitleDisabled")):
         return True
-    if title_source == "manual":
-        return bool(title)
-    if title_source in {"pending", "fallback"}:
-        return False
-    if title_source == "auto":
-        if bool(metadata.get("autoTitleFallback")):
-            return False
-        source_prompt = str(metadata.get("autoTitleSourcePrompt") or metadata.get("autoTitlePendingSourcePrompt") or "")
-        return bool(_sanitize_generated_title(title, source_prompt=source_prompt))
-    return bool(title)
+    return _metadata_has_committed_title(metadata)
 
 
 def _metadata_display_title(metadata: dict[str, Any]) -> tuple[str, str]:
@@ -404,12 +417,12 @@ def _metadata_display_title(metadata: dict[str, Any]) -> tuple[str, str]:
     if title_source == "manual" and custom_title:
         return custom_title, "manual"
 
-    if title_source == "auto":
-        if not bool(metadata.get("autoTitleFallback")):
-            title = _sanitize_generated_title(custom_title, source_prompt=source_prompt)
-            if title:
-                return title, "auto"
-        return _placeholder_title(source_prompt or custom_title), "fallback"
+    # A successfully persisted auto title is already sanitized at commit time.
+    # Never run it through today's semantic validator again: doing so allowed a
+    # stricter future validator to turn yesterday's real title into "新对话" on
+    # the next user message.
+    if title_source == "auto" and custom_title and not bool(metadata.get("autoTitleFallback")):
+        return custom_title, "auto"
 
     if title_source in {"pending", "fallback"} or metadata.get("autoTitlePending") or metadata.get("autoTitleFallback"):
         return _placeholder_title(source_prompt or custom_title), (
@@ -420,7 +433,6 @@ def _metadata_display_title(metadata: dict[str, Any]) -> tuple[str, str]:
         return custom_title, "manual"
 
     return "", "fallback"
-
 
 def _display_title_for_session(module: ModuleType, metadata: dict[str, Any], session: Any) -> tuple[str, str]:
     title, source = _metadata_display_title(metadata)

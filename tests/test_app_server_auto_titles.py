@@ -414,3 +414,54 @@ def test_failed_title_attempt_retries_automatically(tmp_path: Path) -> None:
         assert len(title_requests) == 2
     finally:
         runtime.close()
+
+
+def test_follow_up_never_reopens_a_committed_auto_title(tmp_path: Path) -> None:
+    service, runtime, _store, platform, workspace = _build_service(
+        tmp_path,
+        [
+            ModelResponse(text="第一轮任务完成。"),
+            ModelResponse(text="第二轮继续处理完成。"),
+            ModelResponse(text='{"title":"修复标签布局"}'),
+        ],
+    )
+    try:
+        thread_id = service.thread_start({"workspace": str(workspace)})["thread"]["id"]
+
+        service.turn_start(
+            {
+                "threadId": thread_id,
+                "input": "右上角标签数字和文字重叠，请检查并优化布局",
+            }
+        )
+        first_title = _wait_until(
+            lambda: (
+                service.thread_library.read(thread_id)
+                if service.thread_library.read(thread_id).get("titleSource") == "auto"
+                else None
+            )
+        )
+        generated_at = first_title["autoTitleGeneratedAt"]
+        attempts = first_title["autoTitleAttempts"]
+        assert first_title["title"] == "修复标签布局"
+
+        service.turn_start(
+            {
+                "threadId": thread_id,
+                "input": "早上再继续调整一下昨天这个任务",
+            }
+        )
+        _wait_until(lambda: thread_id not in service.runtime_status()["activeThreadIds"])
+        time.sleep(0.1)
+
+        record = service.thread_read({"threadId": thread_id})["thread"]
+        metadata = service.thread_library.read(thread_id)
+        assert record["title"] == "修复标签布局"
+        assert record["titleSource"] == "auto"
+        assert record["autoTitlePending"] is False
+        assert metadata["title"] == "修复标签布局"
+        assert metadata["autoTitleGeneratedAt"] == generated_at
+        assert metadata["autoTitleAttempts"] == attempts
+        assert len([request for request in platform.requests if _is_title_request(request)]) == 1
+    finally:
+        runtime.close()
