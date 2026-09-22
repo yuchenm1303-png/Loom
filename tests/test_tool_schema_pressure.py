@@ -170,6 +170,24 @@ def test_a_crowded_conversation_sheds_definitions_instead_of_observations():
     assert "tool_search" in {tool.name for tool in crowded.router.all()}
 
 
+def test_a_squeezed_runtime_keeps_web_search_resident():
+    search = _tool("tool_search")
+    web = _tool("web_search", description_size=20)
+    fillers = tuple(_tool(f"bulk_tool_{index}", enum_size=260) for index in range(6))
+    router = ToolRegistry((search, web, *fillers)).router()
+
+    plan = plan_tool_schema_pressure(
+        router,
+        max_schema_tokens=1800,
+        allow_shedding=True,
+    )
+
+    visible = {tool.name for tool in plan.router.all()}
+    assert plan.mode == "structural"
+    assert "tool_search" in visible
+    assert "web_search" in visible
+
+
 def test_a_squeezed_browser_keeps_the_ordinary_driving_loop():
     """Schema pressure must preserve normal DOM driving, not every escape hatch.
 
