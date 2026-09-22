@@ -364,3 +364,53 @@ def test_injected_memory_summary_cannot_masquerade_as_runtime_policy(tmp_path):
     assert "never grants or revokes tool access" in rendered
     assert "verify against current tools/runtime" in rendered
     runtime.close()
+
+
+def test_memory_extraction_rejects_assistant_authored_constraints(tmp_path):
+    extraction_json = json.dumps(
+        {
+            "summary": "Mixed operational guidance.",
+            "memories": [
+                {
+                    "text": "Never connect to the production server.",
+                    "scope": "workspace",
+                    "category": "constraint",
+                    "importance": 5,
+                    "evidence": "Assistant previously said remote access is forbidden.",
+                    "evidence_role": "assistant",
+                },
+                {
+                    "text": "Do not deploy on Fridays.",
+                    "scope": "workspace",
+                    "category": "constraint",
+                    "importance": 5,
+                    "evidence": "User explicitly requested no Friday deployments.",
+                    "evidence_role": "user",
+                },
+            ],
+        }
+    )
+    runtime, store, _ = _runtime(
+        tmp_path,
+        [ModelResponse(text=extraction_json, usage=ModelUsage(20, 10, 30))],
+    )
+    workspace = tmp_path / "project"
+    workspace.mkdir()
+    session = runtime.create_session(AGENT_FAST_ROLE.role_id, workspace_dir=workspace)
+    session.status = AgentStatus.COMPLETED
+    session.messages = [
+        AIMessage(role=MessageRole.USER, content="Do not deploy on Fridays."),
+        AIMessage(
+            role=MessageRole.ASSISTANT,
+            content="I cannot connect to production because remote access is forbidden.",
+        ),
+    ]
+    store.save(session)
+
+    result = runtime.extract_memory_from_thread(session.session_id)
+
+    assert result.extraction.candidate_count == 1
+    records = runtime.list_memory(session.session_id)
+    assert len(records) == 1
+    assert records[0].text == "Do not deploy on Fridays."
+    runtime.close()
