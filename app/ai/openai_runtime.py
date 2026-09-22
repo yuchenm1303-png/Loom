@@ -350,6 +350,11 @@ class OpenAIChatBackend:
             finish_reason=str(getattr(choice, "finish_reason", "") or ""),
             response_id=str(getattr(response, "id", "") or ""),
             reasoning=str(reasoning or ""),
+            visible_reasoning=(
+                str(reasoning or "")
+                if self.connection.adapter is ProviderAdapter.OPENAI_COMPATIBLE
+                else ""
+            ),
         )
 
     def _effective_structured_mode(self, requested: StructuredOutputMode) -> StructuredOutputMode:
