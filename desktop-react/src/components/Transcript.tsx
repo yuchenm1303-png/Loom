@@ -533,10 +533,10 @@ function ActivityGroupIcon({ items }: { items: TranscriptItem[] }) {
 
 function ActivityFlow({ items, keepOpen = false }: { items: TranscriptItem[]; keepOpen?: boolean }) {
   const compactItems = useMemo(() => compactActivityItems(items), [items]);
-  const running = useMemo(
-    () => keepOpen && compactItems.some((item) => isActiveActivityStatus(itemStatus(item))),
-    [compactItems, keepOpen],
-  );
+  // The process group belongs to the active turn, not to the transport status
+  // of the latest individual tool item. Keeping it live for the whole turn
+  // prevents the title/icon from flipping completed -> running between steps.
+  const running = keepOpen;
   const [open, setOpen] = useState(true);
   const wasRunningRef = useRef(false);
 
@@ -1113,7 +1113,10 @@ const TurnView = memo(function TurnView({
     if (active) {
       setProcessOpen(true);
     } else if (wasActiveRef.current) {
-      const timer = window.setTimeout(() => setProcessOpen(false), 90);
+      // Let the final answer land before folding the execution timeline. A
+      // short settle hold makes the handoff read as one continuous action
+      // instead of a process panel disappearing the instant TURN_COMPLETED lands.
+      const timer = window.setTimeout(() => setProcessOpen(false), 460);
       wasActiveRef.current = active;
       return () => window.clearTimeout(timer);
     }

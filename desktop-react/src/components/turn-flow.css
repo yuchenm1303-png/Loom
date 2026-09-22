@@ -143,7 +143,7 @@
   display: grid;
   grid-template-rows: 0fr;
   opacity: 0;
-  transition: grid-template-rows 220ms cubic-bezier(.22,.74,.18,1), opacity 170ms ease;
+  transition: grid-template-rows 280ms cubic-bezier(.22,.74,.18,1), opacity 210ms ease;
 }
 
 .turn-process-inner {
@@ -195,7 +195,11 @@
 }
 
 .turn-final-answer {
-  animation: turn-final-answer-in 180ms cubic-bezier(.2,.78,.2,1) both;
+  animation: turn-final-answer-in 220ms cubic-bezier(.2,.78,.2,1) both;
+}
+
+.turn-process.is-settled.is-open .turn-process-header {
+  animation: turn-process-settle-in 190ms cubic-bezier(.2,.78,.2,1) both;
 }
 
 .turn-artifacts {
@@ -357,7 +361,12 @@
 }
 
 @keyframes turn-final-answer-in {
-  from { opacity: .68; transform: translateY(3px); }
+  from { opacity: .82; transform: translateY(2px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes turn-process-settle-in {
+  from { opacity: 0; transform: translateY(-1px); }
   to { opacity: 1; transform: translateY(0); }
 }
 

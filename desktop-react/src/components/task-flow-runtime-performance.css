@@ -14,7 +14,7 @@
 
 .turn-process.is-live .task-flow-row-wrap {
   contain: layout paint style;
-  animation: loom-task-flow-row-in 155ms cubic-bezier(.2,.78,.2,1) both;
+  animation: loom-task-flow-row-in 170ms cubic-bezier(.2,.78,.2,1) both;
   transform-origin: left center;
 }
 
@@ -36,7 +36,7 @@
 @keyframes loom-task-flow-row-in {
   from {
     opacity: 0;
-    transform: translate3d(-5px, 2px, 0);
+    transform: translate3d(0, 2px, 0);
   }
   to {
     opacity: 1;

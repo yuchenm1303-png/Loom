@@ -1,5 +1,5 @@
 import { Activity, Bot, Clock3, FileDiff, Terminal, Wrench } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useI18n, type LoomLanguage } from "../i18n";
 import type { TranscriptItem } from "../types/loom";
 import "./run-progress.css";
@@ -19,6 +19,35 @@ interface RunStats {
   commands: number;
   files: number;
   agents: number;
+}
+
+const PHASE_PRESENTATION_HOLD_MS = 130;
+
+function usePresentedPhase(phase: string, urgent: boolean): string {
+  const [presented, setPresented] = useState(phase);
+  const timerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (phase === presented) return;
+    if (timerRef.current !== null) window.clearTimeout(timerRef.current);
+    timerRef.current = null;
+
+    if (urgent) {
+      setPresented(phase);
+      return;
+    }
+
+    timerRef.current = window.setTimeout(() => {
+      timerRef.current = null;
+      setPresented(phase);
+    }, PHASE_PRESENTATION_HOLD_MS);
+    return () => {
+      if (timerRef.current !== null) window.clearTimeout(timerRef.current);
+      timerRef.current = null;
+    };
+  }, [phase, presented, urgent]);
+
+  return presented;
 }
 
 function isRunningStatus(status?: string): boolean {
@@ -130,7 +159,8 @@ export function RunProgress({ items, startedAt, threadStatus, currentTurnId, tot
   const { language } = useI18n();
   const [now, setNow] = useState(() => Date.now());
   const runItems = useMemo(() => currentRunItems(items, currentTurnId), [currentTurnId, items]);
-  const phase = useMemo(() => phaseFor(runItems, threadStatus, language), [language, runItems, threadStatus]);
+  const rawPhase = useMemo(() => phaseFor(runItems, threadStatus, language), [language, runItems, threadStatus]);
+  const phase = usePresentedPhase(rawPhase, threadStatus === "waiting_approval");
   const stats = useMemo(() => runStats(runItems), [runItems]);
   const tokenLabel = formatTokens(totalTokens, language);
   const zh = language === "zh-CN";
@@ -153,7 +183,7 @@ export function RunProgress({ items, startedAt, threadStatus, currentTurnId, tot
             {zh ? "Loom 正在工作" : "Loom is working"}
           </span>
           <span className="run-progress-divider" aria-hidden="true" />
-          <span className="run-progress-phase">{phase}</span>
+          <span key={phase} className="run-progress-phase">{phase}</span>
         </div>
 
         <div className="run-progress-meta">
@@ -182,7 +212,6 @@ export function RunProgress({ items, startedAt, threadStatus, currentTurnId, tot
         </div>
       </div>
 
-      <div className="run-progress-track" aria-hidden="true"><span /></div>
     </div>
   );
 }
