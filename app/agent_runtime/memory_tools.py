@@ -14,7 +14,7 @@ _MEMORY_AUTHORITY_NOTICE = (
 )
 
 
-def _search_record(record) -> dict[str, object]:
+def _search_record(record, *, score: float = 0.0, reasons: tuple[str, ...] = ()) -> dict[str, object]:
     text = " ".join(record.text.split())
     if len(text) > 600:
         text = text[:597].rstrip() + "..."
@@ -26,6 +26,8 @@ def _search_record(record) -> dict[str, object]:
         "importance": record.importance,
         "usage_count": record.usage_count,
         "updated_at": record.updated_at,
+        "score": round(float(score), 4),
+        "reasons": list(reasons),
     }
 
 
@@ -48,9 +50,27 @@ def memory_tools(store: MemoryStore) -> tuple[AgentTool, ...]:
         if not query:
             raise ValueError("query must not be empty")
         limit = int(arguments.get("limit") or 8)
-        records = store.search(query, workspace=context.workspace, limit=limit)
-        store.mark_used(record.memory_id for record in records)
-        matches = [_search_record(record) for record in records]
+        hits = store.search_hits(
+            query,
+            workspace=context.workspace,
+            limit=limit,
+            require_query_match=True,
+        )
+        store.record_usage(
+            (hit.record.memory_id for hit in hits),
+            source_session_id=context.session_id,
+            source_turn_id=context.turn_id,
+            route="search",
+            scores={hit.record.memory_id: hit.score for hit in hits},
+            reasons={
+                hit.record.memory_id: ",".join(hit.reasons)
+                for hit in hits
+            },
+        )
+        matches = [
+            _search_record(hit.record, score=hit.score, reasons=hit.reasons)
+            for hit in hits
+        ]
         data = {"query": query, "memories": matches}
         return ToolResult(
             ok=True,
@@ -78,10 +98,17 @@ def memory_tools(store: MemoryStore) -> tuple[AgentTool, ...]:
                 data={"memory_id": memory_id, "found": False},
             )
         evidence = store.evidence(record.memory_id, limit=evidence_limit)
-        store.mark_used((record.memory_id,))
+        store.record_usage(
+            (record.memory_id,),
+            source_session_id=context.session_id,
+            source_turn_id=context.turn_id,
+            route="read",
+            reasons={record.memory_id: "explicit provenance read"},
+        )
         payload = {
             "memory": record.to_dict(),
             "evidence": [item.to_dict() for item in evidence],
+            "usage": [item.to_dict() for item in store.usage_events(record.memory_id, limit=20)],
         }
         return ToolResult(
             ok=True,
@@ -107,14 +134,58 @@ def memory_tools(store: MemoryStore) -> tuple[AgentTool, ...]:
         return ToolResult(
             ok=True,
             content=(
-                f"Long-term memory: {counts['visible']} visible, "
-                f"{counts['total']} total, {counts['pending']} pending consolidation, "
-                f"{counts['evidence']} evidence records."
+                f"Long-term memory v3: {counts['visible']} visible, "
+                f"{counts['archived_visible']} archived visible, {counts['pending']} pending consolidation, "
+                f"{counts['evidence']} evidence records, {counts['usage_events']} usage events."
             ),
             data=data,
         )
 
+    def memory_index(context: ToolContext, arguments: dict[str, object]) -> ToolResult:
+        _ = arguments
+        disabled = _model_access_disabled(store)
+        if disabled is not None:
+            return disabled
+        data = store.compact_index(workspace=context.workspace, max_chars=4000)
+        return ToolResult(
+            ok=True,
+            content=_MEMORY_AUTHORITY_NOTICE + "\n" + str(data.get("summary") or ""),
+            data=data,
+        )
+
+    def memory_skill_candidates(context: ToolContext, arguments: dict[str, object]) -> ToolResult:
+        disabled = _model_access_disabled(store)
+        if disabled is not None:
+            return disabled
+        limit = int(arguments.get("limit") or 8)
+        records = store.skill_candidates(workspace=context.workspace, limit=limit)
+        data = {
+            "candidates": [
+                _search_record(record)
+                for record in records
+            ],
+            "note": (
+                "These are stable, repeatedly corroborated project memories that may be worth "
+                "turning into a repository Skill. This tool never writes or installs a skill."
+            ),
+        }
+        return ToolResult(
+            ok=True,
+            content=_MEMORY_AUTHORITY_NOTICE + "\n" + json.dumps(data, ensure_ascii=False, indent=2),
+            data=data,
+        )
+
     return (
+        AgentTool(
+            name="memory_index",
+            description=(
+                "Read Loom Memory v3's compact knowledge index for the current workspace. "
+                "Use this as a routing map before broad memory searches when the project has substantial history."
+            ),
+            input_schema={"type": "object", "properties": {}, "additionalProperties": False},
+            handler=memory_index,
+            effect=ToolEffect.READ_ONLY,
+        ),
         AgentTool(
             name="search_memory",
             description=(
@@ -157,6 +228,22 @@ def memory_tools(store: MemoryStore) -> tuple[AgentTool, ...]:
                 "additionalProperties": False,
             },
             handler=read_memory,
+            effect=ToolEffect.READ_ONLY,
+        ),
+        AgentTool(
+            name="memory_skill_candidates",
+            description=(
+                "List stable, repeatedly corroborated project memories that may be candidates for a reusable "
+                "repository Skill. This is advisory discovery only and never creates or installs files."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "limit": {"type": "integer", "minimum": 1, "maximum": 32},
+                },
+                "additionalProperties": False,
+            },
+            handler=memory_skill_candidates,
             effect=ToolEffect.READ_ONLY,
         ),
         AgentTool(
