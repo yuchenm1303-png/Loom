@@ -340,6 +340,10 @@ function isActiveActivityStatus(status: string): boolean {
   return ["started", "running", "streaming", "streaming_arguments", "waiting", "waiting_approval", "pending"].includes(status);
 }
 
+function isExecutingActivityStatus(status: string): boolean {
+  return ["started", "running", "streaming", "streaming_arguments"].includes(status);
+}
+
 function ActivityStatus({ status }: { status: string }) {
   const quiet = status === "completed" || status === "changed";
   const label = statusLabel(status);
@@ -397,6 +401,14 @@ function activityDetail(item: TranscriptItem): string {
   return "";
 }
 
+function liveActivityHint(item: TranscriptItem, status: string): string {
+  if (status === "waiting_approval") return "正在等待权限确认…";
+  if (status === "waiting" || status === "pending") return "任务已就绪，等待继续…";
+  if (item.type === "process") return "命令正在执行，等待输出…";
+  if (item.type === "file_edit") return "正在生成文件修改…";
+  return "工具正在执行，等待结果…";
+}
+
 function ActivityGlyph({ item, size = 13 }: { item: TranscriptItem; size?: number }) {
   if (item.type === "process") return <Terminal size={size} />;
   if (item.type === "file_edit") return <FileDiff size={size} />;
@@ -407,19 +419,20 @@ const ActivityRow = memo(function ActivityRow({ item, visualIndex = 0 }: { item:
   const [open, setOpen] = useState(false);
   const status = itemStatus(item);
   const stats = useMemo(() => item.type === "file_edit" ? diffStats(item.diff) : null, [item.diff, item.type]);
-  const expandable = hasActivityDetail(item);
   const active = isActiveActivityStatus(status);
+  const executing = isExecutingActivityStatus(status);
+  const expandable = active || hasActivityDetail(item);
   const detail = useMemo(() => open ? activityDetail(item) : "", [item, open]);
 
   return (
     <div
       className={`task-flow-row-wrap ${open ? "is-open" : ""}`}
-      style={{ animationDelay: `${Math.min(visualIndex, 3) * 18}ms` }}
+      style={{ animationDelay: `${Math.min(visualIndex, 3) * 22}ms` }}
       data-kind={item.type}
     >
       <button
         type="button"
-        className={`task-flow-row task-flow-kind-${item.type} ${active ? "is-active" : "is-resting"} ${expandable ? "is-expandable" : "no-detail"}`.trim()}
+        className={`task-flow-row task-flow-kind-${item.type} ${active ? "is-active" : "is-resting"} ${executing ? "is-executing" : ""} ${expandable ? "is-expandable" : "no-detail"}`.trim()}
         onClick={() => expandable && setOpen((value) => !value)}
         aria-expanded={expandable ? open : undefined}
         disabled={!expandable}
@@ -458,7 +471,14 @@ const ActivityRow = memo(function ActivityRow({ item, visualIndex = 0 }: { item:
         <div className={`task-flow-inline-detail-grid ${open ? "open" : ""}`}>
           <div className="task-flow-inline-detail-inner">
             <div className="task-flow-inline-detail">
-              <pre>{detail}</pre>
+              {detail ? (
+                <pre>{detail}</pre>
+              ) : active ? (
+                <div className="task-flow-live-detail" role="status">
+                  <span className="task-flow-live-detail-glow" aria-hidden="true" />
+                  <span>{liveActivityHint(item, status)}</span>
+                </div>
+              ) : null}
             </div>
           </div>
         </div>
