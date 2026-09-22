@@ -169,7 +169,7 @@
    Pasted images should read as the image itself, not as a dark file chip.
    The fixed 4:3 viewport mirrors modern chat composers and also keeps very
    wide screenshots visually level instead of stretching the attachment row. */
-.composer-attachment:has(> .composer-attachment-thumb) {
+.composer-attachment.is-image-preview {
   position: relative;
   flex: 0 0 auto;
   width: 176px;
@@ -187,13 +187,13 @@
   overflow: visible;
 }
 
-.composer-attachment:has(> .composer-attachment-thumb):hover {
+.composer-attachment.is-image-preview:hover {
   border-color: transparent;
   background: transparent;
   box-shadow: none;
 }
 
-.composer-attachment:has(> .composer-attachment-thumb) .composer-attachment-thumb {
+.composer-attachment.is-image-preview .composer-attachment-thumb {
   display: block;
   width: 100%;
   height: 100%;
@@ -206,12 +206,12 @@
   box-shadow: none;
 }
 
-.composer-attachment:has(> .composer-attachment-thumb) .composer-attachment-name,
-.composer-attachment:has(> .composer-attachment-thumb) .composer-attachment-size {
+.composer-attachment.is-image-preview .composer-attachment-name,
+.composer-attachment.is-image-preview .composer-attachment-size {
   display: none;
 }
 
-.composer-attachment:has(> .composer-attachment-thumb) button {
+.composer-attachment.is-image-preview button {
   position: absolute;
   top: 6px;
   right: 6px;
@@ -229,25 +229,25 @@
   opacity: .82;
 }
 
-.composer-attachment:has(> .composer-attachment-thumb) button:hover {
+.composer-attachment.is-image-preview button:hover {
   background: rgba(18, 19, 23, .9);
   color: #fff;
   opacity: 1;
 }
 
-.composer-attachment.is-blocked:has(> .composer-attachment-thumb) {
+.composer-attachment.is-image-preview.is-blocked {
   border: 0;
   background: transparent;
 }
 
-.composer-attachment.is-blocked:has(> .composer-attachment-thumb) .composer-attachment-thumb {
+.composer-attachment.is-image-preview.is-blocked .composer-attachment-thumb {
   outline: 1px solid rgba(224, 142, 151, .5);
   outline-offset: -1px;
   filter: saturate(.82);
 }
 
 @media (max-width: 760px) {
-  .composer-attachment:has(> .composer-attachment-thumb) {
+  .composer-attachment.is-image-preview {
     width: 152px;
     height: 114px;
   }
