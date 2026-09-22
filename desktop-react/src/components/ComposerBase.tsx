@@ -33,6 +33,7 @@ import "./composer-stability.css";
 import "./composer-control-pills.css";
 
 interface ComposerProps {
+  threadId?: string;
   disabled?: boolean;
   running?: boolean;
   model?: string;
@@ -122,6 +123,7 @@ function PermissionIcon({ mode }: { mode: string }) {
 }
 
 export function Composer({
+  threadId,
   disabled,
   running,
   model,
@@ -190,6 +192,10 @@ export function Composer({
     if (!quote) return;
     requestAnimationFrame(() => textareaRef.current?.focus());
   }, [quote]);
+
+  useEffect(() => {
+    setQuote(null);
+  }, [threadId, setQuote]);
 
   useEffect(() => {
     function handlePointerDown(event: PointerEvent) {
