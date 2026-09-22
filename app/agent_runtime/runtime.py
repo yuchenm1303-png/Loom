@@ -984,9 +984,10 @@ class AgentRuntime:
     ) -> AgentEvent:
         created_at = utc_now()
         payload = dict(data)
+        # Keep diagnostics off the model/tool hot path. A single terminal
+        # aggregation preserves the useful latency breakdown without rereading
+        # a long events.jsonl before every action.
         if kind in {
-            AgentEventKind.MODEL_REQUESTED,
-            AgentEventKind.TOOL_REQUESTED,
             AgentEventKind.TURN_COMPLETED,
             AgentEventKind.TURN_FAILED,
             AgentEventKind.TURN_CANCELLED,
