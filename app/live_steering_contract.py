@@ -321,6 +321,7 @@ def _patch_runtime_class(runtime_cls: type[Any]) -> None:
                     turn_id=resolved_turn_id,
                     text=value,
                     input_id=resolved_input_id,
+                    content_digest=digest,
                 )
                 if consumed is not None:
                     return consumed
@@ -337,6 +338,8 @@ def _patch_runtime_class(runtime_cls: type[Any]) -> None:
                         turn_id=resolved_turn_id,
                         text=value,
                         input_id=resolved_input_id,
+                        content_record=content_record,
+                        content_digest=digest,
                     )
                     return _receipt(
                         input_id=identifier,
@@ -372,6 +375,7 @@ def _patch_runtime_class(runtime_cls: type[Any]) -> None:
                 turn_id=resolved_turn_id,
                 text=value,
                 input_id=resolved_input_id,
+                content_record=content_record,
                 content_digest=digest,
             )
 
