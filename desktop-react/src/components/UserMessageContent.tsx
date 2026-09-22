@@ -168,7 +168,7 @@ function FileAttachmentCard({ attachment }: { attachment: DisplayAttachment }) {
   );
 }
 
-function ImageAttachmentPreview({ attachment }: { attachment: DisplayAttachment }) {
+function ImageAttachmentPreview({ attachment, workspace }: { attachment: DisplayAttachment; workspace?: string }) {
   const [source, setSource] = useState("");
   const [failed, setFailed] = useState(false);
   const [previewing, setPreviewing] = useState(false);
@@ -179,15 +179,15 @@ function ImageAttachmentPreview({ attachment }: { attachment: DisplayAttachment 
     setFailed(false);
     setPreviewing(false);
 
-    const workspace = workspacePathFromHeader();
-    if (!workspace) {
+    const workspaceRoot = String(workspace || workspacePathFromHeader()).trim();
+    if (!workspaceRoot) {
       setFailed(true);
       return () => {
         cancelled = true;
       };
     }
 
-    void window.loom.readLocalImage(attachment.path, workspace)
+    void window.loom.readLocalImage(attachment.path, workspaceRoot)
       .then((result) => {
         if (!cancelled) setSource(result.dataUrl);
       })
@@ -198,7 +198,7 @@ function ImageAttachmentPreview({ attachment }: { attachment: DisplayAttachment 
     return () => {
       cancelled = true;
     };
-  }, [attachment.path]);
+  }, [attachment.path, workspace]);
 
   useEffect(() => {
     if (!previewing) return;
@@ -266,7 +266,7 @@ function ImageAttachmentPreview({ attachment }: { attachment: DisplayAttachment 
   );
 }
 
-export function UserMessageContent({ parsed }: { parsed: ParsedUserMessage }) {
+export function UserMessageContent({ parsed, workspace }: { parsed: ParsedUserMessage; workspace?: string }) {
   const collapsible = useMemo(() => isLongUserMessage(parsed.text), [parsed.text]);
   const [expanded, setExpanded] = useState(false);
 
@@ -280,7 +280,7 @@ export function UserMessageContent({ parsed }: { parsed: ParsedUserMessage }) {
         <div className="user-message-attachment-list" aria-label="Attached files">
           {parsed.attachments.map((attachment, index) => (
             attachment.kind === "image"
-              ? <ImageAttachmentPreview attachment={attachment} key={`${attachment.path}-${index}`} />
+              ? <ImageAttachmentPreview attachment={attachment} workspace={workspace} key={`${attachment.path}-${index}`} />
               : <FileAttachmentCard attachment={attachment} key={`${attachment.path}-${index}`} />
           ))}
         </div>
