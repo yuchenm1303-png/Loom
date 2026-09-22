@@ -97,8 +97,7 @@
   font-variant-numeric: tabular-nums;
 }
 
-.turn-process-meta,
-.turn-process-failed {
+.turn-process-meta {
   flex: none;
   font-size: 10.5px;
   color: #727a86;
@@ -115,17 +114,6 @@
   background: #565d68;
 }
 
-.turn-process-failed {
-  height: 22px;
-  display: inline-flex;
-  align-items: center;
-  padding: 0 8px;
-  border-radius: 999px;
-  border: 1px solid rgba(199,114,124,.18);
-  background: rgba(199,114,124,.06);
-  color: #ca818b;
-  font-size: 10px;
-}
 
 .turn-process-chevron {
   flex: none;

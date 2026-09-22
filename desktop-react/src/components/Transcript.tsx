@@ -989,7 +989,6 @@ function TurnProcess({
         >
           <span className="turn-process-time">{elapsedLabel(allItems)}</span>
           {operationCount ? <span className="turn-process-meta">{operationCount} 个过程项</span> : null}
-          {summary.failed ? <span className="turn-process-failed">部分失败</span> : null}
           <ChevronRight size={14} className="turn-process-chevron" aria-hidden="true" />
           <span className="turn-process-rule" aria-hidden="true" />
         </button>
