@@ -12,7 +12,6 @@ import "./markdown-message.css";
 import "./user-message-attachments.css";
 import "./stickers.css";
 import { useStreamingPresentation } from "./StreamingPresentation";
-import { streamingGraphemes } from "./streamingText";
 
 interface MarkdownMessageProps {
   content: string;
@@ -279,57 +278,18 @@ function markdownComponents(workspace?: string): Components {
   };
 }
 
-interface StreamNode {
-  type: string;
-  tagName?: string;
-  value?: string;
-  position?: { start: { offset?: number } };
-  properties?: Record<string, unknown>;
-  children?: StreamNode[];
-}
-
-function rehypeStreamText(options: { enabled: boolean; fadeFrom: number }) {
-  return (tree: StreamNode) => {
-    if (!options.enabled) return;
-    function visit(node: StreamNode) {
-      if (!node.children || ["pre", "code", "math", "svg"].includes(node.tagName || "")) return;
-      node.children = node.children.flatMap((child): StreamNode[] => {
-        if (child.type !== "text" || !child.value?.trim()) {
-          visit(child);
-          return [child];
-        }
-        const characters = streamingGraphemes(child.value);
-        let offset = child.position?.start.offset ?? 0;
-        const chunks: StreamNode[] = [];
-        for (let i = 0; i < characters.length; i++) {
-          chunks.push({
-            type: "element", tagName: "span",
-            properties: { className: [offset >= options.fadeFrom ? "stream-text-chunk" : "stream-text-settled"] },
-            children: [{ type: "text", value: characters[i] }],
-          });
-          offset += characters[i].length;
-        }
-        return chunks;
-      });
-    }
-    visit(tree);
-  };
-}
-
 const MarkdownRenderer = memo(function MarkdownRenderer({
   content,
   compact,
   workspace,
   streaming,
   receiving,
-  fadeFrom,
 }: {
   content: string;
   compact: boolean;
   workspace?: string;
   streaming: boolean;
   receiving: boolean;
-  fadeFrom: number;
 }) {
   const components = useMemo(() => markdownComponents(workspace), [workspace]);
   return (
@@ -337,7 +297,6 @@ const MarkdownRenderer = memo(function MarkdownRenderer({
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[
-          [rehypeStreamText, { enabled: streaming, fadeFrom }],
           rehypeKatex,
           [rehypeHighlight, { detect: false, ignoreMissing: true }],
         ]}
@@ -354,5 +313,5 @@ const MarkdownRenderer = memo(function MarkdownRenderer({
 export function MarkdownMessage({ content, compact = false, workspace, streaming = false, messageKey, interrupted = false }: MarkdownMessageProps) {
   const presentation = useStreamingPresentation(content, streaming, messageKey, interrupted);
   return <MarkdownRenderer content={presentation.visible} compact={compact} workspace={workspace}
-    streaming={presentation.painting} receiving={streaming && !interrupted} fadeFrom={presentation.fadeFrom} />;
+    streaming={presentation.painting} receiving={streaming && !interrupted} />;
 }

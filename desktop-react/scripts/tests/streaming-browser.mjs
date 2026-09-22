@@ -34,12 +34,14 @@ try {
   await page.waitForFunction(() => document.querySelector(".turn-final-answer .markdown-body").textContent.length === 800);
 
   await page.evaluate(() => { window.resetStream(); window.renderPlain("一", true); });
-  await page.waitForFunction(() => document.querySelector(".stream-text-chunk")?.textContent === "一");
-  await page.evaluate(() => { window.oldGlyph = document.querySelector(".stream-text-chunk"); window.renderPlain("一二", true); });
-  await page.waitForFunction(() => document.querySelectorAll(".stream-text-chunk").length === 2);
-  assert.ok(await page.evaluate(() => window.oldGlyph === document.querySelector(".stream-text-chunk")));
-  assert.equal(await page.locator(".stream-text-chunk").last().evaluate(el => getComputedStyle(el).animationName), "stream-text-reveal");
-  assert.ok(await page.locator(".stream-text-chunk").last().evaluate(el => el.getAnimations().length > 0), "new glyph must have an active animation, not just a class");
+  await page.waitForFunction(() => document.querySelector(".markdown-body")?.textContent === "一");
+  await page.evaluate(() => window.renderPlain("一二", true));
+  await page.waitForFunction(() => document.querySelector(".markdown-body")?.textContent === "一二");
+  assert.equal(await page.locator(".stream-text-chunk").count(), 0, "streaming text must not allocate one animated span per grapheme");
+
+  await page.evaluate(() => { window.resetStream(); window.renderPlain("中".repeat(800), true); });
+  await page.waitForFunction(() => document.querySelector(".markdown-body")?.textContent.length > 0);
+  assert.ok(await page.locator(".markdown-body span").count() < 16, "plain streaming prose keeps a bounded DOM node count");
 
   const rich = "```js\nconst value = 1;\n```\n\nFormula $x^2$\n\n| A | B |\n|---|---|\n| 1 | 2 |\n\nTail";
   await page.evaluate((text) => { window.resetStream(); window.renderPlain(text, true); }, rich);
@@ -68,7 +70,7 @@ try {
   await page.evaluate(() => { document.documentElement.dataset.loomReducedMotion = "true"; window.renderStream("中".repeat(1600), true); });
   await page.waitForFunction(() => document.querySelector(".markdown-body").textContent.length === 1600);
   assert.deepEqual(errors, []);
-  console.log("PASS: actual Transcript lifecycle, coarse chunks, final relocation, per-glyph fade, reasoning, interrupt, history, reduced motion, StrictMode");
+  console.log("PASS: actual Transcript lifecycle, coarse chunks, final relocation, bounded prose DOM, reasoning, interrupt, history, reduced motion, StrictMode");
 } finally {
   await browser.close();
 }
