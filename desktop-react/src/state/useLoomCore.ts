@@ -45,7 +45,7 @@ function indexedItemPosition(index: Map<string, number>, items: TranscriptItem[]
 function mergeDelta(item: TranscriptItem, delta: Record<string, unknown>): TranscriptItem {
   const next: TranscriptItem = { ...item };
   for (const [key, value] of Object.entries(delta)) {
-    if (["text", "stdout", "stderr"].includes(key) && typeof value === "string") {
+    if (["text", "reasoning", "stdout", "stderr"].includes(key) && typeof value === "string") {
       next[key] = `${String(next[key] ?? "")}${value}`;
     } else {
       next[key] = value;
