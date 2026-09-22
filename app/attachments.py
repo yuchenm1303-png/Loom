@@ -231,7 +231,10 @@ def extract_attachment_text(path: str | Path) -> str:
     }
     try:
         return extractors[suffix](target)
-    except (OSError, ValueError, KeyError, zipfile.BadZipFile, ET.ParseError):
+    except Exception:
+        # Extraction is an enhancement, never an admission requirement. A
+        # corrupted, encrypted or image-only document must remain attachable so
+        # the user can still ask Loom to inspect it with other tools.
         return ""
 
 

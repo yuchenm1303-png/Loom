@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import base64
 import threading
 import time
 from pathlib import Path
 
-from app.ai import MessageRole, ModelResponse, ToolCall
+from app.ai import ImagePart, MessageRole, ModelResponse, ToolCall
 from app.agent_runtime import (
     AgentEventKind,
     AgentTool,
@@ -206,6 +207,76 @@ def test_steering_during_tool_execution_applies_after_safe_boundary_once(tmp_pat
         release.set()
         runtime.close()
 
+
+
+
+def test_live_steering_can_attach_an_image_to_the_same_turn(tmp_path: Path) -> None:
+    entered = threading.Event()
+    release = threading.Event()
+
+    def blocking_handler(_context: ToolContext, _arguments):
+        entered.set()
+        if not release.wait(2.0):
+            raise AssertionError("test did not release blocking tool")
+        return ToolResult(ok=True, content="finished")
+
+    tool = AgentTool(
+        name="blocking_read_for_attachment",
+        description="Hold the turn open while a steering attachment arrives.",
+        input_schema={"type": "object", "properties": {}, "additionalProperties": False},
+        handler=blocking_handler,
+        effect=ToolEffect.READ_ONLY,
+    )
+    service, runtime, _store, platform, workspace = _build_service(
+        tmp_path,
+        [
+            ModelResponse(
+                tool_calls=(ToolCall(call_id="call-image-steer", name=tool.name, arguments={}),)
+            ),
+            ModelResponse(text="used the steering image"),
+        ],
+        tools=(tool,),
+    )
+    # The service is bound to a vision-capable model for this contract.
+    service.vision = True
+    image = tmp_path / "steer.png"
+    image.write_bytes(base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk"
+        "+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+    ))
+    try:
+        thread_id = service.thread_start({"workspace": str(workspace)})["thread"]["id"]
+        session = runtime.get_session(thread_id)
+        session.model_vision = True
+        runtime.store.save(session)
+        turn_id = service.turn_start({"threadId": thread_id, "input": "start"})["turn"]["id"]
+        assert entered.wait(2.0)
+
+        receipt = service.turn_steer({
+            "threadId": thread_id,
+            "turnId": turn_id,
+            "input": "also inspect this image",
+            "attachments": [{"path": str(image), "name": "steer.png"}],
+            "clientInputId": "steer-image-1",
+        })
+
+        assert receipt["accepted"] is True
+        assert receipt["attachments"][0]["kind"] == "image"
+        assert "steer.png" in receipt["displayText"]
+        release.set()
+
+        _wait_until(lambda: len(platform.requests) >= 2)
+        user_messages = [
+            message
+            for message in platform.requests[1].messages
+            if message.role is MessageRole.USER
+        ]
+        steering = user_messages[-1]
+        assert steering.uses_vision
+        assert any(isinstance(part, ImagePart) for part in steering.content)
+    finally:
+        release.set()
+        runtime.close()
 
 def test_steering_while_waiting_for_approval_supersedes_unexecuted_calls(tmp_path: Path) -> None:
     calls: list[str] = []

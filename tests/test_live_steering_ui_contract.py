@@ -110,6 +110,8 @@ def test_running_steer_is_optimistic_and_reconciles_by_client_input_id() -> None
     assert 'window.loom.call<SteeringReceipt>("turn/steer", {' in source
     assert "setOptimisticSteers((current) => current.filter((item) => item.inputId !== inputId));" in source
     assert "items: visibleItems" in source
+    assert "attachments," in source
+    assert "displayText" in source
 
 
 def test_steering_composer_does_not_wait_for_rpc_before_clearing_and_unlocking() -> None:
