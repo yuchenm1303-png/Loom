@@ -307,3 +307,87 @@ def test_opencode_messages_streams_thinking_delta_separately() -> None:
         if event.kind is StreamEventKind.TEXT_DELTA
     ] == ["Fixed."]
     assert response.closed is True
+
+
+
+class _ClosableEventStream(list):
+    def close(self) -> None:
+        return None
+
+
+def test_opencode_responses_streams_provider_reasoning_summary_separately() -> None:
+    backend = object.__new__(_OpenCodeGoResponsesBackend)
+    backend.profile = SimpleNamespace(model="gpt-5.6-luna")
+    backend._stream_local = SimpleNamespace()
+
+    response = SimpleNamespace(
+        id="resp-1",
+        status="completed",
+        usage=SimpleNamespace(input_tokens=3, output_tokens=4),
+    )
+    stream = _ClosableEventStream([
+        SimpleNamespace(type="response.reasoning_summary_text.delta", delta="Check "),
+        SimpleNamespace(type="response.reasoning_summary_text.delta", delta="the code."),
+        SimpleNamespace(type="response.output_text.delta", delta="Done."),
+        SimpleNamespace(type="response.completed", response=response),
+    ])
+    backend.client = SimpleNamespace(
+        responses=SimpleNamespace(create=lambda **_kwargs: stream)
+    )
+
+    events = list(backend.stream(_request()))
+
+    assert [
+        event.reasoning_delta
+        for event in events
+        if event.kind is StreamEventKind.REASONING_DELTA
+    ] == ["Check ", "the code."]
+    assert [
+        event.text_delta
+        for event in events
+        if event.kind is StreamEventKind.TEXT_DELTA
+    ] == ["Done."]
+    assert events[-1].kind is StreamEventKind.COMPLETED
+
+
+class _FakeMessageStream:
+    def __init__(self, lines: list[bytes]) -> None:
+        self.lines = lines
+
+    def __iter__(self):
+        return iter(self.lines)
+
+    def close(self) -> None:
+        return None
+
+
+def test_opencode_messages_streams_thinking_separately_from_answer() -> None:
+    backend = object.__new__(_OpenCodeGoMessagesBackend)
+    backend.profile = SimpleNamespace(model="minimax-m3")
+    backend.api_key = "test-only-key"
+    backend.timeout = 120.0
+    backend._stream_local = SimpleNamespace()
+
+    stream = _FakeMessageStream([
+        b'data: {"type":"message_start","message":{"id":"msg-1","usage":{"input_tokens":2,"output_tokens":0}}}\n',
+        b'data: {"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":"Plan "}}\n',
+        b'data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"first."}}\n',
+        b'data: {"type":"content_block_start","index":1,"content_block":{"type":"text","text":"Answer"}}\n',
+        b'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":3}}\n',
+        b'data: {"type":"message_stop"}\n',
+    ])
+    backend._open = lambda _request, *, stream: stream
+
+    events = list(backend.stream(_request()))
+
+    assert [
+        event.reasoning_delta
+        for event in events
+        if event.kind is StreamEventKind.REASONING_DELTA
+    ] == ["Plan ", "first."]
+    assert [
+        event.text_delta
+        for event in events
+        if event.kind is StreamEventKind.TEXT_DELTA
+    ] == ["Answer"]
+    assert events[-1].kind is StreamEventKind.COMPLETED
