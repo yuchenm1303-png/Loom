@@ -107,6 +107,7 @@ def _strip_incomplete_sticker_control_fragments(text: str) -> str:
 
 class AgentStreamEventKind(str, Enum):
     ASSISTANT_TEXT_DELTA = "assistant_text_delta"
+    ASSISTANT_REASONING_DELTA = "assistant_reasoning_delta"
     TOOL_CALL_ARGUMENT_DELTA = "tool_call_argument_delta"
     MODEL_STREAM_COMPLETED = "model_stream_completed"
 
@@ -405,6 +406,16 @@ class StreamingAgentRuntime(CodeModeRuntime):
                 self._emit_stream(
                     context,
                     AgentStreamEventKind.ASSISTANT_TEXT_DELTA,
+                    {"delta": delta, "profile_id": event.profile_id},
+                )
+            return
+
+        if event.kind is ProviderStreamEventKind.REASONING_DELTA:
+            delta = str(event.reasoning_delta or "")
+            if delta:
+                self._emit_stream(
+                    context,
+                    AgentStreamEventKind.ASSISTANT_REASONING_DELTA,
                     {"delta": delta, "profile_id": event.profile_id},
                 )
             return
