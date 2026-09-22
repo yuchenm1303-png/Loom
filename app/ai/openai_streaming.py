@@ -139,10 +139,11 @@ class OpenAIStreamingChatBackend(OpenAIChatBackend):
                         if reasoning_text:
                             reasoning_char_count += len(reasoning_text)
                             reasoning_parts.append(reasoning_text)
-                            yield StreamEvent(
-                                kind=StreamEventKind.REASONING_DELTA,
-                                reasoning_delta=reasoning_text,
-                            )
+                            if compatible:
+                                yield StreamEvent(
+                                    kind=StreamEventKind.REASONING_DELTA,
+                                    reasoning_delta=reasoning_text,
+                                )
                     text = str(getattr(delta, "content", "") or "")
                     if text:
                         if compatible:
