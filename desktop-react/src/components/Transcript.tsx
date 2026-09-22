@@ -1113,18 +1113,26 @@ const TurnView = memo(function TurnView({
   }, [active, items]);
 
   const [processOpen, setProcessOpen] = useState(active);
+  const [settling, setSettling] = useState(false);
   const wasActiveRef = useRef(active);
 
   useEffect(() => {
     if (active) {
       setProcessOpen(true);
+      setSettling(false);
     } else if (wasActiveRef.current) {
-      // Let the final answer land before folding the execution timeline. A
-      // short settle hold makes the handoff read as one continuous action
-      // instead of a process panel disappearing the instant TURN_COMPLETED lands.
-      const timer = window.setTimeout(() => setProcessOpen(false), TURN_SETTLE_HOLD_MS);
+      // Only a live -> complete transition owns completion motion. Historical
+      // turns mount already settled and therefore never replay the handoff.
+      setSettling(true);
+      const foldTimer = window.setTimeout(() => setProcessOpen(false), TURN_SETTLE_HOLD_MS);
+      const settleTimer = window.setTimeout(() => setSettling(false), TURN_SETTLE_HOLD_MS + 360);
       wasActiveRef.current = active;
-      return () => window.clearTimeout(timer);
+      return () => {
+        window.clearTimeout(foldTimer);
+        window.clearTimeout(settleTimer);
+      };
+    } else {
+      setSettling(false);
     }
     wasActiveRef.current = active;
   }, [active]);
@@ -1140,7 +1148,7 @@ const TurnView = memo(function TurnView({
 
   return (
     <StreamingPresentation>
-    <section className={`turn-block ${active ? "is-active" : "is-complete"}`} data-turn-id={turnId}>
+    <section className={`turn-block ${active ? "is-active" : "is-complete"} ${settling ? "is-settling" : ""}`.trim()} data-turn-id={turnId}>
       {derived.initialUser ? (
         <div className="transcript-entry entry-user_message" key={derived.initialUser.id}>
           <ItemView item={derived.initialUser} onApproval={onApproval} onPrompt={onPrompt} promptDisabled={promptDisabled} workspace={workspace} />

@@ -16,7 +16,7 @@
 
 /* Do not replay old history just because a thread remounted. Live turns own
    entrance motion; completed turns only animate the final handoff. */
-.turn-block.is-complete > .transcript-entry:not(.turn-final-answer),
+.turn-block.is-complete > .transcript-entry,
 .turn-block.is-complete .turn-process-content > .transcript-entry {
   animation: none;
 }
@@ -38,7 +38,19 @@
 }
 
 .turn-final-answer {
+  animation: none !important;
+}
+
+.turn-block.is-settling .turn-final-answer {
   animation: loom-final-answer-land 340ms var(--loom-motion-pop) both !important;
+}
+
+.turn-process.is-settled.is-open .turn-process-header {
+  animation: none;
+}
+
+.turn-block.is-settling .turn-process.is-settled.is-open .turn-process-header {
+  animation: loom-process-handoff-in 230ms var(--loom-motion-pop) both;
 }
 
 /* Rich surfaces arrive as one unit instead of every child running its own
@@ -382,6 +394,11 @@ html[data-loom-theme="light"] .conversation-stage > .run-progress-frame.top .run
   100% { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
 }
 
+@keyframes loom-process-handoff-in {
+  from { opacity: .28; transform: translate3d(0, -2px, 0) scale(.985); }
+  to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+}
+
 @keyframes loom-content-surface-in {
   from { opacity: .38; transform: translate3d(0, 4px, 0) scale(.985); }
   to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
@@ -420,6 +437,7 @@ html[data-loom-theme="light"] .conversation-stage > .run-progress-frame.top .run
   .turn-block.is-active .user-message,
   .turn-process.is-live .entry-steering-user .user-message,
   .turn-final-answer,
+  .turn-block.is-settling .turn-process.is-settled.is-open .turn-process-header,
   .turn-block.is-active .user-link-card,
   .turn-block.is-active .user-rich-code-block,
   .turn-block.is-active .user-message-image-preview,
