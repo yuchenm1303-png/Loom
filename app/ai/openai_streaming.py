@@ -102,10 +102,10 @@ class OpenAIStreamingChatBackend(OpenAIChatBackend):
         try:
             for chunk in stream:
                 check_cancelled()
-                # Every chunk counts as progress, including the reasoning-only
-                # ones below that never leave this loop as a StreamEvent. This
-                # is what lets the executor tell a model that is thinking hard
-                # from a connection that has died.
+                # Every chunk counts as progress, including reasoning-only
+                # chunks. Compatible providers may publish their explicitly
+                # exposed reasoning separately; replay-only provider state still
+                # remains private.
                 note_progress()
                 chunk_count += 1
                 chunk_id = str(getattr(chunk, "id", "") or "").strip()
