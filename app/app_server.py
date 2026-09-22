@@ -1461,6 +1461,7 @@ class LoomRpcController:
         self.client_info = copy.deepcopy(client_info)
         self.initialized = True
         status = self.service.runtime_status()
+        runtime = getattr(self.service, "runtime", None)
         return {
             "protocolVersion": PROTOCOL_VERSION,
             "serverInfo": {"name": PROTOCOL_NAME, "version": "0.1.0"},
@@ -1480,7 +1481,7 @@ class LoomRpcController:
                     "threadStart": True,
                 },
                 "agents": {
-                    "list": callable(getattr(getattr(self.service.runtime, "agent_control", None), "list_tree", None)),
+                    "list": callable(getattr(getattr(runtime, "agent_control", None), "list_tree", None)),
                 },
                 "settings": {"get": True, "set": True},
                 "turns": {"start": True, "interrupt": True},
