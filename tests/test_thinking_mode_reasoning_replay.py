@@ -5,10 +5,10 @@ the `reasoning_content` that produced it:
 
     400 - The `reasoning_content` in the thinking mode must be passed back to the API.
 
-Loom read that field only to count its characters and then dropped it, so the
-first time a turn synthesized a text-only assistant message — truncated-response
-recovery — the whole turn died. Reasoning is never user-visible; it is transport
-state that has to be carried.
+Loom must preserve that field as replay transport state so truncated-response
+recovery remains valid. Provider-visible reasoning is now a separate stream/UI
+field; the replay field tested here remains transport state and must never be
+used as the UI source by itself.
 """
 from __future__ import annotations
 

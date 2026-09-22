@@ -11,6 +11,7 @@ from app.thread_title_override import (
     _build_plain_auto_title_request,
     _auto_title_prompt,
     _metadata_display_title,
+    _metadata_has_committed_title,
     _metadata_title_blocks_auto_title,
     _safe_initial_title_from_prompt,
     _sanitize_generated_title,
@@ -188,3 +189,24 @@ def test_generated_title_rejects_prompt_clause_without_task_shape() -> None:
         "修复标签数字文字重叠",
         source_prompt=prompt,
     ) == "修复标签数字文字重叠"
+
+
+def test_committed_auto_title_is_not_revalidated_by_new_quality_rules() -> None:
+    source_prompt = "右上角的标签数字和文字重叠，请仔细检查并优化一下"
+    assert _sanitize_generated_title(
+        "右上角标签数字文字重叠",
+        source_prompt=source_prompt,
+    ) == ""
+
+    metadata = {
+        "title": "右上角标签数字文字重叠",
+        "titleSource": "auto",
+        "autoTitleFallback": False,
+        "autoTitlePending": False,
+        "autoTitleSourcePrompt": source_prompt,
+        "autoTitleVersion": 5,
+        "autoTitleGeneratedAt": "2026-09-21T08:00:00.000+00:00",
+    }
+    assert _metadata_has_committed_title(metadata) is True
+    assert _metadata_title_blocks_auto_title(metadata) is True
+    assert _metadata_display_title(metadata) == ("右上角标签数字文字重叠", "auto")

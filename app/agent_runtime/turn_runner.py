@@ -443,6 +443,7 @@ class TurnRunner:
                             "text": response.text,
                             "finish_reason": response.finish_reason,
                             "response_id": response.response_id,
+                            "reasoning_summary": response.visible_reasoning,
                             "tool_calls": [
                                 {"call_id": c.call_id, "name": c.name, "arguments": c.arguments}
                                 for c in calls

@@ -153,6 +153,7 @@ def session_to_dict(session: AgentSession) -> dict[str, Any]:
         "session_id": session.session_id,
         "profile_id": session.profile_id,
         "system_prompt": session.system_prompt,
+        "system_prompt_version": session.system_prompt_version,
         "workspace_dir": session.workspace_dir,
         "permission_mode": session.permission_mode.value,
         "created_at": session.created_at,
@@ -188,6 +189,7 @@ def session_from_dict(payload: dict[str, Any]) -> AgentSession:
         session_id=str(payload.get("session_id") or ""),
         profile_id=str(payload.get("profile_id") or ""),
         system_prompt=str(payload.get("system_prompt") or ""),
+        system_prompt_version=int(payload.get("system_prompt_version") or 0),
         workspace_dir=str(payload.get("workspace_dir") or ""),
         permission_mode=PermissionMode(
             str(payload.get("permission_mode") or PermissionMode.APPROVAL.value)

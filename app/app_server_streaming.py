@@ -106,7 +106,10 @@ class StreamingLoomAppServerService(LoomAppServerService):
         )
 
     def _on_runtime_stream(self, event: AgentStreamEvent) -> None:
-        if event.kind is AgentStreamEventKind.ASSISTANT_TEXT_DELTA:
+        if event.kind in {
+            AgentStreamEventKind.ASSISTANT_TEXT_DELTA,
+            AgentStreamEventKind.ASSISTANT_REASONING_DELTA,
+        }:
             delta = str(event.data.get("delta") or "")
             if not delta:
                 return
@@ -130,13 +133,18 @@ class StreamingLoomAppServerService(LoomAppServerService):
                         }
                     },
                 )
+            field = (
+                "reasoning"
+                if event.kind is AgentStreamEventKind.ASSISTANT_REASONING_DELTA
+                else "text"
+            )
             self._notify(
                 "item/delta",
                 {
                     "threadId": event.session_id,
                     "turnId": event.turn_id,
                     "itemId": item_id,
-                    "delta": {"text": delta},
+                    "delta": {field: delta},
                 },
             )
             return
@@ -306,7 +314,7 @@ class StreamingLoomAppServerService(LoomAppServerService):
                 self._notify("item/completed", {"item": {"id": _assistant_step_item_id(step_id),
                     "threadId": event.session_id, "turnId": event.turn_id,
                     "type": "assistant_message", "status": "interrupted", "text": "",
-                    "updatedAt": event.created_at}})
+                    "reasoning": "", "updatedAt": event.created_at}})
             # ``model_requested`` is not a turn outcome, so the shared status
             # derivation would stamp these tool items with that event's own name.
             self._clear_turn_tool_streams(event, close_started=True, status="interrupted")
@@ -387,6 +395,7 @@ class StreamingLoomAppServerService(LoomAppServerService):
                             "turnId": event.turn_id,
                             "type": "assistant_message",
                             "status": event.kind.value.removeprefix("turn_"),
+                            "reasoning": "",
                             "updatedAt": event.created_at,
                         }
                     },
@@ -403,9 +412,11 @@ class StreamingLoomRpcController(LoomRpcController):
         result["capabilities"]["providerStreaming"] = enabled
         result["capabilities"]["runtimeStream"] = {
             "assistantTextDelta": enabled,
+            "assistantReasoningDelta": enabled,
             "toolCallArgumentDelta": enabled,
             "usageCompletionMetadata": enabled,
             "privateReasoning": False,
+            "providerVisibleReasoning": enabled,
         }
         return result
 

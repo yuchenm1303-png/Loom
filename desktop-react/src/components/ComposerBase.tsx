@@ -382,7 +382,7 @@ export function Composer({
               return (
                 <span
                   key={item.id}
-                  className={`composer-attachment ${blocked ? "is-blocked" : ""}`}
+                  className={`composer-attachment ${item.previewUrl ? "is-image-preview" : ""} ${blocked ? "is-blocked" : ""}`}
                   title={blocked ? "This model cannot read images" : item.path}
                 >
                   {item.previewUrl ? (
@@ -390,9 +390,13 @@ export function Composer({
                   ) : (
                     <FileText size={13} />
                   )}
-                  <span className="composer-attachment-name">{item.name}</span>
-                  {formatSize(item.size) ? (
-                    <span className="composer-attachment-size">{formatSize(item.size)}</span>
+                  {!item.previewUrl ? (
+                    <>
+                      <span className="composer-attachment-name">{item.name}</span>
+                      {formatSize(item.size) ? (
+                        <span className="composer-attachment-size">{formatSize(item.size)}</span>
+                      ) : null}
+                    </>
                   ) : null}
                   <button type="button" onClick={() => removeAttachment(item.id)} aria-label={`Remove ${item.name}`}>
                     <X size={12} />

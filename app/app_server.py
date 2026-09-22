@@ -291,6 +291,7 @@ def _apply_event_to_item(item: dict[str, Any], event: AgentEvent) -> None:
     elif kind is AgentEventKind.MODEL_RESPONSE:
         item["status"] = "completed"
         item["text"] = str(data.get("text") or "")
+        item["reasoning"] = str(data.get("reasoning_summary") or "")
         item["stepId"] = str(data.get("step_id") or "") or None
         item["phase"] = str(data.get("phase") or "commentary")
         item["runtimeAuthored"] = bool(data.get("runtime_authored"))
@@ -1471,7 +1472,13 @@ class LoomRpcController:
                     "threadStart": True,
                 },
                 "agents": {
-                    "list": callable(getattr(getattr(self.service.runtime, "agent_control", None), "list_tree", None)),
+                    "list": callable(
+                        getattr(
+                            getattr(getattr(self.service, "runtime", None), "agent_control", None),
+                            "list_tree",
+                            None,
+                        )
+                    ),
                 },
                 "settings": {"get": True, "set": True},
                 "turns": {"start": True, "interrupt": True},

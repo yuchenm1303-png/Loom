@@ -169,7 +169,9 @@ def test_runtime_injects_tool_harness_without_persisting_policy_matrix(tmp_path)
     assert {tool.name for tool in request.tools} == {
         "computer_status",
         "general_exec",
+        "get_run_scratch_dir",
         "host_probe",
+        "read_durable_tool_result",
     }
 
     persisted = runtime.get_session(session.session_id)

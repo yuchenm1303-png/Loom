@@ -45,6 +45,8 @@ from .tools import ToolContext, ToolPolicy, ToolRegistry, ToolResult
 # called memory_status (Loom's own memory store), then told the user to open
 # Task Manager. A measured A/B over the real provider showed this paragraph,
 # not the runtime-state envelope, is what makes it reach for exec instead.
+DEFAULT_AGENT_SYSTEM_PROMPT_VERSION = 2
+
 DEFAULT_AGENT_SYSTEM_PROMPT = (
     "You are an execution agent operating inside a controlled tool harness. "
     "Use only the tools provided to you, never invent tool results, and treat tool errors as observations "
@@ -90,6 +92,20 @@ DEFAULT_AGENT_SYSTEM_PROMPT = (
     "brackets. Do not embed local images as base64 or file:// URLs, and do not leave the user with only a path "
     "when the image itself is the deliverable."
 )
+_ACTION_FIRST_PROMPT_BLOCK = (
+    "Default to action rather than extended deliberation. For straightforward or single-step tasks, skip "
+    "planning and make the smallest direct inspection or tool call that can safely advance the task. When "
+    "the user asks to change code or external state, unless they explicitly asked only for analysis, design, "
+    "or options, proceed to implementation as soon as the relevant evidence is sufficient. Do not wait for "
+    "complete repository understanding, perform broad audits just in case, or keep researching after the "
+    "leading hypothesis is supported. For genuinely complex or multi-phase work, a short plan is useful, but "
+    "start its first concrete action immediately. Treat private reasoning as a way to choose the next action, "
+    "not as a deliverable or a reason to delay action.\n"
+    "\n"
+)
+_LEGACY_DEFAULT_AGENT_SYSTEM_PROMPTS = frozenset({
+    DEFAULT_AGENT_SYSTEM_PROMPT.replace(_ACTION_FIRST_PROMPT_BLOCK, "", 1),
+})
 
 
 class AgentModelPlatform(Protocol):
@@ -282,6 +298,11 @@ class AgentRuntime:
             session_id=session_id,
             profile_id=profile,
             system_prompt=prompt,
+            system_prompt_version=(
+                DEFAULT_AGENT_SYSTEM_PROMPT_VERSION
+                if prompt == DEFAULT_AGENT_SYSTEM_PROMPT
+                else 0
+            ),
             workspace_dir=str(workspace),
             created_at=now,
             updated_at=now,
@@ -300,8 +321,23 @@ class AgentRuntime:
             )
         return session
 
+    def _upgrade_default_system_prompt(self, session: AgentSession) -> AgentSession:
+        """Advance only Loom-owned default prompts; preserve every custom prompt."""
+
+        if session.system_prompt in _LEGACY_DEFAULT_AGENT_SYSTEM_PROMPTS:
+            session.system_prompt = DEFAULT_AGENT_SYSTEM_PROMPT
+            session.system_prompt_version = DEFAULT_AGENT_SYSTEM_PROMPT_VERSION
+            self.store.save(session)
+        elif (
+            session.system_prompt == DEFAULT_AGENT_SYSTEM_PROMPT
+            and session.system_prompt_version != DEFAULT_AGENT_SYSTEM_PROMPT_VERSION
+        ):
+            session.system_prompt_version = DEFAULT_AGENT_SYSTEM_PROMPT_VERSION
+            self.store.save(session)
+        return session
+
     def get_session(self, session_id: str) -> AgentSession:
-        return self.store.load(session_id)
+        return self._upgrade_default_system_prompt(self.store.load(session_id))
 
     def set_permission_mode(
         self,
@@ -344,7 +380,7 @@ class AgentRuntime:
         content, text = normalize_turn_input(user_text)
         lock = self._session_lock(session_id)
         with lock:
-            session = self.store.load(session_id)
+            session = self._upgrade_default_system_prompt(self.store.load(session_id))
             if session.status is AgentStatus.WAITING_APPROVAL:
                 raise RuntimeError("agent session is waiting for tool approval")
             retrying_failed_input = self._is_failed_user_input_retry(session, content)
