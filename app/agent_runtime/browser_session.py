@@ -40,6 +40,21 @@ class BrowserError(RuntimeError):
     pass
 
 
+class BrowserSessionLimitError(BrowserError):
+    """A browser slot is temporarily unavailable.
+
+    Keep capacity failures typed instead of making callers parse an English error
+    string. Tool handlers can then recover/reuse an owned browser or report a
+    retryable busy state without turning ordinary session contention into a fatal
+    agent error.
+    """
+
+    def __init__(self, message: str, *, scope: str, limit: int) -> None:
+        super().__init__(message)
+        self.scope = str(scope)
+        self.limit = max(1, int(limit))
+
+
 class BrowserUnavailableError(BrowserError):
     pass
 
@@ -245,12 +260,18 @@ class BrowserSessionManager:
 
         with self._lock:
             if len(self._sessions) + self._starting_total >= self.max_sessions_total:
-                raise BrowserError(f"browser session limit reached ({self.max_sessions_total})")
+                raise BrowserSessionLimitError(
+                    f"browser session limit reached ({self.max_sessions_total})",
+                    scope="total",
+                    limit=self.max_sessions_total,
+                )
             owned = sum(1 for item in self._sessions.values() if item.owner_session_id == owner)
             owned += self._starting_by_owner.get(owner, 0)
             if owned >= self.max_sessions_per_owner:
-                raise BrowserError(
-                    f"browser session limit for Loom session reached ({self.max_sessions_per_owner})"
+                raise BrowserSessionLimitError(
+                    f"browser session limit for Loom session reached ({self.max_sessions_per_owner})",
+                    scope="owner",
+                    limit=self.max_sessions_per_owner,
                 )
             self._starting_total += 1
             self._starting_by_owner[owner] = self._starting_by_owner.get(owner, 0) + 1
