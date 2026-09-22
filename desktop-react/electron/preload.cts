@@ -51,6 +51,7 @@ const api = {
   revealPath: (targetPath: string) => ipcRenderer.invoke("loom:reveal-path", targetPath),
   copyImageSource: (source: string) => ipcRenderer.invoke("loom:copy-image-source", source),
   readClipboardText: () => ipcRenderer.invoke("loom:clipboard-read-text"),
+  writeClipboardText: (value: string) => ipcRenderer.invoke("loom:clipboard-write-text", value),
   openExternal: (url: string) => ipcRenderer.invoke("loom:open-external", url),
   readLocalImage: (targetPath: string, workspaceRoot: string) =>
     ipcRenderer.invoke("loom:read-local-image", targetPath, workspaceRoot),
