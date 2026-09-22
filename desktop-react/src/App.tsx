@@ -785,7 +785,7 @@ export default function App() {
         <div className="composer-stage">
           <Composer
             disabled={!thread || loom.connection !== "ready" || loom.threadLoading || archived}
-            running={running}
+            running={running && !loom.threadLoading}
             model={loom.models?.current?.model || loom.runtime.model}
             modelSnapshot={loom.models}
             modelBusy={loom.modelBusy}
