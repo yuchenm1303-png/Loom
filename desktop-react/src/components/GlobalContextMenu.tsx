@@ -121,18 +121,7 @@ function imagePathFromElement(image: HTMLImageElement | null): string {
 
 async function writeText(value: string): Promise<void> {
   if (!value) return;
-  if (navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(value);
-    return;
-  }
-  const textarea = document.createElement("textarea");
-  textarea.value = value;
-  textarea.style.position = "fixed";
-  textarea.style.opacity = "0";
-  document.body.appendChild(textarea);
-  textarea.select();
-  document.execCommand("copy");
-  textarea.remove();
+  await window.loom.writeClipboardText(value);
 }
 
 function replaceEditableSelection(element: EditableElement, replacement: string): void {
