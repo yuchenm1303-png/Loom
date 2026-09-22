@@ -53,7 +53,7 @@
   cursor: default;
 }
 
-.codex-sidebar-brand span,
+.codex-sidebar-brand-label,
 .compact-sidebar-header > strong {
   min-width: 0;
   overflow: hidden;
