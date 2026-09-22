@@ -24,7 +24,7 @@ import "./composer.css";
 
 type ComposerProps = ComponentProps<typeof ComposerBase>;
 
-function SteeringComposer({ onSend, onInterrupt, imagesAllowed = true }: ComposerProps) {
+function SteeringComposer({ threadId, onSend, onInterrupt, imagesAllowed = true }: ComposerProps) {
   const { language } = useI18n();
   const zh = language === "zh-CN";
   const [value, setValue] = useState("");
@@ -50,6 +50,10 @@ function SteeringComposer({ onSend, onInterrupt, imagesAllowed = true }: Compose
     if (!quote) return;
     requestAnimationFrame(() => textareaRef.current?.focus());
   }, [quote]);
+
+  useEffect(() => {
+    setQuote(null);
+  }, [threadId, setQuote]);
 
   useEffect(() => {
     textareaRef.current?.focus();
