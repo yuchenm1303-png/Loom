@@ -129,3 +129,44 @@ def test_sensitive_repeat_is_advisory_even_across_other_sensitive_calls():
     assert "sensitive operation" in message.content
     assert "durable result" in message.content
     assert metadata == {"duplicate_sensitive_calls": 1}
+
+def test_guidance_intervenes_before_small_task_becomes_broad_audit():
+    events = (
+        _event(AgentEventKind.MODEL_REQUESTED),
+        _event(
+            AgentEventKind.TOOL_STARTED,
+            tool="read_workspace_text",
+            effect="read_only",
+            call_fingerprint="one",
+            repeat_count=0,
+        ),
+        _event(
+            AgentEventKind.TOOL_STARTED,
+            tool="read_workspace_text",
+            effect="read_only",
+            call_fingerprint="two",
+            repeat_count=0,
+        ),
+        _event(
+            AgentEventKind.TOOL_STARTED,
+            tool="exec",
+            effect="sensitive",
+            call_fingerprint="three",
+            repeat_count=0,
+        ),
+        _event(
+            AgentEventKind.TOOL_STARTED,
+            tool="read_workspace_text",
+            effect="read_only",
+            call_fingerprint="four",
+            repeat_count=0,
+        ),
+    )
+
+    message, metadata = model_execution_guidance(events, turn_id="turn-1", tool_calls=4)
+
+    assert message is not None
+    assert "4 tool calls" in message.content
+    assert "stop broadening the audit" in message.content
+    assert metadata == {"convergence_checkpoint": 4}
+

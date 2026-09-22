@@ -11,7 +11,7 @@ from .contracts import AgentEvent, AgentEventKind, ToolEffect
 
 # Intervene before a small task turns into a long audit. These checkpoints are
 # advisory and cheap; they do not cap legitimate long-running work.
-CONVERGENCE_THRESHOLDS = (8, 16, 32, 64, 96, 128, 160)
+CONVERGENCE_THRESHOLDS = (4, 8, 16, 32, 64, 96, 128, 160)
 
 
 def tool_call_fingerprint(call: ToolCall) -> str:
@@ -147,10 +147,11 @@ def model_execution_guidance(
     if threshold:
         parts.append(
             f"This turn has reached {threshold} tool calls. Before more tools, explicitly check what is "
-            "already established, what remains, and whether the next call will add new evidence. Prefer one "
-            "direct verification of the leading hypothesis over rereading the same files through another "
-            "search or shell tool. If the task is solved, implement and verify the smallest complete change "
-            "now; if progress is stalled, change approach or request the missing input."
+            "already established, what remains, and whether the next call will add new evidence. If the task "
+            "is straightforward and the leading hypothesis is already supported, stop broadening the audit "
+            "and implement the smallest complete change now. Prefer one discriminating verification over "
+            "rereading the same files through another search or shell tool. If progress is stalled, change "
+            "approach or request the missing input."
         )
         metadata["convergence_checkpoint"] = threshold
     return AIMessage(

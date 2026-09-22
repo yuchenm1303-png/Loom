@@ -62,6 +62,15 @@ DEFAULT_AGENT_SYSTEM_PROMPT = (
     "and shell before composing it. Do not tell the user to go and look it up themselves, and do not report "
     "a capability as missing before trying the command.\n"
     "\n"
+    "Default to action rather than extended deliberation. For straightforward or single-step tasks, skip "
+    "planning and make the smallest direct inspection or tool call that can safely advance the task. When "
+    "the user asks to change code or external state, unless they explicitly asked only for analysis, design, "
+    "or options, proceed to implementation as soon as the relevant evidence is sufficient. Do not wait for "
+    "complete repository understanding, perform broad audits just in case, or keep researching after the "
+    "leading hypothesis is supported. For genuinely complex or multi-phase work, a short plan is useful, but "
+    "start its first concrete action immediately. Treat private reasoning as a way to choose the next action, "
+    "not as a deliverable or a reason to delay action.\n"
+    "\n"
     "Keep the user informed during long work. Before a substantial batch of tool calls, briefly state the "
     "immediate next action; after roughly 8-12 tool calls or a meaningful discovery, give a concise progress "
     "update before continuing. Do not remain silent through a long command stream.\n"
@@ -973,14 +982,35 @@ class AgentRuntime:
         *,
         data: dict[str, object],
     ) -> AgentEvent:
-        json.dumps(data, ensure_ascii=False)
+        created_at = utc_now()
+        payload = dict(data)
+        if kind in {
+            AgentEventKind.MODEL_REQUESTED,
+            AgentEventKind.TOOL_REQUESTED,
+            AgentEventKind.TURN_COMPLETED,
+            AgentEventKind.TURN_FAILED,
+            AgentEventKind.TURN_CANCELLED,
+            AgentEventKind.TURN_INTERRUPTED,
+            AgentEventKind.LIMIT_REACHED,
+        }:
+            from .turn_timing import turn_timing_metadata
+
+            timing = turn_timing_metadata(
+                self.store.events(session.session_id),
+                turn_id=session.current_turn_id,
+                kind=kind,
+                now=created_at,
+            )
+            for key, value in timing.items():
+                payload.setdefault(key, value)
+        json.dumps(payload, ensure_ascii=False)
         event = AgentEvent(
             event_id=str(uuid.uuid4()),
             session_id=session.session_id,
             turn_id=session.current_turn_id,
             kind=kind,
-            created_at=utc_now(),
-            data=dict(data),
+            created_at=created_at,
+            data=payload,
         )
         self.store.commit_event(session, event)
         for listener in tuple(self._listeners):

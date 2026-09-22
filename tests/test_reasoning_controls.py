@@ -82,7 +82,7 @@ def test_deepseek_catalog_exposes_official_thinking_efforts() -> None:
 
     assert capability is not None
     assert capability["kind"] == "openai-effort"
-    assert capability["defaultValue"] == "high"
+    assert capability["defaultValue"] == "low"
     assert _option_values(capability) == ["none", "low", "high", "max"]
 
 
