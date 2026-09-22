@@ -87,6 +87,8 @@ function selectionInside(selection: Selection | null, container: HTMLElement | n
 
 function messageTextFromShell(shell: HTMLElement | null, kind: "assistant" | "user" | null): string {
   if (!shell || !kind) return "";
+  const raw = shell.dataset.loomMessageText?.trim();
+  if (raw) return raw;
   if (kind === "user") {
     return (
       shell.querySelector<HTMLElement>(".user-message-text")?.innerText
