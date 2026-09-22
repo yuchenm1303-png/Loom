@@ -49,7 +49,7 @@ interface MenuAction {
   icon: ReactNode;
   group: number;
   disabled?: boolean;
-  run(): void | Promise<void>;
+  run(): void | Promise<unknown>;
 }
 
 function isInputLike(value: Element | null): value is HTMLInputElement | HTMLTextAreaElement {
