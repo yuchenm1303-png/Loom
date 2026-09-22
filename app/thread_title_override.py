@@ -726,7 +726,6 @@ def _patch_service(module: ModuleType) -> None:
             and not bool(metadata.get("autoTitleDisabled"))
             and not _metadata_title_blocks_auto_title(metadata)
             and attempt_budget_available
-            and session.status not in {module.AgentStatus.RUNNING, module.AgentStatus.WAITING_APPROVAL}
         ):
             try:
                 self.thread_library.mark_auto_title_pending(thread_id, source_prompt=source_prompt)
@@ -806,9 +805,6 @@ def _patch_service(module: ModuleType) -> None:
                 session = self.store.load(thread_id)
             except (FileNotFoundError, OSError, ValueError, json.JSONDecodeError):
                 return
-            if session.status in {module.AgentStatus.RUNNING, module.AgentStatus.WAITING_APPROVAL}:
-                return
-
             source_prompt = (
                 _stored_title_prompt(self.thread_library, thread_id)
                 or _first_user_prompt(module, session)
@@ -888,11 +884,13 @@ def _patch_service(module: ModuleType) -> None:
             try:
                 if self.thread_library.mark_auto_title_pending(thread_id, source_prompt=user_prompt):
                     _notify_thread_updated(self, thread_id, "auto_title_pending")
+                    self._schedule_auto_title(thread_id, user_prompt=user_prompt)
             except Exception:
                 pass
-        # Title generation is deliberately detached from the active task. The
-        # inherited TURN_COMPLETED hook schedules it after the task finishes so
-        # cosmetic metadata never competes with the user's model request.
+        # Title generation is detached from the active task but starts
+        # immediately. The placeholder should be a brief loading state, not the
+        # title for the whole duration of a long-running task. TURN_COMPLETED
+        # remains a recovery trigger for transient provider failures.
         return result
 
     def on_runtime_event(self: Any, event: Any) -> None:
