@@ -78,7 +78,7 @@ def test_guidance_reports_new_repeat_once_and_advances_thresholds():
     assert message is not None
     assert "read_workspace_text" in message.content
     assert "32 tool calls" in message.content
-    assert "direct verification" in message.content
+    assert "discriminating verification" in message.content
     assert metadata == {
         "duplicate_read_only_calls": 1,
         "convergence_checkpoint": 32,

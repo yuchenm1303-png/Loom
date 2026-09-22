@@ -188,7 +188,7 @@ def test_resolve_deepseek_uses_official_key(tmp_path, monkeypatch):
     assert resolved["baseUrl"] == bridge.DEEPSEEK_BASE_URL
     assert resolved["apiKey"] == "deepseek-secret"
     assert resolved["provider"] == "openai-compatible"
-    assert resolved["reasoning"]["value"] == "high"
+    assert resolved["reasoning"]["value"] == "low"
 
 
 def test_builtin_model_name_switch_carries_deepseek_provider_identity(tmp_path, monkeypatch):
