@@ -44,7 +44,10 @@ class StreamingLoomWebService(LoomWebService):
         return payload
 
     def _on_runtime_stream(self, event: AgentStreamEvent) -> None:
-        if event.kind is not AgentStreamEventKind.ASSISTANT_TEXT_DELTA:
+        if event.kind not in {
+            AgentStreamEventKind.ASSISTANT_TEXT_DELTA,
+            AgentStreamEventKind.ASSISTANT_REASONING_DELTA,
+        }:
             return
         delta = str(event.data.get("delta") or "")
         if not delta:
@@ -60,13 +63,19 @@ class StreamingLoomWebService(LoomWebService):
                     "turn_id": event.turn_id,
                     "step_id": event.step_id,
                     "text": "",
+                    "reasoning": "",
                     "revision": 0,
                 }
                 self._live_streams[event.session_id] = current
-            text = str(current.get("text") or "") + delta
-            if len(text) > _MAX_LIVE_TEXT:
-                text = text[:_MAX_LIVE_TEXT]
-            current["text"] = text
+            field = (
+                "reasoning"
+                if event.kind is AgentStreamEventKind.ASSISTANT_REASONING_DELTA
+                else "text"
+            )
+            value = str(current.get(field) or "") + delta
+            if len(value) > _MAX_LIVE_TEXT:
+                value = value[:_MAX_LIVE_TEXT]
+            current[field] = value
             current["revision"] = int(current.get("revision") or 0) + 1
 
     def _on_runtime_event(self, event: AgentEvent) -> None:
@@ -87,13 +96,15 @@ class StreamingLoomWebService(LoomWebService):
         with self._guard:
             current = dict(self._live_streams.get(session_id) or {})
         text = plain_reply_text(str(current.get("text") or ""))
+        reasoning = str(current.get("reasoning") or "")
         revision = int(current.get("revision") or 0)
-        if text and payload.get("active"):
+        if (text or reasoning) and payload.get("active"):
             payload["messages"] = [
                 *payload.get("messages", []),
                 {
                     "role": "assistant",
                     "content": text,
+                    "reasoning": reasoning,
                     "name": "",
                     "tool_call_id": "",
                     "tool_calls": [],
@@ -107,7 +118,7 @@ class StreamingLoomWebService(LoomWebService):
             session["updated_at"] = f"{session.get('updated_at', '')}#stream-{revision}"
         payload["streaming"] = {
             "enabled": self.provider_streaming_enabled,
-            "active": bool(text),
+            "active": bool(text or reasoning),
             "revision": revision,
             "turn_id": str(current.get("turn_id") or ""),
             "step_id": str(current.get("step_id") or ""),

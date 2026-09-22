@@ -396,8 +396,8 @@ def _metadata_has_committed_title(metadata: dict[str, Any]) -> bool:
     title_source = str(metadata.get("titleSource") or "").strip().casefold()
     if title_source == "manual":
         return True
-    if title_source == "auto" and not bool(metadata.get("autoTitleFallback")):
-        return True
+    if title_source == "auto":
+        return not bool(metadata.get("autoTitleFallback"))
     return bool(title and title_source not in {"pending", "fallback"})
 
 

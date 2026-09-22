@@ -543,6 +543,12 @@ def test_openai_streaming_backend_requests_usage_and_never_emits_reasoning_conte
     assert events[-1].kind is StreamEventKind.COMPLETED
     assert completions.calls[0]["stream"] is True
     assert completions.calls[0]["stream_options"] == {"include_usage": True}
+    reasoning_deltas = [
+        event.reasoning_delta
+        for event in events
+        if event.kind is StreamEventKind.REASONING_DELTA
+    ]
+    assert reasoning_deltas == ["private", "still-private"]
     metadata = backend.last_stream_metadata()
     assert metadata["usage"].total_tokens == 10
     assert metadata["response_id"] == "resp-openai"
@@ -607,6 +613,13 @@ def test_openai_compatible_cumulative_snapshots_are_normalized_to_real_deltas():
     ]
     assert text_deltas == ["403", " 出来了", " —— 认证信息"]
     assert "".join(text_deltas) == "403 出来了 —— 认证信息"
+    reasoning_deltas = [
+        event.reasoning_delta
+        for event in events
+        if event.kind is StreamEventKind.REASONING_DELTA
+    ]
+    assert reasoning_deltas == ["私", "有", "思考"]
+    assert "".join(reasoning_deltas) == "私有思考"
     metadata = backend.last_stream_metadata()
     assert metadata["reasoning"] == "私有思考"
     assert metadata["reasoning_char_count"] == len("私有思考")
@@ -847,3 +860,93 @@ def test_web_snapshot_exposes_transient_partial_assistant_without_persisting_it(
     with service._guard:
         service._active_sessions.discard(session.session_id)
     runtime.close()
+
+
+
+def test_streaming_platform_accumulates_visible_reasoning_separately_from_answer():
+    chunks = [
+        SimpleNamespace(
+            id="resp-reasoning",
+            usage=None,
+            choices=[
+                SimpleNamespace(
+                    delta=SimpleNamespace(
+                        content=None,
+                        reasoning_content="Inspecting ",
+                        tool_calls=[],
+                    ),
+                    finish_reason=None,
+                )
+            ],
+        ),
+        SimpleNamespace(
+            id="resp-reasoning",
+            usage=None,
+            choices=[
+                SimpleNamespace(
+                    delta=SimpleNamespace(
+                        content="Done.",
+                        reasoning_content="the code.",
+                        tool_calls=[],
+                    ),
+                    finish_reason="stop",
+                )
+            ],
+        ),
+    ]
+    backend = _streaming_backend(RecordingCompletions(chunks))
+    platform = StreamingAIPlatform(prefer_streaming=True)
+    platform.register(_profile(), backend)
+    observed = []
+    platform.subscribe_stream(observed.append)
+
+    result = platform.execute_chat(AGENT_FAST_ROLE.role_id, _request())
+
+    assert result.text == "Done."
+    assert result.visible_reasoning == "Inspecting the code."
+    assert [
+        event.reasoning_delta
+        for event in observed
+        if event.kind is ProviderStreamEventKind.REASONING_DELTA
+    ] == ["Inspecting ", "the code."]
+    assert [
+        event.text_delta
+        for event in observed
+        if event.kind is ProviderStreamEventKind.TEXT_DELTA
+    ] == ["Done."]
+
+
+
+def test_official_openai_replay_reasoning_is_not_published_as_visible_reasoning():
+    chunks = [
+        SimpleNamespace(
+            id="resp-openai-private",
+            usage=None,
+            choices=[
+                SimpleNamespace(
+                    delta=SimpleNamespace(
+                        content="Answer.",
+                        reasoning_content="replay-only state",
+                        tool_calls=[],
+                    ),
+                    finish_reason="stop",
+                )
+            ],
+        )
+    ]
+    completions = RecordingCompletions(chunks)
+    backend = OpenAIStreamingChatBackend(
+        connection=ProviderConnection(
+            provider_id="test-provider",
+            adapter=ProviderAdapter.OPENAI,
+            credential_ref=CredentialRef.runtime("test-key"),
+        ),
+        profile=_profile(),
+        api_key="secret-for-test-only",
+        client=SimpleNamespace(chat=SimpleNamespace(completions=completions)),
+    )
+
+    events = list(backend.stream(_request()))
+
+    assert not any(event.kind is StreamEventKind.REASONING_DELTA for event in events)
+    assert backend.last_stream_metadata()["reasoning"] == "replay-only state"

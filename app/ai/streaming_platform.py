@@ -21,6 +21,7 @@ from .platform import AIPlatform
 
 class ProviderStreamEventKind(str, Enum):
     TEXT_DELTA = "text_delta"
+    REASONING_DELTA = "reasoning_delta"
     TOOL_CALL_DELTA = "tool_call_delta"
     COMPLETED = "completed"
 
@@ -30,6 +31,7 @@ class ProviderStreamEvent:
     profile_id: str
     kind: ProviderStreamEventKind
     text_delta: str = ""
+    reasoning_delta: str = ""
     tool_call_index: int | None = None
     tool_call_id: str = ""
     tool_name: str = ""
@@ -52,6 +54,7 @@ class _ToolCallBuffer:
 class _StreamAccumulator:
     def __init__(self) -> None:
         self.text_parts: list[str] = []
+        self.visible_reasoning_parts: list[str] = []
         self.tool_calls: dict[int, _ToolCallBuffer] = {}
         self.call_indexes: dict[str, int] = {}
         self.last_tool_index: int | None = None
@@ -62,6 +65,10 @@ class _StreamAccumulator:
         if event.kind is StreamEventKind.TEXT_DELTA:
             if event.text_delta:
                 self.text_parts.append(event.text_delta)
+            return
+        if event.kind is StreamEventKind.REASONING_DELTA:
+            if event.reasoning_delta:
+                self.visible_reasoning_parts.append(event.reasoning_delta)
             return
         if event.kind is StreamEventKind.TOOL_CALL_DELTA:
             self._consume_tool_delta(event)
@@ -134,13 +141,15 @@ class _StreamAccumulator:
             calls.append(ToolCall(call_id=call_id, name=name, arguments=arguments))
 
         text = "".join(self.text_parts)
+        visible_reasoning = "".join(self.visible_reasoning_parts)
+        effective_reasoning_chars = max(reasoning_char_count, len(visible_reasoning))
         if not text and not calls:
-            reason = "reasoning-only" if reasoning_char_count else "empty"
+            reason = "reasoning-only" if effective_reasoning_chars else "empty"
             raise AIEmptyResponseError(
                 f"AI stream completed with a {reason} response; it contained neither public text nor tool calls",
                 finish_reason=str(finish_reason or self.finish_reason or ""),
                 response_id=response_id,
-                reasoning_char_count=reasoning_char_count,
+                reasoning_char_count=effective_reasoning_chars,
                 chunk_count=chunk_count,
                 input_tokens=(usage or ModelUsage()).input_tokens,
                 output_tokens=(usage or ModelUsage()).output_tokens,
@@ -153,6 +162,7 @@ class _StreamAccumulator:
             finish_reason=str(finish_reason or self.finish_reason or ""),
             response_id=str(response_id or ""),
             reasoning=str(reasoning or ""),
+            visible_reasoning=visible_reasoning,
         )
 
 
@@ -205,9 +215,9 @@ class StreamingAIPlatform(AIPlatform):
         try:
             for raw_event in stream:
                 check_cancelled()
-                # Backends that are not the OpenAI-compatible one report their
-                # progress here. That one reports per raw chunk instead, because
-                # its reasoning deltas never reach this loop at all.
+                # Backends report normalized progress here. The OpenAI-compatible
+                # backend also reports per raw chunk so long reasoning periods
+                # remain distinguishable from a dead connection.
                 note_progress()
                 if not isinstance(raw_event, StreamEvent):
                     raise TypeError("streaming model backend must yield StreamEvent values")
@@ -218,6 +228,14 @@ class StreamingAIPlatform(AIPlatform):
                             profile_id=profile.profile_id,
                             kind=ProviderStreamEventKind.TEXT_DELTA,
                             text_delta=raw_event.text_delta,
+                        )
+                    )
+                elif raw_event.kind is StreamEventKind.REASONING_DELTA and raw_event.reasoning_delta:
+                    self._publish(
+                        ProviderStreamEvent(
+                            profile_id=profile.profile_id,
+                            kind=ProviderStreamEventKind.REASONING_DELTA,
+                            reasoning_delta=raw_event.reasoning_delta,
                         )
                     )
                 elif raw_event.kind is StreamEventKind.TOOL_CALL_DELTA:

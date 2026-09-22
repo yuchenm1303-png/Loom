@@ -102,10 +102,10 @@ class OpenAIStreamingChatBackend(OpenAIChatBackend):
         try:
             for chunk in stream:
                 check_cancelled()
-                # Every chunk counts as progress, including the reasoning-only
-                # ones below that never leave this loop as a StreamEvent. This
-                # is what lets the executor tell a model that is thinking hard
-                # from a connection that has died.
+                # Every chunk counts as progress, including reasoning-only
+                # chunks. Compatible providers may publish their explicitly
+                # exposed reasoning separately; replay-only provider state still
+                # remains private.
                 note_progress()
                 chunk_count += 1
                 chunk_id = str(getattr(chunk, "id", "") or "").strip()
@@ -122,10 +122,10 @@ class OpenAIStreamingChatBackend(OpenAIChatBackend):
                 choice = choices[0]
                 delta = getattr(choice, "delta", None)
                 if delta is not None:
-                    # Reasoning is never surfaced as assistant content, but it is
-                    # retained: thinking-mode providers require the reasoning of
-                    # an assistant turn to be handed back with that turn, so
-                    # dropping it makes the turn unreplayable.
+                    # Keep provider reasoning separate from assistant text. It
+                    # remains replayable transport state and, because this
+                    # provider explicitly exposed it, also flows through Loom's
+                    # visible reasoning stream.
                     reasoning = getattr(delta, "reasoning_content", None)
                     if reasoning is not None:
                         reasoning_text = str(reasoning)
@@ -139,6 +139,11 @@ class OpenAIStreamingChatBackend(OpenAIChatBackend):
                         if reasoning_text:
                             reasoning_char_count += len(reasoning_text)
                             reasoning_parts.append(reasoning_text)
+                            if compatible:
+                                yield StreamEvent(
+                                    kind=StreamEventKind.REASONING_DELTA,
+                                    reasoning_delta=reasoning_text,
+                                )
                     text = str(getattr(delta, "content", "") or "")
                     if text:
                         if compatible:

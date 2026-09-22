@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -10,6 +11,7 @@ from app.ai.contracts import (
     MessageRole,
     ToolChoice,
     ToolDefinition,
+    StreamEventKind,
 )
 from app.ai.reasoning import ReasoningKind, ReasoningRequest
 from app.ai.opencode_go_runtime import (
@@ -117,7 +119,7 @@ def test_opencode_responses_sends_luna_reasoning_effort() -> None:
         _request(ReasoningRequest(ReasoningKind.OPENAI_EFFORT, "xhigh"))
     )
 
-    assert kwargs["reasoning"] == {"effort": "xhigh"}
+    assert kwargs["reasoning"] == {"effort": "xhigh", "summary": "auto"}
 
 
 def test_opencode_chat_sends_model_effort_to_compatible_wire() -> None:
@@ -181,3 +183,127 @@ def test_opencode_messages_sends_qwen_budget_presets() -> None:
 
     assert high["thinking"] == {"type": "enabled", "budget_tokens": 32_768}
     assert maximum["thinking"] == {"type": "enabled", "budget_tokens": 65_535}
+
+
+
+class _FakeMessagesStream:
+    def __init__(self, events):
+        self._lines = [
+            ("data: " + json.dumps(event) + "\n").encode("utf-8")
+            for event in events
+        ]
+        self.closed = False
+
+    def __iter__(self):
+        return iter(self._lines)
+
+    def close(self):
+        self.closed = True
+
+
+def test_opencode_responses_streams_reasoning_summary_separately() -> None:
+    backend = _OpenCodeGoResponsesBackend(
+        profile=SimpleNamespace(model="gpt-5.6-luna"),
+        api_key="test-only-key",
+        request_timeout_seconds=1.0,
+    )
+    events = [
+        SimpleNamespace(
+            type="response.reasoning_summary_text.delta",
+            delta="Checked the repository. ",
+        ),
+        SimpleNamespace(
+            type="response.reasoning_summary_text.delta",
+            delta="Found the relevant path.",
+        ),
+        SimpleNamespace(type="response.output_text.delta", delta="Done."),
+        SimpleNamespace(
+            type="response.completed",
+            response=SimpleNamespace(
+                id="resp-1",
+                status="completed",
+                usage=SimpleNamespace(input_tokens=7, output_tokens=5),
+            ),
+        ),
+    ]
+    backend.client = SimpleNamespace(
+        responses=SimpleNamespace(create=lambda **_kwargs: iter(events))
+    )
+
+    streamed = list(backend.stream(_request()))
+
+    assert [
+        event.reasoning_delta
+        for event in streamed
+        if event.kind is StreamEventKind.REASONING_DELTA
+    ] == ["Checked the repository. ", "Found the relevant path."]
+    assert [
+        event.text_delta
+        for event in streamed
+        if event.kind is StreamEventKind.TEXT_DELTA
+    ] == ["Done."]
+
+
+def test_opencode_messages_streams_thinking_delta_separately() -> None:
+    backend = _OpenCodeGoMessagesBackend(
+        profile=SimpleNamespace(model="minimax-m3"),
+        api_key="test-only-key",
+        request_timeout_seconds=1.0,
+    )
+    response = _FakeMessagesStream(
+        [
+            {
+                "type": "message_start",
+                "message": {
+                    "id": "msg-1",
+                    "usage": {"input_tokens": 4, "output_tokens": 0},
+                },
+            },
+            {
+                "type": "content_block_start",
+                "index": 0,
+                "content_block": {"type": "thinking", "thinking": ""},
+            },
+            {
+                "type": "content_block_delta",
+                "index": 0,
+                "delta": {"type": "thinking_delta", "thinking": "Inspecting files. "},
+            },
+            {
+                "type": "content_block_delta",
+                "index": 0,
+                "delta": {"type": "thinking_delta", "thinking": "Root cause found."},
+            },
+            {
+                "type": "content_block_start",
+                "index": 1,
+                "content_block": {"type": "text", "text": ""},
+            },
+            {
+                "type": "content_block_delta",
+                "index": 1,
+                "delta": {"type": "text_delta", "text": "Fixed."},
+            },
+            {
+                "type": "message_delta",
+                "delta": {"stop_reason": "end_turn"},
+                "usage": {"output_tokens": 8},
+            },
+            {"type": "message_stop"},
+        ]
+    )
+    backend._open = lambda _request, *, stream: response
+
+    streamed = list(backend.stream(_request()))
+
+    assert [
+        event.reasoning_delta
+        for event in streamed
+        if event.kind is StreamEventKind.REASONING_DELTA
+    ] == ["Inspecting files. ", "Root cause found."]
+    assert [
+        event.text_delta
+        for event in streamed
+        if event.kind is StreamEventKind.TEXT_DELTA
+    ] == ["Fixed."]
+    assert response.closed is True

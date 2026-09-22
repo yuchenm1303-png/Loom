@@ -29,6 +29,7 @@ class StructuredOutputMode(str, Enum):
 
 class StreamEventKind(str, Enum):
     TEXT_DELTA = "text_delta"
+    REASONING_DELTA = "reasoning_delta"
     TOOL_CALL_DELTA = "tool_call_delta"
     COMPLETED = "completed"
 
@@ -233,15 +234,19 @@ class ModelResponse:
     usage: ModelUsage = field(default_factory=ModelUsage)
     finish_reason: str = ""
     response_id: str = ""
-    # Never shown to the user. Carried only so the assistant turn can be replayed
-    # to a thinking-mode provider in the exact shape it demands back.
+    # Provider replay state. Never use this field as UI content.
     reasoning: str = ""
+    # Provider-exposed reasoning text/summary that is explicitly safe to surface.
+    # This is distinct from replay-only reasoning above (for example, OpenAI
+    # Responses exposes summaries rather than hidden raw reasoning tokens).
+    visible_reasoning: str = ""
 
 
 @dataclass(frozen=True, slots=True)
 class StreamEvent:
     kind: StreamEventKind
     text_delta: str = ""
+    reasoning_delta: str = ""
     tool_call_index: int | None = None
     tool_call_id: str = ""
     tool_name: str = ""
