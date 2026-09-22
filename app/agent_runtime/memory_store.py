@@ -774,13 +774,14 @@ class MemoryStore:
         *,
         workspace: str | Path,
         limit: int = 8,
+        include_global: bool = True,
     ) -> tuple[MemoryRecord, ...]:
         text = str(query or "").strip()
         if not text:
             return ()
         records = self.list_records(
             workspace=workspace,
-            include_global=True,
+            include_global=include_global,
             limit=500,
         )
         if not records:
