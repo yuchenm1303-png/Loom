@@ -15,6 +15,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import "./user-message-attachments.css";
+import { UserRichText } from "./UserRichText";
 
 export interface DisplayAttachment {
   name: string;
@@ -287,7 +288,7 @@ export function UserMessageContent({ parsed, workspace }: { parsed: ParsedUserMe
       ) : null}
       {parsed.text ? (
         <div className={`user-message-copy-shell ${collapsible ? "is-collapsible" : ""} ${expanded ? "is-expanded" : "is-collapsed"}`}>
-          <div className="user-message-text">{parsed.text}</div>
+          <div className="user-message-text"><UserRichText text={parsed.text} /></div>
           {collapsible ? (
             <button
               type="button"

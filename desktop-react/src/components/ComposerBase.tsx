@@ -8,8 +8,6 @@ import {
   KeyRound,
   LockKeyhole,
   Paperclip,
-  X,
-  FileText,
   ShieldCheck,
   Smile,
   Sparkles,
@@ -19,6 +17,14 @@ import { FormEvent, KeyboardEvent as ReactKeyboardEvent, useEffect, useMemo, use
 import type { AddModelInput, Attachment, ModelSnapshot, StickerPreferences } from "../types/loom";
 import { useI18n } from "../i18n";
 import { ModelPanel } from "./ModelPanel";
+import { ComposerAttachmentStrip } from "./ComposerAttachmentStrip";
+import {
+  MAX_COMPOSER_ATTACHMENTS,
+  appendComposerAttachments,
+  attachmentFromPath,
+  releaseAttachmentPreview,
+  resolveComposerFiles,
+} from "./composerAttachments";
 import { StickerPanel } from "./StickerPanel";
 import "./composer.css";
 import "./composer-attachment-polish.css";
@@ -114,26 +120,6 @@ function PermissionIcon({ mode }: { mode: string }) {
   return <ShieldCheck size={15} />;
 }
 
-const IMAGE_SUFFIXES = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"]);
-const MAX_ATTACHMENTS = 10;
-
-function baseName(value: string): string {
-  const parts = value.replaceAll("\\", "/").split("/");
-  return parts.at(-1) || value;
-}
-
-function looksLikeImage(name: string): boolean {
-  const dot = name.lastIndexOf(".");
-  return dot >= 0 && IMAGE_SUFFIXES.has(name.slice(dot).toLowerCase());
-}
-
-function formatSize(size: number): string {
-  if (size <= 0) return "";
-  if (size < 1024) return `${size} B`;
-  if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`;
-  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 export function Composer({
   disabled,
   running,
@@ -223,58 +209,11 @@ export function Composer({
 
 
   const addAttachments = (incoming: Attachment[]) => {
-    if (!incoming.length) return;
     setAttachments((current) => {
-      const known = new Set(current.map((item) => item.path));
-      const next = [...current];
-      let overflowed = false;
-      for (const item of incoming) {
-        if (known.has(item.path)) continue;
-        if (next.length >= MAX_ATTACHMENTS) {
-          overflowed = true;
-          break;
-        }
-        known.add(item.path);
-        next.push(item);
-      }
-      if (overflowed) setAttachError(`At most ${MAX_ATTACHMENTS} attachments per message.`);
-      return next;
+      const result = appendComposerAttachments(current, incoming);
+      if (result.overflowed) setAttachError(`At most ${MAX_COMPOSER_ATTACHMENTS} attachments per message.`);
+      return result.attachments;
     });
-  };
-
-  const attachmentFromPath = (filePath: string, size = 0): Attachment => {
-    const name = baseName(filePath);
-    return { id: filePath, name, path: filePath, size, isImage: looksLikeImage(name) };
-  };
-
-  /** Resolve dropped/pasted items to paths. Files already on disk keep theirs;
-   *  a pasted image has none, so its bytes are written to a temp file first. */
-  const resolveFiles = async (files: File[]): Promise<Attachment[]> => {
-    const bridge = window.loom;
-    const resolved: Attachment[] = [];
-    for (const file of files) {
-      const existing = bridge?.filePathFor?.(file) || "";
-      if (existing) {
-        resolved.push(attachmentFromPath(existing, file.size));
-        continue;
-      }
-      if (!bridge?.stageTempFile) continue;
-      try {
-        const bytes = new Uint8Array(await file.arrayBuffer());
-        const staged = await bridge.stageTempFile(file.name || "pasted.png", bytes);
-        if (staged) {
-          const entry = attachmentFromPath(staged, file.size);
-          resolved.push({
-            ...entry,
-            name: file.name || entry.name,
-            previewUrl: entry.isImage ? URL.createObjectURL(file) : undefined,
-          });
-        }
-      } catch {
-        setAttachError("Could not read one of the attachments.");
-      }
-    }
-    return resolved;
   };
 
   const onPaste = async (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
@@ -284,7 +223,7 @@ export function Composer({
     // rich content that is silently dropped on send.
     event.preventDefault();
     setAttachError("");
-    addAttachments(await resolveFiles(files));
+    addAttachments(await resolveComposerFiles(files, setAttachError));
   };
 
   const onDrop = async (event: React.DragEvent) => {
@@ -292,7 +231,7 @@ export function Composer({
     event.preventDefault();
     setDragging(false);
     setAttachError("");
-    addAttachments(await resolveFiles([...event.dataTransfer.files]));
+    addAttachments(await resolveComposerFiles([...event.dataTransfer.files], setAttachError));
   };
 
   const pickAttachments = async () => {
@@ -304,7 +243,7 @@ export function Composer({
   const removeAttachment = (id: string) => {
     setAttachments((current) => {
       const target = current.find((item) => item.id === id);
-      if (target?.previewUrl) URL.revokeObjectURL(target.previewUrl);
+      releaseAttachmentPreview(target);
       return current.filter((item) => item.id !== id);
     });
   };
@@ -375,37 +314,7 @@ export function Composer({
       >
         <span className="composer-glow" aria-hidden="true" />
 
-        {attachments.length ? (
-          <div className="composer-attachments">
-            {attachments.map((item) => {
-              const blocked = item.isImage && !imagesAllowed;
-              return (
-                <span
-                  key={item.id}
-                  className={`composer-attachment ${item.previewUrl ? "is-image-preview" : ""} ${blocked ? "is-blocked" : ""}`}
-                  title={blocked ? "This model cannot read images" : item.path}
-                >
-                  {item.previewUrl ? (
-                    <img src={item.previewUrl} alt="" className="composer-attachment-thumb" />
-                  ) : (
-                    <FileText size={13} />
-                  )}
-                  {!item.previewUrl ? (
-                    <>
-                      <span className="composer-attachment-name">{item.name}</span>
-                      {formatSize(item.size) ? (
-                        <span className="composer-attachment-size">{formatSize(item.size)}</span>
-                      ) : null}
-                    </>
-                  ) : null}
-                  <button type="button" onClick={() => removeAttachment(item.id)} aria-label={`Remove ${item.name}`}>
-                    <X size={12} />
-                  </button>
-                </span>
-              );
-            })}
-          </div>
-        ) : null}
+        <ComposerAttachmentStrip attachments={attachments} imagesAllowed={imagesAllowed} onRemove={removeAttachment} />
 
         {attachError ? <p className="composer-attach-error">{attachError}</p> : null}
         {stopError ? <p className="composer-attach-error">Could not stop: {stopError}</p> : null}
@@ -627,7 +536,7 @@ export function Composer({
                 <Square size={12} fill="currentColor" />
               </button>
             ) : (
-              <button type="submit" className="send-button" disabled={disabled || !value.trim()} title="Send" aria-label="Send message">
+              <button type="submit" className="send-button" disabled={disabled || (!value.trim() && !attachments.some((item) => imagesAllowed || !item.isImage))} title="Send" aria-label="Send message">
                 <ArrowUp size={17} strokeWidth={2.2} />
               </button>
             )}

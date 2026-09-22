@@ -1,4 +1,4 @@
-import { ArrowUp, Sparkles, Square } from "lucide-react";
+import { ArrowUp, Paperclip, Sparkles, Square } from "lucide-react";
 import {
   type ComponentProps,
   type FormEvent,
@@ -8,17 +8,29 @@ import {
   useState,
 } from "react";
 import { useI18n } from "../i18n";
+import type { Attachment } from "../types/loom";
 import { Composer as ComposerBase } from "./ComposerBase";
+import { ComposerAttachmentStrip } from "./ComposerAttachmentStrip";
+import {
+  MAX_COMPOSER_ATTACHMENTS,
+  appendComposerAttachments,
+  attachmentFromPath,
+  releaseAttachmentPreview,
+  resolveComposerFiles,
+} from "./composerAttachments";
 import "./composer.css";
 
 
 type ComposerProps = ComponentProps<typeof ComposerBase>;
 
-function SteeringComposer({ onSend, onInterrupt }: ComposerProps) {
+function SteeringComposer({ onSend, onInterrupt, imagesAllowed = true }: ComposerProps) {
   const { language } = useI18n();
   const zh = language === "zh-CN";
   const [value, setValue] = useState("");
   const [focused, setFocused] = useState(false);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [attachError, setAttachError] = useState("");
+  const [dragging, setDragging] = useState(false);
   const [pendingSends, setPendingSends] = useState(0);
   const [stopping, setStopping] = useState(false);
   const [acknowledged, setAcknowledged] = useState(false);
@@ -42,25 +54,66 @@ function SteeringComposer({ onSend, onInterrupt }: ComposerProps) {
     return () => window.clearTimeout(timer);
   }, [acknowledged]);
 
+  const addAttachments = (incoming: Attachment[]) => {
+    setAttachments((current) => {
+      const result = appendComposerAttachments(current, incoming);
+      if (result.overflowed) setAttachError(`At most ${MAX_COMPOSER_ATTACHMENTS} attachments per message.`);
+      return result.attachments;
+    });
+  };
+
+  const pickAttachments = async () => {
+    const picked = (await window.loom?.pickFiles?.()) ?? [];
+    setAttachError("");
+    addAttachments(picked.map((filePath) => attachmentFromPath(filePath)));
+  };
+
+  const removeAttachment = (id: string) => {
+    setAttachments((current) => {
+      const target = current.find((item) => item.id === id);
+      releaseAttachmentPreview(target);
+      return current.filter((item) => item.id !== id);
+    });
+  };
+
+  const onPaste = async (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const files = [...event.clipboardData.files];
+    if (!files.length) return;
+    event.preventDefault();
+    setAttachError("");
+    addAttachments(await resolveComposerFiles(files, setAttachError));
+  };
+
+  const onDrop = async (event: React.DragEvent) => {
+    if (!event.dataTransfer.files.length) return;
+    event.preventDefault();
+    setDragging(false);
+    setAttachError("");
+    addAttachments(await resolveComposerFiles([...event.dataTransfer.files], setAttachError));
+  };
+
   function submit(event?: FormEvent): void {
     event?.preventDefault();
     const input = value.trim();
     // Steering has two clocks: the conversation should react immediately, while
     // the durable RPC may finish later at a safe boundary. Do not freeze the
     // composer on that network clock.
-    if (!input || stopping) return;
+    const sendable = attachments.filter((item) => imagesAllowed || !item.isImage);
+    if ((!input && !sendable.length) || stopping) return;
     setAcknowledged(false);
     setError("");
 
     let request: Promise<void>;
     try {
-      request = Promise.resolve(onSend(input, []));
+      request = Promise.resolve(onSend(input, sendable.map((item) => ({ path: item.path, name: item.name }))));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
       return;
     }
 
     setValue("");
+    setAttachments([]);
+    setAttachError("");
     setPendingSends((current) => current + 1);
     requestAnimationFrame(() => textareaRef.current?.focus());
 
@@ -115,11 +168,28 @@ function SteeringComposer({ onSend, onInterrupt }: ComposerProps) {
         // belongs to the old non-interactive working footer and historically
         // carried rules that suppressed the input row. Steering is its own
         // editable state and must never inherit those semantics again.
-        className={`composer is-steering ${focused ? "is-focused" : ""}`}
+        className={`composer is-steering ${focused ? "is-focused" : ""} ${dragging ? "is-dragging" : ""}`}
         onSubmit={submit}
+        onDragOver={(event) => {
+          if (!event.dataTransfer.types.includes("Files")) return;
+          event.preventDefault();
+          setDragging(true);
+        }}
+        onDragLeave={(event) => {
+          if (event.currentTarget.contains(event.relatedTarget as Node)) return;
+          setDragging(false);
+        }}
+        onDrop={(event) => void onDrop(event)}
       >
         <span className="composer-glow" aria-hidden="true" />
 
+        <ComposerAttachmentStrip attachments={attachments} imagesAllowed={imagesAllowed} onRemove={removeAttachment} />
+        {attachError ? <p className="composer-attach-error">{attachError}</p> : null}
+        {!imagesAllowed && attachments.some((item) => item.isImage) ? (
+          <p className="composer-attach-error">
+            This model cannot read images in the active turn. Other files can still be attached.
+          </p>
+        ) : null}
         {error ? <p className="composer-attach-error">{error}</p> : null}
 
         <div className="composer-input-row">
@@ -132,6 +202,7 @@ function SteeringComposer({ onSend, onInterrupt }: ComposerProps) {
               if (acknowledged) setAcknowledged(false);
             }}
             onKeyDown={onKeyDown}
+            onPaste={(event) => void onPaste(event)}
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
             placeholder={zh ? "补充要求，调整当前任务…" : "Guide the current task…"}
@@ -143,6 +214,16 @@ function SteeringComposer({ onSend, onInterrupt }: ComposerProps) {
 
         <div className="composer-toolbar composer-toolbar-steering">
           <div className="composer-left composer-status-zone">
+            <button
+              type="button"
+              className="composer-tool"
+              title={zh ? "给当前任务补充图片或文件" : "Attach files to the active task"}
+              onClick={() => void pickAttachments()}
+              disabled={stopping}
+            >
+              <Paperclip size={15} />
+              <span>{zh ? "附件" : "Attach"}</span>
+            </button>
             <span className="composer-running-label" role="status" aria-live="polite">
               <i aria-hidden="true" />
               <span className="composer-running-copy">{activityLabel}</span>
@@ -153,7 +234,7 @@ function SteeringComposer({ onSend, onInterrupt }: ComposerProps) {
             <button
               type="submit"
               className="send-button"
-              disabled={stopping || !value.trim()}
+              disabled={stopping || (!value.trim() && !attachments.some((item) => imagesAllowed || !item.isImage))}
               title="Guide current task"
               aria-label="Guide current task"
             >
