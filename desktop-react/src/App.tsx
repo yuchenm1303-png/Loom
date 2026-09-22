@@ -782,6 +782,7 @@ export default function App() {
 
         <div className="composer-stage">
           <Composer
+            threadId={thread?.id}
             disabled={!thread || loom.connection !== "ready" || archived}
             running={running}
             model={loom.models?.current?.model || loom.runtime.model}
