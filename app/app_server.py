@@ -291,6 +291,7 @@ def _apply_event_to_item(item: dict[str, Any], event: AgentEvent) -> None:
     elif kind is AgentEventKind.MODEL_RESPONSE:
         item["status"] = "completed"
         item["text"] = str(data.get("text") or "")
+        item["reasoning"] = str(data.get("reasoning_summary") or "")
         item["stepId"] = str(data.get("step_id") or "") or None
         item["phase"] = str(data.get("phase") or "commentary")
         item["runtimeAuthored"] = bool(data.get("runtime_authored"))
