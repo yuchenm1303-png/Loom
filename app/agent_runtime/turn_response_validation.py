@@ -51,6 +51,35 @@ def contains_serialized_tool_protocol(text: str) -> bool:
     return bool(_SERIALIZED_TOOL_PROTOCOL_RE.search(str(text or "")))
 
 
+def merge_recovery_text(partial: str, continuation: str) -> str:
+    """Reconstruct one self-contained answer from a rejected partial + retry.
+
+    Recovery prompts tell the provider that the partial text already exists in
+    context, so most models continue from the exact cut point. A few repeat some
+    or all of the prefix. Preserve the complete replacement when it already
+    contains the partial, otherwise remove the longest exact overlap before
+    concatenating. This keeps the durable assistant message whole instead of
+    committing only the retry suffix.
+    """
+
+    prefix = str(partial or "")
+    suffix = str(continuation or "")
+    if not prefix:
+        return suffix
+    if not suffix:
+        return prefix
+    if suffix.startswith(prefix):
+        return suffix
+    if prefix.endswith(suffix):
+        return prefix
+
+    max_overlap = min(len(prefix), len(suffix))
+    for width in range(max_overlap, 0, -1):
+        if prefix[-width:] == suffix[:width]:
+            return prefix + suffix[width:]
+    return prefix + suffix
+
+
 def invalid_terminal_response(response: ModelResponse) -> str:
     """Reject provider terminal responses that cannot be valid public output."""
 
@@ -135,6 +164,7 @@ __all__ = [
     "UNFINISHED_RECOVERY_INSTRUCTION",
     "contains_serialized_tool_protocol",
     "history_message_count",
+    "merge_recovery_text",
     "invalid_terminal_response",
     "visible_model_text",
     "strip_compaction_echo",

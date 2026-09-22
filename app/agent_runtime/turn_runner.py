@@ -16,11 +16,13 @@ from .model_replan import revision as steering_revision
 from .model_replan import wait_for_signal
 from .turn_response_validation import (
     COMPLETE_FINISH_REASONS,
+    RESUMABLE_TERMINAL_REASONS,
     TERMINAL_RECOVERY_INSTRUCTION,
     TRUNCATED_RECOVERY_INSTRUCTION,
     UNFINISHED_RECOVERY_INSTRUCTION,
     history_message_count,
     invalid_terminal_response,
+    merge_recovery_text,
     strip_compaction_echo,
 )
 
@@ -134,7 +136,7 @@ class TurnRunner:
                             name="loom_terminal_recovery",
                             content=(
                                 _UNFINISHED_RECOVERY_INSTRUCTION
-                                if recovery_instruction == "unfinished_terminal_text"
+                                if recovery_instruction in RESUMABLE_TERMINAL_REASONS
                                 else _TRUNCATED_RECOVERY_INSTRUCTION
                                 if recovery_partial
                                 else _TERMINAL_RECOVERY_INSTRUCTION
@@ -324,6 +326,21 @@ class TurnRunner:
                         continue
                     if not isinstance(response, ModelResponse):
                         raise TypeError("agent model platform must return ModelResponse")
+                    # A syntactically unfinished response is retried in the same
+                    # logical model step with the rejected partial in context. The
+                    # retry usually emits only the missing suffix. Reconstruct the
+                    # self-contained assistant message before validation/commit;
+                    # otherwise Loom would permanently discard the already-shown
+                    # prefix and make a successful recovery look truncated.
+                    if recovery_partial and response.text and not response.tool_calls:
+                        merged_text = merge_recovery_text(recovery_partial, response.text)
+                        if merged_text != response.text:
+                            response = replace(
+                                response,
+                                text=merged_text,
+                                reasoning=f"{recovery_reasoning}{response.reasoning}",
+                            )
+
                     clean_text, compaction_echo_removed = _strip_compaction_echo(
                         messages,
                         response.text,
@@ -364,7 +381,7 @@ class TurnRunner:
                     recovery_instruction = invalid_terminal
                     resume_from_partial = (
                         invalid_terminal.startswith("incomplete_finish:")
-                        or invalid_terminal == "unfinished_terminal_text"
+                        or invalid_terminal in RESUMABLE_TERMINAL_REASONS
                     )
                     recovery_partial = str(response.text or "") if resume_from_partial else ""
                     # The replayed assistant turn must carry the reasoning that

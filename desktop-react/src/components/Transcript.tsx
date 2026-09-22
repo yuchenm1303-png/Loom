@@ -21,7 +21,7 @@ import {
 import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { TranscriptItem } from "../types/loom";
 import { MarkdownMessage } from "./MarkdownMessage";
-import { DecisionPromptCard, parseDecisionMessage } from "./DecisionPromptCard";
+import { DecisionPromptCard, DecisionPromptRecoveryCard, parseDecisionMessage } from "./DecisionPromptCard";
 import { StreamingPresentation } from "./StreamingPresentation";
 import { isSubAgentToolItem } from "./SubAgentWorkspace";
 import { TurnArtifactsPreview } from "./TurnArtifactsPreview";
@@ -769,10 +769,10 @@ function ItemView({
     // New providers stream reasoning on its own field. Legacy tag parsing remains
     // only as a compatibility fallback for models that embed thinking in text.
     const reasoning = providerReasoning || parsed.reasoning;
-    const decisionMessage = parseDecisionMessage(parsed.answer);
-    const answer = decisionMessage.text.trim();
     const interrupted = ["interrupted", "cancelled", "failed"].includes(item.status || "");
     const live = streaming && !interrupted && (item.status === "streaming" || isActiveActivityStatus(item.status || "running"));
+    const decisionMessage = parseDecisionMessage(parsed.answer, live);
+    const answer = decisionMessage.text.trim();
 
     if (live && !answer && (reasoning || parsed.state === "streaming")) {
       return <div className="assistant-message"><LiveReasoning reasoning={reasoning} workspace={workspace} streaming={live} messageKey={`${item.id}:reasoning`} interrupted={interrupted} /></div>;
@@ -799,6 +799,14 @@ function ItemView({
               onSubmit={decisionInteractive ? onPrompt : undefined}
             />
           ))}
+          {decisionMessage.incomplete && !live ? (
+            <DecisionPromptRecoveryCard
+              disabled={!decisionInteractive || Boolean(promptDisabled)}
+              onRetry={decisionInteractive && onPrompt
+                ? () => onPrompt("刚才的选项没有生成完整。请只重新给出完整的选项卡，不要重复前面的分析。")
+                : undefined}
+            />
+          ) : null}
         </div>
         <MessageToolbar kind="assistant" item={item} text={answer || reasoning} />
       </div>
@@ -1213,7 +1221,8 @@ export function Transcript({ items, running, currentTurnId, workspace, promptDis
       if (item.type === "user_message") return "";
       if (item.type !== "assistant_message") continue;
       const parsed = splitReasoning(item.text ?? "");
-      return parseDecisionMessage(parsed.answer).decisions.length ? item.id : "";
+      const decision = parseDecisionMessage(parsed.answer, false);
+      return decision.decisions.length || decision.incomplete ? item.id : "";
     }
     return "";
   }, [items, onPrompt, promptDisabled, running]);

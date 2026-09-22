@@ -118,3 +118,61 @@
   .decision-actions { align-items: flex-end; }
   .decision-hint, .decision-error { max-width: 62%; }
 }
+
+
+/* A terminal reply can be cut off before its structured options close. Keep
+   that failure explicit and recoverable instead of leaving a lonely
+   “请选择一个：” line that looks like a renderer bug. */
+.decision-recovery {
+  padding: 12px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px 12px;
+}
+
+.decision-recovery-copy {
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.decision-recovery-copy > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.decision-recovery-copy strong {
+  color: var(--text);
+  font-size: 11.5px;
+  line-height: 1.35;
+  font-weight: 650;
+}
+
+.decision-recovery-copy p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.decision-recovery > .decision-error {
+  grid-column: 1 / -1;
+}
+
+.decision-recovery > .decision-submit {
+  justify-self: end;
+}
+
+@media (max-width: 620px) {
+  .decision-recovery {
+    grid-template-columns: 1fr;
+  }
+
+  .decision-recovery > .decision-submit {
+    justify-self: start;
+    margin-left: 40px;
+  }
+}

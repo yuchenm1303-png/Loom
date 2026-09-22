@@ -326,3 +326,40 @@ def test_app_server_streams_reasoning_on_the_assistant_item_and_commits_it(tmp_p
     assert len(completed) == 1
     assert completed[0]["text"] == "Done."
     assert completed[0]["reasoning"] == "Inspecting the code."
+
+
+
+def test_failed_turn_clears_uncommitted_streamed_assistant_text(tmp_path) -> None:
+    runtime = _RuntimeStub()
+    service = StreamingLoomAppServerService(
+        runtime=runtime,
+        store=SimpleNamespace(root=tmp_path),
+        model="test-model",
+        default_workspace=tmp_path,
+        default_permission_mode=PermissionMode.WORKSPACE,
+    )
+    observed: list[tuple[str, dict[str, object]]] = []
+    service.subscribe_notifications(lambda method, params: observed.append((method, params)))
+
+    assert runtime.stream_listener is not None
+    assert runtime.runtime_listener is not None
+    runtime.stream_listener(_assistant_stream_event("这是一条被中途掐断的半截回复"))
+
+    runtime.runtime_listener(
+        _runtime_event(
+            AgentEventKind.TURN_FAILED,
+            event_id="evt-failed",
+            data={"error": "provider failed after retries"},
+        )
+    )
+
+    closed = [
+        params["item"]
+        for method, params in observed
+        if method == "item/completed"
+        and params.get("item", {}).get("id") == "assistant:step:step-1"
+    ]
+    assert len(closed) == 1
+    assert closed[0]["status"] == "failed"
+    assert closed[0]["text"] == ""
+    assert closed[0]["reasoning"] == ""

@@ -395,6 +395,11 @@ class StreamingLoomAppServerService(LoomAppServerService):
                             "turnId": event.turn_id,
                             "type": "assistant_message",
                             "status": event.kind.value.removeprefix("turn_"),
+                            # No MODEL_RESPONSE committed this stream. Clear both
+                            # transient channels so a failed request cannot leave
+                            # a half sentence looking like the final assistant
+                            # answer in the desktop transcript.
+                            "text": "",
                             "reasoning": "",
                             "updatedAt": event.created_at,
                         }
