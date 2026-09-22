@@ -128,7 +128,7 @@ function phaseFor(items: TranscriptItem[], threadStatus: string | undefined, lan
     if (["spawn_agent", "wait_agent", "send_agent_message", "list_agents", "close_agent"].includes(String(latestActivity.toolName || ""))) {
       return zh ? "正在汇总子代理进度" : "Reviewing sub-agent progress";
     }
-    return zh ? "正在处理工具结果" : "Processing tool result";
+    return zh ? "正在思考下一步操作" : "Thinking about the next action";
   }
   if (latestActivity?.type === "file_edit") return zh ? "正在检查文件修改" : "Reviewing file changes";
 

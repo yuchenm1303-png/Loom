@@ -7,7 +7,7 @@ import pytest
 from app.agent_runtime.browser_runtime import BrowserRuntime, BrowserSessionStore, redact_browser_url
 from app.agent_runtime.browser_security import BrowserSecurityPolicy
 from app.agent_runtime.browser_session import BrowserLaunchOptions, BrowserPageState, BrowserURLPolicyError
-from app.agent_runtime.contracts import AgentStatus, PermissionMode, ToolEffect
+from app.agent_runtime.contracts import AgentEventKind, AgentStatus, PermissionMode, ToolEffect
 from app.agent_runtime.sandbox import SandboxManager, SandboxPolicy
 from app.agent_runtime.storage import FileAgentSessionStore
 from app.agent_runtime.tools import ToolContext
@@ -221,6 +221,11 @@ def test_unconfigured_runtime_exposes_status_only(tmp_path):
     assert "browser_status" in names
     assert "browser_open" not in names
     assert runtime.browser_status(session.session_id)["enabled"] is False
+    timing_events = runtime.store.events(session.session_id)
+    requested = next(event for event in timing_events if event.kind is AgentEventKind.MODEL_REQUESTED)
+    responded = next(event for event in timing_events if event.kind is AgentEventKind.MODEL_RESPONSE)
+    assert requested.data["request_preparation_ms"] >= 0
+    assert responded.data["model_execution_ms"] >= 0
     runtime.close()
 
 
@@ -332,6 +337,81 @@ def test_browser_open_restarts_stale_owned_exclusive_session(tmp_path):
     assert second.data["browser_session_recovered"] is True
     assert stale_backend.closed is True
     assert len(created) == 2
+    runtime.close()
+
+
+def test_browser_open_updates_extension_domains_without_restarting(tmp_path):
+    runtime, _, session, calls, created, workspace = _runtime(
+        tmp_path, [ModelResponse(text="unused")], mode=PermissionMode.FULL_ACCESS
+    )
+    store = runtime.browser_sessions
+    assert store is not None
+    store.max_sessions_per_owner = 1
+    store.max_sessions_total = 1
+    context = ToolContext(
+        session_id=session.session_id,
+        turn_id="turn-domains",
+        workspace=workspace,
+        permission_mode="full-access",
+    )
+    tool = runtime.tools.get("browser_open")
+    assert tool is not None
+
+    first = tool.handler(context, {"url": "https://example.com/", "allowed_domains": ["example.com"]})
+    created[0].backend_name = "browser-extension"
+    second = tool.handler(
+        context,
+        {"url": "https://login.example.org/", "allowed_domains": ["example.com", "login.example.org"]},
+    )
+
+    assert second.ok is True
+    assert second.data["browser_id"] == first.data["browser_id"]
+    assert second.data["browser_session_reused"] is True
+    assert len(created) == 1
+    assert ("close",) not in calls
+    assert store.list(session.session_id)[0]["allowed_domains"] == ["example.com", "login.example.org"]
+    runtime.close()
+
+
+def test_extension_redirect_outside_scope_keeps_unreadable_session(tmp_path):
+    runtime, _, session, _, created, workspace = _runtime(
+        tmp_path, [ModelResponse(text="unused")], mode=PermissionMode.FULL_ACCESS
+    )
+    store = runtime.browser_sessions
+    assert store is not None
+    store.max_sessions_per_owner = 1
+    store.max_sessions_total = 1
+    context = ToolContext(
+        session_id=session.session_id,
+        turn_id="turn-redirect",
+        workspace=workspace,
+        permission_mode="full-access",
+    )
+    tool = runtime.tools.get("browser_open")
+    assert tool is not None
+    first = tool.handler(context, {"allowed_domains": ["example.com"]})
+    backend = created[0]
+    backend.backend_name = "browser-extension"
+    original_navigate = backend.navigate
+
+    def redirect_to_login(url, *, new_tab=False):
+        return original_navigate("https://login.example.org/", new_tab=new_tab)
+
+    backend.navigate = redirect_to_login
+    with pytest.raises(BrowserURLPolicyError):
+        store.navigate(session.session_id, first.data["browser_id"], "https://example.com/")
+    assert backend.closed is False
+    assert store.active_count() == 1
+    masked = store.snapshot(session.session_id, first.data["browser_id"])
+    assert masked.state.dom == ""
+    assert masked.state.url == ""
+    backend.navigate = original_navigate
+    recovered = tool.handler(
+        context,
+        {"url": "https://login.example.org/", "allowed_domains": ["example.com", "login.example.org"]},
+    )
+    assert recovered.data["browser_id"] == first.data["browser_id"]
+    assert len(created) == 1
     runtime.close()
 
 

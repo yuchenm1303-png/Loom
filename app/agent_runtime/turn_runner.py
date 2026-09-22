@@ -1,6 +1,7 @@
 """The single model/tool state machine used by both core and extended runtimes."""
 from __future__ import annotations
 
+import time
 from dataclasses import replace
 
 from app.ai import AIMessage, ChatRequest, MessageRole, ModelResponse, ModelUsage, ToolChoice
@@ -108,6 +109,7 @@ class TurnRunner:
                 attempt = 0
                 while True:
                     sample_steering_revision = _consume_steering_for_sample(rt, session, token)
+                    request_preparation_started = time.perf_counter()
                     # Capture once so request context, advertised tools, and all
                     # tool calls from this response share one immutable world.
                     step = rt._capture_step_context(session, next_model_step=True)
@@ -162,12 +164,16 @@ class TurnRunner:
                         reasoning=reasoning,
                         session_id=session.session_id,
                     )
+                    request_preparation_ms = round(
+                        (time.perf_counter() - request_preparation_started) * 1000
+                    )
 
                     # Transport retries are retries of this exact request, not a
                     # new semantic sampling step. Keep both the StepContext and
                     # prepared request stable until the provider yields a response.
                     retry_sampling = False
                     while True:
+                        model_request_started = time.perf_counter()
                         rt._record(session, Event.MODEL_REQUESTED, data={
                             "profile_id": profile_id,
                             "step": step.model_step,
@@ -178,6 +184,7 @@ class TurnRunner:
                             "permission_mode": step.world_state.permission_mode.value,
                             "reasoning": reasoning.as_safe_dict() if reasoning is not None else None,
                             "attempt": attempt,
+                            "request_preparation_ms": request_preparation_ms,
                             **extra,
                         })
                         try:
@@ -188,6 +195,7 @@ class TurnRunner:
                                 token,
                                 steering_revision=sample_steering_revision,
                             )
+                            model_execution_ms = round((time.perf_counter() - model_request_started) * 1000)
                             break
                         except ModelSteered:
                             # The durable inbox contains the new intent. Discard
@@ -475,6 +483,7 @@ class TurnRunner:
                             "text": response.text,
                             "finish_reason": response.finish_reason,
                             "response_id": response.response_id,
+                            "model_execution_ms": model_execution_ms,
                             "reasoning_summary": response.visible_reasoning,
                             "tool_calls": [
                                 {"call_id": c.call_id, "name": c.name, "arguments": c.arguments}

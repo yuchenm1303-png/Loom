@@ -332,6 +332,30 @@ class BrowserSessionManager:
         with self._lock:
             return len(self._sessions) + self._starting_total
 
+    def update_allowed_domains(
+        self, owner_session_id: str, browser_id: str, allowed_domains: Sequence[str]
+    ) -> None:
+        """Retarget an extension session without releasing its live tab lease.
+
+        The extension has no independent domain policy; the manager validates
+        every destination and returned page. Other backends may cache their
+        launch policy internally and must still be restarted.
+        """
+        item = self._owned(owner_session_id, browser_id)
+        if item.backend.backend_name != "browser-extension":
+            raise BrowserError("this browser backend requires a restart to change domains")
+        options = BrowserLaunchOptions(
+            headless=item.options.headless,
+            allowed_domains=tuple(allowed_domains),
+            external_browser=item.options.external_browser,
+        )
+        # A policy change cannot make the currently visible page readable if it
+        # falls outside the new scope. The next navigate/state applies the new
+        # policy and fails closed in the usual way.
+        with self._lock:
+            item.options = options
+            item.backend.options = options
+
     def state(self, owner_session_id: str, browser_id: str) -> BrowserPageState:
         item = self._owned(owner_session_id, browser_id)
         state = item.backend.state()
@@ -454,6 +478,20 @@ class BrowserSessionManager:
     def _update_state(self, item: ManagedBrowserSession, state: BrowserPageState) -> BrowserPageState:
         try:
             checked = self._validated_state(state, item.options)
+        except BrowserURLPolicyError as exc:
+            if item.backend.backend_name == "browser-extension":
+                # Keep the extension lease across a blocked redirect while
+                # withholding the page. The next allowed navigate or scope
+                # update can recover without reconnecting to the browser.
+                item.last_state = _unreadable_start_state(state, exc)
+                item.updated_at = utc_now()
+                raise
+            try:
+                item.backend.close()
+            finally:
+                with self._lock:
+                    self._sessions.pop(item.browser_id, None)
+            raise
         except Exception:
             # A click/type/back action can navigate. If the backend-level navigation
             # guard missed a prohibited destination, tear down the browser immediately
@@ -524,7 +562,7 @@ def _unreadable_start_state(state: BrowserPageState, reason: Exception) -> Brows
     """
 
     internal = _browser_internal(state.url)
-    info = dict(state.page_info or {})
+    info = dict(state.page_info or {}) if internal else {}
     info["readable"] = False
     info["recovery"] = {
         "action": "browser_navigate",
@@ -537,7 +575,7 @@ def _unreadable_start_state(state: BrowserPageState, reason: Exception) -> Brows
         url=state.url if internal else "",
         title=state.title if internal else "",
         dom="",
-        tabs=state.tabs,
+        tabs=state.tabs if internal else (),
         page_info=info,
         errors=tuple(state.errors)
         + (

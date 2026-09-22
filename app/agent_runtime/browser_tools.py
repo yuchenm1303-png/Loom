@@ -5,7 +5,7 @@ import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
-from .browser_session import BrowserSessionLimitError, BrowserTextNotFoundError
+from .browser_session import BrowserSessionLimitError, BrowserTextNotFoundError, BrowserURLPolicyError
 from .contracts import ToolEffect
 from .tools import AgentTool, ToolContext, ToolResult
 
@@ -370,9 +370,41 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
                 and bool(row.get("headless")) == bool(runtime.browser_headless)
                 and domains_match(row)
             )
+            policy_updated = False
+            # Cloud consoles often add a login or successor-console hostname
+            # mid-flow. The extension's domain guard lives in our session
+            # manager, so changing that scope does not require dropping the
+            # owned tab and paying for a fresh browser connection/navigation.
+            if (
+                not compatible
+                and configured_connection
+                and row.get("backend") == "browser-extension"
+                and bool(row.get("headless")) == bool(runtime.browser_headless)
+                and browser_id
+            ):
+                if url:
+                    store.url_policy.validate(url, allowed_domains=allowed)
+                current_url = str(row.get("url") or "")
+                current_allowed = True
+                if not url and current_url and current_url != "about:blank":
+                    try:
+                        store.url_policy.validate(current_url, allowed_domains=allowed)
+                    except BrowserURLPolicyError:
+                        current_allowed = False
+                if current_allowed:
+                    store.update_allowed_domains(context.session_id, browser_id, allowed)
+                    compatible = True
+                    policy_updated = True
             if compatible and browser_id:
                 try:
-                    snapshot = store.snapshot(context.session_id, browser_id, refresh=True)
+                    # If the new policy excludes the old page, navigate before
+                    # refreshing it; refreshing would reject the old URL and
+                    # unnecessarily tear down this healthy extension session.
+                    if policy_updated and url:
+                        store.navigate(context.session_id, browser_id, url, new_tab=False)
+                        snapshot = store.snapshot(context.session_id, browser_id)
+                    else:
+                        snapshot = store.snapshot(context.session_id, browser_id, refresh=True)
                 except Exception:
                     # The bookkeeping entry outlived its backend. Closing removes
                     # the stale lease even when backend.close itself fails, then the
@@ -383,7 +415,7 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
                     except Exception:
                         pass
                 else:
-                    if url:
+                    if url and not policy_updated:
                         store.navigate(context.session_id, browser_id, url, new_tab=False)
                         snapshot = store.snapshot(context.session_id, browser_id)
                     return _snapshot_result(
