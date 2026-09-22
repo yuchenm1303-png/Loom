@@ -769,7 +769,7 @@ export default function App() {
             currentTurnId={thread?.currentTurnId}
             workspace={workspace}
             promptDisabled={conversationDisabled}
-            onPrompt={(prompt) => void loom.send(prompt)}
+            onPrompt={(prompt) => loom.send(prompt)}
             onApproval={handleApproval}
           />
           <TranscriptScrollController

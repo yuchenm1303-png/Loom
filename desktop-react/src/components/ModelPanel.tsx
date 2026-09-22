@@ -126,9 +126,10 @@ function ReasoningControl({
   const displayOption = reasoning.options[displayIndex] ?? reasoning.options[selectedIndex] ?? reasoning.options[0];
   const canReset = reasoning.value !== reasoning.defaultValue;
   const optionCount = Math.max(1, reasoning.options.length);
-  const threadProgress = reasoning.options.length <= 1
-    ? 50
-    : 8 + (displayIndex / Math.max(1, reasoning.options.length - 1)) * 84;
+  // Nodes sit at the center of equal grid cells, so the illuminated rail must
+  // terminate at that same center. The old 8%-92% approximation visibly missed
+  // the selected node (most obvious on two-option models such as MiniMax-M3).
+  const threadProgress = ((displayIndex + 0.5) / optionCount) * 100;
   const threadStyle = {
     "--reasoning-index": String(displayIndex),
     "--reasoning-count": String(optionCount),
