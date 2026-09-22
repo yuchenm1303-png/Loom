@@ -1177,9 +1177,7 @@ function EmptyState({ disabled, onPrompt }: { disabled?: boolean; onPrompt?(prom
         <span className="empty-hero-halo" />
         <span className="empty-loom-orbit empty-loom-orbit-a" />
         <span className="empty-loom-orbit empty-loom-orbit-b" />
-        <span className="empty-loom-core">
-          <span className="empty-loom-letter">L</span>
-        </span>
+        <span className="empty-loom-core" />
         <span className="empty-spark spark-one" />
         <span className="empty-spark spark-two" />
         <span className="empty-spark spark-three" />
