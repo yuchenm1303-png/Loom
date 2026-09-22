@@ -883,7 +883,59 @@ class MemoryStore:
                 except Exception:
                     connection.execute("ROLLBACK")
                     raise
+        self.prune_usage_events()
         return identifiers
+
+    def prune_usage_events(
+        self,
+        *,
+        max_age_days: int = 365,
+        max_rows: int = 20_000,
+    ) -> int:
+        days = max(30, min(3650, int(max_age_days)))
+        cap = max(1000, min(200_000, int(max_rows)))
+        with self._lock, self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                before = int(
+                    connection.execute(
+                        "SELECT COUNT(*) FROM memory_usage_events"
+                    ).fetchone()[0]
+                )
+                connection.execute(
+                    """
+                    DELETE FROM memory_usage_events
+                    WHERE (julianday('now') - julianday(created_at)) >= ?
+                    """,
+                    (days,),
+                )
+                remaining = int(
+                    connection.execute(
+                        "SELECT COUNT(*) FROM memory_usage_events"
+                    ).fetchone()[0]
+                )
+                if remaining > cap:
+                    connection.execute(
+                        """
+                        DELETE FROM memory_usage_events
+                        WHERE event_id IN (
+                            SELECT event_id FROM memory_usage_events
+                            ORDER BY created_at ASC, event_id ASC
+                            LIMIT ?
+                        )
+                        """,
+                        (remaining - cap,),
+                    )
+                after = int(
+                    connection.execute(
+                        "SELECT COUNT(*) FROM memory_usage_events"
+                    ).fetchone()[0]
+                )
+                connection.execute("COMMIT")
+            except Exception:
+                connection.execute("ROLLBACK")
+                raise
+        return max(0, before - after)
 
     def delete(self, memory_id: str) -> bool:
         """Forget one consolidated memory and its candidate/evidence copies."""
