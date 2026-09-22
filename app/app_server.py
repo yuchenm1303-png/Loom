@@ -1472,7 +1472,13 @@ class LoomRpcController:
                     "threadStart": True,
                 },
                 "agents": {
-                    "list": callable(getattr(getattr(self.service.runtime, "agent_control", None), "list_tree", None)),
+                    "list": callable(
+                        getattr(
+                            getattr(getattr(self.service, "runtime", None), "agent_control", None),
+                            "list_tree",
+                            None,
+                        )
+                    ),
                 },
                 "settings": {"get": True, "set": True},
                 "turns": {"start": True, "interrupt": True},
