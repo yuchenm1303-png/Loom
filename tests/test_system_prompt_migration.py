@@ -56,3 +56,13 @@ def test_custom_prompt_is_never_rewritten(tmp_path) -> None:
 
     assert loaded.system_prompt == custom
     assert loaded.system_prompt_version == 0
+
+
+
+def test_default_prompt_exposes_decision_cards_without_turning_routine_work_into_questions() -> None:
+    assert DEFAULT_AGENT_SYSTEM_PROMPT_VERSION == 3
+    assert "```loom-decision" in DEFAULT_AGENT_SYSTEM_PROMPT
+    assert "routine implementation details" in DEFAULT_AGENT_SYSTEM_PROMPT
+    assert "If the user's intent is already clear, act instead" in DEFAULT_AGENT_SYSTEM_PROMPT
+    # Version 2 and the pre-action-first default must both remain migratable.
+    assert len(_LEGACY_DEFAULT_AGENT_SYSTEM_PROMPTS) >= 2

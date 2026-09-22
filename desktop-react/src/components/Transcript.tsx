@@ -21,6 +21,7 @@ import {
 import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { TranscriptItem } from "../types/loom";
 import { MarkdownMessage } from "./MarkdownMessage";
+import { DecisionPromptCard, parseDecisionMessage } from "./DecisionPromptCard";
 import { StreamingPresentation } from "./StreamingPresentation";
 import { isSubAgentToolItem } from "./SubAgentWorkspace";
 import { TurnArtifactsPreview } from "./TurnArtifactsPreview";
@@ -36,7 +37,7 @@ interface TranscriptProps {
   currentTurnId?: string | null;
   workspace?: string;
   promptDisabled?: boolean;
-  onPrompt?(prompt: string): void;
+  onPrompt?(prompt: string): Promise<void> | void;
   onApproval(item: TranscriptItem, approved: boolean): void;
 }
 
@@ -738,12 +739,16 @@ function ItemView({
   item,
   streaming = false,
   onApproval,
+  onPrompt,
+  decisionInteractive = false,
   promptDisabled,
   workspace,
 }: {
   item: TranscriptItem;
   streaming?: boolean;
   onApproval(item: TranscriptItem, approved: boolean): void;
+  onPrompt?(prompt: string): Promise<void> | void;
+  decisionInteractive?: boolean;
   promptDisabled?: boolean;
   workspace?: string;
 }) {
@@ -764,7 +769,8 @@ function ItemView({
     // New providers stream reasoning on its own field. Legacy tag parsing remains
     // only as a compatibility fallback for models that embed thinking in text.
     const reasoning = providerReasoning || parsed.reasoning;
-    const answer = parsed.answer.trim();
+    const decisionMessage = parseDecisionMessage(parsed.answer);
+    const answer = decisionMessage.text.trim();
     const interrupted = ["interrupted", "cancelled", "failed"].includes(item.status || "");
     const live = streaming && !interrupted && (item.status === "streaming" || isActiveActivityStatus(item.status || "running"));
 
@@ -772,7 +778,7 @@ function ItemView({
       return <div className="assistant-message"><LiveReasoning reasoning={reasoning} workspace={workspace} streaming={live} messageKey={`${item.id}:reasoning`} interrupted={interrupted} /></div>;
     }
 
-    if (!reasoning && !answer) return null;
+    if (!reasoning && !answer && !decisionMessage.decisions.length) return null;
 
     return (
       <div className="message-shell assistant-message-shell" data-message-id={item.id}>
@@ -784,7 +790,15 @@ function ItemView({
               </div>
             </Disclosure>
           ) : null}
-          {answer ? <MarkdownMessage content={parsed.answer} workspace={workspace} streaming={live} messageKey={`${item.id}:answer`} interrupted={interrupted} /> : null}
+          {answer ? <MarkdownMessage content={answer} workspace={workspace} streaming={live} messageKey={`${item.id}:answer`} interrupted={interrupted} /> : null}
+          {decisionMessage.decisions.map((decision, index) => (
+            <DecisionPromptCard
+              key={decision.id || `${item.id}:decision:${index}`}
+              spec={decision}
+              disabled={!decisionInteractive || Boolean(promptDisabled)}
+              onSubmit={decisionInteractive ? onPrompt : undefined}
+            />
+          ))}
         </div>
         <MessageToolbar kind="assistant" item={item} text={answer || reasoning} />
       </div>
@@ -815,6 +829,7 @@ function ItemView({
 function Sequence({
   items,
   onApproval,
+  onPrompt,
   keepActivityOpen = false,
   active = false,
   promptDisabled,
@@ -822,6 +837,7 @@ function Sequence({
 }: {
   items: TranscriptItem[];
   onApproval(item: TranscriptItem, approved: boolean): void;
+  onPrompt?(prompt: string): Promise<void> | void;
   keepActivityOpen?: boolean;
   active?: boolean;
   promptDisabled?: boolean;
@@ -852,7 +868,7 @@ function Sequence({
             className={`transcript-entry entry-${block.item.type} ${isSteeringUserMessage(block.item) ? "entry-steering-user" : ""}`.trim()}
             key={block.item.id}
           >
-            <ItemView item={block.item} streaming={active} onApproval={onApproval} promptDisabled={promptDisabled} workspace={workspace} />
+            <ItemView item={block.item} streaming={active} onApproval={onApproval} onPrompt={onPrompt} promptDisabled={promptDisabled} workspace={workspace} />
           </div>
         )
       ))}
@@ -939,6 +955,7 @@ function TurnProcess({
   open,
   onOpenChange,
   onApproval,
+  onPrompt,
   promptDisabled,
   workspace,
 }: {
@@ -949,6 +966,7 @@ function TurnProcess({
   open: boolean;
   onOpenChange(open: boolean): void;
   onApproval(item: TranscriptItem, approved: boolean): void;
+  onPrompt?(prompt: string): Promise<void> | void;
   promptDisabled?: boolean;
   workspace?: string;
 }) {
@@ -981,7 +999,7 @@ function TurnProcess({
         <div className="turn-guidance-recap" aria-label="Guidance added during this turn">
           {guidanceItems.map((item) => (
             <div className="transcript-entry entry-user_message entry-steering-user" key={`guidance-${item.id}`}>
-              <ItemView item={item} onApproval={onApproval} promptDisabled={promptDisabled} workspace={workspace} />
+              <ItemView item={item} onApproval={onApproval} onPrompt={onPrompt} promptDisabled={promptDisabled} workspace={workspace} />
             </div>
           ))}
         </div>
@@ -990,7 +1008,7 @@ function TurnProcess({
       <div className="turn-process-grid">
         <div className="turn-process-inner">
           <div className="turn-process-content">
-            <Sequence items={items} active={active} onApproval={onApproval} keepActivityOpen={active} promptDisabled={promptDisabled} workspace={workspace} />
+            <Sequence items={items} active={active} onApproval={onApproval} onPrompt={onPrompt} keepActivityOpen={active} promptDisabled={promptDisabled} workspace={workspace} />
           </div>
         </div>
       </div>
@@ -1011,6 +1029,8 @@ interface TurnViewProps {
   items: TranscriptItem[];
   active: boolean;
   onApproval(item: TranscriptItem, approved: boolean): void;
+  onPrompt?(prompt: string): Promise<void> | void;
+  decisionInteractiveItemId?: string;
   promptDisabled?: boolean;
   workspace?: string;
 }
@@ -1020,6 +1040,8 @@ const TurnView = memo(function TurnView({
   items,
   active,
   onApproval,
+  onPrompt,
+  decisionInteractiveItemId = "",
   promptDisabled,
   workspace,
 }: TurnViewProps) {
@@ -1088,7 +1110,7 @@ const TurnView = memo(function TurnView({
     <section className={`turn-block ${active ? "is-active" : "is-complete"}`} data-turn-id={turnId}>
       {derived.initialUser ? (
         <div className="transcript-entry entry-user_message" key={derived.initialUser.id}>
-          <ItemView item={derived.initialUser} onApproval={onApproval} promptDisabled={promptDisabled} workspace={workspace} />
+          <ItemView item={derived.initialUser} onApproval={onApproval} onPrompt={onPrompt} promptDisabled={promptDisabled} workspace={workspace} />
         </div>
       ) : null}
 
@@ -1101,6 +1123,7 @@ const TurnView = memo(function TurnView({
           open={processOpen}
           onOpenChange={setProcessOpen}
           onApproval={onApproval}
+          onPrompt={onPrompt}
           promptDisabled={promptDisabled}
           workspace={workspace}
         />
@@ -1108,13 +1131,20 @@ const TurnView = memo(function TurnView({
 
       {!active && derived.finalAssistant ? (
         <div className="transcript-entry entry-assistant_message turn-final-answer" key={derived.finalAssistant.id}>
-          <ItemView item={derived.finalAssistant} onApproval={onApproval} promptDisabled={promptDisabled} workspace={workspace} />
+          <ItemView
+            item={derived.finalAssistant}
+            onApproval={onApproval}
+            onPrompt={onPrompt}
+            decisionInteractive={derived.finalAssistant.id === decisionInteractiveItemId}
+            promptDisabled={promptDisabled}
+            workspace={workspace}
+          />
         </div>
       ) : null}
 
       {!active ? derived.errorItems.map((item) => (
         <div className="transcript-entry entry-error" key={item.id}>
-          <ItemView item={item} onApproval={onApproval} promptDisabled={promptDisabled} workspace={workspace} />
+          <ItemView item={item} onApproval={onApproval} onPrompt={onPrompt} promptDisabled={promptDisabled} workspace={workspace} />
         </div>
       )) : null}
 
@@ -1129,9 +1159,10 @@ const TurnView = memo(function TurnView({
   && previous.active === next.active
   && previous.promptDisabled === next.promptDisabled
   && previous.workspace === next.workspace
+  && previous.decisionInteractiveItemId === next.decisionInteractiveItemId
 ));
 
-function EmptyState({ disabled, onPrompt }: { disabled?: boolean; onPrompt?(prompt: string): void }) {
+function EmptyState({ disabled, onPrompt }: { disabled?: boolean; onPrompt?(prompt: string): Promise<void> | void }) {
   return (
     <section className="empty-state">
       <div className="empty-hero" aria-hidden="true">
@@ -1176,6 +1207,17 @@ function EmptyState({ disabled, onPrompt }: { disabled?: boolean; onPrompt?(prom
 export function Transcript({ items, running, currentTurnId, workspace, promptDisabled, onPrompt, onApproval }: TranscriptProps) {
   const turnBlocks = useStableTurnBlocks(items);
   const activeTurnId = running && currentTurnId ? String(currentTurnId) : "";
+  const decisionInteractiveItemId = useMemo(() => {
+    if (running || promptDisabled || !onPrompt) return "";
+    for (let index = items.length - 1; index >= 0; index -= 1) {
+      const item = items[index];
+      if (item.type === "user_message") return "";
+      if (item.type !== "assistant_message") continue;
+      const parsed = splitReasoning(item.text ?? "");
+      return parseDecisionMessage(parsed.answer).decisions.length ? item.id : "";
+    }
+    return "";
+  }, [items, onPrompt, promptDisabled, running]);
 
   return (
     <div className="transcript-scroll">
@@ -1195,12 +1237,21 @@ export function Transcript({ items, running, currentTurnId, workspace, promptDis
               items={block.items}
               active={Boolean(running && block.id === activeTurnId)}
               onApproval={onApproval}
+              onPrompt={onPrompt}
+              decisionInteractiveItemId={decisionInteractiveItemId}
               promptDisabled={promptDisabled}
               workspace={workspace}
             />
           ) : (
             <div className={`transcript-entry entry-${block.item.type}`} key={block.item.id || `loose-${index}`}>
-              <ItemView item={block.item} onApproval={onApproval} promptDisabled={promptDisabled} workspace={workspace} />
+              <ItemView
+                item={block.item}
+                onApproval={onApproval}
+                onPrompt={onPrompt}
+                decisionInteractive={block.item.id === decisionInteractiveItemId}
+                promptDisabled={promptDisabled}
+                workspace={workspace}
+              />
             </div>
           )
         ))}
