@@ -109,6 +109,30 @@ def _text_content(message: AIMessage) -> str:
     )
 
 
+def _field(value: Any, name: str, default: Any = None) -> Any:
+    if isinstance(value, dict):
+        return value.get(name, default)
+    return getattr(value, name, default)
+
+
+def _responses_visible_reasoning(response: Any) -> str:
+    """Return only provider-exposed Responses reasoning summaries.
+
+    OpenAI does not expose hidden raw reasoning tokens. The supported public
+    surface is the reasoning item's summary; other providers using the same
+    protocol may omit it, in which case Loom surfaces nothing.
+    """
+    parts: list[str] = []
+    for item in _field(response, "output", ()) or ():
+        if str(_field(item, "type", "") or "") != "reasoning":
+            continue
+        for summary in _field(item, "summary", ()) or ():
+            text = str(_field(summary, "text", "") or "")
+            if text:
+                parts.append(text)
+    return "\n\n".join(part for part in parts if part).strip()
+
+
 def _usage(input_tokens: int = 0, output_tokens: int = 0) -> ModelUsage:
     return ModelUsage(
         input_tokens=max(0, int(input_tokens or 0)),
@@ -222,7 +246,16 @@ class _OpenCodeGoResponsesBackend:
         if request.max_output_tokens is not None:
             kwargs["max_output_tokens"] = request.max_output_tokens
         if request.reasoning is not None and request.reasoning.kind is ReasoningKind.OPENAI_EFFORT:
-            kwargs["reasoning"] = {"effort": request.reasoning.value}
+            reasoning_payload: dict[str, Any] = {"effort": request.reasoning.value}
+            # OpenAI reasoning models expose summaries only when explicitly
+            # requested. Keep this scoped to GPT Responses models; third-party
+            # Responses providers may not implement the summary option.
+            if (
+                str(self.profile.model or "").strip().casefold().startswith("gpt-")
+                and request.reasoning.value != "none"
+            ):
+                reasoning_payload["summary"] = "auto"
+            kwargs["reasoning"] = reasoning_payload
         return kwargs
 
     @staticmethod
@@ -262,6 +295,7 @@ class _OpenCodeGoResponsesBackend:
             ),
             finish_reason=str(getattr(response, "status", "") or "completed"),
             response_id=str(getattr(response, "id", "") or ""),
+            visible_reasoning=_responses_visible_reasoning(response),
         )
 
     def stream(self, request: ChatRequest) -> Iterator[StreamEvent]:
@@ -295,6 +329,14 @@ class _OpenCodeGoResponsesBackend:
                     delta = str(getattr(event, "delta", "") or "")
                     if delta:
                         yield StreamEvent(kind=StreamEventKind.TEXT_DELTA, text_delta=delta)
+                    continue
+                if event_type == "response.reasoning_summary_text.delta":
+                    delta = str(getattr(event, "delta", "") or "")
+                    if delta:
+                        yield StreamEvent(
+                            kind=StreamEventKind.REASONING_DELTA,
+                            reasoning_delta=delta,
+                        )
                     continue
                 if event_type == "response.output_item.added":
                     item = getattr(event, "item", None)
@@ -485,11 +527,16 @@ class _OpenCodeGoMessagesBackend:
         with self._open(request, stream=False) as response:
             payload = json.loads(response.read().decode("utf-8"))
         text_parts: list[str] = []
+        reasoning_parts: list[str] = []
         calls: list[ToolCall] = []
         for block in payload.get("content") or []:
             kind = str(block.get("type") or "")
             if kind == "text":
                 text_parts.append(str(block.get("text") or ""))
+            elif kind == "thinking":
+                thinking = str(block.get("thinking") or "")
+                if thinking:
+                    reasoning_parts.append(thinking)
             elif kind == "tool_use":
                 arguments = block.get("input") or {}
                 if not isinstance(arguments, dict):
@@ -508,6 +555,7 @@ class _OpenCodeGoMessagesBackend:
             usage=_usage(raw_usage.get("input_tokens", 0), raw_usage.get("output_tokens", 0)),
             finish_reason=str(payload.get("stop_reason") or "end_turn"),
             response_id=str(payload.get("id") or ""),
+            visible_reasoning="".join(reasoning_parts),
         )
 
     def stream(self, request: ChatRequest) -> Iterator[StreamEvent]:
@@ -549,6 +597,13 @@ class _OpenCodeGoMessagesBackend:
                         text = str(block.get("text") or "")
                         if text:
                             yield StreamEvent(kind=StreamEventKind.TEXT_DELTA, text_delta=text)
+                    elif kind == "thinking":
+                        thinking = str(block.get("thinking") or "")
+                        if thinking:
+                            yield StreamEvent(
+                                kind=StreamEventKind.REASONING_DELTA,
+                                reasoning_delta=thinking,
+                            )
                     elif kind == "tool_use":
                         call_id = str(block.get("id") or "")
                         name = str(block.get("name") or "")
@@ -568,6 +623,13 @@ class _OpenCodeGoMessagesBackend:
                         text = str(delta.get("text") or "")
                         if text:
                             yield StreamEvent(kind=StreamEventKind.TEXT_DELTA, text_delta=text)
+                    elif kind == "thinking_delta":
+                        thinking = str(delta.get("thinking") or "")
+                        if thinking:
+                            yield StreamEvent(
+                                kind=StreamEventKind.REASONING_DELTA,
+                                reasoning_delta=thinking,
+                            )
                     elif kind == "input_json_delta":
                         info = block_info.get(index, {})
                         yield StreamEvent(
