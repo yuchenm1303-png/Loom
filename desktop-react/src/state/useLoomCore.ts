@@ -18,6 +18,13 @@ import type {
 import { buildApprovalResponse } from "./approvalProtocol";
 
 type ThreadView = "active" | "archived";
+
+interface CachedThreadView {
+  read: ThreadReadResult;
+  items: TranscriptItem[];
+}
+
+const THREAD_VIEW_CACHE_LIMIT = 8;
 type ThreadCounts = { active: number; archived: number; all: number };
 type ThreadListResult = { threads: ThreadRecord[]; counts?: Partial<ThreadCounts> };
 
@@ -130,6 +137,7 @@ export function useLoom() {
   const threadsRef = useRef<ThreadRecord[]>([]);
   const navigationRef = useRef(0);
   const threadListRequestRef = useRef(0);
+  const threadViewCacheRef = useRef<Map<string, CachedThreadView>>(new Map());
   const itemIndexRef = useRef<Map<string, number>>(new Map());
 
   useEffect(() => {
@@ -139,6 +147,19 @@ export function useLoom() {
   useEffect(() => {
     threadsRef.current = threads;
   }, [threads]);
+
+  useEffect(() => {
+    const threadId = active?.thread.id;
+    if (!threadId) return;
+    const cache = threadViewCacheRef.current;
+    cache.delete(threadId);
+    cache.set(threadId, { read: active, items });
+    while (cache.size > THREAD_VIEW_CACHE_LIMIT) {
+      const oldest = cache.keys().next().value as string | undefined;
+      if (!oldest) break;
+      cache.delete(oldest);
+    }
+  }, [active, items]);
 
   const installItems = useCallback((next: TranscriptItem[]) => {
     itemIndexRef.current = buildItemIndex(next);
@@ -278,14 +299,31 @@ export function useLoom() {
 
     const navigationId = ++navigationRef.current;
     const knownThread = threadsRef.current.find((thread) => thread.id === targetId) ?? null;
+    const cache = threadViewCacheRef.current;
+    const cached = cache.get(targetId) ?? null;
+    if (cached) {
+      cache.delete(targetId);
+      cache.set(targetId, cached);
+    }
 
     // Switch the visible shell immediately instead of leaving the previous
-    // conversation on screen while disk history is being reconstructed.
+    // conversation on screen while disk history is being reconstructed. A
+    // recently visited thread can paint its last hydrated transcript at once;
+    // input stays locked until the authoritative read reconciles it.
     activeIdRef.current = targetId;
     setThreadLoading(true);
     setContext(null);
     setCompactionProgress(null);
-    if (knownThread) {
+    if (cached) {
+      const cachedThread = knownThread
+        ? { ...cached.read.thread, ...knownThread }
+        : cached.read.thread;
+      setActive({ ...cached.read, thread: cachedThread });
+      installItems(cached.items);
+      const running = threadIsRunning(cachedThread);
+      setTurnActive(running);
+      setTurnStartedAt(running ? turnStartFromRead(cached.read) : null);
+    } else if (knownThread) {
       setActive({
         thread: knownThread,
         turns: [],
@@ -625,6 +663,7 @@ export function useLoom() {
       }
       if (message.method === "thread/deleted") {
         const deletedId = String(params.threadId ?? "");
+        threadViewCacheRef.current.delete(deletedId);
         setThreads((current) => current.filter((entry) => entry.id !== deletedId));
         if (deletedId && deletedId === activeId) clearActive();
         return;
