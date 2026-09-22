@@ -6,16 +6,11 @@
   display: none !important;
 }
 
-/* The active turn already has a RunProgress status card. The old tail-level
-   PendingThinking line is still useful as a small text cue, but its orbit icon
-   can appear as a stray purple dot after tool activity. Hide only that direct
-   icon and keep the "正在思考…" text visible. */
-.turn-block > .inline-thinking > .thinking-symbol {
-  display: none !important;
-}
-
+/* Keep the compact thinking orb visible beside the live status text. The
+   runtime now closes stale reasoning steps correctly, so this no longer leaves
+   an orphaned purple dot after tool activity. */
 .turn-block > .inline-thinking {
-  gap: 0;
+  gap: 8px;
   margin-left: 0;
 }
 
@@ -62,7 +57,30 @@
 }
 
 .thinking-shimmer::after {
-  content: none;
+  content: "正在思考…";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  color: transparent;
+  pointer-events: none;
+  background-image: linear-gradient(
+    104deg,
+    transparent 0%,
+    transparent 25%,
+    rgba(238,235,255,.20) 36%,
+    rgba(241,238,255,.96) 46%,
+    rgba(179,164,255,.98) 52%,
+    rgba(106,194,255,.86) 58%,
+    rgba(233,228,255,.24) 66%,
+    transparent 75%,
+    transparent 100%
+  );
+  background-size: 260% 100%;
+  background-position: 150% 0;
+  -webkit-background-clip: text;
+  background-clip: text;
+  will-change: background-position, opacity;
+  animation: thinking-text-shimmer 2.15s linear infinite;
 }
 
 .live-reasoning {
@@ -152,11 +170,51 @@
   width: 1px;
   background: linear-gradient(
     180deg,
-    transparent,
-    rgba(183,171,251,.48),
-    rgba(231,139,98,.22),
-    transparent
+    transparent 0%,
+    rgba(183,171,251,.22) 20%,
+    rgba(203,193,255,.92) 43%,
+    rgba(111,193,255,.72) 54%,
+    rgba(183,171,251,.28) 70%,
+    transparent 100%
   );
+  background-size: 100% 240%;
+  background-position: 0 130%;
+  box-shadow: 0 0 7px rgba(139,124,246,.12);
+  animation: reasoning-rail-sweep 2.35s cubic-bezier(.4,0,.2,1) infinite;
+}
+
+@keyframes thinking-text-shimmer {
+  0%, 8% {
+    background-position: 150% 0;
+    opacity: 0;
+  }
+  14% {
+    opacity: .72;
+  }
+  48% {
+    opacity: 1;
+  }
+  82% {
+    opacity: .74;
+  }
+  90%, 100% {
+    background-position: -150% 0;
+    opacity: 0;
+  }
+}
+
+@keyframes reasoning-rail-sweep {
+  0% {
+    background-position: 0 135%;
+    opacity: .34;
+  }
+  45% {
+    opacity: .9;
+  }
+  100% {
+    background-position: 0 -135%;
+    opacity: .34;
+  }
 }
 
 @keyframes thinking-symbol-breathe {
@@ -186,4 +244,16 @@
   .thinking-shimmer::after {
     content: none;
   }
+}
+
+:root[data-loom-reduced-motion="true"] .thinking-symbol,
+:root[data-loom-reduced-motion="true"] .thinking-shimmer::after,
+:root[data-loom-reduced-motion="true"] .live-reasoning-copy::before,
+:root[data-loom-reduced-motion="true"] .inline-thinking,
+:root[data-loom-reduced-motion="true"] .live-reasoning {
+  animation: none !important;
+}
+
+:root[data-loom-reduced-motion="true"] .thinking-shimmer::after {
+  content: none;
 }
