@@ -94,6 +94,23 @@
   white-space: pre;
 }
 
+.user-rich-code-block .hljs-keyword,
+.user-rich-code-block .hljs-selector-tag,
+.user-rich-code-block .hljs-literal { color: #c0b6ff; }
+.user-rich-code-block .hljs-string,
+.user-rich-code-block .hljs-attr { color: #a9cdb1; }
+.user-rich-code-block .hljs-number,
+.user-rich-code-block .hljs-symbol { color: #dab487; }
+.user-rich-code-block .hljs-comment,
+.user-rich-code-block .hljs-quote { color: #757e8b; font-style: italic; }
+.user-rich-code-block .hljs-title,
+.user-rich-code-block .hljs-function,
+.user-rich-code-block .hljs-section { color: #a4c1e8; }
+.user-rich-code-block .hljs-built_in,
+.user-rich-code-block .hljs-type { color: #d7acd0; }
+.user-rich-code-block .hljs-variable,
+.user-rich-code-block .hljs-template-variable { color: #d1d4dc; }
+
 .user-rich-message table {
   display: block;
   width: max-content;

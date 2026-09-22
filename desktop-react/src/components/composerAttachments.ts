@@ -39,7 +39,10 @@ export function appendComposerAttachments(
   const next = [...current];
   let overflowed = false;
   for (const item of incoming) {
-    if (known.has(item.path)) continue;
+    if (known.has(item.path)) {
+      if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+      continue;
+    }
     if (next.length >= MAX_COMPOSER_ATTACHMENTS) {
       overflowed = true;
       if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
