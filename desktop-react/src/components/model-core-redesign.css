@@ -1733,3 +1733,392 @@ html[data-loom-theme="light"] .model-core-title-row strong,
 html[data-loom-theme="light"] .model-core-copy small {
   text-rendering: geometricPrecision;
 }
+
+
+/* -------------------------------------------------------------------------- */
+/* Reasoning rail refinement                                                  */
+/* -------------------------------------------------------------------------- */
+/* Keep the Loom weave as a quiet signature, but let a precise horizontal rail
+   carry the interaction. This makes 2-option models feel as deliberate as the
+   6-step effort controls instead of looking like two dots floating on artwork. */
+
+.model-core-home .reasoning-control {
+  padding-top: 9px;
+  padding-bottom: 7px;
+}
+
+.model-core-home .reasoning-control-head {
+  min-height: 22px;
+}
+
+.model-core-home .reasoning-control-eyebrow {
+  gap: 7px;
+  color: #858c98;
+  font-size: 8.25px;
+  font-weight: 690;
+  letter-spacing: .105em;
+}
+
+.model-core-home .reasoning-control-eyebrow svg {
+  color: #9489d7;
+  filter: drop-shadow(0 0 7px rgba(139,124,246,.10));
+}
+
+.model-core-home .reasoning-reset {
+  width: 26px;
+  height: 26px;
+  margin-right: -4px;
+  border-radius: 8px;
+  color: #626a76;
+  transition:
+    color 150ms ease,
+    background 150ms ease,
+    box-shadow 150ms ease,
+    transform 160ms cubic-bezier(.2,.8,.2,1);
+}
+
+.model-core-home .reasoning-reset:hover:not(:disabled) {
+  color: #a89ee2;
+  background: rgba(139,124,246,.055);
+  box-shadow: inset 0 0 0 1px rgba(157,143,229,.08);
+}
+
+.model-core-home .reasoning-thread-shell {
+  min-height: 72px;
+  margin-top: 9px;
+  padding: 0 2px;
+}
+
+.model-core-home .reasoning-thread-lines {
+  top: 2px;
+  left: 9px;
+  right: 9px;
+  height: 28px;
+  filter: none;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 4%, #000 96%, transparent 100%);
+  mask-image: linear-gradient(90deg, transparent 0%, #000 4%, #000 96%, transparent 100%);
+  animation: none;
+}
+
+/* Precision rail: this is the visual source of truth. */
+.model-core-home .reasoning-thread-lines::after {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+  transform: translateY(-50%);
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(111,118,132,.22) 5%,
+    rgba(111,118,132,.34) 18%,
+    rgba(111,118,132,.34) 82%,
+    rgba(111,118,132,.22) 95%,
+    transparent 100%
+  );
+}
+
+.model-core-home .reasoning-thread-lines::before {
+  z-index: 0;
+  left: 7%;
+  right: 7%;
+  height: 18px;
+  background: radial-gradient(ellipse at center, rgba(139,124,246,.075), transparent 70%);
+  filter: blur(9px);
+  opacity: .7;
+}
+
+/* The woven paths remain as a restrained texture rather than the track itself. */
+.model-core-home .reasoning-thread-lines > svg {
+  z-index: 0;
+  opacity: .28;
+}
+
+.model-core-home .reasoning-thread-lines > svg > .reasoning-thread-path-a {
+  stroke: rgba(134,141,157,.30);
+  stroke-width: .8;
+}
+
+.model-core-home .reasoning-thread-lines > svg > .reasoning-thread-path-b {
+  stroke: rgba(107,113,128,.19);
+  stroke-width: .72;
+}
+
+.model-core-home .reasoning-thread-energy {
+  z-index: 2;
+  overflow: hidden;
+  -webkit-mask-image: none;
+  mask-image: none;
+  transition: clip-path 300ms cubic-bezier(.16,.84,.22,1);
+}
+
+.model-core-home .reasoning-thread-energy::before {
+  content: "";
+  position: absolute;
+  z-index: 4;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1.5px;
+  transform: translateY(-50%);
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    rgba(139,124,246,0) 0%,
+    rgba(151,136,238,.68) 6%,
+    rgba(177,161,255,.98) 68%,
+    rgba(196,184,255,.98) 100%
+  );
+  box-shadow:
+    0 0 7px rgba(139,124,246,.18),
+    0 0 14px rgba(139,124,246,.06);
+}
+
+.model-core-home .reasoning-thread-energy > svg {
+  opacity: .42;
+}
+
+.model-core-home .reasoning-thread-energy .reasoning-thread-path-a {
+  stroke: rgba(174,159,251,.72);
+  stroke-width: .9;
+  filter: none;
+}
+
+.model-core-home .reasoning-thread-energy .reasoning-thread-path-b {
+  stroke: rgba(129,115,213,.44);
+  stroke-width: .82;
+  filter: none;
+}
+
+.model-core-home .reasoning-thread-glint {
+  stroke-width: 1;
+  opacity: .42;
+  filter: drop-shadow(0 0 4px rgba(185,170,255,.38));
+}
+
+.model-core-home .reasoning-thread-energy::after {
+  opacity: .16;
+  filter: blur(10px);
+}
+
+.model-core-home .reasoning-thread-nodes {
+  min-height: 68px;
+}
+
+.model-core-home .reasoning-thread-node {
+  height: 68px;
+  grid-template-rows: 32px 25px;
+  gap: 7px;
+  padding: 0 3px;
+  color: #68707c;
+}
+
+.model-core-home .reasoning-thread-node i {
+  width: 8px;
+  height: 8px;
+  border: 1px solid rgba(132,139,154,.64);
+  background: #181a20;
+  box-shadow:
+    0 0 0 3px rgba(18,20,25,.92),
+    0 1px 5px rgba(0,0,0,.16);
+}
+
+.model-core-home .reasoning-thread-node:hover:not(:disabled) i {
+  border-color: rgba(171,157,238,.7);
+  background: #211f2b;
+  transform: scale(1.08);
+}
+
+.model-core-home .reasoning-thread-node span {
+  min-height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  max-width: calc(100% - 4px);
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  color: inherit;
+  font-size: 8.45px;
+  font-weight: 590;
+  letter-spacing: 0;
+  transition:
+    color 150ms ease,
+    background 150ms ease,
+    border-color 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.model-core-home .reasoning-thread-node.active {
+  color: #d0c6fb;
+}
+
+.model-core-home .reasoning-thread-node.active i {
+  width: 12px;
+  height: 12px;
+  border-color: rgba(198,184,255,.90);
+  background: linear-gradient(145deg, #b3a3ff, #8f7be9);
+  box-shadow:
+    0 0 0 3px rgba(16,18,23,.96),
+    0 0 0 6px rgba(139,124,246,.09),
+    0 0 18px rgba(139,124,246,.24);
+  animation-duration: 4.8s;
+}
+
+.model-core-home .reasoning-thread-node.active span {
+  color: #d0c6fb;
+  border-color: rgba(166,150,237,.10);
+  background: rgba(139,124,246,.055);
+  box-shadow: inset 0 1px rgba(255,255,255,.018);
+  text-shadow: none;
+}
+
+.model-core-home .reasoning-thread-node:not(.active):hover span {
+  color: #a4aab5;
+  background: rgba(255,255,255,.018);
+}
+
+/* Light mode needs its own node rings: the dark-mode core animation otherwise
+   paints a black halo around the selected level. */
+html[data-loom-theme="light"] .model-core-home .reasoning-control-eyebrow {
+  color: #7e8692;
+}
+
+html[data-loom-theme="light"] .model-core-home .reasoning-control-eyebrow svg {
+  color: #6b5cd0;
+  filter: none;
+}
+
+html[data-loom-theme="light"] .model-core-home .reasoning-reset {
+  color: #747d88;
+}
+
+html[data-loom-theme="light"] .model-core-home .reasoning-reset:hover:not(:disabled) {
+  color: #5f51bb;
+  background: rgba(105,90,216,.065);
+  box-shadow: inset 0 0 0 1px rgba(105,90,216,.08);
+}
+
+html[data-loom-theme="light"] .model-core-home .reasoning-thread-lines::after {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(82,89,103,.16) 5%,
+    rgba(82,89,103,.27) 18%,
+    rgba(82,89,103,.27) 82%,
+    rgba(82,89,103,.16) 95%,
+    transparent 100%
+  );
+}
+
+html[data-loom-theme="light"] .model-core-home .reasoning-thread-lines::before {
+  background: radial-gradient(ellipse at center, rgba(105,90,216,.07), transparent 70%);
+  opacity: .55;
+}
+
+html[data-loom-theme="light"] .model-core-home .reasoning-thread-lines > svg > .reasoning-thread-path-a {
+  stroke: rgba(101,108,122,.25);
+}
+
+html[data-loom-theme="light"] .model-core-home .reasoning-thread-lines > svg > .reasoning-thread-path-b {
+  stroke: rgba(101,108,122,.14);
+}
+
+html[data-loom-theme="light"] .model-core-home .reasoning-thread-energy::before {
+  background: linear-gradient(
+    90deg,
+    rgba(105,90,216,0) 0%,
+    rgba(105,90,216,.62) 5%,
+    rgba(119,103,222,.92) 70%,
+    rgba(132,116,231,.98) 100%
+  );
+  box-shadow:
+    0 0 6px rgba(105,90,216,.13),
+    0 0 13px rgba(105,90,216,.045);
+}
+
+html[data-loom-theme="light"] .model-core-home .reasoning-thread-energy .reasoning-thread-path-a {
+  stroke: rgba(119,103,222,.60);
+}
+
+html[data-loom-theme="light"] .model-core-home .reasoning-thread-energy .reasoning-thread-path-b {
+  stroke: rgba(105,90,216,.32);
+}
+
+html[data-loom-theme="light"] .model-core-home .reasoning-thread-node {
+  color: #6f7783;
+}
+
+html[data-loom-theme="light"] .model-core-home .reasoning-thread-node i {
+  border-color: #aeb4be;
+  background: #ffffff;
+  box-shadow:
+    0 0 0 3px rgba(249,250,252,.98),
+    0 1px 4px rgba(32,37,46,.10);
+}
+
+html[data-loom-theme="light"] .model-core-home .reasoning-thread-node:hover:not(:disabled) i {
+  border-color: rgba(105,90,216,.50);
+  background: #fbfaff;
+}
+
+html[data-loom-theme="light"] .model-core-home .reasoning-thread-node.active {
+  color: #5d50b8;
+}
+
+html[data-loom-theme="light"] .model-core-home .reasoning-thread-node.active i {
+  border-color: rgba(92,77,191,.80);
+  background: linear-gradient(145deg, #8b7ce7, #6d5fd1);
+  box-shadow:
+    0 0 0 3px #fbfbfc,
+    0 0 0 6px rgba(105,90,216,.085),
+    0 0 15px rgba(105,90,216,.16);
+  animation: none !important;
+}
+
+html[data-loom-theme="light"] .model-core-home .reasoning-thread-node.active i::before {
+  border-color: rgba(105,90,216,.16);
+  animation: none !important;
+  transform: translate(-50%, -50%) scale(1.65);
+}
+
+html[data-loom-theme="light"] .model-core-home .reasoning-thread-node.active i::after {
+  opacity: .32;
+  animation: none !important;
+  transform: translate(-50%, -50%) scale(1.8);
+}
+
+html[data-loom-theme="light"] .model-core-home .reasoning-thread-node.active span {
+  color: #5d50b8;
+  border-color: rgba(105,90,216,.10);
+  background: rgba(105,90,216,.065);
+  box-shadow: inset 0 1px rgba(255,255,255,.7);
+}
+
+html[data-loom-theme="light"] .model-core-home .reasoning-thread-node:not(.active):hover span {
+  color: #4f5661;
+  background: rgba(28,31,37,.035);
+}
+
+@media (max-width: 500px) {
+  .model-core-home .reasoning-thread-node span {
+    padding-inline: 6px;
+    font-size: 8px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .model-core-home .reasoning-thread-energy::before,
+  .model-core-home .reasoning-thread-node span {
+    transition: none !important;
+  }
+}
+
+:root[data-loom-reduced-motion="true"] .model-core-home .reasoning-thread-energy::before,
+:root[data-loom-reduced-motion="true"] .model-core-home .reasoning-thread-node span {
+  transition: none !important;
+}
