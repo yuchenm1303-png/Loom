@@ -202,7 +202,7 @@ export function GlobalContextMenu() {
       const password = editable instanceof HTMLInputElement && editable.type === "password";
       const selection = documentSelection();
       const windowSelection = selection?.toString().trim() || "";
-      const selectionText = inputSelection(editable) || windowSelection;
+      const selectionText = editable ? inputSelection(editable) : windowSelection;
       const messageShell = target.closest<HTMLElement>(".message-shell");
       const messageKind = messageShell?.classList.contains("assistant-message-shell")
         ? "assistant"
@@ -211,7 +211,9 @@ export function GlobalContextMenu() {
           : null;
       const messageText = messageTextFromShell(messageShell, messageKind);
       const selectedInMessage = selectionInside(selection, messageShell);
-      const quoteText = selectedInMessage && windowSelection ? windowSelection : messageText;
+      const quoteText = messageShell
+        ? (selectedInMessage && windowSelection ? windowSelection : messageText)
+        : selectionText;
       const image = imageFromTarget(target);
       const link = target.closest<HTMLAnchorElement>("a[href]");
       const codeText = target.closest("pre")?.innerText?.trim() || "";
@@ -277,7 +279,12 @@ export function GlobalContextMenu() {
     if (!state) return [];
     const items: MenuAction[] = [];
     const activeComposer = document.querySelector<HTMLTextAreaElement>(".composer textarea:not(:disabled)");
-    const canQuote = Boolean(activeComposer && state.quoteText && !state.password);
+    const canQuote = Boolean(
+      activeComposer
+      && state.quoteText
+      && !state.password
+      && !state.target.closest(".composer")
+    );
     const selected = state.selectionText;
     const copyText = selected || state.codeText || state.messageText;
     const remoteImageSource = imageSource(state.image);
