@@ -20,7 +20,7 @@ from app.agent_runtime.computer_types import (
     ComputerRect,
     ComputerWindow,
 )
-from app.agent_runtime.contracts import AgentStatus, PermissionMode, ToolEffect
+from app.agent_runtime.contracts import AgentEventKind, AgentStatus, PermissionMode, ToolEffect
 from app.agent_runtime.sandbox import SandboxManager, SandboxPolicy
 from app.agent_runtime.storage import FileAgentSessionStore
 from app.agent_runtime.workspace_tools import loom_default_tools
@@ -251,6 +251,54 @@ def test_screenshot_is_ephemeral_model_input_not_durable_history(tmp_path):
     durable_text = repr(durable.messages)
     assert "data:image/" not in durable_text
     assert "private draft" not in durable_text
+    runtime.close()
+
+
+def test_screenshot_feedback_is_consumed_by_only_the_next_model_request(tmp_path):
+    runtime, platform, _, session = _runtime(
+        tmp_path,
+        [
+            ModelResponse(
+                tool_calls=(
+                    ToolCall(
+                        call_id="screen-once",
+                        name="computer_action",
+                        arguments={"action": {"type": "screenshot"}},
+                    ),
+                )
+            ),
+            ModelResponse(
+                text="The screenshot is not needed for the remaining code work.",
+                tool_calls=(
+                    ToolCall(
+                        call_id="ordinary-tool",
+                        name="echo",
+                        arguments={"text": "continue without desktop state"},
+                    ),
+                ),
+            ),
+            ModelResponse(text="Finished."),
+        ],
+    )
+
+    result = runtime.start_turn(session.session_id, "Inspect once, then continue normally.")
+
+    assert result.status is AgentStatus.COMPLETED
+    assert len(platform.requests) == 3
+    assert not any(message.uses_vision for message in platform.requests[0][1].messages)
+    assert sum(message.uses_vision for message in platform.requests[1][1].messages) == 1
+    assert not any(message.uses_vision for message in platform.requests[2][1].messages)
+    assert runtime._computer_feedback_turns == {}
+    runtime.close()
+
+
+def test_terminal_event_clears_unconsumed_computer_feedback(tmp_path):
+    runtime, _, _, session = _runtime(tmp_path, [ModelResponse(text="unused")])
+    runtime._computer_feedback_turns[session.session_id] = "stale-turn"
+
+    runtime._record(session, AgentEventKind.TURN_FAILED, data={"error": "test"})
+
+    assert runtime._computer_feedback_turns == {}
     runtime.close()
 
 

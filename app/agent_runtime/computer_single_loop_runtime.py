@@ -11,7 +11,7 @@ from app.ai import AIMessage, ImagePart, MessageRole, TextPart
 from .computer_diagnostics import ComputerDiagnostics
 from .computer_runtime import ComputerStateSnapshot, ComputerStepOutcome, ComputerUseRuntime
 from .computer_types import ComputerAction, ComputerActionType, ComputerFrame, ComputerPoint
-from .contracts import ToolEffect
+from .contracts import AgentEventKind, ToolEffect
 from .tools import AgentTool, ToolContext, ToolExposure, ToolRegistry, ToolResult
 
 
@@ -426,8 +426,9 @@ def _model_observation_text(snapshot: ComputerStateSnapshot) -> str:
         # the task's application is one of the background windows.
         lines.append(
             "This foreground window is Loom's own interface, not the task's application. "
-            "Acting on it would automate the assistant rather than the task. Bring the target "
-            "application forward with switch_window using an id from the list below, then continue there."
+            "Acting on it would automate the assistant rather than the task. If the user's task "
+            "actually requires another application, a known window may be selected with switch_window. "
+            "Otherwise continue the task through the non-visual tools already available."
         )
     background = [window for window in observation.windows if not window.foreground][:12]
     if background:
@@ -563,12 +564,26 @@ class SingleLoopComputerRuntime(ComputerUseRuntime):
         store = self.computer_sessions
         if store is None:
             return messages, extra
-        if self._computer_feedback_turns.get(session.session_id) != session.current_turn_id:
+        marked_turn = self._computer_feedback_turns.get(session.session_id)
+        if marked_turn != session.current_turn_id:
+            # A terminal/abandoned turn may never reach its promised follow-up
+            # sample. Do not retain that stale marker indefinitely or allow it
+            # to affect a later turn.
+            if marked_turn is not None:
+                self._computer_feedback_turns.pop(session.session_id, None)
             return messages, extra
         try:
             snapshot = store.latest(session.session_id)
         except Exception:
             return messages, extra
+
+        # Visual feedback is a one-shot continuation input. Leaving this marker
+        # set for the whole turn reattached the same desktop observation after
+        # every later exec/read/edit tool, repeatedly steering the model back to
+        # Computer Use and preventing otherwise completed coding work from
+        # reaching a final answer. A new computer_action explicitly marks the
+        # next observation again.
+        self._computer_feedback_turns.pop(session.session_id, None)
 
         observation = snapshot.observation
         visual_message = AIMessage(
@@ -833,6 +848,18 @@ class SingleLoopComputerRuntime(ComputerUseRuntime):
         stale = [key for key in self._computer_attempts if key[0] == str(session_id or "")]
         for key in stale:
             self._computer_attempts.pop(key, None)
+
+    def _record(self, session, kind, *, data):
+        event = super()._record(session, kind, data=data)
+        if kind in {
+            AgentEventKind.TURN_COMPLETED,
+            AgentEventKind.TURN_FAILED,
+            AgentEventKind.TURN_CANCELLED,
+            AgentEventKind.TURN_INTERRUPTED,
+            AgentEventKind.LIMIT_REACHED,
+        }:
+            self.clear_computer_single_loop_state(session.session_id)
+        return event
 
     def set_permission_mode(self, session_id, mode):
         self.clear_computer_single_loop_state(session_id)
