@@ -5,7 +5,7 @@ import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
-from .browser_session import BrowserTextNotFoundError
+from .browser_session import BrowserSessionLimitError, BrowserTextNotFoundError
 from .contracts import ToolEffect
 from .tools import AgentTool, ToolContext, ToolResult
 
@@ -336,16 +336,128 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
             return backend
 
         factory = factory_with_downloads
+        url = str(arguments.get("url") or "").strip()
 
-        managed = store.start(
-            context.session_id,
-            headless=runtime.browser_headless,
-            allowed_domains=allowed,
-            backend_factory=factory,
-            external_browser=external,
-        )
+        # Persistent-profile, CDP and extension modes intentionally expose only one
+        # live browser slot. browser_open used to treat a second call from the same
+        # Loom session as a request for a second browser, so an already-controlled,
+        # healthy browser deterministically produced "browser session limit reached
+        # (1)". Make the operation idempotent for that exclusive configured
+        # connection: reuse the owned browser when its policy still matches, and
+        # replace it when the requested policy/connection changed.
+        recovered_stale = False
+        replaced_owned = False
+        owner_is_exclusive = int(getattr(store, "max_sessions_per_owner", 2)) == 1
+        configured_connection = not connect and not requested_cdp
+        owned = store.list(context.session_id) if owner_is_exclusive else ()
+
+        def domains_match(row: dict[str, object]) -> bool:
+            def signature(values) -> tuple[str, ...]:
+                normalized = {
+                    str(value or "").strip().casefold().rstrip(".")
+                    for value in values
+                    if str(value or "").strip()
+                }
+                return tuple(sorted(normalized))
+
+            return signature(row.get("allowed_domains") or ()) == signature(allowed)
+
+        if len(owned) == 1:
+            row = owned[0]
+            browser_id = str(row.get("browser_id") or "")
+            compatible = (
+                configured_connection
+                and bool(row.get("headless")) == bool(runtime.browser_headless)
+                and domains_match(row)
+            )
+            if compatible and browser_id:
+                try:
+                    snapshot = store.snapshot(context.session_id, browser_id, refresh=True)
+                except Exception:
+                    # The bookkeeping entry outlived its backend. Closing removes
+                    # the stale lease even when backend.close itself fails, then the
+                    # normal start path below recreates the connection once.
+                    recovered_stale = True
+                    try:
+                        store.close(context.session_id, browser_id)
+                    except Exception:
+                        pass
+                else:
+                    if url:
+                        store.navigate(context.session_id, browser_id, url, new_tab=False)
+                        snapshot = store.snapshot(context.session_id, browser_id)
+                    return _snapshot_result(
+                        snapshot,
+                        "Browser session resumed. Element indexes are valid only for the returned state_revision.",
+                        extra={
+                            "browser_connection": label,
+                            "external_browser": bool(external),
+                            "browser_session_reused": True,
+                            "browser_session_recovered": False,
+                        },
+                    )
+            elif browser_id:
+                # A single-slot owner cannot open a differently-scoped connection
+                # until its previous handle is released. Replacing our own handle is
+                # safe; never steal a slot owned by another Loom session.
+                replaced_owned = True
+                try:
+                    store.close(context.session_id, browser_id)
+                except Exception:
+                    pass
+
         try:
-            url = str(arguments.get("url") or "").strip()
+            managed = store.start(
+                context.session_id,
+                headless=runtime.browser_headless,
+                allowed_domains=allowed,
+                backend_factory=factory,
+                external_browser=external,
+            )
+        except BrowserSessionLimitError as exc:
+            # A concurrent browser_open may have finished between the lookup above
+            # and start(). If it is now our compatible browser, coalesce onto it.
+            if owner_is_exclusive and configured_connection:
+                raced = store.list(context.session_id)
+                if len(raced) == 1 and domains_match(raced[0]):
+                    raced_id = str(raced[0].get("browser_id") or "")
+                    if raced_id:
+                        try:
+                            snapshot = store.snapshot(context.session_id, raced_id, refresh=True)
+                        except Exception:
+                            pass
+                        else:
+                            if url:
+                                store.navigate(context.session_id, raced_id, url, new_tab=False)
+                                snapshot = store.snapshot(context.session_id, raced_id)
+                            return _snapshot_result(
+                                snapshot,
+                                "Browser session resumed after a concurrent open.",
+                                extra={
+                                    "browser_connection": label,
+                                    "external_browser": bool(external),
+                                    "browser_session_reused": True,
+                                    "browser_session_recovered": False,
+                                },
+                            )
+            return ToolResult(
+                ok=False,
+                content=(
+                    "Browser capacity is temporarily busy in another Loom task. "
+                    "This is retryable and does not mean the browser task failed; "
+                    "keep the turn alive and retry browser_open instead of stopping."
+                ),
+                data={
+                    "reason": "browser_capacity_busy",
+                    "retryable": True,
+                    "scope": exc.scope,
+                    "limit": exc.limit,
+                    "active_sessions": store.active_count(),
+                    "owned_sessions": len(store.list(context.session_id)),
+                },
+            )
+
+        try:
             if url:
                 store.navigate(context.session_id, managed.browser_id, url, new_tab=False)
             snapshot = store.snapshot(context.session_id, managed.browser_id)
@@ -357,10 +469,21 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
             raise
         return _snapshot_result(
             snapshot,
-            "Browser session opened. Element indexes are valid only for the returned state_revision.",
+            (
+                "Browser session recovered and reopened. "
+                if recovered_stale
+                else "Browser session opened. "
+            )
+            + "Element indexes are valid only for the returned state_revision.",
             # Which browser this session drives changes what the model may assume
             # about the tabs it sees, so it is reported rather than inferred.
-            extra={"browser_connection": label, "external_browser": bool(external)},
+            extra={
+                "browser_connection": label,
+                "external_browser": bool(external),
+                "browser_session_reused": False,
+                "browser_session_recovered": bool(recovered_stale),
+                "browser_session_replaced": bool(replaced_owned),
+            },
         )
 
     def state(context: ToolContext, arguments: dict[str, Any]) -> ToolResult:
@@ -1221,9 +1344,10 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
             AgentTool(
                 name="browser_open",
                 description=(
-                    "Open an ephemeral Loom browser session, optionally navigate to an http/https URL, and return "
-                    "a bounded LLM-facing DOM state. allowed_domains can restrict this browser session. Browser v1 "
-                    "does not persist cookies/storage state and has no automatic secret injection."
+                    "Open or resume a Loom browser session, optionally navigate to an http/https URL, and return "
+                    "a bounded LLM-facing DOM state. In single-browser modes, repeated calls from the same Loom session "
+                    "reuse the healthy controlled browser automatically; a stale owned handle is closed and reopened once "
+                    "instead of failing on the session limit. allowed_domains can restrict this browser session."
                 ),
                 input_schema=_schema(
                     {
