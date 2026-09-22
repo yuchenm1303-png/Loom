@@ -45,7 +45,7 @@ from .tools import ToolContext, ToolPolicy, ToolRegistry, ToolResult
 # called memory_status (Loom's own memory store), then told the user to open
 # Task Manager. A measured A/B over the real provider showed this paragraph,
 # not the runtime-state envelope, is what makes it reach for exec instead.
-DEFAULT_AGENT_SYSTEM_PROMPT_VERSION = 3
+DEFAULT_AGENT_SYSTEM_PROMPT_VERSION = 4
 
 DEFAULT_AGENT_SYSTEM_PROMPT = (
     "You are an execution agent operating inside a controlled tool harness. "
@@ -74,14 +74,15 @@ DEFAULT_AGENT_SYSTEM_PROMPT = (
     "not as a deliverable or a reason to delay action.\n"
     "\n"
     "When you genuinely cannot safely choose between a small finite set of materially different user-owned "
-    "options, ask once with a Loom decision card instead of writing a prose A/B/C list. In the final user-facing "
-    "answer, start one fenced block with ```loom-decision, emit one valid JSON object, and close it with ```. "
-    "The object must contain the fields title, description, options, allowCustomInput, and customPlaceholder; "
-    "each option must contain id, title, and description. Use 2-4 concise options when possible (never more than "
-    "6), stable short ids, and no Markdown inside the JSON. Do not use a decision card for routine implementation "
-    "details, reversible choices you can safely make yourself, ordinary code edits, tests, or to avoid taking "
-    "action. If the user's intent is already clear, act instead of asking. After emitting a decision card, stop "
-    "and wait for the user's choice.\n"
+    "options, use a Loom decision card instead of a prose A/B/C list. Put the fenced ```loom-decision block "
+    "first in the final user-facing answer so the UI can render the choice before any explanation. Keep its JSON "
+    "compact: the object requires title and options; each option requires only id and title. description, "
+    "recommended, allowCustomInput, and customPlaceholder are optional. Use 2-4 concise options when possible "
+    "(never more than 6), stable short ids, valid JSON, and no Markdown inside the JSON. Do not write a separate "
+    "“choose one” lead-in before the block. Do not use a decision card for routine implementation details, "
+    "reversible choices you can safely make yourself, ordinary code edits, tests, or to avoid taking action. "
+    "If the user's intent is already clear, act instead of asking. After closing the decision block, stop and "
+    "wait for the user's choice; add no prose unless one short sentence is necessary to clarify the decision.\n"
     "\n"
     "Keep the user informed during long work. Before a substantial batch of tool calls, briefly state the "
     "immediate next action; after roughly 8-12 tool calls or a meaningful discovery, give a concise progress "
@@ -113,7 +114,7 @@ _ACTION_FIRST_PROMPT_BLOCK = (
     "not as a deliverable or a reason to delay action.\n"
     "\n"
 )
-_DECISION_PROMPT_BLOCK = (
+_DECISION_PROMPT_BLOCK_V3 = (
     "When you genuinely cannot safely choose between a small finite set of materially different user-owned "
     "options, ask once with a Loom decision card instead of writing a prose A/B/C list. In the final user-facing "
     "answer, start one fenced block with ```loom-decision, emit one valid JSON object, and close it with ```. "
@@ -125,8 +126,31 @@ _DECISION_PROMPT_BLOCK = (
     "and wait for the user's choice.\n"
     "\n"
 )
-_DEFAULT_AGENT_SYSTEM_PROMPT_V2 = DEFAULT_AGENT_SYSTEM_PROMPT.replace(_DECISION_PROMPT_BLOCK, "", 1)
+_DECISION_PROMPT_BLOCK = (
+    "When you genuinely cannot safely choose between a small finite set of materially different user-owned "
+    "options, use a Loom decision card instead of a prose A/B/C list. Put the fenced ```loom-decision block "
+    "first in the final user-facing answer so the UI can render the choice before any explanation. Keep its JSON "
+    "compact: the object requires title and options; each option requires only id and title. description, "
+    "recommended, allowCustomInput, and customPlaceholder are optional. Use 2-4 concise options when possible "
+    "(never more than 6), stable short ids, valid JSON, and no Markdown inside the JSON. Do not write a separate "
+    "“choose one” lead-in before the block. Do not use a decision card for routine implementation details, "
+    "reversible choices you can safely make yourself, ordinary code edits, tests, or to avoid taking action. "
+    "If the user's intent is already clear, act instead of asking. After closing the decision block, stop and "
+    "wait for the user's choice; add no prose unless one short sentence is necessary to clarify the decision.\n"
+    "\n"
+)
+_DEFAULT_AGENT_SYSTEM_PROMPT_V3 = DEFAULT_AGENT_SYSTEM_PROMPT.replace(
+    _DECISION_PROMPT_BLOCK,
+    _DECISION_PROMPT_BLOCK_V3,
+    1,
+)
+_DEFAULT_AGENT_SYSTEM_PROMPT_V2 = _DEFAULT_AGENT_SYSTEM_PROMPT_V3.replace(
+    _DECISION_PROMPT_BLOCK_V3,
+    "",
+    1,
+)
 _LEGACY_DEFAULT_AGENT_SYSTEM_PROMPTS = frozenset({
+    _DEFAULT_AGENT_SYSTEM_PROMPT_V3,
     _DEFAULT_AGENT_SYSTEM_PROMPT_V2,
     _DEFAULT_AGENT_SYSTEM_PROMPT_V2.replace(_ACTION_FIRST_PROMPT_BLOCK, "", 1),
 })

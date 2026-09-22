@@ -22,6 +22,7 @@ export interface DecisionPromptSpec {
 export interface ParsedDecisionMessage {
   text: string;
   decisions: DecisionPromptSpec[];
+  incomplete: boolean;
 }
 
 const DECISION_FENCE = "loom-decision";
@@ -66,19 +67,28 @@ function normalizeDecision(value: unknown): DecisionPromptSpec | null {
   };
 }
 
-export function parseDecisionMessage(content: string): ParsedDecisionMessage {
+const DECISION_CUE_RE = /(?:请选择(?:一个|方案|选项)?|请选(?:一个|方案|选项)?|choose\s+(?:one|an?\s+option|an?\s+plan)|select\s+(?:one|an?\s+option))\s*[：:]\s*$/i;
+
+export function parseDecisionMessage(content: string, streaming = false): ParsedDecisionMessage {
   const decisions: DecisionPromptSpec[] = [];
   const source = String(content ?? "");
-  const completeFence = /```loom-decision[ \t]*\r?\n([\s\S]*?)```/gi;
+  let incomplete = false;
+  // Accept both the documented newline form and compact providers that place
+  // the JSON object immediately after the fence language marker.
+  const completeFence = /```loom-decision\b[ \t]*(?:\r?\n)?([\s\S]*?)```/gi;
 
-  let text = source.replace(completeFence, (whole, body: string) => {
+  let text = source.replace(completeFence, (_whole, body: string) => {
     try {
-      const decision = normalizeDecision(JSON.parse(body));
-      if (!decision) return whole;
+      const decision = normalizeDecision(JSON.parse(body.trim()));
+      if (!decision) {
+        incomplete = true;
+        return "\n";
+      }
       decisions.push(decision);
       return "\n";
     } catch {
-      return whole;
+      incomplete = true;
+      return "\n";
     }
   });
 
@@ -87,10 +97,18 @@ export function parseDecisionMessage(content: string): ParsedDecisionMessage {
   const open = lowered.lastIndexOf(marker);
   if (open >= 0) {
     const close = text.indexOf("```", open + marker.length);
-    if (close < 0) text = text.slice(0, open);
+    if (close < 0) {
+      // Never flash half-written JSON while the model is streaming. If the
+      // item later becomes terminal with the fence still open, surface a
+      // recovery card instead of silently swallowing the missing options.
+      if (!streaming) incomplete = true;
+      text = text.slice(0, open);
+    }
   }
 
-  return { text: text.trim(), decisions };
+  text = text.trim();
+  if (!streaming && !decisions.length && DECISION_CUE_RE.test(text)) incomplete = true;
+  return { text, decisions, incomplete };
 }
 
 function decisionResponse(
@@ -112,6 +130,56 @@ function decisionResponse(
   }
   if (selected) return `For “${spec.title}”, I choose ${selected.id}: ${selected.title}.`;
   return `For “${spec.title}”, my preference is: ${cleanNote}`;
+}
+
+export function DecisionPromptRecoveryCard({
+  disabled = false,
+  onRetry,
+}: {
+  disabled?: boolean;
+  onRetry?(): Promise<void> | void;
+}) {
+  const { language } = useI18n();
+  const zh = language === "zh-CN";
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState("");
+
+  async function retry() {
+    if (!onRetry || disabled || sending || sent) return;
+    setSending(true);
+    setError("");
+    try {
+      await onRetry();
+      setSent(true);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <section className="decision-card decision-recovery" aria-label={zh ? "选项生成未完成" : "Decision options incomplete"}>
+      <div className="decision-recovery-copy">
+        <span className="decision-card-icon" aria-hidden="true"><MessageSquareText size={16} /></span>
+        <div>
+          <strong>{zh ? "选项生成未完成" : "Decision options were incomplete"}</strong>
+          <p>{zh ? "上一条回复在选项生成完成前结束了，可以只重新生成选项。" : "The reply ended before the options finished. Regenerate only the decision choices."}</p>
+        </div>
+      </div>
+      {error ? <span className="decision-error">{error}</span> : null}
+      <button
+        type="button"
+        className="decision-submit"
+        disabled={!onRetry || disabled || sending || sent}
+        onClick={() => void retry()}
+      >
+        {sent ? <Check size={13} /> : <Send size={13} />}
+        <span>{sent ? (zh ? "已请求重新生成" : "Requested") : sending ? (zh ? "正在发送…" : "Sending…") : (zh ? "重新生成选项" : "Regenerate options")}</span>
+      </button>
+    </section>
+  );
 }
 
 export function DecisionPromptCard({
