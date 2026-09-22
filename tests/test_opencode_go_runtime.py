@@ -117,7 +117,7 @@ def test_opencode_responses_sends_luna_reasoning_effort() -> None:
         _request(ReasoningRequest(ReasoningKind.OPENAI_EFFORT, "xhigh"))
     )
 
-    assert kwargs["reasoning"] == {"effort": "xhigh"}
+    assert kwargs["reasoning"] == {"effort": "xhigh", "summary": "auto"}
 
 
 def test_opencode_chat_sends_model_effort_to_compatible_wire() -> None:
