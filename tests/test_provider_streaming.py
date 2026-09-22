@@ -59,6 +59,8 @@ class FakeStreamBackend:
 
     def stream(self, _request):
         self.stream_calls += 1
+        yield StreamEvent(kind=StreamEventKind.REASONING_DELTA, reasoning_delta="Plan ")
+        yield StreamEvent(kind=StreamEventKind.REASONING_DELTA, reasoning_delta="first.")
         yield StreamEvent(kind=StreamEventKind.TEXT_DELTA, text_delta="Hel")
         yield StreamEvent(kind=StreamEventKind.TEXT_DELTA, text_delta="lo")
         yield StreamEvent(
@@ -102,6 +104,13 @@ class NormalizedStreamingPlatform:
             listener(
                 ProviderStreamEvent(
                     profile_id=profile_id,
+                    kind=ProviderStreamEventKind.REASONING_DELTA,
+                    reasoning_delta="Visible plan.",
+                )
+            )
+            listener(
+                ProviderStreamEvent(
+                    profile_id=profile_id,
                     kind=ProviderStreamEventKind.TEXT_DELTA,
                     text_delta="Hel",
                 )
@@ -124,6 +133,7 @@ class NormalizedStreamingPlatform:
             )
         return ModelResponse(
             text="Hello",
+            visible_reasoning="Visible plan.",
             finish_reason="stop",
             response_id="resp-runtime",
             usage=ModelUsage(input_tokens=5, output_tokens=2, total_tokens=7),
@@ -463,6 +473,7 @@ def test_streaming_platform_accumulates_text_tool_arguments_and_metadata():
     result = platform.execute_chat(AGENT_FAST_ROLE.role_id, _request())
 
     assert result.text == "Hello"
+    assert result.visible_reasoning == "Plan first."
     assert result.tool_calls[0].call_id == "call-1"
     assert result.tool_calls[0].name == "echo"
     assert result.tool_calls[0].arguments == {"value": "ok"}
@@ -473,6 +484,11 @@ def test_streaming_platform_accumulates_text_tool_arguments_and_metadata():
         "Hel",
         "lo",
     ]
+    assert [
+        event.reasoning_delta
+        for event in observed
+        if event.kind is ProviderStreamEventKind.REASONING_DELTA
+    ] == ["Plan ", "first."]
     assert observed[-1].kind is ProviderStreamEventKind.COMPLETED
     assert backend.stream_calls == 1
     assert backend.complete_calls == 0
@@ -800,12 +816,14 @@ def test_app_server_emits_multiple_real_text_deltas_without_duplicate_final_chun
     assert len(completed) == 1
     assert completed[0]["id"].startswith("assistant:step:")
     assert completed[0]["text"] == "Hello"
+    assert completed[0]["reasoning"] == "Visible plan."
 
     read = service.thread_read({"threadId": session_id})
     turn = next(item for item in read["turns"] if item["id"] == turn_id)
     assistant = next(item for item in turn["items"] if item["type"] == "assistant_message")
     assert assistant["id"] == completed[0]["id"]
     assert assistant["text"] == "Hello"
+    assert assistant["reasoning"] == "Visible plan."
 
     controller = StreamingLoomRpcController(service)
     initialized = controller.handle(
