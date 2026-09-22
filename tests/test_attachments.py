@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import zipfile
 
 import pytest
 
@@ -204,6 +205,55 @@ def test_the_manifest_names_every_attachment(tmp_path, workspace):
     assert "data.csv" in manifest
     assert "file tools" in manifest
 
+
+
+
+def test_docx_gets_a_readable_text_companion(tmp_path, workspace):
+    source = tmp_path / "report.docx"
+    document = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p><w:r><w:t>Quarterly result</w:t></w:r></w:p>
+    <w:p><w:r><w:t>Revenue grew 12 percent.</w:t></w:r></w:p>
+  </w:body>
+</w:document>"""
+    with zipfile.ZipFile(source, "w") as archive:
+        archive.writestr("word/document.xml", document)
+
+    staged = stage_attachments([{"path": str(source)}], workspace=workspace, turn_id="t")
+    entry = staged[0]
+
+    assert entry.extracted_relative_path.endswith(".docx.extracted.txt")
+    extracted = workspace / entry.extracted_relative_path
+    assert extracted.is_file()
+    assert "Quarterly result" in extracted.read_text(encoding="utf-8")
+    manifest = attachment_manifest(staged)
+    assert "extracted text:" in manifest
+    assert entry.extracted_relative_path in manifest
+
+
+def test_xlsx_gets_a_tabular_text_companion(tmp_path, workspace):
+    source = tmp_path / "book.xlsx"
+    shared = """<?xml version="1.0" encoding="UTF-8"?>
+<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="2" uniqueCount="2">
+  <si><t>Name</t></si><si><t>Alice</t></si>
+</sst>"""
+    sheet = """<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData>
+    <row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1"><v>42</v></c></row>
+    <row r="2"><c r="A2" t="s"><v>1</v></c><c r="B2"><v>7</v></c></row>
+  </sheetData>
+</worksheet>"""
+    with zipfile.ZipFile(source, "w") as archive:
+        archive.writestr("xl/sharedStrings.xml", shared)
+        archive.writestr("xl/worksheets/sheet1.xml", sheet)
+
+    staged = stage_attachments([{"path": str(source)}], workspace=workspace, turn_id="t")
+    extracted = (workspace / staged[0].extracted_relative_path).read_text(encoding="utf-8")
+
+    assert "Name\t42" in extracted
+    assert "Alice\t7" in extracted
 
 # ---- turn input normalisation --------------------------------------------
 
