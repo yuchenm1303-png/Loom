@@ -320,7 +320,8 @@ function itemStatus(item: TranscriptItem): string {
 }
 
 function statusLabel(status: string): string {
-  if (status === "started" || status === "running") return "Running";
+  if (status === "started" || status === "running" || status === "streaming" || status === "streaming_arguments") return "Running";
+  if (status === "waiting" || status === "waiting_approval" || status === "pending") return "Waiting";
   if (status === "completed") return "Completed";
   if (status === "changed") return "Changed";
   if (status === "failed") return "Failed";
@@ -331,7 +332,7 @@ function statusLabel(status: string): string {
 }
 
 function isActiveActivityStatus(status: string): boolean {
-  return status === "started" || status === "running" || status === "waiting" || status === "waiting_approval" || status === "pending";
+  return ["started", "running", "streaming", "streaming_arguments", "waiting", "waiting_approval", "pending"].includes(status);
 }
 
 function ActivityStatus({ status }: { status: string }) {
@@ -402,6 +403,7 @@ const ActivityRow = memo(function ActivityRow({ item }: { item: TranscriptItem }
   const status = itemStatus(item);
   const stats = useMemo(() => item.type === "file_edit" ? diffStats(item.diff) : null, [item.diff, item.type]);
   const expandable = hasActivityDetail(item);
+  const active = isActiveActivityStatus(status);
   const detail = useMemo(() => open ? activityDetail(item) : "", [item, open]);
 
   return (
@@ -419,12 +421,12 @@ const ActivityRow = memo(function ActivityRow({ item }: { item: TranscriptItem }
         <span className="task-flow-row-main">
           {item.type === "process" ? (
             <>
-              <span className="task-flow-verb">已运行</span>
+              <span className="task-flow-verb">{active ? "正在运行" : "已运行"}</span>
               <span className="task-flow-primary code">{processCommand(item)}</span>
             </>
           ) : item.type === "file_edit" ? (
             <>
-              <span className="task-flow-verb">已编辑</span>
+              <span className="task-flow-verb">{active ? "正在编辑" : "已编辑"}</span>
               <span className="task-flow-primary task-flow-path">{fileLabel(item)}</span>
               {stats && (stats.added > 0 || stats.removed > 0) ? (
                 <span className="task-flow-diffstat">
@@ -435,7 +437,7 @@ const ActivityRow = memo(function ActivityRow({ item }: { item: TranscriptItem }
             </>
           ) : (
             <>
-              <span className="task-flow-verb">已使用</span>
+              <span className="task-flow-verb">{active ? "正在使用" : "已使用"}</span>
               <span className="task-flow-primary">{item.toolName || "Tool"}</span>
             </>
           )}
@@ -499,7 +501,7 @@ function activitySummary(items: TranscriptItem[]): ActivitySummaryData {
   };
 }
 
-function activityGroupTitle(items: TranscriptItem[]): string {
+function activityGroupTitle(items: TranscriptItem[], running = false): string {
   let hasProcess = false;
   let hasEdit = false;
   let hasTool = false;
@@ -509,13 +511,13 @@ function activityGroupTitle(items: TranscriptItem[]): string {
     else if (item.type === "tool_call") hasTool = true;
   }
 
-  if (hasEdit && hasProcess && hasTool) return "编辑了文件、运行了命令并使用了工具";
-  if (hasEdit && hasProcess) return "编辑了文件并运行了命令";
-  if (hasProcess && hasTool) return "运行了命令并使用了工具";
-  if (hasEdit && hasTool) return "编辑了文件并使用了工具";
-  if (hasProcess) return "运行了命令";
-  if (hasEdit) return "编辑了文件";
-  return "使用了工具";
+  if (hasEdit && hasProcess && hasTool) return running ? "正在编辑文件、运行命令并使用工具" : "编辑了文件、运行了命令并使用了工具";
+  if (hasEdit && hasProcess) return running ? "正在编辑文件并运行命令" : "编辑了文件并运行了命令";
+  if (hasProcess && hasTool) return running ? "正在运行命令并使用工具" : "运行了命令并使用了工具";
+  if (hasEdit && hasTool) return running ? "正在编辑文件并使用工具" : "编辑了文件并使用了工具";
+  if (hasProcess) return running ? "正在运行命令" : "运行了命令";
+  if (hasEdit) return running ? "正在编辑文件" : "编辑了文件";
+  return running ? "正在使用工具" : "使用了工具";
 }
 
 function ActivityGroupIcon({ items }: { items: TranscriptItem[] }) {
@@ -531,14 +533,16 @@ function ActivityGroupIcon({ items }: { items: TranscriptItem[] }) {
 function ActivityFlow({ items, keepOpen = false }: { items: TranscriptItem[]; keepOpen?: boolean }) {
   const compactItems = useMemo(() => compactActivityItems(items), [items]);
   const running = useMemo(
-    () => compactItems.some((item) => isActiveActivityStatus(itemStatus(item))),
-    [compactItems],
+    () => keepOpen && compactItems.some((item) => isActiveActivityStatus(itemStatus(item))),
+    [compactItems, keepOpen],
   );
   const [open, setOpen] = useState(true);
+  const wasRunningRef = useRef(false);
 
   useEffect(() => {
-    if (keepOpen || running) setOpen(true);
-  }, [keepOpen, running]);
+    if (running && !wasRunningRef.current) setOpen(true);
+    wasRunningRef.current = running;
+  }, [running]);
 
   return (
     <section
@@ -552,7 +556,7 @@ function ActivityFlow({ items, keepOpen = false }: { items: TranscriptItem[]; ke
         aria-expanded={open}
       >
         <span className="task-flow-group-icon" aria-hidden="true"><ActivityGroupIcon items={compactItems} /></span>
-        <span className="task-flow-group-title">{activityGroupTitle(compactItems)}</span>
+        <span className="task-flow-group-title">{activityGroupTitle(compactItems, running)}</span>
         <ChevronRight size={13} className="task-flow-group-chevron" aria-hidden="true" />
       </button>
 
@@ -986,7 +990,7 @@ function TurnProcess({
       <div className="turn-process-grid">
         <div className="turn-process-inner">
           <div className="turn-process-content">
-            <Sequence items={items} active={active} onApproval={onApproval} keepActivityOpen promptDisabled={promptDisabled} workspace={workspace} />
+            <Sequence items={items} active={active} onApproval={onApproval} keepActivityOpen={active} promptDisabled={promptDisabled} workspace={workspace} />
           </div>
         </div>
       </div>

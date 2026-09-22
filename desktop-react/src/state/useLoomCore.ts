@@ -47,6 +47,8 @@ function mergeDelta(item: TranscriptItem, delta: Record<string, unknown>): Trans
   for (const [key, value] of Object.entries(delta)) {
     if (["text", "reasoning", "stdout", "stderr"].includes(key) && typeof value === "string") {
       next[key] = `${String(next[key] ?? "")}${value}`;
+    } else if (key === "arguments" && delta.kind === "tool_call_argument" && typeof value === "string") {
+      next.arguments = `${typeof next.arguments === "string" ? next.arguments : ""}${value}`;
     } else {
       next[key] = value;
     }
