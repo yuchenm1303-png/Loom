@@ -43,6 +43,8 @@ jobs:
         run: node --check scripts/setup-ufo.mjs && node --check scripts/ufo-preflight.mjs
       - name: Install React desktop dependencies
         run: npm install --no-audit --no-fund
+      - name: Streaming presentation contracts
+        run: npm run test:streaming
       - name: Typecheck React desktop
         run: npm run typecheck
       - name: Build React desktop
