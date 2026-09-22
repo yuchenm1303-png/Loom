@@ -631,6 +631,15 @@ export function useLoom() {
       }
       if (message.method === "turn/started") {
         const turn = params.turn as TurnRecord | undefined;
+        if (turn) {
+          setThreads((current) => {
+            const next = current.map((entry) => entry.id === threadId
+              ? { ...entry, status: "running", currentTurnId: turn.id }
+              : entry);
+            threadsRef.current = next;
+            return next;
+          });
+        }
         if (turn && threadId === activeId) {
           setActive((current) => current && current.thread.id === activeId
             ? {
@@ -739,6 +748,19 @@ export function useLoom() {
         setTurnActive(false);
         setTurnStartedAt(null);
         if (turn) {
+          setThreads((current) => {
+            const next = current.map((entry) => entry.id === threadId
+              ? {
+                  ...entry,
+                  status: turn.status as ThreadRecord["status"],
+                  currentTurnId: turn.id,
+                  updatedAt: turn.completedAt || entry.updatedAt,
+                  usage: turn.usage ?? entry.usage,
+                }
+              : entry);
+            threadsRef.current = next;
+            return next;
+          });
           const finalItemId = String(turn.finalItemId ?? "");
           const finalStepId = String(turn.finalStepId ?? "");
           if (turn.status === "completed" && (finalItemId || finalStepId)) {
@@ -765,11 +787,10 @@ export function useLoom() {
               }
             : current);
         }
-        void refreshThreads();
       }
     });
     return unsubscribe;
-  }, [clearActive, openThread, refreshThreads]);
+  }, [clearActive, openThread]);
 
   useEffect(() => {
     let disposed = false;
