@@ -874,15 +874,24 @@ class LoomAppServerService:
         session_id = self._required_text(params, "threadId")
         session = self._load(session_id)
         events = self.store.events(session_id)
-        return {
+        payload = {
             "thread": self._record(session, active=self._is_active(session_id)),
             "turns": _turn_records(session, events),
-            "messages": [_message_record(message) for message in session.messages],
             "pendingApproval": pending_approval_record(session, events),
-            "events": [_event_record(event) for event in events],
             "finalText": session.final_text,
             "error": session.error,
         }
+
+        # Keep the protocol's historical full snapshot as the default, but let
+        # renderer clients opt out of duplicated payloads. Turns are already
+        # reconstructed from events, so sending every raw event plus every
+        # canonical message across Python -> Electron -> React makes long-thread
+        # navigation pay for the same history several times.
+        if params.get("includeMessages", True) is not False:
+            payload["messages"] = [_message_record(message) for message in session.messages]
+        if params.get("includeEvents", True) is not False:
+            payload["events"] = [_event_record(event) for event in events]
+        return payload
 
     def agent_list(self, params: dict[str, Any]) -> dict[str, Any]:
         """Return live sub-agent state for one visible parent conversation."""
