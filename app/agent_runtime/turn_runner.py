@@ -382,6 +382,10 @@ class TurnRunner:
                     resume_from_partial = (
                         invalid_terminal.startswith("incomplete_finish:")
                         or invalid_terminal in RESUMABLE_TERMINAL_REASONS
+                        or (
+                            invalid_terminal == "unterminated_code_fence"
+                            and "```loom-decision" in str(response.text or "")
+                        )
                     )
                     recovery_partial = str(response.text or "") if resume_from_partial else ""
                     # The replayed assistant turn must carry the reasoning that

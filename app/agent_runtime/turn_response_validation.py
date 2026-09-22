@@ -7,8 +7,13 @@ from app.ai import MessageRole, ModelResponse
 
 
 COMPLETE_FINISH_REASONS = {"", "stop", "tool_calls", "function_call", "completed", "end_turn"}
+RESUMABLE_TERMINAL_REASONS = {
+    "unterminated_inline_code",
+    "unterminated_emphasis",
+    "unfinished_terminal_text",
+}
 _COMPLETE_THINK_BLOCK_RE = re.compile(r"<think>.*?</think>", re.IGNORECASE | re.DOTALL)
-_DANGLING_TERMINAL_RE = re.compile(r"(?:\[|\{|<tool_call>|```(?:json)?)\s*$", re.IGNORECASE)
+_DANGLING_TERMINAL_RE = re.compile(r"(?:\[|\{|<tool_call>)\s*$", re.IGNORECASE)
 _DANGLING_DISCOURSE_RE = re.compile(r"[:：]\s*$")
 _SERIALIZED_TOOL_PROTOCOL_RE = re.compile(
     r"(?:<tool_call\b|</tool_call>|<invoke\s+name\s*=|\]\s*<\]\s*minimax\s*\[>\s*\[<)",
@@ -98,6 +103,11 @@ def invalid_terminal_response(response: ModelResponse) -> str:
         return "dangling_serialized_structure"
     if visible.count("```") % 2:
         return "unterminated_code_fence"
+    without_fences = visible.replace("```", "")
+    if len(re.findall(r"(?<!\\)`", without_fences)) % 2:
+        return "unterminated_inline_code"
+    if len(re.findall(r"(?<!\\)\*\*", without_fences)) % 2:
+        return "unterminated_emphasis"
     if _DANGLING_DISCOURSE_RE.search(visible):
         return "unfinished_terminal_text"
     return ""
@@ -159,6 +169,7 @@ def history_message_count(messages) -> int:
 
 __all__ = [
     "COMPLETE_FINISH_REASONS",
+    "RESUMABLE_TERMINAL_REASONS",
     "TERMINAL_RECOVERY_INSTRUCTION",
     "TRUNCATED_RECOVERY_INSTRUCTION",
     "UNFINISHED_RECOVERY_INSTRUCTION",
