@@ -95,14 +95,6 @@ function profileSubtitle(profile: ModelProfile): string {
   return `${adapterLabel(profile.adapter)} · ${endpointLabel(profile.baseUrl)}`;
 }
 
-function builtinBadge(profile: ModelProfile): string | null {
-  if (profile.kind !== "builtin") return null;
-  if (profile.selection === "builtin:minimax") return "Primary";
-  if (profile.selection.startsWith("builtin:deepseek")) return "DeepSeek";
-  if (profile.selection.startsWith("builtin:opencode-go:")) return "Go";
-  return "Managed";
-}
-
 function activeReasoningOption(reasoning: ModelReasoningState): ModelReasoningOption | undefined {
   return reasoning.options.find((option) => option.value === reasoning.value);
 }
@@ -596,7 +588,6 @@ export function ModelPanel({
                 {familyProfiles.map((profile) => {
                   const exactActive = profile.selection === currentSelection && profile.model === currentModel;
                   const profileReasoning = profile.reasoning ? activeReasoningOption(profile.reasoning) : null;
-                  const badge = builtinBadge(profile);
                   const deletable = profile.kind === "saved";
                   const deleting = pendingDelete === profile.selection;
                   const confirming = confirmDelete === profile.selection;
