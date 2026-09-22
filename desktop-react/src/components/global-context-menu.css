@@ -2,7 +2,7 @@
 .loom-context-menu {
   position: fixed;
   z-index: 10050;
-  width: 226px;
+  width: 236px;
   padding: 6px;
   border: 1px solid rgba(255,255,255,.075);
   border-radius: 13px;
@@ -32,7 +32,7 @@
 
 .loom-context-preview > span {
   color: #9d93dc;
-  font-size: 8.1px;
+  font-size: 9px;
   font-weight: 700;
   letter-spacing: .04em;
 }
@@ -42,7 +42,7 @@
   margin: 0;
   overflow: hidden;
   color: #aeb3bd;
-  font-size: 9.2px;
+  font-size: 10.2px;
   line-height: 1.42;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -74,9 +74,9 @@
 
 .loom-context-action {
   width: 100%;
-  min-height: 32px;
+  min-height: 34px;
   display: grid;
-  grid-template-columns: 22px minmax(0,1fr) auto;
+  grid-template-columns: 24px minmax(0,1fr) auto;
   align-items: center;
   gap: 7px;
   padding: 5px 8px;
@@ -127,13 +127,15 @@
 }
 
 .loom-context-action.is-primary .loom-context-action-icon {
+  border-radius: 6px;
+  background: rgba(139,124,246,.055);
   color: #9e92ea;
 }
 
 .loom-context-action-label {
   min-width: 0;
   overflow: hidden;
-  font-size: 10.4px;
+  font-size: 12px;
   font-weight: 560;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -143,7 +145,7 @@
   min-width: 38px;
   color: #6f7681;
   font-family: inherit;
-  font-size: 8.3px;
+  font-size: 9.2px;
   font-weight: 520;
   text-align: right;
 }
@@ -201,6 +203,7 @@ html[data-loom-theme="light"] .loom-context-action-icon {
 }
 
 html[data-loom-theme="light"] .loom-context-action.is-primary .loom-context-action-icon {
+  background: rgba(105,90,216,.055);
   color: #6a5bcc;
 }
 
@@ -245,7 +248,7 @@ html[data-loom-theme="light"] .loom-context-action kbd {
 
 .composer-quote-label {
   color: #aaa1e4;
-  font-size: 8.1px;
+  font-size: 9px;
   line-height: 1.2;
   font-weight: 680;
 }
@@ -254,7 +257,7 @@ html[data-loom-theme="light"] .loom-context-action kbd {
   min-width: 0;
   overflow: hidden;
   color: #8c939e;
-  font-size: 8.8px;
+  font-size: 9.7px;
   line-height: 1.3;
   text-overflow: ellipsis;
   white-space: nowrap;
