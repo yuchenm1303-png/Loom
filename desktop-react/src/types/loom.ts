@@ -74,6 +74,8 @@ export interface TranscriptItem {
   type: "user_message" | "assistant_message" | "tool_call" | "process" | "file_edit" | "approval" | "error" | string;
   status?: string;
   text?: string;
+  /** Provider-exposed reasoning text/summary, separate from the assistant answer. */
+  reasoning?: string;
   /** Runtime origin for user messages, e.g. "user" or same-turn "steering". */
   source?: string;
   /** Stable client id for same-turn steering input. */
