@@ -56,6 +56,24 @@ function mergeDelta(item: TranscriptItem, delta: Record<string, unknown>): Trans
   return next;
 }
 
+function mergeQueuedDelta(
+  previous: Record<string, unknown> | undefined,
+  incoming: Record<string, unknown>,
+): Record<string, unknown> {
+  const next = { ...(previous ?? {}) };
+  for (const [key, value] of Object.entries(incoming)) {
+    if (["text", "reasoning", "stdout", "stderr"].includes(key) && typeof value === "string") {
+      next[key] = `${String(next[key] ?? "")}${value}`;
+    } else if (key === "arguments" && incoming.kind === "tool_call_argument" && typeof value === "string") {
+      next.kind = incoming.kind;
+      next.arguments = `${typeof next.arguments === "string" ? next.arguments : ""}${value}`;
+    } else {
+      next[key] = value;
+    }
+  }
+  return next;
+}
+
 function getBridge(): Window["loom"] | null {
   return Reflect.get(window, "loom") as Window["loom"] | null;
 }
@@ -129,12 +147,52 @@ export function useLoom() {
   const activeIdRef = useRef("");
   const threadViewRef = useRef<ThreadView>("active");
   const itemIndexRef = useRef<Map<string, number>>(new Map());
+  const pendingItemDeltasRef = useRef<Map<string, Record<string, unknown>>>(new Map());
+  const deltaFlushTimerRef = useRef<number | null>(null);
+
+  const flushPendingItemDeltas = useCallback(() => {
+    if (deltaFlushTimerRef.current !== null) {
+      window.clearTimeout(deltaFlushTimerRef.current);
+      deltaFlushTimerRef.current = null;
+    }
+    if (!pendingItemDeltasRef.current.size) return;
+
+    const pending = pendingItemDeltasRef.current;
+    pendingItemDeltasRef.current = new Map();
+    setItems((current) => {
+      let next: TranscriptItem[] | null = null;
+      for (const [itemId, delta] of pending) {
+        const index = indexedItemPosition(itemIndexRef.current, next ?? current, itemId);
+        if (index < 0) continue;
+        next ??= [...current];
+        next[index] = mergeDelta(next[index], delta);
+      }
+      return next ?? current;
+    });
+  }, []);
+
+  const scheduleItemDeltaFlush = useCallback(() => {
+    if (deltaFlushTimerRef.current !== null) return;
+    deltaFlushTimerRef.current = window.setTimeout(() => {
+      deltaFlushTimerRef.current = null;
+      flushPendingItemDeltas();
+    }, 28);
+  }, [flushPendingItemDeltas]);
+
+  useEffect(() => () => {
+    if (deltaFlushTimerRef.current !== null) window.clearTimeout(deltaFlushTimerRef.current);
+    deltaFlushTimerRef.current = null;
+    pendingItemDeltasRef.current.clear();
+  }, []);
 
   useEffect(() => {
     activeIdRef.current = active?.thread.id ?? "";
   }, [active?.thread.id]);
 
   const installItems = useCallback((next: TranscriptItem[]) => {
+    if (deltaFlushTimerRef.current !== null) window.clearTimeout(deltaFlushTimerRef.current);
+    deltaFlushTimerRef.current = null;
+    pendingItemDeltasRef.current.clear();
     itemIndexRef.current = buildItemIndex(next);
     setItems(next);
   }, []);
@@ -390,7 +448,7 @@ export function useLoom() {
     } else {
       clearActive();
     }
-  }, [clearActive, openThread, refreshThreads]);
+  }, [clearActive, flushPendingItemDeltas, openThread, refreshThreads, scheduleItemDeltaFlush]);
 
   const switchModelProfile = useCallback(async (selection: string) => {
     if (!active?.thread.id) return;
@@ -585,16 +643,18 @@ export function useLoom() {
       } else if (message.method === "item/delta") {
         const itemId = String(params.itemId ?? "");
         const delta = (params.delta ?? {}) as Record<string, unknown>;
-        setItems((current) => {
-          const index = indexedItemPosition(itemIndexRef.current, current, itemId);
-          if (index < 0) return current;
-          const next = [...current];
-          next[index] = mergeDelta(current[index], delta);
-          return next;
-        });
+        if (itemId) {
+          pendingItemDeltasRef.current.set(
+            itemId,
+            mergeQueuedDelta(pendingItemDeltasRef.current.get(itemId), delta),
+          );
+          scheduleItemDeltaFlush();
+        }
       } else if (message.method === "item/completed") {
         const completed = params.item as TranscriptItem | undefined;
         if (completed) {
+          const queuedDelta = pendingItemDeltasRef.current.get(completed.id);
+          pendingItemDeltasRef.current.delete(completed.id);
           setItems((current) => {
             const index = indexedItemPosition(itemIndexRef.current, current, completed.id);
             if (index < 0) {
@@ -602,7 +662,8 @@ export function useLoom() {
               return [...current, completed];
             }
             const next = [...current];
-            next[index] = { ...current[index], ...completed };
+            const withQueuedDelta = queuedDelta ? mergeDelta(current[index], queuedDelta) : current[index];
+            next[index] = { ...withQueuedDelta, ...completed };
             return next;
           });
           if (completed.type === "approval" && completed.callId) {
@@ -626,6 +687,7 @@ export function useLoom() {
         }
       } else if (message.method === "turn/completed") {
         const turn = params.turn as TurnRecord | undefined;
+        flushPendingItemDeltas();
         setTurnActive(false);
         setTurnStartedAt(null);
         if (turn) {

@@ -6,6 +6,8 @@ import { advanceStreamingText } from "./streamingText";
 type Snapshot = { visible: string };
 const PresentationContext = createContext<Map<string, Snapshot> | null>(null);
 
+const MIN_PAINT_INTERVAL_MS = 28;
+
 export function StreamingPresentation({ children }: { children: ReactNode }) {
   const [snapshots] = useState(() => new Map<string, Snapshot>());
   return <PresentationContext.Provider value={snapshots}>{children}</PresentationContext.Provider>;
@@ -26,7 +28,9 @@ export function useStreamingPresentation(content: string, streaming: boolean, me
   const [reduce, setReduce] = useState(reducedMotion);
   const visibleRef = useRef(initial);
   const targetRef = useRef(content);
+  const receivingRef = useRef(streaming);
   const frameRef = useRef<number | null>(null);
+  const lastPaintAtRef = useRef(0);
   const animate = useRef(streaming || initial !== content);
 
   useLayoutEffect(() => {
@@ -44,7 +48,9 @@ export function useStreamingPresentation(content: string, streaming: boolean, me
 
   useLayoutEffect(() => {
     targetRef.current = content;
+    receivingRef.current = streaming;
     animate.current ||= streaming;
+
     const commit = (next: string) => {
       visibleRef.current = next;
       setVisible(next);
@@ -52,21 +58,40 @@ export function useStreamingPresentation(content: string, streaming: boolean, me
     const cancel = () => {
       if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
       frameRef.current = null;
+      lastPaintAtRef.current = 0;
     };
+
     if (reduce || interrupted || !animate.current || !content.startsWith(visibleRef.current)) {
       cancel();
       commit(content);
       return;
     }
-    const tick = () => {
+
+    const tick = (now: number) => {
       frameRef.current = null;
-      commit(advanceStreamingText(visibleRef.current, targetRef.current));
+      const target = targetRef.current;
+      const current = visibleRef.current;
+      if (current === target) {
+        lastPaintAtRef.current = now;
+        return;
+      }
+
+      const elapsed = lastPaintAtRef.current ? now - lastPaintAtRef.current : 32;
+      if (lastPaintAtRef.current && elapsed < MIN_PAINT_INTERVAL_MS) {
+        frameRef.current = requestAnimationFrame(tick);
+        return;
+      }
+
+      lastPaintAtRef.current = now;
+      const next = advanceStreamingText(current, target, elapsed, !receivingRef.current);
+      commit(next);
+      if (next !== targetRef.current) frameRef.current = requestAnimationFrame(tick);
     };
-    if (frameRef.current === null && visibleRef.current !== content) frameRef.current = requestAnimationFrame(tick);
-    // A subsequent frame is scheduled only after React commits this paint.
-    // Slow Markdown parsing must not accumulate several unseen frame advances.
-    // Provider deltas update the target without cancelling an existing frame.
-  }, [content, visible, streaming, reduce, interrupted]);
+
+    if (frameRef.current === null && visibleRef.current !== content) {
+      frameRef.current = requestAnimationFrame(tick);
+    }
+  }, [content, streaming, reduce, interrupted]);
 
   useEffect(() => () => {
     if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
@@ -75,7 +100,7 @@ export function useStreamingPresentation(content: string, streaming: boolean, me
 
   return {
     visible: reduce || interrupted ? content : visible,
-    painting: !reduce && !interrupted && (streaming || visible !== content),
+    painting: !reduce && !interrupted && visible !== content,
     // Already visible content must not reanimate when moved out of the process area.
     fadeFrom: initial.length,
   };
