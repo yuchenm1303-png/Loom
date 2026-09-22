@@ -38,4 +38,5 @@ def test_conversation_hydration_does_not_flash_the_empty_state() -> None:
     assert "loom.threadLoading" in app
     assert "loading={loom.threadLoading}" in app
     assert "aria-busy={loading}" in transcript
-    assert "loading ? null : !items.length" in transcript
+    assert "loading && !items.length ? null : !items.length" in transcript
+    assert "THREAD_VIEW_CACHE_LIMIT = 8" in CORE.read_text(encoding="utf-8")
