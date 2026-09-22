@@ -6,6 +6,7 @@ from urllib.parse import parse_qs, urlsplit
 from app.agent_runtime import (
     AgentStatus,
     BraveWebSearchProvider,
+    DuckDuckGoWebSearchProvider,
     FileAgentSessionStore,
     PermissionMode,
     SandboxManager,
@@ -78,6 +79,32 @@ def _runtime(tmp_path, responses, provider, mode=PermissionMode.APPROVAL):
         permission_mode=mode,
     )
     return runtime, store, platform, session
+
+
+def test_duckduckgo_provider_is_keyless_and_parses_public_results():
+    requested = []
+
+    def transport(url: str, timeout: float) -> str:
+        requested.append((url, timeout))
+        return """
+        <html><body>
+          <a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Ffresh">
+            Fresh result
+          </a>
+          <a class="result__snippet">Current public-web information.</a>
+        </body></html>
+        """
+
+    provider = DuckDuckGoWebSearchProvider(transport=transport)
+    response = provider.search("latest agent frameworks", count=3)
+
+    assert provider.provider_name == "duckduckgo"
+    assert requested and requested[0][0].startswith("https://html.duckduckgo.com/html/?")
+    assert response.provider == "duckduckgo"
+    assert response.results[0].title == "Fresh result"
+    assert response.results[0].url == "https://example.com/fresh"
+    assert response.results[0].source == "example.com"
+    assert "Current public-web information" in response.results[0].snippet
 
 
 def test_brave_provider_uses_fixed_endpoint_and_subscription_header():
