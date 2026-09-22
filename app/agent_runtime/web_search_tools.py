@@ -69,9 +69,12 @@ def web_search_tools(provider: WebSearchProvider | None) -> tuple[AgentTool, ...
             AgentTool(
                 name="web_search",
                 description=(
-                    "Search the public web through Loom's configured search provider. This performs an external "
-                    "network request and returns ranked titles, URLs, and snippets. Treat snippets as source leads, "
-                    "not as verified facts; prefer multiple sources for consequential claims."
+                    "Search the public web through Loom's configured search provider. Use this for current, latest, "
+                    "today, recent, news, price, release-date, and current-documentation lookups, and whenever the user "
+                    "explicitly asks to search or check the web. This performs an external network request and returns "
+                    "ranked titles, URLs, and snippets. Treat snippets as source leads, not as verified facts; prefer "
+                    "multiple sources for consequential claims. Prefer this over browser automation when the task is "
+                    "information retrieval rather than page interaction."
                 ),
                 input_schema={
                     "type": "object",

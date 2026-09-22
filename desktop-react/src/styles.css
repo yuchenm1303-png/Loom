@@ -451,9 +451,25 @@ button, textarea, input { -webkit-tap-highlight-color: transparent; }
     0 0 8px rgba(91,202,255,.45);
 }
 
+.empty-loom-orbit-back {
+  z-index: 3;
+  clip-path: inset(0 0 49% 0);
+  opacity: .62;
+}
+
+.empty-loom-orbit-front {
+  z-index: 6;
+  clip-path: inset(49% 0 0 0);
+}
+
+.empty-loom-orbit-back::after,
+.empty-loom-orbit-front::after {
+  display: none;
+}
+
 .empty-spark {
   position: absolute;
-  z-index: 6;
+  z-index: 7;
   border-radius: 50%;
   background: #9c8ff1;
   box-shadow: 0 0 8px rgba(132,113,235,.42);
@@ -498,8 +514,8 @@ button, textarea, input { -webkit-tap-highlight-color: transparent; }
 }
 
 @keyframes empty-loom-core-float {
-  0%, 100% { transform: translateY(0) scale(1); }
-  50% { transform: translateY(-2px) scale(1.035); }
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.035); }
 }
 
 @keyframes empty-loom-aura {

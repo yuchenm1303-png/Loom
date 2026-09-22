@@ -91,3 +91,176 @@
     opacity: .92;
   }
 }
+
+/* 2026-09-22 thinking visibility refinement ------------------------------ */
+.thinking-symbol {
+  width: 18px;
+  height: 18px;
+  filter:
+    drop-shadow(0 0 5px rgba(116,104,232,.24))
+    drop-shadow(0 0 10px rgba(81,174,255,.10));
+}
+
+.thinking-symbol::before {
+  inset: 1px;
+  background:
+    radial-gradient(circle at 50% 0%, #ffffff 0 1.45px, transparent 1.8px),
+    conic-gradient(
+      from 14deg,
+      rgba(229,222,255,.98),
+      rgba(113,96,231,.30) 22%,
+      rgba(75,177,255,.34) 42%,
+      rgba(112,91,225,.20) 58%,
+      rgba(171,147,255,.70) 76%,
+      rgba(229,222,255,.98)
+    );
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 1.45px), #000 0);
+  mask: radial-gradient(farthest-side, transparent calc(100% - 1.45px), #000 0);
+  opacity: 1;
+}
+
+.thinking-symbol::after {
+  width: 5.5px;
+  height: 5.5px;
+  background:
+    radial-gradient(circle at 34% 28%, #f7f4ff 0 8%, #9edfff 24%, #7e6ee8 70%, #6755ce 100%);
+  box-shadow:
+    0 0 0 2.5px rgba(116,98,230,.09),
+    0 0 8px rgba(112,94,229,.42),
+    0 0 13px rgba(65,173,255,.12);
+}
+
+.live-reasoning-trigger {
+  min-height: 32px;
+  gap: 9px;
+}
+
+.thinking-shimmer {
+  color: #8a92a0;
+  font-weight: 610;
+}
+
+.thinking-shimmer::after {
+  background-image: linear-gradient(
+    102deg,
+    transparent 0%,
+    transparent 27%,
+    rgba(244,242,255,.96) 43%,
+    #b7a8ff 53%,
+    #7bc8ff 58%,
+    transparent 72%,
+    transparent 100%
+  );
+}
+
+.live-reasoning-chevron {
+  color: #727a87;
+}
+
+.live-reasoning.open .live-reasoning-chevron {
+  color: #a093e9;
+}
+
+.live-reasoning-copy {
+  margin-top: 7px;
+  border-left-color: rgba(148,132,237,.30);
+  color: #969daa;
+  background:
+    linear-gradient(90deg, rgba(125,105,230,.055), rgba(74,168,236,.018) 42%, transparent 74%);
+}
+
+.live-reasoning-copy::before {
+  width: 1.5px;
+  background: linear-gradient(
+    180deg,
+    transparent,
+    rgba(129,110,231,.82),
+    rgba(91,184,246,.72),
+    rgba(181,149,255,.62),
+    transparent
+  );
+  box-shadow: 0 0 8px rgba(112,95,228,.18);
+}
+
+/* Light theme needs materially stronger contrast; the previous values were
+   tuned like dark-theme ornamentation and nearly disappeared on white. */
+html[data-loom-theme="light"] .thinking-symbol {
+  filter:
+    drop-shadow(0 0 4px rgba(87,72,199,.24))
+    drop-shadow(0 0 9px rgba(47,154,224,.10));
+}
+
+html[data-loom-theme="light"] .thinking-symbol::before {
+  background:
+    radial-gradient(circle at 50% 0%, #ffffff 0 1.45px, transparent 1.8px),
+    conic-gradient(
+      from 14deg,
+      rgba(119,96,232,.98),
+      rgba(86,68,193,.34) 22%,
+      rgba(52,164,230,.58) 43%,
+      rgba(103,82,211,.30) 60%,
+      rgba(145,111,234,.86) 78%,
+      rgba(119,96,232,.98)
+    );
+}
+
+html[data-loom-theme="light"] .thinking-symbol::after {
+  background:
+    radial-gradient(circle at 34% 28%, #ffffff 0 8%, #8ddcff 25%, #7563df 69%, #5948bd 100%);
+  box-shadow:
+    0 0 0 2.5px rgba(92,75,201,.10),
+    0 0 8px rgba(83,66,196,.34),
+    0 0 12px rgba(46,155,224,.10);
+}
+
+html[data-loom-theme="light"] .thinking-shimmer {
+  color: #687282;
+  font-weight: 640;
+}
+
+html[data-loom-theme="light"] .thinking-shimmer::after {
+  background-image: linear-gradient(
+    102deg,
+    transparent 0%,
+    transparent 27%,
+    rgba(81,67,185,.74) 43%,
+    #6955d4 52%,
+    #359edb 58%,
+    transparent 72%,
+    transparent 100%
+  );
+}
+
+html[data-loom-theme="light"] .live-reasoning-chevron {
+  color: #7c8592;
+}
+
+html[data-loom-theme="light"] .live-reasoning.open .live-reasoning-chevron {
+  color: #6553c5;
+}
+
+html[data-loom-theme="light"] .live-reasoning-copy {
+  border-left-color: rgba(105,90,216,.28);
+  color: #505a68;
+  background:
+    linear-gradient(90deg, rgba(105,90,216,.055), rgba(64,158,224,.018) 45%, transparent 76%);
+}
+
+html[data-loom-theme="light"] .live-reasoning-copy::before {
+  background: linear-gradient(
+    180deg,
+    transparent,
+    rgba(96,78,204,.82),
+    rgba(50,157,225,.70),
+    rgba(137,102,224,.58),
+    transparent
+  );
+  box-shadow: 0 0 7px rgba(91,73,199,.15);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-loom-theme="light"] .thinking-shimmer {
+    color: #687282;
+  }
+}
+

@@ -231,7 +231,9 @@ def _event_item_identity(event: AgentEvent) -> tuple[str, str] | None:
     data = event.data
     if event.kind is AgentEventKind.USER_MESSAGE:
         return _user_item_id(event.event_id), "user_message"
-    if event.kind is AgentEventKind.MODEL_RESPONSE and str(data.get("text") or ""):
+    if event.kind is AgentEventKind.MODEL_RESPONSE and (
+        str(data.get("text") or "") or str(data.get("reasoning_summary") or "")
+    ):
         return _assistant_item_id_for_event(event), "assistant_message"
     if event.kind in {
         AgentEventKind.TOOL_REQUESTED,
@@ -1130,7 +1132,9 @@ class LoomAppServerService:
             self._notify("item/completed", {"item": item})
             return
 
-        if kind is AgentEventKind.MODEL_RESPONSE and str(data.get("text") or ""):
+        if kind is AgentEventKind.MODEL_RESPONSE and (
+            str(data.get("text") or "") or str(data.get("reasoning_summary") or "")
+        ):
             item = _base_item(
                 event,
                 item_id=_assistant_item_id_for_event(event),
@@ -1139,18 +1143,20 @@ class LoomAppServerService:
             )
             self._notify("item/started", {"item": copy.deepcopy(item)})
             text = str(data.get("text") or "")
-            # Phase 2.1 preserves the streaming protocol shape while the existing
-            # provider adapter is still non-streaming. Phase 2.2 will emit true
-            # provider deltas instead of this one full-text chunk.
-            self._notify(
-                "item/delta",
-                {
-                    "threadId": event.session_id,
-                    "turnId": event.turn_id,
-                    "itemId": item["id"],
-                    "delta": {"text": text},
-                },
-            )
+            # Preserve the legacy full-text delta shape when there is public
+            # assistant text. Reasoning-only/tool-only responses still need a
+            # completed assistant item so their visible thought process is not
+            # left looking live forever.
+            if text:
+                self._notify(
+                    "item/delta",
+                    {
+                        "threadId": event.session_id,
+                        "turnId": event.turn_id,
+                        "itemId": item["id"],
+                        "delta": {"text": text},
+                    },
+                )
             _apply_event_to_item(item, event)
             self._notify("item/completed", {"item": item})
             return

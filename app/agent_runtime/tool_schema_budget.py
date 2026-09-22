@@ -17,6 +17,7 @@ _CORE_TOOL_NAMES = frozenset(
         "read_workspace_text",
         "list_workspace_files",
         "get_turn_diff",
+        "web_search",
     }
 )
 

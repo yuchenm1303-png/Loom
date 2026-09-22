@@ -5,7 +5,8 @@ from pathlib import Path
 from typing import Any, Callable, TextIO
 
 from app.ai import AIMessage, MessageRole
-from app.agent_runtime import AgentEventKind, AgentStatus, PermissionMode
+from app.agent_runtime import AgentEventKind, AgentStatus, MemoryScope, PermissionMode
+from app.agent_runtime.memory_store import workspace_memory_key
 from app.agent_runtime.storage import utc_now
 from app.projects import ProjectStoreError
 
@@ -539,9 +540,14 @@ class ProjectMovableLoomAppServerService(ReasoningManagedLoomAppServerService):
         if result is None:
             raise JsonRpcError(-32044, "memory not found or not visible to this thread")
         record, evidence = result
+        store = self._project_memory_store()
         return {
             "memory": record.to_dict(),
             "evidence": [item.to_dict() for item in evidence],
+            "usage": [
+                item.to_dict()
+                for item in store.usage_events(record.memory_id, limit=20)
+            ],
         }
 
     def memory_forget(self, params: dict[str, Any]) -> dict[str, Any]:
@@ -549,6 +555,198 @@ class ProjectMovableLoomAppServerService(ReasoningManagedLoomAppServerService):
         self._load(thread_id)
         memory_id = self._required_text(params, "memoryId")
         forgotten = bool(self._memory_call("forget_memory")(thread_id, memory_id))
+        return {"memoryId": memory_id, "forgotten": forgotten}
+
+    def _project_memory_store(self) -> Any:
+        store = getattr(self.runtime, "memory_store", None)
+        if store is None:
+            raise JsonRpcError(-32040, "memory is not available on this runtime")
+        return store
+
+    def _project_memory_context(self, params: dict[str, Any]) -> tuple[str, Any, Path]:
+        project_id = self._required_text(params, "projectId")
+        project, resolved = self._project_root_or_error(project_id)
+        return project_id, project, resolved
+
+    @staticmethod
+    def _project_memory_matches(
+        record: Any,
+        workspace: Path,
+        *,
+        statuses: tuple[str, ...] = ("active",),
+    ) -> bool:
+        return bool(
+            record is not None
+            and getattr(record, "status", "") in statuses
+            and getattr(record, "scope", None) is MemoryScope.WORKSPACE
+            and getattr(record, "scope_key", "") == workspace_memory_key(workspace)
+        )
+
+    def _project_memory_mutation_guard(self, project_id: str) -> None:
+        active = [
+            session
+            for session in self._list_session_objects()
+            if self._resolved_project_id(session) == project_id
+            and session.status in {AgentStatus.RUNNING, AgentStatus.WAITING_APPROVAL}
+        ]
+        if active:
+            raise JsonRpcError(
+                -32045,
+                "finish active project turns before changing project memory",
+            )
+
+    def project_memory_status(self, params: dict[str, Any]) -> dict[str, Any]:
+        project_id, _project, resolved = self._project_memory_context(params)
+        store = self._project_memory_store()
+        counts = store.counts(workspace=resolved)
+        index = store.compact_index(
+            workspace=resolved,
+            include_global=False,
+            max_chars=3200,
+        )
+        candidates = store.skill_candidates(workspace=resolved, limit=32)
+        return {
+            "memory": {
+                "projectId": project_id,
+                "scope": MemoryScope.WORKSPACE.value,
+                "total": int(index.get("active") or 0),
+                "visible": int(index.get("active") or 0),
+                "archived": int(index.get("archived") or 0),
+                "categories": dict(index.get("categories") or {}),
+                "usage_events": counts.get("usage_events", 0),
+                "skill_candidates": len(candidates),
+                "enabled": bool(getattr(self.runtime, "memory_enabled", True)),
+                "auto_extract": bool(getattr(self.runtime, "memory_auto_extract", False)),
+                "semantic_auto": bool(getattr(self.runtime, "memory_semantic_auto", False)),
+            }
+        }
+
+    def project_memory_index(self, params: dict[str, Any]) -> dict[str, Any]:
+        project_id, _project, resolved = self._project_memory_context(params)
+        store = self._project_memory_store()
+        index = store.compact_index(
+            workspace=resolved,
+            include_global=False,
+            max_chars=max(1200, min(8000, int(params.get("maxChars") or 3600))),
+        )
+        return {"projectId": project_id, "index": index}
+
+    def project_memory_list(self, params: dict[str, Any]) -> dict[str, Any]:
+        _project_id, _project, resolved = self._project_memory_context(params)
+        store = self._project_memory_store()
+        limit = max(1, min(500, int(params.get("limit") or 100)))
+        status = str(params.get("status") or "active").strip().casefold()
+        if status not in {"active", "archived"}:
+            raise JsonRpcError(-32602, "project memory status must be active or archived")
+        records = store.list_records(
+            workspace=resolved,
+            include_global=False,
+            limit=limit,
+            status=status,
+        )
+        return {
+            "status": status,
+            "memories": [record.to_dict() for record in records],
+        }
+
+    def project_memory_search(self, params: dict[str, Any]) -> dict[str, Any]:
+        _project_id, _project, resolved = self._project_memory_context(params)
+        store = self._project_memory_store()
+        query = self._required_text(params, "query")
+        limit = max(1, min(32, int(params.get("limit") or 8)))
+        hits = store.search_hits(
+            query,
+            workspace=resolved,
+            limit=limit,
+            include_global=False,
+            require_query_match=True,
+        )
+        return {
+            "query": query,
+            "memories": [
+                {
+                    **hit.record.to_dict(),
+                    "score": round(hit.score, 4),
+                    "reasons": list(hit.reasons),
+                }
+                for hit in hits
+            ],
+        }
+
+    def project_memory_read(self, params: dict[str, Any]) -> dict[str, Any]:
+        _project_id, _project, resolved = self._project_memory_context(params)
+        store = self._project_memory_store()
+        memory_id = self._required_text(params, "memoryId")
+        evidence_limit = max(1, min(100, int(params.get("evidenceLimit") or 20)))
+        usage_limit = max(1, min(100, int(params.get("usageLimit") or 20)))
+        record = store.get(memory_id)
+        if not self._project_memory_matches(
+            record,
+            resolved,
+            statuses=("active", "archived"),
+        ):
+            raise JsonRpcError(-32044, "project memory not found")
+        return {
+            "memory": record.to_dict(),
+            "evidence": [
+                item.to_dict()
+                for item in store.evidence(record.memory_id, limit=evidence_limit)
+            ],
+            "usage": [
+                item.to_dict()
+                for item in store.usage_events(record.memory_id, limit=usage_limit)
+            ],
+        }
+
+    def project_memory_archive(self, params: dict[str, Any]) -> dict[str, Any]:
+        project_id, _project, resolved = self._project_memory_context(params)
+        self._project_memory_mutation_guard(project_id)
+        store = self._project_memory_store()
+        memory_id = self._required_text(params, "memoryId")
+        record = store.get(memory_id)
+        if not self._project_memory_matches(record, resolved):
+            return {"memoryId": memory_id, "archived": False}
+        archived = bool(store.archive(memory_id, note="manual project archive"))
+        return {"memoryId": memory_id, "archived": archived}
+
+    def project_memory_restore(self, params: dict[str, Any]) -> dict[str, Any]:
+        project_id, _project, resolved = self._project_memory_context(params)
+        self._project_memory_mutation_guard(project_id)
+        store = self._project_memory_store()
+        memory_id = self._required_text(params, "memoryId")
+        record = store.get(memory_id)
+        if not self._project_memory_matches(
+            record,
+            resolved,
+            statuses=("archived",),
+        ):
+            return {"memoryId": memory_id, "restored": False}
+        restored = bool(store.restore(memory_id))
+        return {"memoryId": memory_id, "restored": restored}
+
+    def project_memory_skill_candidates(self, params: dict[str, Any]) -> dict[str, Any]:
+        project_id, _project, resolved = self._project_memory_context(params)
+        store = self._project_memory_store()
+        limit = max(1, min(32, int(params.get("limit") or 8)))
+        records = store.skill_candidates(workspace=resolved, limit=limit)
+        return {
+            "projectId": project_id,
+            "candidates": [record.to_dict() for record in records],
+        }
+
+    def project_memory_forget(self, params: dict[str, Any]) -> dict[str, Any]:
+        project_id, _project, resolved = self._project_memory_context(params)
+        self._project_memory_mutation_guard(project_id)
+        store = self._project_memory_store()
+        memory_id = self._required_text(params, "memoryId")
+        record = store.get(memory_id)
+        if not self._project_memory_matches(
+            record,
+            resolved,
+            statuses=("active", "archived"),
+        ):
+            return {"memoryId": memory_id, "forgotten": False}
+        forgotten = bool(store.delete(memory_id))
         return {"memoryId": memory_id, "forgotten": forgotten}
 
     def _explicit_project_id(self, session: Any) -> str | None:
@@ -782,6 +980,10 @@ class ProjectMovableLoomRpcController(ReasoningManagedLoomRpcController):
             "instructions": True,
             "workspaceStatus": True,
             "gitDiff": True,
+            "memory": True,
+            "memoryArchive": True,
+            "memoryIndex": True,
+            "memorySkillCandidates": True,
         }
         capabilities["memory"] = {
             "status": True,
@@ -789,6 +991,7 @@ class ProjectMovableLoomRpcController(ReasoningManagedLoomRpcController):
             "search": True,
             "read": True,
             "forget": True,
+            "index": True,
             "settings": True,
         }
         result["capabilities"] = capabilities
@@ -803,6 +1006,24 @@ class ProjectMovableLoomRpcController(ReasoningManagedLoomRpcController):
             return self.service.project_workspace_status(params)
         if method == "project/git_diff":
             return self.service.project_git_diff(params)
+        if method == "project/memory_status":
+            return self.service.project_memory_status(params)
+        if method == "project/memory_index":
+            return self.service.project_memory_index(params)
+        if method == "project/memory_list":
+            return self.service.project_memory_list(params)
+        if method == "project/memory_search":
+            return self.service.project_memory_search(params)
+        if method == "project/memory_read":
+            return self.service.project_memory_read(params)
+        if method == "project/memory_archive":
+            return self.service.project_memory_archive(params)
+        if method == "project/memory_restore":
+            return self.service.project_memory_restore(params)
+        if method == "project/memory_skill_candidates":
+            return self.service.project_memory_skill_candidates(params)
+        if method == "project/memory_forget":
+            return self.service.project_memory_forget(params)
         if method == "memory/status":
             return self.service.memory_status(params)
         if method == "memory/list":

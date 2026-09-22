@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import html
 import json
 import os
 from dataclasses import dataclass
+from html.parser import HTMLParser
 from typing import Any, Callable, Mapping, Protocol
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode, urlsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 
@@ -14,6 +16,8 @@ _MAX_QUERY_WORDS = 50
 _MAX_RESULTS = 20
 _MAX_RESPONSE_BYTES = 2_000_000
 _DEFAULT_TIMEOUT_SECONDS = 20.0
+_DDG_HTML_ENDPOINT = "https://html.duckduckgo.com/html/"
+_DDG_LITE_ENDPOINT = "https://lite.duckduckgo.com/lite/"
 
 
 class WebSearchError(RuntimeError):
@@ -149,6 +153,189 @@ def _default_json_transport(
     if not isinstance(payload, dict):
         raise WebSearchError("web search provider JSON root must be an object")
     return payload
+
+
+
+def _default_text_transport(url: str, timeout_seconds: float) -> str:
+    parsed = urlsplit(url)
+    if parsed.scheme != "https" or not parsed.hostname:
+        raise WebSearchError("web search provider endpoint must be absolute HTTPS")
+    request = Request(
+        url=url,
+        headers={
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7",
+            "User-Agent": "Loom-Agent/0.1",
+        },
+        method="GET",
+    )
+    opener = build_opener(_NoRedirectHandler())
+    try:
+        with opener.open(request, timeout=float(timeout_seconds)) as response:
+            declared = response.headers.get("Content-Length")
+            if declared and int(declared) > _MAX_RESPONSE_BYTES:
+                raise WebSearchError("web search provider response is too large")
+            raw = response.read(_MAX_RESPONSE_BYTES + 1)
+            if len(raw) > _MAX_RESPONSE_BYTES:
+                raise WebSearchError("web search provider response is too large")
+    except HTTPError as exc:
+        if 300 <= int(exc.code) < 400:
+            raise WebSearchError("web search provider redirect was refused") from exc
+        raise WebSearchError(f"web search provider returned HTTP {exc.code}") from exc
+    except URLError as exc:
+        reason = type(getattr(exc, "reason", None)).__name__ or "network error"
+        raise WebSearchError(f"web search provider request failed: {reason}") from exc
+    except TimeoutError as exc:
+        raise WebSearchError("web search provider request timed out") from exc
+    return raw.decode("utf-8", errors="replace")
+
+
+def _decode_duckduckgo_href(value: str) -> str:
+    href = html.unescape(str(value or "").strip())
+    if not href:
+        return ""
+    parsed = urlsplit(href)
+    if parsed.netloc.endswith("duckduckgo.com") and parsed.path.startswith("/l/"):
+        for key, item in parse_qsl(parsed.query, keep_blank_values=True):
+            if key == "uddg" and item:
+                return item
+    if href.startswith("//"):
+        return "https:" + href
+    return href
+
+
+class _DuckDuckGoHTMLParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.results: list[dict[str, str]] = []
+        self._current: dict[str, str] | None = None
+        self._capture = ""
+        self._pieces: list[str] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        attrs_map = {key: value or "" for key, value in attrs}
+        classes = set(str(attrs_map.get("class") or "").split())
+        if tag == "a" and "result__a" in classes:
+            if self._current and self._current.get("title") and self._current.get("url"):
+                self.results.append(self._current)
+            self._current = {
+                "title": "",
+                "url": _decode_duckduckgo_href(attrs_map.get("href", "")),
+                "snippet": "",
+            }
+            self._capture = "title"
+            self._pieces = []
+            return
+        if self._current is not None and tag in {"a", "div", "span"} and (
+            "result__snippet" in classes or "result-snippet" in classes
+        ):
+            self._capture = "snippet"
+            self._pieces = []
+
+    def handle_data(self, data: str) -> None:
+        if self._capture:
+            self._pieces.append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        if not self._capture:
+            return
+        value = " ".join("".join(self._pieces).split())
+        if self._current is not None and value:
+            existing = self._current.get(self._capture, "")
+            self._current[self._capture] = " ".join(part for part in (existing, value) if part)
+        if tag == "a" and self._capture == "title":
+            self._capture = ""
+            self._pieces = []
+        elif self._capture == "snippet" and tag in {"a", "div", "span"}:
+            if self._current and self._current.get("title") and self._current.get("url"):
+                self.results.append(self._current)
+                self._current = None
+            self._capture = ""
+            self._pieces = []
+
+    def close(self) -> None:
+        super().close()
+        if self._current and self._current.get("title") and self._current.get("url"):
+            self.results.append(self._current)
+            self._current = None
+
+
+def _parse_duckduckgo_results(markup: str, *, limit: int) -> list[dict[str, str]]:
+    parser = _DuckDuckGoHTMLParser()
+    parser.feed(markup)
+    parser.close()
+    rows: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for row in parser.results:
+        target = str(row.get("url") or "").strip()
+        title = " ".join(str(row.get("title") or "").split())
+        snippet = " ".join(str(row.get("snippet") or "").split())
+        parsed = urlsplit(target)
+        if not title or parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            continue
+        key = target.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        rows.append({"title": title, "url": target, "snippet": snippet})
+        if len(rows) >= limit:
+            break
+    return rows
+
+
+TextTransport = Callable[[str, float], str]
+
+
+class DuckDuckGoWebSearchProvider:
+    """Keyless public-web fallback used by Loom desktop/source builds."""
+
+    def __init__(
+        self,
+        *,
+        timeout_seconds: float = _DEFAULT_TIMEOUT_SECONDS,
+        transport: TextTransport | None = None,
+    ) -> None:
+        self.timeout_seconds = max(1.0, min(120.0, float(timeout_seconds)))
+        self._transport = transport or _default_text_transport
+
+    @property
+    def provider_name(self) -> str:
+        return "duckduckgo"
+
+    def search(self, query: str, *, count: int = 8) -> WebSearchResponse:
+        text = _validate_query(query)
+        limit = _validate_count(count)
+        params = urlencode({"q": text})
+        rows: list[dict[str, str]] = []
+        last_error: Exception | None = None
+        for endpoint in (_DDG_HTML_ENDPOINT, _DDG_LITE_ENDPOINT):
+            try:
+                markup = self._transport(endpoint + "?" + params, self.timeout_seconds)
+                rows = _parse_duckduckgo_results(markup, limit=limit)
+                if rows:
+                    break
+            except Exception as exc:
+                last_error = exc
+        if not rows and last_error is not None:
+            if isinstance(last_error, WebSearchError):
+                raise last_error
+            raise WebSearchError(str(last_error)) from last_error
+
+        results = tuple(
+            WebSearchResult(
+                title=row["title"],
+                url=row["url"],
+                snippet=row.get("snippet", ""),
+                source=urlsplit(row["url"]).hostname or urlsplit(row["url"]).netloc,
+            )
+            for row in rows
+        )
+        return WebSearchResponse(
+            provider=self.provider_name,
+            query=text,
+            results=results,
+            request_id="",
+        )
 
 
 class BraveWebSearchProvider:
@@ -319,6 +506,8 @@ def web_search_provider_from_env(
 
     if provider in {"off", "none", "disabled"}:
         return None
+    if provider in {"duckduckgo", "ddg", "public", "default", "builtin"}:
+        return DuckDuckGoWebSearchProvider(timeout_seconds=timeout)
     if not provider:
         if brave_key:
             provider = "brave"
@@ -329,7 +518,7 @@ def web_search_provider_from_env(
                 "LOOM_WEB_SEARCH_API_KEY requires LOOM_WEB_SEARCH_PROVIDER=brave or tavily"
             )
         else:
-            return None
+            return DuckDuckGoWebSearchProvider(timeout_seconds=timeout)
 
     if provider == "brave":
         key = generic_key or brave_key
@@ -346,7 +535,9 @@ def web_search_provider_from_env(
 
 __all__ = [
     "BraveWebSearchProvider",
+    "DuckDuckGoWebSearchProvider",
     "JSONTransport",
+    "TextTransport",
     "TavilyWebSearchProvider",
     "WebSearchError",
     "WebSearchProvider",

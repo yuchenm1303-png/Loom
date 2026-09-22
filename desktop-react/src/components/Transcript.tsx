@@ -857,6 +857,14 @@ function Sequence({
     [items, subAgentItems.length],
   );
   const blocks = useMemo(() => groupTranscript(visibleItems), [visibleItems]);
+  const liveAssistantId = useMemo(() => {
+    if (!active) return "";
+    for (let index = visibleItems.length - 1; index >= 0; index -= 1) {
+      const item = visibleItems[index];
+      if (item.type === "assistant_message") return item.id;
+    }
+    return "";
+  }, [active, visibleItems]);
 
   return (
     <>
@@ -876,7 +884,14 @@ function Sequence({
             className={`transcript-entry entry-${block.item.type} ${isSteeringUserMessage(block.item) ? "entry-steering-user" : ""}`.trim()}
             key={block.item.id}
           >
-            <ItemView item={block.item} streaming={active} onApproval={onApproval} onPrompt={onPrompt} promptDisabled={promptDisabled} workspace={workspace} />
+            <ItemView
+              item={block.item}
+              streaming={Boolean(active && block.item.type === "assistant_message" && block.item.id === liveAssistantId)}
+              onApproval={onApproval}
+              onPrompt={onPrompt}
+              promptDisabled={promptDisabled}
+              workspace={workspace}
+            />
           </div>
         )
       ))}
@@ -1106,8 +1121,10 @@ const TurnView = memo(function TurnView({
   }, [active]);
 
   const latestAssistantState = derived.latestAssistant ? splitReasoning(derived.latestAssistant.text ?? "") : null;
+  const latestProviderReasoning = String(derived.latestAssistant?.reasoning ?? "").trim();
   const showPendingThinking = Boolean(
     active
+    && !latestProviderReasoning
     && latestAssistantState?.state !== "streaming"
     && !latestAssistantState?.answer.trim(),
   );

@@ -289,3 +289,134 @@ def test_memory_rpc_and_live_settings_manage_existing_memory_when_disabled(tmp_p
     assert forgotten["result"]["forgotten"] is True
     assert runtime.memory_store.get(record.memory_id) is None
     runtime.close()
+
+
+def test_project_memory_rpc_exposes_only_workspace_scoped_memory(tmp_path):
+    platform = ScriptedPlatform([])
+    runtime, store = _runtime(
+        tmp_path,
+        platform,
+        memory_auto_extract=False,
+        memory_semantic_auto=False,
+    )
+    workspace = tmp_path / "project"
+    workspace.mkdir()
+    session = runtime.create_session(AGENT_FAST_ROLE.role_id, workspace_dir=workspace)
+
+    runtime.memory_store.add_extraction(
+        source_session_id=session.session_id,
+        source_turn_id="seed",
+        workspace=workspace,
+        summary="project memory seed",
+        candidates=(
+            MemoryCandidate(
+                text="This project deploys from GitHub main.",
+                scope=MemoryScope.WORKSPACE,
+                category=MemoryCategory.DECISION,
+                importance=5,
+                evidence="User chose GitHub main as the deployment source.",
+            ),
+            MemoryCandidate(
+                text="The user prefers concise answers everywhere.",
+                scope=MemoryScope.GLOBAL,
+                category=MemoryCategory.PREFERENCE,
+                importance=3,
+                evidence="User stated a global response preference.",
+            ),
+        ),
+    )
+    records = runtime.memory_store.consolidate_pending()
+    workspace_record = next(record for record in records if record.scope is MemoryScope.WORKSPACE)
+    global_record = next(record for record in records if record.scope is MemoryScope.GLOBAL)
+
+    service = ProjectMovableLoomAppServerService(
+        runtime=runtime,
+        store=store,
+        model="test-model",
+        default_workspace=workspace,
+    )
+    project = service.project_create({"root": str(workspace)})["project"]
+    controller = ProjectMovableLoomRpcController(service)
+    initialized = _initialize(controller)
+    assert initialized["capabilities"]["projects"]["memory"] is True
+
+    status = controller.handle(
+        {
+            "jsonrpc": "2.0",
+            "id": 20,
+            "method": "project/memory_status",
+            "params": {"projectId": project["id"]},
+        }
+    )
+    assert status["result"]["memory"]["total"] == 1
+    assert status["result"]["memory"]["categories"] == {"decision": 1}
+
+    listed = controller.handle(
+        {
+            "jsonrpc": "2.0",
+            "id": 21,
+            "method": "project/memory_list",
+            "params": {"projectId": project["id"], "limit": 50},
+        }
+    )
+    ids = [item["memory_id"] for item in listed["result"]["memories"]]
+    assert ids == [workspace_record.memory_id]
+    assert global_record.memory_id not in ids
+
+    searched = controller.handle(
+        {
+            "jsonrpc": "2.0",
+            "id": 22,
+            "method": "project/memory_search",
+            "params": {"projectId": project["id"], "query": "GitHub"},
+        }
+    )
+    assert [item["memory_id"] for item in searched["result"]["memories"]] == [
+        workspace_record.memory_id
+    ]
+
+    global_search = controller.handle(
+        {
+            "jsonrpc": "2.0",
+            "id": 23,
+            "method": "project/memory_search",
+            "params": {"projectId": project["id"], "query": "concise"},
+        }
+    )
+    assert global_search["result"]["memories"] == []
+
+    read = controller.handle(
+        {
+            "jsonrpc": "2.0",
+            "id": 24,
+            "method": "project/memory_read",
+            "params": {"projectId": project["id"], "memoryId": workspace_record.memory_id},
+        }
+    )
+    assert read["result"]["memory"]["text"] == "This project deploys from GitHub main."
+    assert read["result"]["evidence"][0]["excerpt"] == (
+        "User chose GitHub main as the deployment source."
+    )
+
+    hidden_global = controller.handle(
+        {
+            "jsonrpc": "2.0",
+            "id": 25,
+            "method": "project/memory_read",
+            "params": {"projectId": project["id"], "memoryId": global_record.memory_id},
+        }
+    )
+    assert hidden_global["error"]["code"] == -32044
+
+    forgotten = controller.handle(
+        {
+            "jsonrpc": "2.0",
+            "id": 26,
+            "method": "project/memory_forget",
+            "params": {"projectId": project["id"], "memoryId": workspace_record.memory_id},
+        }
+    )
+    assert forgotten["result"]["forgotten"] is True
+    assert runtime.memory_store.get(workspace_record.memory_id) is None
+    assert runtime.memory_store.get(global_record.memory_id) is not None
+    runtime.close()

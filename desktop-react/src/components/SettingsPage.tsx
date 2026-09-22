@@ -923,8 +923,12 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
           {CAPABILITIES.map((item) => {
             const Icon = item.icon;
             const enabled = capabilityEnabled(item.key);
-            const badge = capabilityLabel(statusFor(item.key), enabled);
-            return <div className="capability-row" key={item.key}><div className="capability-icon"><Icon size={17} /></div><div className="capability-copy"><div className="capability-title-line"><strong>{item.title}</strong><StatusPill tone={badge.tone}>{badge.text}</StatusPill></div><span>{item.description}</span></div>{item.detailPage ? <button type="button" className="settings-row-link" onClick={() => setPage(item.detailPage!)}><ChevronRight size={15} /></button> : <span className="settings-row-link-spacer" />}<SettingSwitch checked={enabled} disabled={running || busyCapability !== null} label={`Toggle ${item.title}`} onChange={(value) => void setCapability(item.key, value)} /></div>;
+            const status = statusFor(item.key);
+            const provider = item.key === "webSearch" && enabled ? text(status?.provider, "") : "";
+            const baseBadge = capabilityLabel(status, enabled);
+            const badge = provider ? { ...baseBadge, text: `${baseBadge.text} · ${titleCase(provider)}` } : baseBadge;
+            const description = provider ? `${item.description} Active provider: ${titleCase(provider)}.` : item.description;
+            return <div className="capability-row" key={item.key}><div className="capability-icon"><Icon size={17} /></div><div className="capability-copy"><div className="capability-title-line"><strong>{item.title}</strong><StatusPill tone={badge.tone}>{badge.text}</StatusPill></div><span>{description}</span></div>{item.detailPage ? <button type="button" className="settings-row-link" onClick={() => setPage(item.detailPage!)}><ChevronRight size={15} /></button> : <span className="settings-row-link-spacer" />}<SettingSwitch checked={enabled} disabled={running || busyCapability !== null} label={`Toggle ${item.title}`} onChange={(value) => void setCapability(item.key, value)} /></div>;
           })}
         </div>
       </Section>

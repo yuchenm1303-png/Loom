@@ -181,6 +181,12 @@ def _parse_duckduckgo_results(markup: str, *, limit: int) -> list[dict[str, str]
 def _patch_web_search(module: ModuleType) -> None:
     if getattr(module, "_loom_public_default_search", False):
         return
+    # Newer runtimes own the keyless DuckDuckGo provider directly in
+    # app.agent_runtime.web_search. Keep this compatibility hook only for older
+    # module shapes so import order can no longer decide whether search exists.
+    if hasattr(module, "DuckDuckGoWebSearchProvider"):
+        module._loom_public_default_search = True
+        return
 
     class DuckDuckGoWebSearchProvider:
         endpoint = _DDG_HTML_ENDPOINT
