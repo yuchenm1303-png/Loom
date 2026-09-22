@@ -1,0 +1,470 @@
+/* Unified live-conversation motion ------------------------------------------
+   Runtime truth remains immediate. This file owns only the presentation
+   language: soft capsule birth, quiet settling, and a single obvious live cue.
+   Historical turns are intentionally still. */
+
+.conversation-stage,
+.transcript {
+  --loom-motion-pop: cubic-bezier(.16, 1, .3, 1);
+  --loom-motion-settle: cubic-bezier(.22, .78, .2, 1);
+  --loom-pill-border: rgba(255,255,255,.065);
+  --loom-pill-border-live: rgba(154,143,239,.19);
+  --loom-pill-bg: rgba(18,20,25,.48);
+  --loom-pill-bg-live: rgba(31,29,43,.64);
+  --loom-pill-shadow: 0 7px 20px rgba(0,0,0,.09), inset 0 1px 0 rgba(255,255,255,.025);
+}
+
+/* Do not replay old history just because a thread remounted. Live turns own
+   entrance motion; completed turns only animate the final handoff. */
+.turn-block.is-complete > .transcript-entry,
+.turn-block.is-complete .turn-process-content > .transcript-entry {
+  animation: none;
+}
+
+.turn-block.is-active > .entry-user_message,
+.turn-process.is-live .entry-user_message,
+.turn-process.is-live .entry-assistant_message,
+.turn-process.is-live .entry-approval,
+.turn-process.is-live .entry-error,
+.turn-process.is-live .entry-sub-agent-workspace {
+  animation: loom-live-message-in 280ms var(--loom-motion-pop) both;
+  transform-origin: 50% 100%;
+}
+
+.turn-block.is-active > .entry-user_message .user-message,
+.turn-process.is-live .entry-steering-user .user-message {
+  animation: loom-user-pill-land 300ms var(--loom-motion-pop) both;
+  transform-origin: right bottom;
+}
+
+.turn-final-answer {
+  animation: none !important;
+}
+
+.turn-block.is-settling .turn-final-answer {
+  animation: loom-final-answer-land 340ms var(--loom-motion-pop) both !important;
+}
+
+.turn-process.is-settled.is-open .turn-process-header {
+  animation: none;
+}
+
+.turn-block.is-settling .turn-process.is-settled.is-open .turn-process-header {
+  animation: loom-process-handoff-in 230ms var(--loom-motion-pop) both;
+}
+
+/* Rich surfaces arrive as one unit instead of every child running its own
+   shimmer. This covers code, links, media, attachments, tables and images. */
+.turn-block.is-active .user-link-card,
+.turn-block.is-active .user-rich-code-block,
+.turn-block.is-active .user-message-image-preview,
+.turn-block.is-active .user-message-attachment-card,
+.turn-block.is-active .user-message-media-preview,
+.turn-process.is-live .entry-steering-user .user-link-card,
+.turn-process.is-live .entry-steering-user .user-rich-code-block,
+.turn-process.is-live .entry-steering-user .user-message-image-preview,
+.turn-process.is-live .entry-steering-user .user-message-attachment-card,
+.turn-process.is-live .entry-steering-user .user-message-media-preview,
+.markdown-body.is-receiving .markdown-code-block,
+.markdown-body.is-receiving .assistant-local-image-preview,
+.markdown-body.is-receiving > table,
+.markdown-body.is-receiving > blockquote {
+  animation: loom-content-surface-in 260ms var(--loom-motion-pop) both;
+}
+
+/* Task group = anchor capsule. The rows underneath feel like child capsules
+   growing out of the anchor rather than log lines appearing in a terminal. */
+.task-flow-group-header {
+  min-height: 32px;
+  padding: 4px 10px 4px 4px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  gap: 7px;
+  transition:
+    color 180ms ease,
+    border-color 220ms ease,
+    background 220ms ease,
+    box-shadow 220ms ease,
+    transform 180ms var(--loom-motion-pop);
+}
+
+.task-flow-group-header:hover {
+  transform: translateY(-1px);
+  background: rgba(255,255,255,.018);
+}
+
+.task-flow-group.is-running .task-flow-group-header {
+  border-color: var(--loom-pill-border-live);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.024), rgba(255,255,255,.008)),
+    rgba(24,23,32,.58);
+  box-shadow: var(--loom-pill-shadow);
+}
+
+.task-flow-group-icon {
+  position: relative;
+  width: 23px;
+  height: 23px;
+  border-radius: 999px;
+}
+
+.task-flow-group.is-running .task-flow-group-icon::after {
+  content: "";
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 5px;
+  height: 5px;
+  border: 2px solid #17171d;
+  border-radius: 999px;
+  background: #aca3f6;
+  box-shadow: 0 0 8px rgba(139,124,246,.34);
+  animation: loom-live-beacon 1.9s ease-in-out infinite;
+}
+
+.task-flow-group .task-flow-list {
+  gap: 3px;
+  margin-top: 5px;
+  padding-left: 7px;
+}
+
+.task-flow-row {
+  min-height: 30px;
+  padding: 2px 7px 2px 3px;
+  border: 1px solid rgba(255,255,255,.035);
+  border-radius: 999px;
+  background: rgba(15,17,22,.28);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.012);
+  transition:
+    color 170ms ease,
+    border-color 210ms ease,
+    background 210ms ease,
+    box-shadow 210ms ease,
+    transform 180ms var(--loom-motion-pop);
+}
+
+.task-flow-row.is-expandable:hover {
+  transform: translateX(2px);
+  border-color: rgba(255,255,255,.065);
+  background: rgba(255,255,255,.026);
+}
+
+.task-flow-row-icon {
+  border-radius: 999px;
+}
+
+.task-flow-row.is-active {
+  border-color: var(--loom-pill-border-live);
+  background:
+    linear-gradient(90deg, rgba(139,124,246,.075), rgba(139,124,246,.025) 48%, rgba(139,124,246,.008)),
+    rgba(18,19,27,.62);
+  box-shadow:
+    0 5px 16px rgba(0,0,0,.07),
+    inset 0 1px 0 rgba(255,255,255,.022);
+}
+
+.task-flow-row.is-resting {
+  color: #868e99;
+}
+
+.task-flow-row.is-resting .task-flow-row-icon {
+  opacity: .86;
+}
+
+/* Kind is carried on the wrapper so the distinction survives text truncation
+   without turning the whole row into a different color. */
+.task-flow-row-wrap[data-kind="process"] .task-flow-row-icon {
+  color: #9ba8c5;
+  border-color: rgba(125,142,184,.16);
+  background: rgba(88,103,139,.07);
+}
+
+.task-flow-row-wrap[data-kind="file_edit"] .task-flow-row-icon {
+  color: #91b19e;
+  border-color: rgba(108,156,129,.16);
+  background: rgba(82,127,101,.07);
+}
+
+.task-flow-row-wrap[data-kind="tool_call"] .task-flow-row-icon {
+  color: #a79fe7;
+  border-color: rgba(139,124,246,.17);
+  background: rgba(139,124,246,.065);
+}
+
+.turn-process.is-live .task-flow-row-wrap {
+  contain: layout paint style;
+  animation: loom-task-pill-pop 300ms var(--loom-motion-pop) both !important;
+  transform-origin: 26px 50%;
+}
+
+.turn-process.is-live .task-flow-row-wrap:last-child {
+  will-change: transform, opacity;
+}
+
+/* One live beacon is enough. Stop every task row from independently pulsing. */
+.task-flow-status.running .task-flow-status-dot,
+.task-flow-status.started .task-flow-status-dot,
+.task-flow-status.streaming .task-flow-status-dot,
+.task-flow-status.streaming_arguments .task-flow-status-dot {
+  animation: none !important;
+  opacity: .9;
+  box-shadow: 0 0 0 3px rgba(139,124,246,.06);
+}
+
+.task-flow-inline-detail-grid {
+  margin-left: 38px;
+  transition:
+    grid-template-rows 230ms var(--loom-motion-settle),
+    opacity 180ms ease;
+}
+
+.task-flow-inline-detail pre {
+  border-radius: 12px;
+}
+
+.task-flow-group-grid {
+  transition:
+    grid-template-rows 250ms var(--loom-motion-settle),
+    opacity 180ms ease;
+}
+
+/* Completed process capsule folds with the same geometry as live task pills. */
+.turn-process.is-settled .turn-process-header {
+  border-radius: 999px;
+  min-height: 36px;
+  padding: 5px 12px 5px 10px;
+  box-shadow:
+    0 6px 18px rgba(0,0,0,.065),
+    inset 0 1px 0 rgba(255,255,255,.02);
+}
+
+.turn-process-grid {
+  transition:
+    grid-template-rows 320ms var(--loom-motion-settle),
+    opacity 220ms ease;
+}
+
+/* Thinking is a small live capsule, not a second banner. */
+.turn-block .inline-thinking,
+.turn-block .live-reasoning-trigger {
+  min-height: 31px;
+  padding: 3px 10px 3px 4px;
+  border: 1px solid rgba(139,124,246,.12);
+  border-radius: 999px;
+  background:
+    linear-gradient(180deg, rgba(139,124,246,.045), rgba(139,124,246,.018)),
+    rgba(17,18,24,.44);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.018);
+}
+
+.turn-block .thinking-symbol {
+  width: 23px;
+  height: 23px;
+  border: 1px solid rgba(139,124,246,.10);
+  border-radius: 999px;
+  background: rgba(139,124,246,.055);
+  animation: none;
+}
+
+/* Once real task activity exists, RunProgress + the task anchor already explain
+   what Loom is doing. Suppress the generic pending-thinking capsule so the live
+   hierarchy stays singular instead of stacking three status animations. */
+.turn-block:has(.task-flow-group.is-running) > .inline-thinking {
+  display: none;
+}
+
+/* The top run state becomes a quiet floating capsule. The task timeline keeps
+   the expressive motion; this remains the stable global status anchor. */
+.conversation-stage > .run-progress-frame.top {
+  min-height: 50px;
+  padding-top: 8px;
+  padding-bottom: 6px;
+  border-bottom: 0;
+  background: linear-gradient(180deg, rgba(11,12,15,.72), rgba(11,12,15,0));
+  backdrop-filter: none;
+}
+
+.conversation-stage > .run-progress-frame.top .run-progress-inline {
+  width: min(var(--content-width, 920px), 100%);
+  min-height: 34px;
+  margin-inline: auto;
+  padding: 3px 10px;
+  border: 1px solid rgba(255,255,255,.055);
+  border-radius: 999px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.027), rgba(255,255,255,.009)),
+    rgba(15,17,22,.66);
+  box-shadow:
+    0 7px 22px rgba(0,0,0,.08),
+    inset 0 1px 0 rgba(255,255,255,.024);
+  animation: loom-run-pill-in 280ms var(--loom-motion-pop) both;
+}
+
+.conversation-stage > .run-progress-frame.top .run-progress-track {
+  display: none;
+}
+
+.conversation-stage > .run-progress-frame.top .run-progress-live-dot {
+  width: 6px;
+  height: 6px;
+  animation: none;
+  opacity: .9;
+  box-shadow: 0 0 0 3px rgba(139,124,246,.06), 0 0 9px rgba(139,124,246,.16);
+}
+
+.conversation-stage > .run-progress-frame.top .run-progress-phase {
+  animation: loom-phase-swap 220ms var(--loom-motion-pop) both;
+}
+
+/* Light theme keeps exactly the same motion hierarchy. */
+html[data-loom-theme="light"] .conversation-stage,
+html[data-loom-theme="light"] .transcript {
+  --loom-pill-border: rgba(31,35,42,.075);
+  --loom-pill-border-live: rgba(105,90,216,.15);
+  --loom-pill-bg: rgba(255,255,255,.60);
+  --loom-pill-bg-live: rgba(245,243,255,.82);
+  --loom-pill-shadow: 0 7px 18px rgba(38,34,60,.055), inset 0 1px 0 rgba(255,255,255,.72);
+}
+
+html[data-loom-theme="light"] .task-flow-group.is-running .task-flow-group-header {
+  border-color: rgba(105,90,216,.14);
+  background: linear-gradient(180deg, rgba(255,255,255,.94), rgba(247,245,255,.86));
+  box-shadow: 0 6px 18px rgba(48,42,76,.055), inset 0 1px rgba(255,255,255,.92);
+}
+
+html[data-loom-theme="light"] .task-flow-group.is-running .task-flow-group-icon::after {
+  border-color: #f7f6fb;
+  background: #7465dc;
+}
+
+html[data-loom-theme="light"] .task-flow-row {
+  border-color: rgba(31,35,42,.055);
+  background: rgba(255,255,255,.50);
+  box-shadow: inset 0 1px rgba(255,255,255,.82);
+}
+
+html[data-loom-theme="light"] .task-flow-row.is-active {
+  border-color: rgba(105,90,216,.14);
+  background:
+    linear-gradient(90deg, rgba(105,90,216,.065), rgba(105,90,216,.022) 54%, transparent),
+    rgba(255,255,255,.78);
+  box-shadow: 0 5px 14px rgba(43,38,66,.045), inset 0 1px rgba(255,255,255,.9);
+}
+
+html[data-loom-theme="light"] .turn-block .inline-thinking,
+html[data-loom-theme="light"] .turn-block .live-reasoning-trigger {
+  border-color: rgba(105,90,216,.12);
+  background: linear-gradient(180deg, rgba(255,255,255,.9), rgba(246,244,255,.74));
+  box-shadow: 0 5px 14px rgba(43,38,66,.04), inset 0 1px rgba(255,255,255,.9);
+}
+
+html[data-loom-theme="light"] .turn-block .thinking-symbol {
+  border-color: rgba(105,90,216,.11);
+  background: rgba(105,90,216,.055);
+}
+
+html[data-loom-theme="light"] .conversation-stage > .run-progress-frame.top {
+  border-bottom: 0;
+  background: linear-gradient(180deg, rgba(250,251,252,.92), rgba(250,251,252,0));
+  box-shadow: none;
+}
+
+html[data-loom-theme="light"] .conversation-stage > .run-progress-frame.top .run-progress-inline {
+  border-color: rgba(31,35,42,.075);
+  background: rgba(255,255,255,.86);
+  box-shadow: 0 7px 18px rgba(38,34,60,.055), inset 0 1px rgba(255,255,255,.92);
+}
+
+@keyframes loom-live-message-in {
+  0% { opacity: 0; transform: translate3d(0, 7px, 0) scale(.992); }
+  72% { opacity: 1; transform: translate3d(0, -1px, 0) scale(1.001); }
+  100% { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+}
+
+@keyframes loom-user-pill-land {
+  0% { opacity: .2; transform: translate3d(5px, 6px, 0) scale(.97); }
+  72% { opacity: 1; transform: translate3d(-1px, -1px, 0) scale(1.002); }
+  100% { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+}
+
+@keyframes loom-final-answer-land {
+  0% { opacity: .62; transform: translate3d(0, 6px, 0) scale(.995); }
+  68% { opacity: 1; transform: translate3d(0, -1px, 0) scale(1); }
+  100% { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+}
+
+@keyframes loom-process-handoff-in {
+  from { opacity: .28; transform: translate3d(0, -2px, 0) scale(.985); }
+  to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+}
+
+@keyframes loom-content-surface-in {
+  from { opacity: .38; transform: translate3d(0, 4px, 0) scale(.985); }
+  to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+}
+
+@keyframes loom-task-pill-pop {
+  0% { opacity: 0; transform: translate3d(-4px, 6px, 0) scale(.955); }
+  64% { opacity: 1; transform: translate3d(1px, -1px, 0) scale(1.006); }
+  100% { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+}
+
+@keyframes loom-run-pill-in {
+  from { opacity: 0; transform: translate3d(0, -4px, 0) scale(.985); }
+  to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+}
+
+@keyframes loom-phase-swap {
+  from { opacity: .28; transform: translate3d(0, 2px, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+@keyframes loom-live-beacon {
+  0%, 100% { opacity: .58; transform: scale(.9); }
+  50% { opacity: 1; transform: scale(1.08); }
+}
+
+@media (max-width: 900px) {
+  .conversation-stage > .run-progress-frame.top .run-progress-inline {
+    border-radius: 18px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .turn-block.is-active > .transcript-entry,
+  .turn-process.is-live .transcript-entry,
+  .turn-block.is-active .user-message,
+  .turn-process.is-live .entry-steering-user .user-message,
+  .turn-final-answer,
+  .turn-block.is-settling .turn-process.is-settled.is-open .turn-process-header,
+  .turn-block.is-active .user-link-card,
+  .turn-block.is-active .user-rich-code-block,
+  .turn-block.is-active .user-message-image-preview,
+  .turn-block.is-active .user-message-attachment-card,
+  .turn-block.is-active .user-message-media-preview,
+  .markdown-body.is-receiving .markdown-code-block,
+  .markdown-body.is-receiving .assistant-local-image-preview,
+  .markdown-body.is-receiving > table,
+  .markdown-body.is-receiving > blockquote,
+  .turn-process.is-live .task-flow-row-wrap,
+  .task-flow-group.is-running .task-flow-group-icon::after,
+  .conversation-stage > .run-progress-frame.top .run-progress-inline,
+  .conversation-stage > .run-progress-frame.top .run-progress-live-dot,
+  .conversation-stage > .run-progress-frame.top .run-progress-phase {
+    animation: none !important;
+  }
+}
+
+:root[data-loom-reduced-motion="true"] .turn-block.is-active > .transcript-entry,
+:root[data-loom-reduced-motion="true"] .turn-process.is-live .transcript-entry,
+:root[data-loom-reduced-motion="true"] .turn-block.is-active .user-message,
+:root[data-loom-reduced-motion="true"] .turn-process.is-live .entry-steering-user .user-message,
+:root[data-loom-reduced-motion="true"] .turn-final-answer,
+:root[data-loom-reduced-motion="true"] .turn-process.is-live .task-flow-row-wrap,
+:root[data-loom-reduced-motion="true"] .task-flow-group.is-running .task-flow-group-icon::after,
+:root[data-loom-reduced-motion="true"] .conversation-stage > .run-progress-frame.top .run-progress-inline,
+:root[data-loom-reduced-motion="true"] .conversation-stage > .run-progress-frame.top .run-progress-live-dot,
+:root[data-loom-reduced-motion="true"] .conversation-stage > .run-progress-frame.top .run-progress-phase {
+  animation: none !important;
+}
