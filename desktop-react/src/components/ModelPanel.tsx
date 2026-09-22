@@ -533,15 +533,19 @@ export function ModelPanel({
     );
 
     return (
-      <div className="model-manager-view">
-        <button type="button" className="model-back" onClick={() => { setView("profiles"); setError(""); }}>
-          <ArrowLeft size={14} /> Back
-        </button>
-        <div className="model-form-heading">
-          <span className="model-form-icon"><Server size={17} /></span>
+      <div className="model-manager-view model-provider-view">
+        <div className="model-layer-header model-provider-header">
+          <button
+            type="button"
+            className="model-back model-layer-back"
+            onClick={() => { setView("profiles"); setError(""); }}
+            aria-label="Back to providers"
+          >
+            <ArrowLeft size={14} />
+          </button>
           <div>
             <strong>{activeGroup.name}</strong>
-            <span>{selectableProfiles.length} models · choose the exact model for this conversation.</span>
+            <span>{selectableProfiles.length} models · choose one for this conversation</span>
           </div>
         </div>
 
@@ -603,19 +607,19 @@ export function ModelPanel({
                     >
                       <button
                         type="button"
-                        className="model-profile-main"
+                        className="model-profile-main model-choice-main"
                         disabled={locked || exactActive || deleting || needsProviderKey}
                         onClick={() => void run(() => onSwitchProfile(profile.selection))}
                       >
-                        <span className={`model-profile-icon ${profile.kind}`}><Server size={15} /></span>
-                        <span className="model-profile-copy">
+                        <span className="model-profile-copy model-choice-copy">
                           <span className="model-profile-title-row">
                             <strong title={profile.name}>{profile.name}</strong>
-                            {badge ? <em>{badge}</em> : null}
                             {profileReasoning ? <em className="model-reasoning-badge">{profileReasoning.label}</em> : null}
                           </span>
-                          <span title={profile.model}>{profile.model}</span>
-                          <small title={profileSubtitle(profile)}>{profileSubtitle(profile)}</small>
+                          <span className="model-choice-meta" title={profile.model}>
+                            <span>{profile.model}</span>
+                            {profile.protocol ? <small>{profile.protocol}</small> : null}
+                          </span>
                         </span>
                         <span className="model-profile-action">
                           {exactActive ? <Check size={14} /> : busy ? <RefreshCw size={13} className="model-spin" /> : <ChevronRight size={14} />}
@@ -726,21 +730,23 @@ export function ModelPanel({
                     }}
                   >
                     <span className="model-profile-icon builtin"><Server size={15} /></span>
-                    <span className="model-profile-copy">
+                    <span className="model-profile-copy model-provider-copy">
                       <span className="model-profile-title-row">
                         <strong title={group.name}>{group.name}</strong>
                         {active ? <em>Current</em> : null}
                       </span>
-                      <span>{selectableCount} {selectableCount === 1 ? "model" : "models"}</span>
-                      <small>
-                        {statusProfile
-                          ? `${endpointLabel(statusProfile.baseUrl)} · ${authRejected ? "authentication required" : "catalog unavailable"}`
-                          : credentialTarget
-                            ? (connected ? `${credentialTarget.label} · connected` : `${credentialTarget.label} · key required`)
-                            : group.profiles[0]?.kind === "saved"
-                              ? profileSubtitle(group.profiles[0])
-                              : "Built-in provider"}
-                      </small>
+                      <span className="model-provider-meta">
+                        <span>{selectableCount} {selectableCount === 1 ? "model" : "models"}</span>
+                        <small>
+                          {statusProfile
+                            ? (authRejected ? "Authentication required" : "Catalog unavailable")
+                            : credentialTarget
+                              ? (connected ? "Connected" : "Key required")
+                              : group.profiles[0]?.kind === "saved"
+                                ? endpointLabel(group.profiles[0].baseUrl)
+                                : "Built-in"}
+                        </small>
+                      </span>
                     </span>
                     <span className="model-profile-action"><ChevronRight size={14} /></span>
                   </button>
