@@ -8,6 +8,8 @@ import {
   Reply,
   Scissors,
   Search,
+  Redo2,
+  Undo2,
 } from "lucide-react";
 import {
   useEffect,
@@ -182,6 +184,10 @@ function shortcut(command: string): string {
   return mac ? `⌘${command}` : `Ctrl+${command}`;
 }
 
+function redoShortcut(): string {
+  return /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘⇧Z" : "Ctrl+Y";
+}
+
 function trimPreview(value: string): string {
   const compact = value.replace(/\s+/g, " ").trim();
   return compact.length > 118 ? `${compact.slice(0, 118).trimEnd()}…` : compact;
@@ -297,6 +303,31 @@ export function GlobalContextMenu() {
     const copyText = selected || state.codeText || state.messageText;
     const remoteImageSource = imageSource(state.image);
 
+    if (state.editable) {
+      items.push({
+        id: "undo",
+        label: zh ? "撤销" : "Undo",
+        shortcut: shortcut("Z"),
+        icon: <Undo2 size={15} strokeWidth={1.75} />,
+        group: 0,
+        run: () => {
+          state.editable?.focus();
+          document.execCommand("undo");
+        },
+      });
+      items.push({
+        id: "redo",
+        label: zh ? "重做" : "Redo",
+        shortcut: redoShortcut(),
+        icon: <Redo2 size={15} strokeWidth={1.75} />,
+        group: 0,
+        run: () => {
+          state.editable?.focus();
+          document.execCommand("redo");
+        },
+      });
+    }
+
     if (canQuote) {
       items.push({
         id: "quote",
@@ -313,6 +344,7 @@ export function GlobalContextMenu() {
             source: sourceForQuote(state.messageKind),
             messageId: state.messageShell?.dataset.messageId,
           });
+          window.getSelection()?.removeAllRanges();
           requestAnimationFrame(() => activeComposer?.focus());
         },
       });
