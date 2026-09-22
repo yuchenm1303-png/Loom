@@ -1173,7 +1173,7 @@ export function Transcript({ items, loading = false, running, currentTurnId, wor
         <span className="ambient-grid" />
       </div>
       <main className="transcript" aria-live="polite">
-        {loading ? null : !items.length ? (
+        {loading && !items.length ? null : !items.length ? (
           <EmptyState disabled={promptDisabled} onPrompt={onPrompt} />
         ) : turnBlocks.map((block, index) => (
           block.kind === "turn" ? (
