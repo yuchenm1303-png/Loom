@@ -1090,3 +1090,256 @@ html[data-loom-theme="light"] .model-library-view .model-library-add:hover:not(:
   }
 }
 
+
+
+/* 2026-09-22 compact provider list v3 ----------------------------------- */
+/* The provider chooser is a selector, not a settings dashboard. Keep normal
+   states quiet, show only the provider name + model count, and reserve
+   emphasis for the current provider. */
+.model-manager-popover .model-library-view {
+  gap: 8px;
+  padding: 13px 14px 11px;
+}
+
+.model-library-view .model-layer-header {
+  grid-template-columns: 26px minmax(0, 1fr);
+  gap: 7px;
+  min-height: 28px;
+  padding: 0;
+}
+
+.model-library-view .model-layer-back {
+  width: 23px;
+  height: 23px;
+  border-radius: 8px;
+}
+
+.model-library-view .model-layer-header > div {
+  gap: 1px;
+}
+
+.model-library-view .model-layer-header strong {
+  font-size: 12.8px;
+  font-weight: 680;
+}
+
+.model-library-view .model-layer-header span {
+  font-size: 8.1px;
+}
+
+.model-library-view .model-library-search {
+  height: 31px;
+  border-radius: 9px;
+}
+
+.model-library-view .model-library-search input {
+  height: 31px;
+  font-size: 9.6px;
+}
+
+.model-library-view .model-library-section {
+  gap: 5px;
+}
+
+.model-library-view .model-library-label {
+  padding-inline: 4px;
+  font-size: 7.1px;
+  letter-spacing: .12em;
+}
+
+.model-library-view .model-profile-list.model-group-list {
+  gap: 0;
+  max-height: 286px;
+  overflow: hidden auto;
+  border-top: 1px solid rgba(255,255,255,.035);
+  border-bottom: 1px solid rgba(255,255,255,.035);
+  scrollbar-gutter: stable;
+}
+
+.model-library-view .model-group-row {
+  min-height: 44px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.model-library-view .model-group-row + .model-group-row {
+  border-top: 1px solid rgba(255,255,255,.032);
+}
+
+.model-library-view .model-group-row:hover {
+  transform: none;
+  border-color: transparent;
+  background: rgba(255,255,255,.018);
+  box-shadow: none;
+}
+
+.model-library-view .model-group-row.active {
+  border-color: transparent;
+  background:
+    linear-gradient(90deg, rgba(139,124,246,.062), rgba(139,124,246,.018) 72%, transparent);
+  box-shadow: inset 2px 0 0 rgba(151,136,246,.54);
+}
+
+.model-library-view .model-group-row.active::after {
+  display: none;
+}
+
+.model-library-view .model-group-row .model-profile-main {
+  min-height: 44px;
+  grid-template-columns: 21px minmax(0,1fr) 16px;
+  gap: 9px;
+  padding: 5px 6px 5px 8px;
+  border-radius: 0;
+}
+
+.model-library-view .model-group-row .model-profile-icon {
+  width: 21px;
+  height: 21px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #8178ba;
+  box-shadow: none;
+}
+
+.model-library-view .model-group-row:hover .model-profile-icon,
+.model-library-view .model-group-row.active .model-profile-icon {
+  transform: none;
+  border: 0;
+  background: rgba(139,124,246,.055);
+  color: #a095e4;
+}
+
+.model-library-view .model-provider-copy {
+  gap: 2px;
+  overflow: hidden;
+}
+
+.model-library-view .model-provider-copy .model-profile-title-row {
+  min-height: 15px;
+  gap: 5px;
+}
+
+.model-library-view .model-provider-copy .model-profile-title-row strong {
+  padding: 0;
+  font-size: 10.6px;
+  line-height: 1.22;
+  font-weight: 650;
+  letter-spacing: -.008em;
+}
+
+.model-library-view .model-provider-copy .model-profile-title-row em {
+  padding: 1px 5px;
+  border: 0;
+  background: rgba(139,124,246,.055);
+  font-size: 6.9px;
+  font-weight: 680;
+}
+
+.model-library-view .model-provider-meta {
+  display: block !important;
+  color: #717a87 !important;
+  font-size: 8.1px !important;
+  line-height: 1.2 !important;
+}
+
+.model-library-view .model-group-row .model-profile-action {
+  width: 16px;
+  height: 16px;
+  border-radius: 5px;
+  color: #5f6874;
+}
+
+.model-library-view .model-group-row:hover .model-profile-action,
+.model-library-view .model-group-row.active .model-profile-action {
+  color: #9187cc;
+  background: transparent;
+}
+
+.model-library-view .model-library-add {
+  min-height: 34px;
+  grid-template-columns: 20px minmax(0,1fr) 14px;
+  padding: 4px 6px;
+  border-radius: 9px;
+  border-color: rgba(255,255,255,.04);
+  background: transparent;
+}
+
+.model-library-view .model-library-add > svg:first-child {
+  width: 20px;
+  height: 20px;
+  padding: 3px;
+  border-radius: 6px;
+  background: rgba(139,124,246,.04);
+}
+
+.model-library-view .model-library-add strong {
+  font-size: 9px;
+  font-weight: 620;
+}
+
+.model-library-view .model-library-add small {
+  display: none;
+}
+
+.model-library-view .model-library-custom {
+  min-height: 21px;
+  margin-top: -3px;
+  padding-block: 2px;
+  font-size: 7.9px;
+}
+
+html[data-loom-theme="light"] .model-library-view .model-profile-list.model-group-list {
+  border-color: rgba(31,35,42,.055);
+}
+
+html[data-loom-theme="light"] .model-library-view .model-group-row + .model-group-row {
+  border-top-color: rgba(31,35,42,.05);
+}
+
+html[data-loom-theme="light"] .model-library-view .model-group-row:hover {
+  border-color: transparent;
+  background: rgba(31,35,42,.022);
+}
+
+html[data-loom-theme="light"] .model-library-view .model-group-row.active {
+  border-color: transparent;
+  background:
+    linear-gradient(90deg, rgba(105,90,216,.06), rgba(105,90,216,.014) 72%, transparent);
+  box-shadow: inset 2px 0 0 rgba(105,90,216,.48);
+}
+
+html[data-loom-theme="light"] .model-library-view .model-group-row .model-profile-icon {
+  border: 0;
+  background: transparent;
+  color: #6c60b6;
+  box-shadow: none;
+}
+
+html[data-loom-theme="light"] .model-library-view .model-group-row:hover .model-profile-icon,
+html[data-loom-theme="light"] .model-library-view .model-group-row.active .model-profile-icon {
+  background: rgba(105,90,216,.055);
+  color: #5d50b7;
+}
+
+html[data-loom-theme="light"] .model-library-view .model-provider-meta {
+  color: #858d97 !important;
+}
+
+html[data-loom-theme="light"] .model-library-view .model-library-add {
+  border-color: rgba(31,35,42,.055);
+  background: transparent;
+}
+
+html[data-loom-theme="light"] .model-library-view .model-library-add:hover:not(:disabled) {
+  border-color: rgba(105,90,216,.12);
+  background: rgba(105,90,216,.028);
+  box-shadow: none;
+}
+
+@media (max-width: 500px) {
+  .model-library-view .model-profile-list.model-group-list {
+    max-height: 270px;
+  }
+}
