@@ -7,7 +7,6 @@ import json
 import re
 import sys
 import threading
-from dataclasses import replace
 from types import ModuleType
 from typing import Any
 
@@ -15,12 +14,10 @@ _TARGET_MODULE = "app.app_server_thread_management"
 _INSTALLED = False
 _PATCHED = False
 
-_AUTO_TITLE_VERSION = 9
-_AUTO_TITLE_MAX_ATTEMPTS = 3
-_AUTO_TITLE_OUTPUT_BUDGETS = (1024, 2048, 4096)
+_AUTO_TITLE_VERSION = 10
+_AUTO_TITLE_MAX_ATTEMPTS = 1
 _AUTO_TITLE_MAX_CHARS = 36
 _AUTO_TITLE_PROMPT_MAX_BYTES = 960
-_AUTO_TITLE_RETRY_DELAYS = (0.35, 1.2)
 _AUTO_TITLE_SCHEMA = {
     "type": "object",
     "properties": {
@@ -325,47 +322,23 @@ def _auto_title_prompt(module: ModuleType, session: Any, *, user_prompt: str = "
     return prompt, source_prompt
 
 def _build_auto_title_request(module: ModuleType, session: Any, *, user_prompt: str = "") -> tuple[Any | None, str]:
-    from app.ai import AIMessage, ChatRequest, MessageRole, StructuredOutputMode, StructuredRequest, ToolChoice
-    from app.ai.model_reasoning_catalog import canonical_reasoning_spec
-    from app.ai.reasoning import ReasoningRequest
+    from app.ai import AIMessage, ChatRequest, MessageRole, ToolChoice
 
     prompt, source_prompt = _auto_title_prompt(module, session, user_prompt=user_prompt)
     if not prompt:
         return None, ""
-    # Title generation is a short metadata task. Disable hidden thinking only
-    # on models that advertise an explicit no-thinking mode; otherwise leave
-    # the model's reasoning contract untouched and allow enough output budget
-    # for a public title after its internal reasoning.
-    reasoning = None
-    reasoning_kind = str(getattr(session, "reasoning_kind", "") or "")
-    model = str(getattr(session, "model", "") or "")
-    spec = canonical_reasoning_spec(model)
-    if spec and spec.kind.value == reasoning_kind:
-        for no_thinking_value in ("none", "disabled"):
-            if no_thinking_value in spec.values:
-                reasoning = ReasoningRequest(spec.kind, no_thinking_value)
-                break
-    chat = ChatRequest(
+    request = ChatRequest(
         messages=(
-            AIMessage(role=MessageRole.SYSTEM, content=_thread_title_instructions()),
+            AIMessage(role=MessageRole.SYSTEM, content="根据用户第一条消息生成一个简短的对话标题。只输出标题，不回答用户。"),
             AIMessage(role=MessageRole.USER, content=prompt),
         ),
         tools=(),
         tool_choice=ToolChoice.NONE,
         temperature=0.2,
         max_output_tokens=1024,
-        reasoning=reasoning,
         session_id=str(getattr(session, "session_id", "") or ""),
     )
-    return (
-        StructuredRequest(
-            chat=chat,
-            json_schema=_AUTO_TITLE_SCHEMA,
-            schema_name="thread_title",
-            mode=StructuredOutputMode.AUTO,
-        ),
-        source_prompt,
-    )
+    return request, source_prompt
 
 def _build_plain_auto_title_request(structured: Any) -> Any:
     from app.ai import ChatRequest, ToolChoice
@@ -381,18 +354,6 @@ def _build_plain_auto_title_request(structured: Any) -> Any:
     )
 
 def _metadata_has_committed_title(metadata: dict[str, Any]) -> bool:
-    """Whether the conversation already owns a durable title.
-
-    Title quality checks belong at generation time. Once a model title has been
-    accepted and persisted, later turns and future sanitizer changes must not
-    reinterpret it as provisional and erase it. This mirrors manual rename
-    semantics: a committed title is immutable unless the user explicitly
-    renames it.
-
-    autoTitleFallback is the only auto-title state that remains retryable;
-    those records were never successfully committed.
-    """
-
     title = str(metadata.get("title") or "").strip()
     if not title:
         return False
@@ -400,11 +361,7 @@ def _metadata_has_committed_title(metadata: dict[str, Any]) -> bool:
     if title_source == "manual":
         return True
     if title_source == "auto":
-        return (
-            not bool(metadata.get("autoTitleFallback"))
-            and not _title_has_invalid_structure(title)
-            and not _title_is_answer_like(title)
-        )
+        return True
     return bool(title and title_source not in {"pending", "fallback"})
 
 
@@ -420,30 +377,14 @@ def _metadata_display_title(metadata: dict[str, Any]) -> tuple[str, str]:
     source_prompt = _clean_title_context(
         metadata.get("autoTitleSourcePrompt") or metadata.get("autoTitlePendingSourcePrompt") or ""
     )
-
     if title_source == "manual" and custom_title:
         return custom_title, "manual"
 
-    # A successfully persisted auto title is already sanitized at commit time.
-    # Never run it through today's semantic validator again: doing so allowed a
-    # stricter future validator to turn yesterday's real title into "新对话" on
-    # the next user message.
-    if (
-        title_source == "auto"
-        and custom_title
-        and not bool(metadata.get("autoTitleFallback"))
-        and not _title_has_invalid_structure(custom_title)
-        and not _title_is_answer_like(custom_title)
-    ):
+    if title_source == "auto" and custom_title:
         return custom_title, "auto"
 
-    if title_source == "auto" and custom_title and (
-        _title_has_invalid_structure(custom_title) or _title_is_answer_like(custom_title)
-    ):
-        return _placeholder_title(source_prompt or custom_title), "fallback"
-
     if title_source in {"pending", "fallback"} or metadata.get("autoTitlePending") or metadata.get("autoTitleFallback"):
-        return _placeholder_title(source_prompt or custom_title), (
+        return _placeholder_title(source_prompt), (
             "pending" if bool(metadata.get("autoTitlePending")) else "fallback"
         )
 
@@ -477,10 +418,7 @@ def _patch_thread_library(module: ModuleType) -> None:
                 payload.get("autoTitleSourcePrompt") or payload.get("autoTitlePendingSourcePrompt") or ""
             )
             canonical_source = stored_source or clean_source
-            version = max(0, int(payload.get("autoTitleVersion") or 0))
             attempts = max(0, int(payload.get("autoTitleAttempts") or 0))
-            if version < _AUTO_TITLE_VERSION:
-                attempts = 0
             if attempts >= _AUTO_TITLE_MAX_ATTEMPTS:
                 return False
 
@@ -517,10 +455,7 @@ def _patch_thread_library(module: ModuleType) -> None:
             if not clean_source:
                 return False
 
-            version = max(0, int(payload.get("autoTitleVersion") or 0))
             attempts = max(0, int(payload.get("autoTitleAttempts") or 0))
-            if version < _AUTO_TITLE_VERSION:
-                attempts = 0
             if attempts >= _AUTO_TITLE_MAX_ATTEMPTS:
                 return False
 
@@ -564,7 +499,7 @@ def _patch_thread_library(module: ModuleType) -> None:
             if expected_source and stored_source and stored_source != expected_source:
                 return False
             canonical_source = stored_source or expected_source
-            clean_title = _sanitize_generated_title(title, source_prompt=canonical_source)
+            clean_title = str(title or "").strip()
             if not clean_title:
                 return False
 
@@ -703,23 +638,6 @@ def _patch_service(module: ModuleType) -> None:
         except (FileNotFoundError, OSError, ValueError, json.JSONDecodeError):
             return payload
 
-        source_prompt = _stored_title_prompt(self.thread_library, thread_id) or _first_user_prompt(module, session)
-        version = max(0, int(metadata.get("autoTitleVersion") or 0))
-        attempts = max(0, int(metadata.get("autoTitleAttempts") or 0))
-        attempt_budget_available = version < _AUTO_TITLE_VERSION or attempts < _AUTO_TITLE_MAX_ATTEMPTS
-        if (
-            source_prompt
-            and not bool(metadata.get("autoTitleDisabled"))
-            and not _metadata_title_blocks_auto_title(metadata)
-            and attempt_budget_available
-        ):
-            try:
-                self.thread_library.mark_auto_title_pending(thread_id, source_prompt=source_prompt)
-                metadata = self.thread_library.read(thread_id)
-                self._schedule_auto_title(thread_id, user_prompt=source_prompt)
-            except Exception:
-                pass
-
         display_title, title_source = _display_title_for_session(module, metadata, session)
         archived_at = str(metadata.get("archivedAt") or "").strip()
         if display_title:
@@ -742,9 +660,8 @@ def _patch_service(module: ModuleType) -> None:
             metadata = self.thread_library.read(thread_id)
             if bool(metadata.get("autoTitleDisabled")) or _metadata_title_blocks_auto_title(metadata):
                 return
-            version = max(0, int(metadata.get("autoTitleVersion") or 0))
             attempts = max(0, int(metadata.get("autoTitleAttempts") or 0))
-            if version >= _AUTO_TITLE_VERSION and attempts >= _AUTO_TITLE_MAX_ATTEMPTS:
+            if attempts >= _AUTO_TITLE_MAX_ATTEMPTS:
                 return
             self._auto_title_inflight.add(thread_id)
         threading.Thread(
@@ -764,25 +681,7 @@ def _patch_service(module: ModuleType) -> None:
                     error,
                     source_prompt=source_prompt,
                 )
-                metadata = self.thread_library.read(thread_id)
-                pending = bool(metadata.get("autoTitlePending"))
-                reason = "auto_title_retry" if pending else "auto_title_unavailable"
-                _notify_thread_updated(self, thread_id, reason)
-
-                # Transient provider errors and malformed title samples should
-                # heal without requiring the user to reopen the conversation.
-                # The detached timer is bounded; the normal scheduler re-checks
-                # manual renames, committed titles, sub-agents, and attempt limits.
-                attempts = max(0, int(metadata.get("autoTitleAttempts") or 0))
-                if pending and 1 <= attempts <= len(_AUTO_TITLE_RETRY_DELAYS):
-                    timer = threading.Timer(
-                        _AUTO_TITLE_RETRY_DELAYS[attempts - 1],
-                        self._schedule_auto_title,
-                        args=(thread_id,),
-                        kwargs={"user_prompt": source_prompt},
-                    )
-                    timer.daemon = True
-                    timer.start()
+                _notify_thread_updated(self, thread_id, "auto_title_unavailable")
             except Exception:
                 pass
 
@@ -813,8 +712,6 @@ def _patch_service(module: ModuleType) -> None:
 
             if not self.thread_library.claim_auto_title_attempt(thread_id, source_prompt=source_prompt):
                 return
-            attempt = max(1, int(self.thread_library.read(thread_id).get("autoTitleAttempts") or 1))
-
             title = ""
             errors: list[str] = []
             platform_for_session = getattr(self.runtime, "platform_for_session", None)
@@ -829,27 +726,19 @@ def _patch_service(module: ModuleType) -> None:
             # the selected profile may not support structured output at all.
             if callable(execute_chat):
                 try:
-                    plain_request = _build_plain_auto_title_request(request)
-                    plain_request = replace(
-                        plain_request,
-                        max_output_tokens=_AUTO_TITLE_OUTPUT_BUDGETS[
-                            min(attempt - 1, len(_AUTO_TITLE_OUTPUT_BUDGETS) - 1)
-                        ],
-                    )
-                    response = execute_chat(session.profile_id, plain_request)
+                    response = execute_chat(session.profile_id, request)
                     raw_text = getattr(response, "text", "")
-                    title = _parse_auto_title_payload(raw_text, source_prompt=source_prompt)
+                    title = str(raw_text or "").strip()
                     if not title:
-                        category = "empty" if not str(raw_text or "").strip() else "invalid"
                         reason = str(getattr(response, "finish_reason", "") or "unknown")[:40]
-                        errors.append(f"plain:{category}:finish={reason}:chars={len(str(raw_text or ''))}")
+                        errors.append(f"plain:empty:finish={reason}")
                 except Exception as exc:
                     errors.append(f"plain:{type(exc).__name__}: {exc}")
             else:
                 errors.append("plain:unavailable")
 
             if not title:
-                finish("; ".join(errors) or "empty_or_invalid_title")
+                finish("; ".join(errors) or "empty_title")
                 return
 
             if self.thread_library.write_auto_title_if_untitled(
@@ -878,21 +767,10 @@ def _patch_service(module: ModuleType) -> None:
                     self._schedule_auto_title(thread_id, user_prompt=user_prompt)
             except Exception:
                 pass
-        # Title generation is detached from the active task but starts
-        # immediately. The placeholder should be a brief loading state, not the
-        # title for the whole duration of a long-running task. TURN_COMPLETED
-        # remains a recovery trigger for transient provider failures.
         return result
 
     def on_runtime_event(self: Any, event: Any) -> None:
         original_runtime_event(self, event)
-        if event.kind in {
-            module.AgentEventKind.TURN_FAILED,
-            module.AgentEventKind.TURN_CANCELLED,
-            module.AgentEventKind.TURN_INTERRUPTED,
-            module.AgentEventKind.LIMIT_REACHED,
-        }:
-            self._schedule_auto_title(event.session_id)
 
     service_cls._record = record
     service_cls._managed_record = managed_record
