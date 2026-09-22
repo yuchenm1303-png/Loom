@@ -48,17 +48,17 @@ export function formatQuotedPrompt(quote: QuoteReplyDetail | null, input: string
   const prompt = input.trim();
   if (!quote?.text.trim()) return prompt;
 
-  const label = quote.source === "assistant"
-    ? "Quoted Loom reply"
+  const attribution = quote.source === "assistant"
+    ? "Loom"
     : quote.source === "user"
-      ? "Quoted user message"
-      : "Quoted selection";
+      ? "User"
+      : "Selection";
   const quoted = normalizedQuoteText(quote.text)
     .split(/\r?\n/)
-    .map((line) => `> ${line}`)
+    .map((line) => line ? `> ${line}` : ">")
     .join("\n");
 
-  return `[${label}]\n${quoted}${prompt ? `\n\n${prompt}` : ""}`;
+  return `${quoted}\n> — ${attribution}${prompt ? `\n\n${prompt}` : ""}`;
 }
 
 export function QuoteReplyBar({
