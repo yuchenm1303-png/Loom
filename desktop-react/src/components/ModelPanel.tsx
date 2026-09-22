@@ -656,7 +656,7 @@ export function ModelPanel({
           </button>
           <div>
             <strong>Models</strong>
-            <span>{groups.length} providers · {profiles.length} available</span>
+            <span>{groups.length} providers · {profiles.length} models</span>
           </div>
         </div>
 
@@ -700,14 +700,7 @@ export function ModelPanel({
               const active = group.profiles.some(
                 (profile) => profile.selection === currentSelection && profile.model === currentModel,
               );
-              const credentialTarget = providerCredentialTarget(group.id);
               const selectableCount = group.profiles.filter((profile) => !profile.setupOnly).length;
-              const statusProfile = group.profiles.find((profile) => profile.setupOnly && profile.statusMessage);
-              const authRejected = Boolean(statusProfile?.statusMessage?.includes("HTTP 401"));
-              const connected = (
-                !credentialTarget
-                || (!authRejected && group.profiles.some((profile) => profile.configured !== false))
-              );
               return (
                 <div key={group.id} className={`model-profile-row model-group-row ${active ? "active" : ""}`}>
                   <button
@@ -720,23 +713,14 @@ export function ModelPanel({
                       setError("");
                     }}
                   >
-                    <span className="model-profile-icon builtin"><Server size={15} /></span>
+                    <span className="model-profile-icon builtin" aria-hidden="true"><Server size={13.5} /></span>
                     <span className="model-profile-copy model-provider-copy">
                       <span className="model-profile-title-row">
                         <strong title={group.name}>{group.name}</strong>
                         {active ? <em>Current</em> : null}
                       </span>
                       <span className="model-provider-meta">
-                        <span>{selectableCount} {selectableCount === 1 ? "model" : "models"}</span>
-                        <small>
-                          {statusProfile
-                            ? (authRejected ? "Authentication required" : "Catalog unavailable")
-                            : credentialTarget
-                              ? (connected ? "Connected" : "Key required")
-                              : group.profiles[0]?.kind === "saved"
-                                ? endpointLabel(group.profiles[0].baseUrl)
-                                : "Built-in"}
-                        </small>
+                        {selectableCount} {selectableCount === 1 ? "model" : "models"}
                       </span>
                     </span>
                     <span className="model-profile-action"><ChevronRight size={14} /></span>
@@ -757,7 +741,7 @@ export function ModelPanel({
           disabled={locked}
         >
           <Plus size={14} />
-          <span><strong>Add connection</strong><small>Custom API or model endpoint</small></span>
+          <span><strong>Add connection</strong></span>
           <ChevronRight size={13} />
         </button>
 
@@ -768,7 +752,7 @@ export function ModelPanel({
           disabled={locked}
         >
           <SlidersHorizontal size={13.5} />
-          Use another model ID on the current connection
+          Use custom model ID
         </button>
 
         {error ? <div className="composer-popover-error">{error}</div> : null}
