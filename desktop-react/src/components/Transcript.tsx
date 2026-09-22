@@ -784,7 +784,7 @@ function ItemView({
     const rawText = String(item.text ?? "");
     const parsed = parseUserMessageContent(rawText);
     return (
-      <div className="message-shell user-message-shell" data-message-id={item.id} data-loom-message-kind="user">
+      <div className="message-shell user-message-shell" data-message-id={item.id} data-loom-message-kind="user" data-loom-message-text={parsed.text}>
         <div className={`user-message ${parsed.attachments.length ? "has-attachments" : ""}`}><UserMessageContent parsed={parsed} workspace={workspace} /></div>
         <MessageToolbar kind="user" item={item} text={parsed.text} editable disabled={promptDisabled} />
       </div>
@@ -809,7 +809,7 @@ function ItemView({
     if (!reasoning && !answer && !decisionMessage.decisions.length) return null;
 
     return (
-      <div className="message-shell assistant-message-shell" data-message-id={item.id} data-loom-message-kind="assistant">
+      <div className="message-shell assistant-message-shell" data-message-id={item.id} data-loom-message-kind="assistant" data-loom-message-text={answer || reasoning}>
         <div className="assistant-message">
           {reasoning ? (
             <Disclosure label="Thought process">
