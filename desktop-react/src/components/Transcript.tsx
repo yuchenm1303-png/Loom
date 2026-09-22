@@ -10,6 +10,7 @@ import {
   Copy,
   FileDiff,
   Pencil,
+  Reply,
   Search,
   Sparkles,
   Terminal,
@@ -27,6 +28,7 @@ import { StreamingPresentation } from "./StreamingPresentation";
 import { isSubAgentToolItem } from "./SubAgentWorkspace";
 import { TurnArtifactsPreview } from "./TurnArtifactsPreview";
 import { UserMessageContent, parseUserMessageContent } from "./UserMessageContent";
+import { dispatchQuoteReply } from "./quoteReply";
 import "./activity-flow.css";
 import "./message-actions.css";
 import "./task-flow-folding.css";
@@ -686,6 +688,15 @@ function MessageToolbar({
     if (!placeTextInComposer(text)) void copyMessageText(text);
   };
 
+  const quote = () => {
+    if (disabled || !canCopy) return;
+    dispatchQuoteReply({
+      text,
+      source: kind,
+      messageId: item.id,
+    });
+  };
+
   return (
     <div className={`message-meta ${kind}-message-meta`}>
       {time ? <span className="message-time">{time}</span> : null}
@@ -699,6 +710,17 @@ function MessageToolbar({
           aria-label={copied ? "已复制" : "复制消息"}
         >
           {copied ? <Check size={14} strokeWidth={2.1} /> : <Copy size={14} strokeWidth={1.75} />}
+        </button>
+
+        <button
+          type="button"
+          className="message-action-button message-quote-action"
+          onClick={quote}
+          disabled={disabled || !canCopy}
+          title={kind === "assistant" ? "引用回答" : "引用消息"}
+          aria-label={kind === "assistant" ? "引用这段回答" : "引用这条消息"}
+        >
+          <Reply size={14} strokeWidth={1.75} />
         </button>
 
         {kind === "user" ? (
@@ -762,7 +784,7 @@ function ItemView({
     const rawText = String(item.text ?? "");
     const parsed = parseUserMessageContent(rawText);
     return (
-      <div className="message-shell user-message-shell" data-message-id={item.id}>
+      <div className="message-shell user-message-shell" data-message-id={item.id} data-loom-message-kind="user">
         <div className={`user-message ${parsed.attachments.length ? "has-attachments" : ""}`}><UserMessageContent parsed={parsed} workspace={workspace} /></div>
         <MessageToolbar kind="user" item={item} text={parsed.text} editable disabled={promptDisabled} />
       </div>
@@ -787,7 +809,7 @@ function ItemView({
     if (!reasoning && !answer && !decisionMessage.decisions.length) return null;
 
     return (
-      <div className="message-shell assistant-message-shell" data-message-id={item.id}>
+      <div className="message-shell assistant-message-shell" data-message-id={item.id} data-loom-message-kind="assistant">
         <div className="assistant-message">
           {reasoning ? (
             <Disclosure label="Thought process">
@@ -814,7 +836,7 @@ function ItemView({
             />
           ) : null}
         </div>
-        <MessageToolbar kind="assistant" item={item} text={answer || reasoning} />
+        <MessageToolbar kind="assistant" item={item} text={answer || reasoning} disabled={promptDisabled} />
       </div>
     );
   }
