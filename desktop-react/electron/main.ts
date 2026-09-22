@@ -470,8 +470,8 @@ async function copyImageSource(sourceValue: string): Promise<boolean> {
 
 async function openExternalUrl(value: string): Promise<boolean> {
   const url = new URL(String(value || "").trim());
-  if (url.protocol !== "https:" && url.protocol !== "http:") {
-    throw new Error("Only http and https links can be opened externally");
+  if (url.protocol !== "https:" && url.protocol !== "http:" && url.protocol !== "mailto:") {
+    throw new Error("Only http, https, and mailto links can be opened externally");
   }
   await shell.openExternal(url.toString());
   return true;
