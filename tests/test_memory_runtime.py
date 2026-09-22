@@ -138,6 +138,8 @@ def test_relevant_memory_is_transiently_injected_into_later_model_request(tmp_pa
     request = platform.requests[0][1]
     memory_messages = [message for message in request.messages if message.name == "loom_memory"]
     assert len(memory_messages) == 1
+    assert "LOOM_MEMORY_CONTEXT v3" in memory_messages[0].content
+    assert "LOOM_MEMORY_INDEX v3" in memory_messages[0].content
     assert "prefers concise" in memory_messages[0].content
     loaded = store.load(session.session_id)
     assert all(message.name != "loom_memory" for message in loaded.messages)

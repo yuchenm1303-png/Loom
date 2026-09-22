@@ -53,6 +53,8 @@ type MemoryStatus = {
   total?: number;
   pending?: number;
   evidence?: number;
+  archived_visible?: number;
+  usage_events?: number;
   pending_jobs?: number;
   failure_count?: number;
   semantic_pending?: number;
@@ -306,7 +308,9 @@ function MemoryPanel({ threadId, running }: MemorySettingsBridgeProps) {
   const stats = useMemo(() => [
     { label: "Visible", value: status?.visible ?? (threadId ? memories.length : "—"), detail: "current workspace + global" },
     { label: "Stored", value: status?.total ?? "—", detail: "active canonical memories" },
+    { label: "Archived", value: status?.archived_visible ?? 0, detail: "reversible low-signal history" },
     { label: "Evidence", value: status?.evidence ?? "—", detail: "source excerpts retained" },
+    { label: "Usage", value: status?.usage_events ?? 0, detail: "retrieval and read events" },
     { label: "Stage 1", value: status?.pending_jobs ?? 0, detail: "background extraction jobs" },
     { label: "Stage 2", value: semanticQueue, detail: "semantic reconciliation queue" },
   ], [memories.length, semanticQueue, status, threadId]);
@@ -317,7 +321,7 @@ function MemoryPanel({ threadId, running }: MemorySettingsBridgeProps) {
         <div>
           <span className="settings-eyebrow">Long-term context</span>
           <h1>Memory</h1>
-          <p>Loom keeps durable preferences, facts, project decisions, and constraints locally. Current instructions and observed runtime state always take precedence over stored memory.</p>
+          <p>Memory v3 keeps a compact knowledge index, routes each task to relevant details, preserves provenance, and archives low-signal history without silently deleting it. Current instructions and observed runtime state always take precedence.</p>
         </div>
         <div className="settings-master-switch">
           <MemoryPill tone={preferences.enabled ? "ready" : "off"}>{preferences.enabled ? "Active" : "Off"}</MemoryPill>
