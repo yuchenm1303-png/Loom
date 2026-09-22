@@ -1613,3 +1613,831 @@ html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-card.sta
     padding-left: 53px;
   }
 }
+
+/* 2026-09-21 workspace rebuild -------------------------------------------
+   Mission-control hierarchy: denser cards, clearer status and calmer chrome.
+   Keep this block last so it intentionally supersedes the earlier iterations. */
+.sub-agent-workspace.is-docked {
+  --sa-accent: #8b7cf6;
+  --sa-success: #70a186;
+  --sa-danger: #c7727c;
+  --sa-warning: #c1a15f;
+  --sa-panel: #0d0f13;
+  --sa-card: rgba(15,17,22,.82);
+  --sa-card-hover: rgba(18,20,26,.95);
+  --sa-line: rgba(255,255,255,.064);
+  --sa-line-strong: rgba(255,255,255,.105);
+  --sa-text: #d9dde5;
+  --sa-text-2: #929aa6;
+  --sa-muted: #68717e;
+  grid-template-rows: auto auto minmax(0,1fr);
+  background:
+    radial-gradient(520px 180px at 20% -90px, rgba(139,124,246,.11), transparent 74%),
+    linear-gradient(180deg, #0e1014 0%, #0c0e12 100%);
+}
+
+/* Header ----------------------------------------------------------------- */
+.sub-agent-workspace.is-docked .sub-agent-workspace-header {
+  position: relative;
+  min-height: 78px;
+  grid-template-columns: 38px minmax(0,1fr) auto 32px;
+  gap: 11px;
+  padding: 12px 12px 11px 14px;
+  border-bottom: 1px solid var(--sa-line);
+  background:
+    linear-gradient(180deg, rgba(20,22,28,.985), rgba(14,16,20,.96));
+}
+
+.sub-agent-workspace.is-docked .sub-agent-workspace-header::after {
+  content: "";
+  position: absolute;
+  inset: auto 14px -1px;
+  height: 1px;
+  pointer-events: none;
+  background: linear-gradient(90deg, rgba(139,124,246,.38), rgba(139,124,246,.07) 32%, transparent 72%);
+  opacity: .55;
+}
+
+.sub-agent-workspace.is-docked .sub-agent-workspace-mark {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  border-color: rgba(139,124,246,.19);
+  background:
+    radial-gradient(circle at 30% 22%, rgba(255,255,255,.07), transparent 34%),
+    linear-gradient(145deg, rgba(139,124,246,.15), rgba(139,124,246,.035)),
+    #121419;
+  color: #aea6f1;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.045),
+    0 7px 18px rgba(62,50,145,.11);
+}
+
+.sub-agent-workspace.is-docked .sub-agent-workspace-pulse {
+  right: -1px;
+  bottom: -1px;
+  width: 8px;
+  height: 8px;
+  border-width: 2px;
+  border-color: #111318;
+}
+
+.sub-agent-workspace.is-docked .sub-agent-workspace-copy {
+  gap: 3px;
+}
+
+.sub-agent-workspace.is-docked .sub-agent-workspace-copy strong {
+  color: var(--sa-text);
+  font-size: 13.7px;
+  font-weight: 720;
+  letter-spacing: -.015em;
+}
+
+.sub-agent-workspace.is-docked .sub-agent-workspace-copy > span {
+  max-width: 330px;
+  color: var(--sa-muted);
+  font-size: 9.9px;
+  line-height: 1.42;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sub-agent-workspace.is-docked .sub-agent-workspace-summary {
+  gap: 5px;
+}
+
+.sub-agent-workspace.is-docked .sub-agent-workspace-summary b,
+.sub-agent-workspace.is-docked .sub-agent-workspace-summary > span {
+  min-height: 25px;
+  padding-inline: 9px;
+  border: 1px solid var(--sa-line);
+  border-radius: 8px;
+  background: rgba(255,255,255,.018);
+  color: #7d8692;
+  font-size: 9.3px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.012);
+}
+
+.sub-agent-workspace.is-docked .sub-agent-workspace-summary b {
+  border-color: rgba(139,124,246,.16);
+  background: rgba(139,124,246,.06);
+  color: #aaa2ec;
+}
+
+.sub-agent-workspace.is-docked .sub-agent-workspace-summary .is-failed {
+  border-color: rgba(199,114,124,.14);
+  background: rgba(199,114,124,.045);
+  color: #c67b85;
+}
+
+.sub-agent-workspace.is-docked .sub-agent-workspace-close {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  color: #6e7783;
+}
+
+.sub-agent-workspace.is-docked .sub-agent-workspace-close:hover {
+  color: #d6dae2;
+  border-color: rgba(255,255,255,.07);
+  background: rgba(255,255,255,.045);
+}
+
+/* Segmented filter -------------------------------------------------------- */
+.sub-agent-workspace.is-docked .sub-agent-toolbar {
+  min-height: 47px;
+  gap: 12px;
+  padding: 7px 11px;
+  border-bottom: 1px solid rgba(255,255,255,.045);
+  background:
+    linear-gradient(180deg, rgba(12,14,18,.88), rgba(10,12,16,.78));
+}
+
+.sub-agent-workspace.is-docked .sub-agent-filter {
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid rgba(255,255,255,.055);
+  border-radius: 10px;
+  background: rgba(255,255,255,.018);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.012);
+}
+
+.sub-agent-workspace.is-docked .sub-agent-filter button {
+  min-height: 27px;
+  padding: 0 9px;
+  border-radius: 7px;
+  color: #747d89;
+  font-size: 9.6px;
+  font-weight: 640;
+  transition:
+    color 130ms ease,
+    background 130ms ease,
+    box-shadow 130ms ease,
+    transform 130ms ease;
+}
+
+.sub-agent-workspace.is-docked .sub-agent-filter button:hover {
+  color: #abb1bb;
+  background: rgba(255,255,255,.028);
+}
+
+.sub-agent-workspace.is-docked .sub-agent-filter button:active {
+  transform: scale(.975);
+}
+
+.sub-agent-workspace.is-docked .sub-agent-filter button.active {
+  color: #c9c4f8;
+  background:
+    linear-gradient(180deg, rgba(139,124,246,.13), rgba(139,124,246,.075));
+  box-shadow:
+    inset 0 0 0 1px rgba(139,124,246,.12),
+    0 1px 3px rgba(0,0,0,.14);
+}
+
+.sub-agent-workspace.is-docked .sub-agent-filter button > span {
+  min-width: 16px;
+  height: 16px;
+  padding-inline: 4px;
+  color: #616a76;
+  background: rgba(255,255,255,.025);
+  font-size: 8.5px;
+}
+
+.sub-agent-workspace.is-docked .sub-agent-filter button.active > span {
+  color: #bbb4f4;
+  background: rgba(139,124,246,.11);
+}
+
+.sub-agent-workspace.is-docked .sub-agent-toolbar-note {
+  position: relative;
+  padding-left: 12px;
+  color: #5f6874;
+  font-size: 8.9px;
+}
+
+.sub-agent-workspace.is-docked .sub-agent-toolbar-note::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 5px;
+  height: 5px;
+  margin-top: -2.5px;
+  border-radius: 50%;
+  background: #69727e;
+  box-shadow: 0 0 0 3px rgba(105,114,126,.06);
+}
+
+.sub-agent-workspace.is-docked.is-live .sub-agent-toolbar-note::before {
+  background: #9389e5;
+  box-shadow: 0 0 0 3px rgba(139,124,246,.09);
+}
+
+/* Task list --------------------------------------------------------------- */
+.sub-agent-workspace.is-docked .sub-agent-grid {
+  gap: 8px;
+  padding: 10px 10px 24px;
+  scroll-padding-block: 10px 24px;
+  scrollbar-gutter: stable;
+}
+
+.sub-agent-workspace.is-docked .sub-agent-card {
+  position: relative;
+  border: 1px solid var(--sa-line);
+  border-radius: 12px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.018), rgba(255,255,255,.003)),
+    var(--sa-card);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.018),
+    0 1px 2px rgba(0,0,0,.08);
+  overflow: clip;
+  opacity: 1;
+  transform: translateZ(0);
+  transition:
+    border-color 150ms ease,
+    background 150ms ease,
+    box-shadow 170ms ease,
+    transform 170ms cubic-bezier(.2,.78,.2,1),
+    opacity 150ms ease;
+}
+
+.sub-agent-workspace.is-docked .sub-agent-card::before {
+  top: 14px;
+  bottom: 14px;
+  left: 0;
+  width: 3px;
+  height: auto;
+  border-radius: 0 999px 999px 0;
+  opacity: .68;
+}
+
+.sub-agent-workspace.is-docked .sub-agent-card:hover {
+  z-index: 1;
+  border-color: var(--sa-line-strong);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.025), rgba(255,255,255,.005)),
+    var(--sa-card-hover);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.024),
+    0 7px 20px rgba(0,0,0,.11);
+  transform: translateY(-1px);
+}
+
+.sub-agent-workspace.is-docked .sub-agent-card.status-failed {
+  border-color: rgba(199,114,124,.12);
+}
+
+.sub-agent-workspace.is-docked .sub-agent-card.status-running,
+.sub-agent-workspace.is-docked .sub-agent-card.status-starting {
+  border-color: rgba(139,124,246,.14);
+  background:
+    radial-gradient(340px 92px at 10% 0%, rgba(139,124,246,.07), transparent 70%),
+    linear-gradient(180deg, rgba(255,255,255,.018), rgba(255,255,255,.003)),
+    rgba(15,17,23,.9);
+}
+
+.sub-agent-workspace.is-docked .sub-agent-card.status-completed,
+.sub-agent-workspace.is-docked .sub-agent-card.status-closed {
+  opacity: .86;
+}
+
+.sub-agent-workspace.is-docked .sub-agent-card.status-completed:hover,
+.sub-agent-workspace.is-docked .sub-agent-card.status-closed:hover {
+  opacity: 1;
+}
+
+.sub-agent-workspace.is-docked .sub-agent-card.status-running::before,
+.sub-agent-workspace.is-docked .sub-agent-card.status-starting::before {
+  background: var(--sa-accent);
+  box-shadow: 0 0 9px rgba(139,124,246,.2);
+  opacity: .86;
+}
+
+.sub-agent-workspace.is-docked .sub-agent-card.status-waiting::before {
+  background: var(--sa-warning);
+}
+
+.sub-agent-workspace.is-docked .sub-agent-card.status-failed::before {
+  background: var(--sa-danger);
+  opacity: .72;
+}
+
+.sub-agent-workspace.is-docked .sub-agent-card.status-completed::before {
+  background: var(--sa-success);
+  opacity: .45;
+}
+
+/* Card information density ------------------------------------------------ */
+.sub-agent-workspace.is-docked .sub-agent-card-header {
+  min-height: 61px;
+  grid-template-columns: 34px minmax(0,1fr) auto 14px;
+  gap: 9px;
+  padding: 10px 10px 5px 13px;
+}
+
+.sub-agent-workspace.is-docked .sub-agent-avatar {
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(255,255,255,.072);
+  border-radius: 10px;
+  background:
+    radial-gradient(circle at 30% 22%, rgba(255,255,255,.055), transparent 34%),
+    linear-gradient(180deg, rgba(255,255,255,.026), rgba(255,255,255,.007)),
+    #111319;
+  color: #828b97;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.016);
+  transition:
+    color 150ms ease,
+    border-color 150ms ease,
+    background 150ms ease,
+    transform 170ms cubic-bezier(.2,.78,.2,1);
+}
+
+.sub-agent-workspace.is-docked .sub-agent-card:hover .sub-agent-avatar {
+  transform: translateY(-1px);
+}
+
+.sub-agent-workspace.is-docked .status-running .sub-agent-avatar,
+.sub-agent-workspace.is-docked .status-starting .sub-agent-avatar {
+  border-color: rgba(139,124,246,.17);
+  background:
+    linear-gradient(145deg, rgba(139,124,246,.10), rgba(139,124,246,.025)),
+    #12141a;
+  color: #a69eec;
+}
+
+.sub-agent-workspace.is-docked .status-failed .sub-agent-avatar {
+  border-color: rgba(199,114,124,.12);
+  color: #c47b85;
+}
+
+.sub-agent-workspace.is-docked .status-completed .sub-agent-avatar {
+  border-color: rgba(112,161,134,.10);
+  color: #79a58d;
+}
+
+.sub-agent-workspace.is-docked .sub-agent-heading {
+  gap: 4px;
+}
+
+.sub-agent-workspace.is-docked .sub-agent-title-row {
+  align-items: center;
+  gap: 7px;
+}
+
+.sub-agent-workspace.is-docked .sub-agent-title-row strong {
+  color: #d4d8e0;
+  font-size: 12.15px;
+  font-weight: 690;
+  line-height: 1.25;
+  letter-spacing: -.008em;
+}
+
+.sub-agent-workspace.is-docked .sub-agent-id {
+  color: #5c6571;
+  font-size: 8.4px;
+  opacity: .9;
+}
+
+.sub-agent-workspace.is-docked .sub-agent-task {
+  color: #828b97;
+  font-size: 10.25px;
+  line-height: 1.4;
+  -webkit-line-clamp: 2;
+}
+
+.sub-agent-workspace.is-docked .sub-agent-status {
+  min-height: 24px;
+  gap: 4px;
+  padding: 0 7px;
+  border-radius: 7px;
+  border-color: rgba(255,255,255,.065);
+  background: rgba(255,255,255,.018);
+  color: #7d8691;
+  font-size: 9px;
+  font-weight: 660;
+}
+
+.sub-agent-workspace.is-docked .sub-agent-status svg {
+  flex: 0 0 auto;
+}
+
+.sub-agent-workspace.is-docked .sub-agent-status.failed {
+  border-color: rgba(199,114,124,.13);
+  background: rgba(199,114,124,.04);
+  color: #c77c86;
+}
+
+.sub-agent-workspace.is-docked .sub-agent-status.completed {
+  border-color: rgba(112,161,134,.12);
+  background: rgba(112,161,134,.035);
+  color: #79a28c;
+}
+
+.sub-agent-workspace.is-docked .sub-agent-status.running,
+.sub-agent-workspace.is-docked .sub-agent-status.starting {
+  border-color: rgba(139,124,246,.14);
+  background: rgba(139,124,246,.052);
+  color: #aaa2ec;
+}
+
+.sub-agent-workspace.is-docked .sub-agent-status.waiting {
+  border-color: rgba(193,161,95,.13);
+  background: rgba(193,161,95,.04);
+  color: #b69a62;
+}
+
+.sub-agent-workspace.is-docked .sub-agent-chevron {
+  color: #4d5662;
+}
+
+.sub-agent-workspace.is-docked .sub-agent-card-header:not(:disabled):hover .sub-agent-chevron,
+.sub-agent-workspace.is-docked .sub-agent-card.is-open .sub-agent-chevron {
+  color: #9d94e7;
+}
+
+.sub-agent-workspace.is-docked .sub-agent-card-meta {
+  min-height: 22px;
+  gap: 5px;
+  padding: 0 12px 8px 56px;
+  color: #5f6874;
+  font-size: 8.9px;
+}
+
+.sub-agent-workspace.is-docked .sub-agent-context-label {
+  color: #707985;
+  font-weight: 560;
+}
+
+.sub-agent-workspace.is-docked .sub-agent-card-meta span + span::before {
+  margin-right: 5px;
+  color: #3f4650;
+}
+
+/* Expanded result --------------------------------------------------------- */
+.sub-agent-workspace.is-docked .sub-agent-card.is-open {
+  border-color: rgba(139,124,246,.16);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.022),
+    0 8px 22px rgba(0,0,0,.12);
+}
+
+.sub-agent-workspace.is-docked .sub-agent-detail {
+  margin: 0 11px 10px 56px;
+  padding: 9px 4px 2px 0;
+  border-top: 1px solid rgba(255,255,255,.045);
+}
+
+.sub-agent-workspace.is-docked .sub-agent-result {
+  grid-template-columns: 15px minmax(0,1fr);
+  gap: 7px;
+  color: #9aa2ad;
+  font-size: 9.9px;
+  line-height: 1.58;
+}
+
+.sub-agent-workspace.is-docked .sub-agent-result span {
+  max-height: 160px;
+  padding-right: 4px;
+}
+
+.sub-agent-workspace.is-docked .sub-agent-event-strip {
+  gap: 6px 11px;
+  margin-top: 9px;
+  padding-top: 8px;
+  border-top-color: rgba(255,255,255,.035);
+}
+
+.sub-agent-workspace.is-docked .sub-agent-event {
+  color: #626b77;
+  font-size: 8.8px;
+}
+
+/* Light theme ------------------------------------------------------------- */
+html[data-loom-theme="light"] .sub-agent-workspace.is-docked {
+  --sa-panel: #f7f8fa;
+  --sa-card: rgba(255,255,255,.98);
+  --sa-card-hover: #ffffff;
+  --sa-line: rgba(35,40,48,.085);
+  --sa-line-strong: rgba(84,73,166,.16);
+  --sa-text: #343b45;
+  --sa-text-2: #6f7884;
+  --sa-muted: #8b939d;
+  background:
+    radial-gradient(500px 170px at 20% -85px, rgba(105,90,216,.075), transparent 74%),
+    linear-gradient(180deg, #fafafc 0%, #f6f7f9 100%);
+}
+
+html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-workspace-header {
+  border-bottom-color: rgba(35,40,48,.075);
+  background:
+    radial-gradient(260px 90px at 18% 0%, rgba(105,90,216,.045), transparent 80%),
+    linear-gradient(180deg, rgba(255,255,255,.995), rgba(250,250,252,.98));
+}
+
+html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-workspace-header::after {
+  background: linear-gradient(90deg, rgba(105,90,216,.28), rgba(105,90,216,.045) 36%, transparent 75%);
+}
+
+html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-workspace-mark {
+  border-color: rgba(105,90,216,.16);
+  background:
+    radial-gradient(circle at 30% 22%, rgba(255,255,255,.78), transparent 36%),
+    linear-gradient(145deg, rgba(105,90,216,.10), rgba(105,90,216,.025));
+  color: #6658c8;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.98),
+    0 5px 14px rgba(73,62,156,.07);
+}
+
+html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-workspace-pulse {
+  border-color: #fbfbfd;
+}
+
+html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-workspace-copy strong {
+  color: var(--sa-text);
+}
+
+html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-workspace-copy > span {
+  color: #8b939d;
+}
+
+html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-workspace-summary b,
+html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-workspace-summary > span {
+  border-color: rgba(34,39,47,.075);
+  background: rgba(34,39,47,.018);
+  color: #7d858f;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.75);
+}
+
+html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-workspace-summary b {
+  border-color: rgba(105,90,216,.12);
+  background: rgba(105,90,216,.052);
+  color: #5f53ba;
+}
+
+html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-workspace-summary .is-failed {
+  border-color: rgba(185,93,106,.12);
+  background: rgba(185,93,106,.035);
+  color: #ad616c;
+}
+
+html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-workspace-close {
+  color: #89919a;
+}
+
+html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-workspace-close:hover {
+  color: #574bb2;
+  border-color: rgba(105,90,216,.08);
+  background: rgba(105,90,216,.045);
+}
+
+html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-toolbar {
+  border-bottom-color: rgba(35,40,48,.06);
+  background: rgba(247,248,250,.88);
+}
+
+html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-filter {
+  border-color: rgba(35,40,48,.07);
+  background: rgba(35,40,48,.018);
+}
+
+html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-filter button {
+  color: #7f8791;
+}
+
+html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-filter button:hover {
+  color: #525a65;
+  background: rgba(35,40,48,.027);
+}
+
+html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-filter button.active {
+  color: #574bb2;
+  background:
+    linear-gradient(180deg, rgba(105,90,216,.09), rgba(105,90,216,.055));
+  box-shadow:
+    inset 0 0 0 1px rgba(105,90,216,.08),
+    0 1px 2px rgba(55,47,125,.035);
+}
+
+html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-filter button > span {
+  color: #999fa8;
+  background: rgba(35,40,48,.032);
+}
+
+html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-filter button.active > span {
+  color: #6255bd;
+  background: rgba(105,90,216,.075);
+}
+
+html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-toolbar-note {
+  color: #9aa1aa;
+}
+
+html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-toolbar-note::before {
+  background: #aab0b8;
+  box-shadow: 0 0 0 3px rgba(86,94,104,.05);
+}
+
+html[data-loom-theme="light"] .sub-agent-workspace.is-docked.is-live .sub-agent-toolbar-note::before {
+  background: #796dd6;
+  box-shadow: 0 0 0 3px rgba(105,90,216,.08);
+}
+
+html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-card {
+  border-color: var(--sa-line);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,1), rgba(252,252,253,.985));
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,1),
+    0 1px 2px rgba(35,39,47,.025);
+}
+
+html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-card:hover {
+  border-color: var(--sa-line-strong);
+  background: #fff;
+  box-shadow:
+    0 7px 20px rgba(40,44,52,.055),
+    0 0 0 1px rgba(105,90,216,.018);
+}
+
+html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-card.status-running,
+html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-card.status-starting {
+  border-color: rgba(105,90,216,.13);
+  background:
+    radial-gradient(320px 90px at 10% 0%, rgba(105,90,216,.045), transparent 70%),
+    #fff;
+}
+
+html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-card.status-failed {
+  border-color: rgba(185,93,106,.10);
+}
+
+html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-card.status-completed,
+html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-card.status-closed {
+  opacity: .90;
+}
+
+html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-avatar {
+  border-color: rgba(42,47,56,.085);
+  background:
+    radial-gradient(circle at 30% 22%, #fff, transparent 38%),
+    linear-gradient(180deg, #fff, #f7f8fa);
+  color: #77818d;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,1),
+    0 1px 2px rgba(39,43,51,.025);
+}
+
+html[data-loom-theme="light"] .sub-agent-workspace.is-docked .status-running .sub-agent-avatar,
+html[data-loom-theme="light"] .sub-agent-workspace.is-docked .status-starting .sub-agent-avatar {
+  border-color: rgba(105,90,216,.14);
+  background: rgba(105,90,216,.045);
+  color: #6255c2;
+}
+
+html[data-loom-theme="light"] .sub-agent-workspace.is-docked .status-failed .sub-agent-avatar {
+  border-color: rgba(185,93,106,.10);
+  color: #b76671;
+}
+
+html[data-loom-theme="light"] .sub-agent-workspace.is-docked .status-completed .sub-agent-avatar {
+  border-color: rgba(75,132,101,.09);
+  color: #5f8f75;
+}
+
+html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-title-row strong {
+  color: #3d4550;
+}
+
+html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-id {
+  color: #a2a8b0;
+}
+
+html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-task {
+  color: #7e8792;
+}
+
+html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-status {
+  border-color: rgba(35,40,48,.075);
+  background: rgba(247,248,250,.88);
+  color: #7c858f;
+}
+
+html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-status.failed {
+  border-color: rgba(185,93,106,.12);
+  background: rgba(185,93,106,.035);
+  color: #a95f6a;
+}
+
+html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-status.completed {
+  border-color: rgba(75,132,101,.11);
+  background: rgba(75,132,101,.035);
+  color: #5c846d;
+}
+
+html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-status.running,
+html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-status.starting {
+  border-color: rgba(105,90,216,.12);
+  background: rgba(105,90,216,.045);
+  color: #5e51ba;
+}
+
+html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-card-meta {
+  color: #9aa1aa;
+}
+
+html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-context-label {
+  color: #848d97;
+}
+
+html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-card-meta span + span::before {
+  color: #c9cdd2;
+}
+
+html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-card.is-open {
+  border-color: rgba(105,90,216,.13);
+}
+
+html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-detail {
+  border-top-color: rgba(35,40,48,.065);
+}
+
+html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-result {
+  color: #68717c;
+}
+
+html[data-loom-theme="light"] .sub-agent-workspace.is-docked .sub-agent-event-strip {
+  border-top-color: rgba(35,40,48,.055);
+}
+
+/* Responsive dock --------------------------------------------------------- */
+@media (max-width: 520px) {
+  .sub-agent-workspace.is-docked .sub-agent-workspace-header {
+    grid-template-columns: 38px minmax(0,1fr) 30px;
+    row-gap: 7px;
+  }
+
+  .sub-agent-workspace.is-docked .sub-agent-workspace-summary {
+    grid-column: 2 / 4;
+    justify-content: flex-start;
+  }
+
+  .sub-agent-workspace.is-docked .sub-agent-workspace-close {
+    grid-column: 3;
+    grid-row: 1;
+  }
+
+  .sub-agent-workspace.is-docked .sub-agent-toolbar-note {
+    display: none;
+  }
+
+  .sub-agent-workspace.is-docked .sub-agent-filter {
+    width: 100%;
+  }
+
+  .sub-agent-workspace.is-docked .sub-agent-filter button {
+    flex: 1;
+    justify-content: center;
+  }
+}
+
+@media (max-width: 390px) {
+  .sub-agent-workspace.is-docked .sub-agent-card-header {
+    grid-template-columns: 32px minmax(0,1fr) auto 13px;
+    gap: 7px;
+    padding-inline: 10px;
+  }
+
+  .sub-agent-workspace.is-docked .sub-agent-avatar {
+    width: 32px;
+    height: 32px;
+  }
+
+  .sub-agent-workspace.is-docked .sub-agent-card-meta {
+    padding-left: 51px;
+  }
+
+  .sub-agent-workspace.is-docked .sub-agent-detail {
+    margin-left: 51px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sub-agent-workspace.is-docked .sub-agent-card,
+  .sub-agent-workspace.is-docked .sub-agent-avatar,
+  .sub-agent-workspace.is-docked .sub-agent-filter button {
+    transition: none !important;
+  }
+}
+
+html[data-loom-reduced-motion="true"] .sub-agent-workspace.is-docked .sub-agent-card,
+html[data-loom-reduced-motion="true"] .sub-agent-workspace.is-docked .sub-agent-avatar,
+html[data-loom-reduced-motion="true"] .sub-agent-workspace.is-docked .sub-agent-filter button {
+  transition: none !important;
+}
+
