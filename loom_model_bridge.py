@@ -48,11 +48,12 @@ OPENCODE_GO_FALLBACK_MODEL_IDS = (
     "deepseek-flash", "deepseek-v4-flash-vision-exp",
     "qwen3.8-max", "qwen3.8-flash", "qwen3.7-max", "qwen3.7-plus",
     "qwen3.6-plus", "qwen3.5-plus",
+    "mimo-v2.6-pro", "mimo-v2.6-flash",
     "mimo-v2.5-pro", "mimo-v2.5", "mimo-v2-pro", "mimo-v2-omni",
     "hy4-preview", "hy3", "hy3-preview",
-    "gpt-5.6-luna", "grok-4.6", "grok-4.5",
+    "gpt-5.6-luna", "grok-4.7", "grok-4.6", "grok-4.5",
     "muse-spark-1.3-contributor", "muse-spark-1.2-contributor",
-    "omen-alpha",
+    "omen-alpha", "ox-alpha-free",
 )
 CQU_DEFAULT_MODEL = "cqu-default"
 # OpenCode Go models that accepted an image when asked, recorded 2026-09-20 by
@@ -677,6 +678,7 @@ def _opencode_go_display_name(model: str) -> str:
     value = str(model or "").strip()
     special = {
         "gpt-5.6-luna": "GPT 5.6 Luna",
+        "grok-4.7": "Grok 4.7",
         "grok-4.6": "Grok 4.6",
         "grok-4.5": "Grok 4.5",
         "deepseek-v4.1-flash": "DeepSeek V4.1 Flash",
@@ -686,6 +688,7 @@ def _opencode_go_display_name(model: str) -> str:
         "deepseek-v4-flash-vision-exp": "DeepSeek V4 Flash Vision Exp",
         "longcat-2.0": "LongCat 2.0",
         "omen-alpha": "Omen Alpha",
+        "ox-alpha-free": "Ox Alpha Free",
     }
     if value.casefold() in special:
         return special[value.casefold()]

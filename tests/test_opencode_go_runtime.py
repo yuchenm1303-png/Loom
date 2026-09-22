@@ -11,6 +11,7 @@ from app.ai.contracts import (
     ToolChoice,
     ToolDefinition,
 )
+from app.ai.reasoning import ReasoningKind, ReasoningRequest
 from app.ai.opencode_go_runtime import (
     OPENCODE_GO_USER_AGENT,
     _OpenCodeGoChatBackend,
@@ -24,6 +25,7 @@ from app.ai.opencode_go_runtime import (
     ("model", "protocol"),
     [
         ("gpt-5.6-luna", "responses"),
+        ("grok-4.7", "responses"),
         ("grok-4.6", "responses"),
         ("grok-4.5", "responses"),
         ("muse-spark-1.3-contributor", "responses"),
@@ -41,7 +43,7 @@ def test_opencode_go_protocol_routes_model_families(model: str, protocol: str) -
     assert opencode_go_protocol(model) == protocol
 
 
-def _request() -> ChatRequest:
+def _request(reasoning: ReasoningRequest | None = None) -> ChatRequest:
     return ChatRequest(
         messages=(AIMessage(role=MessageRole.USER, content="hello"),),
         tools=(
@@ -52,6 +54,7 @@ def _request() -> ChatRequest:
             ),
         ),
         tool_choice=ToolChoice.AUTO,
+        reasoning=reasoning,
         session_id="thread-stable-id",
     )
 
@@ -103,3 +106,78 @@ def test_opencode_responses_backend_maps_tools_and_session_header() -> None:
     assert kwargs["extra_headers"]["x-opencode-session"] == "thread-stable-id"
     assert kwargs["tools"][0]["name"] == "read_file"
     assert kwargs["input"][0]["role"] == "user"
+
+
+
+def test_opencode_responses_sends_luna_reasoning_effort() -> None:
+    backend = object.__new__(_OpenCodeGoResponsesBackend)
+    backend.profile = SimpleNamespace(model="gpt-5.6-luna")
+
+    kwargs = backend._kwargs(
+        _request(ReasoningRequest(ReasoningKind.OPENAI_EFFORT, "xhigh"))
+    )
+
+    assert kwargs["reasoning"] == {"effort": "xhigh"}
+
+
+def test_opencode_chat_sends_model_effort_to_compatible_wire() -> None:
+    from app.ai.provider_catalog import ProviderAdapter
+
+    backend = object.__new__(_OpenCodeGoChatBackend)
+    backend.connection = SimpleNamespace(adapter=ProviderAdapter.OPENAI_COMPATIBLE)
+    backend.profile = SimpleNamespace(model="deepseek-v4-flash")
+    backend.request_timeout_seconds = 120.0
+
+    kwargs = backend._request_kwargs(
+        _request(ReasoningRequest(ReasoningKind.OPENAI_EFFORT, "max"))
+    )
+
+    assert kwargs["extra_body"]["reasoning_effort"] == "max"
+
+
+def test_opencode_messages_sends_minimax_native_thinking_toggle() -> None:
+    backend = object.__new__(_OpenCodeGoMessagesBackend)
+    backend.profile = SimpleNamespace(model="minimax-m3")
+    backend.api_key = "test-only-key"
+    backend.timeout = 120.0
+
+    payload = backend._payload(
+        _request(ReasoningRequest(ReasoningKind.MINIMAX_THINKING, "adaptive")),
+        stream=True,
+    )
+
+    assert payload["thinking"] == {"type": "adaptive"}
+
+
+def test_opencode_messages_sends_qwen38_effort() -> None:
+    backend = object.__new__(_OpenCodeGoMessagesBackend)
+    backend.profile = SimpleNamespace(model="qwen3.8-max")
+    backend.api_key = "test-only-key"
+    backend.timeout = 120.0
+
+    payload = backend._payload(
+        _request(ReasoningRequest(ReasoningKind.OPENAI_EFFORT, "xhigh")),
+        stream=True,
+    )
+
+    assert payload["thinking"] == {"type": "enabled"}
+    assert payload["output_config"] == {"effort": "xhigh"}
+
+
+def test_opencode_messages_sends_qwen_budget_presets() -> None:
+    backend = object.__new__(_OpenCodeGoMessagesBackend)
+    backend.profile = SimpleNamespace(model="qwen3.7-plus")
+    backend.api_key = "test-only-key"
+    backend.timeout = 120.0
+
+    high = backend._payload(
+        _request(ReasoningRequest(ReasoningKind.THINKING_BUDGET, "high")),
+        stream=True,
+    )
+    maximum = backend._payload(
+        _request(ReasoningRequest(ReasoningKind.THINKING_BUDGET, "max")),
+        stream=True,
+    )
+
+    assert high["thinking"] == {"type": "enabled", "budget_tokens": 32_768}
+    assert maximum["thinking"] == {"type": "enabled", "budget_tokens": 65_535}

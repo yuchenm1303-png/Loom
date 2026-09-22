@@ -2,109 +2,104 @@ from __future__ import annotations
 
 from typing import Any
 
+from .model_reasoning_catalog import ModelReasoningSpec, canonical_reasoning_spec
 from .reasoning import ReasoningKind, ReasoningRequest
 
 
-def _option(value: str, label: str, description: str, *, advanced: bool = False) -> dict[str, Any]:
+_LABELS = {
+    "none": "Direct",
+    "disabled": "Direct",
+    "adaptive": "Adaptive",
+    "minimal": "Minimal",
+    "low": "Low",
+    "medium": "Medium",
+    "high": "High",
+    "xhigh": "Extra high",
+    "max": "Max",
+    "ultra": "Ultra",
+}
+
+_DESCRIPTIONS = {
+    "none": "Disable deliberate reasoning when the transport supports it.",
+    "disabled": "Disable deliberate thinking for the lowest latency.",
+    "adaptive": "Let the model decide when deeper reasoning is useful.",
+    "minimal": "Use the model's smallest deliberate reasoning effort.",
+    "low": "Use lighter reasoning for straightforward agent work.",
+    "medium": "Balance latency and reasoning depth for everyday work.",
+    "high": "Use deeper reasoning for complex multi-step work.",
+    "xhigh": "Use extra reasoning depth for difficult multi-step work.",
+    "max": "Use the model's maximum supported reasoning setting.",
+    "ultra": "Use the model's highest extended reasoning mode.",
+}
+
+
+def _option(value: str, *, advanced: bool = False) -> dict[str, Any]:
     return {
         "value": value,
-        "label": label,
-        "description": description,
+        "label": _LABELS.get(value, value.replace("-", " ").title()),
+        "description": _DESCRIPTIONS.get(value, "Use this model-specific reasoning setting."),
         "advanced": bool(advanced),
     }
 
 
-# MiniMax's hosted OpenAI-compatible M3 endpoint documents adaptive thinking as
-# the default and supports disabling it. Keep this catalog conservative even
-# though the open-weight model can expose additional deployment-specific modes.
-_MINIMAX_M3_OPTIONS = [
-    _option("disabled", "Direct", "Disable deliberate thinking for the lowest latency."),
-    _option("adaptive", "Adaptive", "Let M3 decide when deeper reasoning is useful."),
-]
+def _transport_supports(spec: ModelReasoningSpec, adapter: str) -> bool:
+    adapter_key = str(adapter or "").strip().casefold()
+    if spec.kind is ReasoningKind.OPENAI_EFFORT:
+        return adapter_key in {"openai", "openai-compatible", "opencode-go"}
+    if spec.kind is ReasoningKind.MINIMAX_THINKING:
+        return adapter_key in {"openai-compatible", "opencode-go"}
+    if spec.kind is ReasoningKind.THINKING_BUDGET:
+        # Budget presets currently have a faithful encoder only on OpenCode Go's
+        # Anthropic Messages surface. Do not show a control on arbitrary custom
+        # endpoints and then silently pretend that it applied.
+        return adapter_key == "opencode-go"
+    return False
 
-_DEEPSEEK_OPTIONS = [
-    _option("none", "Direct", "Disable thinking mode for the lowest latency."),
-    _option("low", "Low", "Use lighter reasoning for straightforward agent work."),
-    _option("high", "High", "Use deeper reasoning for complex multi-step work."),
-    _option("max", "Max", "Use DeepSeek's maximum supported reasoning effort.", advanced=True),
-]
 
-_OPENAI_STANDARD_OPTIONS = [
-    _option("low", "Low", "Fast responses with lighter reasoning."),
-    _option("medium", "Medium", "Balances speed and reasoning depth for everyday work."),
-    _option("high", "High", "Greater reasoning depth for complex problems."),
-    _option("xhigh", "Extra high", "Extra reasoning depth for difficult multi-step work."),
-]
-
-_OPENAI_ADVANCED_OPTIONS = [
-    _option("max", "Max", "Maximum reasoning depth for the hardest problems.", advanced=True),
-    _option("ultra", "Ultra", "Maximum reasoning with automatic task delegation.", advanced=True),
-]
+def _capability_from_spec(spec: ModelReasoningSpec) -> dict[str, Any]:
+    return {
+        "kind": spec.kind.value,
+        "defaultValue": spec.default_value,
+        "options": [
+            _option(value, advanced=value in spec.advanced)
+            for value in spec.values
+        ],
+        "source": spec.source,
+    }
 
 
 def reasoning_capability(*, model: str, adapter: str, base_url: str = "") -> dict[str, Any] | None:
-    """Return safe UI metadata for reasoning controls supported by a model.
+    """Return truthful UI metadata for model-owned reasoning controls.
 
-    The shape follows Codex's model-catalog pattern: each model advertises its
-    supported choices and one default, instead of clients inventing a universal
-    slider. Exact known Codex advanced levels are enabled only for model families
-    where Loom has an explicit catalog rule.
+    Model identity determines which choices exist; provider identity only decides
+    whether Loom has a faithful wire encoder for those choices. This keeps the
+    same Luna/DeepSeek/Grok controls when a user switches between OpenCode Go,
+    an official endpoint, and an OpenAI-compatible relay without inventing
+    controls for unknown models.
     """
 
     model_key = str(model or "").strip().casefold()
-    adapter_key = str(adapter or "").strip().casefold()
     endpoint = str(base_url or "").strip().casefold()
     if not model_key:
         return None
 
-    if "minimax-m3" in model_key or ("minimax" in endpoint and model_key in {"m3", "minimax-m3"}):
-        return {
-            "kind": ReasoningKind.MINIMAX_THINKING.value,
-            "defaultValue": "adaptive",
-            "options": list(_MINIMAX_M3_OPTIONS),
-            "source": "MiniMax M3 hosted API",
-        }
+    spec = canonical_reasoning_spec(model)
+    if spec is not None and _transport_supports(spec, adapter):
+        return _capability_from_spec(spec)
 
-    if "api.deepseek.com" in endpoint and model_key:
-        return {
-            "kind": ReasoningKind.OPENAI_EFFORT.value,
-            "defaultValue": "low",
-            "options": list(_DEEPSEEK_OPTIONS),
-            "source": "DeepSeek thinking effort",
-        }
-
-    is_openai_reasoning = (
-        adapter_key == "openai"
-        and (
-            model_key.startswith("gpt-5")
-            or model_key.startswith("gpt-6")
-            or model_key.startswith("o1")
-            or model_key.startswith("o3")
-            or model_key.startswith("o4")
+    # DeepSeek may add model IDs before the bundled catalog is refreshed. Its
+    # official endpoint has a stable reasoning_effort contract, so preserve a
+    # conservative provider fallback for newly discovered DeepSeek models.
+    if "api.deepseek.com" in endpoint:
+        fallback = ModelReasoningSpec(
+            ReasoningKind.OPENAI_EFFORT,
+            ("none", "low", "high", "max"),
+            "low",
+            source="DeepSeek thinking effort",
+            advanced=frozenset({"max"}),
         )
-    )
-    # OpenAI-compatible relays are common for OpenAI models. If the model id is
-    # unambiguously an OpenAI reasoning family, expose the same wire control.
-    if not is_openai_reasoning and adapter_key == "openai-compatible":
-        is_openai_reasoning = (
-            model_key.startswith("gpt-5")
-            or model_key.startswith("gpt-6")
-            or model_key.startswith("o1")
-            or model_key.startswith("o3")
-            or model_key.startswith("o4")
-        )
-    if not is_openai_reasoning:
-        return None
-
-    options = list(_OPENAI_STANDARD_OPTIONS)
-    if model_key.startswith("gpt-5.6-sol") or model_key.startswith("gpt-6-astra"):
-        options.extend(_OPENAI_ADVANCED_OPTIONS)
-    return {
-        "kind": ReasoningKind.OPENAI_EFFORT.value,
-        "defaultValue": "low" if model_key.startswith(("gpt-5.6-sol", "gpt-6-astra")) else "medium",
-        "options": options,
-        "source": "OpenAI reasoning effort",
-    }
+        return _capability_from_spec(fallback)
+    return None
 
 
 def resolved_reasoning(

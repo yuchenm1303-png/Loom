@@ -36,6 +36,7 @@ OPENCODE_GO_USER_AGENT = "Loom/0.1 (coding-agent)"
 _RESPONSES_MODELS = frozenset(
     {
         "gpt-5.6-luna",
+        "grok-4.7",
         "grok-4.6",
         "grok-4.5",
         "muse-spark-1.3-contributor",
@@ -43,6 +44,45 @@ _RESPONSES_MODELS = frozenset(
     }
 )
 _MESSAGES_PREFIXES = ("minimax-", "qwen")
+
+_QWEN_BUDGET_PRESETS = {
+    "qwen3.5-plus": {"high": 32_768, "max": 65_535},
+    "qwen3.6-plus": {"high": 32_768, "max": 65_535},
+    "qwen3.7-plus": {"high": 32_768, "max": 65_535},
+    "qwen3.7-max": {"high": 32_768, "max": 65_535},
+}
+
+
+def _messages_reasoning_payload(model: str, reasoning) -> dict[str, Any]:
+    if reasoning is None:
+        return {}
+    key = str(model or "").strip().casefold()
+
+    if key == "minimax-m3" and reasoning.kind is ReasoningKind.MINIMAX_THINKING:
+        if reasoning.value == "disabled":
+            return {"thinking": {"type": "disabled"}}
+        if reasoning.value == "adaptive":
+            return {"thinking": {"type": "adaptive"}}
+
+    if key in {"qwen3.8-flash", "qwen3.8-max"} and reasoning.kind is ReasoningKind.OPENAI_EFFORT:
+        if reasoning.value == "none":
+            return {"thinking": {"type": "disabled"}}
+        return {
+            "thinking": {"type": "enabled"},
+            "output_config": {"effort": reasoning.value},
+        }
+
+    if key in _QWEN_BUDGET_PRESETS and reasoning.kind is ReasoningKind.THINKING_BUDGET:
+        if reasoning.value == "none":
+            return {"thinking": {"type": "disabled"}}
+        budget = _QWEN_BUDGET_PRESETS[key].get(reasoning.value)
+        if budget is not None:
+            return {"thinking": {"type": "enabled", "budget_tokens": budget}}
+
+    raise AITransportError(
+        f"OpenCode Go Messages cannot encode reasoning {reasoning.kind.value}:{reasoning.value} "
+        f"for model {model!r}"
+    )
 
 
 def opencode_go_protocol(model: str) -> str:
@@ -420,6 +460,7 @@ class _OpenCodeGoMessagesBackend:
                 payload["tool_choice"] = {"type": "auto"}
         if request.temperature is not None:
             payload["temperature"] = request.temperature
+        payload.update(_messages_reasoning_payload(self.profile.model, request.reasoning))
         return payload
 
     def _open(self, request: ChatRequest, *, stream: bool):

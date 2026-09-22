@@ -9,6 +9,7 @@ class ReasoningKind(str, Enum):
 
     OPENAI_EFFORT = "openai-effort"
     MINIMAX_THINKING = "minimax-thinking"
+    THINKING_BUDGET = "thinking-budget"
 
 
 _OPENAI_KNOWN_EFFORTS = frozenset(
@@ -25,6 +26,7 @@ _OPENAI_KNOWN_EFFORTS = frozenset(
     }
 )
 _MINIMAX_THINKING_MODES = frozenset({"disabled", "adaptive", "enabled"})
+_THINKING_BUDGET_PRESETS = frozenset({"none", "high", "max"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,6 +49,9 @@ class ReasoningRequest:
         if kind is ReasoningKind.MINIMAX_THINKING and value not in _MINIMAX_THINKING_MODES:
             supported = ", ".join(sorted(_MINIMAX_THINKING_MODES))
             raise ValueError(f"MiniMax thinking mode must be one of: {supported}")
+        if kind is ReasoningKind.THINKING_BUDGET and value not in _THINKING_BUDGET_PRESETS:
+            supported = ", ".join(sorted(_THINKING_BUDGET_PRESETS))
+            raise ValueError(f"Thinking budget preset must be one of: {supported}")
         # OpenAI/Codex deliberately accepts future non-empty effort strings. The
         # upstream model catalog can advertise a new value before this client is
         # updated, matching Codex's Custom(String) forward-compatibility model.

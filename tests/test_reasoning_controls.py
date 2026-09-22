@@ -100,6 +100,50 @@ def test_gpt_5_6_sol_catalog_exposes_codex_advanced_efforts() -> None:
     assert [option["value"] for option in advanced] == ["max", "ultra"]
 
 
+def test_luna_keeps_the_same_model_owned_efforts_across_connections() -> None:
+    opencode = reasoning_capability(
+        model="gpt-5.6-luna",
+        adapter="opencode-go",
+        base_url="https://opencode.ai/zen/go/v1",
+    )
+    custom = reasoning_capability(
+        model="openai/gpt-5.6-luna",
+        adapter="openai-compatible",
+        base_url="https://relay.example/v1",
+    )
+
+    assert opencode is not None
+    assert custom is not None
+    assert _option_values(opencode) == ["none", "low", "medium", "high", "xhigh", "max"]
+    assert _option_values(custom) == _option_values(opencode)
+    assert opencode["defaultValue"] == "low"
+    assert custom["defaultValue"] == "low"
+
+
+def test_opencode_model_catalog_exposes_real_per_model_efforts() -> None:
+    grok = reasoning_capability(model="grok-4.7", adapter="opencode-go")
+    glm = reasoning_capability(model="glm-5.2", adapter="opencode-go")
+    qwen = reasoning_capability(model="qwen3.8-max", adapter="opencode-go")
+
+    assert grok is not None and _option_values(grok) == ["low", "medium", "high", "xhigh"]
+    assert glm is not None and _option_values(glm) == ["high", "max"]
+    assert qwen is not None and _option_values(qwen) == ["none", "low", "medium", "xhigh"]
+
+
+def test_budget_only_qwen_control_is_exposed_only_where_transport_can_encode_it() -> None:
+    opencode = reasoning_capability(model="qwen3.7-plus", adapter="opencode-go")
+    arbitrary_compatible = reasoning_capability(
+        model="qwen3.7-plus",
+        adapter="openai-compatible",
+        base_url="https://relay.example/v1",
+    )
+
+    assert opencode is not None
+    assert opencode["kind"] == "thinking-budget"
+    assert _option_values(opencode) == ["none", "high", "max"]
+    assert arbitrary_compatible is None
+
+
 def test_unknown_model_does_not_invent_reasoning_control() -> None:
     assert reasoning_capability(
         model="qwen-plus",

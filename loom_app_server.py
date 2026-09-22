@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import TextIO
 
 from app.agent_runtime import PermissionMode
-from app.ai import ReasoningRequest
+from app.ai import ReasoningKind, ReasoningRequest
 from app.ai.reasoning_catalog import reasoning_capability
 from app.app_server_browser_policy import serve_browser_policy_managed_streaming_stdio
 from loom_cli import _build_runtime, _resolve_new_permission_mode
@@ -42,7 +42,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--base-url")
     parser.add_argument("--model")
     parser.add_argument("--selection")
-    parser.add_argument("--reasoning-kind", choices=["openai-effort", "minimax-thinking"])
+    parser.add_argument("--reasoning-kind", choices=[kind.value for kind in ReasoningKind])
     parser.add_argument("--reasoning-value")
     parser.add_argument("--home", help="runtime state root; defaults to ~/.loom")
     parser.add_argument("--workspace", help="default workspace for new threads")
