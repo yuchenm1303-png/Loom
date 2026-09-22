@@ -318,7 +318,7 @@ class StreamingLoomAppServerService(LoomAppServerService):
             # ``model_requested`` is not a turn outcome, so the shared status
             # derivation would stamp these tool items with that event's own name.
             self._clear_turn_tool_streams(event, close_started=True, status="interrupted")
-        if event.kind is AgentEventKind.MODEL_RESPONSE and str(event.data.get("text") or ""):
+        if event.kind is AgentEventKind.MODEL_RESPONSE:
             step_id = str(event.data.get("step_id") or "").strip()
             key = (event.session_id, event.turn_id, step_id)
             with self._guard:
@@ -326,6 +326,13 @@ class StreamingLoomAppServerService(LoomAppServerService):
                 if streamed:
                     self._streamed_assistant_steps.discard(key)
             if streamed:
+                # A tool-calling model can stream visible reasoning and then
+                # commit a MODEL_RESPONSE with an empty public text field. The
+                # old text guard skipped this completion entirely, leaving the
+                # assistant step permanently marked "streaming" in the desktop
+                # UI while later tool/model steps continued. Close every
+                # streamed assistant step at its canonical MODEL_RESPONSE
+                # boundary, even when the response is reasoning-only/tool-only.
                 item = _base_item(
                     event,
                     item_id=_assistant_step_item_id(step_id),
