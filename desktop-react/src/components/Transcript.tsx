@@ -756,29 +756,33 @@ function ItemView({
 
   if (item.type === "assistant_message") {
     const parsed = splitReasoning(item.text ?? "");
+    const providerReasoning = String(item.reasoning ?? "").trim();
+    // New providers stream reasoning on its own field. Legacy tag parsing remains
+    // only as a compatibility fallback for models that embed thinking in text.
+    const reasoning = providerReasoning || parsed.reasoning;
+    const answer = parsed.answer.trim();
     const interrupted = ["interrupted", "cancelled", "failed"].includes(item.status || "");
     const live = streaming && !interrupted && (item.status === "streaming" || isActiveActivityStatus(item.status || "running"));
 
-    if (parsed.state === "streaming") {
-      return <div className="assistant-message"><LiveReasoning reasoning={parsed.reasoning} workspace={workspace} streaming={live} messageKey={`${item.id}:reasoning`} interrupted={interrupted} /></div>;
+    if (live && !answer && (reasoning || parsed.state === "streaming")) {
+      return <div className="assistant-message"><LiveReasoning reasoning={reasoning} workspace={workspace} streaming={live} messageKey={`${item.id}:reasoning`} interrupted={interrupted} /></div>;
     }
 
-    if (!parsed.reasoning && !parsed.answer.trim()) return null;
+    if (!reasoning && !answer) return null;
 
-    const answer = parsed.answer.trim();
     return (
       <div className="message-shell assistant-message-shell" data-message-id={item.id}>
         <div className="assistant-message">
-          {parsed.reasoning ? (
+          {reasoning ? (
             <Disclosure label="Thought process">
               <div className="reasoning-copy">
-                <MarkdownMessage content={parsed.reasoning} compact workspace={workspace} messageKey={`${item.id}:reasoning`} interrupted={interrupted} />
+                <MarkdownMessage content={reasoning} compact workspace={workspace} messageKey={`${item.id}:reasoning`} interrupted={interrupted} />
               </div>
             </Disclosure>
           ) : null}
           {answer ? <MarkdownMessage content={parsed.answer} workspace={workspace} streaming={live} messageKey={`${item.id}:answer`} interrupted={interrupted} /> : null}
         </div>
-        <MessageToolbar kind="assistant" item={item} text={answer || parsed.reasoning} />
+        <MessageToolbar kind="assistant" item={item} text={answer || reasoning} />
       </div>
     );
   }
