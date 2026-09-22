@@ -7,7 +7,16 @@ from app.ai import MessageRole, ModelResponse
 
 
 COMPLETE_FINISH_REASONS = {"", "stop", "tool_calls", "function_call", "completed", "end_turn"}
+RESUMABLE_TERMINAL_REASONS = frozenset({
+    "unfinished_terminal_text",
+    "unterminated_code_fence",
+    "unterminated_inline_code",
+    "unterminated_emphasis",
+})
 _COMPLETE_THINK_BLOCK_RE = re.compile(r"<think>.*?</think>", re.IGNORECASE | re.DOTALL)
+_COMPLETE_FENCED_CODE_RE = re.compile(r"```[\s\S]*?```")
+_INLINE_BACKTICK_RUN_RE = re.compile(r"(?<!\\)(`{1,2})(?!`)")
+_STRONG_MARK_RE = re.compile(r"(?<!\\)\*\*")
 _DANGLING_TERMINAL_RE = re.compile(r"(?:\[|\{|<tool_call>|```(?:json)?)\s*$", re.IGNORECASE)
 _DANGLING_DISCOURSE_RE = re.compile(r"[:：]\s*$")
 _SERIALIZED_TOOL_PROTOCOL_RE = re.compile(
@@ -49,6 +58,33 @@ def contains_serialized_tool_protocol(text: str) -> bool:
     """Detect tool-call markup a provider printed as text instead of calling."""
 
     return bool(_SERIALIZED_TOOL_PROTOCOL_RE.search(str(text or "")))
+
+
+def _without_complete_code(text: str) -> str:
+    value = _COMPLETE_FENCED_CODE_RE.sub("", str(text or ""))
+    # Remove balanced inline-code spans before checking emphasis. Do the longer
+    # delimiter first so a double-backtick span is not mistaken for two singles.
+    for delimiter in ("``", "`"):
+        escaped = re.escape(delimiter)
+        value = re.sub(
+            rf"(?<!\\){escaped}[\s\S]*?(?<!\\){escaped}",
+            "",
+            value,
+        )
+    return value
+
+
+def _has_unterminated_inline_code(text: str) -> bool:
+    value = _COMPLETE_FENCED_CODE_RE.sub("", str(text or ""))
+    counts = {1: 0, 2: 0}
+    for match in _INLINE_BACKTICK_RUN_RE.finditer(value):
+        counts[len(match.group(1))] += 1
+    return any(count % 2 for count in counts.values())
+
+
+def _has_unterminated_emphasis(text: str) -> bool:
+    value = _without_complete_code(text)
+    return len(_STRONG_MARK_RE.findall(value)) % 2 == 1
 
 
 def merge_recovery_text(partial: str, continuation: str) -> str:
@@ -98,6 +134,10 @@ def invalid_terminal_response(response: ModelResponse) -> str:
         return "dangling_serialized_structure"
     if visible.count("```") % 2:
         return "unterminated_code_fence"
+    if _has_unterminated_inline_code(visible):
+        return "unterminated_inline_code"
+    if _has_unterminated_emphasis(visible):
+        return "unterminated_emphasis"
     if _DANGLING_DISCOURSE_RE.search(visible):
         return "unfinished_terminal_text"
     return ""
@@ -159,6 +199,7 @@ def history_message_count(messages) -> int:
 
 __all__ = [
     "COMPLETE_FINISH_REASONS",
+    "RESUMABLE_TERMINAL_REASONS",
     "TERMINAL_RECOVERY_INSTRUCTION",
     "TRUNCATED_RECOVERY_INSTRUCTION",
     "UNFINISHED_RECOVERY_INSTRUCTION",
