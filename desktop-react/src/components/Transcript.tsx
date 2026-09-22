@@ -1135,11 +1135,16 @@ function EmptyState({ disabled, onPrompt }: { disabled?: boolean; onPrompt?(prom
   return (
     <section className="empty-state">
       <div className="empty-hero" aria-hidden="true">
-        <div className="empty-orbit orbit-one" />
-        <div className="empty-orbit orbit-two" />
-        <div className="empty-mark"><span>L</span></div>
+        <span className="empty-hero-aura" />
+        <span className="empty-hero-halo" />
+        <span className="empty-loom-orbit empty-loom-orbit-a" />
+        <span className="empty-loom-orbit empty-loom-orbit-b" />
+        <span className="empty-loom-core">
+          <span className="empty-loom-letter">L</span>
+        </span>
         <span className="empty-spark spark-one" />
         <span className="empty-spark spark-two" />
+        <span className="empty-spark spark-three" />
       </div>
       <div className="empty-kicker"><Sparkles size={12} /> Loom workspace</div>
       <h1>What are we working on?</h1>
