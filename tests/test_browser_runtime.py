@@ -258,6 +258,155 @@ def test_browser_open_requires_approval_before_process_start(tmp_path):
     runtime.close()
 
 
+def test_browser_open_reuses_healthy_exclusive_session(tmp_path):
+    runtime, _, session, calls, created, workspace = _runtime(
+        tmp_path, [ModelResponse(text="unused")], mode=PermissionMode.FULL_ACCESS
+    )
+    store = runtime.browser_sessions
+    assert store is not None
+    store.max_sessions_per_owner = 1
+    store.max_sessions_total = 1
+    context = ToolContext(
+        session_id=session.session_id,
+        turn_id="turn-reuse",
+        workspace=workspace,
+        permission_mode="full-access",
+    )
+    tool = runtime.tools.get("browser_open")
+    assert tool is not None
+
+    first = tool.handler(
+        context,
+        {"url": "https://example.com/", "allowed_domains": ["example.com"]},
+    )
+    second = tool.handler(
+        context,
+        {"url": "https://example.com/", "allowed_domains": ["example.com"]},
+    )
+
+    assert first.ok is True
+    assert second.ok is True
+    assert second.data["browser_id"] == first.data["browser_id"]
+    assert second.data["browser_session_reused"] is True
+    assert second.data["browser_session_recovered"] is False
+    assert len(created) == 1
+    assert ("close",) not in calls
+    runtime.close()
+
+
+def test_browser_open_restarts_stale_owned_exclusive_session(tmp_path):
+    runtime, _, session, _, created, workspace = _runtime(
+        tmp_path, [ModelResponse(text="unused")], mode=PermissionMode.FULL_ACCESS
+    )
+    store = runtime.browser_sessions
+    assert store is not None
+    store.max_sessions_per_owner = 1
+    store.max_sessions_total = 1
+    context = ToolContext(
+        session_id=session.session_id,
+        turn_id="turn-recover",
+        workspace=workspace,
+        permission_mode="full-access",
+    )
+    tool = runtime.tools.get("browser_open")
+    assert tool is not None
+
+    first = tool.handler(
+        context,
+        {"url": "https://example.com/", "allowed_domains": ["example.com"]},
+    )
+    stale_backend = created[0]
+
+    def dead_state():
+        raise RuntimeError("browser transport disappeared")
+
+    stale_backend.state = dead_state
+    second = tool.handler(
+        context,
+        {"url": "https://example.com/", "allowed_domains": ["example.com"]},
+    )
+
+    assert second.ok is True
+    assert second.data["browser_id"] != first.data["browser_id"]
+    assert second.data["browser_session_reused"] is False
+    assert second.data["browser_session_recovered"] is True
+    assert stale_backend.closed is True
+    assert len(created) == 2
+    runtime.close()
+
+
+def test_browser_open_replaces_incompatible_owned_exclusive_session(tmp_path):
+    runtime, _, session, _, created, workspace = _runtime(
+        tmp_path, [ModelResponse(text="unused")], mode=PermissionMode.FULL_ACCESS
+    )
+    store = runtime.browser_sessions
+    assert store is not None
+    store.max_sessions_per_owner = 1
+    store.max_sessions_total = 1
+    context = ToolContext(
+        session_id=session.session_id,
+        turn_id="turn-replace",
+        workspace=workspace,
+        permission_mode="full-access",
+    )
+    tool = runtime.tools.get("browser_open")
+    assert tool is not None
+
+    first = tool.handler(context, {"allowed_domains": ["example.com"]})
+    second = tool.handler(context, {"allowed_domains": ["example.org"]})
+
+    assert second.ok is True
+    assert second.data["browser_id"] != first.data["browser_id"]
+    assert second.data["browser_session_replaced"] is True
+    assert created[0].closed is True
+    assert len(created) == 2
+    runtime.close()
+
+
+def test_browser_open_reports_other_owner_capacity_as_retryable(tmp_path):
+    runtime, _, first_session, _, _, first_workspace = _runtime(
+        tmp_path, [ModelResponse(text="unused")], mode=PermissionMode.FULL_ACCESS
+    )
+    store = runtime.browser_sessions
+    assert store is not None
+    store.max_sessions_per_owner = 1
+    store.max_sessions_total = 1
+    tool = runtime.tools.get("browser_open")
+    assert tool is not None
+
+    first_context = ToolContext(
+        session_id=first_session.session_id,
+        turn_id="turn-owner-a",
+        workspace=first_workspace,
+        permission_mode="full-access",
+    )
+    opened = tool.handler(first_context, {})
+    assert opened.ok is True
+
+    second_workspace = tmp_path / "project-two"
+    second_workspace.mkdir()
+    second_session = runtime.create_session(
+        AGENT_FAST_ROLE.role_id,
+        workspace_dir=second_workspace,
+        permission_mode=PermissionMode.FULL_ACCESS,
+    )
+    second_context = ToolContext(
+        session_id=second_session.session_id,
+        turn_id="turn-owner-b",
+        workspace=second_workspace,
+        permission_mode="full-access",
+    )
+
+    busy = tool.handler(second_context, {})
+
+    assert busy.ok is False
+    assert busy.data["reason"] == "browser_capacity_busy"
+    assert busy.data["retryable"] is True
+    assert busy.data["scope"] == "total"
+    assert busy.data["active_sessions"] == 1
+    runtime.close()
+
+
 def test_read_only_denies_browser_without_starting_backend(tmp_path):
     runtime, _, session, calls, created, _ = _runtime(
         tmp_path,
