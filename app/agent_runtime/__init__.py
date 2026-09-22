@@ -160,6 +160,7 @@ from .tools import (
 from .turn_input import TurnInput, normalize_turn_input, turn_input_text
 from .web_search import (
     BraveWebSearchProvider,
+    DuckDuckGoWebSearchProvider,
     JSONTransport,
     TavilyWebSearchProvider,
     WebSearchError,
@@ -236,6 +237,7 @@ __all__ = [
     "DiffTrackerRegistry",
     "DurableAgentRuntime",
     "DurableThreadStateStore",
+    "DuckDuckGoWebSearchProvider",
     "FileAgentSessionStore",
     "GoalStatus",
     "HistoryRepair",

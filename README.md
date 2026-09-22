@@ -308,14 +308,17 @@ Explicit user/API controls are available in the CLI:
 
 ## Web search
 
-Loom supports external public-web search through credential-backed provider adapters. Search is intentionally separate from arbitrary subprocess network access and is classified as a `SENSITIVE` tool effect.
+Loom supports external public-web search as a first-class `web_search` tool. Search is intentionally separate from arbitrary subprocess network access and is classified as a `SENSITIVE` tool effect.
+
+Desktop/source builds default to a keyless DuckDuckGo public-search adapter, so ordinary web search works without creating a provider account. Operators can still select a credential-backed provider for more predictable API behavior.
 
 Supported providers:
 
-- Brave Search API
-- Tavily Search API
+- DuckDuckGo public search — built-in default, no API key required
+- Brave Search API — optional
+- Tavily Search API — optional
 
-The easiest setup auto-detects a provider-specific key:
+To use Brave or Tavily, set a provider-specific key:
 
 ```powershell
 $env:BRAVE_SEARCH_API_KEY="your-brave-key"
@@ -349,7 +352,7 @@ Disable search explicitly with:
 $env:LOOM_WEB_SEARCH_PROVIDER="off"
 ```
 
-When no provider is configured, Loom exposes only `web_search_status`; the `web_search` tool itself is absent from the model's `ToolRouter`. When configured, `web_search` returns ranked titles, URLs, source hosts, and snippets.
+Unless explicitly disabled, Loom exposes `web_search` using the built-in DuckDuckGo provider when no Brave/Tavily credentials are present. `web_search_status` reports the active provider. Set `LOOM_WEB_SEARCH_PROVIDER=off` to remove external search from the runtime. Search results contain ranked titles, URLs, source hosts, and snippets.
 
 Permission behavior:
 

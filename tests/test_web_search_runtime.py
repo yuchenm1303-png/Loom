@@ -6,6 +6,7 @@ from urllib.parse import parse_qs, urlsplit
 from app.agent_runtime import (
     AgentStatus,
     BraveWebSearchProvider,
+    DuckDuckGoWebSearchProvider,
     FileAgentSessionStore,
     PermissionMode,
     SandboxManager,
@@ -78,6 +79,32 @@ def _runtime(tmp_path, responses, provider, mode=PermissionMode.APPROVAL):
         permission_mode=mode,
     )
     return runtime, store, platform, session
+
+
+def test_duckduckgo_provider_is_keyless_and_parses_public_results():
+    requested = []
+
+    def transport(url: str, timeout: float) -> str:
+        requested.append((url, timeout))
+        return """
+        <html><body>
+          <a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Ffresh">
+            Fresh result
+          </a>
+          <a class="result__snippet">Current public-web information.</a>
+        </body></html>
+        """
+
+    provider = DuckDuckGoWebSearchProvider(transport=transport)
+    response = provider.search("latest agent frameworks", count=3)
+
+    assert provider.provider_name == "duckduckgo"
+    assert requested and requested[0][0].startswith("https://html.duckduckgo.com/html/?")
+    assert response.provider == "duckduckgo"
+    assert response.results[0].title == "Fresh result"
+    assert response.results[0].url == "https://example.com/fresh"
+    assert response.results[0].source == "example.com"
+    assert "Current public-web information" in response.results[0].snippet
 
 
 def test_brave_provider_uses_fixed_endpoint_and_subscription_header():
@@ -161,10 +188,12 @@ def test_tavily_provider_uses_bearer_auth_and_parses_scores():
 
 
 def test_web_search_provider_env_detection_is_explicit_and_secret_safe():
+    builtin = web_search_provider_from_env({})
     brave = web_search_provider_from_env({"BRAVE_SEARCH_API_KEY": "b-key"})
     tavily = web_search_provider_from_env({"TAVILY_API_KEY": "t-key"})
     disabled = web_search_provider_from_env({"LOOM_WEB_SEARCH_PROVIDER": "off"})
 
+    assert builtin is not None and builtin.provider_name == "duckduckgo"
     assert brave is not None and brave.provider_name == "brave"
     assert tavily is not None and tavily.provider_name == "tavily"
     assert disabled is None
@@ -175,6 +204,33 @@ def test_web_search_provider_env_detection_is_explicit_and_secret_safe():
         assert "LOOM_WEB_SEARCH_PROVIDER" in str(exc)
     else:  # pragma: no cover
         raise AssertionError("generic search key without provider should fail closed")
+
+
+def test_auto_configured_runtime_exposes_keyless_web_search(monkeypatch, tmp_path):
+    for name in (
+        "LOOM_WEB_SEARCH_PROVIDER",
+        "LOOM_WEB_SEARCH_API_KEY",
+        "BRAVE_SEARCH_API_KEY",
+        "TAVILY_API_KEY",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    runtime = WebSearchRuntime(
+        platform=ScriptedPlatform([]),
+        store=FileAgentSessionStore(tmp_path / "state"),
+        tools=loom_default_tools(),
+        sandbox_manager=SandboxManager(policy=SandboxPolicy.OFF),
+        auto_configure_web_search=True,
+    )
+    try:
+        assert runtime.web_search_status() == {
+            "enabled": True,
+            "provider": "duckduckgo",
+        }
+        assert runtime.tools.get("web_search") is not None
+        assert runtime.tools.router().get("web_search") is not None
+    finally:
+        runtime.close()
 
 
 def test_external_web_search_requires_approval_in_default_mode(tmp_path):

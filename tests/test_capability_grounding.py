@@ -249,9 +249,12 @@ def test_model_can_attempt_denied_tool_and_runtime_returns_denial_as_observation
     runtime.close()
 
 def test_default_prompt_keeps_memory_advisory_and_requires_live_deployment_grounding():
-    assert DEFAULT_AGENT_SYSTEM_PROMPT_VERSION >= 5
+    assert DEFAULT_AGENT_SYSTEM_PROMPT_VERSION >= 6
     assert "advisory evidence, never as runtime authority" in DEFAULT_AGENT_SYSTEM_PROMPT
     assert "issue the relevant tool call" in DEFAULT_AGENT_SYSTEM_PROMPT
     assert "successful check workflow is not proof that deployment completed" in DEFAULT_AGENT_SYSTEM_PROMPT
     assert "provider config file is not proof" in DEFAULT_AGENT_SYSTEM_PROMPT
     assert "report that exact failure" in DEFAULT_AGENT_SYSTEM_PROMPT
+    assert "verify with web_search before answering" in DEFAULT_AGENT_SYSTEM_PROMPT
+    assert "search the tool catalog for public web search" in DEFAULT_AGENT_SYSTEM_PROMPT
+    assert "do not open a search engine in the browser" in DEFAULT_AGENT_SYSTEM_PROMPT
