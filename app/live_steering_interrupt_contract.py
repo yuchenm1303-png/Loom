@@ -17,7 +17,14 @@ from types import ModuleType
 from typing import Any
 
 from app.import_patch_chain import find_spec_without
-from app.live_steering_contract import _consumed_duplicate, _input_id, _receipt, _submit_once
+from app.live_steering_contract import (
+    _consumed_duplicate,
+    _content_digest,
+    _content_record,
+    _input_id,
+    _receipt,
+    _submit_once,
+)
 
 
 _TARGET_MODULE = "app.app_server"
@@ -106,14 +113,16 @@ def _patch_runtime_class(runtime_cls: type[Any]) -> None:
     def steer(
         self: Any,
         session_id: str,
-        text: str,
+        content: Any,
         *,
         turn_id: str,
         input_id: str | None = None,
     ) -> Any:
-        value = str(text or "").strip()
-        if not value:
-            raise ValueError("steering input must not be empty")
+        from app.agent_runtime.turn_input import normalize_turn_input
+
+        normalized_content, value = normalize_turn_input(content)
+        content_record = _content_record(normalized_content)
+        digest = _content_digest(content_record)
         resolved_session_id = str(session_id or "").strip()
         resolved_turn_id = str(turn_id or "").strip()
         if not resolved_session_id or not resolved_turn_id:
@@ -134,6 +143,7 @@ def _patch_runtime_class(runtime_cls: type[Any]) -> None:
                 turn_id=resolved_turn_id,
                 text=value,
                 input_id=resolved_input_id,
+                content_digest=digest,
             )
             if consumed is not None:
                 return consumed
@@ -149,6 +159,8 @@ def _patch_runtime_class(runtime_cls: type[Any]) -> None:
                     turn_id=resolved_turn_id,
                     text=value,
                     input_id=resolved_input_id,
+                    content_record=content_record,
+                    content_digest=digest,
                 )
                 sampling = False
                 if not duplicate:
@@ -171,7 +183,7 @@ def _patch_runtime_class(runtime_cls: type[Any]) -> None:
         return original_steer(
             self,
             resolved_session_id,
-            value,
+            normalized_content,
             turn_id=resolved_turn_id,
             input_id=resolved_input_id,
         )
