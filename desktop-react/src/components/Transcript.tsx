@@ -1175,9 +1175,11 @@ function EmptyState({ disabled, onPrompt }: { disabled?: boolean; onPrompt?(prom
       <div className="empty-hero" aria-hidden="true">
         <span className="empty-hero-aura" />
         <span className="empty-hero-halo" />
-        <span className="empty-loom-orbit empty-loom-orbit-a" />
-        <span className="empty-loom-orbit empty-loom-orbit-b" />
+        <span className="empty-loom-orbit empty-loom-orbit-a empty-loom-orbit-back" />
+        <span className="empty-loom-orbit empty-loom-orbit-b empty-loom-orbit-back" />
         <span className="empty-loom-core" />
+        <span className="empty-loom-orbit empty-loom-orbit-a empty-loom-orbit-front" />
+        <span className="empty-loom-orbit empty-loom-orbit-b empty-loom-orbit-front" />
         <span className="empty-spark spark-one" />
         <span className="empty-spark spark-two" />
         <span className="empty-spark spark-three" />
