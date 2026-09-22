@@ -519,9 +519,20 @@ html[data-loom-reduced-motion="true"] .codex-sidebar .compact-thread-row.active:
   );
 }
 
+.codex-sidebar .codex-sidebar-brand-orbit-back {
+  z-index: 2;
+  clip-path: inset(0 0 49% 0);
+  opacity: .58;
+}
+
+.codex-sidebar .codex-sidebar-brand-orbit-front {
+  z-index: 5;
+  clip-path: inset(49% 0 0 0);
+}
+
 .codex-sidebar .codex-sidebar-brand-spark {
   position: absolute;
-  z-index: 5;
+  z-index: 6;
   width: 2.5px;
   height: 2.5px;
   border-radius: 50%;
