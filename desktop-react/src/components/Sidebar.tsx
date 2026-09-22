@@ -763,7 +763,15 @@ export function Sidebar({
     <aside className="sidebar compact-sidebar codex-sidebar">
       <div className="codex-sidebar-topbar">
         <button type="button" className="codex-sidebar-brand" title="Loom" aria-label="Loom">
-          <span>{threadView === "archived" ? "Archive" : "Loom"}</span>
+          <span className="codex-sidebar-brand-mark" aria-hidden="true">
+            <span className="codex-sidebar-brand-aura" />
+            <span className="codex-sidebar-brand-orbit codex-sidebar-brand-orbit-a" />
+            <span className="codex-sidebar-brand-orbit codex-sidebar-brand-orbit-b" />
+            <span className="codex-sidebar-brand-core" />
+            <span className="codex-sidebar-brand-spark codex-sidebar-brand-spark-a" />
+            <span className="codex-sidebar-brand-spark codex-sidebar-brand-spark-b" />
+          </span>
+          <span className="codex-sidebar-brand-label">{threadView === "archived" ? "Archive" : "Loom"}</span>
           <ChevronDown size={14} strokeWidth={1.8} />
         </button>
         <div className="compact-sidebar-actions">
