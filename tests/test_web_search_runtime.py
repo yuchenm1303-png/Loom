@@ -206,6 +206,33 @@ def test_web_search_provider_env_detection_is_explicit_and_secret_safe():
         raise AssertionError("generic search key without provider should fail closed")
 
 
+def test_auto_configured_runtime_exposes_keyless_web_search(monkeypatch, tmp_path):
+    for name in (
+        "LOOM_WEB_SEARCH_PROVIDER",
+        "LOOM_WEB_SEARCH_API_KEY",
+        "BRAVE_SEARCH_API_KEY",
+        "TAVILY_API_KEY",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    runtime = WebSearchRuntime(
+        platform=ScriptedPlatform([]),
+        store=FileAgentSessionStore(tmp_path / "state"),
+        tools=loom_default_tools(),
+        sandbox_manager=SandboxManager(policy=SandboxPolicy.OFF),
+        auto_configure_web_search=True,
+    )
+    try:
+        assert runtime.web_search_status() == {
+            "enabled": True,
+            "provider": "duckduckgo",
+        }
+        assert runtime.tools.get("web_search") is not None
+        assert runtime.tools.router().get("web_search") is not None
+    finally:
+        runtime.close()
+
+
 def test_external_web_search_requires_approval_in_default_mode(tmp_path):
     provider = FakeSearchProvider()
     runtime, store, platform, session = _runtime(
