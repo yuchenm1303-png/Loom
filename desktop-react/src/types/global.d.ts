@@ -48,6 +48,10 @@ export interface LoomBridge {
   setupBrowserExtension(browser?: "edge" | "chrome", extensionConnected?: boolean): Promise<{ ok: boolean; desiredVersion: string; manualInstallRequired: boolean; automaticUpdateRequested: boolean; extensionPath: string; pathCopied: boolean; folderOpened: boolean; folderError?: string; managementUrl: string; openError?: string }>;
   /** Open a folder or reveal a file in the native file manager. */
   revealPath(targetPath: string): Promise<boolean>;
+  /** Copy an image source to the native OS clipboard. */
+  copyImageSource(source: string): Promise<boolean>;
+  /** Open a safe http(s) URL in the system browser. */
+  openExternal(url: string): Promise<boolean>;
   /** Read a workspace-confined local image for safe in-app preview. */
   readLocalImage(targetPath: string, workspaceRoot: string): Promise<{
     dataUrl: string;
