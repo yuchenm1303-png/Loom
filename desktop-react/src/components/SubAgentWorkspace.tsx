@@ -21,7 +21,7 @@ const SUB_AGENT_TOOLS = new Set([
 ]);
 
 type AgentStatus = "starting" | "running" | "waiting" | "completed" | "failed" | "closed" | "idle";
-type AgentFilter = "all" | "active" | "done";
+type AgentFilter = "all" | "active" | "failed" | "done";
 
 interface AgentEventSummary {
   id: string;
@@ -507,6 +507,7 @@ export function SubAgentWorkspace({
     () => sortedAgents.filter((agent) => {
       const status = normalizedStatus(agent);
       if (filter === "active") return isActiveStatus(status);
+      if (filter === "failed") return status === "failed";
       if (filter === "done") return !isActiveStatus(status);
       return true;
     }),
@@ -515,7 +516,8 @@ export function SubAgentWorkspace({
 
   useEffect(() => {
     if (filter === "active" && counts.running === 0) setFilter("all");
-  }, [counts.running, filter]);
+    if (filter === "failed" && counts.failed === 0) setFilter("all");
+  }, [counts.failed, counts.running, filter]);
 
   if (!agents.length && !docked) return null;
 
@@ -551,6 +553,9 @@ export function SubAgentWorkspace({
             </button>
             <button type="button" role="tab" aria-selected={filter === "active"} className={filter === "active" ? "active" : ""} onClick={() => setFilter("active")}>
               进行中 <span>{counts.running}</span>
+            </button>
+            <button type="button" role="tab" aria-selected={filter === "failed"} className={filter === "failed" ? "active" : ""} onClick={() => setFilter("failed")}>
+              失败 <span>{counts.failed}</span>
             </button>
             <button type="button" role="tab" aria-selected={filter === "done"} className={filter === "done" ? "active" : ""} onClick={() => setFilter("done")}>
               已结束 <span>{agents.length - counts.running}</span>
