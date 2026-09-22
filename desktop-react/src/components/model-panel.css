@@ -590,6 +590,13 @@
 .model-group-row .model-profile-main {
   grid-template-columns: 34px minmax(0, 1fr) 22px;
   padding: 10px;
+  align-items: start;
+}
+
+.model-group-row .model-profile-icon {
+  align-self: flex-start;
+  flex: none;
+  height: 30px;
 }
 
 .model-group-models {
@@ -599,6 +606,12 @@
   overflow-y: auto;
   padding-right: 2px;
   scrollbar-width: thin;
+}
+
+.model-group-models .model-family-section .model-profile-list {
+  display: grid;
+  gap: 8px;
+  row-gap: 8px;
 }
 
 .model-family-section {
@@ -619,6 +632,9 @@
   max-height: none;
   overflow: visible;
   padding-right: 0;
+  display: grid;
+  gap: 8px;
+  row-gap: 8px;
 }
 
 .model-provider-connect {
