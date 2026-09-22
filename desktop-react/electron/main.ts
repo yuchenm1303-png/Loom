@@ -847,6 +847,10 @@ ipcMain.handle("loom:setup-browser-extension", (_event, browser: "edge" | "chrom
 ipcMain.handle("loom:reveal-path", (_event, targetPath: string) => revealPath(targetPath));
 ipcMain.handle("loom:copy-image-source", (_event, source: string) => copyImageSource(source));
 ipcMain.handle("loom:clipboard-read-text", () => clipboard.readText());
+ipcMain.handle("loom:clipboard-write-text", (_event, value: string) => {
+  clipboard.writeText(String(value || ""));
+  return true;
+});
 ipcMain.handle("loom:open-external", (_event, url: string) => openExternalUrl(url));
 ipcMain.handle("loom:read-local-image", (_event, targetPath: string, workspaceRoot: string) => (
   readLocalImage(targetPath, workspaceRoot)
