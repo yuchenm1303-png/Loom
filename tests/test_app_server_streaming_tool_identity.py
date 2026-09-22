@@ -256,3 +256,73 @@ def test_retrying_a_model_step_clears_the_abandoned_attempts_streamed_text(tmp_p
         key[:3] == ("thread-1", "turn-1", "step-1")
         for key in service._streamed_tool_calls
     )
+
+
+
+def test_app_server_streams_reasoning_on_the_assistant_item_and_commits_it(tmp_path) -> None:
+    runtime = _RuntimeStub()
+    service = StreamingLoomAppServerService(
+        runtime=runtime,
+        store=SimpleNamespace(root=tmp_path),
+        model="test-model",
+        default_workspace=tmp_path,
+        default_permission_mode=PermissionMode.WORKSPACE,
+    )
+    observed: list[tuple[str, dict[str, object]]] = []
+    service.subscribe_notifications(lambda method, params: observed.append((method, params)))
+
+    assert runtime.stream_listener is not None
+    assert runtime.runtime_listener is not None
+
+    runtime.stream_listener(
+        AgentStreamEvent(
+            session_id="thread-1",
+            turn_id="turn-1",
+            step_id="step-1",
+            kind=AgentStreamEventKind.ASSISTANT_REASONING_DELTA,
+            created_at="2026-09-05T00:00:00.000+00:00",
+            data={"delta": "Inspecting ", "profile_id": "test-model"},
+        )
+    )
+    runtime.stream_listener(
+        AgentStreamEvent(
+            session_id="thread-1",
+            turn_id="turn-1",
+            step_id="step-1",
+            kind=AgentStreamEventKind.ASSISTANT_REASONING_DELTA,
+            created_at="2026-09-05T00:00:00.100+00:00",
+            data={"delta": "the code.", "profile_id": "test-model"},
+        )
+    )
+
+    reasoning_deltas = [
+        params["delta"]["reasoning"]
+        for method, params in observed
+        if method == "item/delta" and "reasoning" in params.get("delta", {})
+    ]
+    assert reasoning_deltas == ["Inspecting ", "the code."]
+
+    runtime.runtime_listener(
+        _runtime_event(
+            AgentEventKind.MODEL_RESPONSE,
+            event_id="evt-response",
+            data={
+                "step_id": "step-1",
+                "text": "Done.",
+                "reasoning_summary": "Inspecting the code.",
+                "finish_reason": "stop",
+                "response_id": "resp-1",
+                "usage": {"input_tokens": 4, "output_tokens": 2, "total_tokens": 6},
+            },
+        )
+    )
+
+    completed = [
+        params["item"]
+        for method, params in observed
+        if method == "item/completed"
+        and params.get("item", {}).get("type") == "assistant_message"
+    ]
+    assert len(completed) == 1
+    assert completed[0]["text"] == "Done."
+    assert completed[0]["reasoning"] == "Inspecting the code."
