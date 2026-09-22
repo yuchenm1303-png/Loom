@@ -748,7 +748,7 @@ function ItemView({
     const parsed = parseUserMessageContent(rawText);
     return (
       <div className="message-shell user-message-shell" data-message-id={item.id}>
-        <div className="user-message"><UserMessageContent parsed={parsed} /></div>
+        <div className={`user-message ${parsed.attachments.length ? "has-attachments" : ""}`}><UserMessageContent parsed={parsed} /></div>
         <MessageToolbar kind="user" item={item} text={parsed.text} editable disabled={promptDisabled} />
       </div>
     );
