@@ -304,7 +304,7 @@ function ImageAttachmentPreview({ attachment, workspace }: { attachment: Display
           </div>
         </div>
         <div className="user-message-image-lightbox-canvas">
-          <img src={source} alt={attachment.name} draggable={false} />
+          <img src={source} alt={attachment.name} draggable={false} data-loom-image-path={attachmentAbsolutePath(attachment)} />
         </div>
       </div>
     </div>,
@@ -325,6 +325,7 @@ function ImageAttachmentPreview({ attachment, workspace }: { attachment: Display
           alt={attachment.name}
           loading="lazy"
           decoding="async"
+          data-loom-image-path={attachmentAbsolutePath(attachment)}
           onError={() => setFailed(true)}
         />
         <span className="user-message-image-open-hint" aria-hidden="true">
