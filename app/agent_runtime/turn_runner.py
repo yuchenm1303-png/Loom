@@ -335,11 +335,22 @@ class TurnRunner:
                     if recovery_partial and response.text and not response.tool_calls:
                         merged_text = merge_recovery_text(recovery_partial, response.text)
                         if merged_text != response.text:
-                            response = replace(
+                            merged_response = replace(
                                 response,
                                 text=merged_text,
                                 reasoning=f"{recovery_reasoning}{response.reasoning}",
                             )
+                            # Providers are free to either continue the supplied
+                            # partial or replace it with a fresh self-contained
+                            # answer. Prefer the merge when it becomes valid, or
+                            # when the retry is itself still incomplete. If the
+                            # retry is complete but the merge is not, it clearly
+                            # chose the replacement strategy; do not poison it
+                            # with the abandoned prefix.
+                            merged_invalid = _invalid_terminal_response(merged_response)
+                            retry_invalid = _invalid_terminal_response(response)
+                            if not merged_invalid or retry_invalid:
+                                response = merged_response
 
                     clean_text, compaction_echo_removed = _strip_compaction_echo(
                         messages,
