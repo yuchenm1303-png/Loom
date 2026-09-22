@@ -41,7 +41,7 @@ class DurableAgentRuntime(CoreAgentRuntime):
         self.max_auto_queued_turns = max(1, int(max_auto_queued_turns))
 
     def get_session(self, session_id: str) -> AgentSession:
-        session = self.store.load(session_id)
+        session = self._upgrade_default_system_prompt(self.store.load(session_id))
         self.durable_state.reconcile_dispatches(session.session_id, session.current_turn_id)
         return session
 
@@ -305,7 +305,7 @@ class DurableAgentRuntime(CoreAgentRuntime):
         content, text = normalize_turn_input(user_text)
         lock = self._session_lock(session_id)
         with lock:
-            session = self.store.load(session_id)
+            session = self._upgrade_default_system_prompt(self.store.load(session_id))
             if session.status is AgentStatus.WAITING_APPROVAL:
                 raise RuntimeError("agent session is waiting for tool approval")
             if session.status is AgentStatus.RUNNING:

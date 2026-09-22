@@ -154,6 +154,7 @@ class AgentSession:
     workspace_dir: str
     created_at: str
     updated_at: str
+    system_prompt_version: int = 0
     permission_mode: PermissionMode = PermissionMode.APPROVAL
     status: AgentStatus = AgentStatus.IDLE
     current_turn_id: str = ""
@@ -184,6 +185,7 @@ class AgentSession:
         self.profile_id = str(self.profile_id or "").strip().casefold()
         self.system_prompt = str(self.system_prompt or "").strip()
         self.workspace_dir = str(self.workspace_dir or "").strip()
+        self.system_prompt_version = max(0, int(self.system_prompt_version or 0))
         self.forked_from_id = str(self.forked_from_id or "").strip()
         self.model_selection = str(self.model_selection or "").strip()
         self.model = str(self.model or "").strip()
