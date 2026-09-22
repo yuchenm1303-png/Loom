@@ -160,6 +160,11 @@ function SteeringComposer({ threadId, onSend, onInterrupt, imagesAllowed = true 
   }
 
   function onKeyDown(event: ReactKeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key === "Escape" && quote) {
+      event.preventDefault();
+      setQuote(null);
+      return;
+    }
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       void submit();
