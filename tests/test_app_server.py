@@ -197,6 +197,38 @@ def test_thread_turn_notifications_and_durable_reconstruction(tmp_path: Path) ->
         runtime.close()
 
 
+def test_thread_read_can_omit_duplicate_history_payloads(tmp_path: Path) -> None:
+    service, runtime, _store, _platform, workspace = _build_service(
+        tmp_path,
+        [ModelResponse(text="lean history response")],
+    )
+    try:
+        thread_id = service.thread_start({"workspace": str(workspace)})["thread"]["id"]
+        service.turn_start({"threadId": thread_id, "input": "hello"})
+        _wait_until(lambda: thread_id not in service.runtime_status()["activeThreadIds"])
+
+        full = service.thread_read({"threadId": thread_id})
+        lean = service.thread_read(
+            {
+                "threadId": thread_id,
+                "includeMessages": False,
+                "includeEvents": False,
+            }
+        )
+
+        assert "messages" in full
+        assert "events" in full
+        assert "messages" not in lean
+        assert "events" not in lean
+        assert lean["thread"] == full["thread"]
+        assert lean["turns"] == full["turns"]
+        assert lean["pendingApproval"] == full["pendingApproval"]
+        assert lean["finalText"] == full["finalText"]
+        assert lean["error"] == full["error"]
+    finally:
+        runtime.close()
+
+
 def test_completed_turn_preserves_authoritative_final_assistant_identity(tmp_path: Path) -> None:
     tool_calls: list[str] = []
 
