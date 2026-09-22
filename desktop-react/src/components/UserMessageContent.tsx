@@ -169,14 +169,36 @@ function FileAttachmentCard({ attachment }: { attachment: DisplayAttachment }) {
 }
 
 function ImageAttachmentPreview({ attachment }: { attachment: DisplayAttachment }) {
+  const [source, setSource] = useState("");
   const [failed, setFailed] = useState(false);
   const [previewing, setPreviewing] = useState(false);
-  const source = useMemo(() => attachmentFileUrl(attachment), [attachment.path]);
 
   useEffect(() => {
+    let cancelled = false;
+    setSource("");
     setFailed(false);
     setPreviewing(false);
-  }, [source]);
+
+    const workspace = workspacePathFromHeader();
+    if (!workspace) {
+      setFailed(true);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    void window.loom.readLocalImage(attachment.path, workspace)
+      .then((result) => {
+        if (!cancelled) setSource(result.dataUrl);
+      })
+      .catch(() => {
+        if (!cancelled) setFailed(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [attachment.path]);
 
   useEffect(() => {
     if (!previewing) return;
@@ -254,6 +276,15 @@ export function UserMessageContent({ parsed }: { parsed: ParsedUserMessage }) {
 
   return (
     <div className="user-message-content">
+      {parsed.attachments.length ? (
+        <div className="user-message-attachment-list" aria-label="Attached files">
+          {parsed.attachments.map((attachment, index) => (
+            attachment.kind === "image"
+              ? <ImageAttachmentPreview attachment={attachment} key={`${attachment.path}-${index}`} />
+              : <FileAttachmentCard attachment={attachment} key={`${attachment.path}-${index}`} />
+          ))}
+        </div>
+      ) : null}
       {parsed.text ? (
         <div className={`user-message-copy-shell ${collapsible ? "is-collapsible" : ""} ${expanded ? "is-expanded" : "is-collapsed"}`}>
           <div className="user-message-text">{parsed.text}</div>
@@ -271,15 +302,6 @@ export function UserMessageContent({ parsed }: { parsed: ParsedUserMessage }) {
                 : <ChevronDown size={14} strokeWidth={1.9} aria-hidden="true" />}
             </button>
           ) : null}
-        </div>
-      ) : null}
-      {parsed.attachments.length ? (
-        <div className="user-message-attachment-list" aria-label="Attached files">
-          {parsed.attachments.map((attachment, index) => (
-            attachment.kind === "image"
-              ? <ImageAttachmentPreview attachment={attachment} key={`${attachment.path}-${index}`} />
-              : <FileAttachmentCard attachment={attachment} key={`${attachment.path}-${index}`} />
-          ))}
         </div>
       ) : null}
     </div>
