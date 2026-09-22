@@ -617,6 +617,7 @@ class ProjectMovableLoomAppServerService(ReasoningManagedLoomAppServerService):
             workspace=resolved,
             limit=limit,
             include_global=False,
+            require_query_match=True,
         )
         return {
             "query": query,

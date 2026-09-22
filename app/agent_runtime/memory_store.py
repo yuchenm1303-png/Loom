@@ -775,6 +775,7 @@ class MemoryStore:
         workspace: str | Path,
         limit: int = 8,
         include_global: bool = True,
+        require_query_match: bool = False,
     ) -> tuple[MemoryRecord, ...]:
         text = str(query or "").strip()
         if not text:
@@ -794,10 +795,14 @@ class MemoryStore:
             body_norm = _normalize(record.text)
             body_terms = _terms(record.text)
             overlap = len(query_terms.intersection(body_terms))
+            contains_query = bool(query_norm and query_norm in body_norm)
+            contains_body = bool(body_norm and body_norm in query_norm)
+            if require_query_match and not (overlap or contains_query or contains_body):
+                continue
             score = float(overlap * 3)
-            if query_norm and query_norm in body_norm:
+            if contains_query:
                 score += 12.0
-            elif body_norm and body_norm in query_norm:
+            elif contains_body:
                 score += 5.0
             if record.category is MemoryCategory.PREFERENCE:
                 score += 0.75
