@@ -765,9 +765,11 @@ export function Sidebar({
         <button type="button" className="codex-sidebar-brand" title="Loom" aria-label="Loom">
           <span className="codex-sidebar-brand-mark" aria-hidden="true">
             <span className="codex-sidebar-brand-aura" />
-            <span className="codex-sidebar-brand-orbit codex-sidebar-brand-orbit-a" />
-            <span className="codex-sidebar-brand-orbit codex-sidebar-brand-orbit-b" />
+            <span className="codex-sidebar-brand-orbit codex-sidebar-brand-orbit-a codex-sidebar-brand-orbit-back" />
+            <span className="codex-sidebar-brand-orbit codex-sidebar-brand-orbit-b codex-sidebar-brand-orbit-back" />
             <span className="codex-sidebar-brand-core" />
+            <span className="codex-sidebar-brand-orbit codex-sidebar-brand-orbit-a codex-sidebar-brand-orbit-front" />
+            <span className="codex-sidebar-brand-orbit codex-sidebar-brand-orbit-b codex-sidebar-brand-orbit-front" />
             <span className="codex-sidebar-brand-spark codex-sidebar-brand-spark-a" />
             <span className="codex-sidebar-brand-spark codex-sidebar-brand-spark-b" />
           </span>
