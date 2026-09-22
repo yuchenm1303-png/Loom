@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 import time
 from pathlib import Path
 
@@ -58,6 +59,24 @@ class StructuredRejectingPlatform(RecordingPlatform):
     def execute_structured_chat(self, _profile_id, request):
         self.structured_requests.append(request)
         raise ValueError("profile lacks structured_output")
+
+
+class ConcurrentTitlePlatform:
+    """Keep the task running while allowing its detached title call to finish."""
+
+    def __init__(self) -> None:
+        self.normal_started = threading.Event()
+        self.release_normal = threading.Event()
+        self.requests = []
+
+    def execute_chat(self, _profile_id, request):
+        self.requests.append(request)
+        if _is_title_request(request):
+            return ModelResponse(text='{"title":"优化平台筛选下拉框"}')
+        self.normal_started.set()
+        if not self.release_normal.wait(timeout=3.0):
+            raise TimeoutError("test did not release the normal turn")
+        return ModelResponse(text="normal assistant response")
 
 
 def _build_service(tmp_path: Path, responses):
@@ -208,12 +227,13 @@ def test_first_completed_turn_generates_and_persists_title(tmp_path: Path) -> No
         assert title_request.messages[0].role is MessageRole.SYSTEM
         title_context = str(title_request.messages[1].content)
         assert "自动总结并生成简短标题" in title_context
-        # The detached call runs after the first turn, so the assistant outcome
-        # can disambiguate terse prompts without changing the canonical source.
-        assert "已经把 Loom 的会话标题逻辑接好了" in title_context
+        # The detached request starts immediately, so it must be able to title
+        # the task from the canonical user request without waiting for an
+        # assistant outcome.
+        assert "已经把 Loom 的会话标题逻辑接好了" not in title_context
         assert '{"title"' in str(title_request.messages[-1].content)
-        assert not _is_title_request(platform.requests[0])
-        assert _is_title_request(platform.requests[1])
+        assert len([request for request in platform.requests if _is_title_request(request)]) == 1
+        assert len([request for request in platform.requests if not _is_title_request(request)]) == 1
 
         assert any(
             method == "thread/updated" and params.get("reason") == "auto_title"
@@ -413,6 +433,37 @@ def test_existing_bad_auto_title_is_hidden_and_can_regenerate(tmp_path: Path) ->
         runtime.close()
 
 
+def test_title_is_generated_while_first_turn_is_still_running(tmp_path: Path) -> None:
+    service, runtime, _store, _default_platform, workspace = _build_service(tmp_path, [])
+    platform = ConcurrentTitlePlatform()
+    try:
+        thread_id = service.thread_start({"workspace": str(workspace)})["thread"]["id"]
+        runtime.set_session_model(thread_id, platform)
+
+        service.turn_start(
+            {
+                "threadId": thread_id,
+                "input": "定位优化平台筛选下拉组件，修复文字和箭头对齐",
+            }
+        )
+        assert platform.normal_started.wait(timeout=1.0)
+
+        record = _wait_until(
+            lambda: (
+                service.thread_read({"threadId": thread_id})["thread"]
+                if service.thread_read({"threadId": thread_id})["thread"].get("titleSource") == "auto"
+                else None
+            )
+        )
+        assert record["title"] == "优化平台筛选下拉框"
+        assert record["status"] == "running"
+        assert thread_id in service.runtime_status()["activeThreadIds"]
+    finally:
+        platform.release_normal.set()
+        _wait_until(lambda: thread_id not in service.runtime_status()["activeThreadIds"])
+        runtime.close()
+
+
 def test_structural_debris_title_is_hidden_and_all_record_paths_agree(tmp_path: Path) -> None:
     service, runtime, store, _platform, workspace = _build_service(tmp_path, [])
     try:
@@ -550,6 +601,7 @@ def test_follow_up_never_reopens_a_committed_auto_title(tmp_path: Path) -> None:
         generated_at = first_title["autoTitleGeneratedAt"]
         attempts = first_title["autoTitleAttempts"]
         assert first_title["title"] == "修复标签布局"
+        _wait_until(lambda: thread_id not in service.runtime_status()["activeThreadIds"])
 
         service.turn_start(
             {
