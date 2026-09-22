@@ -235,7 +235,10 @@ export function DecisionPromptCard({
       <header className="decision-card-head">
         <span className="decision-card-icon" aria-hidden="true"><MessageSquareText size={16} /></span>
         <div className="decision-card-heading">
-          <strong>{spec.title}</strong>
+          <div className="decision-card-title-row">
+            <strong>{spec.title}</strong>
+            {spec.multiple ? <span className="decision-mode-badge">{zh ? "可多选" : "Multi-select"}</span> : null}
+          </div>
           {spec.description ? <p>{spec.description}</p> : null}
         </div>
       </header>
