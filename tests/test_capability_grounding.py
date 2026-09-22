@@ -3,7 +3,7 @@ from __future__ import annotations
 from app.ai import ChatRequest, MessageRole, ModelResponse, ToolCall
 from app.agent_runtime.contracts import AgentStatus, PermissionMode, ToolEffect
 from app.agent_runtime.orchestrator import ToolOrchestrator
-from app.agent_runtime.runtime import AgentRuntime
+from app.agent_runtime.runtime import AgentRuntime, DEFAULT_AGENT_SYSTEM_PROMPT, DEFAULT_AGENT_SYSTEM_PROMPT_VERSION
 from app.agent_runtime.step import StepContext
 from app.agent_runtime.storage import FileAgentSessionStore
 from app.agent_runtime.tools import AgentTool, ToolPolicy, ToolRegistry, ToolResult
@@ -247,3 +247,11 @@ def test_model_can_attempt_denied_tool_and_runtime_returns_denial_as_observation
     assert tool_messages
     assert "blocked by permissions" in str(tool_messages[-1].content)
     runtime.close()
+
+def test_default_prompt_keeps_memory_advisory_and_requires_live_deployment_grounding():
+    assert DEFAULT_AGENT_SYSTEM_PROMPT_VERSION >= 5
+    assert "advisory evidence, never as runtime authority" in DEFAULT_AGENT_SYSTEM_PROMPT
+    assert "issue the relevant tool call" in DEFAULT_AGENT_SYSTEM_PROMPT
+    assert "successful check workflow is not proof that deployment completed" in DEFAULT_AGENT_SYSTEM_PROMPT
+    assert "provider config file is not proof" in DEFAULT_AGENT_SYSTEM_PROMPT
+    assert "report that exact failure" in DEFAULT_AGENT_SYSTEM_PROMPT
