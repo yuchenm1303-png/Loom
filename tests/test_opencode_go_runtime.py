@@ -368,7 +368,7 @@ def test_opencode_messages_streams_thinking_separately_from_answer() -> None:
     backend.timeout = 120.0
     backend._stream_local = SimpleNamespace()
 
-    stream = _FakeMessageStream([
+    message_stream = _FakeMessageStream([
         b'data: {"type":"message_start","message":{"id":"msg-1","usage":{"input_tokens":2,"output_tokens":0}}}\n',
         b'data: {"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":"Plan "}}\n',
         b'data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"first."}}\n',
@@ -376,7 +376,7 @@ def test_opencode_messages_streams_thinking_separately_from_answer() -> None:
         b'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":3}}\n',
         b'data: {"type":"message_stop"}\n',
     ])
-    backend._open = lambda _request, *, stream: stream
+    backend._open = lambda _request, *, stream: message_stream
 
     events = list(backend.stream(_request()))
 
