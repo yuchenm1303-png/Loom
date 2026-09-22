@@ -402,7 +402,7 @@ export function GlobalContextMenu() {
         icon: <Clipboard size={15} strokeWidth={1.75} />,
         group: 1,
         run: async () => {
-          const text = await navigator.clipboard.readText();
+          const text = await window.loom.readClipboardText();
           if (text) replaceEditableSelection(state.editable!, text);
         },
       });
