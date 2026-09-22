@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { PRESENTATION_FRAME_MS } from "../presentationTiming";
 import { advanceStreamingText } from "./streamingText";
 
 // Scoped to a mounted turn: moving its final answer must not lose paint progress.
@@ -6,7 +7,6 @@ import { advanceStreamingText } from "./streamingText";
 type Snapshot = { visible: string };
 const PresentationContext = createContext<Map<string, Snapshot> | null>(null);
 
-const MIN_PAINT_INTERVAL_MS = 28;
 
 export function StreamingPresentation({ children }: { children: ReactNode }) {
   const [snapshots] = useState(() => new Map<string, Snapshot>());
@@ -77,7 +77,7 @@ export function useStreamingPresentation(content: string, streaming: boolean, me
       }
 
       const elapsed = lastPaintAtRef.current ? now - lastPaintAtRef.current : 32;
-      if (lastPaintAtRef.current && elapsed < MIN_PAINT_INTERVAL_MS) {
+      if (lastPaintAtRef.current && elapsed < PRESENTATION_FRAME_MS) {
         frameRef.current = requestAnimationFrame(tick);
         return;
       }

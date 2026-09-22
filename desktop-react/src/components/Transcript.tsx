@@ -19,6 +19,7 @@ import {
   Zap,
 } from "lucide-react";
 import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { TURN_SETTLE_HOLD_MS } from "../presentationTiming";
 import type { TranscriptItem } from "../types/loom";
 import { MarkdownMessage } from "./MarkdownMessage";
 import { DecisionPromptCard, DecisionPromptRecoveryCard, parseDecisionMessage } from "./DecisionPromptCard";
@@ -1116,7 +1117,7 @@ const TurnView = memo(function TurnView({
       // Let the final answer land before folding the execution timeline. A
       // short settle hold makes the handoff read as one continuous action
       // instead of a process panel disappearing the instant TURN_COMPLETED lands.
-      const timer = window.setTimeout(() => setProcessOpen(false), 460);
+      const timer = window.setTimeout(() => setProcessOpen(false), TURN_SETTLE_HOLD_MS);
       wasActiveRef.current = active;
       return () => window.clearTimeout(timer);
     }

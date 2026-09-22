@@ -15,6 +15,7 @@ import type {
   TranscriptItem,
   TurnRecord,
 } from "../types/loom";
+import { PRESENTATION_FRAME_MS } from "../presentationTiming";
 import { buildApprovalResponse } from "./approvalProtocol";
 
 type ThreadView = "active" | "archived";
@@ -176,7 +177,7 @@ export function useLoom() {
     deltaFlushTimerRef.current = window.setTimeout(() => {
       deltaFlushTimerRef.current = null;
       flushPendingItemDeltas();
-    }, 28);
+    }, PRESENTATION_FRAME_MS);
   }, [flushPendingItemDeltas]);
 
   useEffect(() => () => {

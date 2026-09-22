@@ -1,6 +1,7 @@
 import { Activity, Bot, Clock3, FileDiff, Terminal, Wrench } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useI18n, type LoomLanguage } from "../i18n";
+import { RUN_PHASE_PRESENTATION_HOLD_MS } from "../presentationTiming";
 import type { TranscriptItem } from "../types/loom";
 import "./run-progress.css";
 
@@ -21,7 +22,6 @@ interface RunStats {
   agents: number;
 }
 
-const PHASE_PRESENTATION_HOLD_MS = 130;
 
 function usePresentedPhase(phase: string, urgent: boolean): string {
   const [presented, setPresented] = useState(phase);
@@ -40,7 +40,7 @@ function usePresentedPhase(phase: string, urgent: boolean): string {
     timerRef.current = window.setTimeout(() => {
       timerRef.current = null;
       setPresented(phase);
-    }, PHASE_PRESENTATION_HOLD_MS);
+    }, RUN_PHASE_PRESENTATION_HOLD_MS);
     return () => {
       if (timerRef.current !== null) window.clearTimeout(timerRef.current);
       timerRef.current = null;
