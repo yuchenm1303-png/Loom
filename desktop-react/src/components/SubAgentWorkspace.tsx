@@ -287,6 +287,24 @@ function roleCopy(role: string): string {
   return value.replaceAll("_", " ");
 }
 
+function taskPreview(task: string, latestEvent?: AgentEventSummary): string {
+  const source = task
+    .replace(/\r?\n+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!source) return latestEvent?.label || "子代理任务";
+
+  const taskMarker = source.match(/(?:任务|目标|负责|请完成|只做|工作内容)[：:]\s*(.+)$/i);
+  let value = (taskMarker?.[1] || source)
+    .replace(/^你是[^。.!！?？]{0,120}(?:子代理|执行者|验证者|测试者|修复者)[）)】\]。,.，:：\s-]*/i, "")
+    .replace(/^你是[^。.!！?？]{0,100}[。.!！?？]\s*/i, "")
+    .replace(/^(?:工作目录|workspace)[：:]?\s*[^。.!！?？]{1,140}[。.!！?？]\s*/i, "")
+    .trim();
+
+  if (!value) value = source;
+  return value.length > 150 ? `${value.slice(0, 148).trimEnd()}…` : value;
+}
+
 function shortAgentId(agent: AgentCardState): string {
   if (!agent.sessionId) return "准备中";
   return agent.sessionId.length > 8 ? agent.sessionId.slice(-8) : agent.sessionId;
@@ -312,6 +330,7 @@ function AgentCard({ agent }: { agent: AgentCardState }) {
   const [open, setOpen] = useState(status === "failed");
   const hasDetail = Boolean(agent.finalText || agent.error || agent.events.length > 1);
   const latestEvent = agent.events.at(-1);
+  const preview = taskPreview(agent.task, latestEvent);
 
   useEffect(() => {
     if (status === "failed") setOpen(true);
@@ -332,8 +351,8 @@ function AgentCard({ agent }: { agent: AgentCardState }) {
             <strong>{roleCopy(agent.role)}</strong>
             <span className="sub-agent-id">#{shortAgentId(agent)}</span>
           </span>
-          <span className="sub-agent-task">
-            {agent.task || (latestEvent ? latestEvent.label : "子代理任务")}
+          <span className="sub-agent-task" title={preview}>
+            {preview}
           </span>
         </span>
         <span className={`sub-agent-status ${status}`}>
@@ -344,7 +363,7 @@ function AgentCard({ agent }: { agent: AgentCardState }) {
       </button>
 
       <div className="sub-agent-card-meta">
-        <span>{historyCopy(agent.historyMode)}</span>
+        <span className="sub-agent-context-label">{historyCopy(agent.historyMode)}</span>
         {agent.queueDepth > 0 ? <span>队列 {agent.queueDepth}</span> : null}
         {latestEvent ? <span>{latestEvent.label}</span> : null}
       </div>
@@ -513,7 +532,7 @@ export function SubAgentWorkspace({
         </span>
         <span className="sub-agent-workspace-copy">
           <strong>子代理工作区</strong>
-          <span>并行任务不会占用新的对话</span>
+          <span>{agents.length ? `${agents.length} 个代理 · 并行任务集中在这里管理` : "并行任务集中在这里管理"}</span>
         </span>
         <span className="sub-agent-workspace-summary">
           {counts.running ? <b>{counts.running} 运行中</b> : null}
@@ -542,7 +561,7 @@ export function SubAgentWorkspace({
             </button>
           </div>
           <span className="sub-agent-toolbar-note">
-            {counts.running ? "优先显示正在工作的代理" : "任务状态已同步"}
+            {counts.running ? `${counts.running} 个任务正在并行执行` : "全部任务状态已同步"}
           </span>
         </div>
       ) : null}
