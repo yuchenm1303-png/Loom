@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import { BootErrorBoundary } from "./components/BootErrorBoundary";
+import { GlobalContextMenu } from "./components/GlobalContextMenu";
 import { I18nProvider, bootstrapDocumentLanguage } from "./i18n";
 import { bootstrapTheme } from "./theme";
 import { applyRendererScale, installNativeRendererScaleSync } from "./rendererScale";
@@ -158,6 +159,7 @@ createRoot(rootElement).render(
     <BootErrorBoundary>
       <I18nProvider>
         <App />
+        <GlobalContextMenu />
       </I18nProvider>
     </BootErrorBoundary>
   </StrictMode>,
