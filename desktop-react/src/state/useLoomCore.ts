@@ -357,19 +357,17 @@ export function useLoom() {
       // Put it in the library locally instead of blocking on thread/list and
       // then reading the same empty thread back from disk.
       threadListRequestRef.current += 1;
-      setThreads((current) => {
-        const existed = current.some((thread) => thread.id === created.id);
-        const next = [created, ...current.filter((thread) => thread.id !== created.id)];
-        threadsRef.current = next;
-        if (!existed) {
-          setThreadCounts((counts) => ({
-            active: counts.active + 1,
-            archived: counts.archived,
-            all: counts.all + 1,
-          }));
-        }
-        return next;
-      });
+      const existed = threadsRef.current.some((thread) => thread.id === created.id);
+      const nextThreads = [created, ...threadsRef.current.filter((thread) => thread.id !== created.id)];
+      threadsRef.current = nextThreads;
+      setThreads(nextThreads);
+      if (!existed) {
+        setThreadCounts((counts) => ({
+          active: counts.active + 1,
+          archived: counts.archived,
+          all: counts.all + 1,
+        }));
+      }
 
       // The user may have clicked another conversation while thread/start was
       // in flight. Keep the created conversation in the sidebar, but do not
