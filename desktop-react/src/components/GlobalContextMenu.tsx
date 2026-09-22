@@ -191,7 +191,12 @@ export function GlobalContextMenu() {
 
   useEffect(() => {
     const onContextMenu = (event: MouseEvent) => {
-      const target = event.target instanceof HTMLElement ? event.target : null;
+      let target: HTMLElement | null = event.target instanceof HTMLElement ? event.target : null;
+      if (!target && event.target instanceof Element) {
+        let ancestor: Element | null = event.target;
+        while (ancestor && !(ancestor instanceof HTMLElement)) ancestor = ancestor.parentElement;
+        target = ancestor instanceof HTMLElement ? ancestor : null;
+      }
       if (!target || target.closest(".loom-context-menu")) return;
 
       event.preventDefault();
@@ -346,7 +351,7 @@ export function GlobalContextMenu() {
         icon: <ImageIcon size={15} strokeWidth={1.75} />,
         group: 1,
         run: async () => {
-          const source = await materializeImageSource(remoteImageSource);
+          const source = state.imagePath || await materializeImageSource(remoteImageSource);
           await window.loom.copyImageSource(source);
         },
       });
@@ -471,11 +476,21 @@ export function GlobalContextMenu() {
       shortcut: shortcut("A"),
       icon: <MousePointer2 size={15} strokeWidth={1.75} />,
       group: 4,
-      run: () => selectAll(state.editable),
+      run: () => {
+        requestAnimationFrame(() => selectAll(state.editable));
+      },
     });
 
     return items;
   }, [state, zh]);
+
+  useEffect(() => {
+    if (!state) return;
+    const frame = requestAnimationFrame(() => {
+      menuRef.current?.querySelector<HTMLButtonElement>(".loom-context-action:not(:disabled)")?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [state]);
 
   if (!state || !actions.length) return null;
 
@@ -499,6 +514,21 @@ export function GlobalContextMenu() {
       aria-label={zh ? "右键菜单" : "Context menu"}
       style={{ left: position.x, top: position.y }}
       onContextMenu={(event) => event.preventDefault()}
+      onKeyDown={(event) => {
+        if (event.key !== "ArrowDown" && event.key !== "ArrowUp" && event.key !== "Home" && event.key !== "End") return;
+        event.preventDefault();
+        const buttons = [...(menuRef.current?.querySelectorAll<HTMLButtonElement>(".loom-context-action:not(:disabled)") ?? [])];
+        if (!buttons.length) return;
+        const current = buttons.indexOf(document.activeElement as HTMLButtonElement);
+        const next = event.key === "Home"
+          ? 0
+          : event.key === "End"
+            ? buttons.length - 1
+            : event.key === "ArrowDown"
+              ? (current + 1 + buttons.length) % buttons.length
+              : (current - 1 + buttons.length) % buttons.length;
+        buttons[next]?.focus({ preventScroll: true });
+      }}
     >
       {previewLabel && previewText ? (
         <div className="loom-context-preview" aria-hidden="true">
