@@ -22,6 +22,7 @@ export interface DisplayAttachment {
   path: string;
   kind: "image" | "file";
   extension: string;
+  extractedPath?: string;
 }
 
 export interface ParsedUserMessage {
@@ -31,7 +32,7 @@ export interface ParsedUserMessage {
 
 const MANIFEST_HEADER = "Attached files (already saved in this workspace):";
 const IMAGE_MARKER = /^\[\d+ images? attached\]$/i;
-const MANIFEST_LINE = /^-\s+(.+?)\s+—\s+(\.loom\/attachments\/.+?)\s+\((image, shown above|read it with the file tools)\)$/i;
+const MANIFEST_LINE = /^-\s+(.+?)\s+—\s+(\.loom\/attachments\/.+?)\s+\((image, shown above|read it with the file tools)(?:;\s+extracted text:\s+(\.loom\/attachments\/.+?\.extracted\.txt))?\)$/i;
 const LONG_MESSAGE_CHAR_THRESHOLD = 420;
 const LONG_MESSAGE_LINE_THRESHOLD = 9;
 const INLINE_VIEW_EXTENSIONS = new Set([
@@ -70,6 +71,7 @@ export function parseUserMessageContent(raw: string): ParsedUserMessage {
       path: match[2].trim(),
       kind: match[3].toLowerCase().startsWith("image") ? "image" : "file",
       extension: extensionOf(name),
+      extractedPath: match[4]?.trim() || undefined,
     });
   }
 
@@ -162,7 +164,7 @@ function FileAttachmentCard({ attachment }: { attachment: DisplayAttachment }) {
       <span className="user-message-file-icon" aria-hidden="true"><Icon size={18} strokeWidth={1.65} /></span>
       <span className="user-message-file-copy">
         <strong>{attachment.name}</strong>
-        <span>{attachment.kind === "image" ? "图片" : typeLabel(attachment)}</span>
+        <span>{attachment.kind === "image" ? "图片" : `${typeLabel(attachment)}${attachment.extractedPath ? " · 已解析" : ""}`}</span>
       </span>
       <span className="user-message-file-open" aria-hidden="true"><ExternalLink size={14} strokeWidth={1.8} /></span>
     </button>
