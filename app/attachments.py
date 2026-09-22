@@ -22,6 +22,8 @@ import base64
 import mimetypes
 import re
 import shutil
+import zipfile
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -38,6 +40,8 @@ MAX_FILE_BYTES = 128 * 1024 * 1024
 MAX_ATTACHMENTS = 10
 
 IMAGE_SUFFIXES = frozenset({".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"})
+EXTRACTABLE_SUFFIXES = frozenset({".pdf", ".docx", ".pptx", ".xlsx", ".ods"})
+MAX_EXTRACTED_TEXT_CHARS = 2_000_000
 _IMAGE_MIME = {
     ".png": "image/png",
     ".jpg": "image/jpeg",
@@ -82,6 +86,7 @@ class StagedAttachment:
     relative_path: str
     size: int
     kind: str  # "image" | "file"
+    extracted_relative_path: str = ""
 
     @property
     def is_image(self) -> bool:
@@ -102,7 +107,135 @@ class StagedAttachment:
             "path": self.relative_path,
             "size": self.size,
             "kind": self.kind,
+            "extractedPath": self.extracted_relative_path or None,
         }
+
+
+def _bounded_text(parts: list[str]) -> str:
+    text = "\n".join(part.strip() for part in parts if part and part.strip()).strip()
+    if len(text) > MAX_EXTRACTED_TEXT_CHARS:
+        return text[:MAX_EXTRACTED_TEXT_CHARS] + "\n\n[extracted text truncated]"
+    return text
+
+
+def _extract_docx(path: Path) -> str:
+    ns = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+    with zipfile.ZipFile(path) as archive:
+        root = ET.fromstring(archive.read("word/document.xml"))
+    paragraphs = []
+    for paragraph in root.iter(f"{ns}p"):
+        value = "".join(node.text or "" for node in paragraph.iter(f"{ns}t")).strip()
+        if value:
+            paragraphs.append(value)
+    return _bounded_text(paragraphs)
+
+
+def _extract_pptx(path: Path) -> str:
+    ns = "{http://schemas.openxmlformats.org/drawingml/2006/main}"
+    parts: list[str] = []
+    with zipfile.ZipFile(path) as archive:
+        names = sorted(
+            (name for name in archive.namelist() if re.fullmatch(r"ppt/slides/slide\d+\.xml", name)),
+            key=lambda name: int(re.search(r"(\d+)\.xml$", name).group(1)),  # type: ignore[union-attr]
+        )
+        for index, name in enumerate(names, start=1):
+            root = ET.fromstring(archive.read(name))
+            values = [node.text or "" for node in root.iter(f"{ns}t") if (node.text or "").strip()]
+            if values:
+                parts.append(f"Slide {index}\n" + "\n".join(values))
+    return _bounded_text(parts)
+
+
+def _extract_xlsx(path: Path) -> str:
+    ns = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
+    parts: list[str] = []
+    with zipfile.ZipFile(path) as archive:
+        shared: list[str] = []
+        if "xl/sharedStrings.xml" in archive.namelist():
+            root = ET.fromstring(archive.read("xl/sharedStrings.xml"))
+            for item in root.iter(f"{ns}si"):
+                shared.append("".join(node.text or "" for node in item.iter(f"{ns}t")))
+
+        sheets = sorted(
+            (name for name in archive.namelist() if re.fullmatch(r"xl/worksheets/sheet\d+\.xml", name)),
+            key=lambda name: int(re.search(r"(\d+)\.xml$", name).group(1)),  # type: ignore[union-attr]
+        )
+        for sheet_index, name in enumerate(sheets, start=1):
+            root = ET.fromstring(archive.read(name))
+            rows: list[str] = []
+            for row in root.iter(f"{ns}row"):
+                values: list[str] = []
+                for cell in row.findall(f"{ns}c"):
+                    kind = str(cell.attrib.get("t") or "")
+                    if kind == "inlineStr":
+                        inline = cell.find(f"{ns}is")
+                        value = "" if inline is None else "".join(
+                            node.text or "" for node in inline.iter(f"{ns}t")
+                        )
+                    else:
+                        value_node = cell.find(f"{ns}v")
+                        raw = "" if value_node is None else str(value_node.text or "")
+                        if kind == "s" and raw.isdigit() and int(raw) < len(shared):
+                            value = shared[int(raw)]
+                        else:
+                            value = raw
+                    values.append(value)
+                if values:
+                    rows.append("\t".join(values).rstrip())
+            if rows:
+                parts.append(f"Sheet {sheet_index}\n" + "\n".join(rows))
+    return _bounded_text(parts)
+
+
+def _extract_ods(path: Path) -> str:
+    namespace = "{urn:oasis:names:tc:opendocument:xmlns:text:1.0}"
+    with zipfile.ZipFile(path) as archive:
+        root = ET.fromstring(archive.read("content.xml"))
+    return _bounded_text([
+        "".join(node.itertext())
+        for node in root.iter(f"{namespace}p")
+    ])
+
+
+def _extract_pdf(path: Path) -> str:
+    from pypdf import PdfReader
+
+    reader = PdfReader(str(path), strict=False)
+    parts: list[str] = []
+    for index, page in enumerate(reader.pages, start=1):
+        value = str(page.extract_text() or "").strip()
+        if value:
+            parts.append(f"Page {index}\n{value}")
+        if sum(len(part) for part in parts) >= MAX_EXTRACTED_TEXT_CHARS:
+            break
+    return _bounded_text(parts)
+
+
+def extract_attachment_text(path: str | Path) -> str:
+    """Extract readable text from common document containers without inlining it.
+
+    Extraction is best-effort: malformed or image-only documents remain valid
+    attachments and can still be opened with their original application.
+    """
+
+    target = Path(path)
+    suffix = target.suffix.casefold()
+    if suffix not in EXTRACTABLE_SUFFIXES:
+        return ""
+    extractors = {
+        ".pdf": _extract_pdf,
+        ".docx": _extract_docx,
+        ".pptx": _extract_pptx,
+        ".xlsx": _extract_xlsx,
+        ".ods": _extract_ods,
+    }
+    try:
+        return extractors[suffix](target)
+    except Exception:
+        # Extraction is an enhancement, never an admission requirement. A
+        # corrupted, encrypted or image-only document must remain attachable so
+        # the user can still ask Loom to inspect it with other tools.
+        return ""
 
 
 def _unique_path(directory: Path, name: str) -> Path:
@@ -171,6 +304,18 @@ def stage_attachments(
             shutil.copyfile(source, target)
         except OSError as exc:
             raise AttachmentError(f"could not save {display!r} into the workspace: {exc}") from exc
+
+        extracted_relative_path = ""
+        if not image and target.suffix.casefold() in EXTRACTABLE_SUFFIXES:
+            extracted = extract_attachment_text(target)
+            if extracted:
+                try:
+                    extracted_path = target.with_name(f"{target.name}.extracted.txt")
+                    extracted_path.write_text(extracted + "\n", encoding="utf-8")
+                    extracted_relative_path = extracted_path.relative_to(root).as_posix()
+                except OSError:
+                    extracted_relative_path = ""
+
         staged.append(
             StagedAttachment(
                 name=display,
@@ -178,6 +323,7 @@ def stage_attachments(
                 relative_path=target.relative_to(root).as_posix(),
                 size=size,
                 kind="image" if image else "file",
+                extracted_relative_path=extracted_relative_path,
             )
         )
     return tuple(staged)
@@ -195,6 +341,8 @@ def attachment_manifest(staged: tuple[StagedAttachment, ...]) -> str:
     lines = ["Attached files (already saved in this workspace):"]
     for item in staged:
         detail = "image, shown above" if item.is_image else "read it with the file tools"
+        if item.extracted_relative_path:
+            detail += f"; extracted text: {item.extracted_relative_path}"
         lines.append(f"- {item.name} — {item.relative_path} ({detail})")
     return "\n".join(lines)
 
@@ -224,14 +372,17 @@ def build_turn_content(
 
 __all__ = [
     "ATTACHMENT_DIRNAME",
+    "EXTRACTABLE_SUFFIXES",
     "IMAGE_SUFFIXES",
     "MAX_ATTACHMENTS",
+    "MAX_EXTRACTED_TEXT_CHARS",
     "MAX_FILE_BYTES",
     "MAX_IMAGE_BYTES",
     "AttachmentError",
     "StagedAttachment",
     "attachment_manifest",
     "build_turn_content",
+    "extract_attachment_text",
     "is_image",
     "safe_name",
     "stage_attachments",
