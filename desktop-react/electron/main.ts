@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeTheme, shell } from "electron";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, nativeTheme, shell } from "electron";
 import { ChildProcessWithoutNullStreams, spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -442,6 +442,41 @@ async function readLocalMedia(targetPath: string, workspaceRoot: string): Promis
   };
 }
 
+
+async function copyImageSource(sourceValue: string): Promise<boolean> {
+  const source = String(sourceValue || "").trim();
+  if (!source) return false;
+
+  let image;
+  if (source.startsWith("data:image/")) {
+    image = nativeImage.createFromDataURL(source);
+  } else if (source.startsWith("file://")) {
+    image = nativeImage.createFromPath(fileURLToPath(source));
+  } else if (/^https?:\/\//i.test(source)) {
+    const response = await fetch(source);
+    if (!response.ok) throw new Error(`Could not download image (HTTP ${response.status})`);
+    const bytes = Buffer.from(await response.arrayBuffer());
+    image = nativeImage.createFromBuffer(bytes);
+  } else if (path.isAbsolute(source)) {
+    image = nativeImage.createFromPath(source);
+  } else {
+    throw new Error("Unsupported image source");
+  }
+
+  if (!image || image.isEmpty()) throw new Error("Image could not be decoded");
+  clipboard.writeImage(image);
+  return true;
+}
+
+async function openExternalUrl(value: string): Promise<boolean> {
+  const url = new URL(String(value || "").trim());
+  if (url.protocol !== "https:" && url.protocol !== "http:") {
+    throw new Error("Only http and https links can be opened externally");
+  }
+  await shell.openExternal(url.toString());
+  return true;
+}
+
 class LoomRpcProcess {
   private child: ChildProcessWithoutNullStreams | null = null;
   private nextId = 1;
@@ -810,6 +845,8 @@ ipcMain.handle("loom:export-computer-logs", () => exportComputerLogs());
 ipcMain.handle("loom:export-browser-logs", () => exportBrowserLogs());
 ipcMain.handle("loom:setup-browser-extension", (_event, browser: "edge" | "chrome" = "edge", extensionConnected = false) => setupBrowserExtension(browser, extensionConnected));
 ipcMain.handle("loom:reveal-path", (_event, targetPath: string) => revealPath(targetPath));
+ipcMain.handle("loom:copy-image-source", (_event, source: string) => copyImageSource(source));
+ipcMain.handle("loom:open-external", (_event, url: string) => openExternalUrl(url));
 ipcMain.handle("loom:read-local-image", (_event, targetPath: string, workspaceRoot: string) => (
   readLocalImage(targetPath, workspaceRoot)
 ));
