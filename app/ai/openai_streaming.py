@@ -122,10 +122,10 @@ class OpenAIStreamingChatBackend(OpenAIChatBackend):
                 choice = choices[0]
                 delta = getattr(choice, "delta", None)
                 if delta is not None:
-                    # Reasoning is never surfaced as assistant content, but it is
-                    # retained: thinking-mode providers require the reasoning of
-                    # an assistant turn to be handed back with that turn, so
-                    # dropping it makes the turn unreplayable.
+                    # Keep provider reasoning separate from assistant text. It
+                    # remains replayable transport state and, because this
+                    # provider explicitly exposed it, also flows through Loom's
+                    # visible reasoning stream.
                     reasoning = getattr(delta, "reasoning_content", None)
                     if reasoning is not None:
                         reasoning_text = str(reasoning)
@@ -139,6 +139,10 @@ class OpenAIStreamingChatBackend(OpenAIChatBackend):
                         if reasoning_text:
                             reasoning_char_count += len(reasoning_text)
                             reasoning_parts.append(reasoning_text)
+                            yield StreamEvent(
+                                kind=StreamEventKind.REASONING_DELTA,
+                                reasoning_delta=reasoning_text,
+                            )
                     text = str(getattr(delta, "content", "") or "")
                     if text:
                         if compatible:
