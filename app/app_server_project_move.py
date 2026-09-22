@@ -5,7 +5,8 @@ from pathlib import Path
 from typing import Any, Callable, TextIO
 
 from app.ai import AIMessage, MessageRole
-from app.agent_runtime import AgentEventKind, AgentStatus, PermissionMode
+from app.agent_runtime import AgentEventKind, AgentStatus, MemoryScope, PermissionMode
+from app.agent_runtime.memory_store import workspace_memory_key
 from app.agent_runtime.storage import utc_now
 from app.projects import ProjectStoreError
 
@@ -551,6 +552,116 @@ class ProjectMovableLoomAppServerService(ReasoningManagedLoomAppServerService):
         forgotten = bool(self._memory_call("forget_memory")(thread_id, memory_id))
         return {"memoryId": memory_id, "forgotten": forgotten}
 
+    def _project_memory_store(self) -> Any:
+        store = getattr(self.runtime, "memory_store", None)
+        if store is None:
+            raise JsonRpcError(-32040, "memory is not available on this runtime")
+        return store
+
+    def _project_memory_context(self, params: dict[str, Any]) -> tuple[str, Any, Path]:
+        project_id = self._required_text(params, "projectId")
+        project, resolved = self._project_root_or_error(project_id)
+        return project_id, project, resolved
+
+    @staticmethod
+    def _project_memory_matches(record: Any, workspace: Path) -> bool:
+        return bool(
+            record is not None
+            and getattr(record, "status", "") == "active"
+            and getattr(record, "scope", None) is MemoryScope.WORKSPACE
+            and getattr(record, "scope_key", "") == workspace_memory_key(workspace)
+        )
+
+    def project_memory_status(self, params: dict[str, Any]) -> dict[str, Any]:
+        project_id, _project, resolved = self._project_memory_context(params)
+        store = self._project_memory_store()
+        records = store.list_records(
+            workspace=resolved,
+            include_global=False,
+            limit=1000,
+        )
+        categories: dict[str, int] = {}
+        for record in records:
+            key = record.category.value
+            categories[key] = categories.get(key, 0) + 1
+        return {
+            "memory": {
+                "projectId": project_id,
+                "scope": MemoryScope.WORKSPACE.value,
+                "total": len(records),
+                "visible": len(records),
+                "categories": categories,
+                "enabled": bool(getattr(self.runtime, "memory_enabled", True)),
+                "auto_extract": bool(getattr(self.runtime, "memory_auto_extract", False)),
+            }
+        }
+
+    def project_memory_list(self, params: dict[str, Any]) -> dict[str, Any]:
+        _project_id, _project, resolved = self._project_memory_context(params)
+        store = self._project_memory_store()
+        limit = max(1, min(500, int(params.get("limit") or 100)))
+        records = store.list_records(
+            workspace=resolved,
+            include_global=False,
+            limit=limit,
+        )
+        return {"memories": [record.to_dict() for record in records]}
+
+    def project_memory_search(self, params: dict[str, Any]) -> dict[str, Any]:
+        _project_id, _project, resolved = self._project_memory_context(params)
+        store = self._project_memory_store()
+        query = self._required_text(params, "query")
+        limit = max(1, min(32, int(params.get("limit") or 8)))
+        records = store.search(
+            query,
+            workspace=resolved,
+            limit=limit,
+            include_global=False,
+            require_query_match=True,
+        )
+        return {
+            "query": query,
+            "memories": [record.to_dict() for record in records],
+        }
+
+    def project_memory_read(self, params: dict[str, Any]) -> dict[str, Any]:
+        _project_id, _project, resolved = self._project_memory_context(params)
+        store = self._project_memory_store()
+        memory_id = self._required_text(params, "memoryId")
+        evidence_limit = max(1, min(100, int(params.get("evidenceLimit") or 20)))
+        record = store.get(memory_id)
+        if not self._project_memory_matches(record, resolved):
+            raise JsonRpcError(-32044, "project memory not found")
+        return {
+            "memory": record.to_dict(),
+            "evidence": [
+                item.to_dict()
+                for item in store.evidence(record.memory_id, limit=evidence_limit)
+            ],
+        }
+
+    def project_memory_forget(self, params: dict[str, Any]) -> dict[str, Any]:
+        project_id, _project, resolved = self._project_memory_context(params)
+        active = [
+            session
+            for session in self._list_session_objects()
+            if self._resolved_project_id(session) == project_id
+            and session.status in {AgentStatus.RUNNING, AgentStatus.WAITING_APPROVAL}
+        ]
+        if active:
+            raise JsonRpcError(
+                -32045,
+                "finish active project turns before forgetting project memory",
+            )
+
+        store = self._project_memory_store()
+        memory_id = self._required_text(params, "memoryId")
+        record = store.get(memory_id)
+        if not self._project_memory_matches(record, resolved):
+            return {"memoryId": memory_id, "forgotten": False}
+        forgotten = bool(store.delete(memory_id))
+        return {"memoryId": memory_id, "forgotten": forgotten}
+
     def _explicit_project_id(self, session: Any) -> str | None:
         metadata = self.thread_library.read(session.session_id)
         if "projectId" not in metadata:
@@ -782,6 +893,7 @@ class ProjectMovableLoomRpcController(ReasoningManagedLoomRpcController):
             "instructions": True,
             "workspaceStatus": True,
             "gitDiff": True,
+            "memory": True,
         }
         capabilities["memory"] = {
             "status": True,
@@ -803,6 +915,16 @@ class ProjectMovableLoomRpcController(ReasoningManagedLoomRpcController):
             return self.service.project_workspace_status(params)
         if method == "project/git_diff":
             return self.service.project_git_diff(params)
+        if method == "project/memory_status":
+            return self.service.project_memory_status(params)
+        if method == "project/memory_list":
+            return self.service.project_memory_list(params)
+        if method == "project/memory_search":
+            return self.service.project_memory_search(params)
+        if method == "project/memory_read":
+            return self.service.project_memory_read(params)
+        if method == "project/memory_forget":
+            return self.service.project_memory_forget(params)
         if method == "memory/status":
             return self.service.memory_status(params)
         if method == "memory/list":

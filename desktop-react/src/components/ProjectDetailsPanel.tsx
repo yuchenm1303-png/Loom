@@ -17,6 +17,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ProjectRecord, ThreadRecord, TranscriptItem } from "../types/loom";
 import { ProjectAgentFilesCard } from "./ProjectAgentFilesCard";
+import { ProjectMemoryCard } from "./ProjectMemoryCard";
 import "./project-details-panel.css";
 import "./project-details-git.css";
 
@@ -616,6 +617,12 @@ export function ProjectDetailsPanel({
             </button>
           </div>
         </section>
+
+        <ProjectMemoryCard
+          projectId={project.id}
+          open={open}
+          running={Boolean(busyThreads.length)}
+        />
 
         <ProjectAgentFilesCard projectId={project.id} open={open} />
 
