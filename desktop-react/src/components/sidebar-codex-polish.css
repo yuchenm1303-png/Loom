@@ -293,8 +293,8 @@
 
 .codex-sidebar .project-group-actions button,
 .codex-sidebar .thread-quick-actions button {
-  width: 24px;
-  height: 24px;
+  width: 32px;
+  height: 32px;
   border-radius: 6px;
 }
 
@@ -420,15 +420,15 @@ html[data-loom-reduced-motion="true"] .codex-sidebar .compact-thread-row.active:
 
 /* Loom agent brand mark --------------------------------------------------- */
 .codex-sidebar .codex-sidebar-brand {
-  gap: 7px;
-  padding-left: 4px;
+  gap: 8px;
+  padding-left: 3px;
 }
 
 .codex-sidebar .codex-sidebar-brand-mark {
   position: relative;
-  width: 22px;
-  height: 22px;
-  flex: 0 0 22px;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
   display: grid;
   place-items: center;
   isolation: isolate;
@@ -443,7 +443,7 @@ html[data-loom-reduced-motion="true"] .codex-sidebar .compact-thread-row.active:
   border-radius: 50%;
   background:
     radial-gradient(circle, rgba(117,102,238,.18) 0%, rgba(73,183,255,.08) 42%, transparent 72%);
-  filter: blur(3.5px);
+  filter: blur(4px);
   opacity: .82;
   animation: sidebar-brand-aura 4.8s ease-in-out infinite;
 }
@@ -451,22 +451,22 @@ html[data-loom-reduced-motion="true"] .codex-sidebar .compact-thread-row.active:
 .codex-sidebar .codex-sidebar-brand-core {
   position: relative;
   z-index: 4;
-  width: 7px;
-  height: 7px;
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
   background:
     radial-gradient(circle at 34% 28%, #f5f2ff 0 10%, #a8e4ff 18%, #728dff 44%, #8569ee 73%, #6552c9 100%);
   box-shadow:
-    0 0 5px rgba(99,132,255,.42),
-    0 0 10px rgba(126,95,233,.20);
+    0 0 6px rgba(99,132,255,.46),
+    0 0 13px rgba(126,95,233,.24);
   animation: sidebar-brand-core 4.2s ease-in-out infinite;
 }
 
 .codex-sidebar .codex-sidebar-brand-orbit {
   position: absolute;
   z-index: 2;
-  width: 20px;
-  height: 9px;
+  width: 26px;
+  height: 12px;
   border-radius: 50%;
   pointer-events: none;
   filter: drop-shadow(0 0 2.5px rgba(117,101,234,.18));
@@ -500,8 +500,8 @@ html[data-loom-reduced-motion="true"] .codex-sidebar .compact-thread-row.active:
 
 .codex-sidebar .codex-sidebar-brand-orbit-b {
   z-index: 1;
-  width: 18px;
-  height: 8px;
+  width: 23px;
+  height: 10px;
   opacity: .76;
   animation: sidebar-brand-orbit-b 12s linear infinite;
 }
@@ -522,8 +522,8 @@ html[data-loom-reduced-motion="true"] .codex-sidebar .compact-thread-row.active:
 .codex-sidebar .codex-sidebar-brand-spark {
   position: absolute;
   z-index: 5;
-  width: 2px;
-  height: 2px;
+  width: 2.5px;
+  height: 2.5px;
   border-radius: 50%;
   background: #9a88f3;
   box-shadow: 0 0 5px rgba(139,124,246,.42);
@@ -531,12 +531,12 @@ html[data-loom-reduced-motion="true"] .codex-sidebar .compact-thread-row.active:
 
 .codex-sidebar .codex-sidebar-brand-spark-a {
   top: 3px;
-  right: 2px;
+  right: 1px;
   animation: sidebar-brand-spark-a 4.8s ease-in-out infinite;
 }
 
 .codex-sidebar .codex-sidebar-brand-spark-b {
-  left: 2px;
+  left: 1px;
   bottom: 4px;
   opacity: .7;
   background: #6fcfff;
