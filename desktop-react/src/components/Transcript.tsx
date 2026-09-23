@@ -19,7 +19,7 @@ import {
   Wrench,
   Zap,
 } from "lucide-react";
-import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { TURN_SETTLE_HOLD_MS } from "../presentationTiming";
 import type { TranscriptItem } from "../types/loom";
 import { MarkdownMessage } from "./MarkdownMessage";
@@ -415,25 +415,52 @@ function ActivityGlyph({ item, size = 13 }: { item: TranscriptItem; size?: numbe
   return <Wrench size={size} />;
 }
 
-const ActivityRow = memo(function ActivityRow({ item, visualIndex = 0 }: { item: TranscriptItem; visualIndex?: number }) {
-  const [open, setOpen] = useState(false);
+interface ActivityRowProps {
+  item: TranscriptItem;
+  open: boolean;
+  onToggle(id: string): void;
+}
+
+function sameActivityRowProps(previous: ActivityRowProps, next: ActivityRowProps): boolean {
+  if (previous.open !== next.open) return false;
+  if (previous.item.id !== next.item.id || previous.item.type !== next.item.type) return false;
+
+  const previousStatus = itemStatus(previous.item);
+  const nextStatus = itemStatus(next.item);
+  if (previousStatus !== nextStatus) return false;
+
+  if (previous.item.toolName !== next.item.toolName) return false;
+  if (previous.item.type === "process" && processCommand(previous.item) !== processCommand(next.item)) return false;
+  if (previous.item.type === "file_edit" && fileLabel(previous.item) !== fileLabel(next.item)) return false;
+
+  // Collapsed rows intentionally ignore stdout/stderr/content/argument deltas.
+  // Those can arrive every presentation frame and used to make the task pill
+  // reconcile while its entrance animation was still running. When expanded,
+  // the detail panel remains fully live.
+  if (next.open) return activityDetail(previous.item) === activityDetail(next.item);
+
+  const active = isActiveActivityStatus(nextStatus);
+  if (!active && hasActivityDetail(previous.item) !== hasActivityDetail(next.item)) return false;
+  return true;
+}
+
+const ActivityRow = memo(function ActivityRow({ item, open, onToggle }: ActivityRowProps) {
   const status = itemStatus(item);
-  const stats = useMemo(() => item.type === "file_edit" ? diffStats(item.diff) : null, [item.diff, item.type]);
   const active = isActiveActivityStatus(status);
   const executing = isExecutingActivityStatus(status);
   const expandable = active || hasActivityDetail(item);
-  const detail = useMemo(() => open ? activityDetail(item) : "", [item, open]);
+  const detail = open ? activityDetail(item) : "";
+  const stats = item.type === "file_edit" && (!active || open) ? diffStats(item.diff) : null;
 
   return (
     <div
       className={`task-flow-row-wrap ${open ? "is-open" : ""}`}
-      style={{ animationDelay: `${Math.min(visualIndex, 3) * 22}ms` }}
       data-kind={item.type}
     >
       <button
         type="button"
         className={`task-flow-row task-flow-kind-${item.type} ${active ? "is-active" : "is-resting"} ${executing ? "is-executing" : ""} ${expandable ? "is-expandable" : "no-detail"}`.trim()}
-        onClick={() => expandable && setOpen((value) => !value)}
+        onClick={() => expandable && onToggle(item.id)}
         aria-expanded={expandable ? open : undefined}
         disabled={!expandable}
         title={expandable ? (open ? "Collapse details" : "Expand details") : undefined}
@@ -485,7 +512,7 @@ const ActivityRow = memo(function ActivityRow({ item, visualIndex = 0 }: { item:
       ) : null}
     </div>
   );
-});
+}, sameActivityRowProps);
 
 function isFailureStatus(status: string): boolean {
   return status === "failed" || status === "denied" || status === "cancelled" || status === "interrupted";
@@ -566,7 +593,17 @@ function ActivityFlow({ items, keepOpen = false }: { items: TranscriptItem[]; ke
   // prevents the title/icon from flipping completed -> running between steps.
   const running = keepOpen;
   const [open, setOpen] = useState(true);
+  const [openRows, setOpenRows] = useState<Set<string>>(() => new Set());
   const wasRunningRef = useRef(false);
+
+  const toggleRow = useCallback((id: string) => {
+    setOpenRows((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     if (running && !wasRunningRef.current) setOpen(true);
@@ -592,7 +629,14 @@ function ActivityFlow({ items, keepOpen = false }: { items: TranscriptItem[]; ke
       <div className="task-flow-group-grid">
         <div className="task-flow-group-inner">
           <div className="task-flow-list">
-            {compactItems.map((item, index) => <ActivityRow key={item.id} item={item} visualIndex={index} />)}
+            {compactItems.map((item) => (
+              <ActivityRow
+                key={item.id}
+                item={item}
+                open={openRows.has(item.id)}
+                onToggle={toggleRow}
+              />
+            ))}
           </div>
         </div>
       </div>
