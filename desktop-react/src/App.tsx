@@ -228,6 +228,7 @@ export default function App() {
     ? loom.projects.find((project) => project.id === selectedProjectId) ?? null
     : null;
   const projectDetailsOpen = Boolean(selectedProject);
+  const projectDetailsPresence = useMotionPresence(projectDetailsOpen, 190);
   const inspectorVisible = inspectorOpen && !reviewOpen && !projectDetailsOpen && !agentsOpen;
 
   function focusReviewFile(path?: string): void {
@@ -677,7 +678,7 @@ export default function App() {
     <>
       <div
         ref={shellRef}
-        className={`app-shell workspace-panels ${sidebarOpen ? "sidebar-open" : "sidebar-closed"} ${inspectorVisible ? "inspector-open" : "inspector-closed"} ${reviewOpen ? "with-review" : ""} ${agentsPresence.mounted ? "with-agents" : ""} ${projectDetailsOpen ? "with-project-details" : ""} ${resizingPanel ? "is-resizing" : ""} ${settingsPresence.mounted ? "is-settings-obscured" : ""}`}
+        className={`app-shell workspace-panels ${sidebarOpen ? "sidebar-open" : "sidebar-closed"} ${inspectorVisible ? "inspector-open" : "inspector-closed"} ${reviewOpen ? "with-review" : ""} ${agentsPresence.mounted ? "with-agents" : ""} ${projectDetailsPresence.mounted ? "with-project-details" : ""} ${resizingPanel ? "is-resizing" : ""} ${settingsPresence.mounted ? "is-settings-obscured" : ""}`}
         style={layoutStyle}
         aria-hidden={settingsPresence.mounted ? true : undefined}
       >
