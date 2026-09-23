@@ -38,6 +38,14 @@ function latestUserMessageId(items: TranscriptItem[]): string {
   return "";
 }
 
+function latestActivityItemId(items: TranscriptItem[]): string {
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index];
+    if (item?.type === "tool_call" || item?.type === "process" || item?.type === "file_edit") return item.id;
+  }
+  return "";
+}
+
 /**
  * Owns the conversation viewport policy without coupling it to message layout.
  *
@@ -60,10 +68,13 @@ export function TranscriptScrollController({
   const lastThreadIdRef = useRef(String(threadId ?? ""));
   const lastTurnIdRef = useRef(String(currentTurnId ?? ""));
   const lastUserMessageIdRef = useRef("");
+  const lastActivityItemIdRef = useRef("");
   const lastScrollTopRef = useRef(0);
   const frameRef = useRef<number | null>(null);
+  const snapBottomRef = useRef(false);
   const [jumpVisible, setJumpVisible] = useState(false);
   const latestUserId = useMemo(() => latestUserMessageId(items), [items]);
+  const latestActivityId = useMemo(() => latestActivityItemId(items), [items]);
 
   const cancelScheduledScroll = () => {
     if (frameRef.current !== null) {
@@ -72,8 +83,9 @@ export function TranscriptScrollController({
     }
   };
 
-  const scheduleBottomSync = (scroller: HTMLDivElement, force = false) => {
+  const scheduleBottomSync = (scroller: HTMLDivElement, force = false, snap = false) => {
     if (force) forceBottomRef.current = true;
+    if (snap) snapBottomRef.current = true;
     if (isPanelResizeActive() || frameRef.current !== null) return;
 
     const step = () => {
@@ -81,7 +93,9 @@ export function TranscriptScrollController({
       if (isPanelResizeActive()) return;
 
       const forced = forceBottomRef.current;
+      const snap = snapBottomRef.current;
       forceBottomRef.current = false;
+      snapBottomRef.current = false;
       if (!followingRef.current && !forced) return;
 
       const target = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
@@ -91,6 +105,7 @@ export function TranscriptScrollController({
       const easeLiveGrowth = Boolean(
         running
         && !forced
+        && !snap
         && !reducedMotion
         && distance > SCROLL_EPSILON_PX
         && distance <= LIVE_FOLLOW_MAX_DISTANCE_PX
@@ -127,6 +142,7 @@ export function TranscriptScrollController({
     const threadChanged = nextThreadId !== lastThreadIdRef.current;
     const turnChanged = Boolean(nextTurnId) && nextTurnId !== lastTurnIdRef.current;
     const userMessageAdded = Boolean(latestUserId) && latestUserId !== lastUserMessageIdRef.current;
+    const activityAdded = Boolean(latestActivityId) && latestActivityId !== lastActivityItemIdRef.current;
 
     if (threadChanged || turnChanged || userMessageAdded) {
       // A conversation/turn transition is an explicit request to work at the
@@ -135,6 +151,11 @@ export function TranscriptScrollController({
       followingRef.current = true;
       setJumpVisible(false);
       scheduleBottomSync(scroller, true);
+    } else if (activityAdded && followingRef.current) {
+      // A new task row already takes its final layout height. Snap the bottom
+      // anchor in the same pre-paint cycle so the row's own compositor entrance
+      // is the only visible motion instead of competing with viewport easing.
+      scheduleBottomSync(scroller, false, true);
     } else if (followingRef.current) {
       scheduleBottomSync(scroller);
     }
@@ -142,7 +163,8 @@ export function TranscriptScrollController({
     lastThreadIdRef.current = nextThreadId;
     lastTurnIdRef.current = nextTurnId;
     lastUserMessageIdRef.current = latestUserId;
-  }, [items, latestUserId, threadId, currentTurnId, running]);
+    lastActivityItemIdRef.current = latestActivityId;
+  }, [items, latestUserId, latestActivityId, threadId, currentTurnId, running]);
 
   useLayoutEffect(() => {
     const scroller = transcriptScroller();
