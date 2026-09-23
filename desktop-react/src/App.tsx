@@ -185,6 +185,8 @@ export default function App() {
   const panelMotionTimerRef = useRef<number | null>(null);
   const sidebarLayoutTimerRef = useRef<number | null>(null);
   const inspectorLayoutTimerRef = useRef<number | null>(null);
+  const sidebarEnterFrameRef = useRef<number | null>(null);
+  const inspectorEnterFrameRef = useRef<number | null>(null);
   const [inspectorOpen, setInspectorOpen] = useState(() => {
     try { return localStorage.getItem("loom.inspector.open") === "true"; }
     catch { return false; }
@@ -195,6 +197,7 @@ export default function App() {
   }, [inspectorOpen]);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [sidebarLayoutOpen, setSidebarLayoutOpen] = useState(true);
+  const [sidebarVisualOpen, setSidebarVisualOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsPresence = useMotionPresence(settingsOpen, 200);
   const [accountOpen, setAccountOpen] = useState(false);
@@ -240,6 +243,7 @@ export default function App() {
   const projectDetailsPresence = useMotionPresence(projectDetailsOpen, 190);
   const inspectorVisible = inspectorOpen && !reviewOpen && !projectDetailsOpen && !agentsOpen;
   const [inspectorLayoutOpen, setInspectorLayoutOpen] = useState(inspectorVisible);
+  const [inspectorVisualOpen, setInspectorVisualOpen] = useState(inspectorVisible);
 
   const panelVisibilityRef = useRef({ sidebarOpen, inspectorVisible });
   const committedPanelLayoutRef = useRef({ sidebarLayoutOpen, inspectorLayoutOpen });
@@ -265,10 +269,34 @@ export default function App() {
       window.clearTimeout(sidebarLayoutTimerRef.current);
       sidebarLayoutTimerRef.current = null;
     }
+    if (sidebarEnterFrameRef.current !== null) {
+      cancelAnimationFrame(sidebarEnterFrameRef.current);
+      sidebarEnterFrameRef.current = null;
+    }
+
     if (sidebarOpen) {
+      const reduced = document.documentElement.dataset.loomReducedMotion === "true"
+        || Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)").matches);
       setSidebarLayoutOpen(true);
+      if (reduced) {
+        setSidebarVisualOpen(true);
+        return;
+      }
+
+      // Reserve the final track first, paint one off-screen frame, then let the
+      // sidebar itself slide in on the compositor. This restores visible motion
+      // without tweening the transcript width.
+      setSidebarVisualOpen(false);
+      sidebarEnterFrameRef.current = requestAnimationFrame(() => {
+        sidebarEnterFrameRef.current = requestAnimationFrame(() => {
+          sidebarEnterFrameRef.current = null;
+          setSidebarVisualOpen(true);
+        });
+      });
       return;
     }
+
+    setSidebarVisualOpen(false);
     sidebarLayoutTimerRef.current = window.setTimeout(() => {
       sidebarLayoutTimerRef.current = null;
       setSidebarLayoutOpen(false);
@@ -280,10 +308,31 @@ export default function App() {
       window.clearTimeout(inspectorLayoutTimerRef.current);
       inspectorLayoutTimerRef.current = null;
     }
+    if (inspectorEnterFrameRef.current !== null) {
+      cancelAnimationFrame(inspectorEnterFrameRef.current);
+      inspectorEnterFrameRef.current = null;
+    }
+
     if (inspectorVisible) {
+      const reduced = document.documentElement.dataset.loomReducedMotion === "true"
+        || Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)").matches);
       setInspectorLayoutOpen(true);
+      if (reduced) {
+        setInspectorVisualOpen(true);
+        return;
+      }
+
+      setInspectorVisualOpen(false);
+      inspectorEnterFrameRef.current = requestAnimationFrame(() => {
+        inspectorEnterFrameRef.current = requestAnimationFrame(() => {
+          inspectorEnterFrameRef.current = null;
+          setInspectorVisualOpen(true);
+        });
+      });
       return;
     }
+
+    setInspectorVisualOpen(false);
     inspectorLayoutTimerRef.current = window.setTimeout(() => {
       inspectorLayoutTimerRef.current = null;
       setInspectorLayoutOpen(false);
@@ -400,6 +449,8 @@ export default function App() {
     if (panelMotionTimerRef.current !== null) window.clearTimeout(panelMotionTimerRef.current);
     if (sidebarLayoutTimerRef.current !== null) window.clearTimeout(sidebarLayoutTimerRef.current);
     if (inspectorLayoutTimerRef.current !== null) window.clearTimeout(inspectorLayoutTimerRef.current);
+    if (sidebarEnterFrameRef.current !== null) cancelAnimationFrame(sidebarEnterFrameRef.current);
+    if (inspectorEnterFrameRef.current !== null) cancelAnimationFrame(inspectorEnterFrameRef.current);
     document.body.classList.remove("loom-panel-resizing");
     document.body.classList.remove("loom-panel-motion");
   }, []);
@@ -751,7 +802,7 @@ export default function App() {
     <>
       <div
         ref={shellRef}
-        className={`app-shell workspace-panels ${sidebarOpen ? "sidebar-open" : "sidebar-closed"} ${sidebarLayoutOpen ? "sidebar-layout-open" : "sidebar-layout-closed"} ${inspectorVisible ? "inspector-open" : "inspector-closed"} ${inspectorLayoutOpen ? "inspector-layout-open" : "inspector-layout-closed"} ${reviewOpen ? "with-review" : ""} ${agentsPresence.mounted ? "with-agents" : ""} ${projectDetailsPresence.mounted ? "with-project-details" : ""} ${resizingPanel ? "is-resizing" : ""} ${panelMotionActive ? "is-panel-motion" : ""} ${settingsPresence.mounted ? "is-settings-obscured" : ""}`}
+        className={`app-shell workspace-panels ${sidebarVisualOpen ? "sidebar-open" : "sidebar-closed"} ${sidebarLayoutOpen ? "sidebar-layout-open" : "sidebar-layout-closed"} ${inspectorVisualOpen ? "inspector-open" : "inspector-closed"} ${inspectorLayoutOpen ? "inspector-layout-open" : "inspector-layout-closed"} ${reviewOpen ? "with-review" : ""} ${agentsPresence.mounted ? "with-agents" : ""} ${projectDetailsPresence.mounted ? "with-project-details" : ""} ${resizingPanel ? "is-resizing" : ""} ${panelMotionActive ? "is-panel-motion" : ""} ${settingsPresence.mounted ? "is-settings-obscured" : ""}`}
         style={layoutStyle}
         aria-hidden={settingsPresence.mounted ? true : undefined}
       >
