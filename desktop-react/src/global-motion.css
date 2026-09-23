@@ -36,11 +36,26 @@
     radial-gradient(circle at 18% 0%, rgba(139,124,246,.10), transparent 30%),
     radial-gradient(circle at 100% 12%, rgba(82,92,180,.08), transparent 34%),
     #0b0c0f;
+  will-change: opacity;
+  transition: opacity 285ms ease;
+}
+
+.settings-host[data-motion-phase="entering"] {
+  opacity: 0;
+}
+
+.settings-host[data-motion-phase="entered"] {
+  opacity: 1;
+}
+
+.settings-host[data-motion-phase="exiting"] {
+  opacity: 0;
 }
 
 .settings-host .settings-sidebar,
 .settings-host .settings-main {
   backface-visibility: hidden;
+  will-change: transform, opacity;
   transition:
     transform var(--loom-motion-page) var(--loom-ease-out),
     opacity var(--loom-motion-opacity) ease;
