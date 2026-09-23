@@ -506,7 +506,7 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
   const [modelState, setModelState] = useState<ModelSnapshot | null>(models);
   const [busyCapability, setBusyCapability] = useState<CapabilityKey | null>(null);
   const [notice, setNotice] = useState<{ tone: "error" | "success"; text: string } | null>(null);
-  const noticePresence = useMotionPresence(Boolean(notice), 150);
+  const noticePresence = useMotionPresence(Boolean(notice), 200);
   const lastNoticeRef = useRef<{ tone: "error" | "success"; text: string } | null>(notice);
   if (notice) lastNoticeRef.current = notice;
   const visibleNotice = notice ?? lastNoticeRef.current;
