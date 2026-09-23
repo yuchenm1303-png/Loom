@@ -318,3 +318,15 @@
     height: 17px;
   }
 }
+
+/* Decision choices continue the task instead of presenting themselves as a
+   brand-new chat bubble. The marked user item is still persisted and sent to
+   the model with full question context; only the duplicate transcript bubble
+   is suppressed because the decision card already owns the visible receipt. */
+.transcript-entry:has(.user-message-shell[data-loom-message-text^="[[LOOM_DECISION_RESPONSE:v1]]"]) {
+  display: none !important;
+}
+
+.turn-block:has(.user-message-shell[data-loom-message-text^="[[LOOM_DECISION_RESPONSE:v1]]"]) {
+  margin-top: 2px;
+}
