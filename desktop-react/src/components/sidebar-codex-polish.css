@@ -301,8 +301,7 @@
 .codex-sidebar .project-thread-list {
   display: grid;
   gap: 1px;
-  margin-top: 1px;
-  margin-left: 20px;
+  margin: 1px 0 5px 20px;
   padding-left: 7px;
   border-left: 1px solid rgba(255,255,255,.045);
 }

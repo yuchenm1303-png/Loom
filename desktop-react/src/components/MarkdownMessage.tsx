@@ -171,7 +171,7 @@ function LocalImagePreview({
           </div>
         </div>
         <div className="user-message-image-lightbox-canvas">
-          <img src={payload.dataUrl} alt={label} draggable={false} />
+          <img src={payload.dataUrl} alt={label} draggable={false} data-loom-image-path={payload.path} />
         </div>
       </div>
     </div>,
@@ -187,7 +187,7 @@ function LocalImagePreview({
         title={`${label} · 点击放大`}
         aria-label={`放大查看图片：${label}`}
       >
-        <img src={payload.dataUrl} alt={label} loading="lazy" decoding="async" draggable={false} />
+        <img src={payload.dataUrl} alt={label} loading="lazy" decoding="async" draggable={false} data-loom-image-path={payload.path} />
         <span className="assistant-local-image-hint" aria-hidden="true">
           <Maximize2 size={14} strokeWidth={1.8} />
           <span>查看</span>

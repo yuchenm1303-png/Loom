@@ -49,6 +49,10 @@ const api = {
   exportBrowserLogs: () => ipcRenderer.invoke("loom:export-browser-logs"),
   setupBrowserExtension: (browser: "edge" | "chrome" = "edge", extensionConnected = false) => ipcRenderer.invoke("loom:setup-browser-extension", browser, extensionConnected),
   revealPath: (targetPath: string) => ipcRenderer.invoke("loom:reveal-path", targetPath),
+  copyImageSource: (source: string) => ipcRenderer.invoke("loom:copy-image-source", source),
+  readClipboardText: () => ipcRenderer.invoke("loom:clipboard-read-text"),
+  writeClipboardText: (value: string) => ipcRenderer.invoke("loom:clipboard-write-text", value),
+  openExternal: (url: string) => ipcRenderer.invoke("loom:open-external", url),
   readLocalImage: (targetPath: string, workspaceRoot: string) =>
     ipcRenderer.invoke("loom:read-local-image", targetPath, workspaceRoot),
   readLocalMedia: (targetPath: string, workspaceRoot: string) =>

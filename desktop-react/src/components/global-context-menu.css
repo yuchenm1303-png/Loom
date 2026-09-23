@@ -1,0 +1,366 @@
+/* Loom desktop context menu ------------------------------------------------ */
+.loom-context-menu {
+  position: fixed;
+  z-index: 10050;
+  width: 236px;
+  padding: 6px;
+  border: 1px solid rgba(255,255,255,.075);
+  border-radius: 13px;
+  background:
+    linear-gradient(180deg, rgba(31,32,36,.985), rgba(25,26,30,.985));
+  color: #e8e9ed;
+  box-shadow:
+    0 18px 48px rgba(0,0,0,.34),
+    0 4px 14px rgba(0,0,0,.22),
+    inset 0 1px rgba(255,255,255,.04);
+  backdrop-filter: blur(7px) saturate(1.04);
+  -webkit-backdrop-filter: blur(7px) saturate(1.04);
+  user-select: none;
+  contain: layout paint style;
+  transform-origin: top left;
+  will-change: transform, opacity;
+  transition:
+    transform var(--loom-motion-popover, 240ms) var(--loom-ease-out, cubic-bezier(.16,1,.3,1)),
+    opacity 180ms ease;
+}
+
+.loom-context-menu.is-positioning {
+  visibility: hidden;
+  opacity: 0;
+  transform: translate3d(0, -5px, 0) scale(.985);
+}
+
+.loom-context-menu.is-positioned {
+  visibility: visible;
+  opacity: 1;
+  transform: translate3d(0, 0, 0) scale(1);
+}
+
+.loom-context-menu.is-closing {
+  pointer-events: none;
+  opacity: 0;
+  transform: translate3d(0, -2px, 0) scale(.992);
+  transition-duration: 145ms;
+  transition-timing-function: var(--loom-ease-in, cubic-bezier(.4,0,.8,.2));
+}
+
+.loom-context-preview {
+  display: grid;
+  gap: 3px;
+  margin: 2px 2px 6px;
+  padding: 7px 9px 8px;
+  border: 1px solid rgba(139,124,246,.10);
+  border-radius: 9px;
+  background: rgba(139,124,246,.045);
+}
+
+.loom-context-preview > span {
+  color: #9d93dc;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .04em;
+}
+
+.loom-context-preview > p {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  color: #aeb3bd;
+  font-size: 10.2px;
+  line-height: 1.42;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.loom-context-actions {
+  display: grid;
+  gap: 1px;
+}
+
+.loom-context-action-wrap {
+  position: relative;
+}
+
+.loom-context-action-wrap.has-separator {
+  margin-top: 5px;
+  padding-top: 5px;
+}
+
+.loom-context-action-wrap.has-separator::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 8px;
+  right: 8px;
+  height: 1px;
+  background: rgba(255,255,255,.055);
+}
+
+.loom-context-action {
+  width: 100%;
+  min-height: 34px;
+  display: grid;
+  grid-template-columns: 24px minmax(0,1fr) auto;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #d7dae0;
+  font: inherit;
+  text-align: left;
+  cursor: default;
+  transition:
+    background 110ms ease,
+    color 110ms ease,
+    transform 110ms cubic-bezier(.2,.8,.2,1);
+}
+
+.loom-context-action:hover:not(:disabled),
+.loom-context-action:focus-visible:not(:disabled) {
+  outline: none;
+  background: rgba(255,255,255,.055);
+  color: #f3f4f7;
+}
+
+.loom-context-action:active:not(:disabled) {
+  transform: scale(.988);
+}
+
+.loom-context-action.is-primary {
+  color: #d8d2ff;
+}
+
+.loom-context-action.is-primary:hover:not(:disabled),
+.loom-context-action.is-primary:focus-visible:not(:disabled) {
+  background: rgba(139,124,246,.095);
+  color: #ece9ff;
+}
+
+.loom-context-action:disabled {
+  opacity: .34;
+}
+
+.loom-context-action-icon {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  color: #8e96a2;
+}
+
+.loom-context-action.is-primary .loom-context-action-icon {
+  border-radius: 6px;
+  background: rgba(139,124,246,.055);
+  color: #9e92ea;
+}
+
+.loom-context-action-label {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 560;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.loom-context-action kbd {
+  min-width: 38px;
+  color: #6f7681;
+  font-family: inherit;
+  font-size: 9.2px;
+  font-weight: 520;
+  text-align: right;
+}
+
+html[data-loom-theme="light"] .loom-context-menu {
+  border-color: rgba(31,35,42,.10);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.99), rgba(248,249,251,.99));
+  color: #30353d;
+  box-shadow:
+    0 20px 52px rgba(30,34,42,.18),
+    0 4px 14px rgba(30,34,42,.08),
+    inset 0 1px rgba(255,255,255,.95);
+}
+
+html[data-loom-theme="light"] .loom-context-preview {
+  border-color: rgba(105,90,216,.10);
+  background: rgba(105,90,216,.04);
+}
+
+html[data-loom-theme="light"] .loom-context-preview > span {
+  color: #6254bc;
+}
+
+html[data-loom-theme="light"] .loom-context-preview > p {
+  color: #666f7b;
+}
+
+html[data-loom-theme="light"] .loom-context-action-wrap.has-separator::before {
+  background: rgba(31,35,42,.075);
+}
+
+html[data-loom-theme="light"] .loom-context-action {
+  color: #3d434c;
+}
+
+html[data-loom-theme="light"] .loom-context-action:hover:not(:disabled),
+html[data-loom-theme="light"] .loom-context-action:focus-visible:not(:disabled) {
+  background: rgba(31,35,42,.045);
+  color: #22272e;
+}
+
+html[data-loom-theme="light"] .loom-context-action.is-primary {
+  color: #5c4fba;
+}
+
+html[data-loom-theme="light"] .loom-context-action.is-primary:hover:not(:disabled),
+html[data-loom-theme="light"] .loom-context-action.is-primary:focus-visible:not(:disabled) {
+  background: rgba(105,90,216,.075);
+  color: #4e41a8;
+}
+
+html[data-loom-theme="light"] .loom-context-action-icon {
+  color: #818995;
+}
+
+html[data-loom-theme="light"] .loom-context-action.is-primary .loom-context-action-icon {
+  background: rgba(105,90,216,.055);
+  color: #6a5bcc;
+}
+
+html[data-loom-theme="light"] .loom-context-action kbd {
+  color: #9aa1aa;
+}
+
+/* Quote chip inside both idle and live-steering composers ----------------- */
+.composer-quote-reply {
+  position: relative;
+  z-index: 2;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 24px minmax(0,1fr) 24px;
+  align-items: center;
+  gap: 7px;
+  margin: 7px 9px 1px;
+  padding: 6px 6px 6px 7px;
+  border: 1px solid rgba(139,124,246,.105);
+  border-radius: 10px;
+  background:
+    linear-gradient(90deg, rgba(139,124,246,.068), rgba(139,124,246,.026) 66%, rgba(255,255,255,.012));
+  box-shadow: inset 2px 0 0 rgba(151,136,246,.46);
+  animation: loom-quote-enter 160ms cubic-bezier(.2,.82,.2,1) both;
+}
+
+.composer-quote-mark {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  background: rgba(139,124,246,.065);
+  color: #9c91df;
+}
+
+.composer-quote-copy {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.composer-quote-label {
+  color: #aaa1e4;
+  font-size: 9px;
+  line-height: 1.2;
+  font-weight: 680;
+}
+
+.composer-quote-preview {
+  min-width: 0;
+  overflow: hidden;
+  color: #8c939e;
+  font-size: 9.7px;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer-quote-clear {
+  width: 23px;
+  height: 23px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #747d89;
+  transition: background 120ms ease, color 120ms ease, transform 120ms ease;
+}
+
+.composer-quote-clear:hover {
+  background: rgba(255,255,255,.05);
+  color: #d2d5dc;
+}
+
+.composer-quote-clear:active {
+  transform: scale(.92);
+}
+
+html[data-loom-theme="light"] .composer-quote-reply {
+  border-color: rgba(105,90,216,.105);
+  background:
+    linear-gradient(90deg, rgba(105,90,216,.065), rgba(105,90,216,.022) 66%, rgba(31,35,42,.006));
+  box-shadow: inset 2px 0 0 rgba(105,90,216,.44);
+}
+
+html[data-loom-theme="light"] .composer-quote-mark {
+  background: rgba(105,90,216,.06);
+  color: #6557bf;
+}
+
+html[data-loom-theme="light"] .composer-quote-label {
+  color: #6254b8;
+}
+
+html[data-loom-theme="light"] .composer-quote-preview {
+  color: #737c88;
+}
+
+html[data-loom-theme="light"] .composer-quote-clear {
+  color: #8a929d;
+}
+
+html[data-loom-theme="light"] .composer-quote-clear:hover {
+  background: rgba(31,35,42,.045);
+  color: #505761;
+}
+
+@keyframes loom-quote-enter {
+  from { opacity: 0; transform: translateY(3px) scale(.995); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loom-context-menu,
+  .composer-quote-reply {
+    animation: none !important;
+  }
+}
+
+:root[data-loom-reduced-motion="true"] .loom-context-menu,
+:root[data-loom-reduced-motion="true"] .composer-quote-reply {
+  animation: none !important;
+}
+
+
+@media (prefers-reduced-motion: reduce) {
+  .loom-context-menu {
+    transition: none !important;
+  }
+}
+
+:root[data-loom-reduced-motion="true"] .loom-context-menu {
+  transition: none !important;
+}

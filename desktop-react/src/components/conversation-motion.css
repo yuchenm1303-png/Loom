@@ -164,6 +164,47 @@
     inset 0 1px 0 rgba(255,255,255,.022);
 }
 
+.task-flow-row.is-executing::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  top: -1px;
+  bottom: -1px;
+  left: -24%;
+  width: 22%;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(
+    102deg,
+    transparent 0%,
+    rgba(169,158,246,.018) 22%,
+    rgba(190,181,255,.12) 48%,
+    rgba(255,255,255,.085) 56%,
+    rgba(159,146,243,.025) 76%,
+    transparent 100%
+  );
+  transform: translate3d(0,0,0) skewX(-9deg);
+  will-change: transform, opacity;
+  animation: loom-task-running-sheen 3.25s cubic-bezier(.4,0,.2,1) .78s infinite;
+}
+
+/* The capsule "grows" on its own lightweight decoration instead of scaling
+   the whole row. Text stays at native raster size throughout the entrance. */
+.turn-process.is-live .task-flow-row::after {
+  content: "";
+  display: block;
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 27px 50%, rgba(171,160,248,.16), transparent 28%),
+    linear-gradient(90deg, rgba(139,124,246,.09), rgba(139,124,246,.025) 56%, transparent);
+  transform-origin: 27px 50%;
+  animation: loom-task-capsule-bloom 560ms cubic-bezier(.16,.9,.2,1) both;
+}
+
 .task-flow-row.is-resting {
   color: #868e99;
 }
@@ -193,13 +234,28 @@
 }
 
 .turn-process.is-live .task-flow-row-wrap {
-  contain: layout paint style;
-  animation: loom-task-pill-pop 300ms var(--loom-motion-pop) both !important;
-  transform-origin: 26px 50%;
+  contain: layout style;
+  animation: loom-task-row-enter 430ms cubic-bezier(.18,.9,.22,1) both !important;
 }
 
-.turn-process.is-live .task-flow-row-wrap:last-child {
+.turn-process.is-live .task-flow-row-wrap:nth-last-child(-n + 2) {
   will-change: transform, opacity;
+}
+
+.turn-process.is-live .task-flow-row-wrap .task-flow-row-icon {
+  animation: loom-task-icon-spring 520ms cubic-bezier(.18,.9,.22,1.08) both;
+}
+
+.turn-process.is-live .task-flow-row-wrap .task-flow-row-main {
+  animation: loom-task-copy-in 360ms cubic-bezier(.2,.82,.2,1) 36ms both;
+}
+
+.turn-process.is-live .task-flow-row-wrap .task-flow-status {
+  animation: loom-task-status-in 300ms cubic-bezier(.2,.82,.2,1) 80ms both;
+}
+
+.turn-process.is-live .task-flow-list {
+  contain: layout;
 }
 
 /* One live beacon is enough. Stop every task row from independently pulsing. */
@@ -221,6 +277,33 @@
 
 .task-flow-inline-detail pre {
   border-radius: 12px;
+}
+
+.task-flow-live-detail {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 11px;
+  border: 1px solid rgba(139,124,246,.095);
+  border-radius: 12px;
+  background:
+    linear-gradient(180deg, rgba(139,124,246,.035), rgba(139,124,246,.012)),
+    rgba(15,17,22,.58);
+  color: #858d99;
+  font-size: 10.5px;
+  line-height: 1.4;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.018);
+}
+
+.task-flow-live-detail-glow {
+  width: 12px;
+  height: 4px;
+  flex: none;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(139,124,246,.24), rgba(190,181,255,.82));
+  transform-origin: left center;
+  animation: loom-live-detail-breathe 1.8s cubic-bezier(.4,0,.2,1) infinite;
 }
 
 .task-flow-group-grid {
@@ -277,28 +360,25 @@
 /* The top run state becomes a quiet floating capsule. The task timeline keeps
    the expressive motion; this remains the stable global status anchor. */
 .conversation-stage > .run-progress-frame.top {
-  min-height: 50px;
-  padding-top: 8px;
-  padding-bottom: 6px;
-  border-bottom: 0;
-  background: linear-gradient(180deg, rgba(11,12,15,.72), rgba(11,12,15,0));
-  backdrop-filter: none;
+  min-height: 38px;
+  padding: 0;
+  border-bottom: 1px solid rgba(255,255,255,.04);
+  background:
+    linear-gradient(180deg, rgba(18,19,24,.88), rgba(12,13,17,.80));
+  backdrop-filter: blur(10px);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.016);
 }
 
 .conversation-stage > .run-progress-frame.top .run-progress-inline {
-  width: min(var(--content-width, 920px), 100%);
-  min-height: 34px;
-  margin-inline: auto;
-  padding: 3px 10px;
-  border: 1px solid rgba(255,255,255,.055);
-  border-radius: 999px;
-  background:
-    linear-gradient(180deg, rgba(255,255,255,.027), rgba(255,255,255,.009)),
-    rgba(15,17,22,.66);
-  box-shadow:
-    0 7px 22px rgba(0,0,0,.08),
-    inset 0 1px 0 rgba(255,255,255,.024);
-  animation: loom-run-pill-in 280ms var(--loom-motion-pop) both;
+  width: 100%;
+  min-height: 38px;
+  margin: 0;
+  padding: 3px 16px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  animation: loom-run-pill-in 300ms var(--loom-motion-pop) both;
 }
 
 .conversation-stage > .run-progress-frame.top .run-progress-track {
@@ -315,6 +395,30 @@
 
 .conversation-stage > .run-progress-frame.top .run-progress-phase {
   animation: loom-phase-swap 220ms var(--loom-motion-pop) both;
+}
+
+
+/* Content-edge fade ---------------------------------------------------------
+   The top strip stays full-width, but the transcript should visually dissolve
+   as it approaches the strip instead of hitting a hard horizontal cut. This is
+   a presentation overlay only; the scroll viewport and hit targets are not
+   clipped or masked. */
+.conversation-stage.is-running::after {
+  content: "";
+  position: absolute;
+  z-index: 6;
+  left: 0;
+  right: 0;
+  top: 38px;
+  height: 34px;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    rgba(12,13,17,.78) 0%,
+    rgba(12,13,17,.42) 30%,
+    rgba(12,13,17,.13) 68%,
+    transparent 100%
+  );
 }
 
 /* Light theme keeps exactly the same motion hierarchy. */
@@ -352,6 +456,31 @@ html[data-loom-theme="light"] .task-flow-row.is-active {
   box-shadow: 0 5px 14px rgba(43,38,66,.045), inset 0 1px rgba(255,255,255,.9);
 }
 
+html[data-loom-theme="light"] .task-flow-row.is-executing::before {
+  background: linear-gradient(
+    102deg,
+    transparent 0%,
+    rgba(105,90,216,.012) 22%,
+    rgba(105,90,216,.085) 48%,
+    rgba(255,255,255,.82) 56%,
+    rgba(105,90,216,.022) 76%,
+    transparent 100%
+  );
+}
+
+html[data-loom-theme="light"] .turn-process.is-live .task-flow-row::after {
+  background:
+    radial-gradient(circle at 27px 50%, rgba(105,90,216,.11), transparent 28%),
+    linear-gradient(90deg, rgba(105,90,216,.065), rgba(105,90,216,.018) 56%, transparent);
+}
+
+html[data-loom-theme="light"] .task-flow-live-detail {
+  border-color: rgba(105,90,216,.10);
+  background: rgba(255,255,255,.66);
+  color: #707986;
+  box-shadow: inset 0 1px rgba(255,255,255,.9);
+}
+
 html[data-loom-theme="light"] .turn-block .inline-thinking,
 html[data-loom-theme="light"] .turn-block .live-reasoning-trigger {
   border-color: rgba(105,90,216,.12);
@@ -365,15 +494,29 @@ html[data-loom-theme="light"] .turn-block .thinking-symbol {
 }
 
 html[data-loom-theme="light"] .conversation-stage > .run-progress-frame.top {
-  border-bottom: 0;
-  background: linear-gradient(180deg, rgba(250,251,252,.92), rgba(250,251,252,0));
-  box-shadow: none;
+  border-bottom: 1px solid rgba(28,31,37,.075);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.97), rgba(249,250,252,.92));
+  box-shadow:
+    inset 0 1px rgba(255,255,255,.98),
+    0 1px 0 rgba(28,31,37,.018);
 }
 
 html[data-loom-theme="light"] .conversation-stage > .run-progress-frame.top .run-progress-inline {
-  border-color: rgba(31,35,42,.075);
-  background: rgba(255,255,255,.86);
-  box-shadow: 0 7px 18px rgba(38,34,60,.055), inset 0 1px rgba(255,255,255,.92);
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+
+html[data-loom-theme="light"] .conversation-stage.is-running::after {
+  background: linear-gradient(
+    180deg,
+    rgba(250,251,252,.94) 0%,
+    rgba(250,251,252,.62) 30%,
+    rgba(250,251,252,.22) 68%,
+    transparent 100%
+  );
 }
 
 @keyframes loom-live-message-in {
@@ -404,10 +547,87 @@ html[data-loom-theme="light"] .conversation-stage > .run-progress-frame.top .run
   to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
 }
 
-@keyframes loom-task-pill-pop {
-  0% { opacity: 0; transform: translate3d(-4px, 6px, 0) scale(.955); }
-  64% { opacity: 1; transform: translate3d(1px, -1px, 0) scale(1.006); }
-  100% { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+@keyframes loom-task-row-enter {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 6px, 0);
+  }
+  54% {
+    opacity: 1;
+    transform: translate3d(0, -1.4px, 0);
+  }
+  78% {
+    transform: translate3d(0, .55px, 0);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes loom-task-capsule-bloom {
+  0% {
+    opacity: 0;
+    transform: scale3d(.16,.78,1);
+  }
+  32% {
+    opacity: .92;
+    transform: scale3d(.72,1.02,1);
+  }
+  70% {
+    opacity: .48;
+    transform: scale3d(1.015,1,1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale3d(1,1,1);
+  }
+}
+
+@keyframes loom-task-icon-spring {
+  0% {
+    opacity: .35;
+    transform: translate3d(-3px,1px,0) rotate(-5deg) scale(.9);
+  }
+  62% {
+    opacity: 1;
+    transform: translate3d(.6px,-.4px,0) rotate(1deg) scale(1.035);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0,0,0) rotate(0) scale(1);
+  }
+}
+
+@keyframes loom-task-copy-in {
+  from { opacity: 0; transform: translate3d(5px,1px,0); }
+  to { opacity: 1; transform: translate3d(0,0,0); }
+}
+
+@keyframes loom-task-status-in {
+  from { opacity: 0; transform: translate3d(-2px,0,0) scale(.72); }
+  to { opacity: .78; transform: translate3d(0,0,0) scale(1); }
+}
+
+@keyframes loom-task-running-sheen {
+  0%, 18% {
+    opacity: 0;
+    transform: translate3d(0,0,0) skewX(-9deg);
+  }
+  30% { opacity: .78; }
+  54% {
+    opacity: .62;
+    transform: translate3d(565%,0,0) skewX(-9deg);
+  }
+  64%, 100% {
+    opacity: 0;
+    transform: translate3d(565%,0,0) skewX(-9deg);
+  }
+}
+
+@keyframes loom-live-detail-breathe {
+  0%, 100% { opacity: .34; transform: scaleX(.6); }
+  50% { opacity: .88; transform: scaleX(1); }
 }
 
 @keyframes loom-run-pill-in {
@@ -427,7 +647,7 @@ html[data-loom-theme="light"] .conversation-stage > .run-progress-frame.top .run
 
 @media (max-width: 900px) {
   .conversation-stage > .run-progress-frame.top .run-progress-inline {
-    border-radius: 18px;
+    padding-inline: 14px;
   }
 }
 
@@ -448,6 +668,12 @@ html[data-loom-theme="light"] .conversation-stage > .run-progress-frame.top .run
   .markdown-body.is-receiving > table,
   .markdown-body.is-receiving > blockquote,
   .turn-process.is-live .task-flow-row-wrap,
+  .turn-process.is-live .task-flow-row::after,
+  .turn-process.is-live .task-flow-row-icon,
+  .turn-process.is-live .task-flow-row-main,
+  .turn-process.is-live .task-flow-status,
+  .task-flow-row.is-executing::before,
+  .task-flow-live-detail-glow,
   .task-flow-group.is-running .task-flow-group-icon::after,
   .conversation-stage > .run-progress-frame.top .run-progress-inline,
   .conversation-stage > .run-progress-frame.top .run-progress-live-dot,
@@ -462,6 +688,12 @@ html[data-loom-theme="light"] .conversation-stage > .run-progress-frame.top .run
 :root[data-loom-reduced-motion="true"] .turn-process.is-live .entry-steering-user .user-message,
 :root[data-loom-reduced-motion="true"] .turn-final-answer,
 :root[data-loom-reduced-motion="true"] .turn-process.is-live .task-flow-row-wrap,
+:root[data-loom-reduced-motion="true"] .turn-process.is-live .task-flow-row::after,
+:root[data-loom-reduced-motion="true"] .turn-process.is-live .task-flow-row-icon,
+:root[data-loom-reduced-motion="true"] .turn-process.is-live .task-flow-row-main,
+:root[data-loom-reduced-motion="true"] .turn-process.is-live .task-flow-status,
+:root[data-loom-reduced-motion="true"] .task-flow-row.is-executing::before,
+:root[data-loom-reduced-motion="true"] .task-flow-live-detail-glow,
 :root[data-loom-reduced-motion="true"] .task-flow-group.is-running .task-flow-group-icon::after,
 :root[data-loom-reduced-motion="true"] .conversation-stage > .run-progress-frame.top .run-progress-inline,
 :root[data-loom-reduced-motion="true"] .conversation-stage > .run-progress-frame.top .run-progress-live-dot,

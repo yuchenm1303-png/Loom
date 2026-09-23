@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import { BootErrorBoundary } from "./components/BootErrorBoundary";
+import { GlobalContextMenu } from "./components/GlobalContextMenu";
 import { I18nProvider, bootstrapDocumentLanguage } from "./i18n";
 import { bootstrapTheme } from "./theme";
 import { applyRendererScale, installNativeRendererScaleSync } from "./rendererScale";
@@ -33,6 +34,7 @@ import "./components/permission-popover-polish.css";
 import "./components/model-library-polish.css";
 import "./components/composer-control-pills.css";
 import "./components/project-details-panel-theme.css";
+import "./global-motion.css";
 
 const CONVERSATION_WIDTHS: Record<string, string> = {
   focused: "740px",
@@ -158,6 +160,7 @@ createRoot(rootElement).render(
     <BootErrorBoundary>
       <I18nProvider>
         <App />
+        <GlobalContextMenu />
       </I18nProvider>
     </BootErrorBoundary>
   </StrictMode>,

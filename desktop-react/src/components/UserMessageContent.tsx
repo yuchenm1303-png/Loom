@@ -164,6 +164,7 @@ function FileAttachmentCard({ attachment }: { attachment: DisplayAttachment }) {
     <button
       type="button"
       className="user-message-attachment-card is-clickable"
+      data-loom-file-path={attachmentAbsolutePath(attachment)}
       title={`${attachment.name} · ${actionLabel}`}
       onClick={() => viewAttachment(attachment)}
       aria-label={`${actionLabel}：${attachment.name}`}
@@ -205,7 +206,7 @@ function MediaAttachmentPreview({ attachment, workspace }: { attachment: Display
 
   if (source) {
     return (
-      <div className={`user-message-media-preview ${video ? "is-video" : "is-audio"}`}>
+      <div className={`user-message-media-preview ${video ? "is-video" : "is-audio"}`} data-loom-file-path={attachmentAbsolutePath(attachment)}>
         <div className="user-message-media-head">
           {video ? <Video size={14} /> : <Music2 size={14} />}
           <strong title={attachment.name}>{attachment.name}</strong>
@@ -224,6 +225,7 @@ function MediaAttachmentPreview({ attachment, workspace }: { attachment: Display
     <button
       type="button"
       className="user-message-attachment-card is-clickable is-media"
+      data-loom-file-path={attachmentAbsolutePath(attachment)}
       onClick={() => void load()}
       title={failed ? "无法内联预览，点击重试" : `播放 ${attachment.name}`}
     >
@@ -304,7 +306,7 @@ function ImageAttachmentPreview({ attachment, workspace }: { attachment: Display
           </div>
         </div>
         <div className="user-message-image-lightbox-canvas">
-          <img src={source} alt={attachment.name} draggable={false} />
+          <img src={source} alt={attachment.name} draggable={false} data-loom-image-path={attachmentAbsolutePath(attachment)} />
         </div>
       </div>
     </div>,
@@ -325,6 +327,7 @@ function ImageAttachmentPreview({ attachment, workspace }: { attachment: Display
           alt={attachment.name}
           loading="lazy"
           decoding="async"
+          data-loom-image-path={attachmentAbsolutePath(attachment)}
           onError={() => setFailed(true)}
         />
         <span className="user-message-image-open-hint" aria-hidden="true">

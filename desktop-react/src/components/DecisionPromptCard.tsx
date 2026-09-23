@@ -1,4 +1,4 @@
-import { Check, ChevronRight, MessageSquareText, Send } from "lucide-react";
+import { Check, MessageSquareText, Send } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useI18n } from "../i18n";
 import "./decision-prompt-card.css";
@@ -15,6 +15,7 @@ export interface DecisionPromptSpec {
   title: string;
   description?: string;
   options: DecisionPromptOption[];
+  multiple?: boolean;
   allowCustomInput: boolean;
   customPlaceholder?: string;
 }
@@ -27,6 +28,7 @@ export interface ParsedDecisionMessage {
 
 const DECISION_FENCE = "loom-decision";
 const MAX_OPTIONS = 6;
+export const DECISION_RESPONSE_MARKER = "[[LOOM_DECISION_RESPONSE:v1]]";
 
 function cleanText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -62,6 +64,10 @@ function normalizeDecision(value: unknown): DecisionPromptSpec | null {
     title,
     description: cleanText(payload.description) || undefined,
     options,
+    multiple: payload.multiple === true
+      || payload.multiSelect === true
+      || cleanText(payload.selectionMode).toLowerCase() === "multiple"
+      || cleanText(payload.mode).toLowerCase() === "multiple",
     allowCustomInput: payload.allowCustomInput !== false,
     customPlaceholder: cleanText(payload.customPlaceholder) || undefined,
   };
@@ -113,23 +119,26 @@ export function parseDecisionMessage(content: string, streaming = false): Parsed
 
 function decisionResponse(
   spec: DecisionPromptSpec,
-  selected: DecisionPromptOption | null,
+  selected: DecisionPromptOption[],
   note: string,
   zh: boolean,
 ): string {
   const cleanNote = note.trim();
+  const choiceText = selected.map((option) => `${option.id}「${option.title}」`).join("、");
+  const choiceTextEn = selected.map((option) => `${option.id}: ${option.title}`).join(", ");
+
   if (zh) {
-    if (selected && cleanNote) {
-      return `关于“${spec.title}”：我选择 ${selected.id}「${selected.title}」。补充意见：${cleanNote}`;
+    if (selected.length && cleanNote) {
+      return `${DECISION_RESPONSE_MARKER}关于“${spec.title}”：我选择 ${choiceText}。补充意见：${cleanNote}`;
     }
-    if (selected) return `关于“${spec.title}”：我选择 ${selected.id}「${selected.title}」。`;
-    return `关于“${spec.title}”，我的意见是：${cleanNote}`;
+    if (selected.length) return `${DECISION_RESPONSE_MARKER}关于“${spec.title}”：我选择 ${choiceText}。`;
+    return `${DECISION_RESPONSE_MARKER}关于“${spec.title}”，我的意见是：${cleanNote}`;
   }
-  if (selected && cleanNote) {
-    return `For “${spec.title}”, I choose ${selected.id}: ${selected.title}. Additional guidance: ${cleanNote}`;
+  if (selected.length && cleanNote) {
+    return `${DECISION_RESPONSE_MARKER}For “${spec.title}”, I choose ${choiceTextEn}. Additional guidance: ${cleanNote}`;
   }
-  if (selected) return `For “${spec.title}”, I choose ${selected.id}: ${selected.title}.`;
-  return `For “${spec.title}”, my preference is: ${cleanNote}`;
+  if (selected.length) return `${DECISION_RESPONSE_MARKER}For “${spec.title}”, I choose ${choiceTextEn}.`;
+  return `${DECISION_RESPONSE_MARKER}For “${spec.title}”, my preference is: ${cleanNote}`;
 }
 
 export function DecisionPromptRecoveryCard({
@@ -193,18 +202,18 @@ export function DecisionPromptCard({
 }) {
   const { language } = useI18n();
   const zh = language === "zh-CN";
-  const [selectedId, setSelectedId] = useState("");
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [customOpen, setCustomOpen] = useState(false);
   const [note, setNote] = useState("");
   const [sending, setSending] = useState(false);
-  const [submitted, setSubmitted] = useState<DecisionPromptOption | null | undefined>(undefined);
+  const [submitted, setSubmitted] = useState<DecisionPromptOption[] | null | undefined>(undefined);
   const [error, setError] = useState("");
 
   const selected = useMemo(
-    () => spec.options.find((option) => option.id === selectedId) ?? null,
-    [selectedId, spec.options],
+    () => spec.options.filter((option) => selectedIds.includes(option.id)),
+    [selectedIds, spec.options],
   );
-  const canSubmit = Boolean(onSubmit && !disabled && !sending && (selected || note.trim()));
+  const canSubmit = Boolean(onSubmit && !disabled && !sending && (selected.length || note.trim()));
 
   async function submit() {
     if (!canSubmit || !onSubmit) return;
@@ -212,7 +221,7 @@ export function DecisionPromptCard({
     setError("");
     try {
       await onSubmit(decisionResponse(spec, selected, note, zh));
-      setSubmitted(selected);
+      setSubmitted(selected.length ? selected : null);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -223,41 +232,55 @@ export function DecisionPromptCard({
   const locked = disabled || submitted !== undefined;
 
   return (
-    <section className={`decision-card ${submitted !== undefined ? "is-submitted" : ""}`} aria-label={spec.title}>
+    <section className={`decision-card ${spec.multiple ? "is-multiple" : "is-single"} ${submitted !== undefined ? "is-submitted" : ""}`} aria-label={spec.title}>
       <header className="decision-card-head">
         <span className="decision-card-icon" aria-hidden="true"><MessageSquareText size={16} /></span>
         <div className="decision-card-heading">
-          <strong>{spec.title}</strong>
+          <div className="decision-card-title-row">
+            <strong>{spec.title}</strong>
+            {spec.multiple ? <span className="decision-mode-badge">{zh ? "可多选" : "Multi-select"}</span> : null}
+          </div>
           {spec.description ? <p>{spec.description}</p> : null}
         </div>
       </header>
 
-      <div className="decision-options" role="radiogroup" aria-label={spec.title}>
+      <div
+        className="decision-options"
+        role={spec.multiple ? "group" : "radiogroup"}
+        aria-label={spec.title}
+        aria-multiselectable={spec.multiple || undefined}
+      >
         {spec.options.map((option) => {
-          const active = selectedId === option.id;
+          const active = selectedIds.includes(option.id);
           return (
             <button
               key={option.id}
               type="button"
               className={`decision-option ${active ? "is-selected" : ""}`}
-              role="radio"
+              role={spec.multiple ? "checkbox" : "radio"}
               aria-checked={active}
               disabled={locked}
               onClick={() => {
-                setSelectedId(option.id);
+                setSelectedIds((current) => {
+                  if (!spec.multiple) return [option.id];
+                  return current.includes(option.id)
+                    ? current.filter((id) => id !== option.id)
+                    : [...current, option.id];
+                });
                 setError("");
               }}
             >
-              <span className="decision-option-key">{option.id}</span>
+              <span className="decision-option-marker" aria-hidden="true">
+                <span className="decision-option-marker-core">
+                  {active ? <Check size={12} strokeWidth={2.2} /> : null}
+                </span>
+              </span>
               <span className="decision-option-copy">
                 <span className="decision-option-title-row">
                   <strong>{option.title}</strong>
                   {option.recommended ? <em>{zh ? "建议" : "Suggested"}</em> : null}
                 </span>
                 {option.description ? <span>{option.description}</span> : null}
-              </span>
-              <span className="decision-option-check" aria-hidden="true">
-                {active ? <Check size={14} /> : <ChevronRight size={14} />}
               </span>
             </button>
           );
@@ -268,8 +291,10 @@ export function DecisionPromptCard({
         <div className="decision-submitted" role="status">
           <Check size={14} />
           <span>
-            {submitted
-              ? (zh ? `已选择 ${submitted.id} · ${submitted.title}` : `Selected ${submitted.id} · ${submitted.title}`)
+            {submitted?.length
+              ? (zh
+                ? `已选择 ${submitted.map((option) => option.title).join("、")}`
+                : `Selected ${submitted.map((option) => option.title).join(", ")}`)
               : (zh ? "已发送你的意见" : "Your preference was sent")}
           </span>
         </div>
@@ -302,14 +327,28 @@ export function DecisionPromptCard({
           ) : null}
 
           <div className="decision-actions">
-            {error ? <span className="decision-error">{error}</span> : <span className="decision-hint">{zh ? "选择一个方案，也可以补充条件。" : "Choose an option and optionally add guidance."}</span>}
+            {error ? (
+              <span className="decision-error">{error}</span>
+            ) : (
+              <span className="decision-hint">
+                {spec.multiple
+                  ? (zh ? "可以选择多个方案，再一起确认。" : "Select one or more options, then confirm together.")
+                  : (zh ? "选择一个方案，也可以补充条件。" : "Choose an option and optionally add guidance.")}
+              </span>
+            )}
             <button
               type="button"
               className="decision-submit"
               disabled={!canSubmit}
               onClick={() => void submit()}
             >
-              <span>{sending ? (zh ? "正在发送…" : "Sending…") : selected ? (zh ? "确认选择" : "Confirm choice") : (zh ? "发送意见" : "Send preference")}</span>
+              <span>{sending
+                ? (zh ? "正在发送…" : "Sending…")
+                : selected.length
+                  ? (spec.multiple
+                    ? (zh ? `确认 ${selected.length} 项` : `Confirm ${selected.length}`)
+                    : (zh ? "确认选择" : "Confirm choice"))
+                  : (zh ? "发送意见" : "Send preference")}</span>
               <Send size={13} />
             </button>
           </div>

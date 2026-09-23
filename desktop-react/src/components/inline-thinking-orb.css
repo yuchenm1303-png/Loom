@@ -1,133 +1,64 @@
 .thinking-symbol {
   position: relative;
-  width: 15px;
-  height: 15px;
-  flex: none;
+  width: 20px;
+  height: 18px;
+  flex: 0 0 20px;
   display: inline-grid;
   place-items: center;
   color: transparent;
-  filter: drop-shadow(0 0 6px rgba(150, 134, 255, .14));
+  isolation: isolate;
+  background:
+    radial-gradient(circle at 84% 18%, rgba(141,124,246,.88) 0 1.1px, transparent 1.45px),
+    radial-gradient(circle at 13% 77%, rgba(86,190,255,.72) 0 1px, transparent 1.35px);
+  filter:
+    drop-shadow(0 0 5px rgba(111,93,226,.22))
+    drop-shadow(0 0 9px rgba(70,177,243,.10));
 }
 
 .thinking-symbol > svg {
   display: none !important;
 }
 
+/* A small asymmetric thread/shuttle mark instead of a circular loading ring. */
 .thinking-symbol::before {
   content: "";
   position: absolute;
-  inset: 1px;
-  border-radius: 50%;
-  background:
-    radial-gradient(circle at 50% 0%, #eeeaff 0 1.2px, transparent 1.55px),
-    conic-gradient(
-      from 18deg,
-      rgba(205, 195, 255, .9),
-      rgba(139, 124, 246, .16) 24%,
-      rgba(139, 124, 246, .08) 48%,
-      rgba(174, 158, 255, .44) 72%,
-      rgba(205, 195, 255, .9)
-    );
-  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 1.2px), #000 0);
-  mask: radial-gradient(farthest-side, transparent calc(100% - 1.2px), #000 0);
-  opacity: .9;
-  animation: inline-thinking-orbit-spin 1.75s linear infinite;
+  z-index: 1;
+  width: 17px;
+  height: 7px;
+  border-radius: 999px 72% 999px 58%;
+  border: 1.35px solid rgba(133,111,236,.86);
+  border-left-color: rgba(75,182,244,.66);
+  border-bottom-color: transparent;
+  box-shadow:
+    inset 0 0 5px rgba(115,94,225,.06),
+    0 0 5px rgba(120,100,232,.12);
+  transform: rotate(-28deg) skewX(-7deg);
+  transform-origin: center;
+  animation: thinking-thread-drift 2.8s ease-in-out infinite;
 }
 
+/* Compact luminous shuttle/core. It is intentionally non-circular. */
 .thinking-symbol::after {
   content: "";
   position: absolute;
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: linear-gradient(180deg, #d7ceff, #8f80ea);
+  z-index: 3;
+  width: 6.5px;
+  height: 6.5px;
+  border-radius: 2px 4px 2px 4px;
+  background:
+    linear-gradient(135deg, #dff5ff 0%, #8acfff 24%, #826ee7 63%, #6b57cc 100%);
   box-shadow:
-    0 0 0 2px rgba(139, 124, 246, .07),
-    0 0 7px rgba(139, 124, 246, .3);
-  animation: inline-thinking-core-pulse 1.9s ease-in-out infinite;
+    0 0 0 2px rgba(118,99,229,.07),
+    0 0 7px rgba(103,84,218,.34),
+    0 0 11px rgba(62,169,235,.12);
+  transform: rotate(45deg);
+  animation: thinking-shuttle-pulse 2.15s ease-in-out infinite;
 }
 
 .inline-thinking .thinking-symbol,
 .live-reasoning-trigger .thinking-symbol {
   transform: translateY(.25px);
-}
-
-@keyframes inline-thinking-orbit-spin {
-  0% {
-    transform: rotate(0deg);
-    opacity: .68;
-  }
-  50% {
-    opacity: 1;
-  }
-  100% {
-    transform: rotate(360deg);
-    opacity: .68;
-  }
-}
-
-@keyframes inline-thinking-core-pulse {
-  0%, 100% {
-    transform: scale(.8);
-    opacity: .68;
-  }
-  50% {
-    transform: scale(1.12);
-    opacity: 1;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .thinking-symbol::before,
-  .thinking-symbol::after {
-    animation: none !important;
-  }
-
-  .thinking-symbol::before {
-    opacity: .78;
-  }
-
-  .thinking-symbol::after {
-    opacity: .92;
-  }
-}
-
-/* 2026-09-22 thinking visibility refinement ------------------------------ */
-.thinking-symbol {
-  width: 18px;
-  height: 18px;
-  filter:
-    drop-shadow(0 0 5px rgba(116,104,232,.24))
-    drop-shadow(0 0 10px rgba(81,174,255,.10));
-}
-
-.thinking-symbol::before {
-  inset: 1px;
-  background:
-    radial-gradient(circle at 50% 0%, #ffffff 0 1.45px, transparent 1.8px),
-    conic-gradient(
-      from 14deg,
-      rgba(229,222,255,.98),
-      rgba(113,96,231,.30) 22%,
-      rgba(75,177,255,.34) 42%,
-      rgba(112,91,225,.20) 58%,
-      rgba(171,147,255,.70) 76%,
-      rgba(229,222,255,.98)
-    );
-  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 1.45px), #000 0);
-  mask: radial-gradient(farthest-side, transparent calc(100% - 1.45px), #000 0);
-  opacity: 1;
-}
-
-.thinking-symbol::after {
-  width: 5.5px;
-  height: 5.5px;
-  background:
-    radial-gradient(circle at 34% 28%, #f7f4ff 0 8%, #9edfff 24%, #7e6ee8 70%, #6755ce 100%);
-  box-shadow:
-    0 0 0 2.5px rgba(116,98,230,.09),
-    0 0 8px rgba(112,94,229,.42),
-    0 0 13px rgba(65,173,255,.12);
 }
 
 .live-reasoning-trigger {
@@ -136,8 +67,8 @@
 }
 
 .thinking-shimmer {
-  color: #8a92a0;
-  font-weight: 610;
+  color: #838c9a;
+  font-weight: 620;
 }
 
 .thinking-shimmer::after {
@@ -182,39 +113,58 @@
   box-shadow: 0 0 8px rgba(112,95,228,.18);
 }
 
-/* Light theme needs materially stronger contrast; the previous values were
-   tuned like dark-theme ornamentation and nearly disappeared on white. */
+@keyframes thinking-thread-drift {
+  0%, 100% {
+    transform: rotate(-31deg) skewX(-7deg) scaleX(.94);
+    opacity: .66;
+  }
+  48% {
+    transform: rotate(-23deg) skewX(-4deg) scaleX(1.07);
+    opacity: 1;
+  }
+}
+
+@keyframes thinking-shuttle-pulse {
+  0%, 100% {
+    transform: rotate(45deg) scale(.88);
+    opacity: .82;
+  }
+  50% {
+    transform: rotate(45deg) scale(1.08);
+    opacity: 1;
+  }
+}
+
+/* Light theme keeps the mark crisp enough to read without a heavy halo. */
 html[data-loom-theme="light"] .thinking-symbol {
+  background:
+    radial-gradient(circle at 84% 18%, rgba(103,82,211,.86) 0 1.1px, transparent 1.45px),
+    radial-gradient(circle at 13% 77%, rgba(49,157,224,.72) 0 1px, transparent 1.35px);
   filter:
-    drop-shadow(0 0 4px rgba(87,72,199,.24))
-    drop-shadow(0 0 9px rgba(47,154,224,.10));
+    drop-shadow(0 0 4px rgba(83,67,194,.20))
+    drop-shadow(0 0 8px rgba(47,154,224,.08));
 }
 
 html[data-loom-theme="light"] .thinking-symbol::before {
-  background:
-    radial-gradient(circle at 50% 0%, #ffffff 0 1.45px, transparent 1.8px),
-    conic-gradient(
-      from 14deg,
-      rgba(119,96,232,.98),
-      rgba(86,68,193,.34) 22%,
-      rgba(52,164,230,.58) 43%,
-      rgba(103,82,211,.30) 60%,
-      rgba(145,111,234,.86) 78%,
-      rgba(119,96,232,.98)
-    );
+  border-color: rgba(98,78,204,.78);
+  border-left-color: rgba(45,155,222,.70);
+  border-bottom-color: transparent;
+  box-shadow:
+    inset 0 0 4px rgba(95,76,199,.045),
+    0 0 4px rgba(91,72,199,.10);
 }
 
 html[data-loom-theme="light"] .thinking-symbol::after {
   background:
-    radial-gradient(circle at 34% 28%, #ffffff 0 8%, #8ddcff 25%, #7563df 69%, #5948bd 100%);
+    linear-gradient(135deg, #ffffff 0%, #84d5ff 24%, #7562dd 64%, #5847bb 100%);
   box-shadow:
-    0 0 0 2.5px rgba(92,75,201,.10),
-    0 0 8px rgba(83,66,196,.34),
-    0 0 12px rgba(46,155,224,.10);
+    0 0 0 2px rgba(91,73,198,.07),
+    0 0 6px rgba(82,64,194,.26),
+    0 0 10px rgba(46,155,224,.10);
 }
 
 html[data-loom-theme="light"] .thinking-shimmer {
-  color: #687282;
+  color: #667181;
   font-weight: 640;
 }
 
@@ -259,8 +209,17 @@ html[data-loom-theme="light"] .live-reasoning-copy::before {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .thinking-symbol::before,
+  .thinking-symbol::after {
+    animation: none !important;
+  }
+
   html[data-loom-theme="light"] .thinking-shimmer {
     color: #687282;
   }
 }
 
+:root[data-loom-reduced-motion="true"] .thinking-symbol::before,
+:root[data-loom-reduced-motion="true"] .thinking-symbol::after {
+  animation: none !important;
+}

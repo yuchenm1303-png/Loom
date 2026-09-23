@@ -10,6 +10,7 @@ import {
   Copy,
   FileDiff,
   Pencil,
+  Reply,
   Search,
   Sparkles,
   Terminal,
@@ -18,7 +19,7 @@ import {
   Wrench,
   Zap,
 } from "lucide-react";
-import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { TURN_SETTLE_HOLD_MS } from "../presentationTiming";
 import type { TranscriptItem } from "../types/loom";
 import { MarkdownMessage } from "./MarkdownMessage";
@@ -27,6 +28,7 @@ import { StreamingPresentation } from "./StreamingPresentation";
 import { isSubAgentToolItem } from "./SubAgentWorkspace";
 import { TurnArtifactsPreview } from "./TurnArtifactsPreview";
 import { UserMessageContent, parseUserMessageContent } from "./UserMessageContent";
+import { dispatchQuoteReply } from "./quoteReply";
 import "./activity-flow.css";
 import "./message-actions.css";
 import "./task-flow-folding.css";
@@ -338,6 +340,10 @@ function isActiveActivityStatus(status: string): boolean {
   return ["started", "running", "streaming", "streaming_arguments", "waiting", "waiting_approval", "pending"].includes(status);
 }
 
+function isExecutingActivityStatus(status: string): boolean {
+  return ["started", "running", "streaming", "streaming_arguments"].includes(status);
+}
+
 function ActivityStatus({ status }: { status: string }) {
   const quiet = status === "completed" || status === "changed";
   const label = statusLabel(status);
@@ -395,30 +401,67 @@ function activityDetail(item: TranscriptItem): string {
   return "";
 }
 
+function liveActivityHint(item: TranscriptItem, status: string): string {
+  if (status === "waiting_approval") return "正在等待权限确认…";
+  if (status === "waiting" || status === "pending") return "任务已就绪，等待继续…";
+  if (item.type === "process") return "命令正在执行，等待输出…";
+  if (item.type === "file_edit") return "正在生成文件修改…";
+  return "工具正在执行，等待结果…";
+}
+
 function ActivityGlyph({ item, size = 13 }: { item: TranscriptItem; size?: number }) {
   if (item.type === "process") return <Terminal size={size} />;
   if (item.type === "file_edit") return <FileDiff size={size} />;
   return <Wrench size={size} />;
 }
 
-const ActivityRow = memo(function ActivityRow({ item, visualIndex = 0 }: { item: TranscriptItem; visualIndex?: number }) {
-  const [open, setOpen] = useState(false);
+interface ActivityRowProps {
+  item: TranscriptItem;
+  open: boolean;
+  onToggle(id: string): void;
+}
+
+function sameActivityRowProps(previous: ActivityRowProps, next: ActivityRowProps): boolean {
+  if (previous.open !== next.open) return false;
+  if (previous.item.id !== next.item.id || previous.item.type !== next.item.type) return false;
+
+  const previousStatus = itemStatus(previous.item);
+  const nextStatus = itemStatus(next.item);
+  if (previousStatus !== nextStatus) return false;
+
+  if (previous.item.toolName !== next.item.toolName) return false;
+  if (previous.item.type === "process" && processCommand(previous.item) !== processCommand(next.item)) return false;
+  if (previous.item.type === "file_edit" && fileLabel(previous.item) !== fileLabel(next.item)) return false;
+
+  // Collapsed rows intentionally ignore stdout/stderr/content/argument deltas.
+  // Those can arrive every presentation frame and used to make the task pill
+  // reconcile while its entrance animation was still running. When expanded,
+  // the detail panel remains fully live.
+  if (next.open) return activityDetail(previous.item) === activityDetail(next.item);
+
+  const active = isActiveActivityStatus(nextStatus);
+  if (!active && hasActivityDetail(previous.item) !== hasActivityDetail(next.item)) return false;
+  if (!active && next.item.type === "file_edit" && previous.item.diff !== next.item.diff) return false;
+  return true;
+}
+
+const ActivityRow = memo(function ActivityRow({ item, open, onToggle }: ActivityRowProps) {
   const status = itemStatus(item);
-  const stats = useMemo(() => item.type === "file_edit" ? diffStats(item.diff) : null, [item.diff, item.type]);
-  const expandable = hasActivityDetail(item);
   const active = isActiveActivityStatus(status);
-  const detail = useMemo(() => open ? activityDetail(item) : "", [item, open]);
+  const executing = isExecutingActivityStatus(status);
+  const expandable = active || hasActivityDetail(item);
+  const detail = open ? activityDetail(item) : "";
+  const stats = item.type === "file_edit" && (!active || open) ? diffStats(item.diff) : null;
 
   return (
     <div
       className={`task-flow-row-wrap ${open ? "is-open" : ""}`}
-      style={{ animationDelay: `${Math.min(visualIndex, 3) * 18}ms` }}
       data-kind={item.type}
     >
       <button
         type="button"
-        className={`task-flow-row task-flow-kind-${item.type} ${active ? "is-active" : "is-resting"} ${expandable ? "is-expandable" : "no-detail"}`.trim()}
-        onClick={() => expandable && setOpen((value) => !value)}
+        className={`task-flow-row task-flow-kind-${item.type} ${active ? "is-active" : "is-resting"} ${executing ? "is-executing" : ""} ${expandable ? "is-expandable" : "no-detail"}`.trim()}
+        onClick={() => expandable && onToggle(item.id)}
         aria-expanded={expandable ? open : undefined}
         disabled={!expandable}
         title={expandable ? (open ? "Collapse details" : "Expand details") : undefined}
@@ -456,14 +499,21 @@ const ActivityRow = memo(function ActivityRow({ item, visualIndex = 0 }: { item:
         <div className={`task-flow-inline-detail-grid ${open ? "open" : ""}`}>
           <div className="task-flow-inline-detail-inner">
             <div className="task-flow-inline-detail">
-              <pre>{detail}</pre>
+              {detail ? (
+                <pre>{detail}</pre>
+              ) : active ? (
+                <div className="task-flow-live-detail" role="status">
+                  <span className="task-flow-live-detail-glow" aria-hidden="true" />
+                  <span>{liveActivityHint(item, status)}</span>
+                </div>
+              ) : null}
             </div>
           </div>
         </div>
       ) : null}
     </div>
   );
-});
+}, sameActivityRowProps);
 
 function isFailureStatus(status: string): boolean {
   return status === "failed" || status === "denied" || status === "cancelled" || status === "interrupted";
@@ -544,7 +594,17 @@ function ActivityFlow({ items, keepOpen = false }: { items: TranscriptItem[]; ke
   // prevents the title/icon from flipping completed -> running between steps.
   const running = keepOpen;
   const [open, setOpen] = useState(true);
+  const [openRows, setOpenRows] = useState<Set<string>>(() => new Set());
   const wasRunningRef = useRef(false);
+
+  const toggleRow = useCallback((id: string) => {
+    setOpenRows((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     if (running && !wasRunningRef.current) setOpen(true);
@@ -570,7 +630,14 @@ function ActivityFlow({ items, keepOpen = false }: { items: TranscriptItem[]; ke
       <div className="task-flow-group-grid">
         <div className="task-flow-group-inner">
           <div className="task-flow-list">
-            {compactItems.map((item, index) => <ActivityRow key={item.id} item={item} visualIndex={index} />)}
+            {compactItems.map((item) => (
+              <ActivityRow
+                key={item.id}
+                item={item}
+                open={openRows.has(item.id)}
+                onToggle={toggleRow}
+              />
+            ))}
           </div>
         </div>
       </div>
@@ -686,6 +753,15 @@ function MessageToolbar({
     if (!placeTextInComposer(text)) void copyMessageText(text);
   };
 
+  const quote = () => {
+    if (disabled || !canCopy) return;
+    dispatchQuoteReply({
+      text,
+      source: kind,
+      messageId: item.id,
+    });
+  };
+
   return (
     <div className={`message-meta ${kind}-message-meta`}>
       {time ? <span className="message-time">{time}</span> : null}
@@ -699,6 +775,17 @@ function MessageToolbar({
           aria-label={copied ? "已复制" : "复制消息"}
         >
           {copied ? <Check size={14} strokeWidth={2.1} /> : <Copy size={14} strokeWidth={1.75} />}
+        </button>
+
+        <button
+          type="button"
+          className="message-action-button message-quote-action"
+          onClick={quote}
+          disabled={disabled || !canCopy}
+          title={kind === "assistant" ? "引用回答" : "引用消息"}
+          aria-label={kind === "assistant" ? "引用这段回答" : "引用这条消息"}
+        >
+          <Reply size={14} strokeWidth={1.75} />
         </button>
 
         {kind === "user" ? (
@@ -762,7 +849,7 @@ function ItemView({
     const rawText = String(item.text ?? "");
     const parsed = parseUserMessageContent(rawText);
     return (
-      <div className="message-shell user-message-shell" data-message-id={item.id}>
+      <div className="message-shell user-message-shell" data-message-id={item.id} data-loom-message-kind="user" data-loom-message-text={parsed.text}>
         <div className={`user-message ${parsed.attachments.length ? "has-attachments" : ""}`}><UserMessageContent parsed={parsed} workspace={workspace} /></div>
         <MessageToolbar kind="user" item={item} text={parsed.text} editable disabled={promptDisabled} />
       </div>
@@ -787,7 +874,7 @@ function ItemView({
     if (!reasoning && !answer && !decisionMessage.decisions.length) return null;
 
     return (
-      <div className="message-shell assistant-message-shell" data-message-id={item.id}>
+      <div className="message-shell assistant-message-shell" data-message-id={item.id} data-loom-message-kind="assistant" data-loom-message-text={answer || reasoning}>
         <div className="assistant-message">
           {reasoning ? (
             <Disclosure label="Thought process">
@@ -814,7 +901,7 @@ function ItemView({
             />
           ) : null}
         </div>
-        <MessageToolbar kind="assistant" item={item} text={answer || reasoning} />
+        <MessageToolbar kind="assistant" item={item} text={answer || reasoning} disabled={promptDisabled} />
       </div>
     );
   }

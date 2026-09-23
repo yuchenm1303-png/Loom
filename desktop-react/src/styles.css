@@ -295,8 +295,8 @@ button, textarea, input { -webkit-tap-highlight-color: transparent; }
 }
 .empty-hero {
   position: relative;
-  width: 112px;
-  height: 92px;
+  width: 108px;
+  height: 88px;
   margin-bottom: 10px;
   display: grid;
   place-items: center;
@@ -306,66 +306,82 @@ button, textarea, input { -webkit-tap-highlight-color: transparent; }
 .empty-hero-aura {
   position: absolute;
   z-index: 0;
-  width: 84px;
-  height: 84px;
+  width: 74px;
+  height: 74px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(124,108,242,.16) 0%, rgba(98,186,255,.07) 38%, transparent 70%);
-  filter: blur(9px);
-  animation: empty-loom-aura 4.8s ease-in-out infinite;
+  background:
+    radial-gradient(circle, rgba(124,108,242,.115) 0%, rgba(88,176,255,.045) 40%, transparent 72%);
+  filter: blur(11px);
+  animation: empty-loom-aura 5.6s ease-in-out infinite;
 }
 
 .empty-hero-halo {
   position: absolute;
   z-index: 1;
-  width: 78px;
-  height: 78px;
-  border: 1px solid rgba(139,124,246,.11);
+  width: 70px;
+  height: 70px;
+  border: 1px solid rgba(139,124,246,.075);
   border-radius: 50%;
   box-shadow:
-    0 0 0 10px rgba(139,124,246,.018),
-    inset 0 0 16px rgba(139,124,246,.025);
-  animation: empty-loom-halo 6.4s ease-in-out infinite;
+    0 0 0 8px rgba(139,124,246,.012),
+    inset 0 0 14px rgba(139,124,246,.018);
+  animation: empty-loom-halo 7.2s ease-in-out infinite;
 }
 
 .empty-loom-core {
   position: relative;
   z-index: 5;
-  width: 31px;
-  height: 31px;
+  width: 22px;
+  height: 22px;
   display: grid;
   place-items: center;
   border-radius: 50%;
+  border: 1px solid rgba(118,164,255,.32);
   background:
-    radial-gradient(circle at 34% 26%, rgba(255,255,255,.92) 0 5%, rgba(113,217,255,.92) 13%, rgba(83,118,247,.96) 44%, rgba(117,83,224,.88) 70%, rgba(128,91,226,.24) 100%);
+    radial-gradient(circle at 50% 52%, rgba(94,181,255,.10) 0 24%, rgba(24,30,55,.62) 50%, rgba(11,14,27,.94) 76%),
+    conic-gradient(from 214deg, rgba(95,211,255,.22), rgba(127,102,240,.28), rgba(70,84,181,.08), rgba(95,211,255,.22));
   box-shadow:
-    0 0 11px rgba(92,137,255,.38),
-    0 0 24px rgba(118,93,234,.22),
-    inset 0 1px 0 rgba(255,255,255,.55);
-  animation: empty-loom-core-float 4.6s ease-in-out infinite;
+    0 0 9px rgba(82,145,255,.18),
+    0 0 18px rgba(116,92,226,.12),
+    inset 0 0 10px rgba(107,154,255,.07);
+  animation: empty-loom-core-float 5.4s ease-in-out infinite;
 }
 
 .empty-loom-core::before {
   content: "";
   position: absolute;
-  inset: 4px;
+  inset: 3px;
   border-radius: 50%;
-  background:
-    radial-gradient(circle at 34% 28%, rgba(255,255,255,.42), transparent 34%),
-    radial-gradient(circle at 62% 68%, rgba(67,181,255,.20), transparent 48%);
+  padding: 1px;
+  background: conic-gradient(
+    from 205deg,
+    transparent 0 12%,
+    rgba(95,213,255,.74) 22%,
+    rgba(111,131,246,.84) 42%,
+    rgba(154,111,246,.70) 60%,
+    transparent 76% 100%
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  transform: rotate(-18deg) scaleX(.86);
+  opacity: .82;
   pointer-events: none;
 }
 
 .empty-loom-core::after {
   content: "";
   position: absolute;
-  inset: 9px;
+  width: 4px;
+  height: 4px;
   border-radius: 50%;
-  background:
-    radial-gradient(circle at 42% 36%, rgba(255,255,255,.82) 0 8%, rgba(142,213,255,.34) 24%, transparent 62%);
+  background: rgba(167,224,255,.92);
   box-shadow:
-    inset 0 0 4px rgba(255,255,255,.20),
-    0 0 7px rgba(102,169,255,.16);
-  opacity: .92;
+    0 0 5px rgba(91,196,255,.46),
+    0 0 10px rgba(129,112,241,.24);
+  opacity: .9;
   pointer-events: none;
 }
 
@@ -514,8 +530,8 @@ button, textarea, input { -webkit-tap-highlight-color: transparent; }
 }
 
 @keyframes empty-loom-core-float {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.035); }
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-1px) scale(1.018); }
 }
 
 @keyframes empty-loom-aura {
@@ -1091,4 +1107,26 @@ button, textarea, input { -webkit-tap-highlight-color: transparent; }
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
   }
+}
+
+
+/* 2026-09-23 empty-state emblem refinement ------------------------------- */
+/* Keep the center as a small luminous aperture rather than a glossy sphere.
+   The orbits remain the primary silhouette; the core is intentionally quiet. */
+html[data-loom-theme="light"] .empty-loom-core {
+  border-color: rgba(91,108,198,.25);
+  background:
+    radial-gradient(circle at 50% 52%, rgba(73,154,224,.08) 0 24%, rgba(238,241,252,.76) 50%, rgba(225,229,243,.92) 76%),
+    conic-gradient(from 214deg, rgba(61,174,222,.18), rgba(103,84,211,.22), rgba(87,101,175,.06), rgba(61,174,222,.18));
+  box-shadow:
+    0 0 8px rgba(78,122,218,.10),
+    0 0 16px rgba(108,88,202,.07),
+    inset 0 0 8px rgba(73,120,210,.05);
+}
+
+html[data-loom-theme="light"] .empty-loom-core::after {
+  background: rgba(94,165,219,.86);
+  box-shadow:
+    0 0 4px rgba(68,147,214,.28),
+    0 0 8px rgba(102,86,202,.14);
 }

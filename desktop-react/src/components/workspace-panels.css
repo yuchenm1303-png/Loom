@@ -3,22 +3,21 @@
   --loom-inspector-track: var(--loom-inspector-panel-size, var(--inspector-width, 316px));
   position: relative;
   grid-template-columns: var(--loom-sidebar-track) minmax(0, 1fr) var(--loom-inspector-track);
-  transition: grid-template-columns 240ms cubic-bezier(.2,.78,.2,1);
 }
 
-.app-shell.workspace-panels.sidebar-closed {
+/* Never tween workspace track widths. On a long transcript every intermediate
+   width forces Markdown, code and task rows to reflow. Visual panel motion is
+   compositor-only; the expensive workspace width is committed exactly once. */
+.app-shell.workspace-panels.sidebar-layout-closed {
   --loom-sidebar-track: 0px;
 }
 
-.app-shell.workspace-panels.inspector-closed {
+.app-shell.workspace-panels.inspector-layout-closed {
   --loom-inspector-track: 0px;
 }
 
 /* During pointer resize the grid stays frozen. Only the separator is translated
    on the compositor. The real track width is committed once on pointer release. */
-.app-shell.workspace-panels.is-resizing {
-  transition: none;
-}
 
 .workspace-panels .workspace {
   min-width: 0;
@@ -40,10 +39,10 @@
 .workspace-panels > .inspector {
   min-width: 0;
   width: 100%;
-  will-change: opacity, transform;
+  contain: layout paint style;
   transition:
-    opacity 165ms ease,
-    transform 230ms cubic-bezier(.2,.78,.2,1),
+    opacity 230ms ease,
+    transform 320ms var(--loom-ease-out, cubic-bezier(.16,1,.3,1)),
     visibility 0s linear 0s;
 }
 
@@ -59,8 +58,8 @@
   visibility: hidden;
   pointer-events: none;
   transition:
-    opacity 130ms ease,
-    transform 210ms cubic-bezier(.4,0,.8,.2),
+    opacity 180ms ease,
+    transform 210ms var(--loom-ease-in, cubic-bezier(.4,0,.8,.2)),
     visibility 0s linear 220ms;
 }
 
@@ -76,8 +75,8 @@
   visibility: hidden;
   pointer-events: none;
   transition:
-    opacity 130ms ease,
-    transform 210ms cubic-bezier(.4,0,.8,.2),
+    opacity 180ms ease,
+    transform 210ms var(--loom-ease-in, cubic-bezier(.4,0,.8,.2)),
     visibility 0s linear 220ms;
 }
 
@@ -93,10 +92,7 @@
   cursor: col-resize;
   touch-action: none;
   opacity: .32;
-  transition:
-    opacity 130ms ease,
-    left 240ms cubic-bezier(.2,.78,.2,1),
-    right 240ms cubic-bezier(.2,.78,.2,1);
+  transition: opacity var(--loom-motion-control,180ms) ease;
 }
 
 .workspace-panel-resizer::before {
@@ -239,7 +235,6 @@ body.loom-panel-resizing * {
   .runtime-header { padding-inline: 10px; }
 }
 
-html[data-loom-reduced-motion="true"] .app-shell.workspace-panels,
 html[data-loom-reduced-motion="true"] .workspace-panels > .sidebar,
 html[data-loom-reduced-motion="true"] .workspace-panels > .inspector,
 html[data-loom-reduced-motion="true"] .workspace-panel-resizer {
@@ -247,10 +242,29 @@ html[data-loom-reduced-motion="true"] .workspace-panel-resizer {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .app-shell.workspace-panels,
   .workspace-panels > .sidebar,
   .workspace-panels > .inspector,
   .workspace-panel-resizer {
     transition-duration: .001ms !important;
+  }
+}
+
+
+/* Programmatic panel transitions -------------------------------------------
+   Panel pixels slide on the compositor while workspace track widths commit only
+   once. Pause ambient drift during that short window so the renderer has fewer
+   layers competing with the single transcript reflow. */
+.workspace-panels.is-panel-motion .ambient-glow {
+  animation-play-state: paused !important;
+}
+
+.workspace-panels.is-panel-motion > .sidebar,
+.workspace-panels.is-panel-motion > .inspector {
+  will-change: transform, opacity;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workspace-panels.is-panel-motion .ambient-glow {
+    animation-play-state: paused !important;
   }
 }

@@ -18,12 +18,13 @@ import {
   releaseAttachmentPreview,
   resolveComposerFiles,
 } from "./composerAttachments";
+import { QuoteReplyBar, formatQuotedPrompt, useQuoteReply } from "./quoteReply";
 import "./composer.css";
 
 
 type ComposerProps = ComponentProps<typeof ComposerBase>;
 
-function SteeringComposer({ onSend, onInterrupt, imagesAllowed = true }: ComposerProps) {
+function SteeringComposer({ threadId, onSend, onInterrupt, imagesAllowed = true }: ComposerProps) {
   const { language } = useI18n();
   const zh = language === "zh-CN";
   const [value, setValue] = useState("");
@@ -35,6 +36,7 @@ function SteeringComposer({ onSend, onInterrupt, imagesAllowed = true }: Compose
   const [stopping, setStopping] = useState(false);
   const [acknowledged, setAcknowledged] = useState(false);
   const [error, setError] = useState("");
+  const [quote, setQuote] = useQuoteReply();
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
@@ -43,6 +45,15 @@ function SteeringComposer({ onSend, onInterrupt, imagesAllowed = true }: Compose
     textarea.style.height = "0px";
     textarea.style.height = `${Math.min(textarea.scrollHeight, 180)}px`;
   }, [value]);
+
+  useEffect(() => {
+    if (!quote) return;
+    requestAnimationFrame(() => textareaRef.current?.focus());
+  }, [quote]);
+
+  useEffect(() => {
+    setQuote(null);
+  }, [threadId, setQuote]);
 
   useEffect(() => {
     textareaRef.current?.focus();
@@ -94,12 +105,13 @@ function SteeringComposer({ onSend, onInterrupt, imagesAllowed = true }: Compose
 
   function submit(event?: FormEvent): void {
     event?.preventDefault();
-    const input = value.trim();
+    const typedInput = value.trim();
+    const input = formatQuotedPrompt(quote, typedInput);
     // Steering has two clocks: the conversation should react immediately, while
     // the durable RPC may finish later at a safe boundary. Do not freeze the
     // composer on that network clock.
     const sendable = attachments.filter((item) => imagesAllowed || !item.isImage);
-    if ((!input && !sendable.length) || stopping) return;
+    if ((!typedInput && !quote && !sendable.length) || stopping) return;
     setAcknowledged(false);
     setError("");
 
@@ -112,6 +124,7 @@ function SteeringComposer({ onSend, onInterrupt, imagesAllowed = true }: Compose
     }
 
     setValue("");
+    setQuote(null);
     setAttachments([]);
     setAttachError("");
     setPendingSends((current) => current + 1);
@@ -147,6 +160,11 @@ function SteeringComposer({ onSend, onInterrupt, imagesAllowed = true }: Compose
   }
 
   function onKeyDown(event: ReactKeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key === "Escape" && quote) {
+      event.preventDefault();
+      setQuote(null);
+      return;
+    }
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       void submit();
@@ -183,6 +201,7 @@ function SteeringComposer({ onSend, onInterrupt, imagesAllowed = true }: Compose
       >
         <span className="composer-glow" aria-hidden="true" />
 
+        {quote ? <QuoteReplyBar quote={quote} onClear={() => setQuote(null)} /> : null}
         <ComposerAttachmentStrip attachments={attachments} imagesAllowed={imagesAllowed} onRemove={removeAttachment} />
         {attachError ? <p className="composer-attach-error">{attachError}</p> : null}
         {!imagesAllowed && attachments.some((item) => item.isImage) ? (
@@ -205,7 +224,7 @@ function SteeringComposer({ onSend, onInterrupt, imagesAllowed = true }: Compose
             onPaste={(event) => void onPaste(event)}
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
-            placeholder={zh ? "补充要求，调整当前任务…" : "Guide the current task…"}
+            placeholder={quote ? (zh ? "针对引用内容补充要求…" : "Guide using the quoted context…") : (zh ? "补充要求，调整当前任务…" : "Guide the current task…")}
             aria-label="Guide the current task"
             disabled={stopping}
             rows={1}
@@ -230,11 +249,10 @@ function SteeringComposer({ onSend, onInterrupt, imagesAllowed = true }: Compose
             </span>
           </div>
           <div className="composer-right">
-            <span className="composer-keycap">Enter ↵</span>
             <button
               type="submit"
               className="send-button"
-              disabled={stopping || (!value.trim() && !attachments.some((item) => imagesAllowed || !item.isImage))}
+              disabled={stopping || (!value.trim() && !quote && !attachments.some((item) => imagesAllowed || !item.isImage))}
               title="Guide current task"
               aria-label="Guide current task"
             >

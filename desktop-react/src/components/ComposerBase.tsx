@@ -16,6 +16,7 @@ import {
 import { FormEvent, KeyboardEvent as ReactKeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { AddModelInput, Attachment, ModelSnapshot, StickerPreferences } from "../types/loom";
 import { useI18n } from "../i18n";
+import { useMotionPresence } from "../motion/useMotionPresence";
 import { ModelPanel } from "./ModelPanel";
 import { ComposerAttachmentStrip } from "./ComposerAttachmentStrip";
 import {
@@ -26,12 +27,14 @@ import {
   resolveComposerFiles,
 } from "./composerAttachments";
 import { StickerPanel } from "./StickerPanel";
+import { QuoteReplyBar, formatQuotedPrompt, useQuoteReply } from "./quoteReply";
 import "./composer.css";
 import "./composer-attachment-polish.css";
 import "./composer-stability.css";
 import "./composer-control-pills.css";
 
 interface ComposerProps {
+  threadId?: string;
   disabled?: boolean;
   running?: boolean;
   model?: string;
@@ -121,6 +124,7 @@ function PermissionIcon({ mode }: { mode: string }) {
 }
 
 export function Composer({
+  threadId,
   disabled,
   running,
   model,
@@ -149,10 +153,15 @@ export function Composer({
   const [dragging, setDragging] = useState(false);
   const [focused, setFocused] = useState(false);
   const [openPanel, setOpenPanel] = useState<OpenPanel>(null);
+  const panelPresence = useMotionPresence(Boolean(openPanel), 165);
+  const lastOpenPanelRef = useRef<Exclude<OpenPanel, null> | null>(openPanel);
+  if (openPanel) lastOpenPanelRef.current = openPanel;
+  const renderedPanel = openPanel ?? (panelPresence.mounted ? lastOpenPanelRef.current : null);
   const [pendingSelection, setPendingSelection] = useState("");
   const [panelError, setPanelError] = useState("");
   const [stopping, setStopping] = useState(false);
   const [stopError, setStopError] = useState("");
+  const [quote, setQuote] = useQuoteReply();
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const composerRootRef = useRef<HTMLDivElement | null>(null);
 
@@ -183,6 +192,15 @@ export function Composer({
     textarea.style.height = "0px";
     textarea.style.height = `${Math.min(textarea.scrollHeight, 180)}px`;
   }, [value]);
+
+  useEffect(() => {
+    if (!quote) return;
+    requestAnimationFrame(() => textareaRef.current?.focus());
+  }, [quote]);
+
+  useEffect(() => {
+    setQuote(null);
+  }, [threadId, setQuote]);
 
   useEffect(() => {
     function handlePointerDown(event: PointerEvent) {
@@ -250,11 +268,13 @@ export function Composer({
 
   async function submit(event?: FormEvent) {
     event?.preventDefault();
-    const input = value.trim();
+    const typedInput = value.trim();
+    const input = formatQuotedPrompt(quote, typedInput);
     const sendable = attachments.filter((item) => imagesAllowed || !item.isImage);
-    // An attachment alone is a complete message; an empty composer is not.
-    if ((!input && !sendable.length) || disabled || running) return;
+    // A quote or attachment can carry context on its own; a truly empty composer cannot.
+    if ((!typedInput && !quote && !sendable.length) || disabled || running) return;
     setValue("");
+    setQuote(null);
     setAttachments([]);
     setAttachError("");
     setOpenPanel(null);
@@ -262,6 +282,11 @@ export function Composer({
   }
 
   function onKeyDown(event: ReactKeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key === "Escape" && quote) {
+      event.preventDefault();
+      setQuote(null);
+      return;
+    }
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       void submit();
@@ -314,6 +339,7 @@ export function Composer({
       >
         <span className="composer-glow" aria-hidden="true" />
 
+        {quote ? <QuoteReplyBar quote={quote} onClear={() => setQuote(null)} /> : null}
         <ComposerAttachmentStrip attachments={attachments} imagesAllowed={imagesAllowed} onRemove={removeAttachment} />
 
         {attachError ? <p className="composer-attach-error">{attachError}</p> : null}
@@ -334,7 +360,11 @@ export function Composer({
             onPaste={(event) => void onPaste(event)}
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
-            placeholder={zh ? (disabled ? "打开对话，开始工作" : "描述任务，或提出问题…") : (disabled ? "Open a thread to start" : "Describe a task or ask a question…")}
+            placeholder={quote
+              ? (zh ? "针对引用内容继续提问…" : "Ask about the quoted content…")
+              : zh
+                ? (disabled ? "打开对话，开始工作" : "描述任务，或提出问题…")
+                : (disabled ? "Open a thread to start" : "Describe a task or ask a question…")}
             disabled={disabled || running}
             rows={1}
           />
@@ -368,8 +398,8 @@ export function Composer({
                 <ChevronDown size={13} className="composer-chip-chevron" />
               </button>
 
-              {openPanel === "permission" ? (
-                <div className={`composer-popover permission-popover ${running ? "is-locked" : ""}`} role="menu" aria-label="Permission profiles">
+              {renderedPanel === "permission" ? (
+                <div className={`composer-popover permission-popover ${running ? "is-locked" : ""}`} data-motion-phase={panelPresence.phase} role="menu" aria-label="Permission profiles">
                   <div className="composer-popover-head">
                     <div className="composer-popover-heading">
                       <span className="composer-popover-icon permission"><ShieldCheck size={16} /></span>
@@ -443,8 +473,8 @@ export function Composer({
                 <ChevronDown size={13} className="composer-chip-chevron" />
               </button>
 
-              {openPanel === "model" ? (
-                <div className="composer-popover model-popover model-manager-popover" role="dialog" aria-label="Model manager">
+              {renderedPanel === "model" ? (
+                <div className="composer-popover model-popover model-manager-popover" data-motion-phase={panelPresence.phase} role="dialog" aria-label="Model manager">
                   <div className="composer-popover-head">
                     <div className="composer-popover-heading">
                       <span className="composer-popover-icon model"><Cpu size={16} /></span>
@@ -504,8 +534,8 @@ export function Composer({
                 <ChevronDown size={13} className="composer-chip-chevron" />
               </button>
 
-              {openPanel === "sticker" ? (
-                <div className="composer-popover sticker-popover" role="dialog" aria-label="Chat expression settings">
+              {renderedPanel === "sticker" ? (
+                <div className="composer-popover sticker-popover" data-motion-phase={panelPresence.phase} role="dialog" aria-label="Chat expression settings">
                   <div className="composer-popover-head">
                     <div className="composer-popover-heading">
                       <span className="composer-popover-icon model"><Smile size={16} /></span>
@@ -536,7 +566,7 @@ export function Composer({
                 <Square size={12} fill="currentColor" />
               </button>
             ) : (
-              <button type="submit" className="send-button" disabled={disabled || (!value.trim() && !attachments.some((item) => imagesAllowed || !item.isImage))} title="Send" aria-label="Send message">
+              <button type="submit" className="send-button" disabled={disabled || (!value.trim() && !quote && !attachments.some((item) => imagesAllowed || !item.isImage))} title="Send" aria-label="Send message">
                 <ArrowUp size={17} strokeWidth={2.2} />
               </button>
             )}

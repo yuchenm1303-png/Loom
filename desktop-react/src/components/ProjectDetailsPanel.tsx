@@ -14,7 +14,8 @@ import {
   ShieldAlert,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useMotionPresence } from "../motion/useMotionPresence";
 import type { ProjectRecord, ThreadRecord, TranscriptItem } from "../types/loom";
 import { ProjectAgentFilesCard } from "./ProjectAgentFilesCard";
 import { ProjectMemoryCard } from "./ProjectMemoryCard";
@@ -203,7 +204,7 @@ function reviewDiffItem(projectId: string, result: ProjectGitDiffResult, fallbac
 }
 
 export function ProjectDetailsPanel({
-  project,
+  project: projectProp,
   threads,
   activeThreadId,
   open,
@@ -212,6 +213,10 @@ export function ProjectDetailsPanel({
   onOpenThread,
   onSetInstructions,
 }: ProjectDetailsPanelProps) {
+  const presence = useMotionPresence(open && Boolean(projectProp), 190);
+  const lastProjectRef = useRef<ProjectRecord | null>(projectProp);
+  if (projectProp) lastProjectRef.current = projectProp;
+  const project = projectProp ?? lastProjectRef.current;
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState("");
@@ -252,7 +257,7 @@ export function ProjectDetailsPanel({
   }, [project?.id, project?.instructions]);
 
   useEffect(() => {
-    if (!open || !projectId) {
+    if (!presence.mounted || !projectId) {
       setWorkspaceStatus(null);
       setWorkspaceError("");
       setWorkspaceLoading(false);
@@ -260,10 +265,11 @@ export function ProjectDetailsPanel({
       setGitBusy("");
       return undefined;
     }
+    if (!open) return undefined;
     void loadWorkspaceStatus();
     const timer = window.setInterval(() => void loadWorkspaceStatus(true), 12000);
     return () => window.clearInterval(timer);
-  }, [loadWorkspaceStatus, open, projectId]);
+  }, [loadWorkspaceStatus, open, presence.mounted, projectId]);
 
   const projectThreads = useMemo(() => {
     if (!project) return [];
@@ -293,7 +299,7 @@ export function ProjectDetailsPanel({
     setCommitMessage(suggestedCommitMessage(stagedFiles));
   }, [commitMessage, stagedFiles]);
 
-  if (!open || !project) return null;
+  if (!presence.mounted || !project) return null;
 
   const saveInstructions = async () => {
     if (!dirty || saving) return;
@@ -411,7 +417,7 @@ export function ProjectDetailsPanel({
   };
 
   return (
-    <aside className="project-details-panel" aria-label="Project details">
+    <aside className="project-details-panel" data-motion-phase={presence.phase} aria-label="Project details">
       <header className="project-details-header">
         <div className="project-details-mark" aria-hidden="true">
           <Folder size={18} strokeWidth={1.85} />

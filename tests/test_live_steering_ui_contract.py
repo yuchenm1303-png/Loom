@@ -128,5 +128,5 @@ def test_steering_composer_does_not_wait_for_rpc_before_clearing_and_unlocking()
     assert "pickAttachments" in source
     assert "onPaste={(event) => void onPaste(event)}" in source
     assert 'disabled={stopping}' in source
-    assert 'disabled={stopping || (!value.trim() && !attachments.some((item) => imagesAllowed || !item.isImage))}' in source
+    assert 'disabled={stopping || (!value.trim() && !quote && !attachments.some((item) => imagesAllowed || !item.isImage))}' in source
     assert "消息已立即显示，正在后台确认…" in source

@@ -1,57 +1,33 @@
 /* Live task-flow rendering --------------------------------------------------
-   Runtime activity grows one row at a time. Keep that growth cheap: the row
-   already occupies its final layout box, while only opacity/transform animate
-   on the compositor. Historical task flows never replay these entrance effects. */
+   Runtime activity can receive detail deltas every presentation frame. The
+   actual entrance choreography lives in conversation-motion.css; this file is
+   deliberately limited to cheap containment/paint safeguards so it can never
+   introduce a second competing entrance animation. */
 
-/* Transcript entries and task-flow shells both have generic entrance effects.
-   A live activity row used to inherit those two effects and add its own row
-   animation, producing a dark/bright composite flash on light surfaces. The
-   row is now the sole owner of live task-flow entrance motion. */
 .turn-process.is-live .entry-activity,
 .turn-process.is-live .task-flow {
   animation: none !important;
 }
 
-.turn-process.is-live .task-flow-row-wrap {
-  contain: layout paint style;
-  animation: loom-task-flow-row-in 170ms cubic-bezier(.2,.78,.2,1) both;
-  transform-origin: left center;
-}
-
-.turn-process.is-live .task-flow-row-wrap:nth-last-child(1) {
-  will-change: transform, opacity;
-}
-
 .turn-process.is-live .task-flow-list {
-  contain: layout paint;
+  contain: layout;
 }
 
-/* The status shimmer already moves with transform. A filtered pseudo-element
-   creates a separate paint surface for every running command, so keep it on the
-   compositor without the tiny blur. */
+/* Animated highlights use compositor transforms. Never add filters here:
+   filtered pseudo-elements force a large repaint on wide command pills. */
+.task-flow-row::before,
 .task-flow-row::after {
   filter: none !important;
 }
 
-@keyframes loom-task-flow-row-in {
-  from {
-    opacity: 0;
-    transform: translate3d(0, 2px, 0);
-  }
-  to {
-    opacity: 1;
-    transform: translate3d(0, 0, 0);
-  }
-}
-
 html[data-loom-reduced-motion="true"] .turn-process.is-live .entry-activity,
-html[data-loom-reduced-motion="true"] .turn-process.is-live .task-flow-row-wrap {
+html[data-loom-reduced-motion="true"] .turn-process.is-live .task-flow {
   animation: none !important;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .turn-process.is-live .entry-activity,
-  .turn-process.is-live .task-flow-row-wrap {
+  .turn-process.is-live .task-flow {
     animation: none !important;
   }
 }

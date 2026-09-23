@@ -247,35 +247,42 @@
   color: #c8c1ff;
 }
 
-.compact-search {
-  height: 0;
+.compact-search-shell {
+  display: grid;
+  grid-template-rows: 0fr;
   margin: 0 1px;
+  opacity: 0;
+  transform: translate3d(0,-4px,0);
+  transition:
+    grid-template-rows 260ms var(--loom-ease-standard, cubic-bezier(.22,.78,.2,1)),
+    margin 260ms var(--loom-ease-standard, cubic-bezier(.22,.78,.2,1)),
+    opacity 190ms ease,
+    transform 260ms var(--loom-ease-out, cubic-bezier(.16,1,.3,1));
+}
+
+.compact-search-shell.open {
+  grid-template-rows: 1fr;
+  margin: 8px 1px 6px;
+  opacity: 1;
+  transform: translate3d(0,0,0);
+}
+
+.compact-search {
+  min-height: 0;
+  height: 33px;
   padding: 0 8px;
   overflow: hidden;
-  opacity: 0;
   display: grid;
   grid-template-columns: 16px minmax(0,1fr) auto;
   align-items: center;
   gap: 7px;
-  border: 1px solid transparent;
+  border: 1px solid rgba(255,255,255,.075);
   border-radius: 9px;
   background: #17181b;
   color: #666d77;
-  transform: translateY(-3px);
   transition:
-    height 160ms cubic-bezier(.2,.78,.2,1),
-    margin 160ms ease,
-    opacity 120ms ease,
-    transform 160ms ease,
-    border-color 120ms ease;
-}
-
-.compact-search.open {
-  height: 33px;
-  margin: 8px 1px 6px;
-  opacity: 1;
-  transform: translateY(0);
-  border-color: rgba(255,255,255,.075);
+    border-color var(--loom-motion-control,180ms) ease,
+    box-shadow var(--loom-motion-control,180ms) ease;
 }
 
 .compact-search:focus-within {
@@ -522,13 +529,34 @@
   box-shadow: 0 0 0 2px rgba(139,124,246,.055);
 }
 
+.project-thread-list-shell {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows 300ms var(--loom-ease-standard, cubic-bezier(.22,.78,.2,1)),
+    opacity 210ms ease;
+}
+
+.project-thread-list-shell.open {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+.project-thread-list-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
 .project-thread-list {
   margin: 1px 0 5px 27px;
   padding: 0;
+  transform: translate3d(0,-4px,0);
+  transition: transform 300ms var(--loom-ease-out, cubic-bezier(.16,1,.3,1));
 }
 
-.project-group.is-collapsed .project-thread-list {
-  display: none;
+.project-thread-list-shell.open .project-thread-list {
+  transform: translate3d(0,0,0);
 }
 
 .workspace-group-header {
@@ -593,8 +621,12 @@
   background: transparent;
   color: #c7cbd2;
   overflow: hidden;
-  transition: background 110ms ease, color 110ms ease, border-color 110ms ease, box-shadow 110ms ease;
-  animation: compact-thread-in 150ms cubic-bezier(.2,.75,.2,1) both;
+  transition:
+    background var(--loom-motion-control,180ms) ease,
+    color var(--loom-motion-control,180ms) ease,
+    border-color var(--loom-motion-control,180ms) ease,
+    box-shadow var(--loom-motion-control,180ms) ease;
+  animation: compact-thread-in 220ms var(--loom-ease-out, cubic-bezier(.16,1,.3,1)) both;
 }
 
 .compact-thread-row:hover,
@@ -853,9 +885,16 @@
   background: rgba(31,31,32,.985);
   color: #f1f2f4;
   box-shadow: 0 18px 48px rgba(0,0,0,.42), inset 0 1px rgba(255,255,255,.025);
-  backdrop-filter: blur(18px) saturate(115%);
+  backdrop-filter: blur(7px) saturate(108%);
   transform-origin: 0 0;
-  animation: thread-menu-in 125ms cubic-bezier(.2,.78,.2,1) both;
+  contain: layout paint style;
+  will-change: transform, opacity;
+  animation: thread-menu-in 240ms var(--loom-ease-out, cubic-bezier(.16,1,.3,1)) both;
+}
+
+.thread-context-menu.is-closing {
+  pointer-events: none;
+  animation: thread-menu-out 155ms var(--loom-ease-in, cubic-bezier(.4,0,.8,.2)) both;
 }
 
 .thread-context-menu > button {
@@ -980,8 +1019,13 @@
 }
 
 @keyframes thread-menu-in {
-  from { opacity: 0; transform: translateY(-3px) scale(.985); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
+  from { opacity: 0; transform: translate3d(0,-5px,0) scale(.985); }
+  to { opacity: 1; transform: translate3d(0,0,0) scale(1); }
+}
+
+@keyframes thread-menu-out {
+  from { opacity: 1; transform: translate3d(0,0,0) scale(1); }
+  to { opacity: 0; transform: translate3d(0,-2px,0) scale(.992); }
 }
 
 @keyframes sidebar-notice-in {
@@ -997,7 +1041,10 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .compact-search-shell,
   .compact-search,
+  .project-thread-list-shell,
+  .project-thread-list,
   .compact-sidebar-actions button,
   .workspace-group-header button,
   .compact-thread-row,
