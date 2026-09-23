@@ -1059,3 +1059,24 @@
     transition-duration: .001ms !important;
   }
 }
+
+/* Settings-driven reduced motion mirrors the OS preference block. */
+:root[data-loom-reduced-motion="true"] .compact-search-shell,
+:root[data-loom-reduced-motion="true"] .compact-search,
+:root[data-loom-reduced-motion="true"] .project-thread-list-shell,
+:root[data-loom-reduced-motion="true"] .project-thread-list,
+:root[data-loom-reduced-motion="true"] .compact-sidebar-actions button,
+:root[data-loom-reduced-motion="true"] .workspace-group-header button,
+:root[data-loom-reduced-motion="true"] .compact-thread-row,
+:root[data-loom-reduced-motion="true"] .compact-thread-dot.running,
+:root[data-loom-reduced-motion="true"] .thread-quick-actions,
+:root[data-loom-reduced-motion="true"] .project-group-actions,
+:root[data-loom-reduced-motion="true"] .project-disclosure-chevron,
+:root[data-loom-reduced-motion="true"] .thread-context-menu,
+:root[data-loom-reduced-motion="true"] .sidebar-notice,
+:root[data-loom-reduced-motion="true"] .sidebar-new-conversation,
+:root[data-loom-reduced-motion="true"] .sidebar-secondary-action,
+:root[data-loom-reduced-motion="true"] .project-group-main {
+  animation: none !important;
+  transition-duration: .001ms !important;
+}
