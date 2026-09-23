@@ -282,9 +282,13 @@ html[data-loom-reduced-motion="true"] .workspace-panel-resizer {
 /* During a panel reveal, keep the expensive conversation tree visually stable.
    The grid width is still committed once, but all decorative animation inside
    the transcript is paused so that the compositor only has to move the panel. */
-.workspace-panels.is-panel-motion .transcript-scroll *,
-.workspace-panels.is-panel-motion .composer-stage * {
-  animation-play-state: paused;
+.workspace-panels.is-panel-motion .ambient-glow,
+.workspace-panels.is-panel-motion .run-progress-live-dot,
+.workspace-panels.is-panel-motion .thinking-orbit,
+.workspace-panels.is-panel-motion .thinking-dot,
+.workspace-panels.is-panel-motion .composer-running-label i,
+.workspace-panels.is-panel-motion .task-flow-live-detail::before {
+  animation-play-state: paused !important;
 }
 
 .workspace-panels.is-panel-motion .transcript-scroll,
