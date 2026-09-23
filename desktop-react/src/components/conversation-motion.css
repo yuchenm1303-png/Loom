@@ -235,7 +235,6 @@
 
 .turn-process.is-live .task-flow-row-wrap {
   contain: layout style;
-  backface-visibility: hidden;
   animation: loom-task-row-enter 430ms cubic-bezier(.18,.9,.22,1) both !important;
 }
 

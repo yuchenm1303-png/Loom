@@ -441,6 +441,7 @@ function sameActivityRowProps(previous: ActivityRowProps, next: ActivityRowProps
 
   const active = isActiveActivityStatus(nextStatus);
   if (!active && hasActivityDetail(previous.item) !== hasActivityDetail(next.item)) return false;
+  if (!active && next.item.type === "file_edit" && previous.item.diff !== next.item.diff) return false;
   return true;
 }
 
