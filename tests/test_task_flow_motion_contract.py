@@ -19,12 +19,12 @@ def test_collapsed_activity_rows_do_not_reconcile_detail_streams() -> None:
 def test_task_capsule_motion_does_not_scale_the_text_row() -> None:
     source = MOTION.read_text(encoding="utf-8")
     start = source.index("@keyframes loom-task-row-enter")
-    end = source.index("@keyframes loom-task-capsule-bloom", start)
+    end = source.index("@keyframes loom-task-icon-spring", start)
     row_motion = source[start:end]
 
     assert "scaleX(" not in row_motion
     assert "scaleY(" not in row_motion
-    assert ".turn-process.is-live .task-flow-row::after" in source
+    assert ".turn-process.is-live .task-flow-row::after" not in source
     assert "loom-task-icon-spring" in source
     assert "will-change: transform, opacity;" in source
 
