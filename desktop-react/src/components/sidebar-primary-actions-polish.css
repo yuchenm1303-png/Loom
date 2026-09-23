@@ -449,3 +449,171 @@ html[data-loom-theme="light"] .codex-sidebar .sidebar-secondary-action:hover > s
   background:
     linear-gradient(145deg, rgba(105,90,216,.105), rgba(105,90,216,.055));
 }
+
+
+/* 2026-09-23 quiet primary actions v4 ------------------------------------ */
+/* These are frequent navigation actions, not hero cards. Keep them compact,
+   flat and tactile: one quiet surface, a small icon well, and almost no
+   decorative lighting. */
+.codex-sidebar .codex-sidebar-primary {
+  gap: 6px;
+  padding: 8px 5px 11px;
+}
+
+.codex-sidebar .sidebar-new-conversation,
+.codex-sidebar .sidebar-secondary-action {
+  min-height: 42px;
+  height: 42px;
+  padding: 0 11px 0 9px;
+  gap: 9px;
+  border-radius: 11px;
+  border: 1px solid color-mix(in srgb, var(--loom-border) 94%, var(--accent, #8b7cf6) 6%);
+  background: color-mix(in srgb, var(--loom-surface-raised) 97%, var(--accent, #8b7cf6) 3%);
+  box-shadow:
+    0 1px 3px rgba(10,12,18,.055);
+  transition:
+    border-color 150ms ease,
+    background 150ms ease,
+    color 150ms ease,
+    transform 150ms cubic-bezier(.2,.8,.2,1),
+    box-shadow 150ms ease;
+}
+
+.codex-sidebar .sidebar-new-conversation::before,
+.codex-sidebar .sidebar-secondary-action::before {
+  display: none;
+}
+
+.codex-sidebar .sidebar-new-conversation > svg,
+.codex-sidebar .sidebar-secondary-action > svg {
+  box-sizing: border-box;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  padding: 5px;
+  border-radius: 8px;
+  border: 1px solid rgba(139,124,246,.10);
+  background: rgba(139,124,246,.055);
+  color: #978be0;
+  box-shadow: none;
+  transform: none;
+  transition:
+    color 150ms ease,
+    border-color 150ms ease,
+    background 150ms ease,
+    transform 150ms cubic-bezier(.2,.8,.2,1);
+}
+
+.codex-sidebar .sidebar-new-conversation > span,
+.codex-sidebar .sidebar-secondary-action > span {
+  font-size: 12.5px;
+  line-height: 1;
+  font-weight: 590;
+  letter-spacing: -.006em;
+}
+
+.codex-sidebar .sidebar-new-conversation {
+  color: var(--text, #eef0f3);
+  border-color: color-mix(in srgb, var(--accent, #8b7cf6) 14%, var(--loom-border) 86%);
+  background: color-mix(in srgb, var(--loom-surface-raised) 95%, var(--accent, #8b7cf6) 5%);
+  box-shadow:
+    0 1px 4px rgba(22,18,50,.055);
+}
+
+.codex-sidebar .sidebar-new-conversation > svg {
+  color: #a095e8;
+  border-color: rgba(139,124,246,.13);
+  background: rgba(139,124,246,.075);
+}
+
+.codex-sidebar .sidebar-secondary-action {
+  color: var(--text-2, #c5c9d0);
+  background: color-mix(in srgb, var(--loom-surface) 98%, var(--accent, #8b7cf6) 2%);
+}
+
+.codex-sidebar .sidebar-new-conversation:hover,
+.codex-sidebar .sidebar-secondary-action:hover {
+  color: var(--text, #f3f4f6);
+  border-color: color-mix(in srgb, var(--accent, #8b7cf6) 22%, var(--loom-border) 78%);
+  background: color-mix(in srgb, var(--loom-surface-raised) 93%, var(--accent, #8b7cf6) 7%);
+  box-shadow:
+    0 3px 8px rgba(24,20,54,.065);
+  transform: translateY(-.5px);
+}
+
+.codex-sidebar .sidebar-new-conversation:hover > svg,
+.codex-sidebar .sidebar-secondary-action:hover > svg {
+  color: #b0a5ee;
+  border-color: rgba(151,138,235,.17);
+  background: rgba(139,124,246,.09);
+  transform: scale(1.025);
+}
+
+.codex-sidebar .sidebar-new-conversation:active,
+.codex-sidebar .sidebar-secondary-action:active {
+  transform: translateY(0) scale(.992);
+  box-shadow: 0 1px 2px rgba(15,18,26,.045);
+}
+
+.codex-sidebar .sidebar-new-conversation:focus-visible,
+.codex-sidebar .sidebar-secondary-action:focus-visible {
+  border-color: color-mix(in srgb, var(--accent, #8b7cf6) 36%, var(--loom-border) 64%);
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--accent, #8b7cf6) 9%, transparent);
+}
+
+/* Light theme: avoid the glossy white-card treatment. A very soft tinted
+   surface and one-pixel border are enough to separate the actions. */
+html[data-loom-theme="light"] .codex-sidebar .sidebar-new-conversation,
+html[data-loom-theme="light"] .codex-sidebar .sidebar-secondary-action {
+  color: #363a44;
+  border-color: rgba(39,43,52,.085);
+  background: rgba(255,255,255,.70);
+  box-shadow:
+    0 1px 3px rgba(35,39,49,.035);
+}
+
+html[data-loom-theme="light"] .codex-sidebar .sidebar-new-conversation {
+  color: #292d36;
+  border-color: rgba(105,90,216,.13);
+  background: rgba(105,90,216,.035);
+  box-shadow:
+    0 1px 4px rgba(63,50,134,.04);
+}
+
+html[data-loom-theme="light"] .codex-sidebar .sidebar-new-conversation > svg,
+html[data-loom-theme="light"] .codex-sidebar .sidebar-secondary-action > svg {
+  color: #695ad2;
+  border-color: rgba(105,90,216,.10);
+  background: rgba(105,90,216,.05);
+  box-shadow: none;
+}
+
+html[data-loom-theme="light"] .codex-sidebar .sidebar-secondary-action > svg {
+  color: #7065c6;
+  background: rgba(105,90,216,.038);
+}
+
+html[data-loom-theme="light"] .codex-sidebar .sidebar-new-conversation:hover,
+html[data-loom-theme="light"] .codex-sidebar .sidebar-secondary-action:hover {
+  color: #292d36;
+  border-color: rgba(105,90,216,.18);
+  background: rgba(105,90,216,.055);
+  box-shadow:
+    0 3px 8px rgba(54,47,98,.045);
+}
+
+html[data-loom-theme="light"] .codex-sidebar .sidebar-new-conversation:hover > svg,
+html[data-loom-theme="light"] .codex-sidebar .sidebar-secondary-action:hover > svg {
+  color: #5e50c3;
+  border-color: rgba(105,90,216,.15);
+  background: rgba(105,90,216,.075);
+}
+
+@media (max-width: 760px) {
+  .codex-sidebar .sidebar-new-conversation,
+  .codex-sidebar .sidebar-secondary-action {
+    min-height: 40px;
+    height: 40px;
+  }
+}
