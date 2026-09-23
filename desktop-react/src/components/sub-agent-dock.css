@@ -19,6 +19,7 @@
   overflow: hidden;
   contain: layout paint style;
   backface-visibility: hidden;
+  will-change: transform, opacity;
   transition:
     transform var(--loom-motion-panel,390ms) var(--loom-ease-out,cubic-bezier(.2,.74,.18,1)),
     opacity var(--loom-motion-opacity,260ms) ease;
