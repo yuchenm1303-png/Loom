@@ -125,3 +125,56 @@
   animation: none !important;
   transition: none !important;
 }
+
+
+/* Small transient surfaces -------------------------------------------------
+   Toasts and compact controls inherit the same timing without adding another
+   set of component-specific keyframes. */
+.settings-toast {
+  animation: none !important;
+  will-change: transform, opacity;
+  transition:
+    transform var(--loom-motion-popover) var(--loom-ease-out),
+    opacity 180ms ease;
+}
+
+.settings-toast[data-motion-phase="entering"] {
+  opacity: 0;
+  transform: translate3d(0,8px,0) scale(.985);
+}
+
+.settings-toast[data-motion-phase="entered"] {
+  opacity: 1;
+  transform: translate3d(0,0,0) scale(1);
+}
+
+.settings-toast[data-motion-phase="exiting"] {
+  pointer-events: none;
+  opacity: 0;
+  transform: translate3d(0,4px,0) scale(.992);
+  transition-duration: 145ms;
+  transition-timing-function: var(--loom-ease-in);
+}
+
+.settings-switch {
+  transition-duration: var(--loom-motion-control) !important;
+}
+
+.settings-switch span {
+  transition-duration: 220ms !important;
+  transition-timing-function: var(--loom-ease-out) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-toast,
+  .settings-switch,
+  .settings-switch span {
+    transition: none !important;
+  }
+}
+
+:root[data-loom-reduced-motion="true"] .settings-toast,
+:root[data-loom-reduced-motion="true"] .settings-switch,
+:root[data-loom-reduced-motion="true"] .settings-switch span {
+  transition: none !important;
+}

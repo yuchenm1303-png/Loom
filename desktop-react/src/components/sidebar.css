@@ -894,11 +894,7 @@
 
 .thread-context-menu.is-closing {
   pointer-events: none;
-  opacity: 0;
-  transform: translate3d(0,-2px,0) scale(.992);
-  transition:
-    opacity 150ms ease,
-    transform 155ms var(--loom-ease-in, cubic-bezier(.4,0,.8,.2));
+  animation: thread-menu-out 155ms var(--loom-ease-in, cubic-bezier(.4,0,.8,.2)) both;
 }
 
 .thread-context-menu > button {
@@ -1027,6 +1023,11 @@
   to { opacity: 1; transform: translate3d(0,0,0) scale(1); }
 }
 
+@keyframes thread-menu-out {
+  from { opacity: 1; transform: translate3d(0,0,0) scale(1); }
+  to { opacity: 0; transform: translate3d(0,-2px,0) scale(.992); }
+}
+
 @keyframes sidebar-notice-in {
   from { opacity: 0; transform: translateY(5px); }
   to { opacity: 1; transform: translateY(0); }
@@ -1040,7 +1041,10 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .compact-search-shell,
   .compact-search,
+  .project-thread-list-shell,
+  .project-thread-list,
   .compact-sidebar-actions button,
   .workspace-group-header button,
   .compact-thread-row,
