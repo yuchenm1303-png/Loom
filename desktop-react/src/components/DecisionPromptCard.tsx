@@ -229,7 +229,7 @@ export function DecisionPromptCard({
     }
   }
 
-  const locked = disabled || submitted !== undefined;
+  const locked = disabled || sending || submitted !== undefined;
 
   if (submitted !== undefined) {
     const summary = submitted?.length
