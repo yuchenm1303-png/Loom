@@ -213,7 +213,7 @@ export function ProjectDetailsPanel({
   onOpenThread,
   onSetInstructions,
 }: ProjectDetailsPanelProps) {
-  const presence = useMotionPresence(open && Boolean(projectProp), 190);
+  const presence = useMotionPresence(open && Boolean(projectProp), 240);
   const lastProjectRef = useRef<ProjectRecord | null>(projectProp);
   if (projectProp) lastProjectRef.current = projectProp;
   const project = projectProp ?? lastProjectRef.current;
