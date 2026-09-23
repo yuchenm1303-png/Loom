@@ -58,7 +58,9 @@ const SIDEBAR_MAX = 420;
 const INSPECTOR_MIN = 280;
 const INSPECTOR_MAX = 520;
 const MIN_WORKSPACE_WIDTH = 520;
-const PANEL_MOTION_MS = 340;
+const PANEL_MOTION_MS = 300;
+const PANEL_EXIT_HOLD_MS = 220;
+const PANEL_LAYOUT_COMMIT_EVENT = "loom:panel-layout-commit";
 const EMPTY_TRANSCRIPT_ITEMS: TranscriptItem[] = [];
 
 type ResizePanel = "sidebar" | "inspector";
@@ -181,6 +183,8 @@ export default function App() {
   const resizeRef = useRef<ResizeSession | null>(null);
   const resizeReleaseFrameRef = useRef<number | null>(null);
   const panelMotionTimerRef = useRef<number | null>(null);
+  const sidebarLayoutTimerRef = useRef<number | null>(null);
+  const inspectorLayoutTimerRef = useRef<number | null>(null);
   const [inspectorOpen, setInspectorOpen] = useState(() => {
     try { return localStorage.getItem("loom.inspector.open") === "true"; }
     catch { return false; }
@@ -190,6 +194,7 @@ export default function App() {
     catch { /* The panel remains usable when storage is unavailable. */ }
   }, [inspectorOpen]);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarLayoutOpen, setSidebarLayoutOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsPresence = useMotionPresence(settingsOpen, 200);
   const [accountOpen, setAccountOpen] = useState(false);
@@ -234,8 +239,10 @@ export default function App() {
   const projectDetailsOpen = Boolean(selectedProject);
   const projectDetailsPresence = useMotionPresence(projectDetailsOpen, 190);
   const inspectorVisible = inspectorOpen && !reviewOpen && !projectDetailsOpen && !agentsOpen;
+  const [inspectorLayoutOpen, setInspectorLayoutOpen] = useState(inspectorVisible);
 
   const panelVisibilityRef = useRef({ sidebarOpen, inspectorVisible });
+  const committedPanelLayoutRef = useRef({ sidebarLayoutOpen, inspectorLayoutOpen });
 
   useLayoutEffect(() => {
     const previous = panelVisibilityRef.current;
@@ -252,6 +259,46 @@ export default function App() {
       window.dispatchEvent(new Event("loom:panel-resize-end"));
     }, PANEL_MOTION_MS);
   }, [inspectorVisible, sidebarOpen]);
+
+  useLayoutEffect(() => {
+    if (sidebarLayoutTimerRef.current !== null) {
+      window.clearTimeout(sidebarLayoutTimerRef.current);
+      sidebarLayoutTimerRef.current = null;
+    }
+    if (sidebarOpen) {
+      setSidebarLayoutOpen(true);
+      return;
+    }
+    sidebarLayoutTimerRef.current = window.setTimeout(() => {
+      sidebarLayoutTimerRef.current = null;
+      setSidebarLayoutOpen(false);
+    }, PANEL_EXIT_HOLD_MS);
+  }, [sidebarOpen]);
+
+  useLayoutEffect(() => {
+    if (inspectorLayoutTimerRef.current !== null) {
+      window.clearTimeout(inspectorLayoutTimerRef.current);
+      inspectorLayoutTimerRef.current = null;
+    }
+    if (inspectorVisible) {
+      setInspectorLayoutOpen(true);
+      return;
+    }
+    inspectorLayoutTimerRef.current = window.setTimeout(() => {
+      inspectorLayoutTimerRef.current = null;
+      setInspectorLayoutOpen(false);
+    }, PANEL_EXIT_HOLD_MS);
+  }, [inspectorVisible]);
+
+  useLayoutEffect(() => {
+    const previous = committedPanelLayoutRef.current;
+    if (
+      previous.sidebarLayoutOpen === sidebarLayoutOpen
+      && previous.inspectorLayoutOpen === inspectorLayoutOpen
+    ) return;
+    committedPanelLayoutRef.current = { sidebarLayoutOpen, inspectorLayoutOpen };
+    window.dispatchEvent(new Event(PANEL_LAYOUT_COMMIT_EVENT));
+  }, [inspectorLayoutOpen, sidebarLayoutOpen]);
 
   function focusReviewFile(path?: string): void {
     const normalized = normalizeReviewPath(path);
@@ -351,6 +398,8 @@ export default function App() {
     if (session?.frame !== null && session?.frame !== undefined) cancelAnimationFrame(session.frame);
     if (resizeReleaseFrameRef.current !== null) cancelAnimationFrame(resizeReleaseFrameRef.current);
     if (panelMotionTimerRef.current !== null) window.clearTimeout(panelMotionTimerRef.current);
+    if (sidebarLayoutTimerRef.current !== null) window.clearTimeout(sidebarLayoutTimerRef.current);
+    if (inspectorLayoutTimerRef.current !== null) window.clearTimeout(inspectorLayoutTimerRef.current);
     document.body.classList.remove("loom-panel-resizing");
     document.body.classList.remove("loom-panel-motion");
   }, []);
@@ -702,7 +751,7 @@ export default function App() {
     <>
       <div
         ref={shellRef}
-        className={`app-shell workspace-panels ${sidebarOpen ? "sidebar-open" : "sidebar-closed"} ${inspectorVisible ? "inspector-open" : "inspector-closed"} ${reviewOpen ? "with-review" : ""} ${agentsPresence.mounted ? "with-agents" : ""} ${projectDetailsPresence.mounted ? "with-project-details" : ""} ${resizingPanel ? "is-resizing" : ""} ${panelMotionActive ? "is-panel-motion" : ""} ${settingsPresence.mounted ? "is-settings-obscured" : ""}`}
+        className={`app-shell workspace-panels ${sidebarOpen ? "sidebar-open" : "sidebar-closed"} ${sidebarLayoutOpen ? "sidebar-layout-open" : "sidebar-layout-closed"} ${inspectorVisible ? "inspector-open" : "inspector-closed"} ${inspectorLayoutOpen ? "inspector-layout-open" : "inspector-layout-closed"} ${reviewOpen ? "with-review" : ""} ${agentsPresence.mounted ? "with-agents" : ""} ${projectDetailsPresence.mounted ? "with-project-details" : ""} ${resizingPanel ? "is-resizing" : ""} ${panelMotionActive ? "is-panel-motion" : ""} ${settingsPresence.mounted ? "is-settings-obscured" : ""}`}
         style={layoutStyle}
         aria-hidden={settingsPresence.mounted ? true : undefined}
       >
@@ -841,7 +890,7 @@ export default function App() {
       />
 
       <Inspector
-        items={inspectorVisible ? loom.items : EMPTY_TRANSCRIPT_ITEMS}
+        items={inspectorLayoutOpen ? loom.items : EMPTY_TRANSCRIPT_ITEMS}
         onClose={() => setInspectorOpen(false)}
       />
       <ProjectDetailsPanel

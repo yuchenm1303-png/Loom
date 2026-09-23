@@ -16,6 +16,7 @@ const LIVE_FOLLOW_MAX_DISTANCE_PX = 240;
 const LIVE_FOLLOW_MAX_STEP_PX = 54;
 const LIVE_FOLLOW_EASE = 0.38;
 const PANEL_RESIZE_END_EVENT = "loom:panel-resize-end";
+const PANEL_LAYOUT_COMMIT_EVENT = "loom:panel-layout-commit";
 
 function transcriptScroller(): HTMLDivElement | null {
   return document.querySelector<HTMLDivElement>(".conversation-stage > .transcript-scroll");
@@ -199,11 +200,26 @@ export function TranscriptScrollController({
       setJumpVisible(!nearBottom && !followingRef.current);
     };
 
+    const onPanelLayoutCommit = () => {
+      if (!followingRef.current && !forceBottomRef.current) return;
+      // Track width changes now happen once rather than on every animation
+      // frame. Re-pin the bottom in this layout phase so a long transcript does
+      // not visibly jump upward when its line wrapping changes.
+      cancelScheduledScroll();
+      scroller.scrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+      lastScrollTopRef.current = scroller.scrollTop;
+      followingRef.current = true;
+      forceBottomRef.current = false;
+      snapBottomRef.current = false;
+      setJumpVisible(false);
+    };
+
     const onPanelResizeEnd = () => {
       if (followingRef.current || forceBottomRef.current) scheduleBottomSync(scroller);
     };
 
     scroller.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener(PANEL_LAYOUT_COMMIT_EVENT, onPanelLayoutCommit);
     window.addEventListener(PANEL_RESIZE_END_EVENT, onPanelResizeEnd);
 
     const observer = typeof ResizeObserver === "undefined"
@@ -217,6 +233,7 @@ export function TranscriptScrollController({
 
     return () => {
       scroller.removeEventListener("scroll", onScroll);
+      window.removeEventListener(PANEL_LAYOUT_COMMIT_EVENT, onPanelLayoutCommit);
       window.removeEventListener(PANEL_RESIZE_END_EVENT, onPanelResizeEnd);
       observer?.disconnect();
       cancelScheduledScroll();
