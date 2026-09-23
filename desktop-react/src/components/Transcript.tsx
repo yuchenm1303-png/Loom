@@ -1,6 +1,5 @@
 import {
   ArrowUpRight,
-  BrainCircuit,
   Bot,
   Bug,
   Check,
@@ -162,7 +161,7 @@ function LiveReasoning({ reasoning, workspace, streaming, messageKey, interrupte
         aria-expanded={hasReasoning ? open : undefined}
         disabled={!hasReasoning}
       >
-        <span className="thinking-symbol" aria-hidden="true"><BrainCircuit size={15} /></span>
+        <span className="thinking-symbol" aria-hidden="true"><span className="thinking-orbit" /><span className="thinking-dot" /></span>
         <span className="thinking-shimmer">正在思考…</span>
         {hasReasoning ? <ChevronRight size={13} className="live-reasoning-chevron" aria-hidden="true" /> : null}
       </button>
@@ -183,7 +182,7 @@ function LiveReasoning({ reasoning, workspace, streaming, messageKey, interrupte
 function PendingThinking() {
   return (
     <div className="inline-thinking" role="status" aria-live="polite">
-      <span className="thinking-symbol" aria-hidden="true"><BrainCircuit size={15} /></span>
+      <span className="thinking-symbol" aria-hidden="true"><span className="thinking-orbit" /><span className="thinking-dot" /></span>
       <span className="thinking-shimmer">正在思考…</span>
     </div>
   );
