@@ -68,7 +68,7 @@
 }
 
 .model-manager-popover .reasoning-card {
-  animation: model-panel-enter 180ms cubic-bezier(.2,.82,.2,1) both;
+  animation: none;
 }
 
 .model-manager-popover .model-manager-actions {
@@ -89,20 +89,12 @@
     linear-gradient(180deg, rgba(255,255,255,.018), rgba(255,255,255,.01));
   color: #8e96a4;
   transform: translateY(0);
-  animation: model-panel-action-enter 190ms cubic-bezier(.2,.82,.2,1) both;
+  animation: none;
   transition:
     transform 160ms cubic-bezier(.2,.8,.2,1),
     border-color 160ms ease,
     background 160ms ease,
     box-shadow 160ms ease;
-}
-
-.model-manager-popover .model-manager-actions > button:nth-child(1) {
-  animation-delay: 28ms;
-}
-
-.model-manager-popover .model-manager-actions > button:nth-child(2) {
-  animation-delay: 52ms;
 }
 
 .model-manager-popover .model-manager-actions > button::before {

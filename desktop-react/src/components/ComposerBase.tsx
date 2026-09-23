@@ -16,6 +16,7 @@ import {
 import { FormEvent, KeyboardEvent as ReactKeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { AddModelInput, Attachment, ModelSnapshot, StickerPreferences } from "../types/loom";
 import { useI18n } from "../i18n";
+import { useMotionPresence } from "../motion/useMotionPresence";
 import { ModelPanel } from "./ModelPanel";
 import { ComposerAttachmentStrip } from "./ComposerAttachmentStrip";
 import {
@@ -152,6 +153,10 @@ export function Composer({
   const [dragging, setDragging] = useState(false);
   const [focused, setFocused] = useState(false);
   const [openPanel, setOpenPanel] = useState<OpenPanel>(null);
+  const panelPresence = useMotionPresence(Boolean(openPanel), 165);
+  const lastOpenPanelRef = useRef<Exclude<OpenPanel, null> | null>(openPanel);
+  if (openPanel) lastOpenPanelRef.current = openPanel;
+  const renderedPanel = openPanel ?? (panelPresence.mounted ? lastOpenPanelRef.current : null);
   const [pendingSelection, setPendingSelection] = useState("");
   const [panelError, setPanelError] = useState("");
   const [stopping, setStopping] = useState(false);
@@ -393,8 +398,8 @@ export function Composer({
                 <ChevronDown size={13} className="composer-chip-chevron" />
               </button>
 
-              {openPanel === "permission" ? (
-                <div className={`composer-popover permission-popover ${running ? "is-locked" : ""}`} role="menu" aria-label="Permission profiles">
+              {renderedPanel === "permission" ? (
+                <div className={`composer-popover permission-popover ${running ? "is-locked" : ""}`} data-motion-phase={panelPresence.phase} role="menu" aria-label="Permission profiles">
                   <div className="composer-popover-head">
                     <div className="composer-popover-heading">
                       <span className="composer-popover-icon permission"><ShieldCheck size={16} /></span>
@@ -468,8 +473,8 @@ export function Composer({
                 <ChevronDown size={13} className="composer-chip-chevron" />
               </button>
 
-              {openPanel === "model" ? (
-                <div className="composer-popover model-popover model-manager-popover" role="dialog" aria-label="Model manager">
+              {renderedPanel === "model" ? (
+                <div className="composer-popover model-popover model-manager-popover" data-motion-phase={panelPresence.phase} role="dialog" aria-label="Model manager">
                   <div className="composer-popover-head">
                     <div className="composer-popover-heading">
                       <span className="composer-popover-icon model"><Cpu size={16} /></span>
@@ -529,8 +534,8 @@ export function Composer({
                 <ChevronDown size={13} className="composer-chip-chevron" />
               </button>
 
-              {openPanel === "sticker" ? (
-                <div className="composer-popover sticker-popover" role="dialog" aria-label="Chat expression settings">
+              {renderedPanel === "sticker" ? (
+                <div className="composer-popover sticker-popover" data-motion-phase={panelPresence.phase} role="dialog" aria-label="Chat expression settings">
                   <div className="composer-popover-head">
                     <div className="composer-popover-heading">
                       <span className="composer-popover-icon model"><Smile size={16} /></span>
