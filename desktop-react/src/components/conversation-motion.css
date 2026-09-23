@@ -342,12 +342,64 @@
 }
 
 .turn-block .thinking-symbol {
-  width: 23px;
-  height: 23px;
-  border: 1px solid rgba(139,124,246,.10);
+  position: relative;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  display: grid;
+  place-items: center;
+  border: 0;
   border-radius: 999px;
-  background: rgba(139,124,246,.055);
+  background: transparent;
+  box-shadow: none;
+  overflow: visible;
   animation: none;
+}
+
+.turn-block .thinking-symbol::after {
+  content: "";
+  position: absolute;
+  inset: 5px;
+  border: 1px solid rgba(129,116,236,.14);
+  border-radius: 999px;
+  opacity: 0;
+  animation: loom-thinking-ripple 2.4s cubic-bezier(.2,.7,.2,1) infinite;
+}
+
+.turn-block .thinking-orbit {
+  position: absolute;
+  width: 15px;
+  height: 15px;
+  border-radius: 999px;
+  padding: 1px;
+  background: conic-gradient(
+    from 30deg,
+    transparent 0 18%,
+    rgba(113,202,255,.78) 30%,
+    rgba(115,104,238,.88) 52%,
+    rgba(161,125,246,.52) 70%,
+    transparent 82% 100%
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: .9;
+  filter: drop-shadow(0 0 3px rgba(112,134,238,.16));
+  animation: loom-thinking-orbit 2.2s linear infinite;
+}
+
+.turn-block .thinking-dot {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: rgba(142,202,255,.94);
+  box-shadow:
+    0 0 5px rgba(96,184,255,.44),
+    0 0 9px rgba(124,99,236,.20);
+  animation: loom-thinking-dot 1.8s ease-in-out infinite;
 }
 
 /* Once real task activity exists, RunProgress + the task anchor already explain
@@ -489,8 +541,25 @@ html[data-loom-theme="light"] .turn-block .live-reasoning-trigger {
 }
 
 html[data-loom-theme="light"] .turn-block .thinking-symbol {
-  border-color: rgba(105,90,216,.11);
-  background: rgba(105,90,216,.055);
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+html[data-loom-theme="light"] .turn-block .thinking-symbol::after {
+  border-color: rgba(105,90,216,.12);
+}
+
+html[data-loom-theme="light"] .turn-block .thinking-orbit {
+  opacity: .72;
+  filter: drop-shadow(0 0 2px rgba(95,92,203,.10));
+}
+
+html[data-loom-theme="light"] .turn-block .thinking-dot {
+  background: rgba(91,142,214,.88);
+  box-shadow:
+    0 0 4px rgba(74,143,209,.28),
+    0 0 8px rgba(102,86,202,.13);
 }
 
 html[data-loom-theme="light"] .conversation-stage > .run-progress-frame.top {
@@ -699,4 +768,58 @@ html[data-loom-theme="light"] .conversation-stage.is-running::after {
 :root[data-loom-reduced-motion="true"] .conversation-stage > .run-progress-frame.top .run-progress-live-dot,
 :root[data-loom-reduced-motion="true"] .conversation-stage > .run-progress-frame.top .run-progress-phase {
   animation: none !important;
+}
+
+
+/* 2026-09-23 minimal thinking glyph motion ------------------------------- */
+@keyframes loom-thinking-orbit {
+  0% {
+    transform: rotate(0deg) scale(.96);
+    opacity: .62;
+  }
+  50% {
+    transform: rotate(180deg) scale(1.02);
+    opacity: 1;
+  }
+  100% {
+    transform: rotate(360deg) scale(.96);
+    opacity: .62;
+  }
+}
+
+@keyframes loom-thinking-dot {
+  0%, 100% {
+    transform: scale(.78);
+    opacity: .66;
+  }
+  45% {
+    transform: scale(1.12);
+    opacity: 1;
+  }
+}
+
+@keyframes loom-thinking-ripple {
+  0% {
+    transform: scale(.72);
+    opacity: 0;
+  }
+  24% {
+    opacity: .36;
+  }
+  78%, 100% {
+    transform: scale(1.75);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .turn-block .thinking-orbit,
+  .turn-block .thinking-dot,
+  .turn-block .thinking-symbol::after {
+    animation: none !important;
+  }
+
+  .turn-block .thinking-symbol::after {
+    display: none;
+  }
 }
