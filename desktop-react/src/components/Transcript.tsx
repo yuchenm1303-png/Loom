@@ -900,7 +900,9 @@ function ItemView({
             />
           ) : null}
         </div>
-        <MessageToolbar kind="assistant" item={item} text={answer || reasoning} disabled={promptDisabled} />
+        {decisionMessage.decisions.length || decisionMessage.incomplete ? null : (
+          <MessageToolbar kind="assistant" item={item} text={answer || reasoning} disabled={promptDisabled} />
+        )}
       </div>
     );
   }
