@@ -1,6 +1,7 @@
 import { CheckCircle2, LogOut, ShieldCheck, UserRound, X } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 import { useI18n } from "../i18n";
+import { useMotionPresence } from "../motion/useMotionPresence";
 import type { LoomAccountSnapshot } from "../types/account";
 import "./account-auth.css";
 
@@ -31,6 +32,7 @@ export function AccountDialog({
 }: AccountDialogProps) {
   const { language } = useI18n();
   const zh = language === "zh-CN";
+  const presence = useMotionPresence(open, 190);
   const [mode, setMode] = useState<AuthMode>("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -45,7 +47,7 @@ export function AccountDialog({
     }
   }, [open]);
 
-  if (!open) return null;
+  if (!presence.mounted) return null;
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -66,7 +68,12 @@ export function AccountDialog({
   const displayName = account.user?.display_name?.trim() || account.user?.email || "";
 
   return (
-    <div className="loom-account-backdrop" role="presentation" onMouseDown={onClose}>
+    <div
+      className="loom-account-backdrop"
+      data-motion-phase={presence.phase}
+      role="presentation"
+      onMouseDown={presence.phase === "exiting" ? undefined : onClose}
+    >
       <section
         className="loom-account-dialog"
         role="dialog"

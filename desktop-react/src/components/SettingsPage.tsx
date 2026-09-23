@@ -1333,7 +1333,7 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
         </nav>
         <div className="settings-sidebar-footer"><span className="settings-runtime-dot" /><div><strong>Loom runtime</strong><span>{running ? "Turn active" : "Ready for changes"}</span></div></div>
       </aside>
-      <main className="settings-main"><div className="settings-main-scroll"><div className="settings-content">{content}</div></div></main>
+      <main className="settings-main"><div className="settings-main-scroll"><div className="settings-content"><div className="settings-page-surface" key={page}>{content}</div></div></div></main>
       {notice ? <div className={`settings-toast ${notice.tone}`}>{notice.tone === "success" ? <Check size={15} /> : <CircleAlert size={15} />}<span>{notice.text}</span></div> : null}
     </div>
   );

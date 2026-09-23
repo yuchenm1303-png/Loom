@@ -1,0 +1,127 @@
+/* Loom global motion system -------------------------------------------------
+   One vocabulary for panels, pages, popovers and dialogs. Slow enough to read,
+   cheap enough to stay on the compositor. Avoid animating layout, filters and
+   large shadows unless the geometry itself must change. */
+
+:root {
+  --loom-motion-control: 180ms;
+  --loom-motion-popover: 240ms;
+  --loom-motion-dialog: 300ms;
+  --loom-motion-panel: 320ms;
+  --loom-motion-page: 340ms;
+  --loom-motion-exit: 180ms;
+  --loom-ease-out: cubic-bezier(.16, 1, .3, 1);
+  --loom-ease-standard: cubic-bezier(.22, .78, .2, 1);
+  --loom-ease-in: cubic-bezier(.4, 0, .8, .2);
+}
+
+.app-shell.is-settings-obscured {
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Settings now overlays the live application instead of replacing/unmounting
+   it. The conversation tree remains warm and keeps its scroll/layout state. */
+.settings-host {
+  position: fixed;
+  z-index: 9000;
+  inset: 0;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  isolation: isolate;
+  contain: layout paint style;
+  background:
+    radial-gradient(circle at 18% 0%, rgba(139,124,246,.10), transparent 30%),
+    radial-gradient(circle at 100% 12%, rgba(82,92,180,.08), transparent 34%),
+    #0b0c0f;
+}
+
+.settings-host .settings-sidebar,
+.settings-host .settings-main {
+  will-change: transform, opacity;
+  transition:
+    transform var(--loom-motion-page) var(--loom-ease-out),
+    opacity 240ms ease;
+}
+
+.settings-host[data-motion-phase="entering"] .settings-sidebar {
+  opacity: 0;
+  transform: translate3d(-14px, 0, 0);
+}
+
+.settings-host[data-motion-phase="entering"] .settings-main {
+  opacity: 0;
+  transform: translate3d(0, 8px, 0);
+}
+
+.settings-host[data-motion-phase="entered"] .settings-sidebar,
+.settings-host[data-motion-phase="entered"] .settings-main {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+}
+
+.settings-host[data-motion-phase="exiting"] {
+  pointer-events: none;
+}
+
+.settings-host[data-motion-phase="exiting"] .settings-sidebar {
+  opacity: 0;
+  transform: translate3d(-8px, 0, 0);
+  transition-duration: var(--loom-motion-exit);
+  transition-timing-function: var(--loom-ease-in);
+}
+
+.settings-host[data-motion-phase="exiting"] .settings-main {
+  opacity: 0;
+  transform: translate3d(0, 5px, 0);
+  transition-duration: var(--loom-motion-exit);
+  transition-timing-function: var(--loom-ease-in);
+}
+
+.settings-page-surface {
+  min-width: 0;
+  display: grid;
+  gap: 24px;
+  contain: layout paint style;
+  animation: loom-settings-page-enter 300ms var(--loom-ease-out) both;
+}
+
+@keyframes loom-settings-page-enter {
+  from { opacity: .28; transform: translate3d(0, 7px, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+/* Controls should feel responsive, not twitchy. */
+.settings-nav button,
+.settings-back,
+.sidebar-new-conversation,
+.sidebar-secondary-action,
+.project-group-main,
+.compact-sidebar-actions button,
+.thread-quick-actions button,
+.project-group-actions button {
+  transition-duration: var(--loom-motion-control);
+}
+
+/* Motion-lifecycle surfaces use data-motion-phase instead of one-shot mount
+   keyframes so closing is just as deliberate as opening. */
+[data-motion-phase="entering"] {
+  --loom-presence-opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-host .settings-sidebar,
+  .settings-host .settings-main,
+  .settings-page-surface {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+:root[data-loom-reduced-motion="true"] .settings-host .settings-sidebar,
+:root[data-loom-reduced-motion="true"] .settings-host .settings-main,
+:root[data-loom-reduced-motion="true"] .settings-page-surface {
+  animation: none !important;
+  transition: none !important;
+}

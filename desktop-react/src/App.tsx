@@ -30,6 +30,7 @@ import "./components/sidebar-codex-polish.css";
 import "./components/shortcut-runtime.css";
 import "./components/workspace-panels.css";
 import { useI18n } from "./i18n";
+import { useMotionPresence } from "./motion/useMotionPresence";
 import {
   SHORTCUTS_CHANGED_EVENT,
   eventMatchesShortcut,
@@ -187,6 +188,7 @@ export default function App() {
   }, [inspectorOpen]);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const settingsPresence = useMotionPresence(settingsOpen, 200);
   const [accountOpen, setAccountOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [agentsOpen, setAgentsOpen] = useState(false);
@@ -665,33 +667,19 @@ export default function App() {
     );
   }
 
-  if (settingsOpen) {
-    return (
-      <>
-        <SettingsPage
-          runtime={loom.runtime}
-          models={loom.models}
-          running={Boolean(running)}
-          onClose={() => setSettingsOpen(false)}
-        />
-        <SettingsMemoryBridge threadId={thread?.id} running={Boolean(running)} />
-        <SettingsComputerLogExport />
-        <LanguageSettingsDock />
-      </>
-    );
-  }
-
   const layoutStyle: LayoutStyle = {
     "--loom-sidebar-panel-size": `${sidebarWidth}px`,
     "--loom-inspector-panel-size": `${inspectorWidth}px`,
   };
 
   return (
-    <div
-      ref={shellRef}
-      className={`app-shell workspace-panels ${sidebarOpen ? "sidebar-open" : "sidebar-closed"} ${inspectorVisible ? "inspector-open" : "inspector-closed"} ${reviewOpen ? "with-review" : ""} ${agentsOpen ? "with-agents" : ""} ${projectDetailsOpen ? "with-project-details" : ""} ${resizingPanel ? "is-resizing" : ""}`}
-      style={layoutStyle}
-    >
+    <>
+      <div
+        ref={shellRef}
+        className={`app-shell workspace-panels ${sidebarOpen ? "sidebar-open" : "sidebar-closed"} ${inspectorVisible ? "inspector-open" : "inspector-closed"} ${reviewOpen ? "with-review" : ""} ${agentsOpen ? "with-agents" : ""} ${projectDetailsOpen ? "with-project-details" : ""} ${resizingPanel ? "is-resizing" : ""} ${settingsPresence.mounted ? "is-settings-obscured" : ""}`}
+        style={layoutStyle}
+        aria-hidden={settingsPresence.mounted ? true : undefined}
+      >
       <Sidebar
         threads={loom.threads}
         activeId={thread?.id}
@@ -859,6 +847,21 @@ export default function App() {
         onRegister={account.register}
         onLogout={account.logout}
       />
-    </div>
+      </div>
+
+      {settingsPresence.mounted ? (
+        <div className="settings-host" data-motion-phase={settingsPresence.phase}>
+          <SettingsPage
+            runtime={loom.runtime}
+            models={loom.models}
+            running={Boolean(running)}
+            onClose={() => setSettingsOpen(false)}
+          />
+          <SettingsMemoryBridge threadId={thread?.id} running={Boolean(running)} />
+          <SettingsComputerLogExport />
+          <LanguageSettingsDock />
+        </div>
+      ) : null}
+    </>
   );
 }

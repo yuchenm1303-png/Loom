@@ -12,6 +12,7 @@ import {
   Undo2,
 } from "lucide-react";
 import {
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -187,7 +188,33 @@ export function GlobalContextMenu() {
   const zh = language === "zh-CN";
   const [state, setState] = useState<ContextState | null>(null);
   const [position, setPosition] = useState({ x: 0, y: 0 });
+  const [positioned, setPositioned] = useState(false);
+  const [closing, setClosing] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const closeTimerRef = useRef<number | null>(null);
+  const readyFrameRef = useRef<number | null>(null);
+
+  const closeMenu = useCallback((immediate = false) => {
+    if (!state) return;
+    if (closeTimerRef.current !== null) window.clearTimeout(closeTimerRef.current);
+    if (readyFrameRef.current !== null) cancelAnimationFrame(readyFrameRef.current);
+    readyFrameRef.current = null;
+    const reduced = document.documentElement.dataset.loomReducedMotion === "true"
+      || Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)").matches);
+    if (immediate || reduced) {
+      setState(null);
+      setClosing(false);
+      setPositioned(false);
+      return;
+    }
+    setClosing(true);
+    closeTimerRef.current = window.setTimeout(() => {
+      closeTimerRef.current = null;
+      setState(null);
+      setClosing(false);
+      setPositioned(false);
+    }, 150);
+  }, [closeMenu, state]);
 
   useEffect(() => {
     const onContextMenu = (event: MouseEvent) => {
@@ -225,6 +252,12 @@ export function GlobalContextMenu() {
       const anchorX = event.clientX || Math.min(targetRect.left + 24, targetRect.right);
       const anchorY = event.clientY || Math.min(targetRect.bottom, window.innerHeight - 8);
 
+      if (closeTimerRef.current !== null) window.clearTimeout(closeTimerRef.current);
+      if (readyFrameRef.current !== null) cancelAnimationFrame(readyFrameRef.current);
+      closeTimerRef.current = null;
+      readyFrameRef.current = null;
+      setClosing(false);
+      setPositioned(false);
       setState({
         x: anchorX,
         y: anchorY,
@@ -245,7 +278,7 @@ export function GlobalContextMenu() {
       setPosition({ x: anchorX, y: anchorY });
     };
 
-    const close = () => setState(null);
+    const close = () => closeMenu();
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") close();
     };
@@ -262,12 +295,12 @@ export function GlobalContextMenu() {
       window.removeEventListener("scroll", close, true);
       window.removeEventListener("keydown", onKeyDown, true);
     };
-  }, []);
+  }, [closeMenu]);
 
   useEffect(() => {
     if (!state) return;
     const close = (event: PointerEvent) => {
-      if (!menuRef.current?.contains(event.target as Node)) setState(null);
+      if (!menuRef.current?.contains(event.target as Node)) closeMenu();
     };
     document.addEventListener("pointerdown", close, true);
     return () => document.removeEventListener("pointerdown", close, true);
@@ -280,6 +313,11 @@ export function GlobalContextMenu() {
     setPosition({
       x: Math.max(margin, Math.min(state.x, window.innerWidth - rect.width - margin)),
       y: Math.max(margin, Math.min(state.y, window.innerHeight - rect.height - margin)),
+    });
+    if (readyFrameRef.current !== null) cancelAnimationFrame(readyFrameRef.current);
+    readyFrameRef.current = requestAnimationFrame(() => {
+      readyFrameRef.current = null;
+      setPositioned(true);
     });
   }, [state]);
 
@@ -485,12 +523,17 @@ export function GlobalContextMenu() {
   }, [state, zh]);
 
   useEffect(() => {
-    if (!state) return;
+    if (!state || !positioned || closing) return;
     const frame = requestAnimationFrame(() => {
       menuRef.current?.querySelector<HTMLButtonElement>(".loom-context-action:not(:disabled)")?.focus({ preventScroll: true });
     });
     return () => cancelAnimationFrame(frame);
-  }, [state]);
+  }, [closing, positioned, state]);
+
+  useEffect(() => () => {
+    if (closeTimerRef.current !== null) window.clearTimeout(closeTimerRef.current);
+    if (readyFrameRef.current !== null) cancelAnimationFrame(readyFrameRef.current);
+  }, []);
 
   if (!state || !actions.length) return null;
 
@@ -509,7 +552,7 @@ export function GlobalContextMenu() {
   return createPortal(
     <div
       ref={menuRef}
-      className="loom-context-menu"
+      className={`loom-context-menu ${positioned ? "is-positioned" : "is-positioning"} ${closing ? "is-closing" : ""}`.trim()}
       role="menu"
       aria-label={zh ? "右键菜单" : "Context menu"}
       style={{ left: position.x, top: position.y }}
@@ -548,7 +591,7 @@ export function GlobalContextMenu() {
                 className={action.id === "quote" ? "loom-context-action is-primary" : "loom-context-action"}
                 disabled={action.disabled}
                 onClick={() => {
-                  setState(null);
+                  closeMenu();
                   void Promise.resolve(action.run()).catch(() => undefined);
                 }}
               >
