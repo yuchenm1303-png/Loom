@@ -360,25 +360,25 @@
 /* The top run state becomes a quiet floating capsule. The task timeline keeps
    the expressive motion; this remains the stable global status anchor. */
 .conversation-stage > .run-progress-frame.top {
-  min-height: 50px;
+  min-height: 38px;
   padding: 0;
-  border-bottom: 1px solid rgba(255,255,255,.045);
+  border-bottom: 1px solid rgba(255,255,255,.04);
   background:
-    linear-gradient(180deg, rgba(18,19,24,.91), rgba(12,13,17,.84));
-  backdrop-filter: blur(12px);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.018);
+    linear-gradient(180deg, rgba(18,19,24,.88), rgba(12,13,17,.80));
+  backdrop-filter: blur(10px);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.016);
 }
 
 .conversation-stage > .run-progress-frame.top .run-progress-inline {
   width: 100%;
-  min-height: 50px;
+  min-height: 38px;
   margin: 0;
-  padding: 7px 22px;
+  padding: 3px 16px;
   border: 0;
   border-radius: 0;
   background: transparent;
   box-shadow: none;
-  animation: loom-run-pill-in 320ms var(--loom-motion-pop) both;
+  animation: loom-run-pill-in 300ms var(--loom-motion-pop) both;
 }
 
 .conversation-stage > .run-progress-frame.top .run-progress-track {
@@ -395,6 +395,30 @@
 
 .conversation-stage > .run-progress-frame.top .run-progress-phase {
   animation: loom-phase-swap 220ms var(--loom-motion-pop) both;
+}
+
+
+/* Content-edge fade ---------------------------------------------------------
+   The top strip stays full-width, but the transcript should visually dissolve
+   as it approaches the strip instead of hitting a hard horizontal cut. This is
+   a presentation overlay only; the scroll viewport and hit targets are not
+   clipped or masked. */
+.conversation-stage.is-running::after {
+  content: "";
+  position: absolute;
+  z-index: 6;
+  left: 0;
+  right: 0;
+  top: 38px;
+  height: 34px;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    rgba(12,13,17,.78) 0%,
+    rgba(12,13,17,.42) 30%,
+    rgba(12,13,17,.13) 68%,
+    transparent 100%
+  );
 }
 
 /* Light theme keeps exactly the same motion hierarchy. */
@@ -482,6 +506,17 @@ html[data-loom-theme="light"] .conversation-stage > .run-progress-frame.top .run
   border: 0;
   background: transparent;
   box-shadow: none;
+}
+
+
+html[data-loom-theme="light"] .conversation-stage.is-running::after {
+  background: linear-gradient(
+    180deg,
+    rgba(250,251,252,.94) 0%,
+    rgba(250,251,252,.62) 30%,
+    rgba(250,251,252,.22) 68%,
+    transparent 100%
+  );
 }
 
 @keyframes loom-live-message-in {
@@ -612,7 +647,7 @@ html[data-loom-theme="light"] .conversation-stage > .run-progress-frame.top .run
 
 @media (max-width: 900px) {
   .conversation-stage > .run-progress-frame.top .run-progress-inline {
-    padding-inline: 18px;
+    padding-inline: 14px;
   }
 }
 
