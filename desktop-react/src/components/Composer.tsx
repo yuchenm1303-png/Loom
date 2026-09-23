@@ -249,7 +249,6 @@ function SteeringComposer({ threadId, onSend, onInterrupt, imagesAllowed = true 
             </span>
           </div>
           <div className="composer-right">
-            <span className="composer-keycap">Enter ↵</span>
             <button
               type="submit"
               className="send-button"
