@@ -214,7 +214,7 @@ export function GlobalContextMenu() {
       setClosing(false);
       setPositioned(false);
     }, 150);
-  }, [closeMenu, state]);
+  }, [state]);
 
   useEffect(() => {
     const onContextMenu = (event: MouseEvent) => {
