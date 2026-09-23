@@ -140,6 +140,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .settings-host,
   .settings-host .settings-sidebar,
   .settings-host .settings-main,
   .settings-page-surface {
@@ -148,6 +149,7 @@
   }
 }
 
+:root[data-loom-reduced-motion="true"] .settings-host,
 :root[data-loom-reduced-motion="true"] .settings-host .settings-sidebar,
 :root[data-loom-reduced-motion="true"] .settings-host .settings-main,
 :root[data-loom-reduced-motion="true"] .settings-page-surface {
