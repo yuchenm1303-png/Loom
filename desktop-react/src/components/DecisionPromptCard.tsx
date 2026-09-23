@@ -231,8 +231,22 @@ export function DecisionPromptCard({
 
   const locked = disabled || submitted !== undefined;
 
+  if (submitted !== undefined) {
+    const summary = submitted?.length
+      ? submitted.map((option) => option.title).join(zh ? "、" : ", ")
+      : (zh ? "已提交补充意见" : "Additional guidance sent");
+
+    return (
+      <div className="decision-inline-receipt" role="status" aria-live="polite">
+        <span className="decision-inline-receipt-check" aria-hidden="true"><Check size={12.5} strokeWidth={2.15} /></span>
+        <span className="decision-inline-receipt-label">{zh ? "已选择" : "Selected"}</span>
+        <span className="decision-inline-receipt-value" title={summary}>{summary}</span>
+      </div>
+    );
+  }
+
   return (
-    <section className={`decision-card ${spec.multiple ? "is-multiple" : "is-single"} ${submitted !== undefined ? "is-submitted" : ""}`} aria-label={spec.title}>
+    <section className={`decision-card ${spec.multiple ? "is-multiple" : "is-single"}`} aria-label={spec.title}>
       <header className="decision-card-head">
         <span className="decision-card-icon" aria-hidden="true"><MessageSquareText size={16} /></span>
         <div className="decision-card-heading">
@@ -287,19 +301,7 @@ export function DecisionPromptCard({
         })}
       </div>
 
-      {submitted !== undefined ? (
-        <div className="decision-submitted" role="status">
-          <Check size={14} />
-          <span>
-            {submitted?.length
-              ? (zh
-                ? `已选择 ${submitted.map((option) => option.title).join("、")}`
-                : `Selected ${submitted.map((option) => option.title).join(", ")}`)
-              : (zh ? "已发送你的意见" : "Your preference was sent")}
-          </span>
-        </div>
-      ) : (
-        <div className="decision-card-foot">
+      <div className="decision-card-foot">
           {spec.allowCustomInput ? (
             <div className={`decision-custom ${customOpen ? "is-open" : ""}`}>
               <button
@@ -353,7 +355,6 @@ export function DecisionPromptCard({
             </button>
           </div>
         </div>
-      )}
     </section>
   );
 }
