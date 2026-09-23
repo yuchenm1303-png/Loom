@@ -13,8 +13,8 @@
 }
 
 .review-workspace[data-motion-phase="entering"] {
-  opacity: 0;
-  transform: translate3d(12px,0,0);
+  opacity: .9;
+  transform: translate3d(22px,0,0);
   will-change: transform, opacity;
 }
 
@@ -25,10 +25,10 @@
 
 .review-workspace[data-motion-phase="exiting"] {
   pointer-events: none;
-  opacity: 0;
-  transform: translate3d(7px,0,0);
+  opacity: .82;
+  transform: translate3d(14px,0,0);
   will-change: transform, opacity;
-  transition-duration: 230ms;
+  transition-duration: 250ms;
   transition-timing-function: var(--loom-ease-in,cubic-bezier(.42,0,.72,.2));
 }
 

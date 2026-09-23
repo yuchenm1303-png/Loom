@@ -5,9 +5,11 @@
   grid-template-columns: var(--loom-sidebar-track) minmax(0, 1fr) var(--loom-inspector-track);
 }
 
-/* Never tween workspace track widths. On a long transcript every intermediate
-   width forces Markdown, code and task rows to reflow. Visual panel motion is
-   compositor-only; the expensive workspace width is committed exactly once. */
+/* Workspace geometry is committed once per panel action. Opening panels first
+   travel over the current conversation, then reserve their track near the end
+   of the motion. Closing panels release the track first and leave over the
+   expanded conversation. This keeps long transcripts compositor-smooth while
+   avoiding the empty track from the old two-stage choreography. */
 .app-shell.workspace-panels.sidebar-layout-closed {
   --loom-sidebar-track: 0px;
 }
@@ -16,13 +18,30 @@
   --loom-inspector-track: 0px;
 }
 
-/* During pointer resize the grid stays frozen. Only the separator is translated
-   on the compositor. The real track width is committed once on pointer release. */
+/* Explicit columns keep the conversation in the center track even while a
+   side panel temporarily becomes an absolute overlay. */
+.workspace-panels > .sidebar {
+  grid-column: 1;
+  grid-row: 1;
+  position: relative;
+  z-index: 32;
+}
 
-.workspace-panels .workspace {
+.workspace-panels > .workspace {
+  grid-column: 2;
+  grid-row: 1;
+  position: relative;
+  z-index: 1;
   min-width: 0;
   container-type: inline-size;
   container-name: loom-workspace;
+}
+
+.workspace-panels > .inspector {
+  grid-column: 3;
+  grid-row: 1;
+  position: relative;
+  z-index: 32;
 }
 
 .thread-header-leading {
@@ -39,46 +58,52 @@
 .workspace-panels > .inspector {
   min-width: 0;
   width: 100%;
+  height: 100%;
   contain: layout paint style;
   backface-visibility: hidden;
+  transform: translate3d(0,0,0);
   transition:
-    opacity var(--loom-motion-opacity,260ms) ease,
     transform var(--loom-motion-panel,390ms) var(--loom-ease-out,cubic-bezier(.2,.74,.18,1)),
     visibility 0s linear 0s;
 }
 
-.workspace-panels.sidebar-open > .sidebar {
-  opacity: 1;
-  transform: translate3d(0,0,0);
+/* With no reserved track the panel keeps its real width as an overlay. The
+   conversation remains laid out underneath until the one geometry commit. */
+.workspace-panels.sidebar-layout-closed > .sidebar {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--loom-sidebar-panel-size, var(--sidebar-width, 252px));
+}
+
+.workspace-panels.inspector-layout-closed > .inspector {
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: var(--loom-inspector-panel-size, var(--inspector-width, 316px));
+}
+
+.workspace-panels.sidebar-open > .sidebar,
+.workspace-panels.inspector-open > .inspector {
   visibility: visible;
+  pointer-events: auto;
+  transform: translate3d(0,0,0);
 }
 
 .workspace-panels.sidebar-closed > .sidebar {
-  opacity: 0;
-  transform: translate3d(-14px,0,0);
+  transform: translate3d(calc(-100% - 1px),0,0);
   visibility: hidden;
   pointer-events: none;
   transition:
-    opacity 210ms ease,
-    transform 255ms var(--loom-ease-in,cubic-bezier(.42,0,.72,.2)),
-    visibility 0s linear 265ms;
-}
-
-.workspace-panels.inspector-open > .inspector {
-  opacity: 1;
-  transform: translate3d(0,0,0);
-  visibility: visible;
+    transform 280ms var(--loom-ease-in,cubic-bezier(.42,0,.72,.2)),
+    visibility 0s linear 280ms;
 }
 
 .workspace-panels.inspector-closed > .inspector {
-  opacity: 0;
-  transform: translate3d(14px,0,0);
+  transform: translate3d(calc(100% + 1px),0,0);
   visibility: hidden;
   pointer-events: none;
   transition:
-    opacity 210ms ease,
-    transform 255ms var(--loom-ease-in,cubic-bezier(.42,0,.72,.2)),
-    visibility 0s linear 265ms;
+    transform 280ms var(--loom-ease-in,cubic-bezier(.42,0,.72,.2)),
+    visibility 0s linear 280ms;
 }
 
 .workspace-panel-resizer {
@@ -136,8 +161,8 @@
   transform: translateX(50%);
 }
 
-.workspace-panels.sidebar-closed .workspace-panel-resizer-left,
-.workspace-panels.inspector-closed .workspace-panel-resizer-right {
+.workspace-panels.sidebar-layout-closed .workspace-panel-resizer-left,
+.workspace-panels.inspector-layout-closed .workspace-panel-resizer-right {
   opacity: 0;
   pointer-events: none;
 }
