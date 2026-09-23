@@ -1,10 +1,12 @@
 .decision-card {
-  margin: 14px 0 4px;
-  width: min(100%, 720px);
+  margin: 14px 16px 18px;
+  width: min(calc(100% - 32px), 720px);
   border: 1px solid var(--border);
   border-radius: 16px;
   background: linear-gradient(180deg, color-mix(in srgb, var(--panel-raised) 92%, transparent), color-mix(in srgb, var(--panel) 96%, transparent));
-  box-shadow: 0 12px 34px rgba(0, 0, 0, .12);
+  box-shadow:
+    0 10px 24px rgba(0, 0, 0, .095),
+    0 2px 8px rgba(0, 0, 0, .045);
   overflow: hidden;
 }
 .decision-card-head { display: flex; align-items: flex-start; gap: 11px; padding: 15px 16px 13px; border-bottom: 1px solid var(--border-soft); }
@@ -402,5 +404,36 @@ html[data-loom-theme="light"] .decision-inline-receipt {
 @media (prefers-reduced-motion: reduce) {
   .decision-inline-receipt {
     animation: none !important;
+  }
+}
+
+
+/* 2026-09-23 decision shadow clipping fix ------------------------------- */
+/* The transcript viewport intentionally hides horizontal overflow. Decision
+   cards used to sit flush against that clipping edge while their 34px shadow
+   painted outside the box, producing the hard black cut visible in light mode.
+   Reserve real paint space around the card instead of weakening or masking the
+   shadow. Keep internal overflow clipping so header/footer surfaces still obey
+   the rounded card shell. */
+.assistant-message:has(> .decision-card) {
+  overflow: visible;
+}
+
+.message-shell:has(.decision-card),
+.transcript-entry:has(.decision-card),
+.turn-final-answer:has(.decision-card) {
+  overflow: visible;
+}
+
+html[data-loom-theme="light"] .decision-card {
+  box-shadow:
+    0 10px 24px rgba(35, 39, 48, .075),
+    0 2px 7px rgba(35, 39, 48, .035);
+}
+
+@media (max-width: 720px) {
+  .decision-card {
+    margin-inline: 10px;
+    width: calc(100% - 20px);
   }
 }
