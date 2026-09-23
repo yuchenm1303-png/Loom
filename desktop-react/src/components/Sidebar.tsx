@@ -225,7 +225,7 @@ export function Sidebar({
       contextMenuCloseTimerRef.current = null;
       setContextMenu(null);
       setContextMenuClosing(false);
-    }, 155);
+    }, 215);
   }, []);
 
   const activeThread = useMemo(
