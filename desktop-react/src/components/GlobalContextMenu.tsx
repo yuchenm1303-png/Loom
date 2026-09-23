@@ -304,7 +304,7 @@ export function GlobalContextMenu() {
     };
     document.addEventListener("pointerdown", close, true);
     return () => document.removeEventListener("pointerdown", close, true);
-  }, [state]);
+  }, [closeMenu, state]);
 
   useLayoutEffect(() => {
     if (!state || !menuRef.current) return;
