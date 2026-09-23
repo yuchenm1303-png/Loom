@@ -330,3 +330,77 @@
 .turn-block:has(.user-message-shell[data-loom-message-text^="[[LOOM_DECISION_RESPONSE:v1]]"]) {
   margin-top: 2px;
 }
+
+
+/* 2026-09-23 inline decision receipt -------------------------------------- */
+/* Once a choice is accepted, the card gets out of the conversation's way.
+   The receipt stays exactly where the card was so continuity is obvious
+   without turning the decision into a completed-message block. */
+.decision-inline-receipt {
+  width: fit-content;
+  max-width: min(100%, 560px);
+  min-height: 27px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0 2px;
+  padding: 4px 9px 4px 6px;
+  border: 1px solid color-mix(in srgb, var(--success) 18%, var(--border-soft));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--success) 4%, transparent);
+  color: var(--muted);
+  box-shadow: none;
+  animation: decision-receipt-in 180ms cubic-bezier(.2,.82,.2,1) both;
+}
+
+.decision-inline-receipt-check {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 17px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--success) 9%, transparent);
+  color: var(--success);
+}
+
+.decision-inline-receipt-label {
+  flex: 0 0 auto;
+  color: color-mix(in srgb, var(--success) 72%, var(--text-2));
+  font-size: 9.5px;
+  line-height: 1;
+  font-weight: 650;
+}
+
+.decision-inline-receipt-value {
+  min-width: 0;
+  max-width: 430px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 9.5px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@keyframes decision-receipt-in {
+  from {
+    opacity: 0;
+    transform: translateY(2px) scale(.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+html[data-loom-theme="light"] .decision-inline-receipt {
+  border-color: rgba(57,118,90,.13);
+  background: rgba(57,118,90,.035);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .decision-inline-receipt {
+    animation: none !important;
+  }
+}
