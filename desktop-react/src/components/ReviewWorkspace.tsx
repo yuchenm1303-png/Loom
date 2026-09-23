@@ -12,6 +12,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useI18n } from "../i18n";
+import { useMotionPresence } from "../motion/useMotionPresence";
 import type { TranscriptItem } from "../types/loom";
 import "./review-workspace.css";
 
@@ -256,6 +257,7 @@ function lineMarker(kind: ReviewRow["kind"]): string {
 }
 
 export function ReviewWorkspace({ items, open, onClose }: ReviewWorkspaceProps) {
+  const presence = useMotionPresence(open, 190);
   const { language } = useI18n();
   const c = language === "zh-CN" ? COPY_TEXT.zh : COPY_TEXT.en;
   const [externalReview, setExternalReview] = useState<ExternalReview | null>(null);
@@ -360,7 +362,7 @@ export function ReviewWorkspace({ items, open, onClose }: ReviewWorkspaceProps) 
     setCopied(false);
   }, [selected?.path]);
 
-  if (!open) return null;
+  if (!presence.mounted) return null;
 
   const moveSelection = (offset: number) => {
     if (!visibleFiles.length) return;
@@ -381,7 +383,7 @@ export function ReviewWorkspace({ items, open, onClose }: ReviewWorkspaceProps) 
   };
 
   return createPortal(
-    <div className="review-workspace" role="dialog" aria-modal="true" aria-label={reviewTitle}>
+    <div className="review-workspace" data-motion-phase={presence.phase} role="dialog" aria-modal="true" aria-label={reviewTitle}>
       <header className="review-topbar">
         <div className="review-heading">
           <span className="review-heading-icon"><Files size={17} strokeWidth={1.8} /></span>
