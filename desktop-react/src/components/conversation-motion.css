@@ -170,39 +170,22 @@
   z-index: 0;
   top: -1px;
   bottom: -1px;
-  left: -24%;
-  width: 22%;
+  left: -18%;
+  width: 16%;
   border-radius: inherit;
   pointer-events: none;
   background: linear-gradient(
-    102deg,
+    100deg,
     transparent 0%,
-    rgba(169,158,246,.018) 22%,
-    rgba(190,181,255,.12) 48%,
-    rgba(255,255,255,.085) 56%,
-    rgba(159,146,243,.025) 76%,
+    rgba(180,170,250,.018) 30%,
+    rgba(205,198,255,.105) 50%,
+    rgba(255,255,255,.055) 56%,
+    rgba(171,160,248,.018) 70%,
     transparent 100%
   );
-  transform: translate3d(0,0,0) skewX(-9deg);
+  transform: translate3d(0,0,0) skewX(-7deg);
   will-change: transform, opacity;
-  animation: loom-task-running-sheen 3.25s cubic-bezier(.4,0,.2,1) .78s infinite;
-}
-
-/* The capsule "grows" on its own lightweight decoration instead of scaling
-   the whole row. Text stays at native raster size throughout the entrance. */
-.turn-process.is-live .task-flow-row::after {
-  content: "";
-  display: block;
-  position: absolute;
-  z-index: 0;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  background:
-    radial-gradient(circle at 27px 50%, rgba(171,160,248,.16), transparent 28%),
-    linear-gradient(90deg, rgba(139,124,246,.09), rgba(139,124,246,.025) 56%, transparent);
-  transform-origin: 27px 50%;
-  animation: loom-task-capsule-bloom 560ms cubic-bezier(.16,.9,.2,1) both;
+  animation: loom-task-running-sheen 3.7s cubic-bezier(.4,0,.2,1) .9s infinite;
 }
 
 .task-flow-row.is-resting {
@@ -510,20 +493,14 @@ html[data-loom-theme="light"] .task-flow-row.is-active {
 
 html[data-loom-theme="light"] .task-flow-row.is-executing::before {
   background: linear-gradient(
-    102deg,
+    100deg,
     transparent 0%,
-    rgba(105,90,216,.012) 22%,
-    rgba(105,90,216,.085) 48%,
-    rgba(255,255,255,.82) 56%,
-    rgba(105,90,216,.022) 76%,
+    rgba(105,90,216,.008) 30%,
+    rgba(105,90,216,.072) 50%,
+    rgba(255,255,255,.72) 56%,
+    rgba(105,90,216,.016) 70%,
     transparent 100%
   );
-}
-
-html[data-loom-theme="light"] .turn-process.is-live .task-flow-row::after {
-  background:
-    radial-gradient(circle at 27px 50%, rgba(105,90,216,.11), transparent 28%),
-    linear-gradient(90deg, rgba(105,90,216,.065), rgba(105,90,216,.018) 56%, transparent);
 }
 
 html[data-loom-theme="light"] .task-flow-live-detail {
@@ -634,25 +611,6 @@ html[data-loom-theme="light"] .conversation-stage.is-running::after {
   }
 }
 
-@keyframes loom-task-capsule-bloom {
-  0% {
-    opacity: 0;
-    transform: scale3d(.16,.78,1);
-  }
-  32% {
-    opacity: .92;
-    transform: scale3d(.72,1.02,1);
-  }
-  70% {
-    opacity: .48;
-    transform: scale3d(1.015,1,1);
-  }
-  100% {
-    opacity: 0;
-    transform: scale3d(1,1,1);
-  }
-}
-
 @keyframes loom-task-icon-spring {
   0% {
     opacity: .35;
@@ -679,18 +637,18 @@ html[data-loom-theme="light"] .conversation-stage.is-running::after {
 }
 
 @keyframes loom-task-running-sheen {
-  0%, 18% {
+  0%, 20% {
     opacity: 0;
-    transform: translate3d(0,0,0) skewX(-9deg);
+    transform: translate3d(0,0,0) skewX(-7deg);
   }
-  30% { opacity: .78; }
-  54% {
-    opacity: .62;
-    transform: translate3d(565%,0,0) skewX(-9deg);
+  31% { opacity: .62; }
+  52% {
+    opacity: .48;
+    transform: translate3d(735%,0,0) skewX(-7deg);
   }
-  64%, 100% {
+  61%, 100% {
     opacity: 0;
-    transform: translate3d(565%,0,0) skewX(-9deg);
+    transform: translate3d(735%,0,0) skewX(-7deg);
   }
 }
 
@@ -737,7 +695,6 @@ html[data-loom-theme="light"] .conversation-stage.is-running::after {
   .markdown-body.is-receiving > table,
   .markdown-body.is-receiving > blockquote,
   .turn-process.is-live .task-flow-row-wrap,
-  .turn-process.is-live .task-flow-row::after,
   .turn-process.is-live .task-flow-row-icon,
   .turn-process.is-live .task-flow-row-main,
   .turn-process.is-live .task-flow-status,
@@ -757,7 +714,6 @@ html[data-loom-theme="light"] .conversation-stage.is-running::after {
 :root[data-loom-reduced-motion="true"] .turn-process.is-live .entry-steering-user .user-message,
 :root[data-loom-reduced-motion="true"] .turn-final-answer,
 :root[data-loom-reduced-motion="true"] .turn-process.is-live .task-flow-row-wrap,
-:root[data-loom-reduced-motion="true"] .turn-process.is-live .task-flow-row::after,
 :root[data-loom-reduced-motion="true"] .turn-process.is-live .task-flow-row-icon,
 :root[data-loom-reduced-motion="true"] .turn-process.is-live .task-flow-row-main,
 :root[data-loom-reduced-motion="true"] .turn-process.is-live .task-flow-status,
