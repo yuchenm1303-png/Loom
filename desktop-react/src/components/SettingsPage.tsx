@@ -33,7 +33,7 @@ import {
   Wrench,
   type LucideIcon,
 } from "lucide-react";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   DEFAULT_SHORTCUTS,
   SHORTCUTS_CHANGED_EVENT,
@@ -42,6 +42,7 @@ import {
   type ShortcutSettings,
 } from "../keyboardShortcuts";
 import { applyThemePreference, type LoomThemePreference } from "../theme";
+import { useMotionPresence } from "../motion/useMotionPresence";
 import type {
   InitializeResult,
   LoomSettings,
@@ -505,6 +506,10 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
   const [modelState, setModelState] = useState<ModelSnapshot | null>(models);
   const [busyCapability, setBusyCapability] = useState<CapabilityKey | null>(null);
   const [notice, setNotice] = useState<{ tone: "error" | "success"; text: string } | null>(null);
+  const noticePresence = useMotionPresence(Boolean(notice), 150);
+  const lastNoticeRef = useRef<{ tone: "error" | "success"; text: string } | null>(notice);
+  if (notice) lastNoticeRef.current = notice;
+  const visibleNotice = notice ?? lastNoticeRef.current;
   const [plugins, setPlugins] = useState<PluginRecord[] | null>(null);
   const [pluginsError, setPluginsError] = useState("");
   const [browserSetupBusy, setBrowserSetupBusy] = useState(false);
@@ -1333,8 +1338,13 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
         </nav>
         <div className="settings-sidebar-footer"><span className="settings-runtime-dot" /><div><strong>Loom runtime</strong><span>{running ? "Turn active" : "Ready for changes"}</span></div></div>
       </aside>
-      <main className="settings-main"><div className="settings-main-scroll"><div className="settings-content">{content}</div></div></main>
-      {notice ? <div className={`settings-toast ${notice.tone}`}>{notice.tone === "success" ? <Check size={15} /> : <CircleAlert size={15} />}<span>{notice.text}</span></div> : null}
+      <main className="settings-main"><div className="settings-main-scroll"><div className="settings-content"><div className="settings-page-surface" key={page}>{content}</div></div></div></main>
+      {noticePresence.mounted && visibleNotice ? (
+        <div className={`settings-toast ${visibleNotice.tone}`} data-motion-phase={noticePresence.phase}>
+          {visibleNotice.tone === "success" ? <Check size={15} /> : <CircleAlert size={15} />}
+          <span>{visibleNotice.text}</span>
+        </div>
+      ) : null}
     </div>
   );
 }

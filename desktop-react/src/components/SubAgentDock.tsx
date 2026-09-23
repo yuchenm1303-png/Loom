@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
+import { useMotionPresence } from "../motion/useMotionPresence";
 import type { TranscriptItem } from "../types/loom";
 import { isSubAgentToolItem, SubAgentWorkspace } from "./SubAgentWorkspace";
 import "./sub-agent-dock.css";
@@ -52,6 +53,7 @@ function persistDockWidth(value: number): void {
 }
 
 export function SubAgentDock({ items, open, active, onClose }: SubAgentDockProps) {
+  const presence = useMotionPresence(open, 190);
   const agentItems = useMemo(() => items.filter(isSubAgentToolItem), [items]);
   const [width, setWidth] = useState(readDockWidth);
   const resizeRef = useRef<{
@@ -148,10 +150,10 @@ export function SubAgentDock({ items, open, active, onClose }: SubAgentDockProps
     }
   };
 
-  if (!open) return null;
+  if (!presence.mounted) return null;
 
   return createPortal(
-    <aside className="sub-agent-dock" aria-label="子代理工作区">
+    <aside className="sub-agent-dock" data-motion-phase={presence.phase} aria-label="子代理工作区">
       <div
         className="sub-agent-dock-resizer"
         role="separator"

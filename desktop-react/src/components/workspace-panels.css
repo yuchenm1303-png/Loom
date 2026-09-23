@@ -3,7 +3,7 @@
   --loom-inspector-track: var(--loom-inspector-panel-size, var(--inspector-width, 316px));
   position: relative;
   grid-template-columns: var(--loom-sidebar-track) minmax(0, 1fr) var(--loom-inspector-track);
-  transition: grid-template-columns 240ms cubic-bezier(.2,.78,.2,1);
+  transition: grid-template-columns 320ms var(--loom-ease-standard, cubic-bezier(.22,.78,.2,1));
 }
 
 .app-shell.workspace-panels.sidebar-closed {
@@ -40,10 +40,10 @@
 .workspace-panels > .inspector {
   min-width: 0;
   width: 100%;
-  will-change: opacity, transform;
+  contain: paint style;
   transition:
-    opacity 165ms ease,
-    transform 230ms cubic-bezier(.2,.78,.2,1),
+    opacity 230ms ease,
+    transform 320ms var(--loom-ease-out, cubic-bezier(.16,1,.3,1)),
     visibility 0s linear 0s;
 }
 
@@ -59,8 +59,8 @@
   visibility: hidden;
   pointer-events: none;
   transition:
-    opacity 130ms ease,
-    transform 210ms cubic-bezier(.4,0,.8,.2),
+    opacity 180ms ease,
+    transform 210ms var(--loom-ease-in, cubic-bezier(.4,0,.8,.2)),
     visibility 0s linear 220ms;
 }
 
@@ -76,8 +76,8 @@
   visibility: hidden;
   pointer-events: none;
   transition:
-    opacity 130ms ease,
-    transform 210ms cubic-bezier(.4,0,.8,.2),
+    opacity 180ms ease,
+    transform 210ms var(--loom-ease-in, cubic-bezier(.4,0,.8,.2)),
     visibility 0s linear 220ms;
 }
 
@@ -94,9 +94,9 @@
   touch-action: none;
   opacity: .32;
   transition:
-    opacity 130ms ease,
-    left 240ms cubic-bezier(.2,.78,.2,1),
-    right 240ms cubic-bezier(.2,.78,.2,1);
+    opacity var(--loom-motion-control,180ms) ease,
+    left 320ms var(--loom-ease-standard, cubic-bezier(.22,.78,.2,1)),
+    right 320ms var(--loom-ease-standard, cubic-bezier(.22,.78,.2,1));
 }
 
 .workspace-panel-resizer::before {
@@ -252,5 +252,26 @@ html[data-loom-reduced-motion="true"] .workspace-panel-resizer {
   .workspace-panels > .inspector,
   .workspace-panel-resizer {
     transition-duration: .001ms !important;
+  }
+}
+
+
+/* Programmatic panel transitions -------------------------------------------
+   The grid still interpolates its track so the workspace does not snap, but
+   streaming auto-follow is suspended by TranscriptScrollController for this
+   short window. Pause ambient drift as well so the renderer has fewer layers
+   competing while the transcript is reflowing horizontally. */
+.workspace-panels.is-panel-motion .ambient-glow {
+  animation-play-state: paused !important;
+}
+
+.workspace-panels.is-panel-motion > .sidebar,
+.workspace-panels.is-panel-motion > .inspector {
+  will-change: transform, opacity;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workspace-panels.is-panel-motion .ambient-glow {
+    animation-play-state: paused !important;
   }
 }

@@ -34,6 +34,7 @@ import "./components/permission-popover-polish.css";
 import "./components/model-library-polish.css";
 import "./components/composer-control-pills.css";
 import "./components/project-details-panel-theme.css";
+import "./global-motion.css";
 
 const CONVERSATION_WIDTHS: Record<string, string> = {
   focused: "740px",
