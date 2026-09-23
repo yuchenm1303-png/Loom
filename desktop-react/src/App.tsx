@@ -199,7 +199,7 @@ export default function App() {
   const [sidebarLayoutOpen, setSidebarLayoutOpen] = useState(true);
   const [sidebarVisualOpen, setSidebarVisualOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const settingsPresence = useMotionPresence(settingsOpen, 255);
+  const settingsPresence = useMotionPresence(settingsOpen, 300);
   const [accountOpen, setAccountOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [agentsOpen, setAgentsOpen] = useState(false);
