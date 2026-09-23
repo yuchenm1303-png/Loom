@@ -46,8 +46,10 @@ export function useMotionPresence(open: boolean, exitMs = 180): {
       }
       setPhase("entering");
       frameRef.current = requestAnimationFrame(() => {
-        frameRef.current = null;
-        setPhase("entered");
+        frameRef.current = requestAnimationFrame(() => {
+          frameRef.current = null;
+          setPhase("entered");
+        });
       });
       return;
     }

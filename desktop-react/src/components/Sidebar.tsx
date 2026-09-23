@@ -19,7 +19,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { createPortal } from "react-dom";
 import type { ProjectRecord, ThreadRecord } from "../types/loom";
 import "./sidebar.css";
@@ -192,6 +192,8 @@ export function Sidebar({
   const [unreadIds, setUnreadIds] = useState<Set<string>>(() => readStoredIds(UNREAD_STORAGE_KEY));
   const [collapsedProjectIds, setCollapsedProjectIds] = useState<Set<string>>(() => readStoredIds(COLLAPSED_PROJECTS_STORAGE_KEY));
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const [contextMenuClosing, setContextMenuClosing] = useState(false);
+  const contextMenuCloseTimerRef = useRef<number | null>(null);
   const [renamingProjectId, setRenamingProjectId] = useState("");
   const [projectRenameValue, setProjectRenameValue] = useState("");
   const [copyExpanded, setCopyExpanded] = useState(false);
@@ -205,6 +207,26 @@ export function Sidebar({
   const renameRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const renameCommittingRef = useRef(false);
+
+  const closeContextMenu = useCallback((immediate = false) => {
+    if (contextMenuCloseTimerRef.current !== null) {
+      window.clearTimeout(contextMenuCloseTimerRef.current);
+      contextMenuCloseTimerRef.current = null;
+    }
+    const reduced = document.documentElement.dataset.loomReducedMotion === "true"
+      || Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)").matches);
+    if (immediate || reduced) {
+      setContextMenu(null);
+      setContextMenuClosing(false);
+      return;
+    }
+    setContextMenuClosing(true);
+    contextMenuCloseTimerRef.current = window.setTimeout(() => {
+      contextMenuCloseTimerRef.current = null;
+      setContextMenu(null);
+      setContextMenuClosing(false);
+    }, 155);
+  }, []);
 
   const activeThread = useMemo(
     () => threads.find((thread) => thread.id === activeId) ?? null,
@@ -316,12 +338,12 @@ export function Sidebar({
 
   const openThread = async (thread: ThreadRecord) => {
     markRead(thread.id);
-    setContextMenu(null);
+    closeContextMenu();
     await onOpen(thread.id);
   };
 
   const beginRename = (thread: ThreadRecord) => {
-    setContextMenu(null);
+    closeContextMenu();
     setDeleteArmed(false);
     setRenamingId(thread.id);
     setRenameValue(thread.title || "New conversation");
@@ -354,7 +376,7 @@ export function Sidebar({
     successText: string,
     action: () => Promise<void>,
   ) => {
-    setContextMenu(null);
+    closeContextMenu();
     setCopyExpanded(false);
     setProjectExpanded(false);
     setDeleteArmed(false);
@@ -396,14 +418,14 @@ export function Sidebar({
 
   const moveThreadProject = (thread: ThreadRecord, projectId: string) => {
     if (threadIsBusy(thread)) {
-      setContextMenu(null);
+      closeContextMenu();
       setProjectExpanded(false);
       setNotice({ kind: "error", text: "当前任务运行中，结束后才能移动这个对话到项目。" });
       return Promise.resolve();
     }
     const currentProjectId = (thread.projectId || "").trim();
     if (projectId === currentProjectId) {
-      setContextMenu(null);
+      closeContextMenu();
       setProjectExpanded(false);
       return Promise.resolve();
     }
@@ -418,7 +440,7 @@ export function Sidebar({
     try {
       await writeClipboard(value);
       setNotice({ kind: "success", text: `${label}已复制` });
-      setContextMenu(null);
+      closeContextMenu();
       setCopyExpanded(false);
       setProjectExpanded(false);
     } catch (cause) {
@@ -483,6 +505,9 @@ export function Sidebar({
   };
 
   const openContextMenu = (thread: ThreadRecord, x: number, y: number) => {
+    if (contextMenuCloseTimerRef.current !== null) window.clearTimeout(contextMenuCloseTimerRef.current);
+    contextMenuCloseTimerRef.current = null;
+    setContextMenuClosing(false);
     const width = 264;
     const height = 430;
     setCopyExpanded(false);
@@ -495,6 +520,10 @@ export function Sidebar({
     });
   };
 
+  useEffect(() => () => {
+    if (contextMenuCloseTimerRef.current !== null) window.clearTimeout(contextMenuCloseTimerRef.current);
+  }, []);
+
   useEffect(() => {
     if (!notice) return;
     const timer = window.setTimeout(() => setNotice(null), 2400);
@@ -505,9 +534,9 @@ export function Sidebar({
     if (!contextMenu) return;
     const handlePointerDown = (event: PointerEvent) => {
       if (menuRef.current?.contains(event.target as Node)) return;
-      setContextMenu(null);
+      closeContextMenu();
     };
-    const close = () => setContextMenu(null);
+    const close = () => closeContextMenu();
     window.addEventListener("pointerdown", handlePointerDown, true);
     window.addEventListener("blur", close);
     window.addEventListener("resize", close);
@@ -537,7 +566,7 @@ export function Sidebar({
 
       if (event.key === "Escape" && contextMenu) {
         event.preventDefault();
-        setContextMenu(null);
+        closeContextMenu();
         return;
       }
 
@@ -733,9 +762,13 @@ export function Sidebar({
                   </div>
                 </div>
 
-                {projectThreads.length && !collapsed ? (
-                  <div className="project-thread-list">
-                    {projectThreads.map(renderThreadRow)}
+                {projectThreads.length ? (
+                  <div className={`project-thread-list-shell ${collapsed ? "" : "open"}`.trim()} aria-hidden={collapsed}>
+                    <div className="project-thread-list-inner">
+                      <div className="project-thread-list">
+                        {projectThreads.map(renderThreadRow)}
+                      </div>
+                    </div>
                   </div>
                 ) : null}
               </section>
@@ -804,27 +837,29 @@ export function Sidebar({
         </div>
       ) : null}
 
-      <div className={`compact-search ${searchOpen ? "open" : ""}`} aria-hidden={!searchOpen}>
-        <Search size={14} strokeWidth={1.8} aria-hidden="true" />
-        <input
-          ref={searchRef}
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Escape") {
-              event.preventDefault();
-              closeSearch();
-            }
-          }}
-          placeholder={threadView === "archived" ? "Search archived" : "Search conversations"}
-          aria-label="Search conversations"
-          tabIndex={searchOpen ? 0 : -1}
-        />
-        {query ? (
-          <button type="button" onClick={() => setQuery("")} aria-label="Clear search">
-            <X size={13} strokeWidth={1.9} />
-          </button>
-        ) : null}
+      <div className={`compact-search-shell ${searchOpen ? "open" : ""}`} aria-hidden={!searchOpen}>
+        <div className="compact-search">
+          <Search size={14} strokeWidth={1.8} aria-hidden="true" />
+          <input
+            ref={searchRef}
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.preventDefault();
+                closeSearch();
+              }
+            }}
+            placeholder={threadView === "archived" ? "Search archived" : "Search conversations"}
+            aria-label="Search conversations"
+            tabIndex={searchOpen ? 0 : -1}
+          />
+          {query ? (
+            <button type="button" onClick={() => setQuery("")} aria-label="Clear search">
+              <X size={13} strokeWidth={1.9} />
+            </button>
+          ) : null}
+        </div>
       </div>
 
       <div className="compact-thread-scroll" aria-label={threadView === "archived" ? "Archived conversations" : "Conversations"}>
@@ -896,7 +931,7 @@ export function Sidebar({
       {contextMenu && menuThread ? createPortal(
         <div
           ref={menuRef}
-          className="thread-context-menu"
+          className={`thread-context-menu ${contextMenuClosing ? "is-closing" : ""}`.trim()}
           style={{ left: contextMenu.x, top: contextMenu.y }}
           role="menu"
           aria-label="Conversation actions"
@@ -911,7 +946,7 @@ export function Sidebar({
             role="menuitem"
             onClick={() => {
               togglePinned(menuThread.id);
-              setContextMenu(null);
+              closeContextMenu();
             }}
           >
             {pinnedIds.has(menuThread.id) ? <PinOff size={16} strokeWidth={1.75} /> : <Pin size={16} strokeWidth={1.75} />}
@@ -923,7 +958,7 @@ export function Sidebar({
             role="menuitem"
             onClick={() => {
               toggleUnread(menuThread.id);
-              setContextMenu(null);
+              closeContextMenu();
             }}
           >
             {unreadIds.has(menuThread.id) ? <Eye size={16} strokeWidth={1.75} /> : <EyeOff size={16} strokeWidth={1.75} />}
