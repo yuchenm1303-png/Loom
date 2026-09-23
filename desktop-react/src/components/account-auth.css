@@ -58,7 +58,6 @@
 .loom-account-backdrop[data-motion-phase="entered"] .loom-account-dialog {
   opacity: 1;
   transform: translate3d(0, 0, 0) scale(1);
-  will-change: auto;
 }
 
 .loom-account-backdrop[data-motion-phase="exiting"] {
