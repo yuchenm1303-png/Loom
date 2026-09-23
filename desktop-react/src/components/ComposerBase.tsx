@@ -153,7 +153,7 @@ export function Composer({
   const [dragging, setDragging] = useState(false);
   const [focused, setFocused] = useState(false);
   const [openPanel, setOpenPanel] = useState<OpenPanel>(null);
-  const panelPresence = useMotionPresence(Boolean(openPanel), 165);
+  const panelPresence = useMotionPresence(Boolean(openPanel), 215);
   const lastOpenPanelRef = useRef<Exclude<OpenPanel, null> | null>(openPanel);
   if (openPanel) lastOpenPanelRef.current = openPanel;
   const renderedPanel = openPanel ?? (panelPresence.mounted ? lastOpenPanelRef.current : null);
