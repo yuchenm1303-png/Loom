@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 export type MotionPresencePhase = "entering" | "entered" | "exiting";
 
@@ -15,7 +15,7 @@ function reducedMotion(): boolean {
  * lifetime so dialogs, menus and full-page surfaces share one predictable
  * enter/exit contract.
  */
-export function useMotionPresence(open: boolean, exitMs = 180): {
+export function useMotionPresence(open: boolean, exitMs = 240): {
   mounted: boolean;
   phase: MotionPresencePhase;
 } {
@@ -25,7 +25,7 @@ export function useMotionPresence(open: boolean, exitMs = 180): {
   const exitTimerRef = useRef<number | null>(null);
   const frameRef = useRef<number | null>(null);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (exitTimerRef.current !== null) {
       window.clearTimeout(exitTimerRef.current);
       exitTimerRef.current = null;
