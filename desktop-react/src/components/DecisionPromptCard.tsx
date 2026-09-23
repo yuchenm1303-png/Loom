@@ -28,6 +28,7 @@ export interface ParsedDecisionMessage {
 
 const DECISION_FENCE = "loom-decision";
 const MAX_OPTIONS = 6;
+export const DECISION_RESPONSE_MARKER = "[[LOOM_DECISION_RESPONSE:v1]]";
 
 function cleanText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -128,16 +129,16 @@ function decisionResponse(
 
   if (zh) {
     if (selected.length && cleanNote) {
-      return `关于“${spec.title}”：我选择 ${choiceText}。补充意见：${cleanNote}`;
+      return `${DECISION_RESPONSE_MARKER}关于“${spec.title}”：我选择 ${choiceText}。补充意见：${cleanNote}`;
     }
-    if (selected.length) return `关于“${spec.title}”：我选择 ${choiceText}。`;
-    return `关于“${spec.title}”，我的意见是：${cleanNote}`;
+    if (selected.length) return `${DECISION_RESPONSE_MARKER}关于“${spec.title}”：我选择 ${choiceText}。`;
+    return `${DECISION_RESPONSE_MARKER}关于“${spec.title}”，我的意见是：${cleanNote}`;
   }
   if (selected.length && cleanNote) {
-    return `For “${spec.title}”, I choose ${choiceTextEn}. Additional guidance: ${cleanNote}`;
+    return `${DECISION_RESPONSE_MARKER}For “${spec.title}”, I choose ${choiceTextEn}. Additional guidance: ${cleanNote}`;
   }
-  if (selected.length) return `For “${spec.title}”, I choose ${choiceTextEn}.`;
-  return `For “${spec.title}”, my preference is: ${cleanNote}`;
+  if (selected.length) return `${DECISION_RESPONSE_MARKER}For “${spec.title}”, I choose ${choiceTextEn}.`;
+  return `${DECISION_RESPONSE_MARKER}For “${spec.title}”, my preference is: ${cleanNote}`;
 }
 
 export function DecisionPromptRecoveryCard({
