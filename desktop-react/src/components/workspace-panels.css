@@ -48,13 +48,13 @@
 
 .workspace-panels.sidebar-open > .sidebar {
   opacity: 1;
-  transform: translateX(0);
+  transform: translate3d(0,0,0);
   visibility: visible;
 }
 
 .workspace-panels.sidebar-closed > .sidebar {
   opacity: 0;
-  transform: translateX(-12px);
+  transform: translate3d(-18px,0,0);
   visibility: hidden;
   pointer-events: none;
   transition:
@@ -65,13 +65,13 @@
 
 .workspace-panels.inspector-open > .inspector {
   opacity: 1;
-  transform: translateX(0);
+  transform: translate3d(0,0,0);
   visibility: visible;
 }
 
 .workspace-panels.inspector-closed > .inspector {
   opacity: 0;
-  transform: translateX(12px);
+  transform: translate3d(18px,0,0);
   visibility: hidden;
   pointer-events: none;
   transition:
@@ -261,6 +261,13 @@ html[data-loom-reduced-motion="true"] .workspace-panel-resizer {
 .workspace-panels.is-panel-motion > .sidebar,
 .workspace-panels.is-panel-motion > .inspector {
   will-change: transform, opacity;
+}
+
+/* The Inspector owns a small vertical pane-enter animation for tab changes.
+   During the panel's horizontal entrance that second motion reads as text
+   flying upward, so let the panel be the only moving layer. */
+.workspace-panels.is-panel-motion > .inspector .runtime-pane {
+  animation: none !important;
 }
 
 @media (prefers-reduced-motion: reduce) {
