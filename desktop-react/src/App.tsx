@@ -2,6 +2,7 @@ import { RotateCcw } from "lucide-react";
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type CSSProperties,
@@ -57,6 +58,7 @@ const SIDEBAR_MAX = 420;
 const INSPECTOR_MIN = 280;
 const INSPECTOR_MAX = 520;
 const MIN_WORKSPACE_WIDTH = 520;
+const PANEL_MOTION_MS = 340;
 const EMPTY_TRANSCRIPT_ITEMS: TranscriptItem[] = [];
 
 type ResizePanel = "sidebar" | "inspector";
@@ -178,6 +180,7 @@ export default function App() {
   const shellRef = useRef<HTMLDivElement | null>(null);
   const resizeRef = useRef<ResizeSession | null>(null);
   const resizeReleaseFrameRef = useRef<number | null>(null);
+  const panelMotionTimerRef = useRef<number | null>(null);
   const [inspectorOpen, setInspectorOpen] = useState(() => {
     try { return localStorage.getItem("loom.inspector.open") === "true"; }
     catch { return false; }
@@ -208,6 +211,7 @@ export default function App() {
     INSPECTOR_MAX,
   ));
   const [resizingPanel, setResizingPanel] = useState<ResizePanel | null>(null);
+  const [panelMotionActive, setPanelMotionActive] = useState(false);
   const [shortcuts, setShortcuts] = useState<ShortcutSettings>(() => readShortcutSettings());
   const [dismissedApprovalIds, setDismissedApprovalIds] = useState<Set<string>>(() => new Set());
   const thread = loom.active?.thread;
@@ -230,6 +234,24 @@ export default function App() {
   const projectDetailsOpen = Boolean(selectedProject);
   const projectDetailsPresence = useMotionPresence(projectDetailsOpen, 190);
   const inspectorVisible = inspectorOpen && !reviewOpen && !projectDetailsOpen && !agentsOpen;
+
+  const panelVisibilityRef = useRef({ sidebarOpen, inspectorVisible });
+
+  useLayoutEffect(() => {
+    const previous = panelVisibilityRef.current;
+    panelVisibilityRef.current = { sidebarOpen, inspectorVisible };
+    if (previous.sidebarOpen === sidebarOpen && previous.inspectorVisible === inspectorVisible) return;
+
+    if (panelMotionTimerRef.current !== null) window.clearTimeout(panelMotionTimerRef.current);
+    document.body.classList.add("loom-panel-motion");
+    setPanelMotionActive(true);
+    panelMotionTimerRef.current = window.setTimeout(() => {
+      panelMotionTimerRef.current = null;
+      document.body.classList.remove("loom-panel-motion");
+      setPanelMotionActive(false);
+      window.dispatchEvent(new Event("loom:panel-resize-end"));
+    }, PANEL_MOTION_MS);
+  }, [inspectorVisible, sidebarOpen]);
 
   function focusReviewFile(path?: string): void {
     const normalized = normalizeReviewPath(path);
@@ -328,7 +350,9 @@ export default function App() {
     const session = resizeRef.current;
     if (session?.frame !== null && session?.frame !== undefined) cancelAnimationFrame(session.frame);
     if (resizeReleaseFrameRef.current !== null) cancelAnimationFrame(resizeReleaseFrameRef.current);
+    if (panelMotionTimerRef.current !== null) window.clearTimeout(panelMotionTimerRef.current);
     document.body.classList.remove("loom-panel-resizing");
+    document.body.classList.remove("loom-panel-motion");
   }, []);
 
   useEffect(() => {
@@ -678,7 +702,7 @@ export default function App() {
     <>
       <div
         ref={shellRef}
-        className={`app-shell workspace-panels ${sidebarOpen ? "sidebar-open" : "sidebar-closed"} ${inspectorVisible ? "inspector-open" : "inspector-closed"} ${reviewOpen ? "with-review" : ""} ${agentsPresence.mounted ? "with-agents" : ""} ${projectDetailsPresence.mounted ? "with-project-details" : ""} ${resizingPanel ? "is-resizing" : ""} ${settingsPresence.mounted ? "is-settings-obscured" : ""}`}
+        className={`app-shell workspace-panels ${sidebarOpen ? "sidebar-open" : "sidebar-closed"} ${inspectorVisible ? "inspector-open" : "inspector-closed"} ${reviewOpen ? "with-review" : ""} ${agentsPresence.mounted ? "with-agents" : ""} ${projectDetailsPresence.mounted ? "with-project-details" : ""} ${resizingPanel ? "is-resizing" : ""} ${panelMotionActive ? "is-panel-motion" : ""} ${settingsPresence.mounted ? "is-settings-obscured" : ""}`}
         style={layoutStyle}
         aria-hidden={settingsPresence.mounted ? true : undefined}
       >

@@ -254,3 +254,24 @@ html[data-loom-reduced-motion="true"] .workspace-panel-resizer {
     transition-duration: .001ms !important;
   }
 }
+
+
+/* Programmatic panel transitions -------------------------------------------
+   The grid still interpolates its track so the workspace does not snap, but
+   streaming auto-follow is suspended by TranscriptScrollController for this
+   short window. Pause ambient drift as well so the renderer has fewer layers
+   competing while the transcript is reflowing horizontally. */
+.workspace-panels.is-panel-motion .ambient-glow {
+  animation-play-state: paused !important;
+}
+
+.workspace-panels.is-panel-motion > .sidebar,
+.workspace-panels.is-panel-motion > .inspector {
+  will-change: transform, opacity;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workspace-panels.is-panel-motion .ambient-glow {
+    animation-play-state: paused !important;
+  }
+}

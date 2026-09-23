@@ -22,7 +22,8 @@ function transcriptScroller(): HTMLDivElement | null {
 }
 
 function isPanelResizeActive(): boolean {
-  return document.body.classList.contains("loom-panel-resizing");
+  return document.body.classList.contains("loom-panel-resizing")
+    || document.body.classList.contains("loom-panel-motion");
 }
 
 function isNearBottom(scroller: HTMLDivElement): boolean {
