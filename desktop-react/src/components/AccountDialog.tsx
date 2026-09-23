@@ -32,7 +32,7 @@ export function AccountDialog({
 }: AccountDialogProps) {
   const { language } = useI18n();
   const zh = language === "zh-CN";
-  const presence = useMotionPresence(open, 190);
+  const presence = useMotionPresence(open, 235);
   const [mode, setMode] = useState<AuthMode>("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
