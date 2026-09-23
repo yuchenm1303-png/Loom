@@ -1,5 +1,5 @@
 .decision-card {
-  margin: 14px 16px 18px;
+  margin: 14px 16px 10px;
   width: min(calc(100% - 32px), 720px);
   border: 1px solid var(--border);
   border-radius: 16px;
@@ -436,4 +436,35 @@ html[data-loom-theme="light"] .decision-card {
     margin-inline: 10px;
     width: calc(100% - 20px);
   }
+}
+
+
+/* 2026-09-23 decision paint-containment escape --------------------------- */
+/* Completed turns use content-visibility:auto for long-chat performance.
+   That implies paint containment, which clips a decision card's outer shadow
+   even when every DOM parent has overflow:visible. Opt only decision turns out
+   of that containment so the shadow can paint naturally; normal historical
+   turns keep the optimization. */
+.workspace-panels .turn-block.is-complete:has(.decision-card) {
+  content-visibility: visible;
+  contain: none;
+}
+
+/* Preserve a little real paint room below interactive cards so their soft
+   shadow never lands exactly on a scrollport/content boundary. */
+.transcript-entry:has(.decision-card) {
+  padding-bottom: 18px;
+  margin-bottom: -4px;
+}
+
+.turn-final-answer:has(.decision-card) {
+  padding-bottom: 20px;
+}
+
+/* Keep the light-theme shadow subtle enough that the last visible pixels fade
+   before reaching the reserved paint gutter. */
+html[data-loom-theme="light"] .decision-card {
+  box-shadow:
+    0 9px 20px rgba(35,39,48,.065),
+    0 2px 6px rgba(35,39,48,.028);
 }
