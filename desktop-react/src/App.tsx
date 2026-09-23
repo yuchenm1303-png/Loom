@@ -58,8 +58,8 @@ const SIDEBAR_MAX = 420;
 const INSPECTOR_MIN = 280;
 const INSPECTOR_MAX = 520;
 const MIN_WORKSPACE_WIDTH = 520;
-const PANEL_MOTION_MS = 300;
-const PANEL_EXIT_HOLD_MS = 220;
+const PANEL_MOTION_MS = 430;
+const PANEL_EXIT_HOLD_MS = 265;
 const PANEL_LAYOUT_COMMIT_EVENT = "loom:panel-layout-commit";
 const EMPTY_TRANSCRIPT_ITEMS: TranscriptItem[] = [];
 
@@ -199,11 +199,11 @@ export default function App() {
   const [sidebarLayoutOpen, setSidebarLayoutOpen] = useState(true);
   const [sidebarVisualOpen, setSidebarVisualOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const settingsPresence = useMotionPresence(settingsOpen, 200);
+  const settingsPresence = useMotionPresence(settingsOpen, 255);
   const [accountOpen, setAccountOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [agentsOpen, setAgentsOpen] = useState(false);
-  const agentsPresence = useMotionPresence(agentsOpen, 190);
+  const agentsPresence = useMotionPresence(agentsOpen, 240);
   const autoOpenedAgentsForThreadRef = useRef("");
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [sidebarWidth, setSidebarWidth] = useState(() => readPanelWidth(
@@ -240,7 +240,7 @@ export default function App() {
     ? loom.projects.find((project) => project.id === selectedProjectId) ?? null
     : null;
   const projectDetailsOpen = Boolean(selectedProject);
-  const projectDetailsPresence = useMotionPresence(projectDetailsOpen, 190);
+  const projectDetailsPresence = useMotionPresence(projectDetailsOpen, 240);
   const inspectorVisible = inspectorOpen && !reviewOpen && !projectDetailsOpen && !agentsOpen;
   const [inspectorLayoutOpen, setInspectorLayoutOpen] = useState(inspectorVisible);
   const [inspectorVisualOpen, setInspectorVisualOpen] = useState(inspectorVisible);
