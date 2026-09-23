@@ -40,9 +40,10 @@
   min-width: 0;
   width: 100%;
   contain: layout paint style;
+  backface-visibility: hidden;
   transition:
-    opacity 230ms ease,
-    transform 320ms var(--loom-ease-out, cubic-bezier(.16,1,.3,1)),
+    opacity var(--loom-motion-opacity,260ms) ease,
+    transform var(--loom-motion-panel,390ms) var(--loom-ease-out,cubic-bezier(.2,.74,.18,1)),
     visibility 0s linear 0s;
 }
 
@@ -54,13 +55,13 @@
 
 .workspace-panels.sidebar-closed > .sidebar {
   opacity: 0;
-  transform: translate3d(-18px,0,0);
+  transform: translate3d(-14px,0,0);
   visibility: hidden;
   pointer-events: none;
   transition:
-    opacity 180ms ease,
-    transform 210ms var(--loom-ease-in, cubic-bezier(.4,0,.8,.2)),
-    visibility 0s linear 220ms;
+    opacity 210ms ease,
+    transform 255ms var(--loom-ease-in,cubic-bezier(.42,0,.72,.2)),
+    visibility 0s linear 265ms;
 }
 
 .workspace-panels.inspector-open > .inspector {
@@ -71,13 +72,13 @@
 
 .workspace-panels.inspector-closed > .inspector {
   opacity: 0;
-  transform: translate3d(18px,0,0);
+  transform: translate3d(14px,0,0);
   visibility: hidden;
   pointer-events: none;
   transition:
-    opacity 180ms ease,
-    transform 210ms var(--loom-ease-in, cubic-bezier(.4,0,.8,.2)),
-    visibility 0s linear 220ms;
+    opacity 210ms ease,
+    transform 255ms var(--loom-ease-in,cubic-bezier(.42,0,.72,.2)),
+    visibility 0s linear 265ms;
 }
 
 .workspace-panel-resizer {
@@ -274,4 +275,24 @@ html[data-loom-reduced-motion="true"] .workspace-panel-resizer {
   .workspace-panels.is-panel-motion .ambient-glow {
     animation-play-state: paused !important;
   }
+}
+
+
+/* Motion performance guard ------------------------------------------------- */
+/* During a panel reveal, keep the expensive conversation tree visually stable.
+   The grid width is still committed once, but all decorative animation inside
+   the transcript is paused so that the compositor only has to move the panel. */
+.workspace-panels.is-panel-motion .transcript-scroll *,
+.workspace-panels.is-panel-motion .composer-stage * {
+  animation-play-state: paused;
+}
+
+.workspace-panels.is-panel-motion .transcript-scroll,
+.workspace-panels.is-panel-motion .composer-stage {
+  overflow-anchor: none;
+}
+
+.workspace-panels.is-panel-motion > .sidebar,
+.workspace-panels.is-panel-motion > .inspector {
+  transform-style: preserve-3d;
 }
