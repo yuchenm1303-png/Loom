@@ -139,3 +139,9 @@ html[data-loom-theme="light"] body.loom-agent-dock-resizing .sub-agent-dock-resi
     display: none;
   }
 }
+
+
+/* Keep dock entrance singular -------------------------------------------- */
+.sub-agent-dock .sub-agent-workspace {
+  animation: none !important;
+}
