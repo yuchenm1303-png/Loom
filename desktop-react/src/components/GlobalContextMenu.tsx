@@ -213,7 +213,7 @@ export function GlobalContextMenu() {
       setState(null);
       setClosing(false);
       setPositioned(false);
-    }, 150);
+    }, 215);
   }, [state]);
 
   useEffect(() => {
