@@ -471,7 +471,6 @@
 .composer-popover[data-motion-phase="entered"] {
   opacity: 1;
   transform: translate3d(0,0,0) scale(1);
-  will-change: auto;
 }
 
 .composer-popover[data-motion-phase="exiting"] {
