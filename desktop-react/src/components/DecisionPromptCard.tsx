@@ -215,13 +215,13 @@ export function DecisionPromptCard({
   );
   const canSubmit = Boolean(onSubmit && !disabled && !sending && (selected.length || note.trim()));
 
-  async function submit() {
-    if (!canSubmit || !onSubmit) return;
+  async function submitSelection(nextSelected = selected) {
+    if (!onSubmit || disabled || sending || (!nextSelected.length && !note.trim())) return;
     setSending(true);
     setError("");
     try {
-      await onSubmit(decisionResponse(spec, selected, note, zh));
-      setSubmitted(selected.length ? selected : null);
+      await onSubmit(decisionResponse(spec, nextSelected, note, zh));
+      setSubmitted(nextSelected.length ? nextSelected : null);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -275,13 +275,17 @@ export function DecisionPromptCard({
               aria-checked={active}
               disabled={locked}
               onClick={() => {
-                setSelectedIds((current) => {
-                  if (!spec.multiple) return [option.id];
-                  return current.includes(option.id)
-                    ? current.filter((id) => id !== option.id)
-                    : [...current, option.id];
-                });
                 setError("");
+                if (!spec.multiple) {
+                  setSelectedIds([option.id]);
+                  void submitSelection([option]);
+                  return;
+                }
+                setSelectedIds((current) => (
+                  current.includes(option.id)
+                    ? current.filter((id) => id !== option.id)
+                    : [...current, option.id]
+                ));
               }}
             >
               <span className="decision-option-marker" aria-hidden="true">
@@ -342,14 +346,12 @@ export function DecisionPromptCard({
               type="button"
               className="decision-submit"
               disabled={!canSubmit}
-              onClick={() => void submit()}
+              onClick={() => void submitSelection()}
             >
               <span>{sending
                 ? (zh ? "正在发送…" : "Sending…")
                 : selected.length
-                  ? (spec.multiple
-                    ? (zh ? `确认 ${selected.length} 项` : `Confirm ${selected.length}`)
-                    : (zh ? "确认选择" : "Confirm choice"))
+                  ? (zh ? `确认 ${selected.length} 项` : `Confirm ${selected.length}`)
                   : (zh ? "发送意见" : "Send preference")}</span>
               <Send size={13} />
             </button>
