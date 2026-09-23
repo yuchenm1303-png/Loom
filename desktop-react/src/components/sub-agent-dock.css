@@ -34,7 +34,6 @@
 .sub-agent-dock[data-motion-phase="entered"] {
   opacity: 1;
   transform: translate3d(0,0,0);
-  will-change: auto;
 }
 
 .sub-agent-dock[data-motion-phase="exiting"] {
