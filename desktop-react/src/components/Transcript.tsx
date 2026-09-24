@@ -1133,12 +1133,12 @@ function TurnProcess({
   );
 }
 
-function TurnArtifacts({ items }: { items: TranscriptItem[] }) {
+function TurnArtifacts({ items, workspace }: { items: TranscriptItem[]; workspace?: string }) {
   const edit = latestFileEdit(items);
   const paths = changedPaths(items);
   const diff = String(edit?.diff ?? "").trim();
   if (!paths.length && !diff) return null;
-  return <TurnArtifactsPreview items={items} />;
+  return <TurnArtifactsPreview items={items} workspace={workspace} />;
 }
 
 interface TurnViewProps {
@@ -1278,7 +1278,7 @@ const TurnView = memo(function TurnView({
         </div>
       )) : null}
 
-      {!active ? <TurnArtifacts items={items} /> : null}
+      {!active ? <TurnArtifacts items={items} workspace={workspace} /> : null}
       {showPendingThinking ? <PendingThinking /> : null}
     </section>
     </StreamingPresentation>
