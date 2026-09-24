@@ -53,6 +53,8 @@ const api = {
   readClipboardText: () => ipcRenderer.invoke("loom:clipboard-read-text"),
   writeClipboardText: (value: string) => ipcRenderer.invoke("loom:clipboard-write-text", value),
   openExternal: (url: string) => ipcRenderer.invoke("loom:open-external", url),
+  openLocalArtifact: (targetPath: string, workspaceRoot: string) =>
+    ipcRenderer.invoke("loom:open-local-artifact", targetPath, workspaceRoot),
   readLocalImage: (targetPath: string, workspaceRoot: string) =>
     ipcRenderer.invoke("loom:read-local-image", targetPath, workspaceRoot),
   readLocalMedia: (targetPath: string, workspaceRoot: string) =>
