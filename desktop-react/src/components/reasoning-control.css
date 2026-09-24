@@ -406,11 +406,6 @@
   line-height: 1.3;
 }
 
-.model-reasoning-badge {
-  color: #968bcf !important;
-  background: rgba(139,124,246,.045) !important;
-}
-
 @keyframes model-control-enter {
   from {
     opacity: 0;

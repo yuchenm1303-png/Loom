@@ -1,0 +1,996 @@
+/* Model picker ------------------------------------------------------------
+   The library (providers) and provider (models) layers of the composer model
+   popover. They use their own `mp-` classes so the older model stylesheets
+   (model-panel*.css, model-core-redesign.css and the !important rules in
+   typography-scale.css) cannot restyle them. The home/reasoning layer and the
+   add/custom forms keep their existing styles. */
+
+/* Popover shell, shared by every model layer ------------------------------ */
+.composer-popover.model-manager-popover {
+  --mp-max-height: min(620px, calc(100vh - 76px));
+  width: min(430px, calc(100vw - 24px));
+  max-height: var(--mp-max-height);
+  border-radius: 17px;
+  overflow: hidden;
+}
+
+html[data-loom-theme="light"] .composer-popover.model-manager-popover {
+  border-color: rgba(29, 33, 40, .10);
+  background:
+    radial-gradient(480px 210px at 12% -4%, rgba(105, 90, 216, .055), transparent 64%),
+    #ffffff;
+  box-shadow:
+    0 30px 80px rgba(28, 32, 40, .16),
+    0 9px 26px rgba(28, 32, 40, .07),
+    inset 0 1px rgba(255, 255, 255, .98);
+}
+
+/* Tokens ------------------------------------------------------------------ */
+.model-manager-popover .mp {
+  --mp-text: #e6e8ed;
+  --mp-muted: #8f96a2;
+  --mp-faint: #666d79;
+  --mp-accent: #aba1f9;
+  --mp-accent-strong: #8b7cf6;
+  --mp-accent-soft: rgba(139, 124, 246, .15);
+  --mp-hover: rgba(255, 255, 255, .05);
+  --mp-press: rgba(255, 255, 255, .075);
+  --mp-current: rgba(139, 124, 246, .11);
+  --mp-current-hover: rgba(139, 124, 246, .15);
+  --mp-hairline: rgba(255, 255, 255, .065);
+  --mp-field: rgba(255, 255, 255, .035);
+  --mp-field-hover: rgba(255, 255, 255, .05);
+  --mp-field-border: rgba(255, 255, 255, .07);
+  --mp-field-focus: rgba(255, 255, 255, .045);
+  --mp-focus-border: rgba(139, 124, 246, .55);
+  --mp-focus-ring: rgba(139, 124, 246, .16);
+  --mp-ring: rgba(163, 151, 248, .6);
+  --mp-tray: rgba(255, 255, 255, .018);
+  --mp-danger: #ec8f9a;
+  --mp-danger-soft: rgba(220, 124, 134, .12);
+  --mp-scroll: rgba(255, 255, 255, .15);
+}
+
+html[data-loom-theme="light"] .model-manager-popover .mp {
+  --mp-text: #1c2026;
+  --mp-muted: #6d7580;
+  --mp-faint: #9aa1ab;
+  --mp-accent: #5a4bc8;
+  --mp-accent-strong: #695ad8;
+  --mp-accent-soft: rgba(105, 90, 216, .09);
+  --mp-hover: rgba(28, 31, 37, .045);
+  --mp-press: rgba(28, 31, 37, .07);
+  --mp-current: rgba(105, 90, 216, .07);
+  --mp-current-hover: rgba(105, 90, 216, .1);
+  --mp-hairline: rgba(28, 31, 37, .075);
+  --mp-field: rgba(28, 31, 37, .035);
+  --mp-field-hover: rgba(28, 31, 37, .05);
+  --mp-field-border: rgba(28, 31, 37, .05);
+  --mp-field-focus: #ffffff;
+  --mp-focus-border: rgba(105, 90, 216, .5);
+  --mp-focus-ring: rgba(105, 90, 216, .1);
+  --mp-ring: rgba(105, 90, 216, .55);
+  --mp-tray: rgba(28, 31, 37, .02);
+  --mp-danger: #b24a57;
+  --mp-danger-soft: rgba(184, 80, 93, .08);
+  --mp-scroll: rgba(28, 31, 37, .16);
+}
+
+/* Layout ------------------------------------------------------------------ */
+/* Header, search and footer stay put; only the list scrolls. */
+.model-manager-popover .mp {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: calc(var(--mp-max-height, 620px) - 2px);
+  color: var(--mp-text);
+  font-size: 13px;
+  line-height: 1.35;
+  animation: mp-enter 200ms var(--loom-ease-out, cubic-bezier(.2, .74, .18, 1)) both;
+}
+
+.model-manager-popover .mp[data-direction="back"],
+.model-manager-popover .model-manager-view[data-direction="back"] {
+  animation-name: mp-enter-back;
+}
+
+.mp-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 10px 16px 6px 8px;
+}
+
+.mp-back {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--mp-muted);
+  cursor: pointer;
+  transition: background-color 140ms ease, color 140ms ease;
+}
+
+.mp-back:hover {
+  background: var(--mp-hover);
+  color: var(--mp-text);
+}
+
+.mp-back:active {
+  background: var(--mp-press);
+}
+
+.mp-head-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--mp-text);
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.3;
+  letter-spacing: -.012em;
+}
+
+.mp-head-title > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mp-head-meta {
+  flex: none;
+  color: var(--mp-faint);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Search ------------------------------------------------------------------ */
+.mp-search {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  margin: 2px 8px 6px;
+  padding: 0 7px 0 11px;
+  border: 1px solid var(--mp-field-border);
+  border-radius: 10px;
+  background: var(--mp-field);
+  color: var(--mp-faint);
+  cursor: text;
+  transition:
+    border-color 150ms ease,
+    background-color 150ms ease,
+    box-shadow 150ms ease,
+    color 150ms ease;
+}
+
+.mp-search:hover {
+  background: var(--mp-field-hover);
+}
+
+.mp-search:focus-within {
+  border-color: var(--mp-focus-border);
+  background: var(--mp-field-focus);
+  box-shadow: 0 0 0 3px var(--mp-focus-ring);
+  color: var(--mp-accent-strong);
+}
+
+.mp-search input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--mp-text);
+  font-size: 13px;
+}
+
+.mp-search input::placeholder {
+  color: var(--mp-faint);
+}
+
+.mp-search-clear {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--mp-faint);
+  cursor: pointer;
+}
+
+.mp-search-clear:hover {
+  background: var(--mp-hover);
+  color: var(--mp-text);
+}
+
+/* List -------------------------------------------------------------------- */
+@property --mp-fade-top {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+
+@property --mp-fade-bottom {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+
+.mp-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 2px 8px 8px;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 var(--mp-fade-top), #000 calc(100% - var(--mp-fade-bottom)), transparent);
+  mask-image: linear-gradient(to bottom, transparent, #000 var(--mp-fade-top), #000 calc(100% - var(--mp-fade-bottom)), transparent);
+}
+
+.mp-head + .mp-body {
+  padding-top: 4px;
+}
+
+.mp-body:hover,
+.mp-body:focus-within {
+  scrollbar-color: var(--mp-scroll) transparent;
+}
+
+/* Soft edges appear only once the list actually scrolls. */
+@supports (animation-timeline: scroll()) {
+  .mp-body {
+    animation: mp-scroll-edges linear both;
+    animation-timeline: scroll(self);
+  }
+}
+
+.mp-section {
+  display: grid;
+  gap: 1px;
+}
+
+.mp-section + .mp-section {
+  margin-top: 4px;
+}
+
+.mp-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  padding: 10px 10px 5px;
+  color: var(--mp-faint);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.mp-section:first-child > .mp-label {
+  padding-top: 4px;
+}
+
+.mp-label-provider {
+  color: var(--mp-muted);
+  font-size: 12px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.mp-label-provider > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Rows -------------------------------------------------------------------- */
+.mp-item {
+  position: relative;
+}
+
+.mp-row {
+  width: 100%;
+  min-width: 0;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 9px;
+  outline: none;
+  background: transparent;
+  color: var(--mp-text);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.mp-provider {
+  min-height: 40px;
+}
+
+.mp-row:hover:not(:disabled) {
+  background: var(--mp-hover);
+}
+
+.mp-row:active:not(:disabled) {
+  background: var(--mp-press);
+}
+
+.mp-row:focus-visible {
+  background: var(--mp-hover);
+  box-shadow: inset 0 0 0 1.5px var(--mp-ring);
+}
+
+.mp-row:disabled {
+  cursor: default;
+}
+
+.mp-row.is-current,
+.mp-row.is-current:focus-visible {
+  background: var(--mp-current);
+}
+
+.mp-row.is-current:hover:not(:disabled) {
+  background: var(--mp-current-hover);
+}
+
+/* The provider row already says "Current"; a tinted fill would say it twice. */
+.mp-provider.is-current {
+  background: transparent;
+}
+
+.mp-provider.is-current:hover {
+  background: var(--mp-hover);
+}
+
+.mp-row.is-dimmed:disabled:not(.is-current) > * {
+  opacity: .45;
+}
+
+.mp-row-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+
+.mp-row-line {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.mp-row-title,
+.mp-row-sub,
+.mp-row-meta {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mp-row-title {
+  color: var(--mp-text);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.mp-provider .mp-row-title {
+  font-weight: 600;
+}
+
+.mp-row-sub {
+  color: var(--mp-faint);
+  font-family: var(--loom-code-font, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-size: 11.5px;
+  line-height: 1.35;
+}
+
+.mp-row-meta {
+  flex: none;
+  max-width: 42%;
+  color: var(--mp-faint);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.mp-row-meta.is-attention {
+  color: var(--mp-accent);
+}
+
+.mp-row-end {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  color: var(--mp-accent-strong);
+}
+
+.mp-row-chevron {
+  flex: none;
+  margin-right: -3px;
+  color: var(--mp-faint);
+  transition: transform 160ms var(--loom-ease-out, ease), color 140ms ease;
+}
+
+.mp-row:hover .mp-row-chevron,
+.mp-row:focus-visible .mp-row-chevron {
+  color: var(--mp-muted);
+  transform: translateX(2px);
+}
+
+.mp-badge {
+  flex: none;
+  padding: 0 6px;
+  border-radius: 5px;
+  background: var(--mp-accent-soft);
+  color: var(--mp-accent);
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 17px;
+  letter-spacing: .01em;
+}
+
+/* Provider marks: one OKLCH formula, tinted per provider (see ModelPanel). */
+.mp-mark {
+  --mp-hue: 280;
+  --mp-chroma: .12;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  background: oklch(.34 calc(var(--mp-chroma) * .5) var(--mp-hue) / .72);
+  box-shadow: inset 0 0 0 1px oklch(.82 var(--mp-chroma) var(--mp-hue) / .1);
+  color: oklch(.85 calc(var(--mp-chroma) * .75) var(--mp-hue));
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1;
+}
+
+html[data-loom-theme="light"] .mp-mark {
+  background: oklch(.955 calc(var(--mp-chroma) * .3) var(--mp-hue));
+  box-shadow: inset 0 0 0 1px oklch(.45 var(--mp-chroma) var(--mp-hue) / .1);
+  color: oklch(.5 var(--mp-chroma) var(--mp-hue));
+}
+
+.mp-mark-sm {
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  font-size: 10px;
+}
+
+/* Small marks inside rows sit in the same 24px column as provider marks, so
+   every row's text starts on one edge. */
+.mp-row > .mp-mark-sm {
+  margin-inline: 3px;
+}
+
+/* Saved connections: delete on hover, second click confirms. */
+.mp-item.has-action > .mp-row {
+  padding-right: 42px;
+}
+
+.mp-item-action {
+  position: absolute;
+  top: 50%;
+  right: 7px;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--mp-faint);
+  opacity: 0;
+  transform: translateY(-50%);
+  cursor: pointer;
+  transition: opacity 120ms ease, background-color 120ms ease, color 120ms ease;
+}
+
+.mp-item:hover > .mp-item-action,
+.mp-item:focus-within > .mp-item-action,
+.mp-item-action.is-confirming {
+  opacity: 1;
+}
+
+.mp-item-action:hover:not(:disabled),
+.mp-item-action.is-confirming {
+  background: var(--mp-danger-soft);
+  color: var(--mp-danger);
+}
+
+.mp-item-action:disabled {
+  cursor: default;
+}
+
+/* Notices, empty state, provider connection ------------------------------ */
+.mp-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 2px 2px 8px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  background: var(--mp-field);
+  color: var(--mp-muted);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.mp-notice > svg {
+  flex: none;
+  margin-top: 2px;
+}
+
+.mp-notice.is-error {
+  background: var(--mp-danger-soft);
+  color: var(--mp-danger);
+}
+
+.mp-empty {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 26px 16px 22px;
+  color: var(--mp-muted);
+  font-size: 12.5px;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.mp-link {
+  padding: 4px 9px;
+  border: 0;
+  border-radius: 7px;
+  outline: none;
+  background: transparent;
+  color: var(--mp-accent);
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.mp-link:hover,
+.mp-link:focus-visible {
+  background: var(--mp-accent-soft);
+}
+
+.mp-connect {
+  display: grid;
+  gap: 11px;
+  margin: 2px 2px 10px;
+  padding: 12px;
+  border: 1px solid var(--mp-hairline);
+  border-radius: 12px;
+  background: var(--mp-tray);
+}
+
+.mp-connect-copy {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.mp-connect-icon {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--mp-accent-soft);
+  color: var(--mp-accent);
+}
+
+.mp-connect-text {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.mp-connect-title {
+  color: var(--mp-text);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.mp-connect-hint {
+  color: var(--mp-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.mp-connect-form {
+  display: flex;
+  gap: 6px;
+}
+
+.mp-connect-form input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--mp-field-border);
+  border-radius: 8px;
+  outline: none;
+  background: var(--mp-field);
+  color: var(--mp-text);
+  font-size: 12.5px;
+  transition: border-color 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
+}
+
+.mp-connect-form input:focus {
+  border-color: var(--mp-focus-border);
+  background: var(--mp-field-focus);
+  box-shadow: 0 0 0 3px var(--mp-focus-ring);
+}
+
+.mp-connect-form button {
+  flex: none;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 13px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--mp-accent-strong);
+  color: #ffffff;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: filter 140ms ease, opacity 140ms ease;
+}
+
+.mp-connect-form button:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.mp-connect-form button:disabled {
+  opacity: .45;
+  cursor: default;
+}
+
+/* Footer ------------------------------------------------------------------ */
+.mp-foot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  border-top: 1px solid var(--mp-hairline);
+  background: var(--mp-tray);
+}
+
+.mp-foot-action {
+  min-width: 0;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  outline: none;
+  background: transparent;
+  color: var(--mp-muted);
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.mp-foot-action + .mp-foot-action {
+  margin-left: auto;
+}
+
+.mp-foot-action:hover {
+  background: var(--mp-hover);
+  color: var(--mp-text);
+}
+
+.mp-primary {
+  flex: none;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 8px;
+  outline: none;
+  background: var(--mp-accent-strong);
+  color: #ffffff;
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: filter 140ms ease, opacity 140ms ease;
+}
+
+.mp-primary:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.mp-primary:focus-visible {
+  box-shadow: 0 0 0 3px var(--mp-focus-ring);
+}
+
+.mp-primary:disabled {
+  opacity: .45;
+  cursor: default;
+}
+
+/* Forms (add connection, custom model ID) --------------------------------- */
+.mp-form-body {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  padding: 2px 16px 16px;
+}
+
+.mp-form-lead {
+  margin-top: -2px;
+  color: var(--mp-muted);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.mp-field {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.mp-field-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+}
+
+.mp-field-label {
+  color: var(--mp-muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.mp-field input,
+.mp-select select {
+  width: 100%;
+  min-width: 0;
+  height: 34px;
+  padding: 0 11px;
+  border: 1px solid var(--mp-field-border);
+  border-radius: 9px;
+  outline: none;
+  background: var(--mp-field);
+  color: var(--mp-text);
+  font-size: 13px;
+  transition:
+    border-color 150ms ease,
+    background-color 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.mp-field input::placeholder {
+  color: var(--mp-faint);
+}
+
+.mp-field input:hover:not(:disabled):not(:focus),
+.mp-select select:hover:not(:focus) {
+  background: var(--mp-field-hover);
+}
+
+.mp-field input:focus,
+.mp-select select:focus {
+  border-color: var(--mp-focus-border);
+  background: var(--mp-field-focus);
+  box-shadow: 0 0 0 3px var(--mp-focus-ring);
+}
+
+.mp-field input:disabled {
+  opacity: .55;
+  cursor: not-allowed;
+}
+
+.mp-select {
+  position: relative;
+  display: block;
+  color: var(--mp-faint);
+}
+
+.mp-select select {
+  padding-right: 32px;
+  appearance: none;
+  cursor: pointer;
+}
+
+.mp-select > svg {
+  position: absolute;
+  top: 50%;
+  right: 11px;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.mp-field-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--mp-faint);
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+
+.mp-field-hint > svg {
+  flex: none;
+}
+
+.mp-connection {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--mp-hairline);
+  border-radius: 11px;
+  background: var(--mp-tray);
+}
+
+.mp-connection-meta {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--mp-faint);
+  font-size: 12px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mp-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.mp-chip {
+  max-width: 100%;
+  height: 26px;
+  overflow: hidden;
+  padding: 0 9px;
+  border: 1px solid var(--mp-field-border);
+  border-radius: 7px;
+  outline: none;
+  background: var(--mp-field);
+  color: var(--mp-muted);
+  font-family: var(--loom-code-font, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.mp-chip:hover {
+  background: var(--mp-hover);
+  color: var(--mp-text);
+}
+
+.mp-chip.is-selected {
+  border-color: var(--mp-focus-border);
+  background: var(--mp-accent-soft);
+  color: var(--mp-accent);
+}
+
+.mp-form-foot {
+  justify-content: flex-end;
+}
+
+/* Shared focus treatment for the small controls. */
+.mp-back:focus-visible,
+.mp-search-clear:focus-visible,
+.mp-item-action:focus-visible,
+.mp-foot-action:focus-visible,
+.mp-chip:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 1.5px var(--mp-ring);
+}
+
+.mp-spin {
+  animation: mp-spin 800ms linear infinite;
+}
+
+/* Motion ------------------------------------------------------------------ */
+@keyframes mp-enter {
+  from { opacity: 0; transform: translate3d(8px, 0, 0); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes mp-enter-back {
+  from { opacity: 0; transform: translate3d(-8px, 0, 0); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes mp-scroll-edges {
+  0% { --mp-fade-top: 0px; --mp-fade-bottom: 18px; }
+  6% { --mp-fade-top: 14px; }
+  94% { --mp-fade-bottom: 18px; }
+  100% { --mp-fade-top: 14px; --mp-fade-bottom: 0px; }
+}
+
+@keyframes mp-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .model-manager-popover .mp,
+  .model-manager-popover .model-manager-view[data-direction="back"] {
+    animation: none;
+  }
+
+  .mp-row,
+  .mp-row-chevron,
+  .mp-back,
+  .mp-search,
+  .mp-foot-action,
+  .mp-item-action {
+    transition: none;
+  }
+
+  .mp-row:hover .mp-row-chevron {
+    transform: none;
+  }
+}
+
+:root[data-loom-reduced-motion="true"] .model-manager-popover .mp,
+:root[data-loom-reduced-motion="true"] .model-manager-popover .model-manager-view[data-direction="back"] {
+  animation: none;
+}
+
+:root[data-loom-reduced-motion="true"] .mp-row,
+:root[data-loom-reduced-motion="true"] .mp-row-chevron,
+:root[data-loom-reduced-motion="true"] .mp-back,
+:root[data-loom-reduced-motion="true"] .mp-search,
+:root[data-loom-reduced-motion="true"] .mp-foot-action,
+:root[data-loom-reduced-motion="true"] .mp-item-action {
+  transition: none;
+}
+
+:root[data-loom-reduced-motion="true"] .mp-row:hover .mp-row-chevron {
+  transform: none;
+}

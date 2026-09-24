@@ -1,18 +1,27 @@
 import {
-  ArrowLeft,
   Check,
+  ChevronDown,
+  ChevronLeft,
   ChevronRight,
-  Cpu,
   KeyRound,
+  LoaderCircle,
+  Lock,
   Plus,
-  RefreshCw,
   RotateCcw,
   Search,
-  Server,
   SlidersHorizontal,
   Trash2,
+  X,
 } from "lucide-react";
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
+} from "react";
 import type {
   AddModelInput,
   ModelProfile,
@@ -23,6 +32,7 @@ import type {
 import "./model-panel.css";
 
 type ModelView = "list" | "profiles" | "group" | "add" | "custom";
+type NavDirection = "forward" | "back";
 
 interface ModelGroup {
   id: string;
@@ -53,6 +63,286 @@ function providerCredentialTarget(groupId: string): ProviderCredentialTarget | n
     };
   }
   return null;
+}
+
+// Every saved connection arrives as its own `saved:<id>` group that shares the
+// display name "Custom APIs". Present them as one provider instead of a stack
+// of identically named rows.
+const SAVED_GROUP_ID = "saved";
+
+function profileGroupId(profile: ModelProfile): string {
+  if (profile.kind === "saved") return SAVED_GROUP_ID;
+  return profile.groupId || profile.selection;
+}
+
+function selectableProfiles(group: ModelGroup): ModelProfile[] {
+  return group.profiles.filter((profile) => !profile.setupOnly);
+}
+
+interface ProviderSetup {
+  credentialTarget: ProviderCredentialTarget | null;
+  statusProfiles: ModelProfile[];
+  catalogUnauthorized: boolean;
+  needsKey: boolean;
+}
+
+function providerSetup(group: ModelGroup): ProviderSetup {
+  const credentialTarget = providerCredentialTarget(group.id);
+  const statusProfiles = group.profiles.filter((profile) => profile.setupOnly && profile.statusMessage);
+  const catalogUnauthorized = statusProfiles.some((profile) => profile.statusMessage?.includes("HTTP 401"));
+  const needsKey = Boolean(
+    credentialTarget
+    && (group.profiles.every((profile) => profile.configured === false) || catalogUnauthorized),
+  );
+  return { credentialTarget, statusProfiles, catalogUnauthorized, needsKey };
+}
+
+// Provider marks are quiet tinted monograms. Hue and chroma feed OKLCH in
+// model-picker.css, so every tint lands on the same perceived lightness.
+const PROVIDER_TINTS: Record<string, readonly [hue: number, chroma: number]> = {
+  minimax: [16, 0.14],
+  deepseek: [262, 0.13],
+  "opencode-go": [168, 0.1],
+  "managed-relay": [295, 0.13],
+  "managed-relay:openai": [0, 0],
+  [SAVED_GROUP_ID]: [72, 0.11],
+};
+const FALLBACK_HUES = [28, 145, 205, 238, 330];
+
+function providerTint(id: string): readonly [number, number] {
+  const known = PROVIDER_TINTS[id];
+  if (known) return known;
+  let hash = 0;
+  for (const char of id) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  return [FALLBACK_HUES[hash % FALLBACK_HUES.length], 0.11];
+}
+
+function ProviderMark({ id, name, small = false }: { id: string; name: string; small?: boolean }) {
+  const [hue, chroma] = providerTint(id);
+  const initial = name.trim().match(/[\p{L}\p{N}]/u)?.[0]?.toUpperCase() ?? "?";
+  return (
+    <span
+      className={`mp-mark ${small ? "mp-mark-sm" : ""}`}
+      style={{ "--mp-hue": hue, "--mp-chroma": chroma } as CSSProperties}
+      aria-hidden="true"
+    >
+      {initial}
+    </span>
+  );
+}
+
+function queryTokens(query: string): string[] {
+  return query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+}
+
+// Every token has to match. Tokens may name the provider ("opencode kimi"),
+// but at least one must hit the model itself, so "open" lists providers
+// instead of every model they serve.
+function profileMatches(profile: ModelProfile, providerName: string, tokens: string[]): boolean {
+  const own = `${profile.name} ${profile.model} ${profile.family ?? ""}`.toLowerCase();
+  const provider = providerName.toLowerCase();
+  let ownMatch = false;
+  for (const token of tokens) {
+    if (own.includes(token)) ownMatch = true;
+    else if (!provider.includes(token)) return false;
+  }
+  return ownMatch;
+}
+
+function compactId(value: string): string {
+  return value.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+}
+
+// Most built-in names are a prettified model ID ("DeepSeek V4 Pro" for
+// deepseek-v4-pro). Only print the ID when it tells the user something new.
+function modelIdAddsInfo(profile: ModelProfile): boolean {
+  return Boolean(profile.model) && compactId(profile.name) !== compactId(profile.model);
+}
+
+function profileTooltip(profile: ModelProfile): string {
+  return [profile.name, profile.model === profile.name ? "" : profile.model, profile.protocol || ""]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+const PICKER_ITEM = "[data-mp-item]:not(:disabled)";
+
+function focusPickerItem(item: HTMLElement) {
+  item.focus({ preventScroll: true });
+  item.scrollIntoView({ block: "nearest" });
+}
+
+// Arrow keys walk the visible rows; ArrowUp from the first row returns to search.
+function handlePickerKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+  if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+  const root = event.currentTarget;
+  const items = Array.from(root.querySelectorAll<HTMLElement>(PICKER_ITEM));
+  if (!items.length) return;
+  event.preventDefault();
+  const index = items.indexOf(document.activeElement as HTMLElement);
+  if (event.key === "ArrowDown") {
+    focusPickerItem(items[Math.min(items.length - 1, index + 1)]);
+  } else if (index > 0) {
+    focusPickerItem(items[index - 1]);
+  } else {
+    root.querySelector<HTMLInputElement>(".mp-search input")?.focus();
+  }
+}
+
+function PickerHeader({
+  title,
+  meta,
+  backLabel,
+  onBack,
+}: {
+  title: ReactNode;
+  meta?: ReactNode;
+  backLabel: string;
+  onBack(): void;
+}) {
+  return (
+    <div className="mp-head">
+      <button type="button" className="mp-back" onClick={onBack} aria-label={backLabel} title={backLabel}>
+        <ChevronLeft size={17} strokeWidth={1.9} />
+      </button>
+      <div className="mp-head-title">{title}</div>
+      {meta ? <div className="mp-head-meta">{meta}</div> : null}
+    </div>
+  );
+}
+
+function PickerSearch({
+  value,
+  placeholder,
+  label,
+  onChange,
+}: {
+  value: string;
+  placeholder: string;
+  label: string;
+  onChange(value: string): void;
+}) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  return (
+    <label className="mp-search">
+      <Search size={15} strokeWidth={1.9} aria-hidden="true" />
+      <input
+        ref={inputRef}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Escape" && value) {
+            // First Escape clears the query; the next one closes the popover.
+            event.preventDefault();
+            event.stopPropagation();
+            onChange("");
+          } else if (event.key === "Enter" && value.trim()) {
+            event.preventDefault();
+            event.currentTarget.closest(".mp")?.querySelector<HTMLElement>(PICKER_ITEM)?.click();
+          }
+        }}
+        placeholder={placeholder}
+        aria-label={label}
+        autoFocus
+        autoComplete="off"
+        spellCheck={false}
+      />
+      {value ? (
+        <button
+          type="button"
+          className="mp-search-clear"
+          aria-label="Clear search"
+          onClick={() => {
+            onChange("");
+            inputRef.current?.focus();
+          }}
+        >
+          <X size={13} strokeWidth={2} />
+        </button>
+      ) : null}
+    </label>
+  );
+}
+
+function ProviderRow({ group, current, onOpen }: { group: ModelGroup; current: boolean; onOpen(): void }) {
+  const setup = providerSetup(group);
+  const count = selectableProfiles(group).length;
+  const unavailable = count === 0 && setup.statusProfiles.length > 0;
+  const meta = setup.needsKey
+    ? "Not connected"
+    : unavailable
+      ? "Unavailable"
+      : `${count} ${count === 1 ? "model" : "models"}`;
+  return (
+    <button
+      type="button"
+      className={`mp-row mp-provider ${current ? "is-current" : ""}`}
+      data-mp-item=""
+      onClick={onOpen}
+    >
+      <ProviderMark id={group.id} name={group.name} />
+      <span className="mp-row-text">
+        <span className="mp-row-line">
+          <span className="mp-row-title" title={group.name}>{group.name}</span>
+          {current ? <span className="mp-badge">Current</span> : null}
+        </span>
+      </span>
+      <span className={`mp-row-meta ${setup.needsKey || unavailable ? "is-attention" : ""}`}>{meta}</span>
+      <ChevronRight size={15} strokeWidth={1.9} className="mp-row-chevron" aria-hidden="true" />
+    </button>
+  );
+}
+
+interface ModelRowProps {
+  profile: ModelProfile;
+  current: boolean;
+  pending: boolean;
+  disabled: boolean;
+  dimmed?: boolean;
+  leading?: ReactNode;
+  meta?: ReactNode;
+  metaAttention?: boolean;
+  end?: ReactNode;
+  title?: string;
+  onSelect(): void;
+}
+
+function ModelRow({
+  profile,
+  current,
+  pending,
+  disabled,
+  dimmed,
+  leading,
+  meta,
+  metaAttention,
+  end,
+  title,
+  onSelect,
+}: ModelRowProps) {
+  return (
+    <button
+      type="button"
+      className={`mp-row mp-model ${current ? "is-current" : ""} ${dimmed ? "is-dimmed" : ""}`}
+      data-mp-item=""
+      aria-current={current ? "true" : undefined}
+      disabled={disabled}
+      title={title ?? profileTooltip(profile)}
+      onClick={onSelect}
+    >
+      {leading}
+      <span className="mp-row-text">
+        <span className="mp-row-title">{profile.name}</span>
+        {modelIdAddsInfo(profile) ? <span className="mp-row-sub">{profile.model}</span> : null}
+      </span>
+      {meta ? <span className={`mp-row-meta ${metaAttention ? "is-attention" : ""}`}>{meta}</span> : null}
+      <span className="mp-row-end" aria-hidden="true">
+        {pending
+          ? <LoaderCircle size={14} strokeWidth={2} className="mp-spin" />
+          : end ?? (current ? <Check size={15} strokeWidth={2.2} /> : null)}
+      </span>
+    </button>
+  );
 }
 
 interface ModelPanelProps {
@@ -233,6 +523,7 @@ export function ModelPanel({
   onClose,
 }: ModelPanelProps) {
   const [view, setView] = useState<ModelView>("list");
+  const [direction, setDirection] = useState<NavDirection>("forward");
   const [error, setError] = useState("");
   const [customModel, setCustomModel] = useState(runtimeModel || snapshot?.current?.model || "");
   const [name, setName] = useState("");
@@ -246,6 +537,8 @@ export function ModelPanel({
   const [providerKey, setProviderKey] = useState("");
   const [providerConfiguring, setProviderConfiguring] = useState(false);
   const [query, setQuery] = useState("");
+  const [groupQuery, setGroupQuery] = useState("");
+  const [pendingSelection, setPendingSelection] = useState("");
 
   const currentModel = snapshot?.current?.model || runtimeModel || "MiniMax-M3";
   const currentName = snapshot?.current?.name || (currentModel.toLowerCase().includes("minimax") ? "MiniMax" : "Current API");
@@ -261,7 +554,7 @@ export function ModelPanel({
   const groups = useMemo<ModelGroup[]>(() => {
     const grouped = new Map<string, ModelGroup>();
     for (const profile of profiles) {
-      const id = profile.groupId || profile.selection;
+      const id = profileGroupId(profile);
       const existing = grouped.get(id);
       if (existing) {
         existing.profiles.push(profile);
@@ -269,7 +562,7 @@ export function ModelPanel({
       }
       grouped.set(id, {
         id,
-        name: profile.groupName || profile.name,
+        name: profile.groupName || (profile.kind === "saved" ? "Custom APIs" : profile.name),
         order: profile.groupOrder ?? 1000,
         profiles: [profile],
       });
@@ -278,8 +571,10 @@ export function ModelPanel({
       .map((group) => ({
         ...group,
         profiles: [...group.profiles].sort((a, b) => {
+          // Catch-all families read best at the end of the list.
+          const other = Number(a.family === "Other") - Number(b.family === "Other");
           const family = String(a.family || "").localeCompare(String(b.family || ""));
-          return family || a.name.localeCompare(b.name);
+          return other || family || a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" });
         }),
       }))
       .sort((a, b) => a.order - b.order || a.name.localeCompare(b.name));
@@ -299,27 +594,50 @@ export function ModelPanel({
       .slice(0, 3),
     [profiles, recent],
   );
-  const normalizedQuery = query.trim().toLowerCase();
-  const visibleGroups = useMemo(
-    () => normalizedQuery
-      ? groups.filter((group) => (
-          group.name.toLowerCase().includes(normalizedQuery)
-          || group.profiles.some((profile) => [
-            profile.name,
-            profile.model,
-            profile.family || "",
-            profile.protocol || "",
-          ].some((value) => value.toLowerCase().includes(normalizedQuery)))
-        ))
-      : groups,
-    [groups, normalizedQuery],
+  const groupsById = useMemo(() => new Map(groups.map((group) => [group.id, group])), [groups]);
+  const totalModels = useMemo(
+    () => groups.reduce((sum, group) => sum + selectableProfiles(group).length, 0),
+    [groups],
   );
+  const searchResults = useMemo(() => {
+    const tokens = queryTokens(query);
+    if (!tokens.length) return null;
+    const models = groups
+      .map((group) => ({
+        group,
+        matches: selectableProfiles(group).filter((profile) => profileMatches(profile, group.name, tokens)),
+      }))
+      .filter((entry) => entry.matches.length > 0);
+    const providers = groups.filter((group) => tokens.every((token) => group.name.toLowerCase().includes(token)));
+    return { models, providers };
+  }, [groups, query]);
   const locked = Boolean(busy || running);
 
   useEffect(() => {
     if (!confirmDelete) return;
     if (!profiles.some((profile) => profile.selection === confirmDelete)) setConfirmDelete("");
   }, [confirmDelete, profiles]);
+
+  // Open a provider at the model in use rather than always at the top.
+  const providerListRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (view !== "group") return;
+    const list = providerListRef.current;
+    if (!list) return;
+    const row = list.querySelector<HTMLElement>(".mp-model.is-current");
+    if (row) {
+      const listBox = list.getBoundingClientRect();
+      const rowBox = row.getBoundingClientRect();
+      if (rowBox.top < listBox.top || rowBox.bottom > listBox.bottom) {
+        list.scrollTop += rowBox.top - listBox.top - (listBox.height - rowBox.height) / 2;
+      }
+    }
+    // Short providers have no search field to take focus; keep arrow keys working.
+    const active = document.activeElement;
+    if (!active || active === document.body) {
+      (row ?? list.querySelector<HTMLElement>(PICKER_ITEM))?.focus({ preventScroll: true });
+    }
+  }, [view, selectedGroup]);
 
   async function run(action: () => Promise<void> | void) {
     setError("");
@@ -329,6 +647,42 @@ export function ModelPanel({
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     }
+  }
+
+  function navigate(next: ModelView, nextDirection: NavDirection = "forward") {
+    setDirection(nextDirection);
+    setView(next);
+    setError("");
+  }
+
+  function openGroup(groupId: string) {
+    setSelectedGroup(groupId);
+    setGroupQuery("");
+    setConfirmDelete("");
+    navigate("group");
+  }
+
+  function isCurrentProfile(profile: ModelProfile): boolean {
+    return profile.selection === currentSelection && profile.model === currentModel;
+  }
+
+  async function chooseProfile(profile: ModelProfile) {
+    // Picking the model already in use simply dismisses the picker.
+    if (isCurrentProfile(profile)) {
+      onClose();
+      return;
+    }
+    if (locked) return;
+    setPendingSelection(profile.selection);
+    try {
+      await run(() => onSwitchProfile(profile.selection));
+    } finally {
+      setPendingSelection("");
+    }
+  }
+
+  function reasoningLabel(profile: ModelProfile): string | undefined {
+    return profile.reasoning ? activeReasoningOption(profile.reasoning)?.label : undefined;
   }
 
   async function submitCustom() {
@@ -397,377 +751,429 @@ export function ModelPanel({
 
   if (view === "add") {
     return (
-      <div className="model-manager-view">
-        <button type="button" className="model-back" onClick={() => { setView("list"); setError(""); }}>
-          <ArrowLeft size={14} /> Back
-        </button>
-        <div className="model-form-heading">
-          <span className="model-form-icon"><Plus size={17} /></span>
-          <div>
-            <strong>Add API / model</strong>
-            <span>Connect OpenAI or an OpenAI-compatible endpoint.</span>
-          </div>
-        </div>
-
-        <div className="model-form-grid">
-          <label className="model-field model-field-wide">
-            <span>Connection name</span>
+      <form
+        className="mp mp-form"
+        data-direction={direction}
+        onSubmit={(event) => {
+          event.preventDefault();
+          void submitAdd();
+        }}
+      >
+        <PickerHeader title="Add connection" backLabel="Back to models" onBack={() => navigate("profiles", "back")} />
+        <div className="mp-body mp-form-body">
+          <div className="mp-form-lead">Connect OpenAI or any OpenAI-compatible endpoint.</div>
+          <label className="mp-field">
+            <span className="mp-field-label">Connection name</span>
             <input value={name} onChange={(event) => setName(event.target.value)} placeholder="e.g. MiniMax work API" autoFocus />
           </label>
-          <label className="model-field">
-            <span>API type</span>
-            <select value={adapter} onChange={(event) => setAdapter(event.target.value as AddModelInput["adapter"])}>
-              <option value="openai-compatible">OpenAI-compatible</option>
-              <option value="openai">OpenAI</option>
-            </select>
-          </label>
-          <label className="model-field">
-            <span>Model ID</span>
-            <input value={model} onChange={(event) => setModel(event.target.value)} placeholder="MiniMax-M3" />
-          </label>
-          <label className="model-field model-field-wide">
-            <span>Base URL</span>
+          <div className="mp-field-row">
+            <label className="mp-field">
+              <span className="mp-field-label">API type</span>
+              <span className="mp-select">
+                <select value={adapter} onChange={(event) => setAdapter(event.target.value as AddModelInput["adapter"])}>
+                  <option value="openai-compatible">OpenAI-compatible</option>
+                  <option value="openai">OpenAI</option>
+                </select>
+                <ChevronDown size={14} strokeWidth={1.9} aria-hidden="true" />
+              </span>
+            </label>
+            <label className="mp-field">
+              <span className="mp-field-label">Model ID</span>
+              <input
+                value={model}
+                onChange={(event) => setModel(event.target.value)}
+                placeholder="MiniMax-M3"
+                spellCheck={false}
+              />
+            </label>
+          </div>
+          <label className="mp-field">
+            <span className="mp-field-label">Base URL</span>
             <input
               value={baseUrl}
               onChange={(event) => setBaseUrl(event.target.value)}
               placeholder={adapter === "openai" ? "OpenAI default endpoint" : "https://api.example.com/v1"}
               disabled={adapter === "openai"}
+              spellCheck={false}
             />
           </label>
-          <label className="model-field model-field-wide">
-            <span>API key</span>
-            <div className="model-secret-input">
-              <KeyRound size={14} />
-              <input type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder="Stored securely in the OS credential store" />
-            </div>
+          <label className="mp-field">
+            <span className="mp-field-label">API key</span>
+            <input type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} autoComplete="off" />
+            <span className="mp-field-hint">
+              <KeyRound size={12} strokeWidth={1.9} aria-hidden="true" />
+              Stored securely in your OS credential store.
+            </span>
           </label>
+          {error ? <div className="mp-notice is-error">{error}</div> : null}
         </div>
-
-        <div className="model-security-note">
-          <KeyRound size={13} />
-          <span>API keys stay in the operating-system credential store.</span>
-        </div>
-        {error ? <div className="composer-popover-error">{error}</div> : null}
-        <div className="model-form-actions">
-          <button type="button" className="model-secondary-button" onClick={() => setView("list")}>Cancel</button>
-          <button type="button" className="model-primary-button" disabled={locked} onClick={() => void submitAdd()}>
-            {busy ? <RefreshCw size={14} className="model-spin" /> : <Plus size={14} />}
+        <div className="mp-foot mp-form-foot">
+          <button type="button" className="mp-foot-action" onClick={() => navigate("profiles", "back")}>Cancel</button>
+          <button type="submit" className="mp-primary" disabled={locked}>
+            {busy ? <LoaderCircle size={14} strokeWidth={2} className="mp-spin" /> : null}
             Save & use
           </button>
         </div>
-      </div>
+      </form>
     );
   }
 
   if (view === "custom") {
+    const connectionId = snapshot?.current ? profileGroupId(snapshot.current) : "current";
     return (
-      <div className="model-manager-view">
-        <button type="button" className="model-back" onClick={() => { setView("profiles"); setError(""); }}>
-          <ArrowLeft size={14} /> Back
-        </button>
-        <div className="model-form-heading">
-          <span className="model-form-icon"><SlidersHorizontal size={17} /></span>
-          <div>
-            <strong>Other model ID</strong>
-            <span>Keep the same API connection and change only the model name.</span>
+      <form
+        className="mp mp-form"
+        data-direction={direction}
+        onSubmit={(event) => {
+          event.preventDefault();
+          void submitCustom();
+        }}
+      >
+        <PickerHeader title="Custom model ID" backLabel="Back to models" onBack={() => navigate("profiles", "back")} />
+        <div className="mp-body mp-form-body">
+          <div className="mp-form-lead">Keep the current connection and change only the model it calls.</div>
+          <div className="mp-connection">
+            <ProviderMark id={connectionId} name={currentGroupName} />
+            <span className="mp-row-text">
+              <span className="mp-row-title">{currentName}</span>
+              <span className="mp-connection-meta">{adapterLabel(currentAdapter)} · {endpointLabel(currentBaseUrl)}</span>
+            </span>
           </div>
+          <label className="mp-field">
+            <span className="mp-field-label">Model ID</span>
+            <input
+              value={customModel}
+              onChange={(event) => setCustomModel(event.target.value)}
+              placeholder="Model ID exposed by this API"
+              autoFocus
+              spellCheck={false}
+            />
+          </label>
+          {recent.length ? (
+            <div className="mp-field">
+              <span className="mp-field-label">Recent</span>
+              <div className="mp-chips">
+                {recent.map((item) => (
+                  <button
+                    key={item}
+                    type="button"
+                    className={`mp-chip ${item === customModel.trim() ? "is-selected" : ""}`}
+                    onClick={() => setCustomModel(item)}
+                  >
+                    {item}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+          {error ? <div className="mp-notice is-error">{error}</div> : null}
         </div>
-        <div className="model-connection-summary">
-          <Server size={15} />
-          <div>
-            <strong>{currentName}</strong>
-            <span>{adapterLabel(currentAdapter)} · {endpointLabel(currentBaseUrl)}</span>
-          </div>
-        </div>
-        <label className="model-field model-field-wide">
-          <span>Model ID</span>
-          <input value={customModel} onChange={(event) => setCustomModel(event.target.value)} placeholder="Model ID exposed by this API" autoFocus />
-        </label>
-        {recent.length ? (
-          <div className="model-recent-row">
-            <span>Recent</span>
-            <div>{recent.map((item) => <button key={item} type="button" onClick={() => setCustomModel(item)}>{item}</button>)}</div>
-          </div>
-        ) : null}
-        {error ? <div className="composer-popover-error">{error}</div> : null}
-        <div className="model-form-actions">
-          <button type="button" className="model-secondary-button" onClick={() => setView("profiles")}>Cancel</button>
-          <button type="button" className="model-primary-button" disabled={locked} onClick={() => void submitCustom()}>
-            {busy ? <RefreshCw size={14} className="model-spin" /> : <RefreshCw size={14} />}
+        <div className="mp-foot mp-form-foot">
+          <button type="button" className="mp-foot-action" onClick={() => navigate("profiles", "back")}>Cancel</button>
+          <button type="submit" className="mp-primary" disabled={locked}>
+            {busy ? <LoaderCircle size={14} strokeWidth={2} className="mp-spin" /> : null}
             Switch model
           </button>
         </div>
-      </div>
+      </form>
     );
   }
 
   if (view === "group" && activeGroup) {
-    const selectableProfiles = activeGroup.profiles.filter((profile) => !profile.setupOnly);
-    const statusProfiles = activeGroup.profiles.filter((profile) => profile.setupOnly && profile.statusMessage);
+    const setup = providerSetup(activeGroup);
+    const choices = selectableProfiles(activeGroup);
+    const tokens = queryTokens(groupQuery);
+    const visible = tokens.length ? choices.filter((profile) => profileMatches(profile, "", tokens)) : choices;
     const families = new Map<string, ModelProfile[]>();
-    for (const profile of selectableProfiles) {
+    for (const profile of visible) {
       const family = profile.family || (activeGroup.id === "opencode-go" ? "Other" : "");
       const list = families.get(family) ?? [];
       list.push(profile);
       families.set(family, list);
     }
-    const familyEntries = [...families.entries()];
-    const credentialTarget = providerCredentialTarget(activeGroup.id);
-    const catalogUnauthorized = statusProfiles.some(
-      (profile) => profile.statusMessage?.includes("HTTP 401"),
-    );
-    const needsProviderKey = Boolean(
-      credentialTarget
-      && (
-        activeGroup.profiles.every((profile) => profile.configured === false)
-        || catalogUnauthorized
-      )
-    );
+    const credentialTarget = setup.needsKey ? setup.credentialTarget : null;
+    const showSearch = choices.length > 8 && !credentialTarget;
 
     return (
-      <div className="model-manager-view model-provider-view">
-        <div className="model-layer-header model-provider-header">
-          <button
-            type="button"
-            className="model-back model-layer-back"
-            onClick={() => { setView("profiles"); setError(""); }}
-            aria-label="Back to providers"
-          >
-            <ArrowLeft size={14} />
-          </button>
-          <div>
-            <strong>{activeGroup.name}</strong>
-            <span>{selectableProfiles.length} models · choose one for this conversation</span>
-          </div>
-        </div>
-
-        {needsProviderKey ? (
-          <div className="model-provider-connect">
-            <div className="model-provider-connect-copy">
-              <KeyRound size={16} />
-              <div>
-                <strong>{catalogUnauthorized ? `Reconnect ${credentialTarget?.label}` : `Connect ${credentialTarget?.label}`}</strong>
-                <span>
-                  {catalogUnauthorized
-                    ? "The saved credential was rejected by the provider. Enter the current group key to replace it securely."
-                    : "The key is stored in your OS credential store and is never written into the model registry."}
-                </span>
-              </div>
-            </div>
-            <div className="model-provider-connect-form">
-              <input
-                type="password"
-                value={providerKey}
-                onChange={(event) => setProviderKey(event.target.value)}
-                placeholder={credentialTarget?.placeholder || "Provider key"}
-                autoComplete="off"
-              />
-              <button
-                type="button"
-                disabled={!providerKey.trim() || providerConfiguring}
-                onClick={() => credentialTarget && void configureProvider(credentialTarget.provider)}
-              >
-                {providerConfiguring ? <RefreshCw size={13} className="model-spin" /> : <KeyRound size={13} />}
-                Connect
-              </button>
-            </div>
-          </div>
+      <div className="mp mp-provider" data-direction={direction} onKeyDown={handlePickerKeyDown}>
+        <PickerHeader
+          title={(
+            <>
+              <ProviderMark id={activeGroup.id} name={activeGroup.name} small />
+              <span>{activeGroup.name}</span>
+            </>
+          )}
+          meta={`${choices.length} ${choices.length === 1 ? "model" : "models"}`}
+          backLabel="Back to providers"
+          onBack={() => navigate("profiles", "back")}
+        />
+        {showSearch ? (
+          <PickerSearch
+            value={groupQuery}
+            onChange={setGroupQuery}
+            placeholder={`Search ${activeGroup.name}`}
+            label={`Search ${activeGroup.name} models`}
+          />
         ) : null}
 
-        {statusProfiles.map((profile) => (
-          <div className="composer-popover-error" key={profile.id}>
-            {profile.statusMessage}
-          </div>
-        ))}
+        <div className="mp-body" ref={providerListRef}>
+          {credentialTarget ? (
+            <form
+              className="mp-connect"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void configureProvider(credentialTarget.provider);
+              }}
+            >
+              <div className="mp-connect-copy">
+                <span className="mp-connect-icon" aria-hidden="true"><KeyRound size={15} strokeWidth={1.9} /></span>
+                <span className="mp-connect-text">
+                  <span className="mp-connect-title">
+                    {setup.catalogUnauthorized ? `Reconnect ${credentialTarget.label}` : `Connect ${credentialTarget.label}`}
+                  </span>
+                  <span className="mp-connect-hint">
+                    {setup.catalogUnauthorized
+                      ? "The saved credential was rejected by the provider. Enter the current group key to replace it securely."
+                      : "The key is stored in your OS credential store and is never written into the model registry."}
+                  </span>
+                </span>
+              </div>
+              <div className="mp-connect-form">
+                <input
+                  type="password"
+                  value={providerKey}
+                  onChange={(event) => setProviderKey(event.target.value)}
+                  placeholder={credentialTarget.placeholder}
+                  aria-label={credentialTarget.placeholder}
+                  autoComplete="off"
+                  autoFocus
+                />
+                <button type="submit" disabled={!providerKey.trim() || providerConfiguring}>
+                  {providerConfiguring ? <LoaderCircle size={14} strokeWidth={2} className="mp-spin" /> : null}
+                  Connect
+                </button>
+              </div>
+            </form>
+          ) : null}
 
-        <div className="model-group-models">
-          {familyEntries.map(([family, familyProfiles]) => (
-            <section className="model-family-section" key={family || activeGroup.id}>
-              {family ? <div className="model-family-heading">{family}</div> : null}
-              <div className="model-profile-list">
-                {familyProfiles.map((profile) => {
-                  const exactActive = profile.selection === currentSelection && profile.model === currentModel;
-                  const profileReasoning = profile.reasoning ? activeReasoningOption(profile.reasoning) : null;
-                  const deletable = profile.kind === "saved";
-                  const deleting = pendingDelete === profile.selection;
-                  const confirming = confirmDelete === profile.selection;
-                  return (
-                    <div
-                      key={profile.selection}
-                      className={`model-profile-row ${exactActive ? "active" : ""} ${deletable ? "deletable" : ""} ${confirming ? "confirm-delete" : ""}`}
-                    >
+          {setup.statusProfiles.map((profile) => (
+            <div className="mp-notice is-error" key={profile.id}>{profile.statusMessage}</div>
+          ))}
+          {running ? (
+            <div className="mp-notice">
+              <Lock size={13} strokeWidth={2} aria-hidden="true" />
+              <span>Stop the active turn to switch models.</span>
+            </div>
+          ) : null}
+
+          {[...families.entries()].map(([family, familyProfiles]) => (
+            <section className="mp-section" key={family || activeGroup.id} aria-label={family || activeGroup.name}>
+              {family ? <div className="mp-label">{family}</div> : null}
+              {familyProfiles.map((profile) => {
+                const current = isCurrentProfile(profile);
+                const deletable = profile.kind === "saved";
+                const deleting = pendingDelete === profile.selection;
+                const confirming = confirmDelete === profile.selection;
+                return (
+                  <div
+                    key={profile.selection}
+                    className={`mp-item ${deletable ? "has-action" : ""} ${confirming ? "is-confirming" : ""}`}
+                  >
+                    <ModelRow
+                      profile={profile}
+                      current={current}
+                      pending={pendingSelection === profile.selection}
+                      disabled={deleting || (!current && (locked || setup.needsKey))}
+                      dimmed={Boolean(running) || setup.needsKey}
+                      meta={reasoningLabel(profile)}
+                      onSelect={() => void chooseProfile(profile)}
+                    />
+                    {deletable ? (
                       <button
                         type="button"
-                        className="model-profile-main model-choice-main"
-                        disabled={locked || exactActive || deleting || needsProviderKey}
-                        onClick={() => void run(() => onSwitchProfile(profile.selection))}
+                        className={`mp-item-action ${confirming ? "is-confirming" : ""}`}
+                        disabled={locked || Boolean(pendingDelete)}
+                        title={confirming ? `Click again to delete ${profile.name}` : `Delete ${profile.name}`}
+                        aria-label={confirming ? `Confirm delete ${profile.name}` : `Delete ${profile.name}`}
+                        onClick={() => void deleteProfile(profile)}
                       >
-                        <span className="model-profile-copy model-choice-copy">
-                          <span className="model-profile-title-row">
-                            <strong title={profile.name}>{profile.name}</strong>
-                            {profileReasoning ? <em className="model-reasoning-badge">{profileReasoning.label}</em> : null}
-                          </span>
-                          <span className="model-choice-meta" title={profile.model}>
-                            <span>{profile.model}</span>
-                            {profile.protocol ? <small>{profile.protocol}</small> : null}
-                          </span>
-                        </span>
-                        <span className="model-profile-action">
-                          {exactActive ? <Check size={14} /> : busy ? <RefreshCw size={13} className="model-spin" /> : <ChevronRight size={14} />}
-                        </span>
+                        {deleting
+                          ? <LoaderCircle size={14} strokeWidth={2} className="mp-spin" />
+                          : <Trash2 size={14} strokeWidth={1.9} />}
                       </button>
-                      {deletable ? (
-                        <button
-                          type="button"
-                          className={`model-profile-delete ${confirming ? "confirm" : ""}`}
-                          disabled={locked || Boolean(pendingDelete)}
-                          title={confirming ? `Click again to delete ${profile.name}` : `Delete ${profile.name}`}
-                          aria-label={confirming ? `Confirm delete ${profile.name}` : `Delete ${profile.name}`}
-                          onClick={() => void deleteProfile(profile)}
-                        >
-                          {deleting ? <RefreshCw size={13} className="model-spin" /> : <Trash2 size={13} />}
-                        </button>
-                      ) : null}
-                    </div>
-                  );
-                })}
-              </div>
+                    ) : null}
+                  </div>
+                );
+              })}
             </section>
           ))}
-        </div>
 
-        {confirmDelete ? <div className="model-delete-note">Click the trash icon again to delete this saved API connection.</div> : null}
-        {error ? <div className="composer-popover-error">{error}</div> : null}
+          {tokens.length && !visible.length ? (
+            <div className="mp-empty">No models match “{groupQuery.trim()}”</div>
+          ) : null}
+          {confirmDelete ? (
+            <div className="mp-notice is-error">Click the trash icon again to delete this saved connection.</div>
+          ) : null}
+          {error ? <div className="mp-notice is-error">{error}</div> : null}
+        </div>
       </div>
     );
   }
 
-  if (view === "profiles") {
+  // A provider view whose group vanished (its last saved model was deleted)
+  // falls back to the library as well.
+  if (view === "profiles" || view === "group") {
+    const currentGroupId = groups.find((group) => group.profiles.some(isCurrentProfile))?.id;
+    const renderProviderRow = (group: ModelGroup) => (
+      <ProviderRow
+        key={group.id}
+        group={group}
+        current={group.id === currentGroupId}
+        onOpen={() => openGroup(group.id)}
+      />
+    );
+
     return (
-      <div className="model-manager-view model-library-view">
-        <div className="model-layer-header">
-          <button
-            type="button"
-            className="model-back model-layer-back"
-            onClick={() => { setView("list"); setError(""); setQuery(""); }}
-            aria-label="Back to model controls"
-          >
-            <ArrowLeft size={14} />
-          </button>
-          <div>
-            <strong>Models</strong>
-            <span>{groups.length} providers · {profiles.length} models</span>
-          </div>
-        </div>
+      <div className="mp mp-library" data-direction={direction} onKeyDown={handlePickerKeyDown}>
+        <PickerHeader
+          title="Models"
+          meta={`${groups.length} ${groups.length === 1 ? "provider" : "providers"} · ${totalModels} models`}
+          backLabel="Back to model controls"
+          onBack={() => {
+            setQuery("");
+            navigate("list", "back");
+          }}
+        />
+        <PickerSearch
+          value={query}
+          onChange={setQuery}
+          placeholder="Search models or providers"
+          label="Search models and providers"
+        />
 
-        <label className="model-library-search">
-          <Search size={13.5} strokeWidth={1.8} />
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search providers or models"
-            aria-label="Search models"
-          />
-        </label>
-
-        {!normalizedQuery && recentProfiles.length ? (
-          <section className="model-library-section model-library-recent">
-            <div className="model-library-label">RECENT</div>
-            <div className="model-recent-models">
-              {recentProfiles.map((profile) => (
-                <button
-                  key={profile.selection}
-                  type="button"
-                  disabled={locked}
-                  onClick={() => void run(() => onSwitchProfile(profile.selection))}
-                >
-                  <span className="model-recent-dot" aria-hidden="true" />
-                  <span>
-                    <strong title={profile.model}>{profile.model}</strong>
-                    <small title={profile.groupName || profile.name}>{profile.groupName || profile.name}</small>
-                  </span>
-                  <ChevronRight size={13} />
-                </button>
-              ))}
+        <div className="mp-body">
+          {running ? (
+            <div className="mp-notice">
+              <Lock size={13} strokeWidth={2} aria-hidden="true" />
+              <span>Stop the active turn to switch models.</span>
             </div>
-          </section>
-        ) : null}
+          ) : null}
 
-        <section className="model-library-section">
-          <div className="model-library-label">PROVIDERS</div>
-          <div className="model-profile-list model-group-list">
-            {visibleGroups.map((group) => {
-              const active = group.profiles.some(
-                (profile) => profile.selection === currentSelection && profile.model === currentModel,
-              );
-              const selectableCount = group.profiles.filter((profile) => !profile.setupOnly).length;
-              return (
-                <div key={group.id} className={`model-profile-row model-group-row ${active ? "active" : ""}`}>
+          {searchResults ? (
+            <>
+              {searchResults.models.map(({ group, matches }) => {
+                const needsKey = providerSetup(group).needsKey;
+                return (
+                  <section className="mp-section" key={group.id} aria-label={group.name}>
+                    <div className="mp-label mp-label-provider">
+                      <ProviderMark id={group.id} name={group.name} small />
+                      <span>{group.name}</span>
+                    </div>
+                    {matches.map((profile) => {
+                      const current = isCurrentProfile(profile);
+                      const connectFirst = needsKey && !current;
+                      return (
+                        <ModelRow
+                          key={profile.selection}
+                          profile={profile}
+                          current={current}
+                          pending={pendingSelection === profile.selection}
+                          disabled={!current && locked}
+                          dimmed={Boolean(running)}
+                          meta={connectFirst ? "Connect" : reasoningLabel(profile)}
+                          metaAttention={connectFirst}
+                          end={connectFirst ? <ChevronRight size={14} strokeWidth={1.9} /> : undefined}
+                          title={connectFirst ? `Connect ${group.name} to use ${profile.name}` : undefined}
+                          onSelect={() => (connectFirst ? openGroup(group.id) : void chooseProfile(profile))}
+                        />
+                      );
+                    })}
+                  </section>
+                );
+              })}
+              {searchResults.providers.length ? (
+                <section className="mp-section" aria-label="Providers">
+                  <div className="mp-label">Providers</div>
+                  {searchResults.providers.map(renderProviderRow)}
+                </section>
+              ) : null}
+              {!searchResults.models.length && !searchResults.providers.length ? (
+                <div className="mp-empty">
+                  <span>No models match “{query.trim()}”</span>
                   <button
                     type="button"
-                    className="model-profile-main"
-                    disabled={locked}
+                    className="mp-link"
+                    data-mp-item=""
                     onClick={() => {
-                      setSelectedGroup(group.id);
-                      setView("group");
-                      setError("");
+                      setCustomModel(query.trim());
+                      navigate("custom");
                     }}
                   >
-                    <span className="model-profile-icon builtin" aria-hidden="true"><Server size={13.5} /></span>
-                    <span className="model-profile-copy model-provider-copy">
-                      <span className="model-profile-title-row">
-                        <strong title={group.name}>{group.name}</strong>
-                        {active ? <em>Current</em> : null}
-                      </span>
-                      <span className="model-provider-meta">
-                        {selectableCount} {selectableCount === 1 ? "model" : "models"}
-                      </span>
-                    </span>
-                    <span className="model-profile-action"><ChevronRight size={14} /></span>
+                    Use it as a custom model ID
                   </button>
                 </div>
-              );
-            })}
-          </div>
-          {normalizedQuery && visibleGroups.length === 0 ? (
-            <div className="model-library-empty">No matching providers or models.</div>
-          ) : null}
-        </section>
+              ) : null}
+            </>
+          ) : (
+            <>
+              {recentProfiles.length ? (
+                <section className="mp-section" aria-label="Recent models">
+                  <div className="mp-label">Recent</div>
+                  {recentProfiles.map((profile) => {
+                    const groupId = profileGroupId(profile);
+                    const group = groupsById.get(groupId);
+                    const providerName = group?.name ?? profile.groupName ?? "";
+                    const connectFirst = group ? providerSetup(group).needsKey : false;
+                    return (
+                      <ModelRow
+                        key={profile.selection}
+                        profile={profile}
+                        current={false}
+                        pending={pendingSelection === profile.selection}
+                        disabled={locked}
+                        dimmed={Boolean(running)}
+                        leading={<ProviderMark id={groupId} name={providerName || profile.name} small />}
+                        meta={providerName}
+                        end={connectFirst ? <KeyRound size={13} strokeWidth={1.9} /> : undefined}
+                        title={connectFirst ? `Connect ${providerName} to use ${profile.name}` : undefined}
+                        onSelect={() => (connectFirst ? openGroup(groupId) : void chooseProfile(profile))}
+                      />
+                    );
+                  })}
+                </section>
+              ) : null}
+              <section className="mp-section" aria-label="Providers">
+                <div className="mp-label">Providers</div>
+                {groups.map(renderProviderRow)}
+              </section>
+            </>
+          )}
 
-        <button
-          type="button"
-          className="model-library-add"
-          onClick={() => { setView("add"); setError(""); }}
-          disabled={locked}
-        >
-          <Plus size={14} />
-          <span><strong>Add connection</strong></span>
-          <ChevronRight size={13} />
-        </button>
+          {error ? <div className="mp-notice is-error">{error}</div> : null}
+        </div>
 
-        <button
-          type="button"
-          className="model-library-custom"
-          onClick={() => { setView("custom"); setError(""); }}
-          disabled={locked}
-        >
-          <SlidersHorizontal size={13.5} />
-          Use custom model ID
-        </button>
-
-        {error ? <div className="composer-popover-error">{error}</div> : null}
+        <div className="mp-foot">
+          <button type="button" className="mp-foot-action" onClick={() => navigate("add")}>
+            <Plus size={14} strokeWidth={2} aria-hidden="true" />
+            <span>Add connection</span>
+          </button>
+          <button type="button" className="mp-foot-action" onClick={() => navigate("custom")}>
+            <SlidersHorizontal size={14} strokeWidth={1.9} aria-hidden="true" />
+            <span>Custom model ID</span>
+          </button>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="model-manager-view model-manager-home model-core-home">
+    <div className="model-manager-view model-manager-home model-core-home" data-direction={direction}>
       <button
         type="button"
         className={`model-core-identity model-core-selector ${locked ? "locked" : ""}`}
         aria-label={`Choose model. Current model ${currentModel}`}
         disabled={locked}
-        onClick={() => { setView("profiles"); setError(""); }}
+        onClick={() => navigate("profiles")}
       >
         <div className="model-core-copy" key={`${currentSelection}:${currentModel}`}>
           <span className="model-core-title-row">
