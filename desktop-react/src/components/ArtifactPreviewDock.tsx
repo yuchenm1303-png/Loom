@@ -1,7 +1,9 @@
 import { ExternalLink, FileCode2, RefreshCw, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
+import { artifactName, artifactRenderer } from "../artifactRenderers";
 import { useMotionPresence } from "../motion/useMotionPresence";
+import { ArtifactRenderSurface } from "./ArtifactRenderSurface";
 import "./artifact-preview-dock.css";
 
 interface ArtifactPreviewDockProps {
@@ -51,11 +53,6 @@ function persistPreviewWidth(value: number): void {
   }
 }
 
-function artifactName(value: string): string {
-  const normalized = String(value || "").replaceAll("\\", "/");
-  return normalized.split("/").filter(Boolean).at(-1) || normalized || "Artifact";
-}
-
 export function ArtifactPreviewDock({
   open,
   path,
@@ -64,8 +61,6 @@ export function ArtifactPreviewDock({
 }: ArtifactPreviewDockProps) {
   const presence = useMotionPresence(open, 420);
   const [width, setWidth] = useState(readPreviewWidth);
-  const [url, setUrl] = useState("");
-  const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
   const resizeRef = useRef<{
     pointerId: number;
@@ -74,6 +69,7 @@ export function ArtifactPreviewDock({
     currentWidth: number;
   } | null>(null);
   const name = useMemo(() => artifactName(path), [path]);
+  const renderer = useMemo(() => artifactRenderer(path), [path]);
 
   useEffect(() => {
     document.documentElement.style.setProperty("--artifact-preview-pane-width", `${width}px`);
@@ -103,23 +99,6 @@ export function ArtifactPreviewDock({
       delete document.documentElement.dataset.loomArtifactPreviewOpen;
     };
   }, [onClose, open]);
-
-  useEffect(() => {
-    let disposed = false;
-    setUrl("");
-    setError("");
-    if (!open || !path || !workspace) return () => { disposed = true; };
-
-    void window.loom.localArtifactPreviewUrl(path, workspace)
-      .then((next) => {
-        if (!disposed) setUrl(next);
-      })
-      .catch((cause) => {
-        if (!disposed) setError(cause instanceof Error ? cause.message : String(cause));
-      });
-
-    return () => { disposed = true; };
-  }, [open, path, workspace, revision]);
 
   const beginResize = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
@@ -231,27 +210,17 @@ export function ArtifactPreviewDock({
         </div>
       </header>
 
-      <div className="artifact-preview-canvas">
-        {error ? (
-          <div className="artifact-preview-state is-error">
-            <strong>无法渲染这个文件</strong>
-            <span>{error}</span>
-            <button type="button" onClick={() => setRevision((value) => value + 1)}>重试</button>
-          </div>
-        ) : url ? (
-          <iframe
-            key={`${url}:${revision}`}
-            className="artifact-preview-frame"
-            src={url}
-            title={`预览 ${name}`}
-            sandbox="allow-scripts allow-forms allow-modals allow-same-origin"
-            referrerPolicy="no-referrer"
-            allow="fullscreen"
+      <div className="artifact-preview-canvas" data-renderer-kind={renderer.kind}>
+        {renderer.side ? (
+          <ArtifactRenderSurface
+            path={path}
+            workspace={workspace}
+            revision={revision}
           />
         ) : (
           <div className="artifact-preview-state">
-            <span className="artifact-preview-spinner" aria-hidden="true" />
-            <strong>正在渲染 {name}</strong>
+            <strong>这个文件暂时没有内置渲染器</strong>
+            <span>可以在独立窗口或系统默认程序中打开。</span>
           </div>
         )}
       </div>
