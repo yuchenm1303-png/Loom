@@ -56,14 +56,38 @@
   height: 100%;
   contain: layout paint style;
   backface-visibility: hidden;
+  transition:
+    opacity var(--loom-motion-opacity,260ms) ease,
+    transform var(--loom-motion-panel,390ms) var(--loom-ease-out,cubic-bezier(.2,.74,.18,1)),
+    visibility 0s linear 0s;
+}
+
+.workspace-panels.sidebar-open > .sidebar,
+.workspace-panels.inspector-open > .inspector {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: translate3d(0,0,0);
+}
+
+.workspace-panels.sidebar-closed > .sidebar {
+  opacity: 0;
+  transform: translate3d(-16px,0,0);
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.workspace-panels.inspector-closed > .inspector {
+  opacity: 0;
+  transform: translate3d(16px,0,0);
+  visibility: hidden;
+  pointer-events: none;
 }
 
 /* Local panel motion ---------------------------------------------------------
    A sidebar toggle should not animate the whole application. Side surfaces
-   move locally, while App.tsx performs a horizontal-only live FLIP on the two
-   large content stages. The panel itself keeps the earlier depth treatment:
-   a restrained scale + directional travel on the panel surface only. Header
-   chrome and nested workspace content remain outside that effect. */
+   move locally, while App.tsx performs a live FLIP only on conversation-stage
+   and composer-stage. No old/new workspace bitmap is ever drawn. */
 .workspace-panels.sidebar-layout-closed > .sidebar {
   position: absolute;
   inset: 0 auto 0 0;
@@ -76,12 +100,9 @@
   width: var(--loom-inspector-panel-size, var(--inspector-width, 316px));
 }
 
-.workspace-panels > .sidebar {
-  transform-origin: left center;
-}
-
+.workspace-panels > .sidebar,
 .workspace-panels > .inspector {
-  transform-origin: right center;
+  transform-origin: center;
 }
 
 .workspace-panels.sidebar-open > .sidebar {
@@ -90,20 +111,20 @@
   pointer-events: auto;
   transform: translate3d(0,0,0);
   transition:
-    transform 300ms cubic-bezier(.2,.74,.18,1),
-    opacity 165ms ease,
+    transform 290ms cubic-bezier(.2,.74,.18,1),
+    opacity 190ms ease,
     visibility 0s linear 0s;
 }
 
 .workspace-panels.sidebar-closed > .sidebar {
   opacity: 0;
-  transform: translate3d(-12px,0,0);
+  transform: translate3d(-18px,0,0);
   visibility: hidden;
   pointer-events: none;
   transition:
-    transform 230ms cubic-bezier(.42,0,.72,.2),
-    opacity 135ms ease,
-    visibility 0s linear 230ms;
+    transform 240ms cubic-bezier(.42,0,.72,.2),
+    opacity 150ms ease,
+    visibility 0s linear 240ms;
 }
 
 .workspace-panels.inspector-open > .inspector {
@@ -112,155 +133,26 @@
   pointer-events: auto;
   transform: translate3d(0,0,0);
   transition:
-    transform 300ms cubic-bezier(.2,.74,.18,1),
-    opacity 165ms ease,
+    transform 290ms cubic-bezier(.2,.74,.18,1),
+    opacity 190ms ease,
     visibility 0s linear 0s;
 }
 
 .workspace-panels.inspector-closed > .inspector {
   opacity: 0;
-  transform: translate3d(12px,0,0);
+  transform: translate3d(18px,0,0);
   visibility: hidden;
   pointer-events: none;
   transition:
-    transform 230ms cubic-bezier(.42,0,.72,.2),
-    opacity 135ms ease,
-    visibility 0s linear 230ms;
+    transform 240ms cubic-bezier(.42,0,.72,.2),
+    opacity 150ms ease,
+    visibility 0s linear 240ms;
 }
 
 body.loom-panel-motion .workspace-panels .conversation-stage,
 body.loom-panel-motion .workspace-panels .composer-stage {
   backface-visibility: hidden;
   transform-style: preserve-3d;
-  isolation: isolate;
-}
-
-
-/* Scoped panel snapshot effect ----------------------------------------------
-   Restore the a61b0ff side-surface treatment exactly, but only for the sidebar
-   and inspector. The root/workspace is explicitly excluded, so opening a panel
-   cannot create a second full-screen UI or animate unrelated text/cards. */
-html[data-loom-panel-snapshot="true"] {
-  view-transition-name: none;
-}
-
-html[data-loom-panel-snapshot="true"] .workspace-panels > .sidebar {
-  view-transition-name: loom-sidebar;
-}
-
-html[data-loom-panel-snapshot="true"] .workspace-panels > .inspector {
-  view-transition-name: loom-inspector;
-}
-
-html[data-loom-panel-snapshot="true"] .workspace-panels > .sidebar,
-html[data-loom-panel-snapshot="true"] .workspace-panels > .inspector {
-  transition: none !important;
-}
-
-::view-transition-group(loom-sidebar),
-::view-transition-group(loom-inspector) {
-  animation-duration: var(--loom-motion-panel,390ms);
-  animation-timing-function: cubic-bezier(.22,.7,.18,1);
-  animation-fill-mode: both;
-}
-
-::view-transition-old(loom-sidebar),
-::view-transition-new(loom-sidebar),
-::view-transition-old(loom-inspector),
-::view-transition-new(loom-inspector) {
-  mix-blend-mode: normal;
-}
-
-/* Corner-origin flight -------------------------------------------------------
-   The earliest panel feel was not a flat horizontal slide: it read as if the
-   surface arrived from the window corner and then settled into the rail. Keep
-   that spatial character on the panel snapshot only, so inner text/icons remain
-   a single stable image and the workspace never joins the effect. */
-::view-transition-new(loom-sidebar) {
-  transform-origin: left top;
-  animation: loom-panel-surface-in-left 360ms cubic-bezier(.16,1,.3,1) both;
-}
-
-::view-transition-old(loom-sidebar) {
-  transform-origin: left top;
-  animation: loom-panel-surface-out-left 170ms cubic-bezier(.4,0,.8,.2) both;
-}
-
-::view-transition-new(loom-inspector) {
-  transform-origin: right top;
-  animation: loom-panel-surface-in-right 360ms cubic-bezier(.16,1,.3,1) both;
-}
-
-::view-transition-old(loom-inspector) {
-  transform-origin: right top;
-  animation: loom-panel-surface-out-right 170ms cubic-bezier(.4,0,.8,.2) both;
-}
-
-@keyframes loom-panel-surface-in-left {
-  0% {
-    opacity: 0;
-    transform: translate3d(-20px,-12px,0) scale(.976);
-  }
-  68% {
-    opacity: 1;
-    transform: translate3d(1px,1px,0) scale(1.002);
-  }
-  100% {
-    opacity: 1;
-    transform: translate3d(0,0,0) scale(1);
-  }
-}
-
-@keyframes loom-panel-surface-out-left {
-  from {
-    opacity: 1;
-    transform: translate3d(0,0,0) scale(1);
-  }
-  to {
-    opacity: 0;
-    transform: translate3d(-9px,-5px,0) scale(.988);
-  }
-}
-
-@keyframes loom-panel-surface-in-right {
-  0% {
-    opacity: 0;
-    transform: translate3d(20px,-12px,0) scale(.976);
-  }
-  68% {
-    opacity: 1;
-    transform: translate3d(-1px,1px,0) scale(1.002);
-  }
-  100% {
-    opacity: 1;
-    transform: translate3d(0,0,0) scale(1);
-  }
-}
-
-@keyframes loom-panel-surface-out-right {
-  from {
-    opacity: 1;
-    transform: translate3d(0,0,0) scale(1);
-  }
-  to {
-    opacity: 0;
-    transform: translate3d(9px,-5px,0) scale(.988);
-  }
-}
-
-/* Freeze the inspector's decorative micro-motion while its snapshot is moving.
-   Otherwise the snapshot and the live orbit/pulse can land on different frames,
-   which reads as the one-frame "shake" in the empty Computer Use state. */
-body.loom-panel-motion .workspace-panels > .inspector .runtime-pane {
-  animation: none !important;
-}
-
-body.loom-panel-motion .workspace-panels > .inspector .runtime-orbit-dot,
-body.loom-panel-motion .workspace-panels > .inspector .runtime-orbit-one::before,
-body.loom-panel-motion .workspace-panels > .inspector .runtime-orbit-two::before,
-body.loom-panel-motion .workspace-panels > .inspector .runtime-health.live .runtime-health-dot,
-body.loom-panel-motion .workspace-panels > .inspector .runtime-stream-mark.live i {
-  animation-play-state: paused !important;
 }
 
 .workspace-panel-resizer {

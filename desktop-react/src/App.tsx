@@ -66,15 +66,8 @@ type ResizePanel = "sidebar" | "inspector";
 type LayoutAnchorSnapshot = {
   element: HTMLElement;
   centerX: number;
+  centerY: number;
   kind: "conversation" | "composer";
-};
-type PanelViewTransition = {
-  updateCallbackDone: Promise<void>;
-  finished: Promise<void>;
-  skipTransition(): void;
-};
-type PanelTransitionDocument = Document & {
-  startViewTransition?: (update: () => void | Promise<void>) => PanelViewTransition;
 };
 
 type LayoutStyle = CSSProperties & {
@@ -193,37 +186,20 @@ function reducedPanelMotion(): boolean {
     || Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)").matches);
 }
 
-function settleLayoutAnchorAnimations(root: HTMLElement | null): void {
+function cancelLayoutAnchorAnimations(root: HTMLElement | null): void {
   if (!root) return;
   for (const selector of [".conversation-stage", ".composer-stage"]) {
     const element = root.querySelector<HTMLElement>(selector);
     if (!element) continue;
     for (const animation of element.getAnimations()) {
-      if (animation.id !== "loom-layout-anchor") continue;
-      // Preserve the exact currently painted offset before cancelling. We capture
-      // that visual position below, then remove the inline transform before the
-      // next layout commit. Rapid toggles therefore continue from where the eye
-      // sees the UI instead of snapping to the previous animation endpoint.
-      try { animation.commitStyles(); } catch { /* Older Chromium fallback. */ }
-      animation.cancel();
+      if (animation.id === "loom-layout-anchor") animation.cancel();
     }
-  }
-}
-
-function clearLayoutAnchorStyles(root: HTMLElement | null): void {
-  if (!root) return;
-  for (const selector of [".conversation-stage", ".composer-stage"]) {
-    const element = root.querySelector<HTMLElement>(selector);
-    if (!element) continue;
-    element.style.removeProperty("transform");
     element.style.removeProperty("will-change");
   }
 }
 
 function captureLayoutAnchors(root: HTMLElement | null): LayoutAnchorSnapshot[] {
   if (!root) return [];
-  settleLayoutAnchorAnimations(root);
-
   const captures: LayoutAnchorSnapshot[] = [];
   const targets: Array<{ selector: string; kind: LayoutAnchorSnapshot["kind"] }> = [
     { selector: ".conversation-stage", kind: "conversation" },
@@ -237,14 +213,9 @@ function captureLayoutAnchors(root: HTMLElement | null): LayoutAnchorSnapshot[] 
     captures.push({
       element,
       centerX: rect.left + rect.width / 2,
+      centerY: rect.top + rect.height / 2,
       kind: target.kind,
     });
-
-    // commitStyles above may have left the in-flight transform inline. Removing
-    // it happens before the next paint; the FLIP animation recreates the exact
-    // visual offset against the new layout in the same task.
-    element.style.removeProperty("transform");
-    element.style.removeProperty("will-change");
   }
   return captures;
 }
@@ -255,23 +226,32 @@ function animateLayoutAnchors(captures: LayoutAnchorSnapshot[]): Animation[] {
     if (!capture.element.isConnected) continue;
     const rect = capture.element.getBoundingClientRect();
     const nextCenterX = rect.left + rect.width / 2;
+    const nextCenterY = rect.top + rect.height / 2;
     const deltaX = capture.centerX - nextCenterX;
-    if (Math.abs(deltaX) < .75) continue;
+    const deltaY = capture.centerY - nextCenterY;
+    if (Math.abs(deltaX) < .5 && Math.abs(deltaY) < .5) continue;
 
     capture.element.style.willChange = "transform";
     const animation = capture.element.animate(
       [
-        { transform: `translate3d(${deltaX}px,0,0)` },
+        { transform: `translate3d(${deltaX}px,${deltaY}px,0)` },
         { transform: "translate3d(0,0,0)" },
       ],
       {
-        duration: capture.kind === "conversation" ? 270 : 285,
-        delay: capture.kind === "composer" ? 10 : 0,
+        duration: capture.kind === "conversation" ? 300 : 280,
+        delay: capture.kind === "composer" ? 18 : 0,
         easing: "cubic-bezier(.2,.74,.18,1)",
         fill: "both",
       },
     );
     animation.id = "loom-layout-anchor";
+    animation.finished
+      .catch(() => undefined)
+      .then(() => {
+        if (capture.element.getAnimations().includes(animation)) {
+          capture.element.style.removeProperty("will-change");
+        }
+      });
     animations.push(animation);
   }
   return animations;
@@ -285,7 +265,6 @@ export default function App() {
   const resizeRef = useRef<ResizeSession | null>(null);
   const resizeReleaseFrameRef = useRef<number | null>(null);
   const layoutMotionSerialRef = useRef(0);
-  const panelViewTransitionRef = useRef<PanelViewTransition | null>(null);
   const [inspectorOpen, setInspectorOpen] = useState(() => {
     try { return localStorage.getItem("loom.inspector.open") === "true"; }
     catch { return false; }
@@ -361,70 +340,32 @@ export default function App() {
     const serial = layoutMotionSerialRef.current + 1;
     layoutMotionSerialRef.current = serial;
 
-    // Keep the workspace live and animate only the two large content anchors.
-    // The sidebar/inspector themselves use a scoped View Transition snapshot so
-    // their earlier depth effect can return without scaling live text or making
-    // the whole screen participate in the transition.
+    // Only the central conversation and composer are spatially re-anchored.
+    // Everything else stays live and stable; no whole-screen old/new bitmap
+    // snapshots are created, so there is no global motion or text ghosting.
+    cancelLayoutAnchorAnimations(shellRef.current);
     const captures = captureLayoutAnchors(shellRef.current);
-    const transitionDocument = document as PanelTransitionDocument;
-    const canSnapshotPanels = typeof transitionDocument.startViewTransition === "function";
-
-    panelViewTransitionRef.current?.skipTransition();
     document.body.classList.add("loom-panel-motion");
+    flushSync(update);
 
-    if (!canSnapshotPanels) {
-      flushSync(update);
-      const animations = animateLayoutAnchors(captures);
-      void Promise.allSettled(animations.map((animation) => animation.finished))
-        .then(() => {
-          if (layoutMotionSerialRef.current !== serial) return;
-          clearLayoutAnchorStyles(shellRef.current);
-          document.body.classList.remove("loom-panel-motion");
-          window.dispatchEvent(new Event("loom:panel-resize-end"));
-        });
-      return;
-    }
-
-    document.documentElement.dataset.loomPanelSnapshot = "true";
-
-    let transition: PanelViewTransition;
-    try {
-      transition = transitionDocument.startViewTransition(() => {
-        flushSync(update);
+    const animations = animateLayoutAnchors(captures);
+    if (!animations.length) {
+      afterPaint(() => {
+        if (layoutMotionSerialRef.current !== serial) return;
+        document.body.classList.remove("loom-panel-motion");
+        window.dispatchEvent(new Event("loom:panel-resize-end"));
       });
-    } catch {
-      delete document.documentElement.dataset.loomPanelSnapshot;
-      flushSync(update);
-      const animations = animateLayoutAnchors(captures);
-      void Promise.allSettled(animations.map((animation) => animation.finished))
-        .then(() => {
-          if (layoutMotionSerialRef.current !== serial) return;
-          clearLayoutAnchorStyles(shellRef.current);
-          document.body.classList.remove("loom-panel-motion");
-          window.dispatchEvent(new Event("loom:panel-resize-end"));
-        });
       return;
     }
 
-    panelViewTransitionRef.current = transition;
-    const anchorMotion = transition.updateCallbackDone
+    void Promise.allSettled(animations.map((animation) => animation.finished))
       .then(() => {
         if (layoutMotionSerialRef.current !== serial) return;
-        const animations = animateLayoutAnchors(captures);
-        return Promise.allSettled(animations.map((animation) => animation.finished));
-      })
-      .catch(() => undefined);
-
-    void Promise.allSettled([transition.finished, anchorMotion])
-      .then(() => {
-        if (layoutMotionSerialRef.current !== serial) return;
-        panelViewTransitionRef.current = null;
-        delete document.documentElement.dataset.loomPanelSnapshot;
-        clearLayoutAnchorStyles(shellRef.current);
         document.body.classList.remove("loom-panel-motion");
         window.dispatchEvent(new Event("loom:panel-resize-end"));
       });
   }, []);
+
 
   useLayoutEffect(() => {
     const previous = committedPanelLayoutRef.current;
@@ -558,11 +499,7 @@ export default function App() {
     if (session?.frame !== null && session?.frame !== undefined) cancelAnimationFrame(session.frame);
     if (resizeReleaseFrameRef.current !== null) cancelAnimationFrame(resizeReleaseFrameRef.current);
     layoutMotionSerialRef.current += 1;
-    panelViewTransitionRef.current?.skipTransition();
-    panelViewTransitionRef.current = null;
-    delete document.documentElement.dataset.loomPanelSnapshot;
-    settleLayoutAnchorAnimations(shellRef.current);
-    clearLayoutAnchorStyles(shellRef.current);
+    cancelLayoutAnchorAnimations(shellRef.current);
     document.body.classList.remove("loom-panel-resizing");
     document.body.classList.remove("loom-panel-motion");
   }, []);

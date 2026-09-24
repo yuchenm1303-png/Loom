@@ -47,24 +47,4 @@ def test_visible_panel_actions_share_the_same_live_motion_coordinator() -> None:
     assert 'onClose={() => runLayoutTransition(() => setInspectorOpen(false))}' in app
     assert 'onClose={() => runLayoutTransition(() => setReviewOpen(false))}' in app
     assert 'onClose={() => runLayoutTransition(() => setAgentsOpen(false))}' in app
-    assert "startViewTransition" in app
-    assert 'dataset.loomPanelSnapshot = "true"' in app
-
-
-def test_layout_motion_does_not_introduce_vertical_stage_travel() -> None:
-    app = read("desktop-react/src/App.tsx")
-
-    assert "centerY" not in app
-    assert "deltaY" not in app
-    assert 'translate3d(${deltaX}px,0,0)' in app
-
-
-def test_panel_snapshot_never_captures_the_workspace_root() -> None:
-    css = read("desktop-react/src/components/workspace-panels.css")
-
-    assert 'html[data-loom-panel-snapshot="true"] {' in css
-    assert "view-transition-name: none" in css
-    assert "view-transition-name: loom-sidebar" in css
-    assert "view-transition-name: loom-inspector" in css
-    assert "view-transition-name: loom-workspace" not in css
-    assert "loom-transcript-old" not in css
+    assert "startViewTransition" not in app
