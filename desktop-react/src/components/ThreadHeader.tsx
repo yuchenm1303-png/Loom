@@ -3,6 +3,7 @@ import {
   Bot,
   Check,
   Copy,
+  FileCode2,
   FileDiff,
   Folder,
   PanelLeftClose,
@@ -32,6 +33,8 @@ interface ThreadHeaderProps {
   inspectorOpen: boolean;
   reviewOpen: boolean;
   reviewCount?: number;
+  artifactOpen?: boolean;
+  artifactCount?: number;
   agentsOpen?: boolean;
   agentCount?: number;
   accountAuthenticated?: boolean;
@@ -45,6 +48,7 @@ interface ThreadHeaderProps {
   onToggleSidebar(): void;
   onToggleInspector(): void;
   onToggleReview(): void;
+  onToggleArtifacts(): void;
   onToggleAgents(): void;
 }
 
@@ -81,6 +85,8 @@ export function ThreadHeader({
   inspectorOpen,
   reviewOpen,
   reviewCount = 0,
+  artifactOpen = false,
+  artifactCount = 0,
   agentsOpen = false,
   agentCount = 0,
   accountAuthenticated = false,
@@ -94,6 +100,7 @@ export function ThreadHeader({
   onToggleSidebar,
   onToggleInspector,
   onToggleReview,
+  onToggleArtifacts,
   onToggleAgents,
 }: ThreadHeaderProps) {
   const { language, t } = useI18n();
@@ -133,6 +140,10 @@ export function ThreadHeader({
     : (language === "zh-CN" ? "展开会话侧栏" : "Open conversation sidebar");
   const reviewLabel = language === "zh-CN" ? "审查" : "Review";
   const reviewTitle = language === "zh-CN" ? "审查当前对话中的文件更改" : "Review file changes from this conversation";
+  const artifactLabel = language === "zh-CN" ? "预览" : "Preview";
+  const artifactTitle = artifactCount > 0
+    ? (language === "zh-CN" ? `打开渲染器 · ${artifactCount} 个可预览文件` : `Open renderer · ${artifactCount} previewable files`)
+    : (language === "zh-CN" ? "当前还没有可渲染的文件" : "No renderable files yet");
   const agentsLabel = language === "zh-CN" ? "子代理" : "Agents";
   const agentsTitle = language === "zh-CN" ? "打开子代理工作区" : "Open sub-agent workspace";
   const accountTitle = accountAuthenticated
@@ -223,6 +234,20 @@ export function ThreadHeader({
           <FileDiff size={14.5} strokeWidth={1.8} />
           <span className="thread-review-label">{reviewLabel}</span>
           {reviewCount > 0 ? <span className="thread-review-count">{reviewCount}</span> : null}
+        </button>
+
+        <button
+          type="button"
+          className={`thread-review-button thread-artifact-button ${artifactOpen ? "active" : ""} ${artifactCount > 0 ? "has-artifacts" : "is-empty"}`}
+          onClick={onToggleArtifacts}
+          title={artifactTitle}
+          aria-label={artifactTitle}
+          aria-pressed={artifactOpen}
+          disabled={artifactCount <= 0}
+        >
+          <FileCode2 size={14.5} strokeWidth={1.8} />
+          <span className="thread-artifact-label">{artifactLabel}</span>
+          {artifactCount > 0 ? <span className="thread-artifact-count">{artifactCount}</span> : null}
         </button>
 
         <span className="thread-header-divider" aria-hidden="true" />
