@@ -198,7 +198,9 @@
   overflow-x: hidden;
   scrollbar-width: thin;
   scrollbar-color: #2a2e37 transparent;
+  scrollbar-gutter: stable;
   overscroll-behavior: contain;
+  overflow-anchor: none;
   contain: layout paint style;
 }
 .runtime-scroll::-webkit-scrollbar { width: 6px; }
@@ -319,6 +321,8 @@
 
 .runtime-event {
   position: relative;
+  content-visibility: auto;
+  contain-intrinsic-size: 51px;
   border: 1px solid transparent;
   border-radius: 10px;
   margin-bottom: 3px;

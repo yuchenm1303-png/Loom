@@ -11,7 +11,7 @@ import {
   Terminal,
   Wrench,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { memo, useCallback, useMemo, useState } from "react";
 import type { TranscriptItem } from "../types/loom";
 import { useI18n } from "../i18n";
 import { ReviewWorkspace } from "./ReviewWorkspace";
@@ -220,7 +220,15 @@ function EmptyState({ tab }: { tab: Tab }) {
   );
 }
 
-function RuntimeEvent({ item, expanded, onToggle }: { item: TranscriptItem; expanded: boolean; onToggle(): void }) {
+const RuntimeEvent = memo(function RuntimeEvent({
+  item,
+  expanded,
+  onToggle,
+}: {
+  item: TranscriptItem;
+  expanded: boolean;
+  onToggle(id: string): void;
+}) {
   const Icon = iconOf(item);
   const status = statusOf(item);
   const expandable = hasDetail(item);
@@ -232,7 +240,7 @@ function RuntimeEvent({ item, expanded, onToggle }: { item: TranscriptItem; expa
 
   return (
     <div className={`runtime-event ${running ? "is-running" : ""} ${failed ? "is-failed" : ""}`}>
-      <button className="runtime-event-main" onClick={onToggle} aria-expanded={expanded} disabled={!expandable}>
+      <button className="runtime-event-main" onClick={() => onToggle(item.id)} aria-expanded={expanded} disabled={!expandable}>
         <span className="runtime-event-icon" aria-hidden="true">
           {success ? <CheckCircle2 size={15} strokeWidth={1.8} /> : <Icon size={15} strokeWidth={1.8} />}
         </span>
@@ -255,7 +263,7 @@ function RuntimeEvent({ item, expanded, onToggle }: { item: TranscriptItem; expa
       ) : null}
     </div>
   );
-}
+});
 
 function sectionTitle(tab: Tab): string {
   if (tab === "activity") return "Execution stream";
@@ -274,18 +282,46 @@ export function Inspector({ items, onClose }: InspectorProps) {
   const [exportResult, setExportResult] = useState<Window["loom"] extends { exportComputerLogs(): Promise<infer T> } ? T | null : unknown>(null);
   const [exportError, setExportError] = useState("");
 
-  const toolItems = useMemo(
-    () => items.filter((item) => ["tool_call", "process", "approval", "error"].includes(item.type)),
-    [items],
-  );
-  const computerItems = useMemo(() => items.filter(isComputerItem), [items]);
-  const changes = useMemo(() => items.filter((item) => item.type === "file_edit"), [items]);
-  const processes = useMemo(() => items.filter((item) => item.type === "process"), [items]);
+  const {
+    toolItems,
+    computerItems,
+    changes,
+    processes,
+    busy,
+    failed,
+  } = useMemo(() => {
+    const nextToolItems: TranscriptItem[] = [];
+    const nextComputerItems: TranscriptItem[] = [];
+    const nextChanges: TranscriptItem[] = [];
+    const nextProcesses: TranscriptItem[] = [];
+    let nextBusy = false;
+    let nextFailed = false;
+
+    for (const item of items) {
+      const status = statusOf(item);
+      if (["tool_call", "process", "approval", "error"].includes(item.type)) nextToolItems.push(item);
+      if (isComputerItem(item)) nextComputerItems.push(item);
+      if (item.type === "file_edit") nextChanges.push(item);
+      if (item.type === "process") nextProcesses.push(item);
+      if (isRunningStatus(status)) nextBusy = true;
+      if (["failed", "error"].includes(status)) nextFailed = true;
+    }
+
+    return {
+      toolItems: nextToolItems,
+      computerItems: nextComputerItems,
+      changes: nextChanges,
+      processes: nextProcesses,
+      busy: nextBusy,
+      failed: nextFailed,
+    };
+  }, [items]);
   const visible = tab === "computer" ? computerItems : tab === "changes" ? changes : tab === "terminal" ? processes : toolItems;
   const counts: Record<Tab, number> = { activity: toolItems.length, computer: computerItems.length, changes: changes.length, terminal: processes.length };
   const tabIndex = tabs.findIndex((entry) => entry.id === tab);
-  const busy = items.some((item) => isRunningStatus(statusOf(item)));
-  const failed = items.some((item) => ["failed", "error"].includes(statusOf(item)));
+  const toggleEvent = useCallback((id: string) => {
+    setExpandedId((current) => current === id ? null : id);
+  }, []);
 
   async function handleExportComputerLogs() {
     setExportingLogs(true);
@@ -410,7 +446,7 @@ export function Inspector({ items, onClose }: InspectorProps) {
                       item={item}
                       key={item.id}
                       expanded={expandedId === item.id}
-                      onToggle={() => setExpandedId((current) => current === item.id ? null : item.id)}
+                      onToggle={toggleEvent}
                     />
                   ))}
                 </div>

@@ -22,11 +22,12 @@ def test_panel_tracks_have_one_direct_layout_source_of_truth() -> None:
     assert "const projectDetailsLayoutOpen = projectDetailsOpen" in app
 
 
-def test_inspector_content_survives_the_full_shared_exit_lifetime() -> None:
+def test_inspector_content_stays_warm_across_panel_toggles() -> None:
     app = read("desktop-react/src/App.tsx")
 
     assert "const inspectorPresence = useMotionPresence(inspectorVisible, 420)" in app
-    assert "items={inspectorPresence.mounted ? loom.items : EMPTY_TRANSCRIPT_ITEMS}" in app
+    assert "items={loom.items}" in app
+    assert "items={inspectorPresence.mounted ? loom.items : EMPTY_TRANSCRIPT_ITEMS}" not in app
 
 
 def test_transcript_reanchors_once_when_final_layout_commits() -> None:
@@ -63,6 +64,9 @@ def test_layout_motion_moves_live_anchors_without_snapshotting_workspace() -> No
 
     assert "captureLayoutAnchors" in app
     assert "animateLayoutAnchors" in app
+    assert 'selector: ".transcript"' in app
+    assert 'selector: ".composer"' in app
+    assert "deltaY" not in app
     assert "transition.updateCallbackDone" in app
     assert "view-transition-name: loom-workspace" not in css
     assert "loom-readable" not in css

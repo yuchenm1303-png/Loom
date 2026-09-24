@@ -367,11 +367,6 @@ body.loom-panel-resizing * {
   container-name: runtime-inspector;
 }
 
-.runtime-event {
-  content-visibility: auto;
-  contain-intrinsic-size: 52px;
-}
-
 @container loom-workspace (max-width: 940px) {
   .thread-meta-chip.permission-chip { display: none; }
   .thread-meta-chip.model-chip { max-width: 128px; }
@@ -468,8 +463,10 @@ body.loom-panel-motion .workspace-panels > .inspector {
 body.loom-panel-motion .workspace-panels .thread-header-leading,
 body.loom-panel-motion .workspace-panels .thread-header-copy,
 body.loom-panel-motion .workspace-panels .polished-thread-header-actions,
-body.loom-panel-motion .workspace-panels .conversation-stage,
-body.loom-panel-motion .workspace-panels .composer-stage {
+body.loom-panel-motion .workspace-panels .transcript,
+body.loom-panel-motion .workspace-panels .composer,
+body.loom-panel-motion .workspace-panels .composer-hint,
+body.loom-panel-motion .workspace-panels .run-progress-inline {
   backface-visibility: hidden;
   transform-style: preserve-3d;
 }
@@ -482,8 +479,14 @@ body.loom-panel-motion .workspace-panels > .inspector .runtime-orbit-dot,
 body.loom-panel-motion .workspace-panels > .inspector .runtime-orbit-one::before,
 body.loom-panel-motion .workspace-panels > .inspector .runtime-orbit-two::before,
 body.loom-panel-motion .workspace-panels > .inspector .runtime-health.live .runtime-health-dot,
+body.loom-panel-motion .workspace-panels > .inspector .runtime-status-dot,
 body.loom-panel-motion .workspace-panels > .inspector .runtime-stream-mark.live i {
   animation-play-state: paused !important;
+}
+
+body.loom-panel-motion .workspace-panels > .inspector .runtime-scroll {
+  scrollbar-gutter: stable;
+  overflow-anchor: none;
 }
 
 /* Portal docks previously unmounted at 240ms while their 390ms transform was

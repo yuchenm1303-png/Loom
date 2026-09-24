@@ -74,12 +74,13 @@ type LayoutMotionAnchorKind =
   | "header-leading"
   | "header-copy"
   | "header-actions"
-  | "conversation"
-  | "composer";
+  | "transcript"
+  | "composer"
+  | "composer-hint"
+  | "run-progress";
 type LayoutMotionAnchorSnapshot = {
   element: HTMLElement;
   centerX: number;
-  centerY: number;
   kind: LayoutMotionAnchorKind;
 };
 type LayoutViewTransition = {
@@ -207,12 +208,21 @@ function reducedPanelMotion(): boolean {
     || Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)").matches);
 }
 
+/*
+ * Measure the elements the eye actually follows. The stage wrappers change
+ * width when a side panel toggles; FLIP-ing those wrappers can put their
+ * centered children briefly on the wrong side of the old position. Measuring
+ * transcript/composer/header surfaces directly makes every transition
+ * monotonic: old screen coordinate -> new screen coordinate, with no recoil.
+ */
 const PANEL_LAYOUT_ANCHORS: Array<{ selector: string; kind: LayoutMotionAnchorKind }> = [
   { selector: ".thread-header-leading", kind: "header-leading" },
   { selector: ".thread-header-copy", kind: "header-copy" },
   { selector: ".polished-thread-header-actions", kind: "header-actions" },
-  { selector: ".conversation-stage", kind: "conversation" },
-  { selector: ".composer-stage", kind: "composer" },
+  { selector: ".transcript", kind: "transcript" },
+  { selector: ".composer", kind: "composer" },
+  { selector: ".composer-hint", kind: "composer-hint" },
+  { selector: ".run-progress-inline", kind: "run-progress" },
 ];
 
 function settleLayoutAnchorAnimations(root: HTMLElement | null): void {
@@ -250,13 +260,12 @@ function captureLayoutAnchors(root: HTMLElement | null): LayoutMotionAnchorSnaps
     captures.push({
       element,
       centerX: rect.left + rect.width / 2,
-      centerY: rect.top + rect.height / 2,
       kind: target.kind,
     });
 
-    // commitStyles() may have preserved an interrupted FLIP offset inline.
-    // Measure that exact painted position, then remove it before the real layout
-    // commit; the next FLIP reconstructs the same visual point without a snap.
+    // Preserve the current painted point across rapid toggles, then remove the
+    // committed transform before the real layout update. The next FLIP starts
+    // from exactly where the element was visible, not from an old endpoint.
     element.style.removeProperty("transform");
     element.style.removeProperty("will-change");
   }
@@ -269,29 +278,29 @@ function animateLayoutAnchors(captures: LayoutMotionAnchorSnapshot[]): Animation
     if (!capture.element.isConnected) continue;
     const rect = capture.element.getBoundingClientRect();
     const deltaX = capture.centerX - (rect.left + rect.width / 2);
-    const deltaY = capture.centerY - (rect.top + rect.height / 2);
-    if (Math.abs(deltaX) < .5 && Math.abs(deltaY) < .5) continue;
+    if (Math.abs(deltaX) < .5) continue;
 
-    const timing = (() => {
+    const duration = (() => {
       switch (capture.kind) {
-        case "header-leading": return { duration: 230, delay: 0 };
-        case "header-copy": return { duration: 250, delay: 6 };
-        case "header-actions": return { duration: 240, delay: 10 };
-        case "composer": return { duration: 280, delay: 12 };
-        default: return { duration: 300, delay: 0 };
+        case "header-leading": return 230;
+        case "header-copy": return 250;
+        case "header-actions": return 240;
+        case "composer": return 285;
+        case "composer-hint": return 280;
+        case "run-progress": return 270;
+        default: return 300;
       }
     })();
 
     capture.element.style.willChange = "transform";
     const animation = capture.element.animate(
       [
-        { transform: `translate3d(${deltaX}px,${deltaY}px,0)` },
+        { transform: `translate3d(${deltaX}px,0,0)` },
         { transform: "translate3d(0,0,0)" },
       ],
       {
-        duration: timing.duration,
-        delay: timing.delay,
-        easing: "cubic-bezier(.16,.78,.18,1)",
+        duration,
+        easing: "cubic-bezier(.2,.72,.18,1)",
         fill: "both",
       },
     );
@@ -1095,7 +1104,7 @@ export default function App() {
       />
 
       <Inspector
-        items={inspectorPresence.mounted ? loom.items : EMPTY_TRANSCRIPT_ITEMS}
+        items={loom.items}
         onClose={() => runLayoutTransition(() => setInspectorOpen(false), "right-close")}
       />
       <ProjectDetailsPanel

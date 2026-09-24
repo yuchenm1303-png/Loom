@@ -37,10 +37,14 @@ def test_relocating_live_elements_use_flip_instead_of_disappear_reappear() -> No
     assert 'selector: ".thread-header-leading"' in app
     assert 'selector: ".thread-header-copy"' in app
     assert 'selector: ".polished-thread-header-actions"' in app
-    assert 'selector: ".conversation-stage"' in app
-    assert 'selector: ".composer-stage"' in app
+    assert 'selector: ".transcript"' in app
+    assert 'selector: ".composer"' in app
+    assert 'selector: ".composer-hint"' in app
+    assert 'selector: ".conversation-stage"' not in app
+    assert 'selector: ".composer-stage"' not in app
     assert 'animation.id = "loom-layout-anchor"' in app
     assert "animation.commitStyles()" in app
+    assert "deltaY" not in app
 
     assert "loom-readable" not in css
     assert "loom-transcript-old" not in css
@@ -83,7 +87,9 @@ def test_inspector_micro_motion_is_frozen_during_panel_handoff() -> None:
     assert ".runtime-orbit-dot" in css
     assert ".runtime-orbit-one::before" in css
     assert ".runtime-orbit-two::before" in css
+    assert ".runtime-status-dot" in css
     assert "animation-play-state: paused !important" in css
+    assert "scrollbar-gutter: stable" in css
 
 
 def test_portal_surfaces_capture_only_their_logical_endpoint() -> None:
@@ -97,3 +103,17 @@ def test_portal_surfaces_capture_only_their_logical_endpoint() -> None:
     assert 'data-open={open ? "true" : "false"}' in project
     assert '.review-workspace[data-open="true"]' in css
     assert '.review-workspace[data-open="false"]' in css
+
+
+def test_large_inspector_keeps_rows_mounted_and_virtualizes_offscreen_paint() -> None:
+    app = read("desktop-react/src/App.tsx")
+    inspector = read("desktop-react/src/components/Inspector.tsx")
+    inspector_css = read("desktop-react/src/components/Inspector.css")
+
+    assert "items={loom.items}" in app
+    assert "items={inspectorPresence.mounted ? loom.items : EMPTY_TRANSCRIPT_ITEMS}" not in app
+    assert "memo(function RuntimeEvent" in inspector
+    assert "onToggle={toggleEvent}" in inspector
+    assert "scrollbar-gutter: stable" in inspector_css
+    assert "content-visibility: auto" in inspector_css
+    assert "contain-intrinsic-size: 51px" in inspector_css
