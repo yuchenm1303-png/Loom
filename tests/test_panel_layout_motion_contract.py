@@ -43,11 +43,17 @@ def test_transcript_reanchors_once_when_final_layout_commits() -> None:
 def test_every_visible_panel_close_path_uses_the_same_coordinator() -> None:
     app = read("desktop-react/src/App.tsx")
 
-    assert 'onToggleSidebar={() => runLayoutTransition(() => setSidebarOpen((open) => !open))}' in app
-    assert 'runLayoutTransition(() => setSidebarOpen((open) => !open));' in app
-    assert 'onClose={() => runLayoutTransition(() => setInspectorOpen(false))}' in app
-    assert 'onClose={() => runLayoutTransition(() => setReviewOpen(false))}' in app
-    assert 'onClose={() => runLayoutTransition(() => setAgentsOpen(false))}' in app
+    # Every shell toggle/close hands its state flip to the shared coordinator and
+    # tags the direction, so the inner content can choreograph off the same
+    # signal. Assert on the call prefix rather than the full formatted call --
+    # the arguments wrap onto their own lines.
+    assert "onToggleSidebar={() => runLayoutTransition(" in app
+    assert 'sidebarOpen ? "left-close" : "left-open"' in app
+    assert 'runLayoutTransition(() => setSidebarOpen(true), "left-open")' in app
+    assert 'runLayoutTransition(() => setSelectedProjectId(""), "right-close")' in app
+    assert 'onClose={() => runLayoutTransition(() => setInspectorOpen(false), "right-close")}' in app
+    assert 'onClose={() => runLayoutTransition(() => setReviewOpen(false), "right-close")}' in app
+    assert 'onClose={() => runLayoutTransition(() => setAgentsOpen(false), "right-close")}' in app
 
 
 def test_direction_metadata_is_cleaned_after_every_transition() -> None:
