@@ -8,27 +8,28 @@ def read(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
 
 
-def test_panel_tracks_commit_once_instead_of_interpolating_chat_width() -> None:
+def test_panel_tracks_have_one_direct_layout_source_of_truth() -> None:
     css = read("desktop-react/src/components/workspace-panels.css")
     app = read("desktop-react/src/App.tsx")
 
     assert "transition: grid-template-columns" not in css
     assert ".sidebar-layout-closed" in css
     assert ".inspector-layout-closed" in css
-    assert "sidebarLayoutOpen" in app
-    assert "inspectorLayoutOpen" in app
-    assert "PANEL_LAYOUT_SETTLE_MS = 390" in app
-    assert "useLinkedPanelMotion" in app
+    assert "const sidebarLayoutOpen = sidebarOpen" in app
+    assert "const inspectorLayoutOpen = inspectorVisible" in app
+    assert "const reviewLayoutOpen = reviewOpen" in app
+    assert "const agentsLayoutOpen = agentsOpen" in app
+    assert "const projectDetailsLayoutOpen = projectDetailsOpen" in app
 
 
-def test_inspector_keeps_content_until_overlay_slide_out_finishes() -> None:
+def test_inspector_content_survives_the_full_shared_exit_lifetime() -> None:
     app = read("desktop-react/src/App.tsx")
 
+    assert "const inspectorPresence = useMotionPresence(inspectorVisible, 420)" in app
     assert "items={inspectorPresence.mounted ? loom.items : EMPTY_TRANSCRIPT_ITEMS}" in app
-    assert "const inspectorPresence = useMotionPresence(inspectorVisible, PANEL_LAYOUT_SETTLE_MS + 30)" in app
 
 
-def test_transcript_reanchors_once_when_panel_layout_commits() -> None:
+def test_transcript_reanchors_once_when_final_layout_commits() -> None:
     app = read("desktop-react/src/App.tsx")
     scroll = read("desktop-react/src/components/TranscriptScrollController.tsx")
 
