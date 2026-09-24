@@ -108,18 +108,30 @@
   transition-timing-function: var(--loom-ease-in);
 }
 
+.settings-main-scroll {
+  /* Capture the fixed viewport rather than the variable-height page. This
+     prevents the transition group from interpolating content height. */
+  view-transition-name: settings-page;
+}
+
 .settings-page-surface {
   min-width: 0;
   display: grid;
   gap: 24px;
   contain: layout paint style;
-  view-transition-name: settings-page;
   animation: loom-settings-page-enter 360ms var(--loom-ease-out) both;
 }
 
 @keyframes loom-settings-page-enter {
   from { opacity: .58; transform: translate3d(0, 3px, 0); }
   to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+/* Chromium's View Transition API owns section navigation when available.
+   Keeping the mount fallback active as well would restart it when the view
+   transition finishes, producing a small second jump. */
+@supports (view-transition-name: settings-page) {
+  .settings-page-surface { animation: none; }
 }
 
 ::view-transition-group(settings-page) {
@@ -154,8 +166,6 @@
 @keyframes loom-settings-section-new-backward {
   from { opacity: 0; transform: translate3d(0, -10px, 0) scale(.998); }
 }
-
-:root[data-settings-nav-direction] .settings-page-surface { animation: none; }
 
 /* Controls should feel responsive, not twitchy. */
 .settings-nav button,
