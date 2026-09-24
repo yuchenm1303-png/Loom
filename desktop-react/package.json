@@ -21,6 +21,8 @@
     "dev:ready:auto": "node scripts/dev-ready.mjs --mode=auto",
     "test:ufo-scripts": "node --test scripts/tests/*.test.mjs",
     "test:streaming": "node --test scripts/tests/streaming-text.test.mjs",
+    "test:electron": "npm run build:electron && node --experimental-test-module-mocks --test electron/tests/*.test.mjs",
+    "check:live-account": "npm run build:electron && node --experimental-test-module-mocks --test scripts/check-live-account.mjs",
     "dev:ready:ufo": "node scripts/dev-ready-ufo.mjs",
     "predev": "npm run prepare:stickers",
     "prebuild": "npm run prepare:stickers",

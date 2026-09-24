@@ -6,6 +6,7 @@ import argparse
 import base64
 import hashlib
 import hmac
+import ipaddress
 import json
 import os
 import re
@@ -18,11 +19,52 @@ from dataclasses import dataclass
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any
+from typing import Any, Collection
 
 
 _EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 _PASSWORD_ITERATIONS = 600_000
+
+# Peers allowed to set the client address through a forwarding header. The
+# service is meant to sit behind a TLS-terminating reverse proxy, so loopback is
+# trusted by default. Override with LOOM_ACCOUNT_TRUSTED_PROXIES
+# (comma-separated addresses or CIDR ranges); set it to an empty value to trust
+# nobody and always rate limit on the raw peer address.
+#
+# CIDR support matters when the proxy runs in Docker: the peer address is then
+# the proxy container's address on a bridge network, which is neither loopback
+# nor stable across restarts. Trust the network instead of one address.
+_DEFAULT_TRUSTED_PROXIES = ("127.0.0.1", "::1")
+
+
+def _trusted_proxy_networks(
+    values: Collection[str],
+) -> tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]:
+    """Parse trusted-proxy entries, accepting bare addresses and CIDR ranges.
+
+    Unparseable entries are skipped rather than raising: a typo in an optional
+    environment variable should not stop the service from starting.
+    """
+    networks: list[ipaddress.IPv4Network | ipaddress.IPv6Network] = []
+    for value in values:
+        text = str(value).strip()
+        if not text:
+            continue
+        try:
+            networks.append(ipaddress.ip_network(text, strict=False))
+        except ValueError:
+            continue
+    return tuple(networks)
+
+
+def _is_trusted_proxy(
+    peer: str, networks: Collection[ipaddress.IPv4Network | ipaddress.IPv6Network]
+) -> bool:
+    try:
+        address = ipaddress.ip_address(peer)
+    except ValueError:
+        return False
+    return any(address in network for network in networks)
 
 
 class AccountError(RuntimeError):
@@ -68,6 +110,23 @@ def _password_matches(password: str, encoded: str) -> bool:
         return False
     actual = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, iterations)
     return hmac.compare_digest(actual, expected)
+
+
+_cached_decoy_hash: str | None = None
+
+
+def _decoy_password_hash() -> str:
+    """A genuine PBKDF2 record used only to equalise failed-login timing.
+
+    :meth:`AccountStore.authenticate` runs the full key-derivation function when
+    the address is known. Running it for an unknown address as well keeps the
+    response time from revealing whether an email is registered. Built lazily so
+    importing this module does not pay for 600k iterations.
+    """
+    global _cached_decoy_hash
+    if _cached_decoy_hash is None:
+        _cached_decoy_hash = _password_hash(secrets.token_urlsafe(32))
+    return _cached_decoy_hash
 
 
 def _normalize_email(value: str) -> str:
@@ -178,7 +237,16 @@ class AccountStore:
         email = _normalize_email(email)
         with self._connect() as db:
             row = db.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
-        if row is None or not _password_matches(str(password or ""), str(row["password_hash"])):
+        if row is None:
+            # Burn the same KDF cost as a real account. Short-circuiting here
+            # would turn response latency into an email-enumeration oracle.
+            _password_matches(str(password or ""), _decoy_password_hash())
+            raise AccountError(
+                HTTPStatus.UNAUTHORIZED,
+                "INVALID_CREDENTIALS",
+                "Email or password is incorrect.",
+            )
+        if not _password_matches(str(password or ""), str(row["password_hash"])):
             raise AccountError(
                 HTTPStatus.UNAUTHORIZED,
                 "INVALID_CREDENTIALS",
@@ -359,16 +427,36 @@ class AccountStore:
 
 
 class SlidingWindowLimiter:
+    """In-process sliding-window limiter keyed by client address.
+
+    Keys are pruned once their window drains. Without that, a public deployment
+    would grow ``_events`` without bound simply by being scanned from many
+    addresses, since every new key would otherwise be retained forever.
+    """
+
+    _SWEEP_EVERY = 512
+
     def __init__(self) -> None:
         self._guard = threading.Lock()
         self._events: dict[str, list[float]] = {}
+        self._widest_window = 0
+        self._calls_since_sweep = 0
+
+    def _sweep(self, now: float) -> None:
+        cutoff = now - self._widest_window
+        for key in [key for key, stamps in self._events.items() if all(stamp < cutoff for stamp in stamps)]:
+            del self._events[key]
 
     def check(self, key: str, limit: int, window_seconds: int) -> None:
         now = time.monotonic()
         cutoff = now - window_seconds
         with self._guard:
+            self._widest_window = max(self._widest_window, window_seconds)
             events = [stamp for stamp in self._events.get(key, []) if stamp >= cutoff]
             if len(events) >= limit:
+                # Keep the pruned list so the window keeps sliding while the
+                # caller is being throttled.
+                self._events[key] = events
                 raise AccountError(
                     HTTPStatus.TOO_MANY_REQUESTS,
                     "RATE_LIMITED",
@@ -376,6 +464,10 @@ class SlidingWindowLimiter:
                 )
             events.append(now)
             self._events[key] = events
+            self._calls_since_sweep += 1
+            if self._calls_since_sweep >= self._SWEEP_EVERY:
+                self._calls_since_sweep = 0
+                self._sweep(now)
 
 
 class AccountApplication:
@@ -418,13 +510,28 @@ class AccountApplication:
 class AccountRequestHandler(BaseHTTPRequestHandler):
     server_version = "LoomAccount/1"
 
+    # Requests larger than _MAX_BODY_BYTES are refused before parsing. A bounded
+    # prefix is still drained so the client can finish writing and read the 413;
+    # answering without draining makes the client observe a connection reset.
+    _MAX_BODY_BYTES = 64 * 1024
+    _MAX_DRAIN_BYTES = 1024 * 1024
+
     @property
     def application(self) -> AccountApplication:
         return self.server.application  # type: ignore[attr-defined]
 
+    def _drain(self, length: int) -> None:
+        remaining = min(length, self._MAX_DRAIN_BYTES)
+        while remaining > 0:
+            chunk = self.rfile.read(min(remaining, 64 * 1024))
+            if not chunk:
+                return
+            remaining -= len(chunk)
+
     def _json_body(self) -> dict[str, Any]:
         length = int(self.headers.get("Content-Length") or 0)
-        if length > 64 * 1024:
+        if length > self._MAX_BODY_BYTES:
+            self._drain(length)
             raise AccountError(
                 HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
                 "REQUEST_TOO_LARGE",
@@ -458,7 +565,17 @@ class AccountRequestHandler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def _client_key(self) -> str:
-        return str(self.client_address[0] if self.client_address else "unknown")
+        peer = str(self.client_address[0] if self.client_address else "unknown")
+        if not _is_trusted_proxy(peer, getattr(self.server, "trusted_proxies", ())):
+            # Any caller can send X-Real-IP, so only believe it when the
+            # immediate peer is a proxy we control. Otherwise every request
+            # could mint itself a fresh rate-limit bucket.
+            return peer
+        # The proxy overwrites these headers, so the leftmost entry is the
+        # address it actually observed.
+        forwarded = self.headers.get("X-Real-IP") or self.headers.get("X-Forwarded-For") or ""
+        candidate = forwarded.split(",")[0].strip()
+        return candidate or peer
 
     def _dispatch(self) -> dict[str, Any]:
         path = self.path.split("?", 1)[0].rstrip("/") or "/"
@@ -509,9 +626,17 @@ class AccountRequestHandler(BaseHTTPRequestHandler):
 class LoomAccountServer(ThreadingHTTPServer):
     daemon_threads = True
 
-    def __init__(self, address: tuple[str, int], application: AccountApplication) -> None:
+    def __init__(
+        self,
+        address: tuple[str, int],
+        application: AccountApplication,
+        trusted_proxies: Collection[str] | None = None,
+    ) -> None:
         super().__init__(address, AccountRequestHandler)
         self.application = application
+        self.trusted_proxies = _trusted_proxy_networks(
+            _DEFAULT_TRUSTED_PROXIES if trusted_proxies is None else trusted_proxies
+        )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -542,7 +667,13 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     application = AccountApplication(AccountStore(config))
-    server = LoomAccountServer((str(args.host), int(args.port)), application)
+    trusted_proxies_setting = os.environ.get("LOOM_ACCOUNT_TRUSTED_PROXIES")
+    trusted_proxies = (
+        _DEFAULT_TRUSTED_PROXIES
+        if trusted_proxies_setting is None
+        else tuple(part.strip() for part in trusted_proxies_setting.split(",") if part.strip())
+    )
+    server = LoomAccountServer((str(args.host), int(args.port)), application, trusted_proxies)
     print(f"Loom Account Service listening on http://{args.host}:{args.port}")
     try:
         server.serve_forever()

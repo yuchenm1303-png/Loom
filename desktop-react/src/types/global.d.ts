@@ -1,3 +1,5 @@
+import type { LoomAccountResult } from "./account";
+
 export interface LoomNotification {
   jsonrpc: "2.0";
   method: string;
@@ -24,10 +26,12 @@ export interface LoomBridge {
   disconnect(): Promise<void>;
   /** Keep Electron native controls in sync with Loom theme. */
   setNativeTheme(source: "system" | "light" | "dark"): Promise<"light" | "dark">;
-  accountStatus<T = unknown>(): Promise<T>;
-  accountLogin<T = unknown>(email: string, password: string): Promise<T>;
-  accountRegister<T = unknown>(email: string, password: string): Promise<T>;
-  accountLogout<T = unknown>(): Promise<T>;
+  /** Account calls resolve with a result union instead of rejecting, so the
+      service's error code reaches the renderer intact. */
+  accountStatus(): Promise<LoomAccountResult>;
+  accountLogin(email: string, password: string): Promise<LoomAccountResult>;
+  accountRegister(email: string, password: string): Promise<LoomAccountResult>;
+  accountLogout(): Promise<LoomAccountResult>;
   listModels<T = unknown>(): Promise<T>;
   setModelProviderKey<T = unknown>(provider: string, apiKey: string): Promise<T>;
   switchModelProfile<T = unknown>(selection: string): Promise<T>;

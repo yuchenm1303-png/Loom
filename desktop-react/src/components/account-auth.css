@@ -1,9 +1,40 @@
+/* Loom account surfaces — header affordance + sign-in dialog.
+   Every colour goes through the project's semantic tokens (styles.css :root for
+   the dark baseline, theme.css html[data-loom-theme="light"] for the light
+   remap), with a short light-theme block at the end for the few values a token
+   cannot express. The fallbacks below mirror the dark baseline so this file
+   still renders correctly in isolation, e.g. in the design preview page. */
+
+/* ------------------------------------------------------------------ header */
+
 .thread-account-button {
   position: relative;
 }
 
 .thread-account-button.signed-in {
-  color: var(--text, #eef2f5);
+  color: var(--accent-soft, #aaa0ff);
+  background: var(--accent-faint, rgba(139, 124, 246, .12));
+  border-color: color-mix(in srgb, var(--accent, #8b7cf6) 18%, transparent);
+}
+
+.thread-account-button.signed-in:hover {
+  color: var(--accent-soft, #aaa0ff);
+  background: color-mix(in srgb, var(--accent, #8b7cf6) 16%, transparent);
+}
+
+.thread-account-initial {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--accent, #8b7cf6) 28%, transparent);
+  color: var(--accent-soft, #aaa0ff);
+  font-size: .62rem;
+  font-weight: 760;
+  line-height: 1;
+  letter-spacing: 0;
+  user-select: none;
 }
 
 .thread-account-dot {
@@ -12,11 +43,20 @@
   bottom: 5px;
   width: 5px;
   height: 5px;
-  border: 1px solid var(--panel, #11151a);
+  border: 1px solid var(--bg, #0b0c0f);
   border-radius: 50%;
-  background: #58bd88;
-  box-shadow: 0 0 0 2px rgba(88, 189, 136, .08);
+  background: var(--success, #82b49b);
 }
+
+/* The avatar already fills most of the 30px button, so the status dot tucks
+   into the corner instead of colliding with the initial. */
+.thread-account-button.signed-in .thread-account-dot {
+  right: 2px;
+  bottom: 2px;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--success, #82b49b) 14%, transparent);
+}
+
+/* ------------------------------------------------------------------ dialog */
 
 .loom-account-backdrop {
   position: fixed;
@@ -25,18 +65,25 @@
   display: grid;
   place-items: center;
   padding: 24px;
-  background: rgba(5, 8, 12, .58);
+  overflow-y: auto;
+  background: color-mix(in srgb, #05080c 52%, transparent);
+  backdrop-filter: blur(10px) saturate(115%);
+  -webkit-backdrop-filter: blur(10px) saturate(115%);
   transition: background-color 270ms ease;
 }
 
 .loom-account-dialog {
   position: relative;
-  width: min(430px, calc(100vw - 32px));
-  padding: 28px;
-  border: 1px solid color-mix(in srgb, var(--border, #2a3139) 86%, transparent);
+  width: min(438px, calc(100vw - 32px));
+  padding: 26px 28px 24px;
+  border: 1px solid color-mix(in srgb, var(--border, #292d38) 88%, transparent);
   border-radius: 18px;
-  background: color-mix(in srgb, var(--panel, #11151a) 98%, transparent);
-  box-shadow: 0 28px 90px rgba(0, 0, 0, .34);
+  background:
+    radial-gradient(140% 82% at 50% -22%, color-mix(in srgb, var(--accent, #8b7cf6) 7%, transparent), transparent 62%),
+    var(--panel, #101217);
+  box-shadow:
+    var(--loom-shadow, 0 18px 48px rgba(0, 0, 0, .24)),
+    0 2px 8px rgba(0, 0, 0, .14);
   contain: layout paint style;
   backface-visibility: hidden;
   will-change: transform, opacity;
@@ -75,150 +122,311 @@
 
 .loom-account-close {
   position: absolute;
-  top: 15px;
-  right: 15px;
-  width: 32px;
-  height: 32px;
-  border: 0;
+  top: 14px;
+  right: 14px;
+  width: 30px;
+  height: 30px;
+  border: 1px solid transparent;
   border-radius: 9px;
   display: grid;
   place-items: center;
   background: transparent;
-  color: var(--muted, #8b96a1);
+  color: var(--muted, #858c99);
   cursor: pointer;
+  transition: color 130ms ease, background 130ms ease, border-color 130ms ease;
 }
 
-.loom-account-close:hover {
-  background: color-mix(in srgb, currentColor 8%, transparent);
-  color: var(--text, #eef2f5);
+.loom-account-close:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--text, #f0f1f4) 7%, transparent);
+  border-color: color-mix(in srgb, var(--text, #f0f1f4) 8%, transparent);
+  color: var(--text, #f0f1f4);
 }
+
+.loom-account-close:disabled {
+  opacity: .4;
+  cursor: not-allowed;
+}
+
+/* --------------------------------------------------------------- structure */
 
 .loom-account-header {
   display: grid;
   grid-template-columns: 42px 1fr;
   gap: 13px;
-  padding-right: 26px;
+  padding-right: 30px;
 }
 
 .loom-account-mark {
   width: 42px;
   height: 42px;
-  border: 1px solid color-mix(in srgb, var(--border, #2a3139) 88%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent, #8b7cf6) 26%, var(--border, #292d38));
   border-radius: 12px;
   display: grid;
   place-items: center;
-  color: var(--text, #eef2f5);
-  background: color-mix(in srgb, var(--panel-strong, #171c22) 92%, transparent);
+  color: var(--accent-soft, #aaa0ff);
+  background:
+    radial-gradient(120% 120% at 32% 0%, color-mix(in srgb, var(--accent, #8b7cf6) 20%, transparent), transparent 72%),
+    var(--panel-soft, #191c24);
 }
 
 .loom-account-header h2 {
   margin: 0;
-  color: var(--text, #eef2f5);
-  font-size: 1.14rem;
+  color: var(--text, #f0f1f4);
+  font-size: 1.12rem;
   font-weight: 680;
-  letter-spacing: -.025em;
+  letter-spacing: -.022em;
 }
 
 .loom-account-header p {
   margin: 6px 0 0;
-  color: var(--muted, #87929d);
-  font-size: .76rem;
+  color: var(--muted, #858c99);
+  font-size: .755rem;
   line-height: 1.55;
 }
+
+/* ------------------------------------------------------------------- tabs */
 
 .loom-account-tabs {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 4px;
-  margin-top: 24px;
+  margin-top: 22px;
   padding: 4px;
   border-radius: 11px;
-  background: color-mix(in srgb, var(--text, #fff) 5%, transparent);
+  background: var(--bg-deep, #090a0d);
 }
 
 .loom-account-tabs button {
-  height: 34px;
-  border: 0;
+  height: 33px;
+  border: 1px solid transparent;
   border-radius: 8px;
   background: transparent;
-  color: var(--muted, #8c97a2);
+  color: var(--muted, #858c99);
   font: inherit;
-  font-size: .75rem;
+  font-size: .745rem;
   font-weight: 620;
   cursor: pointer;
+  transition: color 130ms ease, background 130ms ease, border-color 130ms ease, box-shadow 130ms ease;
+}
+
+.loom-account-tabs button:hover:not(.active) {
+  color: var(--text-2, #bcc1cb);
 }
 
 .loom-account-tabs button.active {
-  background: color-mix(in srgb, var(--panel-strong, #1b2026) 96%, transparent);
-  color: var(--text, #eef2f5);
-  box-shadow: 0 1px 4px rgba(0,0,0,.16);
+  border-color: color-mix(in srgb, var(--accent, #8b7cf6) 26%, var(--border, #292d38));
+  background: var(--panel, #101217);
+  color: var(--accent-soft, #aaa0ff);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .16);
 }
+
+/* ------------------------------------------------------------------- form */
 
 .loom-account-form {
   display: flex;
   flex-direction: column;
-  gap: 15px;
-  margin-top: 19px;
+  gap: 14px;
+  margin-top: 18px;
 }
 
-.loom-account-form label {
+/* The caption is a sibling of the input rather than a wrapper, so the reveal
+   button is not nested inside a <label> (which would forward its clicks). */
+.loom-account-field {
   display: flex;
   flex-direction: column;
   gap: 7px;
-  color: var(--muted-strong, #a5afb8);
-  font-size: .73rem;
+}
+
+.loom-account-field > label {
+  color: var(--text-2, #bcc1cb);
+  font-size: .72rem;
   font-weight: 610;
 }
 
+.loom-account-input-wrap {
+  position: relative;
+  display: block;
+}
+
 .loom-account-form input {
-  height: 43px;
+  width: 100%;
+  height: 44px;
   padding: 0 12px;
-  border: 1px solid color-mix(in srgb, var(--border, #303842) 95%, transparent);
+  border: 1px solid var(--border, #292d38);
   border-radius: 10px;
   outline: none;
-  background: color-mix(in srgb, var(--panel-strong, #0c1014) 94%, transparent);
-  color: var(--text, #eef2f5);
+  background: var(--bg-deep, #090a0d);
+  color: var(--text, #f0f1f4);
   font: inherit;
   font-size: .84rem;
+  transition: border-color 140ms ease, box-shadow 140ms ease, background 140ms ease;
+}
+
+.loom-account-input-wrap.has-reveal input {
+  padding-right: 42px;
+}
+
+.loom-account-form input::placeholder {
+  color: var(--faint, #59606c);
+}
+
+.loom-account-form input:hover:not(:disabled) {
+  border-color: var(--border-strong, #383d4a);
 }
 
 .loom-account-form input:focus {
-  border-color: color-mix(in srgb, #58a6d8 70%, var(--border, #303842));
-  box-shadow: 0 0 0 3px rgba(66, 153, 211, .11);
+  border-color: color-mix(in srgb, var(--accent, #8b7cf6) 56%, var(--border, #292d38));
+  box-shadow: 0 0 0 3px var(--accent-faint, rgba(139, 124, 246, .12));
 }
+
+.loom-account-form input:disabled {
+  opacity: .6;
+  cursor: not-allowed;
+}
+
+.loom-account-form input[aria-invalid="true"] {
+  border-color: color-mix(in srgb, var(--danger, #dc7c86) 62%, var(--border, #292d38));
+}
+
+.loom-account-form input[aria-invalid="true"]:focus {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger, #dc7c86) 13%, transparent);
+}
+
+/* Chromium paints autofilled fields with its own background; repaint them with
+   the theme surface and keep the focus ring while doing so. */
+.loom-account-form input:-webkit-autofill,
+.loom-account-form input:-webkit-autofill:hover {
+  -webkit-text-fill-color: var(--text, #f0f1f4);
+  caret-color: var(--text, #f0f1f4);
+  box-shadow: 0 0 0 40px var(--bg-deep, #090a0d) inset;
+}
+
+.loom-account-form input:-webkit-autofill:focus {
+  box-shadow:
+    0 0 0 40px var(--bg-deep, #090a0d) inset,
+    0 0 0 3px var(--accent-faint, rgba(139, 124, 246, .12));
+}
+
+.loom-account-reveal {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  transform: translateY(-50%);
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 7px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  color: var(--faint, #59606c);
+  cursor: pointer;
+  transition: color 130ms ease, background 130ms ease;
+}
+
+.loom-account-reveal:hover:not(:disabled) {
+  color: var(--text-2, #bcc1cb);
+  background: color-mix(in srgb, var(--text, #f0f1f4) 7%, transparent);
+}
+
+.loom-account-reveal:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+.loom-account-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--muted, #858c99);
+  font-size: .675rem;
+  line-height: 1.45;
+}
+
+.loom-account-hint.tone-ok {
+  color: var(--success, #82b49b);
+}
+
+.loom-account-hint.tone-bad {
+  color: var(--danger, #dc7c86);
+}
+
+/* ---------------------------------------------------------------- buttons */
 
 .loom-account-primary-button,
 .loom-account-secondary-button {
   min-height: 42px;
   border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   font: inherit;
   font-size: .78rem;
   font-weight: 680;
   cursor: pointer;
+  transition: transform 140ms cubic-bezier(.2, .78, .2, 1), box-shadow 140ms ease, background 140ms ease, border-color 140ms ease, color 140ms ease;
 }
 
 .loom-account-primary-button {
   margin-top: 2px;
-  border: 1px solid color-mix(in srgb, var(--text, #f0f3f5) 88%, transparent);
-  background: var(--text, #eef2f5);
-  color: var(--background, #11151a);
+  border: 1px solid color-mix(in srgb, var(--text, #f0f1f4) 88%, transparent);
+  background: var(--text, #f0f1f4);
+  color: var(--bg, #0b0c0f);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .16);
+}
+
+.loom-account-primary-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow:
+    0 6px 18px color-mix(in srgb, var(--accent, #8b7cf6) 24%, transparent),
+    0 1px 2px rgba(0, 0, 0, .18);
+}
+
+.loom-account-primary-button:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .16);
 }
 
 .loom-account-primary-button:disabled,
 .loom-account-secondary-button:disabled {
   opacity: .55;
-  cursor: wait;
+  cursor: not-allowed;
 }
+
+.loom-account-secondary-button {
+  border: 1px solid var(--border, #292d38);
+  background: transparent;
+  color: var(--text, #f0f1f4);
+}
+
+.loom-account-secondary-button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--text, #f0f1f4) 6%, transparent);
+  border-color: var(--border-strong, #383d4a);
+}
+
+.loom-account-spinner {
+  flex: 0 0 auto;
+  width: 13px;
+  height: 13px;
+  border: 1.6px solid color-mix(in srgb, currentColor 26%, transparent);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: loom-account-spin 640ms linear infinite;
+}
+
+/* ------------------------------------------------------------ feedback */
 
 .loom-account-error {
   margin: 0;
-  padding: 9px 10px;
-  border: 1px solid rgba(211, 91, 103, .24);
+  padding: 9px 11px;
+  border: 1px solid color-mix(in srgb, var(--danger, #dc7c86) 26%, transparent);
   border-radius: 9px;
-  background: rgba(211, 91, 103, .07);
-  color: #d97983;
-  font-size: .72rem;
-  line-height: 1.45;
+  background: color-mix(in srgb, var(--danger, #dc7c86) 8%, transparent);
+  color: var(--danger, #dc7c86);
+  font-size: .715rem;
+  line-height: 1.5;
 }
 
 .loom-account-footnote,
@@ -226,30 +434,97 @@
   display: flex;
   align-items: flex-start;
   gap: 7px;
-  color: var(--muted, #7f8a95);
-  font-size: .68rem;
+  color: var(--muted, #858c99);
+  font-size: .675rem;
   line-height: 1.5;
 }
 
 .loom-account-footnote {
-  margin: 16px 0 0;
+  margin: 15px 0 0;
 }
 
 .loom-account-footnote svg,
-.loom-account-security-note svg {
+.loom-account-security-note svg,
+.loom-account-hint svg {
   flex: 0 0 auto;
   margin-top: 1px;
 }
 
+.loom-account-service {
+  margin: 12px 0 0;
+  padding: 7px 10px;
+  border: 1px solid var(--border-soft, #1d2028);
+  border-radius: 9px;
+  background: var(--bg-deep, #090a0d);
+  color: var(--muted, #858c99);
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  font-size: .655rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+/* Offline banner: the service is configured but did not answer. */
+.loom-account-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 18px 0 0;
+  padding: 9px 11px;
+  border: 1px solid color-mix(in srgb, var(--warning, #d7ad6d) 28%, transparent);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--warning, #d7ad6d) 9%, transparent);
+  color: var(--warning, #d7ad6d);
+  font-size: .71rem;
+  line-height: 1.5;
+}
+
+.loom-account-notice svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+.loom-account-notice button {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 660;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.loom-account-notice button:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+/* Pushes the notice above the form instead of below it. */
+.loom-account-notice + .loom-account-form,
+.loom-account-notice + .loom-account-tabs {
+  margin-top: 14px;
+}
+
+/* --------------------------------------------------------------- states */
+
 .loom-account-state,
 .loom-account-unconfigured {
-  margin-top: 24px;
+  margin-top: 22px;
   padding: 18px;
-  border: 1px solid color-mix(in srgb, var(--border, #303842) 84%, transparent);
+  border: 1px solid var(--border, #292d38);
   border-radius: 12px;
-  color: var(--muted, #8b96a1);
-  background: color-mix(in srgb, var(--panel-strong, #10151a) 90%, transparent);
-  font-size: .76rem;
+  color: var(--muted, #858c99);
+  background: var(--bg-deep, #090a0d);
+  font-size: .755rem;
+}
+
+.loom-account-state {
+  display: flex;
+  align-items: center;
+  gap: 9px;
 }
 
 .loom-account-unconfigured {
@@ -258,9 +533,14 @@
   gap: 7px 10px;
 }
 
+.loom-account-unconfigured > svg {
+  color: var(--warning, #d7ad6d);
+  margin-top: 1px;
+}
+
 .loom-account-unconfigured strong {
-  color: var(--text, #eef2f5);
-  font-size: .79rem;
+  color: var(--text, #f0f1f4);
+  font-size: .785rem;
 }
 
 .loom-account-unconfigured p {
@@ -272,8 +552,9 @@
 .loom-account-signed-in {
   display: flex;
   flex-direction: column;
-  gap: 15px;
-  margin-top: 24px;
+  gap: 14px;
+  margin-top: 22px;
+  animation: loom-account-rise 260ms cubic-bezier(.2, .78, .2, 1) both;
 }
 
 .loom-account-profile {
@@ -282,9 +563,9 @@
   gap: 12px;
   align-items: center;
   padding: 14px;
-  border: 1px solid color-mix(in srgb, var(--border, #303842) 85%, transparent);
+  border: 1px solid var(--border, #292d38);
   border-radius: 12px;
-  background: color-mix(in srgb, var(--panel-strong, #10151a) 91%, transparent);
+  background: var(--bg-deep, #090a0d);
 }
 
 .loom-account-avatar {
@@ -293,9 +574,12 @@
   border-radius: 50%;
   display: grid;
   place-items: center;
-  background: color-mix(in srgb, #4d99ca 18%, var(--panel-strong, #111));
-  color: #79b7df;
+  border: 1px solid color-mix(in srgb, var(--accent, #8b7cf6) 24%, transparent);
+  background: color-mix(in srgb, var(--accent, #8b7cf6) 18%, transparent);
+  color: var(--accent-soft, #aaa0ff);
+  font-size: 1rem;
   font-weight: 720;
+  user-select: none;
 }
 
 .loom-account-profile div {
@@ -313,31 +597,137 @@
 }
 
 .loom-account-profile strong {
-  color: var(--text, #eef2f5);
-  font-size: .79rem;
+  color: var(--text, #f0f1f4);
+  font-size: .785rem;
 }
 
 .loom-account-profile div span {
-  color: var(--muted, #87929d);
-  font-size: .69rem;
+  color: var(--muted, #858c99);
+  font-size: .685rem;
 }
 
 .loom-account-profile > svg {
-  color: #5ebf8e;
+  color: var(--success, #82b49b);
 }
 
 .loom-account-security-note {
   padding: 0 3px;
 }
 
-.loom-account-secondary-button {
-  border: 1px solid color-mix(in srgb, var(--border, #303842) 90%, transparent);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  background: transparent;
-  color: var(--text, #e8edf1);
+/* ---------------------------------------------------------- focus & motion */
+
+.loom-account-dialog :focus-visible,
+.loom-account-backdrop :focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent, #8b7cf6) 70%, transparent);
+  outline-offset: 2px;
+}
+
+@keyframes loom-account-backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes loom-account-dialog-in {
+  from { opacity: 0; transform: translateY(9px) scale(.986); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes loom-account-rise {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes loom-account-spin {
+  to { transform: rotate(360deg); }
+}
+
+html[data-loom-reduced-motion="true"] .loom-account-backdrop,
+html[data-loom-reduced-motion="true"] .loom-account-dialog,
+html[data-loom-reduced-motion="true"] .loom-account-signed-in {
+  animation: none;
+}
+
+html[data-loom-reduced-motion="true"] .loom-account-primary-button,
+html[data-loom-reduced-motion="true"] .loom-account-secondary-button {
+  transition: none;
+}
+
+html[data-loom-reduced-motion="true"] .loom-account-primary-button:hover:not(:disabled) {
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loom-account-backdrop,
+  .loom-account-dialog,
+  .loom-account-signed-in {
+    animation: none;
+  }
+
+  .loom-account-primary-button:hover:not(:disabled) {
+    transform: none;
+  }
+}
+
+/* ------------------------------------------------- light theme specifics */
+/* Everything above is expressed with semantic tokens, so it already follows the
+   theme. Only a few things genuinely cannot be: the accent is a light lavender
+   in the dark theme and a dark violet in the light theme, so one fill cannot
+   carry white text in both.
+
+   These rules used to live in src/theme.css. Styling this dialog from two files
+   meant CSS specificity silently picked the winner, and the primary button came
+   out a different colour in each theme by accident rather than by design. Keep
+   account styling in this file. */
+
+html[data-loom-theme="light"] .loom-account-backdrop {
+  background: rgba(35, 39, 46, .30);
+}
+
+html[data-loom-theme="light"] .loom-account-dialog {
+  box-shadow:
+    0 30px 80px rgba(27, 31, 40, .20),
+    0 8px 26px rgba(27, 31, 40, .08),
+    inset 0 1px rgba(255, 255, 255, .98);
+}
+
+/* In the light theme --accent is dark enough to carry white text (5.1:1). In
+   the dark theme it is a light lavender (3.2:1 against white), so the dark CTA
+   uses the inverted surface instead — which is also what the rest of the app
+   does for its primary actions. */
+html[data-loom-theme="light"] .loom-account-primary-button {
+  border-color: color-mix(in srgb, var(--accent, #695ad8) 82%, #000);
+  background: var(--accent, #695ad8);
+  color: #fff;
+  box-shadow: 0 7px 18px color-mix(in srgb, var(--accent, #695ad8) 22%, transparent);
+}
+
+html[data-loom-theme="light"] .loom-account-primary-button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent, #695ad8) 90%, #000);
+  box-shadow: 0 9px 22px color-mix(in srgb, var(--accent, #695ad8) 28%, transparent);
+}
+
+html[data-loom-theme="light"] .loom-account-primary-button:disabled {
+  border-color: var(--border, #d8dbe1);
+  background: var(--panel-soft, #f0f1f3);
+  color: var(--faint, #9aa1ab);
+  box-shadow: none;
+  opacity: 1;
+}
+
+/* --------------------------------------------------------------- responsive */
+
+@media (max-width: 480px) {
+  .loom-account-backdrop {
+    padding: 14px;
+  }
+
+  .loom-account-dialog {
+    padding: 22px 20px 20px;
+  }
+
+  .loom-account-header {
+    padding-right: 26px;
+  }
 }
 
 

@@ -890,6 +890,7 @@ export default function App() {
           agentsOpen={agentsOpen}
           agentCount={agentCount}
           accountAuthenticated={account.account.authenticated}
+          accountLabel={account.account.user?.email || ""}
           context={loom.context}
           compacting={loom.compacting}
           compactionProgress={loom.compactionProgress}
@@ -999,6 +1000,8 @@ export default function App() {
         busy={account.busy}
         error={account.error}
         onClose={() => setAccountOpen(false)}
+        onClearError={account.clearError}
+        onRetry={account.refresh}
         onLogin={account.login}
         onRegister={account.register}
         onLogout={account.logout}

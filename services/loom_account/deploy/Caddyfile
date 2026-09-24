@@ -1,0 +1,80 @@
+# Loom Account Service — Caddy vhost.
+#
+# Append this block to the Caddyfile that already terminates TLS for your
+# domain, then reload Caddy. Set LOOM_ACCOUNT_DOMAIN in the Caddy environment
+# (or replace the placeholder with a literal hostname such as
+# account.example.com) and point the desktop at https://<host>/v1.
+#
+# The proxy target must be reachable FROM the Caddy process, which is not the
+# same thing as an address reachable from the host shell:
+#
+#   * Caddy running in Docker (the usual case) — attach the account service to
+#     the same user-defined network and proxy to the container name, i.e.
+#     `reverse_proxy loom-account:8787`. Pointing at 127.0.0.1 from inside a
+#     container resolves to that container itself and will never connect.
+#   * Caddy running directly on the host — `reverse_proxy 127.0.0.1:8787` is
+#     correct, matching the loopback port published by docker-compose.yml.
+#
+# The block below assumes the container-name form. See README.md for how to
+# attach the service to an existing proxy network.
+#
+# This is the exact block running on the reference deployment
+# (account.smirel.com → 170.106.171.50). Three deliberate differences from the
+# other vhosts on that box:
+#
+#   1. No `encode`. Auth responses are a few hundred bytes, so compression buys
+#      nothing, and compressing a body that mixes a secret (the access token)
+#      with any reflected input is a BREACH-style side channel nobody needs.
+#   2. `Strict-Transport-Security`. The desktop client refuses plain HTTP for
+#      remote hosts anyway; HSTS makes the browser side agree.
+#   3. The `filter` log encoder removes `Authorization` and `Cookie` outright.
+#
+# A note on (3), because the obvious reading is wrong: Caddy ALREADY redacts the
+# values of those two headers in the access log. The other vhosts on that box
+# run a plain `format console` and still log `"Authorization": ["REDACTED"]`.
+# This block is therefore defence in depth, not a fix for a Caddy default — it
+# drops the key entirely rather than leaving a `REDACTED` placeholder, and it
+# keeps holding if a future Caddy release changes its built-in redaction list.
+#
+# What Caddy does NOT touch is the request URI, so anything credential-shaped in
+# a query string lands in the log verbatim. This service is safe by construction:
+# every credential travels in the JSON body or the Authorization header, never in
+# a URL. That was verified against production logs — the only paths ever
+# requested are /healthz and the /v1/auth/* endpoints. Keep it that way; the day
+# an endpoint accepts a token as a query parameter, the access log silently
+# becomes a credential store.
+
+{$LOOM_ACCOUNT_DOMAIN} {
+	reverse_proxy loom-account:8787 {
+		# Overwrite whatever the client sent. The account service trusts these
+		# headers only from configured proxy addresses, and uses the leftmost
+		# entry as the rate-limit key — so a client must not be able to inject
+		# its own value.
+		header_up X-Real-IP {remote_host}
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+		header_up X-Forwarded-Host {host}
+	}
+
+	header {
+		-Server
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+	}
+
+	log {
+		output stdout
+		# Belt and braces — Caddy would already log these two as ["REDACTED"].
+		# See the header note above for what this does and does not buy.
+		format filter {
+			wrap console
+			fields {
+				request>headers>Authorization delete
+				request>headers>Cookie delete
+			}
+		}
+	}
+}

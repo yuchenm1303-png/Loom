@@ -12,7 +12,8 @@ import {
   type EditModelInput,
   type ModelLaunchSpec,
 } from "./modelManager.js";
-import { LoomAccountClient } from "./accountClient.js";
+import { LoomAccountClient, type LoomAccountSnapshot } from "./accountClient.js";
+import { accountErrorPayload, type AccountErrorPayload } from "./accountErrors.js";
 import { closeHudOverlayWindow, createHudOverlayWindow, sendHudUpdate } from "./hudWindow.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -874,14 +875,31 @@ ipcMain.handle("loom:pick-directory", async () => {
   const result = await dialog.showOpenDialog({ title: "Add project folder", properties: ["openDirectory", "createDirectory"] });
   return result.canceled || !result.filePaths.length ? "" : result.filePaths[0];
 });
-ipcMain.handle("loom:account-status", () => accountClient.status());
+// Account handlers return a discriminated result rather than rejecting: an IPC
+// rejection only carries an Error's message, which would drop the service's
+// machine readable `code` and force the renderer to show raw English text.
+type AccountIpcResult =
+  | { ok: true; snapshot: LoomAccountSnapshot }
+  | { ok: false; error: AccountErrorPayload };
+
+async function runAccountAction(
+  action: () => Promise<LoomAccountSnapshot>,
+): Promise<AccountIpcResult> {
+  try {
+    return { ok: true, snapshot: await action() };
+  } catch (error) {
+    return { ok: false, error: accountErrorPayload(error) };
+  }
+}
+
+ipcMain.handle("loom:account-status", () => runAccountAction(() => accountClient.status()));
 ipcMain.handle("loom:account-login", (_event, email: string, password: string) =>
-  accountClient.login(String(email || ""), String(password || ""))
+  runAccountAction(() => accountClient.login(String(email || ""), String(password || "")))
 );
 ipcMain.handle("loom:account-register", (_event, email: string, password: string) =>
-  accountClient.register(String(email || ""), String(password || ""))
+  runAccountAction(() => accountClient.register(String(email || ""), String(password || "")))
 );
-ipcMain.handle("loom:account-logout", () => accountClient.logout());
+ipcMain.handle("loom:account-logout", () => runAccountAction(() => accountClient.logout()));
 ipcMain.handle("loom:model-list", () => modelManager.snapshot());
 ipcMain.handle("loom:model-provider-key", (_event, provider: string, apiKey: string) =>
   modelManager.setProviderKey(String(provider || ""), String(apiKey || ""))

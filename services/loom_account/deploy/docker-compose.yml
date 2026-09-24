@@ -1,0 +1,74 @@
+# Loom Account Service — standalone deployment.
+#
+# Run from this directory:  docker compose up -d --build
+#
+# The published port is bound to loopback on purpose. The service speaks plain
+# HTTP and expects a TLS-terminating reverse proxy (see the Caddyfile next to
+# this file); the desktop client refuses plain-HTTP account endpoints unless
+# they are loopback.
+#
+# The project and container names are pinned so the container has a stable DNS
+# name on its network. Compose would otherwise derive both from the directory
+# name, which breaks the `reverse_proxy loom-account:8787` upstream whenever the
+# checkout is renamed.
+
+name: loom-account
+
+services:
+  loom-account:
+    container_name: loom-account
+    build:
+      context: ../../..
+      dockerfile: services/loom_account/Dockerfile
+    image: loom-account:local
+    restart: unless-stopped
+    environment:
+      LOOM_ACCOUNT_DB: /data/accounts.db
+      # Comma-separated peers allowed to set the client address through
+      # X-Real-IP / X-Forwarded-For. Addresses or CIDR ranges. Defaults to
+      # loopback. Set it to an empty value to trust nobody; then every request
+      # is rate limited on the raw peer address, which behind a proxy means one
+      # shared bucket for everyone.
+      #
+      # If the proxy runs in Docker, its peer address is a bridge-network
+      # address (for example 172.18.0.2) rather than loopback, and it moves on
+      # restart — list the network range instead of one address.
+      LOOM_ACCOUNT_TRUSTED_PROXIES: "127.0.0.1,::1"
+      # Optional token lifetimes (seconds).
+      # LOOM_ACCOUNT_ACCESS_TTL: "900"
+      # LOOM_ACCOUNT_REFRESH_TTL: "2592000"
+    volumes:
+      - loom-account-data:/data
+    ports:
+      - "127.0.0.1:8787:8787"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8787/healthz', timeout=5).status == 200 else 1)"
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    security_opt:
+      - no-new-privileges:true
+    # If the reverse proxy already runs in Docker, attach this service to that
+    # proxy's network so it can be reached by container name. Set the network
+    # name to the one your proxy is on (`docker inspect <proxy> --format
+    # '{{range $k,$v := .NetworkSettings.Networks}}{{$k}}{{end}}'`), then
+    # uncomment both this block and the top-level `networks:` below.
+    # networks:
+    #   - proxy
+
+# The service stores its data in a single SQLite file, which supports exactly
+# one instance. Do not scale this service out until the storage adapter moves to
+# a shared transactional database; a second replica would hold a separate,
+# divergent set of accounts and sessions.
+volumes:
+  loom-account-data:
+
+# networks:
+#   proxy:
+#     external: true
+#     name: termrelay_default

@@ -13,6 +13,8 @@ export interface LoomAccountUser {
 
 export interface LoomAccountSnapshot {
   configured: boolean;
+  /** False when the service could not be reached, as opposed to rejecting us. */
+  reachable: boolean;
   authenticated: boolean;
   user: LoomAccountUser | null;
   serviceUrl: string;
@@ -33,13 +35,19 @@ interface AuthResponse {
   user: LoomAccountUser;
 }
 
-class AccountHttpError extends Error {
+/**
+ * Carries the account service's machine readable `code` up to the IPC layer.
+ * A `status` of 0 means the request never produced an HTTP response — the
+ * service was unconfigured, unreachable, or timed out.
+ */
+export class AccountHttpError extends Error {
   constructor(
     readonly status: number,
     readonly code: string,
     message: string,
   ) {
     super(message);
+    this.name = "AccountHttpError";
   }
 }
 
@@ -58,6 +66,15 @@ function safeAccountBaseUrl(value: string): string {
     return "";
   }
   return "";
+}
+
+/**
+ * A rejection means the credential itself is no longer accepted, so the stored
+ * session must be discarded. Everything else — 5xx, timeouts, DNS failures —
+ * is treated as an outage that the stored session may survive.
+ */
+function isAuthRejection(error: unknown): boolean {
+  return error instanceof AccountHttpError && (error.status === 401 || error.status === 403);
 }
 
 function configuredAccountBaseUrl(): string {
@@ -124,7 +141,11 @@ export class LoomAccountClient {
       user: response.user,
     };
     if (!session.accessToken || !session.refreshToken || !session.user) {
-      throw new Error("Account service returned an incomplete sign-in session.");
+      throw new AccountHttpError(
+        0,
+        "ACCOUNT_RESPONSE_INVALID",
+        "Account service returned an incomplete sign-in session.",
+      );
     }
 
     this.memorySession = session;
@@ -145,9 +166,10 @@ export class LoomAccountClient {
     }
   }
 
-  private snapshot(session: TokenSession | null): LoomAccountSnapshot {
+  private snapshot(session: TokenSession | null, reachable = this.configured): LoomAccountSnapshot {
     return {
       configured: this.configured,
+      reachable,
       authenticated: Boolean(session?.user),
       user: session?.user ?? null,
       serviceUrl: this.baseUrl,
@@ -160,7 +182,11 @@ export class LoomAccountClient {
     accessToken = "",
   ): Promise<T> {
     if (!this.configured) {
-      throw new Error("Loom Account Service is not configured.");
+      throw new AccountHttpError(
+        0,
+        "ACCOUNT_SERVICE_UNCONFIGURED",
+        "Loom Account Service is not configured.",
+      );
     }
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 15_000);
@@ -170,11 +196,29 @@ export class LoomAccountClient {
       if (init.body) headers.set("Content-Type", "application/json");
       if (accessToken) headers.set("Authorization", "Bearer " + accessToken);
 
-      const response = await fetch(this.baseUrl + endpoint, {
-        ...init,
-        headers,
-        signal: controller.signal,
-      });
+      let response: Response;
+      try {
+        response = await fetch(this.baseUrl + endpoint, {
+          ...init,
+          headers,
+          signal: controller.signal,
+        });
+      } catch (cause) {
+        // Distinguish "the service never answered" from "the service answered
+        // with an error", so the UI can tell the user which one to fix.
+        if (cause instanceof Error && cause.name === "AbortError") {
+          throw new AccountHttpError(
+            0,
+            "ACCOUNT_REQUEST_TIMEOUT",
+            "The account service did not respond in time.",
+          );
+        }
+        throw new AccountHttpError(
+          0,
+          "ACCOUNT_SERVICE_UNREACHABLE",
+          "Could not reach the account service.",
+        );
+      }
       const body = await response.json().catch(() => ({})) as {
         error?: { code?: string; message?: string };
       } & T;
@@ -199,15 +243,40 @@ export class LoomAccountClient {
     return this.saveSession(response);
   }
 
+  /**
+   * Liveness probe. `/auth/me` with no token answers 401 MISSING_TOKEN, which
+   * still proves the service is answering — so any HTTP response counts as
+   * reachable and only a transport failure counts as an outage. `/auth/me` is
+   * not rate limited, so this is safe to call on every status check.
+   */
+  private async probe(): Promise<boolean> {
+    try {
+      await this.request("/auth/me", { method: "GET" });
+      return true;
+    } catch (error) {
+      return error instanceof AccountHttpError && error.status > 0;
+    }
+  }
+
   async status(): Promise<LoomAccountSnapshot> {
-    if (!this.configured) return this.snapshot(null);
+    if (!this.configured) return this.snapshot(null, false);
     let session = await this.loadSession();
-    if (!session) return this.snapshot(null);
+
+    if (!session) {
+      // No stored credential — but the UI still has to distinguish "signed out"
+      // from "cannot reach the service", so probe instead of assuming the
+      // service is up just because a URL is configured.
+      return this.snapshot(null, await this.probe());
+    }
 
     if (session.expiresAt <= Date.now() + 30_000) {
       try {
         session = await this.refresh(session);
-      } catch {
+      } catch (error) {
+        // Only a rejected credential means the session is dead. A transport
+        // failure is an outage, and deleting the stored session for it would
+        // sign the user out over a dropped connection.
+        if (!isAuthRejection(error)) return this.snapshot(session, false);
         await this.clearSession();
         return this.snapshot(null);
       }
@@ -223,11 +292,12 @@ export class LoomAccountClient {
       this.memorySession = session;
       return this.snapshot(session);
     } catch (error) {
-      if (!(error instanceof AccountHttpError) || error.status !== 401) throw error;
+      if (!isAuthRejection(error)) return this.snapshot(session, false);
       try {
         session = await this.refresh(session);
         return this.snapshot(session);
-      } catch {
+      } catch (refreshError) {
+        if (!isAuthRejection(refreshError)) return this.snapshot(session, false);
         await this.clearSession();
         return this.snapshot(null);
       }

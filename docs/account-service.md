@@ -30,9 +30,19 @@ The development desktop defaults to:
 http://127.0.0.1:8787/v1
 ```
 
+## Deployed instance
+
+Loom's own deployment is live at **`https://account.smirel.com`**; the desktop
+base URL is `https://account.smirel.com/v1`. It runs as an unprivileged
+container on the Loom-owned host, published only on loopback and reached
+through the Caddy instance that already terminates TLS there. Configuration and
+operational notes: [`services/loom_account/deploy/README.md`](../services/loom_account/deploy/README.md).
+
 ## Deploy independently
 
 The service is designed to run on a Loom-owned host. Do not deploy it onto an unrelated relay or third-party server.
+
+Ready-made deployment files live in [`services/loom_account/deploy`](../services/loom_account/deploy/README.md): a `docker-compose.yml` (loopback-bound, health-checked, unprivileged) and a Caddy vhost that terminates TLS. Prefer those over hand-rolled `docker run`. That README also documents the proxy/rate-limit interaction, which fails quietly if the trusted-proxy setting does not match the deployment, and the single-instance limit.
 
 Build the standalone image:
 

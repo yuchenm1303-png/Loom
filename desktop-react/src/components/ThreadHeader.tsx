@@ -35,6 +35,7 @@ interface ThreadHeaderProps {
   agentsOpen?: boolean;
   agentCount?: number;
   accountAuthenticated?: boolean;
+  accountLabel?: string;
   context?: ContextReport | null;
   compacting?: boolean;
   compactionProgress?: ContextCompactionProgress | null;
@@ -83,6 +84,7 @@ export function ThreadHeader({
   agentsOpen = false,
   agentCount = 0,
   accountAuthenticated = false,
+  accountLabel = "",
   context = null,
   compacting = false,
   compactionProgress = null,
@@ -133,6 +135,12 @@ export function ThreadHeader({
   const reviewTitle = language === "zh-CN" ? "审查当前对话中的文件更改" : "Review file changes from this conversation";
   const agentsLabel = language === "zh-CN" ? "子代理" : "Agents";
   const agentsTitle = language === "zh-CN" ? "打开子代理工作区" : "Open sub-agent workspace";
+  const accountTitle = accountAuthenticated
+    ? [
+        language === "zh-CN" ? "Loom 账号" : "Loom account",
+        accountLabel,
+      ].filter(Boolean).join(" · ")
+    : (language === "zh-CN" ? "登录 Loom" : "Sign in to Loom");
 
   return (
     <header className="thread-header polished-thread-header">
@@ -223,10 +231,16 @@ export function ThreadHeader({
           type="button"
           className={`thread-header-icon-button thread-account-button ${accountAuthenticated ? "signed-in" : ""}`}
           onClick={onOpenAccount}
-          title={language === "zh-CN" ? "Loom 账号" : "Loom account"}
-          aria-label={language === "zh-CN" ? "Loom 账号" : "Loom account"}
+          title={accountTitle}
+          aria-label={accountTitle}
         >
-          <UserRound size={16} strokeWidth={1.75} />
+          {accountAuthenticated && accountLabel ? (
+            <span className="thread-account-initial" aria-hidden="true">
+              {accountLabel.slice(0, 1).toUpperCase()}
+            </span>
+          ) : (
+            <UserRound size={16} strokeWidth={1.75} />
+          )}
           {accountAuthenticated ? <span className="thread-account-dot" aria-hidden="true" /> : null}
         </button>
 
