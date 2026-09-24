@@ -47,6 +47,7 @@
 
 .review-summary-header:focus-visible,
 .turn-artifacts-file-strip button:focus-visible,
+.turn-artifacts-preview-action:focus-visible,
 .review-summary-footer:focus-visible {
   outline: 1px solid rgba(139, 124, 246, .42);
   outline-offset: -1px;
@@ -197,6 +198,57 @@
   font-weight: 620;
 }
 
+.turn-artifacts-preview-action {
+  width: calc(100% - 28px);
+  min-height: 34px;
+  margin: 0 14px 7px;
+  padding: 0 10px 0 12px;
+  border: 1px solid rgba(105, 90, 216, .13);
+  border-radius: 8px;
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) 14px;
+  align-items: center;
+  gap: 8px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.025), rgba(255,255,255,.008)),
+    rgba(139, 124, 246, .035);
+  color: #9991df;
+  cursor: pointer;
+  text-align: left;
+  font-size: 10px;
+  font-weight: 620;
+  transition: color 130ms ease, background 130ms ease, border-color 130ms ease;
+}
+
+.turn-artifacts-preview-action:hover {
+  color: #c8c2ff;
+  border-color: rgba(139, 124, 246, .24);
+  background: rgba(139, 124, 246, .07);
+}
+
+.turn-artifacts-preview-action > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.turn-artifacts-preview-action > svg:last-child {
+  justify-self: end;
+}
+
+html[data-loom-theme="light"] .turn-artifacts-preview-action {
+  border-color: rgba(105, 90, 216, .14);
+  background: rgba(105, 90, 216, .035);
+  color: #685ac9;
+}
+
+html[data-loom-theme="light"] .turn-artifacts-preview-action:hover {
+  border-color: rgba(105, 90, 216, .24);
+  background: rgba(105, 90, 216, .075);
+  color: #5748bc;
+}
+
 .review-summary-footer {
   width: calc(100% - 28px);
   min-height: 34px;
@@ -243,6 +295,7 @@
     max-width: none;
   }
 
+  .turn-artifacts-preview-action,
   .review-summary-footer {
     width: calc(100% - 22px);
     margin-inline: 11px;
@@ -254,6 +307,7 @@
   .review-summary-header,
   .review-summary-action,
   .turn-artifacts-file-strip button,
+  .turn-artifacts-preview-action,
   .review-summary-footer {
     transition: none !important;
   }
