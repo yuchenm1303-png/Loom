@@ -77,6 +77,7 @@ export function TranscriptScrollController({
   const lastScrollTopRef = useRef(0);
   const frameRef = useRef<number | null>(null);
   const snapBottomRef = useRef(false);
+  const touchYRef = useRef<number | null>(null);
   const wasRunningRef = useRef(Boolean(running));
   const settleUntilRef = useRef(0);
   const [jumpVisible, setJumpVisible] = useState(false);
@@ -88,6 +89,17 @@ export function TranscriptScrollController({
       cancelAnimationFrame(frameRef.current);
       frameRef.current = null;
     }
+  };
+
+  const detachFromLiveFollow = (scroller: HTMLDivElement) => {
+    // User scroll intent must beat any queued streaming/layout follow frame.
+    // Otherwise a pending rAF can pull the viewport back to the newest token
+    // before Chromium dispatches the scroll event.
+    followingRef.current = false;
+    forceBottomRef.current = false;
+    snapBottomRef.current = false;
+    cancelScheduledScroll();
+    setJumpVisible(!isNearBottom(scroller));
   };
 
   const scheduleBottomSync = (scroller: HTMLDivElement, force = false, snap = false) => {
@@ -209,19 +221,43 @@ export function TranscriptScrollController({
       const nextScrollTop = scroller.scrollTop;
       const nearBottom = isNearBottom(scroller);
       const movedUp = nextScrollTop < lastScrollTopRef.current - SCROLL_EPSILON_PX;
+      const movedDown = nextScrollTop > lastScrollTopRef.current + SCROLL_EPSILON_PX;
 
-      // Content growth can make the viewport temporarily far from the bottom
-      // without changing scrollTop. Only an actual upward viewport movement is
-      // allowed to leave follow mode. forceBottomRef protects thread swaps from
-      // the browser clamping the old scrollTop while the new transcript mounts.
-      if (nearBottom) {
-        followingRef.current = true;
-      } else if (movedUp && !forceBottomRef.current) {
+      // Upward movement wins even inside the near-bottom threshold. Previously
+      // the nearBottom branch re-enabled follow first, so small upward wheel
+      // gestures were immediately overwritten by the next streaming frame.
+      if (movedUp && !forceBottomRef.current) {
         followingRef.current = false;
+      } else if (nearBottom && (followingRef.current || movedDown)) {
+        followingRef.current = true;
       }
 
       lastScrollTopRef.current = nextScrollTop;
       setJumpVisible(!nearBottom && !followingRef.current);
+    };
+
+    const onWheel = (event: WheelEvent) => {
+      if (isPanelResizeActive()) return;
+      if (event.deltaY < 0) detachFromLiveFollow(scroller);
+    };
+
+    const onTouchStart = (event: TouchEvent) => {
+      touchYRef.current = event.touches[0]?.clientY ?? null;
+    };
+
+    const onTouchMove = (event: TouchEvent) => {
+      if (isPanelResizeActive()) return;
+      const nextY = event.touches[0]?.clientY;
+      const previousY = touchYRef.current;
+      if (nextY == null) return;
+      if (previousY != null && nextY > previousY + SCROLL_EPSILON_PX) {
+        detachFromLiveFollow(scroller);
+      }
+      touchYRef.current = nextY;
+    };
+
+    const onTouchEnd = () => {
+      touchYRef.current = null;
     };
 
     const onPanelLayoutCommit = () => {
@@ -243,13 +279,25 @@ export function TranscriptScrollController({
     };
 
     scroller.addEventListener("scroll", onScroll, { passive: true });
+    scroller.addEventListener("wheel", onWheel, { passive: true });
+    scroller.addEventListener("touchstart", onTouchStart, { passive: true });
+    scroller.addEventListener("touchmove", onTouchMove, { passive: true });
+    scroller.addEventListener("touchend", onTouchEnd, { passive: true });
+    scroller.addEventListener("touchcancel", onTouchEnd, { passive: true });
     window.addEventListener(PANEL_LAYOUT_COMMIT_EVENT, onPanelLayoutCommit);
     window.addEventListener(PANEL_RESIZE_END_EVENT, onPanelResizeEnd);
 
     const observer = typeof ResizeObserver === "undefined"
       ? null
       : new ResizeObserver(() => {
-          if (followingRef.current || forceBottomRef.current) scheduleBottomSync(scroller);
+          if (followingRef.current || forceBottomRef.current) {
+            scheduleBottomSync(scroller);
+          } else {
+            // Streaming can move the bottom without a scroll event while the
+            // user is reading history. Keep the return-to-latest affordance in
+            // sync without re-enabling follow.
+            setJumpVisible(!isNearBottom(scroller));
+          }
         });
 
     observer?.observe(scroller);
@@ -257,6 +305,11 @@ export function TranscriptScrollController({
 
     return () => {
       scroller.removeEventListener("scroll", onScroll);
+      scroller.removeEventListener("wheel", onWheel);
+      scroller.removeEventListener("touchstart", onTouchStart);
+      scroller.removeEventListener("touchmove", onTouchMove);
+      scroller.removeEventListener("touchend", onTouchEnd);
+      scroller.removeEventListener("touchcancel", onTouchEnd);
       window.removeEventListener(PANEL_LAYOUT_COMMIT_EVENT, onPanelLayoutCommit);
       window.removeEventListener(PANEL_RESIZE_END_EVENT, onPanelResizeEnd);
       observer?.disconnect();
