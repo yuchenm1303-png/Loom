@@ -32,6 +32,7 @@ import "./components/review-dock.css";
 import "./components/sidebar-codex-polish.css";
 import "./components/shortcut-runtime.css";
 import "./components/workspace-panels.css";
+import { canRenderArtifact } from "./artifactRenderers";
 import { useI18n } from "./i18n";
 import { useMotionPresence } from "./motion/useMotionPresence";
 import {
@@ -146,6 +147,21 @@ function reviewFileCount(items: TranscriptItem[]): number {
     }
   }
   return keys.size;
+}
+
+function renderableArtifactPaths(items: TranscriptItem[]): string[] {
+  const paths: string[] = [];
+  const seen = new Set<string>();
+  for (const item of items) {
+    if (item.type !== "file_edit") continue;
+    for (const rawPath of item.paths ?? []) {
+      const normalized = String(rawPath || "").trim().replaceAll("\\", "/").replace(/^\.\//, "");
+      if (!normalized || seen.has(normalized) || !canRenderArtifact(normalized)) continue;
+      seen.add(normalized);
+      paths.push(normalized);
+    }
+  }
+  return paths;
 }
 
 function subAgentCount(items: TranscriptItem[]): number {
@@ -366,6 +382,9 @@ export default function App() {
   const attachmentsEnabled = capabilitySettings.attachments !== false;
   const stickersEnabled = capabilitySettings.stickers !== false;
   const changedFileCount = reviewFileCount(loom.items);
+  const renderableArtifacts = renderableArtifactPaths(loom.items);
+  const artifactCount = renderableArtifacts.length;
+  const latestArtifactPath = renderableArtifacts.at(-1) || "";
   const agentCount = subAgentCount(loom.items);
   const selectedProject = selectedProjectId
     ? loom.projects.find((project) => project.id === selectedProjectId) ?? null
@@ -581,6 +600,14 @@ export default function App() {
       return;
     }
     focusReviewFile();
+  }
+
+  function toggleArtifacts(): void {
+    if (artifactPreviewOpen) {
+      closeArtifactPreview();
+      return;
+    }
+    if (latestArtifactPath) openArtifactPreview(latestArtifactPath, workspace);
   }
 
   function toggleInspector(): void {
@@ -1061,6 +1088,8 @@ export default function App() {
           inspectorOpen={inspectorVisible}
           reviewOpen={reviewOpen}
           reviewCount={changedFileCount}
+          artifactOpen={artifactPreviewOpen}
+          artifactCount={artifactCount}
           agentsOpen={agentsOpen}
           agentCount={agentCount}
           accountAuthenticated={account.account.authenticated}
@@ -1077,6 +1106,7 @@ export default function App() {
           )}
           onToggleInspector={toggleInspector}
           onToggleReview={toggleReview}
+          onToggleArtifacts={toggleArtifacts}
           onToggleAgents={toggleAgents}
         />
 
