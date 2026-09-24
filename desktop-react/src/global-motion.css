@@ -36,29 +36,25 @@
     radial-gradient(circle at 18% 0%, rgba(139,124,246,.10), transparent 30%),
     radial-gradient(circle at 100% 12%, rgba(82,92,180,.08), transparent 34%),
     #0b0c0f;
-  will-change: opacity;
-  transition: opacity 285ms ease;
-}
-
-.settings-host[data-motion-phase="entering"] {
-  opacity: 0;
-}
-
-.settings-host[data-motion-phase="entered"] {
   opacity: 1;
 }
 
+/* Keep the full-page canvas opaque for the entire presence lifecycle.
+   Fading the host itself exposed the live app underneath and made every
+   settings glyph look doubled during entry/exit. We animate only the content
+   layers, so the transition stays polished without compositing two pages. */
 .settings-host[data-motion-phase="exiting"] {
-  opacity: 0;
+  pointer-events: none;
 }
 
 .settings-host .settings-sidebar,
 .settings-host .settings-main {
-  backface-visibility: hidden;
-  will-change: transform, opacity;
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+  will-change: auto;
   transition:
     transform var(--loom-motion-page) var(--loom-ease-out),
-    opacity var(--loom-motion-opacity) ease;
+    opacity 220ms ease;
 }
 
 .settings-host[data-motion-phase="entering"] .settings-sidebar,
@@ -70,101 +66,94 @@
 
 .settings-host[data-motion-phase="entering"] .settings-sidebar {
   opacity: 0;
-  transform: translate3d(-12px, 0, 0);
+  transform: translate3d(-10px, 0, 0);
 }
 
 .settings-host[data-motion-phase="entering"] .settings-main {
   opacity: 0;
-  transform: translate3d(0, 3px, 0);
+  transform: translate3d(0, 7px, 0);
 }
 
 .settings-host[data-motion-phase="entered"] .settings-sidebar,
 .settings-host[data-motion-phase="entered"] .settings-main {
   opacity: 1;
   transform: translate3d(0, 0, 0);
+  will-change: auto;
 }
 
 .settings-host[data-motion-phase="entered"] .settings-main {
-  transition-delay: 34ms;
-}
-
-.settings-host[data-motion-phase="exiting"] {
-  pointer-events: none;
+  transition-delay: 42ms;
 }
 
 .settings-host[data-motion-phase="exiting"] .settings-sidebar {
   opacity: 0;
-  transform: translate3d(-7px, 0, 0);
-  transition-duration: var(--loom-motion-exit);
+  transform: translate3d(-6px, 0, 0);
+  transition-duration: 205ms, 175ms;
   transition-delay: 0ms;
-  transition-timing-function: var(--loom-ease-in);
+  transition-timing-function: var(--loom-ease-in), ease;
 }
 
 .settings-host[data-motion-phase="exiting"] .settings-main {
   opacity: 0;
-  transform: translate3d(0, 2px, 0);
-  transition-duration: var(--loom-motion-exit);
+  transform: translate3d(0, -4px, 0);
+  transition-duration: 205ms, 175ms;
   transition-delay: 0ms;
-  transition-timing-function: var(--loom-ease-in);
+  transition-timing-function: var(--loom-ease-in), ease;
 }
 
-.settings-main-scroll {
-  /* Capture the fixed viewport rather than the variable-height page. This
-     prevents the transition group from interpolating content height. */
-  view-transition-name: settings-page;
-}
-
+/* Settings section navigation ------------------------------------------------
+   Avoid Document View Transition snapshots here. They cross-faded rasterized
+   copies of the old/new settings viewport, which is especially visible as
+   doubled text on light backgrounds. The React page switch now hands this
+   surface a short leave -> swap -> enter sequence with no overlap. */
 .settings-page-surface {
   min-width: 0;
   display: grid;
   gap: 24px;
   contain: layout paint style;
-  animation: loom-settings-page-enter 360ms var(--loom-ease-out) both;
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+  will-change: auto;
+  transition:
+    transform 250ms var(--loom-ease-out),
+    opacity 190ms ease;
 }
 
-@keyframes loom-settings-page-enter {
-  from { opacity: .58; transform: translate3d(0, 3px, 0); }
-  to { opacity: 1; transform: translate3d(0, 0, 0); }
+.settings-page-surface[data-page-motion="leaving-forward"],
+.settings-page-surface[data-page-motion="leaving-backward"] {
+  opacity: 0;
+  will-change: transform, opacity;
+  transition-duration: 118ms, 104ms;
+  transition-timing-function: var(--loom-ease-in), ease;
 }
 
-/* Chromium's View Transition API owns section navigation when available.
-   Keeping the mount fallback active as well would restart it when the view
-   transition finishes, producing a small second jump. */
-@supports (view-transition-name: settings-page) {
-  .settings-page-surface { animation: none; }
+.settings-page-surface[data-page-motion="leaving-forward"] {
+  transform: translate3d(0, -5px, 0);
 }
 
-::view-transition-group(settings-page) {
-  animation-duration: 260ms;
-  animation-timing-function: var(--loom-ease-standard);
+.settings-page-surface[data-page-motion="leaving-backward"] {
+  transform: translate3d(0, 5px, 0);
 }
 
-::view-transition-old(settings-page),
-::view-transition-new(settings-page) {
-  mix-blend-mode: normal;
-  height: 100%;
-  overflow: clip;
+.settings-page-surface[data-page-motion="entering-forward"],
+.settings-page-surface[data-page-motion="entering-backward"] {
+  opacity: 0;
+  will-change: transform, opacity;
+  transition: none;
 }
 
-::view-transition-old(settings-page) { animation: loom-settings-section-old-forward 180ms var(--loom-ease-in) both; }
-::view-transition-new(settings-page) { animation: loom-settings-section-new-forward 260ms var(--loom-ease-out) both; }
-:root[data-settings-nav-direction="backward"]::view-transition-old(settings-page) { animation-name: loom-settings-section-old-backward; }
-:root[data-settings-nav-direction="backward"]::view-transition-new(settings-page) { animation-name: loom-settings-section-new-backward; }
-
-@keyframes loom-settings-section-old-forward {
-  to { opacity: 0; transform: translate3d(0, -6px, 0) scale(.997); }
+.settings-page-surface[data-page-motion="entering-forward"] {
+  transform: translate3d(0, 8px, 0);
 }
 
-@keyframes loom-settings-section-new-forward {
-  from { opacity: 0; transform: translate3d(0, 10px, 0) scale(.998); }
+.settings-page-surface[data-page-motion="entering-backward"] {
+  transform: translate3d(0, -8px, 0);
 }
 
-@keyframes loom-settings-section-old-backward {
-  to { opacity: 0; transform: translate3d(0, 6px, 0) scale(.997); }
-}
-
-@keyframes loom-settings-section-new-backward {
-  from { opacity: 0; transform: translate3d(0, -10px, 0) scale(.998); }
+.settings-page-surface[data-page-motion="idle"] {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+  will-change: auto;
 }
 
 /* Controls should feel responsive, not twitchy. */
@@ -192,9 +181,9 @@
   .settings-page-surface {
     animation: none !important;
     transition: none !important;
+    transform: none !important;
+    opacity: 1 !important;
   }
-  ::view-transition-old(settings-page),
-  ::view-transition-new(settings-page) { animation: none !important; }
 }
 
 :root[data-loom-reduced-motion="true"] .settings-host,
@@ -203,10 +192,9 @@
 :root[data-loom-reduced-motion="true"] .settings-page-surface {
   animation: none !important;
   transition: none !important;
+  transform: none !important;
+  opacity: 1 !important;
 }
-
-:root[data-loom-reduced-motion="true"]::view-transition-old(settings-page),
-:root[data-loom-reduced-motion="true"]::view-transition-new(settings-page) { animation: none !important; }
 
 
 /* Small transient surfaces -------------------------------------------------

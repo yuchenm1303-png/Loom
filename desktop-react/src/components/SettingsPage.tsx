@@ -75,6 +75,13 @@ type PageKey =
   | "privacy"
   | "developer";
 
+type SettingsPageMotion =
+  | "idle"
+  | "leaving-forward"
+  | "leaving-backward"
+  | "entering-forward"
+  | "entering-backward";
+
 type CapabilityKey =
   | "computerUse"
   | "browserUse"
@@ -179,6 +186,8 @@ const PAGE_ORDER: PageKey[] = [
   "general", "appearance", "models", "capabilities", "computer", "browser", "websearch",
   "terminal", "plugins", "mcp", "skills", "permissions", "shortcuts", "privacy", "developer",
 ];
+
+const SETTINGS_SECTION_EXIT_MS = 118;
 
 const DEFAULT_CAPABILITIES: Record<CapabilityKey, boolean> = {
   computerUse: true,
@@ -512,6 +521,9 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
   const [page, setPage] = useState<PageKey>("general");
   const settingsScrollRef = useRef<HTMLDivElement>(null);
   const navigationTransitionRef = useRef(0);
+  const navigationTimerRef = useRef<number | null>(null);
+  const navigationFrameRef = useRef<number | null>(null);
+  const [pageMotion, setPageMotion] = useState<SettingsPageMotion>("idle");
   const [query, setQuery] = useState("");
   const [settings, setSettings] = useState<DesktopSettings>(() => mergedSettings(runtime));
   const [modelState, setModelState] = useState<ModelSnapshot | null>(models);
@@ -530,34 +542,59 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
   const [cdpDraft, setCdpDraft] = useState(settings.browser?.cdpUrl ?? DEFAULT_BROWSER.cdpUrl);
 
   const navigateToPage = (nextPage: PageKey) => {
-    if (nextPage === page) return;
+    if (nextPage === page && pageMotion === "idle") return;
+
+    const transitionId = ++navigationTransitionRef.current;
+    if (navigationTimerRef.current !== null) {
+      window.clearTimeout(navigationTimerRef.current);
+      navigationTimerRef.current = null;
+    }
+    if (navigationFrameRef.current !== null) {
+      cancelAnimationFrame(navigationFrameRef.current);
+      navigationFrameRef.current = null;
+    }
 
     const direction = PAGE_ORDER.indexOf(nextPage) > PAGE_ORDER.indexOf(page) ? "forward" : "backward";
-    const root = document.documentElement;
-    const reduceMotion = root.dataset.loomReducedMotion === "true"
-      || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-    const transitionDocument = document as Document & {
-      startViewTransition?: (update: () => void) => { finished: Promise<void> };
-    };
-    const updatePage = () => {
+    const reduceMotion = document.documentElement.dataset.loomReducedMotion === "true"
+      || Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)").matches);
+    const commitPage = () => {
       flushSync(() => setPage(nextPage));
       settingsScrollRef.current?.scrollTo({ top: 0, behavior: "instant" });
     };
 
-    if (reduceMotion || !transitionDocument.startViewTransition) {
-      updatePage();
+    if (reduceMotion) {
+      commitPage();
+      setPageMotion("idle");
       return;
     }
 
-    const transitionId = ++navigationTransitionRef.current;
-    root.dataset.settingsNavDirection = direction;
-    const transition = transitionDocument.startViewTransition(updatePage);
-    void transition.finished
-      .catch(() => undefined)
-      .finally(() => {
-        if (navigationTransitionRef.current === transitionId) delete root.dataset.settingsNavDirection;
+    // Section changes are deliberately two-phase. The outgoing page becomes
+    // fully invisible before the next page mounts, so text/cards never exist
+    // as two translucent snapshots at once (the source of the old ghosting).
+    setPageMotion(direction === "forward" ? "leaving-forward" : "leaving-backward");
+    navigationTimerRef.current = window.setTimeout(() => {
+      navigationTimerRef.current = null;
+      if (navigationTransitionRef.current !== transitionId) return;
+
+      commitPage();
+      setPageMotion(direction === "forward" ? "entering-forward" : "entering-backward");
+
+      // Give the newly keyed surface one clean painted frame in its start
+      // pose, then release it into the compositor-only enter transition.
+      navigationFrameRef.current = requestAnimationFrame(() => {
+        navigationFrameRef.current = requestAnimationFrame(() => {
+          navigationFrameRef.current = null;
+          if (navigationTransitionRef.current === transitionId) setPageMotion("idle");
+        });
       });
+    }, SETTINGS_SECTION_EXIT_MS);
   };
+
+  useEffect(() => () => {
+    navigationTransitionRef.current += 1;
+    if (navigationTimerRef.current !== null) window.clearTimeout(navigationTimerRef.current);
+    if (navigationFrameRef.current !== null) cancelAnimationFrame(navigationFrameRef.current);
+  }, []);
 
   useEffect(() => {
     const merged = mergedSettings(runtime);
@@ -1387,7 +1424,7 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
         </nav>
         <div className="settings-sidebar-footer"><span className="settings-runtime-dot" /><div><strong>Loom runtime</strong><span>{running ? "Turn active" : "Ready for changes"}</span></div></div>
       </aside>
-      <main className="settings-main"><div className="settings-main-scroll" ref={settingsScrollRef}><div className="settings-content"><div className="settings-page-surface" key={page}>{content}</div></div></div></main>
+      <main className="settings-main"><div className="settings-main-scroll" ref={settingsScrollRef}><div className="settings-content"><div className="settings-page-surface" key={page} data-page-motion={pageMotion}>{content}</div></div></div></main>
       {noticePresence.mounted && visibleNotice ? (
         <div className={`settings-toast ${visibleNotice.tone}`} data-motion-phase={noticePresence.phase}>
           {visibleNotice.tone === "success" ? <Check size={15} /> : <CircleAlert size={15} />}
