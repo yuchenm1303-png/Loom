@@ -180,36 +180,172 @@ html[data-loom-layout-capture="new"] .run-progress-inline {
   animation: none;
 }
 
+/* Direction follows the panel so the inner UI reads as one continuous object,
+   not as unrelated fades. Values stay intentionally small: enough to create
+   depth and momentum without making glyph rasterization feel soft. */
+html[data-loom-layout-intent="left-open"] {
+  --loom-readable-old-x: 7px;
+  --loom-readable-new-x: -9px;
+}
+html[data-loom-layout-intent="left-close"] {
+  --loom-readable-old-x: -7px;
+  --loom-readable-new-x: 9px;
+}
+html[data-loom-layout-intent="right-open"] {
+  --loom-readable-old-x: -7px;
+  --loom-readable-new-x: 9px;
+}
+html[data-loom-layout-intent="right-close"] {
+  --loom-readable-old-x: 7px;
+  --loom-readable-new-x: -9px;
+}
+html[data-loom-layout-intent="right-swap"] {
+  --loom-readable-old-x: -4px;
+  --loom-readable-new-x: 5px;
+}
+html[data-loom-layout-intent="neutral"] {
+  --loom-readable-old-x: 0px;
+  --loom-readable-new-x: 0px;
+}
+
 ::view-transition-old(loom-header-leading-old),
-::view-transition-old(loom-header-copy-old),
-::view-transition-old(loom-header-actions-old),
-::view-transition-old(loom-transcript-old),
-::view-transition-old(loom-composer-old),
-::view-transition-old(loom-composer-hint-old),
-::view-transition-old(loom-run-progress-old) {
+::view-transition-old(loom-header-actions-old) {
+  --loom-readable-out-scale: .965;
   mix-blend-mode: normal;
-  animation: loom-readable-out 245ms cubic-bezier(.42,0,.72,.2) both;
+  transform-origin: center;
+  animation: loom-readable-out 225ms cubic-bezier(.42,0,.72,.2) both;
 }
 
 ::view-transition-new(loom-header-leading-new),
-::view-transition-new(loom-header-copy-new),
-::view-transition-new(loom-header-actions-new),
-::view-transition-new(loom-transcript-new),
-::view-transition-new(loom-composer-new),
-::view-transition-new(loom-composer-hint-new),
-::view-transition-new(loom-run-progress-new) {
+::view-transition-new(loom-header-actions-new) {
+  --loom-readable-in-scale: .958;
   mix-blend-mode: normal;
-  animation: loom-readable-in 285ms cubic-bezier(.2,.74,.18,1) 76ms both;
+  transform-origin: center;
+  animation: loom-readable-in 255ms cubic-bezier(.16,.78,.18,1) 66ms both;
+}
+
+::view-transition-old(loom-header-copy-old) {
+  --loom-readable-out-scale: .982;
+  mix-blend-mode: normal;
+  transform-origin: left center;
+  animation: loom-readable-out 245ms cubic-bezier(.42,0,.72,.2) both;
+}
+
+::view-transition-new(loom-header-copy-new) {
+  --loom-readable-in-scale: .976;
+  mix-blend-mode: normal;
+  transform-origin: left center;
+  animation: loom-readable-in 285ms cubic-bezier(.16,.78,.18,1) 82ms both;
+}
+
+::view-transition-old(loom-transcript-old) {
+  --loom-readable-out-scale: .992;
+  mix-blend-mode: normal;
+  transform-origin: center center;
+  animation: loom-readable-out 260ms cubic-bezier(.42,0,.72,.2) both;
+}
+
+::view-transition-new(loom-transcript-new) {
+  --loom-readable-in-scale: .988;
+  mix-blend-mode: normal;
+  transform-origin: center center;
+  animation: loom-readable-in 330ms cubic-bezier(.16,.78,.18,1) 58ms both;
+}
+
+::view-transition-old(loom-composer-old),
+::view-transition-old(loom-composer-hint-old) {
+  --loom-readable-out-scale: .972;
+  mix-blend-mode: normal;
+  transform-origin: center bottom;
+  animation: loom-readable-out 235ms cubic-bezier(.42,0,.72,.2) both;
+}
+
+::view-transition-new(loom-composer-new),
+::view-transition-new(loom-composer-hint-new) {
+  --loom-readable-in-scale: .962;
+  mix-blend-mode: normal;
+  transform-origin: center bottom;
+  animation: loom-readable-in 285ms cubic-bezier(.14,.82,.18,1) 104ms both;
+}
+
+::view-transition-old(loom-run-progress-old) {
+  --loom-readable-out-scale: .98;
+  mix-blend-mode: normal;
+  transform-origin: center top;
+  animation: loom-readable-out 220ms cubic-bezier(.42,0,.72,.2) both;
+}
+
+::view-transition-new(loom-run-progress-new) {
+  --loom-readable-in-scale: .97;
+  mix-blend-mode: normal;
+  transform-origin: center top;
+  animation: loom-readable-in 270ms cubic-bezier(.16,.78,.18,1) 94ms both;
 }
 
 @keyframes loom-readable-out {
-  0%, 22% { opacity: 1; translate: 0 0; }
-  100% { opacity: 0; translate: 0 -1px; }
+  0%, 16% {
+    opacity: 1;
+    transform: translate3d(0,0,0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform:
+      translate3d(var(--loom-readable-old-x,0px),-1px,0)
+      scale(var(--loom-readable-out-scale,.985));
+  }
 }
 
 @keyframes loom-readable-in {
-  0% { opacity: 0; translate: 0 1px; }
-  100% { opacity: 1; translate: 0 0; }
+  0% {
+    opacity: 0;
+    transform:
+      translate3d(var(--loom-readable-new-x,0px),1px,0)
+      scale(var(--loom-readable-in-scale,.98));
+  }
+  72% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0,0,0) scale(1);
+  }
+}
+
+/* The side surfaces themselves use the same depth language: slight scale and
+   directional travel, then settle. Their readable content is never asked to
+   perform a large stretch. */
+::view-transition-new(loom-sidebar) {
+  transform-origin: left center;
+  animation: loom-panel-surface-in-left var(--loom-motion-panel,390ms) cubic-bezier(.16,.78,.18,1) both;
+}
+::view-transition-old(loom-sidebar) {
+  transform-origin: left center;
+  animation: loom-panel-surface-out-left 250ms cubic-bezier(.42,0,.72,.2) both;
+}
+::view-transition-new(loom-inspector) {
+  transform-origin: right center;
+  animation: loom-panel-surface-in-right var(--loom-motion-panel,390ms) cubic-bezier(.16,.78,.18,1) both;
+}
+::view-transition-old(loom-inspector) {
+  transform-origin: right center;
+  animation: loom-panel-surface-out-right 250ms cubic-bezier(.42,0,.72,.2) both;
+}
+
+@keyframes loom-panel-surface-in-left {
+  from { opacity: 0; transform: translate3d(-14px,0,0) scale(.985); }
+  to { opacity: 1; transform: translate3d(0,0,0) scale(1); }
+}
+@keyframes loom-panel-surface-out-left {
+  from { opacity: 1; transform: translate3d(0,0,0) scale(1); }
+  to { opacity: 0; transform: translate3d(-9px,0,0) scale(.988); }
+}
+@keyframes loom-panel-surface-in-right {
+  from { opacity: 0; transform: translate3d(14px,0,0) scale(.985); }
+  to { opacity: 1; transform: translate3d(0,0,0) scale(1); }
+}
+@keyframes loom-panel-surface-out-right {
+  from { opacity: 1; transform: translate3d(0,0,0) scale(1); }
+  to { opacity: 0; transform: translate3d(9px,0,0) scale(.988); }
 }
 
 /* Portal panels also own CSS presence motion. Snapshot only their logical
@@ -250,12 +386,30 @@ html[data-loom-layout-transition="true"] .project-details-panel[data-open="false
 }
 
 ::view-transition-old(loom-review-surface),
-::view-transition-new(loom-review-surface),
 ::view-transition-old(loom-agent-surface),
+::view-transition-old(loom-project-surface) {
+  mix-blend-mode: normal;
+  transform-origin: right center;
+  animation: loom-right-surface-out 245ms cubic-bezier(.42,0,.72,.2) both;
+}
+
+::view-transition-new(loom-review-surface),
 ::view-transition-new(loom-agent-surface),
-::view-transition-old(loom-project-surface),
 ::view-transition-new(loom-project-surface) {
   mix-blend-mode: normal;
+  transform-origin: right center;
+  animation: loom-right-surface-in 335ms cubic-bezier(.16,.78,.18,1) 42ms both;
+}
+
+@keyframes loom-right-surface-out {
+  from { opacity: 1; transform: translate3d(0,0,0) scale(1); }
+  to { opacity: 0; transform: translate3d(10px,0,0) scale(.982); }
+}
+
+@keyframes loom-right-surface-in {
+  from { opacity: 0; transform: translate3d(16px,0,0) scale(.976); }
+  72% { opacity: 1; }
+  to { opacity: 1; transform: translate3d(0,0,0) scale(1); }
 }
 
 /* The layout callback sets this before either snapshot is taken. Disable the

@@ -69,3 +69,31 @@ def test_portal_surfaces_capture_their_logical_endpoint() -> None:
     assert 'data-open={open ? "true" : "false"}' in project
     assert '.review-workspace[data-open="true"]' in css
     assert '.review-workspace[data-open="false"]' in css
+
+
+def test_readable_motion_has_direction_scale_and_stagger() -> None:
+    app = read("desktop-react/src/App.tsx")
+    css = read("desktop-react/src/components/workspace-panels.css")
+
+    assert "type LayoutMotionIntent" in app
+    assert 'document.documentElement.dataset.loomLayoutIntent = intent' in app
+    assert 'sidebarOpen ? "left-close" : "left-open"' in app
+    assert 'rightSurfaceOpen ? "right-swap" : "right-open"' in app
+
+    assert 'data-loom-layout-intent="left-open"' in css
+    assert 'data-loom-layout-intent="right-close"' in css
+    assert "--loom-readable-out-scale" in css
+    assert "--loom-readable-in-scale" in css
+    assert "scale(var(--loom-readable-out-scale,.985))" in css
+    assert "scale(var(--loom-readable-in-scale,.98))" in css
+    assert "104ms both" in css
+
+
+def test_panel_surfaces_share_the_same_depth_language() -> None:
+    css = read("desktop-react/src/components/workspace-panels.css")
+
+    assert "@keyframes loom-panel-surface-in-left" in css
+    assert "@keyframes loom-panel-surface-in-right" in css
+    assert "@keyframes loom-right-surface-in" in css
+    assert "scale(.985)" in css
+    assert "scale(.976)" in css

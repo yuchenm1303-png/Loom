@@ -48,3 +48,10 @@ def test_every_visible_panel_close_path_uses_the_same_coordinator() -> None:
     assert 'onClose={() => runLayoutTransition(() => setInspectorOpen(false))}' in app
     assert 'onClose={() => runLayoutTransition(() => setReviewOpen(false))}' in app
     assert 'onClose={() => runLayoutTransition(() => setAgentsOpen(false))}' in app
+
+
+def test_direction_metadata_is_cleaned_after_every_transition() -> None:
+    app = read("desktop-react/src/App.tsx")
+
+    assert 'delete document.documentElement.dataset.loomLayoutIntent' in app
+    assert app.count('delete document.documentElement.dataset.loomLayoutIntent') >= 3

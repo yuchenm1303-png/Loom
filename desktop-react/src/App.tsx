@@ -63,6 +63,13 @@ const PANEL_LAYOUT_COMMIT_EVENT = "loom:panel-layout-commit";
 const EMPTY_TRANSCRIPT_ITEMS: TranscriptItem[] = [];
 
 type ResizePanel = "sidebar" | "inspector";
+type LayoutMotionIntent =
+  | "left-open"
+  | "left-close"
+  | "right-open"
+  | "right-close"
+  | "right-swap"
+  | "neutral";
 type LayoutViewTransition = {
   finished: Promise<void>;
   skipTransition(): void;
@@ -259,6 +266,8 @@ export default function App() {
   const agentsLayoutOpen = agentsOpen;
   const projectDetailsLayoutOpen = projectDetailsOpen;
   const inspectorPresence = useMotionPresence(inspectorVisible, 420);
+  const rightSurfaceOpen = inspectorVisible || reviewOpen || agentsOpen || projectDetailsOpen;
+  const rightOpenIntent: LayoutMotionIntent = rightSurfaceOpen ? "right-swap" : "right-open";
 
   const committedPanelLayoutRef = useRef({
     sidebarLayoutOpen,
@@ -268,7 +277,10 @@ export default function App() {
     projectDetailsLayoutOpen,
   });
 
-  const runLayoutTransition = useCallback((update: () => void) => {
+  const runLayoutTransition = useCallback((
+    update: () => void,
+    intent: LayoutMotionIntent = "neutral",
+  ) => {
     if (reducedPanelMotion()) {
       flushSync(update);
       window.dispatchEvent(new Event("loom:panel-resize-end"));
@@ -290,6 +302,7 @@ export default function App() {
     layoutViewTransitionRef.current?.skipTransition();
     document.body.classList.add("loom-panel-motion");
     document.documentElement.dataset.loomLayoutTransition = "true";
+    document.documentElement.dataset.loomLayoutIntent = intent;
     document.documentElement.dataset.loomLayoutCapture = "old";
 
     let transition: LayoutViewTransition;
@@ -304,6 +317,7 @@ export default function App() {
     } catch {
       delete document.documentElement.dataset.loomLayoutTransition;
       delete document.documentElement.dataset.loomLayoutCapture;
+      delete document.documentElement.dataset.loomLayoutIntent;
       document.body.classList.remove("loom-panel-motion");
       flushSync(update);
       afterPaint(() => window.dispatchEvent(new Event("loom:panel-resize-end")));
@@ -318,6 +332,7 @@ export default function App() {
         layoutViewTransitionRef.current = null;
         delete document.documentElement.dataset.loomLayoutTransition;
         delete document.documentElement.dataset.loomLayoutCapture;
+        delete document.documentElement.dataset.loomLayoutIntent;
         document.body.classList.remove("loom-panel-motion");
         window.dispatchEvent(new Event("loom:panel-resize-end"));
       });
@@ -356,7 +371,7 @@ export default function App() {
       setSelectedProjectId("");
       setInspectorOpen(false);
       setReviewOpen(true);
-    });
+    }, reviewOpen ? "neutral" : rightOpenIntent);
     if (!normalized) return;
 
     afterPaint(() => {
@@ -376,11 +391,11 @@ export default function App() {
       setAgentsOpen(false);
       setInspectorOpen(false);
       setSelectedProjectId(projectId);
-    });
+    }, projectDetailsOpen ? "neutral" : rightOpenIntent);
   }
 
   function closeProjectDetails(): void {
-    runLayoutTransition(() => setSelectedProjectId(""));
+    runLayoutTransition(() => setSelectedProjectId(""), "right-close");
   }
 
   const openAgents = useCallback(() => {
@@ -389,12 +404,12 @@ export default function App() {
       setInspectorOpen(false);
       setSelectedProjectId("");
       setAgentsOpen(true);
-    });
-  }, [runLayoutTransition]);
+    }, agentsOpen ? "neutral" : rightOpenIntent);
+  }, [agentsOpen, rightOpenIntent, runLayoutTransition]);
 
   function toggleAgents(): void {
     if (agentsOpen) {
-      runLayoutTransition(() => setAgentsOpen(false));
+      runLayoutTransition(() => setAgentsOpen(false), "right-close");
       return;
     }
     openAgents();
@@ -402,7 +417,7 @@ export default function App() {
 
   function toggleReview(): void {
     if (reviewOpen) {
-      runLayoutTransition(() => setReviewOpen(false));
+      runLayoutTransition(() => setReviewOpen(false), "right-close");
       return;
     }
     focusReviewFile();
@@ -414,7 +429,7 @@ export default function App() {
       setAgentsOpen(false);
       setSelectedProjectId("");
       setInspectorOpen((open) => !open);
-    });
+    }, inspectorVisible ? "right-close" : rightOpenIntent);
   }
 
   useEffect(() => {
@@ -459,6 +474,7 @@ export default function App() {
     layoutViewTransitionRef.current = null;
     delete document.documentElement.dataset.loomLayoutTransition;
     delete document.documentElement.dataset.loomLayoutCapture;
+    delete document.documentElement.dataset.loomLayoutIntent;
     document.body.classList.remove("loom-panel-resizing");
     document.body.classList.remove("loom-panel-motion");
   }, []);
@@ -533,7 +549,7 @@ export default function App() {
       if (eventMatchesShortcut(event, shortcuts.newConversation)) {
         consume();
         setSettingsOpen(false);
-        if (!sidebarOpen) runLayoutTransition(() => setSidebarOpen(true));
+        if (!sidebarOpen) runLayoutTransition(() => setSidebarOpen(true), "left-open");
         void loom.newThread();
         return;
       }
@@ -541,7 +557,7 @@ export default function App() {
       if (eventMatchesShortcut(event, shortcuts.searchConversations)) {
         consume();
         setSettingsOpen(false);
-        if (!sidebarOpen) runLayoutTransition(() => setSidebarOpen(true));
+        if (!sidebarOpen) runLayoutTransition(() => setSidebarOpen(true), "left-open");
         afterPaint(() => {
           const input = document.querySelector<HTMLInputElement>(".compact-search.open input");
           if (input) {
@@ -570,7 +586,10 @@ export default function App() {
 
       if (eventMatchesShortcut(event, shortcuts.toggleSidebar)) {
         consume();
-        runLayoutTransition(() => setSidebarOpen((open) => !open));
+        runLayoutTransition(
+          () => setSidebarOpen((open) => !open),
+          sidebarOpen ? "left-close" : "left-open",
+        );
         return;
       }
 
@@ -877,7 +896,10 @@ export default function App() {
           onCompactContext={() => void loom.compactContext()}
           onOpenAccount={() => setAccountOpen(true)}
           onOpenSettings={() => setSettingsOpen(true)}
-          onToggleSidebar={() => runLayoutTransition(() => setSidebarOpen((open) => !open))}
+          onToggleSidebar={() => runLayoutTransition(
+            () => setSidebarOpen((open) => !open),
+            sidebarOpen ? "left-close" : "left-open",
+          )}
           onToggleInspector={toggleInspector}
           onToggleReview={toggleReview}
           onToggleAgents={toggleAgents}
@@ -950,7 +972,7 @@ export default function App() {
 
       <Inspector
         items={inspectorPresence.mounted ? loom.items : EMPTY_TRANSCRIPT_ITEMS}
-        onClose={() => runLayoutTransition(() => setInspectorOpen(false))}
+        onClose={() => runLayoutTransition(() => setInspectorOpen(false), "right-close")}
       />
       <ProjectDetailsPanel
         project={selectedProject}
@@ -962,12 +984,12 @@ export default function App() {
         onOpenThread={loom.openThread}
         onSetInstructions={loom.setProjectInstructions}
       />
-      <ReviewWorkspace items={loom.items} open={reviewOpen} onClose={() => runLayoutTransition(() => setReviewOpen(false))} />
+      <ReviewWorkspace items={loom.items} open={reviewOpen} onClose={() => runLayoutTransition(() => setReviewOpen(false), "right-close")} />
       <SubAgentDock
         items={loom.items}
         open={agentsOpen}
         active={Boolean(running)}
-        onClose={() => runLayoutTransition(() => setAgentsOpen(false))}
+        onClose={() => runLayoutTransition(() => setAgentsOpen(false), "right-close")}
       />
       <ReviewInteractionBridge onOpen={focusReviewFile} />
       <AccountDialog
