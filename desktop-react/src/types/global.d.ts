@@ -60,6 +60,8 @@ export interface LoomBridge {
   writeClipboardText(value: string): Promise<boolean>;
   /** Open a safe http(s) or mailto URL with the system handler. */
   openExternal(url: string): Promise<boolean>;
+  /** Preview or open a workspace-confined local artifact without navigating the Loom shell. */
+  openLocalArtifact(targetPath: string, workspaceRoot: string): Promise<boolean>;
   /** Read a workspace-confined local image for safe in-app preview. */
   readLocalImage(targetPath: string, workspaceRoot: string): Promise<{
     dataUrl: string;
