@@ -55,6 +55,8 @@ const api = {
   openExternal: (url: string) => ipcRenderer.invoke("loom:open-external", url),
   openLocalArtifact: (targetPath: string, workspaceRoot: string) =>
     ipcRenderer.invoke("loom:open-local-artifact", targetPath, workspaceRoot),
+  localArtifactPreviewUrl: (targetPath: string, workspaceRoot: string) =>
+    ipcRenderer.invoke("loom:local-artifact-preview-url", targetPath, workspaceRoot),
   readLocalImage: (targetPath: string, workspaceRoot: string) =>
     ipcRenderer.invoke("loom:read-local-image", targetPath, workspaceRoot),
   readLocalMedia: (targetPath: string, workspaceRoot: string) =>
