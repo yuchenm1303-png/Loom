@@ -93,6 +93,73 @@
   animation: loom-generation-decision-in 280ms var(--loom-generation-pop) both;
 }
 
+/* User send -----------------------------------------------------------------
+   Sending used to stack an entry scale with a second bubble scale while the
+   viewport snapped to the bottom. Keep glyphs on final pixel geometry instead:
+   the full-width row only travels a few pixels, then the capsule is revealed
+   with a clip anchored at the lower-right corner. */
+.turn-block.is-active > .entry-user_message,
+.turn-process.is-live .entry-steering-user {
+  animation: loom-user-send-entry 190ms cubic-bezier(.2,.76,.18,1) both !important;
+  transform-origin: right bottom;
+}
+
+.turn-block.is-active > .entry-user_message .user-message,
+.turn-process.is-live .entry-steering-user .user-message {
+  animation: none !important;
+  transform: none !important;
+}
+
+.turn-block.is-active > .entry-user_message .user-message:not(.has-attachments),
+.turn-process.is-live .entry-steering-user .user-message:not(.has-attachments),
+.turn-block.is-active > .entry-user_message .user-message.has-attachments .user-message-copy-shell,
+.turn-process.is-live .entry-steering-user .user-message.has-attachments .user-message-copy-shell {
+  position: relative;
+  isolation: isolate;
+  animation: loom-user-bubble-unfold 235ms cubic-bezier(.18,.82,.18,1) both !important;
+}
+
+/* A tiny accent edge blooms and disappears as the capsule settles. It is an
+   edge cue, not a gloss pass, so dark and light themes keep the same restrained
+   material language. */
+.turn-block.is-active > .entry-user_message .user-message:not(.has-attachments)::before,
+.turn-process.is-live .entry-steering-user .user-message:not(.has-attachments)::before,
+.turn-block.is-active > .entry-user_message .user-message.has-attachments .user-message-copy-shell::before,
+.turn-process.is-live .entry-steering-user .user-message.has-attachments .user-message-copy-shell::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  box-shadow:
+    inset -1px -1px 0 rgba(162,149,244,.14),
+    0 0 14px rgba(108,92,220,.045);
+  animation: loom-user-bubble-edge 340ms ease-out both;
+}
+
+.turn-block.is-active > .entry-user_message .user-message:not(.has-attachments) > *,
+.turn-process.is-live .entry-steering-user .user-message:not(.has-attachments) > *,
+.turn-block.is-active > .entry-user_message .user-message.has-attachments .user-message-copy-shell > *,
+.turn-process.is-live .entry-steering-user .user-message.has-attachments .user-message-copy-shell > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Metadata is already present in layout from frame one; only its paint is
+   delayed. That prevents the bubble from gaining height after it has landed. */
+.turn-block.is-active > .entry-user_message .user-message-meta,
+.turn-process.is-live .entry-steering-user .user-message-meta {
+  animation: loom-user-send-meta 175ms ease-out 88ms both;
+}
+
+/* Media should follow the capsule instead of scaling with it. */
+.turn-block.is-active > .entry-user_message :is(.user-link-card,.user-rich-code-block,.user-message-image-preview,.user-message-attachment-card,.user-message-media-preview),
+.turn-process.is-live .entry-steering-user :is(.user-link-card,.user-rich-code-block,.user-message-image-preview,.user-message-attachment-card,.user-message-media-preview) {
+  animation: loom-user-send-media 220ms cubic-bezier(.2,.76,.18,1) 42ms both !important;
+}
+
 /* Completion handoff --------------------------------------------------------
    Runtime flips to idle before the process stack finishes folding. Coordinate
    the answer landing, process recap and toolbar so the eye follows one motion
@@ -142,6 +209,15 @@
 html[data-loom-theme="light"] .markdown-body.is-streaming .stream-text-tail-a,
 html[data-loom-theme="light"] .markdown-body.is-streaming .stream-text-tail-b {
   animation-duration: 175ms;
+}
+
+html[data-loom-theme="light"] .turn-block.is-active > .entry-user_message .user-message:not(.has-attachments)::before,
+html[data-loom-theme="light"] .turn-process.is-live .entry-steering-user .user-message:not(.has-attachments)::before,
+html[data-loom-theme="light"] .turn-block.is-active > .entry-user_message .user-message.has-attachments .user-message-copy-shell::before,
+html[data-loom-theme="light"] .turn-process.is-live .entry-steering-user .user-message.has-attachments .user-message-copy-shell::before {
+  box-shadow:
+    inset -1px -1px 0 rgba(105,90,216,.10),
+    0 0 12px rgba(105,90,216,.035);
 }
 
 @keyframes loom-stream-tail-reveal-a {
@@ -219,6 +295,58 @@ html[data-loom-theme="light"] .markdown-body.is-streaming .stream-text-tail-b {
   }
 }
 
+@keyframes loom-user-send-entry {
+  0% {
+    opacity: 0;
+    transform: translate3d(6px,5px,0);
+  }
+  64% {
+    opacity: 1;
+    transform: translate3d(-.6px,0,0);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0,0,0);
+  }
+}
+
+@keyframes loom-user-bubble-unfold {
+  0% {
+    opacity: .26;
+    clip-path: inset(16% 0 0 16% round 16px);
+  }
+  46% {
+    opacity: .9;
+    clip-path: inset(3% 0 0 4% round 16px);
+  }
+  100% {
+    opacity: 1;
+    clip-path: inset(0 0 0 0 round 16px);
+  }
+}
+
+@keyframes loom-user-bubble-edge {
+  0%, 100% { opacity: 0; }
+  38% { opacity: .72; }
+  68% { opacity: .34; }
+}
+
+@keyframes loom-user-send-meta {
+  from { opacity: 0; }
+  to { opacity: .78; }
+}
+
+@keyframes loom-user-send-media {
+  from {
+    opacity: 0;
+    transform: translate3d(4px,4px,0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0,0,0);
+  }
+}
+
 @keyframes loom-generation-final-handoff {
   0% {
     opacity: .54;
@@ -277,6 +405,16 @@ html[data-loom-theme="light"] .markdown-body.is-streaming .stream-text-tail-b {
   .turn-process.is-live .assistant-message-shell,
   .turn-process.is-live .decision-prompt-card,
   .turn-final-answer .decision-prompt-card,
+  .turn-block.is-active > .entry-user_message,
+  .turn-process.is-live .entry-steering-user,
+  .turn-block.is-active > .entry-user_message .user-message,
+  .turn-process.is-live .entry-steering-user .user-message,
+  .turn-block.is-active > .entry-user_message .user-message-copy-shell,
+  .turn-process.is-live .entry-steering-user .user-message-copy-shell,
+  .turn-block.is-active > .entry-user_message .user-message-meta,
+  .turn-process.is-live .entry-steering-user .user-message-meta,
+  .turn-block.is-active > .entry-user_message :is(.user-link-card,.user-rich-code-block,.user-message-image-preview,.user-message-attachment-card,.user-message-media-preview),
+  .turn-process.is-live .entry-steering-user :is(.user-link-card,.user-rich-code-block,.user-message-image-preview,.user-message-attachment-card,.user-message-media-preview),
   .turn-block.is-settling .turn-final-answer,
   .turn-final-answer .assistant-message-meta,
   .turn-final-answer .turn-artifacts-preview,
@@ -297,6 +435,14 @@ html[data-loom-theme="light"] .markdown-body.is-streaming .stream-text-tail-b {
 :root[data-loom-reduced-motion="true"] .turn-process.is-live .task-flow-group,
 :root[data-loom-reduced-motion="true"] .turn-process.is-live .live-reasoning,
 :root[data-loom-reduced-motion="true"] .turn-process.is-live .assistant-message-shell,
+:root[data-loom-reduced-motion="true"] .turn-block.is-active > .entry-user_message,
+:root[data-loom-reduced-motion="true"] .turn-process.is-live .entry-steering-user,
+:root[data-loom-reduced-motion="true"] .turn-block.is-active > .entry-user_message .user-message,
+:root[data-loom-reduced-motion="true"] .turn-process.is-live .entry-steering-user .user-message,
+:root[data-loom-reduced-motion="true"] .turn-block.is-active > .entry-user_message .user-message-copy-shell,
+:root[data-loom-reduced-motion="true"] .turn-process.is-live .entry-steering-user .user-message-copy-shell,
+:root[data-loom-reduced-motion="true"] .turn-block.is-active > .entry-user_message .user-message-meta,
+:root[data-loom-reduced-motion="true"] .turn-process.is-live .entry-steering-user .user-message-meta,
 :root[data-loom-reduced-motion="true"] .turn-block.is-settling .turn-final-answer,
 :root[data-loom-reduced-motion="true"] .turn-final-answer .assistant-message-meta,
 :root[data-loom-reduced-motion="true"] .task-flow-inline-detail-grid.open .task-flow-inline-detail {
