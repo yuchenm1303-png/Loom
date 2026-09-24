@@ -15,7 +15,7 @@ def test_panel_tracks_have_one_direct_layout_source_of_truth() -> None:
     assert "transition: grid-template-columns" not in css
     assert ".sidebar-layout-closed" in css
     assert ".inspector-layout-closed" in css
-    assert "const sidebarLayoutOpen = sidebarOpen" in app
+    assert app.count("const sidebarLayoutOpen = sidebarOpen") == 1
     assert "const inspectorLayoutOpen = inspectorVisible" in app
     assert "const reviewLayoutOpen = reviewOpen" in app
     assert "const agentsLayoutOpen = agentsOpen" in app
@@ -38,3 +38,13 @@ def test_transcript_reanchors_once_when_final_layout_commits() -> None:
     assert 'PANEL_LAYOUT_COMMIT_EVENT = "loom:panel-layout-commit"' in scroll
     assert "onPanelLayoutCommit" in scroll
     assert "scroller.scrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight)" in scroll
+
+
+def test_every_visible_panel_close_path_uses_the_same_coordinator() -> None:
+    app = read("desktop-react/src/App.tsx")
+
+    assert 'onToggleSidebar={() => runLayoutTransition(() => setSidebarOpen((open) => !open))}' in app
+    assert 'runLayoutTransition(() => setSidebarOpen((open) => !open));' in app
+    assert 'onClose={() => runLayoutTransition(() => setInspectorOpen(false))}' in app
+    assert 'onClose={() => runLayoutTransition(() => setReviewOpen(false))}' in app
+    assert 'onClose={() => runLayoutTransition(() => setAgentsOpen(false))}' in app

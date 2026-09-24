@@ -107,22 +107,131 @@
   mix-blend-mode: normal;
 }
 
-::view-transition-old(loom-workspace) {
-  animation: loom-workspace-old var(--loom-motion-panel,390ms) var(--loom-ease-standard,cubic-bezier(.22,.7,.18,1)) both;
-}
-
+::view-transition-old(loom-workspace),
 ::view-transition-new(loom-workspace) {
-  animation: loom-workspace-new var(--loom-motion-panel,390ms) var(--loom-ease-standard,cubic-bezier(.22,.7,.18,1)) both;
+  animation-duration: var(--loom-motion-panel,390ms);
+  animation-timing-function: var(--loom-ease-standard,cubic-bezier(.22,.7,.18,1));
 }
 
-@keyframes loom-workspace-old {
-  0%, 56% { opacity: 1; }
-  100% { opacity: 0; }
+
+/* Crisp readable layers -----------------------------------------------------
+   The workspace shell may change width by hundreds of pixels. Letting one
+   bitmap morph between those rectangles stretches every glyph and control.
+   During the transition, readable layers are captured under separate old/new
+   names instead. They remain at native geometry and use a restrained dissolve
+   while the shell itself performs the spatial move. */
+html[data-loom-layout-capture="old"] .thread-header-leading {
+  view-transition-name: loom-header-leading-old;
+}
+html[data-loom-layout-capture="new"] .thread-header-leading {
+  view-transition-name: loom-header-leading-new;
+}
+html[data-loom-layout-capture="old"] .thread-header-copy {
+  view-transition-name: loom-header-copy-old;
+}
+html[data-loom-layout-capture="new"] .thread-header-copy {
+  view-transition-name: loom-header-copy-new;
+}
+html[data-loom-layout-capture="old"] .polished-thread-header-actions {
+  view-transition-name: loom-header-actions-old;
+}
+html[data-loom-layout-capture="new"] .polished-thread-header-actions {
+  view-transition-name: loom-header-actions-new;
+}
+html[data-loom-layout-capture="old"] .transcript {
+  view-transition-name: loom-transcript-old;
+}
+html[data-loom-layout-capture="new"] .transcript {
+  view-transition-name: loom-transcript-new;
+}
+html[data-loom-layout-capture="old"] .composer {
+  view-transition-name: loom-composer-old;
+}
+html[data-loom-layout-capture="new"] .composer {
+  view-transition-name: loom-composer-new;
+}
+html[data-loom-layout-capture="old"] .composer-hint {
+  view-transition-name: loom-composer-hint-old;
+}
+html[data-loom-layout-capture="new"] .composer-hint {
+  view-transition-name: loom-composer-hint-new;
+}
+html[data-loom-layout-capture="old"] .run-progress-inline {
+  view-transition-name: loom-run-progress-old;
+}
+html[data-loom-layout-capture="new"] .run-progress-inline {
+  view-transition-name: loom-run-progress-new;
 }
 
-@keyframes loom-workspace-new {
-  0%, 34% { opacity: 0; }
-  100% { opacity: 1; }
+::view-transition-group(loom-header-leading-old),
+::view-transition-group(loom-header-leading-new),
+::view-transition-group(loom-header-copy-old),
+::view-transition-group(loom-header-copy-new),
+::view-transition-group(loom-header-actions-old),
+::view-transition-group(loom-header-actions-new),
+::view-transition-group(loom-transcript-old),
+::view-transition-group(loom-transcript-new),
+::view-transition-group(loom-composer-old),
+::view-transition-group(loom-composer-new),
+::view-transition-group(loom-composer-hint-old),
+::view-transition-group(loom-composer-hint-new),
+::view-transition-group(loom-run-progress-old),
+::view-transition-group(loom-run-progress-new) {
+  animation: none;
+}
+
+::view-transition-old(loom-header-leading-old),
+::view-transition-old(loom-header-copy-old),
+::view-transition-old(loom-header-actions-old),
+::view-transition-old(loom-transcript-old),
+::view-transition-old(loom-composer-old),
+::view-transition-old(loom-composer-hint-old),
+::view-transition-old(loom-run-progress-old) {
+  mix-blend-mode: normal;
+  animation: loom-readable-out 245ms cubic-bezier(.42,0,.72,.2) both;
+}
+
+::view-transition-new(loom-header-leading-new),
+::view-transition-new(loom-header-copy-new),
+::view-transition-new(loom-header-actions-new),
+::view-transition-new(loom-transcript-new),
+::view-transition-new(loom-composer-new),
+::view-transition-new(loom-composer-hint-new),
+::view-transition-new(loom-run-progress-new) {
+  mix-blend-mode: normal;
+  animation: loom-readable-in 285ms cubic-bezier(.2,.74,.18,1) 76ms both;
+}
+
+@keyframes loom-readable-out {
+  0%, 22% { opacity: 1; translate: 0 0; }
+  100% { opacity: 0; translate: 0 -1px; }
+}
+
+@keyframes loom-readable-in {
+  0% { opacity: 0; translate: 0 1px; }
+  100% { opacity: 1; translate: 0 0; }
+}
+
+/* Portal panels also own CSS presence motion. Snapshot only their logical
+   endpoint while View Transition is active; otherwise an "entering" frame can
+   be captured and animated a second time, which reads as rubbery text/icons. */
+html[data-loom-layout-transition="true"] .review-workspace[data-open="true"],
+html[data-loom-layout-transition="true"] .sub-agent-dock[data-open="true"],
+html[data-loom-layout-transition="true"] .project-details-panel[data-open="true"] {
+  opacity: 1 !important;
+  transform: none !important;
+  visibility: visible !important;
+  transition: none !important;
+}
+
+html[data-loom-layout-transition="true"] .review-workspace[data-open="false"],
+html[data-loom-layout-transition="true"] .sub-agent-dock[data-open="false"],
+html[data-loom-layout-transition="true"] .project-details-panel[data-open="false"] {
+  opacity: 0 !important;
+  transform: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  transition: none !important;
 }
 
 /* Components with their own presence lifecycles still get independent snapshot
@@ -386,4 +495,42 @@ html[data-loom-reduced-motion="true"]::view-transition-group(loom-project-surfac
 html[data-loom-reduced-motion="true"]::view-transition-old(loom-workspace),
 html[data-loom-reduced-motion="true"]::view-transition-new(loom-workspace) {
   animation-duration: .001ms !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(loom-header-leading-old),
+  ::view-transition-new(loom-header-leading-new),
+  ::view-transition-old(loom-header-copy-old),
+  ::view-transition-new(loom-header-copy-new),
+  ::view-transition-old(loom-header-actions-old),
+  ::view-transition-new(loom-header-actions-new),
+  ::view-transition-old(loom-transcript-old),
+  ::view-transition-new(loom-transcript-new),
+  ::view-transition-old(loom-composer-old),
+  ::view-transition-new(loom-composer-new),
+  ::view-transition-old(loom-composer-hint-old),
+  ::view-transition-new(loom-composer-hint-new),
+  ::view-transition-old(loom-run-progress-old),
+  ::view-transition-new(loom-run-progress-new) {
+    animation-duration: .001ms !important;
+    animation-delay: 0ms !important;
+  }
+}
+
+html[data-loom-reduced-motion="true"]::view-transition-old(loom-header-leading-old),
+html[data-loom-reduced-motion="true"]::view-transition-new(loom-header-leading-new),
+html[data-loom-reduced-motion="true"]::view-transition-old(loom-header-copy-old),
+html[data-loom-reduced-motion="true"]::view-transition-new(loom-header-copy-new),
+html[data-loom-reduced-motion="true"]::view-transition-old(loom-header-actions-old),
+html[data-loom-reduced-motion="true"]::view-transition-new(loom-header-actions-new),
+html[data-loom-reduced-motion="true"]::view-transition-old(loom-transcript-old),
+html[data-loom-reduced-motion="true"]::view-transition-new(loom-transcript-new),
+html[data-loom-reduced-motion="true"]::view-transition-old(loom-composer-old),
+html[data-loom-reduced-motion="true"]::view-transition-new(loom-composer-new),
+html[data-loom-reduced-motion="true"]::view-transition-old(loom-composer-hint-old),
+html[data-loom-reduced-motion="true"]::view-transition-new(loom-composer-hint-new),
+html[data-loom-reduced-motion="true"]::view-transition-old(loom-run-progress-old),
+html[data-loom-reduced-motion="true"]::view-transition-new(loom-run-progress-new) {
+  animation-duration: .001ms !important;
+  animation-delay: 0ms !important;
 }
