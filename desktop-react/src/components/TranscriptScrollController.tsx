@@ -18,6 +18,7 @@ const LIVE_FOLLOW_NEAR_EASE = 0.22;
 const LIVE_FOLLOW_FAR_EASE = 0.38;
 const LIVE_FOLLOW_PRESSURE_PX = 420;
 const LIVE_SETTLE_WINDOW_MS = 820;
+const SEND_FOLLOW_WINDOW_MS = 360;
 const PANEL_RESIZE_END_EVENT = "loom:panel-resize-end";
 const PANEL_LAYOUT_COMMIT_EVENT = "loom:panel-layout-commit";
 
@@ -124,8 +125,7 @@ export function TranscriptScrollController({
         || document.documentElement.dataset.loomReducedMotion === "true";
       const liveMotion = Boolean(running) || performance.now() < settleUntilRef.current;
       const easeLiveGrowth = Boolean(
-        liveMotion
-        && !forced
+        (liveMotion || forced)
         && !snapNow
         && !reducedMotion
         && absoluteDistance > SCROLL_EPSILON_PX
@@ -182,10 +182,21 @@ export function TranscriptScrollController({
     const userMessageAdded = Boolean(latestUserId) && latestUserId !== lastUserMessageIdRef.current;
     const activityAdded = Boolean(latestActivityId) && latestActivityId !== lastActivityItemIdRef.current;
 
-    if (threadChanged || turnChanged || userMessageAdded) {
-      // A conversation/turn transition is an explicit request to work at the
-      // newest message. Mark this as forced so the native scroll event caused
-      // by replacing the old transcript cannot cancel the pending bottom sync.
+    if (threadChanged) {
+      // A real thread replacement should still pin before paint. Animating from
+      // the previous conversation's scroll position would expose stale geometry.
+      followingRef.current = true;
+      setJumpVisible(false);
+      scheduleBottomSync(scroller, true, true);
+    } else if (turnChanged || userMessageAdded) {
+      // Sending is different from swapping conversations: the user is already
+      // looking at this viewport. Keep it force-following, but let the bottom
+      // anchor travel through the same short spring as the bubble entrance so
+      // composer collapse + message insertion read as one continuous motion.
+      settleUntilRef.current = Math.max(
+        settleUntilRef.current,
+        performance.now() + SEND_FOLLOW_WINDOW_MS,
+      );
       followingRef.current = true;
       setJumpVisible(false);
       scheduleBottomSync(scroller, true);
@@ -213,7 +224,9 @@ export function TranscriptScrollController({
     forceBottomRef.current = true;
     lastScrollTopRef.current = scroller.scrollTop;
     setJumpVisible(false);
-    scheduleBottomSync(scroller, true);
+    // Mount/thread swaps are authoritative navigation and should not visibly
+    // travel from whatever scroll position belonged to the previous subtree.
+    scheduleBottomSync(scroller, true, true);
 
     const onScroll = () => {
       if (isPanelResizeActive()) return;
