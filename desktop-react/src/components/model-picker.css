@@ -490,6 +490,19 @@ html[data-loom-theme="light"] .mp-mark {
   font-size: 10px;
 }
 
+.mp-mark-logo {
+  width: 16px;
+  height: 16px;
+  background: currentColor;
+  -webkit-mask: var(--mp-logo) center / contain no-repeat;
+  mask: var(--mp-logo) center / contain no-repeat;
+}
+
+.mp-mark-sm .mp-mark-logo {
+  width: 13px;
+  height: 13px;
+}
+
 /* Small marks inside rows sit in the same 24px column as provider marks, so
    every row's text starts on one edge. */
 .mp-row > .mp-mark-sm {
