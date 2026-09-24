@@ -411,7 +411,9 @@ body.loom-panel-resizing * {
      the *workspace column* that narrows (right dock / inspector open). Without this
      the label keeps laying out inside a 32px box and spills over the neighbours. */
   .thread-agent-label,
-  .thread-agent-count { display: none; }
+  .thread-agent-count,
+  .thread-artifact-label,
+  .thread-artifact-count { display: none; }
 }
 
 @container loom-workspace (max-width: 680px) {
