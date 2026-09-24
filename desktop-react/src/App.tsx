@@ -70,7 +70,20 @@ type LayoutMotionIntent =
   | "right-close"
   | "right-swap"
   | "neutral";
+type LayoutMotionAnchorKind =
+  | "header-leading"
+  | "header-copy"
+  | "header-actions"
+  | "conversation"
+  | "composer";
+type LayoutMotionAnchorSnapshot = {
+  element: HTMLElement;
+  centerX: number;
+  centerY: number;
+  kind: LayoutMotionAnchorKind;
+};
 type LayoutViewTransition = {
+  updateCallbackDone: Promise<void>;
   finished: Promise<void>;
   skipTransition(): void;
 };
@@ -194,12 +207,100 @@ function reducedPanelMotion(): boolean {
     || Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)").matches);
 }
 
-/**
- * Side surfaces animate as overlays first, then reserve workspace geometry once
- * the motion has almost settled. Closing does the inverse: release geometry
- * immediately and let the panel leave over the already-expanded workspace.
- * This keeps transcript reflow to one commit without exposing an empty track.
- */
+const PANEL_LAYOUT_ANCHORS: Array<{ selector: string; kind: LayoutMotionAnchorKind }> = [
+  { selector: ".thread-header-leading", kind: "header-leading" },
+  { selector: ".thread-header-copy", kind: "header-copy" },
+  { selector: ".polished-thread-header-actions", kind: "header-actions" },
+  { selector: ".conversation-stage", kind: "conversation" },
+  { selector: ".composer-stage", kind: "composer" },
+];
+
+function settleLayoutAnchorAnimations(root: HTMLElement | null): void {
+  if (!root) return;
+  for (const target of PANEL_LAYOUT_ANCHORS) {
+    const element = root.querySelector<HTMLElement>(target.selector);
+    if (!element) continue;
+    for (const animation of element.getAnimations()) {
+      if (animation.id !== "loom-layout-anchor") continue;
+      try { animation.commitStyles(); } catch { /* Older Chromium fallback. */ }
+      animation.cancel();
+    }
+  }
+}
+
+function clearLayoutAnchorStyles(root: HTMLElement | null): void {
+  if (!root) return;
+  for (const target of PANEL_LAYOUT_ANCHORS) {
+    const element = root.querySelector<HTMLElement>(target.selector);
+    if (!element) continue;
+    element.style.removeProperty("transform");
+    element.style.removeProperty("will-change");
+  }
+}
+
+function captureLayoutAnchors(root: HTMLElement | null): LayoutMotionAnchorSnapshot[] {
+  if (!root) return [];
+  settleLayoutAnchorAnimations(root);
+
+  const captures: LayoutMotionAnchorSnapshot[] = [];
+  for (const target of PANEL_LAYOUT_ANCHORS) {
+    const element = root.querySelector<HTMLElement>(target.selector);
+    if (!element) continue;
+    const rect = element.getBoundingClientRect();
+    captures.push({
+      element,
+      centerX: rect.left + rect.width / 2,
+      centerY: rect.top + rect.height / 2,
+      kind: target.kind,
+    });
+
+    // commitStyles() may have preserved an interrupted FLIP offset inline.
+    // Measure that exact painted position, then remove it before the real layout
+    // commit; the next FLIP reconstructs the same visual point without a snap.
+    element.style.removeProperty("transform");
+    element.style.removeProperty("will-change");
+  }
+  return captures;
+}
+
+function animateLayoutAnchors(captures: LayoutMotionAnchorSnapshot[]): Animation[] {
+  const animations: Animation[] = [];
+  for (const capture of captures) {
+    if (!capture.element.isConnected) continue;
+    const rect = capture.element.getBoundingClientRect();
+    const deltaX = capture.centerX - (rect.left + rect.width / 2);
+    const deltaY = capture.centerY - (rect.top + rect.height / 2);
+    if (Math.abs(deltaX) < .5 && Math.abs(deltaY) < .5) continue;
+
+    const timing = (() => {
+      switch (capture.kind) {
+        case "header-leading": return { duration: 230, delay: 0 };
+        case "header-copy": return { duration: 250, delay: 6 };
+        case "header-actions": return { duration: 240, delay: 10 };
+        case "composer": return { duration: 280, delay: 12 };
+        default: return { duration: 300, delay: 0 };
+      }
+    })();
+
+    capture.element.style.willChange = "transform";
+    const animation = capture.element.animate(
+      [
+        { transform: `translate3d(${deltaX}px,${deltaY}px,0)` },
+        { transform: "translate3d(0,0,0)" },
+      ],
+      {
+        duration: timing.duration,
+        delay: timing.delay,
+        easing: "cubic-bezier(.16,.78,.18,1)",
+        fill: "both",
+      },
+    );
+    animation.id = "loom-layout-anchor";
+    animations.push(animation);
+  }
+  return animations;
+}
+
 
 export default function App() {
   const loom = useLoom();
@@ -282,60 +383,81 @@ export default function App() {
     intent: LayoutMotionIntent = "neutral",
   ) => {
     if (reducedPanelMotion()) {
+      layoutTransitionSerialRef.current += 1;
+      layoutViewTransitionRef.current?.skipTransition();
+      layoutViewTransitionRef.current = null;
+      settleLayoutAnchorAnimations(shellRef.current);
+      clearLayoutAnchorStyles(shellRef.current);
+      delete document.documentElement.dataset.loomLayoutTransition;
+      delete document.documentElement.dataset.loomLayoutIntent;
+      document.body.classList.remove("loom-panel-motion");
       flushSync(update);
       window.dispatchEvent(new Event("loom:panel-resize-end"));
-      return;
-    }
-
-    const transitionDocument = document as LayoutTransitionDocument;
-    if (typeof transitionDocument.startViewTransition !== "function") {
-      flushSync(update);
-      afterPaint(() => window.dispatchEvent(new Event("loom:panel-resize-end")));
       return;
     }
 
     const serial = layoutTransitionSerialRef.current + 1;
     layoutTransitionSerialRef.current = serial;
 
-    // Rapid clicks do not queue several half-finished layouts. Finish the visual
-    // snapshot immediately, then capture that resolved state as the next "old".
+    // Preserve the exact a61 side-surface choreography, but do not snapshot the
+    // workspace or its text. Only the panel surface is captured; the handful of
+    // live elements whose coordinates really change are moved with FLIP.
     layoutViewTransitionRef.current?.skipTransition();
+    layoutViewTransitionRef.current = null;
+    const captures = captureLayoutAnchors(shellRef.current);
     document.body.classList.add("loom-panel-motion");
     document.documentElement.dataset.loomLayoutTransition = "true";
     document.documentElement.dataset.loomLayoutIntent = intent;
-    document.documentElement.dataset.loomLayoutCapture = "old";
+
+    const finish = () => {
+      if (layoutTransitionSerialRef.current !== serial) return;
+      layoutViewTransitionRef.current = null;
+      clearLayoutAnchorStyles(shellRef.current);
+      delete document.documentElement.dataset.loomLayoutTransition;
+      delete document.documentElement.dataset.loomLayoutIntent;
+      document.body.classList.remove("loom-panel-motion");
+      window.dispatchEvent(new Event("loom:panel-resize-end"));
+    };
+
+    const transitionDocument = document as LayoutTransitionDocument;
+    if (typeof transitionDocument.startViewTransition !== "function") {
+      flushSync(update);
+      const animations = animateLayoutAnchors(captures);
+      if (!animations.length) {
+        afterPaint(finish);
+      } else {
+        void Promise.allSettled(animations.map((animation) => animation.finished)).then(finish);
+      }
+      return;
+    }
 
     let transition: LayoutViewTransition;
     try {
       transition = transitionDocument.startViewTransition(() => {
-        // Geometry still commits once. Readable content is captured separately
-        // before and after the commit so glyphs, controls and message cards are
-        // never stretched as part of the resized workspace bitmap.
-        document.documentElement.dataset.loomLayoutCapture = "new";
         flushSync(update);
       });
     } catch {
       delete document.documentElement.dataset.loomLayoutTransition;
-      delete document.documentElement.dataset.loomLayoutCapture;
-      delete document.documentElement.dataset.loomLayoutIntent;
-      document.body.classList.remove("loom-panel-motion");
       flushSync(update);
-      afterPaint(() => window.dispatchEvent(new Event("loom:panel-resize-end")));
+      const animations = animateLayoutAnchors(captures);
+      if (!animations.length) {
+        afterPaint(finish);
+      } else {
+        void Promise.allSettled(animations.map((animation) => animation.finished)).then(finish);
+      }
       return;
     }
 
     layoutViewTransitionRef.current = transition;
-    void transition.finished
-      .catch(() => undefined)
+    const liveLayoutMotion = transition.updateCallbackDone
       .then(() => {
         if (layoutTransitionSerialRef.current !== serial) return;
-        layoutViewTransitionRef.current = null;
-        delete document.documentElement.dataset.loomLayoutTransition;
-        delete document.documentElement.dataset.loomLayoutCapture;
-        delete document.documentElement.dataset.loomLayoutIntent;
-        document.body.classList.remove("loom-panel-motion");
-        window.dispatchEvent(new Event("loom:panel-resize-end"));
-      });
+        const animations = animateLayoutAnchors(captures);
+        return Promise.allSettled(animations.map((animation) => animation.finished));
+      })
+      .catch(() => undefined);
+
+    void Promise.allSettled([transition.finished, liveLayoutMotion]).then(finish);
   }, []);
 
   useLayoutEffect(() => {
@@ -472,8 +594,9 @@ export default function App() {
     layoutTransitionSerialRef.current += 1;
     layoutViewTransitionRef.current?.skipTransition();
     layoutViewTransitionRef.current = null;
+    settleLayoutAnchorAnimations(shellRef.current);
+    clearLayoutAnchorStyles(shellRef.current);
     delete document.documentElement.dataset.loomLayoutTransition;
-    delete document.documentElement.dataset.loomLayoutCapture;
     delete document.documentElement.dataset.loomLayoutIntent;
     document.body.classList.remove("loom-panel-resizing");
     document.body.classList.remove("loom-panel-motion");

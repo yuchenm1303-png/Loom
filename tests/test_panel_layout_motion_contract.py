@@ -55,3 +55,14 @@ def test_direction_metadata_is_cleaned_after_every_transition() -> None:
 
     assert 'delete document.documentElement.dataset.loomLayoutIntent' in app
     assert app.count('delete document.documentElement.dataset.loomLayoutIntent') >= 3
+
+
+def test_layout_motion_moves_live_anchors_without_snapshotting_workspace() -> None:
+    app = read("desktop-react/src/App.tsx")
+    css = read("desktop-react/src/components/workspace-panels.css")
+
+    assert "captureLayoutAnchors" in app
+    assert "animateLayoutAnchors" in app
+    assert "transition.updateCallbackDone" in app
+    assert "view-transition-name: loom-workspace" not in css
+    assert "loom-readable" not in css
