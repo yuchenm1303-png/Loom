@@ -210,12 +210,14 @@ export function TurnArtifactsPreview({ items, workspace }: { items: TranscriptIt
           className="turn-artifacts-preview-action"
           onClick={(event) => {
             event.stopPropagation();
-            void window.loom.openLocalArtifact(previewFile.path, workspace);
+            window.dispatchEvent(new CustomEvent("loom:artifact-preview-open", {
+              detail: { path: previewFile.path, workspace },
+            }));
           }}
           title={`渲染预览 ${previewFile.displayPath}`}
         >
           <ExternalLink size={13.5} strokeWidth={1.8} aria-hidden="true" />
-          <span>预览 {previewFile.name}</span>
+          <span>渲染 {previewFile.name}</span>
           <ChevronRight size={13} aria-hidden="true" />
         </button>
       ) : null}
