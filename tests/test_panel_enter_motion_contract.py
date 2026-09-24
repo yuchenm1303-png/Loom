@@ -34,8 +34,9 @@ def test_sidebar_and_inspector_move_locally_without_animating_all_children() -> 
     assert "translate3d(-12px,0,0)" in css
     assert "translate3d(12px,0,0)" in css
     assert "visibility 0s linear 230ms" in css
-    assert "animation: loom-panel-surface-in-left 292ms" in css
-    assert "animation: loom-panel-surface-in-right 292ms" in css
+
+    # The surface flight duration/origin pair is owned by
+    # test_panel_surface_uses_corner_origin_flight_without_global_snapshot_animation.
 
     assert ".thread-header-copy" not in css
     assert "loom-readable" not in css
