@@ -212,7 +212,6 @@ export default function App() {
     catch { /* The panel remains usable when storage is unavailable. */ }
   }, [inspectorOpen]);
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const sidebarLayoutOpen = sidebarOpen;
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsPresence = useMotionPresence(settingsOpen, 300);
   const [accountOpen, setAccountOpen] = useState(false);
