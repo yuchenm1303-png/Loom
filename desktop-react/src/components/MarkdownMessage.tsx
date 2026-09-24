@@ -51,8 +51,22 @@ function singleLineImagePath(value: string): string {
   return localImagePath(trimmed);
 }
 
+function localWorkspacePath(value: unknown): string {
+  const raw = String(value ?? "").trim();
+  if (!raw || raw.startsWith("#") || raw.startsWith("//")) return "";
+  const windowsAbsolute = /^[A-Za-z]:[\\/]/.test(raw);
+  if (!windowsAbsolute && /^[A-Za-z][A-Za-z0-9+.-]*:/.test(raw)) return "";
+  const clean = raw.replace(/^<|>$/g, "").split(/[?#]/, 1)[0];
+  try {
+    return decodeURI(clean);
+  } catch {
+    return clean;
+  }
+}
+
 function markdownUrlTransform(url: string, _key: string, node: { tagName?: string }): string {
   if (node.tagName === "img" && localImagePath(url)) return url;
+  if (node.tagName === "a" && localWorkspacePath(url)) return url;
   return defaultUrlTransform(url);
 }
 
@@ -248,18 +262,34 @@ function markdownComponents(workspace?: string): Components {
       );
     },
     a({ href, children, ...props }) {
-    const external = Boolean(href && /^(https?:|mailto:)/i.test(href));
-    return (
-      <a
-        {...props}
-        href={href}
-        target={external ? "_blank" : undefined}
-        rel={external ? "noopener noreferrer" : undefined}
-      >
-        {children}
-      </a>
-    );
-  },
+      const external = Boolean(href && /^(https?:|mailto:)/i.test(href));
+      const localTarget = localWorkspacePath(href);
+      const fragment = Boolean(href?.startsWith("#"));
+      return (
+        <a
+          {...props}
+          href={external || fragment ? href : localTarget ? "#" : href}
+          target={undefined}
+          rel={external ? "noopener noreferrer" : undefined}
+          data-loom-local-artifact={localTarget || undefined}
+          onClick={(event) => {
+            if (external && href) {
+              event.preventDefault();
+              void window.loom.openExternal(href);
+              return;
+            }
+            if (localTarget) {
+              event.preventDefault();
+              if (workspace) void window.loom.openLocalArtifact(localTarget, workspace);
+              return;
+            }
+            if (href && !fragment) event.preventDefault();
+          }}
+        >
+          {children}
+        </a>
+      );
+    },
     img({ src, alt, className, ...props }) {
       const sticker = isChatStickerAssetUrl(src);
       if (sticker) {
