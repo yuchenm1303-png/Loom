@@ -62,6 +62,8 @@ export interface LoomBridge {
   openExternal(url: string): Promise<boolean>;
   /** Preview or open a workspace-confined local artifact without navigating the Loom shell. */
   openLocalArtifact(targetPath: string, workspaceRoot: string): Promise<boolean>;
+  /** Return a sandbox-safe internal URL for rendering a workspace artifact in Loom. */
+  localArtifactPreviewUrl(targetPath: string, workspaceRoot: string): Promise<string>;
   /** Read a workspace-confined local image for safe in-app preview. */
   readLocalImage(targetPath: string, workspaceRoot: string): Promise<{
     dataUrl: string;
