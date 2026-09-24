@@ -369,16 +369,16 @@ async function revealPath(targetPath: string): Promise<boolean> {
 function resolveWorkspaceLocalPath(targetPath: string, workspaceRoot: string): string {
   const rootValue = String(workspaceRoot || "").trim();
   const targetValue = String(targetPath || "").trim();
-  if (!rootValue || !targetValue) throw new Error("Local image path and workspace are required");
+  if (!rootValue || !targetValue) throw new Error("Local path and workspace are required");
 
   const root = path.resolve(rootValue);
   const target = path.isAbsolute(targetValue)
     ? path.resolve(targetValue)
     : path.resolve(root, targetValue);
   const relative = path.relative(root, target);
-  if (!relative || relative === ".") throw new Error("Local image path must point to a file");
+  if (!relative || relative === ".") throw new Error("Local path must point to a file");
   if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
-    throw new Error("Local image must be inside the active workspace");
+    throw new Error("Local path must be inside the active workspace");
   }
   return target;
 }
