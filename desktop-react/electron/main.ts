@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, nativeTheme, shell } from "electron";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, nativeTheme, protocol, shell } from "electron";
 import { ChildProcessWithoutNullStreams, spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -51,12 +51,44 @@ const LOCAL_MEDIA_MIME_TYPES = new Map<string, string>([
   [".m4v", "video/mp4"],
 ]);
 const MAX_INLINE_MEDIA_BYTES = 32 * 1024 * 1024;
+const ARTIFACT_MIME_TYPES = new Map<string, string>([
+  [".html", "text/html; charset=utf-8"],
+  [".htm", "text/html; charset=utf-8"],
+  [".svg", "image/svg+xml; charset=utf-8"],
+  [".pdf", "application/pdf"],
+  [".css", "text/css; charset=utf-8"],
+  [".js", "text/javascript; charset=utf-8"],
+  [".mjs", "text/javascript; charset=utf-8"],
+  [".cjs", "text/javascript; charset=utf-8"],
+  [".json", "application/json; charset=utf-8"],
+  [".txt", "text/plain; charset=utf-8"],
+  [".md", "text/markdown; charset=utf-8"],
+  [".xml", "application/xml; charset=utf-8"],
+  [".wasm", "application/wasm"],
+  [".woff", "font/woff"],
+  [".woff2", "font/woff2"],
+  [".ttf", "font/ttf"],
+  [".otf", "font/otf"],
+  ...LOCAL_IMAGE_MIME_TYPES,
+  ...LOCAL_MEDIA_MIME_TYPES,
+]);
 const LOCAL_BROWSER_ARTIFACT_SUFFIXES = new Set([
   ".html", ".htm", ".svg", ".pdf",
   ".txt", ".md", ".json", ".xml", ".css",
   ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx",
   ...LOCAL_IMAGE_MIME_TYPES.keys(),
   ...LOCAL_MEDIA_MIME_TYPES.keys(),
+]);
+
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: "loom-artifact",
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+    },
+  },
 ]);
 
 interface JsonRpcResponse {
@@ -476,6 +508,68 @@ async function readLocalMedia(targetPath: string, workspaceRoot: string): Promis
 }
 
 
+function artifactPreviewToken(root: string): string {
+  return crypto.createHash("sha256").update(root).digest("hex").slice(0, 28);
+}
+
+function artifactMimeType(target: string): string {
+  return ARTIFACT_MIME_TYPES.get(path.extname(target).toLowerCase()) || "application/octet-stream";
+}
+
+async function localArtifactPreviewUrl(targetPath: string, workspaceRoot: string): Promise<string> {
+  const { root, target } = await resolveWorkspaceFile(targetPath, workspaceRoot);
+  const token = artifactPreviewToken(root);
+  artifactPreviewRoots.set(token, root);
+  const relative = path.relative(root, target)
+    .split(path.sep)
+    .filter(Boolean)
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+  return `loom-artifact://${token}/${relative}`;
+}
+
+async function serveLocalArtifact(request: { url: string }): Promise<Response> {
+  try {
+    const url = new URL(request.url);
+    const root = artifactPreviewRoots.get(url.hostname);
+    if (!root) return new Response("Unknown artifact workspace", { status: 404 });
+
+    const segments = url.pathname
+      .split("/")
+      .filter(Boolean)
+      .map((segment) => decodeURIComponent(segment));
+    let requested = path.resolve(root, ...segments);
+    if (!pathIsInsideWorkspace(root, requested)) {
+      return new Response("Artifact path is outside the workspace", { status: 403 });
+    }
+
+    let stat = await fs.stat(requested);
+    if (stat.isDirectory()) {
+      requested = path.join(requested, "index.html");
+      stat = await fs.stat(requested);
+    }
+    if (!stat.isFile()) return new Response("Artifact path is not a file", { status: 404 });
+
+    const target = await fs.realpath(requested);
+    if (!pathIsInsideWorkspace(root, target)) {
+      return new Response("Artifact path is outside the workspace", { status: 403 });
+    }
+
+    const bytes = await fs.readFile(target);
+    return new Response(bytes, {
+      status: 200,
+      headers: {
+        "content-type": artifactMimeType(target),
+        "cache-control": "no-store",
+        "x-content-type-options": "nosniff",
+      },
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return new Response(message || "Artifact could not be loaded", { status: 404 });
+  }
+}
+
 async function openLocalArtifact(targetPath: string, workspaceRoot: string): Promise<boolean> {
   const { root, target } = await resolveWorkspaceFile(targetPath, workspaceRoot);
   const extension = path.extname(target).toLowerCase();
@@ -744,6 +838,7 @@ class LoomRpcProcess {
 
 let mainWindow: BrowserWindow | null = null;
 const artifactWindows = new Set<BrowserWindow>();
+const artifactPreviewRoots = new Map<string, string>();
 const modelManager = new DesktopModelManager(REPO_ROOT);
 function handleRuntimeNotification(payload: JsonRpcResponse): void {
   mainWindow?.webContents.send("loom:notification", payload);
@@ -995,6 +1090,9 @@ ipcMain.handle("loom:open-external", (_event, url: string) => openExternalUrl(ur
 ipcMain.handle("loom:open-local-artifact", (_event, targetPath: string, workspaceRoot: string) => (
   openLocalArtifact(targetPath, workspaceRoot)
 ));
+ipcMain.handle("loom:local-artifact-preview-url", (_event, targetPath: string, workspaceRoot: string) => (
+  localArtifactPreviewUrl(targetPath, workspaceRoot)
+));
 ipcMain.handle("loom:read-local-image", (_event, targetPath: string, workspaceRoot: string) => (
   readLocalImage(targetPath, workspaceRoot)
 ));
@@ -1142,6 +1240,7 @@ ipcMain.handle("loom:reasoning-set", async (_event, ...args: string[]): Promise<
 app.setName("Loom");
 
 app.whenReady().then(() => {
+  void protocol.handle("loom-artifact", serveLocalArtifact);
   // Keep the packaged executable, taskbar grouping, Start menu shortcut, and
   // Windows notifications on the same application identity. electron-builder
   // stamps the executable with the icon configured for this appId.
