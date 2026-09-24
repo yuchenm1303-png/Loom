@@ -139,16 +139,6 @@ body {
 .model-wide-action small,
 .model-manager-popover .model-manager-actions small { font-size: var(--loom-font-micro) !important; }
 
-/* Reasoning controls ----------------------------------------------------- */
-.reasoning-heading-copy::before { font-size: var(--loom-font-micro) !important; }
-.reasoning-heading-copy strong { font-size: 13px !important; }
-.reasoning-heading-copy span { font-size: var(--loom-font-micro) !important; }
-.reasoning-slider-shell::before,
-.reasoning-slider-shell::after { font-size: 10.5px !important; }
-.reasoning-locked-note { font-size: var(--loom-font-micro) !important; }
-.reasoning-unavailable strong { font-size: 12px !important; }
-.reasoning-unavailable span { font-size: var(--loom-font-micro) !important; }
-
 /* Run progress ----------------------------------------------------------- */
 .run-progress-brand { font-size: 12px !important; }
 .run-progress-phase { font-size: 13px !important; }

@@ -67,10 +67,6 @@
   gap: 9px;
 }
 
-.model-manager-popover .reasoning-card {
-  animation: none;
-}
-
 .model-manager-popover .model-manager-actions {
   gap: 7px;
   padding-top: 0;
@@ -235,7 +231,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .model-manager-popover .reasoning-card,
   .model-manager-popover .model-manager-actions > button,
   .model-manager-popover .model-manager-actions > button::before,
   .model-manager-action-icon,
@@ -245,7 +240,6 @@
   }
 }
 
-:root[data-loom-reduced-motion="true"] .model-manager-popover .reasoning-card,
 :root[data-loom-reduced-motion="true"] .model-manager-popover .model-manager-actions > button,
 :root[data-loom-reduced-motion="true"] .model-manager-popover .model-manager-actions > button::before,
 :root[data-loom-reduced-motion="true"] .model-manager-action-icon,

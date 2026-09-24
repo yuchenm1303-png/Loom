@@ -1,0 +1,373 @@
+/* Reasoning thread ---------------------------------------------------------
+   The reasoning control on the model popover's home layer (ReasoningThread).
+   A single hairline carries the choice: the part up to the selected level is
+   woven, a bead marks the level, and one caption explains it. It owns its
+   `rt-` classes, so the older reasoning-* rules cannot restyle it. */
+
+.rt {
+  --rt-accent: #8b7cf6;
+  --rt-accent-text: #b3a9fb;
+  --rt-glow: rgba(139, 124, 246, .38);
+  --rt-halo: rgba(139, 124, 246, .2);
+  --rt-track: rgba(255, 255, 255, .1);
+  --rt-stop: rgba(255, 255, 255, .26);
+  --rt-surface: #101216;
+  --rt-bead-shadow: 0 1px 4px rgba(0, 0, 0, .5);
+  --rt-weave-opacity: .52;
+  --rt-text: #e6e8ed;
+  --rt-muted: #8f96a2;
+  --rt-faint: #6b7280;
+  --rt-hover: rgba(255, 255, 255, .05);
+  --rt-danger: #ec8f9a;
+  --rt-danger-soft: rgba(220, 124, 134, .12);
+  --rt-ease: cubic-bezier(.22, .9, .24, 1);
+
+  position: relative;
+  display: grid;
+  padding: 10px 0 4px;
+}
+
+html[data-loom-theme="light"] .rt {
+  --rt-accent: #695ad8;
+  --rt-accent-text: #5a4bc8;
+  --rt-glow: rgba(105, 90, 216, .24);
+  --rt-halo: rgba(105, 90, 216, .13);
+  --rt-track: rgba(28, 31, 37, .1);
+  --rt-stop: rgba(28, 31, 37, .24);
+  --rt-surface: #ffffff;
+  --rt-bead-shadow: 0 1px 3px rgba(62, 50, 150, .32);
+  --rt-weave-opacity: .42;
+  --rt-text: #1c2026;
+  --rt-muted: #6d7580;
+  --rt-faint: #9aa1ab;
+  --rt-hover: rgba(28, 31, 37, .045);
+  --rt-danger: #b24a57;
+  --rt-danger-soft: rgba(184, 80, 93, .08);
+}
+
+/* Header ------------------------------------------------------------------ */
+.rt-head {
+  min-height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.rt-eyebrow {
+  color: var(--rt-faint);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+
+.rt-reset {
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-right: -7px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 7px;
+  outline: none;
+  background: transparent;
+  color: var(--rt-muted);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 140ms ease, color 140ms ease;
+}
+
+.rt-reset > svg {
+  transition: transform 260ms var(--rt-ease);
+}
+
+.rt-reset:hover:not(:disabled) {
+  background: var(--rt-hover);
+  color: var(--rt-text);
+}
+
+.rt-reset:hover:not(:disabled) > svg {
+  transform: rotate(-50deg);
+}
+
+.rt-reset:focus-visible {
+  box-shadow: inset 0 0 0 1.5px var(--rt-accent);
+}
+
+.rt-reset:disabled {
+  opacity: .5;
+  cursor: default;
+}
+
+/* Rail -------------------------------------------------------------------- */
+/* The stop row is 28px tall; the thread runs through its centre (y = 14px). */
+.rt-rail {
+  --rt-count: 1;
+  --rt-start: 50%;
+  --rt-pos: 50%;
+  position: relative;
+  margin-top: 8px;
+}
+
+.rt-track,
+.rt-fill,
+.rt-bead {
+  position: absolute;
+  pointer-events: none;
+}
+
+/* Solid between the first and last stop, then fading out: the thread keeps
+   going past the choices instead of ending in two stubs. */
+.rt-track {
+  top: 13px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--rt-track);
+  -webkit-mask-image: linear-gradient(90deg, transparent 2%, #000 var(--rt-start), #000 calc(100% - var(--rt-start)), transparent 98%);
+  mask-image: linear-gradient(90deg, transparent 2%, #000 var(--rt-start), #000 calc(100% - var(--rt-start)), transparent 98%);
+}
+
+.rt-fill {
+  top: 8px;
+  left: var(--rt-start);
+  width: calc(var(--rt-pos) - var(--rt-start));
+  height: 12px;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 18px);
+  mask-image: linear-gradient(90deg, transparent, #000 18px);
+  transition: width 460ms var(--rt-ease);
+}
+
+.rt-fill::before {
+  content: "";
+  position: absolute;
+  top: 5px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--rt-accent);
+  box-shadow: 0 0 8px var(--rt-glow);
+}
+
+/* Two plies twisting around the thread (one turn per 28px), drifting toward the bead. */
+.rt-weave {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -28px;
+  right: 0;
+  background: var(--rt-accent);
+  opacity: var(--rt-weave-opacity);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='12' viewBox='0 0 28 12'%3E%3Cpath d='M0 6C4.7 2.2 9.3 2.2 14 6S23.3 9.8 28 6' fill='none' stroke='%23000' stroke-width='1.2'/%3E%3Cpath d='M0 6C4.7 9.8 9.3 9.8 14 6S23.3 2.2 28 6' fill='none' stroke='%23000' stroke-opacity='.38' stroke-width='1.2'/%3E%3C/svg%3E") 0 0 / 28px 12px repeat-x;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='12' viewBox='0 0 28 12'%3E%3Cpath d='M0 6C4.7 2.2 9.3 2.2 14 6S23.3 9.8 28 6' fill='none' stroke='%23000' stroke-width='1.2'/%3E%3Cpath d='M0 6C4.7 9.8 9.3 9.8 14 6S23.3 2.2 28 6' fill='none' stroke='%23000' stroke-opacity='.38' stroke-width='1.2'/%3E%3C/svg%3E") 0 0 / 28px 12px repeat-x;
+  animation: rt-weave-drift 2.8s linear infinite;
+}
+
+.rt-options {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: repeat(var(--rt-count), minmax(0, 1fr));
+}
+
+.rt-option {
+  min-width: 0;
+  display: grid;
+  grid-template-rows: 28px auto;
+  justify-items: center;
+  align-items: center;
+  padding: 0 2px 5px;
+  border: 0;
+  border-radius: 10px;
+  outline: none;
+  background: transparent;
+  color: var(--rt-muted);
+  cursor: pointer;
+  transition: color 160ms ease;
+}
+
+.rt-option[aria-disabled="true"] {
+  cursor: default;
+}
+
+.rt-stop {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--rt-surface);
+  box-shadow: inset 0 0 0 1.5px var(--rt-stop);
+  transition: box-shadow 220ms ease, transform 220ms var(--rt-ease);
+}
+
+.rt-option.is-passed .rt-stop {
+  box-shadow: inset 0 0 0 1.5px var(--rt-accent);
+}
+
+.rt-label {
+  max-width: 100%;
+  overflow: hidden;
+  padding-top: 3px;
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rt.is-dense .rt-label {
+  font-size: 11.5px;
+}
+
+.rt-option:not([aria-disabled="true"]):hover {
+  color: var(--rt-text);
+}
+
+.rt-option:not([aria-disabled="true"]):hover .rt-stop {
+  box-shadow: inset 0 0 0 1.5px var(--rt-accent);
+  transform: scale(1.3);
+}
+
+.rt-option.is-active,
+.rt-option.is-active:hover {
+  color: var(--rt-accent-text);
+}
+
+.rt-option.is-active .rt-label {
+  font-weight: 600;
+}
+
+.rt-option:focus-visible {
+  box-shadow: inset 0 0 0 1.5px var(--rt-accent);
+}
+
+/* The bead glides between stops; the stop under it stays hidden behind it. */
+.rt-bead {
+  z-index: 2;
+  top: 14px;
+  left: var(--rt-pos);
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: linear-gradient(180deg, color-mix(in oklab, var(--rt-accent) 68%, #ffffff), var(--rt-accent));
+  box-shadow:
+    0 0 0 2.5px var(--rt-surface),
+    0 0 0 6px var(--rt-halo),
+    var(--rt-bead-shadow);
+  transform: translate(-50%, -50%);
+  transition: left 460ms var(--rt-ease);
+}
+
+/* A turn in progress freezes the control; it stays legible, just quieter. */
+.rt.is-running .rt-rail {
+  opacity: .5;
+}
+
+.rt.is-running .rt-weave {
+  animation-play-state: paused;
+}
+
+/* Caption, notes, managed state ------------------------------------------ */
+.rt-caption {
+  min-height: 17px;
+  margin-top: 6px;
+  overflow: hidden;
+  color: var(--rt-muted);
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rt-note {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.rt-note > svg {
+  flex: none;
+}
+
+.rt-error {
+  margin-top: 8px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: var(--rt-danger-soft);
+  color: var(--rt-danger);
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.rt-auto {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.rt-auto-line {
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, var(--rt-track));
+}
+
+.rt-auto-line:last-child {
+  transform: scaleX(-1);
+}
+
+.rt-auto-badge {
+  padding: 3px 11px;
+  border-radius: 999px;
+  background: var(--rt-halo);
+  color: var(--rt-accent-text);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.rt.is-managed .rt-caption {
+  margin-top: 10px;
+}
+
+@keyframes rt-weave-drift {
+  to { transform: translateX(28px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rt-weave {
+    animation: none;
+  }
+
+  .rt-fill,
+  .rt-bead,
+  .rt-stop,
+  .rt-option,
+  .rt-reset,
+  .rt-reset > svg {
+    transition: none;
+  }
+}
+
+:root[data-loom-reduced-motion="true"] .rt-weave {
+  animation: none;
+}
+
+:root[data-loom-reduced-motion="true"] .rt-fill,
+:root[data-loom-reduced-motion="true"] .rt-bead,
+:root[data-loom-reduced-motion="true"] .rt-stop,
+:root[data-loom-reduced-motion="true"] .rt-option,
+:root[data-loom-reduced-motion="true"] .rt-reset,
+:root[data-loom-reduced-motion="true"] .rt-reset > svg {
+  transition: none;
+}

@@ -7,7 +7,6 @@ import {
   LoaderCircle,
   Lock,
   Plus,
-  RotateCcw,
   Search,
   SlidersHorizontal,
   Trash2,
@@ -30,6 +29,7 @@ import type {
   ModelSnapshot,
 } from "../types/loom";
 import "./model-panel.css";
+import { ReasoningThread } from "./ReasoningThread";
 
 type ModelView = "list" | "profiles" | "group" | "add" | "custom";
 type NavDirection = "forward" | "back";
@@ -389,126 +389,6 @@ function activeReasoningOption(reasoning: ModelReasoningState): ModelReasoningOp
   return reasoning.options.find((option) => option.value === reasoning.value);
 }
 
-function ReasoningControl({
-  reasoning,
-  busy,
-  running,
-  onChange,
-}: {
-  reasoning: ModelReasoningState;
-  busy?: boolean;
-  running?: boolean;
-  onChange(kind: string, value: string): Promise<void> | void;
-}) {
-  const selectedIndex = Math.max(0, reasoning.options.findIndex((option) => option.value === reasoning.value));
-  const [displayIndex, setDisplayIndex] = useState(selectedIndex);
-  const [error, setError] = useState("");
-  const locked = Boolean(busy || running);
-  const displayOption = reasoning.options[displayIndex] ?? reasoning.options[selectedIndex] ?? reasoning.options[0];
-  const canReset = reasoning.value !== reasoning.defaultValue;
-  const optionCount = Math.max(1, reasoning.options.length);
-  // Nodes sit at the center of equal grid cells, so the illuminated rail must
-  // terminate at that same center. The old 8%-92% approximation visibly missed
-  // the selected node (most obvious on two-option models such as MiniMax-M3).
-  const threadProgress = ((displayIndex + 0.5) / optionCount) * 100;
-  const threadStyle = {
-    "--reasoning-index": String(displayIndex),
-    "--reasoning-count": String(optionCount),
-    "--reasoning-progress": `${threadProgress}%`,
-  } as CSSProperties;
-
-  useEffect(() => {
-    setDisplayIndex(selectedIndex);
-  }, [selectedIndex]);
-
-  async function commit(index: number) {
-    const option = reasoning.options[index];
-    if (!option || locked || option.value === reasoning.value) return;
-    setError("");
-    setDisplayIndex(index);
-    try {
-      await onChange(reasoning.kind, option.value);
-    } catch (cause) {
-      setDisplayIndex(selectedIndex);
-      setError(cause instanceof Error ? cause.message : String(cause));
-    }
-  }
-
-  async function reset() {
-    const index = reasoning.options.findIndex((option) => option.value === reasoning.defaultValue);
-    if (index >= 0) await commit(index);
-  }
-
-  return (
-    <div className={`reasoning-control ${locked ? "locked" : ""}`}>
-      <div className="reasoning-control-head">
-        <span className="reasoning-control-eyebrow">Reasoning</span>
-        {canReset ? (
-          <button
-            type="button"
-            className="reasoning-reset"
-            disabled={locked}
-            onClick={() => void reset()}
-            title="Reset reasoning"
-            aria-label="Reset reasoning"
-          >
-            <RotateCcw size={12.5} />
-            <span>Reset</span>
-          </button>
-        ) : null}
-      </div>
-
-      <div className="reasoning-thread-shell" style={threadStyle}>
-        <div className="reasoning-thread-lines" aria-hidden="true">
-          <svg viewBox="0 0 100 18" preserveAspectRatio="none">
-            <path className="reasoning-thread-path reasoning-thread-path-a" d="M1 9 C13 2.6 24 15.4 38 9 S63 2.6 77 9 S91 14 99 9" />
-            <path className="reasoning-thread-path reasoning-thread-path-b" d="M1 9 C13 15.4 24 2.6 38 9 S63 15.4 77 9 S91 4 99 9" />
-            <path className="reasoning-thread-path reasoning-thread-path-c" d="M1 9 C16 8 24 4.4 38 9 S61 13.6 77 9 S92 7 99 9" />
-          </svg>
-          <div className="reasoning-thread-energy">
-            <svg viewBox="0 0 100 18" preserveAspectRatio="none">
-              <path className="reasoning-thread-path reasoning-thread-path-a" d="M1 9 C13 2.6 24 15.4 38 9 S63 2.6 77 9 S91 14 99 9" />
-              <path className="reasoning-thread-path reasoning-thread-path-b" d="M1 9 C13 15.4 24 2.6 38 9 S63 15.4 77 9 S91 4 99 9" />
-              <path className="reasoning-thread-path reasoning-thread-path-c" d="M1 9 C16 8 24 4.4 38 9 S61 13.6 77 9 S92 7 99 9" />
-              <path className="reasoning-thread-path reasoning-thread-glint reasoning-thread-glint-a" d="M1 9 C13 2.6 24 15.4 38 9 S63 2.6 77 9 S91 14 99 9" />
-              <path className="reasoning-thread-path reasoning-thread-glint reasoning-thread-glint-b" d="M1 9 C13 15.4 24 2.6 38 9 S63 15.4 77 9 S91 4 99 9" />
-            </svg>
-          </div>
-        </div>
-
-        <div className="reasoning-thread-particles" aria-hidden="true">
-          <i />
-          <i />
-          <i />
-          <i />
-          <i />
-        </div>
-
-        <div className="reasoning-thread-nodes" role="group" aria-label="Reasoning effort">
-          {reasoning.options.map((option, index) => (
-            <button
-              key={option.value}
-              type="button"
-              className={`reasoning-thread-node ${index === displayIndex ? "active" : ""}`}
-              disabled={locked || reasoning.options.length <= 1}
-              aria-pressed={index === displayIndex}
-              title={option.description}
-              onClick={() => void commit(index)}
-            >
-              <i aria-hidden="true" />
-              <span>{option.label}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {running ? <div className="reasoning-locked-note">Stop the active turn to change reasoning.</div> : null}
-      {error ? <div className="composer-popover-error">{error}</div> : null}
-    </div>
-
-  );
-}
-
 export function ModelPanel({
   runtimeModel,
   snapshot,
@@ -546,7 +426,6 @@ export function ModelPanel({
   const currentBaseUrl = snapshot?.current?.baseUrl || "";
   const currentSelection = snapshot?.current?.selection || "";
   const currentReasoning = snapshot?.current?.reasoning ?? null;
-  const currentReasoningOption = currentReasoning ? activeReasoningOption(currentReasoning) : null;
   const currentGroupName = snapshot?.current?.groupName || currentName;
   const currentFamily = snapshot?.current?.family || "";
   const currentProtocol = snapshot?.current?.protocol || "";
@@ -1181,34 +1060,18 @@ export function ModelPanel({
             <ChevronRight size={13} strokeWidth={1.8} aria-hidden="true" />
           </span>
           <small>
-            {currentGroupName} · {adapterLabel(currentAdapter)}
-            {currentReasoningOption ? ` · ${currentReasoningOption.label}` : " · Auto"}
+            {currentGroupName}
+            {adapterLabel(currentAdapter) === currentGroupName ? null : ` · ${adapterLabel(currentAdapter)}`}
           </small>
         </div>
       </button>
 
-      <section className="model-core-reasoning" aria-label="Reasoning control">
-        {currentReasoning ? (
-          <ReasoningControl
-            reasoning={currentReasoning}
-            busy={busy}
-            running={running}
-            onChange={onReasoningChange}
-          />
-        ) : (
-          <div className="reasoning-managed">
-            <div className="reasoning-control-head">
-              <span className="reasoning-control-eyebrow">Reasoning</span>
-            </div>
-            <div className="reasoning-managed-thread" aria-hidden="true">
-              <span />
-              <i />
-              <span />
-            </div>
-            <div className="reasoning-managed-label">Auto</div>
-          </div>
-        )}
-      </section>
+      <ReasoningThread
+        reasoning={currentReasoning}
+        busy={busy}
+        running={running}
+        onChange={onReasoningChange}
+      />
 
       {error ? <div className="composer-popover-error">{error}</div> : null}
     </div>

@@ -9,7 +9,6 @@ import { applyRendererScale, installNativeRendererScaleSync } from "./rendererSc
 import "./styles.css";
 import "./shell-fix.css";
 import "./components/model-panel-overrides.css";
-import "./components/reasoning-control.css";
 import "./components/inline-thinking.css";
 import "./components/inline-thinking-orb.css";
 import "./components/composer-stability.css";
