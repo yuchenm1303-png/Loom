@@ -34,6 +34,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { flushSync } from "react-dom";
 import {
   DEFAULT_SHORTCUTS,
   SHORTCUTS_CHANGED_EVENT,
@@ -171,6 +172,11 @@ interface NavItem {
 const LOCAL_DESKTOP_SETTINGS_KEY = "loom.settings.desktop.v2";
 const BROWSER_AUTO_MIGRATION_KEY = "loom.settings.browser-auto-default.v1";
 const SETTINGS_UPDATE_PREFIX = "__setting__:";
+
+const PAGE_ORDER: PageKey[] = [
+  "general", "appearance", "models", "capabilities", "computer", "browser",
+  "terminal", "plugins", "mcp", "skills", "permissions", "shortcuts", "privacy", "developer",
+];
 
 const DEFAULT_CAPABILITIES: Record<CapabilityKey, boolean> = {
   computerUse: true,
@@ -501,6 +507,8 @@ function SelectControl({ value, options, onChange, label }: { value: string; opt
 
 export function SettingsPage({ runtime, models, running, onClose }: SettingsPageProps) {
   const [page, setPage] = useState<PageKey>("general");
+  const settingsScrollRef = useRef<HTMLDivElement>(null);
+  const navigationTransitionRef = useRef(0);
   const [query, setQuery] = useState("");
   const [settings, setSettings] = useState<DesktopSettings>(() => mergedSettings(runtime));
   const [modelState, setModelState] = useState<ModelSnapshot | null>(models);
@@ -517,6 +525,36 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
   const [browserConnectionCheck, setBrowserConnectionCheck] = useState<"idle" | "checking" | "connected" | "offline">("idle");
   // Held locally so the endpoint can be typed without a round trip per keystroke.
   const [cdpDraft, setCdpDraft] = useState(settings.browser?.cdpUrl ?? DEFAULT_BROWSER.cdpUrl);
+
+  const navigateToPage = (nextPage: PageKey) => {
+    if (nextPage === page) return;
+
+    const direction = PAGE_ORDER.indexOf(nextPage) > PAGE_ORDER.indexOf(page) ? "forward" : "backward";
+    const root = document.documentElement;
+    const reduceMotion = root.dataset.loomReducedMotion === "true"
+      || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    const transitionDocument = document as Document & {
+      startViewTransition?: (update: () => void) => { finished: Promise<void> };
+    };
+    const updatePage = () => {
+      flushSync(() => setPage(nextPage));
+      settingsScrollRef.current?.scrollTo({ top: 0, behavior: "instant" });
+    };
+
+    if (reduceMotion || !transitionDocument.startViewTransition) {
+      updatePage();
+      return;
+    }
+
+    const transitionId = ++navigationTransitionRef.current;
+    root.dataset.settingsNavDirection = direction;
+    const transition = transitionDocument.startViewTransition(updatePage);
+    void transition.finished
+      .catch(() => undefined)
+      .finally(() => {
+        if (navigationTransitionRef.current === transitionId) delete root.dataset.settingsNavDirection;
+      });
+  };
 
   useEffect(() => {
     const merged = mergedSettings(runtime);
@@ -790,16 +828,16 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
         <Section title="Runtime defaults" caption="Defaults currently reported by the App Server for new conversations.">
           <div className="general-default-grid">
             <div className="general-default-card"><div className="general-default-card-head"><span className="general-default-card-icon"><FolderOpen size={16} /></span></div><label>Default workspace</label><strong title={text(runtime.defaultWorkspace)}>{text(runtime.defaultWorkspace)}</strong><p>Used when a new conversation starts without an explicit project.</p><div className="general-workspace-actions"><button type="button" className="general-copy-button" onClick={() => void copyText(text(runtime.defaultWorkspace, ""), "Workspace path copied.")}><Copy size={13} />Copy path</button></div></div>
-            <button type="button" className="general-default-card" onClick={() => setPage("permissions")}><div className="general-default-card-head"><span className="general-default-card-icon"><ShieldCheck size={16} /></span><ChevronRight size={15} /></div><label>Default permission</label><strong>{permissionLabel}</strong><p>Inspect the execution boundary used for sensitive actions.</p></button>
-            <button type="button" className="general-default-card" onClick={() => setPage("models")}><div className="general-default-card-head"><span className="general-default-card-icon"><Cpu size={16} /></span><ChevronRight size={15} /></div><label>Current model</label><strong>{modelLabel}</strong><p>Switch the active inference profile and inspect providers.</p></button>
+            <button type="button" className="general-default-card" onClick={() => navigateToPage("permissions")}><div className="general-default-card-head"><span className="general-default-card-icon"><ShieldCheck size={16} /></span><ChevronRight size={15} /></div><label>Default permission</label><strong>{permissionLabel}</strong><p>Inspect the execution boundary used for sensitive actions.</p></button>
+            <button type="button" className="general-default-card" onClick={() => navigateToPage("models")}><div className="general-default-card-head"><span className="general-default-card-icon"><Cpu size={16} /></span><ChevronRight size={15} /></div><label>Current model</label><strong>{modelLabel}</strong><p>Switch the active inference profile and inspect providers.</p></button>
           </div>
         </Section>
 
         <Section title="Quick access" caption="The controls most likely to change how Loom behaves.">
           <div className="general-quick-grid">
-            <button type="button" className="general-quick-card" onClick={() => setPage("appearance")}><Palette size={18} /><div><strong>Appearance</strong><span>Scale, layout, reading rhythm, motion, and code typography</span></div><ChevronRight size={15} /></button>
-            <button type="button" className="general-quick-card" onClick={() => setPage("capabilities")}><Blocks size={18} /><div><strong>Capabilities</strong><span>Choose the tool families Loom can expose</span></div><ChevronRight size={15} /></button>
-            <button type="button" className="general-quick-card" onClick={() => setPage("developer")}><Wrench size={18} /><div><strong>Diagnostics</strong><span>Runtime, integrations, and raw health snapshot</span></div><ChevronRight size={15} /></button>
+            <button type="button" className="general-quick-card" onClick={() => navigateToPage("appearance")}><Palette size={18} /><div><strong>Appearance</strong><span>Scale, layout, reading rhythm, motion, and code typography</span></div><ChevronRight size={15} /></button>
+            <button type="button" className="general-quick-card" onClick={() => navigateToPage("capabilities")}><Blocks size={18} /><div><strong>Capabilities</strong><span>Choose the tool families Loom can expose</span></div><ChevronRight size={15} /></button>
+            <button type="button" className="general-quick-card" onClick={() => navigateToPage("developer")}><Wrench size={18} /><div><strong>Diagnostics</strong><span>Runtime, integrations, and raw health snapshot</span></div><ChevronRight size={15} /></button>
           </div>
         </Section>
       </>
@@ -933,7 +971,7 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
             const baseBadge = capabilityLabel(status, enabled);
             const badge = provider ? { ...baseBadge, text: `${baseBadge.text} · ${titleCase(provider)}` } : baseBadge;
             const description = provider ? `${item.description} Active provider: ${titleCase(provider)}.` : item.description;
-            return <div className="capability-row" key={item.key}><div className="capability-icon"><Icon size={17} /></div><div className="capability-copy"><div className="capability-title-line"><strong>{item.title}</strong><StatusPill tone={badge.tone}>{badge.text}</StatusPill></div><span>{description}</span></div>{item.detailPage ? <button type="button" className="settings-row-link" onClick={() => setPage(item.detailPage!)}><ChevronRight size={15} /></button> : <span className="settings-row-link-spacer" />}<SettingSwitch checked={enabled} disabled={running || busyCapability !== null} label={`Toggle ${item.title}`} onChange={(value) => void setCapability(item.key, value)} /></div>;
+            return <div className="capability-row" key={item.key}><div className="capability-icon"><Icon size={17} /></div><div className="capability-copy"><div className="capability-title-line"><strong>{item.title}</strong><StatusPill tone={badge.tone}>{badge.text}</StatusPill></div><span>{description}</span></div>{item.detailPage ? <button type="button" className="settings-row-link" onClick={() => navigateToPage(item.detailPage!)}><ChevronRight size={15} /></button> : <span className="settings-row-link-spacer" />}<SettingSwitch checked={enabled} disabled={running || busyCapability !== null} label={`Toggle ${item.title}`} onChange={(value) => void setCapability(item.key, value)} /></div>;
           })}
         </div>
       </Section>
@@ -1334,11 +1372,11 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
           <label className="settings-search"><Search size={14} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search settings" /></label>
         </div>
         <nav className="settings-nav" aria-label="Settings navigation">
-          {filteredGroups.map((group) => <section key={group.label}><span className="settings-nav-label">{group.label}</span>{group.items.map((item) => { const Icon = item.icon; return <button type="button" key={item.key} className={page === item.key ? "active" : ""} onClick={() => setPage(item.key)}><Icon size={16} strokeWidth={1.7} /><span>{item.label}</span></button>; })}</section>)}
+          {filteredGroups.map((group) => <section key={group.label}><span className="settings-nav-label">{group.label}</span>{group.items.map((item) => { const Icon = item.icon; return <button type="button" key={item.key} className={page === item.key ? "active" : ""} aria-current={page === item.key ? "page" : undefined} onClick={() => navigateToPage(item.key)}><Icon size={16} strokeWidth={1.7} /><span>{item.label}</span></button>; })}</section>)}
         </nav>
         <div className="settings-sidebar-footer"><span className="settings-runtime-dot" /><div><strong>Loom runtime</strong><span>{running ? "Turn active" : "Ready for changes"}</span></div></div>
       </aside>
-      <main className="settings-main"><div className="settings-main-scroll"><div className="settings-content"><div className="settings-page-surface" key={page}>{content}</div></div></div></main>
+      <main className="settings-main"><div className="settings-main-scroll" ref={settingsScrollRef}><div className="settings-content"><div className="settings-page-surface" key={page}>{content}</div></div></div></main>
       {noticePresence.mounted && visibleNotice ? (
         <div className={`settings-toast ${visibleNotice.tone}`} data-motion-phase={noticePresence.phase}>
           {visibleNotice.tone === "success" ? <Check size={15} /> : <CircleAlert size={15} />}

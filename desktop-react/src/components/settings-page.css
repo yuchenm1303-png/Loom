@@ -196,6 +196,11 @@
 .settings-nav button svg {
   justify-self: center;
   color: currentColor;
+  transition: transform 180ms var(--loom-ease-out), color 160ms ease;
+}
+
+.settings-nav button.active svg {
+  transform: scale(1.06);
 }
 
 .settings-nav button span {

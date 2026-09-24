@@ -113,6 +113,7 @@
   display: grid;
   gap: 24px;
   contain: layout paint style;
+  view-transition-name: settings-page;
   animation: loom-settings-page-enter 360ms var(--loom-ease-out) both;
 }
 
@@ -120,6 +121,41 @@
   from { opacity: .58; transform: translate3d(0, 3px, 0); }
   to { opacity: 1; transform: translate3d(0, 0, 0); }
 }
+
+::view-transition-group(settings-page) {
+  animation-duration: 260ms;
+  animation-timing-function: var(--loom-ease-standard);
+}
+
+::view-transition-old(settings-page),
+::view-transition-new(settings-page) {
+  mix-blend-mode: normal;
+  height: 100%;
+  overflow: clip;
+}
+
+::view-transition-old(settings-page) { animation: loom-settings-section-old-forward 180ms var(--loom-ease-in) both; }
+::view-transition-new(settings-page) { animation: loom-settings-section-new-forward 260ms var(--loom-ease-out) both; }
+:root[data-settings-nav-direction="backward"]::view-transition-old(settings-page) { animation-name: loom-settings-section-old-backward; }
+:root[data-settings-nav-direction="backward"]::view-transition-new(settings-page) { animation-name: loom-settings-section-new-backward; }
+
+@keyframes loom-settings-section-old-forward {
+  to { opacity: 0; transform: translate3d(0, -6px, 0) scale(.997); }
+}
+
+@keyframes loom-settings-section-new-forward {
+  from { opacity: 0; transform: translate3d(0, 10px, 0) scale(.998); }
+}
+
+@keyframes loom-settings-section-old-backward {
+  to { opacity: 0; transform: translate3d(0, 6px, 0) scale(.997); }
+}
+
+@keyframes loom-settings-section-new-backward {
+  from { opacity: 0; transform: translate3d(0, -10px, 0) scale(.998); }
+}
+
+:root[data-settings-nav-direction] .settings-page-surface { animation: none; }
 
 /* Controls should feel responsive, not twitchy. */
 .settings-nav button,
@@ -147,6 +183,8 @@
     animation: none !important;
     transition: none !important;
   }
+  ::view-transition-old(settings-page),
+  ::view-transition-new(settings-page) { animation: none !important; }
 }
 
 :root[data-loom-reduced-motion="true"] .settings-host,
@@ -156,6 +194,9 @@
   animation: none !important;
   transition: none !important;
 }
+
+:root[data-loom-reduced-motion="true"]::view-transition-old(settings-page),
+:root[data-loom-reduced-motion="true"]::view-transition-new(settings-page) { animation: none !important; }
 
 
 /* Small transient surfaces -------------------------------------------------
