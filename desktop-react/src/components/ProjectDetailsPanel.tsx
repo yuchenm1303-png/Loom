@@ -417,7 +417,7 @@ export function ProjectDetailsPanel({
   };
 
   return (
-    <aside className="project-details-panel" data-motion-phase={presence.phase} aria-label="Project details">
+    <aside className="project-details-panel" data-motion-phase={presence.phase} data-open={open ? "true" : "false"} aria-label="Project details">
       <header className="project-details-header">
         <div className="project-details-mark" aria-hidden="true">
           <Folder size={18} strokeWidth={1.85} />

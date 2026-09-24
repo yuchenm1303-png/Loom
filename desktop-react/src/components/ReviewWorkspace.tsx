@@ -383,7 +383,7 @@ export function ReviewWorkspace({ items, open, onClose }: ReviewWorkspaceProps) 
   };
 
   return createPortal(
-    <div className="review-workspace" data-motion-phase={presence.phase} role="dialog" aria-modal="true" aria-label={reviewTitle}>
+    <div className="review-workspace" data-motion-phase={presence.phase} data-open={open ? "true" : "false"} role="dialog" aria-modal="true" aria-label={reviewTitle}>
       <header className="review-topbar">
         <div className="review-heading">
           <span className="review-heading-icon"><Files size={17} strokeWidth={1.8} /></span>

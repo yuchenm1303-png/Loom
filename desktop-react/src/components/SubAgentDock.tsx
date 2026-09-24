@@ -153,7 +153,7 @@ export function SubAgentDock({ items, open, active, onClose }: SubAgentDockProps
   if (!presence.mounted) return null;
 
   return createPortal(
-    <aside className="sub-agent-dock" data-motion-phase={presence.phase} aria-label="子代理工作区">
+    <aside className="sub-agent-dock" data-motion-phase={presence.phase} data-open={open ? "true" : "false"} aria-label="子代理工作区">
       <div
         className="sub-agent-dock-resizer"
         role="separator"

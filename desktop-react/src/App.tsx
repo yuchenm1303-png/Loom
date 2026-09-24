@@ -290,17 +290,20 @@ export default function App() {
     layoutViewTransitionRef.current?.skipTransition();
     document.body.classList.add("loom-panel-motion");
     document.documentElement.dataset.loomLayoutTransition = "true";
+    document.documentElement.dataset.loomLayoutCapture = "old";
 
     let transition: LayoutViewTransition;
     try {
       transition = transitionDocument.startViewTransition(() => {
-        // The expensive grid/padding geometry changes exactly once here.
-        // Chromium animates snapshots between old and new rectangles, so the live
-        // transcript never has to reflow on every animation frame.
+        // Geometry still commits once. Readable content is captured separately
+        // before and after the commit so glyphs, controls and message cards are
+        // never stretched as part of the resized workspace bitmap.
+        document.documentElement.dataset.loomLayoutCapture = "new";
         flushSync(update);
       });
     } catch {
       delete document.documentElement.dataset.loomLayoutTransition;
+      delete document.documentElement.dataset.loomLayoutCapture;
       document.body.classList.remove("loom-panel-motion");
       flushSync(update);
       afterPaint(() => window.dispatchEvent(new Event("loom:panel-resize-end")));
@@ -314,6 +317,7 @@ export default function App() {
         if (layoutTransitionSerialRef.current !== serial) return;
         layoutViewTransitionRef.current = null;
         delete document.documentElement.dataset.loomLayoutTransition;
+        delete document.documentElement.dataset.loomLayoutCapture;
         document.body.classList.remove("loom-panel-motion");
         window.dispatchEvent(new Event("loom:panel-resize-end"));
       });
@@ -454,6 +458,7 @@ export default function App() {
     layoutViewTransitionRef.current?.skipTransition();
     layoutViewTransitionRef.current = null;
     delete document.documentElement.dataset.loomLayoutTransition;
+    delete document.documentElement.dataset.loomLayoutCapture;
     document.body.classList.remove("loom-panel-resizing");
     document.body.classList.remove("loom-panel-motion");
   }, []);
@@ -565,7 +570,7 @@ export default function App() {
 
       if (eventMatchesShortcut(event, shortcuts.toggleSidebar)) {
         consume();
-        setSidebarOpen((open) => !open);
+        runLayoutTransition(() => setSidebarOpen((open) => !open));
         return;
       }
 
@@ -945,7 +950,7 @@ export default function App() {
 
       <Inspector
         items={inspectorPresence.mounted ? loom.items : EMPTY_TRANSCRIPT_ITEMS}
-        onClose={() => setInspectorOpen(false)}
+        onClose={() => runLayoutTransition(() => setInspectorOpen(false))}
       />
       <ProjectDetailsPanel
         project={selectedProject}
@@ -957,12 +962,12 @@ export default function App() {
         onOpenThread={loom.openThread}
         onSetInstructions={loom.setProjectInstructions}
       />
-      <ReviewWorkspace items={loom.items} open={reviewOpen} onClose={() => setReviewOpen(false)} />
+      <ReviewWorkspace items={loom.items} open={reviewOpen} onClose={() => runLayoutTransition(() => setReviewOpen(false))} />
       <SubAgentDock
         items={loom.items}
         open={agentsOpen}
         active={Boolean(running)}
-        onClose={() => setAgentsOpen(false)}
+        onClose={() => runLayoutTransition(() => setAgentsOpen(false))}
       />
       <ReviewInteractionBridge onOpen={focusReviewFile} />
       <AccountDialog
