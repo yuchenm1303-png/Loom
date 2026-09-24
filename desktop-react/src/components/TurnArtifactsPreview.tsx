@@ -1,4 +1,4 @@
-import { ChevronRight, FileCode2, FileDiff } from "lucide-react";
+import { ChevronRight, ExternalLink, FileCode2, FileDiff } from "lucide-react";
 import { useMemo } from "react";
 import type { TranscriptItem } from "../types/loom";
 import "./turn-artifacts-preview.css";
@@ -140,7 +140,11 @@ function openReview(path?: string): void {
   }));
 }
 
-export function TurnArtifactsPreview({ items }: { items: TranscriptItem[] }) {
+function previewableArtifact(path: string): boolean {
+  return /\.(?:html?|svg|pdf)$/i.test(normalizePath(path));
+}
+
+export function TurnArtifactsPreview({ items, workspace }: { items: TranscriptItem[]; workspace?: string }) {
   const files = useMemo(() => collectFiles(items), [items]);
   const totals = useMemo(() => files.reduce(
     (total, file) => ({
@@ -153,6 +157,7 @@ export function TurnArtifactsPreview({ items }: { items: TranscriptItem[] }) {
   if (!files.length) return null;
 
   const primary = files[0];
+  const previewFile = files.find((file) => previewableArtifact(file.path)) ?? null;
   const title = files.length === 1 ? `已编辑 ${primary.name}` : `已修改 ${files.length} 个文件`;
 
   return (
@@ -198,6 +203,22 @@ export function TurnArtifactsPreview({ items }: { items: TranscriptItem[] }) {
           </button>
         ))}
       </div>
+
+      {previewFile && workspace ? (
+        <button
+          type="button"
+          className="turn-artifacts-preview-action"
+          onClick={(event) => {
+            event.stopPropagation();
+            void window.loom.openLocalArtifact(previewFile.path, workspace);
+          }}
+          title={`渲染预览 ${previewFile.displayPath}`}
+        >
+          <ExternalLink size={13.5} strokeWidth={1.8} aria-hidden="true" />
+          <span>预览 {previewFile.name}</span>
+          <ChevronRight size={13} aria-hidden="true" />
+        </button>
+      ) : null}
 
       <button
         type="button"
