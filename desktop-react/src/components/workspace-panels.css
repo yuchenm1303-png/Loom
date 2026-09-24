@@ -111,6 +111,7 @@ html[data-loom-layout-transition="true"]:is(
 ::view-transition-group(loom-inspector),
 ::view-transition-group(loom-review-surface),
 ::view-transition-group(loom-agent-surface),
+::view-transition-group(loom-artifact-surface),
 ::view-transition-group(loom-project-surface) {
   animation-duration: var(--loom-motion-panel,390ms);
   animation-timing-function: var(--loom-ease-standard,cubic-bezier(.22,.7,.18,1));
@@ -125,6 +126,8 @@ html[data-loom-layout-transition="true"]:is(
 ::view-transition-new(loom-review-surface),
 ::view-transition-old(loom-agent-surface),
 ::view-transition-new(loom-agent-surface),
+::view-transition-old(loom-artifact-surface),
+::view-transition-new(loom-artifact-surface),
 ::view-transition-old(loom-project-surface),
 ::view-transition-new(loom-project-surface) {
   mix-blend-mode: normal;
@@ -188,6 +191,11 @@ html[data-loom-layout-transition="true"]:is(
   [data-loom-layout-intent="right-open"],
   [data-loom-layout-intent="right-close"],
   [data-loom-layout-intent="right-swap"]
+) .artifact-preview-dock[data-open="true"],
+html[data-loom-layout-transition="true"]:is(
+  [data-loom-layout-intent="right-open"],
+  [data-loom-layout-intent="right-close"],
+  [data-loom-layout-intent="right-swap"]
 ) .project-details-panel[data-open="true"] {
   opacity: 1 !important;
   transform: none !important;
@@ -205,6 +213,11 @@ html[data-loom-layout-transition="true"]:is(
   [data-loom-layout-intent="right-close"],
   [data-loom-layout-intent="right-swap"]
 ) .sub-agent-dock[data-open="false"],
+html[data-loom-layout-transition="true"]:is(
+  [data-loom-layout-intent="right-open"],
+  [data-loom-layout-intent="right-close"],
+  [data-loom-layout-intent="right-swap"]
+) .artifact-preview-dock[data-open="false"],
 html[data-loom-layout-transition="true"]:is(
   [data-loom-layout-intent="right-open"],
   [data-loom-layout-intent="right-close"],
@@ -237,12 +250,21 @@ html[data-loom-layout-transition="true"]:is(
   [data-loom-layout-intent="right-open"],
   [data-loom-layout-intent="right-close"],
   [data-loom-layout-intent="right-swap"]
+) .artifact-preview-dock {
+  view-transition-name: loom-artifact-surface;
+}
+
+html[data-loom-layout-transition="true"]:is(
+  [data-loom-layout-intent="right-open"],
+  [data-loom-layout-intent="right-close"],
+  [data-loom-layout-intent="right-swap"]
 ) .project-details-panel {
   view-transition-name: loom-project-surface;
 }
 
 ::view-transition-old(loom-review-surface),
 ::view-transition-old(loom-agent-surface),
+::view-transition-old(loom-artifact-surface),
 ::view-transition-old(loom-project-surface) {
   transform-origin: right center;
   animation: loom-right-surface-out 92ms cubic-bezier(.42,0,.72,.2) both;
@@ -250,6 +272,7 @@ html[data-loom-layout-transition="true"]:is(
 
 ::view-transition-new(loom-review-surface),
 ::view-transition-new(loom-agent-surface),
+::view-transition-new(loom-artifact-surface),
 ::view-transition-new(loom-project-surface) {
   transform-origin: right center;
   animation: loom-right-surface-in 286ms cubic-bezier(.16,.78,.18,1) 88ms both;
@@ -494,6 +517,7 @@ body.loom-panel-motion .workspace-panels > .inspector .runtime-scroll {
    same cadence when View Transitions are unavailable. */
 body.loom-panel-motion .review-workspace,
 body.loom-panel-motion .sub-agent-dock,
+body.loom-panel-motion .artifact-preview-dock,
 body.loom-panel-motion .project-details-panel {
   transition-duration: var(--loom-motion-panel,390ms) !important;
 }
@@ -503,6 +527,7 @@ body.loom-panel-motion .project-details-panel {
   ::view-transition-group(loom-inspector),
   ::view-transition-group(loom-review-surface),
   ::view-transition-group(loom-agent-surface),
+  ::view-transition-group(loom-artifact-surface),
   ::view-transition-group(loom-project-surface),
   ::view-transition-old(loom-sidebar),
   ::view-transition-new(loom-sidebar),
@@ -512,6 +537,8 @@ body.loom-panel-motion .project-details-panel {
   ::view-transition-new(loom-review-surface),
   ::view-transition-old(loom-agent-surface),
   ::view-transition-new(loom-agent-surface),
+  ::view-transition-old(loom-artifact-surface),
+  ::view-transition-new(loom-artifact-surface),
   ::view-transition-old(loom-project-surface),
   ::view-transition-new(loom-project-surface) {
     animation-duration: .001ms !important;
@@ -523,6 +550,7 @@ html[data-loom-reduced-motion="true"]::view-transition-group(loom-sidebar),
 html[data-loom-reduced-motion="true"]::view-transition-group(loom-inspector),
 html[data-loom-reduced-motion="true"]::view-transition-group(loom-review-surface),
 html[data-loom-reduced-motion="true"]::view-transition-group(loom-agent-surface),
+html[data-loom-reduced-motion="true"]::view-transition-group(loom-artifact-surface),
 html[data-loom-reduced-motion="true"]::view-transition-group(loom-project-surface),
 html[data-loom-reduced-motion="true"]::view-transition-old(loom-sidebar),
 html[data-loom-reduced-motion="true"]::view-transition-new(loom-sidebar),
@@ -532,6 +560,8 @@ html[data-loom-reduced-motion="true"]::view-transition-old(loom-review-surface),
 html[data-loom-reduced-motion="true"]::view-transition-new(loom-review-surface),
 html[data-loom-reduced-motion="true"]::view-transition-old(loom-agent-surface),
 html[data-loom-reduced-motion="true"]::view-transition-new(loom-agent-surface),
+html[data-loom-reduced-motion="true"]::view-transition-old(loom-artifact-surface),
+html[data-loom-reduced-motion="true"]::view-transition-new(loom-artifact-surface),
 html[data-loom-reduced-motion="true"]::view-transition-old(loom-project-surface),
 html[data-loom-reduced-motion="true"]::view-transition-new(loom-project-surface) {
   animation-duration: .001ms !important;
