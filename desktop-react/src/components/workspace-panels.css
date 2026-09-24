@@ -171,46 +171,81 @@ html[data-loom-panel-snapshot="true"] .workspace-panels > .inspector {
   mix-blend-mode: normal;
 }
 
+/* Corner-origin flight -------------------------------------------------------
+   The earliest panel feel was not a flat horizontal slide: it read as if the
+   surface arrived from the window corner and then settled into the rail. Keep
+   that spatial character on the panel snapshot only, so inner text/icons remain
+   a single stable image and the workspace never joins the effect. */
 ::view-transition-new(loom-sidebar) {
-  transform-origin: left center;
-  animation: loom-panel-surface-in-left 292ms cubic-bezier(.16,.78,.18,1) 72ms both;
+  transform-origin: left top;
+  animation: loom-panel-surface-in-left 360ms cubic-bezier(.16,1,.3,1) both;
 }
 
 ::view-transition-old(loom-sidebar) {
-  transform-origin: left center;
-  animation: loom-panel-surface-out-left 78ms cubic-bezier(.42,0,.72,.2) both;
+  transform-origin: left top;
+  animation: loom-panel-surface-out-left 170ms cubic-bezier(.4,0,.8,.2) both;
 }
 
 ::view-transition-new(loom-inspector) {
-  transform-origin: right center;
-  animation: loom-panel-surface-in-right 292ms cubic-bezier(.16,.78,.18,1) 72ms both;
+  transform-origin: right top;
+  animation: loom-panel-surface-in-right 360ms cubic-bezier(.16,1,.3,1) both;
 }
 
 ::view-transition-old(loom-inspector) {
-  transform-origin: right center;
-  animation: loom-panel-surface-out-right 78ms cubic-bezier(.42,0,.72,.2) both;
+  transform-origin: right top;
+  animation: loom-panel-surface-out-right 170ms cubic-bezier(.4,0,.8,.2) both;
 }
 
 @keyframes loom-panel-surface-in-left {
-  from { opacity: 0; transform: translate3d(-10px,0,0) scale(.99); }
-  28% { opacity: .84; }
-  to { opacity: 1; transform: translate3d(0,0,0) scale(1); }
+  0% {
+    opacity: 0;
+    transform: translate3d(-20px,-12px,0) scale(.976);
+  }
+  68% {
+    opacity: 1;
+    transform: translate3d(1px,1px,0) scale(1.002);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0,0,0) scale(1);
+  }
 }
 
 @keyframes loom-panel-surface-out-left {
-  from { opacity: 1; transform: translate3d(0,0,0) scale(1); }
-  to { opacity: 0; transform: translate3d(-5px,0,0) scale(.994); }
+  from {
+    opacity: 1;
+    transform: translate3d(0,0,0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translate3d(-9px,-5px,0) scale(.988);
+  }
 }
 
 @keyframes loom-panel-surface-in-right {
-  from { opacity: 0; transform: translate3d(10px,0,0) scale(.99); }
-  28% { opacity: .84; }
-  to { opacity: 1; transform: translate3d(0,0,0) scale(1); }
+  0% {
+    opacity: 0;
+    transform: translate3d(20px,-12px,0) scale(.976);
+  }
+  68% {
+    opacity: 1;
+    transform: translate3d(-1px,1px,0) scale(1.002);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0,0,0) scale(1);
+  }
 }
 
 @keyframes loom-panel-surface-out-right {
-  from { opacity: 1; transform: translate3d(0,0,0) scale(1); }
-  to { opacity: 0; transform: translate3d(5px,0,0) scale(.994); }
+  from {
+    opacity: 1;
+    transform: translate3d(0,0,0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translate3d(9px,-5px,0) scale(.988);
+  }
 }
 
 /* Freeze the inspector's decorative micro-motion while its snapshot is moving.
