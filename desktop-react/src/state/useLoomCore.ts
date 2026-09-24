@@ -146,6 +146,7 @@ export function useLoom() {
   const [compactionProgress, setCompactionProgress] = useState<ContextCompactionProgress | null>(null);
   const compacting = compactionProgress?.status === "started" || compactionProgress?.status === "running";
   const activeIdRef = useRef("");
+  const openRequestRef = useRef(0);
   const threadViewRef = useRef<ThreadView>("active");
   const itemIndexRef = useRef<Map<string, number>>(new Map());
   const pendingItemDeltasRef = useRef<Map<string, Record<string, unknown>>>(new Map());
@@ -316,8 +317,7 @@ export function useLoom() {
     return snapshot;
   }, []);
 
-  const openThread = useCallback(async (threadId: string) => {
-    const result = await requireBridge().call<ThreadReadResult>("thread/read", { threadId });
+  const applyThreadRead = useCallback((result: ThreadReadResult) => {
     activeIdRef.current = result.thread.id;
     setActive(result);
     installItems(flattenItems(result.turns ?? []));
@@ -328,6 +328,13 @@ export function useLoom() {
     setCompactionProgress(null);
     void refreshContext(result.thread.id);
   }, [installItems, refreshContext]);
+
+  const openThread = useCallback(async (threadId: string) => {
+    const requestId = ++openRequestRef.current;
+    const result = await requireBridge().call<ThreadReadResult>("thread/read", { threadId });
+    if (openRequestRef.current !== requestId) return;
+    applyThreadRead(result);
+  }, [applyThreadRead]);
 
   const ensureSelection = useCallback(async (list: ThreadRecord[], preferredId = activeIdRef.current) => {
     if (preferredId && list.some((thread) => thread.id === preferredId)) return;
@@ -346,6 +353,7 @@ export function useLoom() {
   }, [ensureSelection, refreshThreads]);
 
   const newThread = useCallback(async (workspace?: string, projectId?: string) => {
+    const requestId = ++openRequestRef.current;
     const params: Record<string, unknown> = projectId?.trim()
       ? { projectId: projectId.trim() }
       : workspace?.trim()
@@ -354,9 +362,32 @@ export function useLoom() {
     const result = await requireBridge().call<{ thread: ThreadRecord }>("thread/start", params);
     threadViewRef.current = "active";
     setThreadViewState("active");
-    await refreshThreads("active");
-    await openThread(result.thread.id);
-  }, [openThread, refreshThreads]);
+    setThreads((current) => {
+      const exists = current.some((thread) => thread.id === result.thread.id);
+      return exists
+        ? current.map((thread) => thread.id === result.thread.id ? result.thread : thread)
+        : [result.thread, ...current];
+    });
+    setThreadCounts((current) => ({
+      active: current.active + 1,
+      archived: current.archived,
+      all: current.all + 1,
+    }));
+
+    // thread/start already returns the complete record for a brand-new, empty
+    // conversation. Render it immediately instead of serially rescanning the
+    // catalogue and reading the same empty thread back from disk.
+    if (openRequestRef.current === requestId) {
+      activeIdRef.current = result.thread.id;
+      setActive({ thread: result.thread, turns: [] });
+      installItems([]);
+      setTurnActive(false);
+      setTurnStartedAt(null);
+      setContext(null);
+      setCompactionProgress(null);
+    }
+    void refreshThreads("active");
+  }, [installItems, refreshThreads]);
 
   const renameThread = useCallback(async (threadId: string, title: string) => {
     const result = await requireBridge().call<{ thread: ThreadRecord }>("thread/rename", { threadId, title });
