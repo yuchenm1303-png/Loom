@@ -33,6 +33,7 @@ import "./components/model-picker.css";
 import "./components/composer-control-pills.css";
 import "./components/project-details-panel-theme.css";
 import "./global-motion.css";
+import "./components/generation-motion.css";
 
 const CONVERSATION_WIDTHS: Record<string, string> = {
   focused: "740px",

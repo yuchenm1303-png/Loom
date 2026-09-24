@@ -12,6 +12,7 @@ import "./markdown-message.css";
 import "./user-message-attachments.css";
 import "./stickers.css";
 import { useStreamingPresentation } from "./StreamingPresentation";
+import { streamingGraphemes } from "./streamingText";
 
 interface MarkdownMessageProps {
   content: string;
@@ -278,6 +279,74 @@ function markdownComponents(workspace?: string): Components {
   };
 }
 
+interface StreamNode {
+  type: string;
+  tagName?: string;
+  value?: string;
+  properties?: Record<string, unknown>;
+  children?: StreamNode[];
+}
+
+interface StreamTailOptions {
+  enabled: boolean;
+  phase: "a" | "b";
+}
+
+const STREAM_TAIL_GRAPHEMES = 12;
+const STREAM_TAIL_BLOCKED = new Set(["pre", "code", "math", "svg"]);
+
+/**
+ * Give only the newest visible prose a soft reveal without recreating the old
+ * per-character DOM. The transform finds the last eligible text node and wraps
+ * at most twelve graphemes in one span. Alternating animation names restart the
+ * reveal every few presented characters while the rest of the Markdown tree
+ * stays structurally stable and crisp.
+ */
+function rehypeStreamingTail(options: StreamTailOptions) {
+  return (tree: StreamNode) => {
+    if (!options.enabled) return;
+
+    let parent: StreamNode | null = null;
+    let childIndex = -1;
+
+    const visit = (node: StreamNode) => {
+      if (node.tagName && STREAM_TAIL_BLOCKED.has(node.tagName)) return;
+      const children = node.children;
+      if (!children) return;
+
+      children.forEach((child, index) => {
+        if (child.type === "text" && child.value?.trim()) {
+          parent = node;
+          childIndex = index;
+          return;
+        }
+        visit(child);
+      });
+    };
+
+    visit(tree);
+    if (!parent || childIndex < 0 || !parent.children) return;
+
+    const target = parent.children[childIndex];
+    const value = String(target.value ?? "");
+    const graphemes = streamingGraphemes(value);
+    if (!graphemes.length) return;
+
+    const splitAt = Math.max(0, graphemes.length - STREAM_TAIL_GRAPHEMES);
+    const prefix = graphemes.slice(0, splitAt).join("");
+    const tail = graphemes.slice(splitAt).join("");
+    const replacement: StreamNode[] = [];
+    if (prefix) replacement.push({ type: "text", value: prefix });
+    replacement.push({
+      type: "element",
+      tagName: "span",
+      properties: { className: ["stream-text-tail", `stream-text-tail-${options.phase}`] },
+      children: [{ type: "text", value: tail }],
+    });
+    parent.children.splice(childIndex, 1, ...replacement);
+  };
+}
+
 const MarkdownRenderer = memo(function MarkdownRenderer({
   content,
   compact,
@@ -292,11 +361,13 @@ const MarkdownRenderer = memo(function MarkdownRenderer({
   receiving: boolean;
 }) {
   const components = useMemo(() => markdownComponents(workspace), [workspace]);
+  const streamPhase: "a" | "b" = Math.floor(content.length / 5) % 2 === 0 ? "a" : "b";
   return (
     <div className={`markdown-body ${compact ? "markdown-compact" : ""} ${streaming ? "is-streaming" : ""} ${receiving ? "is-receiving" : ""}`} aria-busy={receiving}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[
+          [rehypeStreamingTail, { enabled: streaming, phase: streamPhase }],
           rehypeKatex,
           [rehypeHighlight, { detect: false, ignoreMissing: true }],
         ]}

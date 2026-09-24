@@ -12,9 +12,12 @@ interface TranscriptScrollControllerProps {
 
 const BOTTOM_THRESHOLD_PX = 96;
 const SCROLL_EPSILON_PX = 2;
-const LIVE_FOLLOW_MAX_DISTANCE_PX = 240;
-const LIVE_FOLLOW_MAX_STEP_PX = 54;
-const LIVE_FOLLOW_EASE = 0.38;
+const LIVE_FOLLOW_MIN_STEP_PX = 1.5;
+const LIVE_FOLLOW_MAX_STEP_PX = 42;
+const LIVE_FOLLOW_NEAR_EASE = 0.22;
+const LIVE_FOLLOW_FAR_EASE = 0.38;
+const LIVE_FOLLOW_PRESSURE_PX = 420;
+const LIVE_SETTLE_WINDOW_MS = 820;
 const PANEL_RESIZE_END_EVENT = "loom:panel-resize-end";
 const PANEL_LAYOUT_COMMIT_EVENT = "loom:panel-layout-commit";
 
@@ -74,6 +77,8 @@ export function TranscriptScrollController({
   const lastScrollTopRef = useRef(0);
   const frameRef = useRef<number | null>(null);
   const snapBottomRef = useRef(false);
+  const wasRunningRef = useRef(Boolean(running));
+  const settleUntilRef = useRef(0);
   const [jumpVisible, setJumpVisible] = useState(false);
   const latestUserId = useMemo(() => latestUserMessageId(items), [items]);
   const latestActivityId = useMemo(() => latestActivityItemId(items), [items]);
@@ -95,30 +100,37 @@ export function TranscriptScrollController({
       if (isPanelResizeActive()) return;
 
       const forced = forceBottomRef.current;
-      const snap = snapBottomRef.current;
+      const snapNow = snapBottomRef.current;
       forceBottomRef.current = false;
       snapBottomRef.current = false;
       if (!followingRef.current && !forced) return;
 
       const target = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
       const distance = target - scroller.scrollTop;
+      const absoluteDistance = Math.abs(distance);
       const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
         || document.documentElement.dataset.loomReducedMotion === "true";
+      const liveMotion = Boolean(running) || performance.now() < settleUntilRef.current;
       const easeLiveGrowth = Boolean(
-        running
+        liveMotion
         && !forced
-        && !snap
+        && !snapNow
         && !reducedMotion
-        && distance > SCROLL_EPSILON_PX
-        && distance <= LIVE_FOLLOW_MAX_DISTANCE_PX
+        && absoluteDistance > SCROLL_EPSILON_PX
       );
 
       if (easeLiveGrowth) {
+        const pressure = Math.min(1, absoluteDistance / LIVE_FOLLOW_PRESSURE_PX);
+        const ease = LIVE_FOLLOW_NEAR_EASE
+          + (LIVE_FOLLOW_FAR_EASE - LIVE_FOLLOW_NEAR_EASE) * pressure;
+        const maxStep = 24 + (LIVE_FOLLOW_MAX_STEP_PX - 24) * pressure;
         const delta = Math.min(
-          LIVE_FOLLOW_MAX_STEP_PX,
-          Math.max(2, distance * LIVE_FOLLOW_EASE),
+          maxStep,
+          Math.max(LIVE_FOLLOW_MIN_STEP_PX, absoluteDistance * ease),
         );
-        scroller.scrollTop = Math.min(target, scroller.scrollTop + delta);
+        scroller.scrollTop = distance >= 0
+          ? Math.min(target, scroller.scrollTop + delta)
+          : Math.max(target, scroller.scrollTop - delta);
       } else {
         scroller.scrollTop = target;
       }
@@ -127,13 +139,25 @@ export function TranscriptScrollController({
       followingRef.current = true;
       setJumpVisible(false);
 
-      if (easeLiveGrowth && target - scroller.scrollTop > SCROLL_EPSILON_PX) {
+      if (easeLiveGrowth && Math.abs(target - scroller.scrollTop) > SCROLL_EPSILON_PX) {
         frameRef.current = requestAnimationFrame(step);
       }
     };
 
     frameRef.current = requestAnimationFrame(step);
   };
+
+  useLayoutEffect(() => {
+    const nextRunning = Boolean(running);
+    if (wasRunningRef.current && !nextRunning) {
+      // Completion still changes geometry for a few hundred milliseconds while
+      // the process stack folds and the final answer settles. Keep the same
+      // bottom-follow spring alive through that handoff instead of switching to
+      // an abrupt snap the instant runtime status flips to idle.
+      settleUntilRef.current = performance.now() + LIVE_SETTLE_WINDOW_MS;
+    }
+    wasRunningRef.current = nextRunning;
+  }, [running]);
 
   useLayoutEffect(() => {
     const scroller = transcriptScroller();
@@ -154,10 +178,10 @@ export function TranscriptScrollController({
       setJumpVisible(false);
       scheduleBottomSync(scroller, true);
     } else if (activityAdded && followingRef.current) {
-      // A new task row already takes its final layout height. Snap the bottom
-      // anchor in the same pre-paint cycle so the row's own compositor entrance
-      // is the only visible motion instead of competing with viewport easing.
-      scheduleBottomSync(scroller, false, true);
+      // Let new task rows and the viewport share the same spring. The previous
+      // hard snap made a polished row entrance look like the whole transcript
+      // jumped when several tools arrived together.
+      scheduleBottomSync(scroller);
     } else if (followingRef.current) {
       scheduleBottomSync(scroller);
     }
@@ -251,7 +275,7 @@ export function TranscriptScrollController({
     const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
     scroller.scrollTo({
       top: scroller.scrollHeight,
-      behavior: running || reducedMotion ? "auto" : "smooth",
+      behavior: reducedMotion ? "auto" : "smooth",
     });
   };
 
