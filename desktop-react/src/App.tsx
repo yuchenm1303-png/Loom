@@ -330,7 +330,7 @@ export default function App() {
   }, [inspectorOpen]);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const settingsPresence = useMotionPresence(settingsOpen, 300);
+  const settingsPresence = useMotionPresence(settingsOpen, 230);
   const [accountOpen, setAccountOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [agentsOpen, setAgentsOpen] = useState(false);
