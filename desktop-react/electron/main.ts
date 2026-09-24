@@ -51,6 +51,13 @@ const LOCAL_MEDIA_MIME_TYPES = new Map<string, string>([
   [".m4v", "video/mp4"],
 ]);
 const MAX_INLINE_MEDIA_BYTES = 32 * 1024 * 1024;
+const LOCAL_BROWSER_ARTIFACT_SUFFIXES = new Set([
+  ".html", ".htm", ".svg", ".pdf",
+  ".txt", ".md", ".json", ".xml", ".css",
+  ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx",
+  ...LOCAL_IMAGE_MIME_TYPES.keys(),
+  ...LOCAL_MEDIA_MIME_TYPES.keys(),
+]);
 
 interface JsonRpcResponse {
   jsonrpc: "2.0";
@@ -412,6 +419,31 @@ async function readLocalImage(targetPath: string, workspaceRoot: string): Promis
 }
 
 
+function pathIsInsideWorkspace(root: string, target: string): boolean {
+  const relative = path.relative(root, target);
+  return relative === "" || (
+    relative !== ".."
+    && !relative.startsWith(`..${path.sep}`)
+    && !path.isAbsolute(relative)
+  );
+}
+
+async function resolveWorkspaceFile(targetPath: string, workspaceRoot: string): Promise<{
+  root: string;
+  target: string;
+  stat: Awaited<ReturnType<typeof fs.stat>>;
+}> {
+  const requested = resolveWorkspaceLocalPath(targetPath, workspaceRoot);
+  const root = await fs.realpath(path.resolve(String(workspaceRoot || "").trim()));
+  const target = await fs.realpath(requested);
+  if (!pathIsInsideWorkspace(root, target)) {
+    throw new Error("Local file must be inside the active workspace");
+  }
+  const stat = await fs.stat(target);
+  if (!stat.isFile()) throw new Error("Local path is not a file");
+  return { root, target, stat };
+}
+
 async function readLocalMedia(targetPath: string, workspaceRoot: string): Promise<{
   dataUrl: string;
   path: string;
@@ -443,6 +475,71 @@ async function readLocalMedia(targetPath: string, workspaceRoot: string): Promis
   };
 }
 
+
+async function openLocalArtifact(targetPath: string, workspaceRoot: string): Promise<boolean> {
+  const { root, target } = await resolveWorkspaceFile(targetPath, workspaceRoot);
+  const extension = path.extname(target).toLowerCase();
+
+  if (!LOCAL_BROWSER_ARTIFACT_SUFFIXES.has(extension)) {
+    const error = await shell.openPath(target);
+    if (error) throw new Error(error);
+    return true;
+  }
+
+  const preview = new BrowserWindow({
+    width: 1180,
+    height: 820,
+    minWidth: 720,
+    minHeight: 520,
+    title: path.basename(target),
+    parent: mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined,
+    modal: false,
+    autoHideMenuBar: true,
+    show: false,
+    backgroundColor: nativeTheme.shouldUseDarkColors ? "#0d0e11" : "#ffffff",
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      webSecurity: true,
+      allowRunningInsecureContent: false,
+    },
+  });
+
+  preview.webContents.setWindowOpenHandler(({ url }) => {
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol === "http:" || parsed.protocol === "https:" || parsed.protocol === "mailto:") {
+        void shell.openExternal(parsed.toString());
+      }
+    } catch {
+      // Invalid targets are denied below.
+    }
+    return { action: "deny" };
+  });
+
+  preview.webContents.on("will-navigate", (event, url) => {
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol === "file:") {
+        const localTarget = path.resolve(fileURLToPath(parsed));
+        if (pathIsInsideWorkspace(root, localTarget)) return;
+      }
+      if (parsed.protocol === "http:" || parsed.protocol === "https:" || parsed.protocol === "mailto:") {
+        event.preventDefault();
+        void shell.openExternal(parsed.toString());
+        return;
+      }
+    } catch {
+      // Fall through to a blocked navigation.
+    }
+    event.preventDefault();
+  });
+
+  preview.once("ready-to-show", () => preview.show());
+  await preview.loadFile(target);
+  return true;
+}
 
 async function copyImageSource(sourceValue: string): Promise<boolean> {
   const source = String(sourceValue || "").trim();
@@ -805,7 +902,41 @@ function createWindow(): void {
     },
   });
   const window = mainWindow;
+  let rendererDocumentUrl = "";
   window.once("ready-to-show", () => window.show());
+  window.webContents.on("did-finish-load", () => {
+    const loaded = window.webContents.getURL();
+    if (loaded) rendererDocumentUrl = loaded.split("#", 1)[0];
+  });
+  window.webContents.on("will-navigate", (event, targetUrl) => {
+    if (!rendererDocumentUrl) return;
+    const destination = String(targetUrl || "");
+    if (destination.split("#", 1)[0] === rendererDocumentUrl) return;
+
+    // The Loom shell is a single-document app. Relative Markdown links used to
+    // navigate this BrowserWindow away from the transcript and back into the
+    // renderer entrypoint, which looked like the whole conversation vanished.
+    event.preventDefault();
+    try {
+      const parsed = new URL(destination);
+      if (parsed.protocol === "http:" || parsed.protocol === "https:" || parsed.protocol === "mailto:") {
+        void shell.openExternal(parsed.toString());
+      }
+    } catch {
+      // Local workspace links are handled by the renderer IPC bridge instead.
+    }
+  });
+  window.webContents.setWindowOpenHandler(({ url }) => {
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol === "http:" || parsed.protocol === "https:" || parsed.protocol === "mailto:") {
+        void shell.openExternal(parsed.toString());
+      }
+    } catch {
+      // Deny unknown window-open targets.
+    }
+    return { action: "deny" };
+  });
   window.webContents.on("did-fail-load", (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
     if (!isMainFrame || validatedURL.startsWith("data:text/html")) return;
     const detail = `${errorDescription} (${errorCode})\n${validatedURL}`;
@@ -853,6 +984,9 @@ ipcMain.handle("loom:clipboard-write-text", (_event, value: string) => {
   return true;
 });
 ipcMain.handle("loom:open-external", (_event, url: string) => openExternalUrl(url));
+ipcMain.handle("loom:open-local-artifact", (_event, targetPath: string, workspaceRoot: string) => (
+  openLocalArtifact(targetPath, workspaceRoot)
+));
 ipcMain.handle("loom:read-local-image", (_event, targetPath: string, workspaceRoot: string) => (
   readLocalImage(targetPath, workspaceRoot)
 ));
