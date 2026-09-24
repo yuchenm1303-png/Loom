@@ -119,3 +119,15 @@ def test_actions_without_a_point_do_not_move_the_cursor():
             service._hud_point_from_live_frame("s", "computer_action", {"action": action}, {})
             is None
         )
+
+
+def test_browser_actions_without_a_real_screen_point_hold_the_hud_cursor():
+    from app.app_server_reasoning import ReasoningManagedLoomAppServerService as Service
+
+    for tool, args in (
+        ("browser_click", {"index": 8}),
+        ("browser_back", {}),
+        ("browser_screenshot", {}),
+        ("browser_scroll", {"direction": "up"}),
+    ):
+        assert Service._hud_point(tool, args, {}) is None

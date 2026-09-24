@@ -50,6 +50,7 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 function asNumber(value: unknown, fallback: number): number {
+  if (value == null || value === "") return fallback;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
 }

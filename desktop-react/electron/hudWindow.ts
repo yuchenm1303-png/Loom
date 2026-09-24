@@ -103,13 +103,13 @@ html,body{margin:0;width:100%;height:100%;background:transparent;overflow:hidden
   function place(payload){
     const w=Math.max(1,innerWidth),h=Math.max(1,innerHeight);
     if(lastX===null){lastX=w*.5;lastY=h*.46;}
-    let x=Number(payload.hudX),y=Number(payload.hudY);
+    let x=payload.hudX==null?NaN:Number(payload.hudX),y=payload.hudY==null?NaN:Number(payload.hudY);
     // Task-level events (computer_run_task) legitimately carry no coordinate;
     // only the nested actions do. Falling through to clamp() turned those into
     // 0 and parked the cursor in the top-left corner, which read as a broken
     // HUD rather than as "no new target yet".
-    if(!Number.isFinite(x)){const n=Number(payload.xNorm); x=Number.isFinite(n)?clamp(n,0,1)*w:lastX;}
-    if(!Number.isFinite(y)){const n=Number(payload.yNorm); y=Number.isFinite(n)?clamp(n,0,1)*h:lastY;}
+    if(!Number.isFinite(x)){const n=payload.xNorm==null?NaN:Number(payload.xNorm); x=Number.isFinite(n)?clamp(n,0,1)*w:lastX;}
+    if(!Number.isFinite(y)){const n=payload.yNorm==null?NaN:Number(payload.yNorm); y=Number.isFinite(n)?clamp(n,0,1)*h:lastY;}
     lastX=x;lastY=y;
     const bw=Math.min(420,Math.max(320,w-48));
     const bx=clamp(x>w*.58?x-bw-52:x+52,18,Math.max(18,w-bw-18));
@@ -165,8 +165,10 @@ html,body{margin:0;width:100%;height:100%;background:transparent;overflow:hidden
 
 function translatePayload(payload: Record<string, unknown>): Record<string, unknown> {
   const next = { ...payload };
-  const sx = Number(next.screenX ?? next.screen_x);
-  const sy = Number(next.screenY ?? next.screen_y);
+  const rawX = next.screenX ?? next.screen_x;
+  const rawY = next.screenY ?? next.screen_y;
+  const sx = rawX == null ? NaN : Number(rawX);
+  const sy = rawY == null ? NaN : Number(rawY);
   if (Number.isFinite(sx) && Number.isFinite(sy)) {
     next.hudX = sx - lastBounds.x;
     next.hudY = sy - lastBounds.y;

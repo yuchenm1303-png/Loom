@@ -369,27 +369,9 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
             return None
         if not name.startswith("browser_"):
             return None
-        raw_index = args.get("index", args.get("target_index", args.get("source_index")))
-        try:
-            index = int(raw_index)
-        except (TypeError, ValueError):
-            index = -1
-        if index >= 0:
-            return (
-                max(0.12, min(0.88, 0.22 + ((index * 37) % 55) / 100)),
-                max(0.16, min(0.84, 0.25 + ((index * 53) % 48) / 100)),
-            )
-        if name in {"browser_open", "browser_navigate"}:
-            return 0.50, 0.18
-        if name in {"browser_state", "browser_refresh", "browser_tabs"}:
-            return 0.50, 0.42
-        if name == "browser_scroll":
-            direction = str(args.get("direction") or "down").casefold()
-            return 0.50, 0.28 if direction == "up" else 0.68
-        if name in {"browser_back", "browser_switch_tab", "browser_close_tab"}:
-            return 0.18, 0.12
-        if name == "browser_screenshot":
-            return 0.78, 0.18
+        # Browser element indices and non-pointer actions carry no screen
+        # position. Inventing one makes the decorative HUD cursor fly across
+        # the desktop even though browser automation never moved the OS mouse.
         return None
 
     @staticmethod
