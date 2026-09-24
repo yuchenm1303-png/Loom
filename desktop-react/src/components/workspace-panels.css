@@ -20,7 +20,6 @@
   grid-row: 1;
   position: relative;
   z-index: 32;
-  view-transition-name: loom-sidebar;
 }
 
 .workspace-panels > .workspace {
@@ -31,7 +30,6 @@
   min-width: 0;
   container-type: inline-size;
   container-name: loom-workspace;
-  view-transition-name: loom-workspace;
 }
 
 .workspace-panels > .inspector {
@@ -39,7 +37,6 @@
   grid-row: 1;
   position: relative;
   z-index: 32;
-  view-transition-name: loom-inspector;
 }
 
 .thread-header-leading {
@@ -87,348 +84,75 @@
   pointer-events: none;
 }
 
-/* View Transition snapshots are the only layer that interpolates workspace
-   geometry. The live DOM commits directly to the final grid once; Chromium
-   morphs the old/new rectangles above it, so Markdown never reflows per frame. */
-::view-transition-group(loom-workspace),
-::view-transition-group(loom-sidebar),
-::view-transition-group(loom-inspector) {
-  animation-duration: var(--loom-motion-panel,390ms);
-  animation-timing-function: var(--loom-ease-standard,cubic-bezier(.22,.7,.18,1));
-  animation-fill-mode: both;
+/* Local panel motion ---------------------------------------------------------
+   A sidebar toggle should not animate the whole application. Side surfaces
+   move locally, while App.tsx performs a live FLIP only on conversation-stage
+   and composer-stage. No old/new workspace bitmap is ever drawn. */
+.workspace-panels.sidebar-layout-closed > .sidebar {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--loom-sidebar-panel-size, var(--sidebar-width, 252px));
 }
 
-::view-transition-old(loom-workspace),
-::view-transition-new(loom-workspace),
-::view-transition-old(loom-sidebar),
-::view-transition-new(loom-sidebar),
-::view-transition-old(loom-inspector),
-::view-transition-new(loom-inspector) {
-  mix-blend-mode: normal;
+.workspace-panels.inspector-layout-closed > .inspector {
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: var(--loom-inspector-panel-size, var(--inspector-width, 316px));
 }
 
-::view-transition-old(loom-workspace),
-::view-transition-new(loom-workspace) {
-  animation-duration: var(--loom-motion-panel,390ms);
-  animation-timing-function: var(--loom-ease-standard,cubic-bezier(.22,.7,.18,1));
-}
-
-
-/* Crisp readable layers -----------------------------------------------------
-   The workspace shell may change width by hundreds of pixels. Letting one
-   bitmap morph between those rectangles stretches every glyph and control.
-   During the transition, readable layers are captured under separate old/new
-   names instead. They remain at native geometry and use a restrained dissolve
-   while the shell itself performs the spatial move. */
-html[data-loom-layout-capture="old"] .thread-header-leading {
-  view-transition-name: loom-header-leading-old;
-}
-html[data-loom-layout-capture="new"] .thread-header-leading {
-  view-transition-name: loom-header-leading-new;
-}
-html[data-loom-layout-capture="old"] .thread-header-copy {
-  view-transition-name: loom-header-copy-old;
-}
-html[data-loom-layout-capture="new"] .thread-header-copy {
-  view-transition-name: loom-header-copy-new;
-}
-html[data-loom-layout-capture="old"] .polished-thread-header-actions {
-  view-transition-name: loom-header-actions-old;
-}
-html[data-loom-layout-capture="new"] .polished-thread-header-actions {
-  view-transition-name: loom-header-actions-new;
-}
-html[data-loom-layout-capture="old"] .transcript {
-  view-transition-name: loom-transcript-old;
-}
-html[data-loom-layout-capture="new"] .transcript {
-  view-transition-name: loom-transcript-new;
-}
-html[data-loom-layout-capture="old"] .composer {
-  view-transition-name: loom-composer-old;
-}
-html[data-loom-layout-capture="new"] .composer {
-  view-transition-name: loom-composer-new;
-}
-html[data-loom-layout-capture="old"] .composer-hint {
-  view-transition-name: loom-composer-hint-old;
-}
-html[data-loom-layout-capture="new"] .composer-hint {
-  view-transition-name: loom-composer-hint-new;
-}
-html[data-loom-layout-capture="old"] .run-progress-inline {
-  view-transition-name: loom-run-progress-old;
-}
-html[data-loom-layout-capture="new"] .run-progress-inline {
-  view-transition-name: loom-run-progress-new;
-}
-
-::view-transition-group(loom-header-leading-old),
-::view-transition-group(loom-header-leading-new),
-::view-transition-group(loom-header-copy-old),
-::view-transition-group(loom-header-copy-new),
-::view-transition-group(loom-header-actions-old),
-::view-transition-group(loom-header-actions-new),
-::view-transition-group(loom-transcript-old),
-::view-transition-group(loom-transcript-new),
-::view-transition-group(loom-composer-old),
-::view-transition-group(loom-composer-new),
-::view-transition-group(loom-composer-hint-old),
-::view-transition-group(loom-composer-hint-new),
-::view-transition-group(loom-run-progress-old),
-::view-transition-group(loom-run-progress-new) {
-  animation: none;
-}
-
-/* Direction follows the panel, but readable content uses a single-visible
-   handoff. Old and new snapshots can be hundreds of pixels apart after a
-   sidebar width change; allowing both to stay opaque creates the obvious double
-   text/cards seen during the transition. The outgoing layer now compresses and
-   clears first, then the incoming layer continues the same motion. */
-html[data-loom-layout-intent="left-open"] {
-  --loom-readable-old-x: 3px;
-  --loom-readable-new-x: -6px;
-}
-html[data-loom-layout-intent="left-close"] {
-  --loom-readable-old-x: -3px;
-  --loom-readable-new-x: 6px;
-}
-html[data-loom-layout-intent="right-open"] {
-  --loom-readable-old-x: -3px;
-  --loom-readable-new-x: 6px;
-}
-html[data-loom-layout-intent="right-close"] {
-  --loom-readable-old-x: 3px;
-  --loom-readable-new-x: -6px;
-}
-html[data-loom-layout-intent="right-swap"] {
-  --loom-readable-old-x: -2px;
-  --loom-readable-new-x: 3px;
-}
-html[data-loom-layout-intent="neutral"] {
-  --loom-readable-old-x: 0px;
-  --loom-readable-new-x: 0px;
-}
-
-/* Header chrome: quick tuck-away, then a compact spring-like settle. */
-::view-transition-old(loom-header-leading-old),
-::view-transition-old(loom-header-actions-old) {
-  --loom-readable-out-scale: .985;
-  mix-blend-mode: normal;
+.workspace-panels > .sidebar,
+.workspace-panels > .inspector {
   transform-origin: center;
-  animation: loom-readable-out 92ms cubic-bezier(.42,0,.72,.2) both;
 }
 
-::view-transition-new(loom-header-leading-new),
-::view-transition-new(loom-header-actions-new) {
-  --loom-readable-in-scale: .978;
-  mix-blend-mode: normal;
-  transform-origin: center;
-  animation: loom-readable-in 226ms cubic-bezier(.16,.78,.18,1) 88ms both;
+.workspace-panels.sidebar-open > .sidebar {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: translate3d(0,0,0);
+  transition:
+    transform 290ms cubic-bezier(.2,.74,.18,1),
+    opacity 190ms ease,
+    visibility 0s linear 0s;
 }
 
-/* Header copy changes position more visibly, but never overlaps at full opacity. */
-::view-transition-old(loom-header-copy-old) {
-  --loom-readable-out-scale: .991;
-  mix-blend-mode: normal;
-  transform-origin: left center;
-  animation: loom-readable-out 104ms cubic-bezier(.42,0,.72,.2) both;
+.workspace-panels.sidebar-closed > .sidebar {
+  opacity: 0;
+  transform: translate3d(-18px,0,0);
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    transform 240ms cubic-bezier(.42,0,.72,.2),
+    opacity 150ms ease,
+    visibility 0s linear 240ms;
 }
 
-::view-transition-new(loom-header-copy-new) {
-  --loom-readable-in-scale: .986;
-  mix-blend-mode: normal;
-  transform-origin: left center;
-  animation: loom-readable-in 246ms cubic-bezier(.16,.78,.18,1) 100ms both;
+.workspace-panels.inspector-open > .inspector {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: translate3d(0,0,0);
+  transition:
+    transform 290ms cubic-bezier(.2,.74,.18,1),
+    opacity 190ms ease,
+    visibility 0s linear 0s;
 }
 
-/* Transcript is the largest surface, so its scale is deliberately tiny. */
-::view-transition-old(loom-transcript-old) {
-  --loom-readable-out-scale: .997;
-  mix-blend-mode: normal;
-  transform-origin: center center;
-  animation: loom-readable-out 116ms cubic-bezier(.42,0,.72,.2) both;
+.workspace-panels.inspector-closed > .inspector {
+  opacity: 0;
+  transform: translate3d(18px,0,0);
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    transform 240ms cubic-bezier(.42,0,.72,.2),
+    opacity 150ms ease,
+    visibility 0s linear 240ms;
 }
 
-::view-transition-new(loom-transcript-new) {
-  --loom-readable-in-scale: .994;
-  mix-blend-mode: normal;
-  transform-origin: center center;
-  animation: loom-readable-in 282ms cubic-bezier(.16,.78,.18,1) 112ms both;
-}
-
-/* Composer follows a slightly deeper bottom-origin motion. */
-::view-transition-old(loom-composer-old),
-::view-transition-old(loom-composer-hint-old) {
-  --loom-readable-out-scale: .988;
-  mix-blend-mode: normal;
-  transform-origin: center bottom;
-  animation: loom-readable-out 108ms cubic-bezier(.42,0,.72,.2) both;
-}
-
-::view-transition-new(loom-composer-new),
-::view-transition-new(loom-composer-hint-new) {
-  --loom-readable-in-scale: .982;
-  mix-blend-mode: normal;
-  transform-origin: center bottom;
-  animation: loom-readable-in 258ms cubic-bezier(.14,.82,.18,1) 104ms both;
-}
-
-::view-transition-old(loom-run-progress-old) {
-  --loom-readable-out-scale: .99;
-  mix-blend-mode: normal;
-  transform-origin: center top;
-  animation: loom-readable-out 96ms cubic-bezier(.42,0,.72,.2) both;
-}
-
-::view-transition-new(loom-run-progress-new) {
-  --loom-readable-in-scale: .984;
-  mix-blend-mode: normal;
-  transform-origin: center top;
-  animation: loom-readable-in 234ms cubic-bezier(.16,.78,.18,1) 92ms both;
-}
-
-@keyframes loom-readable-out {
-  0%, 58% {
-    opacity: 1;
-    transform: translate3d(0,0,0) scale(1);
-  }
-  100% {
-    opacity: 0;
-    transform:
-      translate3d(var(--loom-readable-old-x,0px),-1px,0)
-      scale(var(--loom-readable-out-scale,.99));
-  }
-}
-
-@keyframes loom-readable-in {
-  0% {
-    opacity: 0;
-    transform:
-      translate3d(var(--loom-readable-new-x,0px),1px,0)
-      scale(var(--loom-readable-in-scale,.985));
-  }
-  18% {
-    opacity: .72;
-  }
-  58% {
-    opacity: 1;
-  }
-  100% {
-    opacity: 1;
-    transform: translate3d(0,0,0) scale(1);
-  }
-}
-
-/* The side surfaces themselves use the same depth language: slight scale and
-   directional travel, then settle. Their readable content is never asked to
-   perform a large stretch. */
-::view-transition-new(loom-sidebar) {
-  transform-origin: left center;
-  animation: loom-panel-surface-in-left 292ms cubic-bezier(.16,.78,.18,1) 72ms both;
-}
-::view-transition-old(loom-sidebar) {
-  transform-origin: left center;
-  animation: loom-panel-surface-out-left 78ms cubic-bezier(.42,0,.72,.2) both;
-}
-::view-transition-new(loom-inspector) {
-  transform-origin: right center;
-  animation: loom-panel-surface-in-right 292ms cubic-bezier(.16,.78,.18,1) 72ms both;
-}
-::view-transition-old(loom-inspector) {
-  transform-origin: right center;
-  animation: loom-panel-surface-out-right 78ms cubic-bezier(.42,0,.72,.2) both;
-}
-
-@keyframes loom-panel-surface-in-left {
-  from { opacity: 0; transform: translate3d(-10px,0,0) scale(.99); }
-  28% { opacity: .84; }
-  to { opacity: 1; transform: translate3d(0,0,0) scale(1); }
-}
-@keyframes loom-panel-surface-out-left {
-  from { opacity: 1; transform: translate3d(0,0,0) scale(1); }
-  to { opacity: 0; transform: translate3d(-5px,0,0) scale(.994); }
-}
-@keyframes loom-panel-surface-in-right {
-  from { opacity: 0; transform: translate3d(10px,0,0) scale(.99); }
-  28% { opacity: .84; }
-  to { opacity: 1; transform: translate3d(0,0,0) scale(1); }
-}
-@keyframes loom-panel-surface-out-right {
-  from { opacity: 1; transform: translate3d(0,0,0) scale(1); }
-  to { opacity: 0; transform: translate3d(5px,0,0) scale(.994); }
-}
-
-/* Portal panels also own CSS presence motion. Snapshot only their logical
-   endpoint while View Transition is active; otherwise an "entering" frame can
-   be captured and animated a second time, which reads as rubbery text/icons. */
-html[data-loom-layout-transition="true"] .review-workspace[data-open="true"],
-html[data-loom-layout-transition="true"] .sub-agent-dock[data-open="true"],
-html[data-loom-layout-transition="true"] .project-details-panel[data-open="true"] {
-  opacity: 1 !important;
-  transform: none !important;
-  visibility: visible !important;
-  transition: none !important;
-}
-
-html[data-loom-layout-transition="true"] .review-workspace[data-open="false"],
-html[data-loom-layout-transition="true"] .sub-agent-dock[data-open="false"],
-html[data-loom-layout-transition="true"] .project-details-panel[data-open="false"] {
-  opacity: 0 !important;
-  transform: none !important;
-  visibility: hidden !important;
-  pointer-events: none !important;
-  transition: none !important;
-}
-
-/* Components with their own presence lifecycles still get independent snapshot
-   names. This prevents a right-dock swap from being flattened into the root
-   crossfade while the workspace is resizing beside it. */
-.review-workspace { view-transition-name: loom-review-surface; }
-.sub-agent-dock { view-transition-name: loom-agent-surface; }
-.project-details-panel { view-transition-name: loom-project-surface; }
-
-::view-transition-group(loom-review-surface),
-::view-transition-group(loom-agent-surface),
-::view-transition-group(loom-project-surface) {
-  animation-duration: var(--loom-motion-panel,390ms);
-  animation-timing-function: var(--loom-ease-out,cubic-bezier(.2,.74,.18,1));
-  animation-fill-mode: both;
-}
-
-::view-transition-old(loom-review-surface),
-::view-transition-old(loom-agent-surface),
-::view-transition-old(loom-project-surface) {
-  mix-blend-mode: normal;
-  transform-origin: right center;
-  animation: loom-right-surface-out 92ms cubic-bezier(.42,0,.72,.2) both;
-}
-
-::view-transition-new(loom-review-surface),
-::view-transition-new(loom-agent-surface),
-::view-transition-new(loom-project-surface) {
-  mix-blend-mode: normal;
-  transform-origin: right center;
-  animation: loom-right-surface-in 286ms cubic-bezier(.16,.78,.18,1) 88ms both;
-}
-
-@keyframes loom-right-surface-out {
-  from { opacity: 1; transform: translate3d(0,0,0) scale(1); }
-  to { opacity: 0; transform: translate3d(5px,0,0) scale(.992); }
-}
-
-@keyframes loom-right-surface-in {
-  from { opacity: 0; transform: translate3d(9px,0,0) scale(.988); }
-  24% { opacity: .78; }
-  to { opacity: 1; transform: translate3d(0,0,0) scale(1); }
-}
-
-/* The layout callback sets this before either snapshot is taken. Disable the
-   live sidebar/inspector transitions underneath the transition layer so there
-   is never a second animation fighting the snapshot geometry. */
-html[data-loom-layout-transition="true"] .workspace-panels > .sidebar,
-html[data-loom-layout-transition="true"] .workspace-panels > .inspector {
-  transition: none !important;
+body.loom-panel-motion .workspace-panels .conversation-stage,
+body.loom-panel-motion .workspace-panels .composer-stage {
+  backface-visibility: hidden;
+  transform-style: preserve-3d;
 }
 
 .workspace-panel-resizer {
@@ -638,64 +362,3 @@ body.loom-panel-motion .project-details-panel {
   transition-duration: var(--loom-motion-panel,390ms) !important;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  ::view-transition-group(loom-workspace),
-  ::view-transition-group(loom-sidebar),
-  ::view-transition-group(loom-inspector),
-  ::view-transition-group(loom-review-surface),
-  ::view-transition-group(loom-agent-surface),
-  ::view-transition-group(loom-project-surface),
-  ::view-transition-old(loom-workspace),
-  ::view-transition-new(loom-workspace) {
-    animation-duration: .001ms !important;
-  }
-}
-
-html[data-loom-reduced-motion="true"]::view-transition-group(loom-workspace),
-html[data-loom-reduced-motion="true"]::view-transition-group(loom-sidebar),
-html[data-loom-reduced-motion="true"]::view-transition-group(loom-inspector),
-html[data-loom-reduced-motion="true"]::view-transition-group(loom-review-surface),
-html[data-loom-reduced-motion="true"]::view-transition-group(loom-agent-surface),
-html[data-loom-reduced-motion="true"]::view-transition-group(loom-project-surface),
-html[data-loom-reduced-motion="true"]::view-transition-old(loom-workspace),
-html[data-loom-reduced-motion="true"]::view-transition-new(loom-workspace) {
-  animation-duration: .001ms !important;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  ::view-transition-old(loom-header-leading-old),
-  ::view-transition-new(loom-header-leading-new),
-  ::view-transition-old(loom-header-copy-old),
-  ::view-transition-new(loom-header-copy-new),
-  ::view-transition-old(loom-header-actions-old),
-  ::view-transition-new(loom-header-actions-new),
-  ::view-transition-old(loom-transcript-old),
-  ::view-transition-new(loom-transcript-new),
-  ::view-transition-old(loom-composer-old),
-  ::view-transition-new(loom-composer-new),
-  ::view-transition-old(loom-composer-hint-old),
-  ::view-transition-new(loom-composer-hint-new),
-  ::view-transition-old(loom-run-progress-old),
-  ::view-transition-new(loom-run-progress-new) {
-    animation-duration: .001ms !important;
-    animation-delay: 0ms !important;
-  }
-}
-
-html[data-loom-reduced-motion="true"]::view-transition-old(loom-header-leading-old),
-html[data-loom-reduced-motion="true"]::view-transition-new(loom-header-leading-new),
-html[data-loom-reduced-motion="true"]::view-transition-old(loom-header-copy-old),
-html[data-loom-reduced-motion="true"]::view-transition-new(loom-header-copy-new),
-html[data-loom-reduced-motion="true"]::view-transition-old(loom-header-actions-old),
-html[data-loom-reduced-motion="true"]::view-transition-new(loom-header-actions-new),
-html[data-loom-reduced-motion="true"]::view-transition-old(loom-transcript-old),
-html[data-loom-reduced-motion="true"]::view-transition-new(loom-transcript-new),
-html[data-loom-reduced-motion="true"]::view-transition-old(loom-composer-old),
-html[data-loom-reduced-motion="true"]::view-transition-new(loom-composer-new),
-html[data-loom-reduced-motion="true"]::view-transition-old(loom-composer-hint-old),
-html[data-loom-reduced-motion="true"]::view-transition-new(loom-composer-hint-new),
-html[data-loom-reduced-motion="true"]::view-transition-old(loom-run-progress-old),
-html[data-loom-reduced-motion="true"]::view-transition-new(loom-run-progress-new) {
-  animation-duration: .001ms !important;
-  animation-delay: 0ms !important;
-}

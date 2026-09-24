@@ -22,7 +22,7 @@ def test_panel_tracks_have_one_direct_layout_source_of_truth() -> None:
     assert "const projectDetailsLayoutOpen = projectDetailsOpen" in app
 
 
-def test_inspector_content_survives_the_full_shared_exit_lifetime() -> None:
+def test_inspector_content_survives_the_shared_exit_lifetime() -> None:
     app = read("desktop-react/src/App.tsx")
 
     assert "const inspectorPresence = useMotionPresence(inspectorVisible, 420)" in app
@@ -40,24 +40,11 @@ def test_transcript_reanchors_once_when_final_layout_commits() -> None:
     assert "scroller.scrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight)" in scroll
 
 
-def test_every_visible_panel_close_path_uses_the_same_coordinator() -> None:
+def test_visible_panel_actions_share_the_same_live_motion_coordinator() -> None:
     app = read("desktop-react/src/App.tsx")
 
-    # Every shell toggle/close hands its state flip to the shared coordinator and
-    # tags the direction, so the inner content can choreograph off the same
-    # signal. Assert on the call prefix rather than the full formatted call --
-    # the arguments wrap onto their own lines.
-    assert 'onToggleSidebar={() => runLayoutTransition(' in app
-    assert 'sidebarOpen ? "left-close" : "left-open"' in app
-    assert 'runLayoutTransition(() => setSidebarOpen(true), "left-open")' in app
-    assert 'runLayoutTransition(() => setSelectedProjectId(""), "right-close")' in app
-    assert 'onClose={() => runLayoutTransition(() => setInspectorOpen(false), "right-close")}' in app
-    assert 'onClose={() => runLayoutTransition(() => setReviewOpen(false), "right-close")}' in app
-    assert 'onClose={() => runLayoutTransition(() => setAgentsOpen(false), "right-close")}' in app
-
-
-def test_direction_metadata_is_cleaned_after_every_transition() -> None:
-    app = read("desktop-react/src/App.tsx")
-
-    assert 'delete document.documentElement.dataset.loomLayoutIntent' in app
-    assert app.count('delete document.documentElement.dataset.loomLayoutIntent') >= 3
+    assert 'onToggleSidebar={() => runLayoutTransition(() => setSidebarOpen((open) => !open))}' in app
+    assert 'onClose={() => runLayoutTransition(() => setInspectorOpen(false))}' in app
+    assert 'onClose={() => runLayoutTransition(() => setReviewOpen(false))}' in app
+    assert 'onClose={() => runLayoutTransition(() => setAgentsOpen(false))}' in app
+    assert "startViewTransition" not in app

@@ -8,111 +8,41 @@ def read(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
 
 
-def test_side_panel_layout_uses_one_view_transition_coordinator() -> None:
+def test_panel_motion_uses_live_targeted_flip_not_view_transition_snapshots() -> None:
     app = read("desktop-react/src/App.tsx")
     css = read("desktop-react/src/components/workspace-panels.css")
 
-    assert 'import { flushSync } from "react-dom"' in app
-    assert "startViewTransition" in app
-    assert "runLayoutTransition" in app
-    assert "layoutViewTransitionRef.current?.skipTransition()" in app
-    assert 'document.documentElement.dataset.loomLayoutTransition = "true"' in app
-    assert 'document.documentElement.dataset.loomLayoutCapture = "old"' in app
-    assert 'document.documentElement.dataset.loomLayoutCapture = "new"' in app
+    assert "captureLayoutAnchors" in app
+    assert "animateLayoutAnchors" in app
+    assert 'selector: ".conversation-stage"' in app
+    assert 'selector: ".composer-stage"' in app
+    assert 'animation.id = "loom-layout-anchor"' in app
 
-    assert "usePanelLayoutReserve" not in app
-    assert "useLinkedPanelMotion" not in app
-    assert "linkedWorkspaceMotion" not in app
-    assert "PANEL_LAYOUT_SETTLE_MS" not in app
-
-    assert "view-transition-name: loom-workspace" in css
-    assert "view-transition-name: loom-sidebar" in css
-    assert "view-transition-name: loom-inspector" in css
-    assert "::view-transition-group(loom-workspace)" in css
+    assert "startViewTransition" not in app
+    assert "LayoutViewTransition" not in app
+    assert "loomLayoutCapture" not in app
+    assert "::view-transition" not in css
+    assert "view-transition-name" not in css
 
 
-def test_workspace_geometry_is_not_animated_by_fragment_transforms() -> None:
+def test_sidebar_and_inspector_move_locally_without_animating_all_children() -> None:
     css = read("desktop-react/src/components/workspace-panels.css")
 
-    assert "transition: grid-template-columns" not in css
-    assert "is-layout-coupled" not in css
-    assert "loom-linked-center" not in css
-    assert "sidebar-motion-opening" not in css
-    assert ".workspace-panels.is-layout-coupled .transcript" not in css
-    assert "body.loom-panel-motion .workspace-panels .transcript-scroll" in css
+    assert ".workspace-panels.sidebar-layout-closed > .sidebar" in css
+    assert ".workspace-panels.inspector-layout-closed > .inspector" in css
+    assert "translate3d(-18px,0,0)" in css
+    assert "translate3d(18px,0,0)" in css
+    assert "visibility 0s linear 240ms" in css
+
+    assert ".thread-header-copy" not in css
+    assert "loom-readable" not in css
+    assert "loom-header-copy-old" not in css
+    assert "loom-transcript-old" not in css
 
 
-def test_readable_layers_handoff_at_native_geometry_without_ghosting() -> None:
+def test_only_large_content_stages_receive_layout_motion_hint() -> None:
     css = read("desktop-react/src/components/workspace-panels.css")
 
-    assert 'html[data-loom-layout-capture="old"] .transcript' in css
-    assert 'html[data-loom-layout-capture="new"] .transcript' in css
-    assert "loom-transcript-old" in css
-    assert "loom-transcript-new" in css
-    assert "loom-composer-old" in css
-    assert "loom-composer-new" in css
-    assert "loom-header-copy-old" in css
-    assert "loom-header-copy-new" in css
-    assert "@keyframes loom-readable-out" in css
-    assert "@keyframes loom-readable-in" in css
-    assert "::view-transition-group(loom-transcript-old)" in css
-
-
-def test_portal_surfaces_capture_their_logical_endpoint() -> None:
-    css = read("desktop-react/src/components/workspace-panels.css")
-    review = read("desktop-react/src/components/ReviewWorkspace.tsx")
-    agents = read("desktop-react/src/components/SubAgentDock.tsx")
-    project = read("desktop-react/src/components/ProjectDetailsPanel.tsx")
-
-    assert 'data-open={open ? "true" : "false"}' in review
-    assert 'data-open={open ? "true" : "false"}' in agents
-    assert 'data-open={open ? "true" : "false"}' in project
-    assert '.review-workspace[data-open="true"]' in css
-    assert '.review-workspace[data-open="false"]' in css
-
-
-def test_readable_motion_has_direction_scale_and_stagger() -> None:
-    app = read("desktop-react/src/App.tsx")
-    css = read("desktop-react/src/components/workspace-panels.css")
-
-    assert "type LayoutMotionIntent" in app
-    assert 'document.documentElement.dataset.loomLayoutIntent = intent' in app
-    assert 'sidebarOpen ? "left-close" : "left-open"' in app
-    assert 'rightSurfaceOpen ? "right-swap" : "right-open"' in app
-
-    assert 'data-loom-layout-intent="left-open"' in css
-    assert 'data-loom-layout-intent="right-close"' in css
-    assert "--loom-readable-out-scale" in css
-    assert "--loom-readable-in-scale" in css
-    assert "scale(var(--loom-readable-out-scale,.99))" in css
-    assert "scale(var(--loom-readable-in-scale,.985))" in css
-    assert "animation: loom-readable-out 116ms" in css
-    assert "animation: loom-readable-in 282ms" in css
-    assert "112ms both" in css
-    assert "animation: loom-readable-out 260ms" not in css
-    assert "animation: loom-readable-in 330ms" not in css
-
-
-def test_panel_surfaces_share_the_same_depth_language() -> None:
-    css = read("desktop-react/src/components/workspace-panels.css")
-
-    assert "@keyframes loom-panel-surface-in-left" in css
-    assert "@keyframes loom-panel-surface-in-right" in css
-    assert "@keyframes loom-right-surface-in" in css
-    assert "scale(.99)" in css
-    assert "scale(.988)" in css
-    assert "animation: loom-right-surface-out 92ms" in css
-    assert "animation: loom-right-surface-in 286ms" in css
-
-
-def test_old_and_new_readable_snapshots_do_not_remain_visible_together() -> None:
-    css = read("desktop-react/src/components/workspace-panels.css")
-
-    # The old transcript clears at 116ms and the new one starts at 112ms.
-    # With its first frame at opacity 0, the overlap is below one display frame
-    # instead of the previous ~200ms double-image interval.
-    assert "animation: loom-readable-out 116ms" in css
-    assert "animation: loom-readable-in 282ms" in css
-    assert "112ms both" in css
-    assert "0%, 58%" in css
-    assert "18% {" in css
+    assert "body.loom-panel-motion .workspace-panels .conversation-stage" in css
+    assert "body.loom-panel-motion .workspace-panels .composer-stage" in css
+    assert "body.loom-panel-motion .workspace-panels .thread-header" not in css
