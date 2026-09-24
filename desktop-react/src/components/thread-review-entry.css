@@ -75,6 +75,84 @@
   }
 }
 
+.thread-artifact-button {
+  min-width: 72px;
+}
+
+.thread-artifact-button > svg {
+  color: #7f77cc;
+}
+
+.thread-artifact-button.has-artifacts {
+  border-color: rgba(139,124,246,.085);
+}
+
+.thread-artifact-button.active {
+  color: #c6c0fb;
+  border-color: rgba(139,124,246,.2);
+  background: rgba(139,124,246,.085);
+}
+
+.thread-artifact-count {
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(110, 95, 230, .10);
+  color: #9d94ed;
+  font-size: 9.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.thread-artifact-button.is-empty,
+.thread-artifact-button:disabled {
+  opacity: .58;
+  cursor: default;
+}
+
+.thread-artifact-button:disabled:active {
+  transform: none;
+}
+
+html[data-loom-theme="light"] .thread-artifact-button {
+  border-color: rgba(28,31,37,.07);
+  background: rgba(255,255,255,.62);
+  color: #717986;
+}
+
+html[data-loom-theme="light"] .thread-artifact-button > svg {
+  color: #6659c8;
+}
+
+html[data-loom-theme="light"] .thread-artifact-button.active,
+html[data-loom-theme="light"] .thread-artifact-button:hover:not(:disabled) {
+  border-color: rgba(105,90,216,.16);
+  background: rgba(105,90,216,.055);
+  color: #5145ad;
+}
+
+html[data-loom-theme="light"] .thread-artifact-count {
+  background: rgba(105,90,216,.085);
+  color: #5c4fba;
+}
+
+@media (max-width: 1180px) {
+  .thread-artifact-button {
+    min-width: 32px;
+    width: 32px;
+    padding: 0;
+  }
+
+  .thread-artifact-label,
+  .thread-artifact-count {
+    display: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .thread-review-button {
     transition-duration: .001ms !important;
