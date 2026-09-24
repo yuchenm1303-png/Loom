@@ -47,7 +47,7 @@ def test_every_visible_panel_close_path_uses_the_same_coordinator() -> None:
     # tags the direction, so the inner content can choreograph off the same
     # signal. Assert on the call prefix rather than the full formatted call --
     # the arguments wrap onto their own lines.
-    assert "onToggleSidebar={() => runLayoutTransition(" in app
+    assert 'onToggleSidebar={() => runLayoutTransition(' in app
     assert 'sidebarOpen ? "left-close" : "left-open"' in app
     assert 'runLayoutTransition(() => setSidebarOpen(true), "left-open")' in app
     assert 'runLayoutTransition(() => setSelectedProjectId(""), "right-close")' in app
