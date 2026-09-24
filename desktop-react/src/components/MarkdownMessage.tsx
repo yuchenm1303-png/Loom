@@ -292,8 +292,30 @@ interface StreamTailOptions {
   phase: "a" | "b";
 }
 
+interface StreamTailMatch {
+  parent: StreamNode;
+  childIndex: number;
+}
+
 const STREAM_TAIL_GRAPHEMES = 12;
 const STREAM_TAIL_BLOCKED = new Set(["pre", "code", "math", "svg"]);
+
+function findStreamingTail(node: StreamNode): StreamTailMatch | null {
+  if (node.tagName && STREAM_TAIL_BLOCKED.has(node.tagName)) return null;
+  const children = node.children;
+  if (!children) return null;
+
+  let match: StreamTailMatch | null = null;
+  children.forEach((child, index) => {
+    if (child.type === "text" && child.value?.trim()) {
+      match = { parent: node, childIndex: index };
+      return;
+    }
+    const nested = findStreamingTail(child);
+    if (nested) match = nested;
+  });
+  return match;
+}
 
 /**
  * Give only the newest visible prose a soft reveal without recreating the old
@@ -306,28 +328,12 @@ function rehypeStreamingTail(options: StreamTailOptions) {
   return (tree: StreamNode) => {
     if (!options.enabled) return;
 
-    let parent: StreamNode | null = null;
-    let childIndex = -1;
+    const match = findStreamingTail(tree);
+    if (!match) return;
+    const children = match.parent.children;
+    if (!children) return;
 
-    const visit = (node: StreamNode) => {
-      if (node.tagName && STREAM_TAIL_BLOCKED.has(node.tagName)) return;
-      const children = node.children;
-      if (!children) return;
-
-      children.forEach((child, index) => {
-        if (child.type === "text" && child.value?.trim()) {
-          parent = node;
-          childIndex = index;
-          return;
-        }
-        visit(child);
-      });
-    };
-
-    visit(tree);
-    if (!parent || childIndex < 0 || !parent.children) return;
-
-    const target = parent.children[childIndex];
+    const target = children[match.childIndex];
     const value = String(target.value ?? "");
     const graphemes = streamingGraphemes(value);
     if (!graphemes.length) return;
@@ -343,7 +349,7 @@ function rehypeStreamingTail(options: StreamTailOptions) {
       properties: { className: ["stream-text-tail", `stream-text-tail-${options.phase}`] },
       children: [{ type: "text", value: tail }],
     });
-    parent.children.splice(childIndex, 1, ...replacement);
+    children.splice(match.childIndex, 1, ...replacement);
   };
 }
 
