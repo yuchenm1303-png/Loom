@@ -9,6 +9,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
+import { flushSync } from "react-dom";
 import { AccountDialog } from "./components/AccountDialog";
 import { Composer } from "./components/Composer";
 import { Inspector } from "./components/Inspector";
@@ -58,16 +59,16 @@ const SIDEBAR_MAX = 420;
 const INSPECTOR_MIN = 280;
 const INSPECTOR_MAX = 520;
 const MIN_WORKSPACE_WIDTH = 520;
-const PANEL_MOTION_MS = 460;
-const PANEL_LAYOUT_SETTLE_MS = 390;
 const PANEL_LAYOUT_COMMIT_EVENT = "loom:panel-layout-commit";
 const EMPTY_TRANSCRIPT_ITEMS: TranscriptItem[] = [];
 
 type ResizePanel = "sidebar" | "inspector";
-type LinkedPanelPhase = "closed" | "opening" | "open" | "closing";
-type LinkedPanelMotion = {
-  reserved: boolean;
-  phase: LinkedPanelPhase;
+type LayoutViewTransition = {
+  finished: Promise<void>;
+  skipTransition(): void;
+};
+type LayoutTransitionDocument = Document & {
+  startViewTransition?: (update: () => void | Promise<void>) => LayoutViewTransition;
 };
 
 type LayoutStyle = CSSProperties & {
@@ -192,72 +193,6 @@ function reducedPanelMotion(): boolean {
  * immediately and let the panel leave over the already-expanded workspace.
  * This keeps transcript reflow to one commit without exposing an empty track.
  */
-function usePanelLayoutReserve(open: boolean, settleMs = PANEL_LAYOUT_SETTLE_MS): boolean {
-  const [reserved, setReserved] = useState(open);
-
-  useLayoutEffect(() => {
-    if (reducedPanelMotion()) {
-      setReserved(open);
-      return undefined;
-    }
-
-    if (!open) {
-      setReserved(false);
-      return undefined;
-    }
-
-    const timer = window.setTimeout(() => setReserved(true), settleMs);
-    return () => window.clearTimeout(timer);
-  }, [open, settleMs]);
-
-  return reserved;
-}
-
-function useLinkedPanelMotion(open: boolean, settleMs = PANEL_LAYOUT_SETTLE_MS): LinkedPanelMotion {
-  const [reserved, setReserved] = useState(open);
-  const [phase, setPhase] = useState<LinkedPanelPhase>(open ? "open" : "closed");
-
-  useLayoutEffect(() => {
-    if (reducedPanelMotion()) {
-      setReserved(open);
-      setPhase(open ? "open" : "closed");
-      return undefined;
-    }
-
-    if (open) {
-      if (reserved) {
-        setPhase("open");
-        return undefined;
-      }
-      setPhase("opening");
-      const timer = window.setTimeout(() => {
-        setReserved(true);
-        setPhase("open");
-      }, settleMs);
-      return () => window.clearTimeout(timer);
-    }
-
-    if (!reserved) {
-      setPhase("closed");
-      return undefined;
-    }
-
-    setPhase("closing");
-    const timer = window.setTimeout(() => {
-      setReserved(false);
-      setPhase("closed");
-    }, settleMs);
-    return () => window.clearTimeout(timer);
-  }, [open, reserved, settleMs]);
-
-  return { reserved, phase };
-}
-
-function linkedPanelPhaseClass(name: string, phase: LinkedPanelPhase): string {
-  return phase === "opening" || phase === "closing"
-    ? `${name}-motion-${phase}`
-    : "";
-}
 
 export default function App() {
   const loom = useLoom();
@@ -266,7 +201,8 @@ export default function App() {
   const shellRef = useRef<HTMLDivElement | null>(null);
   const resizeRef = useRef<ResizeSession | null>(null);
   const resizeReleaseFrameRef = useRef<number | null>(null);
-  const panelMotionTimerRef = useRef<number | null>(null);
+  const layoutViewTransitionRef = useRef<LayoutViewTransition | null>(null);
+  const layoutTransitionSerialRef = useRef(0);
   const [inspectorOpen, setInspectorOpen] = useState(() => {
     try { return localStorage.getItem("loom.inspector.open") === "true"; }
     catch { return false; }
@@ -276,8 +212,7 @@ export default function App() {
     catch { /* The panel remains usable when storage is unavailable. */ }
   }, [inspectorOpen]);
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const sidebarMotion = useLinkedPanelMotion(sidebarOpen);
-  const sidebarLayoutOpen = sidebarMotion.reserved;
+  const sidebarLayoutOpen = sidebarOpen;
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsPresence = useMotionPresence(settingsOpen, 300);
   const [accountOpen, setAccountOpen] = useState(false);
@@ -298,7 +233,6 @@ export default function App() {
     INSPECTOR_MAX,
   ));
   const [resizingPanel, setResizingPanel] = useState<ResizePanel | null>(null);
-  const [panelMotionActive, setPanelMotionActive] = useState(false);
   const [shortcuts, setShortcuts] = useState<ShortcutSettings>(() => readShortcutSettings());
   const [dismissedApprovalIds, setDismissedApprovalIds] = useState<Set<string>>(() => new Set());
   const thread = loom.active?.thread;
@@ -320,28 +254,13 @@ export default function App() {
     : null;
   const projectDetailsOpen = Boolean(selectedProject);
   const inspectorVisible = inspectorOpen && !reviewOpen && !projectDetailsOpen && !agentsOpen;
-  const inspectorMotion = useLinkedPanelMotion(inspectorVisible);
-  const inspectorLayoutOpen = inspectorMotion.reserved;
-  const inspectorPresence = useMotionPresence(inspectorVisible, PANEL_LAYOUT_SETTLE_MS + 30);
-  const linkedWorkspaceMotion = sidebarMotion.phase === "opening"
-    || sidebarMotion.phase === "closing"
-    || inspectorMotion.phase === "opening"
-    || inspectorMotion.phase === "closing";
-  const linkedWorkspaceMotionClasses = [
-    linkedPanelPhaseClass("sidebar", sidebarMotion.phase),
-    linkedPanelPhaseClass("inspector", inspectorMotion.phase),
-  ].filter(Boolean).join(" ");
-  const reviewLayoutOpen = usePanelLayoutReserve(reviewOpen);
-  const agentsLayoutOpen = usePanelLayoutReserve(agentsOpen);
-  const projectDetailsLayoutOpen = usePanelLayoutReserve(projectDetailsOpen);
+  const sidebarLayoutOpen = sidebarOpen;
+  const inspectorLayoutOpen = inspectorVisible;
+  const reviewLayoutOpen = reviewOpen;
+  const agentsLayoutOpen = agentsOpen;
+  const projectDetailsLayoutOpen = projectDetailsOpen;
+  const inspectorPresence = useMotionPresence(inspectorVisible, 420);
 
-  const panelVisibilityRef = useRef({
-    sidebarOpen,
-    inspectorVisible,
-    reviewOpen,
-    agentsOpen,
-    projectDetailsOpen,
-  });
   const committedPanelLayoutRef = useRef({
     sidebarLayoutOpen,
     inspectorLayoutOpen,
@@ -350,38 +269,60 @@ export default function App() {
     projectDetailsLayoutOpen,
   });
 
-  useLayoutEffect(() => {
-    const previous = panelVisibilityRef.current;
-    const next = {
-      sidebarOpen,
-      inspectorVisible,
-      reviewOpen,
-      agentsOpen,
-      projectDetailsOpen,
-    };
-    panelVisibilityRef.current = next;
-    if (
-      previous.sidebarOpen === next.sidebarOpen
-      && previous.inspectorVisible === next.inspectorVisible
-      && previous.reviewOpen === next.reviewOpen
-      && previous.agentsOpen === next.agentsOpen
-      && previous.projectDetailsOpen === next.projectDetailsOpen
-    ) return;
-
-    if (panelMotionTimerRef.current !== null) window.clearTimeout(panelMotionTimerRef.current);
-    document.body.classList.add("loom-panel-motion");
-    setPanelMotionActive(true);
-    panelMotionTimerRef.current = window.setTimeout(() => {
-      panelMotionTimerRef.current = null;
-      document.body.classList.remove("loom-panel-motion");
-      setPanelMotionActive(false);
+  const runLayoutTransition = useCallback((update: () => void) => {
+    if (reducedPanelMotion()) {
+      flushSync(update);
       window.dispatchEvent(new Event("loom:panel-resize-end"));
-    }, PANEL_MOTION_MS);
-  }, [agentsOpen, inspectorVisible, projectDetailsOpen, reviewOpen, sidebarOpen]);
+      return;
+    }
+
+    const transitionDocument = document as LayoutTransitionDocument;
+    if (typeof transitionDocument.startViewTransition !== "function") {
+      flushSync(update);
+      afterPaint(() => window.dispatchEvent(new Event("loom:panel-resize-end")));
+      return;
+    }
+
+    const serial = layoutTransitionSerialRef.current + 1;
+    layoutTransitionSerialRef.current = serial;
+
+    // Rapid clicks do not queue several half-finished layouts. Finish the visual
+    // snapshot immediately, then capture that resolved state as the next "old".
+    layoutViewTransitionRef.current?.skipTransition();
+    document.body.classList.add("loom-panel-motion");
+    document.documentElement.dataset.loomLayoutTransition = "true";
+
+    let transition: LayoutViewTransition;
+    try {
+      transition = transitionDocument.startViewTransition(() => {
+        // The expensive grid/padding geometry changes exactly once here.
+        // Chromium animates snapshots between old and new rectangles, so the live
+        // transcript never has to reflow on every animation frame.
+        flushSync(update);
+      });
+    } catch {
+      delete document.documentElement.dataset.loomLayoutTransition;
+      document.body.classList.remove("loom-panel-motion");
+      flushSync(update);
+      afterPaint(() => window.dispatchEvent(new Event("loom:panel-resize-end")));
+      return;
+    }
+
+    layoutViewTransitionRef.current = transition;
+    void transition.finished
+      .catch(() => undefined)
+      .then(() => {
+        if (layoutTransitionSerialRef.current !== serial) return;
+        layoutViewTransitionRef.current = null;
+        delete document.documentElement.dataset.loomLayoutTransition;
+        document.body.classList.remove("loom-panel-motion");
+        window.dispatchEvent(new Event("loom:panel-resize-end"));
+      });
+  }, []);
 
   useLayoutEffect(() => {
     const previous = committedPanelLayoutRef.current;
-    const next = {
+    const nextLayout = {
       sidebarLayoutOpen,
       inspectorLayoutOpen,
       reviewLayoutOpen,
@@ -389,13 +330,13 @@ export default function App() {
       projectDetailsLayoutOpen,
     };
     if (
-      previous.sidebarLayoutOpen === next.sidebarLayoutOpen
-      && previous.inspectorLayoutOpen === next.inspectorLayoutOpen
-      && previous.reviewLayoutOpen === next.reviewLayoutOpen
-      && previous.agentsLayoutOpen === next.agentsLayoutOpen
-      && previous.projectDetailsLayoutOpen === next.projectDetailsLayoutOpen
+      previous.sidebarLayoutOpen === nextLayout.sidebarLayoutOpen
+      && previous.inspectorLayoutOpen === nextLayout.inspectorLayoutOpen
+      && previous.reviewLayoutOpen === nextLayout.reviewLayoutOpen
+      && previous.agentsLayoutOpen === nextLayout.agentsLayoutOpen
+      && previous.projectDetailsLayoutOpen === nextLayout.projectDetailsLayoutOpen
     ) return;
-    committedPanelLayoutRef.current = next;
+    committedPanelLayoutRef.current = nextLayout;
     window.dispatchEvent(new Event(PANEL_LAYOUT_COMMIT_EVENT));
   }, [
     agentsLayoutOpen,
@@ -407,10 +348,12 @@ export default function App() {
 
   function focusReviewFile(path?: string): void {
     const normalized = normalizeReviewPath(path);
-    setAgentsOpen(false);
-    setSelectedProjectId("");
-    setInspectorOpen(false);
-    setReviewOpen(true);
+    runLayoutTransition(() => {
+      setAgentsOpen(false);
+      setSelectedProjectId("");
+      setInspectorOpen(false);
+      setReviewOpen(true);
+    });
     if (!normalized) return;
 
     afterPaint(() => {
@@ -425,26 +368,30 @@ export default function App() {
   }
 
   function openProjectDetails(projectId: string): void {
-    setReviewOpen(false);
-    setAgentsOpen(false);
-    setInspectorOpen(false);
-    setSelectedProjectId(projectId);
+    runLayoutTransition(() => {
+      setReviewOpen(false);
+      setAgentsOpen(false);
+      setInspectorOpen(false);
+      setSelectedProjectId(projectId);
+    });
   }
 
   function closeProjectDetails(): void {
-    setSelectedProjectId("");
+    runLayoutTransition(() => setSelectedProjectId(""));
   }
 
   const openAgents = useCallback(() => {
-    setReviewOpen(false);
-    setInspectorOpen(false);
-    setSelectedProjectId("");
-    setAgentsOpen(true);
-  }, []);
+    runLayoutTransition(() => {
+      setReviewOpen(false);
+      setInspectorOpen(false);
+      setSelectedProjectId("");
+      setAgentsOpen(true);
+    });
+  }, [runLayoutTransition]);
 
   function toggleAgents(): void {
     if (agentsOpen) {
-      setAgentsOpen(false);
+      runLayoutTransition(() => setAgentsOpen(false));
       return;
     }
     openAgents();
@@ -452,18 +399,19 @@ export default function App() {
 
   function toggleReview(): void {
     if (reviewOpen) {
-      setReviewOpen(false);
+      runLayoutTransition(() => setReviewOpen(false));
       return;
     }
-    setAgentsOpen(false);
     focusReviewFile();
   }
 
   function toggleInspector(): void {
-    setReviewOpen(false);
-    setAgentsOpen(false);
-    setSelectedProjectId("");
-    setInspectorOpen((open) => !open);
+    runLayoutTransition(() => {
+      setReviewOpen(false);
+      setAgentsOpen(false);
+      setSelectedProjectId("");
+      setInspectorOpen((open) => !open);
+    });
   }
 
   useEffect(() => {
@@ -484,7 +432,8 @@ export default function App() {
     if (!threadId || !running || agentCount <= 0) return;
     if (autoOpenedAgentsForThreadRef.current === threadId) return;
     autoOpenedAgentsForThreadRef.current = threadId;
-    openAgents();
+    const frame = window.requestAnimationFrame(() => openAgents());
+    return () => window.cancelAnimationFrame(frame);
   }, [agentCount, openAgents, running, thread?.id]);
 
   useEffect(() => {
@@ -502,7 +451,10 @@ export default function App() {
     const session = resizeRef.current;
     if (session?.frame !== null && session?.frame !== undefined) cancelAnimationFrame(session.frame);
     if (resizeReleaseFrameRef.current !== null) cancelAnimationFrame(resizeReleaseFrameRef.current);
-    if (panelMotionTimerRef.current !== null) window.clearTimeout(panelMotionTimerRef.current);
+    layoutTransitionSerialRef.current += 1;
+    layoutViewTransitionRef.current?.skipTransition();
+    layoutViewTransitionRef.current = null;
+    delete document.documentElement.dataset.loomLayoutTransition;
     document.body.classList.remove("loom-panel-resizing");
     document.body.classList.remove("loom-panel-motion");
   }, []);
@@ -577,7 +529,7 @@ export default function App() {
       if (eventMatchesShortcut(event, shortcuts.newConversation)) {
         consume();
         setSettingsOpen(false);
-        setSidebarOpen(true);
+        if (!sidebarOpen) runLayoutTransition(() => setSidebarOpen(true));
         void loom.newThread();
         return;
       }
@@ -585,7 +537,7 @@ export default function App() {
       if (eventMatchesShortcut(event, shortcuts.searchConversations)) {
         consume();
         setSettingsOpen(false);
-        setSidebarOpen(true);
+        if (!sidebarOpen) runLayoutTransition(() => setSidebarOpen(true));
         afterPaint(() => {
           const input = document.querySelector<HTMLInputElement>(".compact-search.open input");
           if (input) {
@@ -634,7 +586,7 @@ export default function App() {
 
     window.addEventListener("keydown", handleShortcut, true);
     return () => window.removeEventListener("keydown", handleShortcut, true);
-  }, [loom, reviewOpen, running, shortcuts]);
+  }, [loom, reviewOpen, runLayoutTransition, running, shortcuts, sidebarOpen]);
 
   const transcriptItems = loom.items.filter((item) => {
     if (item.type !== "approval") return true;
@@ -854,7 +806,7 @@ export default function App() {
     <>
       <div
         ref={shellRef}
-        className={`app-shell workspace-panels ${sidebarOpen ? "sidebar-open" : "sidebar-closed"} ${sidebarLayoutOpen ? "sidebar-layout-open" : "sidebar-layout-closed"} ${inspectorVisible ? "inspector-open" : "inspector-closed"} ${inspectorLayoutOpen ? "inspector-layout-open" : "inspector-layout-closed"} ${reviewLayoutOpen ? "with-review" : ""} ${agentsLayoutOpen ? "with-agents" : ""} ${projectDetailsLayoutOpen ? "with-project-details" : ""} ${resizingPanel ? "is-resizing" : ""} ${panelMotionActive ? "is-panel-motion" : ""} ${linkedWorkspaceMotion ? "is-layout-coupled" : ""} ${linkedWorkspaceMotionClasses} ${settingsPresence.mounted ? "is-settings-obscured" : ""}`}
+        className={`app-shell workspace-panels ${sidebarOpen ? "sidebar-open" : "sidebar-closed"} ${sidebarLayoutOpen ? "sidebar-layout-open" : "sidebar-layout-closed"} ${inspectorVisible ? "inspector-open" : "inspector-closed"} ${inspectorLayoutOpen ? "inspector-layout-open" : "inspector-layout-closed"} ${reviewLayoutOpen ? "with-review" : ""} ${agentsLayoutOpen ? "with-agents" : ""} ${projectDetailsLayoutOpen ? "with-project-details" : ""} ${resizingPanel ? "is-resizing" : ""} ${settingsPresence.mounted ? "is-settings-obscured" : ""}`}
         style={layoutStyle}
         aria-hidden={settingsPresence.mounted ? true : undefined}
       >
@@ -921,7 +873,7 @@ export default function App() {
           onCompactContext={() => void loom.compactContext()}
           onOpenAccount={() => setAccountOpen(true)}
           onOpenSettings={() => setSettingsOpen(true)}
-          onToggleSidebar={() => setSidebarOpen((open) => !open)}
+          onToggleSidebar={() => runLayoutTransition(() => setSidebarOpen((open) => !open))}
           onToggleInspector={toggleInspector}
           onToggleReview={toggleReview}
           onToggleAgents={toggleAgents}

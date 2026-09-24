@@ -30,9 +30,9 @@ def test_transient_surfaces_have_symmetric_presence() -> None:
     assert "data-motion-phase={presence.phase}" in account
     assert "panelPresence = useMotionPresence(Boolean(openPanel), 215)" in composer
     assert composer.count("data-motion-phase={panelPresence.phase}") >= 3
-    assert "useMotionPresence(open, 240)" in review
-    assert "useMotionPresence(open, 240)" in agents
-    assert "useMotionPresence(open && Boolean(projectProp), 240)" in project
+    assert "useMotionPresence(open, 420)" in review
+    assert "useMotionPresence(open, 420)" in agents
+    assert "useMotionPresence(open && Boolean(projectProp), 420)" in project
 
 
 def test_sidebar_disclosures_do_not_use_display_none_for_projects() -> None:

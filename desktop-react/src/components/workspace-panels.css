@@ -3,16 +3,10 @@
   --loom-inspector-track: var(--loom-inspector-panel-size, var(--inspector-width, 316px));
   position: relative;
   grid-template-columns: var(--loom-sidebar-track) minmax(0, 1fr) var(--loom-inspector-track);
-  --loom-linked-left-shift: 0px;
-  --loom-linked-right-shift: 0px;
-  --loom-linked-center-shift: 0px;
 }
 
-/* Workspace geometry is committed once per panel action. Opening panels first
-   travel over the current conversation, then reserve their track near the end
-   of the motion. Closing panels release the track first and leave over the
-   expanded conversation. This keeps long transcripts compositor-smooth while
-   avoiding the empty track from the old two-stage choreography. */
+/* Layout has one source of truth. We never reserve an empty track ahead of the
+   visual panel and never translate transcript/composer fragments independently. */
 .app-shell.workspace-panels.sidebar-layout-closed {
   --loom-sidebar-track: 0px;
 }
@@ -21,13 +15,12 @@
   --loom-inspector-track: 0px;
 }
 
-/* Explicit columns keep the conversation in the center track even while a
-   side panel temporarily becomes an absolute overlay. */
 .workspace-panels > .sidebar {
   grid-column: 1;
   grid-row: 1;
   position: relative;
   z-index: 32;
+  view-transition-name: loom-sidebar;
 }
 
 .workspace-panels > .workspace {
@@ -38,6 +31,7 @@
   min-width: 0;
   container-type: inline-size;
   container-name: loom-workspace;
+  view-transition-name: loom-workspace;
 }
 
 .workspace-panels > .inspector {
@@ -45,6 +39,7 @@
   grid-row: 1;
   position: relative;
   z-index: 32;
+  view-transition-name: loom-inspector;
 }
 
 .thread-header-leading {
@@ -64,114 +59,102 @@
   height: 100%;
   contain: layout paint style;
   backface-visibility: hidden;
-  transform: translate3d(0,0,0);
   transition:
+    opacity var(--loom-motion-opacity,260ms) ease,
     transform var(--loom-motion-panel,390ms) var(--loom-ease-out,cubic-bezier(.2,.74,.18,1)),
     visibility 0s linear 0s;
 }
 
-/* With no reserved track the panel keeps its real width as an overlay. The
-   conversation remains laid out underneath until the one geometry commit. */
-.workspace-panels.sidebar-layout-closed > .sidebar {
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: var(--loom-sidebar-panel-size, var(--sidebar-width, 252px));
-}
-
-.workspace-panels.inspector-layout-closed > .inspector {
-  position: absolute;
-  inset: 0 0 0 auto;
-  width: var(--loom-inspector-panel-size, var(--inspector-width, 316px));
-}
-
 .workspace-panels.sidebar-open > .sidebar,
 .workspace-panels.inspector-open > .inspector {
+  opacity: 1;
   visibility: visible;
   pointer-events: auto;
   transform: translate3d(0,0,0);
 }
 
 .workspace-panels.sidebar-closed > .sidebar {
-  transform: translate3d(calc(-100% - 1px),0,0);
+  opacity: 0;
+  transform: translate3d(-16px,0,0);
   visibility: hidden;
   pointer-events: none;
-  transition:
-    transform var(--loom-motion-panel,390ms) var(--loom-ease-in,cubic-bezier(.42,0,.72,.2)),
-    visibility 0s linear var(--loom-motion-panel,390ms);
 }
 
 .workspace-panels.inspector-closed > .inspector {
-  transform: translate3d(calc(100% + 1px),0,0);
+  opacity: 0;
+  transform: translate3d(16px,0,0);
   visibility: hidden;
   pointer-events: none;
-  transition:
-    transform var(--loom-motion-panel,390ms) var(--loom-ease-in,cubic-bezier(.42,0,.72,.2)),
-    visibility 0s linear var(--loom-motion-panel,390ms);
 }
 
-
-/* Coupled side-panel choreography -------------------------------------------
-   The grid still commits once, but the visible workspace moves toward the
-   exact post-commit anchors during the same 390ms as the panel. This removes
-   the old "panel finishes, then main UI jumps" split without reintroducing
-   per-frame Markdown/layout reflow on long conversations. */
-.workspace-panels.sidebar-motion-opening {
-  --loom-linked-left-shift: var(--loom-sidebar-panel-size, var(--sidebar-width, 252px));
-  --loom-linked-center-shift: calc(var(--loom-sidebar-panel-size, var(--sidebar-width, 252px)) / 2);
+/* View Transition snapshots are the only layer that interpolates workspace
+   geometry. The live DOM commits directly to the final grid once; Chromium
+   morphs the old/new rectangles above it, so Markdown never reflows per frame. */
+::view-transition-group(loom-workspace),
+::view-transition-group(loom-sidebar),
+::view-transition-group(loom-inspector) {
+  animation-duration: var(--loom-motion-panel,390ms);
+  animation-timing-function: var(--loom-ease-standard,cubic-bezier(.22,.7,.18,1));
+  animation-fill-mode: both;
 }
 
-.workspace-panels.sidebar-motion-closing {
-  --loom-linked-left-shift: calc(0px - var(--loom-sidebar-panel-size, var(--sidebar-width, 252px)));
-  --loom-linked-center-shift: calc(0px - (var(--loom-sidebar-panel-size, var(--sidebar-width, 252px)) / 2));
+::view-transition-old(loom-workspace),
+::view-transition-new(loom-workspace),
+::view-transition-old(loom-sidebar),
+::view-transition-new(loom-sidebar),
+::view-transition-old(loom-inspector),
+::view-transition-new(loom-inspector) {
+  mix-blend-mode: normal;
 }
 
-.workspace-panels.inspector-motion-opening {
-  --loom-linked-right-shift: calc(0px - var(--loom-inspector-panel-size, var(--inspector-width, 316px)));
-  --loom-linked-center-shift: calc(0px - (var(--loom-inspector-panel-size, var(--inspector-width, 316px)) / 2));
+::view-transition-old(loom-workspace) {
+  animation: loom-workspace-old var(--loom-motion-panel,390ms) var(--loom-ease-standard,cubic-bezier(.22,.7,.18,1)) both;
 }
 
-.workspace-panels.inspector-motion-closing {
-  --loom-linked-right-shift: var(--loom-inspector-panel-size, var(--inspector-width, 316px));
-  --loom-linked-center-shift: calc(var(--loom-inspector-panel-size, var(--inspector-width, 316px)) / 2);
+::view-transition-new(loom-workspace) {
+  animation: loom-workspace-new var(--loom-motion-panel,390ms) var(--loom-ease-standard,cubic-bezier(.22,.7,.18,1)) both;
 }
 
-.workspace-panels.is-layout-coupled .thread-header-leading,
-.workspace-panels.is-layout-coupled .thread-header-main {
-  animation: loom-linked-left-edge var(--loom-motion-panel,390ms) var(--loom-ease-standard,cubic-bezier(.22,.7,.18,1)) both;
-  will-change: translate;
+@keyframes loom-workspace-old {
+  0%, 56% { opacity: 1; }
+  100% { opacity: 0; }
 }
 
-.workspace-panels.is-layout-coupled .polished-thread-header-actions {
-  animation: loom-linked-right-edge var(--loom-motion-panel,390ms) var(--loom-ease-standard,cubic-bezier(.22,.7,.18,1)) both;
-  will-change: translate;
+@keyframes loom-workspace-new {
+  0%, 34% { opacity: 0; }
+  100% { opacity: 1; }
 }
 
-.workspace-panels.is-layout-coupled .transcript,
-.workspace-panels.is-layout-coupled .composer,
-.workspace-panels.is-layout-coupled .composer-hint,
-.workspace-panels.is-layout-coupled .run-progress-inline,
-.workspace-panels.is-layout-coupled .transcript-jump-latest {
-  animation: loom-linked-center var(--loom-motion-panel,390ms) var(--loom-ease-standard,cubic-bezier(.22,.7,.18,1)) both;
-  will-change: translate;
+/* Components with their own presence lifecycles still get independent snapshot
+   names. This prevents a right-dock swap from being flattened into the root
+   crossfade while the workspace is resizing beside it. */
+.review-workspace { view-transition-name: loom-review-surface; }
+.sub-agent-dock { view-transition-name: loom-agent-surface; }
+.project-details-panel { view-transition-name: loom-project-surface; }
+
+::view-transition-group(loom-review-surface),
+::view-transition-group(loom-agent-surface),
+::view-transition-group(loom-project-surface) {
+  animation-duration: var(--loom-motion-panel,390ms);
+  animation-timing-function: var(--loom-ease-out,cubic-bezier(.2,.74,.18,1));
+  animation-fill-mode: both;
 }
 
-.workspace-panels.is-layout-coupled .thread-header.polished-thread-header {
-  overflow: hidden;
+::view-transition-old(loom-review-surface),
+::view-transition-new(loom-review-surface),
+::view-transition-old(loom-agent-surface),
+::view-transition-new(loom-agent-surface),
+::view-transition-old(loom-project-surface),
+::view-transition-new(loom-project-surface) {
+  mix-blend-mode: normal;
 }
 
-@keyframes loom-linked-left-edge {
-  from { translate: 0 0; }
-  to { translate: var(--loom-linked-left-shift) 0; }
-}
-
-@keyframes loom-linked-right-edge {
-  from { translate: 0 0; }
-  to { translate: var(--loom-linked-right-shift) 0; }
-}
-
-@keyframes loom-linked-center {
-  from { translate: 0 0; }
-  to { translate: var(--loom-linked-center-shift) 0; }
+/* The layout callback sets this before either snapshot is taken. Disable the
+   live sidebar/inspector transitions underneath the transition layer so there
+   is never a second animation fighting the snapshot geometry. */
+html[data-loom-layout-transition="true"] .workspace-panels > .sidebar,
+html[data-loom-layout-transition="true"] .workspace-panels > .inspector {
+  transition: none !important;
 }
 
 .workspace-panel-resizer {
@@ -346,76 +329,61 @@ html[data-loom-reduced-motion="true"] .workspace-panel-resizer {
 }
 
 
-/* Programmatic panel transitions -------------------------------------------
-   Panel pixels slide on the compositor while workspace track widths commit only
-   once. Pause ambient drift during that short window so the renderer has fewer
-   layers competing with the single transcript reflow. */
-.workspace-panels.is-panel-motion .ambient-glow {
+
+/* Unified panel-transition performance guard ------------------------------- */
+body.loom-panel-motion .workspace-panels .ambient-glow,
+body.loom-panel-motion .workspace-panels .run-progress-live-dot,
+body.loom-panel-motion .workspace-panels .thinking-orbit,
+body.loom-panel-motion .workspace-panels .thinking-dot,
+body.loom-panel-motion .workspace-panels .composer-running-label i,
+body.loom-panel-motion .workspace-panels .task-flow-live-detail::before {
   animation-play-state: paused !important;
 }
 
-.workspace-panels.is-panel-motion > .sidebar,
-.workspace-panels.is-panel-motion > .inspector {
-  will-change: transform, opacity;
-}
-
-/* The Inspector owns a small vertical pane-enter animation for tab changes.
-   During the panel's horizontal entrance that second motion reads as text
-   flying upward, so let the panel be the only moving layer. */
-.workspace-panels.is-panel-motion > .inspector .runtime-pane {
-  animation: none !important;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .workspace-panels.is-panel-motion .ambient-glow {
-    animation-play-state: paused !important;
-  }
-}
-
-
-/* Motion performance guard ------------------------------------------------- */
-/* During a panel reveal, keep the expensive conversation tree visually stable.
-   The grid width is still committed once, but all decorative animation inside
-   the transcript is paused so that the compositor only has to move the panel. */
-.workspace-panels.is-panel-motion .ambient-glow,
-.workspace-panels.is-panel-motion .run-progress-live-dot,
-.workspace-panels.is-panel-motion .thinking-orbit,
-.workspace-panels.is-panel-motion .thinking-dot,
-.workspace-panels.is-panel-motion .composer-running-label i,
-.workspace-panels.is-panel-motion .task-flow-live-detail::before {
-  animation-play-state: paused !important;
-}
-
-.workspace-panels.is-panel-motion .transcript-scroll,
-.workspace-panels.is-panel-motion .composer-stage {
+body.loom-panel-motion .workspace-panels .transcript-scroll,
+body.loom-panel-motion .workspace-panels .composer-stage {
   overflow-anchor: none;
 }
 
-.workspace-panels.is-panel-motion > .sidebar,
-.workspace-panels.is-panel-motion > .inspector {
+body.loom-panel-motion .workspace-panels > .sidebar,
+body.loom-panel-motion .workspace-panels > .inspector {
+  will-change: transform, opacity;
   transform-style: preserve-3d;
 }
 
+body.loom-panel-motion .workspace-panels > .inspector .runtime-pane {
+  animation: none !important;
+}
+
+/* Portal docks previously unmounted at 240ms while their 390ms transform was
+   still running. Presence now stays alive for 420ms; keep fallback CSS on the
+   same cadence when View Transitions are unavailable. */
+body.loom-panel-motion .review-workspace,
+body.loom-panel-motion .sub-agent-dock,
+body.loom-panel-motion .project-details-panel {
+  transition-duration: var(--loom-motion-panel,390ms) !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .workspace-panels.is-layout-coupled .thread-header-leading,
-  .workspace-panels.is-layout-coupled .thread-header-main,
-  .workspace-panels.is-layout-coupled .polished-thread-header-actions,
-  .workspace-panels.is-layout-coupled .transcript,
-  .workspace-panels.is-layout-coupled .composer,
-  .workspace-panels.is-layout-coupled .composer-hint,
-  .workspace-panels.is-layout-coupled .run-progress-inline,
-  .workspace-panels.is-layout-coupled .transcript-jump-latest {
-    animation: none !important;
+  ::view-transition-group(loom-workspace),
+  ::view-transition-group(loom-sidebar),
+  ::view-transition-group(loom-inspector),
+  ::view-transition-group(loom-review-surface),
+  ::view-transition-group(loom-agent-surface),
+  ::view-transition-group(loom-project-surface),
+  ::view-transition-old(loom-workspace),
+  ::view-transition-new(loom-workspace) {
+    animation-duration: .001ms !important;
   }
 }
 
-html[data-loom-reduced-motion="true"] .workspace-panels.is-layout-coupled .thread-header-leading,
-html[data-loom-reduced-motion="true"] .workspace-panels.is-layout-coupled .thread-header-main,
-html[data-loom-reduced-motion="true"] .workspace-panels.is-layout-coupled .polished-thread-header-actions,
-html[data-loom-reduced-motion="true"] .workspace-panels.is-layout-coupled .transcript,
-html[data-loom-reduced-motion="true"] .workspace-panels.is-layout-coupled .composer,
-html[data-loom-reduced-motion="true"] .workspace-panels.is-layout-coupled .composer-hint,
-html[data-loom-reduced-motion="true"] .workspace-panels.is-layout-coupled .run-progress-inline,
-html[data-loom-reduced-motion="true"] .workspace-panels.is-layout-coupled .transcript-jump-latest {
-  animation: none !important;
+html[data-loom-reduced-motion="true"]::view-transition-group(loom-workspace),
+html[data-loom-reduced-motion="true"]::view-transition-group(loom-sidebar),
+html[data-loom-reduced-motion="true"]::view-transition-group(loom-inspector),
+html[data-loom-reduced-motion="true"]::view-transition-group(loom-review-surface),
+html[data-loom-reduced-motion="true"]::view-transition-group(loom-agent-surface),
+html[data-loom-reduced-motion="true"]::view-transition-group(loom-project-surface),
+html[data-loom-reduced-motion="true"]::view-transition-old(loom-workspace),
+html[data-loom-reduced-motion="true"]::view-transition-new(loom-workspace) {
+  animation-duration: .001ms !important;
 }

@@ -257,7 +257,7 @@ function lineMarker(kind: ReviewRow["kind"]): string {
 }
 
 export function ReviewWorkspace({ items, open, onClose }: ReviewWorkspaceProps) {
-  const presence = useMotionPresence(open, 240);
+  const presence = useMotionPresence(open, 420);
   const { language } = useI18n();
   const c = language === "zh-CN" ? COPY_TEXT.zh : COPY_TEXT.en;
   const [externalReview, setExternalReview] = useState<ExternalReview | null>(null);
