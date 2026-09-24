@@ -43,6 +43,14 @@ const SESSION_ACTIVE_KEY = "loomBrowserSessionActive";
 const HUD_TAB_IDS_KEY = "loomHudTabIds";
 // The content script cannot see its own tab id, so it asks for it.
 const HUD_TAB_QUERY = "loom-hud-tab-id";
+// Keep debugger attachments for the browser session. Attaching and detaching
+// around every screenshot or input makes Chromium's debugging banner flash.
+const attachedDebuggerTabs = new Set();
+
+chrome.debugger.onDetach.addListener((source) => {
+  if (typeof source.tabId === "number") attachedDebuggerTabs.delete(source.tabId);
+});
+chrome.tabs.onRemoved.addListener((tabId) => attachedDebuggerTabs.delete(tabId));
 
 const bridgeRuntime = {
   running: false,
@@ -378,6 +386,9 @@ async function markSessionActive(active) {
 }
 
 async function releaseTabs() {
+  const attached = [...attachedDebuggerTabs];
+  attachedDebuggerTabs.clear();
+  await Promise.all(attached.map((tabId) => chrome.debugger.detach({ tabId }).catch(() => {})));
   // Only the borrowed ones. Releasing Loom's own tabs too made every new session
   // fail to recognise the tab it had just been working in, so it opened another,
   // and another - it fought the user for the foreground instead of staying put.
@@ -685,10 +696,11 @@ async function withElement(args, action, extra = {}, waitMs = 200, options = {})
 
 async function withNativeInput(tabId, run) {
   const target = { tabId: Number(tabId) };
-  let attached = false;
   try {
-    await chrome.debugger.attach(target, "1.3");
-    attached = true;
+    if (!attachedDebuggerTabs.has(target.tabId)) {
+      await chrome.debugger.attach(target, "1.3");
+      attachedDebuggerTabs.add(target.tabId);
+    }
     await run(target);
     return { ok: true };
   } catch (cause) {
@@ -696,8 +708,6 @@ async function withNativeInput(tabId, run) {
       ok: false,
       error: String(cause && cause.message ? cause.message : cause).slice(0, 500),
     };
-  } finally {
-    if (attached) await chrome.debugger.detach(target).catch(() => {});
   }
 }
 

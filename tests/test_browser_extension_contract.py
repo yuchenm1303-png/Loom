@@ -698,7 +698,10 @@ def test_screenshots_composite_on_demand_rather_than_reusing_a_painted_frame(bac
 def test_native_input_has_a_page_event_fallback_when_devtools_owns_the_tab(background):
     native = _function_body(background, "withNativeInput")
     assert "chrome.debugger.attach" in native
-    assert "chrome.debugger.detach" in native
+    assert "attachedDebuggerTabs.has" in native
+    assert "chrome.debugger.detach" not in native
+    assert "chrome.debugger.detach" in _function_body(background, "releaseTabs")
+    assert "chrome.debugger.onDetach.addListener" in background
     assert "ok: false" in native
 
     send = _function_body(background, "sendText")
