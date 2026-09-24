@@ -56,38 +56,13 @@
   height: 100%;
   contain: layout paint style;
   backface-visibility: hidden;
-  transition:
-    opacity var(--loom-motion-opacity,260ms) ease,
-    transform var(--loom-motion-panel,390ms) var(--loom-ease-out,cubic-bezier(.2,.74,.18,1)),
-    visibility 0s linear 0s;
-}
-
-.workspace-panels.sidebar-open > .sidebar,
-.workspace-panels.inspector-open > .inspector {
-  opacity: 1;
-  visibility: visible;
-  pointer-events: auto;
-  transform: translate3d(0,0,0);
-}
-
-.workspace-panels.sidebar-closed > .sidebar {
-  opacity: 0;
-  transform: translate3d(-16px,0,0);
-  visibility: hidden;
-  pointer-events: none;
-}
-
-.workspace-panels.inspector-closed > .inspector {
-  opacity: 0;
-  transform: translate3d(16px,0,0);
-  visibility: hidden;
-  pointer-events: none;
 }
 
 /* Local panel motion ---------------------------------------------------------
    A sidebar toggle should not animate the whole application. Side surfaces
-   move locally, while App.tsx performs a live FLIP only on conversation-stage
-   and composer-stage. No old/new workspace bitmap is ever drawn. */
+   move locally, while App.tsx performs a horizontal-only live FLIP on the two
+   large content stages. Header chrome and every nested card/text control remain
+   live and stationary unless normal layout itself requires their reflow. */
 .workspace-panels.sidebar-layout-closed > .sidebar {
   position: absolute;
   inset: 0 auto 0 0;
@@ -100,9 +75,12 @@
   width: var(--loom-inspector-panel-size, var(--inspector-width, 316px));
 }
 
-.workspace-panels > .sidebar,
+.workspace-panels > .sidebar {
+  transform-origin: left center;
+}
+
 .workspace-panels > .inspector {
-  transform-origin: center;
+  transform-origin: right center;
 }
 
 .workspace-panels.sidebar-open > .sidebar {
@@ -111,20 +89,20 @@
   pointer-events: auto;
   transform: translate3d(0,0,0);
   transition:
-    transform 290ms cubic-bezier(.2,.74,.18,1),
-    opacity 190ms ease,
+    transform 300ms cubic-bezier(.2,.74,.18,1),
+    opacity 165ms ease,
     visibility 0s linear 0s;
 }
 
 .workspace-panels.sidebar-closed > .sidebar {
   opacity: 0;
-  transform: translate3d(-18px,0,0);
+  transform: translate3d(-12px,0,0);
   visibility: hidden;
   pointer-events: none;
   transition:
-    transform 240ms cubic-bezier(.42,0,.72,.2),
-    opacity 150ms ease,
-    visibility 0s linear 240ms;
+    transform 230ms cubic-bezier(.42,0,.72,.2),
+    opacity 135ms ease,
+    visibility 0s linear 230ms;
 }
 
 .workspace-panels.inspector-open > .inspector {
@@ -133,26 +111,27 @@
   pointer-events: auto;
   transform: translate3d(0,0,0);
   transition:
-    transform 290ms cubic-bezier(.2,.74,.18,1),
-    opacity 190ms ease,
+    transform 300ms cubic-bezier(.2,.74,.18,1),
+    opacity 165ms ease,
     visibility 0s linear 0s;
 }
 
 .workspace-panels.inspector-closed > .inspector {
   opacity: 0;
-  transform: translate3d(18px,0,0);
+  transform: translate3d(12px,0,0);
   visibility: hidden;
   pointer-events: none;
   transition:
-    transform 240ms cubic-bezier(.42,0,.72,.2),
-    opacity 150ms ease,
-    visibility 0s linear 240ms;
+    transform 230ms cubic-bezier(.42,0,.72,.2),
+    opacity 135ms ease,
+    visibility 0s linear 230ms;
 }
 
 body.loom-panel-motion .workspace-panels .conversation-stage,
 body.loom-panel-motion .workspace-panels .composer-stage {
   backface-visibility: hidden;
   transform-style: preserve-3d;
+  isolation: isolate;
 }
 
 .workspace-panel-resizer {

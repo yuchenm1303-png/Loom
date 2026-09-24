@@ -48,3 +48,11 @@ def test_visible_panel_actions_share_the_same_live_motion_coordinator() -> None:
     assert 'onClose={() => runLayoutTransition(() => setReviewOpen(false))}' in app
     assert 'onClose={() => runLayoutTransition(() => setAgentsOpen(false))}' in app
     assert "startViewTransition" not in app
+
+
+def test_layout_motion_does_not_introduce_vertical_stage_travel() -> None:
+    app = read("desktop-react/src/App.tsx")
+
+    assert "centerY" not in app
+    assert "deltaY" not in app
+    assert 'translate3d(${deltaX}px,0,0)' in app

@@ -30,9 +30,9 @@ def test_sidebar_and_inspector_move_locally_without_animating_all_children() -> 
 
     assert ".workspace-panels.sidebar-layout-closed > .sidebar" in css
     assert ".workspace-panels.inspector-layout-closed > .inspector" in css
-    assert "translate3d(-18px,0,0)" in css
-    assert "translate3d(18px,0,0)" in css
-    assert "visibility 0s linear 240ms" in css
+    assert "translate3d(-12px,0,0)" in css
+    assert "translate3d(12px,0,0)" in css
+    assert "visibility 0s linear 230ms" in css
 
     assert ".thread-header-copy" not in css
     assert "loom-readable" not in css
@@ -46,3 +46,23 @@ def test_only_large_content_stages_receive_layout_motion_hint() -> None:
     assert "body.loom-panel-motion .workspace-panels .conversation-stage" in css
     assert "body.loom-panel-motion .workspace-panels .composer-stage" in css
     assert "body.loom-panel-motion .workspace-panels .thread-header" not in css
+
+
+def test_content_flip_is_horizontal_only_and_interruptible() -> None:
+    app = read("desktop-react/src/App.tsx")
+
+    assert "centerY" not in app
+    assert "animation.commitStyles()" in app
+    assert "settleLayoutAnchorAnimations" in app
+    assert "clearLayoutAnchorStyles" in app
+    assert 'transform: `translate3d(${deltaX}px,0,0)`' in app
+    assert 'duration: capture.kind === "conversation" ? 270 : 285' in app
+
+
+def test_panel_css_has_one_owner_for_open_close_motion() -> None:
+    css = read("desktop-react/src/components/workspace-panels.css")
+
+    assert css.count(".workspace-panels.sidebar-open > .sidebar") == 1
+    assert css.count(".workspace-panels.sidebar-closed > .sidebar") == 1
+    assert css.count(".workspace-panels.inspector-open > .inspector") == 1
+    assert css.count(".workspace-panels.inspector-closed > .inspector") == 1
