@@ -439,8 +439,7 @@ html[data-loom-reduced-motion="true"] .workspace-panel-resizer {
 /* Unified panel-transition performance guard ------------------------------- */
 body.loom-panel-motion .workspace-panels .ambient-glow,
 body.loom-panel-motion .workspace-panels .run-progress-live-dot,
-body.loom-panel-motion .workspace-panels .thinking-orbit,
-body.loom-panel-motion .workspace-panels .thinking-dot,
+body.loom-panel-motion .workspace-panels .tg-ply,
 body.loom-panel-motion .workspace-panels .composer-running-label i,
 body.loom-panel-motion .workspace-panels .task-flow-live-detail::before {
   animation-play-state: paused !important;
