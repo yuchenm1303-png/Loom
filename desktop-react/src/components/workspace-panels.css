@@ -3,6 +3,9 @@
   --loom-inspector-track: var(--loom-inspector-panel-size, var(--inspector-width, 316px));
   position: relative;
   grid-template-columns: var(--loom-sidebar-track) minmax(0, 1fr) var(--loom-inspector-track);
+  --loom-linked-left-shift: 0px;
+  --loom-linked-right-shift: 0px;
+  --loom-linked-center-shift: 0px;
 }
 
 /* Workspace geometry is committed once per panel action. Opening panels first
@@ -93,8 +96,8 @@
   visibility: hidden;
   pointer-events: none;
   transition:
-    transform 280ms var(--loom-ease-in,cubic-bezier(.42,0,.72,.2)),
-    visibility 0s linear 280ms;
+    transform var(--loom-motion-panel,390ms) var(--loom-ease-in,cubic-bezier(.42,0,.72,.2)),
+    visibility 0s linear var(--loom-motion-panel,390ms);
 }
 
 .workspace-panels.inspector-closed > .inspector {
@@ -102,8 +105,73 @@
   visibility: hidden;
   pointer-events: none;
   transition:
-    transform 280ms var(--loom-ease-in,cubic-bezier(.42,0,.72,.2)),
-    visibility 0s linear 280ms;
+    transform var(--loom-motion-panel,390ms) var(--loom-ease-in,cubic-bezier(.42,0,.72,.2)),
+    visibility 0s linear var(--loom-motion-panel,390ms);
+}
+
+
+/* Coupled side-panel choreography -------------------------------------------
+   The grid still commits once, but the visible workspace moves toward the
+   exact post-commit anchors during the same 390ms as the panel. This removes
+   the old "panel finishes, then main UI jumps" split without reintroducing
+   per-frame Markdown/layout reflow on long conversations. */
+.workspace-panels.sidebar-motion-opening {
+  --loom-linked-left-shift: var(--loom-sidebar-panel-size, var(--sidebar-width, 252px));
+  --loom-linked-center-shift: calc(var(--loom-sidebar-panel-size, var(--sidebar-width, 252px)) / 2);
+}
+
+.workspace-panels.sidebar-motion-closing {
+  --loom-linked-left-shift: calc(0px - var(--loom-sidebar-panel-size, var(--sidebar-width, 252px)));
+  --loom-linked-center-shift: calc(0px - (var(--loom-sidebar-panel-size, var(--sidebar-width, 252px)) / 2));
+}
+
+.workspace-panels.inspector-motion-opening {
+  --loom-linked-right-shift: calc(0px - var(--loom-inspector-panel-size, var(--inspector-width, 316px)));
+  --loom-linked-center-shift: calc(0px - (var(--loom-inspector-panel-size, var(--inspector-width, 316px)) / 2));
+}
+
+.workspace-panels.inspector-motion-closing {
+  --loom-linked-right-shift: var(--loom-inspector-panel-size, var(--inspector-width, 316px));
+  --loom-linked-center-shift: calc(var(--loom-inspector-panel-size, var(--inspector-width, 316px)) / 2);
+}
+
+.workspace-panels.is-layout-coupled .thread-header-leading,
+.workspace-panels.is-layout-coupled .thread-header-main {
+  animation: loom-linked-left-edge var(--loom-motion-panel,390ms) var(--loom-ease-standard,cubic-bezier(.22,.7,.18,1)) both;
+  will-change: translate;
+}
+
+.workspace-panels.is-layout-coupled .polished-thread-header-actions {
+  animation: loom-linked-right-edge var(--loom-motion-panel,390ms) var(--loom-ease-standard,cubic-bezier(.22,.7,.18,1)) both;
+  will-change: translate;
+}
+
+.workspace-panels.is-layout-coupled .transcript,
+.workspace-panels.is-layout-coupled .composer,
+.workspace-panels.is-layout-coupled .composer-hint,
+.workspace-panels.is-layout-coupled .run-progress-inline,
+.workspace-panels.is-layout-coupled .transcript-jump-latest {
+  animation: loom-linked-center var(--loom-motion-panel,390ms) var(--loom-ease-standard,cubic-bezier(.22,.7,.18,1)) both;
+  will-change: translate;
+}
+
+.workspace-panels.is-layout-coupled .thread-header.polished-thread-header {
+  overflow: hidden;
+}
+
+@keyframes loom-linked-left-edge {
+  from { translate: 0 0; }
+  to { translate: var(--loom-linked-left-shift) 0; }
+}
+
+@keyframes loom-linked-right-edge {
+  from { translate: 0 0; }
+  to { translate: var(--loom-linked-right-shift) 0; }
+}
+
+@keyframes loom-linked-center {
+  from { translate: 0 0; }
+  to { translate: var(--loom-linked-center-shift) 0; }
 }
 
 .workspace-panel-resizer {
@@ -162,7 +230,9 @@
 }
 
 .workspace-panels.sidebar-layout-closed .workspace-panel-resizer-left,
-.workspace-panels.inspector-layout-closed .workspace-panel-resizer-right {
+.workspace-panels.sidebar-closed .workspace-panel-resizer-left,
+.workspace-panels.inspector-layout-closed .workspace-panel-resizer-right,
+.workspace-panels.inspector-closed .workspace-panel-resizer-right {
   opacity: 0;
   pointer-events: none;
 }
@@ -324,4 +394,28 @@ html[data-loom-reduced-motion="true"] .workspace-panel-resizer {
 .workspace-panels.is-panel-motion > .sidebar,
 .workspace-panels.is-panel-motion > .inspector {
   transform-style: preserve-3d;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workspace-panels.is-layout-coupled .thread-header-leading,
+  .workspace-panels.is-layout-coupled .thread-header-main,
+  .workspace-panels.is-layout-coupled .polished-thread-header-actions,
+  .workspace-panels.is-layout-coupled .transcript,
+  .workspace-panels.is-layout-coupled .composer,
+  .workspace-panels.is-layout-coupled .composer-hint,
+  .workspace-panels.is-layout-coupled .run-progress-inline,
+  .workspace-panels.is-layout-coupled .transcript-jump-latest {
+    animation: none !important;
+  }
+}
+
+html[data-loom-reduced-motion="true"] .workspace-panels.is-layout-coupled .thread-header-leading,
+html[data-loom-reduced-motion="true"] .workspace-panels.is-layout-coupled .thread-header-main,
+html[data-loom-reduced-motion="true"] .workspace-panels.is-layout-coupled .polished-thread-header-actions,
+html[data-loom-reduced-motion="true"] .workspace-panels.is-layout-coupled .transcript,
+html[data-loom-reduced-motion="true"] .workspace-panels.is-layout-coupled .composer,
+html[data-loom-reduced-motion="true"] .workspace-panels.is-layout-coupled .composer-hint,
+html[data-loom-reduced-motion="true"] .workspace-panels.is-layout-coupled .run-progress-inline,
+html[data-loom-reduced-motion="true"] .workspace-panels.is-layout-coupled .transcript-jump-latest {
+  animation: none !important;
 }
