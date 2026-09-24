@@ -71,15 +71,16 @@ def test_panel_css_has_one_owner_for_open_close_motion() -> None:
     assert css.count(".workspace-panels.inspector-closed > .inspector") == 1
 
 
-def test_panel_surface_restores_a61_depth_effect_without_global_snapshot_animation() -> None:
+def test_panel_surface_uses_corner_origin_flight_without_global_snapshot_animation() -> None:
     css = read("desktop-react/src/components/workspace-panels.css")
 
-    assert "animation: loom-panel-surface-in-left 292ms cubic-bezier(.16,.78,.18,1) 72ms both" in css
-    assert "animation: loom-panel-surface-out-left 78ms cubic-bezier(.42,0,.72,.2) both" in css
-    assert "animation: loom-panel-surface-in-right 292ms cubic-bezier(.16,.78,.18,1) 72ms both" in css
-    assert "animation: loom-panel-surface-out-right 78ms cubic-bezier(.42,0,.72,.2) both" in css
-    assert "scale(.99)" in css
-    assert "scale(.994)" in css
+    assert "transform-origin: left top" in css
+    assert "transform-origin: right top" in css
+    assert "animation: loom-panel-surface-in-left 360ms cubic-bezier(.16,1,.3,1) both" in css
+    assert "animation: loom-panel-surface-in-right 360ms cubic-bezier(.16,1,.3,1) both" in css
+    assert "translate3d(-20px,-12px,0) scale(.976)" in css
+    assert "translate3d(20px,-12px,0) scale(.976)" in css
+    assert "scale(1.002)" in css
     assert "view-transition-name: loom-workspace" not in css
     assert "loom-readable" not in css
 
@@ -91,4 +92,12 @@ def test_inspector_micro_motion_is_frozen_during_panel_snapshot() -> None:
     assert ".runtime-orbit-dot" in css
     assert ".runtime-orbit-one::before" in css
     assert ".runtime-orbit-two::before" in css
+    assert "animation-play-state: paused !important" in css
+
+
+def test_corner_flight_keeps_inspector_content_frozen_during_handoff() -> None:
+    css = read("desktop-react/src/components/workspace-panels.css")
+
+    assert "body.loom-panel-motion .workspace-panels > .inspector .runtime-pane" in css
+    assert "animation: none !important" in css
     assert "animation-play-state: paused !important" in css
