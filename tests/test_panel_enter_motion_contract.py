@@ -42,7 +42,7 @@ def test_workspace_geometry_is_not_animated_by_fragment_transforms() -> None:
     assert "body.loom-panel-motion .workspace-panels .transcript-scroll" in css
 
 
-def test_readable_layers_crossfade_at_native_geometry() -> None:
+def test_readable_layers_handoff_at_native_geometry_without_ghosting() -> None:
     css = read("desktop-react/src/components/workspace-panels.css")
 
     assert 'html[data-loom-layout-capture="old"] .transcript' in css
@@ -84,9 +84,13 @@ def test_readable_motion_has_direction_scale_and_stagger() -> None:
     assert 'data-loom-layout-intent="right-close"' in css
     assert "--loom-readable-out-scale" in css
     assert "--loom-readable-in-scale" in css
-    assert "scale(var(--loom-readable-out-scale,.985))" in css
-    assert "scale(var(--loom-readable-in-scale,.98))" in css
-    assert "104ms both" in css
+    assert "scale(var(--loom-readable-out-scale,.99))" in css
+    assert "scale(var(--loom-readable-in-scale,.985))" in css
+    assert "animation: loom-readable-out 116ms" in css
+    assert "animation: loom-readable-in 282ms" in css
+    assert "112ms both" in css
+    assert "animation: loom-readable-out 260ms" not in css
+    assert "animation: loom-readable-in 330ms" not in css
 
 
 def test_panel_surfaces_share_the_same_depth_language() -> None:
@@ -95,5 +99,20 @@ def test_panel_surfaces_share_the_same_depth_language() -> None:
     assert "@keyframes loom-panel-surface-in-left" in css
     assert "@keyframes loom-panel-surface-in-right" in css
     assert "@keyframes loom-right-surface-in" in css
-    assert "scale(.985)" in css
-    assert "scale(.976)" in css
+    assert "scale(.99)" in css
+    assert "scale(.988)" in css
+    assert "animation: loom-right-surface-out 92ms" in css
+    assert "animation: loom-right-surface-in 286ms" in css
+
+
+def test_old_and_new_readable_snapshots_do_not_remain_visible_together() -> None:
+    css = read("desktop-react/src/components/workspace-panels.css")
+
+    # The old transcript clears at 116ms and the new one starts at 112ms.
+    # With its first frame at opacity 0, the overlap is below one display frame
+    # instead of the previous ~200ms double-image interval.
+    assert "animation: loom-readable-out 116ms" in css
+    assert "animation: loom-readable-in 282ms" in css
+    assert "112ms both" in css
+    assert "0%, 58%" in css
+    assert "18% {" in css
