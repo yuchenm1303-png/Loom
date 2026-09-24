@@ -522,7 +522,7 @@ async function openLocalArtifact(targetPath: string, workspaceRoot: string): Pro
     try {
       const parsed = new URL(url);
       if (parsed.protocol === "file:") {
-        const localTarget = path.resolve(fileURLToPath(parsed));
+        const localTarget = fsSync.realpathSync(path.resolve(fileURLToPath(parsed)));
         if (pathIsInsideWorkspace(root, localTarget)) return;
       }
       if (parsed.protocol === "http:" || parsed.protocol === "https:" || parsed.protocol === "mailto:") {
@@ -536,9 +536,16 @@ async function openLocalArtifact(targetPath: string, workspaceRoot: string): Pro
     event.preventDefault();
   });
 
+  artifactWindows.add(preview);
+  preview.on("closed", () => artifactWindows.delete(preview));
   preview.once("ready-to-show", () => preview.show());
-  await preview.loadFile(target);
-  return true;
+  try {
+    await preview.loadFile(target);
+    return true;
+  } catch (error) {
+    if (!preview.isDestroyed()) preview.destroy();
+    throw error;
+  }
 }
 
 async function copyImageSource(sourceValue: string): Promise<boolean> {
@@ -736,6 +743,7 @@ class LoomRpcProcess {
 }
 
 let mainWindow: BrowserWindow | null = null;
+const artifactWindows = new Set<BrowserWindow>();
 const modelManager = new DesktopModelManager(REPO_ROOT);
 function handleRuntimeNotification(payload: JsonRpcResponse): void {
   mainWindow?.webContents.send("loom:notification", payload);
