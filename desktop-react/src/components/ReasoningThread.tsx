@@ -28,24 +28,32 @@ function ReasoningRail({ reasoning, busy, running, onChange }: ReasoningThreadPr
   const selectedIndex = Math.max(0, options.findIndex((option) => option.value === reasoning.value));
   const [displayIndex, setDisplayIndex] = useState(selectedIndex);
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
+  // Bumped on every change the user makes; it restarts the surge along the
+  // thread and plays the burst on the bead.
+  const [pulse, setPulse] = useState(0);
   const [error, setError] = useState("");
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const locked = Boolean(busy || running);
   const defaultOption = options.find((option) => option.value === reasoning.defaultValue);
   const canReset = Boolean(defaultOption) && reasoning.value !== reasoning.defaultValue;
   const described = options[previewIndex ?? displayIndex] ?? options[0];
+  const previewing = previewIndex !== null && previewIndex !== displayIndex && !locked;
 
   useEffect(() => {
     setDisplayIndex(selectedIndex);
   }, [selectedIndex]);
 
-  // Stops sit at the centre of equal columns, so the thread runs between the
-  // first and last centres and the bead lands exactly on the chosen one.
-  const stopAt = (index: number) => `${((index + 0.5) / count) * 100}%`;
+  // 0 at the first level and 1 at the last. The stylesheet derives the bead
+  // position, the woven length, the lit stops and the colour from it.
+  const levelAt = (index: number) => (count > 1 ? index / (count - 1) : 0);
   const railStyle = {
     "--rt-count": String(count),
-    "--rt-start": stopAt(0),
-    "--rt-pos": stopAt(displayIndex),
+    "--rt-t": String(levelAt(displayIndex)),
+  } as CSSProperties;
+  // At rest the preview bead hides inside the real one, so it glides out
+  // toward the hovered level and back.
+  const ghostStyle = {
+    "--rt-ghost-t": String(levelAt(previewing ? previewIndex : displayIndex)),
   } as CSSProperties;
 
   async function commit(index: number) {
@@ -53,6 +61,7 @@ function ReasoningRail({ reasoning, busy, running, onChange }: ReasoningThreadPr
     if (!option || locked || option.value === reasoning.value) return;
     setError("");
     setDisplayIndex(index);
+    setPulse((value) => value + 1);
     try {
       await onChange(reasoning.kind, option.value);
     } catch (cause) {
@@ -79,7 +88,7 @@ function ReasoningRail({ reasoning, busy, running, onChange }: ReasoningThreadPr
 
   return (
     <section
-      className={`rt ${running ? "is-running" : ""} ${count >= 5 ? "is-dense" : ""}`}
+      className={`rt${running ? " is-running" : ""}${busy ? " is-busy" : ""}${count >= 5 ? " is-dense" : ""}`}
       aria-label="Reasoning"
     >
       <div className="rt-head">
@@ -101,7 +110,10 @@ function ReasoningRail({ reasoning, busy, running, onChange }: ReasoningThreadPr
       <div className="rt-rail" style={railStyle}>
         <span className="rt-track" aria-hidden="true" />
         <span className="rt-fill" aria-hidden="true">
-          <span className="rt-weave" />
+          <span className="rt-strand is-back" />
+          <span className="rt-spine" />
+          <span className="rt-strand is-front" />
+          <span key={pulse} className="rt-comet" />
         </span>
         <div
           className="rt-options"
@@ -120,7 +132,8 @@ function ReasoningRail({ reasoning, busy, running, onChange }: ReasoningThreadPr
               role="radio"
               aria-checked={index === displayIndex}
               tabIndex={index === displayIndex ? 0 : -1}
-              className={`rt-option ${index === displayIndex ? "is-active" : ""} ${index < displayIndex ? "is-passed" : ""}`}
+              className={`rt-option${index === displayIndex ? " is-active" : ""}`}
+              style={{ "--rt-i": String(levelAt(index)) } as CSSProperties}
               // aria-disabled rather than disabled: a disabled button drops
               // focus mid-change, which would break arrow-key stepping.
               aria-disabled={locked || count < 2 || undefined}
@@ -134,7 +147,20 @@ function ReasoningRail({ reasoning, busy, running, onChange }: ReasoningThreadPr
             </button>
           ))}
         </div>
-        <span className="rt-bead" aria-hidden="true" />
+        <span className={`rt-ghost${previewing ? " is-on" : ""}`} style={ghostStyle} aria-hidden="true" />
+        <span className="rt-bead" aria-hidden="true">
+          <span key={pulse} className="rt-aura" />
+          {pulse ? (
+            <span key={`burst-${pulse}`} className="rt-burst">
+              <i />
+              <i />
+              <i />
+              <i />
+            </span>
+          ) : null}
+          <span className="rt-orbit" />
+          <span className="rt-core" />
+        </span>
       </div>
 
       {running ? (
@@ -143,7 +169,9 @@ function ReasoningRail({ reasoning, busy, running, onChange }: ReasoningThreadPr
           <span>Stop the active turn to change reasoning.</span>
         </div>
       ) : (
-        <div className="rt-caption" title={described.description}>{described.description}</div>
+        <div key={described.value} className="rt-caption" title={described.description}>
+          {described.description}
+        </div>
       )}
       {error ? <div className="rt-error" role="alert">{error}</div> : null}
     </section>
