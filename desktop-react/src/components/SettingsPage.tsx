@@ -51,6 +51,7 @@ import type {
 } from "../types/loom";
 import { KeyboardShortcutsSettings } from "./KeyboardShortcutsSettings";
 import { ModelsSettingsPanel } from "./ModelsSettingsPanel";
+import { SettingsWebSearchPanel } from "./SettingsWebSearchPanel";
 import "./settings-page.css";
 import "./settings-general-polish.css";
 import "./settings-maturity.css";
@@ -64,6 +65,7 @@ type PageKey =
   | "capabilities"
   | "computer"
   | "browser"
+  | "websearch"
   | "terminal"
   | "plugins"
   | "mcp"
@@ -174,7 +176,7 @@ const BROWSER_AUTO_MIGRATION_KEY = "loom.settings.browser-auto-default.v1";
 const SETTINGS_UPDATE_PREFIX = "__setting__:";
 
 const PAGE_ORDER: PageKey[] = [
-  "general", "appearance", "models", "capabilities", "computer", "browser",
+  "general", "appearance", "models", "capabilities", "computer", "browser", "websearch",
   "terminal", "plugins", "mcp", "skills", "permissions", "shortcuts", "privacy", "developer",
 ];
 
@@ -300,6 +302,7 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
     items: [
       { key: "computer", label: "Computer Use", icon: Monitor },
       { key: "browser", label: "Browser", icon: Globe2 },
+      { key: "websearch", label: "Web Search", icon: Search },
       { key: "terminal", label: "Terminal", icon: Terminal },
       { key: "plugins", label: "Plugins", icon: Plug },
       { key: "mcp", label: "MCP", icon: Blocks },
@@ -1047,6 +1050,13 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
     </>;
   };
 
+  const renderWebSearch = () => (
+    <SettingsWebSearchPanel
+      running={running}
+      onNotice={(tone, text) => setNotice({ tone, text })}
+    />
+  );
+
   const renderTerminal = () => {
     const prefs = { ...DEFAULT_TERMINAL, ...(settings.terminal ?? {}) } as TerminalSettings;
     const shellLabel = {
@@ -1353,6 +1363,7 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
     if (page === "capabilities") return renderCapabilities();
     if (page === "computer") return renderComputer();
     if (page === "browser") return renderBrowser();
+    if (page === "websearch") return renderWebSearch();
     if (page === "terminal") return renderTerminal();
     if (page === "plugins") return renderPlugins();
     if (page === "mcp") return renderMcp();

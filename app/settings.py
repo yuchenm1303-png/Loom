@@ -96,6 +96,13 @@ DEFAULT_SETTINGS: dict[str, Any] = {
         "semanticAuto": True,
         "idleSeconds": 45,
     },
+    "webSearch": {
+        # Chosen provider for the agent-facing web_search tool. The API key for a
+        # keyed provider is NOT stored here: it lives in the OS credential store
+        # (see app/web_search_settings.py), so a settings snapshot or state dump
+        # can never echo the secret.
+        "provider": "auto",
+    },
     "privacy": {
         "telemetry": False,
         "crashReports": False,
@@ -148,6 +155,7 @@ _ALLOWED_SETTING_PATHS: dict[str, tuple[type, Any]] = {
     "memory.autoExtract": (bool, None),
     "memory.semanticAuto": (bool, None),
     "memory.idleSeconds": (int, range(0, 601)),
+    "webSearch.provider": (str, {"auto", "duckduckgo", "tavily", "brave", "off"}),
     "privacy.telemetry": (bool, None),
     "privacy.crashReports": (bool, None),
 }

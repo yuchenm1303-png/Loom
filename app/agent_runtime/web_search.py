@@ -491,6 +491,60 @@ class TavilyWebSearchProvider:
         )
 
 
+# Provider names the desktop settings page may store. "auto" is resolved by the
+# caller and means "use whatever the environment or stored credentials offer,
+# otherwise Loom's keyless public fallback".
+DISABLED_PROVIDER_NAMES = frozenset({"off", "none", "disabled"})
+PUBLIC_PROVIDER_NAMES = frozenset({"duckduckgo", "ddg", "public", "builtin", "default"})
+CREDENTIAL_PROVIDER_NAMES = frozenset({"brave", "tavily"})
+
+
+def web_search_provider_from_values(
+    provider: str,
+    api_key: str = "",
+    *,
+    timeout_seconds: float = _DEFAULT_TIMEOUT_SECONDS,
+    transport: JSONTransport | None = None,
+) -> WebSearchProvider | None:
+    """Build a provider from an explicit provider name plus an optional key.
+
+    This is the settings-page path. The chosen provider is stored in Loom's own
+    settings file while the key lives in the OS credential store, so a stored
+    settings snapshot never contains secret material.
+
+    A name/key mismatch raises ValueError, which is how "Tavily selected but no
+    key found anywhere" fails closed instead of answering from model knowledge.
+    """
+
+    name = str(provider or "").strip().casefold()
+    secret = str(api_key or "").strip()
+    try:
+        timeout = float(timeout_seconds)
+    except (TypeError, ValueError):
+        timeout = _DEFAULT_TIMEOUT_SECONDS
+    timeout = max(1.0, min(120.0, timeout))
+
+    if name in DISABLED_PROVIDER_NAMES:
+        return None
+    if name in PUBLIC_PROVIDER_NAMES:
+        # The keyless public provider is installed as a module attribute by
+        # app.runtime_capability_defaults; looking it up through globals keeps
+        # this module importable on its own.
+        factory = globals().get("DuckDuckGoWebSearchProvider")
+        if factory is None:  # pragma: no cover - depends on the defaults layer
+            raise ValueError("Loom's public web search provider is unavailable")
+        return factory(timeout_seconds=timeout)
+    if name == "brave":
+        if not secret:
+            raise ValueError("Brave Search requires an API key")
+        return BraveWebSearchProvider(secret, timeout_seconds=timeout, transport=transport)
+    if name == "tavily":
+        if not secret:
+            raise ValueError("Tavily Search requires an API key")
+        return TavilyWebSearchProvider(secret, timeout_seconds=timeout, transport=transport)
+    raise ValueError(f"unsupported Loom web search provider: {name or '<empty>'}")
+
+
 def web_search_provider_from_env(
     env: Mapping[str, str] | None = None,
     *,
@@ -544,4 +598,5 @@ __all__ = [
     "WebSearchResponse",
     "WebSearchResult",
     "web_search_provider_from_env",
+    "web_search_provider_from_values",
 ]

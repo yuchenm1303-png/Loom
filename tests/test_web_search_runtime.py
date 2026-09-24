@@ -223,10 +223,14 @@ def test_auto_configured_runtime_exposes_keyless_web_search(monkeypatch, tmp_pat
         auto_configure_web_search=True,
     )
     try:
-        assert runtime.web_search_status() == {
-            "enabled": True,
-            "provider": "duckduckgo",
-        }
+        # Assert the keys this test is actually about, not the whole payload.
+        # web_search_status() grows as the settings page gains fields (it now
+        # also carries choice/configured/keySource/state/reason), and an exact
+        # equality here turns every addition into a spurious failure.
+        status = runtime.web_search_status()
+        assert status["enabled"] is True
+        assert status["provider"] == "duckduckgo"
+        assert status["state"] == "ready"
         assert runtime.tools.get("web_search") is not None
         assert runtime.tools.router().get("web_search") is not None
     finally:
@@ -318,5 +322,8 @@ def test_unconfigured_runtime_exposes_status_but_not_search(tmp_path):
     names = {tool.name for tool in platform.requests[0][1].tools}
     assert "web_search_status" in names
     assert "web_search" not in names
-    assert runtime.web_search_status() == {"enabled": False, "provider": "disabled"}
+    status = runtime.web_search_status()
+    assert status["enabled"] is False
+    assert status["provider"] == "disabled"
+    assert status["state"] == "not_configured"
     runtime.close()

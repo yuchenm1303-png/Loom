@@ -195,6 +195,19 @@ html[data-loom-theme="light"] .inline-diff-row.is-delete .inline-diff-marker {
   color: var(--semantic-success-strong) !important;
 }
 
+/* Error tone. `stateTone()` in SettingsWebSearchPanel emits `error` when the
+   configured provider fails to initialise; without this rule the pill falls
+   through to the neutral base style and a broken provider reads as healthy. */
+.settings-status-pill.error {
+  color: var(--semantic-danger-text) !important;
+  border-color: var(--semantic-danger-border) !important;
+  background: var(--semantic-danger-soft) !important;
+}
+
+.settings-status-pill.error .settings-status-dot {
+  color: var(--semantic-danger-strong) !important;
+}
+
 .settings-toast.success {
   border-color: var(--semantic-success-border) !important;
   color: var(--semantic-success-text) !important;

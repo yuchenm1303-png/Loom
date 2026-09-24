@@ -1,0 +1,5644 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Loom 网页搜索设置页 · 设计预览</title>
+<style>
+/* ===BEGIN INLINED CSS=== */
+/* ===== components/settings-websearch.css ===== */
+/**
+ * Web Search settings page.
+ *
+ * Only semantic tokens that actually exist in `src/styles.css` :root are used,
+ * so the panel follows both themes without a light-theme override block. The
+ * settings shell already provides the page padding; this file only styles the
+ * pieces the shared classes do not cover (the provider radio list, the key row,
+ * and the test result).
+ */
+
+.websearch-settings-page {
+  display: grid;
+  gap: 24px;
+}
+
+.websearch-callout {
+  margin: -4px 0 0;
+}
+
+/* Provider choice list ---------------------------------------------------- */
+
+.websearch-choice-list {
+  display: grid;
+  gap: 8px;
+}
+
+.websearch-choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+  padding: 13px 15px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel-soft);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color .16s var(--ease-out), background .16s var(--ease-out);
+}
+
+.websearch-choice:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  background: var(--panel-hover);
+}
+
+.websearch-choice:disabled {
+  cursor: not-allowed;
+  opacity: .55;
+}
+
+.websearch-choice.selected {
+  border-color: color-mix(in srgb, var(--accent) 52%, var(--border));
+  background: var(--accent-faint);
+}
+
+.websearch-choice-mark {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--bg);
+  background: transparent;
+}
+
+.websearch-choice.selected .websearch-choice-mark {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.websearch-choice-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.websearch-choice-copy strong {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.websearch-choice-copy span {
+  font-size: var(--loom-font-micro, 12px);
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.websearch-choice-current {
+  flex: none;
+  margin-left: auto;
+  align-self: center;
+  padding: 2px 8px;
+  border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--border));
+  border-radius: 999px;
+  font-size: var(--loom-font-micro, 12px);
+  color: var(--accent-soft);
+  background: var(--accent-faint);
+}
+
+.websearch-choice-actions {
+  margin-top: 12px;
+  align-items: center;
+}
+
+.websearch-hint {
+  margin: 0;
+  font-size: var(--loom-font-micro, 12px);
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+/* API key + test rows ----------------------------------------------------- */
+
+.websearch-key-card,
+.websearch-test-card {
+  display: grid;
+  gap: 12px;
+}
+
+.websearch-key-row,
+.websearch-test-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.websearch-key-row .mature-input,
+.websearch-test-row .mature-input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.websearch-key-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  color: var(--muted);
+  background: var(--panel);
+}
+
+.websearch-key-toggle,
+.websearch-key-actions .mature-action-button {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.websearch-key-actions {
+  align-items: center;
+}
+
+.websearch-key-status {
+  font-size: var(--loom-font-micro, 12px);
+  color: var(--faint);
+}
+
+.websearch-key-status.ok {
+  color: var(--success);
+}
+
+/* Test result ------------------------------------------------------------- */
+
+.websearch-test-result {
+  display: grid;
+  gap: 4px;
+  padding: 11px 13px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--panel);
+}
+
+.websearch-test-result strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.websearch-test-result span {
+  font-size: var(--loom-font-micro, 12px);
+  color: var(--muted);
+}
+
+.websearch-test-result code {
+  font-family: var(--loom-code-font, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: var(--loom-font-micro, 12px);
+  color: var(--text-2);
+  word-break: break-word;
+}
+
+.websearch-test-result.ok {
+  border-color: color-mix(in srgb, var(--success) 42%, var(--border));
+}
+
+.websearch-test-result.ok strong {
+  color: var(--success);
+}
+
+.websearch-test-result.bad {
+  border-color: color-mix(in srgb, var(--danger) 42%, var(--border));
+}
+
+.websearch-test-result.bad strong {
+  color: var(--danger);
+}
+
+/* Reduced motion ---------------------------------------------------------- */
+
+[data-loom-reduced-motion="true"] .websearch-choice {
+  transition: none;
+}
+
+/* ===== components/settings-page.css ===== */
+.settings-host {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 18% 0%, rgba(139,124,246,.10), transparent 30%),
+    radial-gradient(circle at 100% 12%, rgba(82,92,180,.08), transparent 34%),
+    #0b0c0f;
+}
+
+.settings-shell {
+  height: 100%;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 286px minmax(0, 1fr);
+  background: transparent;
+  color: var(--text);
+}
+
+.settings-sidebar {
+  min-width: 0;
+  border-right: 1px solid rgba(255,255,255,.075);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.025), transparent 26%),
+    rgba(15,16,20,.92);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  padding: 18px 12px 12px;
+  overflow: hidden;
+}
+
+.settings-sidebar-top {
+  display: grid;
+  gap: 13px;
+}
+
+.settings-back {
+  width: fit-content;
+  min-height: 30px;
+  border: 0;
+  border-radius: 8px;
+  padding: 0 9px 0 7px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: transparent;
+  color: #b7bbc4;
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, transform 120ms ease;
+}
+
+.settings-back:hover {
+  background: rgba(255,255,255,.055);
+  color: #eef0f4;
+}
+
+.settings-back:active {
+  transform: translateX(-1px);
+}
+
+.settings-sidebar-title {
+  min-height: 48px;
+  padding: 0 8px;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.settings-brand-orb {
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  color: #dad6ff;
+  background:
+    radial-gradient(circle at 28% 24%, rgba(255,255,255,.22), transparent 30%),
+    linear-gradient(145deg, rgba(139,124,246,.35), rgba(68,62,128,.22));
+  border: 1px solid rgba(167,154,244,.28);
+  box-shadow: 0 14px 36px rgba(74,62,170,.18), inset 0 1px rgba(255,255,255,.12);
+}
+
+.settings-sidebar-title div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.settings-sidebar-title strong {
+  color: #f1f2f5;
+  font-size: 19px;
+  line-height: 1;
+  font-weight: 680;
+  letter-spacing: -.025em;
+}
+
+.settings-sidebar-title span:not(.settings-brand-orb) {
+  color: #818894;
+  font-size: 11.5px;
+}
+
+.settings-search {
+  height: 35px;
+  display: grid;
+  grid-template-columns: 18px minmax(0,1fr);
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(255,255,255,.075);
+  border-radius: 10px;
+  padding: 0 11px;
+  color: #747b87;
+  background: rgba(255,255,255,.045);
+  transition: border-color 130ms ease, background 130ms ease, box-shadow 130ms ease;
+}
+
+.settings-search:focus-within {
+  border-color: rgba(139,124,246,.42);
+  background: rgba(255,255,255,.06);
+  box-shadow: 0 0 0 3px rgba(139,124,246,.06);
+}
+
+.settings-search input {
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #e2e5eb;
+  font-size: 12.5px;
+}
+
+.settings-search input::placeholder {
+  color: #6c737f;
+}
+
+.settings-nav {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 18px 0 10px;
+  display: grid;
+  align-content: start;
+  gap: 18px;
+  scrollbar-width: thin;
+  scrollbar-color: #343842 transparent;
+}
+
+.settings-nav section {
+  display: grid;
+  gap: 4px;
+}
+
+.settings-nav-label {
+  padding: 0 9px 5px;
+  color: #69717e;
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: .055em;
+  text-transform: uppercase;
+}
+
+.settings-nav button {
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  padding: 0 10px;
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  background: transparent;
+  color: #b8bdc7;
+  text-align: left;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
+}
+
+.settings-nav button:hover {
+  color: #f0f1f4;
+  background: rgba(255,255,255,.045);
+}
+
+.settings-nav button.active {
+  color: #fff;
+  background:
+    linear-gradient(90deg, rgba(139,124,246,.28), rgba(139,124,246,.13)),
+    rgba(255,255,255,.045);
+  border-color: rgba(167,154,244,.18);
+  box-shadow: inset 3px 0 #8b7cf6, 0 10px 26px rgba(57,45,140,.14);
+}
+
+.settings-nav button:active {
+  transform: scale(.99);
+}
+
+.settings-nav button svg {
+  justify-self: center;
+  color: currentColor;
+  transition: transform 180ms var(--loom-ease-out), color 160ms ease;
+}
+
+.settings-nav button.active svg {
+  transform: scale(1.06);
+}
+
+.settings-nav button span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 530;
+}
+
+.settings-sidebar-footer {
+  min-height: 48px;
+  border-top: 1px solid rgba(255,255,255,.065);
+  padding: 10px 7px 0;
+  display: grid;
+  grid-template-columns: 10px minmax(0,1fr);
+  align-items: center;
+  gap: 9px;
+  color: #818894;
+}
+
+.settings-runtime-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #8b7cf6;
+  box-shadow: 0 0 0 3px rgba(139,124,246,.10), 0 0 16px rgba(139,124,246,.45);
+}
+
+.settings-sidebar-footer div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.settings-sidebar-footer strong {
+  color: #ced2da;
+  font-size: 12px;
+  font-weight: 580;
+}
+
+.settings-sidebar-footer span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+}
+
+.settings-main {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.016), transparent 180px),
+    transparent;
+}
+
+.settings-main-scroll {
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: #343842 transparent;
+}
+
+.settings-content {
+  width: min(1040px, calc(100% - 72px));
+  margin: 0 auto;
+  padding: 42px 0 72px;
+  display: grid;
+  gap: 24px;
+}
+
+.settings-page-heading {
+  min-height: 84px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.settings-page-heading h1 {
+  margin: 4px 0 8px;
+  color: #f4f5f8;
+  font-size: 28px;
+  line-height: 1.05;
+  font-weight: 760;
+  letter-spacing: -.035em;
+}
+
+.settings-page-heading p {
+  max-width: 760px;
+  margin: 0;
+  color: #98a0ad;
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+
+.settings-eyebrow {
+  color: #a89eff;
+  font-size: 11px;
+  line-height: 1;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.settings-heading-with-switch {
+  align-items: center;
+}
+
+.settings-master-switch {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.settings-tool-count {
+  flex: none;
+  margin-top: 9px;
+  padding: 7px 10px;
+  border: 1px solid rgba(255,255,255,.075);
+  border-radius: 999px;
+  background: rgba(255,255,255,.04);
+  color: #b9bec8;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.settings-section {
+  display: grid;
+  gap: 11px;
+}
+
+.settings-section-heading {
+  display: grid;
+  gap: 4px;
+}
+
+.settings-section-heading h2 {
+  margin: 0;
+  color: #eceef3;
+  font-size: 15px;
+  font-weight: 660;
+  letter-spacing: -.01em;
+}
+
+.settings-section-heading p {
+  margin: 0;
+  color: #828a97;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.settings-card {
+  border: 1px solid rgba(255,255,255,.082);
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.018)),
+    rgba(20,22,28,.72);
+  box-shadow: 0 16px 44px rgba(0,0,0,.22), inset 0 1px rgba(255,255,255,.035);
+  overflow: hidden;
+}
+
+.settings-detail-list {
+  display: grid;
+}
+
+.settings-detail-row {
+  min-height: 66px;
+  padding: 13px 18px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, auto);
+  align-items: center;
+  gap: 18px;
+  border-bottom: 1px solid rgba(255,255,255,.06);
+}
+
+.settings-detail-row:last-child {
+  border-bottom: 0;
+}
+
+.settings-detail-row > div {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.settings-detail-row strong {
+  color: #ecedf1;
+  font-size: 13.5px;
+  font-weight: 640;
+}
+
+.settings-detail-row span {
+  color: #8d95a3;
+  font-size: 12.5px;
+  line-height: 1.42;
+}
+
+.settings-detail-row code {
+  justify-self: end;
+  max-width: 420px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border: 1px solid rgba(255,255,255,.07);
+  border-radius: 9px;
+  padding: 7px 10px;
+  background: rgba(255,255,255,.045);
+  color: #d8dae1;
+  font: 12px/1.1 "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.settings-option-grid {
+  padding: 14px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.settings-option-card {
+  min-height: 120px;
+  border: 1px solid rgba(255,255,255,.075);
+  border-radius: 13px;
+  padding: 12px;
+  display: grid;
+  grid-template-columns: minmax(0,1fr) auto;
+  grid-template-rows: auto auto;
+  gap: 10px;
+  background: rgba(255,255,255,.035);
+}
+
+.settings-option-card.selected {
+  border-color: rgba(139,124,246,.55);
+  box-shadow: 0 0 0 2px rgba(139,124,246,.06), inset 0 1px rgba(255,255,255,.05);
+}
+
+.settings-option-card.muted-card {
+  opacity: .68;
+}
+
+.theme-preview {
+  grid-column: 1 / -1;
+  height: 56px;
+  border-radius: 10px;
+  padding: 10px;
+  display: grid;
+  grid-template-columns: 36% 1fr;
+  grid-template-rows: repeat(3, 1fr);
+  gap: 6px;
+  border: 1px solid rgba(255,255,255,.08);
+}
+
+.theme-preview span {
+  border-radius: 999px;
+  background: rgba(255,255,255,.18);
+}
+
+.theme-preview span:first-child {
+  grid-row: 1 / -1;
+  border-radius: 8px;
+}
+
+.theme-preview.dark {
+  background: linear-gradient(135deg, #11131a, #1b1e28);
+}
+
+.theme-preview.system {
+  background: linear-gradient(135deg, #f0f1f4 0 48%, #151720 48% 100%);
+}
+
+.settings-option-card strong {
+  color: #edf0f5;
+  font-size: 13px;
+}
+
+.settings-option-card span {
+  display: block;
+  margin-top: 3px;
+  color: #858d99;
+  font-size: 12px;
+}
+
+.capability-list {
+  display: grid;
+}
+
+.capability-row {
+  min-height: 88px;
+  padding: 14px 17px;
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 14px;
+  border-bottom: 1px solid rgba(255,255,255,.06);
+}
+
+.capability-row:last-child {
+  border-bottom: 0;
+}
+
+.capability-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 11px;
+  display: grid;
+  place-items: center;
+  color: #c7c1ff;
+  background: rgba(139,124,246,.11);
+  border: 1px solid rgba(139,124,246,.20);
+}
+
+.capability-copy {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.capability-title-line {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+
+.capability-title-line strong {
+  min-width: 0;
+  color: #f1f2f5;
+  font-size: 13.5px;
+  font-weight: 660;
+}
+
+.capability-copy span:not(.settings-status-pill) {
+  color: #8c94a1;
+  font-size: 12.5px;
+  line-height: 1.46;
+}
+
+.settings-status-pill {
+  width: fit-content;
+  height: 24px;
+  padding: 0 9px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid rgba(255,255,255,.075);
+  background: rgba(255,255,255,.042);
+  color: #aeb5c1;
+  font-size: 11px;
+  font-weight: 560;
+  white-space: nowrap;
+}
+
+.settings-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: .92;
+}
+
+.settings-status-pill.ready {
+  color: #9fd3b8;
+  border-color: rgba(122,171,145,.18);
+  background: rgba(122,171,145,.085);
+}
+
+.settings-status-pill.warning {
+  color: #e0bf80;
+  border-color: rgba(215,173,109,.18);
+  background: rgba(215,173,109,.085);
+}
+
+.settings-status-pill.off {
+  color: #858c97;
+  border-color: rgba(255,255,255,.055);
+  background: rgba(255,255,255,.028);
+}
+
+.settings-status-pill.muted {
+  color: #9da4b0;
+}
+
+.settings-switch {
+  width: 43px;
+  height: 24px;
+  border: 1px solid rgba(255,255,255,.09);
+  border-radius: 999px;
+  padding: 2px;
+  background: rgba(255,255,255,.095);
+  cursor: pointer;
+  transition: background 150ms ease, border-color 150ms ease, opacity 150ms ease;
+}
+
+.settings-switch span {
+  display: block;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #f2f3f7;
+  box-shadow: 0 3px 8px rgba(0,0,0,.32);
+  transform: translateX(0);
+  transition: transform 170ms cubic-bezier(.2,.8,.2,1);
+}
+
+.settings-switch.on {
+  border-color: rgba(139,124,246,.55);
+  background: linear-gradient(135deg, #7467e8, #9d8cff);
+}
+
+.settings-switch.on span {
+  transform: translateX(18px);
+}
+
+.settings-switch:disabled {
+  opacity: .5;
+  cursor: default;
+}
+
+.settings-row-link,
+.settings-row-link-spacer {
+  width: 30px;
+  height: 30px;
+}
+
+.settings-row-link {
+  border: 0;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  color: #7c8490;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.settings-row-link:hover {
+  color: #f0f2f6;
+  background: rgba(255,255,255,.055);
+}
+
+.settings-callout,
+.settings-callout-inline {
+  border: 1px solid rgba(215,173,109,.20);
+  border-radius: 14px;
+  padding: 12px 14px;
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  background: rgba(215,173,109,.08);
+  color: #e2c68e;
+}
+
+.settings-callout div {
+  display: grid;
+  gap: 3px;
+}
+
+.settings-callout strong {
+  color: #f0d9a7;
+  font-size: 13px;
+}
+
+.settings-callout span,
+.settings-callout-inline span {
+  color: #b8a888;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.model-summary-card {
+  min-height: 112px;
+  padding: 18px;
+  display: grid;
+  grid-template-columns: 48px minmax(0,1fr) auto;
+  align-items: center;
+  gap: 15px;
+}
+
+.model-summary-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 15px;
+  display: grid;
+  place-items: center;
+  color: #dedaff;
+  background: rgba(139,124,246,.14);
+  border: 1px solid rgba(139,124,246,.22);
+}
+
+.model-summary-copy {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.model-summary-copy strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #f3f4f7;
+  font-size: 18px;
+  line-height: 1.15;
+}
+
+.model-summary-copy > span:last-child {
+  color: #8b94a2;
+  font-size: 12.5px;
+}
+
+.safety-summary {
+  min-height: 74px;
+  padding: 16px 18px;
+  display: grid;
+  grid-template-columns: 34px minmax(0,1fr);
+  align-items: center;
+  gap: 12px;
+  color: #bdb7fb;
+}
+
+.safety-summary div {
+  display: grid;
+  gap: 4px;
+}
+
+.safety-summary strong {
+  color: #eff0f4;
+  font-size: 13.5px;
+}
+
+.safety-summary span {
+  color: #8d95a3;
+  font-size: 12.5px;
+}
+
+.plugin-list {
+  display: grid;
+}
+
+.plugin-row {
+  min-height: 72px;
+  padding: 13px 17px;
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  border-bottom: 1px solid rgba(255,255,255,.06);
+}
+
+.plugin-row:last-child {
+  border-bottom: 0;
+}
+
+.plugin-row > div:nth-child(2) {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.plugin-row strong {
+  color: #eff0f4;
+  font-size: 13.5px;
+}
+
+.plugin-row span:not(.settings-status-pill) {
+  color: #8a929f;
+  font-size: 12.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.permission-grid {
+  padding: 14px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.permission-card {
+  min-height: 108px;
+  border: 1px solid rgba(255,255,255,.075);
+  border-radius: 13px;
+  padding: 14px;
+  display: grid;
+  grid-template-columns: 26px minmax(0,1fr);
+  align-items: flex-start;
+  gap: 12px;
+  background: rgba(255,255,255,.032);
+}
+
+.permission-card.selected {
+  border-color: rgba(139,124,246,.40);
+  background: rgba(139,124,246,.075);
+}
+
+.permission-card > svg {
+  color: #bdb6ff;
+}
+
+.permission-card div {
+  display: grid;
+  gap: 5px;
+}
+
+.permission-card strong {
+  color: #f0f2f5;
+  font-size: 13.5px;
+}
+
+.permission-card span:not(.settings-status-pill) {
+  color: #8d95a2;
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.permission-card .settings-status-pill {
+  grid-column: 2;
+}
+
+.settings-empty-state {
+  min-height: 82px;
+  padding: 22px;
+  display: grid;
+  place-items: center;
+  color: #828a96;
+  font-size: 12.5px;
+}
+
+.settings-toast {
+  position: fixed;
+  z-index: 10000;
+  right: 22px;
+  bottom: 22px;
+  min-height: 38px;
+  max-width: 420px;
+  border: 1px solid rgba(255,255,255,.09);
+  border-radius: 12px;
+  padding: 0 13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  background: rgba(24,26,33,.96);
+  color: #d9dde6;
+  box-shadow: 0 18px 48px rgba(0,0,0,.36), inset 0 1px rgba(255,255,255,.05);
+  backdrop-filter: blur(18px) saturate(118%);
+  animation: settings-toast-in 160ms cubic-bezier(.2,.78,.2,1) both;
+}
+
+.settings-toast.success {
+  border-color: rgba(122,171,145,.22);
+}
+
+.settings-toast.error {
+  border-color: rgba(220,124,134,.26);
+  color: #e0a2aa;
+}
+
+@keyframes settings-toast-in {
+  from { opacity: 0; transform: translateY(6px) scale(.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@media (max-width: 980px) {
+  .settings-shell {
+    grid-template-columns: 246px minmax(0, 1fr);
+  }
+
+  .settings-content {
+    width: min(100% - 36px, 920px);
+    padding-top: 30px;
+  }
+
+  .settings-detail-row,
+  .capability-row {
+    grid-template-columns: 34px minmax(0, 1fr) auto;
+  }
+
+  .settings-row-link,
+  .settings-row-link-spacer {
+    display: none;
+  }
+
+  .permission-grid,
+  .settings-option-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.skills-page-heading {
+  min-height: 96px;
+}
+
+.skills-hero-card {
+  min-height: 118px;
+  border: 1px solid rgba(139,124,246,.18);
+  border-radius: 20px;
+  padding: 18px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 18px;
+  background:
+    radial-gradient(circle at 8% 10%, rgba(139,124,246,.18), transparent 34%),
+    linear-gradient(135deg, rgba(139,124,246,.08), rgba(255,255,255,.025)),
+    rgba(18,20,27,.86);
+  box-shadow: 0 20px 54px rgba(0,0,0,.28), inset 0 1px rgba(255,255,255,.06);
+}
+
+.skills-hero-copy {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 50px minmax(0, 1fr);
+  align-items: center;
+  gap: 14px;
+}
+
+.skills-hero-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 16px;
+  display: grid;
+  place-items: center;
+  color: #dedaff;
+  background:
+    radial-gradient(circle at 30% 20%, rgba(255,255,255,.22), transparent 34%),
+    linear-gradient(145deg, rgba(139,124,246,.28), rgba(97,84,210,.12));
+  border: 1px solid rgba(167,154,244,.26);
+  box-shadow: 0 16px 34px rgba(95,76,220,.16);
+}
+
+.skills-hero-copy div:last-child {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.skills-hero-copy span {
+  color: #a89eff;
+  font-size: 11px;
+  font-weight: 720;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+
+.skills-hero-copy strong {
+  color: #f3f5fa;
+  font-size: 18px;
+  font-weight: 720;
+  letter-spacing: -.025em;
+}
+
+.skills-hero-copy p {
+  max-width: 620px;
+  margin: 0;
+  color: #8f98a8;
+  font-size: 12.5px;
+  line-height: 1.48;
+}
+
+.skills-quick-actions,
+.skills-row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.skills-quick-actions button,
+.skills-command-strip button,
+.skills-install-grid button,
+.skills-row-actions button {
+  border: 1px solid rgba(255,255,255,.075);
+  border-radius: 10px;
+  background: rgba(255,255,255,.045);
+  color: #d7dbe5;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease, transform 120ms ease;
+}
+
+.skills-quick-actions button:hover,
+.skills-command-strip button:hover,
+.skills-install-grid button:hover,
+.skills-row-actions button:hover {
+  border-color: rgba(139,124,246,.28);
+  background: rgba(139,124,246,.10);
+  color: #f3f4fb;
+}
+
+.skills-quick-actions button:active,
+.skills-command-strip button:active,
+.skills-install-grid button:active,
+.skills-row-actions button:active {
+  transform: translateY(1px);
+}
+
+.skills-quick-actions button {
+  min-height: 34px;
+  padding: 0 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+}
+
+.skills-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.skills-stat-card {
+  min-height: 96px;
+  border: 1px solid rgba(255,255,255,.082);
+  border-radius: 15px;
+  padding: 13px;
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.016)),
+    rgba(20,22,28,.72);
+  box-shadow: inset 0 1px rgba(255,255,255,.035);
+}
+
+.skills-stat-card > span {
+  color: #8d96a5;
+  font-size: 11.5px;
+  font-weight: 620;
+}
+
+.skills-stat-card strong {
+  color: #f2f3f7;
+  font-size: 20px;
+  line-height: 1.05;
+  font-weight: 740;
+  letter-spacing: -.025em;
+}
+
+.skills-stat-card small {
+  color: #6f7887;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.skills-source-grid {
+  padding: 12px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.skills-source-card {
+  min-height: 138px;
+  border: 1px solid rgba(255,255,255,.065);
+  border-radius: 13px;
+  padding: 13px;
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  gap: 10px;
+  background: rgba(255,255,255,.032);
+}
+
+.skills-source-card > span:first-child,
+.skills-runtime-item > span:first-child {
+  width: 32px;
+  height: 32px;
+  border-radius: 11px;
+  display: grid;
+  place-items: center;
+  color: #c7c1ff;
+  background: rgba(139,124,246,.105);
+  border: 1px solid rgba(139,124,246,.18);
+}
+
+.skills-source-card > div {
+  min-width: 0;
+  display: grid;
+  gap: 7px;
+}
+
+.skills-source-card strong,
+.skills-runtime-item strong,
+.skills-name-cell strong {
+  color: #f0f2f7;
+  font-size: 13px;
+  font-weight: 660;
+}
+
+.skills-source-card code,
+.skills-runtime-item code,
+.skills-table-row code {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border: 1px solid rgba(255,255,255,.065);
+  border-radius: 8px;
+  padding: 6px 8px;
+  background: rgba(255,255,255,.035);
+  color: #cbd0dc;
+  font: 11.5px/1.1 "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.skills-source-card p,
+.skills-runtime-item p {
+  margin: 0;
+  color: #87909f;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.skills-source-card .settings-status-pill {
+  grid-column: 2;
+}
+
+.skills-management-card {
+  padding: 12px;
+  display: grid;
+  gap: 12px;
+}
+
+.skills-command-strip {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) repeat(3, auto);
+  align-items: center;
+  gap: 8px;
+}
+
+.skills-command-strip label {
+  min-width: 0;
+  height: 36px;
+  border: 1px solid rgba(255,255,255,.075);
+  border-radius: 11px;
+  padding: 0 11px;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  color: #727b89;
+  background: rgba(255,255,255,.036);
+}
+
+.skills-command-strip input {
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  color: #dfe2e9;
+  background: transparent;
+  font-size: 12.5px;
+}
+
+.skills-command-strip button {
+  height: 36px;
+  padding: 0 11px;
+  font-size: 12px;
+}
+
+.skills-install-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.skills-install-grid button {
+  min-height: 112px;
+  padding: 13px;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  text-align: left;
+}
+
+.skills-install-grid button svg {
+  color: #beb7ff;
+}
+
+.skills-install-grid strong {
+  color: #f0f2f7;
+  font-size: 13px;
+}
+
+.skills-install-grid span {
+  color: #828b9a;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.skills-runtime-grid {
+  padding: 12px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.skills-runtime-item {
+  min-height: 92px;
+  border: 1px solid rgba(255,255,255,.065);
+  border-radius: 13px;
+  padding: 12px;
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 11px;
+  background: rgba(255,255,255,.03);
+}
+
+.skills-runtime-item > div {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.skills-security-grid {
+  padding: 6px 12px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 10px;
+}
+
+.skills-security-row {
+  min-height: 54px;
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  border-bottom: 1px solid rgba(255,255,255,.055);
+  color: #cfd4dd;
+}
+
+.skills-security-row:nth-last-child(-n+2) {
+  border-bottom: 0;
+}
+
+.skills-security-row svg {
+  color: #9fd3b8;
+}
+
+.skills-security-row span {
+  min-width: 0;
+  color: #dfe2e9;
+  font-size: 12.5px;
+}
+
+.skills-table {
+  display: grid;
+}
+
+.skills-table-head,
+.skills-table-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 1.1fr) minmax(180px, 1.4fr) minmax(150px, 1fr) 88px 104px;
+  align-items: center;
+  gap: 12px;
+}
+
+.skills-table-head {
+  min-height: 42px;
+  padding: 0 16px;
+  color: #777f8c;
+  background: rgba(255,255,255,.025);
+  border-bottom: 1px solid rgba(255,255,255,.06);
+  font-size: 11px;
+  font-weight: 680;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+
+.skills-table-row {
+  min-height: 62px;
+  padding: 0 16px;
+  border-bottom: 1px solid rgba(255,255,255,.055);
+}
+
+.skills-table-row:last-child {
+  border-bottom: 0;
+}
+
+.skills-table-row > span {
+  min-width: 0;
+  color: #929aaa;
+  font-size: 12.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.skills-name-cell {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.skills-name-cell svg {
+  color: #bdb6ff;
+}
+
+.skills-name-cell strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.skills-row-actions button {
+  height: 28px;
+  padding: 0 9px;
+  font-size: 11.5px;
+}
+
+.skills-footer-strip {
+  min-height: 46px;
+  border: 1px solid rgba(255,255,255,.07);
+  border-radius: 14px;
+  padding: 0 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #8c95a4;
+  background: rgba(255,255,255,.028);
+}
+
+.skills-footer-strip span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+}
+
+.skills-footer-strip svg {
+  color: #a89eff;
+}
+
+@media (max-width: 1180px) {
+  .skills-stat-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .skills-source-grid,
+  .skills-install-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .skills-hero-card,
+  .skills-command-strip {
+    grid-template-columns: 1fr;
+  }
+
+  .skills-quick-actions {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .skills-table-head,
+  .skills-table-row {
+    grid-template-columns: minmax(130px, 1fr) minmax(180px, 1.4fr) 92px 96px;
+  }
+
+  .skills-table-head span:nth-child(3),
+  .skills-table-row code {
+    display: none;
+  }
+}
+
+@media (max-width: 980px) {
+  .skills-stat-grid,
+  .skills-source-grid,
+  .skills-install-grid,
+  .skills-runtime-grid,
+  .skills-security-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .skills-security-row:nth-last-child(-n+2) {
+    border-bottom: 1px solid rgba(255,255,255,.055);
+  }
+
+  .skills-security-row:last-child {
+    border-bottom: 0;
+  }
+
+  .skills-table-head,
+  .skills-table-row {
+    grid-template-columns: minmax(120px, 1fr) 82px 92px;
+  }
+
+  .skills-table-head span:nth-child(2),
+  .skills-table-row > span,
+  .skills-table-head span:nth-child(3),
+  .skills-table-row code {
+    display: none;
+  }
+}
+
+/* ===== components/settings-general-polish.css ===== */
+/* General settings dashboard -------------------------------------------------
+   A richer overview without changing runtime behavior or the rest of Settings. */
+
+.general-page-heading {
+  min-height: 96px;
+  align-items: center;
+}
+
+.general-page-heading > div:first-child {
+  max-width: 760px;
+}
+
+.general-heading-status {
+  flex: none;
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  border: 1px solid rgba(255,255,255,.075);
+  border-radius: 999px;
+  background: rgba(255,255,255,.032);
+  color: #a4abb7;
+  font-size: 12px;
+  font-weight: 600;
+  box-shadow: inset 0 1px rgba(255,255,255,.025);
+}
+
+.general-heading-status > i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #79aa91;
+  box-shadow: 0 0 0 4px rgba(121,170,145,.08);
+}
+
+.general-heading-status.running > i {
+  background: #a79df3;
+  box-shadow: 0 0 0 4px rgba(139,124,246,.09), 0 0 14px rgba(139,124,246,.22);
+  animation: general-status-breathe 1.8s ease-in-out infinite;
+}
+
+.general-overview-card {
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: minmax(280px, .92fr) minmax(430px, 1.35fr);
+  gap: 18px;
+  min-height: 180px;
+  padding: 20px;
+  border: 1px solid rgba(154,143,244,.14);
+  border-radius: 20px;
+  background:
+    radial-gradient(420px 220px at 6% 0%, rgba(139,124,246,.13), transparent 68%),
+    radial-gradient(360px 200px at 94% 120%, rgba(79,105,177,.07), transparent 70%),
+    linear-gradient(180deg, rgba(27,29,36,.92), rgba(19,21,27,.94));
+  box-shadow:
+    0 22px 52px rgba(0,0,0,.18),
+    inset 0 1px rgba(255,255,255,.035);
+}
+
+.general-overview-card::after {
+  content: "";
+  position: absolute;
+  left: 20px;
+  right: 20px;
+  top: 0;
+  height: 1px;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(179,168,255,.36) 16%, rgba(255,255,255,.08) 48%, transparent 84%);
+}
+
+.general-overview-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 4px 8px 4px 3px;
+}
+
+.general-overview-icon {
+  width: 40px;
+  height: 40px;
+  margin-bottom: 15px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(167,154,244,.24);
+  border-radius: 13px;
+  color: #c4bdff;
+  background: linear-gradient(145deg, rgba(139,124,246,.18), rgba(139,124,246,.055));
+  box-shadow: inset 0 1px rgba(255,255,255,.055), 0 12px 28px rgba(77,63,166,.12);
+}
+
+.general-overview-copy strong {
+  margin-bottom: 6px;
+  color: #f2f3f7;
+  font-size: 17px;
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: -.018em;
+}
+
+.general-overview-copy p {
+  max-width: 420px;
+  margin: 0;
+  color: #8f97a5;
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.general-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0,1fr));
+  gap: 9px;
+}
+
+.general-stat {
+  min-width: 0;
+  min-height: 68px;
+  padding: 11px 12px;
+  display: grid;
+  grid-template-columns: 27px minmax(0,1fr);
+  align-items: center;
+  gap: 9px;
+  border: 1px solid rgba(255,255,255,.055);
+  border-radius: 12px;
+  background: rgba(9,11,15,.28);
+  box-shadow: inset 0 1px rgba(255,255,255,.018);
+}
+
+.general-stat > svg {
+  color: #8d85d0;
+}
+
+.general-stat > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.general-stat span {
+  color: #717987;
+  font-size: 11.5px;
+  line-height: 1;
+}
+
+.general-stat strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #cfd3db;
+  font-size: 13px;
+  line-height: 1.2;
+  font-weight: 630;
+}
+
+.general-default-grid {
+  display: grid;
+  grid-template-columns: 1.25fr .82fr .92fr;
+  gap: 11px;
+}
+
+.general-default-card {
+  position: relative;
+  min-width: 0;
+  min-height: 128px;
+  padding: 15px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  border: 1px solid rgba(255,255,255,.07);
+  border-radius: 15px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.026), rgba(255,255,255,.010)),
+    rgba(20,22,28,.68);
+  box-shadow: inset 0 1px rgba(255,255,255,.025);
+  transition: border-color 150ms ease, background 150ms ease, transform 150ms cubic-bezier(.2,.78,.2,1), box-shadow 150ms ease;
+}
+
+button.general-default-card {
+  width: 100%;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+button.general-default-card:hover {
+  transform: translateY(-1px);
+  border-color: rgba(139,124,246,.20);
+  background:
+    linear-gradient(180deg, rgba(139,124,246,.052), rgba(255,255,255,.012)),
+    rgba(22,24,31,.76);
+  box-shadow: inset 0 1px rgba(255,255,255,.035), 0 12px 28px rgba(0,0,0,.10);
+}
+
+.general-default-card-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.general-default-card-icon {
+  width: 31px;
+  height: 31px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(139,124,246,.13);
+  border-radius: 9px;
+  color: #aaa1ed;
+  background: rgba(139,124,246,.065);
+}
+
+.general-default-card-head > svg:last-child {
+  color: #646c78;
+  transition: transform 140ms ease, color 140ms ease;
+}
+
+button.general-default-card:hover .general-default-card-head > svg:last-child {
+  color: #aaa1ed;
+  transform: translateX(2px);
+}
+
+.general-default-card label {
+  color: #777f8c;
+  font-size: 11.5px;
+  font-weight: 570;
+}
+
+.general-default-card strong {
+  width: 100%;
+  min-width: 0;
+  margin-top: 5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #e5e7ec;
+  font-size: 13.5px;
+  font-weight: 650;
+}
+
+.general-default-card p {
+  margin: 7px 0 0;
+  color: #747c89;
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.general-workspace-actions {
+  width: 100%;
+  margin-top: auto;
+  padding-top: 12px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.general-copy-button {
+  min-height: 27px;
+  padding: 0 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid rgba(255,255,255,.065);
+  border-radius: 7px;
+  background: rgba(255,255,255,.025);
+  color: #8e96a3;
+  font-size: 11.5px;
+  cursor: pointer;
+  transition: color 130ms ease, background 130ms ease, border-color 130ms ease;
+}
+
+.general-copy-button:hover {
+  color: #d9dce2;
+  border-color: rgba(139,124,246,.16);
+  background: rgba(139,124,246,.06);
+}
+
+.general-interface-card {
+  padding: 16px;
+  display: grid;
+  gap: 14px;
+}
+
+.general-theme-row {
+  display: grid;
+  grid-template-columns: minmax(0,1.35fr) minmax(0,.85fr);
+  gap: 11px;
+}
+
+.general-theme-card {
+  min-height: 96px;
+  padding: 12px 13px;
+  display: grid;
+  grid-template-columns: 40px minmax(0,1fr) auto;
+  align-items: center;
+  gap: 11px;
+  border: 1px solid rgba(255,255,255,.065);
+  border-radius: 13px;
+  background: rgba(255,255,255,.018);
+}
+
+.general-theme-card.selected {
+  border-color: rgba(139,124,246,.30);
+  background: linear-gradient(145deg, rgba(139,124,246,.075), rgba(255,255,255,.018));
+  box-shadow: inset 0 1px rgba(255,255,255,.025), 0 0 0 1px rgba(139,124,246,.035);
+}
+
+.general-theme-swatch {
+  width: 40px;
+  height: 40px;
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 11px;
+  background:
+    linear-gradient(90deg, #12141a 0 31%, #1e2129 31% 100%);
+  box-shadow: inset 0 1px rgba(255,255,255,.03);
+}
+
+.general-theme-swatch.system {
+  opacity: .62;
+  background: linear-gradient(135deg, #d8d9dc 0 49%, #171920 49% 100%);
+}
+
+.general-theme-card > div:nth-child(2) {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.general-theme-card strong {
+  color: #e5e7ec;
+  font-size: 13.5px;
+  font-weight: 640;
+}
+
+.general-theme-card span {
+  color: #747c89;
+  font-size: 11.5px;
+}
+
+.general-theme-card > svg {
+  color: #aaa1ed;
+}
+
+.general-soon-badge {
+  min-height: 22px;
+  padding: 0 7px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid rgba(255,255,255,.055);
+  border-radius: 999px;
+  color: #6f7783 !important;
+  background: rgba(255,255,255,.018);
+  font-size: 10.5px !important;
+  font-weight: 600;
+}
+
+.general-preference-list {
+  display: grid;
+  border-top: 1px solid rgba(255,255,255,.055);
+}
+
+.general-preference-row {
+  min-height: 70px;
+  display: grid;
+  grid-template-columns: 32px minmax(0,1fr) auto;
+  align-items: center;
+  gap: 11px;
+  padding: 11px 2px;
+  border-bottom: 1px solid rgba(255,255,255,.045);
+}
+
+.general-preference-row:last-child {
+  border-bottom: 0;
+}
+
+.general-preference-row > svg {
+  color: #8f88c9;
+}
+
+.general-preference-copy {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.general-preference-copy strong {
+  color: #dfe2e8;
+  font-size: 13px;
+  font-weight: 630;
+}
+
+.general-preference-copy span {
+  color: #747c89;
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+
+.general-scale-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid rgba(255,255,255,.065);
+  border-radius: 9px;
+  background: rgba(10,12,16,.38);
+}
+
+.general-scale-control button {
+  min-width: 48px;
+  height: 29px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #777f8c;
+  font-size: 11.5px;
+  font-weight: 610;
+  cursor: pointer;
+  transition: color 130ms ease, background 130ms ease, box-shadow 130ms ease;
+}
+
+.general-scale-control button:hover {
+  color: #c5cad2;
+  background: rgba(255,255,255,.035);
+}
+
+.general-scale-control button.active {
+  color: #dedaff;
+  background: rgba(139,124,246,.13);
+  box-shadow: inset 0 0 0 1px rgba(139,124,246,.12);
+}
+
+.general-reset-button {
+  min-height: 30px;
+  padding: 0 9px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid rgba(255,255,255,.06);
+  border-radius: 8px;
+  background: rgba(255,255,255,.02);
+  color: #858d99;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.general-reset-button:hover {
+  color: #cfd3da;
+  background: rgba(255,255,255,.04);
+}
+
+.general-quick-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0,1fr));
+  gap: 10px;
+}
+
+.general-quick-card {
+  min-width: 0;
+  min-height: 82px;
+  padding: 12px 13px;
+  display: grid;
+  grid-template-columns: 32px minmax(0,1fr) 18px;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid rgba(255,255,255,.06);
+  border-radius: 13px;
+  background: rgba(255,255,255,.018);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 140ms cubic-bezier(.2,.78,.2,1), border-color 140ms ease, background 140ms ease;
+}
+
+.general-quick-card:hover {
+  transform: translateY(-1px);
+  border-color: rgba(139,124,246,.18);
+  background: rgba(139,124,246,.045);
+}
+
+.general-quick-card > svg:first-child {
+  color: #9e96df;
+}
+
+.general-quick-card > svg:last-child {
+  color: #606875;
+  transition: transform 130ms ease, color 130ms ease;
+}
+
+.general-quick-card:hover > svg:last-child {
+  color: #9e96df;
+  transform: translateX(2px);
+}
+
+.general-quick-card > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.general-quick-card strong {
+  color: #d9dde4;
+  font-size: 13px;
+  font-weight: 630;
+}
+
+.general-quick-card span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #747c89;
+  font-size: 11px;
+}
+
+[data-loom-reduced-motion="true"] *,
+[data-loom-reduced-motion="true"] *::before,
+[data-loom-reduced-motion="true"] *::after {
+  animation-duration: .001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: .001ms !important;
+  scroll-behavior: auto !important;
+}
+
+@keyframes general-status-breathe {
+  0%, 100% { opacity: .72; transform: scale(.92); }
+  50% { opacity: 1; transform: scale(1.08); }
+}
+
+@media (max-width: 1080px) {
+  .general-overview-card {
+    grid-template-columns: 1fr;
+  }
+
+  .general-default-grid,
+  .general-quick-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .general-default-card {
+    min-height: 108px;
+  }
+}
+
+@media (max-width: 760px) {
+  .general-heading-status {
+    display: none;
+  }
+
+  .general-theme-row,
+  .general-stat-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .general-preference-row {
+    grid-template-columns: 28px minmax(0,1fr);
+  }
+
+  .general-preference-row > :last-child {
+    grid-column: 2;
+    justify-self: start;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .general-heading-status.running > i,
+  .general-default-card,
+  .general-quick-card,
+  .general-default-card-head > svg:last-child,
+  .general-quick-card > svg:last-child {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* ===== components/settings-maturity.css ===== */
+/* Plain settings surfaces ---------------------------------------------------
+   Keep Loom's settings functional and polished without dashboard-style glow,
+   gradients, nested card chrome, or decorative motion. */
+
+.settings-shell {
+  --settings-accent: #9a8cff;
+  --settings-accent-soft: rgba(154, 140, 255, 0.10);
+  --settings-panel: #121419;
+  --settings-panel-strong: #15181e;
+  --settings-border: rgba(255, 255, 255, 0.075);
+  --settings-divider: rgba(255, 255, 255, 0.055);
+  --settings-muted: #858c98;
+}
+
+/* Foundation */
+.settings-host {
+  background: #0b0d11;
+}
+
+.settings-shell {
+  background: #0b0d11;
+}
+
+.settings-sidebar {
+  min-width: 272px;
+  background: #0f1115;
+  border-right-color: var(--settings-divider);
+}
+
+.settings-sidebar-top,
+.settings-sidebar-footer {
+  flex: 0 0 auto;
+}
+
+.settings-brand-orb {
+  color: #c7c0ff;
+  background: #181823;
+  border-color: rgba(154, 140, 255, 0.18);
+  box-shadow: none;
+}
+
+.settings-search {
+  background: #15171c;
+  border-color: var(--settings-border);
+  box-shadow: none;
+}
+
+.settings-search:focus-within {
+  background: #17191f;
+  border-color: rgba(154, 140, 255, 0.32);
+  box-shadow: none;
+}
+
+.settings-nav {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  padding-bottom: 18px;
+}
+
+.settings-nav section + section {
+  margin-top: 16px;
+}
+
+.settings-nav button {
+  min-height: 38px;
+  margin: 1px 0;
+  border-radius: 8px;
+  transition: background 110ms ease, color 110ms ease;
+}
+
+.settings-nav button:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.settings-nav button.active {
+  color: #f4f4f7;
+  background: rgba(255, 255, 255, 0.07);
+  border-color: transparent;
+  box-shadow: inset 2px 0 0 #9485ee;
+}
+
+.settings-runtime-dot {
+  background: #8f86d8;
+  box-shadow: none;
+}
+
+.settings-main {
+  background: #0b0d11;
+}
+
+.settings-content {
+  max-width: 1120px;
+  padding-bottom: 72px;
+  gap: 20px;
+}
+
+.settings-page-heading {
+  align-items: flex-start;
+  gap: 20px;
+  min-height: 74px;
+  margin-bottom: 22px;
+}
+
+.settings-page-heading h1 {
+  margin-top: 3px;
+  font-size: 27px;
+  letter-spacing: -0.025em;
+}
+
+.settings-page-heading p {
+  max-width: 760px;
+  line-height: 1.55;
+  color: #8d94a0;
+}
+
+.settings-eyebrow {
+  color: #9388d8;
+  letter-spacing: .055em;
+}
+
+.settings-section {
+  margin-top: 24px;
+  gap: 9px;
+}
+
+.settings-section-heading {
+  margin-bottom: 8px;
+}
+
+.settings-section-heading h2 {
+  letter-spacing: -0.008em;
+}
+
+.settings-card {
+  background: #121419;
+  border-color: var(--settings-border);
+  border-radius: 12px;
+  box-shadow: none;
+}
+
+.settings-tool-count,
+.settings-status-pill,
+.general-heading-status {
+  background: #15171c;
+  box-shadow: none;
+}
+
+.settings-status-dot,
+.general-heading-status > i {
+  box-shadow: none;
+}
+
+/* General page: turn the hero into a compact status surface. */
+.general-page-heading {
+  min-height: 74px;
+}
+
+.general-overview-card {
+  min-height: 132px;
+  grid-template-columns: minmax(250px, .78fr) minmax(430px, 1.4fr);
+  gap: 20px;
+  padding: 18px;
+  border: 1px solid var(--settings-border);
+  border-radius: 12px;
+  background: #121419;
+  box-shadow: none;
+}
+
+.general-overview-card::after {
+  content: none;
+}
+
+.general-overview-copy {
+  padding: 0 5px 0 0;
+}
+
+.general-overview-icon,
+.general-default-card-icon,
+.mature-preference-icon {
+  color: #aaa1ed;
+  background: #191923;
+  border-color: rgba(154, 140, 255, 0.13);
+  box-shadow: none;
+}
+
+.general-overview-icon {
+  width: 34px;
+  height: 34px;
+  margin-bottom: 11px;
+  border-radius: 9px;
+}
+
+.general-overview-copy strong {
+  margin-bottom: 4px;
+  font-size: 15px;
+  letter-spacing: -.01em;
+}
+
+.general-overview-copy p {
+  color: #858c98;
+  line-height: 1.48;
+}
+
+.general-stat-grid {
+  gap: 0;
+  border: 1px solid var(--settings-divider);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.general-stat {
+  min-height: 58px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.general-stat:nth-child(odd) {
+  border-right: 1px solid var(--settings-divider);
+}
+
+.general-stat:nth-child(-n + 2) {
+  border-bottom: 1px solid var(--settings-divider);
+}
+
+.general-stat > svg {
+  color: #8d86c6;
+}
+
+.general-default-grid,
+.general-quick-grid,
+.general-theme-row {
+  gap: 9px;
+}
+
+.general-default-card,
+.general-quick-card,
+.general-theme-card {
+  border-color: var(--settings-border);
+  background: #121419;
+  box-shadow: none;
+}
+
+.general-default-card {
+  min-height: 116px;
+  border-radius: 11px;
+}
+
+button.general-default-card:hover,
+.general-quick-card:hover {
+  transform: none;
+  border-color: rgba(255, 255, 255, 0.12);
+  background: #15171c;
+  box-shadow: none;
+}
+
+button.general-default-card:hover .general-default-card-head > svg:last-child,
+.general-quick-card:hover > svg:last-child {
+  color: #a9a2dc;
+  transform: none;
+}
+
+.general-copy-button,
+.general-reset-button {
+  background: transparent;
+  border-color: var(--settings-border);
+  box-shadow: none;
+}
+
+.general-copy-button:hover,
+.general-reset-button:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.11);
+}
+
+.general-interface-card {
+  padding: 14px;
+  gap: 12px;
+}
+
+.general-theme-card {
+  min-height: 82px;
+  border-radius: 10px;
+}
+
+.general-theme-card.selected {
+  background: #15171c;
+  border-color: rgba(154, 140, 255, 0.24);
+  box-shadow: inset 2px 0 0 #9485ee;
+}
+
+.general-theme-swatch,
+.general-theme-swatch.system {
+  box-shadow: none;
+}
+
+.general-scale-control,
+.language-settings-options {
+  background: #0f1115;
+  border-color: var(--settings-border);
+  box-shadow: none;
+}
+
+.general-scale-control button.active,
+.language-settings-options button.active {
+  color: #e5e2ff;
+  background: rgba(154, 140, 255, 0.10);
+  box-shadow: none;
+}
+
+.general-quick-card {
+  min-height: 70px;
+  border-radius: 10px;
+}
+
+/* Shared mature controls */
+.settings-heading-with-action {
+  display: flex;
+  justify-content: space-between;
+}
+
+.mature-action-button,
+.mature-model-card button {
+  appearance: none;
+  min-height: 33px;
+  padding: 0 11px;
+  border: 1px solid var(--settings-border);
+  border-radius: 8px;
+  background: #15171c;
+  color: rgba(242, 243, 247, 0.90);
+  box-shadow: none;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 620;
+  cursor: pointer;
+  transition: background 110ms ease, border-color 110ms ease;
+}
+
+.mature-action-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.mature-action-button:hover:not(:disabled),
+.mature-model-card button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.065);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.mature-action-button:active:not(:disabled),
+.mature-model-card button:active:not(:disabled) {
+  transform: none;
+}
+
+.mature-action-button:disabled,
+.mature-model-card button:disabled {
+  opacity: 0.48;
+  cursor: default;
+}
+
+.mature-preference-list,
+.mature-shortcut-list {
+  overflow: hidden;
+}
+
+.mature-preference-row {
+  min-height: 70px;
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 16px;
+}
+
+.mature-preference-row + .mature-preference-row,
+.mature-shortcut-row + .mature-shortcut-row {
+  border-top: 1px solid var(--settings-divider);
+}
+
+.mature-preference-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+}
+
+.mature-preference-copy {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.mature-preference-copy strong {
+  color: rgba(245, 246, 249, 0.95);
+  font-size: 13.5px;
+  font-weight: 640;
+}
+
+.mature-preference-copy span {
+  color: rgba(168, 173, 185, 0.72);
+  font-size: 12.2px;
+  line-height: 1.45;
+}
+
+.mature-preference-control {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 150px;
+}
+
+.mature-select,
+.mature-input {
+  min-height: 34px;
+  border: 1px solid var(--settings-border);
+  background: #0f1115;
+  color: rgba(242, 243, 247, 0.94);
+  border-radius: 8px;
+  padding: 0 10px;
+  outline: none;
+  font: inherit;
+  font-size: 12.5px;
+  box-shadow: none;
+}
+
+/* Keep settings dropdowns visually consistent with the rest of Loom instead
+   of falling back to the bright Windows native select treatment. */
+.mature-select {
+  min-width: 168px;
+  height: 36px;
+  padding: 0 38px 0 12px;
+  appearance: none;
+  -webkit-appearance: none;
+  color-scheme: dark;
+  border-color: rgba(255, 255, 255, 0.09);
+  border-radius: 9px;
+  background-color: #13151a;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23969daa' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 11px center;
+  background-size: 14px 14px;
+  color: #e9eaee;
+  font-size: 12.5px;
+  font-weight: 560;
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease, color 120ms ease;
+}
+
+.mature-select:hover {
+  background-color: #17191f;
+  border-color: rgba(255, 255, 255, 0.14);
+}
+
+.mature-select:focus,
+.mature-select:focus-visible {
+  border-color: rgba(154, 140, 255, 0.52);
+  background-color: #17191f;
+  box-shadow: 0 0 0 3px rgba(154, 140, 255, 0.085);
+}
+
+.mature-select:active {
+  background-color: #1a1c22;
+}
+
+.mature-select:disabled {
+  opacity: 0.48;
+  cursor: default;
+}
+
+.mature-select option {
+  min-height: 34px;
+  padding: 9px 12px;
+  background: #15171c;
+  color: #e5e7eb;
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.mature-select option:checked {
+  background: #292735;
+  color: #f4f2ff;
+}
+
+.mature-select option:hover {
+  background: #202229;
+  color: #ffffff;
+}
+
+.mature-input {
+  width: min(290px, 30vw);
+}
+
+.mature-input:focus {
+  border-color: rgba(154, 140, 255, 0.34);
+  box-shadow: none;
+}
+
+.mature-code-preview,
+.mature-diagnostics-preview {
+  border: 1px solid var(--settings-border);
+  background: #0e1014;
+  box-shadow: none;
+}
+
+.mature-code-preview {
+  margin-top: 10px;
+  border-radius: 9px;
+  padding: 14px 16px;
+  color: rgba(224, 227, 235, 0.86);
+  font-family: var(--loom-code-font, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
+  font-size: var(--loom-code-font-size, 12px);
+  line-height: 1.65;
+}
+
+.mature-code-preview span:first-child {
+  color: #aaa0eb;
+}
+
+.mature-model-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.mature-model-card {
+  min-width: 0;
+  display: grid;
+  gap: 11px;
+  padding: 14px;
+  border: 1px solid var(--settings-border);
+  border-radius: 10px;
+  background: #121419;
+  box-shadow: none;
+  transition: background 110ms ease, border-color 110ms ease;
+}
+
+.mature-model-card:hover {
+  transform: none;
+  border-color: rgba(255, 255, 255, 0.12);
+  background: #15171c;
+}
+
+.mature-model-card.active {
+  border-color: rgba(154, 140, 255, 0.25);
+  background: #15171c;
+  box-shadow: inset 2px 0 0 #9485ee;
+}
+
+.mature-model-card-head {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+}
+
+.mature-model-card-head > div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.mature-model-card-head strong,
+.mature-model-card code,
+.mature-model-endpoint {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mature-model-card-head > div > span {
+  color: rgba(164, 168, 180, 0.70);
+  font-size: 11.8px;
+}
+
+.mature-model-card code {
+  color: rgba(219, 216, 240, 0.88);
+  font-family: var(--loom-code-font, ui-monospace, monospace);
+  font-size: var(--loom-code-font-size, 12px);
+}
+
+.mature-model-endpoint {
+  color: rgba(151, 156, 169, 0.70);
+  font-size: 11.5px;
+}
+
+.mature-model-card button {
+  justify-self: start;
+}
+
+.mature-shortcut-row {
+  min-height: 54px;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 22px;
+}
+
+.mature-shortcut-row > span {
+  color: rgba(235, 236, 241, 0.92);
+  font-weight: 570;
+}
+
+.mature-shortcut-row kbd {
+  min-width: 62px;
+  padding: 4px 8px;
+  text-align: center;
+  border-radius: 6px;
+  border: 1px solid var(--settings-border);
+  background: #17191e;
+  color: rgba(213, 211, 225, 0.88);
+  font-family: var(--loom-code-font, ui-monospace, monospace);
+  font-size: 11.5px;
+  box-shadow: none;
+}
+
+.mature-diagnostics-preview {
+  margin: 0;
+  max-height: 360px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  border-radius: 9px;
+  padding: 14px;
+  color: rgba(190, 194, 205, 0.80);
+  font-family: var(--loom-code-font, ui-monospace, monospace);
+  font-size: var(--loom-code-font-size, 12px);
+  line-height: 1.55;
+}
+
+.settings-detail-row code {
+  background: #17191e;
+  border-color: var(--settings-border);
+  box-shadow: none;
+}
+
+.settings-callout,
+.safety-summary,
+.model-summary-card,
+.plugin-row,
+.capability-row {
+  box-shadow: none;
+}
+
+.settings-callout:not(.warning) {
+  margin-top: 12px;
+}
+
+.settings-inline-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.browser-extension-setup-guide {
+  margin: 0 18px 18px 58px;
+  padding: 16px;
+  border: 1px solid var(--settings-border);
+  border-radius: 12px;
+  background: rgba(124, 58, 237, 0.055);
+}
+
+.browser-extension-setup-progress {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.browser-extension-setup-progress span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+}
+
+.browser-extension-setup-progress .done { color: #86efac; background: rgba(34, 197, 94, .12); }
+.browser-extension-setup-progress .pending { color: #fde68a; background: rgba(245, 158, 11, .12); }
+.browser-extension-manual-steps strong { display: block; margin-bottom: 7px; }
+.browser-extension-manual-steps ol { margin: 0 0 12px 20px; padding: 0; color: var(--settings-muted); }
+.browser-extension-manual-steps li + li { margin-top: 6px; }
+.browser-extension-path { display: block; padding: 10px 12px; overflow: auto; white-space: nowrap; }
+.browser-extension-actions { margin-top: 12px; }
+
+/* Keep code typography and functional density behavior intact. */
+.markdown-body code,
+.markdown-body pre,
+.activity-row code,
+.activity-detail code,
+.command-preview,
+.tool-detail pre,
+.settings-shell code,
+.settings-shell pre,
+.settings-shell kbd {
+  font-family: var(--loom-code-font, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
+}
+
+[data-loom-density="compact"] .activity-row,
+[data-loom-density="compact"] .tool-row,
+[data-loom-density="compact"] .thread-row {
+  min-height: 32px;
+}
+
+[data-loom-reduced-motion="true"] *,
+[data-loom-reduced-motion="true"] *::before,
+[data-loom-reduced-motion="true"] *::after {
+  scroll-behavior: auto !important;
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+}
+
+@media (max-width: 980px) {
+  .general-overview-card {
+    grid-template-columns: 1fr;
+  }
+
+  .mature-model-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .mature-preference-row {
+    grid-template-columns: 32px minmax(0, 1fr);
+  }
+
+  .mature-preference-control {
+    grid-column: 2;
+    justify-content: flex-start;
+    min-width: 0;
+  }
+
+  .mature-input {
+    width: min(100%, 340px);
+  }
+}
+
+/* ===== components/settings-appearance.css ===== */
+@import "./settings-capabilities-polish.css";
+
+/* Appearance page ----------------------------------------------------------
+   Appearance preferences intentionally stay presentation-only: they change
+   spacing, widths, typography, and decorative chrome without touching Agent
+   behavior or runtime permissions. */
+
+.appearance-overview-card {
+  min-height: 154px;
+  display: grid;
+  grid-template-columns: minmax(260px, .72fr) minmax(420px, 1.28fr);
+  gap: 22px;
+  align-items: center;
+  padding: 18px;
+  border: 1px solid var(--settings-border, rgba(255,255,255,.075));
+  border-radius: 12px;
+  background: #121419;
+}
+
+.appearance-overview-copy {
+  min-width: 0;
+  display: grid;
+  gap: 7px;
+}
+
+.appearance-overview-copy strong {
+  color: #f1f2f5;
+  font-size: 16px;
+  font-weight: 680;
+  letter-spacing: -.015em;
+}
+
+.appearance-overview-copy p {
+  margin: 0;
+  color: #858c98;
+  font-size: 12.5px;
+  line-height: 1.52;
+}
+
+.appearance-overview-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 3px;
+}
+
+.appearance-overview-meta span {
+  min-height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--settings-divider, rgba(255,255,255,.055));
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  color: #a7adb8;
+  background: #0f1115;
+  font-size: 10.5px;
+  font-weight: 560;
+}
+
+.appearance-workspace-preview {
+  height: 116px;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 22% minmax(0,1fr) 18%;
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,.075);
+  border-radius: 10px;
+  background: #0d0f13;
+}
+
+.appearance-preview-sidebar,
+.appearance-preview-inspector {
+  position: relative;
+  background: #101217;
+}
+
+.appearance-preview-sidebar {
+  border-right: 1px solid rgba(255,255,255,.06);
+}
+
+.appearance-preview-inspector {
+  border-left: 1px solid rgba(255,255,255,.06);
+}
+
+.appearance-preview-sidebar::before,
+.appearance-preview-sidebar::after,
+.appearance-preview-inspector::before,
+.appearance-preview-inspector::after {
+  content: "";
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.08);
+}
+
+.appearance-preview-sidebar::before,
+.appearance-preview-inspector::before { top: 17px; }
+.appearance-preview-sidebar::after,
+.appearance-preview-inspector::after { top: 33px; opacity: .62; }
+
+.appearance-preview-main {
+  min-width: 0;
+  padding: 18px 16px;
+  display: grid;
+  align-content: center;
+  gap: 8px;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(139,124,246,.055), transparent 60%),
+    #0b0d11;
+}
+
+.appearance-preview-main span {
+  display: block;
+  height: 7px;
+  border-radius: 999px;
+  background: rgba(225,227,234,.13);
+}
+
+.appearance-preview-main span:nth-child(1) { width: 72%; }
+.appearance-preview-main span:nth-child(2) { width: 92%; }
+.appearance-preview-main span:nth-child(3) { width: 58%; background: rgba(154,140,255,.20); }
+
+.appearance-segmented {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--settings-border, rgba(255,255,255,.075));
+  border-radius: 9px;
+  background: #0f1115;
+}
+
+.appearance-segmented button {
+  min-width: 46px;
+  height: 28px;
+  border: 0;
+  border-radius: 6px;
+  padding: 0 9px;
+  background: transparent;
+  color: #858c98;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 590;
+  cursor: pointer;
+  transition: background 110ms ease, color 110ms ease;
+}
+
+.appearance-segmented button:hover {
+  color: #d8dbe2;
+  background: rgba(255,255,255,.035);
+}
+
+.appearance-segmented button.active {
+  color: #e8e5ff;
+  background: rgba(154,140,255,.12);
+}
+
+.appearance-reading-preview {
+  padding: 16px 18px;
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--settings-border, rgba(255,255,255,.075));
+  border-radius: 10px;
+  background: #0e1014;
+}
+
+.appearance-reading-preview-label {
+  color: #777f8b;
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.appearance-reading-preview-message {
+  max-width: 760px;
+  color: #d9dde5;
+  font-size: var(--loom-chat-font-size, 13px);
+  line-height: var(--loom-message-line-height, 1.72);
+}
+
+.appearance-reading-preview-message strong {
+  color: #f0f1f4;
+}
+
+.appearance-code-preview-head {
+  margin-top: 10px;
+  padding: 0 2px 7px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: #737b87;
+  font-size: 10.5px;
+}
+
+/* Runtime-facing appearance variables ----------------------------------- */
+.user-message,
+.assistant-message {
+  font-size: var(--loom-chat-font-size, 13px);
+  line-height: var(--loom-message-line-height, 1.72);
+}
+
+.markdown-body :not(pre) > code,
+.markdown-code-block pre,
+.command-preview,
+.tool-detail pre,
+.activity-row code,
+.activity-detail code {
+  font-family: var(--loom-code-font, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace);
+}
+
+.markdown-code-block pre,
+.mature-code-preview,
+.mature-diagnostics-preview {
+  font-size: var(--loom-code-font-size, 12px);
+  line-height: var(--loom-code-line-height, 1.62);
+}
+
+html[data-loom-code-wrap="true"] .markdown-code-block pre code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+html[data-loom-ambient-effects="false"] .chat-ambient {
+  display: none;
+}
+
+[data-loom-density="compact"] .transcript {
+  gap: 16px;
+  padding-top: 28px;
+  padding-bottom: 44px;
+}
+
+[data-loom-density="spacious"] .transcript {
+  gap: 28px;
+  padding-top: 42px;
+  padding-bottom: 62px;
+}
+
+[data-loom-density="compact"] .mature-preference-row,
+[data-loom-density="compact"] .settings-detail-row {
+  min-height: 58px;
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+[data-loom-density="spacious"] .mature-preference-row,
+[data-loom-density="spacious"] .settings-detail-row {
+  min-height: 82px;
+  padding-top: 16px;
+  padding-bottom: 16px;
+}
+
+[data-loom-density="spacious"] .activity-row,
+[data-loom-density="spacious"] .tool-row,
+[data-loom-density="spacious"] .thread-row {
+  min-height: 54px;
+}
+
+@media (max-width: 980px) {
+  .appearance-overview-card {
+    grid-template-columns: 1fr;
+  }
+
+  .appearance-workspace-preview {
+    min-height: 110px;
+  }
+}
+
+
+/* Theme picker ------------------------------------------------------------- */
+.appearance-theme-picker {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.appearance-theme-option {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--settings-border, rgba(255,255,255,.075));
+  border-radius: 12px;
+  display: grid;
+  gap: 10px;
+  text-align: left;
+  color: var(--text-2);
+  background: var(--panel, #101217);
+  cursor: pointer;
+  transition: border-color 150ms ease, background 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+}
+
+.appearance-theme-option:hover {
+  border-color: var(--border-strong, #383d4a);
+  background: var(--panel-raised, #151820);
+  transform: translateY(-1px);
+}
+
+.appearance-theme-option.active {
+  border-color: rgba(139,124,246,.42);
+  box-shadow: inset 0 0 0 1px rgba(139,124,246,.08), 0 8px 24px rgba(0,0,0,.08);
+}
+
+.appearance-theme-preview {
+  position: relative;
+  height: 78px;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: 24% minmax(0,1fr);
+  border: 1px solid rgba(127,132,145,.24);
+  border-radius: 9px;
+  box-shadow: inset 0 1px rgba(255,255,255,.2);
+}
+
+.appearance-theme-preview.light { background: #f7f7f8; }
+.appearance-theme-preview.light .appearance-theme-preview-sidebar {
+  background: #eef0f3;
+  border-right: 1px solid #dde0e5;
+}
+.appearance-theme-preview.light .appearance-theme-preview-content b { background: #cdd1d8; }
+.appearance-theme-preview.light .appearance-theme-preview-content b:last-child { background: #9e94df; }
+
+.appearance-theme-preview.dark { background: #0b0c0f; }
+.appearance-theme-preview.dark .appearance-theme-preview-sidebar {
+  background: #111317;
+  border-right: 1px solid rgba(255,255,255,.07);
+}
+.appearance-theme-preview.dark .appearance-theme-preview-content b { background: rgba(232,234,239,.15); }
+.appearance-theme-preview.dark .appearance-theme-preview-content b:last-child { background: rgba(158,145,244,.34); }
+
+.appearance-theme-preview.system {
+  background: linear-gradient(90deg, #f7f7f8 0 50%, #0b0c0f 50% 100%);
+}
+.appearance-theme-preview.system .appearance-theme-preview-sidebar {
+  background: linear-gradient(90deg, #eef0f3 0 50%, #111317 50% 100%);
+  border-right: 1px solid rgba(127,132,145,.22);
+}
+.appearance-theme-preview.system .appearance-theme-preview-content b {
+  background: linear-gradient(90deg, #cdd1d8 0 50%, rgba(232,234,239,.15) 50% 100%);
+}
+.appearance-theme-preview.system .appearance-theme-preview-content b:last-child {
+  background: linear-gradient(90deg, #9e94df 0 50%, rgba(158,145,244,.34) 50% 100%);
+}
+
+.appearance-theme-preview-sidebar { display: block; }
+
+.appearance-theme-preview-content {
+  padding: 18px 12px;
+  display: grid;
+  align-content: center;
+  gap: 7px;
+}
+
+.appearance-theme-preview-content b {
+  display: block;
+  width: 88%;
+  height: 6px;
+  border-radius: 999px;
+}
+
+.appearance-theme-preview-content b:nth-child(2) { width: 70%; }
+.appearance-theme-preview-content b:nth-child(3) { width: 48%; }
+
+.appearance-theme-option-copy {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.appearance-theme-option-title {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--text);
+}
+
+.appearance-theme-option-title strong {
+  font-size: 12.5px;
+  font-weight: 650;
+}
+
+.appearance-theme-option-copy > span:last-child {
+  color: var(--muted);
+  font-size: 10.5px;
+}
+
+.appearance-theme-check {
+  margin-left: auto;
+  color: var(--accent-soft);
+}
+
+@media (max-width: 760px) {
+  .appearance-theme-picker { grid-template-columns: 1fr; }
+}
+
+/* ===== components/settings-terminal.css ===== */
+/* Compact utility settings -------------------------------------------------
+   Terminal and Skills are working surfaces, not dashboards. Keep the actual
+   controls and lists in the foreground; hide duplicated status chrome and
+   static explanatory cards that belong in Developer/Permissions instead. */
+
+.terminal-page-heading,
+.skills-page-heading {
+  min-height: auto;
+  margin-bottom: 2px;
+  align-items: center;
+}
+
+.terminal-page-heading .settings-eyebrow,
+.skills-page-heading .settings-eyebrow {
+  display: none;
+}
+
+.terminal-page-heading h1,
+.skills-page-heading h1 {
+  margin-top: 0;
+}
+
+.terminal-page-heading p,
+.skills-page-heading p {
+  max-width: 700px;
+  color: #858c98;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+/* Terminal ---------------------------------------------------------------- */
+
+.terminal-heading-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+
+/* Copying the shell name is not a primary settings action. */
+.terminal-heading-actions .mature-action-button {
+  display: none;
+}
+
+/* Remove the dashboard layer: the same values are editable directly below. */
+.terminal-hero-card,
+.terminal-footer-strip,
+.terminal-page-heading ~ .settings-section:has(.terminal-stat-grid),
+.terminal-page-heading ~ .settings-section:has(.terminal-runtime-grid),
+.terminal-page-heading ~ .settings-section:has(.terminal-security-grid),
+.terminal-page-heading ~ .settings-section:has(.terminal-template-table),
+.terminal-page-heading ~ .settings-section:has(.settings-detail-list) {
+  display: none;
+}
+
+.terminal-page-heading ~ .settings-section:has(.terminal-preference-card) {
+  margin-top: 8px;
+  gap: 8px;
+}
+
+.terminal-preference-card {
+  border-radius: 11px;
+  background: #121419;
+  box-shadow: none;
+}
+
+.terminal-preference-card .mature-preference-row {
+  min-height: 64px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  padding: 11px 15px;
+}
+
+/* settings-icon-alignment.css loads late and restores display:grid on icon tiles.
+   Match that selector's settings-shell scope so the compact Terminal rows keep
+   the icon removed and the remaining copy/control stay in the intended 2-column grid. */
+.settings-shell .terminal-preference-card .mature-preference-icon {
+  display: none;
+}
+
+.terminal-preference-card .mature-preference-copy {
+  gap: 2px;
+}
+
+.terminal-preference-card .mature-preference-copy strong {
+  font-size: 13.5px;
+}
+
+.terminal-preference-card .mature-preference-copy span {
+  color: #7f8793;
+  font-size: 12px;
+}
+
+.terminal-preference-card .mature-preference-control {
+  min-width: 176px;
+}
+
+.terminal-preference-card .mature-select {
+  min-width: 176px;
+}
+
+/* Skills ------------------------------------------------------------------ */
+
+.skills-hero-card,
+.skills-footer-strip,
+.skills-page-heading ~ .settings-section:has(.skills-stat-grid),
+.skills-page-heading ~ .settings-section:has(.skills-runtime-grid),
+.skills-page-heading ~ .settings-section:has(.skills-security-grid) {
+  display: none;
+}
+
+/* Put the thing users came for first: discovered/installed skills. */
+.skills-page-heading {
+  order: 0;
+}
+
+.skills-page-heading ~ .settings-section:has(.skills-table) {
+  order: 1;
+  margin-top: 8px;
+}
+
+.skills-page-heading ~ .settings-section:has(.skills-management-card) {
+  order: 2;
+}
+
+.skills-page-heading ~ .settings-section:has(.skills-source-grid) {
+  order: 3;
+}
+
+/* The search field is not wired to filtering yet, so do not present it as a
+   working control. Installation remains available through the real CLI copy
+   actions below. */
+.skills-command-strip {
+  display: none;
+}
+
+.skills-management-card {
+  padding: 10px;
+  border-radius: 11px;
+  background: #121419;
+  box-shadow: none;
+}
+
+.skills-install-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.skills-install-grid button {
+  min-height: 68px;
+  padding: 10px 12px;
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  align-content: center;
+  column-gap: 9px;
+  row-gap: 2px;
+  border: 1px solid rgba(255,255,255,.075);
+  border-radius: 9px;
+  background: #15171c;
+  color: #d9dce4;
+  text-align: left;
+  cursor: pointer;
+  transition: background 110ms ease, border-color 110ms ease;
+}
+
+.skills-install-grid button:hover {
+  background: rgba(255,255,255,.055);
+  border-color: rgba(255,255,255,.12);
+}
+
+.skills-install-grid button:active {
+  transform: none;
+}
+
+.skills-install-grid button svg {
+  grid-row: 1 / span 2;
+  align-self: center;
+  color: #aaa1ed;
+}
+
+.skills-install-grid strong {
+  grid-column: 2;
+  color: #eef0f4;
+  font-size: 12.8px;
+  font-weight: 630;
+}
+
+.skills-install-grid span {
+  grid-column: 2;
+  color: #7f8793;
+  font-size: 11.5px;
+  line-height: 1.35;
+}
+
+/* Scan roots read like settings rows instead of three feature cards. */
+.skills-source-grid {
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0;
+  border-radius: 11px;
+  background: #121419;
+  box-shadow: none;
+}
+
+.skills-source-card {
+  min-height: 62px;
+  padding: 11px 14px;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  grid-template-rows: auto;
+  align-items: center;
+  gap: 11px;
+  border: 0;
+  border-bottom: 1px solid rgba(255,255,255,.055);
+  border-radius: 0;
+  background: transparent;
+}
+
+.skills-source-card:last-child {
+  border-bottom: 0;
+}
+
+.skills-source-card > span:first-child {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  color: #aaa1ed;
+  background: #191923;
+  border: 1px solid rgba(154,140,255,.13);
+}
+
+.skills-source-card > div {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(120px, .45fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+}
+
+.skills-source-card strong {
+  color: #eef0f4;
+  font-size: 12.8px;
+  font-weight: 630;
+}
+
+.skills-source-card code {
+  min-width: 0;
+  padding: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #9299a5;
+  font: 11.5px/1.3 var(--loom-code-font, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+}
+
+.skills-source-card p,
+.skills-source-card .settings-status-pill {
+  display: none;
+}
+
+/* Keep the discovered skills table compact and scan-friendly. */
+.skills-table {
+  border-radius: 11px;
+  background: #121419;
+  box-shadow: none;
+}
+
+.skills-table-head {
+  min-height: 38px;
+  background: #101216;
+}
+
+.skills-table-row {
+  min-height: 58px;
+}
+
+.skills-row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.skills-row-actions button {
+  height: 27px;
+  padding: 0 8px;
+  border: 1px solid rgba(255,255,255,.075);
+  border-radius: 7px;
+  background: transparent;
+  color: #aeb4bf;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.skills-row-actions button:hover {
+  background: rgba(255,255,255,.05);
+  border-color: rgba(255,255,255,.12);
+  color: #eef0f4;
+}
+
+@media (max-width: 980px) {
+  .terminal-page-heading,
+  .skills-page-heading {
+    align-items: flex-start;
+  }
+
+  .terminal-preference-card .mature-preference-row {
+    grid-template-columns: 1fr;
+    gap: 9px;
+  }
+
+  .terminal-preference-card .mature-preference-control {
+    min-width: 0;
+    justify-content: flex-start;
+  }
+
+  .skills-install-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .skills-source-card > div {
+    grid-template-columns: 1fr;
+    gap: 3px;
+  }
+}
+
+/* ===== styles.css ===== */
+/* styles.css (tokens + base resets) — kept 7 of 242 top-level blocks */
+:root {
+  color-scheme: dark;
+  font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --bg: #0b0c0f;
+  --bg-deep: #090a0d;
+  --panel: #101217;
+  --panel-raised: #151820;
+  --panel-soft: #191c24;
+  --panel-hover: #1c1f28;
+  --border: #292d38;
+  --border-soft: #1d2028;
+  --border-strong: #383d4a;
+  --text: #f0f1f4;
+  --text-2: #bcc1cb;
+  --muted: #858c99;
+  --faint: #59606c;
+  --accent: #8b7cf6;
+  --accent-soft: #aaa0ff;
+  --accent-faint: rgba(139,124,246,.12);
+  --success: #82b49b;
+  --danger: #dc7c86;
+  --warning: #d7ad6d;
+  --sidebar-width: 252px;
+  --inspector-width: 316px;
+  --content-width: 860px;
+  --ease-out: cubic-bezier(.2,.78,.2,1);
+  --ease-spring: cubic-bezier(.18,.9,.24,1.12);
+}
+
+html, body, #root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+}
+
+body { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+
+button, input, textarea { font: inherit; }
+
+button { color: inherit; }
+
+button, textarea, input { -webkit-tap-highlight-color: transparent; }
+
+::selection { background: rgba(139,124,246,.28); color: #fff; }
+
+/* ===== typography-scale.css ===== */
+/*
+ * Global readability scale.
+ *
+ * Loom has a deliberately compact desktop UI, but several surfaces accumulated
+ * 8–11px labels that are difficult to read at normal Windows scaling. Keep the
+ * hierarchy and density, while raising secondary/meta text to a practical floor.
+ * This file is imported last so it remains the single readability authority.
+ */
+
+:root {
+  --loom-font-body: 15.5px;
+  --loom-font-ui: 13.5px;
+  --loom-font-meta: 12.5px;
+  --loom-font-micro: 11.5px;
+  /* Count badges are pills pinned to fixed corner geometry, not body copy.
+     They keep their own compact optical step so the 11.5px micro floor cannot
+     widen them past the pill and onto the label they sit next to. */
+  --loom-font-badge: 9.5px;
+}
+
+body {
+  font-size: var(--loom-font-body);
+}
+
+/* Sidebar ---------------------------------------------------------------- */
+.sidebar .brand-row strong { font-size: 15px !important; }
+.sidebar .brand-row span { font-size: 13px !important; }
+.sidebar .brand-mark { font-size: 14px !important; }
+.sidebar .new-thread-copy { font-size: 13.5px !important; }
+.sidebar .new-thread kbd,
+.sidebar .search-shortcut { font-size: var(--loom-font-micro) !important; }
+.sidebar .search-box input { font-size: 13.5px !important; }
+.sidebar .sidebar-section-label { font-size: 12px !important; }
+.sidebar .section-count { font-size: var(--loom-font-micro) !important; }
+.sidebar .thread-title { font-size: 13.5px !important; }
+.sidebar .thread-meta { font-size: 12px !important; }
+.sidebar .sidebar-empty strong { font-size: 13px !important; }
+.sidebar .sidebar-empty > span:last-of-type,
+.sidebar .sidebar-empty button { font-size: 12px !important; }
+.sidebar .sidebar-footer-button { font-size: 13px !important; }
+.sidebar .footer-badge { font-size: var(--loom-font-micro) !important; }
+
+.compact-sidebar-header > strong::after { font-size: 12px !important; }
+.compact-search input { font-size: 13.5px !important; }
+.workspace-group-header > span { font-size: 13px !important; }
+.workspace-group-header > span.workspace-group-count { font-size: 12px !important; }
+.workspace-group-empty { font-size: 12.5px !important; }
+.workspace-group-rename,
+.workspace-group-menu button,
+.compact-thread-rename { font-size: 13px !important; }
+.compact-thread-title { font-size: 13.5px !important; }
+.compact-sidebar-empty,
+.compact-sidebar-empty button { font-size: 12.5px !important; }
+.compact-sidebar-footer > button { font-size: 13px !important; }
+
+/* Conversation header ---------------------------------------------------- */
+.thread-heading strong { font-size: 14.5px !important; }
+.thread-heading span { font-size: 12.5px !important; }
+.running-pill { font-size: 12px !important; }
+.thread-title-line strong { font-size: 15.5px !important; }
+.workspace-leaf { font-size: 12.5px !important; }
+.workspace-full-path { font-size: 12px !important; }
+.thread-status-chip,
+.thread-meta-chip { font-size: 12px !important; }
+
+/* Empty conversation state ---------------------------------------------- */
+.empty-kicker { font-size: 12.5px !important; }
+.empty-state > p { font-size: 14.5px !important; }
+.starter-eyebrow { font-size: 12px !important; }
+.starter-content strong { font-size: 13.5px !important; }
+.starter-content > span:last-child { font-size: 12.5px !important; }
+
+/* Main transcript -------------------------------------------------------- */
+.user-message,
+.assistant-message { font-size: 15.5px !important; }
+.streaming-placeholder { font-size: 13px !important; }
+.disclosure-trigger { font-size: 13px !important; }
+.reasoning-copy { font-size: 14.5px !important; }
+.activity-title { font-size: 13.5px !important; }
+.activity-status { font-size: 12px !important; }
+.activity-output,
+.diff-output { font-size: 12.5px !important; }
+.error-row { font-size: 13.5px !important; }
+.approval-title { font-size: 13.5px !important; }
+.approval-copy { font-size: 12.5px !important; }
+.button { font-size: 12.5px !important; }
+.message-meta { font-size: 12px !important; }
+
+/* Compact task/activity flow -------------------------------------------- */
+.task-flow-summary-copy strong { font-size: 14px !important; }
+.task-flow-summary-copy span { font-size: 12px !important; }
+.task-flow-verb { font-size: 13px !important; }
+.task-flow-primary { font-size: 13.5px !important; }
+.task-flow-primary.code { font-size: 12.5px !important; }
+.task-flow-diffstat { font-size: var(--loom-font-micro) !important; }
+.task-flow-status { font-size: var(--loom-font-micro) !important; }
+.task-flow-disclosure .disclosure-trigger { font-size: 12.5px !important; }
+.task-flow-detail-title { font-size: 13px !important; }
+.task-flow-detail-kind { font-size: var(--loom-font-micro) !important; }
+.task-flow-detail pre,
+.task-flow-inline-detail pre { font-size: 12.5px !important; }
+.task-flow-detail .task-flow-detail-empty { font-size: 12.5px !important; }
+.task-flow-group-title { font-size: 13px !important; }
+.task-flow-group-failed { font-size: var(--loom-font-micro) !important; }
+.task-flow-group .task-flow-verb,
+.task-flow-group .task-flow-primary { font-size: 12.75px !important; }
+.task-flow-group .task-flow-primary.code { font-size: 12.25px !important; }
+.task-flow-group-summary,
+.task-flow-summary-pill,
+.task-flow-summary-file,
+.task-flow-summary-more { font-size: var(--loom-font-micro) !important; }
+
+.turn-process-time { font-size: 13px !important; }
+.turn-process-meta { font-size: 12px !important; }
+.turn-process-failed { font-size: var(--loom-font-micro) !important; }
+.turn-artifacts-copy strong { font-size: 13px !important; }
+.turn-artifacts-stats,
+.turn-artifacts-action { font-size: var(--loom-font-micro) !important; }
+.turn-artifacts-files code,
+.turn-artifacts-more { font-size: var(--loom-font-micro) !important; }
+.turn-artifacts pre { font-size: 12.5px !important; }
+
+/* Composer --------------------------------------------------------------- */
+.composer textarea { font-size: 16px !important; }
+.composer-tool,
+.composer-chip { font-size: 13px !important; }
+.composer-keycap { font-size: var(--loom-font-micro) !important; }
+.composer-running-label { font-size: 12.5px !important; }
+.composer-hint { font-size: 12px !important; }
+
+/* Model manager ---------------------------------------------------------- */
+.model-manager-popover .composer-popover-heading strong { font-size: 13.5px !important; }
+.model-compact-current strong { font-size: 13px !important; }
+.model-compact-current span:not(.model-compact-icon) { font-size: 12px !important; }
+.model-manager-actions strong,
+.model-wide-action strong,
+.model-manager-popover .model-manager-actions strong { font-size: 12.5px !important; }
+.model-manager-actions small,
+.model-wide-action small,
+.model-manager-popover .model-manager-actions small { font-size: var(--loom-font-micro) !important; }
+
+/* Run progress ----------------------------------------------------------- */
+.run-progress-brand { font-size: 12px !important; }
+.run-progress-phase { font-size: 13px !important; }
+.run-progress-meta { font-size: var(--loom-font-micro) !important; }
+.run-progress-frame.bottom .run-progress-brand,
+.run-progress-frame.bottom .run-progress-phase { font-size: 12px !important; }
+.run-progress-frame.bottom .run-progress-meta { font-size: var(--loom-font-micro) !important; }
+
+/* Runtime inspector ------------------------------------------------------ */
+.runtime-title-row strong { font-size: 14px !important; }
+.runtime-caption { font-size: 12px !important; }
+.runtime-health { font-size: 10.5px !important; }
+.runtime-tab { font-size: 12px !important; }
+.runtime-tab-count { font-size: var(--loom-font-badge) !important; }
+.runtime-section-bar { font-size: var(--loom-font-micro) !important; }
+.runtime-empty strong { font-size: 14px !important; }
+.runtime-empty p { font-size: 13.5px !important; line-height: 1.6 !important; }
+.runtime-empty-chips span { font-size: var(--loom-font-micro) !important; }
+.runtime-event-title { font-size: 12.5px !important; }
+.runtime-event-subtitle { font-size: var(--loom-font-micro) !important; }
+.runtime-event-detail pre { font-size: 12px !important; }
+.runtime-footer { font-size: 12px !important; }
+
+/* Legacy/fallback inspector selectors still present in the shell CSS. */
+.inspector-header strong { font-size: 13.5px !important; }
+.inspector-tabs button { font-size: 12px !important; }
+.inspector-empty { font-size: 13px !important; }
+.inspector-row-title { font-size: 13px !important; }
+.inspector-row-meta { font-size: 12px !important; }
+
+/* Settings --------------------------------------------------------------- */
+.settings-back,
+.settings-search input { font-size: 13px !important; }
+.settings-sidebar-title span:not(.settings-brand-orb) { font-size: 12.5px !important; }
+.settings-nav-label { font-size: 12px !important; }
+.settings-nav button span { font-size: 13.5px !important; }
+.settings-sidebar-footer strong { font-size: 13px !important; }
+.settings-sidebar-footer span:last-child { font-size: 12px !important; }
+.settings-eyebrow { font-size: 12px !important; }
+.settings-tool-count { font-size: 12.5px !important; }
+.settings-section-heading p { font-size: 13px !important; }
+.settings-detail-row strong,
+.capability-title-line strong,
+.safety-summary strong,
+.plugin-row strong,
+.permission-card strong { font-size: 14px !important; }
+.settings-detail-row span,
+.capability-copy span:not(.settings-status-pill),
+.settings-callout span,
+.settings-callout-inline span,
+.model-summary-copy > span:last-child,
+.safety-summary span,
+.plugin-row span:not(.settings-status-pill),
+.permission-card span:not(.settings-status-pill) { font-size: 13px !important; }
+.settings-detail-row code { font-size: 12.5px !important; }
+.settings-option-card strong { font-size: 13.5px !important; }
+.settings-option-card span { font-size: 12.5px !important; }
+.settings-status-pill { font-size: 12px !important; }
+
+/* Generic semantic small text ------------------------------------------- */
+small { font-size: var(--loom-font-micro) !important; }
+
+/* Error surface ---------------------------------------------------------- */
+.boot-error-card h1 { font-size: 19px !important; }
+.boot-error-card p { font-size: 13.5px !important; }
+
+@media (max-width: 1180px) {
+  /* Keep the readability gain on smaller desktop windows instead of shrinking type. */
+  .user-message,
+  .assistant-message { font-size: 15px !important; }
+  .composer textarea { font-size: 15.5px !important; }
+  .thread-title-line strong { font-size: 15px !important; }
+}
+
+@media (max-width: 760px) {
+  /* Compact windows may hide low-priority labels, but visible text should remain readable. */
+  .workspace-leaf { font-size: 12px !important; }
+  .run-progress-brand { font-size: 11.5px !important; }
+  .run-progress-phase { font-size: 12.5px !important; }
+  .run-progress-meta { font-size: 11.5px !important; }
+}
+
+/* ===== components/settings-simple.css ===== */
+/* Simplified Settings visual system -----------------------------------------
+   Keep the richer controls, but present them as a quiet desktop utility. */
+
+.settings-shell {
+  --settings-accent: #9b8cff;
+  --settings-accent-soft: rgba(155, 140, 255, 0.10);
+  --settings-panel: #15171b;
+  --settings-panel-strong: #181a1f;
+  --settings-border: rgba(255, 255, 255, 0.075);
+}
+
+.settings-host {
+  background: #0d0f12;
+}
+
+.settings-main {
+  background: #0d0f12;
+}
+
+.settings-sidebar {
+  border-right-color: rgba(255, 255, 255, 0.065);
+  background: #111317;
+}
+
+.settings-brand-orb {
+  border-radius: 10px;
+  border-color: rgba(155, 140, 255, 0.18);
+  background: rgba(155, 140, 255, 0.10);
+  box-shadow: none;
+}
+
+.settings-search {
+  border-color: rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.025);
+  box-shadow: none;
+}
+
+.settings-search:focus-within {
+  border-color: rgba(155, 140, 255, 0.28);
+  background: rgba(255, 255, 255, 0.035);
+  box-shadow: none;
+}
+
+.settings-nav {
+  gap: 14px;
+}
+
+.settings-nav section + section {
+  margin-top: 8px;
+}
+
+.settings-nav button {
+  min-height: 36px;
+  border-radius: 8px;
+  margin: 0;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.settings-nav button:hover {
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.settings-nav button.active {
+  color: #f4f4f7;
+  border-color: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.055);
+  box-shadow: inset 2px 0 #9b8cff;
+}
+
+.settings-runtime-dot,
+.general-heading-status > i {
+  box-shadow: none;
+}
+
+.settings-content {
+  width: min(1080px, calc(100% - 64px));
+  max-width: 1080px;
+  padding-top: 36px;
+  gap: 20px;
+}
+
+.settings-page-heading {
+  min-height: 72px;
+  margin-bottom: 22px;
+}
+
+.settings-page-heading h1 {
+  margin-top: 5px;
+  font-size: 27px;
+  font-weight: 720;
+  letter-spacing: -0.025em;
+}
+
+.settings-page-heading p {
+  color: #8f96a2;
+}
+
+.settings-eyebrow {
+  color: #9b92cc;
+  letter-spacing: 0.06em;
+}
+
+.settings-section {
+  margin-top: 26px;
+  gap: 9px;
+}
+
+.settings-section-heading {
+  margin-bottom: 8px;
+}
+
+.settings-section-heading h2 {
+  font-size: 14.5px;
+  font-weight: 650;
+}
+
+.settings-card,
+.general-overview-card,
+.general-default-card,
+.general-theme-card,
+.general-quick-card,
+.mature-model-card,
+.settings-option-card,
+.permission-card {
+  border-color: rgba(255, 255, 255, 0.07);
+  background: #15171b;
+  box-shadow: none;
+}
+
+.settings-card {
+  border-radius: 12px;
+}
+
+.settings-detail-row,
+.capability-row,
+.plugin-row,
+.mature-preference-row,
+.mature-shortcut-row,
+.general-preference-row,
+.language-settings-dock {
+  border-color: rgba(255, 255, 255, 0.055);
+}
+
+.settings-detail-row {
+  min-height: 62px;
+  padding: 12px 16px;
+}
+
+.settings-detail-row code {
+  border-color: rgba(255, 255, 255, 0.065);
+  border-radius: 7px;
+  background: #111318;
+}
+
+.settings-status-pill {
+  height: 22px;
+  border-radius: 6px;
+  background: transparent;
+}
+
+.settings-status-pill.ready {
+  color: #92b8a4;
+  border-color: rgba(146, 184, 164, 0.18);
+  background: rgba(146, 184, 164, 0.04);
+}
+
+.settings-status-pill.warning {
+  color: #c8aa72;
+  border-color: rgba(200, 170, 114, 0.18);
+  background: rgba(200, 170, 114, 0.04);
+}
+
+.settings-status-pill.off,
+.settings-status-pill.muted {
+  background: transparent;
+}
+
+.settings-switch {
+  border-color: rgba(255, 255, 255, 0.10);
+  background: #2b2e34;
+}
+
+.settings-switch span {
+  box-shadow: none;
+}
+
+.settings-switch.on {
+  border-color: rgba(155, 140, 255, 0.42);
+  background: #796ae2;
+}
+
+.capability-icon,
+.model-summary-icon,
+.mature-preference-icon,
+.general-default-card-icon,
+.general-overview-icon {
+  color: #aaa2db;
+  border-color: rgba(155, 140, 255, 0.13);
+  background: rgba(155, 140, 255, 0.07);
+  box-shadow: none;
+}
+
+.capability-row {
+  min-height: 78px;
+  padding: 12px 16px;
+}
+
+.settings-callout,
+.settings-callout-inline {
+  border-radius: 10px;
+  box-shadow: none;
+}
+
+.mature-action-button,
+.mature-model-card button,
+.general-copy-button,
+.general-reset-button {
+  border-color: rgba(255, 255, 255, 0.08);
+  background: #191b20;
+  box-shadow: none;
+}
+
+.mature-action-button:hover:not(:disabled),
+.mature-model-card button:hover:not(:disabled),
+.general-copy-button:hover,
+.general-reset-button:hover {
+  border-color: rgba(255, 255, 255, 0.13);
+  background: #1d2025;
+  color: #e5e7eb;
+}
+
+/* General becomes a compact overview rather than a marketing hero. */
+.general-page-heading {
+  min-height: 72px;
+}
+
+.general-heading-status {
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: 8px;
+  background: transparent;
+  box-shadow: none;
+}
+
+.general-heading-status.running > i {
+  box-shadow: none;
+  animation: none;
+}
+
+.general-overview-card {
+  min-height: 132px;
+  grid-template-columns: minmax(240px, 0.8fr) minmax(420px, 1.4fr);
+  gap: 14px;
+  padding: 16px;
+  border-radius: 12px;
+  overflow: visible;
+}
+
+.general-overview-card::after {
+  display: none;
+}
+
+.general-overview-copy {
+  padding: 0 6px 0 0;
+}
+
+.general-overview-icon {
+  width: 34px;
+  height: 34px;
+  margin-bottom: 11px;
+  border-radius: 9px;
+}
+
+.general-overview-copy strong {
+  margin-bottom: 4px;
+  font-size: 15.5px;
+}
+
+.general-overview-copy p {
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.general-stat-grid {
+  gap: 0;
+  border: 1px solid rgba(255, 255, 255, 0.055);
+  border-radius: 9px;
+  overflow: hidden;
+}
+
+.general-stat {
+  min-height: 56px;
+  padding: 9px 11px;
+  border: 0;
+  border-radius: 0;
+  background: #121419;
+  box-shadow: none;
+}
+
+.general-stat:nth-child(odd) {
+  border-right: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.general-stat:nth-child(-n + 2) {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.general-default-grid,
+.general-quick-grid {
+  gap: 8px;
+}
+
+.general-default-card {
+  min-height: 112px;
+  padding: 13px;
+  border-radius: 10px;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+
+button.general-default-card:hover,
+.general-quick-card:hover {
+  transform: none;
+  border-color: rgba(255, 255, 255, 0.11);
+  background: #191b20;
+  box-shadow: none;
+}
+
+.general-default-card-head {
+  margin-bottom: 10px;
+}
+
+.general-default-card-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+}
+
+button.general-default-card:hover .general-default-card-head > svg:last-child {
+  color: #9ba0aa;
+  transform: none;
+}
+
+.general-interface-card {
+  padding: 12px 14px;
+  gap: 10px;
+}
+
+.general-theme-row {
+  gap: 8px;
+}
+
+.general-theme-card {
+  min-height: 76px;
+  padding: 10px 12px;
+  border-radius: 9px;
+}
+
+.general-theme-card.selected {
+  border-color: rgba(155, 140, 255, 0.20);
+  background: #17191e;
+  box-shadow: none;
+}
+
+.general-theme-swatch {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  box-shadow: none;
+}
+
+.general-preference-row,
+.language-settings-dock {
+  min-height: 60px;
+  padding-top: 9px;
+  padding-bottom: 9px;
+}
+
+.general-scale-control,
+.language-settings-options {
+  border-color: rgba(255, 255, 255, 0.07);
+  background: #111318;
+  box-shadow: none;
+}
+
+.general-scale-control button.active,
+.language-settings-options button.active {
+  color: #e6e3ff;
+  background: rgba(155, 140, 255, 0.10);
+  box-shadow: none;
+}
+
+.general-quick-card {
+  min-height: 68px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+
+/* Mature feature pages keep functionality but lose the decorative treatment. */
+.mature-preference-row {
+  min-height: 68px;
+  padding: 12px 16px;
+}
+
+.mature-preference-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
+}
+
+.mature-select,
+.mature-input {
+  min-height: 34px;
+  border-radius: 7px;
+  background: #111318;
+}
+
+.mature-select:focus,
+.mature-input:focus {
+  border-color: rgba(155, 140, 255, 0.34);
+  box-shadow: none;
+}
+
+.mature-model-grid {
+  gap: 8px;
+}
+
+.mature-model-card {
+  gap: 10px;
+  padding: 14px;
+  border-radius: 10px;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+
+.mature-model-card:hover {
+  transform: none;
+  border-color: rgba(255, 255, 255, 0.11);
+  background: #191b20;
+}
+
+.mature-model-card.active {
+  border-color: rgba(155, 140, 255, 0.22);
+  background: #17191e;
+  box-shadow: inset 2px 0 #8f80ef;
+}
+
+.mature-code-preview,
+.mature-diagnostics-preview {
+  border-radius: 8px;
+  background: #101216;
+  box-shadow: none;
+}
+
+.permission-grid,
+.settings-option-grid {
+  gap: 8px;
+  padding: 10px;
+}
+
+.permission-card,
+.settings-option-card {
+  border-radius: 9px;
+}
+
+.permission-card.selected,
+.settings-option-card.selected {
+  border-color: rgba(155, 140, 255, 0.22);
+  background: #17191e;
+  box-shadow: inset 2px 0 #8f80ef;
+}
+
+.theme-preview,
+.theme-preview.dark,
+.theme-preview.system {
+  box-shadow: none;
+}
+
+.settings-toast {
+  border-radius: 9px;
+  background: #1a1c21;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.24);
+  backdrop-filter: none;
+}
+
+@media (max-width: 980px) {
+  .settings-content {
+    width: min(100% - 32px, 920px);
+  }
+
+  .general-overview-card {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ===== components/settings-icon-alignment.css ===== */
+/* Icon geometry -------------------------------------------------------------
+   Lucide glyphs are SVGs with their own 24x24 viewBox. Keep them out of text
+   baselines and give every icon-bearing control one predictable centering rule.
+   This file loads late so older component CSS cannot reintroduce baseline drift. */
+
+/* Global SVG hygiene for the desktop controls that render Lucide icons. */
+.settings-shell svg,
+.sidebar svg,
+.composer-wrap svg,
+.thread-header svg,
+.transcript svg,
+.inspector svg,
+.run-progress-frame svg,
+.model-manager-popover svg,
+.sticker-panel svg {
+  display: block;
+  flex: 0 0 auto;
+  margin: 0;
+  vertical-align: middle;
+}
+
+/* Settings icon tiles: use the same centering model everywhere. */
+.settings-shell .mature-preference-icon,
+.settings-shell .general-default-card-icon,
+.settings-shell .general-overview-icon,
+.settings-shell .capability-icon,
+.settings-shell .model-summary-icon,
+.settings-shell .settings-brand-orb {
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  align-self: center;
+  justify-self: center;
+  flex: 0 0 auto;
+  padding: 0;
+  line-height: 0;
+  font-size: 0;
+}
+
+/* Direct icons in rows/buttons should share the row's optical center instead of
+   inheriting a text baseline. */
+.settings-shell .settings-back,
+.settings-shell .settings-search,
+.settings-shell .settings-nav button,
+.settings-shell .mature-action-button,
+.settings-shell .general-copy-button,
+.settings-shell .general-reset-button,
+.settings-shell .general-quick-card,
+.settings-shell .general-stat,
+.settings-shell .settings-callout,
+.settings-shell .settings-callout-inline,
+.settings-shell .permission-card,
+.settings-shell .plugin-row,
+.settings-shell .capability-row,
+.settings-shell .model-summary-card,
+.settings-shell .mature-model-card-head,
+.settings-shell .mature-shortcut-row {
+  align-items: center;
+}
+
+.settings-shell .settings-back > svg,
+.settings-shell .settings-search > svg,
+.settings-shell .settings-nav button > svg,
+.settings-shell .mature-action-button > svg,
+.settings-shell .general-copy-button > svg,
+.settings-shell .general-reset-button > svg,
+.settings-shell .general-quick-card > svg,
+.settings-shell .general-stat > svg,
+.settings-shell .settings-callout > svg,
+.settings-shell .settings-callout-inline > svg,
+.settings-shell .permission-card > svg,
+.settings-shell .settings-row-link > svg,
+.settings-shell .mature-preference-icon > svg,
+.settings-shell .general-default-card-icon > svg,
+.settings-shell .general-overview-icon > svg,
+.settings-shell .capability-icon > svg,
+.settings-shell .model-summary-icon > svg,
+.settings-shell .settings-brand-orb > svg {
+  display: block;
+  align-self: center;
+  justify-self: center;
+  flex: 0 0 auto;
+  margin: 0;
+  transform-origin: 50% 50%;
+}
+
+/* Stable tile and glyph sizes. Different tile sizes are intentional, but the
+   glyph-to-tile ratio is now consistent. */
+.settings-shell .mature-preference-icon {
+  width: 30px;
+  height: 30px;
+}
+
+.settings-shell .general-default-card-icon,
+.settings-shell .capability-icon {
+  width: 34px;
+  height: 34px;
+}
+
+.settings-shell .general-overview-icon {
+  width: 34px;
+  height: 34px;
+}
+
+.settings-shell .model-summary-icon {
+  width: 48px;
+  height: 48px;
+}
+
+.settings-shell .settings-brand-orb {
+  width: 34px;
+  height: 34px;
+}
+
+.settings-shell .mature-preference-icon > svg {
+  width: 17px;
+  height: 17px;
+}
+
+.settings-shell .general-default-card-icon > svg,
+.settings-shell .capability-icon > svg {
+  width: 17px;
+  height: 17px;
+}
+
+.settings-shell .general-overview-icon > svg,
+.settings-shell .general-stat > svg,
+.settings-shell .general-quick-card > svg:first-child {
+  width: 18px;
+  height: 18px;
+}
+
+.settings-shell .model-summary-icon > svg {
+  width: 22px;
+  height: 22px;
+}
+
+.settings-shell .settings-brand-orb > svg,
+.settings-shell .settings-nav button > svg,
+.settings-shell .settings-row-link > svg,
+.settings-shell .settings-back > svg,
+.settings-shell .settings-search > svg,
+.settings-shell .mature-action-button > svg,
+.settings-shell .general-copy-button > svg,
+.settings-shell .general-reset-button > svg,
+.settings-shell .settings-callout > svg,
+.settings-shell .settings-callout-inline > svg,
+.settings-shell .permission-card > svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Ensure icon columns themselves are centered. */
+.settings-shell .settings-nav button > svg,
+.settings-shell .general-stat > svg,
+.settings-shell .general-quick-card > svg:first-child,
+.settings-shell .permission-card > svg,
+.settings-shell .settings-callout > svg,
+.settings-shell .settings-callout-inline > svg {
+  justify-self: center;
+  align-self: center;
+}
+
+/* Keep chevrons centered without changing their hover animation. */
+.settings-shell .general-default-card-head > svg:last-child,
+.settings-shell .general-quick-card > svg:last-child,
+.settings-shell .settings-row-link > svg {
+  align-self: center;
+  justify-self: center;
+}
+
+/* Sub-pixel optical corrections only for glyphs whose visible stroke mass is
+   asymmetric inside Lucide's mathematically centered viewBox. */
+.settings-shell .mature-preference-icon > .lucide-type {
+  transform: translateY(0.35px);
+}
+
+.settings-shell .mature-preference-icon > .lucide-gauge {
+  transform: translateY(0.35px);
+}
+
+.settings-shell .mature-preference-icon > .lucide-moon {
+  transform: translateX(0.35px);
+}
+
+.settings-shell .mature-preference-icon > .lucide-code-2 {
+  transform: translateX(-0.2px);
+}
+
+/* ===== components/semantic-colors.css ===== */
+/* Unified semantic colors ---------------------------------------------------
+   Keep Loom's purple product accent, but make success/error/info signals
+   crisp and unmistakable against the dark UI. Loaded late so legacy muted
+   values converge on one shared palette without changing component behavior. */
+
+:root {
+  --success: #75bd99;
+  --danger: #e18492;
+  --warning: #f7c85d;
+  --info: #73b4ff;
+
+  --semantic-success: #75bd99;
+  --semantic-success-text: #8affbd;
+  --semantic-success-strong: #95d6b4;
+  --semantic-success-soft: rgba(53, 237, 145, 0.14);
+  --semantic-success-fill: rgba(37, 210, 124, 0.18);
+  --semantic-success-border: rgba(53, 237, 145, 0.40);
+  --semantic-success-glow: rgba(53, 237, 145, 0.06);
+
+  --semantic-danger: #e18492;
+  --semantic-danger-text: #ff9aaa;
+  --semantic-danger-strong: #ed9daa;
+  --semantic-danger-soft: rgba(255, 82, 107, 0.14);
+  --semantic-danger-fill: rgba(235, 55, 82, 0.06);
+  --semantic-danger-border: rgba(255, 82, 107, 0.40);
+  --semantic-danger-glow: rgba(255, 82, 107, 0.21);
+
+  --semantic-info: #73b4ff;
+  --semantic-info-text: #9ac9ff;
+  --semantic-info-soft: rgba(115, 180, 255, 0.12);
+  --semantic-info-border: rgba(115, 180, 255, 0.30);
+}
+
+/* Diff / file-change counters. */
+.turn-artifacts-stats b,
+.turn-artifacts-file-strip small b,
+.task-flow-plus,
+.review-additions,
+.review-file-stats b,
+.review-tree-stats b,
+.inline-diff-tool .diff-added {
+  color: var(--semantic-success-strong) !important;
+}
+
+.turn-artifacts-stats i,
+.turn-artifacts-file-strip small i,
+.task-flow-minus,
+.task-flow-group-failed,
+.review-deletions,
+.review-file-stats em,
+.review-tree-stats em,
+.inline-diff-tool .diff-removed {
+  color: var(--semantic-danger-strong) !important;
+}
+
+/* Full review diff: stronger fills and brighter line furniture. */
+.review-code-row.is-add,
+.inline-diff-row.is-add {
+  background: var(--semantic-success-fill) !important;
+  color: #e5fff0 !important;
+}
+
+.review-code-row.is-delete,
+.inline-diff-row.is-delete {
+  background: var(--semantic-danger-fill) !important;
+  color: #ffe7eb !important;
+}
+
+/* The dark-first semantic palette must not force near-white code onto the
+   light review surface. Keep the same meaning while restoring readable
+   contrast for the complete line, including the <code> child. */
+[data-loom-theme="light"] .review-code-row.is-add,
+[data-loom-theme="light"] .review-code-row.is-add code,
+[data-loom-theme="light"] .inline-diff-row.is-add,
+[data-loom-theme="light"] .inline-diff-row.is-add code {
+  background: rgba(47, 122, 88, .085) !important;
+  color: #285b44 !important;
+}
+
+[data-loom-theme="light"] .review-code-row.is-delete,
+[data-loom-theme="light"] .review-code-row.is-delete code,
+[data-loom-theme="light"] .inline-diff-row.is-delete,
+[data-loom-theme="light"] .inline-diff-row.is-delete code {
+  background: rgba(178, 75, 90, .08) !important;
+  color: #7f3440 !important;
+}
+
+[data-loom-theme="light"] .review-code-row.is-add .review-line-number,
+[data-loom-theme="light"] .inline-diff-row.is-add .inline-diff-number {
+  color: #4d896b !important;
+}
+
+[data-loom-theme="light"] .review-code-row.is-delete .review-line-number,
+[data-loom-theme="light"] .inline-diff-row.is-delete .inline-diff-number {
+  color: #a9616c !important;
+}
+
+[data-loom-theme="light"] .review-code-row.is-add .review-line-marker,
+[data-loom-theme="light"] .inline-diff-row.is-add .inline-diff-marker {
+  color: #2f7a58 !important;
+  text-shadow: none;
+}
+
+[data-loom-theme="light"] .review-code-row.is-delete .review-line-marker,
+[data-loom-theme="light"] .inline-diff-row.is-delete .inline-diff-marker {
+  color: #b24b5a !important;
+  text-shadow: none;
+}
+
+.review-code-row.is-add .review-line-number,
+.inline-diff-row.is-add .inline-diff-number {
+  color: rgba(92, 247, 160, 0.82) !important;
+}
+
+.review-code-row.is-delete .review-line-number,
+.inline-diff-row.is-delete .inline-diff-number {
+  color: rgba(255, 112, 133, 0.84) !important;
+}
+
+.review-code-row.is-add .review-line-marker,
+.inline-diff-row.is-add .inline-diff-marker {
+  color: var(--semantic-success-strong) !important;
+  text-shadow: 0 0 12px var(--semantic-success-glow);
+}
+
+.review-code-row.is-delete .review-line-marker,
+.inline-diff-row.is-delete .inline-diff-marker {
+  color: var(--semantic-danger-strong) !important;
+  text-shadow: 0 0 12px var(--semantic-danger-glow);
+}
+
+/* Compact activity status dots. */
+.task-flow-status.completed .task-flow-status-dot,
+.task-flow-status.changed .task-flow-status-dot,
+.runtime-status-dot.status-completed,
+.runtime-status-dot.status-success,
+.runtime-status-dot.status-succeeded {
+  background: var(--semantic-success-strong) !important;
+  box-shadow: 0 0 0 3px var(--semantic-success-soft), 0 0 10px var(--semantic-success-glow) !important;
+}
+
+.task-flow-status.failed .task-flow-status-dot,
+.task-flow-status.denied .task-flow-status-dot,
+.runtime-status-dot.status-failed,
+.runtime-status-dot.status-error,
+.runtime-status-dot.status-denied {
+  background: var(--semantic-danger-strong) !important;
+  box-shadow: 0 0 0 3px var(--semantic-danger-soft), 0 0 10px var(--semantic-danger-glow) !important;
+}
+
+/* Runtime inspector failure states. */
+.runtime-health.warning {
+  color: var(--semantic-danger-text) !important;
+  border-color: var(--semantic-danger-border) !important;
+  background: var(--semantic-danger-soft) !important;
+}
+
+.runtime-health.warning .runtime-health-dot {
+  background: var(--semantic-danger-strong) !important;
+  box-shadow: 0 0 0 3px var(--semantic-danger-soft), 0 0 10px var(--semantic-danger-glow) !important;
+}
+
+.runtime-event.is-failed {
+  background: linear-gradient(90deg, rgba(255, 82, 107, .045), transparent 74%) !important;
+}
+
+.runtime-event.is-failed .runtime-event-icon {
+  color: var(--semantic-danger-text) !important;
+  border-color: var(--semantic-danger-border) !important;
+  background: var(--semantic-danger-soft) !important;
+}
+
+/* Chat / turn level failures. */
+.error-row {
+  color: var(--semantic-danger-text) !important;
+  border-color: rgba(255, 82, 107, .24) !important;
+  background: linear-gradient(90deg, rgba(255, 82, 107, .105), rgba(255, 82, 107, .035)) !important;
+}
+
+.error-row .error-icon,
+.error-icon {
+  color: var(--semantic-danger-text) !important;
+  border-color: var(--semantic-danger-border) !important;
+  background: var(--semantic-danger-soft) !important;
+}
+
+/* Settings status surfaces use the same success/error language. */
+.settings-status-pill.ready {
+  color: var(--semantic-success-text) !important;
+  border-color: var(--semantic-success-border) !important;
+  background: var(--semantic-success-soft) !important;
+}
+
+.settings-status-pill.ready .settings-status-dot {
+  color: var(--semantic-success-strong) !important;
+}
+
+/* Error tone. `stateTone()` in SettingsWebSearchPanel emits `error` when the
+   configured provider fails to initialise; without this rule the pill falls
+   through to the neutral base style and a broken provider reads as healthy. */
+.settings-status-pill.error {
+  color: var(--semantic-danger-text) !important;
+  border-color: var(--semantic-danger-border) !important;
+  background: var(--semantic-danger-soft) !important;
+}
+
+.settings-status-pill.error .settings-status-dot {
+  color: var(--semantic-danger-strong) !important;
+}
+
+.settings-toast.success {
+  border-color: var(--semantic-success-border) !important;
+  color: var(--semantic-success-text) !important;
+}
+
+.settings-toast.error {
+  border-color: var(--semantic-danger-border) !important;
+  color: var(--semantic-danger-text) !important;
+}
+
+/* Generic semantic utility hooks for current and future components. */
+.status-success,
+.text-success,
+.diff-added,
+.added {
+  color: var(--semantic-success-strong) !important;
+}
+
+.status-danger,
+.status-error,
+.text-danger,
+.text-error,
+.diff-removed,
+.removed {
+  color: var(--semantic-danger-strong) !important;
+}
+
+.status-info,
+.text-info {
+  color: var(--semantic-info) !important;
+}
+
+/* ===== theme.css ===== */
+/* theme.css (tokens + settings rules) — kept 33 of 664 top-level blocks */
+:root {
+  --loom-canvas: #0b0c0f;
+  --loom-sidebar: #101115;
+  --loom-surface: #15171b;
+  --loom-surface-raised: #191b20;
+  --loom-surface-soft: #111318;
+  --loom-border: rgba(255,255,255,.075);
+  --loom-divider: rgba(255,255,255,.055);
+  --loom-shadow: 0 18px 48px rgba(0,0,0,.24);
+  --loom-code-bg: #0e1014;
+}
+
+[data-loom-theme="dark"] {
+  color-scheme: dark;
+}
+
+[data-loom-theme="light"] {
+  color-scheme: light;
+  --bg: #f7f7f8;
+  --bg-deep: #f1f2f4;
+  --panel: #ffffff;
+  --panel-raised: #fbfbfc;
+  --panel-soft: #f0f1f3;
+  --panel-hover: #e9ebee;
+  --border: #d8dbe1;
+  --border-soft: #e5e7eb;
+  --border-strong: #c7cbd3;
+  --text: #1b1e24;
+  --text-2: #454b55;
+  --muted: #707783;
+  --faint: #9aa1ab;
+  --accent: #695ad8;
+  --accent-soft: #7567de;
+  --accent-faint: rgba(105,90,216,.09);
+  --success: #39765a;
+  --danger: #b8505d;
+  --warning: #936c2d;
+
+  --loom-canvas: #f7f7f8;
+  --loom-sidebar: #f1f2f4;
+  --loom-surface: #ffffff;
+  --loom-surface-raised: #fbfbfc;
+  --loom-surface-soft: #f3f4f6;
+  --loom-border: rgba(28,31,37,.10);
+  --loom-divider: rgba(28,31,37,.075);
+  --loom-shadow: 0 18px 48px rgba(25,30,40,.10);
+  --loom-code-bg: #f3f4f6;
+}
+
+html.loom-theme-transitioning body,
+html.loom-theme-transitioning .app-shell,
+html.loom-theme-transitioning .workspace,
+html.loom-theme-transitioning .sidebar,
+html.loom-theme-transitioning .thread-header,
+html.loom-theme-transitioning .composer,
+html.loom-theme-transitioning .inspector,
+html.loom-theme-transitioning .settings-host,
+html.loom-theme-transitioning .settings-sidebar,
+html.loom-theme-transitioning .settings-main,
+html.loom-theme-transitioning .settings-card,
+html.loom-theme-transitioning .composer-popover {
+  transition:
+    background-color 220ms ease,
+    background 220ms ease,
+    color 180ms ease,
+    border-color 180ms ease,
+    box-shadow 220ms ease !important;
+}
+
+[data-loom-theme="light"] .settings-shell {
+  --settings-accent: #695ad8;
+  --settings-accent-soft: rgba(105,90,216,.08);
+  --settings-panel: #ffffff;
+  --settings-panel-strong: #f8f9fa;
+  --settings-border: rgba(28,31,37,.10);
+  --settings-divider: rgba(28,31,37,.075);
+  color: #20232a;
+}
+
+[data-loom-theme="light"] .settings-host,
+[data-loom-theme="light"] .settings-main {
+  background: #f7f7f8;
+}
+
+[data-loom-theme="light"] .settings-sidebar {
+  border-right-color: rgba(28,31,37,.085);
+  background: #f0f1f3;
+}
+
+[data-loom-theme="light"] .settings-back {
+  color: #5d6570;
+}
+
+[data-loom-theme="light"] .settings-back:hover,
+[data-loom-theme="light"] .settings-nav button:hover {
+  color: #25282f;
+  background: rgba(28,31,37,.045);
+}
+
+[data-loom-theme="light"] .settings-sidebar-title strong,
+[data-loom-theme="light"] .settings-page-heading h1,
+[data-loom-theme="light"] .settings-section-heading h2,
+[data-loom-theme="light"] .settings-detail-row strong,
+[data-loom-theme="light"] .mature-preference-copy strong,
+[data-loom-theme="light"] .general-overview-card strong,
+[data-loom-theme="light"] .general-default-card strong {
+  color: #20232a;
+}
+
+[data-loom-theme="light"] .settings-sidebar-title span:not(.settings-brand-orb),
+[data-loom-theme="light"] .settings-page-heading p,
+[data-loom-theme="light"] .settings-section-heading p,
+[data-loom-theme="light"] .settings-detail-row span,
+[data-loom-theme="light"] .mature-preference-copy span {
+  color: #737b86;
+}
+
+[data-loom-theme="light"] .settings-search {
+  border-color: rgba(28,31,37,.09);
+  background: rgba(255,255,255,.65);
+  color: #707883;
+}
+
+[data-loom-theme="light"] .settings-search:focus-within {
+  border-color: rgba(105,90,216,.25);
+  background: #fff;
+}
+
+[data-loom-theme="light"] .settings-search input,
+[data-loom-theme="light"] .mature-input,
+[data-loom-theme="light"] .mature-select {
+  color: #2a2e35;
+}
+
+[data-loom-theme="light"] .settings-nav button {
+  color: #5f6671;
+}
+
+[data-loom-theme="light"] .settings-nav button.active {
+  color: #24272e;
+  border-color: rgba(28,31,37,.065);
+  background: rgba(255,255,255,.72);
+  box-shadow: inset 2px 0 #695ad8;
+}
+
+[data-loom-theme="light"] .settings-sidebar-footer {
+  border-top-color: rgba(28,31,37,.07);
+}
+
+[data-loom-theme="light"] .settings-sidebar-footer strong {
+  color: #454b55;
+}
+
+[data-loom-theme="light"] .settings-card,
+[data-loom-theme="light"] .general-overview-card,
+[data-loom-theme="light"] .general-default-card,
+[data-loom-theme="light"] .general-theme-card,
+[data-loom-theme="light"] .general-quick-card,
+[data-loom-theme="light"] .mature-model-card,
+[data-loom-theme="light"] .settings-option-card,
+[data-loom-theme="light"] .permission-card,
+[data-loom-theme="light"] .appearance-overview-card {
+  border-color: rgba(28,31,37,.09);
+  background: #fff;
+  box-shadow: none;
+}
+
+[data-loom-theme="light"] .settings-detail-row,
+[data-loom-theme="light"] .capability-row,
+[data-loom-theme="light"] .plugin-row,
+[data-loom-theme="light"] .mature-preference-row,
+[data-loom-theme="light"] .mature-shortcut-row,
+[data-loom-theme="light"] .general-preference-row,
+[data-loom-theme="light"] .language-settings-dock {
+  border-color: rgba(28,31,37,.07);
+}
+
+[data-loom-theme="light"] .settings-detail-row code,
+[data-loom-theme="light"] .mature-select,
+[data-loom-theme="light"] .mature-input,
+[data-loom-theme="light"] .mature-code-preview,
+[data-loom-theme="light"] .mature-diagnostics-preview,
+[data-loom-theme="light"] .appearance-reading-preview {
+  border-color: rgba(28,31,37,.085);
+  background: #f4f5f6;
+  color: #3f454f;
+}
+
+[data-loom-theme="light"] .mature-action-button,
+[data-loom-theme="light"] .mature-model-card button,
+[data-loom-theme="light"] .general-copy-button,
+[data-loom-theme="light"] .general-reset-button {
+  border-color: rgba(28,31,37,.09);
+  background: #f4f5f6;
+  color: #4a505a;
+}
+
+[data-loom-theme="light"] .mature-action-button:hover:not(:disabled),
+[data-loom-theme="light"] .mature-model-card button:hover:not(:disabled),
+[data-loom-theme="light"] .general-copy-button:hover,
+[data-loom-theme="light"] .general-reset-button:hover {
+  background: #eceef1;
+  border-color: rgba(28,31,37,.14);
+}
+
+[data-loom-theme="light"] .settings-switch {
+  border-color: rgba(28,31,37,.12);
+  background: #d8dce2;
+}
+
+[data-loom-theme="light"] .settings-switch.on {
+  border-color: rgba(105,90,216,.34);
+  background: #695ad8;
+}
+
+[data-loom-theme="light"] .capability-icon,
+[data-loom-theme="light"] .model-summary-icon,
+[data-loom-theme="light"] .mature-preference-icon,
+[data-loom-theme="light"] .general-default-card-icon,
+[data-loom-theme="light"] .general-overview-icon {
+  color: #6659ba;
+  border-color: rgba(105,90,216,.12);
+  background: rgba(105,90,216,.055);
+}
+
+[data-loom-theme="light"] .settings-toast {
+  border-color: rgba(28,31,37,.10);
+  background: rgba(255,255,255,.96);
+  color: #343941;
+  box-shadow: 0 10px 28px rgba(27,31,40,.10);
+}
+
+[data-loom-theme="light"] {
+  --text-2: #3f4650;
+  --muted: #606874;
+  --faint: #737c88;
+
+  --loom-text-primary: #20242b;
+  --loom-text-secondary: #4a515c;
+  --loom-text-muted: #626a75;
+  --loom-text-faint: #737c88;
+
+  --semantic-success: #39765a;
+  --semantic-success-text: #2f6d50;
+  --semantic-success-strong: #39765a;
+  --semantic-success-soft: rgba(57,118,90,.10);
+  --semantic-success-fill: rgba(57,118,90,.11);
+  --semantic-success-border: rgba(57,118,90,.30);
+  --semantic-success-glow: rgba(57,118,90,.08);
+
+  --semantic-danger: #b14c5a;
+  --semantic-danger-text: #a13f4d;
+  --semantic-danger-strong: #b14c5a;
+  --semantic-danger-soft: rgba(177,76,90,.09);
+  --semantic-danger-fill: rgba(177,76,90,.08);
+  --semantic-danger-border: rgba(177,76,90,.28);
+  --semantic-danger-glow: rgba(177,76,90,.08);
+
+  --semantic-info: #3f70b5;
+  --semantic-info-text: #35649f;
+  --semantic-info-soft: rgba(63,112,181,.09);
+  --semantic-info-border: rgba(63,112,181,.25);
+}
+
+[data-loom-theme="light"] .settings-tool-count {
+  border-color: #d8dde3;
+  background: #ffffff;
+  color: #525b66;
+  box-shadow:
+    0 3px 10px rgba(27,31,40,.035),
+    inset 0 1px rgba(255,255,255,.96);
+}
+
+[data-loom-theme="light"] .settings-sidebar-top > .language-settings-dock {
+  border-color: rgba(28,31,37,.085);
+  background: rgba(255,255,255,.58);
+}
+
+[data-loom-theme="light"] .capability-list.settings-card {
+  border-color: #d9dde3;
+  background: #ffffff;
+  box-shadow:
+    inset 0 1px rgba(255,255,255,.96),
+    0 7px 20px rgba(27,31,40,.035);
+}
+
+[data-loom-theme="light"] .capability-list .settings-row-link {
+  color: #737c87;
+}
+
+[data-loom-theme="light"] .capability-list .settings-row-link:hover {
+  color: #5347b1;
+  background: rgba(105,90,216,.06);
+}
+
+/* ===== global-motion.css ===== */
+/* global-motion.css (:root) — kept 1 of 42 top-level blocks */
+:root {
+  --loom-motion-control: 170ms;
+  --loom-motion-popover: 310ms;
+  --loom-motion-dialog: 380ms;
+  --loom-motion-panel: 390ms;
+  --loom-motion-page: 420ms;
+  --loom-motion-exit: 240ms;
+  --loom-motion-opacity: 260ms;
+  --loom-ease-out: cubic-bezier(.2, .74, .18, 1);
+  --loom-ease-standard: cubic-bezier(.22, .7, .18, 1);
+  --loom-ease-in: cubic-bezier(.42, 0, .72, .2);
+}
+/* ===END INLINED CSS=== */
+
+/* ------------------------------------------------------- preview chrome */
+/* Not part of the app. Scopes the theme to a column, and unwraps the settings
+   shell so a full-height grid becomes a content-sized block inside a stage. */
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: 28px;
+  background: #15171b;
+  color: #e8eaee;
+  font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
+.ic { fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; }
+
+.page-head { max-width: 2000px; margin: 0 auto 22px; }
+.page-head h1 { margin: 0; font-size: 1.16rem; font-weight: 680; letter-spacing: -.02em; }
+.page-head p { margin: 7px 0 0; color: #8d949f; font-size: .78rem; line-height: 1.6; }
+.page-head code {
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, .07);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: .92em;
+}
+
+.page-head .cmd {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, .09);
+  border-radius: 9px;
+  background: rgba(0, 0, 0, .32);
+  color: #b9c0cb;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: .66rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.board {
+  max-width: 2000px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 26px;
+  align-items: start;
+}
+
+.col { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+
+.col > h2 {
+  margin: 0 0 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: .8rem;
+  font-weight: 660;
+  letter-spacing: .01em;
+  color: #cfd4dc;
+}
+
+.col > h2::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: .55;
+}
+
+.cell { margin: 0; display: flex; flex-direction: column; gap: 9px; }
+
+.cell figcaption {
+  color: #8d949f;
+  font-size: .7rem;
+  letter-spacing: .01em;
+}
+
+.stage {
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: linear-gradient(145deg, var(--panel-soft), var(--bg) 70%);
+  overflow: hidden;
+}
+
+/* The settings shell is a full-height two-column grid in the app (sidebar +
+   main). Here it only needs to provide the ancestor context that
+   settings-icon-alignment.css keys off (`.settings-shell .mature-action-button`
+   and friends), so it collapses to a single content-sized column. */
+.stage .settings-shell { height: auto; grid-template-columns: minmax(0, 1fr); }
+.stage .settings-main { overflow: visible; }
+.stage .settings-content { padding: 0; }
+
+/* Variant excerpts only render the section under review, so give them the same
+   container metrics as the full page. */
+.stage .websearch-settings-page { display: grid; gap: 24px; }
+
+/* Tone strip: a compact grid so the status-pill vocabulary can be eyeballed. */
+.tone-strip { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="i-key" viewBox="0 0 24 24"><path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/></symbol>
+  <symbol id="i-save" viewBox="0 0 24 24"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M10 11v6"/><path d="M14 11v6"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-activity" viewBox="0 0 24 24"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></symbol>
+</svg>
+
+<div class="page-head">
+  <h1>Loom 网页搜索设置页 · 设计预览</h1>
+  <p>
+    下面是 <code>SettingsWebSearchPanel.tsx</code> 的真实 DOM 与真实样式表（<code>settings-websearch.css</code>
+    以及它复用的 <code>settings-*.css</code> / <code>typography-scale.css</code> / <code>semantic-colors.css</code> /
+    <code>theme.css</code>），未做任何视觉改动。只有两处是预览页自己的外壳：主题变量按列注入，
+    以及把应用里撑满高度的 <code>.settings-shell</code> 网格压成内容高度。
+  </p>
+  <p>
+    文案取自 <code>src/i18n.tsx</code> 的中文词条；右侧浅色列由左侧克隆生成，保证两边结构完全一致。
+    页面里的 <code>input</code> 全部是静态的，仅用于展示各状态下的禁用/占位表现。
+  </p>
+  <pre class="cmd">node design/build-websearch-preview.mjs</pre>
+</div>
+
+<div class="board">
+
+  <section class="col theme-dark" id="colDark" data-loom-theme="dark">
+    <h2>深色主题（默认）</h2>
+  </section>
+
+  <section class="col theme-light" id="colLight" data-loom-theme="light">
+    <h2>浅色主题</h2>
+  </section>
+
+</div>
+
+<template id="states">
+
+  <!-- ================================================== 1 · 默认态（整页） -->
+  <figure class="cell">
+    <div class="stage">
+      <div class="settings-shell">
+        <div class="settings-main">
+          <div class="settings-content">
+            <div class="websearch-settings-page">
+
+              <div class="settings-page-heading settings-heading-with-switch">
+                <div>
+                  <span class="settings-eyebrow">公网搜索</span>
+                  <h1>网页搜索</h1>
+                  <p>选择 Loom 查询公网资料的方式。DuckDuckGo 无需 Key；Tavily 和 Brave 需要把 Key 存到系统钥匙串。</p>
+                </div>
+                <div class="settings-master-switch">
+                  <span class="settings-status-pill ready"><span class="settings-status-dot"></span>就绪</span>
+                </div>
+              </div>
+
+              <section class="settings-section">
+                <div class="settings-section-heading"><h2>运行状态</h2></div>
+                <div class="settings-card settings-detail-list">
+                  <div class="settings-detail-row"><div><strong>提供商</strong></div><code>duckduckgo</code></div>
+                  <div class="settings-detail-row"><div><strong>当前选择</strong></div><code>auto</code></div>
+                  <div class="settings-detail-row"><div><strong>Key 来源</strong></div><code>未存储任何 Key</code></div>
+                  <div class="settings-detail-row"><div><strong>状态</strong></div><code>就绪</code></div>
+                  <div class="settings-detail-row"><div><strong>是否生效</strong></div><code>开启</code></div>
+                </div>
+              </section>
+
+              <section class="settings-section">
+                <div class="settings-section-heading"><h2>提供商</h2></div>
+                <div class="settings-card websearch-choice-list" role="radiogroup" aria-label="提供商">
+                  <button type="button" role="radio" aria-checked="true" class="websearch-choice selected">
+                    <span class="websearch-choice-mark" aria-hidden="true"><svg class="ic" width="13" height="13" style="stroke-width:2.6"><use href="#i-check"/></svg></span>
+                    <span class="websearch-choice-copy">
+                      <strong>自动 · 推荐</strong>
+                      <span>优先用已配置的 Tavily / Brave Key，否则回落到 DuckDuckGo。</span>
+                    </span>
+                    <span class="websearch-choice-current">当前</span>
+                  </button>
+                  <button type="button" role="radio" aria-checked="false" class="websearch-choice">
+                    <span class="websearch-choice-mark" aria-hidden="true"></span>
+                    <span class="websearch-choice-copy">
+                      <strong>Tavily</strong>
+                      <span>需要在系统钥匙串里保存一个 Tavily API Key。</span>
+                    </span>
+                  </button>
+                  <button type="button" role="radio" aria-checked="false" class="websearch-choice">
+                    <span class="websearch-choice-mark" aria-hidden="true"></span>
+                    <span class="websearch-choice-copy">
+                      <strong>Brave</strong>
+                      <span>需要在系统钥匙串里保存一个 Brave Search API Key。</span>
+                    </span>
+                  </button>
+                  <button type="button" role="radio" aria-checked="false" class="websearch-choice">
+                    <span class="websearch-choice-mark" aria-hidden="true"></span>
+                    <span class="websearch-choice-copy">
+                      <strong>DuckDuckGo</strong>
+                      <span>免费，无需 Key。仅当显式选择或没有其他可用提供商时才使用。</span>
+                    </span>
+                  </button>
+                  <button type="button" role="radio" aria-checked="false" class="websearch-choice">
+                    <span class="websearch-choice-mark" aria-hidden="true"></span>
+                    <span class="websearch-choice-copy">
+                      <strong>关闭</strong>
+                      <span>禁用网页搜索；Agent 仍可通过浏览器控制完成检索。</span>
+                    </span>
+                  </button>
+                </div>
+                <div class="settings-inline-actions websearch-choice-actions">
+                  <button class="mature-action-button" type="button" disabled>保存选择</button>
+                  <span class="websearch-hint">DuckDuckGo 无需 API Key，只有在需要更高配额时才选付费提供商。</span>
+                </div>
+              </section>
+
+              <section class="settings-section">
+                <div class="settings-section-heading"><h2>API Key</h2></div>
+                <div class="settings-card websearch-key-card">
+                  <div class="websearch-key-row">
+                    <span class="websearch-key-icon" aria-hidden="true"><svg class="ic" width="16" height="16" style="stroke-width:1.8"><use href="#i-key"/></svg></span>
+                    <input class="mature-input" type="password" disabled aria-label="API Key" placeholder="粘贴一个 Key（Tavily 或 Brave）。它会发送到 App Server 并写入系统钥匙串。">
+                    <button class="mature-action-button secondary websearch-key-toggle" type="button" disabled aria-label="显示"><svg class="ic" width="14" height="14"><use href="#i-eye"/></svg>显示</button>
+                  </div>
+                  <div class="settings-inline-actions websearch-key-actions">
+                    <button class="mature-action-button" type="button" disabled><svg class="ic" width="14" height="14"><use href="#i-save"/></svg>保存 Key</button>
+                    <button class="mature-action-button secondary" type="button" disabled><svg class="ic" width="14" height="14"><use href="#i-trash"/></svg>移除 Key</button>
+                    <span class="websearch-key-status">未配置</span>
+                  </div>
+                  <p class="websearch-hint">DuckDuckGo 无需 API Key，只有在需要更高配额时才选付费提供商。</p>
+                </div>
+              </section>
+
+              <section class="settings-section">
+                <div class="settings-section-heading"><h2>测试搜索</h2></div>
+                <div class="settings-card websearch-test-card">
+                  <div class="websearch-test-row">
+                    <span class="websearch-key-icon" aria-hidden="true"><svg class="ic" width="16" height="16" style="stroke-width:1.8"><use href="#i-globe"/></svg></span>
+                    <input class="mature-input" aria-label="测试搜索" placeholder="可选的测试查询">
+                    <button class="mature-action-button" type="button"><svg class="ic" width="14" height="14"><use href="#i-activity"/></svg>测试搜索</button>
+                  </div>
+                </div>
+              </section>
+
+              <div class="settings-callout websearch-callout">
+                <svg class="ic" width="16" height="16"><use href="#i-alert"/></svg>
+                <div>
+                  <strong>网页搜索按运行环境配置，而不是按对话。</strong>
+                  <span>保存的 Key 存放在系统钥匙串里，会作用于本 Loom 运行时的所有对话。切换提供商不会回溯修改当前活动回合已经发出的搜索请求。</span>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <figcaption>1 · 默认态整页（auto 回落到 DuckDuckGo，无需 Key；Key 输入与「保存选择」按规则禁用）</figcaption>
+  </figure>
+
+  <!-- ============================================ 2 · 改了选择但还没保存 -->
+  <figure class="cell">
+    <div class="stage">
+      <div class="settings-shell"><div class="settings-main"><div class="settings-content">
+        <div class="websearch-settings-page">
+          <section class="settings-section">
+            <div class="settings-section-heading"><h2>提供商</h2></div>
+            <div class="settings-card websearch-choice-list" role="radiogroup" aria-label="提供商">
+              <button type="button" role="radio" aria-checked="false" class="websearch-choice">
+                <span class="websearch-choice-mark" aria-hidden="true"></span>
+                <span class="websearch-choice-copy">
+                  <strong>自动 · 推荐</strong>
+                  <span>优先用已配置的 Tavily / Brave Key，否则回落到 DuckDuckGo。</span>
+                </span>
+                <span class="websearch-choice-current">当前</span>
+              </button>
+              <button type="button" role="radio" aria-checked="true" class="websearch-choice selected">
+                <span class="websearch-choice-mark" aria-hidden="true"><svg class="ic" width="13" height="13" style="stroke-width:2.6"><use href="#i-check"/></svg></span>
+                <span class="websearch-choice-copy">
+                  <strong>Tavily</strong>
+                  <span>需要在系统钥匙串里保存一个 Tavily API Key。</span>
+                </span>
+              </button>
+              <button type="button" role="radio" aria-checked="false" class="websearch-choice">
+                <span class="websearch-choice-mark" aria-hidden="true"></span>
+                <span class="websearch-choice-copy">
+                  <strong>Brave</strong>
+                  <span>需要在系统钥匙串里保存一个 Brave Search API Key。</span>
+                </span>
+              </button>
+              <button type="button" role="radio" aria-checked="false" class="websearch-choice">
+                <span class="websearch-choice-mark" aria-hidden="true"></span>
+                <span class="websearch-choice-copy">
+                  <strong>DuckDuckGo</strong>
+                  <span>免费，无需 Key。仅当显式选择或没有其他可用提供商时才使用。</span>
+                </span>
+              </button>
+              <button type="button" role="radio" aria-checked="false" class="websearch-choice">
+                <span class="websearch-choice-mark" aria-hidden="true"></span>
+                <span class="websearch-choice-copy">
+                  <strong>关闭</strong>
+                  <span>禁用网页搜索；Agent 仍可通过浏览器控制完成检索。</span>
+                </span>
+              </button>
+            </div>
+            <div class="settings-inline-actions websearch-choice-actions">
+              <button class="mature-action-button" type="button">保存选择</button>
+            </div>
+          </section>
+        </div>
+      </div></div></div>
+    </div>
+    <figcaption>2 · 草稿与已存选择不一致（Tavily 被选中、「当前」仍在 auto 上、「保存选择」才可点；未保存前不会写盘）</figcaption>
+  </figure>
+
+  <!-- ============================================ 3 · Key 已配置（可移除） -->
+  <figure class="cell">
+    <div class="stage">
+      <div class="settings-shell"><div class="settings-main"><div class="settings-content">
+        <div class="websearch-settings-page">
+          <section class="settings-section">
+            <div class="settings-section-heading"><h2>API Key</h2></div>
+            <div class="settings-card websearch-key-card">
+              <div class="websearch-key-row">
+                <span class="websearch-key-icon" aria-hidden="true"><svg class="ic" width="16" height="16" style="stroke-width:1.8"><use href="#i-key"/></svg></span>
+                <input class="mature-input" type="password" aria-label="API Key" placeholder="已配置 · 留空以保留已保存的 Key">
+                <button class="mature-action-button secondary websearch-key-toggle" type="button" disabled aria-label="显示"><svg class="ic" width="14" height="14"><use href="#i-eye"/></svg>显示</button>
+              </div>
+              <div class="settings-inline-actions websearch-key-actions">
+                <button class="mature-action-button" type="button" disabled><svg class="ic" width="14" height="14"><use href="#i-save"/></svg>保存 Key</button>
+                <button class="mature-action-button secondary" type="button"><svg class="ic" width="14" height="14"><use href="#i-trash"/></svg>移除 Key</button>
+                <span class="websearch-key-status ok">已配置</span>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div></div></div>
+    </div>
+    <figcaption>3 · Key 已存进钥匙串（字段留空、占位文案改为「留空以保留」；只有「移除 Key」可点）</figcaption>
+  </figure>
+
+  <!-- ================================================== 4 · 测试成功 / 失败 -->
+  <figure class="cell">
+    <div class="stage">
+      <div class="settings-shell"><div class="settings-main"><div class="settings-content">
+        <div class="websearch-settings-page">
+          <section class="settings-section">
+            <div class="settings-section-heading"><h2>测试搜索</h2></div>
+            <div class="settings-card websearch-test-card">
+              <div class="websearch-test-row">
+                <span class="websearch-key-icon" aria-hidden="true"><svg class="ic" width="16" height="16" style="stroke-width:1.8"><use href="#i-globe"/></svg></span>
+                <input class="mature-input" aria-label="测试搜索" placeholder="可选的测试查询">
+                <button class="mature-action-button" type="button"><svg class="ic" width="14" height="14"><use href="#i-activity"/></svg>测试搜索</button>
+              </div>
+              <div class="websearch-test-result ok">
+                <strong>成功</strong>
+                <span>提供商: tavily · 结果数: 5 · 耗时: 412 ms</span>
+              </div>
+            </div>
+          </section>
+          <section class="settings-section">
+            <div class="settings-card websearch-test-card">
+              <div class="websearch-test-row">
+                <span class="websearch-key-icon" aria-hidden="true"><svg class="ic" width="16" height="16" style="stroke-width:1.8"><use href="#i-globe"/></svg></span>
+                <input class="mature-input" aria-label="测试搜索" placeholder="可选的测试查询">
+                <button class="mature-action-button" type="button"><svg class="ic" width="14" height="14"><use href="#i-activity"/></svg>测试搜索</button>
+              </div>
+              <div class="websearch-test-result bad">
+                <strong>失败</strong>
+                <span>提供商: tavily · 结果数: 0 · 耗时: 138 ms</span>
+                <code>HTTP 401: invalid api key</code>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div></div></div>
+    </div>
+    <figcaption>4 · 测试搜索（成功 / 失败；失败时把服务端错误原文放在 <code>&lt;code&gt;</code> 里，方便排查）</figcaption>
+  </figure>
+
+  <!-- ================================================== 5 · 运行中 / 加载失败 -->
+  <figure class="cell">
+    <div class="stage">
+      <div class="settings-shell"><div class="settings-main"><div class="settings-content">
+        <div class="websearch-settings-page">
+          <div class="settings-callout warning websearch-callout">
+            <svg class="ic" width="16" height="16"><use href="#i-alert"/></svg>
+            <div>
+              <strong>任务运行中</strong>
+              <span>Finish or stop the current turn before changing web search.</span>
+            </div>
+          </div>
+          <div class="settings-callout warning websearch-callout">
+            <svg class="ic" width="16" height="16"><use href="#i-alert"/></svg>
+            <div>
+              <strong>错误</strong>
+              <span>connect ECONNREFUSED 127.0.0.1:8788</span>
+            </div>
+          </div>
+        </div>
+      </div></div></div>
+    </div>
+    <figcaption>5 · 两条前置提示：回合进行中（后端会拒绝改配置）与状态读取失败</figcaption>
+  </figure>
+
+  <!-- ================================================== 6 · 状态药丸词汇 -->
+  <figure class="cell">
+    <div class="stage">
+      <div class="tone-strip">
+        <span class="settings-status-pill ready"><span class="settings-status-dot"></span>就绪</span>
+        <span class="settings-status-pill warning"><span class="settings-status-dot"></span>警告</span>
+        <span class="settings-status-pill off"><span class="settings-status-dot"></span>未配置</span>
+        <span class="settings-status-pill error"><span class="settings-status-dot"></span>错误</span>
+      </div>
+    </div>
+    <figcaption>6 · 状态药丸四档（ready / warning / off / error；error 是本次补上的缺失变体）</figcaption>
+  </figure>
+
+</template>
+
+<script>
+  const template = document.getElementById("states");
+  document.getElementById("colDark").appendChild(template.content.cloneNode(true));
+  document.getElementById("colLight").appendChild(template.content.cloneNode(true));
+</script>
+
+</body>
+</html>

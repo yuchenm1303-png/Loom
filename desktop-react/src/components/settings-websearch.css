@@ -1,0 +1,219 @@
+/**
+ * Web Search settings page.
+ *
+ * Only semantic tokens that actually exist in `src/styles.css` :root are used,
+ * so the panel follows both themes without a light-theme override block. The
+ * settings shell already provides the page padding; this file only styles the
+ * pieces the shared classes do not cover (the provider radio list, the key row,
+ * and the test result).
+ */
+
+.websearch-settings-page {
+  display: grid;
+  gap: 24px;
+}
+
+.websearch-callout {
+  margin: -4px 0 0;
+}
+
+/* Provider choice list ---------------------------------------------------- */
+
+.websearch-choice-list {
+  display: grid;
+  gap: 8px;
+}
+
+.websearch-choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+  padding: 13px 15px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel-soft);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color .16s var(--ease-out), background .16s var(--ease-out);
+}
+
+.websearch-choice:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  background: var(--panel-hover);
+}
+
+.websearch-choice:disabled {
+  cursor: not-allowed;
+  opacity: .55;
+}
+
+.websearch-choice.selected {
+  border-color: color-mix(in srgb, var(--accent) 52%, var(--border));
+  background: var(--accent-faint);
+}
+
+.websearch-choice-mark {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--bg);
+  background: transparent;
+}
+
+.websearch-choice.selected .websearch-choice-mark {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.websearch-choice-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.websearch-choice-copy strong {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.websearch-choice-copy span {
+  font-size: var(--loom-font-micro, 12px);
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.websearch-choice-current {
+  flex: none;
+  margin-left: auto;
+  align-self: center;
+  padding: 2px 8px;
+  border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--border));
+  border-radius: 999px;
+  font-size: var(--loom-font-micro, 12px);
+  color: var(--accent-soft);
+  background: var(--accent-faint);
+}
+
+.websearch-choice-actions {
+  margin-top: 12px;
+  align-items: center;
+}
+
+.websearch-hint {
+  margin: 0;
+  font-size: var(--loom-font-micro, 12px);
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+/* API key + test rows ----------------------------------------------------- */
+
+.websearch-key-card,
+.websearch-test-card {
+  display: grid;
+  gap: 12px;
+}
+
+.websearch-key-row,
+.websearch-test-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.websearch-key-row .mature-input,
+.websearch-test-row .mature-input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.websearch-key-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  color: var(--muted);
+  background: var(--panel);
+}
+
+.websearch-key-toggle,
+.websearch-key-actions .mature-action-button {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.websearch-key-actions {
+  align-items: center;
+}
+
+.websearch-key-status {
+  font-size: var(--loom-font-micro, 12px);
+  color: var(--faint);
+}
+
+.websearch-key-status.ok {
+  color: var(--success);
+}
+
+/* Test result ------------------------------------------------------------- */
+
+.websearch-test-result {
+  display: grid;
+  gap: 4px;
+  padding: 11px 13px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--panel);
+}
+
+.websearch-test-result strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.websearch-test-result span {
+  font-size: var(--loom-font-micro, 12px);
+  color: var(--muted);
+}
+
+.websearch-test-result code {
+  font-family: var(--loom-code-font, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: var(--loom-font-micro, 12px);
+  color: var(--text-2);
+  word-break: break-word;
+}
+
+.websearch-test-result.ok {
+  border-color: color-mix(in srgb, var(--success) 42%, var(--border));
+}
+
+.websearch-test-result.ok strong {
+  color: var(--success);
+}
+
+.websearch-test-result.bad {
+  border-color: color-mix(in srgb, var(--danger) 42%, var(--border));
+}
+
+.websearch-test-result.bad strong {
+  color: var(--danger);
+}
+
+/* Reduced motion ---------------------------------------------------------- */
+
+html[data-loom-reduced-motion="true"] .websearch-choice {
+  transition: none;
+}

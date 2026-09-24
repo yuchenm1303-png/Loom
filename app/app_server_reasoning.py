@@ -13,6 +13,7 @@ from app.agent_runtime.tools import ToolExposure, ToolRegistry
 from app.attachments import MAX_ATTACHMENTS, MAX_FILE_BYTES, MAX_IMAGE_BYTES
 from app.runtime_model_switch import build_runtime_model_platform, validate_runtime_reasoning
 from app.settings import SETTINGS_UPDATE_PREFIX, LoomSettingsStore
+from app.web_search_settings import WebSearchConfigurator
 from loom_model_bridge import resolve_model_spec
 
 from .app_server_thread_management import (
@@ -60,6 +61,12 @@ def _is_computer_setting(capability: str) -> bool:
     return _setting_path(capability).startswith("computer.")
 
 
+def _is_web_search_setting(capability: str) -> bool:
+    """Detect a Web Search preference inside the settings-update envelope."""
+
+    return _setting_path(capability).startswith("webSearch.")
+
+
 class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService):
     """Managed App Server with reasoning, expressions, and desktop settings."""
 
@@ -74,11 +81,19 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
         except IndexError:
             runtime_home = root.parent
         self.settings_store = LoomSettingsStore(runtime_home)
+        self.web_search_configurator = WebSearchConfigurator(
+            self.runtime,
+            self.settings_store,
+        )
         # Keep the canonical runtime tool set so capability switches can hide or
         # restore whole tool families without rebuilding the model/runtime stack.
         self._canonical_tools = tuple(self.runtime.tools.all())
         snapshot = self.settings_store.snapshot()
         self._apply_capability_settings(snapshot)
+        # Web Search runs after capability gating: installing or replacing a
+        # provider re-registers its tools, and a capability rebuild would
+        # otherwise clobber the tool family the user just configured.
+        self._apply_web_search_settings(snapshot)
         self._apply_browser_settings(snapshot)
         self._apply_computer_settings(snapshot)
 
@@ -150,6 +165,10 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
             return reason
 
     def _apply_capability_settings(self, settings: dict[str, Any]) -> None:
+        # Refresh first: a later layer (Web Search settings, MCP discovery) may
+        # have registered tools since the previous rebuild, and dropping them here
+        # would silently remove a capability the user just configured.
+        self._canonical_tools = tuple(self.runtime.tools.all())
         raw = settings.get("capabilities")
         capabilities = dict(raw) if isinstance(raw, dict) else {}
         rebuilt = []
@@ -160,6 +179,20 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
             )
             rebuilt.append(replace(original, exposure=ToolExposure.HIDDEN) if hidden else original)
         self.runtime.tools = ToolRegistry(tuple(rebuilt))
+
+    def _apply_web_search_settings(self, settings: dict[str, Any]) -> str:
+        """Point the runtime at the stored Web Search provider.
+
+        Returns an empty string on success, or a reason the stored choice could
+        not be honoured. Like the browser path, a preference Loom cannot satisfy
+        must not stop the desktop from starting.
+        """
+
+        try:
+            self.web_search_configurator.apply(settings)
+            return ""
+        except Exception as exc:
+            return f"{type(exc).__name__}: {exc}"
 
     @staticmethod
     def _safe_status(runtime: Any, method_name: str) -> dict[str, Any]:
@@ -1012,6 +1045,7 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
             raise ValueError("enabled must be a boolean")
         browser_change = _is_browser_setting(capability)
         computer_change = _is_computer_setting(capability)
+        web_search_change = _is_web_search_setting(capability)
         previous = self.settings_store.snapshot() if browser_change else None
         settings = self.settings_store.set_capability(capability, enabled)
         self._apply_capability_settings(settings)
@@ -1022,6 +1056,7 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
                 settings = self.settings_store.replace(previous)
                 self._apply_browser_settings(settings)
         computer_error = self._apply_computer_settings(settings) if computer_change else ""
+        web_search_error = self._apply_web_search_settings(settings) if web_search_change else ""
         updated = self.runtime_status()
         self._notify(
             "runtime/updated",
@@ -1035,6 +1070,43 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
             result["browserWarning"] = browser_error
         if computer_error:
             result["computerWarning"] = computer_error
+        if web_search_error:
+            result["webSearchWarning"] = web_search_error
+        return result
+
+    def web_search_status(self, _params: dict[str, Any]) -> dict[str, Any]:
+        return {"status": self.web_search_configurator.status()}
+
+    def web_search_configure(self, params: dict[str, Any]) -> dict[str, Any]:
+        status = super().runtime_status()
+        active = list(status.get("activeThreadIds") or [])
+        if active:
+            raise RuntimeError("finish or stop the current turn before changing web search")
+
+        raw_provider = params.get("provider")
+        provider = None
+        if raw_provider is not None:
+            provider = str(raw_provider).strip() or None
+        api_key = params.get("apiKey", params.get("api_key"))
+        clear_key = bool(params.get("clearKey", params.get("clear_key")) or False)
+
+        result = self.web_search_configurator.configure(
+            provider=provider,
+            api_key="" if api_key is None else str(api_key),
+            clear_key=clear_key,
+        )
+        updated = self.runtime_status()
+        self._notify(
+            "runtime/updated",
+            {"reason": "web_search_setting_changed", "runtime": updated},
+        )
+        result["runtime"] = updated
+        return result
+
+    def web_search_test(self, params: dict[str, Any]) -> dict[str, Any]:
+        query = str(params.get("query") or "").strip()
+        result = self.web_search_configurator.test(query)
+        result["status"] = self.web_search_configurator.status()
         return result
 
 
@@ -1070,6 +1142,12 @@ class ReasoningManagedLoomRpcController(ManagedStreamingLoomRpcController):
             "sources": ["browser", "computer"],
         }
         notifications = result["capabilities"].setdefault("notifications", [])
+        result["capabilities"]["webSearch"] = {
+            "read": True,
+            "configureProvider": True,
+            "storeApiKey": "os-keychain",
+            "test": True,
+        }
         if "runtime/updated" not in notifications:
             notifications.append("runtime/updated")
         if "hud/update" not in notifications:
@@ -1093,6 +1171,12 @@ class ReasoningManagedLoomRpcController(ManagedStreamingLoomRpcController):
             return self.service.settings_get(params)
         if method == "settings/set":
             return self.service.settings_set(params)
+        if method == "web_search/status":
+            return self.service.web_search_status(params)
+        if method == "web_search/configure":
+            return self.service.web_search_configure(params)
+        if method == "web_search/test":
+            return self.service.web_search_test(params)
         return super()._dispatch(method, params)
 
 
