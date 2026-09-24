@@ -68,6 +68,14 @@ type LayoutAnchorSnapshot = {
   centerX: number;
   kind: "conversation" | "composer";
 };
+type PanelViewTransition = {
+  updateCallbackDone: Promise<void>;
+  finished: Promise<void>;
+  skipTransition(): void;
+};
+type PanelTransitionDocument = Document & {
+  startViewTransition?: (update: () => void | Promise<void>) => PanelViewTransition;
+};
 
 type LayoutStyle = CSSProperties & {
   "--loom-sidebar-panel-size": string;
@@ -277,6 +285,7 @@ export default function App() {
   const resizeRef = useRef<ResizeSession | null>(null);
   const resizeReleaseFrameRef = useRef<number | null>(null);
   const layoutMotionSerialRef = useRef(0);
+  const panelViewTransitionRef = useRef<PanelViewTransition | null>(null);
   const [inspectorOpen, setInspectorOpen] = useState(() => {
     try { return localStorage.getItem("loom.inspector.open") === "true"; }
     catch { return false; }
@@ -352,32 +361,70 @@ export default function App() {
     const serial = layoutMotionSerialRef.current + 1;
     layoutMotionSerialRef.current = serial;
 
-    // Only the central conversation and composer are spatially re-anchored.
-    // Everything else stays live and stable; no whole-screen old/new bitmap
-    // snapshots are created, so there is no global motion or text ghosting.
+    // Keep the workspace live and animate only the two large content anchors.
+    // The sidebar/inspector themselves use a scoped View Transition snapshot so
+    // their earlier depth effect can return without scaling live text or making
+    // the whole screen participate in the transition.
     const captures = captureLayoutAnchors(shellRef.current);
-    document.body.classList.add("loom-panel-motion");
-    flushSync(update);
+    const transitionDocument = document as PanelTransitionDocument;
+    const canSnapshotPanels = typeof transitionDocument.startViewTransition === "function";
 
-    const animations = animateLayoutAnchors(captures);
-    if (!animations.length) {
-      afterPaint(() => {
+    panelViewTransitionRef.current?.skipTransition();
+    document.body.classList.add("loom-panel-motion");
+
+    if (!canSnapshotPanels) {
+      flushSync(update);
+      const animations = animateLayoutAnchors(captures);
+      void Promise.allSettled(animations.map((animation) => animation.finished))
+        .then(() => {
+          if (layoutMotionSerialRef.current !== serial) return;
+          clearLayoutAnchorStyles(shellRef.current);
+          document.body.classList.remove("loom-panel-motion");
+          window.dispatchEvent(new Event("loom:panel-resize-end"));
+        });
+      return;
+    }
+
+    document.documentElement.dataset.loomPanelSnapshot = "true";
+
+    let transition: PanelViewTransition;
+    try {
+      transition = transitionDocument.startViewTransition(() => {
+        flushSync(update);
+      });
+    } catch {
+      delete document.documentElement.dataset.loomPanelSnapshot;
+      flushSync(update);
+      const animations = animateLayoutAnchors(captures);
+      void Promise.allSettled(animations.map((animation) => animation.finished))
+        .then(() => {
+          if (layoutMotionSerialRef.current !== serial) return;
+          clearLayoutAnchorStyles(shellRef.current);
+          document.body.classList.remove("loom-panel-motion");
+          window.dispatchEvent(new Event("loom:panel-resize-end"));
+        });
+      return;
+    }
+
+    panelViewTransitionRef.current = transition;
+    const anchorMotion = transition.updateCallbackDone
+      .then(() => {
         if (layoutMotionSerialRef.current !== serial) return;
+        const animations = animateLayoutAnchors(captures);
+        return Promise.allSettled(animations.map((animation) => animation.finished));
+      })
+      .catch(() => undefined);
+
+    void Promise.allSettled([transition.finished, anchorMotion])
+      .then(() => {
+        if (layoutMotionSerialRef.current !== serial) return;
+        panelViewTransitionRef.current = null;
+        delete document.documentElement.dataset.loomPanelSnapshot;
         clearLayoutAnchorStyles(shellRef.current);
         document.body.classList.remove("loom-panel-motion");
         window.dispatchEvent(new Event("loom:panel-resize-end"));
       });
-      return;
-    }
-
-    void Promise.allSettled(animations.map((animation) => animation.finished))
-      .then(() => {
-        if (layoutMotionSerialRef.current !== serial) return;
-        document.body.classList.remove("loom-panel-motion");
-        window.dispatchEvent(new Event("loom:panel-resize-end"));
-      });
   }, []);
-
 
   useLayoutEffect(() => {
     const previous = committedPanelLayoutRef.current;
@@ -511,6 +558,9 @@ export default function App() {
     if (session?.frame !== null && session?.frame !== undefined) cancelAnimationFrame(session.frame);
     if (resizeReleaseFrameRef.current !== null) cancelAnimationFrame(resizeReleaseFrameRef.current);
     layoutMotionSerialRef.current += 1;
+    panelViewTransitionRef.current?.skipTransition();
+    panelViewTransitionRef.current = null;
+    delete document.documentElement.dataset.loomPanelSnapshot;
     settleLayoutAnchorAnimations(shellRef.current);
     clearLayoutAnchorStyles(shellRef.current);
     document.body.classList.remove("loom-panel-resizing");

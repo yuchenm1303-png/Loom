@@ -88,44 +88,44 @@
   opacity: 1;
   visibility: visible;
   pointer-events: auto;
-  transform: translate3d(0,0,0) scale(1);
+  transform: translate3d(0,0,0);
   transition:
-    transform var(--loom-motion-panel,390ms) cubic-bezier(.16,.78,.18,1),
-    opacity 230ms ease,
+    transform 300ms cubic-bezier(.2,.74,.18,1),
+    opacity 165ms ease,
     visibility 0s linear 0s;
 }
 
 .workspace-panels.sidebar-closed > .sidebar {
   opacity: 0;
-  transform: translate3d(-14px,0,0) scale(.985);
+  transform: translate3d(-12px,0,0);
   visibility: hidden;
   pointer-events: none;
   transition:
-    transform 250ms cubic-bezier(.42,0,.72,.2),
-    opacity 180ms ease,
-    visibility 0s linear 250ms;
+    transform 230ms cubic-bezier(.42,0,.72,.2),
+    opacity 135ms ease,
+    visibility 0s linear 230ms;
 }
 
 .workspace-panels.inspector-open > .inspector {
   opacity: 1;
   visibility: visible;
   pointer-events: auto;
-  transform: translate3d(0,0,0) scale(1);
+  transform: translate3d(0,0,0);
   transition:
-    transform var(--loom-motion-panel,390ms) cubic-bezier(.16,.78,.18,1),
-    opacity 230ms ease,
+    transform 300ms cubic-bezier(.2,.74,.18,1),
+    opacity 165ms ease,
     visibility 0s linear 0s;
 }
 
 .workspace-panels.inspector-closed > .inspector {
   opacity: 0;
-  transform: translate3d(14px,0,0) scale(.985);
+  transform: translate3d(12px,0,0);
   visibility: hidden;
   pointer-events: none;
   transition:
-    transform 250ms cubic-bezier(.42,0,.72,.2),
-    opacity 180ms ease,
-    visibility 0s linear 250ms;
+    transform 230ms cubic-bezier(.42,0,.72,.2),
+    opacity 135ms ease,
+    visibility 0s linear 230ms;
 }
 
 body.loom-panel-motion .workspace-panels .conversation-stage,
@@ -133,6 +133,99 @@ body.loom-panel-motion .workspace-panels .composer-stage {
   backface-visibility: hidden;
   transform-style: preserve-3d;
   isolation: isolate;
+}
+
+
+/* Scoped panel snapshot effect ----------------------------------------------
+   Restore the a61b0ff side-surface treatment exactly, but only for the sidebar
+   and inspector. The root/workspace is explicitly excluded, so opening a panel
+   cannot create a second full-screen UI or animate unrelated text/cards. */
+html[data-loom-panel-snapshot="true"] {
+  view-transition-name: none;
+}
+
+html[data-loom-panel-snapshot="true"] .workspace-panels > .sidebar {
+  view-transition-name: loom-sidebar;
+}
+
+html[data-loom-panel-snapshot="true"] .workspace-panels > .inspector {
+  view-transition-name: loom-inspector;
+}
+
+html[data-loom-panel-snapshot="true"] .workspace-panels > .sidebar,
+html[data-loom-panel-snapshot="true"] .workspace-panels > .inspector {
+  transition: none !important;
+}
+
+::view-transition-group(loom-sidebar),
+::view-transition-group(loom-inspector) {
+  animation-duration: var(--loom-motion-panel,390ms);
+  animation-timing-function: cubic-bezier(.22,.7,.18,1);
+  animation-fill-mode: both;
+}
+
+::view-transition-old(loom-sidebar),
+::view-transition-new(loom-sidebar),
+::view-transition-old(loom-inspector),
+::view-transition-new(loom-inspector) {
+  mix-blend-mode: normal;
+}
+
+::view-transition-new(loom-sidebar) {
+  transform-origin: left center;
+  animation: loom-panel-surface-in-left 292ms cubic-bezier(.16,.78,.18,1) 72ms both;
+}
+
+::view-transition-old(loom-sidebar) {
+  transform-origin: left center;
+  animation: loom-panel-surface-out-left 78ms cubic-bezier(.42,0,.72,.2) both;
+}
+
+::view-transition-new(loom-inspector) {
+  transform-origin: right center;
+  animation: loom-panel-surface-in-right 292ms cubic-bezier(.16,.78,.18,1) 72ms both;
+}
+
+::view-transition-old(loom-inspector) {
+  transform-origin: right center;
+  animation: loom-panel-surface-out-right 78ms cubic-bezier(.42,0,.72,.2) both;
+}
+
+@keyframes loom-panel-surface-in-left {
+  from { opacity: 0; transform: translate3d(-10px,0,0) scale(.99); }
+  28% { opacity: .84; }
+  to { opacity: 1; transform: translate3d(0,0,0) scale(1); }
+}
+
+@keyframes loom-panel-surface-out-left {
+  from { opacity: 1; transform: translate3d(0,0,0) scale(1); }
+  to { opacity: 0; transform: translate3d(-5px,0,0) scale(.994); }
+}
+
+@keyframes loom-panel-surface-in-right {
+  from { opacity: 0; transform: translate3d(10px,0,0) scale(.99); }
+  28% { opacity: .84; }
+  to { opacity: 1; transform: translate3d(0,0,0) scale(1); }
+}
+
+@keyframes loom-panel-surface-out-right {
+  from { opacity: 1; transform: translate3d(0,0,0) scale(1); }
+  to { opacity: 0; transform: translate3d(5px,0,0) scale(.994); }
+}
+
+/* Freeze the inspector's decorative micro-motion while its snapshot is moving.
+   Otherwise the snapshot and the live orbit/pulse can land on different frames,
+   which reads as the one-frame "shake" in the empty Computer Use state. */
+body.loom-panel-motion .workspace-panels > .inspector .runtime-pane {
+  animation: none !important;
+}
+
+body.loom-panel-motion .workspace-panels > .inspector .runtime-orbit-dot,
+body.loom-panel-motion .workspace-panels > .inspector .runtime-orbit-one::before,
+body.loom-panel-motion .workspace-panels > .inspector .runtime-orbit-two::before,
+body.loom-panel-motion .workspace-panels > .inspector .runtime-health.live .runtime-health-dot,
+body.loom-panel-motion .workspace-panels > .inspector .runtime-stream-mark.live i {
+  animation-play-state: paused !important;
 }
 
 .workspace-panel-resizer {
@@ -327,10 +420,6 @@ body.loom-panel-motion .workspace-panels > .sidebar,
 body.loom-panel-motion .workspace-panels > .inspector {
   will-change: transform, opacity;
   transform-style: preserve-3d;
-}
-
-body.loom-panel-motion .workspace-panels > .inspector .runtime-pane {
-  animation: none !important;
 }
 
 /* Portal docks previously unmounted at 240ms while their 390ms transform was

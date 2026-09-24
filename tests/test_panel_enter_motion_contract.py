@@ -8,7 +8,7 @@ def read(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
 
 
-def test_panel_motion_uses_live_targeted_flip_not_view_transition_snapshots() -> None:
+def test_panel_motion_uses_targeted_flip_plus_scoped_panel_snapshots() -> None:
     app = read("desktop-react/src/App.tsx")
     css = read("desktop-react/src/components/workspace-panels.css")
 
@@ -18,23 +18,24 @@ def test_panel_motion_uses_live_targeted_flip_not_view_transition_snapshots() ->
     assert 'selector: ".composer-stage"' in app
     assert 'animation.id = "loom-layout-anchor"' in app
 
-    assert "startViewTransition" not in app
-    assert "LayoutViewTransition" not in app
-    assert "loomLayoutCapture" not in app
-    assert "::view-transition" not in css
-    assert "view-transition-name" not in css
-
+    assert "startViewTransition" in app
+    assert 'dataset.loomPanelSnapshot = "true"' in app
+    assert 'html[data-loom-panel-snapshot="true"] {' in css
+    assert "view-transition-name: loom-sidebar" in css
+    assert "view-transition-name: loom-inspector" in css
+    assert "view-transition-name: loom-workspace" not in css
+    assert "loom-readable" not in css
 
 def test_sidebar_and_inspector_move_locally_without_animating_all_children() -> None:
     css = read("desktop-react/src/components/workspace-panels.css")
 
     assert ".workspace-panels.sidebar-layout-closed > .sidebar" in css
     assert ".workspace-panels.inspector-layout-closed > .inspector" in css
-    assert "translate3d(-14px,0,0) scale(.985)" in css
-    assert "translate3d(14px,0,0) scale(.985)" in css
-    assert "translate3d(0,0,0) scale(1)" in css
-    assert "var(--loom-motion-panel,390ms) cubic-bezier(.16,.78,.18,1)" in css
-    assert "visibility 0s linear 250ms" in css
+    assert "translate3d(-12px,0,0)" in css
+    assert "translate3d(12px,0,0)" in css
+    assert "visibility 0s linear 230ms" in css
+    assert "animation: loom-panel-surface-in-left 292ms" in css
+    assert "animation: loom-panel-surface-in-right 292ms" in css
 
     assert ".thread-header-copy" not in css
     assert "loom-readable" not in css
@@ -70,11 +71,24 @@ def test_panel_css_has_one_owner_for_open_close_motion() -> None:
     assert css.count(".workspace-panels.inspector-closed > .inspector") == 1
 
 
-def test_panel_surface_restores_depth_effect_without_global_snapshot_animation() -> None:
+def test_panel_surface_restores_a61_depth_effect_without_global_snapshot_animation() -> None:
     css = read("desktop-react/src/components/workspace-panels.css")
 
-    assert "scale(.985)" in css
-    assert "transform-origin: left center" in css
-    assert "transform-origin: right center" in css
-    assert "::view-transition" not in css
+    assert "animation: loom-panel-surface-in-left 292ms cubic-bezier(.16,.78,.18,1) 72ms both" in css
+    assert "animation: loom-panel-surface-out-left 78ms cubic-bezier(.42,0,.72,.2) both" in css
+    assert "animation: loom-panel-surface-in-right 292ms cubic-bezier(.16,.78,.18,1) 72ms both" in css
+    assert "animation: loom-panel-surface-out-right 78ms cubic-bezier(.42,0,.72,.2) both" in css
+    assert "scale(.99)" in css
+    assert "scale(.994)" in css
+    assert "view-transition-name: loom-workspace" not in css
     assert "loom-readable" not in css
+
+
+def test_inspector_micro_motion_is_frozen_during_panel_snapshot() -> None:
+    css = read("desktop-react/src/components/workspace-panels.css")
+
+    assert ".runtime-pane" in css
+    assert ".runtime-orbit-dot" in css
+    assert ".runtime-orbit-one::before" in css
+    assert ".runtime-orbit-two::before" in css
+    assert "animation-play-state: paused !important" in css
