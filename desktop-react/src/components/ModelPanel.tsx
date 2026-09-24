@@ -1,4 +1,6 @@
 import {
+  BrainCircuit,
+  Cat,
   Check,
   ChevronDown,
   ChevronLeft,
@@ -6,8 +8,10 @@ import {
   KeyRound,
   LoaderCircle,
   Lock,
+  Music2,
   Plus,
   Search,
+  Shapes,
   SlidersHorizontal,
   Trash2,
   X,
@@ -28,6 +32,15 @@ import type {
   ModelReasoningState,
   ModelSnapshot,
 } from "../types/loom";
+import minimaxLogo from "../assets/provider-logos/minimax.svg";
+import deepseekLogo from "../assets/provider-logos/deepseek.svg";
+import opencodeLogo from "../assets/provider-logos/opencode.svg";
+import openaiLogo from "../assets/provider-logos/openai.svg";
+import qwenLogo from "../assets/provider-logos/qwen.svg";
+import moonshotLogo from "../assets/provider-logos/moonshotai.svg";
+import xiaomiLogo from "../assets/provider-logos/xiaomi.svg";
+import hunyuanLogo from "../assets/provider-logos/tencenthy.svg";
+import xLogo from "../assets/provider-logos/x.svg";
 import "./model-panel.css";
 import { ReasoningThread } from "./ReasoningThread";
 
@@ -97,8 +110,19 @@ function providerSetup(group: ModelGroup): ProviderSetup {
   return { credentialTarget, statusProfiles, catalogUnauthorized, needsKey };
 }
 
-// Provider marks are quiet tinted monograms. Hue and chroma feed OKLCH in
-// model-picker.css, so every tint lands on the same perceived lightness.
+// Hue and chroma feed OKLCH in model-picker.css for both logos and fallback monograms.
+const PROVIDER_LOGOS: Record<string, string> = {
+  minimax: minimaxLogo,
+  deepseek: deepseekLogo,
+  "opencode-go": opencodeLogo,
+  "managed-relay:openai": openaiLogo,
+  gpt: openaiLogo,
+  kimi: moonshotLogo,
+  qwen: qwenLogo,
+  mimo: xiaomiLogo,
+  hunyuan: hunyuanLogo,
+  grok: xLogo,
+};
 const PROVIDER_TINTS: Record<string, readonly [hue: number, chroma: number]> = {
   minimax: [16, 0.14],
   deepseek: [262, 0.13],
@@ -119,6 +143,7 @@ function providerTint(id: string): readonly [number, number] {
 
 function ProviderMark({ id, name, small = false }: { id: string; name: string; small?: boolean }) {
   const [hue, chroma] = providerTint(id);
+  const logo = PROVIDER_LOGOS[id] ?? (name === "OpenAI" ? openaiLogo : undefined);
   const initial = name.trim().match(/[\p{L}\p{N}]/u)?.[0]?.toUpperCase() ?? "?";
   return (
     <span
@@ -126,7 +151,28 @@ function ProviderMark({ id, name, small = false }: { id: string; name: string; s
       style={{ "--mp-hue": hue, "--mp-chroma": chroma } as CSSProperties}
       aria-hidden="true"
     >
-      {initial}
+      {logo ? <span className="mp-mark-logo" style={{ "--mp-logo": `url("${logo}")` } as CSSProperties} /> : initial}
+    </span>
+  );
+}
+
+function FamilyMark({ family }: { family: string }) {
+  const icons: Record<string, ReactNode> = {
+    GLM: <BrainCircuit size={13} strokeWidth={1.9} />,
+    LongCat: <Cat size={13} strokeWidth={1.9} />,
+    Muse: <Music2 size={13} strokeWidth={1.9} />,
+    Other: <Shapes size={13} strokeWidth={1.9} />,
+  };
+  const icon = icons[family];
+  if (!icon) return <ProviderMark id={family.toLowerCase()} name={family} small />;
+  const [hue, chroma] = providerTint(family.toLowerCase());
+  return (
+    <span
+      className="mp-mark mp-mark-sm"
+      style={{ "--mp-hue": hue, "--mp-chroma": chroma } as CSSProperties}
+      aria-hidden="true"
+    >
+      {icon}
     </span>
   );
 }
@@ -847,7 +893,12 @@ export function ModelPanel({
 
           {[...families.entries()].map(([family, familyProfiles]) => (
             <section className="mp-section" key={family || activeGroup.id} aria-label={family || activeGroup.name}>
-              {family ? <div className="mp-label">{family}</div> : null}
+              {family ? (
+                <div className="mp-label mp-label-provider">
+                  <FamilyMark family={family} />
+                  <span>{family}</span>
+                </div>
+              ) : null}
               {familyProfiles.map((profile) => {
                 const current = isCurrentProfile(profile);
                 const deletable = profile.kind === "saved";
