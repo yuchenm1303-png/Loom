@@ -280,7 +280,11 @@ function markdownComponents(workspace?: string): Components {
             }
             if (localTarget) {
               event.preventDefault();
-              if (workspace) void window.loom.openLocalArtifact(localTarget, workspace);
+              if (workspace) {
+                window.dispatchEvent(new CustomEvent("loom:artifact-preview-open", {
+                  detail: { path: localTarget, workspace },
+                }));
+              }
               return;
             }
             if (href && !fragment) event.preventDefault();
