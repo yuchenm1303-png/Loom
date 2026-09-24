@@ -59,11 +59,17 @@ const INSPECTOR_MIN = 280;
 const INSPECTOR_MAX = 520;
 const MIN_WORKSPACE_WIDTH = 520;
 const PANEL_MOTION_MS = 460;
-const PANEL_LAYOUT_SETTLE_MS = 360;
+const PANEL_LAYOUT_SETTLE_MS = 390;
 const PANEL_LAYOUT_COMMIT_EVENT = "loom:panel-layout-commit";
 const EMPTY_TRANSCRIPT_ITEMS: TranscriptItem[] = [];
 
 type ResizePanel = "sidebar" | "inspector";
+type LinkedPanelPhase = "closed" | "opening" | "open" | "closing";
+type LinkedPanelMotion = {
+  reserved: boolean;
+  phase: LinkedPanelPhase;
+};
+
 type LayoutStyle = CSSProperties & {
   "--loom-sidebar-panel-size": string;
   "--loom-inspector-panel-size": string;
@@ -207,6 +213,52 @@ function usePanelLayoutReserve(open: boolean, settleMs = PANEL_LAYOUT_SETTLE_MS)
   return reserved;
 }
 
+function useLinkedPanelMotion(open: boolean, settleMs = PANEL_LAYOUT_SETTLE_MS): LinkedPanelMotion {
+  const [reserved, setReserved] = useState(open);
+  const [phase, setPhase] = useState<LinkedPanelPhase>(open ? "open" : "closed");
+
+  useLayoutEffect(() => {
+    if (reducedPanelMotion()) {
+      setReserved(open);
+      setPhase(open ? "open" : "closed");
+      return undefined;
+    }
+
+    if (open) {
+      if (reserved) {
+        setPhase("open");
+        return undefined;
+      }
+      setPhase("opening");
+      const timer = window.setTimeout(() => {
+        setReserved(true);
+        setPhase("open");
+      }, settleMs);
+      return () => window.clearTimeout(timer);
+    }
+
+    if (!reserved) {
+      setPhase("closed");
+      return undefined;
+    }
+
+    setPhase("closing");
+    const timer = window.setTimeout(() => {
+      setReserved(false);
+      setPhase("closed");
+    }, settleMs);
+    return () => window.clearTimeout(timer);
+  }, [open, reserved, settleMs]);
+
+  return { reserved, phase };
+}
+
+function linkedPanelPhaseClass(name: string, phase: LinkedPanelPhase): string {
+  return phase === "opening" || phase === "closing"
+    ? `${name}-motion-${phase}`
+    : "";
+}
+
 export default function App() {
   const loom = useLoom();
   const account = useAccount();
@@ -224,7 +276,8 @@ export default function App() {
     catch { /* The panel remains usable when storage is unavailable. */ }
   }, [inspectorOpen]);
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const sidebarLayoutOpen = usePanelLayoutReserve(sidebarOpen);
+  const sidebarMotion = useLinkedPanelMotion(sidebarOpen);
+  const sidebarLayoutOpen = sidebarMotion.reserved;
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsPresence = useMotionPresence(settingsOpen, 300);
   const [accountOpen, setAccountOpen] = useState(false);
@@ -267,8 +320,17 @@ export default function App() {
     : null;
   const projectDetailsOpen = Boolean(selectedProject);
   const inspectorVisible = inspectorOpen && !reviewOpen && !projectDetailsOpen && !agentsOpen;
-  const inspectorLayoutOpen = usePanelLayoutReserve(inspectorVisible);
-  const inspectorPresence = useMotionPresence(inspectorVisible, 280);
+  const inspectorMotion = useLinkedPanelMotion(inspectorVisible);
+  const inspectorLayoutOpen = inspectorMotion.reserved;
+  const inspectorPresence = useMotionPresence(inspectorVisible, PANEL_LAYOUT_SETTLE_MS + 30);
+  const linkedWorkspaceMotion = sidebarMotion.phase === "opening"
+    || sidebarMotion.phase === "closing"
+    || inspectorMotion.phase === "opening"
+    || inspectorMotion.phase === "closing";
+  const linkedWorkspaceMotionClasses = [
+    linkedPanelPhaseClass("sidebar", sidebarMotion.phase),
+    linkedPanelPhaseClass("inspector", inspectorMotion.phase),
+  ].filter(Boolean).join(" ");
   const reviewLayoutOpen = usePanelLayoutReserve(reviewOpen);
   const agentsLayoutOpen = usePanelLayoutReserve(agentsOpen);
   const projectDetailsLayoutOpen = usePanelLayoutReserve(projectDetailsOpen);
@@ -451,7 +513,7 @@ export default function App() {
       let nextSidebar = sidebarWidth;
       let nextInspector = inspectorWidth;
 
-      if (sidebarOpen && inspectorVisible) {
+      if (sidebarLayoutOpen && inspectorLayoutOpen) {
         const minimumPanels = SIDEBAR_MIN + INSPECTOR_MIN;
         const availableForPanels = Math.max(minimumPanels, viewport - MIN_WORKSPACE_WIDTH);
         let excess = nextSidebar + nextInspector - availableForPanels;
@@ -463,9 +525,9 @@ export default function App() {
         if (excess > 0) {
           nextSidebar -= Math.min(excess, nextSidebar - SIDEBAR_MIN);
         }
-      } else if (sidebarOpen) {
+      } else if (sidebarLayoutOpen) {
         nextSidebar = clamp(nextSidebar, SIDEBAR_MIN, Math.min(SIDEBAR_MAX, viewport - MIN_WORKSPACE_WIDTH));
-      } else if (inspectorVisible) {
+      } else if (inspectorLayoutOpen) {
         nextInspector = clamp(nextInspector, INSPECTOR_MIN, Math.min(INSPECTOR_MAX, viewport - MIN_WORKSPACE_WIDTH));
       }
 
@@ -487,7 +549,7 @@ export default function App() {
       window.cancelAnimationFrame(frame);
       window.removeEventListener("resize", reconcile);
     };
-  }, [inspectorVisible, inspectorWidth, sidebarOpen, sidebarWidth]);
+  }, [inspectorLayoutOpen, inspectorWidth, sidebarLayoutOpen, sidebarWidth]);
 
   useEffect(() => {
     const handleShortcut = (event: KeyboardEvent) => {
@@ -792,7 +854,7 @@ export default function App() {
     <>
       <div
         ref={shellRef}
-        className={`app-shell workspace-panels ${sidebarOpen ? "sidebar-open" : "sidebar-closed"} ${sidebarLayoutOpen ? "sidebar-layout-open" : "sidebar-layout-closed"} ${inspectorVisible ? "inspector-open" : "inspector-closed"} ${inspectorLayoutOpen ? "inspector-layout-open" : "inspector-layout-closed"} ${reviewLayoutOpen ? "with-review" : ""} ${agentsLayoutOpen ? "with-agents" : ""} ${projectDetailsLayoutOpen ? "with-project-details" : ""} ${resizingPanel ? "is-resizing" : ""} ${panelMotionActive ? "is-panel-motion" : ""} ${settingsPresence.mounted ? "is-settings-obscured" : ""}`}
+        className={`app-shell workspace-panels ${sidebarOpen ? "sidebar-open" : "sidebar-closed"} ${sidebarLayoutOpen ? "sidebar-layout-open" : "sidebar-layout-closed"} ${inspectorVisible ? "inspector-open" : "inspector-closed"} ${inspectorLayoutOpen ? "inspector-layout-open" : "inspector-layout-closed"} ${reviewLayoutOpen ? "with-review" : ""} ${agentsLayoutOpen ? "with-agents" : ""} ${projectDetailsLayoutOpen ? "with-project-details" : ""} ${resizingPanel ? "is-resizing" : ""} ${panelMotionActive ? "is-panel-motion" : ""} ${linkedWorkspaceMotion ? "is-layout-coupled" : ""} ${linkedWorkspaceMotionClasses} ${settingsPresence.mounted ? "is-settings-obscured" : ""}`}
         style={layoutStyle}
         aria-hidden={settingsPresence.mounted ? true : undefined}
       >

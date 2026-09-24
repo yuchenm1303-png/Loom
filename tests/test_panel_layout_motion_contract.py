@@ -17,14 +17,15 @@ def test_panel_tracks_commit_once_instead_of_interpolating_chat_width() -> None:
     assert ".inspector-layout-closed" in css
     assert "sidebarLayoutOpen" in app
     assert "inspectorLayoutOpen" in app
-    assert "PANEL_LAYOUT_SETTLE_MS" in app
+    assert "PANEL_LAYOUT_SETTLE_MS = 390" in app
+    assert "useLinkedPanelMotion" in app
 
 
 def test_inspector_keeps_content_until_overlay_slide_out_finishes() -> None:
     app = read("desktop-react/src/App.tsx")
 
     assert "items={inspectorPresence.mounted ? loom.items : EMPTY_TRANSCRIPT_ITEMS}" in app
-    assert "const inspectorPresence = useMotionPresence(inspectorVisible, 280)" in app
+    assert "const inspectorPresence = useMotionPresence(inspectorVisible, PANEL_LAYOUT_SETTLE_MS + 30)" in app
 
 
 def test_transcript_reanchors_once_when_panel_layout_commits() -> None:
