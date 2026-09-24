@@ -1,0 +1,113 @@
+/* Thinking glyph ------------------------------------------------------------
+   The live "thinking" mark (ThinkingGlyph): a thread winding around a bead,
+   Loom's icon in motion. It owns its tg- classes, so no older thinking-* rule
+   can restyle it. Keep it to one motion; the row's shimmer is the second. */
+
+.tg {
+  --tg-halo: rgba(139, 124, 246, .3);
+  --tg-bead-top: #dcd6ff;
+  --tg-bead-mid: #a095f8;
+  --tg-bead-low: #7a6bef;
+  --tg-lift: rgba(143, 210, 255, .8);
+  --tg-track: rgba(167, 157, 243, .34);
+  --tg-ply-1: rgba(139, 124, 246, .2);
+  --tg-ply-2: rgba(126, 176, 255, .36);
+  --tg-ply-3: rgba(166, 208, 255, .72);
+  --tg-ply-4: #f1f8ff;
+
+  width: 22px;
+  height: 22px;
+  flex: none;
+  display: block;
+  overflow: visible;
+}
+
+html[data-loom-theme="light"] .tg {
+  --tg-halo: rgba(76, 59, 189, .14);
+  --tg-bead-top: #b1a6f7;
+  --tg-bead-mid: #7969e6;
+  --tg-bead-low: #5646cc;
+  --tg-lift: rgba(85, 180, 240, .8);
+  --tg-track: rgba(105, 90, 216, .3);
+  --tg-ply-1: rgba(105, 90, 216, .16);
+  --tg-ply-2: rgba(92, 104, 228, .32);
+  --tg-ply-3: rgba(86, 98, 226, .62);
+  --tg-ply-4: #4f3fcf;
+}
+
+.tg-halo { stop-color: var(--tg-halo); }
+.tg-bead-top { stop-color: var(--tg-bead-top); }
+.tg-bead-mid { stop-color: var(--tg-bead-mid); }
+.tg-bead-low { stop-color: var(--tg-bead-low); }
+.tg-lift { stop-color: var(--tg-lift); }
+
+/* The half of the orbit behind the bead reads as farther away. */
+.tg-far {
+  opacity: .62;
+}
+
+.tg-track,
+.tg-ply {
+  fill: none;
+}
+
+.tg-track {
+  stroke: var(--tg-track);
+  stroke-width: 1.35;
+}
+
+/* Four plies share one head and taper toward the tail: each is a single dash
+   (in pathLength units) whose leading end sits at the same point. The cycle
+   and phase come from the thinking row, so the thread leaves the front of the
+   bead just before the label's shimmer starts to sweep. */
+.tg-ply {
+  stroke-linecap: round;
+  stroke-dasharray: var(--tg-len) calc(100px - var(--tg-len));
+  animation: tg-orbit var(--thinking-cycle, 2.15s) linear calc(var(--thinking-cycle, 2.15s) * -.26) infinite;
+}
+
+.tg-ply-1 { --tg-len: 52px; stroke: var(--tg-ply-1); stroke-width: 1.15; }
+.tg-ply-2 { --tg-len: 34px; stroke: var(--tg-ply-2); stroke-width: 1.45; }
+.tg-ply-3 { --tg-len: 18px; stroke: var(--tg-ply-3); stroke-width: 1.8; }
+.tg-ply-4 { --tg-len: 6px; stroke: var(--tg-ply-4); stroke-width: 2.1; }
+
+/* Constant angular speed around a tilted circle. Projected onto the 9.8 x 3.3
+   ellipse, the thread lingers at the turns and hurries across the front and
+   back. Each quarter is exactly 25 units of path; the curves match the
+   projected speed at both ends (3.3 : 9.8) and stay within 0.7 units of the
+   true orbit in between. */
+@keyframes tg-orbit {
+  0% {
+    stroke-dashoffset: var(--tg-len);
+    animation-timing-function: cubic-bezier(.333, .158, .667, .531);
+  }
+  25% {
+    stroke-dashoffset: calc(var(--tg-len) - 25px);
+    animation-timing-function: cubic-bezier(.333, .469, .667, .842);
+  }
+  50% {
+    stroke-dashoffset: calc(var(--tg-len) - 50px);
+    animation-timing-function: cubic-bezier(.333, .158, .667, .531);
+  }
+  75% {
+    stroke-dashoffset: calc(var(--tg-len) - 75px);
+    animation-timing-function: cubic-bezier(.333, .469, .667, .842);
+  }
+  100% {
+    stroke-dashoffset: calc(var(--tg-len) - 100px);
+  }
+}
+
+/* Reduced motion keeps the icon's pose: the thread across the front of the
+   bead, rising toward the label. */
+@media (prefers-reduced-motion: reduce) {
+  .tg-ply {
+    animation: none;
+    stroke-dashoffset: calc(var(--tg-len) - 41px);
+  }
+}
+
+:root[data-loom-reduced-motion="true"] .tg-ply {
+  animation: none;
+  stroke-dashoffset: calc(var(--tg-len) - 41px);
+}

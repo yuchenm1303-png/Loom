@@ -25,6 +25,7 @@ import { MarkdownMessage } from "./MarkdownMessage";
 import { DecisionPromptCard, DecisionPromptRecoveryCard, parseDecisionMessage } from "./DecisionPromptCard";
 import { StreamingPresentation } from "./StreamingPresentation";
 import { isSubAgentToolItem } from "./SubAgentWorkspace";
+import { ThinkingGlyph } from "./ThinkingGlyph";
 import { TurnArtifactsPreview } from "./TurnArtifactsPreview";
 import { UserMessageContent, parseUserMessageContent } from "./UserMessageContent";
 import { dispatchQuoteReply } from "./quoteReply";
@@ -161,7 +162,7 @@ function LiveReasoning({ reasoning, workspace, streaming, messageKey, interrupte
         aria-expanded={hasReasoning ? open : undefined}
         disabled={!hasReasoning}
       >
-        <span className="thinking-symbol" aria-hidden="true"><span className="thinking-orbit" /><span className="thinking-dot" /></span>
+        <ThinkingGlyph />
         <span className="thinking-shimmer">正在思考…</span>
         {hasReasoning ? <ChevronRight size={13} className="live-reasoning-chevron" aria-hidden="true" /> : null}
       </button>
@@ -182,7 +183,7 @@ function LiveReasoning({ reasoning, workspace, streaming, messageKey, interrupte
 function PendingThinking() {
   return (
     <div className="inline-thinking" role="status" aria-live="polite">
-      <span className="thinking-symbol" aria-hidden="true"><span className="thinking-orbit" /><span className="thinking-dot" /></span>
+      <ThinkingGlyph />
       <span className="thinking-shimmer">正在思考…</span>
     </div>
   );
