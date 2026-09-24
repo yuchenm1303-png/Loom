@@ -11,6 +11,7 @@ import {
 } from "react";
 import { flushSync } from "react-dom";
 import { AccountDialog } from "./components/AccountDialog";
+import { ArtifactPreviewDock } from "./components/ArtifactPreviewDock";
 import { Composer } from "./components/Composer";
 import { Inspector } from "./components/Inspector";
 import { LanguageSettingsDock } from "./components/LanguageSettingsDock";
@@ -334,6 +335,7 @@ export default function App() {
   const [accountOpen, setAccountOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [agentsOpen, setAgentsOpen] = useState(false);
+  const [artifactPreview, setArtifactPreview] = useState<{ path: string; workspace: string } | null>(null);
   const autoOpenedAgentsForThreadRef = useRef("");
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [sidebarWidth, setSidebarWidth] = useState(() => readPanelWidth(
@@ -369,14 +371,16 @@ export default function App() {
     ? loom.projects.find((project) => project.id === selectedProjectId) ?? null
     : null;
   const projectDetailsOpen = Boolean(selectedProject);
-  const inspectorVisible = inspectorOpen && !reviewOpen && !projectDetailsOpen && !agentsOpen;
+  const artifactPreviewOpen = Boolean(artifactPreview);
+  const inspectorVisible = inspectorOpen && !reviewOpen && !projectDetailsOpen && !agentsOpen && !artifactPreviewOpen;
   const sidebarLayoutOpen = sidebarOpen;
   const inspectorLayoutOpen = inspectorVisible;
   const reviewLayoutOpen = reviewOpen;
   const agentsLayoutOpen = agentsOpen;
+  const artifactLayoutOpen = artifactPreviewOpen;
   const projectDetailsLayoutOpen = projectDetailsOpen;
   const inspectorPresence = useMotionPresence(inspectorVisible, 420);
-  const rightSurfaceOpen = inspectorVisible || reviewOpen || agentsOpen || projectDetailsOpen;
+  const rightSurfaceOpen = inspectorVisible || reviewOpen || agentsOpen || artifactPreviewOpen || projectDetailsOpen;
   const rightOpenIntent: LayoutMotionIntent = rightSurfaceOpen ? "right-swap" : "right-open";
 
   const committedPanelLayoutRef = useRef({
@@ -384,6 +388,7 @@ export default function App() {
     inspectorLayoutOpen,
     reviewLayoutOpen,
     agentsLayoutOpen,
+    artifactLayoutOpen,
     projectDetailsLayoutOpen,
   });
 
@@ -476,6 +481,7 @@ export default function App() {
       inspectorLayoutOpen,
       reviewLayoutOpen,
       agentsLayoutOpen,
+      artifactLayoutOpen,
       projectDetailsLayoutOpen,
     };
     if (
@@ -483,22 +489,43 @@ export default function App() {
       && previous.inspectorLayoutOpen === nextLayout.inspectorLayoutOpen
       && previous.reviewLayoutOpen === nextLayout.reviewLayoutOpen
       && previous.agentsLayoutOpen === nextLayout.agentsLayoutOpen
+      && previous.artifactLayoutOpen === nextLayout.artifactLayoutOpen
       && previous.projectDetailsLayoutOpen === nextLayout.projectDetailsLayoutOpen
     ) return;
     committedPanelLayoutRef.current = nextLayout;
     window.dispatchEvent(new Event(PANEL_LAYOUT_COMMIT_EVENT));
   }, [
     agentsLayoutOpen,
+    artifactLayoutOpen,
     inspectorLayoutOpen,
     projectDetailsLayoutOpen,
     reviewLayoutOpen,
     sidebarLayoutOpen,
   ]);
 
+  const openArtifactPreview = useCallback((targetPath: string, targetWorkspace?: string) => {
+    const nextPath = String(targetPath || "").trim();
+    const nextWorkspace = String(targetWorkspace || workspace || "").trim();
+    if (!nextPath || !nextWorkspace) return;
+
+    runLayoutTransition(() => {
+      setReviewOpen(false);
+      setAgentsOpen(false);
+      setSelectedProjectId("");
+      setInspectorOpen(false);
+      setArtifactPreview({ path: nextPath, workspace: nextWorkspace });
+    }, artifactPreviewOpen ? "neutral" : rightOpenIntent);
+  }, [artifactPreviewOpen, rightOpenIntent, runLayoutTransition, workspace]);
+
+  const closeArtifactPreview = useCallback(() => {
+    runLayoutTransition(() => setArtifactPreview(null), "right-close");
+  }, [runLayoutTransition]);
+
   function focusReviewFile(path?: string): void {
     const normalized = normalizeReviewPath(path);
     runLayoutTransition(() => {
       setAgentsOpen(false);
+      setArtifactPreview(null);
       setSelectedProjectId("");
       setInspectorOpen(false);
       setReviewOpen(true);
@@ -520,6 +547,7 @@ export default function App() {
     runLayoutTransition(() => {
       setReviewOpen(false);
       setAgentsOpen(false);
+      setArtifactPreview(null);
       setInspectorOpen(false);
       setSelectedProjectId(projectId);
     }, projectDetailsOpen ? "neutral" : rightOpenIntent);
@@ -532,6 +560,7 @@ export default function App() {
   const openAgents = useCallback(() => {
     runLayoutTransition(() => {
       setReviewOpen(false);
+      setArtifactPreview(null);
       setInspectorOpen(false);
       setSelectedProjectId("");
       setAgentsOpen(true);
@@ -558,6 +587,7 @@ export default function App() {
     runLayoutTransition(() => {
       setReviewOpen(false);
       setAgentsOpen(false);
+      setArtifactPreview(null);
       setSelectedProjectId("");
       setInspectorOpen((open) => !open);
     }, inspectorVisible ? "right-close" : rightOpenIntent);
@@ -567,8 +597,20 @@ export default function App() {
     setDismissedApprovalIds(new Set());
     setReviewOpen(false);
     setAgentsOpen(false);
+    setArtifactPreview(null);
     autoOpenedAgentsForThreadRef.current = "";
   }, [thread?.id]);
+
+  useEffect(() => {
+    const handleArtifactPreview = (event: Event) => {
+      const detail = (event as CustomEvent<{ path?: string; workspace?: string }>).detail;
+      const targetPath = String(detail?.path || "").trim();
+      if (!targetPath) return;
+      openArtifactPreview(targetPath, detail?.workspace);
+    };
+    window.addEventListener("loom:artifact-preview-open", handleArtifactPreview);
+    return () => window.removeEventListener("loom:artifact-preview-open", handleArtifactPreview);
+  }, [openArtifactPreview]);
 
   useEffect(() => {
     const openFromActivity = () => openAgents();
@@ -961,7 +1003,7 @@ export default function App() {
     <>
       <div
         ref={shellRef}
-        className={`app-shell workspace-panels ${sidebarOpen ? "sidebar-open" : "sidebar-closed"} ${sidebarLayoutOpen ? "sidebar-layout-open" : "sidebar-layout-closed"} ${inspectorVisible ? "inspector-open" : "inspector-closed"} ${inspectorLayoutOpen ? "inspector-layout-open" : "inspector-layout-closed"} ${reviewLayoutOpen ? "with-review" : ""} ${agentsLayoutOpen ? "with-agents" : ""} ${projectDetailsLayoutOpen ? "with-project-details" : ""} ${resizingPanel ? "is-resizing" : ""} ${settingsPresence.mounted ? "is-settings-obscured" : ""}`}
+        className={`app-shell workspace-panels ${sidebarOpen ? "sidebar-open" : "sidebar-closed"} ${sidebarLayoutOpen ? "sidebar-layout-open" : "sidebar-layout-closed"} ${inspectorVisible ? "inspector-open" : "inspector-closed"} ${inspectorLayoutOpen ? "inspector-layout-open" : "inspector-layout-closed"} ${reviewLayoutOpen ? "with-review" : ""} ${agentsLayoutOpen ? "with-agents" : ""} ${artifactLayoutOpen ? "with-artifact-preview" : ""} ${projectDetailsLayoutOpen ? "with-project-details" : ""} ${resizingPanel ? "is-resizing" : ""} ${settingsPresence.mounted ? "is-settings-obscured" : ""}`}
         style={layoutStyle}
         aria-hidden={settingsPresence.mounted ? true : undefined}
       >
@@ -1123,6 +1165,12 @@ export default function App() {
         open={agentsOpen}
         active={Boolean(running)}
         onClose={() => runLayoutTransition(() => setAgentsOpen(false), "right-close")}
+      />
+      <ArtifactPreviewDock
+        open={artifactPreviewOpen}
+        path={artifactPreview?.path || ""}
+        workspace={artifactPreview?.workspace || workspace}
+        onClose={closeArtifactPreview}
       />
       <ReviewInteractionBridge onOpen={focusReviewFile} />
       <AccountDialog
