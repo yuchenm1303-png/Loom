@@ -55,3 +55,39 @@ def test_new_activity_rows_coordinate_bottom_follow_before_paint() -> None:
     assert "snapBottomRef" in source
     assert "activityAdded && followingRef.current" in source
     assert "scheduleBottomSync(scroller, false, true)" in source
+
+
+def test_user_scroll_up_can_break_live_follow_while_streaming() -> None:
+    source = SCROLL.read_text(encoding="utf-8")
+
+    assert "const detachFromLiveFollow = (scroller: HTMLDivElement) => {" in source
+    assert "forceBottomRef.current = false;" in source
+    assert "snapBottomRef.current = false;" in source
+    assert "cancelScheduledScroll();" in source
+    assert 'if (event.deltaY < 0) detachFromLiveFollow(scroller);' in source
+    assert 'scroller.addEventListener("wheel", onWheel, { passive: true });' in source
+    assert 'scroller.addEventListener("touchmove", onTouchMove, { passive: true });' in source
+
+
+def test_upward_scroll_wins_over_near_bottom_auto_follow() -> None:
+    source = SCROLL.read_text(encoding="utf-8")
+
+    scroll_start = source.index("const onScroll = () => {")
+    scroll_end = source.index("const onWheel = (event: WheelEvent) => {", scroll_start)
+    scroll_handler = source[scroll_start:scroll_end]
+
+    moved_up_branch = scroll_handler.index("if (movedUp && !forceBottomRef.current)")
+    near_bottom_branch = scroll_handler.index("else if (nearBottom && (followingRef.current || movedDown))")
+    assert moved_up_branch < near_bottom_branch
+    assert "followingRef.current = false;" in scroll_handler
+    assert "const movedDown =" in scroll_handler
+
+
+def test_detached_scroll_state_survives_streaming_content_growth() -> None:
+    source = SCROLL.read_text(encoding="utf-8")
+
+    observer_start = source.index("new ResizeObserver(() => {")
+    observer_end = source.index("observer?.observe(scroller);", observer_start)
+    observer = source[observer_start:observer_end]
+    assert "} else {" in observer
+    assert "setJumpVisible(!isNearBottom(scroller));" in observer
