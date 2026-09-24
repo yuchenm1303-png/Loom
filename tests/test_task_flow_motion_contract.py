@@ -48,13 +48,16 @@ def test_task_flow_copy_uses_whole_pixel_font_geometry() -> None:
     assert ".task-flow-group .task-flow-primary.code {\n  font-size: 11px;\n  line-height: 15px;" in source
 
 
-def test_new_activity_rows_coordinate_bottom_follow_before_paint() -> None:
+def test_new_activity_rows_use_live_follow_without_hard_snap() -> None:
     source = SCROLL.read_text(encoding="utf-8")
 
     assert "latestActivityItemId" in source
-    assert "snapBottomRef" in source
     assert "activityAdded && followingRef.current" in source
-    assert "scheduleBottomSync(scroller, false, true)" in source
+    branch_start = source.index("else if (activityAdded && followingRef.current)")
+    branch_end = source.index("} else if (followingRef.current)", branch_start)
+    activity_branch = source[branch_start:branch_end]
+    assert "scheduleBottomSync(scroller);" in activity_branch
+    assert "false, true" not in activity_branch
 
 
 def test_user_scroll_up_can_break_live_follow_while_streaming() -> None:
