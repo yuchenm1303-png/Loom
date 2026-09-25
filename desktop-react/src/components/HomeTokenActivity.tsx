@@ -77,7 +77,12 @@ function buildWeeks(data: HomeUsageInsights | null): HeatCell[][] {
 function loadInsights(): Promise<HomeUsageInsights> {
   if (cachedInsights) return Promise.resolve(cachedInsights);
   if (inflightInsights) return inflightInsights;
-  inflightInsights = window.loom.call<HomeUsageInsights>("profile/insights", { days: 371 })
+  // The home screen mounts before the app server has been spawned, so go
+  // through connect() first -- it is idempotent and starts the server when it
+  // is not running yet. A bare call() here rejects on cold start, which flips
+  // `failed` and hides the whole panel for the rest of the session.
+  inflightInsights = window.loom.connect()
+    .then(() => window.loom.call<HomeUsageInsights>("profile/insights", { days: 371 }))
     .then((result) => {
       cachedInsights = result;
       return result;
