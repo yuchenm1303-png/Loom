@@ -1,3 +1,4 @@
+import { Terminal as LucideTerminal, Wrench as LucideWrench } from "lucide-react";
 import type { TranscriptItem } from "../types/loom";
 import {
   AnthropicGlyph,
@@ -9,7 +10,6 @@ import {
   DeepSeekGlyph,
   FileEditGlyph,
   GeminiGlyph,
-  GenericToolGlyph,
   GitHubGlyph,
   MCPGlyph,
   MemoryGlyph,
@@ -19,10 +19,10 @@ import {
   SentinelXGlyph,
   SkillGlyph,
   SubAgentGlyph,
-  TerminalGlyph,
   WorkspaceGlyph,
   XAIGlyph,
   type ToolGlyphComponent,
+  type ToolGlyphProps,
 } from "./ToolIconLibrary";
 import "./tool-identity.css";
 
@@ -51,9 +51,8 @@ export type ActivityFamily =
   | "automation"
   | "mcp"
   | "generic"
-  // Group-only identities deliberately avoid Transcript's legacy Lucide
-  // terminal/file/wrench branches, so every visible activity badge now comes
-  // through this library without rewriting historical transcript data.
+  // Group-only aliases preserve the existing group resolver while letting the
+  // terminal and generic groups reuse Loom's original Lucide icons.
   | "terminal-group"
   | "file-group"
   | "mixed-group";
@@ -65,8 +64,16 @@ export interface ActivityIdentity {
   icon: ToolGlyphComponent;
 }
 
+function OriginalTerminalGlyph({ size = 14 }: ToolGlyphProps) {
+  return <LucideTerminal size={size} aria-hidden="true" />;
+}
+
+function OriginalToolGlyph({ size = 14 }: ToolGlyphProps) {
+  return <LucideWrench size={size} aria-hidden="true" />;
+}
+
 const IDENTITIES = {
-  terminal: { family: "terminal", kind: "capability", label: "终端", icon: TerminalGlyph },
+  terminal: { family: "terminal", kind: "capability", label: "终端", icon: OriginalTerminalGlyph },
   file: { family: "file", kind: "capability", label: "文件编辑", icon: FileEditGlyph },
   github: { family: "github", kind: "brand", label: "GitHub", icon: GitHubGlyph },
   openai: { family: "openai", kind: "brand", label: "OpenAI", icon: OpenAIGlyph },
@@ -87,7 +94,7 @@ const IDENTITIES = {
   subagent: { family: "subagent", kind: "capability", label: "子代理", icon: SubAgentGlyph },
   automation: { family: "automation", kind: "capability", label: "自动化", icon: AutomationGlyph },
   mcp: { family: "mcp", kind: "capability", label: "MCP", icon: MCPGlyph },
-  generic: { family: "generic", kind: "neutral", label: "工具", icon: GenericToolGlyph },
+  generic: { family: "generic", kind: "neutral", label: "工具", icon: OriginalToolGlyph },
 } satisfies Record<Exclude<ActivityFamily, "terminal-group" | "file-group" | "mixed-group">, ActivityIdentity>;
 
 const GROUP_IDENTITIES: Record<"terminal-group" | "file-group" | "mixed-group", ActivityIdentity> = {
