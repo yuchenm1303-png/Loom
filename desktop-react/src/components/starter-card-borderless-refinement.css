@@ -1,0 +1,104 @@
+/* Final starter-card surface pass: frameless cards and a quieter navigation glyph. */
+
+.starter-card {
+  border: 0 !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.020),
+    0 12px 28px rgba(0,0,0,.115);
+}
+
+/* The pointer light remains inside the surface; remove the hard illuminated rim. */
+.starter-card::after {
+  display: none !important;
+}
+
+.starter-card:hover:not(:disabled) {
+  border: 0 !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.030),
+    0 18px 38px rgba(0,0,0,.205),
+    0 12px 34px rgba(var(--starter-rgb),.040);
+}
+
+.starter-card:focus-visible {
+  border: 0 !important;
+  outline: none;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.028),
+    0 16px 36px rgba(0,0,0,.19),
+    0 0 28px rgba(var(--starter-rgb),.085);
+}
+
+/*
+ * The old arrow read as a tiny secondary button. Make it a restrained,
+ * editorial navigation mark instead: no tile, no border, no chrome.
+ */
+.starter-arrow {
+  top: 15px;
+  right: 16px;
+  width: 21px;
+  height: 21px;
+  padding: 2px;
+  border: 0 !important;
+  border-radius: 0;
+  background: transparent !important;
+  color: rgba(126,133,148,.62);
+  opacity: .72;
+  stroke-width: 1.55;
+  filter: drop-shadow(0 0 0 transparent);
+  transform: translate3d(0,0,0) rotate(-1deg) scale(.94);
+  transform-origin: 50% 50%;
+  transition:
+    color 180ms ease,
+    opacity 180ms ease,
+    transform 320ms cubic-bezier(.16,.88,.22,1),
+    filter 240ms ease;
+}
+
+.starter-card:hover:not(:disabled) .starter-arrow {
+  color: rgba(var(--starter-rgb),.96);
+  opacity: 1;
+  background: transparent !important;
+  box-shadow: none !important;
+  transform: translate3d(3px,-3px,0) rotate(0deg) scale(1.08);
+  filter: drop-shadow(0 3px 7px rgba(var(--starter-rgb),.22));
+}
+
+.starter-card:active:not(:disabled) .starter-arrow {
+  transform: translate3d(1px,-1px,0) scale(.98);
+  filter: drop-shadow(0 1px 4px rgba(var(--starter-rgb),.16));
+  transition-duration: 90ms;
+}
+
+html[data-loom-theme="light"] .starter-card {
+  border: 0 !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.86),
+    0 10px 24px rgba(27,31,40,.045);
+}
+
+html[data-loom-theme="light"] .starter-card:hover:not(:disabled) {
+  border: 0 !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.94),
+    0 16px 34px rgba(27,31,40,.075),
+    0 10px 28px rgba(var(--starter-rgb),.032);
+}
+
+html[data-loom-theme="light"] .starter-arrow {
+  color: rgba(100,108,121,.56);
+  background: transparent !important;
+}
+
+html[data-loom-theme="light"] .starter-card:hover:not(:disabled) .starter-arrow {
+  color: rgba(var(--starter-rgb),.88);
+  filter: drop-shadow(0 3px 6px rgba(var(--starter-rgb),.15));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .starter-arrow { transition: none !important; }
+}
+
+html[data-loom-reduced-motion="true"] .starter-arrow {
+  transition: none !important;
+}

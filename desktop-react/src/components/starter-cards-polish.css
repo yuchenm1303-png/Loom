@@ -282,8 +282,7 @@ html[data-loom-reduced-motion="true"] .starter-arrow { transition: none !importa
   justify-content: safe center;
 }
 
-.empty-state > .empty-hero,
-.empty-state > .empty-kicker,
+.empty-state > .empty-brand-lockup,
 .empty-state > h1,
 .empty-state > p,
 .empty-state > .home-token-activity,
@@ -291,8 +290,25 @@ html[data-loom-reduced-motion="true"] .starter-arrow { transition: none !importa
   flex-shrink: 0;
 }
 
-.empty-state > .empty-hero {
-  flex-basis: 92px;
+.empty-brand-lockup {
+  min-height: 82px;
+  margin-bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.empty-brand-lockup > .empty-hero {
+  width: 92px;
+  height: 62px;
+  min-height: 62px;
+  margin: 0 0 4px;
+  overflow: visible;
+}
+
+.empty-brand-lockup > .empty-kicker {
+  margin-bottom: 0;
 }
 
 .empty-state > .home-token-activity {
@@ -314,10 +330,16 @@ html[data-loom-reduced-motion="true"] .starter-arrow { transition: none !importa
     padding-bottom: 34px;
   }
 
-  .empty-state > .empty-hero {
-    flex-basis: 78px;
-    height: 78px;
-    margin-bottom: 3px;
+  .empty-state > .empty-brand-lockup {
+    min-height: 74px;
+    margin-bottom: 6px;
+  }
+
+  .empty-brand-lockup > .empty-hero {
+    width: 86px;
+    height: 54px;
+    min-height: 54px;
+    margin-bottom: 2px;
   }
 
   .empty-state > .home-token-activity {
@@ -334,13 +356,70 @@ html[data-loom-reduced-motion="true"] .starter-arrow { transition: none !importa
     padding-top: 14px;
   }
 
-  .empty-state > .empty-hero {
-    flex-basis: 68px;
-    height: 68px;
+  .empty-state > .empty-brand-lockup {
+    min-height: 68px;
+    margin-bottom: 4px;
+  }
+
+  .empty-brand-lockup > .empty-hero {
+    width: 82px;
+    height: 50px;
+    min-height: 50px;
     margin-bottom: 0;
   }
 
   .empty-state > .home-token-activity {
     margin-top: 12px;
+  }
+}
+
+
+/* Light-theme brand visibility ---------------------------------------------
+   The orbital mark is intentionally delicate on dark surfaces; on the pale
+   canvas it needs a firmer contrast floor so it does not disappear at normal
+   Windows scaling or under screen capture compression. */
+html[data-loom-theme="light"] .empty-brand-lockup .empty-hero {
+  filter: saturate(1.12) contrast(1.08);
+}
+
+html[data-loom-theme="light"] .empty-brand-lockup .empty-hero-aura {
+  opacity: .9;
+  background:
+    radial-gradient(ellipse at center,
+      rgba(62,161,224,.13) 0 18%,
+      rgba(101,80,213,.11) 30%,
+      rgba(107,89,202,.04) 50%,
+      transparent 73%);
+}
+
+html[data-loom-theme="light"] .empty-brand-lockup .empty-hero-field {
+  opacity: .66;
+}
+
+html[data-loom-theme="light"] .empty-brand-lockup .empty-loom-orbit::before {
+  opacity: .82;
+}
+
+html[data-loom-theme="light"] .empty-brand-lockup .empty-loom-core {
+  background: rgba(70,160,220,.98);
+  box-shadow:
+    0 0 4px rgba(59,145,210,.52),
+    0 0 10px rgba(77,116,218,.32),
+    0 0 18px rgba(104,84,210,.20);
+}
+
+html[data-loom-theme="light"] .empty-brand-lockup .empty-spark {
+  opacity: .78;
+}
+
+@media (max-width: 720px) {
+  .empty-brand-lockup {
+    min-height: 70px;
+  }
+
+  .empty-brand-lockup > .empty-hero {
+    width: 84px;
+    height: 52px;
+    min-height: 52px;
   }
 }
