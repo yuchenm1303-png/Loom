@@ -1519,7 +1519,7 @@ export function Transcript({ items, running, currentTurnId, workspace, promptDis
   }, [items, onPrompt, promptDisabled, running]);
 
   return (
-    <div className="transcript-scroll">
+    <div className={`transcript-scroll ${!items.length ? "is-empty" : ""}`}>
       <div className="chat-ambient" aria-hidden="true">
         <span className="ambient-glow glow-one" />
         <span className="ambient-glow glow-two" />
