@@ -52,6 +52,7 @@ import type {
 import { KeyboardShortcutsSettings } from "./KeyboardShortcutsSettings";
 import { ModelsSettingsPanel } from "./ModelsSettingsPanel";
 import { SettingsWebSearchPanel } from "./SettingsWebSearchPanel";
+import { setSettingsRoute, useSettingsRoute } from "./settingsNavigation";
 import "./settings-page.css";
 import "./settings-general-polish.css";
 import "./settings-maturity.css";
@@ -519,6 +520,7 @@ function SelectControl({ value, options, onChange, label }: { value: string; opt
 
 export function SettingsPage({ runtime, models, running, onClose }: SettingsPageProps) {
   const [page, setPage] = useState<PageKey>("general");
+  const activeRoute = useSettingsRoute();
   const settingsScrollRef = useRef<HTMLDivElement>(null);
   const navigationTransitionRef = useRef(0);
   const navigationTimerRef = useRef<number | null>(null);
@@ -542,7 +544,11 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
   const [cdpDraft, setCdpDraft] = useState(settings.browser?.cdpUrl ?? DEFAULT_BROWSER.cdpUrl);
 
   const navigateToPage = (nextPage: PageKey) => {
-    if (nextPage === page && pageMotion === "idle") return;
+    if (nextPage === page && pageMotion === "idle") {
+      setSettingsRoute(nextPage);
+      settingsScrollRef.current?.scrollTo({ top: 0, behavior: "instant" });
+      return;
+    }
 
     const transitionId = ++navigationTransitionRef.current;
     if (navigationTimerRef.current !== null) {
@@ -558,7 +564,10 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
     const reduceMotion = document.documentElement.dataset.loomReducedMotion === "true"
       || Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)").matches);
     const commitPage = () => {
-      flushSync(() => setPage(nextPage));
+      flushSync(() => {
+        setPage(nextPage);
+        setSettingsRoute(nextPage);
+      });
       settingsScrollRef.current?.scrollTo({ top: 0, behavior: "instant" });
     };
 
@@ -595,6 +604,20 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
     if (navigationTimerRef.current !== null) window.clearTimeout(navigationTimerRef.current);
     if (navigationFrameRef.current !== null) cancelAnimationFrame(navigationFrameRef.current);
   }, []);
+
+  useEffect(() => {
+    if (activeRoute !== "memory" && activeRoute !== "connectors") return;
+    navigationTransitionRef.current += 1;
+    if (navigationTimerRef.current !== null) {
+      window.clearTimeout(navigationTimerRef.current);
+      navigationTimerRef.current = null;
+    }
+    if (navigationFrameRef.current !== null) {
+      cancelAnimationFrame(navigationFrameRef.current);
+      navigationFrameRef.current = null;
+    }
+    setPageMotion("idle");
+  }, [activeRoute]);
 
   useEffect(() => {
     const merged = mergedSettings(runtime);
@@ -1420,7 +1443,7 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
           <label className="settings-search"><Search size={14} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search settings" /></label>
         </div>
         <nav className="settings-nav" aria-label="Settings navigation">
-          {filteredGroups.map((group) => <section key={group.label}><span className="settings-nav-label">{group.label}</span>{group.items.map((item) => { const Icon = item.icon; return <button type="button" key={item.key} className={page === item.key ? "active" : ""} aria-current={page === item.key ? "page" : undefined} onClick={() => navigateToPage(item.key)}><Icon size={16} strokeWidth={1.7} /><span>{item.label}</span></button>; })}</section>)}
+          {filteredGroups.map((group) => <section key={group.label}><span className="settings-nav-label">{group.label}</span>{group.items.map((item) => { const Icon = item.icon; return <button type="button" key={item.key} className={activeRoute === item.key ? "active" : ""} aria-current={activeRoute === item.key ? "page" : undefined} onClick={() => navigateToPage(item.key)}><Icon size={16} strokeWidth={1.7} /><span>{item.label}</span></button>; })}</section>)}
         </nav>
         <div className="settings-sidebar-footer"><span className="settings-runtime-dot" /><div><strong>Loom runtime</strong><span>{running ? "Turn active" : "Ready for changes"}</span></div></div>
       </aside>
