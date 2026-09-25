@@ -288,8 +288,8 @@ html[data-loom-reduced-motion="true"] .starter-arrow { transition: none !importa
 .empty-intro .empty-brand-lockup {
   width: auto;
   min-width: 196px;
-  min-height: 80px;
-  margin: 0 0 8px;
+  min-height: 122px;
+  margin: 0 0 10px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -298,11 +298,11 @@ html[data-loom-reduced-motion="true"] .starter-arrow { transition: none !importa
 }
 
 .empty-intro .empty-brand-lockup > .empty-hero {
-  flex: 0 0 58px;
-  width: 96px;
-  height: 58px;
-  min-height: 58px;
-  margin: 0 0 6px;
+  flex: 0 0 92px;
+  width: 112px;
+  height: 92px;
+  min-height: 92px;
+  margin: 0 0 10px;
   overflow: visible;
 }
 
@@ -455,24 +455,24 @@ html[data-loom-theme="light"] .empty-intro .empty-kicker {
    because the header and composer consume part of that height. */
 @container (max-height: 760px) {
   .empty-intro .empty-brand-lockup {
-    min-height: 64px;
-    margin-bottom: 4px;
+    min-height: 116px;
+    margin-bottom: 8px;
   }
 
   .empty-intro .empty-brand-lockup > .empty-hero {
-    flex-basis: 46px;
-    width: 82px;
-    height: 46px;
-    min-height: 46px;
-    margin-bottom: 2px;
+    flex-basis: 88px;
+    width: 108px;
+    height: 88px;
+    min-height: 88px;
+    margin-bottom: 8px;
   }
 
-  .transcript.is-empty .empty-state > h1 {
+  .transcript.is-empty .empty-intro h1 {
     margin-bottom: 5px;
     font-size: 25px;
   }
 
-  .transcript.is-empty .empty-state > p {
+  .transcript.is-empty .empty-intro p {
     font-size: 12px;
     line-height: 1.42;
   }
@@ -506,19 +506,19 @@ html[data-loom-theme="light"] .empty-intro .empty-kicker {
 
 @container (max-height: 680px) {
   .empty-intro .empty-brand-lockup {
-    min-height: 57px;
-    margin-bottom: 3px;
+    min-height: 110px;
+    margin-bottom: 7px;
   }
 
   .empty-intro .empty-brand-lockup > .empty-hero {
-    flex-basis: 40px;
-    width: 76px;
-    height: 40px;
-    min-height: 40px;
-    margin-bottom: 1px;
+    flex-basis: 84px;
+    width: 104px;
+    height: 84px;
+    min-height: 84px;
+    margin-bottom: 7px;
   }
 
-  .transcript.is-empty .empty-state > h1 {
+  .transcript.is-empty .empty-intro h1 {
     font-size: 23px;
   }
 
@@ -549,24 +549,24 @@ html[data-loom-theme="light"] .empty-intro .empty-kicker {
   }
 
   .empty-intro .empty-brand-lockup {
-    min-height: 58px;
-    margin-bottom: 3px;
+    min-height: 114px;
+    margin-bottom: 8px;
   }
 
   .empty-intro .empty-brand-lockup > .empty-hero {
-    flex-basis: 42px;
-    width: 76px;
-    height: 42px;
-    min-height: 42px;
-    margin-bottom: 1px;
+    flex-basis: 86px;
+    width: 106px;
+    height: 86px;
+    min-height: 86px;
+    margin-bottom: 8px;
   }
 
-  .transcript.is-empty .empty-state > h1 {
+  .transcript.is-empty .empty-intro h1 {
     margin-bottom: 4px;
     font-size: 25px;
   }
 
-  .transcript.is-empty .empty-state > p {
+  .transcript.is-empty .empty-intro p {
     font-size: 12px;
     line-height: 1.42;
   }
@@ -609,21 +609,21 @@ html[data-loom-theme="light"] .empty-intro .empty-kicker {
 
 @media (max-height: 760px) and (min-width: 921px) {
   .empty-intro .empty-brand-lockup {
-    min-height: 50px;
+    min-height: 108px;
   }
 
   .empty-intro .empty-brand-lockup > .empty-hero {
-    flex-basis: 35px;
-    width: 70px;
-    height: 35px;
-    min-height: 35px;
+    flex-basis: 82px;
+    width: 102px;
+    height: 82px;
+    min-height: 82px;
   }
 
-  .transcript.is-empty .empty-state > h1 {
+  .transcript.is-empty .empty-intro h1 {
     font-size: 23px;
   }
 
-  .transcript.is-empty .empty-state > p {
+  .transcript.is-empty .empty-intro p {
     line-height: 1.34;
   }
 
