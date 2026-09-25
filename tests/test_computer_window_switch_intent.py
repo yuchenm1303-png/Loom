@@ -230,3 +230,13 @@ def test_ordinary_windows_are_not_labelled_as_loom():
     snapshot = ComputerStateSnapshot(1, _TwoWindowOperator(self_window=False).observe())
 
     assert "Loom's own interface" not in _model_observation_text(snapshot)
+
+
+def test_foreground_metadata_outweighs_images_embedded_inside_an_app():
+    snapshot = ComputerStateSnapshot(1, _TwoWindowOperator(self_window=False).observe())
+
+    text = _model_observation_text(snapshot)
+
+    assert "foreground metadata" in text
+    assert "screenshot, remote desktop, video, or image" in text
+    assert "never contradict the reported foreground window from pixels alone" in text

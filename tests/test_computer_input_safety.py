@@ -198,6 +198,36 @@ def test_window_switch_attaches_foreground_thread_not_loom_worker(monkeypatch):
     assert attached_pairs == [(4242, 5252, True), (4242, 5252, False)]
 
 
+def test_attach_thread_race_is_reported_as_activation_failure(monkeypatch):
+    fake = _FakeWin32(foreground=0x1234)
+    _install(monkeypatch, fake, responds=True)
+
+    def invalid_thread(_foreground_thread, _target_thread, _attach):
+        raise OSError(87, "AttachThreadInput", "invalid parameter")
+
+    fake.AttachThreadInput = invalid_thread
+
+    with pytest.raises(RuntimeError, match="refused to activate.*AttachThreadInput"):
+        _operator()._switch_window(_switch())
+
+    assert "BringWindowToTop" not in fake.calls, "failed foreground authority must not mutate visual Z-order"
+
+
+def test_detach_thread_race_does_not_escape_as_raw_pywin32_error(monkeypatch):
+    fake = _FakeWin32(foreground=0x1234)
+    _install(monkeypatch, fake, responds=True)
+
+    def attach_then_target_exits(_foreground_thread, _target_thread, attach):
+        if attach:
+            return True
+        raise OSError(87, "AttachThreadInput", "invalid parameter")
+
+    fake.AttachThreadInput = attach_then_target_exits
+
+    with pytest.raises(RuntimeError, match="refused to activate.*AttachThreadInput"):
+        _operator()._switch_window(_switch())
+
+
 def test_failed_hidden_window_activation_is_rolled_back(monkeypatch):
     fake = _FakeWin32(foreground=0x1234)
     fake.IsWindowVisible = lambda _hwnd: False

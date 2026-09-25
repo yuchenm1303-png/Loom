@@ -854,23 +854,45 @@ class PyWinAutoWindowsOperator:
             )
             target_thread = int(win32process.GetWindowThreadProcessId(hwnd)[0])
             attached = False
+            retry_allowed = bool(target_thread and foreground_thread == target_thread)
             try:
                 # Foreground permission belongs to the thread that currently owns
                 # the foreground window, not to Loom's worker thread.  Joining
                 # target to Loom (the old code) does not bypass the foreground
                 # lock and made this retry fail forever on locked desktops.
                 if foreground_thread and foreground_thread != target_thread:
-                    win32process.AttachThreadInput(foreground_thread, target_thread, True)
-                    attached = True
-                win32gui.BringWindowToTop(hwnd)
-                try:
-                    win32gui.SetForegroundWindow(hwnd)
-                    methods.append("AttachThreadInput")
-                except pywintypes.error as exc:
-                    activation_error = exc
+                    try:
+                        win32process.AttachThreadInput(foreground_thread, target_thread, True)
+                        attached = True
+                        retry_allowed = True
+                    except pywintypes.error as exc:
+                        # Either thread can disappear between discovery and the
+                        # attach. This is an ordinary activation race, not an
+                        # internal tool crash; foreground verification below
+                        # still fails closed.
+                        activation_error = exc
+                # BringWindowToTop without foreground permission can reorder the
+                # pixels while GetForegroundWindow still names the old app. That
+                # split-brain state produced screenshots with cmd visually above
+                # Claude while keyboard authority remained with Claude. Never
+                # mutate Z-order unless the input queues are joined (or already
+                # belong to the same thread).
+                if retry_allowed:
+                    win32gui.BringWindowToTop(hwnd)
+                    try:
+                        win32gui.SetForegroundWindow(hwnd)
+                        methods.append("AttachThreadInput")
+                    except pywintypes.error as exc:
+                        activation_error = exc
             finally:
                 if attached:
-                    win32process.AttachThreadInput(foreground_thread, target_thread, False)
+                    try:
+                        win32process.AttachThreadInput(foreground_thread, target_thread, False)
+                    except pywintypes.error as exc:
+                        # A thread that exits while attached can make Windows
+                        # return ERROR_INVALID_PARAMETER. Preserve the failure
+                        # without leaking a raw pywin32 exception to the model.
+                        activation_error = exc
 
         if int(win32gui.GetForegroundWindow()) != hwnd:
             # Do not leave a hidden helper visible or a minimized app restored
