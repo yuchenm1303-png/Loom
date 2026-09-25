@@ -279,6 +279,7 @@ html[data-loom-reduced-motion="true"] .starter-arrow { transition: none !importa
 .transcript-scroll.is-empty {
   overflow-y: hidden;
   overscroll-behavior: none;
+  container-type: size;
 }
 
 .transcript.is-empty {
@@ -306,9 +307,10 @@ html[data-loom-reduced-motion="true"] .starter-arrow { transition: none !importa
 }
 
 .empty-brand-lockup {
-  width: 112px;
-  min-height: 68px;
-  margin-bottom: 5px;
+  width: auto;
+  min-width: 176px;
+  min-height: 74px;
+  margin-bottom: 7px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -317,35 +319,39 @@ html[data-loom-reduced-motion="true"] .starter-arrow { transition: none !importa
 }
 
 .empty-brand-lockup > .empty-hero {
-  flex: 0 0 50px;
-  width: 84px;
-  height: 50px;
-  min-height: 50px;
-  margin: 0 0 2px;
+  flex: 0 0 54px;
+  width: 90px;
+  height: 54px;
+  min-height: 54px;
+  margin: 0 0 3px;
   overflow: visible;
 }
 
 .empty-brand-lockup > .empty-kicker {
   flex: none;
+  min-width: max-content;
   margin-bottom: 0;
+  white-space: nowrap;
+  letter-spacing: .075em;
 }
 
 .transcript.is-empty .empty-state > h1 {
-  margin-bottom: 6px;
+  margin-bottom: 7px;
   font-size: clamp(23px, 2vw, 28px);
+  line-height: 1.14;
 }
 
 .transcript.is-empty .empty-state > p {
-  max-width: 560px;
+  max-width: 590px;
   font-size: 12.5px;
-  line-height: 1.48;
+  line-height: 1.5;
 }
 
 .transcript.is-empty .empty-state > .home-token-activity {
-  width: min(700px, 100%);
-  margin-top: 13px;
-  padding: 10px 13px 9px;
-  border-radius: 16px;
+  width: min(708px, 100%);
+  margin-top: 15px;
+  padding: 11px 14px 10px;
+  border-radius: 17px;
 }
 
 .transcript.is-empty .home-token-heading {
@@ -378,13 +384,13 @@ html[data-loom-reduced-motion="true"] .starter-arrow { transition: none !importa
 }
 
 .transcript.is-empty .empty-state > .home-token-activity + .starter-grid {
-  width: min(700px, 100%);
-  margin-top: 12px;
-  gap: 9px;
+  width: min(708px, 100%);
+  margin-top: 13px;
+  gap: 10px;
 }
 
 .transcript.is-empty .starter-card {
-  min-height: 84px;
+  min-height: 82px;
   padding: 13px 44px 12px 14px;
   border-radius: 16px;
   grid-template-columns: 38px minmax(0, 1fr);
@@ -408,6 +414,95 @@ html[data-loom-reduced-motion="true"] .starter-arrow { transition: none !importa
 
 .transcript.is-empty .starter-content > span:last-child {
   line-height: 1.42;
+}
+
+/* Size the launch surface from the real conversation viewport. The outer
+   Electron window can be tall while the transcript itself is much shorter
+   because the header and composer consume part of that height. */
+@container (max-height: 760px) {
+  .empty-brand-lockup {
+    min-height: 64px;
+    margin-bottom: 4px;
+  }
+
+  .empty-brand-lockup > .empty-hero {
+    flex-basis: 46px;
+    width: 82px;
+    height: 46px;
+    min-height: 46px;
+    margin-bottom: 2px;
+  }
+
+  .transcript.is-empty .empty-state > h1 {
+    margin-bottom: 5px;
+    font-size: 25px;
+  }
+
+  .transcript.is-empty .empty-state > p {
+    font-size: 12px;
+    line-height: 1.42;
+  }
+
+  .transcript.is-empty .empty-state > .home-token-activity {
+    margin-top: 11px;
+    padding-top: 9px;
+    padding-bottom: 8px;
+  }
+
+  .transcript.is-empty .home-token-chart {
+    margin-top: 5px;
+    padding-top: 3px;
+  }
+
+  .transcript.is-empty .home-token-footer {
+    margin-top: 4px;
+  }
+
+  .transcript.is-empty .empty-state > .home-token-activity + .starter-grid {
+    margin-top: 9px;
+    gap: 8px;
+  }
+
+  .transcript.is-empty .starter-card {
+    min-height: 76px;
+    padding-top: 11px;
+    padding-bottom: 10px;
+  }
+}
+
+@container (max-height: 680px) {
+  .empty-brand-lockup {
+    min-height: 57px;
+    margin-bottom: 3px;
+  }
+
+  .empty-brand-lockup > .empty-hero {
+    flex-basis: 40px;
+    width: 76px;
+    height: 40px;
+    min-height: 40px;
+    margin-bottom: 1px;
+  }
+
+  .transcript.is-empty .empty-state > h1 {
+    font-size: 23px;
+  }
+
+  .transcript.is-empty .home-token-month-row {
+    display: none;
+  }
+
+  .transcript.is-empty .empty-state > .home-token-activity {
+    margin-top: 8px;
+  }
+
+  .transcript.is-empty .empty-state > .home-token-activity + .starter-grid {
+    margin-top: 7px;
+  }
+
+  .transcript.is-empty .starter-card {
+    min-height: 70px;
+  }
 }
 
 /* The workspace between the header and composer is commonly around this
