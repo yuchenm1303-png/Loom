@@ -329,17 +329,11 @@ function animateLayoutAnchors(
     const deltaX = anchor.previous - anchor.next;
     if (Math.abs(deltaX) < .5) continue;
 
-    const duration = (() => {
-      switch (capture.kind) {
-        case "header-leading": return 230;
-        case "header-copy": return 250;
-        case "header-actions": return 240;
-        case "composer": return 285;
-        case "composer-hint": return 280;
-        case "run-progress": return 270;
-        default: return 300;
-      }
-    })();
+    // Keep the live workspace geometry on the same clock as the confirmed a61
+    // panel choreography. The side-surface View Transition group runs 390ms;
+    // finishing the header/transcript/composer at 230–300ms made the main UI
+    // visibly arrive before the inspector was done settling.
+    const duration = 390;
 
     // Animate the independent CSS translate property instead of transform.
     // Composer and other controls have their own transform effects; overriding
@@ -352,7 +346,7 @@ function animateLayoutAnchors(
       ],
       {
         duration,
-        easing: "cubic-bezier(.2,.72,.18,1)",
+        easing: "cubic-bezier(.22,.7,.18,1)",
         fill: "both",
       },
     );

@@ -81,3 +81,16 @@ def test_side_panel_close_has_monotonic_live_motion_contract() -> None:
     assert "animateLayoutAnchors(captures, intent)" in app
     assert 'element.style.removeProperty("translate")' in app
     assert 'element.style.removeProperty("transform")' not in app
+
+
+def test_live_workspace_uses_same_clock_as_a61_panel_group() -> None:
+    app = read("desktop-react/src/App.tsx")
+    css = read("desktop-react/src/components/workspace-panels.css")
+
+    assert "const duration = 390;" in app
+    assert 'easing: "cubic-bezier(.22,.7,.18,1)"' in app
+    assert "case \"header-leading\": return 230" not in app
+    assert "case \"composer\": return 285" not in app
+
+    assert "animation-duration: var(--loom-motion-panel,390ms)" in css
+    assert "animation-timing-function: var(--loom-ease-standard,cubic-bezier(.22,.7,.18,1))" in css
