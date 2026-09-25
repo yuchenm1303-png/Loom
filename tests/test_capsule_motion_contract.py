@@ -178,8 +178,8 @@ def test_beacon_lands_on_the_first_frame_of_its_pulse() -> None:
 
     beacon_in = keyframes(motion, "loom-task-beacon-in")
     pulse = keyframes(motion, "loom-live-beacon")
-    assert "to { opacity: .58; scale: .9; }" in beacon_in
-    assert "0%, 100% { opacity: .58; transform: scale(.9); }" in pulse
+    assert "to { opacity: .58; scale: .91; }" in beacon_in
+    assert "0%, 100% { opacity: .58; transform: scale(.91); }" in pulse
     assert "loom-live-beacon 1.9s ease-in-out 660ms infinite" in motion
     assert "loom-task-beacon-in 360ms var(--loom-spring-pop) 300ms backwards" in motion
 
