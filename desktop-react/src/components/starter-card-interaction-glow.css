@@ -1,0 +1,205 @@
+/* Pointer-responsive starter-card lighting.
+   This layer intentionally stays accent-coloured: no white flash, no neon wash. */
+.starter-card {
+  --starter-x: 18%;
+  --starter-y: 16%;
+  background:
+    radial-gradient(260px circle at var(--starter-x) var(--starter-y), rgba(var(--starter-rgb),.030), transparent 68%),
+    linear-gradient(145deg, rgba(21,23,29,.96), rgba(13,15,20,.94));
+}
+
+/* Interior light pool follows the cursor without moving the card geometry. */
+.starter-card::before {
+  z-index: 0;
+  inset: 0;
+  border-radius: inherit;
+  background:
+    radial-gradient(
+      230px circle at var(--starter-x) var(--starter-y),
+      rgba(var(--starter-rgb),.22) 0%,
+      rgba(var(--starter-rgb),.085) 28%,
+      rgba(var(--starter-rgb),.025) 48%,
+      transparent 70%
+    );
+  filter: none;
+  opacity: .08;
+  transform: none;
+  transition: opacity 220ms ease;
+}
+
+/* A one-pixel accent rim lights only the part of the edge nearest the pointer. */
+.starter-card::after {
+  z-index: 1;
+  inset: -1px;
+  padding: 1px;
+  border-radius: inherit;
+  background:
+    radial-gradient(
+      170px circle at var(--starter-x) var(--starter-y),
+      rgba(var(--starter-rgb),.82) 0%,
+      rgba(var(--starter-rgb),.34) 34%,
+      rgba(var(--starter-rgb),.10) 54%,
+      transparent 74%
+    );
+  opacity: 0;
+  transform: none;
+  pointer-events: none;
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  transition: opacity 170ms ease;
+}
+
+.starter-icon,
+.starter-content,
+.starter-arrow {
+  z-index: 2;
+}
+
+.starter-card:hover:not(:disabled) {
+  background:
+    radial-gradient(280px circle at var(--starter-x) var(--starter-y), rgba(var(--starter-rgb),.060), transparent 67%),
+    linear-gradient(145deg, rgba(24,26,34,.985), rgba(14,16,22,.97));
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.038),
+    0 17px 36px rgba(0,0,0,.245),
+    0 8px 30px rgba(var(--starter-rgb),.050),
+    0 0 0 1px rgba(var(--starter-rgb),.018);
+}
+
+.starter-card:hover:not(:disabled)::before,
+.starter-card[data-starter-pointer="true"]::before {
+  opacity: .82;
+  transform: none;
+}
+
+.starter-card:hover:not(:disabled)::after,
+.starter-card[data-starter-pointer="true"]::after {
+  opacity: .94;
+  transform: none;
+}
+
+/* The icon gets a local aura rather than a bright tile glow. */
+.starter-icon {
+  overflow: visible;
+}
+
+.starter-icon::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: -9px;
+  border-radius: 16px;
+  background: radial-gradient(circle, rgba(var(--starter-rgb),.24), rgba(var(--starter-rgb),.07) 42%, transparent 72%);
+  filter: blur(8px);
+  opacity: 0;
+  transform: scale(.82);
+  transition:
+    opacity 220ms ease,
+    transform 320ms cubic-bezier(.2,.82,.2,1);
+  pointer-events: none;
+}
+
+.starter-card:hover:not(:disabled) .starter-icon::after {
+  opacity: .56;
+  transform: scale(1);
+}
+
+.starter-card:hover:not(:disabled) .starter-icon {
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.045),
+    0 9px 22px rgba(var(--starter-rgb),.075),
+    0 0 0 1px rgba(var(--starter-rgb),.035);
+}
+
+.starter-card:hover:not(:disabled) .starter-arrow {
+  box-shadow:
+    inset 0 1px 0 rgba(var(--starter-rgb),.055),
+    0 7px 18px rgba(var(--starter-rgb),.075),
+    0 0 12px rgba(var(--starter-rgb),.035);
+}
+
+/* Pressing condenses the light toward the interaction point instead of flashing. */
+.starter-card:active:not(:disabled)::before {
+  opacity: 1;
+  background:
+    radial-gradient(
+      170px circle at var(--starter-x) var(--starter-y),
+      rgba(var(--starter-rgb),.25) 0%,
+      rgba(var(--starter-rgb),.09) 34%,
+      transparent 70%
+    );
+}
+
+.starter-card:active:not(:disabled)::after {
+  opacity: 1;
+}
+
+/* Keyboard users get a centered, stable version of the same light language. */
+.starter-card:focus-visible {
+  --starter-x: 50%;
+  --starter-y: 50%;
+}
+
+.starter-card:focus-visible::before { opacity: .52; }
+.starter-card:focus-visible::after { opacity: .72; }
+
+html[data-loom-theme="light"] .starter-card {
+  background:
+    radial-gradient(260px circle at var(--starter-x) var(--starter-y), rgba(var(--starter-rgb),.025), transparent 68%),
+    linear-gradient(145deg, rgba(255,255,255,.98), rgba(247,248,250,.96));
+}
+
+html[data-loom-theme="light"] .starter-card::before {
+  background:
+    radial-gradient(
+      230px circle at var(--starter-x) var(--starter-y),
+      rgba(var(--starter-rgb),.105) 0%,
+      rgba(var(--starter-rgb),.042) 31%,
+      transparent 69%
+    );
+}
+
+html[data-loom-theme="light"] .starter-card::after {
+  background:
+    radial-gradient(
+      170px circle at var(--starter-x) var(--starter-y),
+      rgba(var(--starter-rgb),.55) 0%,
+      rgba(var(--starter-rgb),.19) 38%,
+      transparent 74%
+    );
+}
+
+html[data-loom-theme="light"] .starter-card:hover:not(:disabled) {
+  background:
+    radial-gradient(280px circle at var(--starter-x) var(--starter-y), rgba(var(--starter-rgb),.042), transparent 67%),
+    linear-gradient(145deg, #fff, #f8f9fb);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,1),
+    0 15px 34px rgba(27,31,40,.080),
+    0 8px 26px rgba(var(--starter-rgb),.045);
+}
+
+html[data-loom-theme="light"] .starter-icon::after {
+  opacity: 0;
+}
+
+html[data-loom-theme="light"] .starter-card:hover:not(:disabled) .starter-icon::after {
+  opacity: .32;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .starter-card::before,
+  .starter-card::after,
+  .starter-icon::after {
+    transition: none !important;
+  }
+}
+
+html[data-loom-reduced-motion="true"] .starter-card::before,
+html[data-loom-reduced-motion="true"] .starter-card::after,
+html[data-loom-reduced-motion="true"] .starter-icon::after {
+  transition: none !important;
+}
