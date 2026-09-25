@@ -39,55 +39,143 @@
   white-space: nowrap;
 }
 
+/* Language slider ---------------------------------------------------------
+   The two language buttons stay real buttons for keyboard / screen-reader
+   semantics. A single thumb underneath them glides between the two cells,
+   which keeps the control feeling like one continuous switch rather than two
+   unrelated buttons. */
 .language-settings-options {
+  --language-shell-bg: rgba(10,12,16,.38);
+  --language-shell-border: rgba(255,255,255,.075);
+  --language-shell-highlight: rgba(255,255,255,.025);
+  --language-thumb-bg: linear-gradient(180deg, rgba(154,139,255,.19), rgba(121,104,224,.12));
+  --language-thumb-border: rgba(164,147,255,.22);
+  --language-thumb-shadow:
+    0 4px 13px rgba(58,43,145,.14),
+    inset 0 1px 0 rgba(255,255,255,.10),
+    inset 0 0 0 .5px rgba(255,255,255,.025);
+  --language-active: #eeeaff;
+  --language-idle: #777f8c;
+  --language-hover: #c5cad2;
+  --language-focus: rgba(154,136,255,.62);
+
+  position: relative;
+  isolation: isolate;
   flex: none;
-  display: inline-flex;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(30px, 1fr));
   align-items: center;
-  gap: 2px;
+  width: 70px;
   height: 30px;
   padding: 2px;
-  border: 1px solid rgba(255,255,255,.065);
-  border-radius: 9px;
-  background: rgba(10,12,16,.38);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.014);
+  border: 1px solid var(--language-shell-border);
+  border-radius: 10px;
+  background: var(--language-shell-bg);
+  box-shadow:
+    inset 0 1px 0 var(--language-shell-highlight),
+    inset 0 0 0 .5px rgba(0,0,0,.08);
+  overflow: hidden;
+}
+
+/* Sliding selection thumb. */
+.language-settings-options::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  top: 2px;
+  bottom: 2px;
+  left: 2px;
+  width: calc((100% - 4px) / 2);
+  border: 1px solid var(--language-thumb-border);
+  border-radius: 7px;
+  background: var(--language-thumb-bg);
+  box-shadow: var(--language-thumb-shadow);
+  transform: translate3d(0,0,0);
+  transition:
+    transform 360ms cubic-bezier(.22,1,.36,1),
+    box-shadow 220ms ease,
+    background-color 220ms ease;
+  will-change: transform;
+  pointer-events: none;
+}
+
+/* A very restrained highlight travels with the thumb and gives the move a
+   polished, physical feel without turning the control into a glowing badge. */
+.language-settings-options::after {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  top: 4px;
+  left: 5px;
+  width: calc((100% - 10px) / 2);
+  height: 1px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.58), transparent);
+  opacity: .5;
+  transform: translate3d(0,0,0);
+  transition: transform 360ms cubic-bezier(.22,1,.36,1), opacity 180ms ease;
+  pointer-events: none;
+}
+
+.language-settings-options:has(button:nth-child(2).active)::before {
+  transform: translate3d(100%,0,0);
+}
+
+.language-settings-options:has(button:nth-child(2).active)::after {
+  transform: translate3d(calc(100% + 5px),0,0);
+  animation: language-slider-shimmer-right 430ms cubic-bezier(.22,1,.36,1);
+}
+
+.language-settings-options:has(button:nth-child(1).active)::after {
+  animation: language-slider-shimmer-left 430ms cubic-bezier(.22,1,.36,1);
 }
 
 .language-settings-options button {
-  min-width: 36px;
+  position: relative;
+  z-index: 2;
+  min-width: 0;
   height: 24px;
-  padding: 0 9px;
+  padding: 0;
   border: 0;
   border-radius: 7px;
+  outline: none;
   background: transparent;
-  color: #777f8c;
+  color: var(--language-idle);
   font: inherit;
   font-size: 11px;
   line-height: 1;
-  font-weight: 680;
-  letter-spacing: .01em;
+  font-weight: 690;
+  letter-spacing: .015em;
   cursor: pointer;
+  transform: translateZ(0);
   transition:
-    color 130ms ease,
-    background 130ms ease,
-    box-shadow 130ms ease,
-    transform 130ms cubic-bezier(.2,.78,.2,1);
+    color 180ms ease,
+    transform 160ms cubic-bezier(.2,.78,.2,1),
+    text-shadow 180ms ease;
 }
 
-.language-settings-options button:hover {
-  color: #c5cad2;
-  background: rgba(255,255,255,.035);
+.language-settings-options button:hover:not(.active) {
+  color: var(--language-hover);
 }
 
 .language-settings-options button:active {
-  transform: scale(.96);
+  transform: scale(.93);
 }
 
 .language-settings-options button.active {
-  color: #ebe8ff;
-  background: rgba(139,124,246,.14);
+  color: var(--language-active);
+  text-shadow: 0 0 10px rgba(151,130,255,.18);
+}
+
+.language-settings-options button:focus-visible {
+  box-shadow: inset 0 0 0 1.5px var(--language-focus);
+}
+
+.language-settings-options:hover::before {
   box-shadow:
-    inset 0 0 0 1px rgba(139,124,246,.16),
-    0 4px 12px rgba(80,68,176,.10);
+    0 5px 15px rgba(58,43,145,.17),
+    inset 0 1px 0 rgba(255,255,255,.12),
+    inset 0 0 0 .5px rgba(255,255,255,.03);
 }
 
 .settings-sidebar-top > .language-settings-dock {
@@ -120,14 +208,69 @@
 }
 
 .settings-sidebar-top > .language-settings-dock .language-settings-options {
+  width: 68px;
   height: 28px;
+  border-radius: 9px;
+}
+
+.settings-sidebar-top > .language-settings-dock .language-settings-options::before {
+  border-radius: 6px;
 }
 
 .settings-sidebar-top > .language-settings-dock .language-settings-options button {
-  min-width: 30px;
   height: 22px;
-  padding-inline: 7px;
   font-size: 10.5px;
+}
+
+/* Light theme gets a porcelain / lavender thumb rather than the dark glass
+   treatment. This matches the settings card in the light surface without a
+   heavy white tile suddenly appearing inside the switch. */
+html[data-loom-theme="light"] .language-settings-options {
+  --language-shell-bg: rgba(236,239,245,.86);
+  --language-shell-border: rgba(48,57,74,.12);
+  --language-shell-highlight: rgba(255,255,255,.86);
+  --language-thumb-bg: linear-gradient(180deg, rgba(255,255,255,.98), rgba(246,243,255,.96));
+  --language-thumb-border: rgba(123,101,211,.16);
+  --language-thumb-shadow:
+    0 2px 7px rgba(78,67,128,.10),
+    0 5px 14px rgba(111,88,201,.065),
+    inset 0 1px 0 rgba(255,255,255,1);
+  --language-active: #6549bd;
+  --language-idle: #7c8492;
+  --language-hover: #4f5663;
+  --language-focus: rgba(111,80,213,.48);
+
+  box-shadow:
+    inset 0 1px 2px rgba(41,48,61,.06),
+    0 1px 0 rgba(255,255,255,.72);
+}
+
+html[data-loom-theme="light"] .language-settings-options::after {
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.96), transparent);
+  opacity: .82;
+}
+
+html[data-loom-theme="light"] .language-settings-options button.active {
+  text-shadow: 0 1px 8px rgba(102,70,191,.10);
+}
+
+html[data-loom-theme="light"] .language-settings-options:hover::before {
+  box-shadow:
+    0 2px 8px rgba(78,67,128,.11),
+    0 6px 16px rgba(111,88,201,.075),
+    inset 0 1px 0 rgba(255,255,255,1);
+}
+
+@keyframes language-slider-shimmer-right {
+  0% { opacity: .2; filter: blur(1px); }
+  54% { opacity: .92; filter: blur(0); }
+  100% { opacity: .5; filter: blur(0); }
+}
+
+@keyframes language-slider-shimmer-left {
+  0% { opacity: .2; filter: blur(1px); }
+  54% { opacity: .92; filter: blur(0); }
+  100% { opacity: .5; filter: blur(0); }
 }
 
 @media (max-width: 760px) {
@@ -140,12 +283,14 @@
     white-space: normal;
   }
 
-  .language-settings-options button {
-    min-width: 34px;
-    padding-inline: 8px;
+  .language-settings-options {
+    width: 68px;
   }
 }
 
+html[data-loom-reduced-motion="true"] .language-settings-options::before,
+html[data-loom-reduced-motion="true"] .language-settings-options::after,
 html[data-loom-reduced-motion="true"] .language-settings-options button {
   transition: none;
+  animation: none;
 }
