@@ -153,3 +153,14 @@ def test_completed_process_fold_keeps_intrinsic_geometry_stable() -> None:
     open_transition = source.index(".turn-process.is-settled.is-open .turn-process-grid {")
     assert closed_transition < open_transition
     assert "opacity 170ms ease 64ms" in source[closed_transition:open_transition]
+
+
+def test_jump_to_latest_reuses_owned_follow_scheduler() -> None:
+    source = SCROLL.read_text(encoding="utf-8")
+
+    jump_start = source.index("const jumpToLatest = () => {")
+    jump_end = source.index("return (", jump_start)
+    jump = source[jump_start:jump_end]
+    assert "userDetachedRef.current = false;" in jump
+    assert "scheduleBottomSync(scroller, true, reducedMotion);" in jump
+    assert "scroller.scrollTo(" not in jump
