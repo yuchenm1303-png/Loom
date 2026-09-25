@@ -272,14 +272,22 @@ html[data-loom-reduced-motion="true"] .starter-arrow { transition: none !importa
 
 
 /* Home composition ---------------------------------------------------------
-   The Token panel made this surface taller than the original four-card home.
-   Flex items are shrinkable by default, which let the absolutely-positioned
-   Loom emblem collapse to effectively zero height before the page scrolled.
-   Keep the identity block non-shrinking and use safe centering: it stays
-   centered when there is room, but starts at the top (and scrolls normally)
-   whenever the full home composition is taller than the transcript viewport. */
+   Empty conversations use a top-led layout instead of vertical centering.
+   The page grew after adding Token activity; centering the taller stack could
+   place the orbital Loom mark above the transcript scrollport while leaving
+   the kicker visible. Keeping the empty transcript deterministic also makes
+   the layout stable across Windows scaling and short desktop windows. */
+.transcript.is-empty {
+  padding-top: 10px;
+  padding-bottom: 34px;
+}
+
 .empty-state {
-  justify-content: safe center;
+  justify-content: flex-start;
+  min-height: 100%;
+  margin: 0 auto;
+  padding-top: 10px;
+  padding-bottom: 30px;
 }
 
 .empty-state > .empty-brand-lockup,
@@ -291,23 +299,27 @@ html[data-loom-reduced-motion="true"] .starter-arrow { transition: none !importa
 }
 
 .empty-brand-lockup {
-  min-height: 82px;
-  margin-bottom: 8px;
+  width: 120px;
+  min-height: 86px;
+  margin-bottom: 7px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: flex-start;
+  overflow: visible;
 }
 
 .empty-brand-lockup > .empty-hero {
-  width: 92px;
-  height: 62px;
-  min-height: 62px;
+  flex: 0 0 66px;
+  width: 96px;
+  height: 66px;
+  min-height: 66px;
   margin: 0 0 4px;
   overflow: visible;
 }
 
 .empty-brand-lockup > .empty-kicker {
+  flex: none;
   margin-bottom: 0;
 }
 
@@ -319,26 +331,27 @@ html[data-loom-reduced-motion="true"] .starter-arrow { transition: none !importa
   margin-top: 16px;
 }
 
-/* On shorter desktop workspaces, prefer a deliberate top-led composition to
-   squeezing the Loom mark out of view. The transcript remains scrollable. */
 @media (max-height: 860px) and (min-width: 921px) {
-  .empty-state {
-    justify-content: flex-start;
-    min-height: 100%;
-    margin: 0 auto;
-    padding-top: 22px;
-    padding-bottom: 34px;
+  .transcript.is-empty {
+    padding-top: 6px;
+    padding-bottom: 26px;
   }
 
-  .empty-state > .empty-brand-lockup {
-    min-height: 74px;
-    margin-bottom: 6px;
+  .empty-state {
+    padding-top: 6px;
+    padding-bottom: 24px;
+  }
+
+  .empty-brand-lockup {
+    min-height: 78px;
+    margin-bottom: 5px;
   }
 
   .empty-brand-lockup > .empty-hero {
-    width: 86px;
-    height: 54px;
-    min-height: 54px;
+    flex-basis: 59px;
+    width: 90px;
+    height: 59px;
+    min-height: 59px;
     margin-bottom: 2px;
   }
 
@@ -352,19 +365,24 @@ html[data-loom-reduced-motion="true"] .starter-arrow { transition: none !importa
 }
 
 @media (max-height: 720px) and (min-width: 921px) {
-  .empty-state {
-    padding-top: 14px;
+  .transcript.is-empty {
+    padding-top: 4px;
   }
 
-  .empty-state > .empty-brand-lockup {
-    min-height: 68px;
+  .empty-state {
+    padding-top: 4px;
+  }
+
+  .empty-brand-lockup {
+    min-height: 72px;
     margin-bottom: 4px;
   }
 
   .empty-brand-lockup > .empty-hero {
-    width: 82px;
-    height: 50px;
-    min-height: 50px;
+    flex-basis: 54px;
+    width: 86px;
+    height: 54px;
+    min-height: 54px;
     margin-bottom: 0;
   }
 

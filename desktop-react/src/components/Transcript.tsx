@@ -1525,7 +1525,7 @@ export function Transcript({ items, running, currentTurnId, workspace, promptDis
         <span className="ambient-glow glow-two" />
         <span className="ambient-grid" />
       </div>
-      <main className="transcript" aria-live="polite">
+      <main className={`transcript ${!items.length ? "is-empty" : ""}`} aria-live="polite">
         {!items.length ? (
           <EmptyState disabled={promptDisabled} onPrompt={onPrompt} />
         ) : turnBlocks.map((block, index) => (
