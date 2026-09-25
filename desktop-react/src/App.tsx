@@ -32,6 +32,7 @@ import "./components/review-dock.css";
 import "./components/sidebar-codex-polish.css";
 import "./components/shortcut-runtime.css";
 import "./components/workspace-panels.css";
+import "./components/thread-switch-transition.css";
 import { canRenderArtifact } from "./artifactRenderers";
 import { useI18n } from "./i18n";
 import { useMotionPresence } from "./motion/useMotionPresence";
@@ -402,7 +403,13 @@ export default function App() {
   const [resizingPanel, setResizingPanel] = useState<ResizePanel | null>(null);
   const [shortcuts, setShortcuts] = useState<ShortcutSettings>(() => readShortcutSettings());
   const [dismissedApprovalIds, setDismissedApprovalIds] = useState<Set<string>>(() => new Set());
+  const [threadEntering, setThreadEntering] = useState(false);
+  const [threadSwitchIndicatorVisible, setThreadSwitchIndicatorVisible] = useState(false);
+  const previousThreadIdRef = useRef("");
   const thread = loom.active?.thread;
+  const activeThreadId = thread?.id ?? "";
+  const selectedThreadId = loom.openingThreadId || activeThreadId;
+  const threadSwitching = Boolean(loom.openingThreadId && loom.openingThreadId !== activeThreadId);
   const runtimeTurnRunning = thread?.status === "running" || thread?.status === "waiting_approval";
   const running = loom.turnActive || runtimeTurnRunning;
   const archived = Boolean(thread?.archived);
@@ -425,6 +432,29 @@ export default function App() {
   const projectDetailsOpen = Boolean(selectedProject);
   const artifactPreviewOpen = Boolean(artifactPreview);
   const inspectorVisible = inspectorOpen && !reviewOpen && !projectDetailsOpen && !agentsOpen && !artifactPreviewOpen;
+
+  useEffect(() => {
+    if (!threadSwitching) {
+      setThreadSwitchIndicatorVisible(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setThreadSwitchIndicatorVisible(true), 72);
+    return () => window.clearTimeout(timer);
+  }, [threadSwitching]);
+
+  useLayoutEffect(() => {
+    const previousThreadId = previousThreadIdRef.current;
+    if (!activeThreadId) return;
+    previousThreadIdRef.current = activeThreadId;
+    if (!previousThreadId || previousThreadId === activeThreadId || reducedPanelMotion()) {
+      setThreadEntering(false);
+      return;
+    }
+
+    setThreadEntering(true);
+    const timer = window.setTimeout(() => setThreadEntering(false), 260);
+    return () => window.clearTimeout(timer);
+  }, [activeThreadId]);
   const sidebarLayoutOpen = sidebarOpen;
   const inspectorLayoutOpen = inspectorVisible;
   const reviewLayoutOpen = reviewOpen;
@@ -1078,7 +1108,7 @@ export default function App() {
       >
       <Sidebar
         threads={loom.threads}
-        activeId={thread?.id}
+        activeId={selectedThreadId}
         activeProjectId={selectedProjectId}
         threadView={loom.threadView}
         archivedCount={loom.threadCounts.archived}
@@ -1116,7 +1146,10 @@ export default function App() {
         onDoubleClick={() => resetPanelWidth("sidebar")}
       />
 
-      <section className="workspace">
+      <section
+        className={`workspace ${threadSwitching ? "is-thread-switching" : ""} ${threadEntering ? "is-thread-entering" : ""}`.trim()}
+        aria-busy={threadSwitching ? true : undefined}
+      >
         <ThreadHeader
           title={threadTitle}
           workspace={workspace}
@@ -1196,6 +1229,19 @@ export default function App() {
             onSend={loom.send}
             onInterrupt={loom.interrupt}
           />
+        </div>
+
+        <div
+          className={`thread-switch-overlay ${threadSwitchIndicatorVisible ? "is-indicator-visible" : ""}`}
+          aria-hidden={threadSwitching ? undefined : true}
+        >
+          <div className="thread-switch-mark" role={threadSwitching ? "status" : undefined} aria-live="polite">
+            <span className="thread-switch-aura" aria-hidden="true" />
+            <span className="thread-switch-orbit thread-switch-orbit-a" aria-hidden="true" />
+            <span className="thread-switch-orbit thread-switch-orbit-b" aria-hidden="true" />
+            <span className="thread-switch-core" aria-hidden="true" />
+            <span className="sr-only">Loading conversation</span>
+          </div>
         </div>
       </section>
 
