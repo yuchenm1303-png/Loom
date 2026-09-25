@@ -480,6 +480,21 @@ body.loom-panel-motion .workspace-panels .composer-stage {
   overflow-anchor: none;
 }
 
+/* Hide the main conversation scrollbar while a side panel is moving. Keep the
+   stable gutter in place so the transcript width does not change by a scrollbar
+   width at the start/end of the animation. */
+body.loom-panel-motion .workspace-panels .conversation-stage > .transcript-scroll {
+  scrollbar-color: transparent transparent !important;
+}
+
+body.loom-panel-motion .workspace-panels .conversation-stage > .transcript-scroll::-webkit-scrollbar-track,
+body.loom-panel-motion .workspace-panels .conversation-stage > .transcript-scroll::-webkit-scrollbar-thumb,
+body.loom-panel-motion .workspace-panels .conversation-stage > .transcript-scroll::-webkit-scrollbar-thumb:hover {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
 body.loom-panel-motion .workspace-panels > .sidebar,
 body.loom-panel-motion .workspace-panels > .inspector {
   will-change: transform, opacity;

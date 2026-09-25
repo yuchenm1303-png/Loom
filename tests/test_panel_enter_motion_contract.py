@@ -149,3 +149,12 @@ def test_inspector_does_not_restart_content_animation_after_panel_handoff() -> N
     assert ".runtime-pane" in inspector_css
     assert ".runtime-pane {\n  animation: none !important" not in panel_css
     assert "will-change: transform, opacity" in panel_css
+
+
+def test_main_scrollbar_is_hidden_only_during_panel_motion() -> None:
+    css = read("desktop-react/src/components/workspace-panels.css")
+
+    assert "body.loom-panel-motion .workspace-panels .conversation-stage > .transcript-scroll" in css
+    assert "scrollbar-color: transparent transparent !important" in css
+    assert ".conversation-stage > .transcript-scroll::-webkit-scrollbar-thumb" in css
+    assert "background: transparent !important" in css
