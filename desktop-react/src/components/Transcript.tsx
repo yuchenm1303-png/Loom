@@ -43,6 +43,7 @@ import { ThinkingGlyph } from "./ThinkingGlyph";
 import { TurnArtifactsPreview } from "./TurnArtifactsPreview";
 import { UserMessageContent, parseUserMessageContent } from "./UserMessageContent";
 import { dispatchQuoteReply } from "./quoteReply";
+import { ActivityGlyph as ToolIdentityGlyph, ActivityGroupGlyph, activityGroupIdentity, activityIdentity, activityToolLabel } from "./ToolIdentity";
 import "./activity-flow.css";
 import "./assistant-artifact-preview.css";
 import "./message-actions.css";
@@ -467,9 +468,11 @@ function liveActivityHint(item: TranscriptItem, status: string): string {
 }
 
 function ActivityGlyph({ item, size = 13 }: { item: TranscriptItem; size?: number }) {
-  if (item.type === "process") return <Terminal size={size} />;
-  if (item.type === "file_edit") return <FileDiff size={size} />;
-  return <Wrench size={size} />;
+  const identity = activityIdentity(item);
+  if (identity.family === "terminal") return <Terminal size={size} />;
+  if (identity.family === "file") return <FileDiff size={size} />;
+  if (identity.family === "generic") return <Wrench size={size} />;
+  return <ToolIdentityGlyph item={item} size={size} />;
 }
 
 interface ActivityRowProps {
@@ -510,6 +513,7 @@ const ActivityRow = memo(function ActivityRow({ item, open, onToggle }: Activity
   const detail = open ? activityDetail(item) : "";
   const stats = item.type === "file_edit" && (!active || open) ? diffStats(item.diff) : null;
   const verbKey = active ? "active" : "rested";
+  const identity = activityIdentity(item);
 
   return (
     <div
@@ -519,13 +523,14 @@ const ActivityRow = memo(function ActivityRow({ item, open, onToggle }: Activity
       <button
         type="button"
         className={`task-flow-row task-flow-kind-${item.type} ${active ? "is-active" : "is-resting"} ${executing ? "is-executing" : ""} ${expandable ? "is-expandable" : "no-detail"}`.trim()}
+        data-tool-family={identity.family}
         onClick={() => expandable && onToggle(item.id)}
         aria-expanded={expandable ? open : undefined}
         disabled={!expandable}
         title={expandable ? (open ? "Collapse details" : "Expand details") : undefined}
       >
         <span className="task-flow-chevron" aria-hidden="true"><ChevronRight size={12} /></span>
-        <span className="task-flow-row-icon"><ActivityGlyph item={item} /></span>
+        <span className="task-flow-row-icon" title={identity.label}><ActivityGlyph item={item} /></span>
         <span className="task-flow-row-main">
           {/* Verbs are keyed on the live/rested state so the tense change
               remounts the span and cross-fades (conversation-motion.css). */}
@@ -548,7 +553,7 @@ const ActivityRow = memo(function ActivityRow({ item, open, onToggle }: Activity
           ) : (
             <>
               <span className="task-flow-verb" key={verbKey}>{active ? "正在使用" : "已使用"}</span>
-              <span className="task-flow-primary">{item.toolName || "Tool"}</span>
+              <span className="task-flow-primary">{activityToolLabel(item)}</span>
             </>
           )}
         </span>
@@ -638,13 +643,11 @@ function activityGroupTitle(items: TranscriptItem[], running = false): string {
 }
 
 function ActivityGroupIcon({ items }: { items: TranscriptItem[] }) {
-  let hasEdit = false;
-  for (const item of items) {
-    if (item.type === "process") return <Terminal size={14} />;
-    if (item.type === "file_edit") hasEdit = true;
-  }
-  if (hasEdit) return <FileDiff size={14} />;
-  return <Wrench size={14} />;
+  const identity = activityGroupIdentity(items);
+  if (identity.family === "terminal") return <Terminal size={14} />;
+  if (identity.family === "file") return <FileDiff size={14} />;
+  if (identity.family === "generic") return <Wrench size={14} />;
+  return <ActivityGroupGlyph items={items} size={14} />;
 }
 
 function ActivityFlow({ items, keepOpen = false }: { items: TranscriptItem[]; keepOpen?: boolean }) {
@@ -673,10 +676,12 @@ function ActivityFlow({ items, keepOpen = false }: { items: TranscriptItem[]; ke
   }, [running]);
 
   const title = activityGroupTitle(compactItems, running);
+  const groupIdentity = activityGroupIdentity(compactItems);
 
   return (
     <section
       className={`task-flow task-flow-group ${open ? "is-open" : ""} ${running ? "is-running" : ""}`}
+      data-tool-family={groupIdentity.family}
       aria-label="Task activity"
     >
       <button
@@ -685,7 +690,7 @@ function ActivityFlow({ items, keepOpen = false }: { items: TranscriptItem[]; ke
         onClick={() => setOpen((value) => !value)}
         aria-expanded={open}
       >
-        <span className="task-flow-group-icon" aria-hidden="true"><ActivityGroupIcon items={compactItems} /></span>
+        <span className="task-flow-group-icon" aria-hidden="true" title={groupIdentity.label}><ActivityGroupIcon items={compactItems} /></span>
         <span className="task-flow-group-title" key={title}>{title}</span>
         <ChevronRight size={13} className="task-flow-group-chevron" aria-hidden="true" />
       </button>
