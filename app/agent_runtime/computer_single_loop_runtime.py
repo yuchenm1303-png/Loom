@@ -158,6 +158,7 @@ def _single_action_schema() -> dict[str, Any]:
                     "drag",
                     "scroll",
                     "type",
+                    "clear_text",
                     "hotkey",
                     "key",
                     "switch_window",
@@ -178,6 +179,7 @@ def _single_action_schema() -> dict[str, Any]:
             "direction": {"type": "string", "enum": ["up", "down", "left", "right"]},
             "amount": {"type": "integer", "minimum": 1, "maximum": 10000},
             "duration_ms": {"type": "integer", "minimum": 0, "maximum": 30000},
+            "button": {"type": "string", "enum": ["left", "right"]},
         },
         ("type",),
     )
@@ -284,9 +286,11 @@ def _classify_effect(outcome: ComputerStepOutcome) -> dict[str, object]:
     visual_changed = ratio >= _VISUAL_CHANGE_RATIO if ratio >= 0 else bool(base.get("visual_changed"))
     target_confirmed = base.get("target_confirmed")
 
+    semantic_verified = bool(execution.native)
     if action.type is ComputerActionType.SWITCH_WINDOW and target_confirmed is True:
         effect = "changed"
         reason = "foreground_window_confirmed"
+        semantic_verified = True
     elif active_window_changed:
         effect = "changed"
         reason = "foreground_window_changed"
@@ -307,6 +311,7 @@ def _classify_effect(outcome: ComputerStepOutcome) -> dict[str, object]:
         "active_window_changed": bool(active_window_changed),
         "effect": effect,
         "effect_reason": reason,
+        "semantic_verified": semantic_verified,
         "visual_delta_ratio": None if ratio < 0 else round(float(ratio), 6),
     }
 
@@ -534,6 +539,9 @@ class SingleLoopComputerRuntime(ComputerUseRuntime):
                 "advisory visual hint and no control id is accepted here. If a target application already appears in "
                 "the known-window list, use switch_window rather than searching the desktop or taskbar; hidden/tray "
                 "windows may be recoverable this way. Every non-terminal action is followed by a fresh screenshot. "
+                "Use clear_text as one atomic action to clear the focused editor instead of issuing separate Ctrl+A "
+                "and Delete calls whose focus can change between steps. A pixel delta only proves repainting; unless "
+                "semantic_verified is true, do not claim that text, selection, or drag intent succeeded. "
                 "If a coordinate pointer action injects successfully but causes no observable UI change, this tool "
                 "returns ok=false so you must not assume the click worked."
             ),
@@ -716,6 +724,11 @@ class SingleLoopComputerRuntime(ComputerUseRuntime):
         action_payload = dict(raw)
         action_name = str(action_payload.get("type") or "").strip().casefold()
 
+        button = str(action_payload.pop("button", "") or "").strip().casefold()
+        if action_name == "click" and button == "right":
+            action_name = "right_click"
+            action_payload["type"] = action_name
+
         if action_name == "screenshot":
             snapshot = store.observe(context.session_id)
             self._mark_visual_feedback(context)
@@ -820,6 +833,7 @@ class SingleLoopComputerRuntime(ComputerUseRuntime):
         self._trace_effect(context, outcome)
 
         execution_ok = bool(outcome.execution is not None and outcome.execution.ok)
+        semantic_verified = bool(outcome.verification.get("semantic_verified"))
         pointer_no_effect = action.type in _POINTER_ACTIONS and effect == "unchanged"
         target_failed = (
             action.type is ComputerActionType.SWITCH_WINDOW
@@ -836,8 +850,13 @@ class SingleLoopComputerRuntime(ComputerUseRuntime):
             )
         elif target_failed:
             content = "The requested window did not become the foreground window. Inspect the attached screenshot and choose another strategy."
+        elif effect == "changed" and semantic_verified:
+            content = "Computer action executed and its intended semantic result was verified. Inspect the attached fresh screenshot before choosing the next action."
         elif effect == "changed":
-            content = "Computer action executed and produced an observable desktop change. Inspect the attached fresh screenshot before choosing the next action."
+            content = (
+                "Computer input was injected and pixels changed, but the intended semantic result was not verified. "
+                "Do not report the action as successful from visual delta alone; inspect the fresh screenshot or use UIA state."
+            )
         else:
             content = "Computer action executed. Its visible effect is uncertain; inspect the attached fresh screenshot before choosing the next action."
 

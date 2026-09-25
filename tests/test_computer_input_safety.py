@@ -245,6 +245,35 @@ def test_coordinate_click_refuses_a_window_that_covered_the_screenshot(monkeypat
     assert cursor_moves == []
 
 
+def test_clear_text_is_one_atomic_shortcut_sequence(monkeypatch):
+    import sys
+    import threading
+    from types import SimpleNamespace
+
+    calls: list[tuple[str, ...]] = []
+    monkeypatch.setitem(
+        sys.modules,
+        "pyautogui",
+        SimpleNamespace(
+            hotkey=lambda *keys: calls.append(("hotkey", *keys)),
+            press=lambda key: calls.append(("press", key)),
+            keyUp=lambda key: calls.append(("up", key)),
+        ),
+    )
+    operator = object.__new__(PyWinAutoWindowsOperator)
+    operator._lock = threading.RLock()
+    operator._control_maps = {}
+    frame = ComputerFrame(frame_id="frame", origin_x=0, origin_y=0, width=100, height=100)
+    observation = SimpleNamespace(observation_id="obs", frame=frame)
+    action = ComputerAction(type=ComputerActionType.CLEAR_TEXT)
+
+    execution = operator.execute(action, observation)
+
+    assert execution.ok is True
+    assert execution.fallback_used is True
+    assert calls[:2] == [("hotkey", "ctrl", "a"), ("press", "delete")]
+
+
 def test_modifier_keys_are_released_even_when_the_chord_fails(monkeypatch):
     """A stuck modifier is indistinguishable from a dead mouse.
 

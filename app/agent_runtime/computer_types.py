@@ -15,6 +15,7 @@ class ComputerActionType(str, Enum):
     DRAG = "drag"
     SCROLL = "scroll"
     TYPE = "type"
+    CLEAR_TEXT = "clear_text"
     HOTKEY = "hotkey"
     KEY = "key"
     SWITCH_WINDOW = "switch_window"

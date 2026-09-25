@@ -44,6 +44,7 @@ def _action_schema() -> dict[str, Any]:
                     "drag",
                     "scroll",
                     "type",
+                    "clear_text",
                     "hotkey",
                     "key",
                     "switch_window",
@@ -63,6 +64,7 @@ def _action_schema() -> dict[str, Any]:
             "direction": {"type": "string", "enum": ["up", "down", "left", "right"]},
             "amount": {"type": "integer", "minimum": 1, "maximum": 10000},
             "duration_ms": {"type": "integer", "minimum": 0, "maximum": 30000},
+            "button": {"type": "string", "enum": ["left", "right"]},
         },
         ("type",),
     )
@@ -462,6 +464,9 @@ def computer_tools(runtime: "ComputerUseRuntime") -> tuple[AgentTool, ...]:
             if not isinstance(raw_action, dict):
                 raise ValueError("computer_action action must be an object")
             action_payload = dict(raw_action)
+            button = str(action_payload.pop("button", "") or "").strip().casefold()
+            if str(action_payload.get("type") or "").strip().casefold() == "click" and button == "right":
+                action_payload["type"] = "right_click"
             if str(action_payload.get("type") or "") == "type" and "text" in action_payload:
                 action_payload["text"] = runtime.consume_computer_transient(str(action_payload.get("text") or ""), context.session_id)
             action = ComputerAction.from_dict(action_payload)

@@ -530,6 +530,36 @@ class PyWinAutoWindowsOperator:
                     fallback_used=True,
                 )
 
+            if action.type is ComputerActionType.CLEAR_TEXT:
+                if wrapper is not None and self._native_type(wrapper, ""):
+                    return ComputerExecution(
+                        ok=True,
+                        message="text cleared through UI Automation",
+                        action=action,
+                        native=True,
+                    )
+                if wrapper is not None:
+                    if not self._native_click(wrapper, double=False, right=False):
+                        point = self._wrapper_center(wrapper, observation.frame)
+                        if point is not None:
+                            self._click_point(observation.frame, point)
+                elif action.point is not None:
+                    self._click_point(observation.frame, action.point)
+                import pyautogui
+
+                try:
+                    pyautogui.hotkey("ctrl", "a")
+                    pyautogui.press("delete")
+                finally:
+                    self._release_modifiers()
+                return ComputerExecution(
+                    ok=True,
+                    message="clear-text shortcut injected; re-observation is required",
+                    action=action,
+                    native=False,
+                    fallback_used=True,
+                )
+
             if wrapper is not None and action.type in {
                 ComputerActionType.CLICK,
                 ComputerActionType.DOUBLE_CLICK,

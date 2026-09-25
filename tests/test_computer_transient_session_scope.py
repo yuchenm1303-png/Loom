@@ -25,6 +25,7 @@ from __future__ import annotations
 from app.agent_runtime.computer_single_loop_runtime import SingleLoopComputerRuntime
 from app.agent_runtime.computer_types import (
     ComputerAction,
+    ComputerActionType,
     ComputerExecution,
     ComputerFrame,
     ComputerObservation,
@@ -66,6 +67,7 @@ class _TypingOperator:
 
     def __init__(self) -> None:
         self.typed: list[str] = []
+        self.actions: list[ComputerAction] = []
         self.count = 0
         self.closed = False
 
@@ -94,6 +96,7 @@ class _TypingOperator:
         )
 
     def execute(self, action: ComputerAction, observation):
+        self.actions.append(action)
         self.typed.append(action.text)
         return ComputerExecution(ok=True, message="typed", action=action, native=False)
 
@@ -185,5 +188,29 @@ def test_typing_still_works_without_a_session_scoped_model(tmp_path):
 
         assert result.ok is True, result.content
         assert operator.typed == [SECRET]
+        assert result.data["verification"]["semantic_verified"] is False
+        assert "not verified" in result.content
+    finally:
+        runtime.close()
+
+
+def test_common_click_button_right_dialect_is_normalized(tmp_path):
+    runtime, operator, session, workspace = _runtime(tmp_path)
+    try:
+        context = ToolContext(
+            session_id=session.session_id,
+            turn_id="turn-1",
+            workspace=workspace,
+            permission_mode=session.permission_mode.value,
+        )
+        runtime.computer_sessions.observe(session.session_id)
+
+        result = runtime._handle_single_action(
+            context,
+            {"action": {"type": "click", "button": "right", "point": {"x": 0.5, "y": 0.5}}},
+        )
+
+        assert result.ok is True
+        assert operator.actions[-1].type is ComputerActionType.RIGHT_CLICK
     finally:
         runtime.close()
