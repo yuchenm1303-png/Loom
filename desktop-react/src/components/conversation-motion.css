@@ -18,9 +18,11 @@
   --loom-pill-bg: rgba(18,20,25,.48);
   --loom-pill-bg-live: rgba(31,29,43,.64);
   --loom-pill-shadow: 0 7px 20px rgba(0,0,0,.09), inset 0 1px 0 rgba(255,255,255,.025);
-  --loom-live-accent: 166, 155, 244;
-  --loom-live-accent-strong: 190, 181, 255;
-  --loom-live-core: 241, 238, 255;
+  /* Live-task palette is cool and slightly desaturated. The shoulder carries
+     the colour; the core only catches light for a few frames. */
+  --loom-live-accent: 153, 145, 226;
+  --loom-live-accent-strong: 181, 174, 244;
+  --loom-live-core: 226, 223, 247;
 }
 
 /* Do not replay old history just because a thread remounted. Live turns own
@@ -108,15 +110,15 @@
 }
 
 .task-flow-group.is-running .task-flow-group-header {
-  border-color: rgba(var(--loom-live-accent), .22);
+  border-color: rgba(var(--loom-live-accent), .18);
   background:
-    radial-gradient(circle at 18px 50%, rgba(var(--loom-live-accent), .11), transparent 46px),
-    linear-gradient(180deg, rgba(255,255,255,.028), rgba(255,255,255,.006)),
-    rgba(24,23,32,.62);
+    radial-gradient(circle at 18px 50%, rgba(var(--loom-live-accent), .075), transparent 48px),
+    linear-gradient(180deg, rgba(255,255,255,.022), rgba(255,255,255,.004)),
+    rgba(23,23,31,.60);
   box-shadow:
-    0 8px 22px rgba(0,0,0,.095),
-    0 0 0 1px rgba(var(--loom-live-accent), .018),
-    inset 0 1px 0 rgba(255,255,255,.026);
+    0 8px 22px rgba(0,0,0,.085),
+    0 0 0 1px rgba(var(--loom-live-accent), .012),
+    inset 0 1px 0 rgba(255,255,255,.021);
 }
 
 .task-flow-group-icon {
@@ -140,15 +142,15 @@
   pointer-events: none;
   background: radial-gradient(
     circle,
-    rgba(var(--loom-live-accent), .17) 0%,
-    rgba(var(--loom-live-accent), .075) 34%,
-    rgba(var(--loom-live-accent), .018) 54%,
-    transparent 72%
+    rgba(var(--loom-live-accent), .12) 0%,
+    rgba(var(--loom-live-accent), .050) 34%,
+    rgba(var(--loom-live-accent), .012) 56%,
+    transparent 74%
   );
-  opacity: .38;
-  scale: .78;
+  opacity: .30;
+  scale: .80;
   will-change: opacity, scale;
-  animation: loom-live-anchor-aura 2.8s cubic-bezier(.4,0,.2,1) infinite;
+  animation: loom-live-anchor-aura 3.2s cubic-bezier(.4,0,.2,1) infinite;
 }
 
 /* Task-flow copy is intentionally kept on whole CSS-pixel font geometry.
@@ -191,9 +193,9 @@
   border-radius: 999px;
   background: rgb(var(--loom-live-accent-strong));
   box-shadow:
-    0 0 0 2px rgba(var(--loom-live-accent), .055),
-    0 0 9px rgba(var(--loom-live-accent), .28);
-  animation: loom-live-beacon 2.55s cubic-bezier(.4,0,.2,1) infinite;
+    0 0 0 2px rgba(var(--loom-live-accent), .040),
+    0 0 8px rgba(var(--loom-live-accent), .20);
+  animation: loom-live-beacon 2.9s cubic-bezier(.4,0,.2,1) infinite;
 }
 
 .task-flow-group .task-flow-list {
@@ -230,36 +232,36 @@
 }
 
 .task-flow-row.is-active {
-  border-color: rgba(var(--loom-live-accent), .18);
+  border-color: rgba(var(--loom-live-accent), .15);
+  background:
+    linear-gradient(
+      90deg,
+      rgba(var(--loom-live-accent), .060) 0%,
+      rgba(var(--loom-live-accent), .024) 44%,
+      rgba(var(--loom-live-accent), .006) 74%,
+      transparent 100%
+    ),
+    rgba(18,19,27,.60);
+  box-shadow:
+    0 6px 18px rgba(0,0,0,.07),
+    inset 0 1px 0 rgba(255,255,255,.021);
+}
+
+.task-flow-row.is-executing {
+  border-color: rgba(var(--loom-live-accent), .19);
   background:
     linear-gradient(
       90deg,
       rgba(var(--loom-live-accent), .078) 0%,
-      rgba(var(--loom-live-accent), .032) 42%,
+      rgba(var(--loom-live-accent), .030) 42%,
       rgba(var(--loom-live-accent), .008) 72%,
       transparent 100%
     ),
-    rgba(18,19,27,.62);
+    rgba(20,20,28,.65);
   box-shadow:
-    0 6px 18px rgba(0,0,0,.075),
-    inset 0 1px 0 rgba(255,255,255,.024);
-}
-
-.task-flow-row.is-executing {
-  border-color: rgba(var(--loom-live-accent), .235);
-  background:
-    linear-gradient(
-      90deg,
-      rgba(var(--loom-live-accent), .105) 0%,
-      rgba(var(--loom-live-accent), .042) 40%,
-      rgba(var(--loom-live-accent), .012) 70%,
-      transparent 100%
-    ),
-    rgba(20,20,29,.68);
-  box-shadow:
-    0 7px 20px rgba(0,0,0,.085),
-    inset 1px 0 0 rgba(var(--loom-live-accent), .08),
-    inset 0 1px 0 rgba(255,255,255,.025);
+    0 7px 19px rgba(0,0,0,.075),
+    inset 1px 0 0 rgba(var(--loom-live-accent), .055),
+    inset 0 1px 0 rgba(255,255,255,.021);
 }
 
 /* One deliberate light pass per executing row. The band is wider and softer
@@ -272,24 +274,24 @@
   z-index: 0;
   top: -1px;
   bottom: -1px;
-  left: -30%;
-  width: 26%;
+  left: -26%;
+  width: 22%;
   border-radius: inherit;
   pointer-events: none;
   background: linear-gradient(
     102deg,
     transparent 0%,
-    rgba(var(--loom-live-accent), .010) 18%,
-    rgba(var(--loom-live-accent), .050) 35%,
-    rgba(var(--loom-live-accent-strong), .125) 47%,
-    rgba(var(--loom-live-core), .105) 53%,
-    rgba(var(--loom-live-accent-strong), .075) 59%,
-    rgba(var(--loom-live-accent), .024) 72%,
+    rgba(var(--loom-live-accent), .008) 18%,
+    rgba(var(--loom-live-accent), .034) 35%,
+    rgba(var(--loom-live-accent-strong), .085) 47%,
+    rgba(var(--loom-live-core), .066) 53%,
+    rgba(var(--loom-live-accent-strong), .052) 60%,
+    rgba(var(--loom-live-accent), .016) 73%,
     transparent 100%
   );
   transform: translate3d(0,0,0) skewX(-9deg);
   will-change: transform, opacity;
-  animation: loom-task-running-sheen 4.8s cubic-bezier(.33,0,.18,1) 1.1s infinite;
+  animation: loom-task-running-sheen 5.6s cubic-bezier(.31,0,.18,1) 1.25s infinite;
 }
 
 .task-flow-row.is-resting {
@@ -612,27 +614,27 @@ html[data-loom-theme="light"] .transcript {
 
 html[data-loom-theme="light"] .conversation-stage,
 html[data-loom-theme="light"] .transcript {
-  --loom-live-accent: 105, 90, 216;
-  --loom-live-accent-strong: 119, 103, 225;
+  --loom-live-accent: 96, 84, 194;
+  --loom-live-accent-strong: 112, 100, 210;
   --loom-live-core: 255, 255, 255;
 }
 
 html[data-loom-theme="light"] .task-flow-group.is-running .task-flow-group-header {
-  border-color: rgba(var(--loom-live-accent), .16);
+  border-color: rgba(var(--loom-live-accent), .13);
   background:
-    radial-gradient(circle at 18px 50%, rgba(var(--loom-live-accent), .075), transparent 46px),
+    radial-gradient(circle at 18px 50%, rgba(var(--loom-live-accent), .052), transparent 48px),
     linear-gradient(180deg, rgba(255,255,255,.96), rgba(250,249,255,.90));
   box-shadow:
-    0 7px 20px rgba(48,42,76,.055),
-    0 0 0 1px rgba(var(--loom-live-accent), .016),
+    0 7px 20px rgba(48,42,76,.05),
+    0 0 0 1px rgba(var(--loom-live-accent), .011),
     inset 0 1px rgba(255,255,255,.94);
 }
 
 html[data-loom-theme="light"] .task-flow-group.is-running .task-flow-group-icon::before {
   background: radial-gradient(
     circle,
-    rgba(var(--loom-live-accent), .11) 0%,
-    rgba(var(--loom-live-accent), .045) 36%,
+    rgba(var(--loom-live-accent), .075) 0%,
+    rgba(var(--loom-live-accent), .030) 36%,
     transparent 72%
   );
 }
@@ -641,8 +643,8 @@ html[data-loom-theme="light"] .task-flow-group.is-running .task-flow-group-icon:
   border-color: #f7f6fb;
   background: rgb(var(--loom-live-accent-strong));
   box-shadow:
-    0 0 0 2px rgba(var(--loom-live-accent), .045),
-    0 0 8px rgba(var(--loom-live-accent), .18);
+    0 0 0 2px rgba(var(--loom-live-accent), .032),
+    0 0 7px rgba(var(--loom-live-accent), .12);
 }
 
 html[data-loom-theme="light"] .task-flow-row {
@@ -652,31 +654,31 @@ html[data-loom-theme="light"] .task-flow-row {
 }
 
 html[data-loom-theme="light"] .task-flow-row.is-active {
-  border-color: rgba(var(--loom-live-accent), .14);
+  border-color: rgba(var(--loom-live-accent), .11);
   background:
     linear-gradient(
       90deg,
-      rgba(var(--loom-live-accent), .064),
-      rgba(var(--loom-live-accent), .020) 52%,
+      rgba(var(--loom-live-accent), .048),
+      rgba(var(--loom-live-accent), .015) 52%,
       transparent 86%
     ),
     rgba(255,255,255,.80);
-  box-shadow: 0 5px 14px rgba(43,38,66,.045), inset 0 1px rgba(255,255,255,.9);
+  box-shadow: 0 5px 14px rgba(43,38,66,.04), inset 0 1px rgba(255,255,255,.9);
 }
 
 html[data-loom-theme="light"] .task-flow-row.is-executing {
-  border-color: rgba(var(--loom-live-accent), .18);
+  border-color: rgba(var(--loom-live-accent), .145);
   background:
     linear-gradient(
       90deg,
-      rgba(var(--loom-live-accent), .082),
-      rgba(var(--loom-live-accent), .028) 48%,
+      rgba(var(--loom-live-accent), .060),
+      rgba(var(--loom-live-accent), .020) 48%,
       transparent 84%
     ),
     rgba(255,255,255,.86);
   box-shadow:
-    0 6px 17px rgba(43,38,66,.05),
-    inset 1px 0 0 rgba(var(--loom-live-accent), .055),
+    0 6px 17px rgba(43,38,66,.045),
+    inset 1px 0 0 rgba(var(--loom-live-accent), .038),
     inset 0 1px rgba(255,255,255,.94);
 }
 
@@ -684,12 +686,12 @@ html[data-loom-theme="light"] .task-flow-row.is-executing::before {
   background: linear-gradient(
     102deg,
     transparent 0%,
-    rgba(var(--loom-live-accent), .006) 18%,
-    rgba(var(--loom-live-accent), .030) 35%,
-    rgba(var(--loom-live-accent), .070) 47%,
-    rgba(255,255,255,.52) 53%,
-    rgba(var(--loom-live-accent), .046) 61%,
-    rgba(var(--loom-live-accent), .014) 73%,
+    rgba(var(--loom-live-accent), .004) 18%,
+    rgba(var(--loom-live-accent), .020) 35%,
+    rgba(var(--loom-live-accent), .048) 47%,
+    rgba(255,255,255,.34) 53%,
+    rgba(var(--loom-live-accent), .030) 61%,
+    rgba(var(--loom-live-accent), .009) 73%,
     transparent 100%
   );
 }
@@ -836,30 +838,26 @@ html[data-loom-theme="light"] .conversation-stage.is-running::after {
 }
 
 @keyframes loom-task-running-sheen {
-  0%, 18% {
+  0%, 24% {
     opacity: 0;
     transform: translate3d(0,0,0) skewX(-9deg);
   }
-  25% {
-    opacity: .18;
+  31% { opacity: .12; }
+  42% { opacity: .56; }
+  60% {
+    opacity: .30;
+    transform: translate3d(515%,0,0) skewX(-9deg);
   }
-  37% {
-    opacity: .78;
-  }
-  58% {
-    opacity: .42;
-    transform: translate3d(500%,0,0) skewX(-9deg);
-  }
-  66%, 100% {
+  69%, 100% {
     opacity: 0;
-    transform: translate3d(500%,0,0) skewX(-9deg);
+    transform: translate3d(515%,0,0) skewX(-9deg);
   }
 }
 
 @keyframes loom-live-anchor-aura {
-  0%, 100% { opacity: .30; scale: .78; }
-  48% { opacity: .58; scale: 1.04; }
-  72% { opacity: .42; scale: .94; }
+  0%, 100% { opacity: .24; scale: .80; }
+  48% { opacity: .44; scale: 1.02; }
+  72% { opacity: .34; scale: .95; }
 }
 
 @keyframes loom-live-detail-breathe {
@@ -879,9 +877,9 @@ html[data-loom-theme="light"] .conversation-stage.is-running::after {
 }
 
 @keyframes loom-live-beacon {
-  0%, 100% { opacity: .62; transform: scale(.9); }
-  44% { opacity: 1; transform: scale(1.07); }
-  68% { opacity: .82; transform: scale(.98); }
+  0%, 100% { opacity: .58; transform: scale(.91); }
+  44% { opacity: .90; transform: scale(1.045); }
+  70% { opacity: .74; transform: scale(.98); }
 }
 
 @media (max-width: 900px) {
