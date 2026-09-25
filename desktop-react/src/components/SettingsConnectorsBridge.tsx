@@ -1,13 +1,14 @@
 import { Link2 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { ConnectorLifecycleStatus } from "./ConnectorLifecycleStatus";
 import { ConnectorsSettings } from "./ConnectorsSettings";
+import { setSettingsRoute, useSettingsRoute } from "./settingsNavigation";
 import "./settings-connectors.css";
 
-
 export function SettingsConnectorsBridge() {
-  const [open, setOpen] = useState(false);
+  const route = useSettingsRoute();
+  const open = route === "connectors";
   const [running, setRunning] = useState(false);
   const navHost = useMemo(() => {
     const element = document.createElement("div");
@@ -29,7 +30,6 @@ export function SettingsConnectorsBridge() {
         navHost.remove();
         contentHost.remove();
         setRunning(false);
-        if (open) setOpen(false);
         return;
       }
 
@@ -53,37 +53,36 @@ export function SettingsConnectorsBridge() {
         }
       } else {
         navHost.remove();
-        if (open) setOpen(false);
       }
 
       if (contentHost.parentElement !== mainScroll) mainScroll.appendChild(contentHost);
-      shell.classList.toggle("settings-connectors-mode", open);
-    };
-
-    const closeForNativeNavigation = (event: Event) => {
-      const target = event.target instanceof Element ? event.target.closest("button") : null;
-      if (!target || target.closest(".settings-connectors-nav-host")) return;
-      if (target.closest(".settings-nav")) setOpen(false);
     };
 
     syncHosts();
     const observer = new MutationObserver(syncHosts);
     observer.observe(document.body, { childList: true, subtree: true, characterData: true });
-    document.addEventListener("click", closeForNativeNavigation, true);
 
     return () => {
       observer.disconnect();
-      document.removeEventListener("click", closeForNativeNavigation, true);
       document.querySelector(".settings-shell")?.classList.remove("settings-connectors-mode");
       navHost.remove();
       contentHost.remove();
     };
-  }, [contentHost, navHost, open]);
+  }, [contentHost, navHost]);
+
+  useLayoutEffect(() => {
+    document.querySelector<HTMLElement>(".settings-shell")?.classList.toggle("settings-connectors-mode", open);
+  }, [open]);
 
   return (
     <>
       {createPortal(
-        <button type="button" className={open ? "active" : ""} onClick={() => setOpen(true)}>
+        <button
+          type="button"
+          className={open ? "active" : ""}
+          aria-current={open ? "page" : undefined}
+          onClick={() => setSettingsRoute("connectors")}
+        >
           <Link2 size={16} strokeWidth={1.7} />
           <span>Connectors</span>
         </button>,

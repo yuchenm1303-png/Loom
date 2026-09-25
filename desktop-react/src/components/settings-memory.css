@@ -2,20 +2,6 @@
   display: contents;
 }
 
-/* Memory is rendered by a bridge on top of the native settings router. Keep
-   the underlying native page mounted, but never let its stale `.active` state
-   paint alongside Memory's own selected row. */
-.settings-shell.settings-memory-mode .settings-nav > section > button.active {
-  color: #b8bdc7;
-  background: transparent;
-  border-color: transparent;
-  box-shadow: none;
-}
-
-.settings-shell.settings-memory-mode .settings-nav > section > button.active svg {
-  transform: none;
-}
-
 .settings-memory-content-host {
   display: none;
 }

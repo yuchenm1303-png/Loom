@@ -66,26 +66,65 @@ def test_user_scroll_up_can_break_live_follow_while_streaming() -> None:
     source = SCROLL.read_text(encoding="utf-8")
 
     assert "const detachFromLiveFollow = (scroller: HTMLDivElement) => {" in source
+    assert "userDetachedRef.current = true;" in source
     assert "forceBottomRef.current = false;" in source
     assert "snapBottomRef.current = false;" in source
     assert "cancelScheduledScroll();" in source
-    assert 'if (event.deltaY < 0) detachFromLiveFollow(scroller);' in source
+
+    wheel_start = source.index("const onWheel = (event: WheelEvent) => {")
+    wheel_end = source.index("const onTouchStart", wheel_start)
+    wheel_handler = source[wheel_start:wheel_end]
+    assert "event.deltaY < 0" in wheel_handler
+    assert "detachFromLiveFollow(scroller);" in wheel_handler
+    assert "event.deltaY > 0" in wheel_handler
+    assert "markReturnIntent();" in wheel_handler
+
     assert 'scroller.addEventListener("wheel", onWheel, { passive: true });' in source
     assert 'scroller.addEventListener("touchmove", onTouchMove, { passive: true });' in source
 
 
-def test_upward_scroll_wins_over_near_bottom_auto_follow() -> None:
+def test_programmatic_upward_scroll_never_detaches_live_follow() -> None:
     source = SCROLL.read_text(encoding="utf-8")
 
     scroll_start = source.index("const onScroll = () => {")
     scroll_end = source.index("const onWheel = (event: WheelEvent) => {", scroll_start)
     scroll_handler = source[scroll_start:scroll_end]
 
-    moved_up_branch = scroll_handler.index("if (movedUp && !forceBottomRef.current)")
-    near_bottom_branch = scroll_handler.index("else if (nearBottom && (followingRef.current || movedDown))")
-    assert moved_up_branch < near_bottom_branch
-    assert "followingRef.current = false;" in scroll_handler
-    assert "const movedDown =" in scroll_handler
+    assert "scrollbarPointerRef.current !== null && movedUp" in scroll_handler
+    assert "detachFromLiveFollow(scroller);" in scroll_handler
+    assert "if (movedUp && !forceBottomRef.current)" not in scroll_handler
+    assert "followingRef.current = false;" not in scroll_handler
+    assert "Never infer user intent from direction alone" in scroll_handler
+
+
+def test_explicit_user_input_detaches_and_explicit_return_resumes_follow() -> None:
+    source = SCROLL.read_text(encoding="utf-8")
+
+    assert "userDetachedRef.current = true;" in source
+    assert "returnIntentUntilRef.current = performance.now() + USER_RETURN_INTENT_MS;" in source
+    assert 'if (event.deltaY < 0) {' in source
+    assert "detachFromLiveFollow(scroller);" in source
+    assert 'else if (event.deltaY > 0) {' in source
+    assert "markReturnIntent();" in source
+    assert "resumeIfUserReturnedToBottom" in source
+    assert "userDetachedRef.current = false;" in source
+
+
+def test_running_state_is_read_from_ref_inside_long_lived_resize_observer() -> None:
+    source = SCROLL.read_text(encoding="utf-8")
+
+    assert "const runningRef = useRef(Boolean(running));" in source
+    assert "runningRef.current = nextRunning;" in source
+    assert "const liveMotion = runningRef.current || performance.now() < settleUntilRef.current;" in source
+
+
+def test_completion_handoff_finishes_with_an_exact_bottom_pin() -> None:
+    source = SCROLL.read_text(encoding="utf-8")
+
+    assert "FINAL_SETTLE_PIN_DELAY_MS = LIVE_SETTLE_WINDOW_MS + 90" in source
+    assert "settleTimerRef.current = window.setTimeout" in source
+    assert "if (!latestScroller || !followingRef.current || userDetachedRef.current) return;" in source
+    assert "scheduleBottomSync(latestScroller, false, true);" in source
 
 
 def test_detached_scroll_state_survives_streaming_content_growth() -> None:
@@ -114,3 +153,14 @@ def test_completed_process_fold_keeps_intrinsic_geometry_stable() -> None:
     open_transition = source.index(".turn-process.is-settled.is-open .turn-process-grid {")
     assert closed_transition < open_transition
     assert "opacity 170ms ease 64ms" in source[closed_transition:open_transition]
+
+
+def test_jump_to_latest_reuses_owned_follow_scheduler() -> None:
+    source = SCROLL.read_text(encoding="utf-8")
+
+    jump_start = source.index("const jumpToLatest = () => {")
+    jump_end = source.index("return (", jump_start)
+    jump = source[jump_start:jump_end]
+    assert "userDetachedRef.current = false;" in jump
+    assert "scheduleBottomSync(scroller, true, reducedMotion);" in jump
+    assert "scroller.scrollTo(" not in jump

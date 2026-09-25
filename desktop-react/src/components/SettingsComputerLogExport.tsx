@@ -1,6 +1,7 @@
 import { Download, ExternalLink } from "lucide-react";
 import { useEffect, useState } from "react";
 import { SettingsConnectorsBridge } from "./SettingsConnectorsBridge";
+import { useSettingsRoute } from "./settingsNavigation";
 import "./SettingsComputerLogExport.css";
 
 type DiagnosticLogKind = "computer" | "browser";
@@ -11,19 +12,6 @@ function humanBytes(value: unknown): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
-}
-
-function activeSettingsPage(): DiagnosticLogKind | null {
-  if (document.querySelector(".settings-shell.settings-connectors-mode")) return null;
-  const heading = document.querySelector(".settings-content h1")?.textContent?.trim().toLowerCase() || "";
-  if (["computer use", "电脑控制", "计算机控制", "桌面控制"].includes(heading)) return "computer";
-  if (["browser", "browser use", "浏览器", "浏览器自动化"].includes(heading)) return "browser";
-
-  const eyebrow = document.querySelector(".settings-content .settings-eyebrow")?.textContent?.trim().toLowerCase() || "";
-  const pageText = document.querySelector(".settings-content")?.textContent?.toLowerCase() || "";
-  if (eyebrow.includes("desktop integration") && pageText.includes("screenshot-driven windows control")) return "computer";
-  if (eyebrow.includes("web interaction") && pageText.includes("browser")) return "browser";
-  return null;
 }
 
 function labels(kind: DiagnosticLogKind) {
@@ -42,23 +30,13 @@ function labels(kind: DiagnosticLogKind) {
 }
 
 export function SettingsComputerLogExport() {
-  const [kind, setKind] = useState<DiagnosticLogKind | null>(null);
+  const route = useSettingsRoute();
+  const kind: DiagnosticLogKind | null = route === "computer" ? "computer" : route === "browser" ? "browser" : null;
   const [busy, setBusy] = useState(false);
   const [archivePath, setArchivePath] = useState("");
   const [summary, setSummary] = useState("");
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    const refresh = () => setKind(activeSettingsPage());
-    refresh();
-    const observer = new MutationObserver(refresh);
-    observer.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ["class"] });
-    const timer = window.setInterval(refresh, 350);
-    return () => {
-      observer.disconnect();
-      window.clearInterval(timer);
-    };
-  }, []);
 
   useEffect(() => {
     setArchivePath("");

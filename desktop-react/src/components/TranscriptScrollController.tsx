@@ -19,6 +19,8 @@ const LIVE_FOLLOW_FAR_EASE = 0.38;
 const LIVE_FOLLOW_PRESSURE_PX = 420;
 const LIVE_SETTLE_WINDOW_MS = 820;
 const SEND_FOLLOW_WINDOW_MS = 360;
+const USER_RETURN_INTENT_MS = 420;
+const FINAL_SETTLE_PIN_DELAY_MS = LIVE_SETTLE_WINDOW_MS + 90;
 const PANEL_RESIZE_END_EVENT = "loom:panel-resize-end";
 const PANEL_LAYOUT_COMMIT_EVENT = "loom:panel-layout-commit";
 
@@ -79,8 +81,13 @@ export function TranscriptScrollController({
   const frameRef = useRef<number | null>(null);
   const snapBottomRef = useRef(false);
   const touchYRef = useRef<number | null>(null);
+  const scrollbarPointerRef = useRef<number | null>(null);
+  const userDetachedRef = useRef(false);
+  const returnIntentUntilRef = useRef(0);
+  const runningRef = useRef(Boolean(running));
   const wasRunningRef = useRef(Boolean(running));
   const settleUntilRef = useRef(0);
+  const settleTimerRef = useRef<number | null>(null);
   const [jumpVisible, setJumpVisible] = useState(false);
   const latestUserId = useMemo(() => latestUserMessageId(items), [items]);
   const latestActivityId = useMemo(() => latestActivityItemId(items), [items]);
@@ -93,14 +100,21 @@ export function TranscriptScrollController({
   };
 
   const detachFromLiveFollow = (scroller: HTMLDivElement) => {
-    // User scroll intent must beat any queued streaming/layout follow frame.
-    // Otherwise a pending rAF can pull the viewport back to the newest token
-    // before Chromium dispatches the scroll event.
+    // Detachment is driven only by explicit user input (wheel/touch/scrollbar/
+    // navigation keys). A raw scroll event is not intent: Chromium also emits
+    // upward scroll events when streaming layout shrinks, task groups fold, or
+    // scroll anchoring clamps the viewport.
+    userDetachedRef.current = true;
     followingRef.current = false;
     forceBottomRef.current = false;
     snapBottomRef.current = false;
+    returnIntentUntilRef.current = 0;
     cancelScheduledScroll();
     setJumpVisible(!isNearBottom(scroller));
+  };
+
+  const markReturnIntent = () => {
+    returnIntentUntilRef.current = performance.now() + USER_RETURN_INTENT_MS;
   };
 
   const scheduleBottomSync = (scroller: HTMLDivElement, force = false, snap = false) => {
@@ -123,7 +137,7 @@ export function TranscriptScrollController({
       const absoluteDistance = Math.abs(distance);
       const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
         || document.documentElement.dataset.loomReducedMotion === "true";
-      const liveMotion = Boolean(running) || performance.now() < settleUntilRef.current;
+      const liveMotion = runningRef.current || performance.now() < settleUntilRef.current;
       const easeLiveGrowth = Boolean(
         (liveMotion || forced)
         && !snapNow
@@ -161,14 +175,42 @@ export function TranscriptScrollController({
 
   useLayoutEffect(() => {
     const nextRunning = Boolean(running);
-    if (wasRunningRef.current && !nextRunning) {
-      // Completion still changes geometry for a few hundred milliseconds while
-      // the process stack folds and the final answer settles. Keep the same
-      // bottom-follow spring alive through that handoff instead of switching to
-      // an abrupt snap the instant runtime status flips to idle.
-      settleUntilRef.current = performance.now() + LIVE_SETTLE_WINDOW_MS;
+    runningRef.current = nextRunning;
+
+    if (settleTimerRef.current !== null) {
+      window.clearTimeout(settleTimerRef.current);
+      settleTimerRef.current = null;
     }
+
+    if (wasRunningRef.current && !nextRunning) {
+      // Completion changes height in both directions: the live process stack
+      // folds while the final answer/actions/artifacts finish mounting. Follow
+      // those mutations continuously, then do one exact final pin. The final
+      // pin is conditional on the user still being attached, so an intentional
+      // scroll-up during handoff is never overridden.
+      settleUntilRef.current = performance.now() + LIVE_SETTLE_WINDOW_MS;
+      const scroller = transcriptScroller();
+      if (scroller && followingRef.current && !userDetachedRef.current) {
+        scheduleBottomSync(scroller);
+      }
+      settleTimerRef.current = window.setTimeout(() => {
+        settleTimerRef.current = null;
+        const latestScroller = transcriptScroller();
+        if (!latestScroller || !followingRef.current || userDetachedRef.current) return;
+        scheduleBottomSync(latestScroller, false, true);
+      }, FINAL_SETTLE_PIN_DELAY_MS);
+    } else if (nextRunning) {
+      settleUntilRef.current = 0;
+    }
+
     wasRunningRef.current = nextRunning;
+
+    return () => {
+      if (settleTimerRef.current !== null) {
+        window.clearTimeout(settleTimerRef.current);
+        settleTimerRef.current = null;
+      }
+    };
   }, [running]);
 
   useLayoutEffect(() => {
@@ -185,7 +227,9 @@ export function TranscriptScrollController({
     if (threadChanged) {
       // A real thread replacement should still pin before paint. Animating from
       // the previous conversation's scroll position would expose stale geometry.
+      userDetachedRef.current = false;
       followingRef.current = true;
+      returnIntentUntilRef.current = 0;
       setJumpVisible(false);
       scheduleBottomSync(scroller, true, true);
     } else if (turnChanged || userMessageAdded) {
@@ -197,7 +241,9 @@ export function TranscriptScrollController({
         settleUntilRef.current,
         performance.now() + SEND_FOLLOW_WINDOW_MS,
       );
+      userDetachedRef.current = false;
       followingRef.current = true;
+      returnIntentUntilRef.current = 0;
       setJumpVisible(false);
       scheduleBottomSync(scroller, true);
     } else if (activityAdded && followingRef.current) {
@@ -220,13 +266,31 @@ export function TranscriptScrollController({
     const content = scroller?.querySelector<HTMLElement>(".transcript");
     if (!scroller || !content) return;
 
+    userDetachedRef.current = false;
     followingRef.current = true;
     forceBottomRef.current = true;
+    returnIntentUntilRef.current = 0;
     lastScrollTopRef.current = scroller.scrollTop;
     setJumpVisible(false);
     // Mount/thread swaps are authoritative navigation and should not visibly
     // travel from whatever scroll position belonged to the previous subtree.
     scheduleBottomSync(scroller, true, true);
+
+    const resumeIfUserReturnedToBottom = () => {
+      if (
+        userDetachedRef.current
+        && isNearBottom(scroller)
+        && performance.now() <= returnIntentUntilRef.current
+      ) {
+        userDetachedRef.current = false;
+        followingRef.current = true;
+        returnIntentUntilRef.current = 0;
+        setJumpVisible(false);
+        scheduleBottomSync(scroller);
+        return true;
+      }
+      return false;
+    };
 
     const onScroll = () => {
       if (isPanelResizeActive()) return;
@@ -234,24 +298,29 @@ export function TranscriptScrollController({
       const nextScrollTop = scroller.scrollTop;
       const nearBottom = isNearBottom(scroller);
       const movedUp = nextScrollTop < lastScrollTopRef.current - SCROLL_EPSILON_PX;
-      const movedDown = nextScrollTop > lastScrollTopRef.current + SCROLL_EPSILON_PX;
 
-      // Upward movement wins even inside the near-bottom threshold. Previously
-      // the nearBottom branch re-enabled follow first, so small upward wheel
-      // gestures were immediately overwritten by the next streaming frame.
-      if (movedUp && !forceBottomRef.current) {
-        followingRef.current = false;
-      } else if (nearBottom && (followingRef.current || movedDown)) {
-        followingRef.current = true;
+      // Never infer user intent from direction alone. Streaming Markdown,
+      // collapsing task groups and browser scroll anchoring can all move
+      // scrollTop upward without any human input. Only a scrollbar drag is
+      // diagnosed here because its pointer provenance is explicit; wheel/touch
+      // and keyboard intent are captured before their scroll event.
+      if (scrollbarPointerRef.current !== null && movedUp) {
+        detachFromLiveFollow(scroller);
+      } else {
+        resumeIfUserReturnedToBottom();
       }
 
       lastScrollTopRef.current = nextScrollTop;
-      setJumpVisible(!nearBottom && !followingRef.current);
+      setJumpVisible(userDetachedRef.current && !nearBottom);
     };
 
     const onWheel = (event: WheelEvent) => {
       if (isPanelResizeActive()) return;
-      if (event.deltaY < 0) detachFromLiveFollow(scroller);
+      if (event.deltaY < 0) {
+        detachFromLiveFollow(scroller);
+      } else if (event.deltaY > 0) {
+        markReturnIntent();
+      }
     };
 
     const onTouchStart = (event: TouchEvent) => {
@@ -263,14 +332,63 @@ export function TranscriptScrollController({
       const nextY = event.touches[0]?.clientY;
       const previousY = touchYRef.current;
       if (nextY == null) return;
-      if (previousY != null && nextY > previousY + SCROLL_EPSILON_PX) {
-        detachFromLiveFollow(scroller);
+      if (previousY != null) {
+        // Finger down reveals older content; finger up heads toward latest.
+        if (nextY > previousY + SCROLL_EPSILON_PX) {
+          detachFromLiveFollow(scroller);
+        } else if (nextY < previousY - SCROLL_EPSILON_PX) {
+          markReturnIntent();
+        }
       }
       touchYRef.current = nextY;
     };
 
     const onTouchEnd = () => {
       touchYRef.current = null;
+    };
+
+    const onPointerDown = (event: PointerEvent) => {
+      if (event.button !== 0 || scroller.scrollHeight <= scroller.clientHeight) return;
+      const rect = scroller.getBoundingClientRect();
+      const nativeGutter = Math.max(0, scroller.offsetWidth - scroller.clientWidth);
+      const hitWidth = Math.max(12, nativeGutter + 3);
+      if (event.clientX >= rect.right - hitWidth) {
+        scrollbarPointerRef.current = event.pointerId;
+      }
+    };
+
+    const finishScrollbarPointer = (event: PointerEvent) => {
+      if (scrollbarPointerRef.current !== event.pointerId) return;
+      scrollbarPointerRef.current = null;
+      if (isNearBottom(scroller)) {
+        markReturnIntent();
+        resumeIfUserReturnedToBottom();
+      }
+    };
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (
+        target?.matches("input, textarea, select")
+        || target?.isContentEditable
+        || event.defaultPrevented
+      ) return;
+
+      if (
+        event.key === "PageUp"
+        || event.key === "Home"
+        || event.key === "ArrowUp"
+        || (event.key === " " && event.shiftKey)
+      ) {
+        detachFromLiveFollow(scroller);
+      } else if (
+        event.key === "PageDown"
+        || event.key === "End"
+        || event.key === "ArrowDown"
+        || (event.key === " " && !event.shiftKey)
+      ) {
+        markReturnIntent();
+      }
     };
 
     const onPanelLayoutCommit = () => {
@@ -297,6 +415,10 @@ export function TranscriptScrollController({
     scroller.addEventListener("touchmove", onTouchMove, { passive: true });
     scroller.addEventListener("touchend", onTouchEnd, { passive: true });
     scroller.addEventListener("touchcancel", onTouchEnd, { passive: true });
+    scroller.addEventListener("pointerdown", onPointerDown, { passive: true });
+    window.addEventListener("pointerup", finishScrollbarPointer, { passive: true });
+    window.addEventListener("pointercancel", finishScrollbarPointer, { passive: true });
+    window.addEventListener("keydown", onKeyDown, true);
     window.addEventListener(PANEL_LAYOUT_COMMIT_EVENT, onPanelLayoutCommit);
     window.addEventListener(PANEL_RESIZE_END_EVENT, onPanelResizeEnd);
 
@@ -323,6 +445,10 @@ export function TranscriptScrollController({
       scroller.removeEventListener("touchmove", onTouchMove);
       scroller.removeEventListener("touchend", onTouchEnd);
       scroller.removeEventListener("touchcancel", onTouchEnd);
+      scroller.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("pointerup", finishScrollbarPointer);
+      window.removeEventListener("pointercancel", finishScrollbarPointer);
+      window.removeEventListener("keydown", onKeyDown, true);
       window.removeEventListener(PANEL_LAYOUT_COMMIT_EVENT, onPanelLayoutCommit);
       window.removeEventListener(PANEL_RESIZE_END_EVENT, onPanelResizeEnd);
       observer?.disconnect();
@@ -334,15 +460,17 @@ export function TranscriptScrollController({
     const scroller = transcriptScroller();
     if (!scroller) return;
 
+    userDetachedRef.current = false;
     followingRef.current = true;
     forceBottomRef.current = false;
+    returnIntentUntilRef.current = 0;
     setJumpVisible(false);
 
-    const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
-    scroller.scrollTo({
-      top: scroller.scrollHeight,
-      behavior: reducedMotion ? "auto" : "smooth",
-    });
+    const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+      || document.documentElement.dataset.loomReducedMotion === "true";
+    // Reuse the same owned follow loop instead of starting a second native
+    // smooth-scroll animation that can race ResizeObserver during streaming.
+    scheduleBottomSync(scroller, true, reducedMotion);
   };
 
   return (

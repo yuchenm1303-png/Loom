@@ -11,8 +11,9 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
+import { setSettingsRoute, useSettingsRoute } from "./settingsNavigation";
 import "./settings-memory.css";
 
 type MemoryPreferences = {
@@ -488,11 +489,10 @@ function MemoryPanel({ threadId, running }: MemorySettingsBridgeProps) {
 }
 
 export function SettingsMemoryBridge({ threadId, running }: MemorySettingsBridgeProps) {
-  const [open, setOpen] = useState(false);
+  const route = useSettingsRoute();
+  const open = route === "memory";
   const [navHost] = useState(() => document.createElement("span"));
   const [contentHost] = useState(() => document.createElement("div"));
-  const openRef = useRef(open);
-  openRef.current = open;
 
   useEffect(() => {
     navHost.className = "settings-memory-nav-host";
@@ -502,7 +502,11 @@ export function SettingsMemoryBridge({ threadId, running }: MemorySettingsBridge
       const shell = document.querySelector<HTMLElement>(".settings-shell");
       const nav = document.querySelector<HTMLElement>(".settings-nav");
       const mainScroll = document.querySelector<HTMLElement>(".settings-main-scroll");
-      if (!shell || !nav || !mainScroll) return;
+      if (!shell || !nav || !mainScroll) {
+        navHost.remove();
+        contentHost.remove();
+        return;
+      }
 
       const loomSection = Array.from(nav.querySelectorAll<HTMLElement>(":scope > section")).find((section) =>
         section.querySelector(".settings-nav-label")?.textContent?.trim() === "Loom",
@@ -519,27 +523,17 @@ export function SettingsMemoryBridge({ threadId, running }: MemorySettingsBridge
         }
       } else {
         navHost.remove();
-        if (openRef.current) setOpen(false);
       }
 
       if (contentHost.parentElement !== mainScroll) mainScroll.appendChild(contentHost);
-      shell.classList.toggle("settings-memory-mode", openRef.current);
-    };
-
-    const closeForNativeNavigation = (event: Event) => {
-      const target = event.target instanceof Element ? event.target.closest("button") : null;
-      if (!target || target.closest(".settings-memory-nav-host")) return;
-      if (target.closest(".settings-nav")) setOpen(false);
     };
 
     syncHosts();
     const observer = new MutationObserver(syncHosts);
     observer.observe(document.body, { childList: true, subtree: true });
-    document.addEventListener("click", closeForNativeNavigation, true);
 
     return () => {
       observer.disconnect();
-      document.removeEventListener("click", closeForNativeNavigation, true);
       document.querySelector(".settings-shell")?.classList.remove("settings-memory-mode");
       navHost.remove();
       contentHost.remove();
@@ -553,7 +547,12 @@ export function SettingsMemoryBridge({ threadId, running }: MemorySettingsBridge
   return (
     <>
       {createPortal(
-        <button type="button" className={open ? "active" : ""} onClick={() => setOpen(true)}>
+        <button
+          type="button"
+          className={open ? "active" : ""}
+          aria-current={open ? "page" : undefined}
+          onClick={() => setSettingsRoute("memory")}
+        >
           <BrainCircuit size={16} strokeWidth={1.7} />
           <span>Memory</span>
         </button>,
