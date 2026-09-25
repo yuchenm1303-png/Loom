@@ -15,6 +15,7 @@ import { ArtifactPreviewDock } from "./components/ArtifactPreviewDock";
 import { Composer } from "./components/Composer";
 import { Inspector } from "./components/Inspector";
 import { LanguageSettingsDock } from "./components/LanguageSettingsDock";
+import { ProfileInsightsPage } from "./components/ProfileInsightsPage";
 import { ProjectDetailsPanel } from "./components/ProjectDetailsPanel";
 import { ReviewInteractionBridge } from "./components/ReviewInteractionBridge";
 import { ReviewWorkspace } from "./components/ReviewWorkspace";
@@ -382,6 +383,8 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsPresence = useMotionPresence(settingsOpen, 230);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const profilePresence = useMotionPresence(profileOpen, 260);
   const [accountOpen, setAccountOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [agentsOpen, setAgentsOpen] = useState(false);
@@ -1102,9 +1105,9 @@ export default function App() {
     <>
       <div
         ref={shellRef}
-        className={`app-shell workspace-panels ${sidebarOpen ? "sidebar-open" : "sidebar-closed"} ${sidebarLayoutOpen ? "sidebar-layout-open" : "sidebar-layout-closed"} ${inspectorVisible ? "inspector-open" : "inspector-closed"} ${inspectorLayoutOpen ? "inspector-layout-open" : "inspector-layout-closed"} ${reviewLayoutOpen ? "with-review" : ""} ${agentsLayoutOpen ? "with-agents" : ""} ${artifactLayoutOpen ? "with-artifact-preview" : ""} ${projectDetailsLayoutOpen ? "with-project-details" : ""} ${resizingPanel ? "is-resizing" : ""} ${settingsPresence.mounted ? "is-settings-obscured" : ""}`}
+        className={`app-shell workspace-panels ${sidebarOpen ? "sidebar-open" : "sidebar-closed"} ${sidebarLayoutOpen ? "sidebar-layout-open" : "sidebar-layout-closed"} ${inspectorVisible ? "inspector-open" : "inspector-closed"} ${inspectorLayoutOpen ? "inspector-layout-open" : "inspector-layout-closed"} ${reviewLayoutOpen ? "with-review" : ""} ${agentsLayoutOpen ? "with-agents" : ""} ${artifactLayoutOpen ? "with-artifact-preview" : ""} ${projectDetailsLayoutOpen ? "with-project-details" : ""} ${resizingPanel ? "is-resizing" : ""} ${settingsPresence.mounted || profilePresence.mounted ? "is-settings-obscured" : ""}`}
         style={layoutStyle}
-        aria-hidden={settingsPresence.mounted ? true : undefined}
+        aria-hidden={settingsPresence.mounted || profilePresence.mounted ? true : undefined}
       >
       <Sidebar
         threads={loom.threads}
@@ -1173,8 +1176,15 @@ export default function App() {
           compacting={loom.compacting}
           compactionProgress={loom.compactionProgress}
           onCompactContext={() => void loom.compactContext()}
+          onOpenProfile={() => {
+            setSettingsOpen(false);
+            setProfileOpen(true);
+          }}
           onOpenAccount={() => setAccountOpen(true)}
-          onOpenSettings={() => setSettingsOpen(true)}
+          onOpenSettings={() => {
+            setProfileOpen(false);
+            setSettingsOpen(true);
+          }}
           onToggleSidebar={() => runLayoutTransition(
             () => setSidebarOpen((open) => !open),
             sidebarOpen ? "left-close" : "left-open",
@@ -1305,6 +1315,15 @@ export default function App() {
         onLogout={account.logout}
       />
       </div>
+
+      {profilePresence.mounted ? (
+        <div className="profile-insights-host" data-motion-phase={profilePresence.phase}>
+          <ProfileInsightsPage
+            account={account.account}
+            onClose={() => setProfileOpen(false)}
+          />
+        </div>
+      ) : null}
 
       {settingsPresence.mounted ? (
         <div className="settings-host" data-motion-phase={settingsPresence.phase}>

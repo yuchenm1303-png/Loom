@@ -1,4 +1,5 @@
 import {
+  Activity,
   Archive,
   Bot,
   Check,
@@ -43,6 +44,7 @@ interface ThreadHeaderProps {
   compacting?: boolean;
   compactionProgress?: ContextCompactionProgress | null;
   onCompactContext?(): void;
+  onOpenProfile(): void;
   onOpenAccount(): void;
   onOpenSettings(): void;
   onToggleSidebar(): void;
@@ -95,6 +97,7 @@ export function ThreadHeader({
   compacting = false,
   compactionProgress = null,
   onCompactContext,
+  onOpenProfile,
   onOpenAccount,
   onOpenSettings,
   onToggleSidebar,
@@ -146,6 +149,7 @@ export function ThreadHeader({
     : (language === "zh-CN" ? "当前还没有可渲染的文件" : "No renderable files yet");
   const agentsLabel = language === "zh-CN" ? "子代理" : "Agents";
   const agentsTitle = language === "zh-CN" ? "打开子代理工作区" : "Open sub-agent workspace";
+  const profileTitle = language === "zh-CN" ? "个人主页与使用洞察" : "Profile & usage insights";
   const accountTitle = accountAuthenticated
     ? [
         language === "zh-CN" ? "Loom 账号" : "Loom account",
@@ -251,6 +255,16 @@ export function ThreadHeader({
         </button>
 
         <span className="thread-header-divider" aria-hidden="true" />
+
+        <button
+          type="button"
+          className="thread-header-icon-button thread-profile-button"
+          onClick={onOpenProfile}
+          title={profileTitle}
+          aria-label={profileTitle}
+        >
+          <Activity size={16} strokeWidth={1.75} />
+        </button>
 
         <button
           type="button"
