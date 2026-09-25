@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { ThreadReadResult, ThreadRecord, TranscriptItem } from "../types/loom";
+import type { ThreadRecord, TranscriptItem } from "../types/loom";
 import { useLoom as useLoomCore } from "./useLoomCore";
 
 function threadIsRunning(thread?: ThreadRecord | null): boolean {
