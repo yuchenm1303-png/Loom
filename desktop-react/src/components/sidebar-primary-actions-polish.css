@@ -467,7 +467,7 @@ html[data-loom-theme="light"] .codex-sidebar .sidebar-secondary-action:hover > s
   padding: 0 11px 0 9px;
   gap: 9px;
   border-radius: 11px;
-  border: 1px solid color-mix(in srgb, var(--loom-border) 94%, var(--accent, #8b7cf6) 6%);
+  border: 1px solid transparent;
   background: color-mix(in srgb, var(--loom-surface-raised) 97%, var(--accent, #8b7cf6) 3%);
   box-shadow:
     0 1px 3px rgba(10,12,18,.055);
@@ -514,7 +514,7 @@ html[data-loom-theme="light"] .codex-sidebar .sidebar-secondary-action:hover > s
 
 .codex-sidebar .sidebar-new-conversation {
   color: var(--text, #eef0f3);
-  border-color: color-mix(in srgb, var(--accent, #8b7cf6) 14%, var(--loom-border) 86%);
+  border-color: transparent;
   background: color-mix(in srgb, var(--loom-surface-raised) 95%, var(--accent, #8b7cf6) 5%);
   box-shadow:
     0 1px 4px rgba(22,18,50,.055);
@@ -534,7 +534,7 @@ html[data-loom-theme="light"] .codex-sidebar .sidebar-secondary-action:hover > s
 .codex-sidebar .sidebar-new-conversation:hover,
 .codex-sidebar .sidebar-secondary-action:hover {
   color: var(--text, #f3f4f6);
-  border-color: color-mix(in srgb, var(--accent, #8b7cf6) 22%, var(--loom-border) 78%);
+  border-color: transparent;
   background: color-mix(in srgb, var(--loom-surface-raised) 93%, var(--accent, #8b7cf6) 7%);
   box-shadow:
     0 3px 8px rgba(24,20,54,.065);
@@ -557,7 +557,7 @@ html[data-loom-theme="light"] .codex-sidebar .sidebar-secondary-action:hover > s
 
 .codex-sidebar .sidebar-new-conversation:focus-visible,
 .codex-sidebar .sidebar-secondary-action:focus-visible {
-  border-color: color-mix(in srgb, var(--accent, #8b7cf6) 36%, var(--loom-border) 64%);
+  border-color: transparent;
   box-shadow:
     0 0 0 2px color-mix(in srgb, var(--accent, #8b7cf6) 9%, transparent);
 }
@@ -567,7 +567,7 @@ html[data-loom-theme="light"] .codex-sidebar .sidebar-secondary-action:hover > s
 html[data-loom-theme="light"] .codex-sidebar .sidebar-new-conversation,
 html[data-loom-theme="light"] .codex-sidebar .sidebar-secondary-action {
   color: #363a44;
-  border-color: rgba(39,43,52,.085);
+  border-color: transparent;
   background: rgba(255,255,255,.70);
   box-shadow:
     0 1px 3px rgba(35,39,49,.035);
@@ -575,7 +575,7 @@ html[data-loom-theme="light"] .codex-sidebar .sidebar-secondary-action {
 
 html[data-loom-theme="light"] .codex-sidebar .sidebar-new-conversation {
   color: #292d36;
-  border-color: rgba(105,90,216,.13);
+  border-color: transparent;
   background: rgba(105,90,216,.035);
   box-shadow:
     0 1px 4px rgba(63,50,134,.04);
@@ -597,7 +597,7 @@ html[data-loom-theme="light"] .codex-sidebar .sidebar-secondary-action > svg {
 html[data-loom-theme="light"] .codex-sidebar .sidebar-new-conversation:hover,
 html[data-loom-theme="light"] .codex-sidebar .sidebar-secondary-action:hover {
   color: #292d36;
-  border-color: rgba(105,90,216,.18);
+  border-color: transparent;
   background: rgba(105,90,216,.055);
   box-shadow:
     0 3px 8px rgba(54,47,98,.045);
