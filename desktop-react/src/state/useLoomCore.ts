@@ -21,6 +21,10 @@ import { buildApprovalResponse } from "./approvalProtocol";
 type ThreadView = "active" | "archived";
 type ThreadCounts = { active: number; archived: number; all: number };
 type ThreadListResult = { threads: ThreadRecord[]; counts?: Partial<ThreadCounts> };
+type ThreadReadCacheEntry = { result: ThreadReadResult; cachedAt: number };
+
+const THREAD_READ_CACHE_LIMIT = 3;
+const THREAD_READ_CACHE_TTL_MS = 45_000;
 
 function flattenItems(turns: TurnRecord[]): TranscriptItem[] {
   return turns.flatMap((turn) => turn.items ?? []);
@@ -139,6 +143,7 @@ export function useLoom() {
   const [threadView, setThreadViewState] = useState<ThreadView>("active");
   const [threadCounts, setThreadCounts] = useState<ThreadCounts>({ active: 0, archived: 0, all: 0 });
   const [active, setActive] = useState<ThreadReadResult | null>(null);
+  const [openingThreadId, setOpeningThreadId] = useState("");
   const [items, setItems] = useState<TranscriptItem[]>([]);
   const [turnActive, setTurnActive] = useState(false);
   const [turnStartedAt, setTurnStartedAt] = useState<number | null>(null);
@@ -147,6 +152,9 @@ export function useLoom() {
   const compacting = compactionProgress?.status === "started" || compactionProgress?.status === "running";
   const activeIdRef = useRef("");
   const openRequestRef = useRef(0);
+  const openingThreadIdRef = useRef("");
+  const threadReadCacheRef = useRef<Map<string, ThreadReadCacheEntry>>(new Map());
+  const threadsRef = useRef<ThreadRecord[]>([]);
   const threadViewRef = useRef<ThreadView>("active");
   const itemIndexRef = useRef<Map<string, number>>(new Map());
   const pendingItemDeltasRef = useRef<Map<string, Record<string, unknown>>>(new Map());
@@ -191,6 +199,10 @@ export function useLoom() {
     activeIdRef.current = active?.thread.id ?? "";
   }, [active?.thread.id]);
 
+  useEffect(() => {
+    threadsRef.current = threads;
+  }, [threads]);
+
   const installItems = useCallback((next: TranscriptItem[]) => {
     if (deltaFlushTimerRef.current !== null) window.clearTimeout(deltaFlushTimerRef.current);
     deltaFlushTimerRef.current = null;
@@ -201,6 +213,8 @@ export function useLoom() {
 
   const clearActive = useCallback(() => {
     activeIdRef.current = "";
+    openingThreadIdRef.current = "";
+    setOpeningThreadId("");
     setActive(null);
     installItems([]);
     setTurnActive(false);
@@ -317,6 +331,41 @@ export function useLoom() {
     return snapshot;
   }, []);
 
+  const rememberThreadRead = useCallback((result: ThreadReadResult) => {
+    const threadId = result.thread.id;
+    const cache = threadReadCacheRef.current;
+    cache.delete(threadId);
+    if (threadIsRunning(result.thread)) return;
+    cache.set(threadId, { result, cachedAt: Date.now() });
+    while (cache.size > THREAD_READ_CACHE_LIMIT) {
+      const oldest = cache.keys().next().value as string | undefined;
+      if (!oldest) break;
+      cache.delete(oldest);
+    }
+  }, []);
+
+  const cachedThreadRead = useCallback((threadId: string): ThreadReadResult | null => {
+    const entry = threadReadCacheRef.current.get(threadId);
+    if (!entry) return null;
+    if (Date.now() - entry.cachedAt > THREAD_READ_CACHE_TTL_MS) {
+      threadReadCacheRef.current.delete(threadId);
+      return null;
+    }
+    const listed = threadsRef.current.find((thread) => thread.id === threadId);
+    if (
+      listed
+      && listed.updatedAt
+      && entry.result.thread.updatedAt
+      && listed.updatedAt !== entry.result.thread.updatedAt
+    ) {
+      threadReadCacheRef.current.delete(threadId);
+      return null;
+    }
+    threadReadCacheRef.current.delete(threadId);
+    threadReadCacheRef.current.set(threadId, entry);
+    return entry.result;
+  }, []);
+
   const applyThreadRead = useCallback((result: ThreadReadResult) => {
     activeIdRef.current = result.thread.id;
     setActive(result);
@@ -326,15 +375,52 @@ export function useLoom() {
     setTurnStartedAt(running ? turnStartFromRead(result) : null);
     setContext(null);
     setCompactionProgress(null);
+    rememberThreadRead(result);
     void refreshContext(result.thread.id);
-  }, [installItems, refreshContext]);
+  }, [installItems, refreshContext, rememberThreadRead]);
 
   const openThread = useCallback(async (threadId: string) => {
+    const normalized = threadId.trim();
+    if (!normalized) return;
+
+    if (normalized === activeIdRef.current) {
+      if (openingThreadIdRef.current && openingThreadIdRef.current !== normalized) {
+        openRequestRef.current += 1;
+        openingThreadIdRef.current = "";
+        setOpeningThreadId("");
+      }
+      return;
+    }
+
     const requestId = ++openRequestRef.current;
-    const result = await requireBridge().call<ThreadReadResult>("thread/read", { threadId });
-    if (openRequestRef.current !== requestId) return;
-    applyThreadRead(result);
-  }, [applyThreadRead]);
+    openingThreadIdRef.current = normalized;
+    setOpeningThreadId(normalized);
+
+    const cached = cachedThreadRead(normalized);
+    let usedCachedSnapshot = false;
+    if (cached) {
+      usedCachedSnapshot = true;
+      applyThreadRead(cached);
+      if (openRequestRef.current === requestId) {
+        openingThreadIdRef.current = "";
+        setOpeningThreadId("");
+      }
+    }
+
+    try {
+      const result = await requireBridge().call<ThreadReadResult>("thread/read", { threadId: normalized });
+      if (openRequestRef.current !== requestId) return;
+      applyThreadRead(result);
+    } catch (cause) {
+      if (!usedCachedSnapshot) throw cause;
+      console.warn("Could not refresh cached conversation", cause);
+    } finally {
+      if (openRequestRef.current === requestId) {
+        openingThreadIdRef.current = "";
+        setOpeningThreadId("");
+      }
+    }
+  }, [applyThreadRead, cachedThreadRead]);
 
   const ensureSelection = useCallback(async (list: ThreadRecord[], preferredId = activeIdRef.current) => {
     if (preferredId && list.some((thread) => thread.id === preferredId)) return;
@@ -379,6 +465,8 @@ export function useLoom() {
     // catalogue and reading the same empty thread back from disk.
     if (openRequestRef.current === requestId) {
       activeIdRef.current = result.thread.id;
+      openingThreadIdRef.current = "";
+      setOpeningThreadId("");
       setActive({ thread: result.thread, turns: [] });
       installItems([]);
       setTurnActive(false);
@@ -419,6 +507,7 @@ export function useLoom() {
   const send = useCallback(async (input: string, attachments: { path: string; name: string }[] = []) => {
     if (!active?.thread.id || active.thread.archived) return;
     if (!input.trim() && !attachments.length) return;
+    threadReadCacheRef.current.delete(active.thread.id);
     setTurnActive(true);
     setTurnStartedAt(Date.now());
     try {
@@ -600,6 +689,7 @@ export function useLoom() {
       if (message.method === "thread/updated") {
         const thread = params.thread as ThreadRecord | undefined;
         if (thread) {
+          threadReadCacheRef.current.delete(thread.id);
           const belongsInView = threadViewRef.current === "archived" ? Boolean(thread.archived) : !thread.archived;
           setThreads((current) => {
             const exists = current.some((entry) => entry.id === thread.id);
@@ -619,6 +709,7 @@ export function useLoom() {
       }
       if (message.method === "thread/deleted") {
         const deletedId = String(params.threadId ?? "");
+        threadReadCacheRef.current.delete(deletedId);
         setThreads((current) => current.filter((entry) => entry.id !== deletedId));
         if (deletedId && deletedId === activeId) clearActive();
         return;
@@ -626,6 +717,7 @@ export function useLoom() {
       if (message.method === "turn/started") {
         const turn = params.turn as TurnRecord | undefined;
         if (turn && threadId === activeId) {
+          threadReadCacheRef.current.delete(threadId);
           setActive((current) => current && current.thread.id === activeId
             ? {
                 ...current,
@@ -804,6 +896,7 @@ export function useLoom() {
     threadView,
     threadCounts,
     active,
+    openingThreadId,
     items,
     turnActive,
     turnStartedAt,
@@ -854,6 +947,7 @@ export function useLoom() {
     activeModels,
     newThread,
     openThread,
+    openingThreadId,
     projects,
     projectsSupported,
     createProject,
