@@ -466,11 +466,11 @@ export function TranscriptScrollController({
     returnIntentUntilRef.current = 0;
     setJumpVisible(false);
 
-    const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
-    scroller.scrollTo({
-      top: scroller.scrollHeight,
-      behavior: reducedMotion ? "auto" : "smooth",
-    });
+    const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+      || document.documentElement.dataset.loomReducedMotion === "true";
+    // Reuse the same owned follow loop instead of starting a second native
+    // smooth-scroll animation that can race ResizeObserver during streaming.
+    scheduleBottomSync(scroller, true, reducedMotion);
   };
 
   return (
