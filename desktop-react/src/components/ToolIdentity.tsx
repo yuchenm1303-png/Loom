@@ -24,6 +24,7 @@ import {
   XAIGlyph,
   type ToolGlyphComponent,
 } from "./ToolIconLibrary";
+import "./tool-identity.css";
 
 export type ActivityIdentityKind = "brand" | "capability" | "neutral";
 
