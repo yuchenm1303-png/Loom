@@ -36,6 +36,7 @@ import "./global-motion.css";
 import "./components/generation-motion.css";
 import "./components/starter-cards-polish.css";
 import "./components/starter-card-interaction-glow.css";
+import "./components/starter-card-borderless-refinement.css";
 
 const CONVERSATION_WIDTHS: Record<string, string> = {
   focused: "740px",
