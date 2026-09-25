@@ -1,5 +1,5 @@
 import { Check, MessageSquareText, Send } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "../i18n";
 import "./decision-prompt-card.css";
 
@@ -141,6 +141,43 @@ function decisionResponse(
   return `${DECISION_RESPONSE_MARKER}For “${spec.title}”, my preference is: ${cleanNote}`;
 }
 
+function responseMatchesDecision(response: string, spec: DecisionPromptSpec): boolean {
+  const text = String(response ?? "").trim();
+  if (!text.startsWith(DECISION_RESPONSE_MARKER)) return false;
+  return text.includes(`关于“${spec.title}”`) || text.includes(`For “${spec.title}”`);
+}
+
+function submittedOptionsFromResponse(
+  response: string,
+  spec: DecisionPromptSpec,
+): DecisionPromptOption[] | null {
+  const selected = spec.options.filter((option) => (
+    response.includes(`${option.id}「${option.title}」`)
+    || response.includes(`${option.id}: ${option.title}`)
+  ));
+  return selected.length ? selected : null;
+}
+
+function persistedSubmissionAfter(
+  anchor: HTMLElement | null,
+  spec: DecisionPromptSpec,
+): DecisionPromptOption[] | null | undefined {
+  if (!anchor || typeof document === "undefined") return undefined;
+  const responses = document.querySelectorAll<HTMLElement>(
+    `[data-loom-message-kind="user"][data-loom-message-text^="${DECISION_RESPONSE_MARKER}"]`,
+  );
+
+  for (const responseNode of responses) {
+    const position = anchor.compareDocumentPosition(responseNode);
+    if (!(position & Node.DOCUMENT_POSITION_FOLLOWING)) continue;
+    const response = responseNode.dataset.loomMessageText ?? "";
+    if (!responseMatchesDecision(response, spec)) continue;
+    return submittedOptionsFromResponse(response, spec);
+  }
+
+  return undefined;
+}
+
 export function DecisionPromptRecoveryCard({
   disabled = false,
   onRetry,
@@ -202,6 +239,7 @@ export function DecisionPromptCard({
 }) {
   const { language } = useI18n();
   const zh = language === "zh-CN";
+  const rootRef = useRef<HTMLElement | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [customOpen, setCustomOpen] = useState(false);
   const [note, setNote] = useState("");
@@ -214,6 +252,17 @@ export function DecisionPromptCard({
     [selectedIds, spec.options],
   );
   const canSubmit = Boolean(onSubmit && !disabled && !sending && (selected.length || note.trim()));
+
+  // The selection receipt is part of the persisted transcript, not just local
+  // component state. A completed turn can be rebuilt after the continuation
+  // finishes, after switching threads, or after restarting the app. Recover the
+  // matching synthetic response that appears later in the transcript before
+  // paint so a submitted card never "comes back to life" as an interactive one.
+  useLayoutEffect(() => {
+    if (submitted !== undefined) return;
+    const persisted = persistedSubmissionAfter(rootRef.current, spec);
+    if (persisted !== undefined) setSubmitted(persisted);
+  });
 
   async function submitSelection(nextSelected = selected) {
     if (!onSubmit || disabled || sending || (!nextSelected.length && !note.trim())) return;
@@ -246,7 +295,7 @@ export function DecisionPromptCard({
   }
 
   return (
-    <section className={`decision-card ${spec.multiple ? "is-multiple" : "is-single"}`} aria-label={spec.title}>
+    <section ref={rootRef} className={`decision-card ${spec.multiple ? "is-multiple" : "is-single"}`} aria-label={spec.title}>
       <header className="decision-card-head">
         <span className="decision-card-icon" aria-hidden="true"><MessageSquareText size={16} /></span>
         <div className="decision-card-heading">
