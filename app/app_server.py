@@ -876,16 +876,27 @@ class LoomAppServerService:
     def thread_read(self, params: dict[str, Any]) -> dict[str, Any]:
         session_id = self._required_text(params, "threadId")
         session = self._load(session_id)
+        thread = self._record(session, active=self._is_active(session_id))
+
+        # Renderer selection and steering checks do not need the diagnostic
+        # duplicates that the general protocol historically returned. Keep the
+        # default response backward compatible, but let the desktop ask for the
+        # smallest durable shape needed by each hot path.
+        if bool(params.get("threadOnly", False)):
+            return {"thread": thread}
+
         events = self.store.events(session_id)
-        return {
-            "thread": self._record(session, active=self._is_active(session_id)),
+        result: dict[str, Any] = {
+            "thread": thread,
             "turns": _turn_records(session, events),
-            "messages": [_message_record(message) for message in session.messages],
             "pendingApproval": pending_approval_record(session, events),
-            "events": [_event_record(event) for event in events],
             "finalText": session.final_text,
             "error": session.error,
         }
+        if not bool(params.get("presentationOnly", False)):
+            result["messages"] = [_message_record(message) for message in session.messages]
+            result["events"] = [_event_record(event) for event in events]
+        return result
 
     def agent_list(self, params: dict[str, Any]) -> dict[str, Any]:
         """Return live sub-agent state for one visible parent conversation."""
