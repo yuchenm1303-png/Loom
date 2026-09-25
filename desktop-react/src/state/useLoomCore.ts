@@ -408,7 +408,7 @@ export function useLoom() {
     }
 
     try {
-      const result = await requireBridge().call<ThreadReadResult>("thread/read", { threadId: normalized });
+      const result = await requireBridge().call<ThreadReadResult>("thread/read", { threadId: normalized, presentationOnly: true });
       if (openRequestRef.current !== requestId) return;
       applyThreadRead(result);
     } catch (cause) {
