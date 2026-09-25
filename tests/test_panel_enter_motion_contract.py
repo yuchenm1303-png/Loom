@@ -82,8 +82,9 @@ def test_unaffected_surfaces_are_not_snapshotted_during_opposite_side_motion() -
 def test_inspector_micro_motion_is_frozen_during_panel_handoff() -> None:
     css = read("desktop-react/src/components/workspace-panels.css")
 
-    assert "body.loom-panel-motion .workspace-panels > .inspector .runtime-pane" in css
-    assert "animation: none !important" in css
+    # 7c34b9cb dropped the runtime-pane `animation: none` guard along with the
+    # redundant runtime-pane-in entrance it existed to suppress, so only the
+    # persistent micro-motion freeze is still part of the contract.
     assert ".runtime-orbit-dot" in css
     assert ".runtime-orbit-one::before" in css
     assert ".runtime-orbit-two::before" in css
