@@ -55,16 +55,17 @@ function ReasoningRail({ reasoning, busy, running, onChange }: ReasoningThreadPr
   const ghostStyle = {
     "--rt-ghost-t": String(levelAt(previewing ? previewIndex : displayIndex)),
   } as CSSProperties;
-  // The first level needs a hint of the woven treatment even when the active
-  // span itself has zero width. Keep that accent local to the first stop: the
-  // previous full-width lead made the animated braid look detached from the
-  // Direct control on sparse (especially two-option) rails.
+  // Keep the cool woven lead across the whole rail before the first option,
+  // but clip it exactly at the first stop. The old +18px overlap pushed the
+  // effect visibly past the Direct bead; shrinking it to a tiny local accent
+  // removed the left segment altogether. This preserves the intended strand
+  // while keeping its visible geometry bounded by the option position.
   const leadStyle = {
-    left: "calc(var(--rt-start) - 22px)",
-    width: "40px",
-    opacity: 0.68,
-    WebkitMaskImage: "linear-gradient(90deg, transparent, #000 28%, #000 72%, transparent)",
-    maskImage: "linear-gradient(90deg, transparent, #000 28%, #000 72%, transparent)",
+    left: 0,
+    width: "var(--rt-start)",
+    opacity: 0.78,
+    WebkitMaskImage: "linear-gradient(90deg, transparent 1%, #000 18%, #000 100%)",
+    maskImage: "linear-gradient(90deg, transparent 1%, #000 18%, #000 100%)",
   } as CSSProperties;
   const leadFiberStyle = {
     background: "var(--rt-cool)",
