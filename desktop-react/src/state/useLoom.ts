@@ -53,7 +53,7 @@ async function resolveActiveTurn(threadId: string, current?: ThreadRecord | null
   // steering message in that gap, so briefly resolve the authoritative durable
   // turn instead of accidentally targeting the previous turn id.
   for (let attempt = 0; attempt < 12; attempt += 1) {
-    const snapshot = await window.loom.call<ThreadReadResult>("thread/read", { threadId });
+    const snapshot = await window.loom.call<{ thread: ThreadRecord }>("thread/read", { threadId, threadOnly: true });
     if (threadIsRunning(snapshot.thread) && snapshot.thread.currentTurnId) return snapshot.thread;
     if (attempt < 11) await delay(50);
   }
