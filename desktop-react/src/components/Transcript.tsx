@@ -19,8 +19,10 @@ import {
   Zap,
 } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { artifactName, artifactRenderer, canInlineRenderArtifact } from "../artifactRenderers";
 import { TURN_SETTLE_HOLD_MS } from "../presentationTiming";
 import type { TranscriptItem } from "../types/loom";
+import { ArtifactRenderSurface } from "./ArtifactRenderSurface";
 import { MarkdownMessage } from "./MarkdownMessage";
 import { DecisionPromptCard, DecisionPromptRecoveryCard, parseDecisionMessage } from "./DecisionPromptCard";
 import { StreamingPresentation } from "./StreamingPresentation";
@@ -30,6 +32,7 @@ import { TurnArtifactsPreview } from "./TurnArtifactsPreview";
 import { UserMessageContent, parseUserMessageContent } from "./UserMessageContent";
 import { dispatchQuoteReply } from "./quoteReply";
 import "./activity-flow.css";
+import "./assistant-artifact-preview.css";
 import "./message-actions.css";
 import "./task-flow-folding.css";
 import "./turn-flow.css";
@@ -1065,6 +1068,70 @@ function changedPaths(items: TranscriptItem[]): string[] {
   return [...paths];
 }
 
+function latestInlineArtifact(items: TranscriptItem[]): { path: string; revision: number } | null {
+  let revision = 0;
+  for (const item of items) {
+    if (item.type !== "file_edit") continue;
+    revision += 1;
+  }
+
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index];
+    if (item.type !== "file_edit") continue;
+    const paths = item.paths ?? [];
+    for (let pathIndex = paths.length - 1; pathIndex >= 0; pathIndex -= 1) {
+      const target = String(paths[pathIndex] || "").trim();
+      if (target && canInlineRenderArtifact(target)) return { path: target, revision };
+    }
+  }
+  return null;
+}
+
+function AssistantArtifactPreview({
+  path,
+  workspace,
+  revision,
+}: {
+  path: string;
+  workspace: string;
+  revision: number;
+}) {
+  const descriptor = artifactRenderer(path);
+  const name = artifactName(path);
+
+  return (
+    <div className="assistant-artifact-preview-card" data-renderer-kind={descriptor.kind}>
+      <ArtifactRenderSurface
+        path={path}
+        workspace={workspace}
+        compact
+        revision={revision}
+        onOpenSide={() => {
+          window.dispatchEvent(new CustomEvent("loom:artifact-preview-open", {
+            detail: { path, workspace },
+          }));
+        }}
+      />
+      <div className="assistant-artifact-preview-footer">
+        <div className="assistant-artifact-preview-copy">
+          <strong title={path}>{name}</strong>
+          <span>{descriptor.label} · 可交互预览</span>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            window.dispatchEvent(new CustomEvent("loom:artifact-preview-open", {
+              detail: { path, workspace },
+            }));
+          }}
+        >
+          打开
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function TurnProcess({
   items,
   allItems,
@@ -1226,6 +1293,7 @@ const TurnView = memo(function TurnView({
     wasActiveRef.current = active;
   }, [active]);
 
+  const inlineArtifact = useMemo(() => latestInlineArtifact(derived.orderedItems), [derived.orderedItems]);
   const latestAssistantState = derived.latestAssistant ? splitReasoning(derived.latestAssistant.text ?? "") : null;
   const latestProviderReasoning = String(derived.latestAssistant?.reasoning ?? "").trim();
   const showPendingThinking = Boolean(
@@ -1268,6 +1336,16 @@ const TurnView = memo(function TurnView({
             decisionInteractive={derived.finalAssistant.id === decisionInteractiveItemId}
             promptDisabled={promptDisabled}
             workspace={workspace}
+          />
+        </div>
+      ) : null}
+
+      {inlineArtifact && workspace ? (
+        <div className="transcript-entry entry-artifact-preview" key={`artifact-preview:${inlineArtifact.path}`}>
+          <AssistantArtifactPreview
+            path={inlineArtifact.path}
+            workspace={workspace}
+            revision={inlineArtifact.revision}
           />
         </div>
       ) : null}
