@@ -26,7 +26,7 @@ from app.agent_runtime.computer_single_loop_runtime import (
     _destructive_hotkey,
     _window_switch_hotkey,
 )
-from app.agent_runtime.computer_types import ComputerAction, ComputerActionType
+from app.agent_runtime.computer_types import ComputerAction, ComputerActionType, ComputerFrame, ComputerPoint
 from app.agent_runtime.computer_windows import PyWinAutoWindowsOperator
 
 
@@ -71,7 +71,7 @@ class _FakeWin32:
 
     # win32process
     def GetWindowThreadProcessId(self, hwnd):
-        return (4242, 4243)
+        return ((4242 if hwnd == self.foreground else 5252), 4243)
 
     def AttachThreadInput(self, a, b, attach):
         self.calls.append(f"AttachThreadInput({attach})")
@@ -93,7 +93,7 @@ def _install(monkeypatch, fake: _FakeWin32, *, responds) -> None:
     import sys
     from types import SimpleNamespace
 
-    con = SimpleNamespace(SW_RESTORE=9, SW_SHOW=5, HWND_TOP=0, SWP_NOMOVE=2, SWP_NOSIZE=1, SWP_SHOWWINDOW=64)
+    con = SimpleNamespace(SW_HIDE=0, SW_SHOW=5, SW_MINIMIZE=6, SW_RESTORE=9, HWND_TOP=0, SWP_NOMOVE=2, SWP_NOSIZE=1, SWP_SHOWWINDOW=64)
     monkeypatch.setitem(sys.modules, "win32gui", fake)
     monkeypatch.setitem(sys.modules, "win32api", fake)
     monkeypatch.setitem(sys.modules, "win32process", fake)
@@ -175,10 +175,74 @@ def test_detach_still_runs_when_activation_raises(monkeypatch):
 
     fake.SetForegroundWindow = explode
 
-    with pytest.raises(OSError):
+    with pytest.raises(RuntimeError, match="refused to activate.*access denied"):
         _operator()._switch_window(_switch())
 
     assert fake.attached == [True, False], "the input queue must be detached even on failure"
+
+
+def test_window_switch_attaches_foreground_thread_not_loom_worker(monkeypatch):
+    fake = _FakeWin32(foreground=0x1234)
+    attached_pairs: list[tuple[int, int, bool]] = []
+    fake.AttachThreadInput = lambda a, b, attach: attached_pairs.append((a, b, bool(attach))) or True
+    _install(monkeypatch, fake, responds=True)
+
+    def set_foreground(hwnd):
+        if attached_pairs and attached_pairs[-1][2]:
+            fake.foreground = hwnd
+
+    fake.SetForegroundWindow = set_foreground
+
+    _operator()._switch_window(_switch())
+
+    assert attached_pairs == [(4242, 5252, True), (4242, 5252, False)]
+
+
+def test_failed_hidden_window_activation_is_rolled_back(monkeypatch):
+    fake = _FakeWin32(foreground=0x1234)
+    fake.IsWindowVisible = lambda _hwnd: False
+    _install(monkeypatch, fake, responds=None)
+
+    with pytest.raises(RuntimeError, match="refused to activate"):
+        _operator()._switch_window(_switch())
+
+    assert fake.calls[0] == "ShowWindow(5)"
+    assert fake.calls[-1] == "ShowWindow(0)"
+
+
+def test_coordinate_click_refuses_a_window_that_covered_the_screenshot(monkeypatch):
+    import sys
+    from types import SimpleNamespace
+
+    cursor_moves: list[tuple[int, int]] = []
+    monkeypatch.setitem(
+        sys.modules,
+        "win32api",
+        SimpleNamespace(SetCursorPos=cursor_moves.append, mouse_event=lambda *_args: None),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "win32gui",
+        SimpleNamespace(WindowFromPoint=lambda _point: 0x20, GetAncestor=lambda hwnd, _kind: hwnd),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "win32con",
+        SimpleNamespace(GA_ROOT=2, MOUSEEVENTF_LEFTDOWN=2, MOUSEEVENTF_LEFTUP=4),
+    )
+    frame = ComputerFrame(
+        frame_id="frame",
+        origin_x=0,
+        origin_y=0,
+        width=100,
+        height=100,
+        window_id="0x10",
+    )
+
+    with pytest.raises(RuntimeError, match="target changed after the screenshot"):
+        _operator()._click_point(frame, ComputerPoint(0.5, 0.5))
+
+    assert cursor_moves == []
 
 
 def test_modifier_keys_are_released_even_when_the_chord_fails(monkeypatch):

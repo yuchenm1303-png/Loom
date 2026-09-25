@@ -111,6 +111,26 @@ class SingleLoopWindowsOperator(PyWinAutoWindowsOperator):
         return (minimized and titled, titled, minimized, area, window.window_id)
 
     @staticmethod
+    def _is_hidden_helper(hwnd: int, *, shown: bool, minimized: bool) -> bool:
+        """Reject hidden topmost/tool HWNDs that are popups, not app entrypoints."""
+
+        if shown or minimized:
+            return False
+        try:
+            import win32con
+            import win32gui
+
+            exstyle = int(win32gui.GetWindowLong(hwnd, win32con.GWL_EXSTYLE))
+            helper_bits = int(getattr(win32con, "WS_EX_TOOLWINDOW", 0x80)) | int(
+                getattr(win32con, "WS_EX_TOPMOST", 0x8)
+            )
+            return bool(exstyle & helper_bits)
+        except Exception:
+            # Older Windows shims and unit fakes may not expose extended styles;
+            # absence of evidence is not enough to hide a legitimate tray app.
+            return False
+
+    @staticmethod
     def _onscreen_rank(window: ComputerWindow) -> tuple:
         """Order windows the model can already see, largest first.
 
@@ -160,6 +180,9 @@ class SingleLoopWindowsOperator(PyWinAutoWindowsOperator):
                 title = str(win32gui.GetWindowText(hwnd) or "").strip()
                 process_name = self._process_name_for_window(hwnd)
 
+                if self._is_host_window(hwnd):
+                    return
+
                 try:
                     left, top, right, bottom = map(int, win32gui.GetWindowRect(hwnd))
                     rect = (
@@ -195,6 +218,8 @@ class SingleLoopWindowsOperator(PyWinAutoWindowsOperator):
                 # Owned popup/helper windows are poor restore targets; the owner
                 # is the application-level top window we want instead.
                 if int(win32gui.GetWindow(hwnd, win32con.GW_OWNER) or 0):
+                    return
+                if self._is_hidden_helper(hwnd, shown=shown, minimized=minimized):
                     return
                 folded = process_name.casefold()
                 if not process_name or folded in _HIDDEN_PROCESS_DENYLIST:
@@ -284,11 +309,7 @@ class SingleLoopWindowsOperator(PyWinAutoWindowsOperator):
 
         # The parent focus routine restores minimized windows but historically did
         # not show a tray-hidden main HWND before calling SetForegroundWindow.
-        if not win32gui.IsWindowVisible(hwnd):
-            win32gui.ShowWindow(hwnd, win32con.SW_SHOW)
-        if win32gui.IsIconic(hwnd):
-            win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
-
+        # Parent activation owns show/restore and rolls both back on failure.
         return super()._switch_window(action)
 
 

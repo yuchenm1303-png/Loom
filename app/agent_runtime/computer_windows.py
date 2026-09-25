@@ -673,8 +673,27 @@ class PyWinAutoWindowsOperator:
     ) -> None:
         import win32api
         import win32con
+        import win32gui
 
-        win32api.SetCursorPos(frame.to_screen(point))
+        screen_point = frame.to_screen(point)
+        # A screenshot is only authority over the window it captured.  A modal,
+        # toast, or failed window switch can cover the same coordinates between
+        # observation and execution; clicking through would act on an application
+        # the model never saw.  Fail closed and make the caller observe again.
+        if frame.window_id:
+            expected = self._parse_window_id(frame.window_id)
+            actual = int(win32gui.WindowFromPoint(screen_point) or 0)
+            get_ancestor = getattr(win32gui, "GetAncestor", None)
+            ga_root = int(getattr(win32con, "GA_ROOT", 2))
+            if callable(get_ancestor):
+                expected = int(get_ancestor(expected, ga_root) or expected)
+                actual = int(get_ancestor(actual, ga_root) or actual)
+            if actual and actual != expected:
+                raise RuntimeError(
+                    "computer target changed after the screenshot; refresh computer_observe before clicking "
+                    f"(expected {self._window_id(expected)}, found {self._window_id(actual)})"
+                )
+        win32api.SetCursorPos(screen_point)
         if right:
             down = win32con.MOUSEEVENTF_RIGHTDOWN
             up = win32con.MOUSEEVENTF_RIGHTUP
@@ -777,24 +796,19 @@ class PyWinAutoWindowsOperator:
                 "the user to bring this application back themselves."
             )
 
-        if win32gui.IsIconic(hwnd):
+        was_visible = bool(win32gui.IsWindowVisible(hwnd))
+        was_iconic = bool(win32gui.IsIconic(hwnd))
+        if not was_visible:
+            win32gui.ShowWindow(hwnd, win32con.SW_SHOW)
+        if was_iconic:
             win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
         methods: list[str] = []
+        activation_error: Exception | None = None
         try:
             win32gui.SetForegroundWindow(hwnd)
             methods.append("SetForegroundWindow")
-        except pywintypes.error:
-            win32gui.ShowWindow(hwnd, win32con.SW_SHOW)
-            win32gui.SetWindowPos(
-                hwnd,
-                win32con.HWND_TOP,
-                0,
-                0,
-                0,
-                0,
-                win32con.SWP_NOMOVE | win32con.SWP_NOSIZE | win32con.SWP_SHOWWINDOW,
-            )
-            methods.append("SetWindowPos")
+        except pywintypes.error as exc:
+            activation_error = exc
 
         # The AttachThreadInput escalation is the one step that can take the
         # user's input down with it, so it is only attempted against a window
@@ -802,28 +816,51 @@ class PyWinAutoWindowsOperator:
         # the liveness probe itself could not run, Loom gives up the escalation
         # rather than gamble the desktop on it.
         if int(win32gui.GetForegroundWindow()) != hwnd and _window_responds(hwnd) is True:
-            current_thread = int(win32api.GetCurrentThreadId())
+            foreground_hwnd = int(win32gui.GetForegroundWindow() or 0)
+            foreground_thread = (
+                int(win32process.GetWindowThreadProcessId(foreground_hwnd)[0])
+                if foreground_hwnd
+                else 0
+            )
             target_thread = int(win32process.GetWindowThreadProcessId(hwnd)[0])
             attached = False
             try:
-                if current_thread != target_thread:
-                    win32process.AttachThreadInput(current_thread, target_thread, True)
+                # Foreground permission belongs to the thread that currently owns
+                # the foreground window, not to Loom's worker thread.  Joining
+                # target to Loom (the old code) does not bypass the foreground
+                # lock and made this retry fail forever on locked desktops.
+                if foreground_thread and foreground_thread != target_thread:
+                    win32process.AttachThreadInput(foreground_thread, target_thread, True)
                     attached = True
                 win32gui.BringWindowToTop(hwnd)
-                win32gui.SetForegroundWindow(hwnd)
-                methods.append("AttachThreadInput")
+                try:
+                    win32gui.SetForegroundWindow(hwnd)
+                    methods.append("AttachThreadInput")
+                except pywintypes.error as exc:
+                    activation_error = exc
             finally:
                 if attached:
-                    win32process.AttachThreadInput(current_thread, target_thread, False)
+                    win32process.AttachThreadInput(foreground_thread, target_thread, False)
 
         if int(win32gui.GetForegroundWindow()) != hwnd:
-            raise RuntimeError(f"Windows refused to activate window: {action.window_id}")
+            # Do not leave a hidden helper visible or a minimized app restored
+            # after a failed attempt.  The old HWND_TOP fallback created the
+            # exact invisible-overlay/click-through incident this guard fixes.
+            if not was_visible:
+                win32gui.ShowWindow(hwnd, win32con.SW_HIDE)
+            elif was_iconic:
+                win32gui.ShowWindow(hwnd, win32con.SW_MINIMIZE)
+            detail = f" ({activation_error})" if activation_error else ""
+            raise RuntimeError(
+                f"Windows refused to activate window {action.window_id}{detail}; "
+                "choose another listed window or ask the user to foreground it"
+            )
         return ComputerExecution(ok=True, message=f"window switched via {methods[-1]}", action=action, native=True)
 
     def _is_host_window(self, hwnd: int) -> bool:
         """Whether this window is part of Loom's own user interface."""
 
-        if not self.host_pids:
+        if not getattr(self, "host_pids", frozenset()):
             return False
         try:
             import win32process

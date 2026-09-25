@@ -241,6 +241,10 @@ export function createHudOverlayWindow(force = false): BrowserWindow | null {
   // on Windows, a transparent always-on-top window with forwarded mouse events
   // can force repeated cursor hit-testing/repainting over the main Loom window.
   hudWindow.setIgnoreMouseEvents(true);
+  // Keep the diagnostic overlay visible to the user but out of screenshots
+  // consumed by the model.  CSS capture-safe only hides child content and was
+  // never a security boundary; Windows content protection is.
+  hudWindow.setContentProtection(true);
   hudWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   hudWindow.once("ready-to-show", () => {
     if (!hudWindow || hudWindow.isDestroyed() || !isVisiblePayload(pendingPayload)) return;

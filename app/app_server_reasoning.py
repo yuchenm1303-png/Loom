@@ -382,7 +382,7 @@ class ReasoningManagedLoomAppServerService(ManagedStreamingLoomAppServerService)
         labels = {
             "computer_status": "检查 Computer Use 状态",
             "computer_observe": "观察桌面窗口",
-            "computer_action": f"执行桌面动作：{computer_action or 'action'}",
+            "computer_action": f"执行桌面动作：{computer_action or '桌面操作'}",
             "computer_step": "执行视觉定位步骤",
             "browser_status": "检查 Browser Use 状态",
             "browser_open": "打开浏览器会话",

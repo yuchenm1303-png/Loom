@@ -104,3 +104,4 @@ def test_electron_hud_only_hides_for_explicit_terminal_and_reuses_window():
     assert "DESTROY_AFTER_IDLE_MS" not in source
     assert "scheduleDestroy" not in source
     assert "if (terminalPayload(payload)) hideHudWindow(2300);" in source
+    assert "hudWindow.setContentProtection(true);" in source

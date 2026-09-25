@@ -224,7 +224,30 @@ def test_a_minimized_main_window_beats_a_larger_hidden_helper(monkeypatch):
     assert chat[0].title == "Chat"
 
 
-def test_switch_window_shows_hidden_target_before_parent_focus(monkeypatch):
+def test_hidden_topmost_tool_window_is_never_an_activation_candidate(monkeypatch):
+    con, gui, _shown = _fake_window_modules(
+        monkeypatch,
+        handles=[1, 50, 51],
+        visible={1, 51},
+        titles={1: "Loom", 50: "Claude helper", 51: "Claude"},
+        iconic={51},
+    )
+    con.GWL_EXSTYLE = -20
+    con.WS_EX_TOPMOST = 0x8
+    con.WS_EX_TOOLWINDOW = 0x80
+    gui.GetWindowLong = lambda hwnd, _index: 0x88 if hwnd == 50 else 0
+    operator = object.__new__(SingleLoopWindowsOperator)
+    operator.max_windows = 48
+    operator.host_pids = frozenset()
+    monkeypatch.setattr(operator, "_process_name_for_window", lambda hwnd: "claude.exe" if hwnd != 1 else "loom.exe")
+
+    windows = operator._enumerate_windows(1)
+
+    assert "0x32" not in {window.window_id for window in windows}
+    assert any(window.window_id == "0x33" for window in windows)
+
+
+def test_switch_window_delegates_show_and_rollback_to_parent_focus(monkeypatch):
     con, _gui, shown = _fake_window_modules(
         monkeypatch,
         handles=[20],
@@ -245,7 +268,7 @@ def test_switch_window_shows_hidden_target_before_parent_focus(monkeypatch):
     result = operator._switch_window(action)
 
     assert result.ok is True
-    assert shown == [(20, con.SW_SHOW), (20, con.SW_RESTORE)]
+    assert shown == []
     assert parent_calls == ["0x14"]
 
 
