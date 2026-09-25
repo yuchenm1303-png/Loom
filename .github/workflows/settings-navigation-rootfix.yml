@@ -20,8 +20,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: desktop-react/package-lock.json
       - name: Refactor settings routing
         run: python3 .github/scripts/settings-navigation-rootfix.py
       - name: Check diff
@@ -29,7 +27,7 @@ jobs:
       - name: Typecheck desktop
         working-directory: desktop-react
         run: |
-          npm ci --ignore-scripts
+          npm install --ignore-scripts --no-package-lock
           npm run typecheck
       - name: Commit root fix
         run: |
