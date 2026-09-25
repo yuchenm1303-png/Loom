@@ -271,6 +271,79 @@ html[data-loom-reduced-motion="true"] .starter-content,
 html[data-loom-reduced-motion="true"] .starter-arrow { transition: none !important; }
 
 
+/* Empty-home visual hierarchy ---------------------------------------------
+   Keep the identity block as one optical unit. This is intentionally visible,
+   not just breakpoint math: the orbit, kicker, title and copy now have their
+   own rhythm instead of inheriting scattered margins from the legacy state. */
+.empty-intro {
+  width: min(720px, 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  flex: none;
+  margin-bottom: 15px;
+}
+
+.empty-intro .empty-brand-lockup {
+  width: auto;
+  min-width: 196px;
+  min-height: 80px;
+  margin: 0 0 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  overflow: visible;
+}
+
+.empty-intro .empty-brand-lockup > .empty-hero {
+  flex: 0 0 58px;
+  width: 96px;
+  height: 58px;
+  min-height: 58px;
+  margin: 0 0 6px;
+  overflow: visible;
+}
+
+.empty-intro .empty-kicker {
+  min-width: max-content;
+  margin: 0;
+  white-space: nowrap;
+  letter-spacing: .085em;
+  color: #a59bdd;
+}
+
+.empty-intro h1 {
+  margin: 0 0 7px;
+  color: #f2f2f5;
+  font-size: clamp(24px, 2.05vw, 29px);
+  line-height: 1.14;
+  font-weight: 690;
+  letter-spacing: -.035em;
+}
+
+.empty-intro p {
+  max-width: 600px;
+  margin: 0;
+  color: #878f9d;
+  font-size: 12.75px;
+  line-height: 1.5;
+}
+
+html[data-loom-theme="light"] .empty-intro h1 {
+  color: #20242b;
+  text-shadow: none;
+}
+
+html[data-loom-theme="light"] .empty-intro p {
+  color: #626b76;
+}
+
+html[data-loom-theme="light"] .empty-intro .empty-kicker {
+  color: #6b5ed0;
+}
+
 /* Empty-home viewport composition -----------------------------------------
    The home is a launch surface, not a scrolling document. Keep the whole
    identity + Token activity + four starter actions inside the conversation
@@ -296,60 +369,21 @@ html[data-loom-reduced-motion="true"] .starter-arrow { transition: none !importa
   margin: 0;
   padding: 0;
   justify-content: center;
+  transform: translateY(-10px);
 }
 
-.empty-state > .empty-brand-lockup,
-.empty-state > h1,
-.empty-state > p,
+.empty-state > .empty-intro,
 .empty-state > .home-token-activity,
 .empty-state > .starter-grid {
   flex-shrink: 0;
 }
 
-.empty-brand-lockup {
-  width: auto;
-  min-width: 176px;
-  min-height: 74px;
-  margin-bottom: 7px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: flex-end;
-  overflow: visible;
-}
-
-.empty-brand-lockup > .empty-hero {
-  flex: 0 0 54px;
-  width: 90px;
-  height: 54px;
-  min-height: 54px;
-  margin: 0 0 3px;
-  overflow: visible;
-}
-
-.empty-brand-lockup > .empty-kicker {
-  flex: none;
-  min-width: max-content;
-  margin-bottom: 0;
-  white-space: nowrap;
-  letter-spacing: .075em;
-}
-
-.transcript.is-empty .empty-state > h1 {
-  margin-bottom: 7px;
-  font-size: clamp(23px, 2vw, 28px);
-  line-height: 1.14;
-}
-
-.transcript.is-empty .empty-state > p {
-  max-width: 590px;
-  font-size: 12.5px;
-  line-height: 1.5;
-}
+/* Intro sizing lives in .empty-intro above so the logo and copy move as one
+   unit rather than fighting legacy direct-child margins. */
 
 .transcript.is-empty .empty-state > .home-token-activity {
-  width: min(708px, 100%);
-  margin-top: 15px;
+  width: min(720px, 100%);
+  margin-top: 0;
   padding: 11px 14px 10px;
   border-radius: 17px;
 }
@@ -384,14 +418,14 @@ html[data-loom-reduced-motion="true"] .starter-arrow { transition: none !importa
 }
 
 .transcript.is-empty .empty-state > .home-token-activity + .starter-grid {
-  width: min(708px, 100%);
-  margin-top: 13px;
+  width: min(720px, 100%);
+  margin-top: 12px;
   gap: 10px;
 }
 
 .transcript.is-empty .starter-card {
-  min-height: 82px;
-  padding: 13px 44px 12px 14px;
+  min-height: 78px;
+  padding: 12px 44px 11px 14px;
   border-radius: 16px;
   grid-template-columns: 38px minmax(0, 1fr);
   gap: 11px;
@@ -420,12 +454,12 @@ html[data-loom-reduced-motion="true"] .starter-arrow { transition: none !importa
    Electron window can be tall while the transcript itself is much shorter
    because the header and composer consume part of that height. */
 @container (max-height: 760px) {
-  .empty-brand-lockup {
+  .empty-intro .empty-brand-lockup {
     min-height: 64px;
     margin-bottom: 4px;
   }
 
-  .empty-brand-lockup > .empty-hero {
+  .empty-intro .empty-brand-lockup > .empty-hero {
     flex-basis: 46px;
     width: 82px;
     height: 46px;
@@ -471,12 +505,12 @@ html[data-loom-reduced-motion="true"] .starter-arrow { transition: none !importa
 }
 
 @container (max-height: 680px) {
-  .empty-brand-lockup {
+  .empty-intro .empty-brand-lockup {
     min-height: 57px;
     margin-bottom: 3px;
   }
 
-  .empty-brand-lockup > .empty-hero {
+  .empty-intro .empty-brand-lockup > .empty-hero {
     flex-basis: 40px;
     width: 76px;
     height: 40px;
@@ -514,12 +548,12 @@ html[data-loom-reduced-motion="true"] .starter-arrow { transition: none !importa
     padding-bottom: 10px;
   }
 
-  .empty-brand-lockup {
+  .empty-intro .empty-brand-lockup {
     min-height: 58px;
     margin-bottom: 3px;
   }
 
-  .empty-brand-lockup > .empty-hero {
+  .empty-intro .empty-brand-lockup > .empty-hero {
     flex-basis: 42px;
     width: 76px;
     height: 42px;
@@ -574,11 +608,11 @@ html[data-loom-reduced-motion="true"] .starter-arrow { transition: none !importa
 }
 
 @media (max-height: 760px) and (min-width: 921px) {
-  .empty-brand-lockup {
+  .empty-intro .empty-brand-lockup {
     min-height: 50px;
   }
 
-  .empty-brand-lockup > .empty-hero {
+  .empty-intro .empty-brand-lockup > .empty-hero {
     flex-basis: 35px;
     width: 70px;
     height: 35px;
@@ -670,7 +704,7 @@ html[data-loom-theme="light"] .empty-brand-lockup .empty-spark {
 }
 
 @media (max-width: 720px) {
-  .empty-brand-lockup {
+  .empty-intro .empty-brand-lockup {
     min-height: 70px;
   }
 
