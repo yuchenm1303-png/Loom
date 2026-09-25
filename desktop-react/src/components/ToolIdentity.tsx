@@ -49,7 +49,13 @@ export type ActivityFamily =
   | "subagent"
   | "automation"
   | "mcp"
-  | "generic";
+  | "generic"
+  // Group-only identities deliberately avoid Transcript's legacy Lucide
+  // terminal/file/wrench branches, so every visible activity badge now comes
+  // through this library without rewriting historical transcript data.
+  | "terminal-group"
+  | "file-group"
+  | "mixed-group";
 
 export interface ActivityIdentity {
   family: ActivityFamily;
@@ -58,7 +64,7 @@ export interface ActivityIdentity {
   icon: ToolGlyphComponent;
 }
 
-const IDENTITIES: Record<ActivityFamily, ActivityIdentity> = {
+const IDENTITIES = {
   terminal: { family: "terminal", kind: "capability", label: "终端", icon: TerminalGlyph },
   file: { family: "file", kind: "capability", label: "文件编辑", icon: FileEditGlyph },
   github: { family: "github", kind: "brand", label: "GitHub", icon: GitHubGlyph },
@@ -81,6 +87,12 @@ const IDENTITIES: Record<ActivityFamily, ActivityIdentity> = {
   automation: { family: "automation", kind: "capability", label: "自动化", icon: AutomationGlyph },
   mcp: { family: "mcp", kind: "capability", label: "MCP", icon: MCPGlyph },
   generic: { family: "generic", kind: "neutral", label: "工具", icon: GenericToolGlyph },
+} satisfies Record<Exclude<ActivityFamily, "terminal-group" | "file-group" | "mixed-group">, ActivityIdentity>;
+
+const GROUP_IDENTITIES: Record<"terminal-group" | "file-group" | "mixed-group", ActivityIdentity> = {
+  "terminal-group": { ...IDENTITIES.terminal, family: "terminal-group" },
+  "file-group": { ...IDENTITIES.file, family: "file-group" },
+  "mixed-group": { ...IDENTITIES.generic, family: "mixed-group" },
 };
 
 function stringHint(value: unknown): string {
@@ -225,12 +237,16 @@ export function activityIdentity(item: TranscriptItem): ActivityIdentity {
 }
 
 export function activityGroupIdentity(items: TranscriptItem[]): ActivityIdentity {
-  if (!items.length) return IDENTITIES.generic;
+  if (!items.length) return GROUP_IDENTITIES["mixed-group"];
   const identities = items.map(activityIdentity);
   const first = identities[0];
-  return identities.every((identity) => identity.family === first.family)
-    ? first
-    : IDENTITIES.generic;
+  if (!identities.every((identity) => identity.family === first.family)) {
+    return GROUP_IDENTITIES["mixed-group"];
+  }
+  if (first.family === "terminal") return GROUP_IDENTITIES["terminal-group"];
+  if (first.family === "file") return GROUP_IDENTITIES["file-group"];
+  if (first.family === "generic") return GROUP_IDENTITIES["mixed-group"];
+  return first;
 }
 
 function IdentityGlyph({ identity, size }: { identity: ActivityIdentity; size: number }) {
