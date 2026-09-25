@@ -1,0 +1,274 @@
+/*
+ * Conversation switching deliberately animates only opacity and compositor
+ * translation. Large transcripts stay mounted while thread/read resolves, so a
+ * slow durable read feels continuous without forcing a second layout pass.
+ */
+.workspace {
+  position: relative;
+  isolation: isolate;
+}
+
+.workspace > .thread-header,
+.workspace > .conversation-stage,
+.workspace > .composer-stage {
+  transition:
+    opacity 120ms ease,
+    translate 210ms cubic-bezier(.2,.74,.18,1);
+}
+
+.workspace.is-thread-switching > .thread-header,
+.workspace.is-thread-switching > .conversation-stage,
+.workspace.is-thread-switching > .composer-stage {
+  opacity: .28;
+  translate: 0 2px;
+  pointer-events: none;
+}
+
+.workspace.is-thread-entering > .thread-header {
+  animation: loom-thread-surface-in 210ms cubic-bezier(.2,.74,.18,1) both;
+}
+
+.workspace.is-thread-entering > .conversation-stage {
+  animation: loom-thread-surface-in 250ms cubic-bezier(.2,.74,.18,1) both;
+}
+
+.workspace.is-thread-entering > .composer-stage {
+  animation: loom-thread-surface-in 235ms cubic-bezier(.2,.74,.18,1) both;
+}
+
+.thread-switch-overlay {
+  position: absolute;
+  z-index: 40;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 50% 48%, rgba(113,95,225,.075), transparent 18%),
+    rgba(11,12,15,.72);
+  transition: opacity 105ms ease;
+  contain: paint;
+}
+
+.workspace.is-thread-switching > .thread-switch-overlay {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.thread-switch-mark {
+  position: relative;
+  width: 86px;
+  height: 68px;
+  display: grid;
+  place-items: center;
+  opacity: 0;
+  translate: 0 3px;
+  scale: .985;
+  transition:
+    opacity 150ms ease,
+    translate 210ms cubic-bezier(.2,.74,.18,1),
+    scale 210ms cubic-bezier(.2,.74,.18,1);
+}
+
+.thread-switch-overlay.is-indicator-visible .thread-switch-mark {
+  opacity: 1;
+  translate: 0 0;
+  scale: 1;
+}
+
+.thread-switch-aura {
+  position: absolute;
+  width: 72px;
+  height: 52px;
+  border-radius: 50%;
+  background:
+    radial-gradient(
+      ellipse at center,
+      rgba(98,194,255,.08) 0 16%,
+      rgba(119,93,236,.085) 30%,
+      rgba(111,91,225,.028) 50%,
+      transparent 73%
+    );
+  filter: blur(11px);
+  animation: loom-thread-aura 3.8s ease-in-out infinite;
+}
+
+.thread-switch-orbit {
+  position: absolute;
+  border-radius: 50%;
+  will-change: transform;
+}
+
+.thread-switch-orbit::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background:
+    conic-gradient(
+      from 14deg,
+      transparent 0 9%,
+      rgba(76,202,255,.78) 18%,
+      rgba(96,130,244,.72) 34%,
+      rgba(142,102,239,.66) 52%,
+      rgba(181,137,255,.42) 64%,
+      transparent 80% 100%
+    );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+
+.thread-switch-orbit::after {
+  content: "";
+  position: absolute;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: rgba(161,220,255,.92);
+  box-shadow:
+    0 0 5px rgba(90,194,255,.55),
+    0 0 10px rgba(125,99,235,.25);
+}
+
+.thread-switch-orbit-a {
+  width: 68px;
+  height: 28px;
+  animation: loom-thread-orbit-a 3.6s linear infinite;
+}
+
+.thread-switch-orbit-a::after {
+  top: 3px;
+  left: 12px;
+}
+
+.thread-switch-orbit-b {
+  width: 58px;
+  height: 36px;
+  opacity: .72;
+  animation: loom-thread-orbit-b 5.4s linear infinite reverse;
+}
+
+.thread-switch-orbit-b::before {
+  background:
+    conic-gradient(
+      from 194deg,
+      transparent 0 15%,
+      rgba(109,91,230,.13) 23%,
+      rgba(79,188,255,.64) 36%,
+      rgba(93,121,238,.62) 50%,
+      rgba(153,113,244,.48) 64%,
+      transparent 81% 100%
+    );
+}
+
+.thread-switch-orbit-b::after {
+  right: 8px;
+  bottom: 5px;
+}
+
+.thread-switch-core {
+  position: absolute;
+  z-index: 3;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(169,228,255,.98);
+  box-shadow:
+    0 0 5px rgba(85,201,255,.68),
+    0 0 13px rgba(91,151,255,.46),
+    0 0 24px rgba(124,93,238,.28);
+  animation: loom-thread-core 1.9s ease-in-out infinite;
+}
+
+html[data-loom-theme="light"] .thread-switch-overlay {
+  background:
+    radial-gradient(circle at 50% 48%, rgba(119,101,222,.08), transparent 18%),
+    rgba(248,248,250,.78);
+}
+
+html[data-loom-theme="light"] .thread-switch-aura {
+  opacity: .72;
+}
+
+@keyframes loom-thread-surface-in {
+  from {
+    opacity: .18;
+    translate: 0 3px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+
+@keyframes loom-thread-orbit-a {
+  from { transform: rotate(18deg) scaleX(1) scaleY(.96); }
+  to { transform: rotate(378deg) scaleX(1) scaleY(.96); }
+}
+
+@keyframes loom-thread-orbit-b {
+  from { transform: rotate(-58deg) scaleX(.98) scaleY(1.02); }
+  to { transform: rotate(302deg) scaleX(.98) scaleY(1.02); }
+}
+
+@keyframes loom-thread-aura {
+  0%, 100% { opacity: .44; transform: scale(.9); }
+  50% { opacity: .82; transform: scale(1.08); }
+}
+
+@keyframes loom-thread-core {
+  0%, 100% { opacity: .8; transform: scale(.86); }
+  48% { opacity: 1; transform: scale(1.12); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workspace > .thread-header,
+  .workspace > .conversation-stage,
+  .workspace > .composer-stage {
+    transition: opacity 70ms linear !important;
+    translate: none !important;
+  }
+
+  .workspace.is-thread-entering > .thread-header,
+  .workspace.is-thread-entering > .conversation-stage,
+  .workspace.is-thread-entering > .composer-stage,
+  .thread-switch-aura,
+  .thread-switch-orbit,
+  .thread-switch-core {
+    animation: none !important;
+  }
+
+  .thread-switch-mark {
+    translate: none;
+    scale: 1;
+    transition: opacity 70ms linear;
+  }
+}
+
+:root[data-loom-reduced-motion="true"] .workspace > .thread-header,
+:root[data-loom-reduced-motion="true"] .workspace > .conversation-stage,
+:root[data-loom-reduced-motion="true"] .workspace > .composer-stage {
+  transition: opacity 70ms linear !important;
+  translate: none !important;
+}
+
+:root[data-loom-reduced-motion="true"] .workspace.is-thread-entering > .thread-header,
+:root[data-loom-reduced-motion="true"] .workspace.is-thread-entering > .conversation-stage,
+:root[data-loom-reduced-motion="true"] .workspace.is-thread-entering > .composer-stage,
+:root[data-loom-reduced-motion="true"] .thread-switch-aura,
+:root[data-loom-reduced-motion="true"] .thread-switch-orbit,
+:root[data-loom-reduced-motion="true"] .thread-switch-core {
+  animation: none !important;
+}
+
+:root[data-loom-reduced-motion="true"] .thread-switch-mark {
+  translate: none;
+  scale: 1;
+  transition: opacity 70ms linear;
+}
