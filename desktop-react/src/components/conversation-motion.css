@@ -831,10 +831,12 @@ html[data-loom-theme="light"] .conversation-stage.is-running::after {
   to { opacity: 0; scale: 3.6; }
 }
 
-/* Ends exactly where loom-live-beacon begins (opacity .58, scale .9). */
+/* Ends exactly where loom-live-beacon begins (opacity .58, scale .91).
+   Keep the entrance landing frame identical to the pulse's idle frame so the
+   compositor hand-off never introduces a one-frame size tick. */
 @keyframes loom-task-beacon-in {
   from { opacity: 0; scale: 0; }
-  to { opacity: .58; scale: .9; }
+  to { opacity: .58; scale: .91; }
 }
 
 @keyframes loom-task-running-sheen {
