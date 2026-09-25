@@ -277,13 +277,10 @@ html[data-loom-theme="light"] .runtime-tab.active svg {
 /* Slightly soften the empty-state icon too, so the refreshed chips do not sit
    below a heavy black tile. */
 html[data-loom-theme="light"] .runtime-empty .runtime-empty-icon {
-  border-color: rgba(105,90,216,.11);
-  background:
-    linear-gradient(145deg, #ffffff, #f6f4ff);
+  border-color: transparent;
+  background: transparent;
   color: #7869db;
-  box-shadow:
-    0 7px 18px rgba(71,58,148,.06),
-    inset 0 1px rgba(255,255,255,.98);
+  box-shadow: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -350,18 +347,11 @@ html[data-loom-reduced-motion="true"] .computer-log-export-button {
 .runtime-empty-icon {
   width: 42px;
   height: 42px;
-  border: 1px solid rgba(var(--empty-tone-rgb), .14);
-  border-radius: 14px;
-  background:
-    linear-gradient(
-      145deg,
-      rgba(var(--empty-tone-rgb), .10),
-      rgba(var(--empty-tone-rgb), .035)
-    );
+  border: 0;
+  border-radius: 0;
+  background: transparent;
   color: var(--empty-tone);
-  box-shadow:
-    0 7px 18px rgba(var(--empty-tone-rgb), .07),
-    inset 0 1px rgba(255,255,255,.07);
+  box-shadow: none;
 }
 
 .runtime-empty-glyph {
@@ -373,13 +363,8 @@ html[data-loom-reduced-motion="true"] .computer-log-export-button {
 
 .runtime-empty:hover .runtime-empty-icon {
   color: var(--empty-tone);
-  border-color: rgba(var(--empty-tone-rgb), .22);
-  background:
-    linear-gradient(
-      145deg,
-      rgba(var(--empty-tone-rgb), .13),
-      rgba(var(--empty-tone-rgb), .045)
-    );
+  border-color: transparent;
+  background: transparent;
 }
 
 .runtime-empty:hover .runtime-orbit-one {
@@ -424,18 +409,10 @@ html[data-loom-theme="light"] .runtime-empty .runtime-orbit-dot {
 }
 
 html[data-loom-theme="light"] .runtime-empty .runtime-empty-icon {
-  border-color: rgba(var(--empty-tone-rgb), .16);
-  background:
-    linear-gradient(
-      145deg,
-      #ffffff 0%,
-      rgba(var(--empty-tone-rgb), .065) 100%
-    );
+  border-color: transparent;
+  background: transparent;
   color: color-mix(in srgb, var(--empty-tone) 88%, #2f3540 12%);
-  box-shadow:
-    0 7px 18px rgba(var(--empty-tone-rgb), .075),
-    0 1px 3px rgba(31,35,42,.035),
-    inset 0 1px rgba(255,255,255,.98);
+  box-shadow: none;
 }
 
 html[data-loom-theme="light"] .runtime-empty .runtime-empty-glyph {
@@ -444,13 +421,8 @@ html[data-loom-theme="light"] .runtime-empty .runtime-empty-glyph {
 
 html[data-loom-theme="light"] .runtime-empty.runtime-empty:hover .runtime-empty-icon {
   color: color-mix(in srgb, var(--empty-tone) 94%, #252b34 6%);
-  border-color: rgba(var(--empty-tone-rgb), .24);
-  background:
-    linear-gradient(
-      145deg,
-      #ffffff 0%,
-      rgba(var(--empty-tone-rgb), .085) 100%
-    );
+  border-color: transparent;
+  background: transparent;
 }
 
 html[data-loom-theme="light"] .runtime-empty:hover .runtime-orbit-one {
