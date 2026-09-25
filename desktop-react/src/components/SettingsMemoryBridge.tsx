@@ -11,7 +11,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import "./settings-memory.css";
 
@@ -491,6 +491,8 @@ export function SettingsMemoryBridge({ threadId, running }: MemorySettingsBridge
   const [open, setOpen] = useState(false);
   const [navHost] = useState(() => document.createElement("span"));
   const [contentHost] = useState(() => document.createElement("div"));
+  const openRef = useRef(open);
+  openRef.current = open;
 
   useEffect(() => {
     navHost.className = "settings-memory-nav-host";
@@ -517,11 +519,11 @@ export function SettingsMemoryBridge({ threadId, running }: MemorySettingsBridge
         }
       } else {
         navHost.remove();
-        if (open) setOpen(false);
+        if (openRef.current) setOpen(false);
       }
 
       if (contentHost.parentElement !== mainScroll) mainScroll.appendChild(contentHost);
-      shell.classList.toggle("settings-memory-mode", open);
+      shell.classList.toggle("settings-memory-mode", openRef.current);
     };
 
     const closeForNativeNavigation = (event: Event) => {
@@ -542,7 +544,11 @@ export function SettingsMemoryBridge({ threadId, running }: MemorySettingsBridge
       navHost.remove();
       contentHost.remove();
     };
-  }, [contentHost, navHost, open]);
+  }, [contentHost, navHost]);
+
+  useLayoutEffect(() => {
+    document.querySelector<HTMLElement>(".settings-shell")?.classList.toggle("settings-memory-mode", open);
+  }, [open]);
 
   return (
     <>
