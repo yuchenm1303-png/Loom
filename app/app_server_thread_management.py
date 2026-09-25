@@ -6,7 +6,7 @@ import re
 import shutil
 import threading
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, TextIO
 
@@ -399,6 +399,268 @@ class ManagedStreamingLoomAppServerService(StreamingLoomAppServerService):
         # Compaction counts change only when a checkpoint is recorded, so they
         # are cached rather than rescanned on every model step.
         self._context_counts: dict[str, tuple[int, str]] = {}
+
+    @staticmethod
+    def _profile_local_datetime(value: Any) -> datetime | None:
+        raw = str(value or "").strip()
+        if not raw:
+            return None
+        if raw.endswith("Z"):
+            raw = raw[:-1] + "+00:00"
+        try:
+            parsed = datetime.fromisoformat(raw)
+        except ValueError:
+            return None
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone()
+
+    @staticmethod
+    def _profile_ranked(mapping: dict[str, dict[str, int]], *, limit: int = 8) -> list[dict[str, Any]]:
+        ranked = [
+            {"name": name, **values}
+            for name, values in mapping.items()
+            if name
+        ]
+        ranked.sort(
+            key=lambda item: (
+                int(item.get("tokens") or 0),
+                int(item.get("calls") or 0),
+                str(item.get("name") or "").casefold(),
+            ),
+            reverse=True,
+        )
+        return ranked[:limit]
+
+    def profile_insights(self, params: dict[str, Any]) -> dict[str, Any]:
+        """Aggregate durable local usage into a compact profile/heatmap snapshot.
+
+        The endpoint intentionally derives its numbers from AgentEvents rather
+        than the current context meter. Context usage is a moving window and can
+        shrink after compaction; MODEL_RESPONSE usage is the durable record of
+        what was actually sent to and returned by providers.
+
+        Forks can carry copied history, so event ids are de-duplicated globally
+        before aggregation. This keeps a fork from making historical token spend
+        appear twice even though the model was only called once.
+        """
+
+        try:
+            days = int(params.get("days", 371))
+        except (TypeError, ValueError) as exc:
+            raise JsonRpcError(-32602, "profile/insights days must be an integer") from exc
+        if not 28 <= days <= 730:
+            raise JsonRpcError(-32602, "profile/insights days must be within 28..730")
+
+        now_local = datetime.now().astimezone()
+        today = now_local.date()
+        range_start = today - timedelta(days=days - 1)
+        day_rows: dict[str, dict[str, Any]] = {}
+        day_sessions: dict[str, set[str]] = {}
+        for offset in range(days):
+            day = range_start + timedelta(days=offset)
+            key = day.isoformat()
+            day_rows[key] = {
+                "date": key,
+                "inputTokens": 0,
+                "outputTokens": 0,
+                "totalTokens": 0,
+                "modelCalls": 0,
+                "turns": 0,
+                "toolCalls": 0,
+                "sessions": 0,
+            }
+            day_sessions[key] = set()
+
+        totals = {
+            "inputTokens": 0,
+            "outputTokens": 0,
+            "totalTokens": 0,
+            "sessions": 0,
+            "turns": 0,
+            "modelCalls": 0,
+            "toolCalls": 0,
+            "subAgentRuns": 0,
+            "activeDays": 0,
+        }
+        models: dict[str, dict[str, int]] = {}
+        tools: dict[str, dict[str, int]] = {}
+        reasoning: dict[str, dict[str, int]] = {}
+        hour_turns: dict[int, int] = {}
+        tokens_by_day: dict[Any, int] = {}
+        activity_days: set[Any] = set()
+        seen_event_ids: set[str] = set()
+        turn_started_at: dict[tuple[str, str], datetime] = {}
+        longest_turn_seconds = 0.0
+
+        sessions = self._list_session_objects()
+        totals["sessions"] = len(sessions)
+
+        for session in sessions:
+            session_id = str(getattr(session, "session_id", "") or "")
+            try:
+                events = self.store.events(session_id)
+            except Exception:
+                continue
+
+            session_model = str(
+                getattr(session, "model", "")
+                or getattr(session, "model_selection", "")
+                or self.model
+                or "Unknown model"
+            ).strip()
+            reasoning_value = str(getattr(session, "reasoning_value", "") or "Default").strip()
+
+            for event in events:
+                event_id = str(getattr(event, "event_id", "") or "")
+                if event_id and event_id in seen_event_ids:
+                    continue
+                if event_id:
+                    seen_event_ids.add(event_id)
+
+                stamp = self._profile_local_datetime(getattr(event, "created_at", ""))
+                if stamp is None:
+                    continue
+                event_day = stamp.date()
+                day_key = event_day.isoformat()
+                in_range = range_start <= event_day <= today
+                data = event.data if isinstance(event.data, dict) else {}
+                turn_id = str(getattr(event, "turn_id", "") or "")
+
+                if event.kind is AgentEventKind.TURN_STARTED:
+                    totals["turns"] += 1
+                    activity_days.add(event_day)
+                    hour_turns[stamp.hour] = hour_turns.get(stamp.hour, 0) + 1
+                    if turn_id:
+                        turn_started_at[(session_id, turn_id)] = stamp
+                    if in_range:
+                        day_rows[day_key]["turns"] += 1
+                        day_sessions[day_key].add(session_id)
+                    continue
+
+                if event.kind is AgentEventKind.MODEL_RESPONSE:
+                    usage = data.get("usage")
+                    if not isinstance(usage, dict):
+                        usage = {}
+                    input_tokens = int(usage.get("input_tokens") or 0)
+                    output_tokens = int(usage.get("output_tokens") or 0)
+                    total_tokens = int(usage.get("total_tokens") or 0)
+                    if total_tokens <= 0 and (input_tokens > 0 or output_tokens > 0):
+                        total_tokens = input_tokens + output_tokens
+
+                    totals["inputTokens"] += input_tokens
+                    totals["outputTokens"] += output_tokens
+                    totals["totalTokens"] += total_tokens
+                    totals["modelCalls"] += 1
+                    activity_days.add(event_day)
+                    tokens_by_day[event_day] = tokens_by_day.get(event_day, 0) + total_tokens
+
+                    event_model = str(
+                        data.get("model")
+                        or data.get("model_name")
+                        or session_model
+                        or "Unknown model"
+                    ).strip()
+                    model_bucket = models.setdefault(event_model, {"calls": 0, "tokens": 0})
+                    model_bucket["calls"] += 1
+                    model_bucket["tokens"] += total_tokens
+
+                    reason_bucket = reasoning.setdefault(reasoning_value, {"calls": 0, "tokens": 0})
+                    reason_bucket["calls"] += 1
+                    reason_bucket["tokens"] += total_tokens
+
+                    if in_range:
+                        row = day_rows[day_key]
+                        row["inputTokens"] += input_tokens
+                        row["outputTokens"] += output_tokens
+                        row["totalTokens"] += total_tokens
+                        row["modelCalls"] += 1
+                        day_sessions[day_key].add(session_id)
+                    continue
+
+                if event.kind is AgentEventKind.TOOL_REQUESTED:
+                    totals["toolCalls"] += 1
+                    tool_name = str(data.get("tool") or "Unknown tool").strip()
+                    bucket = tools.setdefault(tool_name, {"calls": 0})
+                    bucket["calls"] += 1
+                    if "spawn_agent" in tool_name.casefold() or tool_name.casefold().endswith(".spawn"):
+                        totals["subAgentRuns"] += 1
+                    activity_days.add(event_day)
+                    if in_range:
+                        day_rows[day_key]["toolCalls"] += 1
+                        day_sessions[day_key].add(session_id)
+                    continue
+
+                if event.kind in {
+                    AgentEventKind.TURN_COMPLETED,
+                    AgentEventKind.TURN_FAILED,
+                    AgentEventKind.TURN_CANCELLED,
+                    AgentEventKind.TURN_INTERRUPTED,
+                    AgentEventKind.LIMIT_REACHED,
+                } and turn_id:
+                    started = turn_started_at.pop((session_id, turn_id), None)
+                    if started is not None:
+                        longest_turn_seconds = max(
+                            longest_turn_seconds,
+                            max(0.0, (stamp - started).total_seconds()),
+                        )
+
+        for key, sessions_for_day in day_sessions.items():
+            day_rows[key]["sessions"] = len(sessions_for_day)
+
+        totals["activeDays"] = len(activity_days)
+
+        current_streak = 0
+        cursor = today
+        while cursor in activity_days:
+            current_streak += 1
+            cursor -= timedelta(days=1)
+
+        longest_streak = 0
+        running_streak = 0
+        previous_day = None
+        for day in sorted(activity_days):
+            if previous_day is not None and day == previous_day + timedelta(days=1):
+                running_streak += 1
+            else:
+                running_streak = 1
+            longest_streak = max(longest_streak, running_streak)
+            previous_day = day
+
+        peak_day = None
+        if tokens_by_day:
+            peak_date, peak_tokens = max(tokens_by_day.items(), key=lambda item: item[1])
+            peak_day = {"date": peak_date.isoformat(), "totalTokens": int(peak_tokens)}
+
+        active_hour = None
+        if hour_turns:
+            hour, count = max(hour_turns.items(), key=lambda item: (item[1], -item[0]))
+            active_hour = {"hour": int(hour), "turns": int(count)}
+
+        range_total_tokens = sum(int(row["totalTokens"]) for row in day_rows.values())
+        return {
+            "generatedAt": _utc_now(),
+            "range": {
+                "days": days,
+                "startDate": range_start.isoformat(),
+                "endDate": today.isoformat(),
+                "totalTokens": range_total_tokens,
+            },
+            "totals": totals,
+            "streaks": {
+                "current": current_streak,
+                "longest": longest_streak,
+            },
+            "peakDay": peak_day,
+            "longestTurnSeconds": round(longest_turn_seconds, 3),
+            "activeHour": active_hour,
+            "firstActivityDate": min(activity_days).isoformat() if activity_days else None,
+            "lastActivityDate": max(activity_days).isoformat() if activity_days else None,
+            "models": self._profile_ranked(models),
+            "tools": self._profile_ranked(tools),
+            "reasoning": self._profile_ranked(reasoning),
+            "days": list(day_rows.values()),
+        }
 
     def _session_or_rpc_error(self, thread_id: str) -> Any:
         thread_id = str(thread_id or "").strip()
@@ -936,6 +1198,10 @@ class ManagedStreamingLoomRpcController(StreamingLoomRpcController):
             "report": True,
             "manualCompaction": True,
         }
+        result["capabilities"]["profileInsights"] = {
+            "usage": True,
+            "heatmap": True,
+        }
         return result
 
     def _dispatch(self, method: str, params: dict[str, Any]) -> Any:
@@ -946,6 +1212,7 @@ class ManagedStreamingLoomRpcController(StreamingLoomRpcController):
             "thread/set_permission_mode": self.service.thread_set_permission_mode,
             "thread/context": self.service.thread_context,
             "thread/compact": self.service.thread_compact,
+            "profile/insights": self.service.profile_insights,
         }
         handler = handlers.get(method)
         if handler is not None:
