@@ -18,7 +18,18 @@ import {
   Wrench,
   Zap,
 } from "lucide-react";
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  createContext,
+  memo,
+  useCallback,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { artifactName, artifactRenderer, canInlineRenderArtifact } from "../artifactRenderers";
 import { TURN_SETTLE_HOLD_MS } from "../presentationTiming";
 import type { TranscriptItem } from "../types/loom";
@@ -152,12 +163,41 @@ function Disclosure({ label, children, openByDefault = false }: { label: string;
   );
 }
 
+interface PendingThinkingHandle {
+  element: HTMLDivElement | null;
+  mountedAt: number;
+}
+
+/** The turn's pending "thinking" capsule, registered while it is mounted. */
+const PendingThinkingContext = createContext<PendingThinkingHandle | null>(null);
+
+// Its birth waits a beat, so a capsule younger than this has not been seen.
+const PENDING_THINKING_SEEN_MS = 240;
+
+/**
+ * Called while rendering the live reasoning capsule, before the commit that
+ * removes the pending one, so the old capsule can still be measured. Only a
+ * capsule the user has actually seen counts: not one mounted for the single
+ * frame between an empty streaming item and its first delta, and not one
+ * collapsed behind a running task group.
+ */
+function pendingThinkingOnScreen(pending: PendingThinkingHandle | null): boolean {
+  const element = pending?.element;
+  if (!element?.isConnected) return false;
+  if (performance.now() - pending!.mountedAt < PENDING_THINKING_SEEN_MS) return false;
+  return element.getBoundingClientRect().height >= 16 && Number(getComputedStyle(element).opacity) > 0.5;
+}
+
 function LiveReasoning({ reasoning, workspace, streaming, messageKey, interrupted }: { reasoning: string; workspace?: string; streaming: boolean; messageKey: string; interrupted: boolean }) {
   const [open, setOpen] = useState(false);
+  const pendingThinking = useContext(PendingThinkingContext);
+  // Replacing a capsule that is on screen continues it instead of being born
+  // a second time in the same spot, which read as a blink.
+  const [handoff] = useState(() => pendingThinkingOnScreen(pendingThinking));
   const hasReasoning = Boolean(reasoning.trim());
 
   return (
-    <div className={`live-reasoning ${open ? "open" : ""}`}>
+    <div className={`live-reasoning ${open ? "open" : ""} ${handoff ? "is-handoff" : ""}`}>
       <button
         type="button"
         className="live-reasoning-trigger"
@@ -184,8 +224,21 @@ function LiveReasoning({ reasoning, workspace, streaming, messageKey, interrupte
 }
 
 function PendingThinking() {
+  const pending = useContext(PendingThinkingContext);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    if (!pending) return;
+    const element = ref.current;
+    pending.element = element;
+    pending.mountedAt = performance.now();
+    return () => {
+      if (pending.element === element) pending.element = null;
+    };
+  }, [pending]);
+
   return (
-    <div className="inline-thinking" role="status" aria-live="polite">
+    <div ref={ref} className="inline-thinking" role="status" aria-live="polite">
       <ThinkingGlyph />
       <span className="thinking-shimmer">正在思考…</span>
     </div>
@@ -455,6 +508,7 @@ const ActivityRow = memo(function ActivityRow({ item, open, onToggle }: Activity
   const expandable = active || hasActivityDetail(item);
   const detail = open ? activityDetail(item) : "";
   const stats = item.type === "file_edit" && (!active || open) ? diffStats(item.diff) : null;
+  const verbKey = active ? "active" : "rested";
 
   return (
     <div
@@ -472,14 +526,16 @@ const ActivityRow = memo(function ActivityRow({ item, open, onToggle }: Activity
         <span className="task-flow-chevron" aria-hidden="true"><ChevronRight size={12} /></span>
         <span className="task-flow-row-icon"><ActivityGlyph item={item} /></span>
         <span className="task-flow-row-main">
+          {/* Verbs are keyed on the live/rested state so the tense change
+              remounts the span and cross-fades (conversation-motion.css). */}
           {item.type === "process" ? (
             <>
-              <span className="task-flow-verb">{active ? "正在运行" : "已运行"}</span>
+              <span className="task-flow-verb" key={verbKey}>{active ? "正在运行" : "已运行"}</span>
               <span className="task-flow-primary code">{processCommand(item)}</span>
             </>
           ) : item.type === "file_edit" ? (
             <>
-              <span className="task-flow-verb">{active ? "正在编辑" : "已编辑"}</span>
+              <span className="task-flow-verb" key={verbKey}>{active ? "正在编辑" : "已编辑"}</span>
               <span className="task-flow-primary task-flow-path">{fileLabel(item)}</span>
               {stats && (stats.added > 0 || stats.removed > 0) ? (
                 <span className="task-flow-diffstat">
@@ -490,7 +546,7 @@ const ActivityRow = memo(function ActivityRow({ item, open, onToggle }: Activity
             </>
           ) : (
             <>
-              <span className="task-flow-verb">{active ? "正在使用" : "已使用"}</span>
+              <span className="task-flow-verb" key={verbKey}>{active ? "正在使用" : "已使用"}</span>
               <span className="task-flow-primary">{item.toolName || "Tool"}</span>
             </>
           )}
@@ -592,9 +648,10 @@ function ActivityGroupIcon({ items }: { items: TranscriptItem[] }) {
 
 function ActivityFlow({ items, keepOpen = false }: { items: TranscriptItem[]; keepOpen?: boolean }) {
   const compactItems = useMemo(() => compactActivityItems(items), [items]);
-  // The process group belongs to the active turn, not to the transport status
-  // of the latest individual tool item. Keeping it live for the whole turn
-  // prevents the title/icon from flipping completed -> running between steps.
+  // The newest group of the active turn stays live, whatever the transport
+  // status of its latest tool item, so the title/icon never flip completed ->
+  // running between steps. Sequence settles it only once other content has
+  // followed it and none of its rows is still active.
   const running = keepOpen;
   const [open, setOpen] = useState(true);
   const [openRows, setOpenRows] = useState<Set<string>>(() => new Set());
@@ -614,6 +671,8 @@ function ActivityFlow({ items, keepOpen = false }: { items: TranscriptItem[]; ke
     wasRunningRef.current = running;
   }, [running]);
 
+  const title = activityGroupTitle(compactItems, running);
+
   return (
     <section
       className={`task-flow task-flow-group ${open ? "is-open" : ""} ${running ? "is-running" : ""}`}
@@ -626,7 +685,7 @@ function ActivityFlow({ items, keepOpen = false }: { items: TranscriptItem[]; ke
         aria-expanded={open}
       >
         <span className="task-flow-group-icon" aria-hidden="true"><ActivityGroupIcon items={compactItems} /></span>
-        <span className="task-flow-group-title">{activityGroupTitle(compactItems, running)}</span>
+        <span className="task-flow-group-title" key={title}>{title}</span>
         <ChevronRight size={13} className="task-flow-group-chevron" aria-hidden="true" />
       </button>
 
@@ -955,6 +1014,22 @@ function Sequence({
     [items, subAgentItems.length],
   );
   const blocks = useMemo(() => groupTranscript(visibleItems), [visibleItems]);
+  // A group is the live anchor while nothing has followed it, or while one of
+  // its rows is still active (e.g. waiting behind an approval card). Groups
+  // that commentary has already followed are finished work: they settle to
+  // past tense and give up the beacon, so one live capsule moves down the
+  // turn instead of every group pulsing at once.
+  const liveActivityBlocks = useMemo(() => {
+    const live = new Set<number>();
+    if (!keepActivityOpen) return live;
+    blocks.forEach((block, index) => {
+      if (block.kind !== "activity") return;
+      if (index === blocks.length - 1 || block.items.some((item) => isActiveActivityStatus(itemStatus(item)))) {
+        live.add(index);
+      }
+    });
+    return live;
+  }, [blocks, keepActivityOpen]);
   const liveAssistantId = useMemo(() => {
     if (!active) return "";
     for (let index = visibleItems.length - 1; index >= 0; index -= 1) {
@@ -975,7 +1050,7 @@ function Sequence({
       {blocks.map((block, index) => (
         block.kind === "activity" ? (
           <div className="transcript-entry entry-activity" key={`activity-${block.items[0]?.id ?? index}`}>
-            <ActivityFlow items={block.items} keepOpen={keepActivityOpen} />
+            <ActivityFlow items={block.items} keepOpen={liveActivityBlocks.has(index)} />
           </div>
         ) : (
           <div
@@ -1302,9 +1377,11 @@ const TurnView = memo(function TurnView({
     && latestAssistantState?.state !== "streaming"
     && !latestAssistantState?.answer.trim(),
   );
+  const pendingThinking = useRef<PendingThinkingHandle>({ element: null, mountedAt: 0 }).current;
 
   return (
     <StreamingPresentation>
+    <PendingThinkingContext.Provider value={pendingThinking}>
     <section className={`turn-block ${active ? "is-active" : "is-complete"} ${settling ? "is-settling" : ""}`.trim()} data-turn-id={turnId}>
       {derived.initialUser ? (
         <div className="transcript-entry entry-user_message" key={derived.initialUser.id}>
@@ -1359,6 +1436,7 @@ const TurnView = memo(function TurnView({
       {!active ? <TurnArtifacts items={items} workspace={workspace} /> : null}
       {showPendingThinking ? <PendingThinking /> : null}
     </section>
+    </PendingThinkingContext.Provider>
     </StreamingPresentation>
   );
 }, (previous, next) => (

@@ -25,6 +25,17 @@
   animation: loom-stream-tail-reveal-b 190ms cubic-bezier(.2,.72,.2,1) both;
 }
 
+/* Inline stickers pop on a soft spring as the stream reaches them. They carry
+   no glyphs, so they may scale and tilt; individual transform properties keep
+   the sticker's own baseline offset (its `transform`) intact. Keyed on the live
+   process rather than .is-streaming: stickers usually end a message, and the
+   render that reveals them is the one that drops .is-streaming. The <img>
+   keeps its identity while text streams past it, so this plays once. */
+.turn-process.is-live .markdown-body img.assistant-inline-sticker {
+  transform-origin: 50% 70%;
+  animation: loom-sticker-pop 640ms var(--loom-spring-soft) backwards;
+}
+
 /* New block-level Markdown should form instead of popping from plain text into
    a large surface. No scale is used so glyph rasterization remains crisp. */
 .markdown-body.is-streaming > :is(h1,h2,h3,h4,h5,h6,blockquote,table,.markdown-code-block,.katex-display),
@@ -67,17 +78,13 @@
   pointer-events: none;
 }
 
-/* The first real task surface fades in as the thinking capsule yields. Child
-   rows keep their own crisp insertion motion; the group itself never scales. */
-.turn-process.is-live .task-flow-group {
-  animation: loom-generation-task-anchor-in 250ms var(--loom-generation-pop) both;
-}
+/* The task anchor that takes over from the thinking capsule is born in
+   conversation-motion.css (bead pop -> capsule unroll). The group section
+   itself never animates; task-flow-runtime-performance.css pins that. */
 
 /* Reasoning -> answer ------------------------------------------------------- */
-.turn-process.is-live .live-reasoning {
-  animation: loom-generation-reasoning-in 230ms var(--loom-generation-pop) both;
-}
-
+/* The live reasoning capsule is born (or continues the pending capsule it
+   replaces) in inline-thinking.css, which owns the thinking glyph. */
 .turn-process.is-live .assistant-message-shell {
   animation: loom-generation-answer-in 275ms var(--loom-generation-pop) both;
 }
@@ -88,8 +95,7 @@
 
 /* A freshly created decision surface should feel attached to the text above it
    rather than arriving as an unrelated card. */
-.turn-process.is-live .decision-prompt-card,
-.turn-final-answer .decision-prompt-card {
+.turn-process.is-live .decision-prompt-card {
   animation: loom-generation-decision-in 280ms var(--loom-generation-pop) both;
 }
 
@@ -179,12 +185,14 @@
   animation-timing-function: var(--loom-generation-pop) !important;
 }
 
-.turn-final-answer .assistant-message-meta {
+/* Scoped to the live -> complete hand-off. History mounts already settled, and
+   relocating the final answer out of the process remounts its toolbar and any
+   decision card; neither may replay on every thread switch. */
+.turn-block.is-settling .turn-final-answer .assistant-message-meta {
   animation: loom-generation-actions-in 240ms var(--loom-generation-pop) 150ms both;
 }
 
-.turn-final-answer .turn-artifacts-preview,
-.turn-block.is-complete > .turn-artifacts-preview {
+.turn-block.is-settling > .turn-artifacts {
   animation: loom-generation-artifact-in 300ms var(--loom-generation-pop) 80ms both;
 }
 
@@ -232,6 +240,22 @@ html[data-loom-theme="light"] .turn-process.is-live .entry-steering-user .user-m
   to { opacity: 1; }
 }
 
+@keyframes loom-sticker-pop {
+  0% {
+    opacity: 0;
+    scale: .3;
+    rotate: -16deg;
+  }
+  28% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 1;
+    scale: 1;
+    rotate: 0deg;
+  }
+}
+
 @keyframes loom-stream-surface-form {
   from {
     opacity: .32;
@@ -245,40 +269,17 @@ html[data-loom-theme="light"] .turn-process.is-live .entry-steering-user .user-m
   }
 }
 
-@keyframes loom-generation-task-anchor-in {
-  from {
-    opacity: 0;
-    clip-path: inset(0 0 10px 0 round 18px);
-  }
-  to {
-    opacity: 1;
-    clip-path: inset(0 0 0 0 round 0);
-  }
-}
-
-@keyframes loom-generation-reasoning-in {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
+/* The shell usually replaces the live reasoning capsule in the same frame:
+   starting from a visible opacity turns that swap into a cross-fade instead
+   of a one-frame hole. No overshoot, so glyphs never sit on a subpixel. */
 @keyframes loom-generation-answer-in {
   from {
-    opacity: 0;
-    transform: translateY(5px);
-  }
-  68% {
-    opacity: 1;
-    transform: translateY(-.5px);
+    opacity: .25;
+    transform: translateY(3px);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: none;
   }
 }
 
@@ -396,15 +397,17 @@ html[data-loom-theme="light"] .turn-process.is-live .entry-steering-user .user-m
 }
 
 @media (prefers-reduced-motion: reduce) {
+  /* Animation only: the sticker's transform is its baseline offset. */
+  .turn-process.is-live .markdown-body img.assistant-inline-sticker {
+    animation: none !important;
+  }
+
   .markdown-body.is-streaming .stream-text-tail,
   .markdown-body.is-streaming > :is(h1,h2,h3,h4,h5,h6,blockquote,table,.markdown-code-block,.katex-display),
   .markdown-body.is-streaming > p > .assistant-local-image-preview,
   .markdown-body.is-streaming > .assistant-local-image-preview,
-  .turn-process.is-live .task-flow-group,
-  .turn-process.is-live .live-reasoning,
   .turn-process.is-live .assistant-message-shell,
   .turn-process.is-live .decision-prompt-card,
-  .turn-final-answer .decision-prompt-card,
   .turn-block.is-active > .entry-user_message,
   .turn-process.is-live .entry-steering-user,
   .turn-block.is-active > .entry-user_message .user-message,
@@ -416,9 +419,8 @@ html[data-loom-theme="light"] .turn-process.is-live .entry-steering-user .user-m
   .turn-block.is-active > .entry-user_message :is(.user-link-card,.user-rich-code-block,.user-message-image-preview,.user-message-attachment-card,.user-message-media-preview),
   .turn-process.is-live .entry-steering-user :is(.user-link-card,.user-rich-code-block,.user-message-image-preview,.user-message-attachment-card,.user-message-media-preview),
   .turn-block.is-settling .turn-final-answer,
-  .turn-final-answer .assistant-message-meta,
-  .turn-final-answer .turn-artifacts-preview,
-  .turn-block.is-complete > .turn-artifacts-preview,
+  .turn-block.is-settling .turn-final-answer .assistant-message-meta,
+  .turn-block.is-settling > .turn-artifacts,
   .task-flow-inline-detail-grid.open .task-flow-inline-detail {
     animation: none !important;
     transform: none !important;
@@ -430,10 +432,12 @@ html[data-loom-theme="light"] .turn-process.is-live .entry-steering-user .user-m
   }
 }
 
+:root[data-loom-reduced-motion="true"] .turn-process.is-live .markdown-body img.assistant-inline-sticker {
+  animation: none !important;
+}
+
 :root[data-loom-reduced-motion="true"] .markdown-body.is-streaming .stream-text-tail,
 :root[data-loom-reduced-motion="true"] .markdown-body.is-streaming > :is(h1,h2,h3,h4,h5,h6,blockquote,table,.markdown-code-block,.katex-display),
-:root[data-loom-reduced-motion="true"] .turn-process.is-live .task-flow-group,
-:root[data-loom-reduced-motion="true"] .turn-process.is-live .live-reasoning,
 :root[data-loom-reduced-motion="true"] .turn-process.is-live .assistant-message-shell,
 :root[data-loom-reduced-motion="true"] .turn-block.is-active > .entry-user_message,
 :root[data-loom-reduced-motion="true"] .turn-process.is-live .entry-steering-user,
@@ -444,7 +448,8 @@ html[data-loom-theme="light"] .turn-process.is-live .entry-steering-user .user-m
 :root[data-loom-reduced-motion="true"] .turn-block.is-active > .entry-user_message .user-message-meta,
 :root[data-loom-reduced-motion="true"] .turn-process.is-live .entry-steering-user .user-message-meta,
 :root[data-loom-reduced-motion="true"] .turn-block.is-settling .turn-final-answer,
-:root[data-loom-reduced-motion="true"] .turn-final-answer .assistant-message-meta,
+:root[data-loom-reduced-motion="true"] .turn-block.is-settling .turn-final-answer .assistant-message-meta,
+:root[data-loom-reduced-motion="true"] .turn-block.is-settling > .turn-artifacts,
 :root[data-loom-reduced-motion="true"] .task-flow-inline-detail-grid.open .task-flow-inline-detail {
   animation: none !important;
   transform: none !important;

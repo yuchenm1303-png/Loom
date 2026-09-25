@@ -30,11 +30,12 @@ def test_task_capsule_motion_keeps_text_on_native_rasterization_layer() -> None:
     copy_motion = source[copy_start:copy_end]
     assert "transform:" not in copy_motion
 
-    live_start = source.index(".turn-process.is-live .task-flow-row-wrap {")
+    live_start = source.index(".turn-process.is-live .task-flow-group.is-running .task-flow-row-wrap {")
     live_end = source.index(".turn-process.is-live .task-flow-list {", live_start)
     live_motion = source[live_start:live_end]
     assert "will-change:" not in live_motion
     assert " backwards" in live_motion
+    assert " both" not in live_motion
     assert ".task-flow-row.is-expandable:hover {\n  /* activity-flow.css used to translate" in source
     assert "transform: none;" in source
     assert ".turn-process.is-live .task-flow-row::after" not in source

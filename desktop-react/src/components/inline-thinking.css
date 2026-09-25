@@ -34,6 +34,56 @@
   animation: inline-thinking-enter 180ms cubic-bezier(.2,.8,.2,1) both;
 }
 
+/* Birth: the same bead -> capsule unroll as the task anchor, with the glyph as
+   the bead (keyframes and springs live in conversation-motion.css). It waits a
+   beat so the user's bubble lands first. The label only fades: clip-path and
+   opacity never move glyphs off their native raster. */
+.turn-block > .inline-thinking {
+  --capsule-bead-start: 0px;
+  --capsule-bead-end: 32px;
+  animation: loom-capsule-unroll 480ms var(--loom-motion-unroll) 140ms backwards;
+}
+
+.turn-block > .inline-thinking .tg {
+  animation: loom-task-icon-spring 560ms var(--loom-spring-pop) 100ms backwards;
+}
+
+.turn-block > .inline-thinking .thinking-shimmer {
+  animation: loom-task-copy-in 260ms cubic-bezier(.2,.82,.2,1) 250ms backwards;
+}
+
+/* The live reasoning capsule is born the same way, unless it replaces a pending
+   capsule that was on screen (Transcript marks it .is-handoff). Then it simply
+   continues that capsule and extends to reveal its new chevron: being born a
+   second time in the same spot read as a blink. */
+.turn-process.is-live .live-reasoning {
+  animation: none;
+}
+
+.turn-process.is-live .live-reasoning:not(.is-handoff) .live-reasoning-trigger {
+  --capsule-bead-start: 0px;
+  --capsule-bead-end: 32px;
+  animation: loom-capsule-unroll 480ms var(--loom-motion-unroll) 40ms backwards;
+}
+
+.turn-process.is-live .live-reasoning:not(.is-handoff) .live-reasoning-trigger .tg {
+  animation: loom-task-icon-spring 560ms var(--loom-spring-pop) backwards;
+}
+
+.turn-process.is-live .live-reasoning:not(.is-handoff) .live-reasoning-trigger .thinking-shimmer {
+  animation: loom-task-copy-in 260ms cubic-bezier(.2,.82,.2,1) 150ms backwards;
+}
+
+.turn-process.is-live .live-reasoning.is-handoff .live-reasoning-trigger {
+  animation: loom-reasoning-handoff 320ms var(--loom-motion-unroll) backwards;
+}
+
+@keyframes loom-reasoning-handoff {
+  0% { clip-path: inset(0 21px 0 0 round 999px); }
+  82% { clip-path: inset(0 0 0 0 round 999px); }
+  100% { clip-path: inset(-24px -24px -24px -24px round 999px); }
+}
+
 /* A capsule that has yielded to task activity stays mounted but collapsed
    (generation-motion.css); pause its thread instead of repainting it unseen. */
 .turn-block:has(.task-flow-group.is-running) > .inline-thinking .tg-ply {
@@ -260,7 +310,12 @@ html[data-loom-theme="light"] .live-reasoning-copy::before {
   .thinking-shimmer::after,
   .live-reasoning-copy::before,
   .inline-thinking,
-  .live-reasoning {
+  .turn-block > .inline-thinking .tg,
+  .turn-block > .inline-thinking .thinking-shimmer,
+  .live-reasoning,
+  .live-reasoning .live-reasoning-trigger,
+  .live-reasoning .live-reasoning-trigger .tg,
+  .live-reasoning .live-reasoning-trigger .thinking-shimmer {
     animation: none !important;
   }
 
@@ -280,7 +335,12 @@ html[data-loom-theme="light"] .live-reasoning-copy::before {
 :root[data-loom-reduced-motion="true"] .thinking-shimmer::after,
 :root[data-loom-reduced-motion="true"] .live-reasoning-copy::before,
 :root[data-loom-reduced-motion="true"] .inline-thinking,
-:root[data-loom-reduced-motion="true"] .live-reasoning {
+:root[data-loom-reduced-motion="true"] .turn-block > .inline-thinking .tg,
+:root[data-loom-reduced-motion="true"] .turn-block > .inline-thinking .thinking-shimmer,
+:root[data-loom-reduced-motion="true"] .live-reasoning,
+:root[data-loom-reduced-motion="true"] .live-reasoning .live-reasoning-trigger,
+:root[data-loom-reduced-motion="true"] .live-reasoning .live-reasoning-trigger .tg,
+:root[data-loom-reduced-motion="true"] .live-reasoning .live-reasoning-trigger .thinking-shimmer {
   animation: none !important;
 }
 
