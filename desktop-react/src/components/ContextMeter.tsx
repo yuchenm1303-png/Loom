@@ -1,6 +1,7 @@
 import { Layers, Loader2, Wrench } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useI18n } from "../i18n";
+import { useMotionPresence } from "../motion/useMotionPresence";
 import type { ContextCompactionProgress, ContextReport } from "../types/loom";
 import "./context-meter.css";
 
@@ -31,6 +32,7 @@ export function ContextMeter({ report, compacting, progress, busy, onCompact }: 
   const { language } = useI18n();
   const zh = language === "zh-CN";
   const [open, setOpen] = useState(false);
+  const panelPresence = useMotionPresence(open, 260);
   const rootRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -135,8 +137,15 @@ export function ContextMeter({ report, compacting, progress, busy, onCompact }: 
         {report.pressure.blinded ? <span className="context-meter-alarm" aria-hidden="true" /> : null}
       </button>
 
-      {open ? (
-        <div className="context-meter-panel" role="dialog" aria-label={summary}>
+      {panelPresence.mounted ? (
+        <div
+          className="context-meter-panel"
+          data-motion-phase={panelPresence.phase}
+          role="dialog"
+          aria-label={summary}
+          aria-hidden={!open}
+          inert={!open}
+        >
           <header className="context-meter-panel-head">
             <span>{zh ? "上下文预算" : "Context budget"}</span>
             <strong>
