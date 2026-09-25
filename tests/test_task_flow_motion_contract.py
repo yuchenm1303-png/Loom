@@ -66,10 +66,19 @@ def test_user_scroll_up_can_break_live_follow_while_streaming() -> None:
     source = SCROLL.read_text(encoding="utf-8")
 
     assert "const detachFromLiveFollow = (scroller: HTMLDivElement) => {" in source
+    assert "userDetachedRef.current = true;" in source
     assert "forceBottomRef.current = false;" in source
     assert "snapBottomRef.current = false;" in source
     assert "cancelScheduledScroll();" in source
-    assert 'if (event.deltaY < 0) detachFromLiveFollow(scroller);' in source
+
+    wheel_start = source.index("const onWheel = (event: WheelEvent) => {")
+    wheel_end = source.index("const onTouchStart", wheel_start)
+    wheel_handler = source[wheel_start:wheel_end]
+    assert "event.deltaY < 0" in wheel_handler
+    assert "detachFromLiveFollow(scroller);" in wheel_handler
+    assert "event.deltaY > 0" in wheel_handler
+    assert "markReturnIntent();" in wheel_handler
+
     assert 'scroller.addEventListener("wheel", onWheel, { passive: true });' in source
     assert 'scroller.addEventListener("touchmove", onTouchMove, { passive: true });' in source
 
