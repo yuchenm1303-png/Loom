@@ -198,46 +198,6 @@
   font-weight: 620;
 }
 
-.turn-artifacts-inline-preview {
-  margin: 0 14px 8px 61px;
-  min-width: 0;
-  display: grid;
-  gap: 6px;
-}
-
-.turn-artifacts-inline-preview-head {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  color: #727b89;
-  font-size: 9.5px;
-}
-
-.turn-artifacts-inline-preview-head > span {
-  flex: none;
-  color: #7d73d5;
-  font-weight: 700;
-}
-
-.turn-artifacts-inline-preview-head code {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: #7c8593;
-  background: transparent;
-  font: 9.5px/1.2 var(--loom-code-font, "SFMono-Regular", Consolas, monospace);
-}
-
-html[data-loom-theme="light"] .turn-artifacts-inline-preview-head {
-  color: #848b96;
-}
-
-html[data-loom-theme="light"] .turn-artifacts-inline-preview-head > span {
-  color: #6659c4;
-}
-
 .turn-artifacts-preview-action {
   width: calc(100% - 28px);
   min-height: 34px;
@@ -328,11 +288,6 @@ html[data-loom-theme="light"] .turn-artifacts-preview-action:hover {
   .turn-artifacts-file-strip {
     padding-left: 11px;
     padding-right: 11px;
-  }
-
-  .turn-artifacts-inline-preview {
-    margin-left: 11px;
-    margin-right: 11px;
   }
 
   .turn-artifacts-file-strip button {
