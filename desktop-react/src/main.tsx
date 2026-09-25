@@ -35,6 +35,7 @@ import "./components/project-details-panel-theme.css";
 import "./global-motion.css";
 import "./components/generation-motion.css";
 import "./components/starter-cards-polish.css";
+import "./components/starter-card-interaction-glow.css";
 
 const CONVERSATION_WIDTHS: Record<string, string> = {
   focused: "740px",
