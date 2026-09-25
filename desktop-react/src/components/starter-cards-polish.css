@@ -1,0 +1,271 @@
+/* Premium starter cards: quiet depth, distinct accents and restrained motion. */
+.starter-grid {
+  width: min(720px, 100%);
+  gap: 12px;
+  margin-top: 30px;
+}
+
+.starter-card {
+  --starter-rgb: 139,124,246;
+  --starter-accent: #9d93ff;
+  min-height: 108px;
+  grid-template-columns: 42px minmax(0, 1fr);
+  align-items: start;
+  gap: 13px;
+  padding: 17px 48px 17px 17px;
+  border: 1px solid rgba(255,255,255,.070);
+  border-radius: 17px;
+  background: linear-gradient(145deg, rgba(21,23,29,.96), rgba(13,15,20,.94));
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.028),
+    inset 0 -1px 0 rgba(255,255,255,.008),
+    0 1px 0 rgba(0,0,0,.24);
+  isolation: isolate;
+  transform: translateZ(0);
+  transition:
+    transform 260ms cubic-bezier(.2,.82,.2,1),
+    border-color 220ms ease,
+    background 240ms ease,
+    box-shadow 260ms cubic-bezier(.2,.78,.2,1);
+}
+
+.starter-card:nth-child(1) { --starter-rgb: 143,132,255; --starter-accent: #a49cff; }
+.starter-card:nth-child(2) { --starter-rgb: 116,143,255; --starter-accent: #91a7ff; }
+.starter-card:nth-child(3) { --starter-rgb: 153,119,239; --starter-accent: #ad91f4; }
+.starter-card:nth-child(4) { --starter-rgb: 112,160,255; --starter-accent: #8aafff; }
+
+.starter-card::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: -22% 22% 28% -14%;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(var(--starter-rgb),.16), rgba(var(--starter-rgb),.055) 34%, transparent 70%);
+  filter: blur(20px);
+  opacity: .36;
+  transform: translate3d(-8px,-4px,0) scale(.92);
+  transition: opacity 260ms ease, transform 420ms cubic-bezier(.2,.78,.2,1);
+  pointer-events: none;
+}
+
+.starter-card::after {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  inset: -42% -28%;
+  background: linear-gradient(108deg, transparent 39%, rgba(255,255,255,.055) 49%, rgba(var(--starter-rgb),.045) 52%, transparent 62%);
+  opacity: 0;
+  transform: translate3d(-28%,0,0);
+  transition: transform 620ms cubic-bezier(.18,.72,.18,1), opacity 180ms ease;
+  pointer-events: none;
+}
+
+.starter-card:hover:not(:disabled) {
+  transform: translateY(-4px) scale(1.006);
+  border-color: rgba(var(--starter-rgb),.28);
+  background: linear-gradient(145deg, rgba(24,26,34,.985), rgba(14,16,22,.97));
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.045),
+    0 16px 34px rgba(0,0,0,.24),
+    0 0 0 1px rgba(var(--starter-rgb),.025),
+    0 10px 34px rgba(var(--starter-rgb),.055);
+}
+
+.starter-card:hover:not(:disabled)::before {
+  opacity: .7;
+  transform: translate3d(4px,-8px,0) scale(1.08);
+}
+
+.starter-card:hover:not(:disabled)::after {
+  opacity: 1;
+  transform: translate3d(28%,0,0);
+}
+
+.starter-card:active:not(:disabled) {
+  transform: translateY(-1px) scale(.992);
+  transition-duration: 90ms;
+}
+
+.starter-card:focus-visible {
+  outline: none;
+  border-color: rgba(var(--starter-rgb),.50);
+  box-shadow:
+    0 0 0 3px rgba(var(--starter-rgb),.11),
+    0 14px 34px rgba(0,0,0,.20),
+    inset 0 1px 0 rgba(255,255,255,.04);
+}
+
+.starter-icon {
+  width: 39px;
+  height: 39px;
+  border: 1px solid rgba(var(--starter-rgb),.18);
+  border-radius: 12px;
+  color: rgba(var(--starter-rgb),.92);
+  background:
+    radial-gradient(circle at 34% 24%, rgba(var(--starter-rgb),.13), transparent 58%),
+    rgba(255,255,255,.022);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.038),
+    0 8px 18px rgba(0,0,0,.10);
+  transition:
+    color 220ms ease,
+    border-color 220ms ease,
+    background 220ms ease,
+    box-shadow 260ms ease,
+    transform 300ms cubic-bezier(.18,.86,.22,1.06);
+}
+
+.starter-icon svg {
+  width: 18px;
+  height: 18px;
+  stroke-width: 1.85;
+  transition: transform 300ms cubic-bezier(.18,.86,.22,1.08), filter 220ms ease;
+}
+
+.starter-card:hover:not(:disabled) .starter-icon {
+  color: var(--starter-accent);
+  border-color: rgba(var(--starter-rgb),.34);
+  background:
+    radial-gradient(circle at 34% 22%, rgba(var(--starter-rgb),.22), transparent 62%),
+    rgba(var(--starter-rgb),.045);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.055),
+    0 10px 24px rgba(var(--starter-rgb),.105);
+  transform: translateY(-2px) scale(1.055);
+}
+
+.starter-card:hover:not(:disabled) .starter-icon svg {
+  transform: scale(1.07) rotate(-2deg);
+  filter: drop-shadow(0 0 7px rgba(var(--starter-rgb),.22));
+}
+
+.starter-content {
+  gap: 4px;
+  padding-top: 1px;
+  transition: transform 260ms cubic-bezier(.2,.78,.2,1);
+}
+
+.starter-card:hover:not(:disabled) .starter-content {
+  transform: translateX(2px);
+}
+
+.starter-eyebrow {
+  color: #777f8d !important;
+  font-size: 9.5px !important;
+  font-weight: 760;
+  letter-spacing: .105em;
+}
+
+.starter-content strong {
+  color: #e5e7ed;
+  font-size: 12.1px;
+  font-weight: 680;
+  line-height: 1.38;
+  letter-spacing: -.008em;
+  transition: color 180ms ease;
+}
+
+.starter-content > span:last-child {
+  max-width: 270px;
+  color: #7d8491;
+  font-size: 10.4px;
+  line-height: 1.52;
+  transition: color 180ms ease;
+}
+
+.starter-card:hover:not(:disabled) .starter-content strong { color: #f2f3f7; }
+.starter-card:hover:not(:disabled) .starter-content > span:last-child { color: #969daa; }
+
+.starter-arrow {
+  top: 14px;
+  right: 14px;
+  width: 27px;
+  height: 27px;
+  padding: 6px;
+  border: 1px solid rgba(255,255,255,.055);
+  border-radius: 9px;
+  color: #59616e;
+  background: rgba(255,255,255,.018);
+  transition:
+    color 200ms ease,
+    border-color 200ms ease,
+    background 200ms ease,
+    transform 300ms cubic-bezier(.18,.86,.22,1.08),
+    box-shadow 220ms ease;
+}
+
+.starter-card:hover:not(:disabled) .starter-arrow {
+  color: var(--starter-accent);
+  border-color: rgba(var(--starter-rgb),.22);
+  background: rgba(var(--starter-rgb),.06);
+  box-shadow: 0 6px 16px rgba(var(--starter-rgb),.07);
+  transform: translate(2px,-2px) rotate(2deg);
+}
+
+html[data-loom-theme="light"] .starter-card {
+  border-color: rgba(28,31,37,.095);
+  background: linear-gradient(145deg, rgba(255,255,255,.98), rgba(247,248,250,.96));
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.95),
+    0 1px 0 rgba(28,31,37,.025),
+    0 8px 22px rgba(27,31,40,.035);
+}
+
+html[data-loom-theme="light"] .starter-card::after {
+  background: linear-gradient(108deg, transparent 39%, rgba(255,255,255,.82) 49%, rgba(var(--starter-rgb),.055) 52%, transparent 62%);
+}
+
+html[data-loom-theme="light"] .starter-card:hover:not(:disabled) {
+  border-color: rgba(var(--starter-rgb),.26);
+  background: linear-gradient(145deg, #fff, #f8f9fb);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,1),
+    0 15px 34px rgba(27,31,40,.085),
+    0 8px 28px rgba(var(--starter-rgb),.055);
+}
+
+html[data-loom-theme="light"] .starter-icon {
+  border-color: rgba(var(--starter-rgb),.15);
+  background:
+    radial-gradient(circle at 34% 24%, rgba(var(--starter-rgb),.095), transparent 58%),
+    rgba(var(--starter-rgb),.025);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.92);
+}
+
+html[data-loom-theme="light"] .starter-eyebrow { color: #7d8490 !important; }
+html[data-loom-theme="light"] .starter-content strong { color: #292d35; }
+html[data-loom-theme="light"] .starter-content > span:last-child { color: #777f8b; }
+html[data-loom-theme="light"] .starter-card:hover:not(:disabled) .starter-content strong { color: #1f232a; }
+html[data-loom-theme="light"] .starter-card:hover:not(:disabled) .starter-content > span:last-child { color: #616975; }
+html[data-loom-theme="light"] .starter-arrow {
+  color: #8d949e;
+  border-color: rgba(28,31,37,.065);
+  background: rgba(28,31,37,.018);
+}
+
+@media (max-width: 1180px) {
+  .starter-grid { width: min(670px, 100%); }
+}
+
+@media (max-width: 920px) {
+  .starter-grid { gap: 10px; }
+  .starter-card { min-height: 92px; padding: 15px 46px 15px 15px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .starter-card,
+  .starter-card::before,
+  .starter-card::after,
+  .starter-icon,
+  .starter-icon svg,
+  .starter-content,
+  .starter-arrow { transition: none !important; }
+}
+
+html[data-loom-reduced-motion="true"] .starter-card,
+html[data-loom-reduced-motion="true"] .starter-card::before,
+html[data-loom-reduced-motion="true"] .starter-card::after,
+html[data-loom-reduced-motion="true"] .starter-icon,
+html[data-loom-reduced-motion="true"] .starter-icon svg,
+html[data-loom-reduced-motion="true"] .starter-content,
+html[data-loom-reduced-motion="true"] .starter-arrow { transition: none !important; }
