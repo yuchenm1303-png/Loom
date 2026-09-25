@@ -70,3 +70,14 @@ def test_layout_motion_moves_live_anchors_without_snapshotting_workspace() -> No
     assert "transition.updateCallbackDone" in app
     assert "view-transition-name: loom-workspace" not in css
     assert "loom-readable" not in css
+
+
+def test_side_panel_close_has_monotonic_live_motion_contract() -> None:
+    app = read("desktop-react/src/App.tsx")
+
+    assert "anchorXForIntent" in app
+    assert "capture.leftX" in app
+    assert "capture.rightX" in app
+    assert "animateLayoutAnchors(captures, intent)" in app
+    assert 'element.style.removeProperty("translate")' in app
+    assert 'element.style.removeProperty("transform")' not in app

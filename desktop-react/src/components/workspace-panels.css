@@ -360,7 +360,7 @@ html[data-loom-layout-transition="true"] .workspace-panels > .inspector {
 
 .workspace-panels.is-resizing .workspace-panel-resizer {
   transition: none;
-  will-change: transform;
+  will-change: translate;
 }
 
 /* Make the preview line easier to track without touching the expensive panel

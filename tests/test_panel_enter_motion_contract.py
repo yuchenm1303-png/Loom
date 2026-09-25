@@ -117,3 +117,25 @@ def test_large_inspector_keeps_rows_mounted_and_virtualizes_offscreen_paint() ->
     assert "scrollbar-gutter: stable" in inspector_css
     assert "content-visibility: auto" in inspector_css
     assert "contain-intrinsic-size: 51px" in inspector_css
+
+
+def test_layout_flip_is_edge_anchored_and_installed_in_the_commit_frame() -> None:
+    app = read("desktop-react/src/App.tsx")
+
+    assert "anchorXForIntent" in app
+    assert 'intent === "right-open" || intent === "right-close" || intent === "right-swap"' in app
+    assert 'return { previous: capture.leftX, next: rect.left }' in app
+    assert 'intent === "left-open" || intent === "left-close"' in app
+    assert 'return { previous: capture.rightX, next: rect.right }' in app
+    assert 'liveAnimations = animateLayoutAnchors(captures, intent)' in app
+    assert 'committedInsideTransition = true' in app
+    assert '{ translate: `${deltaX}px 0px` }' in app
+    assert 'willChange = "translate"' in app
+
+
+def test_layout_flip_never_uses_width_changing_center_as_side_panel_anchor() -> None:
+    app = read("desktop-react/src/App.tsx")
+
+    assert "centerX: number" not in app
+    assert "capture.centerX" not in app
+    assert '{ transform: `translate3d(${deltaX}px,0,0)` }' not in app

@@ -82,7 +82,8 @@ type LayoutMotionAnchorKind =
   | "run-progress";
 type LayoutMotionAnchorSnapshot = {
   element: HTMLElement;
-  centerX: number;
+  leftX: number;
+  rightX: number;
   kind: LayoutMotionAnchorKind;
 };
 type LayoutViewTransition = {
@@ -260,7 +261,7 @@ function clearLayoutAnchorStyles(root: HTMLElement | null): void {
   for (const target of PANEL_LAYOUT_ANCHORS) {
     const element = root.querySelector<HTMLElement>(target.selector);
     if (!element) continue;
-    element.style.removeProperty("transform");
+    element.style.removeProperty("translate");
     element.style.removeProperty("will-change");
   }
 }
@@ -276,25 +277,54 @@ function captureLayoutAnchors(root: HTMLElement | null): LayoutMotionAnchorSnaps
     const rect = element.getBoundingClientRect();
     captures.push({
       element,
-      centerX: rect.left + rect.width / 2,
+      leftX: rect.left,
+      rightX: rect.right,
       kind: target.kind,
     });
 
     // Preserve the current painted point across rapid toggles, then remove the
     // committed transform before the real layout update. The next FLIP starts
     // from exactly where the element was visible, not from an old endpoint.
-    element.style.removeProperty("transform");
+    element.style.removeProperty("translate");
     element.style.removeProperty("will-change");
   }
   return captures;
 }
 
-function animateLayoutAnchors(captures: LayoutMotionAnchorSnapshot[]): Animation[] {
+function anchorXForIntent(
+  capture: LayoutMotionAnchorSnapshot,
+  rect: DOMRect,
+  intent: LayoutMotionIntent,
+): { previous: number; next: number } {
+  // When the right rail changes, the workspace's left edge is the invariant.
+  // A fluid transcript can grow to the right without its text moving at all;
+  // using its center would invent a fake leftward FLIP before the real move.
+  if (intent === "right-open" || intent === "right-close" || intent === "right-swap") {
+    return { previous: capture.leftX, next: rect.left };
+  }
+
+  // Mirror the rule for the left rail: the workspace's right edge is the
+  // invariant, so width growth/shrinkage must not manufacture a false recoil.
+  if (intent === "left-open" || intent === "left-close") {
+    return { previous: capture.rightX, next: rect.right };
+  }
+
+  return {
+    previous: (capture.leftX + capture.rightX) / 2,
+    next: (rect.left + rect.right) / 2,
+  };
+}
+
+function animateLayoutAnchors(
+  captures: LayoutMotionAnchorSnapshot[],
+  intent: LayoutMotionIntent,
+): Animation[] {
   const animations: Animation[] = [];
   for (const capture of captures) {
     if (!capture.element.isConnected) continue;
     const rect = capture.element.getBoundingClientRect();
-    const deltaX = capture.centerX - (rect.left + rect.width / 2);
+    const anchor = anchorXForIntent(capture, rect, intent);
+    const deltaX = anchor.previous - anchor.next;
     if (Math.abs(deltaX) < .5) continue;
 
     const duration = (() => {
@@ -309,11 +339,14 @@ function animateLayoutAnchors(captures: LayoutMotionAnchorSnapshot[]): Animation
       }
     })();
 
-    capture.element.style.willChange = "transform";
+    // Animate the independent CSS translate property instead of transform.
+    // Composer and other controls have their own transform effects; overriding
+    // them during a panel toggle caused a second tiny "back step" on handoff.
+    capture.element.style.willChange = "translate";
     const animation = capture.element.animate(
       [
-        { transform: `translate3d(${deltaX}px,0,0)` },
-        { transform: "translate3d(0,0,0)" },
+        { translate: `${deltaX}px 0px` },
+        { translate: "0px 0px" },
       ],
       {
         duration,
@@ -455,7 +488,7 @@ export default function App() {
     const transitionDocument = document as LayoutTransitionDocument;
     if (typeof transitionDocument.startViewTransition !== "function") {
       flushSync(update);
-      const animations = animateLayoutAnchors(captures);
+      const animations = animateLayoutAnchors(captures, intent);
       if (!animations.length) {
         afterPaint(finish);
       } else {
@@ -465,14 +498,24 @@ export default function App() {
     }
 
     let transition: LayoutViewTransition;
+    let committedInsideTransition = false;
+    let liveAnimations: Animation[] = [];
     try {
       transition = transitionDocument.startViewTransition(() => {
         flushSync(update);
+        committedInsideTransition = true;
+
+        // Install the first FLIP keyframe in the same update callback that
+        // commits the new grid. The browser therefore never exposes one frame
+        // at the new coordinate before sending the element back to the old one.
+        liveAnimations = animateLayoutAnchors(captures, intent);
       });
     } catch {
       delete document.documentElement.dataset.loomLayoutTransition;
-      flushSync(update);
-      const animations = animateLayoutAnchors(captures);
+      if (!committedInsideTransition) flushSync(update);
+      const animations = committedInsideTransition
+        ? liveAnimations
+        : animateLayoutAnchors(captures, intent);
       if (!animations.length) {
         afterPaint(finish);
       } else {
@@ -485,8 +528,7 @@ export default function App() {
     const liveLayoutMotion = transition.updateCallbackDone
       .then(() => {
         if (layoutTransitionSerialRef.current !== serial) return;
-        const animations = animateLayoutAnchors(captures);
-        return Promise.allSettled(animations.map((animation) => animation.finished));
+        return Promise.allSettled(liveAnimations.map((animation) => animation.finished));
       })
       .catch(() => undefined);
 
