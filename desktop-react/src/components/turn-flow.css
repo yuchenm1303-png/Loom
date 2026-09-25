@@ -158,7 +158,10 @@
   display: grid;
   grid-template-rows: 0fr;
   opacity: 0;
-  transition: grid-template-rows 280ms cubic-bezier(.22,.74,.18,1), opacity 210ms ease;
+  overflow-anchor: none;
+  transition:
+    grid-template-rows 280ms cubic-bezier(.22,.74,.18,1),
+    opacity 210ms ease;
 }
 
 .turn-process-inner {
@@ -166,6 +169,10 @@
   overflow: hidden;
 }
 
+/* Keep the settled detail geometry identical on both sides of the fold.
+   Previously margin/padding/border only existed while .is-open was present,
+   so closing removed ~30px of intrinsic geometry before the 0fr animation had
+   a chance to run. That made the contents snap left/up, then collapse. */
 .turn-process-content {
   display: flex;
   flex-direction: column;
@@ -173,11 +180,25 @@
   padding: 3px 0 3px;
 }
 
-.turn-process.is-settled.is-open .turn-process-content {
+.turn-process.is-settled .turn-process-content {
   margin: 5px 0 5px 16px;
   padding: 8px 0 8px 17px;
   border-left: 1px solid rgba(139,124,246,.12);
   box-shadow: inset 1px 0 0 rgba(255,255,255,.012);
+}
+
+/* Closing should preserve readable pixels until the geometry is already moving,
+   then fade while the track finishes. Opening remains a touch softer/slower. */
+.turn-process.is-settled .turn-process-grid {
+  transition:
+    grid-template-rows 300ms cubic-bezier(.4,0,.2,1),
+    opacity 170ms ease 64ms;
+}
+
+.turn-process.is-settled.is-open .turn-process-grid {
+  transition:
+    grid-template-rows 320ms cubic-bezier(.22,.74,.18,1),
+    opacity 210ms ease;
 }
 
 .turn-process-content .entry-steering-user {
