@@ -56,6 +56,7 @@
   height: 100%;
   contain: layout paint style;
   backface-visibility: hidden;
+  will-change: transform, opacity;
   transition:
     opacity var(--loom-motion-opacity,260ms) ease,
     transform var(--loom-motion-panel,390ms) var(--loom-ease-out,cubic-bezier(.2,.74,.18,1)),
@@ -494,10 +495,6 @@ body.loom-panel-motion .workspace-panels .composer-hint,
 body.loom-panel-motion .workspace-panels .run-progress-inline {
   backface-visibility: hidden;
   transform-style: preserve-3d;
-}
-
-body.loom-panel-motion .workspace-panels > .inspector .runtime-pane {
-  animation: none !important;
 }
 
 body.loom-panel-motion .workspace-panels > .inspector .runtime-orbit-dot,

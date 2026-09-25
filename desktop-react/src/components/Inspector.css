@@ -214,7 +214,6 @@
 
 .runtime-pane {
   min-height: 100%;
-  animation: runtime-pane-in 260ms var(--loom-ease-out,cubic-bezier(.2,.74,.18,1)) both;
 }
 
 .runtime-empty {
@@ -513,11 +512,6 @@
 .runtime-stream-mark.live i { background: #8e85dc; animation: runtime-bars 900ms ease-in-out infinite alternate; }
 .runtime-stream-mark.live i:nth-child(2) { animation-delay: -300ms; }
 .runtime-stream-mark.live i:nth-child(3) { animation-delay: -600ms; }
-
-@keyframes runtime-pane-in {
-  from { opacity: .42; transform: translate3d(0,3px,0); }
-  to { opacity: 1; transform: translate3d(0,0,0); }
-}
 
 @keyframes runtime-pulse {
   0% { box-shadow: 0 0 0 0 rgba(139,124,246,.28); }

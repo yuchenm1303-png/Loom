@@ -139,3 +139,13 @@ def test_layout_flip_never_uses_width_changing_center_as_side_panel_anchor() -> 
     assert "centerX: number" not in app
     assert "capture.centerX" not in app
     assert '{ transform: `translate3d(${deltaX}px,0,0)` }' not in app
+
+
+def test_inspector_does_not_restart_content_animation_after_panel_handoff() -> None:
+    inspector_css = read("desktop-react/src/components/Inspector.css")
+    panel_css = read("desktop-react/src/components/workspace-panels.css")
+
+    assert "runtime-pane-in" not in inspector_css
+    assert ".runtime-pane" in inspector_css
+    assert ".runtime-pane {\n  animation: none !important" not in panel_css
+    assert "will-change: transform, opacity" in panel_css
