@@ -10,6 +10,21 @@
   margin-top: 10px;
 }
 
+/* Decision-card replies are transport messages, not a new visible user turn.
+   Keep the marker in the transcript for durable state recovery, but remove the
+   synthetic bubble and close the visual gap before the continuation turn. */
+.transcript-entry.entry-user_message:has(
+  .user-message-shell[data-loom-message-text^="[[LOOM_DECISION_RESPONSE:v1]]"]
+) {
+  display: none !important;
+}
+
+.turn-block + .turn-block:has(
+  > .transcript-entry.entry-user_message .user-message-shell[data-loom-message-text^="[[LOOM_DECISION_RESPONSE:v1]]"]
+) {
+  margin-top: 0;
+}
+
 .turn-process {
   width: min(760px, 100%);
 }
