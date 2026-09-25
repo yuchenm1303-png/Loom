@@ -852,17 +852,17 @@ class PyWinAutoWindowsOperator:
                 if foreground_hwnd
                 else 0
             )
-            target_thread = int(win32process.GetWindowThreadProcessId(hwnd)[0])
+            current_thread = int(win32api.GetCurrentThreadId())
             attached = False
-            retry_allowed = bool(target_thread and foreground_thread == target_thread)
+            retry_allowed = bool(current_thread and foreground_thread == current_thread)
             try:
-                # Foreground permission belongs to the thread that currently owns
-                # the foreground window, not to Loom's worker thread.  Joining
-                # target to Loom (the old code) does not bypass the foreground
-                # lock and made this retry fail forever on locked desktops.
-                if foreground_thread and foreground_thread != target_thread:
+                # SetForegroundWindow runs on Loom's current worker thread. Join
+                # that caller to the existing foreground input queue; attaching
+                # the foreground thread to the target application's thread uses
+                # the wrong participants and can return ERROR_INVALID_PARAMETER.
+                if foreground_thread and foreground_thread != current_thread:
                     try:
-                        win32process.AttachThreadInput(foreground_thread, target_thread, True)
+                        win32process.AttachThreadInput(current_thread, foreground_thread, True)
                         attached = True
                         retry_allowed = True
                     except pywintypes.error as exc:
@@ -887,7 +887,7 @@ class PyWinAutoWindowsOperator:
             finally:
                 if attached:
                     try:
-                        win32process.AttachThreadInput(foreground_thread, target_thread, False)
+                        win32process.AttachThreadInput(current_thread, foreground_thread, False)
                     except pywintypes.error as exc:
                         # A thread that exits while attached can make Windows
                         # return ERROR_INVALID_PARAMETER. Preserve the failure

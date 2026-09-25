@@ -181,7 +181,7 @@ def test_detach_still_runs_when_activation_raises(monkeypatch):
     assert fake.attached == [True, False], "the input queue must be detached even on failure"
 
 
-def test_window_switch_attaches_foreground_thread_not_loom_worker(monkeypatch):
+def test_window_switch_attaches_loom_worker_to_foreground_thread(monkeypatch):
     fake = _FakeWin32(foreground=0x1234)
     attached_pairs: list[tuple[int, int, bool]] = []
     fake.AttachThreadInput = lambda a, b, attach: attached_pairs.append((a, b, bool(attach))) or True
@@ -195,7 +195,7 @@ def test_window_switch_attaches_foreground_thread_not_loom_worker(monkeypatch):
 
     _operator()._switch_window(_switch())
 
-    assert attached_pairs == [(4242, 5252, True), (4242, 5252, False)]
+    assert attached_pairs == [(1111, 4242, True), (1111, 4242, False)]
 
 
 def test_attach_thread_race_is_reported_as_activation_failure(monkeypatch):
