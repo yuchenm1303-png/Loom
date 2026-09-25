@@ -1,5 +1,5 @@
 import { Activity, Flame, Gauge, Sparkles } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import "./home-token-activity.css";
 
 type UsageDay = {
@@ -31,6 +31,15 @@ type HomeUsageInsights = {
 type HeatCell = {
   date: string;
   day: UsageDay | null;
+};
+
+type HeatTooltip = {
+  date: string;
+  tokens: number;
+  modelCalls: number;
+  x: number;
+  y: number;
+  level: number;
 };
 
 let cachedInsights: HomeUsageInsights | null = null;
@@ -89,15 +98,44 @@ function loadInsights(): Promise<HomeUsageInsights> {
 }
 
 function formatCompact(value: number): string {
-  return new Intl.NumberFormat(undefined, {
+  return new Intl.NumberFormat("en-US", {
     notation: "compact",
     maximumFractionDigits: 1,
   }).format(Math.max(0, value || 0));
 }
 
+function formatExact(value: number): string {
+  return new Intl.NumberFormat("en-US", {
+    maximumFractionDigits: 0,
+  }).format(Math.max(0, value || 0));
+}
+
+function formatTooltipDate(value: string): string {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  }).format(parseLocalDate(value));
+}
+
+function buildMonthLabels(weeks: HeatCell[][]): string[] {
+  let previousMonth = -1;
+  return weeks.map((week) => {
+    const firstRealCell = week.find((cell) => cell.day);
+    if (!firstRealCell) return "";
+    const date = parseLocalDate(firstRealCell.date);
+    const month = date.getMonth();
+    if (month === previousMonth) return "";
+    previousMonth = month;
+    return new Intl.DateTimeFormat("en-US", { month: "short" }).format(date);
+  });
+}
+
 export function HomeTokenActivity() {
+  const rootRef = useRef<HTMLElement>(null);
   const [data, setData] = useState<HomeUsageInsights | null>(cachedInsights);
   const [failed, setFailed] = useState(false);
+  const [tooltip, setTooltip] = useState<HeatTooltip | null>(null);
 
   useEffect(() => {
     if (cachedInsights) return;
@@ -115,6 +153,7 @@ export function HomeTokenActivity() {
   }, []);
 
   const weeks = useMemo(() => buildWeeks(data), [data]);
+  const monthLabels = useMemo(() => buildMonthLabels(weeks), [weeks]);
   const maxTokens = useMemo(
     () => Math.max(0, ...(data?.days.map((day) => Number(day.totalTokens || 0)) ?? [])),
     [data],
@@ -126,10 +165,32 @@ export function HomeTokenActivity() {
     return Math.min(4, Math.max(1, Math.ceil(ratio * 4)));
   };
 
+  const showTooltip = (target: HTMLElement, cell: HeatCell) => {
+    if (!cell.day || !rootRef.current) return;
+    const rootRect = rootRef.current.getBoundingClientRect();
+    const cellRect = target.getBoundingClientRect();
+    const tooltipHalfWidth = 112;
+    const rawX = cellRect.left - rootRect.left + cellRect.width / 2;
+    const x = Math.max(tooltipHalfWidth, Math.min(rootRect.width - tooltipHalfWidth, rawX));
+    const y = cellRect.top - rootRect.top - 9;
+    setTooltip({
+      date: cell.date,
+      tokens: cell.day.totalTokens,
+      modelCalls: cell.day.modelCalls,
+      x,
+      y,
+      level: levelFor(cell.day.totalTokens),
+    });
+  };
+
   if (failed) return null;
 
+  const heatmapStyle = weeks.length
+    ? ({ "--home-heat-columns": weeks.length } as CSSProperties)
+    : undefined;
+
   return (
-    <section className="home-token-activity" aria-label="Token activity">
+    <section ref={rootRef} className="home-token-activity" aria-label="Token activity">
       <div className="home-token-heading">
         <div className="home-token-title">
           <span className="home-token-mark"><Activity size={13} strokeWidth={1.8} /></span>
@@ -140,17 +201,17 @@ export function HomeTokenActivity() {
         </div>
 
         <div className="home-token-stats" aria-label="Token usage summary">
-          <span title="Tokens used in the displayed period">
+          <span aria-label="Tokens used in the displayed period">
             <Gauge size={12} />
             <strong>{data ? formatCompact(data.range.totalTokens) : "—"}</strong>
             <em>tokens</em>
           </span>
-          <span title="Active days">
+          <span aria-label="Active days">
             <Sparkles size={12} />
             <strong>{data ? data.totals.activeDays : "—"}</strong>
             <em>days</em>
           </span>
-          <span title="Current streak">
+          <span aria-label="Current streak">
             <Flame size={12} />
             <strong>{data ? data.streaks.current : "—"}</strong>
             <em>streak</em>
@@ -158,34 +219,46 @@ export function HomeTokenActivity() {
         </div>
       </div>
 
-      <div className="home-token-heatmap-shell">
-        <div className="home-token-weekdays" aria-hidden="true">
-          <span>M</span>
-          <span />
-          <span>W</span>
-          <span />
-          <span>F</span>
-          <span />
-          <span />
+      <div className="home-token-chart">
+        <div className="home-token-month-row" aria-hidden="true">
+          <span className="home-token-month-gutter" />
+          <div className="home-token-months" style={heatmapStyle}>
+            {monthLabels.map((label, index) => (
+              <span key={`${label || "blank"}-${index}`}>{label}</span>
+            ))}
+          </div>
         </div>
 
-        <div className="home-token-heatmap">
-          {data && weeks.length ? weeks.flatMap((week) => week.map((cell) => {
-            const tokens = cell.day?.totalTokens ?? 0;
-            const modelCalls = cell.day?.modelCalls ?? 0;
-            const title = cell.day
-              ? `${cell.date} · ${formatCompact(tokens)} tokens · ${modelCalls} model calls`
-              : cell.date;
-            return (
-              <span
-                key={cell.date}
-                className={`home-token-cell level-${levelFor(tokens)} ${cell.day ? "" : "outside"}`}
-                title={title}
-              />
-            );
-          })) : Array.from({ length: 371 }, (_, index) => (
-            <span className="home-token-cell loading" key={index} />
-          ))}
+        <div className="home-token-heatmap-shell">
+          <div className="home-token-weekdays" aria-hidden="true">
+            <span>M</span>
+            <span />
+            <span>W</span>
+            <span />
+            <span>F</span>
+            <span />
+            <span />
+          </div>
+
+          <div className="home-token-heatmap" style={heatmapStyle}>
+            {data && weeks.length ? weeks.flatMap((week) => week.map((cell) => {
+              const tokens = cell.day?.totalTokens ?? 0;
+              const level = levelFor(tokens);
+              return (
+                <span
+                  key={cell.date}
+                  className={`home-token-cell level-${level} ${cell.day ? "" : "outside"}`}
+                  aria-label={cell.day
+                    ? `${formatTooltipDate(cell.date)}, ${formatExact(tokens)} tokens, ${cell.day.modelCalls} model calls`
+                    : undefined}
+                  onMouseEnter={(event) => showTooltip(event.currentTarget, cell)}
+                  onMouseLeave={() => setTooltip(null)}
+                />
+              );
+            })) : Array.from({ length: 371 }, (_, index) => (
+              <span className="home-token-cell loading" key={index} />
+            ))}
+          </div>
         </div>
       </div>
 
@@ -201,6 +274,28 @@ export function HomeTokenActivity() {
           <em>More</em>
         </span>
       </div>
+
+      {tooltip ? (
+        <div
+          className="home-token-tooltip"
+          style={{ left: tooltip.x, top: tooltip.y }}
+          role="presentation"
+        >
+          <div className="home-token-tooltip-head">
+            <span className={`home-token-tooltip-swatch level-${tooltip.level}`} />
+            <strong>{formatTooltipDate(tooltip.date)}</strong>
+          </div>
+          <div className="home-token-tooltip-value">
+            <strong>{formatExact(tooltip.tokens)}</strong>
+            <span>tokens</span>
+          </div>
+          <div className="home-token-tooltip-meta">
+            <span>{tooltip.modelCalls} model {tooltip.modelCalls === 1 ? "call" : "calls"}</span>
+            <span className="home-token-tooltip-dot" />
+            <span>{formatCompact(tooltip.tokens)} total</span>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
