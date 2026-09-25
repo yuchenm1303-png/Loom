@@ -1,0 +1,58 @@
+/* Tool identity -------------------------------------------------------------
+   Vendor marks keep their authentic silhouette, while Loom capability marks
+   share one stroke language. The task-flow badge owns background/border; this
+   layer only normalizes optical size and alignment. */
+
+.tool-identity-glyph {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  line-height: 0;
+  color: inherit;
+}
+
+.tool-identity-glyph > svg {
+  display: block;
+  overflow: visible;
+}
+
+/* Filled brand marks look optically larger than stroked capability marks at
+   the same nominal box. Pull them in a fraction instead of shrinking every
+   capability glyph. */
+.tool-identity-glyph.is-brand > svg {
+  scale: .91;
+  transform-origin: 50% 50%;
+}
+
+.tool-identity-glyph[data-tool-family="github"] > svg,
+.tool-identity-glyph[data-tool-family="openai"] > svg,
+.tool-identity-glyph[data-tool-family="deepseek"] > svg {
+  scale: .88;
+}
+
+.tool-identity-glyph[data-tool-family="anthropic"] > svg,
+.tool-identity-glyph[data-tool-family="xai"] > svg {
+  scale: .84;
+}
+
+.tool-identity-glyph[data-tool-family="gemini"] > svg {
+  scale: .82;
+}
+
+.tool-identity-glyph[data-tool-family="minimax"] > svg {
+  scale: .86;
+}
+
+/* The group-only aliases exist solely to bypass old Lucide special cases in
+   Transcript. They still inherit the exact same appearance as their row mark. */
+.tool-identity-glyph[data-tool-family="terminal-group"],
+.tool-identity-glyph[data-tool-family="file-group"],
+.tool-identity-glyph[data-tool-family="mixed-group"] {
+  color: inherit;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tool-identity-glyph > svg {
+    transition: none !important;
+  }
+}
