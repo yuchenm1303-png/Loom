@@ -55,16 +55,16 @@ function ReasoningRail({ reasoning, busy, running, onChange }: ReasoningThreadPr
   const ghostStyle = {
     "--rt-ghost-t": String(levelAt(previewing ? previewIndex : displayIndex)),
   } as CSSProperties;
-  // Keep the decorative thread continuous before the first option instead of
-  // leaving the leading quarter of sparse rails as an empty grey stub. It is
-  // intentionally cooler and a touch quieter than the selectable span so the
-  // first stop still reads as the beginning of the reasoning scale.
+  // The first level needs a hint of the woven treatment even when the active
+  // span itself has zero width. Keep that accent local to the first stop: the
+  // previous full-width lead made the animated braid look detached from the
+  // Direct control on sparse (especially two-option) rails.
   const leadStyle = {
-    left: 0,
-    width: "calc(var(--rt-start) + 18px)",
-    opacity: 0.78,
-    WebkitMaskImage: "linear-gradient(90deg, transparent 1%, #000 18%, #000 100%)",
-    maskImage: "linear-gradient(90deg, transparent 1%, #000 18%, #000 100%)",
+    left: "calc(var(--rt-start) - 22px)",
+    width: "40px",
+    opacity: 0.68,
+    WebkitMaskImage: "linear-gradient(90deg, transparent, #000 28%, #000 72%, transparent)",
+    maskImage: "linear-gradient(90deg, transparent, #000 28%, #000 72%, transparent)",
   } as CSSProperties;
   const leadFiberStyle = {
     background: "var(--rt-cool)",
