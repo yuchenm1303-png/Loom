@@ -67,16 +67,23 @@ def test_artifact_renderer_registry_covers_primary_agent_artifact_types() -> Non
     assert "canInlineRenderArtifact" in source
 
 
-def test_changed_artifacts_render_inline_and_expand_to_the_side_renderer() -> None:
+def test_changed_artifacts_render_in_the_conversation_and_expand_to_the_side_renderer() -> None:
     artifacts = ARTIFACTS.read_text(encoding="utf-8")
     transcript = TRANSCRIPT.read_text(encoding="utf-8")
     surface = ARTIFACT_SURFACE.read_text(encoding="utf-8")
 
-    assert "canInlineRenderArtifact" in artifacts
-    assert "ArtifactRenderSurface" in artifacts
-    assert "turn-artifacts-inline-preview" in artifacts
-    assert 'new CustomEvent("loom:artifact-preview-open"' in artifacts
+    assert "latestInlineArtifact" in transcript
+    assert "AssistantArtifactPreview" in transcript
+    assert "entry-artifact-preview" in transcript
+    assert "<ArtifactRenderSurface" in transcript
+    assert 'new CustomEvent("loom:artifact-preview-open"' in transcript
     assert "TurnArtifactsPreview items={items} workspace={workspace}" in transcript
+
+    # The review/audit summary keeps file stats and actions, but the large
+    # rendered canvas belongs to the conversation flow instead.
+    assert "turn-artifacts-inline-preview" not in artifacts
+    assert "<ArtifactRenderSurface" not in artifacts
+
     assert "artifactRenderer(path)" in surface
     assert "artifact-render-frame" in surface
     assert "artifact-render-image" in surface
