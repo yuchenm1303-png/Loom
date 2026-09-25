@@ -271,29 +271,76 @@ html[data-loom-reduced-motion="true"] .starter-content,
 html[data-loom-reduced-motion="true"] .starter-arrow { transition: none !important; }
 
 
-/* Keep the usage heatmap visually attached to the starter actions without
-   turning the empty state into a tall dashboard. */
+/* Home composition ---------------------------------------------------------
+   The Token panel made this surface taller than the original four-card home.
+   Flex items are shrinkable by default, which let the absolutely-positioned
+   Loom emblem collapse to effectively zero height before the page scrolled.
+   Keep the identity block non-shrinking and use safe centering: it stays
+   centered when there is room, but starts at the top (and scrolls normally)
+   whenever the full home composition is taller than the transcript viewport. */
+.empty-state {
+  justify-content: safe center;
+}
+
+.empty-state > .empty-hero,
+.empty-state > .empty-kicker,
+.empty-state > h1,
+.empty-state > p,
+.empty-state > .home-token-activity,
+.empty-state > .starter-grid {
+  flex-shrink: 0;
+}
+
+.empty-state > .empty-hero {
+  flex-basis: 92px;
+}
+
+.empty-state > .home-token-activity {
+  margin-top: 18px;
+}
+
 .empty-state > .home-token-activity + .starter-grid {
   margin-top: 16px;
 }
 
+/* On shorter desktop workspaces, prefer a deliberate top-led composition to
+   squeezing the Loom mark out of view. The transcript remains scrollable. */
 @media (max-height: 860px) and (min-width: 921px) {
   .empty-state {
-    padding-top: 28px;
-    padding-bottom: 28px;
+    justify-content: flex-start;
+    min-height: 100%;
+    margin: 0 auto;
+    padding-top: 22px;
+    padding-bottom: 34px;
   }
 
-  .empty-hero {
-    height: 76px;
-    margin-bottom: 4px;
-    transform: scale(.88);
+  .empty-state > .empty-hero {
+    flex-basis: 78px;
+    height: 78px;
+    margin-bottom: 3px;
   }
 
   .empty-state > .home-token-activity {
-    margin-top: 15px;
+    margin-top: 14px;
   }
 
   .empty-state > .home-token-activity + .starter-grid {
+    margin-top: 12px;
+  }
+}
+
+@media (max-height: 720px) and (min-width: 921px) {
+  .empty-state {
+    padding-top: 14px;
+  }
+
+  .empty-state > .empty-hero {
+    flex-basis: 68px;
+    height: 68px;
+    margin-bottom: 0;
+  }
+
+  .empty-state > .home-token-activity {
     margin-top: 12px;
   }
 }
