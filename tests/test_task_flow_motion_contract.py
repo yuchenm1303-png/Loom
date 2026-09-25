@@ -4,6 +4,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 TRANSCRIPT = ROOT / "desktop-react" / "src" / "components" / "Transcript.tsx"
 MOTION = ROOT / "desktop-react" / "src" / "components" / "conversation-motion.css"
+TURN_FLOW = ROOT / "desktop-react" / "src" / "components" / "turn-flow.css"
 SCROLL = ROOT / "desktop-react" / "src" / "components" / "TranscriptScrollController.tsx"
 
 
@@ -94,3 +95,21 @@ def test_detached_scroll_state_survives_streaming_content_growth() -> None:
     observer = source[observer_start:observer_end]
     assert "} else {" in observer
     assert "setJumpVisible(!isNearBottom(scroller));" in observer
+
+
+def test_completed_process_fold_keeps_intrinsic_geometry_stable() -> None:
+    source = TURN_FLOW.read_text(encoding="utf-8")
+
+    # Open/closed must share the same inner geometry. Tying the margin/padding
+    # to .is-open makes those dimensions disappear before the 0fr close
+    # transition runs, producing the visible snap that regressed the fold.
+    assert ".turn-process.is-settled .turn-process-content {" in source
+    assert ".turn-process.is-settled.is-open .turn-process-content {" not in source
+    assert "margin: 5px 0 5px 16px;" in source
+    assert "padding: 8px 0 8px 17px;" in source
+    assert "overflow-anchor: none;" in source
+
+    closed_transition = source.index(".turn-process.is-settled .turn-process-grid {")
+    open_transition = source.index(".turn-process.is-settled.is-open .turn-process-grid {")
+    assert closed_transition < open_transition
+    assert "opacity 170ms ease 64ms" in source[closed_transition:open_transition]
