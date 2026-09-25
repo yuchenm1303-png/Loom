@@ -1,0 +1,85 @@
+name: Tool identity integration patch
+
+on:
+  push:
+    branches:
+      - feat/tool-identity-icons
+
+permissions:
+  contents: write
+
+jobs:
+  patch-transcript:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/tool-identity-icons
+          fetch-depth: 0
+      - name: Integrate provider-aware activity identity
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path("desktop-react/src/components/Transcript.tsx")
+          text = path.read_text(encoding="utf-8")
+
+          replacements = [
+              (
+                  'import { dispatchQuoteReply } from "./quoteReply";\n',
+                  'import { dispatchQuoteReply } from "./quoteReply";\nimport { ActivityGlyph as ToolIdentityGlyph, ActivityGroupGlyph, activityGroupIdentity, activityIdentity, activityToolLabel } from "./ToolIdentity";\n',
+              ),
+              (
+                  '''function ActivityGlyph({ item, size = 13 }: { item: TranscriptItem; size?: number }) {\n  if (item.type === "process") return <Terminal size={size} />;\n  if (item.type === "file_edit") return <FileDiff size={size} />;\n  return <Wrench size={size} />;\n}\n''',
+                  '''function ActivityGlyph({ item, size = 13 }: { item: TranscriptItem; size?: number }) {\n  const identity = activityIdentity(item);\n  if (identity.family === "terminal") return <Terminal size={size} />;\n  if (identity.family === "file") return <FileDiff size={size} />;\n  if (identity.family === "generic") return <Wrench size={size} />;\n  return <ToolIdentityGlyph item={item} size={size} />;\n}\n''',
+              ),
+              (
+                  '  const verbKey = active ? "active" : "rested";\n\n  return (\n',
+                  '  const verbKey = active ? "active" : "rested";\n  const identity = activityIdentity(item);\n\n  return (\n',
+              ),
+              (
+                  '        className={`task-flow-row task-flow-kind-${item.type} ${active ? "is-active" : "is-resting"} ${executing ? "is-executing" : ""} ${expandable ? "is-expandable" : "no-detail"}`.trim()}\n',
+                  '        className={`task-flow-row task-flow-kind-${item.type} ${active ? "is-active" : "is-resting"} ${executing ? "is-executing" : ""} ${expandable ? "is-expandable" : "no-detail"}`.trim()}\n        data-tool-family={identity.family}\n',
+              ),
+              (
+                  '        <span className="task-flow-row-icon"><ActivityGlyph item={item} /></span>\n',
+                  '        <span className="task-flow-row-icon" title={identity.label}><ActivityGlyph item={item} /></span>\n',
+              ),
+              (
+                  '              <span className="task-flow-primary">{item.toolName || "Tool"}</span>\n',
+                  '              <span className="task-flow-primary">{activityToolLabel(item)}</span>\n',
+              ),
+              (
+                  '''function ActivityGroupIcon({ items }: { items: TranscriptItem[] }) {\n  let hasEdit = false;\n  for (const item of items) {\n    if (item.type === "process") return <Terminal size={14} />;\n    if (item.type === "file_edit") hasEdit = true;\n  }\n  if (hasEdit) return <FileDiff size={14} />;\n  return <Wrench size={14} />;\n}\n''',
+                  '''function ActivityGroupIcon({ items }: { items: TranscriptItem[] }) {\n  const identity = activityGroupIdentity(items);\n  if (identity.family === "terminal") return <Terminal size={14} />;\n  if (identity.family === "file") return <FileDiff size={14} />;\n  if (identity.family === "generic") return <Wrench size={14} />;\n  return <ActivityGroupGlyph items={items} size={14} />;\n}\n''',
+              ),
+              (
+                  '  const title = activityGroupTitle(compactItems, running);\n\n  return (\n',
+                  '  const title = activityGroupTitle(compactItems, running);\n  const groupIdentity = activityGroupIdentity(compactItems);\n\n  return (\n',
+              ),
+              (
+                  '      className={`task-flow task-flow-group ${open ? "is-open" : ""} ${running ? "is-running" : ""}`}\n      aria-label="Task activity"\n',
+                  '      className={`task-flow task-flow-group ${open ? "is-open" : ""} ${running ? "is-running" : ""}`}\n      data-tool-family={groupIdentity.family}\n      aria-label="Task activity"\n',
+              ),
+              (
+                  '        <span className="task-flow-group-icon" aria-hidden="true"><ActivityGroupIcon items={compactItems} /></span>\n',
+                  '        <span className="task-flow-group-icon" aria-hidden="true" title={groupIdentity.label}><ActivityGroupIcon items={compactItems} /></span>\n',
+              ),
+          ]
+
+          for old, new in replacements:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"expected exactly one match, got {count}: {old[:80]!r}")
+              text = text.replace(old, new, 1)
+
+          path.write_text(text, encoding="utf-8")
+      - name: Commit integration
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add desktop-react/src/components/Transcript.tsx
+          git commit -m "Integrate provider-aware task flow icons"
+          git push origin HEAD:feat/tool-identity-icons
