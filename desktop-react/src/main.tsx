@@ -6,6 +6,7 @@ import { GlobalContextMenu } from "./components/GlobalContextMenu";
 import { I18nProvider, bootstrapDocumentLanguage } from "./i18n";
 import { bootstrapTheme } from "./theme";
 import { applyRendererScale, installNativeRendererScaleSync } from "./rendererScale";
+import "./starterCardPointerGlow";
 import "./styles.css";
 import "./shell-fix.css";
 import "./components/model-panel-overrides.css";
