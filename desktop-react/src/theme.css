@@ -142,15 +142,33 @@ html[data-loom-theme="light"] .codex-sidebar .codex-sidebar-topbar .compact-side
 }
 
 html[data-loom-theme="light"] .codex-sidebar .sidebar-new-conversation {
-  color: #282c33;
-  background: rgba(255,255,255,.64);
-  border-color: rgba(28,31,37,.09);
+  color: #343842;
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+html[data-loom-theme="light"] .codex-sidebar .sidebar-new-conversation > svg {
+  color: #7669d0;
 }
 
 html[data-loom-theme="light"] .codex-sidebar .sidebar-new-conversation:hover {
-  color: #23262c;
-  background: #fff !important;
-  border-color: rgba(105,90,216,.18) !important;
+  color: #282432;
+  background: rgba(105,90,216,.055) !important;
+  border-color: rgba(105,90,216,.075) !important;
+  box-shadow: none;
+}
+
+html[data-loom-theme="light"] .codex-sidebar .sidebar-secondary-action {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+html[data-loom-theme="light"] .codex-sidebar .sidebar-secondary-action:hover {
+  background: rgba(28,31,37,.035) !important;
+  border-color: rgba(28,31,37,.035) !important;
+  box-shadow: none;
 }
 
 html[data-loom-theme="light"] .compact-sidebar-actions button,
