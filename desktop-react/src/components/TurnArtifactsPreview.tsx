@@ -1,8 +1,7 @@
 import { ChevronRight, ExternalLink, FileCode2, FileDiff } from "lucide-react";
 import { useMemo } from "react";
-import { canInlineRenderArtifact, canRenderArtifact } from "../artifactRenderers";
+import { canRenderArtifact } from "../artifactRenderers";
 import type { TranscriptItem } from "../types/loom";
-import { ArtifactRenderSurface } from "./ArtifactRenderSurface";
 import "./turn-artifacts-preview.css";
 
 type DiffFile = {
@@ -156,7 +155,6 @@ export function TurnArtifactsPreview({ items, workspace }: { items: TranscriptIt
 
   const primary = files[0];
   const previewFile = files.find((file) => canRenderArtifact(file.path)) ?? null;
-  const inlinePreviewFile = files.find((file) => canInlineRenderArtifact(file.path)) ?? null;
   const title = files.length === 1 ? `已编辑 ${primary.name}` : `已修改 ${files.length} 个文件`;
 
   return (
@@ -202,25 +200,6 @@ export function TurnArtifactsPreview({ items, workspace }: { items: TranscriptIt
           </button>
         ))}
       </div>
-
-      {inlinePreviewFile && workspace ? (
-        <div className="turn-artifacts-inline-preview">
-          <div className="turn-artifacts-inline-preview-head">
-            <span>预览</span>
-            <code title={inlinePreviewFile.path}>{inlinePreviewFile.displayPath}</code>
-          </div>
-          <ArtifactRenderSurface
-            path={inlinePreviewFile.path}
-            workspace={workspace}
-            compact
-            onOpenSide={() => {
-              window.dispatchEvent(new CustomEvent("loom:artifact-preview-open", {
-                detail: { path: inlinePreviewFile.path, workspace },
-              }));
-            }}
-          />
-        </div>
-      ) : null}
 
       {previewFile && workspace ? (
         <button
