@@ -65,6 +65,8 @@ WINDOW_LIVENESS_TIMEOUT_MS = 300
 #: modifier stuck down makes every later click do something other than click,
 #: which from the user's side is indistinguishable from a dead mouse.
 _MODIFIER_KEYS = ("alt", "ctrl", "shift", "win", "winleft", "winright", "altleft", "altright")
+_KEY_ALIASES = {"control": "ctrl", "ctl": "ctrl", "windows": "win", "return": "enter", "esc": "escape"}
+_CONSOLE_PROCESSES = {"cmd.exe", "conhost.exe", "powershell.exe", "pwsh.exe", "windowsterminal.exe"}
 
 
 def _window_responds(hwnd: int, timeout_ms: int = WINDOW_LIVENESS_TIMEOUT_MS) -> bool | None:
@@ -312,7 +314,7 @@ class PyWinAutoWindowsOperator:
             "dpi_awareness": self.dpi_awareness,
             "observation": "active-window screenshot + window list, with a deadline-bounded UI Automation layer",
             "pointer_fallback": "Win32 virtual-desktop coordinates",
-            "keyboard_fallback": "pyautogui hotkeys + SendInput Unicode text",
+            "keyboard_fallback": "explicit key chords + console virtual keys + SendInput Unicode text",
             "secure_desktop": False,
             "elevated_window_access": "subject to Windows UIPI/integrity boundaries",
             "capture_profile": self.capture_profile,
@@ -521,10 +523,18 @@ class PyWinAutoWindowsOperator:
                             self._click_point(observation.frame, point)
                 elif action.point is not None:
                     self._click_point(observation.frame, action.point)
-                self._send_unicode_text(action.text)
+                process_name = str(
+                    observation.active_window.process_name if observation.active_window is not None else ""
+                ).strip().casefold()
+                if process_name in _CONSOLE_PROCESSES:
+                    self._send_console_text(action.text)
+                    fallback_name = "virtual-key console fallback"
+                else:
+                    self._send_unicode_text(action.text)
+                    fallback_name = "Unicode SendInput fallback"
                 return ComputerExecution(
                     ok=True,
-                    message="text input completed through Unicode SendInput fallback",
+                    message=f"text input completed through {fallback_name}",
                     action=action,
                     native=False,
                     fallback_used=True,
@@ -548,7 +558,7 @@ class PyWinAutoWindowsOperator:
                 import pyautogui
 
                 try:
-                    pyautogui.hotkey("ctrl", "a")
+                    self._send_key_chord(("ctrl", "a"))
                     pyautogui.press("delete")
                 finally:
                     self._release_modifiers()
@@ -656,13 +666,15 @@ class PyWinAutoWindowsOperator:
             # click the user makes is a Win-click or Alt-click instead of a
             # click. That reads as a dead mouse, so the release is unconditional.
             try:
-                pyautogui.hotkey(*action.keys)
+                self._send_key_chord(action.keys)
             finally:
                 self._release_modifiers()
         elif action.type is ComputerActionType.KEY:
             try:
-                for key in action.keys:
-                    pyautogui.press(key)
+                if len(action.keys) > 1:
+                    self._send_key_chord(action.keys)
+                else:
+                    pyautogui.press(self._normalize_key(action.keys[0]))
             finally:
                 self._release_modifiers()
         else:
@@ -675,6 +687,82 @@ class PyWinAutoWindowsOperator:
             native=False,
             fallback_used=fallback,
         )
+
+    @staticmethod
+    def _normalize_key(key: str) -> str:
+        normalized = str(key or "").strip().casefold()
+        return _KEY_ALIASES.get(normalized, normalized)
+
+    def _send_key_chord(self, keys: tuple[str, ...]) -> None:
+        """Inject a chord with explicit down/up ordering.
+
+        ``key`` historically accepted multiple keys but pressed each one
+        independently, turning Ctrl+A into a literal ``a`` and Shift+Home into
+        Home. Keep both model dialects (``key`` and ``hotkey``) correct.
+        """
+
+        import pyautogui
+
+        normalized = tuple(self._normalize_key(key) for key in keys if str(key or "").strip())
+        if not normalized:
+            raise ValueError("keyboard chord requires at least one key")
+        held = normalized[:-1]
+        pressed: list[str] = []
+        base_pressed = False
+        try:
+            for key in held:
+                pyautogui.keyDown(key)
+                pressed.append(key)
+            pyautogui.keyDown(normalized[-1])
+            base_pressed = True
+        finally:
+            try:
+                if base_pressed:
+                    pyautogui.keyUp(normalized[-1])
+            finally:
+                for key in reversed(pressed):
+                    try:
+                        pyautogui.keyUp(key)
+                    except Exception:
+                        continue
+
+    def _send_console_text(self, text: str) -> None:
+        """Use physical virtual-key events for console-hosted applications.
+
+        Classic conhost ignores KEYEVENTF_UNICODE/VK_PACKET input even though
+        GUI editors accept it. PyAutoGUI's write/press path produces ordinary
+        virtual-key events, which both classic cmd and Windows Terminal accept.
+        Non-ASCII characters retain the Unicode fallback rather than being
+        silently corrupted.
+        """
+
+        import pyautogui
+
+        ascii_run: list[str] = []
+
+        def flush_ascii() -> None:
+            if ascii_run:
+                pyautogui.write("".join(ascii_run), interval=0)
+                ascii_run.clear()
+
+        try:
+            for char in text:
+                if char == "\r":
+                    continue
+                if char == "\n":
+                    flush_ascii()
+                    pyautogui.press("enter")
+                elif char == "\t":
+                    flush_ascii()
+                    pyautogui.press("tab")
+                elif 0x20 <= ord(char) <= 0x7E:
+                    ascii_run.append(char)
+                else:
+                    flush_ascii()
+                    self._send_unicode_text(char)
+            flush_ascii()
+        finally:
+            self._release_modifiers()
 
     def _release_modifiers(self) -> None:
         """Force every modifier key up, whatever state the last action left.

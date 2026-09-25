@@ -426,6 +426,16 @@ def _model_observation_text(snapshot: ComputerStateSnapshot) -> str:
             "Foreground window: "
             f"id={active.window_id}; title={active.title!r}; process={active.process_name!r}."
         )
+        if str(active.process_name or "").strip().casefold() in {
+            "cmd.exe",
+            "conhost.exe",
+            "powershell.exe",
+            "pwsh.exe",
+            "windowsterminal.exe",
+        }:
+            lines.append(
+                "This is a console window. switch_window already focuses it; do not click the console body before typing, because a body click can enter QuickEdit selection mode and swallow keyboard input. If its title starts with 'Select' or '选择', send Escape once before typing."
+            )
     if observation.metadata.get("self_window"):
         # Without this the model sees a screenshot of a chat client and has to
         # infer that the chat client is Loom, that Loom is not the task, and that
@@ -439,7 +449,7 @@ def _model_observation_text(snapshot: ComputerStateSnapshot) -> str:
     background = [window for window in observation.windows if not window.foreground][:12]
     if background:
         lines.append(
-            "Other known top-level application windows. This list may include minimized or tray-hidden recoverable windows; use switch_window with the id instead of searching the desktop/taskbar when the target app is already listed:"
+            f"Other known top-level application windows (showing {len(background)} of {max(0, len(observation.windows) - 1)} non-foreground windows). This display is a token-bounded shortlist, not proof that omitted applications are closed. It may include minimized or tray-hidden recoverable windows; use switch_window with the id instead of searching the desktop/taskbar when the target app is already listed:"
         )
         for window in background:
             lines.append(
