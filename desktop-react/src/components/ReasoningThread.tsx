@@ -55,6 +55,20 @@ function ReasoningRail({ reasoning, busy, running, onChange }: ReasoningThreadPr
   const ghostStyle = {
     "--rt-ghost-t": String(levelAt(previewing ? previewIndex : displayIndex)),
   } as CSSProperties;
+  // Keep the decorative thread continuous before the first option instead of
+  // leaving the leading quarter of sparse rails as an empty grey stub. It is
+  // intentionally cooler and a touch quieter than the selectable span so the
+  // first stop still reads as the beginning of the reasoning scale.
+  const leadStyle = {
+    left: 0,
+    width: "calc(var(--rt-start) + 18px)",
+    opacity: 0.78,
+    WebkitMaskImage: "linear-gradient(90deg, transparent 1%, #000 18%, #000 100%)",
+    maskImage: "linear-gradient(90deg, transparent 1%, #000 18%, #000 100%)",
+  } as CSSProperties;
+  const leadFiberStyle = {
+    background: "var(--rt-cool)",
+  } as CSSProperties;
 
   async function commit(index: number) {
     const option = options[index];
@@ -109,6 +123,11 @@ function ReasoningRail({ reasoning, busy, running, onChange }: ReasoningThreadPr
 
       <div className="rt-rail" style={railStyle}>
         <span className="rt-track" aria-hidden="true" />
+        <span className="rt-fill rt-lead" style={leadStyle} aria-hidden="true">
+          <span className="rt-strand is-back" style={leadFiberStyle} />
+          <span className="rt-spine" style={leadFiberStyle} />
+          <span className="rt-strand is-front" style={leadFiberStyle} />
+        </span>
         <span className="rt-fill" aria-hidden="true">
           <span className="rt-strand is-back" />
           <span className="rt-spine" />
