@@ -412,7 +412,7 @@ export default function App() {
   const thread = loom.active?.thread;
   const activeThreadId = thread?.id ?? "";
   const selectedThreadId = loom.openingThreadId || activeThreadId;
-  const threadSwitching = Boolean(loom.openingThreadId && loom.openingThreadId !== activeThreadId);
+  const threadSwitching = Boolean(activeThreadId && loom.openingThreadId && loom.openingThreadId !== activeThreadId);
   const runtimeTurnRunning = thread?.status === "running" || thread?.status === "waiting_approval";
   const running = loom.turnActive || runtimeTurnRunning;
   const archived = Boolean(thread?.archived);
