@@ -70,6 +70,9 @@ def test_profile_insights_uses_durable_model_usage_and_rpc(tmp_path: Path) -> No
     service, runtime, workspace = _build_service(tmp_path)
     try:
         thread_id = service.thread_start({"workspace": str(workspace)})["thread"]["id"]
+        # A custom title prevents the detached auto-title request from competing
+        # with the two scripted model responses below.
+        service.thread_rename({"threadId": thread_id, "title": "Usage profile test"})
 
         service.turn_start({"threadId": thread_id, "input": "first"})
         _wait_until(lambda: thread_id not in service.runtime_status()["activeThreadIds"])
