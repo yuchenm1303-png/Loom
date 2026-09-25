@@ -34,6 +34,7 @@ import { artifactName, artifactRenderer, canInlineRenderArtifact } from "../arti
 import { TURN_SETTLE_HOLD_MS } from "../presentationTiming";
 import type { TranscriptItem } from "../types/loom";
 import { ArtifactRenderSurface } from "./ArtifactRenderSurface";
+import { HomeTokenActivity } from "./HomeTokenActivity";
 import { MarkdownMessage } from "./MarkdownMessage";
 import { DecisionPromptCard, DecisionPromptRecoveryCard, parseDecisionMessage } from "./DecisionPromptCard";
 import { StreamingPresentation } from "./StreamingPresentation";
@@ -1468,6 +1469,8 @@ function EmptyState({ disabled, onPrompt }: { disabled?: boolean; onPrompt?(prom
       <div className="empty-kicker"><Sparkles size={12} /> Loom workspace</div>
       <h1>What are we working on?</h1>
       <p>Inspect a codebase, make a change, debug a failure, or hand Loom a multi-step task.</p>
+
+      <HomeTokenActivity />
 
       <div className="starter-grid">
         {starterPrompts.map(({ icon: Icon, eyebrow, title, copy, prompt }) => (

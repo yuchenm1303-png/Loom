@@ -269,3 +269,31 @@ html[data-loom-reduced-motion="true"] .starter-icon,
 html[data-loom-reduced-motion="true"] .starter-icon svg,
 html[data-loom-reduced-motion="true"] .starter-content,
 html[data-loom-reduced-motion="true"] .starter-arrow { transition: none !important; }
+
+
+/* Keep the usage heatmap visually attached to the starter actions without
+   turning the empty state into a tall dashboard. */
+.empty-state > .home-token-activity + .starter-grid {
+  margin-top: 16px;
+}
+
+@media (max-height: 860px) and (min-width: 921px) {
+  .empty-state {
+    padding-top: 28px;
+    padding-bottom: 28px;
+  }
+
+  .empty-hero {
+    height: 76px;
+    margin-bottom: 4px;
+    transform: scale(.88);
+  }
+
+  .empty-state > .home-token-activity {
+    margin-top: 15px;
+  }
+
+  .empty-state > .home-token-activity + .starter-grid {
+    margin-top: 12px;
+  }
+}
