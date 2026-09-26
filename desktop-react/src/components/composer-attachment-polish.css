@@ -5,7 +5,9 @@
 
 .composer-attachments {
   gap: 7px;
-  padding: 9px 11px 2px;
+  /* The composer already owns the horizontal inset. A second attachment-only
+     inset made previews sit visibly off-axis from the prompt and toolbar. */
+  padding: 7px 0 3px;
   align-items: center;
 }
 
