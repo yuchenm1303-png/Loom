@@ -61,3 +61,7 @@
 .composer .sticker-chip > svg:first-child { width: 16px; height: 16px; }
 .composer-hint { min-height: 16px; margin-top: 8px; color: #8b8d98; }
 .composer .send-button:not(:disabled):not(.stop) { background: #d8d1f0; color: #24212d; box-shadow: none; }
+
+/* The inline Enter keycap duplicates the shortcut hint below the composer and
+   competes with the primary send action. Keep the footer focused on Send. */
+.composer .composer-keycap { display: none !important; }
