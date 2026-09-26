@@ -45,3 +45,73 @@ body,
 .composer-wrap {
   min-width: 0;
 }
+
+/* Context budget popover ---------------------------------------------------
+ * The old unfold effect animated a ::before surface from the tiny meter pill
+ * into the full panel by interpolating `inset` and a 999px border radius. On
+ * light theme / fractional renderer scaling that intermediate surface can be
+ * rasterized as a huge white capsule over the panel. Keep the panel geometry
+ * fixed and animate the complete surface instead; this also prevents faded
+ * content and oversized rounded masks during the first frames of opening. */
+.context-meter-panel {
+  width: min(296px, calc(100vw - 32px)) !important;
+  max-height: min(520px, calc(100vh - 88px));
+  overflow-y: auto;
+  overflow-x: hidden;
+  border: 1px solid var(--border, rgba(255, 255, 255, .09)) !important;
+  border-radius: 14px !important;
+  background: var(--loom-surface-raised, #191b20) !important;
+  box-shadow: var(--loom-shadow, 0 18px 48px rgba(0, 0, 0, .24)) !important;
+  opacity: 1;
+  transform: translate3d(0, 0, 0) scale(1);
+  transform-origin: top right;
+  transition:
+    opacity 160ms ease,
+    transform 190ms cubic-bezier(.2, .78, .2, 1) !important;
+}
+
+.context-meter-panel::before {
+  display: none !important;
+}
+
+.context-meter-panel[data-motion-phase="entering"] {
+  opacity: 0;
+  transform: translate3d(0, -5px, 0) scale(.985);
+}
+
+.context-meter-panel[data-motion-phase="entered"] {
+  opacity: 1;
+  transform: translate3d(0, 0, 0) scale(1);
+}
+
+.context-meter-panel[data-motion-phase="exiting"] {
+  pointer-events: none;
+  opacity: 0;
+  transform: translate3d(0, -3px, 0) scale(.99);
+}
+
+.context-meter-panel > :not(style),
+.context-meter-panel[data-motion-phase="entering"] > :not(style),
+.context-meter-panel[data-motion-phase="exiting"] > :not(style) {
+  opacity: 1 !important;
+  transform: none !important;
+  transition: none !important;
+}
+
+html[data-loom-theme="light"] .context-meter-panel {
+  background: linear-gradient(180deg, #fff, #f9fafc) !important;
+  box-shadow:
+    0 14px 38px rgba(27, 31, 40, .12),
+    0 3px 10px rgba(27, 31, 40, .055),
+    inset 0 1px rgba(255, 255, 255, .98) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .context-meter-panel {
+    transition: none !important;
+  }
+}
+
+html[data-loom-reduced-motion="true"] .context-meter-panel {
+  transition: none !important;
+}
