@@ -267,32 +267,46 @@
 /* One deliberate light pass per executing row. The band is wider and softer
    than the old narrow white streak, with a short luminous core and a long
    violet shoulder. It pauses between passes so the row reads as "alive", not
-   as a loading skeleton. This stays on one transform-only pseudo-element. */
-.task-flow-row.is-executing::before {
-  content: "";
+   as a loading skeleton. A separate opacity wrapper lets the moving band
+   freeze and fade on completion without snapping off or restarting. */
+.task-flow-row > .task-flow-sheen {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 240ms ease;
+}
+
+.task-flow-row.is-executing > .task-flow-sheen { opacity: 1; }
+
+.task-flow-sheen > i {
   position: absolute;
   z-index: 0;
   top: -1px;
   bottom: -1px;
-  left: -26%;
-  width: 22%;
+  left: -32%;
+  width: 30%;
   border-radius: inherit;
   pointer-events: none;
   background: linear-gradient(
     102deg,
     transparent 0%,
-    rgba(var(--loom-live-accent), .008) 18%,
-    rgba(var(--loom-live-accent), .034) 35%,
-    rgba(var(--loom-live-accent-strong), .085) 47%,
-    rgba(var(--loom-live-core), .066) 53%,
-    rgba(var(--loom-live-accent-strong), .052) 60%,
-    rgba(var(--loom-live-accent), .016) 73%,
+    rgba(var(--loom-live-accent), .025) 18%,
+    rgba(var(--loom-live-accent), .09) 35%,
+    rgba(var(--loom-live-accent-strong), .20) 47%,
+    rgba(var(--loom-live-core), .22) 53%,
+    rgba(var(--loom-live-accent-strong), .12) 60%,
+    rgba(var(--loom-live-accent), .035) 73%,
     transparent 100%
   );
   transform: translate3d(0,0,0) skewX(-9deg);
-  will-change: transform, opacity;
-  animation: loom-task-running-sheen 5.6s cubic-bezier(.31,0,.18,1) 1.25s infinite;
+  animation: loom-task-running-sheen 4.8s linear 480ms infinite both paused;
 }
+
+.task-flow-row.is-executing .task-flow-sheen > i { animation-play-state: running; }
 
 .task-flow-row.is-resting {
   color: #868e99;
@@ -382,7 +396,7 @@
 }
 
 .turn-process.is-live .task-flow-group.is-running .task-flow-row {
-  animation: loom-capsule-unroll 520ms var(--loom-motion-unroll) calc(var(--capsule-lead) + 40ms) backwards;
+  animation: loom-capsule-unroll 560ms cubic-bezier(.22,.8,.24,1) calc(var(--capsule-lead) + 30ms) backwards;
 }
 
 .turn-process.is-live .task-flow-group.is-running .task-flow-row-icon {
@@ -393,13 +407,13 @@
 .turn-process.is-live .task-flow-group.is-running .task-flow-row-main {
   /* Text only fades. Sliding the glyph surface itself is what caused the
      intermittent low-resolution look on Windows/HiDPI renderers. */
-  animation: loom-task-copy-in 260ms cubic-bezier(.2,.82,.2,1) calc(var(--capsule-lead) + 120ms) backwards;
+  animation: loom-task-copy-in 240ms cubic-bezier(.2,.82,.2,1) calc(var(--capsule-lead) + 170ms) backwards;
 }
 
 .turn-process.is-live .task-flow-group.is-running .task-flow-status {
   position: relative;
   /* The status dot lands as the unroll reaches the capsule's far end. */
-  animation: loom-task-status-in 420ms var(--loom-spring-pop) calc(var(--capsule-lead) + 230ms) backwards;
+  animation: loom-task-status-in 320ms var(--loom-spring-pop) calc(var(--capsule-lead) + 330ms) backwards;
 }
 
 /* Completion: the dot settles with a spring tick and one expanding ring. The
@@ -682,16 +696,16 @@ html[data-loom-theme="light"] .task-flow-row.is-executing {
     inset 0 1px rgba(255,255,255,.94);
 }
 
-html[data-loom-theme="light"] .task-flow-row.is-executing::before {
+html[data-loom-theme="light"] .task-flow-sheen > i {
   background: linear-gradient(
     102deg,
     transparent 0%,
-    rgba(var(--loom-live-accent), .004) 18%,
-    rgba(var(--loom-live-accent), .020) 35%,
-    rgba(var(--loom-live-accent), .048) 47%,
-    rgba(255,255,255,.34) 53%,
-    rgba(var(--loom-live-accent), .030) 61%,
-    rgba(var(--loom-live-accent), .009) 73%,
+    rgba(var(--loom-live-accent), .018) 18%,
+    rgba(var(--loom-live-accent), .065) 35%,
+    rgba(var(--loom-live-accent), .14) 47%,
+    rgba(255,255,255,.65) 53%,
+    rgba(var(--loom-live-accent), .09) 61%,
+    rgba(var(--loom-live-accent), .025) 73%,
     transparent 100%
   );
 }
@@ -770,10 +784,10 @@ html[data-loom-theme="light"] .conversation-stage.is-running::after {
   0% {
     clip-path: inset(50% calc(100% - (var(--capsule-bead-start, 0px) + var(--capsule-bead-end, 32px)) / 2) 50% calc((var(--capsule-bead-start, 0px) + var(--capsule-bead-end, 32px)) / 2) round 999px);
   }
-  24% {
+  18% {
     clip-path: inset(0 calc(100% - var(--capsule-bead-end, 32px)) 0 var(--capsule-bead-start, 0px) round 999px);
   }
-  86% {
+  82% {
     clip-path: inset(0 0 0 0 round 999px);
   }
   100% {
@@ -793,8 +807,8 @@ html[data-loom-theme="light"] .conversation-stage.is-running::after {
 @keyframes loom-task-icon-spring {
   0% {
     opacity: 0;
-    scale: .38;
-    rotate: -18deg;
+    scale: .54;
+    rotate: -10deg;
   }
   16% {
     opacity: 1;
@@ -840,19 +854,19 @@ html[data-loom-theme="light"] .conversation-stage.is-running::after {
 }
 
 @keyframes loom-task-running-sheen {
-  0%, 24% {
+  0% {
     opacity: 0;
     transform: translate3d(0,0,0) skewX(-9deg);
   }
-  31% { opacity: .12; }
-  42% { opacity: .56; }
-  60% {
-    opacity: .30;
-    transform: translate3d(515%,0,0) skewX(-9deg);
+  8% { opacity: .7; }
+  24% { opacity: .9; }
+  44% {
+    opacity: .6;
+    transform: translate3d(450%,0,0) skewX(-9deg);
   }
-  69%, 100% {
+  48%, 100% {
     opacity: 0;
-    transform: translate3d(515%,0,0) skewX(-9deg);
+    transform: translate3d(450%,0,0) skewX(-9deg);
   }
 }
 
@@ -917,7 +931,7 @@ html[data-loom-theme="light"] .conversation-stage.is-running::after {
   .turn-process.is-live .task-flow-status,
   .turn-process.is-live .task-flow-status::after,
   .turn-process.is-live .task-flow-status-dot,
-  .task-flow-row.is-executing::before,
+  .task-flow-sheen > i,
   .task-flow-live-detail-glow,
   .task-flow-group.is-running .task-flow-group-icon::before,
   .task-flow-group.is-running .task-flow-group-icon::after,
@@ -944,7 +958,7 @@ html[data-loom-theme="light"] .conversation-stage.is-running::after {
 :root[data-loom-reduced-motion="true"] .turn-process.is-live .task-flow-status,
 :root[data-loom-reduced-motion="true"] .turn-process.is-live .task-flow-status::after,
 :root[data-loom-reduced-motion="true"] .turn-process.is-live .task-flow-status-dot,
-:root[data-loom-reduced-motion="true"] .task-flow-row.is-executing::before,
+:root[data-loom-reduced-motion="true"] .task-flow-sheen > i,
 :root[data-loom-reduced-motion="true"] .task-flow-live-detail-glow,
 :root[data-loom-reduced-motion="true"] .task-flow-group.is-running .task-flow-group-icon::before,
 :root[data-loom-reduced-motion="true"] .task-flow-group.is-running .task-flow-group-icon::after,
@@ -952,4 +966,13 @@ html[data-loom-theme="light"] .conversation-stage.is-running::after {
 :root[data-loom-reduced-motion="true"] .conversation-stage > .run-progress-frame.top .run-progress-live-dot,
 :root[data-loom-reduced-motion="true"] .conversation-stage > .run-progress-frame.top .run-progress-phase {
   animation: none !important;
+}
+
+/* Reduced motion keeps the static executing tint and status indicator. */
+@media (prefers-reduced-motion: reduce) {
+  .task-flow-row > .task-flow-sheen { display: none; transition: none; }
+}
+:root[data-loom-reduced-motion="true"] .task-flow-row > .task-flow-sheen {
+  display: none;
+  transition: none;
 }

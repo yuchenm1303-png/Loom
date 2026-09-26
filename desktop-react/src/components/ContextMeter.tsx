@@ -1,5 +1,5 @@
 import { Layers, Loader2, Wrench } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useI18n } from "../i18n";
 import { useMotionPresence } from "../motion/useMotionPresence";
 import type { ContextCompactionProgress, ContextReport } from "../types/loom";
@@ -32,8 +32,18 @@ export function ContextMeter({ report, compacting, progress, busy, onCompact }: 
   const { language } = useI18n();
   const zh = language === "zh-CN";
   const [open, setOpen] = useState(false);
-  const panelPresence = useMotionPresence(open, 260);
+  const panelPresence = useMotionPresence(open, 300);
   const rootRef = useRef<HTMLDivElement | null>(null);
+
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    const measure = () => root.style.setProperty("--context-chip-width", `${root.offsetWidth}px`);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(root);
+    return () => observer.disconnect();
+  }, [Boolean(report)]);
 
   useEffect(() => {
     if (!open) return;

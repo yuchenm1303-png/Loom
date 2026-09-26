@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "motion-fixture",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["desktop-react/node_modules/vite/bin/vite.js", "desktop-react", "--port", "5199", "--strictPort", "--host", "127.0.0.1"],
+      "port": 5199,
+      "url": "http://127.0.0.1:5199"
+    }
+  ]
+}

@@ -529,6 +529,7 @@ const ActivityRow = memo(function ActivityRow({ item, open, onToggle }: Activity
         disabled={!expandable}
         title={expandable ? (open ? "Collapse details" : "Expand details") : undefined}
       >
+        <span className="task-flow-sheen" aria-hidden="true"><i /></span>
         <span className="task-flow-chevron" aria-hidden="true"><ChevronRight size={12} /></span>
         <span className="task-flow-row-icon" title={identity.label}><ActivityGlyph item={item} /></span>
         <span className="task-flow-row-main">
