@@ -1889,15 +1889,10 @@ html[data-loom-theme="light"] .language-settings-options button {
 
 html[data-loom-theme="light"] .language-settings-options button:hover {
   color: #343a42;
-  background: rgba(255,255,255,.72);
 }
 
 html[data-loom-theme="light"] .language-settings-options button.active {
   color: #5144ad;
-  background: #ffffff;
-  box-shadow:
-    0 1px 5px rgba(27,31,40,.09),
-    inset 0 0 0 1px rgba(105,90,216,.13);
 }
 
 /* -------------------------------------------------------------------------- */

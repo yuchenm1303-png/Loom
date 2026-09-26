@@ -1,42 +1,40 @@
-.settings-connectors-nav-host {
-  display: contents;
+.settings-connectors-page {
+  display: grid;
+  gap: 24px;
+  min-width: 0;
 }
 
-.settings-connectors-content-host {
-  display: none;
-}
-
-.settings-shell.settings-connectors-mode .settings-main-scroll > .settings-content {
-  display: none;
-}
-
-.settings-shell.settings-connectors-mode .settings-connectors-content-host {
-  width: min(1040px, calc(100% - 72px));
-  margin: 0 auto;
-  padding: 42px 0 72px;
-  display: block;
-}
-
-.settings-connectors-content-host .mature-preference-control .mature-input {
+.settings-connectors-page .mature-preference-control .mature-input {
   min-width: 240px;
 }
 
-.settings-connectors-content-host .settings-callout > button {
+.settings-connectors-page .settings-callout > button {
   flex: 0 0 auto;
   margin-left: auto;
 }
 
 @media (max-width: 900px) {
-  .settings-shell.settings-connectors-mode .settings-connectors-content-host {
-    width: min(100% - 36px, 1040px);
-  }
-
-  .settings-connectors-content-host .mature-preference-control {
+  .settings-connectors-page .mature-preference-control {
     width: 100%;
   }
 
-  .settings-connectors-content-host .mature-preference-control .mature-input {
+  .settings-connectors-page .mature-preference-control .mature-input {
     min-width: 0;
     width: 100%;
   }
+}
+
+.settings-connectors-loading {
+  min-height: 520px;
+  display: grid;
+  align-content: start;
+  gap: 24px;
+  color: var(--muted);
+}
+
+.settings-connectors-loading > div {
+  height: 120px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--panel-soft);
 }

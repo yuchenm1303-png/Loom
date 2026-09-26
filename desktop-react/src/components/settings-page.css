@@ -261,6 +261,7 @@
 
 .settings-main-scroll {
   height: 100%;
+  scrollbar-gutter: stable;
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-width: thin;

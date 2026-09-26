@@ -10,6 +10,7 @@ export type NativeSettingsRoute =
   | "websearch"
   | "terminal"
   | "plugins"
+  | "connectors"
   | "mcp"
   | "skills"
   | "permissions"
@@ -17,7 +18,7 @@ export type NativeSettingsRoute =
   | "privacy"
   | "developer";
 
-export type SettingsRoute = NativeSettingsRoute | "memory" | "connectors";
+export type SettingsRoute = NativeSettingsRoute | "memory";
 
 let currentRoute: SettingsRoute = "general";
 const listeners = new Set<() => void>();

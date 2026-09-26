@@ -382,8 +382,7 @@ button.general-default-card:hover .general-default-card-head > svg:last-child {
   box-shadow: none;
 }
 
-.general-scale-control button.active,
-.language-settings-options button.active {
+.general-scale-control button.active {
   color: #e6e3ff;
   background: rgba(155, 140, 255, 0.10);
   box-shadow: none;

@@ -17,6 +17,7 @@ import {
   Globe2,
   Info,
   Keyboard,
+  Link2,
   Monitor,
   Moon,
   Palette,
@@ -52,6 +53,9 @@ import type {
 import { KeyboardShortcutsSettings } from "./KeyboardShortcutsSettings";
 import { ModelsSettingsPanel } from "./ModelsSettingsPanel";
 import { SettingsWebSearchPanel } from "./SettingsWebSearchPanel";
+import { ConnectorsSettings } from "./ConnectorsSettings";
+import { ConnectorLifecycleStatus } from "./ConnectorLifecycleStatus";
+import "./settings-connectors.css";
 import { setSettingsRoute, useSettingsRoute } from "./settingsNavigation";
 import "./settings-page.css";
 import "./settings-general-polish.css";
@@ -69,6 +73,7 @@ type PageKey =
   | "websearch"
   | "terminal"
   | "plugins"
+  | "connectors"
   | "mcp"
   | "skills"
   | "permissions"
@@ -185,7 +190,7 @@ const SETTINGS_UPDATE_PREFIX = "__setting__:";
 
 const PAGE_ORDER: PageKey[] = [
   "general", "appearance", "models", "capabilities", "computer", "browser", "websearch",
-  "terminal", "plugins", "mcp", "skills", "permissions", "shortcuts", "privacy", "developer",
+  "terminal", "plugins", "connectors", "mcp", "skills", "permissions", "shortcuts", "privacy", "developer",
 ];
 
 const SETTINGS_SECTION_EXIT_MS = 118;
@@ -315,6 +320,7 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
       { key: "websearch", label: "Web Search", icon: Search },
       { key: "terminal", label: "Terminal", icon: Terminal },
       { key: "plugins", label: "Plugins", icon: Plug },
+      { key: "connectors", label: "Connectors", icon: Link2 },
       { key: "mcp", label: "MCP", icon: Blocks },
       { key: "skills", label: "Skills", icon: Sparkles },
     ],
@@ -606,7 +612,7 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
   }, []);
 
   useEffect(() => {
-    if (activeRoute !== "memory" && activeRoute !== "connectors") return;
+    if (activeRoute !== "memory") return;
     navigationTransitionRef.current += 1;
     if (navigationTimerRef.current !== null) {
       window.clearTimeout(navigationTimerRef.current);
@@ -1426,6 +1432,7 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
     if (page === "websearch") return renderWebSearch();
     if (page === "terminal") return renderTerminal();
     if (page === "plugins") return renderPlugins();
+    if (page === "connectors") return <div className="settings-connectors-page"><ConnectorsSettings running={running} /><ConnectorLifecycleStatus /></div>;
     if (page === "mcp") return renderMcp();
     if (page === "skills") return renderSkills();
     if (page === "permissions") return renderPermissions();

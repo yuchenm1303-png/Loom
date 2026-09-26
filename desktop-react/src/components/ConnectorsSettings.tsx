@@ -71,6 +71,7 @@ export function ConnectorsSettings({ running }: ConnectorsSettingsProps) {
   const { language } = useI18n();
   const isChinese = language === "zh-CN";
   const [connectors, setConnectors] = useState<ConnectorStatus[]>([]);
+  const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -104,6 +105,8 @@ export function ConnectorsSettings({ running }: ConnectorsSettingsProps) {
       setConnectors(Array.isArray(result.connectors) ? result.connectors : []);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setLoaded(true);
     }
   };
 
@@ -253,6 +256,19 @@ export function ConnectorsSettings({ running }: ConnectorsSettingsProps) {
     : github.webOAuthSource === "release-or-env"
       ? (isChinese ? "正式构建 / 环境配置" : "release / environment config")
       : (isChinese ? "未配置" : "not configured");
+
+  if (!loaded || (error && connectors.length === 0)) {
+    return <>
+      <div className="settings-page-heading"><div>
+        <span className="settings-eyebrow">External services</span><h1>Connectors</h1>
+        <p>{isChinese ? "读取连接器授权状态" : "Reading connector authorization status"}</p>
+      </div></div>
+      <div className="settings-connectors-loading" role="status" aria-busy={!loaded}>
+        {error ? <><p>{error}</p><button type="button" className="mature-action-button" onClick={() => { setLoaded(false); void load(); }}>{isChinese ? "重试" : "Retry"}</button></>
+          : <><p>{isChinese ? "正在读取连接状态…" : "Loading connection status…"}</p><div /><div /><div /></>}
+      </div>
+    </>;
+  }
 
   return (
     <>

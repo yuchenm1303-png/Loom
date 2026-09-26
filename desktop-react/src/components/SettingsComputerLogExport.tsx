@@ -1,6 +1,5 @@
 import { Download, ExternalLink } from "lucide-react";
 import { useEffect, useState } from "react";
-import { SettingsConnectorsBridge } from "./SettingsConnectorsBridge";
 import { useSettingsRoute } from "./settingsNavigation";
 import "./SettingsComputerLogExport.css";
 
@@ -99,7 +98,6 @@ export function SettingsComputerLogExport() {
 
   return (
     <>
-      <SettingsConnectorsBridge />
       {logExport}
     </>
   );
