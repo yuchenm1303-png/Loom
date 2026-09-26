@@ -99,6 +99,7 @@ type Formatters = {
   compact(value: number): string;
   integer(value: number): string;
   shortDate(value: string): string;
+  fullDate(value: string): string;
   longDate(value: string): string;
 };
 
@@ -107,12 +108,14 @@ function useFormatters(zh: boolean): Formatters {
     const locale = zh ? "zh-CN" : "en-US";
     const integer = new Intl.NumberFormat(locale, { maximumFractionDigits: 0 });
     const short = new Intl.DateTimeFormat(locale, { month: "short", day: "numeric" });
+    const full = new Intl.DateTimeFormat(locale, { year: "numeric", month: "long", day: "numeric" });
     const long = new Intl.DateTimeFormat(locale, { year: "numeric", month: "long", day: "numeric", weekday: "short" });
     return {
       zh,
       compact: (value) => formatCompact(value, locale),
       integer: (value) => integer.format(Math.max(0, Math.round(value || 0))),
       shortDate: (value) => short.format(parseLocalDate(value)),
+      fullDate: (value) => full.format(parseLocalDate(value)),
       longDate: (value) => long.format(parseLocalDate(value)),
     };
   }, [zh]);
@@ -166,7 +169,7 @@ function ProfileHero({ account, data, format }: { account: LoomAccountSnapshot; 
         <dl className="profile-tenure">
           <div>
             <dt>{zh ? "开始使用" : "Started"}</dt>
-            <dd>{format.longDate(data.firstActivityDate).replace(/\s*(周|星期).*$|,\s*\w+$/, "").replace(/^\w+,\s*/, "")}</dd>
+            <dd>{format.fullDate(data.firstActivityDate)}</dd>
           </div>
           {lastLabel ? (
             <div>
@@ -261,7 +264,7 @@ const TokenHeatmap = memo(function TokenHeatmap({ data, format }: { data: Profil
   const markers = useMemo(() => monthMarkers(weeks), [weeks]);
   const levelFor = useMemo(() => heatScale(data.days.map((day) => day.totalTokens)), [data]);
   const monthName = useMemo(() => new Intl.DateTimeFormat(zh ? "zh-CN" : "en-US", { month: "short" }), [zh]);
-  const activeDays = data.days.filter((day) => day.totalTokens > 0 || day.turns > 0).length;
+  const activeDays = data.days.filter((day) => day.totalTokens > 0 || day.turns > 0 || day.toolCalls > 0).length;
   const weekdayLabels = zh ? ["一", "", "三", "", "五", "", ""] : ["Mon", "", "Wed", "", "Fri", "", ""];
   const columns = { "--profile-heat-weeks": Math.max(1, weeks.length) } as CSSProperties;
 
@@ -291,7 +294,7 @@ const TokenHeatmap = memo(function TokenHeatmap({ data, format }: { data: Profil
     : `${compact(data.range.totalTokens)} tokens across ${activeDays} active days in the last 12 months`;
 
   return (
-    <section ref={cardRef} className="profile-heatmap-card" onMouseLeave={() => setTooltip(null)}>
+    <section ref={cardRef} className="profile-heatmap-card">
       <div className="profile-section-heading">
         <div>
           <span className="profile-section-icon"><CalendarCheck size={15} /></span>
@@ -324,17 +327,16 @@ const TokenHeatmap = memo(function TokenHeatmap({ data, format }: { data: Profil
             className="profile-heatmap-grid"
             aria-hidden="true"
             onMouseOver={(event) => showTooltip(event.target)}
+            onMouseLeave={() => setTooltip(null)}
           >
             {weeks.flatMap((week, column) => week.map((cell, row) => {
               if (!cell.day) return <span key={cell.date} className="profile-heat-cell is-padding" />;
               const level = levelFor(cell.day.totalTokens);
-              const isToday = cell.date === today;
-              const isActive = tooltip?.cell.date === cell.date;
               return (
                 <span
                   key={cell.date}
                   data-heat-index={`${column}:${row}`}
-                  className={`profile-heat-cell level-${level}${isToday ? " is-today" : ""}${isActive ? " is-active" : ""}`}
+                  className={`profile-heat-cell level-${level}${cell.date === today ? " is-today" : ""}`}
                 />
               );
             }))}
@@ -344,7 +346,7 @@ const TokenHeatmap = memo(function TokenHeatmap({ data, format }: { data: Profil
 
       <div className="profile-heatmap-footer">
         <span>
-          {`${format.shortDate(data.range.startDate)} — ${zh ? "今天" : "today"}`}
+          {`${format.fullDate(data.range.startDate)} — ${zh ? "今天" : "today"}`}
           {data.peakDay ? (
             <>
               <i aria-hidden="true" />
