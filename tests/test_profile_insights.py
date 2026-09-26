@@ -78,6 +78,12 @@ def test_profile_insights_uses_durable_model_usage_and_rpc(tmp_path: Path) -> No
         # A custom title prevents the detached auto-title request from competing
         # with the two scripted model responses below.
         service.thread_rename({"threadId": thread_id, "title": "Usage profile test"})
+        # The desktop service stamps each thread's model when it is started
+        # (app_server_reasoning); this base service does not, so record it the
+        # same way. Calls are credited to the model the thread recorded.
+        session = service.store.load(thread_id)
+        session.model = "test-model"
+        service.store.save(session)
 
         service.turn_start({"threadId": thread_id, "input": "first"})
         _wait_until(lambda: thread_id not in service.runtime_status()["activeThreadIds"])
@@ -149,7 +155,7 @@ class _SyntheticHistory:
         self.store.create(AgentSession(
             session_id=session_id,
             profile_id="agent.fast",
-            system_prompt="",
+            system_prompt="Synthetic profile history.",
             workspace_dir=str(self.workspace),
             created_at=stamp,
             updated_at=stamp,
