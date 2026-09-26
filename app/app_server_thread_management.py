@@ -388,6 +388,38 @@ class ThreadLibraryStore:
             shutil.rmtree(directory)
 
 
+# Turn timing for the usage profile. A turn is measured from TURN_STARTED to
+# the moment its work stopped, minus time spent waiting on the user.
+_PROFILE_TURN_WORK_KINDS = frozenset({
+    AgentEventKind.MODEL_REQUESTED,
+    AgentEventKind.MODEL_RESPONSE,
+    AgentEventKind.MODEL_RESPONSE_REJECTED,
+    AgentEventKind.TOOL_REQUESTED,
+    AgentEventKind.TOOL_APPROVAL_REQUIRED,
+    AgentEventKind.TOOL_APPROVED,
+    AgentEventKind.TOOL_DENIED,
+    AgentEventKind.TOOL_STARTED,
+    AgentEventKind.TOOL_COMPLETED,
+    AgentEventKind.TOOL_FAILED,
+    AgentEventKind.PROCESS_STARTED,
+    AgentEventKind.PROCESS_OUTPUT,
+    AgentEventKind.PROCESS_EXITED,
+    AgentEventKind.TURN_DIFF_UPDATED,
+})
+# The live turn loop records these itself at the moment work ends.
+_PROFILE_TURN_SELF_ENDING_KINDS = frozenset({
+    AgentEventKind.TURN_COMPLETED,
+    AgentEventKind.TURN_FAILED,
+    AgentEventKind.LIMIT_REACHED,
+})
+# These can land long after the loop went idle or died: a cancel issued days
+# later, or restart recovery. Their timestamp is not when the work stopped.
+_PROFILE_TURN_EXTERNAL_STOP_KINDS = frozenset({
+    AgentEventKind.TURN_CANCELLED,
+    AgentEventKind.TURN_INTERRUPTED,
+})
+
+
 class ManagedStreamingLoomAppServerService(StreamingLoomAppServerService):
     """Streaming App Server plus durable conversation-library operations."""
 
@@ -490,8 +522,13 @@ class ManagedStreamingLoomAppServerService(StreamingLoomAppServerService):
         tokens_by_day: dict[Any, int] = {}
         activity_days: set[Any] = set()
         seen_event_ids: set[str] = set()
-        turn_started_at: dict[tuple[str, str], datetime] = {}
+        open_turns: dict[tuple[str, str], dict[str, Any]] = {}
         longest_turn_seconds = 0.0
+        longest_turn_date = None
+        # Older sessions never stored a model and model responses do not carry
+        # one, so their calls cannot be attributed. Crediting them to today's
+        # default model would rewrite history; they are counted apart instead.
+        unrecorded_model = {"calls": 0, "tokens": 0}
 
         sessions = self._list_session_objects()
         totals["sessions"] = len(sessions)
@@ -506,8 +543,7 @@ class ManagedStreamingLoomAppServerService(StreamingLoomAppServerService):
             session_model = str(
                 getattr(session, "model", "")
                 or getattr(session, "model_selection", "")
-                or self.model
-                or "Unknown model"
+                or ""
             ).strip()
             reasoning_value = str(getattr(session, "reasoning_value", "") or "Default").strip()
 
@@ -527,12 +563,37 @@ class ManagedStreamingLoomAppServerService(StreamingLoomAppServerService):
                 data = event.data if isinstance(event.data, dict) else {}
                 turn_id = str(getattr(event, "turn_id", "") or "")
 
+                timing = open_turns.get((session_id, turn_id)) if turn_id else None
+                if timing is not None and event.kind in _PROFILE_TURN_WORK_KINDS:
+                    timing["last"] = max(timing["last"], stamp)
+                    # Time spent waiting on an approval prompt is the user's,
+                    # not the turn's: it starts when the first prompt opens and
+                    # ends when the last open one is answered.
+                    if event.kind is AgentEventKind.TOOL_APPROVAL_REQUIRED:
+                        if timing["pending"] == 0:
+                            timing["wait_start"] = stamp
+                        timing["pending"] += 1
+                    elif (
+                        event.kind in {AgentEventKind.TOOL_APPROVED, AgentEventKind.TOOL_DENIED}
+                        and timing["pending"] > 0
+                    ):
+                        timing["pending"] -= 1
+                        if timing["pending"] == 0 and timing["wait_start"] is not None:
+                            timing["waited"] += max(0.0, (stamp - timing["wait_start"]).total_seconds())
+                            timing["wait_start"] = None
+
                 if event.kind is AgentEventKind.TURN_STARTED:
                     totals["turns"] += 1
                     activity_days.add(event_day)
                     hour_turns[stamp.hour] = hour_turns.get(stamp.hour, 0) + 1
                     if turn_id:
-                        turn_started_at[(session_id, turn_id)] = stamp
+                        open_turns[(session_id, turn_id)] = {
+                            "start": stamp,
+                            "last": stamp,
+                            "pending": 0,
+                            "wait_start": None,
+                            "waited": 0.0,
+                        }
                     if in_range:
                         day_rows[day_key]["turns"] += 1
                         day_sessions[day_key].add(session_id)
@@ -559,9 +620,12 @@ class ManagedStreamingLoomAppServerService(StreamingLoomAppServerService):
                         data.get("model")
                         or data.get("model_name")
                         or session_model
-                        or "Unknown model"
                     ).strip()
-                    model_bucket = models.setdefault(event_model, {"calls": 0, "tokens": 0})
+                    model_bucket = (
+                        models.setdefault(event_model, {"calls": 0, "tokens": 0})
+                        if event_model
+                        else unrecorded_model
+                    )
                     model_bucket["calls"] += 1
                     model_bucket["tokens"] += total_tokens
 
@@ -591,27 +655,32 @@ class ManagedStreamingLoomAppServerService(StreamingLoomAppServerService):
                         day_sessions[day_key].add(session_id)
                     continue
 
-                if event.kind in {
-                    AgentEventKind.TURN_COMPLETED,
-                    AgentEventKind.TURN_FAILED,
-                    AgentEventKind.TURN_CANCELLED,
-                    AgentEventKind.TURN_INTERRUPTED,
-                    AgentEventKind.LIMIT_REACHED,
-                } and turn_id:
-                    started = turn_started_at.pop((session_id, turn_id), None)
-                    if started is not None:
-                        longest_turn_seconds = max(
-                            longest_turn_seconds,
-                            max(0.0, (stamp - started).total_seconds()),
-                        )
+                if timing is not None and (
+                    event.kind in _PROFILE_TURN_SELF_ENDING_KINDS
+                    or event.kind in _PROFILE_TURN_EXTERNAL_STOP_KINDS
+                ):
+                    open_turns.pop((session_id, turn_id), None)
+                    # A cancel or interrupt can arrive days after the work did;
+                    # such a turn ends at its last recorded activity.
+                    end = stamp if event.kind in _PROFILE_TURN_SELF_ENDING_KINDS else timing["last"]
+                    waited = timing["waited"]
+                    if timing["wait_start"] is not None and timing["wait_start"] < end:
+                        waited += (end - timing["wait_start"]).total_seconds()
+                    worked = max(0.0, (end - timing["start"]).total_seconds() - waited)
+                    if worked > longest_turn_seconds:
+                        longest_turn_seconds = worked
+                        longest_turn_date = timing["start"].date()
 
         for key, sessions_for_day in day_sessions.items():
             day_rows[key]["sessions"] = len(sessions_for_day)
 
         totals["activeDays"] = len(activity_days)
 
+        # A streak stays alive through today until the day ends: before the
+        # first turn of the day it still counts the run that ended yesterday.
+        active_today = today in activity_days
         current_streak = 0
-        cursor = today
+        cursor = today if active_today else today - timedelta(days=1)
         while cursor in activity_days:
             current_streak += 1
             cursor -= timedelta(days=1)
@@ -650,14 +719,21 @@ class ManagedStreamingLoomAppServerService(StreamingLoomAppServerService):
             "streaks": {
                 "current": current_streak,
                 "longest": longest_streak,
+                "activeToday": active_today,
             },
             "peakDay": peak_day,
             "longestTurnSeconds": round(longest_turn_seconds, 3),
+            "longestTurnDate": longest_turn_date.isoformat() if longest_turn_date else None,
             "activeHour": active_hour,
+            # Turn starts per local hour of day, 0..23, across all history.
+            "hours": [int(hour_turns.get(hour, 0)) for hour in range(24)],
             "firstActivityDate": min(activity_days).isoformat() if activity_days else None,
             "lastActivityDate": max(activity_days).isoformat() if activity_days else None,
             "models": self._profile_ranked(models),
+            "modelKinds": len(models),
+            "unrecordedModel": unrecorded_model,
             "tools": self._profile_ranked(tools),
+            "toolKinds": len(tools),
             "reasoning": self._profile_ranked(reasoning),
             "days": list(day_rows.values()),
         }

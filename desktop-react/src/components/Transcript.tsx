@@ -37,7 +37,8 @@ import { ArtifactRenderSurface } from "./ArtifactRenderSurface";
 import { HomeTokenActivity } from "./HomeTokenActivity";
 import { MarkdownMessage } from "./MarkdownMessage";
 import { DecisionPromptCard, DecisionPromptRecoveryCard, parseDecisionMessage } from "./DecisionPromptCard";
-import { StreamingPresentation } from "./StreamingPresentation";
+import { StreamingPresentation, usePendingPresentations } from "./StreamingPresentation";
+import { deferredActivityIndices } from "./presentationOrdering";
 import { isSubAgentToolItem } from "./SubAgentWorkspace";
 import { ThinkingGlyph } from "./ThinkingGlyph";
 import { TurnArtifactsPreview } from "./TurnArtifactsPreview";
@@ -1021,6 +1022,11 @@ function Sequence({
     [items, subAgentItems.length],
   );
   const blocks = useMemo(() => groupTranscript(visibleItems), [visibleItems]);
+  const pendingPresentations = usePendingPresentations();
+  const deferredActivityBlocks = useMemo(
+    () => deferredActivityIndices(blocks, pendingPresentations),
+    [blocks, pendingPresentations],
+  );
   // A group is the live anchor while nothing has followed it, or while one of
   // its rows is still active (e.g. waiting behind an approval card). Groups
   // that commentary has already followed are finished work: they settle to
@@ -1055,11 +1061,11 @@ function Sequence({
       ) : null}
 
       {blocks.map((block, index) => (
-        block.kind === "activity" ? (
+        block.kind === "activity" ? (deferredActivityBlocks.has(index) ? null : (
           <div className="transcript-entry entry-activity" key={`activity-${block.items[0]?.id ?? index}`}>
             <ActivityFlow items={block.items} keepOpen={liveActivityBlocks.has(index)} />
           </div>
-        ) : (
+        )) : (
           <div
             className={`transcript-entry entry-${block.item.type} ${isSteeringUserMessage(block.item) ? "entry-steering-user" : ""}`.trim()}
             key={block.item.id}

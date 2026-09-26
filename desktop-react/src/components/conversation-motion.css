@@ -341,11 +341,9 @@
    in (.is-running, decided by Transcript's Sequence). Groups that later
    content has followed are history and stay still, even when a live turn
    remounts.
-   Every capsule is born the same way: its icon bead pops on a spring, then the
-   capsule unrolls out of that bead. The unroll is a pill-shaped clip-path and
-   copy only fades, so no text-bearing surface is ever transformed and Chromium
-   keeps the glyphs on their native raster throughout. Every fill is backwards:
-   no clip, opacity or transform outlives the entrance. */
+   Task capsules appear at their full readable width. Only the icon springs;
+   the surface gently fades without clipping commands or shifting text.
+   Thinking capsules retain their separate unroll choreography. */
 .task-flow-group-header {
   /* The bead is the icon's circle; the unroll starts from exactly this disc. */
   --capsule-bead-start: 0px;
@@ -358,7 +356,7 @@
 }
 
 .turn-process.is-live .task-flow-group.is-running .task-flow-group-header {
-  animation: loom-capsule-unroll 460ms var(--loom-motion-unroll) 40ms backwards;
+  animation: loom-task-capsule-land 240ms var(--loom-motion-unroll) backwards;
 }
 
 .turn-process.is-live .task-flow-group.is-running .task-flow-group-icon {
@@ -383,20 +381,17 @@
 .turn-process.is-live .task-flow-group.is-running .task-flow-row-wrap {
   contain: layout style;
   --capsule-lead: 0ms;
-  /* Fade the row in without translating the text-bearing wrapper. backwards
-     applies the initial opacity during the entrance, then releases animation
-     properties completely instead of leaving a compositor transform behind. */
-  animation: loom-task-row-enter 180ms linear var(--capsule-lead) backwards !important;
+  /* The row owns its entrance; never multiply its fade by a wrapper fade. */
+  animation: none !important;
 }
 
-/* A group is born together with its first row: the anchor leads by one beat.
-   Rows appended later join an anchor that already exists and need no lead. */
+/* First and subsequent rows are readable immediately. */
 .turn-process.is-live .task-flow-group.is-running .task-flow-row-wrap:first-child {
-  --capsule-lead: 90ms;
+  --capsule-lead: 0ms;
 }
 
 .turn-process.is-live .task-flow-group.is-running .task-flow-row {
-  animation: loom-capsule-unroll 560ms cubic-bezier(.22,.8,.24,1) calc(var(--capsule-lead) + 30ms) backwards;
+  animation: loom-task-capsule-land 280ms var(--loom-motion-unroll) backwards;
 }
 
 .turn-process.is-live .task-flow-group.is-running .task-flow-row-icon {
@@ -407,13 +402,13 @@
 .turn-process.is-live .task-flow-group.is-running .task-flow-row-main {
   /* Text only fades. Sliding the glyph surface itself is what caused the
      intermittent low-resolution look on Windows/HiDPI renderers. */
-  animation: loom-task-copy-in 240ms cubic-bezier(.2,.82,.2,1) calc(var(--capsule-lead) + 170ms) backwards;
+  animation: none;
 }
 
 .turn-process.is-live .task-flow-group.is-running .task-flow-status {
   position: relative;
-  /* The status dot lands as the unroll reaches the capsule's far end. */
-  animation: loom-task-status-in 320ms var(--loom-spring-pop) calc(var(--capsule-lead) + 330ms) backwards;
+  /* The status dot settles alongside the already readable capsule. */
+  animation: loom-task-status-in 220ms var(--loom-spring-pop) backwards;
 }
 
 /* Completion: the dot settles with a spring tick and one expanding ring. The
@@ -966,6 +961,13 @@ html[data-loom-theme="light"] .conversation-stage.is-running::after {
 :root[data-loom-reduced-motion="true"] .conversation-stage > .run-progress-frame.top .run-progress-live-dot,
 :root[data-loom-reduced-motion="true"] .conversation-stage > .run-progress-frame.top .run-progress-phase {
   animation: none !important;
+}
+
+/* Keep the full row readable from its first frame. A bead-sized clip hid
+   commands for hundreds of milliseconds and looked like broken layout. */
+@keyframes loom-task-capsule-land {
+  from { opacity: .72; }
+  to { opacity: 1; }
 }
 
 /* Reduced motion keeps the static executing tint and status indicator. */

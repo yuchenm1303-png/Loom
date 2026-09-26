@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { PRESENTATION_FRAME_MS } from "../presentationTiming";
 import { advanceStreamingText } from "./streamingText";
 
@@ -6,11 +6,33 @@ import { advanceStreamingText } from "./streamingText";
 // Leaving a thread discards this state, so reopening history never replays it.
 type Snapshot = { visible: string };
 const PresentationContext = createContext<Map<string, Snapshot> | null>(null);
+const PendingPresentationContext = createContext<ReadonlySet<string>>(new Set());
+const ReportPresentationContext = createContext<((key: string, pending: boolean) => void) | null>(null);
+
+export function usePendingPresentations() {
+  return useContext(PendingPresentationContext);
+}
 
 
 export function StreamingPresentation({ children }: { children: ReactNode }) {
   const [snapshots] = useState(() => new Map<string, Snapshot>());
-  return <PresentationContext.Provider value={snapshots}>{children}</PresentationContext.Provider>;
+  const [pending, setPending] = useState<ReadonlySet<string>>(() => new Set());
+  const report = useCallback((key: string, painting: boolean) => {
+    setPending((previous) => {
+      if (previous.has(key) === painting) return previous;
+      const next = new Set(previous);
+      if (painting) next.add(key);
+      else next.delete(key);
+      return next;
+    });
+  }, []);
+  return (
+    <PresentationContext.Provider value={snapshots}>
+      <ReportPresentationContext.Provider value={report}>
+        <PendingPresentationContext.Provider value={pending}>{children}</PendingPresentationContext.Provider>
+      </ReportPresentationContext.Provider>
+    </PresentationContext.Provider>
+  );
 }
 
 function reducedMotion() {
@@ -20,6 +42,7 @@ function reducedMotion() {
 
 export function useStreamingPresentation(content: string, streaming: boolean, messageKey?: string, interrupted = false) {
   const snapshots = useContext(PresentationContext);
+  const reportPresentation = useContext(ReportPresentationContext);
   const [initial] = useState(() => {
     const saved = messageKey ? snapshots?.get(messageKey) : undefined;
     return saved && content.startsWith(saved.visible) ? saved.visible : streaming ? "" : content;
@@ -32,6 +55,16 @@ export function useStreamingPresentation(content: string, streaming: boolean, me
   const frameRef = useRef<number | null>(null);
   const lastPaintAtRef = useRef(0);
   const animate = useRef(streaming || initial !== content);
+  const painting = !reduce && !interrupted && visible !== content;
+
+  // Publish before paint so activity arriving in this same commit cannot flash
+  // below unfinished prose. Notify only on backlog boundaries, not every tick.
+  useLayoutEffect(() => {
+    if (messageKey) reportPresentation?.(messageKey, painting);
+  }, [messageKey, painting, reportPresentation]);
+  useLayoutEffect(() => () => {
+    if (messageKey) reportPresentation?.(messageKey, false);
+  }, [messageKey, reportPresentation]);
 
   useLayoutEffect(() => {
     if (messageKey) snapshots?.set(messageKey, { visible });
@@ -100,7 +133,7 @@ export function useStreamingPresentation(content: string, streaming: boolean, me
 
   return {
     visible: reduce || interrupted ? content : visible,
-    painting: !reduce && !interrupted && visible !== content,
+    painting,
     // Already visible content must not reanimate when moved out of the process area.
     fadeFrom: initial.length,
   };

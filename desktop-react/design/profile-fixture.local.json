@@ -1,0 +1,3850 @@
+{
+ "generatedAt": "2026-09-26T09:33:42.356+00:00",
+ "range": {
+  "days": 371,
+  "startDate": "2025-09-21",
+  "endDate": "2026-09-26",
+  "totalTokens": 169920185
+ },
+ "totals": {
+  "inputTokens": 166252529,
+  "outputTokens": 3667656,
+  "totalTokens": 169920185,
+  "sessions": 87,
+  "turns": 442,
+  "modelCalls": 4237,
+  "toolCalls": 5589,
+  "subAgentRuns": 9,
+  "activeDays": 18
+ },
+ "streaks": {
+  "current": 1,
+  "longest": 8
+ },
+ "peakDay": {
+  "date": "2026-09-20",
+  "totalTokens": 54970823
+ },
+ "longestTurnSeconds": 461401.668,
+ "activeHour": {
+  "hour": 6,
+  "turns": 58
+ },
+ "firstActivityDate": "2026-09-04",
+ "lastActivityDate": "2026-09-26",
+ "models": [
+  {
+   "name": "deepseek-v4.1-flash",
+   "calls": 1505,
+   "tokens": 77803324
+  },
+  {
+   "name": "MiniMax-M3",
+   "calls": 1059,
+   "tokens": 51668180
+  },
+  {
+   "name": "unknown",
+   "calls": 1118,
+   "tokens": 20468343
+  },
+  {
+   "name": "deepseek-v4-flash-vision-exp",
+   "calls": 422,
+   "tokens": 14580434
+  },
+  {
+   "name": "deepseek-flash",
+   "calls": 36,
+   "tokens": 2322399
+  },
+  {
+   "name": "glm-5.3-flash",
+   "calls": 59,
+   "tokens": 1880985
+  },
+  {
+   "name": "mimo-v2.5",
+   "calls": 36,
+   "tokens": 1168736
+  },
+  {
+   "name": "gpt-5.5",
+   "calls": 2,
+   "tokens": 27784
+  }
+ ],
+ "tools": [
+  {
+   "name": "exec",
+   "calls": 3472
+  },
+  {
+   "name": "read_workspace_text",
+   "calls": 445
+  },
+  {
+   "name": "search_workspace_text",
+   "calls": 301
+  },
+  {
+   "name": "write_workspace_text",
+   "calls": 264
+  },
+  {
+   "name": "list_workspace_files",
+   "calls": 139
+  },
+  {
+   "name": "browser_click",
+   "calls": 107
+  },
+  {
+   "name": "computer_action",
+   "calls": 97
+  },
+  {
+   "name": "browser_open",
+   "calls": 62
+  }
+ ],
+ "reasoning": [
+  {
+   "name": "Default",
+   "calls": 3140,
+   "tokens": 115901822
+  },
+  {
+   "name": "disabled",
+   "calls": 389,
+   "tokens": 28171933
+  },
+  {
+   "name": "adaptive",
+   "calls": 670,
+   "tokens": 23496247
+  },
+  {
+   "name": "max",
+   "calls": 36,
+   "tokens": 2322399
+  },
+  {
+   "name": "medium",
+   "calls": 2,
+   "tokens": 27784
+  }
+ ],
+ "days": [
+  {
+   "date": "2025-09-21",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-09-22",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-09-23",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-09-24",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-09-25",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-09-26",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-09-27",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-09-28",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-09-29",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-09-30",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-10-01",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-10-02",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-10-03",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-10-04",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-10-05",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-10-06",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-10-07",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-10-08",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-10-09",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-10-10",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-10-11",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-10-12",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-10-13",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-10-14",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-10-15",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-10-16",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-10-17",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-10-18",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-10-19",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-10-20",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-10-21",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-10-22",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-10-23",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-10-24",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-10-25",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-10-26",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-10-27",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-10-28",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-10-29",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-10-30",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-10-31",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-11-01",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-11-02",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-11-03",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-11-04",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-11-05",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-11-06",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-11-07",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-11-08",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-11-09",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-11-10",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-11-11",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-11-12",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-11-13",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-11-14",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-11-15",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-11-16",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-11-17",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-11-18",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-11-19",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-11-20",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-11-21",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-11-22",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-11-23",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-11-24",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-11-25",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-11-26",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-11-27",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-11-28",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-11-29",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-11-30",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-12-01",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-12-02",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-12-03",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-12-04",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-12-05",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-12-06",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-12-07",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-12-08",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-12-09",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-12-10",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-12-11",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-12-12",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-12-13",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-12-14",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-12-15",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-12-16",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-12-17",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-12-18",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-12-19",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-12-20",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-12-21",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-12-22",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-12-23",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-12-24",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-12-25",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-12-26",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-12-27",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-12-28",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-12-29",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-12-30",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2025-12-31",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-01-01",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-01-02",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-01-03",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-01-04",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-01-05",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-01-06",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-01-07",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-01-08",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-01-09",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-01-10",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-01-11",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-01-12",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-01-13",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-01-14",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-01-15",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-01-16",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-01-17",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-01-18",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-01-19",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-01-20",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-01-21",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-01-22",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-01-23",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-01-24",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-01-25",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-01-26",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-01-27",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-01-28",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-01-29",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-01-30",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-01-31",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-02-01",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-02-02",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-02-03",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-02-04",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-02-05",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-02-06",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-02-07",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-02-08",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-02-09",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-02-10",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-02-11",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-02-12",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-02-13",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-02-14",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-02-15",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-02-16",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-02-17",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-02-18",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-02-19",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-02-20",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-02-21",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-02-22",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-02-23",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-02-24",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-02-25",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-02-26",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-02-27",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-02-28",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-03-01",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-03-02",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-03-03",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-03-04",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-03-05",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-03-06",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-03-07",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-03-08",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-03-09",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-03-10",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-03-11",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-03-12",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-03-13",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-03-14",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-03-15",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-03-16",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-03-17",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-03-18",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-03-19",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-03-20",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-03-21",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-03-22",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-03-23",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-03-24",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-03-25",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-03-26",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-03-27",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-03-28",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-03-29",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-03-30",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-03-31",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-04-01",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-04-02",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-04-03",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-04-04",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-04-05",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-04-06",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-04-07",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-04-08",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-04-09",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-04-10",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-04-11",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-04-12",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-04-13",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-04-14",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-04-15",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-04-16",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-04-17",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-04-18",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-04-19",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-04-20",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-04-21",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-04-22",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-04-23",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-04-24",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-04-25",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-04-26",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-04-27",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-04-28",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-04-29",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-04-30",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-05-01",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-05-02",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-05-03",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-05-04",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-05-05",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-05-06",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-05-07",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-05-08",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-05-09",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-05-10",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-05-11",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-05-12",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-05-13",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-05-14",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-05-15",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-05-16",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-05-17",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-05-18",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-05-19",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-05-20",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-05-21",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-05-22",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-05-23",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-05-24",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-05-25",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-05-26",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-05-27",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-05-28",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-05-29",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-05-30",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-05-31",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-06-01",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-06-02",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-06-03",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-06-04",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-06-05",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-06-06",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-06-07",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-06-08",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-06-09",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-06-10",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-06-11",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-06-12",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-06-13",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-06-14",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-06-15",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-06-16",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-06-17",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-06-18",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-06-19",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-06-20",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-06-21",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-06-22",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-06-23",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-06-24",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-06-25",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-06-26",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-06-27",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-06-28",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-06-29",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-06-30",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-07-01",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-07-02",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-07-03",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-07-04",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-07-05",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-07-06",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-07-07",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-07-08",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-07-09",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-07-10",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-07-11",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-07-12",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-07-13",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-07-14",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-07-15",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-07-16",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-07-17",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-07-18",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-07-19",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-07-20",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-07-21",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-07-22",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-07-23",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-07-24",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-07-25",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-07-26",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-07-27",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-07-28",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-07-29",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-07-30",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-07-31",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-08-01",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-08-02",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-08-03",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-08-04",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-08-05",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-08-06",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-08-07",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-08-08",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-08-09",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-08-10",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-08-11",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-08-12",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-08-13",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-08-14",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-08-15",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-08-16",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-08-17",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-08-18",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-08-19",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-08-20",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-08-21",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-08-22",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-08-23",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-08-24",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-08-25",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-08-26",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-08-27",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-08-28",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-08-29",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-08-30",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-08-31",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-09-01",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-09-02",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-09-03",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-09-04",
+   "inputTokens": 131741,
+   "outputTokens": 1248,
+   "totalTokens": 132989,
+   "modelCalls": 24,
+   "turns": 12,
+   "toolCalls": 14,
+   "sessions": 12
+  },
+  {
+   "date": "2026-09-05",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-09-06",
+   "inputTokens": 33969,
+   "outputTokens": 1082,
+   "totalTokens": 35051,
+   "modelCalls": 4,
+   "turns": 3,
+   "toolCalls": 3,
+   "sessions": 2
+  },
+  {
+   "date": "2026-09-07",
+   "inputTokens": 43094,
+   "outputTokens": 427,
+   "totalTokens": 43521,
+   "modelCalls": 5,
+   "turns": 1,
+   "toolCalls": 4,
+   "sessions": 1
+  },
+  {
+   "date": "2026-09-08",
+   "inputTokens": 62381,
+   "outputTokens": 2298,
+   "totalTokens": 64679,
+   "modelCalls": 8,
+   "turns": 6,
+   "toolCalls": 7,
+   "sessions": 3
+  },
+  {
+   "date": "2026-09-09",
+   "inputTokens": 116664,
+   "outputTokens": 5948,
+   "totalTokens": 122612,
+   "modelCalls": 8,
+   "turns": 4,
+   "toolCalls": 5,
+   "sessions": 1
+  },
+  {
+   "date": "2026-09-10",
+   "inputTokens": 4120610,
+   "outputTokens": 139330,
+   "totalTokens": 4259940,
+   "modelCalls": 244,
+   "turns": 72,
+   "toolCalls": 331,
+   "sessions": 21
+  },
+  {
+   "date": "2026-09-11",
+   "inputTokens": 7530716,
+   "outputTokens": 194312,
+   "totalTokens": 7725028,
+   "modelCalls": 459,
+   "turns": 49,
+   "toolCalls": 666,
+   "sessions": 6
+  },
+  {
+   "date": "2026-09-12",
+   "inputTokens": 3530280,
+   "outputTokens": 178099,
+   "totalTokens": 3708379,
+   "modelCalls": 185,
+   "turns": 12,
+   "toolCalls": 218,
+   "sessions": 2
+  },
+  {
+   "date": "2026-09-13",
+   "inputTokens": 351115,
+   "outputTokens": 7468,
+   "totalTokens": 358583,
+   "modelCalls": 29,
+   "turns": 7,
+   "toolCalls": 28,
+   "sessions": 2
+  },
+  {
+   "date": "2026-09-14",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-09-15",
+   "inputTokens": 523989,
+   "outputTokens": 19916,
+   "totalTokens": 543905,
+   "modelCalls": 46,
+   "turns": 10,
+   "toolCalls": 50,
+   "sessions": 6
+  },
+  {
+   "date": "2026-09-16",
+   "inputTokens": 16046447,
+   "outputTokens": 171946,
+   "totalTokens": 16218393,
+   "modelCalls": 512,
+   "turns": 17,
+   "toolCalls": 857,
+   "sessions": 7
+  },
+  {
+   "date": "2026-09-17",
+   "inputTokens": 14001975,
+   "outputTokens": 175281,
+   "totalTokens": 14177256,
+   "modelCalls": 269,
+   "turns": 34,
+   "toolCalls": 260,
+   "sessions": 2
+  },
+  {
+   "date": "2026-09-18",
+   "inputTokens": 22221217,
+   "outputTokens": 158927,
+   "totalTokens": 22380144,
+   "modelCalls": 331,
+   "turns": 40,
+   "toolCalls": 428,
+   "sessions": 3
+  },
+  {
+   "date": "2026-09-19",
+   "inputTokens": 29836143,
+   "outputTokens": 483051,
+   "totalTokens": 30319194,
+   "modelCalls": 293,
+   "turns": 43,
+   "toolCalls": 354,
+   "sessions": 4
+  },
+  {
+   "date": "2026-09-20",
+   "inputTokens": 53277482,
+   "outputTokens": 1693341,
+   "totalTokens": 54970823,
+   "modelCalls": 1404,
+   "turns": 102,
+   "toolCalls": 1735,
+   "sessions": 7
+  },
+  {
+   "date": "2026-09-21",
+   "inputTokens": 11854863,
+   "outputTokens": 367273,
+   "totalTokens": 12222136,
+   "modelCalls": 368,
+   "turns": 21,
+   "toolCalls": 559,
+   "sessions": 9
+  },
+  {
+   "date": "2026-09-22",
+   "inputTokens": 2261699,
+   "outputTokens": 60700,
+   "totalTokens": 2322399,
+   "modelCalls": 36,
+   "turns": 6,
+   "toolCalls": 47,
+   "sessions": 1
+  },
+  {
+   "date": "2026-09-23",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-09-24",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-09-25",
+   "inputTokens": 0,
+   "outputTokens": 0,
+   "totalTokens": 0,
+   "modelCalls": 0,
+   "turns": 0,
+   "toolCalls": 0,
+   "sessions": 0
+  },
+  {
+   "date": "2026-09-26",
+   "inputTokens": 308144,
+   "outputTokens": 7009,
+   "totalTokens": 315153,
+   "modelCalls": 12,
+   "turns": 3,
+   "toolCalls": 23,
+   "sessions": 1
+  }
+ ]
+}

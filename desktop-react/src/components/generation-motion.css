@@ -33,7 +33,7 @@
    keeps its identity while text streams past it, so this plays once. */
 .turn-process.is-live .markdown-body img.assistant-inline-sticker {
   transform-origin: 50% 70%;
-  animation: loom-sticker-pop 640ms var(--loom-spring-soft) backwards;
+  animation: loom-sticker-pop 220ms var(--loom-spring-soft) backwards;
 }
 
 /* New block-level Markdown should form instead of popping from plain text into
@@ -242,9 +242,9 @@ html[data-loom-theme="light"] .turn-process.is-live .entry-steering-user .user-m
 
 @keyframes loom-sticker-pop {
   0% {
-    opacity: 0;
-    scale: .3;
-    rotate: -16deg;
+    opacity: 1;
+    scale: .94;
+    rotate: -3deg;
   }
   28% {
     opacity: 1;

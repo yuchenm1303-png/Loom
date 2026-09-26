@@ -4,9 +4,31 @@
     {
       "name": "motion-fixture",
       "runtimeExecutable": "node",
-      "runtimeArgs": ["desktop-react/node_modules/vite/bin/vite.js", "desktop-react", "--port", "5199", "--strictPort", "--host", "127.0.0.1"],
+      "runtimeArgs": [
+        "desktop-react/node_modules/vite/bin/vite.js",
+        "desktop-react",
+        "--port",
+        "5199",
+        "--strictPort",
+        "--host",
+        "127.0.0.1"
+      ],
       "port": 5199,
       "url": "http://127.0.0.1:5199"
+    },
+    {
+      "name": "profile-harness",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "desktop-react/node_modules/vite/bin/vite.js",
+        "desktop-react",
+        "--port",
+        "5196",
+        "--strictPort",
+        "--host",
+        "127.0.0.1"
+      ],
+      "port": 5196
     }
   ]
 }
