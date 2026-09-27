@@ -14,7 +14,7 @@ import {
   Wrench,
   Zap,
 } from "lucide-react";
-import { memo, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { useI18n } from "../i18n";
 import type { LoomAccountSnapshot } from "../types/account";
 import {
@@ -131,8 +131,17 @@ function initialsFor(name: string): string {
   return `${parts[0][0] ?? ""}${parts.at(-1)?.[0] ?? ""}`.toUpperCase();
 }
 
+function utcOffsetLabel(date: Date): string {
+  const minutes = -date.getTimezoneOffset();
+  const sign = minutes < 0 ? "−" : "+";
+  const hours = Math.floor(Math.abs(minutes) / 60);
+  const rest = Math.abs(minutes) % 60;
+  return `UTC${sign}${hours}${rest ? `:${String(rest).padStart(2, "0")}` : ""}`;
+}
+
 function share(part: number, whole: number): string {
-  if (whole <= 0 || part <= 0) return "0%";
+  if (whole <= 0) return "—";
+  if (part <= 0) return "0%";
   const percent = (part / whole) * 100;
   return percent < 1 ? "<1%" : `${Math.round(percent)}%`;
 }
@@ -218,7 +227,7 @@ function Metrics({ data, format }: { data: ProfileInsightsData; format: Formatte
       />
       <MetricCard
         icon={<TrendingUp size={14} />}
-        label={zh ? "单日峰值" : "Busiest day"}
+        label={zh ? "单日峰值 Token" : "Busiest day"}
         value={compact(data.peakDay?.totalTokens ?? 0)}
         hint={data.peakDay ? format.shortDate(data.peakDay.date) : (zh ? "暂无记录" : "No usage yet")}
       />
@@ -257,8 +266,15 @@ type HeatTooltip = { cell: HeatCell<ProfileUsageDay>; level: HeatLevel; x: numbe
 const TokenHeatmap = memo(function TokenHeatmap({ data, format }: { data: ProfileInsightsData; format: Formatters }) {
   const { zh, compact, integer } = format;
   const cardRef = useRef<HTMLElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const [tooltip, setTooltip] = useState<HeatTooltip | null>(null);
   const today = data.range.endDate;
+
+  // When the year does not fit, open on the recent end rather than last year.
+  useLayoutEffect(() => {
+    const scroller = scrollRef.current;
+    if (scroller) scroller.scrollLeft = scroller.scrollWidth;
+  }, [data]);
 
   const weeks = useMemo(() => buildWeeks(data.days, data.range.startDate, data.range.endDate), [data]);
   const markers = useMemo(() => monthMarkers(weeks), [weeks]);
@@ -309,7 +325,7 @@ const TokenHeatmap = memo(function TokenHeatmap({ data, format }: { data: Profil
         </div>
       </div>
 
-      <div className="profile-heatmap-scroll">
+      <div ref={scrollRef} className="profile-heatmap-scroll" onScroll={() => setTooltip(null)}>
         <div className="profile-heatmap" style={columns} role="img" aria-label={summary}>
           <div className="profile-heatmap-months" aria-hidden="true">
             {markers.map((marker) => (
@@ -453,7 +469,7 @@ function ModelMix({ data, format }: { data: ProfileInsightsData; format: Formatt
   const rows = data.models.slice(0, 5);
   const unrecorded = data.unrecordedModel;
   const top = Math.max(1, Number(rows[0]?.tokens || 0), Number(unrecorded?.tokens || 0));
-  const total = Math.max(1, data.totals.totalTokens);
+  const total = data.totals.totalTokens;
   const kinds = data.modelKinds ?? data.models.length;
 
   return (
@@ -546,6 +562,8 @@ function ActivityRhythm({ data, format }: { data: ProfileInsightsData; format: F
   const peak = data.activeHour?.hour;
   const busiest = Math.max(1, ...(hours ?? [0]));
   const perConversation = data.totals.sessions > 0 ? data.totals.turns / data.totals.sessions : 0;
+  // Hours come from the app server's local clock, which is this computer's.
+  const zone = utcOffsetLabel(new Date());
 
   return (
     <DetailCard
@@ -553,6 +571,7 @@ function ActivityRhythm({ data, format }: { data: ProfileInsightsData; format: F
       icon={<Timer size={15} />}
       title={zh ? "使用节奏" : "Rhythm"}
       subtitle={zh ? "一天中什么时候最常用 Loom" : "When in the day you use Loom"}
+      footer={zh ? `按本机时区（${zone}）统计` : `In this computer's time zone (${zone})`}
     >
       {hours ? (
         <div className="profile-hours">
@@ -579,13 +598,17 @@ function ActivityRhythm({ data, format }: { data: ProfileInsightsData; format: F
         <div>
           <span><Timer size={13} />{zh ? "最长单回合" : "Longest turn"}</span>
           <strong>
-            {formatDuration(data.longestTurnSeconds, zh)}
-            {data.longestTurnDate ? <em>{format.shortDate(data.longestTurnDate)}</em> : null}
+            {data.longestTurnSeconds > 0 ? formatDuration(data.longestTurnSeconds, zh) : "—"}
+            {data.longestTurnSeconds > 0 && data.longestTurnDate ? <em>{format.shortDate(data.longestTurnDate)}</em> : null}
           </strong>
         </div>
         <div>
           <span><MessagesSquare size={13} />{zh ? "每个对话平均" : "Per conversation"}</span>
-          <strong>{zh ? `${perConversation.toFixed(1)} 个回合` : `${perConversation.toFixed(1)} turns`}</strong>
+          <strong>
+            {perConversation > 0
+              ? (zh ? `${perConversation.toFixed(1)} 个回合` : `${perConversation.toFixed(1)} turns`)
+              : "—"}
+          </strong>
         </div>
         <div>
           <span><Network size={13} />{zh ? "派出子代理" : "Sub-agents spawned"}</span>

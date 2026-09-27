@@ -1,5 +1,6 @@
 import { Activity, Flame, Gauge, Sparkles } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { buildWeeks, heatScale, parseLocalDate, type HeatCell as SharedHeatCell } from "./profileInsightsModel";
 import "./home-token-activity.css";
 
 type UsageDay = {
@@ -28,10 +29,7 @@ type HomeUsageInsights = {
   days: UsageDay[];
 };
 
-type HeatCell = {
-  date: string;
-  day: UsageDay | null;
-};
+type HeatCell = SharedHeatCell<UsageDay>;
 
 type HeatTooltip = {
   date: string;
@@ -44,44 +42,6 @@ type HeatTooltip = {
 
 let cachedInsights: HomeUsageInsights | null = null;
 let inflightInsights: Promise<HomeUsageInsights> | null = null;
-
-function parseLocalDate(value: string): Date {
-  const [year, month, day] = value.split("-").map(Number);
-  return new Date(year, Math.max(0, month - 1), day || 1);
-}
-
-function localDateKey(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function mondayIndex(date: Date): number {
-  return (date.getDay() + 6) % 7;
-}
-
-function buildWeeks(data: HomeUsageInsights | null): HeatCell[][] {
-  if (!data?.days.length) return [];
-  const byDate = new Map(data.days.map((day) => [day.date, day]));
-  const start = parseLocalDate(data.range.startDate);
-  start.setDate(start.getDate() - mondayIndex(start));
-  const end = parseLocalDate(data.range.endDate);
-  const weeks: HeatCell[][] = [];
-  const cursor = new Date(start);
-
-  while (cursor <= end) {
-    const week: HeatCell[] = [];
-    for (let row = 0; row < 7; row += 1) {
-      const key = localDateKey(cursor);
-      week.push({ date: key, day: byDate.get(key) ?? null });
-      cursor.setDate(cursor.getDate() + 1);
-    }
-    weeks.push(week);
-  }
-
-  return weeks;
-}
 
 function loadInsights(): Promise<HomeUsageInsights> {
   if (cachedInsights) return Promise.resolve(cachedInsights);
@@ -157,18 +117,16 @@ export function HomeTokenActivity() {
     };
   }, []);
 
-  const weeks = useMemo(() => buildWeeks(data), [data]);
-  const monthLabels = useMemo(() => buildMonthLabels(weeks), [weeks]);
-  const maxTokens = useMemo(
-    () => Math.max(0, ...(data?.days.map((day) => Number(day.totalTokens || 0)) ?? [])),
+  const weeks = useMemo(
+    () => (data ? buildWeeks(data.days, data.range.startDate, data.range.endDate) : []),
     [data],
   );
-
-  const levelFor = (tokens: number): number => {
-    if (tokens <= 0 || maxTokens <= 0) return 0;
-    const ratio = Math.log1p(tokens) / Math.log1p(maxTokens);
-    return Math.min(4, Math.max(1, Math.ceil(ratio * 4)));
-  };
+  const monthLabels = useMemo(() => buildMonthLabels(weeks), [weeks]);
+  // Same scale as the profile page, so a day reads the same in both places.
+  const levelFor = useMemo(
+    () => heatScale(data?.days.map((day) => Number(day.totalTokens || 0)) ?? []),
+    [data],
+  );
 
   const showTooltip = (target: HTMLElement, cell: HeatCell) => {
     if (!cell.day || !rootRef.current) return;
