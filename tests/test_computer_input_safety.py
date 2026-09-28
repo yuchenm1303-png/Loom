@@ -371,6 +371,7 @@ def test_console_text_uses_native_input_buffer_to_bypass_ime(monkeypatch):
 
     assert execution.ok is True
     assert "native console input buffer" in execution.message
+    assert execution.details == {"input_backend": "console-input-buffer"}
     assert native_calls == [(0x1234, "echo ok\n")]
     assert calls == []
 
@@ -395,6 +396,33 @@ def test_console_input_falls_back_to_virtual_keys_when_attach_is_unavailable(mon
     operator._send_console_text("echo ok\n")
 
     assert calls[:2] == [("write", "echo ok", 0), ("press", "enter")]
+
+
+def test_console_buffer_writer_uses_isolated_console_free_helper(monkeypatch):
+    import json
+    import subprocess
+    import sys
+    from types import SimpleNamespace
+
+    calls: list[tuple[list[str], dict[str, object]]] = []
+    monkeypatch.setitem(
+        sys.modules,
+        "win32process",
+        SimpleNamespace(GetWindowThreadProcessId=lambda _hwnd: (77, 4242)),
+    )
+
+    def run(argv, **kwargs):
+        calls.append((list(argv), dict(kwargs)))
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(subprocess, "run", run)
+
+    assert PyWinAutoWindowsOperator._write_console_input(0x1234, "CU_TEST") is True
+    argv, kwargs = calls[0]
+    assert argv[-2:] == ["-m", "app.agent_runtime.computer_console_input"]
+    assert json.loads(str(kwargs["input"])) == {"process_id": 4242, "text": "CU_TEST"}
+    assert int(kwargs["creationflags"]) != 0
+    assert "CU_TEST" not in " ".join(argv), "transient text must not leak through the process list"
 
 
 def test_modifier_keys_are_released_even_when_the_chord_fails(monkeypatch):

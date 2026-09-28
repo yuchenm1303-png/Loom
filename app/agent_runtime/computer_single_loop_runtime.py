@@ -400,6 +400,7 @@ def _safe_outcome_data(outcome: ComputerStepOutcome) -> dict[str, object]:
                 "ok": bool(execution.ok),
                 "native": bool(execution.native),
                 "fallback_used": bool(execution.fallback_used),
+                "details": dict(execution.details),
             }
             if execution is not None
             else None
