@@ -21,7 +21,6 @@ import { ReviewInteractionBridge } from "./components/ReviewInteractionBridge";
 import { ReviewWorkspace } from "./components/ReviewWorkspace";
 import { RunProgress } from "./components/RunProgress";
 import { SettingsComputerLogExport } from "./components/SettingsComputerLogExport";
-import { SettingsMemoryBridge } from "./components/SettingsMemoryBridge";
 import { SettingsPage } from "./components/SettingsPage";
 import { Sidebar } from "./components/Sidebar";
 import { SubAgentDock } from "./components/SubAgentDock";
@@ -1324,10 +1323,10 @@ export default function App() {
           <SettingsPage
             runtime={loom.runtime}
             models={loom.models}
+            threadId={thread?.id}
             running={Boolean(running)}
             onClose={() => setSettingsOpen(false)}
           />
-          <SettingsMemoryBridge threadId={thread?.id} running={Boolean(running)} />
           <SettingsComputerLogExport />
           <LanguageSettingsDock />
         </div>
