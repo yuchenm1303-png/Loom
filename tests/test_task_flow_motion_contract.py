@@ -164,3 +164,28 @@ def test_jump_to_latest_reuses_owned_follow_scheduler() -> None:
     assert "userDetachedRef.current = false;" in jump
     assert "scheduleBottomSync(scroller, true, reducedMotion);" in jump
     assert "scroller.scrollTo(" not in jump
+
+
+def test_between_tool_steps_keep_one_live_handoff_surface() -> None:
+    transcript = TRANSCRIPT.read_text(encoding="utf-8")
+    motion = MOTION.read_text(encoding="utf-8")
+
+    assert "const activeActivityBlocks = useMemo(() => {" in transcript
+    assert "const latestActivityBlockIndex = useMemo(() => {" in transcript
+    assert "const continuingActivityBlock = useMemo(() => {" in transcript
+    assert 'continuing={continuingActivityBlock === index}' in transcript
+    assert 'betweenSteps ? "is-between-steps" : ""' in transcript
+    assert "继续处理中" in transcript
+
+    assert ".task-flow-group.is-between-steps .task-flow-group-header {" in motion
+    assert ".task-flow-between-sheen > i {" in motion
+    assert "animation: loom-task-between-sheen 5.9s" in motion
+    assert "@keyframes loom-task-between-sheen" in motion
+    assert "@keyframes loom-task-between-dot" in motion
+
+
+def test_between_tool_handoff_keeps_completed_copy_semantics() -> None:
+    transcript = TRANSCRIPT.read_text(encoding="utf-8")
+
+    assert "const betweenSteps = Boolean(running && continuing && !hasActiveRows);" in transcript
+    assert "activityGroupTitle(compactItems, running && !betweenSteps)" in transcript
