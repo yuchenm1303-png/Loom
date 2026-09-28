@@ -279,11 +279,13 @@
   right: -4px;
   z-index: 100;
   isolation: isolate;
+  contain: paint;
+  transform-origin: top right;
   border-color: transparent;
   border-radius: 18px;
   background: none;
   box-shadow: none;
-  animation: none;
+  animation: none !important;
 }
 .context-meter-panel::before {
   content: "";
@@ -298,17 +300,35 @@
   transform: translateY(0);
   transition: inset 440ms var(--context-unfold), border-radius 440ms var(--context-unfold), transform 440ms var(--context-unfold), opacity 160ms ease, box-shadow 360ms ease;
 }
-.context-meter-panel[data-motion-phase="entering"]::before,
-.context-meter-panel[data-motion-phase="exiting"]::before {
+.context-meter-panel[data-motion-phase="entering"]::before {
   inset: 0 4px calc(100% - 26px) calc(100% - var(--context-chip-width) - 4px);
   border-radius: 999px;
   transform: translateY(-4px);
   opacity: 0;
   box-shadow: 0 2px 6px rgba(0,0,0,.04);
 }
-.context-meter-panel[data-motion-phase="exiting"] { pointer-events: none; }
+
+/* Closing used to animate the pseudo-shell's inset on every frame while the
+   header also applied its own popover animation/backdrop blur. That forced a
+   full paint/layout path and produced the visible hitch at the end. Keep the
+   shell geometry fixed and let one compositor-friendly parent transform own
+   the exit. */
+.context-meter-panel[data-motion-phase="exiting"] {
+  pointer-events: none;
+  opacity: 0;
+  transform: translate3d(0,-5px,0) scale(.985);
+  will-change: opacity, transform;
+  transition:
+    opacity 155ms ease,
+    transform 220ms cubic-bezier(.4,0,.2,1);
+}
 .context-meter-panel[data-motion-phase="exiting"]::before {
-  transition: inset 260ms cubic-bezier(.4,0,.6,1) 40ms, border-radius 260ms ease 40ms, transform 260ms ease 40ms, opacity 90ms ease 210ms, box-shadow 180ms ease;
+  inset: -1px;
+  border-radius: 18px;
+  transform: none;
+  opacity: 1;
+  box-shadow: var(--loom-shadow, 0 18px 48px rgba(0,0,0,.24));
+  transition: none;
 }
 .context-meter-panel > :not(style) {
   opacity: 1;
@@ -318,19 +338,32 @@
 .context-meter-panel[data-motion-phase="entered"] > .context-meter-rows { transition-delay: 120ms; }
 .context-meter-panel[data-motion-phase="entered"] > .context-meter-facts { transition-delay: 150ms; }
 .context-meter-panel[data-motion-phase="entered"] > .context-meter-compact { transition-delay: 180ms; }
-.context-meter-panel[data-motion-phase="entering"] > :not(style),
-.context-meter-panel[data-motion-phase="exiting"] > :not(style) {
+.context-meter-panel[data-motion-phase="entering"] > :not(style) {
   opacity: 0;
   transform: translateY(-6px);
   transition: opacity 80ms ease, transform 140ms ease;
+}
+
+.context-meter-panel[data-motion-phase="exiting"] > :not(style) {
+  opacity: 1;
+  transform: none;
+  transition: none;
 }
 .context-meter-fill { transition: width 480ms var(--context-unfold); }
 html[data-loom-theme="light"] .context-meter-panel::before {
   background: linear-gradient(180deg, #fff, #f9fafc);
   box-shadow: 0 14px 38px rgba(27,31,40,.12), 0 3px 10px rgba(27,31,40,.055), inset 0 1px rgba(255,255,255,.98);
 }
-html[data-loom-theme="light"] .context-meter-panel[data-motion-phase="entering"]::before,
-html[data-loom-theme="light"] .context-meter-panel[data-motion-phase="exiting"]::before { box-shadow: 0 2px 6px rgba(27,31,40,.04); }
+html[data-loom-theme="light"] .context-meter-panel[data-motion-phase="entering"]::before {
+  box-shadow: 0 2px 6px rgba(27,31,40,.04);
+}
+
+html[data-loom-theme="light"] .context-meter-panel[data-motion-phase="exiting"]::before {
+  box-shadow:
+    0 14px 38px rgba(27,31,40,.12),
+    0 3px 10px rgba(27,31,40,.055),
+    inset 0 1px rgba(255,255,255,.98);
+}
 html[data-loom-theme="light"] .context-meter-panel-head { min-height: 25px; margin-bottom: 8px; align-items: center; }
 html[data-loom-theme="light"] .context-meter-rows { gap: 5px; margin-bottom: 10px; }
 html[data-loom-theme="light"] .context-meter-row { min-height: 25px; }
