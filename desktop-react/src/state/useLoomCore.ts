@@ -887,11 +887,9 @@ export function useLoom() {
         }
       } else if (message.method === "turn/completed") {
         const turn = params.turn as TurnRecord | undefined;
-        if (turn && terminalErrorTurnRef.current === turn.id) {
-          terminalErrorTurnRef.current = turn.status === "running" || turn.status === "waiting_approval"
-            ? terminalErrorTurnRef.current
-            : "";
-        }
+        // Keep a terminal-error guard for this turn until TURN_STARTED names a
+        // genuinely new turn. Late/stale thread updates from the failed worker
+        // must not resurrect steering mode after completion.
         flushPendingItemDeltas();
         setTurnActive(false);
         setTurnStartedAt(null);
