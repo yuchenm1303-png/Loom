@@ -6,6 +6,18 @@ function threadIsRunning(thread?: ThreadRecord | null): boolean {
   return thread?.status === "running" || thread?.status === "waiting_approval";
 }
 
+function currentTurnHasTerminalError(items: TranscriptItem[], currentTurnId?: string | null): boolean {
+  const targetTurnId = String(currentTurnId ?? "").trim();
+  if (!targetTurnId) return false;
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index];
+    if (String(item.turnId ?? "").trim() !== targetTurnId || item.type !== "error") continue;
+    const status = String(item.status ?? "").toLowerCase();
+    return !["started", "running", "streaming", "pending", "waiting"].includes(status);
+  }
+  return false;
+}
+
 function steeringInputId(): string {
   const cryptoApi = globalThis.crypto as Crypto & { randomUUID?: () => string };
   return cryptoApi?.randomUUID?.()
@@ -64,6 +76,10 @@ export function useLoom() {
   const loom = useLoomCore();
   const [optimisticSteers, setOptimisticSteers] = useState<TranscriptItem[]>([]);
   const activeThreadId = loom.active?.thread.id ?? "";
+  const activeTurnHasTerminalError = useMemo(
+    () => currentTurnHasTerminalError(loom.items, loom.active?.thread.currentTurnId),
+    [loom.active?.thread.currentTurnId, loom.items],
+  );
 
   // Reconcile a local steering bubble as soon as its durable USER_MESSAGE arrives.
   // The runtime uses a different durable item id, so clientInputId/inputId is the
@@ -104,7 +120,12 @@ export function useLoom() {
   ) => {
     const thread = loom.active?.thread;
     const text = input.trim();
-    const running = Boolean(loom.turnActive || threadIsRunning(thread));
+    // A terminal ERROR item is an authoritative end-of-turn signal even when
+    // an upstream failure skipped TURN_COMPLETED and left the thread snapshot
+    // saying "running". In that state the next user message must start a fresh
+    // turn, never steer the dead one.
+    const running = Boolean(loom.turnActive || threadIsRunning(thread))
+      && !activeTurnHasTerminalError;
 
     if (!running) {
       await loom.send(input, attachments);
@@ -162,7 +183,7 @@ export function useLoom() {
       setOptimisticSteers((current) => current.filter((item) => item.inputId !== inputId));
       throw cause;
     }
-  }, [loom.active?.thread, loom.send, loom.turnActive]);
+  }, [activeTurnHasTerminalError, loom.active?.thread, loom.send, loom.turnActive]);
 
   return useMemo(
     () => ({ ...loom, items: visibleItems, send }),
