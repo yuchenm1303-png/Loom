@@ -279,6 +279,16 @@ class OpenAIChatBackend:
         if request.tools:
             kwargs["tools"] = [_tool_payload(tool) for tool in request.tools]
             kwargs["tool_choice"] = request.tool_choice.value
+            # OpenAI's native Chat Completions contract has an explicit
+            # parallel_tool_calls switch. Keep it off the generic compatible
+            # wire: many third-party OpenAI-shaped servers reject unknown
+            # parameters even though Loom can still execute multiple returned
+            # tool calls concurrently.
+            if (
+                request.parallel_tool_calls is not None
+                and self.connection.adapter is ProviderAdapter.OPENAI
+            ):
+                kwargs["parallel_tool_calls"] = request.parallel_tool_calls
         elif request.tool_choice is ToolChoice.NONE:
             # A no-tools request is not enough for every OpenAI-compatible
             # provider to disable tool generation.  Compaction and other
