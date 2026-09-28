@@ -89,6 +89,7 @@ def builtin_read_only_tools() -> ToolRegistry:
                 },
                 handler=_calculator,
                 effect=ToolEffect.READ_ONLY,
+                supports_parallel_tool_calls=True,
             ),
             AgentTool(
                 name="echo",
@@ -101,6 +102,7 @@ def builtin_read_only_tools() -> ToolRegistry:
                 },
                 handler=_echo,
                 effect=ToolEffect.READ_ONLY,
+                supports_parallel_tool_calls=True,
             ),
             AgentTool(
                 name="list_workspace_files",
@@ -112,6 +114,7 @@ def builtin_read_only_tools() -> ToolRegistry:
                 },
                 handler=_list_workspace,
                 effect=ToolEffect.READ_ONLY,
+                supports_parallel_tool_calls=True,
             ),
             AgentTool(
                 name="read_workspace_text",
@@ -124,6 +127,7 @@ def builtin_read_only_tools() -> ToolRegistry:
                 },
                 handler=_read_workspace_text,
                 effect=ToolEffect.READ_ONLY,
+                supports_parallel_tool_calls=True,
             ),
         )
     )
