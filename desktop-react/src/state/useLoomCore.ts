@@ -168,6 +168,7 @@ export function useLoom() {
   const [compactionProgress, setCompactionProgress] = useState<ContextCompactionProgress | null>(null);
   const compacting = compactionProgress?.status === "started" || compactionProgress?.status === "running";
   const activeIdRef = useRef("");
+  const activeTurnIdRef = useRef("");
   const openRequestRef = useRef(0);
   const openingThreadIdRef = useRef("");
   const threadReadCacheRef = useRef<Map<string, ThreadReadCacheEntry>>(new Map());
@@ -215,7 +216,8 @@ export function useLoom() {
 
   useEffect(() => {
     activeIdRef.current = active?.thread.id ?? "";
-  }, [active?.thread.id]);
+    activeTurnIdRef.current = String(active?.thread.currentTurnId ?? "");
+  }, [active?.thread.currentTurnId, active?.thread.id]);
 
   useEffect(() => {
     threadsRef.current = threads;
@@ -231,6 +233,8 @@ export function useLoom() {
 
   const clearActive = useCallback(() => {
     activeIdRef.current = "";
+    activeTurnIdRef.current = "";
+    terminalErrorTurnRef.current = "";
     openingThreadIdRef.current = "";
     setOpeningThreadId("");
     setActive(null);
@@ -386,6 +390,7 @@ export function useLoom() {
 
   const applyThreadRead = useCallback((result: ThreadReadResult) => {
     activeIdRef.current = result.thread.id;
+    activeTurnIdRef.current = String(result.thread.currentTurnId ?? "");
     const nextItems = flattenItems(result.turns ?? []);
     const terminalTurnId = terminalErrorTurnId(nextItems, result.thread.currentTurnId);
     terminalErrorTurnRef.current = terminalTurnId;
@@ -496,6 +501,8 @@ export function useLoom() {
     // catalogue and reading the same empty thread back from disk.
     if (openRequestRef.current === requestId) {
       activeIdRef.current = result.thread.id;
+      activeTurnIdRef.current = "";
+      terminalErrorTurnRef.current = "";
       openingThreadIdRef.current = "";
       setOpeningThreadId("");
       setActive({ thread: result.thread, turns: [] });
@@ -757,6 +764,7 @@ export function useLoom() {
       if (message.method === "turn/started") {
         const turn = params.turn as TurnRecord | undefined;
         if (turn && threadId === activeId) {
+          activeTurnIdRef.current = turn.id;
           terminalErrorTurnRef.current = "";
           threadReadCacheRef.current.delete(threadId);
           setActive((current) => current && current.thread.id === activeId
@@ -844,7 +852,7 @@ export function useLoom() {
             // boundary so the composer returns to normal send mode immediately.
             // Otherwise the next message is misrouted through turn/steer into a
             // dead turn and the red error remains the last visible state.
-            const failedTurnId = String(completed.turnId ?? "").trim();
+            const failedTurnId = String(completed.turnId ?? activeTurnIdRef.current ?? "").trim();
             terminalErrorTurnRef.current = failedTurnId || terminalErrorTurnRef.current;
             threadReadCacheRef.current.delete(activeId);
             setTurnActive(false);
