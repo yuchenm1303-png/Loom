@@ -11,10 +11,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useEffect, useLayoutEffect, useMemo, useState } from "react";
-import { createPortal } from "react-dom";
-import { useMotionPresence } from "../motion/useMotionPresence";
-import { setSettingsRoute, useSettingsRoute } from "./settingsNavigation";
+import { useEffect, useMemo, useState } from "react";
 import "./settings-memory.css";
 
 type MemoryPreferences = {
@@ -73,7 +70,7 @@ type MemoryReadResult = {
   evidence: MemoryEvidenceView[];
 };
 
-type MemorySettingsBridgeProps = {
+export type MemoryPanelProps = {
   threadId?: string | null;
   running: boolean;
 };
@@ -154,7 +151,7 @@ function MemoryPill({ tone = "muted", children }: { tone?: string; children: str
   );
 }
 
-export function MemoryPanel({ threadId, running }: MemorySettingsBridgeProps) {
+export function MemoryPanel({ threadId, running }: MemoryPanelProps) {
   const [preferences, setPreferences] = useState<MemoryPreferences>(DEFAULT_MEMORY);
   const [status, setStatus] = useState<MemoryStatus | null>(null);
   const [memories, setMemories] = useState<MemoryRecordView[]>([]);
@@ -486,91 +483,5 @@ export function MemoryPanel({ threadId, running }: MemorySettingsBridgeProps) {
         )}
       </section>
     </div>
-  );
-}
-
-export function SettingsMemoryBridge({ threadId, running }: MemorySettingsBridgeProps) {
-  const route = useSettingsRoute();
-  const open = route === "memory";
-  const contentPresence = useMotionPresence(open, 260);
-  const [navHost] = useState(() => document.createElement("span"));
-  const [contentHost] = useState(() => document.createElement("div"));
-
-  useEffect(() => {
-    navHost.className = "settings-memory-nav-host";
-    contentHost.className = "settings-memory-content-host";
-
-    const syncHosts = () => {
-      const shell = document.querySelector<HTMLElement>(".settings-shell");
-      const nav = document.querySelector<HTMLElement>(".settings-nav");
-      const mainScroll = document.querySelector<HTMLElement>(".settings-main-scroll");
-      if (!shell || !nav || !mainScroll) {
-        navHost.remove();
-        contentHost.remove();
-        return;
-      }
-
-      const loomSection = Array.from(nav.querySelectorAll<HTMLElement>(":scope > section")).find((section) =>
-        section.querySelector(".settings-nav-label")?.textContent?.trim() === "Loom",
-      );
-      if (loomSection) {
-        const permissions = Array.from(loomSection.querySelectorAll<HTMLButtonElement>(":scope > button")).find((button) =>
-          button.textContent?.trim() === "Permissions",
-        );
-        if (navHost.parentElement !== loomSection) {
-          if (permissions) loomSection.insertBefore(navHost, permissions);
-          else loomSection.appendChild(navHost);
-        } else if (permissions && navHost.nextSibling !== permissions) {
-          loomSection.insertBefore(navHost, permissions);
-        }
-      } else {
-        navHost.remove();
-      }
-
-      if (contentHost.parentElement !== mainScroll) mainScroll.appendChild(contentHost);
-    };
-
-    syncHosts();
-    const observer = new MutationObserver(syncHosts);
-    observer.observe(document.body, { childList: true, subtree: true });
-
-    return () => {
-      observer.disconnect();
-      document.querySelector(".settings-shell")?.classList.remove("settings-memory-mode");
-      navHost.remove();
-      contentHost.remove();
-    };
-  }, [contentHost, navHost]);
-
-  useLayoutEffect(() => {
-    document.querySelector<HTMLElement>(".settings-shell")?.classList.toggle("settings-memory-mode", open);
-  }, [open]);
-
-  return (
-    <>
-      {createPortal(
-        <button
-          type="button"
-          className={open ? "active" : ""}
-          aria-current={open ? "page" : undefined}
-          onClick={() => setSettingsRoute("memory")}
-        >
-          <BrainCircuit size={16} strokeWidth={1.7} />
-          <span>Memory</span>
-        </button>,
-        navHost,
-      )}
-      {createPortal(
-        contentPresence.mounted ? (
-          <div
-            className="settings-memory-motion-surface"
-            data-motion-phase={contentPresence.phase}
-          >
-            <MemoryPanel threadId={threadId} running={running} />
-          </div>
-        ) : null,
-        contentHost,
-      )}
-    </>
   );
 }
