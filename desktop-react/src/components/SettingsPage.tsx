@@ -52,6 +52,7 @@ import type {
 } from "../types/loom";
 import { KeyboardShortcutsSettings } from "./KeyboardShortcutsSettings";
 import { ModelsSettingsPanel } from "./ModelsSettingsPanel";
+import { MemoryPanel } from "./SettingsMemoryBridge";
 import { SettingsWebSearchPanel } from "./SettingsWebSearchPanel";
 import { ConnectorsSettings } from "./ConnectorsSettings";
 import { ConnectorLifecycleStatus } from "./ConnectorLifecycleStatus";
@@ -62,6 +63,7 @@ import "./settings-general-polish.css";
 import "./settings-maturity.css";
 import "./settings-appearance.css";
 import "./settings-terminal.css";
+import "./settings-page-motion.css";
 
 type PageKey =
   | "general"
@@ -76,6 +78,7 @@ type PageKey =
   | "connectors"
   | "mcp"
   | "skills"
+  | "memory"
   | "permissions"
   | "shortcuts"
   | "privacy"
@@ -174,6 +177,7 @@ type BrowserExtensionSetupResult = Awaited<ReturnType<Window["loom"]["setupBrows
 interface SettingsPageProps {
   runtime: RuntimeView;
   models: ModelSnapshot | null;
+  threadId?: string | null;
   running: boolean;
   onClose(): void;
 }
@@ -190,10 +194,10 @@ const SETTINGS_UPDATE_PREFIX = "__setting__:";
 
 const PAGE_ORDER: PageKey[] = [
   "general", "appearance", "models", "capabilities", "computer", "browser", "websearch",
-  "terminal", "plugins", "connectors", "mcp", "skills", "permissions", "shortcuts", "privacy", "developer",
+  "terminal", "plugins", "connectors", "mcp", "skills", "memory", "permissions", "shortcuts", "privacy", "developer",
 ];
 
-const SETTINGS_SECTION_EXIT_MS = 118;
+const SETTINGS_SECTION_EXIT_MS = 142;
 
 const DEFAULT_CAPABILITIES: Record<CapabilityKey, boolean> = {
   computerUse: true,
@@ -309,6 +313,7 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
       { key: "appearance", label: "Appearance", icon: Palette },
       { key: "models", label: "Models", icon: Cpu },
       { key: "capabilities", label: "Capabilities", icon: Blocks },
+      { key: "memory", label: "Memory", icon: BrainCircuit },
       { key: "permissions", label: "Permissions", icon: ShieldCheck },
     ],
   },
@@ -524,9 +529,9 @@ function SelectControl({ value, options, onChange, label }: { value: string; opt
   );
 }
 
-export function SettingsPage({ runtime, models, running, onClose }: SettingsPageProps) {
-  const [page, setPage] = useState<PageKey>("general");
+export function SettingsPage({ runtime, models, threadId, running, onClose }: SettingsPageProps) {
   const activeRoute = useSettingsRoute();
+  const [page, setPage] = useState<PageKey>(() => activeRoute as PageKey);
   const settingsScrollRef = useRef<HTMLDivElement>(null);
   const navigationTransitionRef = useRef(0);
   const navigationTimerRef = useRef<number | null>(null);
@@ -610,20 +615,6 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
     if (navigationTimerRef.current !== null) window.clearTimeout(navigationTimerRef.current);
     if (navigationFrameRef.current !== null) cancelAnimationFrame(navigationFrameRef.current);
   }, []);
-
-  useEffect(() => {
-    if (activeRoute !== "memory") return;
-    navigationTransitionRef.current += 1;
-    if (navigationTimerRef.current !== null) {
-      window.clearTimeout(navigationTimerRef.current);
-      navigationTimerRef.current = null;
-    }
-    if (navigationFrameRef.current !== null) {
-      cancelAnimationFrame(navigationFrameRef.current);
-      navigationFrameRef.current = null;
-    }
-    setPageMotion("idle");
-  }, [activeRoute]);
 
   useEffect(() => {
     const merged = mergedSettings(runtime);
@@ -1435,6 +1426,7 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
     if (page === "connectors") return <div className="settings-connectors-page"><ConnectorsSettings running={running} /><ConnectorLifecycleStatus /></div>;
     if (page === "mcp") return renderMcp();
     if (page === "skills") return renderSkills();
+    if (page === "memory") return <MemoryPanel threadId={threadId} running={running} />;
     if (page === "permissions") return renderPermissions();
     if (page === "shortcuts") return renderShortcuts();
     if (page === "privacy") return renderPrivacy();
@@ -1454,7 +1446,7 @@ export function SettingsPage({ runtime, models, running, onClose }: SettingsPage
         </nav>
         <div className="settings-sidebar-footer"><span className="settings-runtime-dot" /><div><strong>Loom runtime</strong><span>{running ? "Turn active" : "Ready for changes"}</span></div></div>
       </aside>
-      <main className="settings-main"><div className="settings-main-scroll" ref={settingsScrollRef}><div className="settings-content"><div className="settings-page-surface" key={page} data-page-motion={pageMotion}>{content}</div></div></div></main>
+      <main className="settings-main"><div className="settings-main-scroll" ref={settingsScrollRef}><div className="settings-content"><div className="settings-page-surface" key={page} data-page={page} data-page-motion={pageMotion}>{content}</div></div></div></main>
       {noticePresence.mounted && visibleNotice ? (
         <div className={`settings-toast ${visibleNotice.tone}`} data-motion-phase={noticePresence.phase}>
           {visibleNotice.tone === "success" ? <Check size={15} /> : <CircleAlert size={15} />}
