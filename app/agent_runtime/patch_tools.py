@@ -87,6 +87,7 @@ def get_turn_diff_tool() -> AgentTool:
         input_schema={"type": "object", "properties": {}, "additionalProperties": False},
         handler=get_diff,
         effect=ToolEffect.READ_ONLY,
+        supports_parallel_tool_calls=True,
     )
 
 
