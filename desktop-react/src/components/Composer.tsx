@@ -171,14 +171,6 @@ function SteeringComposer({ threadId, onSend, onInterrupt, imagesAllowed = true 
     }
   }
 
-  const activityLabel = stopping
-    ? (zh ? "正在停止…" : "Stopping…")
-    : pendingSends > 0
-      ? (zh ? "补充要求已发送，正在确认…" : "Guidance sent · confirming…")
-      : acknowledged
-        ? (zh ? "已收到补充要求" : "Guidance received")
-        : (zh ? "任务进行中" : "Task in progress");
-
   return (
     <div className="composer-wrap live-steering-composer">
       <form
@@ -232,7 +224,7 @@ function SteeringComposer({ threadId, onSend, onInterrupt, imagesAllowed = true 
         </div>
 
         <div className="composer-toolbar composer-toolbar-steering">
-          <div className="composer-left composer-status-zone">
+          <div className="composer-left">
             <button
               type="button"
               className="composer-tool"
@@ -243,10 +235,6 @@ function SteeringComposer({ threadId, onSend, onInterrupt, imagesAllowed = true 
               <Paperclip size={15} />
               <span>{zh ? "附件" : "Attach"}</span>
             </button>
-            <span className="composer-running-label" role="status" aria-live="polite">
-              <i aria-hidden="true" />
-              <span className="composer-running-copy">{activityLabel}</span>
-            </span>
           </div>
           <div className="composer-right">
             <button
