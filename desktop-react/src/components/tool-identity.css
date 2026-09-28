@@ -16,9 +16,10 @@
   overflow: visible;
 }
 
-/* Computer Use reads more clearly as a pointer than as a monitor. Keep the
-   original SVG's box for sizing, then paint a lightweight cursor/click mark on
-   top so task rows stay aligned with the rest of the tool glyphs. */
+/* Computer Use uses a compact filled pointer mark: no monitor, click rays or
+   cursor stem. A thin white keyline and restrained shadow keep the black wedge
+   crisp inside the task-flow badge without making it look like a separate app
+   icon. The hidden SVG still owns the layout box, so row alignment is stable. */
 .tool-identity-glyph[data-tool-family="computer"] {
   position: relative;
 }
@@ -27,14 +28,24 @@
   opacity: 0;
 }
 
+.tool-identity-glyph[data-tool-family="computer"]::before,
 .tool-identity-glyph[data-tool-family="computer"]::after {
   content: "";
   position: absolute;
-  inset: 0;
   pointer-events: none;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M5.2 4.25c-.48-.27-1.03.15-.91.69l3.17 14.31c.16.73 1.12.93 1.57.34l3.28-4.3 5.68-1.92c.74-.25.83-1.26.16-1.65L5.2 4.25Z'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M5.2 4.25c-.48-.27-1.03.15-.91.69l3.17 14.31c.16.73 1.12.93 1.57.34l3.28-4.3 5.68-1.92c.74-.25.83-1.26.16-1.65L5.2 4.25Z'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+
+.tool-identity-glyph[data-tool-family="computer"]::before {
+  inset: -0.75px;
+  background: rgba(255, 255, 255, .98);
+  filter: drop-shadow(0 1px 1.15px rgba(12, 18, 28, .22));
+}
+
+.tool-identity-glyph[data-tool-family="computer"]::after {
+  inset: 0;
   background: currentColor;
-  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M7.2 4.1 17.5 13.7l-4.7.7 2.5 5.2-2.35 1.1-2.45-5.25-3.3 3.45V4.1Z'/%3E%3Cpath d='M4.1 5.1 2.45 3.8M5.55 2.9 5.05 1M3.05 8.1 1 8.55'/%3E%3C/svg%3E") center / contain no-repeat;
-  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M7.2 4.1 17.5 13.7l-4.7.7 2.5 5.2-2.35 1.1-2.45-5.25-3.3 3.45V4.1Z'/%3E%3Cpath d='M4.1 5.1 2.45 3.8M5.55 2.9 5.05 1M3.05 8.1 1 8.55'/%3E%3C/svg%3E") center / contain no-repeat;
 }
 
 /* Filled brand marks look optically larger than stroked capability marks at
