@@ -47,7 +47,7 @@ from .tools import ToolContext, ToolPolicy, ToolRegistry, ToolResult
 # called memory_status (Loom's own memory store), then told the user to open
 # Task Manager. A measured A/B over the real provider showed this paragraph,
 # not the runtime-state envelope, is what makes it reach for exec instead.
-DEFAULT_AGENT_SYSTEM_PROMPT_VERSION = 6
+DEFAULT_AGENT_SYSTEM_PROMPT_VERSION = 7
 
 DEFAULT_AGENT_SYSTEM_PROMPT = (
     "You are an execution agent operating inside a controlled tool harness. "
@@ -109,6 +109,11 @@ DEFAULT_AGENT_SYSTEM_PROMPT = (
     "reversible choices you can safely make yourself, ordinary code edits, tests, or to avoid taking action. "
     "If the user's intent is already clear, act instead of asking. After closing the decision block, stop and "
     "wait for the user's choice; add no prose unless one short sentence is necessary to clarify the decision.\n"
+    "\n"
+    "Use parallel tool calls when several actions are independent. Batch independent searches, reads, inspections, "
+    "and commands together instead of waiting for each one before issuing the next. Keep calls sequential when one depends "
+    "on another's output, when they may mutate overlapping state, or when ordering itself is meaningful. Parallel execution "
+    "does not relax permissions: every call still crosses the normal approval and sandbox policy.\n"
     "\n"
     "Keep the user informed during long work. Before a substantial batch of tool calls, briefly state the "
     "immediate next action; after roughly 8-12 tool calls or a meaningful discovery, give a concise progress "
@@ -195,7 +200,19 @@ _DECISION_PROMPT_BLOCK = (
     "wait for the user's choice; add no prose unless one short sentence is necessary to clarify the decision.\n"
     "\n"
 )
-_DEFAULT_AGENT_SYSTEM_PROMPT_V5 = DEFAULT_AGENT_SYSTEM_PROMPT.replace(
+_PARALLEL_TOOLS_PROMPT_BLOCK = (
+    "Use parallel tool calls when several actions are independent. Batch independent searches, reads, inspections, "
+    "and commands together instead of waiting for each one before issuing the next. Keep calls sequential when one depends "
+    "on another's output, when they may mutate overlapping state, or when ordering itself is meaningful. Parallel execution "
+    "does not relax permissions: every call still crosses the normal approval and sandbox policy.\n"
+    "\n"
+)
+_DEFAULT_AGENT_SYSTEM_PROMPT_V6 = DEFAULT_AGENT_SYSTEM_PROMPT.replace(
+    _PARALLEL_TOOLS_PROMPT_BLOCK,
+    "",
+    1,
+)
+_DEFAULT_AGENT_SYSTEM_PROMPT_V5 = _DEFAULT_AGENT_SYSTEM_PROMPT_V6.replace(
     _WEB_SEARCH_GROUNDING_PROMPT_BLOCK,
     "",
     1,
@@ -216,6 +233,7 @@ _DEFAULT_AGENT_SYSTEM_PROMPT_V2 = _DEFAULT_AGENT_SYSTEM_PROMPT_V3.replace(
     1,
 )
 _LEGACY_DEFAULT_AGENT_SYSTEM_PROMPTS = frozenset({
+    _DEFAULT_AGENT_SYSTEM_PROMPT_V6,
     _DEFAULT_AGENT_SYSTEM_PROMPT_V5,
     _DEFAULT_AGENT_SYSTEM_PROMPT_V4,
     _DEFAULT_AGENT_SYSTEM_PROMPT_V3,
