@@ -652,13 +652,19 @@ function ActivityGroupIcon({ items }: { items: TranscriptItem[] }) {
   return <ActivityGroupGlyph items={items} size={14} />;
 }
 
-function ActivityFlow({ items, keepOpen = false }: { items: TranscriptItem[]; keepOpen?: boolean }) {
+function ActivityFlow({
+  items,
+  keepOpen = false,
+  continuing = false,
+}: {
+  items: TranscriptItem[];
+  keepOpen?: boolean;
+  continuing?: boolean;
+}) {
   const compactItems = useMemo(() => compactActivityItems(items), [items]);
-  // The newest group of the active turn stays live, whatever the transport
-  // status of its latest tool item, so the title/icon never flip completed ->
-  // running between steps. Sequence settles it only once other content has
-  // followed it and none of its rows is still active.
   const running = keepOpen;
+  const hasActiveRows = compactItems.some((item) => isActiveActivityStatus(itemStatus(item)));
+  const betweenSteps = Boolean(running && continuing && !hasActiveRows);
   const [open, setOpen] = useState(true);
   const [openRows, setOpenRows] = useState<Set<string>>(() => new Set());
   const wasRunningRef = useRef(false);
@@ -677,12 +683,12 @@ function ActivityFlow({ items, keepOpen = false }: { items: TranscriptItem[]; ke
     wasRunningRef.current = running;
   }, [running]);
 
-  const title = activityGroupTitle(compactItems, running);
+  const title = activityGroupTitle(compactItems, running && !betweenSteps);
   const groupIdentity = activityGroupIdentity(compactItems);
 
   return (
     <section
-      className={`task-flow task-flow-group ${open ? "is-open" : ""} ${running ? "is-running" : ""}`}
+      className={`task-flow task-flow-group ${open ? "is-open" : ""} ${running ? "is-running" : ""} ${betweenSteps ? "is-between-steps" : ""}`}
       data-tool-family={groupIdentity.family}
       aria-label="Task activity"
     >
@@ -692,8 +698,15 @@ function ActivityFlow({ items, keepOpen = false }: { items: TranscriptItem[]; ke
         onClick={() => setOpen((value) => !value)}
         aria-expanded={open}
       >
+        {betweenSteps ? <span className="task-flow-between-sheen" aria-hidden="true"><i /></span> : null}
         <span className="task-flow-group-icon" aria-hidden="true" title={groupIdentity.label}><ActivityGroupIcon items={compactItems} /></span>
         <span className="task-flow-group-title" key={title}>{title}</span>
+        {betweenSteps ? (
+          <span className="task-flow-between-label" role="status" aria-live="polite">
+            <i aria-hidden="true" />
+            <span>继续处理中</span>
+          </span>
+        ) : null}
         <ChevronRight size={13} className="task-flow-group-chevron" aria-hidden="true" />
       </button>
 
@@ -1027,22 +1040,45 @@ function Sequence({
     () => deferredActivityIndices(blocks, pendingPresentations),
     [blocks, pendingPresentations],
   );
-  // A group is the live anchor while nothing has followed it, or while one of
-  // its rows is still active (e.g. waiting behind an approval card). Groups
-  // that commentary has already followed are finished work: they settle to
-  // past tense and give up the beacon, so one live capsule moves down the
-  // turn instead of every group pulsing at once.
-  const liveActivityBlocks = useMemo(() => {
+  // Only genuinely active tool rows own the "running" semantics. When the
+  // turn is still alive but the previous tool batch has completed, keep the
+  // latest activity group visually alive in a separate between-steps state
+  // instead of pretending the completed command is still executing.
+  const activeActivityBlocks = useMemo(() => {
     const live = new Set<number>();
     if (!keepActivityOpen) return live;
     blocks.forEach((block, index) => {
       if (block.kind !== "activity") return;
-      if (index === blocks.length - 1 || block.items.some((item) => isActiveActivityStatus(itemStatus(item)))) {
-        live.add(index);
-      }
+      if (block.items.some((item) => isActiveActivityStatus(itemStatus(item)))) live.add(index);
     });
     return live;
   }, [blocks, keepActivityOpen]);
+
+  const latestActivityBlockIndex = useMemo(() => {
+    for (let index = blocks.length - 1; index >= 0; index -= 1) {
+      if (blocks[index].kind === "activity") return index;
+    }
+    return -1;
+  }, [blocks]);
+
+  const assistantBusy = useMemo(() => {
+    if (!active) return false;
+    for (let index = visibleItems.length - 1; index >= 0; index -= 1) {
+      const item = visibleItems[index];
+      if (item.type !== "assistant_message") continue;
+      const status = itemStatus(item);
+      if (isActiveActivityStatus(status)) return true;
+      const split = splitReasoning(item.text ?? "");
+      return split.state === "streaming";
+    }
+    return false;
+  }, [active, visibleItems]);
+
+  const continuingActivityBlock = useMemo(() => {
+    if (!keepActivityOpen || latestActivityBlockIndex < 0 || assistantBusy || activeActivityBlocks.size) return -1;
+    return latestActivityBlockIndex;
+  }, [activeActivityBlocks, assistantBusy, keepActivityOpen, latestActivityBlockIndex]);
+
   const liveAssistantId = useMemo(() => {
     if (!active) return "";
     for (let index = visibleItems.length - 1; index >= 0; index -= 1) {
@@ -1063,7 +1099,11 @@ function Sequence({
       {blocks.map((block, index) => (
         block.kind === "activity" ? (deferredActivityBlocks.has(index) ? null : (
           <div className="transcript-entry entry-activity" key={`activity-${block.items[0]?.id ?? index}`}>
-            <ActivityFlow items={block.items} keepOpen={liveActivityBlocks.has(index)} />
+            <ActivityFlow
+              items={block.items}
+              keepOpen={activeActivityBlocks.has(index) || continuingActivityBlock === index}
+              continuing={continuingActivityBlock === index}
+            />
           </div>
         )) : (
           <div
