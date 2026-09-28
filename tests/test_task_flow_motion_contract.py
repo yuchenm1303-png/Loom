@@ -189,3 +189,21 @@ def test_between_tool_handoff_keeps_completed_copy_semantics() -> None:
 
     assert "const betweenSteps = Boolean(running && continuing && !hasActiveRows);" in transcript
     assert "activityGroupTitle(compactItems, running && !betweenSteps)" in transcript
+
+
+def test_inline_task_detail_preserves_content_through_collapse() -> None:
+    transcript = TRANSCRIPT.read_text(encoding="utf-8")
+    motion = MOTION.read_text(encoding="utf-8")
+
+    assert "const detailPresence = useMotionPresence(open, 260);" in transcript
+    assert 'const cachedDetailRef = useRef("");' in transcript
+    assert "const visibleDetail = open ? liveDetail : cachedDetailRef.current;" in transcript
+    assert "detailPresence.mounted ? (" in transcript
+    assert "data-motion-phase={detailPresence.phase}" in transcript
+
+    closed_start = motion.index(".task-flow-inline-detail-grid:not(.open) {")
+    open_start = motion.index(".task-flow-inline-detail-grid.open {", closed_start)
+    closed = motion[closed_start:open_start]
+    assert "grid-template-rows 260ms" in closed
+    assert "opacity 150ms ease 62ms" in closed
+    assert "overflow-anchor: none;" in motion
