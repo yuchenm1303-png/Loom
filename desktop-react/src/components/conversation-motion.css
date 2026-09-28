@@ -121,6 +121,77 @@
     inset 0 1px 0 rgba(255,255,255,.021);
 }
 
+/* When one tool batch has finished but the turn is still alive, don't leave a
+   dead-looking completed block on screen. Keep the completed semantics, then
+   carry motion through the handoff with one very soft ambient sweep. */
+.task-flow-group.is-between-steps .task-flow-group-header {
+  border-color: rgba(var(--loom-live-accent), .13);
+  background:
+    radial-gradient(circle at 18px 50%, rgba(var(--loom-live-accent), .052), transparent 50px),
+    linear-gradient(180deg, rgba(255,255,255,.018), rgba(255,255,255,.003)),
+    rgba(20,21,28,.50);
+  box-shadow:
+    0 6px 18px rgba(0,0,0,.06),
+    inset 0 1px 0 rgba(255,255,255,.018);
+}
+
+.task-flow-between-sheen {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.task-flow-between-sheen > i {
+  position: absolute;
+  inset: -1px auto -1px -34%;
+  width: 28%;
+  border-radius: inherit;
+  background: linear-gradient(
+    102deg,
+    transparent 0%,
+    rgba(var(--loom-live-accent), .012) 20%,
+    rgba(var(--loom-live-accent), .045) 40%,
+    rgba(var(--loom-live-accent-strong), .090) 50%,
+    rgba(var(--loom-live-core), .055) 56%,
+    rgba(var(--loom-live-accent), .020) 72%,
+    transparent 100%
+  );
+  transform: translate3d(0,0,0) skewX(-9deg);
+  will-change: transform, opacity;
+  animation: loom-task-between-sheen 5.9s cubic-bezier(.32,0,.18,1) .55s infinite;
+}
+
+.task-flow-group-header > :not(.task-flow-between-sheen) {
+  position: relative;
+  z-index: 1;
+}
+
+.task-flow-between-label {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 2px;
+  color: rgba(var(--loom-live-accent-strong), .72);
+  font-size: 9.5px;
+  line-height: 1;
+  font-weight: 590;
+  white-space: nowrap;
+}
+
+.task-flow-between-label > i {
+  width: 4px;
+  height: 4px;
+  flex: none;
+  border-radius: 50%;
+  background: rgb(var(--loom-live-accent-strong));
+  box-shadow: 0 0 0 2px rgba(var(--loom-live-accent), .045);
+  animation: loom-task-between-dot 2.4s cubic-bezier(.4,0,.2,1) infinite;
+}
+
 .task-flow-group-icon {
   position: relative;
   width: 23px;
@@ -639,6 +710,33 @@ html[data-loom-theme="light"] .task-flow-group.is-running .task-flow-group-heade
     inset 0 1px rgba(255,255,255,.94);
 }
 
+html[data-loom-theme="light"] .task-flow-group.is-between-steps .task-flow-group-header {
+  border-color: rgba(var(--loom-live-accent), .10);
+  background:
+    radial-gradient(circle at 18px 50%, rgba(var(--loom-live-accent), .036), transparent 50px),
+    linear-gradient(180deg, rgba(255,255,255,.93), rgba(249,249,252,.82));
+  box-shadow:
+    0 5px 15px rgba(43,38,66,.035),
+    inset 0 1px rgba(255,255,255,.92);
+}
+
+html[data-loom-theme="light"] .task-flow-between-sheen > i {
+  background: linear-gradient(
+    102deg,
+    transparent 0%,
+    rgba(var(--loom-live-accent), .006) 20%,
+    rgba(var(--loom-live-accent), .020) 40%,
+    rgba(var(--loom-live-accent), .046) 50%,
+    rgba(255,255,255,.34) 56%,
+    rgba(var(--loom-live-accent), .012) 72%,
+    transparent 100%
+  );
+}
+
+html[data-loom-theme="light"] .task-flow-between-label {
+  color: rgba(var(--loom-live-accent-strong), .72);
+}
+
 html[data-loom-theme="light"] .task-flow-group.is-running .task-flow-group-icon::before {
   background: radial-gradient(
     circle,
@@ -865,6 +963,29 @@ html[data-loom-theme="light"] .conversation-stage.is-running::after {
   }
 }
 
+@keyframes loom-task-between-sheen {
+  0%, 24% {
+    opacity: 0;
+    transform: translate3d(0,0,0) skewX(-9deg);
+  }
+  32% { opacity: .10; }
+  44% { opacity: .46; }
+  60% {
+    opacity: .24;
+    transform: translate3d(520%,0,0) skewX(-9deg);
+  }
+  69%, 100% {
+    opacity: 0;
+    transform: translate3d(520%,0,0) skewX(-9deg);
+  }
+}
+
+@keyframes loom-task-between-dot {
+  0%, 100% { opacity: .48; scale: .88; }
+  48% { opacity: .92; scale: 1.06; }
+  72% { opacity: .68; scale: .98; }
+}
+
 @keyframes loom-live-anchor-aura {
   0%, 100% { opacity: .24; scale: .80; }
   48% { opacity: .44; scale: 1.02; }
@@ -928,6 +1049,8 @@ html[data-loom-theme="light"] .conversation-stage.is-running::after {
   .turn-process.is-live .task-flow-status-dot,
   .task-flow-sheen > i,
   .task-flow-live-detail-glow,
+  .task-flow-between-sheen > i,
+  .task-flow-between-label > i,
   .task-flow-group.is-running .task-flow-group-icon::before,
   .task-flow-group.is-running .task-flow-group-icon::after,
   .conversation-stage > .run-progress-frame.top .run-progress-inline,
@@ -955,6 +1078,8 @@ html[data-loom-theme="light"] .conversation-stage.is-running::after {
 :root[data-loom-reduced-motion="true"] .turn-process.is-live .task-flow-status-dot,
 :root[data-loom-reduced-motion="true"] .task-flow-sheen > i,
 :root[data-loom-reduced-motion="true"] .task-flow-live-detail-glow,
+:root[data-loom-reduced-motion="true"] .task-flow-between-sheen > i,
+:root[data-loom-reduced-motion="true"] .task-flow-between-label > i,
 :root[data-loom-reduced-motion="true"] .task-flow-group.is-running .task-flow-group-icon::before,
 :root[data-loom-reduced-motion="true"] .task-flow-group.is-running .task-flow-group-icon::after,
 :root[data-loom-reduced-motion="true"] .conversation-stage > .run-progress-frame.top .run-progress-inline,
