@@ -34,6 +34,7 @@ mcp = [
 ]
 computer = [
     "Pillow>=11,<13",
+    "psutil>=5.9,<8; platform_system == 'Windows'",
     "pyautogui>=0.9.54,<0.10; platform_system == 'Windows'",
     "pywinauto>=0.6.9,<0.7; platform_system == 'Windows'",
     "pywin32>=306,<400; platform_system == 'Windows'",
@@ -41,6 +42,7 @@ computer = [
 desktop-agent = [
     "browser-use>=0.13.10,<0.14",
     "Pillow>=11,<13",
+    "psutil>=5.9,<8; platform_system == 'Windows'",
     "pyautogui>=0.9.54,<0.10; platform_system == 'Windows'",
     "pywinauto>=0.6.9,<0.7; platform_system == 'Windows'",
     "pywin32>=306,<400; platform_system == 'Windows'",

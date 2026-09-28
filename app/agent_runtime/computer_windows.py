@@ -528,14 +528,35 @@ class PyWinAutoWindowsOperator:
                 ).strip().casefold()
                 if process_name in _CONSOLE_PROCESSES:
                     hwnd = self._parse_window_id(observation.frame.window_id)
-                    console_result = self._write_console_input(hwnd, action.text)
-                    if bool(console_result.get("ok")):
+                    console_target = self._console_target(hwnd, process_name)
+                    if console_target.get("interactive") is False:
+                        return ComputerExecution(
+                            ok=False,
+                            message="refused text input because the foreground console is not interactive",
+                            action=action,
+                            native=False,
+                            fallback_used=False,
+                            details={"input_backend": "console-refused", **console_target},
+                        )
+                    if process_name == "windowsterminal.exe":
+                        self._send_unicode_text(action.text)
+                        console_result = {"ok": True, **console_target}
+                        fallback_name = "Windows Terminal Unicode input"
+                        input_backend = "terminal-unicode-sendinput"
+                    else:
+                        console_result = self._write_console_input(hwnd, action.text)
+                    if bool(console_result.get("ok")) and process_name != "windowsterminal.exe":
                         fallback_name = "native console input buffer"
                         input_backend = "console-input-buffer"
-                    else:
-                        self._send_console_text(action.text)
-                        fallback_name = "virtual-key console fallback"
-                        input_backend = "console-virtual-key-fallback"
+                    elif not bool(console_result.get("ok")):
+                        return ComputerExecution(
+                            ok=False,
+                            message="native console input failed; no IME-sensitive key fallback was attempted",
+                            action=action,
+                            native=False,
+                            fallback_used=False,
+                            details={"input_backend": "console-input-failed", **console_target, **console_result},
+                        )
                 else:
                     self._send_unicode_text(action.text)
                     fallback_name = "Unicode SendInput fallback"
@@ -547,7 +568,9 @@ class PyWinAutoWindowsOperator:
                     action=action,
                     native=False,
                     fallback_used=True,
-                    details={"input_backend": input_backend, **console_result},
+                    details={"input_backend": input_backend, **console_target, **console_result}
+                    if process_name in _CONSOLE_PROCESSES
+                    else {"input_backend": input_backend},
                 )
 
             if action.type is ComputerActionType.CLEAR_TEXT:
@@ -773,6 +796,56 @@ class PyWinAutoWindowsOperator:
             flush_ascii()
         finally:
             self._release_modifiers()
+
+    @staticmethod
+    def _console_target(hwnd: int, process_name: str) -> dict[str, object]:
+        """Classify whether a console-looking window can accept user text."""
+
+        import win32process
+
+        folded = str(process_name or "").strip().casefold()
+        try:
+            process_id = int(win32process.GetWindowThreadProcessId(int(hwnd))[1])
+        except Exception as exc:
+            return {
+                "interactive": None,
+                "console_kind": folded,
+                "stage": "resolve_target_pid",
+                "error_type": type(exc).__name__,
+            }
+        result: dict[str, object] = {
+            "interactive": None,
+            "console_kind": folded,
+            "target_pid": process_id,
+        }
+        if folded == "windowsterminal.exe":
+            return {**result, "interactive": True, "classification": "terminal_host"}
+        if folded == "conhost.exe":
+            return {**result, "interactive": False, "classification": "unresolved_console_host"}
+        try:
+            import psutil
+
+            argv = tuple(str(item) for item in psutil.Process(process_id).cmdline())
+        except Exception as exc:
+            return {**result, "classification": "command_line_unavailable", "error_type": type(exc).__name__}
+        switches = {item.strip().casefold() for item in argv[1:]}
+        if folded == "cmd.exe":
+            interactive = "/c" not in switches and "/r" not in switches
+            return {
+                **result,
+                "interactive": interactive,
+                "classification": "interactive_cmd" if interactive else "noninteractive_cmd_wrapper",
+            }
+        if folded in {"powershell.exe", "pwsh.exe"}:
+            transient = bool(switches & {"-command", "-c", "-file", "-f"}) and not bool(
+                switches & {"-noexit", "-noe"}
+            )
+            return {
+                **result,
+                "interactive": not transient,
+                "classification": "noninteractive_shell_command" if transient else "interactive_shell",
+            }
+        return {**result, "classification": "unknown_console_process"}
 
     @staticmethod
     def _write_console_input(hwnd: int, text: str) -> dict[str, object]:

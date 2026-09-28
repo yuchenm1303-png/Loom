@@ -180,6 +180,17 @@ class SingleLoopWindowsOperator(PyWinAutoWindowsOperator):
                 title = str(win32gui.GetWindowText(hwnd) or "").strip()
                 process_name = self._process_name_for_window(hwnd)
 
+                if process_name.casefold() in {
+                    "cmd.exe",
+                    "conhost.exe",
+                    "powershell.exe",
+                    "pwsh.exe",
+                    "windowsterminal.exe",
+                }:
+                    console_target = self._console_target(hwnd, process_name)
+                    if console_target.get("interactive") is False:
+                        return
+
                 if self._is_host_window(hwnd):
                     return
 

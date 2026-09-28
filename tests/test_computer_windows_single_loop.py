@@ -247,6 +247,34 @@ def test_hidden_topmost_tool_window_is_never_an_activation_candidate(monkeypatch
     assert any(window.window_id == "0x33" for window in windows)
 
 
+def test_noninteractive_cmd_wrapper_is_not_a_window_candidate(monkeypatch):
+    _fake_window_modules(
+        monkeypatch,
+        handles=[1, 2],
+        visible={1, 2},
+        titles={1: "Editor", 2: "C:\\WINDOWS\\system32\\cmd.exe"},
+    )
+    operator = object.__new__(SingleLoopWindowsOperator)
+    operator.max_windows = 48
+    monkeypatch.setattr(
+        operator,
+        "_process_name_for_window",
+        lambda hwnd: "editor.exe" if hwnd == 1 else "cmd.exe",
+    )
+    monkeypatch.setattr(
+        operator,
+        "_console_target",
+        lambda _hwnd, _process: {
+            "interactive": False,
+            "classification": "noninteractive_cmd_wrapper",
+        },
+    )
+
+    windows = operator._enumerate_windows(1)
+
+    assert [window.window_id for window in windows] == ["0x1"]
+
+
 def test_switch_window_delegates_show_and_rollback_to_parent_focus(monkeypatch):
     con, _gui, shown = _fake_window_modules(
         monkeypatch,
