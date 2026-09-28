@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import json
 import os
+import queue
 import threading
 import uuid
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from contextlib import nullcontext
 from dataclasses import replace
 from pathlib import Path
@@ -280,6 +282,7 @@ class AgentRuntime:
         orchestrator: ToolOrchestrator | None = None,
         process_store: ProcessStore | None = None,
         diff_trackers: DiffTrackerRegistry | None = None,
+        max_parallel_tools: int | None = None,
     ) -> None:
         self.platform = platform
         self._session_platforms: dict[str, AgentModelPlatform] = {}
@@ -304,6 +307,16 @@ class AgentRuntime:
         self.diff_trackers = diff_trackers or DiffTrackerRegistry()
         self.model_executor = ModelExecutor()
         self.instruction_loader = InstructionLoader()
+        configured_parallel_tools = (
+            max_parallel_tools
+            if max_parallel_tools is not None
+            else _optional_env_int("LOOM_MAX_PARALLEL_TOOLS")
+        )
+        self.max_parallel_tools = max(1, min(16, int(configured_parallel_tools or 4)))
+        self._tool_executor = ThreadPoolExecutor(
+            max_workers=self.max_parallel_tools,
+            thread_name_prefix="loom-tool",
+        )
         self._listeners: list[EventListener] = []
         self._session_locks: dict[str, ExecutionLease] = {}
         self._session_locks_guard = threading.Lock()
@@ -378,6 +391,7 @@ class AgentRuntime:
         with self._captured_steps_guard:
             self._captured_steps.clear()
         self.process_store.terminate_all()
+        self._tool_executor.shutdown(wait=False, cancel_futures=True)
 
     def subscribe(self, listener: EventListener) -> None:
         if not callable(listener):
@@ -701,6 +715,71 @@ class AgentRuntime:
             self.store.ack_steering(session.session_id, {item["id"] for item in items})
         return consumed
 
+    def _pending_binding_matches(
+        self,
+        session: AgentSession,
+        step: StepContext,
+        call: ToolCall,
+    ) -> bool:
+        selected = step.tool_router.get(call.name)
+        expected = session.pending_bindings.get(call.call_id)
+        return not (
+            expected
+            and selected is not None
+            and action_binding_digest(
+                step,
+                selected,
+                call,
+                self.platform_for_session(session.session_id),
+            ) != expected
+        )
+
+    def _fail_changed_tool_binding(self, session: AgentSession, step: StepContext) -> None:
+        from .history import repair_tool_history
+
+        session.messages = list(repair_tool_history(session.messages).messages)
+        session.pending_tool_calls.clear()
+        session.pending_step_id = ""
+        session.status = AgentStatus.FAILED
+        session.error = "pending tool binding changed; execution stopped"
+        self._release_step_context(step)
+        self._record(session, AgentEventKind.TURN_FAILED, data={"error": session.error})
+
+    def _prepare_parallel_prefix(
+        self,
+        session: AgentSession,
+        step: StepContext,
+        first: PreparedToolCall,
+    ) -> list[PreparedToolCall]:
+        """Collect the largest safe contiguous parallel prefix.
+
+        This is Loom's synchronous equivalent of Codex's read/write gate around
+        tool futures: explicitly parallel tools may overlap; the first serial,
+        denied, invalid, or approval-requiring call is an ordering barrier.
+        """
+
+        batch = [first]
+        limit = min(len(session.pending_tool_calls), self.max_parallel_tools)
+        for offset in range(1, limit):
+            call = session.pending_tool_calls[offset]
+            if not self._pending_binding_matches(session, step, call):
+                break
+            try:
+                prepared = self.orchestrator.prepare(
+                    step,
+                    call,
+                    legacy_policy=self.policy,
+                )
+            except ValueError:
+                break
+            if (
+                prepared.decision is not PermissionDecision.ALLOW
+                or not prepared.tool.supports_parallel_tool_calls
+            ):
+                break
+            batch.append(prepared)
+        return batch
+
     def _process_pending_tools(
         self,
         session: AgentSession,
@@ -731,28 +810,12 @@ class AgentRuntime:
                 break
             if self._cancel_if_requested(session, token):
                 return False
+
             call = session.pending_tool_calls[0]
-            selected = execution_step.tool_router.get(call.name)
-            expected = session.pending_bindings.get(call.call_id)
-            if (
-                expected
-                and selected is not None
-                and action_binding_digest(
-                    execution_step,
-                    selected,
-                    call,
-                    self.platform_for_session(session.session_id),
-                ) != expected
-            ):
-                from .history import repair_tool_history
-                session.messages = list(repair_tool_history(session.messages).messages)
-                session.pending_tool_calls.clear()
-                session.pending_step_id = ""
-                session.status = AgentStatus.FAILED
-                session.error = "pending tool binding changed; execution stopped"
-                self._release_step_context(execution_step)
-                self._record(session, AgentEventKind.TURN_FAILED, data={"error": session.error})
+            if not self._pending_binding_matches(session, execution_step, call):
+                self._fail_changed_tool_binding(session, execution_step)
                 return False
+
             try:
                 prepared = self.orchestrator.prepare(
                     execution_step,
@@ -817,9 +880,23 @@ class AgentRuntime:
                 )
                 return False
 
+            if prepared.tool.supports_parallel_tool_calls:
+                batch = self._prepare_parallel_prefix(session, execution_step, prepared)
+                if len(batch) > 1:
+                    del session.pending_tool_calls[:len(batch)]
+                    if not self._execute_parallel_tool_batch(
+                        session,
+                        batch,
+                        token=token,
+                        step=execution_step,
+                    ):
+                        return False
+                    continue
+
             session.pending_tool_calls.pop(0)
             if not self._execute_prepared_tool(session, prepared, token=token, step=execution_step):
                 return False
+
         session.pending_step_id = ""
         self._release_step_context(execution_step)
         return True
@@ -852,31 +929,25 @@ class AgentRuntime:
             raise RuntimeError("approval-required tool reached executor without approval")
         return self._execute_prepared_tool(session, prepared, token=token, step=step)
 
-    def _execute_prepared_tool(
+    def _tool_repeat_metadata(
         self,
         session: AgentSession,
         prepared: PreparedToolCall,
-        *,
-        token: CancellationToken,
-        step: StepContext,
-    ) -> bool:
-        if self._cancel_if_requested(session, token):
-            return False
-        call = prepared.call
-        tool = prepared.tool
+    ) -> tuple[str, int]:
         from .execution_guidance import (
             recent_read_only_repeat_count,
             recent_tool_repeat_count,
             tool_call_fingerprint,
         )
-        call_fingerprint = tool_call_fingerprint(call)
-        if tool.effect is ToolEffect.READ_ONLY:
+
+        call_fingerprint = tool_call_fingerprint(prepared.call)
+        if prepared.tool.effect is ToolEffect.READ_ONLY:
             repeat_count = recent_read_only_repeat_count(
                 self.store.events(session.session_id),
                 turn_id=session.current_turn_id,
                 fingerprint=call_fingerprint,
             )
-        elif tool.effect is ToolEffect.SENSITIVE:
+        elif prepared.tool.effect is ToolEffect.SENSITIVE:
             repeat_count = recent_tool_repeat_count(
                 self.store.events(session.session_id),
                 turn_id=session.current_turn_id,
@@ -884,20 +955,44 @@ class AgentRuntime:
             )
         else:
             repeat_count = 0
-        self._record(
-            session,
-            AgentEventKind.TOOL_STARTED,
-            data={
-                "call_id": call.call_id,
-                "tool": call.name,
-                "step_id": step.step_id,
-                "effect": tool.effect.value,
-                "call_fingerprint": call_fingerprint,
-                "repeat_count": repeat_count,
-            },
-        )
+        return call_fingerprint, repeat_count
+
+    def _record_tool_started(
+        self,
+        session: AgentSession,
+        prepared: PreparedToolCall,
+        step: StepContext,
+        *,
+        parallel_batch_id: str = "",
+        parallel_index: int = 0,
+        parallel_size: int = 1,
+    ) -> None:
+        call_fingerprint, repeat_count = self._tool_repeat_metadata(session, prepared)
+        data: dict[str, object] = {
+            "call_id": prepared.call.call_id,
+            "tool": prepared.call.name,
+            "step_id": step.step_id,
+            "effect": prepared.tool.effect.value,
+            "call_fingerprint": call_fingerprint,
+            "repeat_count": repeat_count,
+        }
+        if parallel_batch_id:
+            data.update({
+                "parallel_batch_id": parallel_batch_id,
+                "parallel_index": parallel_index,
+                "parallel_size": parallel_size,
+            })
+        self._record(session, AgentEventKind.TOOL_STARTED, data=data)
+
+    def _tool_context(
+        self,
+        session: AgentSession,
+        token: CancellationToken,
+        step: StepContext,
+        *,
+        emit_event,
+    ) -> tuple[ToolContext, object, int]:
         tracker = self.diff_trackers.for_turn(session.session_id, session.current_turn_id)
-        diff_revision_before = tracker.revision
         context = ToolContext(
             session_id=session.session_id,
             turn_id=session.current_turn_id,
@@ -911,28 +1006,171 @@ class AgentRuntime:
                 "active_skills": session.active_skills,
                 "diff_tracker": tracker,
             },
-            emit_event=lambda kind, data: self._record(session, kind, data=data),
+            emit_event=emit_event,
+        )
+        return context, tracker, tracker.revision
+
+    def _invoke_prepared_tool(
+        self,
+        session: AgentSession,
+        prepared: PreparedToolCall,
+        *,
+        token: CancellationToken,
+        step: StepContext,
+        emit_event,
+    ):
+        context, tracker, diff_revision_before = self._tool_context(
+            session,
+            token,
+            step,
+            emit_event=emit_event,
         )
         try:
-            result = tool.handler(context, call.arguments)
+            result = prepared.tool.handler(context, prepared.call.arguments)
             if not isinstance(result, ToolResult):
                 raise TypeError("agent tool handler must return ToolResult")
         except Exception as exc:
             result = ToolResult(ok=False, content=f"{type(exc).__name__}: {exc}")
+        diff_snapshot = (
+            tracker.snapshot(max_chars=self.limits.max_tool_result_chars)
+            if tracker.revision != diff_revision_before
+            else None
+        )
+        return result, diff_snapshot
 
-        if tracker.revision != diff_revision_before:
-            snapshot = tracker.snapshot(max_chars=self.limits.max_tool_result_chars)
-            self._record(
+    def _record_diff_snapshot(self, session: AgentSession, snapshot) -> None:
+        if snapshot is None:
+            return
+        self._record(
+            session,
+            AgentEventKind.TURN_DIFF_UPDATED,
+            data={
+                "revision": snapshot.revision,
+                "paths": list(snapshot.paths),
+                "diff": snapshot.diff,
+                "truncated": snapshot.truncated,
+            },
+        )
+
+    def _execute_prepared_tool(
+        self,
+        session: AgentSession,
+        prepared: PreparedToolCall,
+        *,
+        token: CancellationToken,
+        step: StepContext,
+    ) -> bool:
+        if self._cancel_if_requested(session, token):
+            return False
+        self._record_tool_started(session, prepared, step)
+        result, diff_snapshot = self._invoke_prepared_tool(
+            session,
+            prepared,
+            token=token,
+            step=step,
+            emit_event=lambda kind, data: self._record(session, kind, data=data),
+        )
+        self._record_diff_snapshot(session, diff_snapshot)
+        self._append_tool_result(
+            session,
+            prepared.call,
+            result,
+            failed=not result.ok,
+            step=step,
+        )
+        if self._cancel_if_requested(session, token):
+            return False
+        return True
+
+    def _execute_parallel_tool_batch(
+        self,
+        session: AgentSession,
+        batch: list[PreparedToolCall],
+        *,
+        token: CancellationToken,
+        step: StepContext,
+    ) -> bool:
+        """Run an explicit parallel-capable prefix and commit history in call order.
+
+        Codex uses concurrently executing futures plus FuturesOrdered for this
+        property. Loom mirrors that contract with worker futures and a main-thread
+        ordered history commit. Tool lifecycle/process events are drained while
+        work is in flight, so the UI can show several genuinely active rows.
+        """
+
+        batch_id = f"tool-batch-{uuid.uuid4().hex[:12]}"
+        event_queue: queue.SimpleQueue[tuple[AgentEventKind, dict[str, object]]] = queue.SimpleQueue()
+        futures: dict[Future, tuple[int, PreparedToolCall]] = {}
+        results: dict[int, tuple[PreparedToolCall, ToolResult]] = {}
+
+        for index, prepared in enumerate(batch):
+            self._record_tool_started(
                 session,
-                AgentEventKind.TURN_DIFF_UPDATED,
-                data={
-                    "revision": snapshot.revision,
-                    "paths": list(snapshot.paths),
-                    "diff": snapshot.diff,
-                    "truncated": snapshot.truncated,
-                },
+                prepared,
+                step,
+                parallel_batch_id=batch_id,
+                parallel_index=index,
+                parallel_size=len(batch),
             )
-        self._append_tool_result(session, call, result, failed=not result.ok, step=step)
+            future = self._tool_executor.submit(
+                self._invoke_prepared_tool,
+                session,
+                prepared,
+                token=token,
+                step=step,
+                emit_event=lambda kind, data, q=event_queue: q.put((kind, dict(data))),
+            )
+            futures[future] = (index, prepared)
+
+        pending = set(futures)
+
+        def drain_events() -> None:
+            while True:
+                try:
+                    kind, data = event_queue.get_nowait()
+                except queue.Empty:
+                    break
+                data = dict(data)
+                data.setdefault("parallel_batch_id", batch_id)
+                self._record(session, kind, data=data)
+
+        while pending:
+            done, pending = wait(pending, timeout=0.05, return_when=FIRST_COMPLETED)
+            drain_events()
+            for future in done:
+                index, prepared = futures[future]
+                try:
+                    result, diff_snapshot = future.result()
+                except BaseException as exc:  # defensive: handler errors are normally converted above
+                    result = ToolResult(ok=False, content=f"{type(exc).__name__}: {exc}")
+                    diff_snapshot = None
+                self._record_diff_snapshot(session, diff_snapshot)
+                self._record_tool_result_event(
+                    session,
+                    prepared.call,
+                    result,
+                    failed=not result.ok,
+                    parallel_batch_id=batch_id,
+                    parallel_index=index,
+                    parallel_size=len(batch),
+                )
+                results[index] = (prepared, result)
+
+        drain_events()
+
+        # Results may finish in any order, but provider history must stay in the
+        # exact assistant tool-call order. This is the same determinism property
+        # Codex gets from FuturesOrdered.
+        for index in range(len(batch)):
+            prepared, result = results[index]
+            self._append_tool_history(
+                session,
+                prepared.call,
+                result,
+                step=step,
+            )
+        self.store.save(session)
+
         if self._cancel_if_requested(session, token):
             return False
         return True
@@ -1059,17 +1297,16 @@ class AgentRuntime:
         )
         return f"{base_prompt}\n\n{capability_contract}"
 
-    def _append_tool_result(
+    def _append_tool_history(
         self,
         session: AgentSession,
         call: ToolCall,
         result: ToolResult,
         *,
-        failed: bool,
         step: StepContext | None = None,
     ) -> None:
         # Use the same immutable model limits that governed the tool call whenever
-        # possible. The durable event below keeps the exact result; only active
+        # possible. Durable lifecycle events keep the exact result; only active
         # model history gets the bounded projection.
         context_limits = (
             step.request_state.context_limits
@@ -1087,17 +1324,48 @@ class AgentRuntime:
                 tool_call_id=call.call_id,
             )
         )
+
+    def _record_tool_result_event(
+        self,
+        session: AgentSession,
+        call: ToolCall,
+        result: ToolResult,
+        *,
+        failed: bool,
+        parallel_batch_id: str = "",
+        parallel_index: int = 0,
+        parallel_size: int = 1,
+    ) -> None:
+        data: dict[str, object] = {
+            "call_id": call.call_id,
+            "tool": call.name,
+            "ok": result.ok,
+            "content": result.content,
+            "data": result.data,
+        }
+        if parallel_batch_id:
+            data.update({
+                "parallel_batch_id": parallel_batch_id,
+                "parallel_index": parallel_index,
+                "parallel_size": parallel_size,
+            })
         self._record(
             session,
             AgentEventKind.TOOL_FAILED if failed else AgentEventKind.TOOL_COMPLETED,
-            data={
-                "call_id": call.call_id,
-                "tool": call.name,
-                "ok": result.ok,
-                "content": result.content,
-                "data": result.data,
-            },
+            data=data,
         )
+
+    def _append_tool_result(
+        self,
+        session: AgentSession,
+        call: ToolCall,
+        result: ToolResult,
+        *,
+        failed: bool,
+        step: StepContext | None = None,
+    ) -> None:
+        self._append_tool_history(session, call, result, step=step)
+        self._record_tool_result_event(session, call, result, failed=failed)
 
     def _limit(self, session: AgentSession, reason: str) -> AgentRunResult:
         session.status = AgentStatus.LIMIT_REACHED
