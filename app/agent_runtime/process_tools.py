@@ -258,6 +258,7 @@ def exec_tool() -> AgentTool:
         input_schema=_exec_schema(include_wait=True),
         handler=lambda context, arguments: _exec_handler(context, arguments),
         effect=ToolEffect.SENSITIVE,
+        supports_parallel_tool_calls=True,
     )
 
 
@@ -319,6 +320,7 @@ def exec_wait_tool() -> AgentTool:
         },
         handler=wait_process,
         effect=ToolEffect.READ_ONLY,
+        supports_parallel_tool_calls=True,
     )
 
 
@@ -367,6 +369,7 @@ def exec_write_tool() -> AgentTool:
         },
         handler=write,
         effect=ToolEffect.SENSITIVE,
+        supports_parallel_tool_calls=True,
     )
 
 
@@ -495,6 +498,7 @@ def workspace_command_tool() -> AgentTool:
             force_wait=True,
         ),
         effect=ToolEffect.SENSITIVE,
+        supports_parallel_tool_calls=True,
         # One capability, one name in the model's context. These said only
         # "Compatibility alias", and the model chose among ~50 entries by
         # name. Still callable; tool_search matches the exact name.
@@ -516,6 +520,7 @@ def start_workspace_command_tool() -> AgentTool:
             force_wait=False,
         ),
         effect=ToolEffect.SENSITIVE,
+        supports_parallel_tool_calls=True,
         # One capability, one name in the model's context. These said only
         # "Compatibility alias", and the model chose among ~50 entries by
         # name. Still callable; tool_search matches the exact name.
@@ -556,6 +561,7 @@ def poll_workspace_process_tool() -> AgentTool:
         },
         handler=poll,
         effect=ToolEffect.READ_ONLY,
+        supports_parallel_tool_calls=True,
         # One capability, one name in the model's context. These said only
         # "Compatibility alias", and the model chose among ~50 entries by
         # name. Still callable; tool_search matches the exact name.
@@ -579,6 +585,7 @@ def list_workspace_processes_tool() -> AgentTool:
         input_schema={"type": "object", "properties": {}, "additionalProperties": False},
         handler=list_processes,
         effect=ToolEffect.READ_ONLY,
+        supports_parallel_tool_calls=True,
     )
 
 
@@ -600,6 +607,7 @@ def write_workspace_process_tool() -> AgentTool:
         },
         handler=unified.handler,
         effect=ToolEffect.SENSITIVE,
+        supports_parallel_tool_calls=True,
         # One capability, one name in the model's context. These said only
         # "Compatibility alias", and the model chose among ~50 entries by
         # name. Still callable; tool_search matches the exact name.
