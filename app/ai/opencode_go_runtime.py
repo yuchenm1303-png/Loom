@@ -745,6 +745,7 @@ class OpenCodeGoBackend:
             max_output_tokens=request.chat.max_output_tokens,
             reasoning=request.chat.reasoning,
             session_id=request.chat.session_id,
+            parallel_tool_calls=request.chat.parallel_tool_calls,
         )
         response = self.complete(chat)
         try:
