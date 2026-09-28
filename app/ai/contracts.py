@@ -164,6 +164,7 @@ class ChatRequest:
     max_output_tokens: int | None = None
     reasoning: ReasoningRequest | None = None
     session_id: str = ""
+    parallel_tool_calls: bool | None = None
 
     def __post_init__(self) -> None:
         messages = tuple(self.messages)
@@ -187,6 +188,9 @@ class ChatRequest:
         if reasoning is not None and not isinstance(reasoning, ReasoningRequest):
             raise TypeError("reasoning must be ReasoningRequest or None")
         session_id = str(self.session_id or "").strip()
+        parallel_tool_calls = self.parallel_tool_calls
+        if parallel_tool_calls is not None and not isinstance(parallel_tool_calls, bool):
+            raise TypeError("parallel_tool_calls must be bool or None")
         object.__setattr__(self, "messages", messages)
         object.__setattr__(self, "tools", tools)
         object.__setattr__(self, "tool_choice", tool_choice)
