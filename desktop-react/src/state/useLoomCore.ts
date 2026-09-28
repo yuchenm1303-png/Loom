@@ -95,6 +95,23 @@ function threadIsRunning(thread?: ThreadRecord | null): boolean {
   return thread?.status === "running" || thread?.status === "waiting_approval";
 }
 
+function itemIsTerminalTurnError(item: TranscriptItem): boolean {
+  if (item.type !== "error") return false;
+  const status = String(item.status ?? "").toLowerCase();
+  return !["started", "running", "streaming", "pending", "waiting"].includes(status);
+}
+
+function terminalErrorTurnId(items: TranscriptItem[], preferredTurnId?: string | null): string {
+  const preferred = String(preferredTurnId ?? "").trim();
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index];
+    if (!itemIsTerminalTurnError(item)) continue;
+    const turnId = String(item.turnId ?? "").trim();
+    if (!preferred || !turnId || turnId === preferred) return turnId || preferred;
+  }
+  return "";
+}
+
 function modelsForThread(snapshot: ModelSnapshot | null, thread?: ThreadRecord | null): ModelSnapshot | null {
   if (!snapshot || !thread?.modelSelection) return snapshot;
   const profile = snapshot.profiles.find((candidate) => candidate.selection === thread.modelSelection);
@@ -156,6 +173,7 @@ export function useLoom() {
   const threadReadCacheRef = useRef<Map<string, ThreadReadCacheEntry>>(new Map());
   const threadsRef = useRef<ThreadRecord[]>([]);
   const threadViewRef = useRef<ThreadView>("active");
+  const terminalErrorTurnRef = useRef("");
   const itemIndexRef = useRef<Map<string, number>>(new Map());
   const pendingItemDeltasRef = useRef<Map<string, Record<string, unknown>>>(new Map());
   const deltaFlushTimerRef = useRef<number | null>(null);
@@ -368,15 +386,28 @@ export function useLoom() {
 
   const applyThreadRead = useCallback((result: ThreadReadResult) => {
     activeIdRef.current = result.thread.id;
-    setActive(result);
-    installItems(flattenItems(result.turns ?? []));
-    const running = threadIsRunning(result.thread);
+    const nextItems = flattenItems(result.turns ?? []);
+    const terminalTurnId = terminalErrorTurnId(nextItems, result.thread.currentTurnId);
+    terminalErrorTurnRef.current = terminalTurnId;
+    const normalizedResult = terminalTurnId && threadIsRunning(result.thread)
+      ? {
+          ...result,
+          thread: {
+            ...result.thread,
+            status: "failed",
+          },
+        }
+      : result;
+
+    setActive(normalizedResult);
+    installItems(nextItems);
+    const running = threadIsRunning(normalizedResult.thread);
     setTurnActive(running);
-    setTurnStartedAt(running ? turnStartFromRead(result) : null);
+    setTurnStartedAt(running ? turnStartFromRead(normalizedResult) : null);
     setContext(null);
     setCompactionProgress(null);
-    rememberThreadRead(result);
-    void refreshContext(result.thread.id);
+    rememberThreadRead(normalizedResult);
+    void refreshContext(normalizedResult.thread.id);
   }, [installItems, refreshContext, rememberThreadRead]);
 
   const openThread = useCallback(async (threadId: string) => {
@@ -687,8 +718,17 @@ export function useLoom() {
       const activeId = activeIdRef.current;
 
       if (message.method === "thread/updated") {
-        const thread = params.thread as ThreadRecord | undefined;
-        if (thread) {
+        const incomingThread = params.thread as ThreadRecord | undefined;
+        if (incomingThread) {
+          const staleRunningAfterTerminalError = Boolean(
+            terminalErrorTurnRef.current
+            && String(incomingThread.currentTurnId ?? "") === terminalErrorTurnRef.current
+            && threadIsRunning(incomingThread)
+          );
+          const thread = staleRunningAfterTerminalError
+            ? { ...incomingThread, status: "failed" }
+            : incomingThread;
+
           threadReadCacheRef.current.delete(thread.id);
           const belongsInView = threadViewRef.current === "archived" ? Boolean(thread.archived) : !thread.archived;
           setThreads((current) => {
@@ -717,6 +757,7 @@ export function useLoom() {
       if (message.method === "turn/started") {
         const turn = params.turn as TurnRecord | undefined;
         if (turn && threadId === activeId) {
+          terminalErrorTurnRef.current = "";
           threadReadCacheRef.current.delete(threadId);
           setActive((current) => current && current.thread.id === activeId
             ? {
@@ -795,6 +836,41 @@ export function useLoom() {
               ? { ...current, pendingApproval: null }
               : current);
           }
+
+          if (itemIsTerminalTurnError(completed)) {
+            // Some provider/transport failures terminate the worker by emitting
+            // a durable ERROR item before (or, on broken upstreams, without)
+            // TURN_COMPLETED. Treat that item as an authoritative terminal
+            // boundary so the composer returns to normal send mode immediately.
+            // Otherwise the next message is misrouted through turn/steer into a
+            // dead turn and the red error remains the last visible state.
+            const failedTurnId = String(completed.turnId ?? "").trim();
+            terminalErrorTurnRef.current = failedTurnId || terminalErrorTurnRef.current;
+            threadReadCacheRef.current.delete(activeId);
+            setTurnActive(false);
+            setTurnStartedAt(null);
+            setActive((current) => {
+              if (!current || current.thread.id !== activeId) return current;
+              if (
+                failedTurnId
+                && current.thread.currentTurnId
+                && current.thread.currentTurnId !== failedTurnId
+              ) return current;
+              return {
+                ...current,
+                pendingApproval: null,
+                turns: (current.turns ?? []).map((entry) => (
+                  !failedTurnId || entry.id === failedTurnId
+                    ? { ...entry, status: "failed" }
+                    : entry
+                )),
+                thread: {
+                  ...current.thread,
+                  status: "failed",
+                },
+              };
+            });
+          }
         }
       } else if (message.method === "thread/resync") {
         void openThread(activeId);
@@ -811,6 +887,11 @@ export function useLoom() {
         }
       } else if (message.method === "turn/completed") {
         const turn = params.turn as TurnRecord | undefined;
+        if (turn && terminalErrorTurnRef.current === turn.id) {
+          terminalErrorTurnRef.current = turn.status === "running" || turn.status === "waiting_approval"
+            ? terminalErrorTurnRef.current
+            : "";
+        }
         flushPendingItemDeltas();
         setTurnActive(false);
         setTurnStartedAt(null);
