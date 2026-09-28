@@ -410,21 +410,17 @@ class SandboxAgentRuntime(DurableAgentRuntime):
         if prepared.tool.name != "exec":
             return True
 
-        # A sandboxed exec owns a one-retry / possible approval state machine.
-        # Keep that path exclusive until Loom grows a durable multi-approval
-        # batch primitive. Full-access or otherwise unenforced execs can safely
-        # use the same concurrent command path Codex exposes.
-        if (
-            prepared.sandbox_permissions is not SandboxPermissions.USE_DEFAULT
-            or prepared.additional_permissions is not None
-        ):
-            return False
-        snapshot = step.world_state.sandbox
+        # Codex marks exec_command parallel-capable even when the command itself
+        # runs inside a sandbox. Loom can do the same for the ordinary
+        # USE_DEFAULT attempt: each worker receives the same immutable StepContext
+        # and the AttemptAwareSandboxManager reads the default POLICY attempt in
+        # that worker's ContextVar. Explicit escalation/additional-permission
+        # attempts remain serial because they can enter Loom's single interactive
+        # approval/retry state machine.
+        _ = step
         return bool(
-            snapshot is None
-            or not snapshot.enforced
-            or snapshot.mode is SandboxMode.DISABLED
-            or snapshot.policy is SandboxPolicy.OFF
+            prepared.sandbox_permissions is SandboxPermissions.USE_DEFAULT
+            and prepared.additional_permissions is None
         )
 
     def _run_prepared_once(self, prepared, context, *, approval_granted: bool) -> ToolResult:
