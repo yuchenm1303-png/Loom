@@ -256,6 +256,10 @@ class AgentTool:
     effect: ToolEffect = ToolEffect.READ_ONLY
     exposure: ToolExposure = ToolExposure.DIRECT
     binding_key: str = ""
+    # Codex-style opt-in concurrency contract. False is intentionally the
+    # default: tools must explicitly promise that independent invocations may
+    # overlap inside one model response.
+    supports_parallel_tool_calls: bool = False
 
     def __post_init__(self) -> None:
         name = str(self.name or "").strip()
@@ -272,6 +276,7 @@ class AgentTool:
         object.__setattr__(self, "description", description)
         object.__setattr__(self, "effect", ToolEffect(self.effect))
         object.__setattr__(self, "exposure", ToolExposure(self.exposure))
+        object.__setattr__(self, "supports_parallel_tool_calls", bool(self.supports_parallel_tool_calls))
 
     def definition(self) -> ToolDefinition:
         return ToolDefinition(
@@ -317,6 +322,10 @@ class ToolRouter:
 
     def all(self) -> tuple[AgentTool, ...]:
         return tuple(self._tools[name] for name in sorted(self._tools))
+
+    def supports_parallel_tool_calls(self, name: str) -> bool:
+        tool = self.get(name)
+        return bool(tool is not None and tool.supports_parallel_tool_calls)
 
 
 class ToolRegistry:
