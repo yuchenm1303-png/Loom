@@ -953,7 +953,13 @@ class AgentRuntime:
             raise RuntimeError("permission-denied tool reached executor")
         if prepared.decision is PermissionDecision.APPROVAL and not approval_granted:
             raise RuntimeError("approval-required tool reached executor without approval")
-        return self._execute_prepared_tool(session, prepared, token=token, step=step)
+        return self._execute_prepared_tool(
+            session,
+            prepared,
+            token=token,
+            step=step,
+            approval_granted=approval_granted,
+        )
 
     def _tool_repeat_metadata(
         self,
@@ -1044,6 +1050,7 @@ class AgentRuntime:
         token: CancellationToken,
         step: StepContext,
         emit_event,
+        approval_granted: bool = False,
     ):
         context, tracker, diff_revision_before = self._tool_context(
             session,
@@ -1057,7 +1064,7 @@ class AgentRuntime:
         result = self.orchestrator.execute(
             prepared,
             context,
-            approval_granted=False,
+            approval_granted=approval_granted,
         )
         diff_snapshot = (
             tracker.snapshot(max_chars=self.limits.max_tool_result_chars)
@@ -1087,6 +1094,7 @@ class AgentRuntime:
         *,
         token: CancellationToken,
         step: StepContext,
+        approval_granted: bool = False,
     ) -> bool:
         if self._cancel_if_requested(session, token):
             return False
@@ -1097,6 +1105,7 @@ class AgentRuntime:
             token=token,
             step=step,
             emit_event=lambda kind, data: self._record(session, kind, data=data),
+            approval_granted=approval_granted,
         )
         self._record_diff_snapshot(session, diff_snapshot)
         self._append_tool_result(
