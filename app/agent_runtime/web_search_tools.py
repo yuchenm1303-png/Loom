@@ -28,6 +28,7 @@ def web_search_tools(provider: WebSearchProvider | None) -> tuple[AgentTool, ...
             input_schema={"type": "object", "properties": {}, "additionalProperties": False},
             handler=status,
             effect=ToolEffect.READ_ONLY,
+            supports_parallel_tool_calls=True,
         )
     ]
 
@@ -87,6 +88,7 @@ def web_search_tools(provider: WebSearchProvider | None) -> tuple[AgentTool, ...
                 },
                 handler=search,
                 effect=ToolEffect.SENSITIVE,
+            supports_parallel_tool_calls=True,
             )
         )
     return tuple(tools)
