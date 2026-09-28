@@ -108,6 +108,7 @@ def workspace_search_tool() -> AgentTool:
         },
         handler=search,
         effect=ToolEffect.READ_ONLY,
+        supports_parallel_tool_calls=True,
     )
 
 
