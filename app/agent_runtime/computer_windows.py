@@ -528,7 +528,8 @@ class PyWinAutoWindowsOperator:
                 ).strip().casefold()
                 if process_name in _CONSOLE_PROCESSES:
                     hwnd = self._parse_window_id(observation.frame.window_id)
-                    if self._write_console_input(hwnd, action.text):
+                    console_result = self._write_console_input(hwnd, action.text)
+                    if bool(console_result.get("ok")):
                         fallback_name = "native console input buffer"
                         input_backend = "console-input-buffer"
                     else:
@@ -539,13 +540,14 @@ class PyWinAutoWindowsOperator:
                     self._send_unicode_text(action.text)
                     fallback_name = "Unicode SendInput fallback"
                     input_backend = "unicode-sendinput"
+                    console_result = {}
                 return ComputerExecution(
                     ok=True,
                     message=f"text input completed through {fallback_name}",
                     action=action,
                     native=False,
                     fallback_used=True,
-                    details={"input_backend": input_backend},
+                    details={"input_backend": input_backend, **console_result},
                 )
 
             if action.type is ComputerActionType.CLEAR_TEXT:
@@ -773,7 +775,7 @@ class PyWinAutoWindowsOperator:
             self._release_modifiers()
 
     @staticmethod
-    def _write_console_input(hwnd: int, text: str) -> bool:
+    def _write_console_input(hwnd: int, text: str) -> dict[str, object]:
         """Write Unicode key records directly to a console input buffer.
 
         Physical VK input still passes through the active IME. With Sogou in
@@ -790,30 +792,51 @@ class PyWinAutoWindowsOperator:
             return True
 
         import json
+        from pathlib import Path
         import subprocess
         import sys
         import win32process
 
         try:
             process_id = int(win32process.GetWindowThreadProcessId(int(hwnd))[1])
-        except Exception:
-            return False
+        except Exception as exc:
+            return {"ok": False, "stage": "resolve_target_pid", "error_type": type(exc).__name__}
         if not process_id:
-            return False
+            return {"ok": False, "stage": "resolve_target_pid", "target_pid": 0}
         try:
+            helper_path = Path(__file__).with_name("computer_console_input.py")
             completed = subprocess.run(
-                [sys.executable, "-m", "app.agent_runtime.computer_console_input"],
+                [sys.executable, str(helper_path)],
                 input=json.dumps({"process_id": process_id, "text": text}, ensure_ascii=False),
                 text=True,
-                stdout=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL,
                 timeout=3.0,
-                creationflags=int(getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)),
+                creationflags=int(getattr(subprocess, "DETACHED_PROCESS", 0x00000008)),
                 check=False,
             )
-            return int(completed.returncode) == 0
-        except (OSError, subprocess.SubprocessError):
-            return False
+            try:
+                result = json.loads(str(completed.stdout or ""))
+            except (TypeError, ValueError):
+                result = {
+                    "ok": False,
+                    "stage": "helper_protocol",
+                    "target_pid": process_id,
+                    "helper_returncode": int(completed.returncode),
+                }
+            if not isinstance(result, dict):
+                result = {"ok": False, "stage": "helper_protocol", "target_pid": process_id}
+            result.setdefault("target_pid", process_id)
+            result.setdefault("helper_returncode", int(completed.returncode))
+            result["ok"] = bool(result.get("ok")) and int(completed.returncode) == 0
+            return result
+        except (OSError, subprocess.SubprocessError) as exc:
+            return {
+                "ok": False,
+                "stage": "helper_launch",
+                "target_pid": process_id,
+                "error_type": type(exc).__name__,
+            }
 
     def _release_modifiers(self) -> None:
         """Force every modifier key up, whatever state the last action left.

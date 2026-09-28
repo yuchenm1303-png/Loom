@@ -355,7 +355,11 @@ def test_console_text_uses_native_input_buffer_to_bypass_ime(monkeypatch):
     operator._lock = threading.RLock()
     operator._control_maps = {}
     native_calls: list[tuple[int, str]] = []
-    operator._write_console_input = lambda hwnd, text: native_calls.append((hwnd, text)) or True
+    operator._write_console_input = lambda hwnd, text: native_calls.append((hwnd, text)) or {
+        "ok": True,
+        "stage": "completed",
+        "target_pid": 4242,
+    }
     observation = SimpleNamespace(
         observation_id="obs",
         frame=ComputerFrame(
@@ -371,7 +375,12 @@ def test_console_text_uses_native_input_buffer_to_bypass_ime(monkeypatch):
 
     assert execution.ok is True
     assert "native console input buffer" in execution.message
-    assert execution.details == {"input_backend": "console-input-buffer"}
+    assert execution.details == {
+        "input_backend": "console-input-buffer",
+        "ok": True,
+        "stage": "completed",
+        "target_pid": 4242,
+    }
     assert native_calls == [(0x1234, "echo ok\n")]
     assert calls == []
 
@@ -391,7 +400,7 @@ def test_console_input_falls_back_to_virtual_keys_when_attach_is_unavailable(mon
         ),
     )
     operator = _operator()
-    operator._write_console_input = lambda _hwnd, _text: False
+    operator._write_console_input = lambda _hwnd, _text: {"ok": False, "stage": "attach_console"}
 
     operator._send_console_text("echo ok\n")
 
@@ -413,13 +422,18 @@ def test_console_buffer_writer_uses_isolated_console_free_helper(monkeypatch):
 
     def run(argv, **kwargs):
         calls.append((list(argv), dict(kwargs)))
-        return SimpleNamespace(returncode=0)
+        return SimpleNamespace(
+            returncode=0,
+            stdout='{"ok":true,"stage":"completed","target_pid":4242}',
+        )
 
     monkeypatch.setattr(subprocess, "run", run)
 
-    assert PyWinAutoWindowsOperator._write_console_input(0x1234, "CU_TEST") is True
+    result = PyWinAutoWindowsOperator._write_console_input(0x1234, "CU_TEST")
+    assert result["ok"] is True
+    assert result["stage"] == "completed"
     argv, kwargs = calls[0]
-    assert argv[-2:] == ["-m", "app.agent_runtime.computer_console_input"]
+    assert argv[-1].endswith("computer_console_input.py")
     assert json.loads(str(kwargs["input"])) == {"process_id": 4242, "text": "CU_TEST"}
     assert int(kwargs["creationflags"]) != 0
     assert "CU_TEST" not in " ".join(argv), "transient text must not leak through the process list"
