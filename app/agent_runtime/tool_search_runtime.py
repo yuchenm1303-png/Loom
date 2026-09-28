@@ -119,6 +119,7 @@ class ToolSearchRuntime(ConfiguredMCPRuntime):
             },
             handler=self._search_tools,
             effect=ToolEffect.READ_ONLY,
+            supports_parallel_tool_calls=True,
             exposure=ToolExposure.DIRECT,
         )
 
