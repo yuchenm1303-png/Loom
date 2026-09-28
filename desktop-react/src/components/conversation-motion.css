@@ -964,17 +964,17 @@ html[data-loom-theme="light"] .conversation-stage.is-running::after {
 }
 
 @keyframes loom-task-between-sheen {
-  0%, 24% {
+  0%, 6% {
     opacity: 0;
     transform: translate3d(0,0,0) skewX(-9deg);
   }
-  32% { opacity: .10; }
-  44% { opacity: .46; }
-  60% {
+  12% { opacity: .10; }
+  24% { opacity: .46; }
+  42% {
     opacity: .24;
     transform: translate3d(520%,0,0) skewX(-9deg);
   }
-  69%, 100% {
+  50%, 100% {
     opacity: 0;
     transform: translate3d(520%,0,0) skewX(-9deg);
   }
