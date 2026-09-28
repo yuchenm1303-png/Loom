@@ -530,9 +530,34 @@
 
 .task-flow-inline-detail-grid {
   margin-left: 38px;
+  overflow-anchor: none;
   transition:
-    grid-template-rows 230ms var(--loom-motion-settle),
+    grid-template-rows 260ms cubic-bezier(.22,.74,.18,1),
     opacity 180ms ease;
+}
+
+/* Closing used to drop the <pre> in the same React commit that removed
+   .open, so the grid lost its intrinsic height before the 0fr animation could
+   interpolate. Keep the pixels alive through the collapse and let geometry
+   move first; fade only after the fold is already underway. */
+.task-flow-inline-detail-grid:not(.open) {
+  transition:
+    grid-template-rows 260ms cubic-bezier(.4,0,.2,1),
+    opacity 150ms ease 62ms;
+}
+
+.task-flow-inline-detail-grid.open {
+  transition:
+    grid-template-rows 270ms cubic-bezier(.22,.74,.18,1),
+    opacity 185ms ease;
+}
+
+.task-flow-inline-detail-grid[data-motion-phase="exiting"] {
+  pointer-events: none;
+}
+
+.task-flow-inline-detail-grid[data-motion-phase="exiting"] .task-flow-inline-detail {
+  opacity: 1;
 }
 
 .task-flow-inline-detail pre {
