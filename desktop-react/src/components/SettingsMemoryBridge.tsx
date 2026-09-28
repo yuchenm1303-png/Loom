@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
+import { useMotionPresence } from "../motion/useMotionPresence";
 import { setSettingsRoute, useSettingsRoute } from "./settingsNavigation";
 import "./settings-memory.css";
 
@@ -491,6 +492,7 @@ function MemoryPanel({ threadId, running }: MemorySettingsBridgeProps) {
 export function SettingsMemoryBridge({ threadId, running }: MemorySettingsBridgeProps) {
   const route = useSettingsRoute();
   const open = route === "memory";
+  const contentPresence = useMotionPresence(open, 260);
   const [navHost] = useState(() => document.createElement("span"));
   const [contentHost] = useState(() => document.createElement("div"));
 
@@ -558,7 +560,17 @@ export function SettingsMemoryBridge({ threadId, running }: MemorySettingsBridge
         </button>,
         navHost,
       )}
-      {createPortal(open ? <MemoryPanel threadId={threadId} running={running} /> : null, contentHost)}
+      {createPortal(
+        contentPresence.mounted ? (
+          <div
+            className="settings-memory-motion-surface"
+            data-motion-phase={contentPresence.phase}
+          >
+            <MemoryPanel threadId={threadId} running={running} />
+          </div>
+        ) : null,
+        contentHost,
+      )}
     </>
   );
 }
