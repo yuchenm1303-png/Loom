@@ -4,6 +4,7 @@ import time
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
 from app.ai import ModelResponse, ModelUsage
 from app.agent_runtime import (
@@ -37,6 +38,39 @@ class ProfilePlatform:
         if not self.responses:
             raise AssertionError("scripted profile responses exhausted")
         return self.responses.pop(0)
+
+
+def test_model_events_keep_sample_identity_when_configuration_changes(tmp_path: Path) -> None:
+    service, runtime, workspace = _build_service(tmp_path)
+    try:
+        selected = {"model": "first-model", "provider": "test-provider", "credential_ref": "not-event-data"}
+        runtime.platform.registry = SimpleNamespace(
+            get=lambda _: SimpleNamespace(as_safe_dict=lambda: dict(selected)),
+        )
+        execute = runtime.platform.execute_chat
+
+        def changing_model(profile_id, request):
+            # Simulate configuration changing while a response is in flight.
+            selected["model"] = "second-model"
+            return execute(profile_id, request)
+
+        runtime.platform.execute_chat = changing_model
+        thread_id = service.thread_start({"workspace": str(workspace)})["thread"]["id"]
+        service.thread_rename({"threadId": thread_id, "title": "Model attribution test"})
+        for prompt in ("first", "second"):
+            service.turn_start({"threadId": thread_id, "input": prompt})
+            _wait_until(lambda: thread_id not in service.runtime_status()["activeThreadIds"])
+        events = service.store.events(thread_id)
+        for kind in (AgentEventKind.MODEL_REQUESTED, AgentEventKind.MODEL_RESPONSE):
+            samples = [event.data for event in events if event.kind is kind]
+            assert [sample["model"] for sample in samples] == ["first-model", "second-model"]
+            assert all(sample["provider"] == "test-provider" for sample in samples)
+            assert all("credential_ref" not in sample for sample in samples)
+        models = {row["name"]: row for row in service.profile_insights({"days": 90})["models"]}
+        assert models["first-model"]["tokens"] == 150
+        assert models["second-model"]["tokens"] == 50
+    finally:
+        runtime.close()
 
 
 def _wait_until(predicate, *, timeout: float = 3.0):

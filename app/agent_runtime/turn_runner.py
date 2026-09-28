@@ -1,6 +1,7 @@
 """The single model/tool state machine used by both core and extended runtimes."""
 from __future__ import annotations
 
+import json
 import time
 from dataclasses import replace
 
@@ -43,6 +44,16 @@ def _exposed_tool_names(step) -> tuple[str, ...]:
     return tuple(sorted(tool.name for tool in step.tool_router.all()))
 
 
+def _sample_model_identity(step) -> dict[str, str]:
+    """Only persist attribution fields from the immutable request snapshot."""
+    profile = json.loads(step.request_state.model_profile_json or "{}")
+    return {
+        "model": str(profile.get("model") or ""),
+        "provider": str(profile.get("provider") or ""),
+        "profile_id": step.world_state.profile_id,
+    }
+
+
 def _consume_steering_for_sample(rt, session, token) -> int:
     """Consume all guidance known before a model request and return its revision.
 
@@ -70,6 +81,7 @@ def _record_steering_rejection(
 ) -> None:
     resolved_usage = usage or ModelUsage()
     data = {
+        **_sample_model_identity(step),
         "step_id": step.step_id,
         "reason": "superseded_by_steering",
         "attempt": attempt,
@@ -124,6 +136,9 @@ class TurnRunner:
                         )
                     reasoning = step.reasoning
                     profile_id = step.world_state.profile_id
+                    # Attribute this sample to its frozen request configuration,
+                    # not a session model that may change before it completes.
+                    model_identity = _sample_model_identity(step)
                     tool_names = _exposed_tool_names(step)
                     request_messages = list(messages)
                     if recovery_instruction:
@@ -186,6 +201,7 @@ class TurnRunner:
                             "attempt": attempt,
                             "request_preparation_ms": request_preparation_ms,
                             **extra,
+                            **model_identity,
                         })
                         try:
                             response = rt.model_executor.execute(
@@ -227,6 +243,7 @@ class TurnRunner:
                             )
                             session.usage = _add_usage(session.usage, rejected_usage)
                             rt._record(session, Event.MODEL_RESPONSE_REJECTED, data={
+                                **model_identity,
                                 "step_id": step.step_id,
                                 "reason": "reasoning_only_response" if exc.reasoning_char_count else "empty_response",
                                 "finish_reason": exc.finish_reason,
@@ -259,6 +276,7 @@ class TurnRunner:
                             over_length = is_context_window_error(exc)
                             session.model_steps += 1
                             rt._record(session, Event.MODEL_RESPONSE_REJECTED, data={
+                                **model_identity,
                                 "step_id": step.step_id,
                                 "reason": (
                                     "context_window_exceeded"
@@ -379,6 +397,7 @@ class TurnRunner:
                     session.model_steps += 1
                     session.usage = _add_usage(session.usage, response.usage)
                     rt._record(session, Event.MODEL_RESPONSE_REJECTED, data={
+                        **model_identity,
                         "step_id": step.step_id,
                         "reason": invalid_terminal,
                         "finish_reason": response.finish_reason,
@@ -479,6 +498,7 @@ class TurnRunner:
                             reasoning=response.reasoning,
                         ))
                         rt._record(session, Event.MODEL_RESPONSE, data={
+                            **model_identity,
                             "step_id": step.step_id,
                             "text": response.text,
                             "finish_reason": response.finish_reason,

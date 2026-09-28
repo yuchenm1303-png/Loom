@@ -132,7 +132,9 @@
   width: min(720px, 100%);
   display: grid;
   gap: 0;
-  margin-top: -5px;
+  /* The process content has only 3px top padding and clips for folding.
+     A -5px margin pulled the capsule's top 2px outside that clip. */
+  margin-top: 0;
   animation: inline-thinking-enter 180ms cubic-bezier(.2,.8,.2,1) both;
 }
 

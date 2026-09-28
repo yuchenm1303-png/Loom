@@ -1,8 +1,7 @@
 """Contracts for the live capsule motion language in the transcript.
 
-Every live capsule (task anchor, task row, thinking capsule) is born the same
-way: its icon bead pops on a spring, then the capsule unrolls out of the bead
-through a pill-shaped clip-path while copy only fades. These tests pin the
+Thinking capsules unroll from their bead; task capsules appear at full width
+so commands are readable immediately. Icons retain their spring motion. These tests pin the
 parts that are easy to regress silently: text-bearing surfaces never animate
 transforms, only the live anchor animates, and history never replays motion.
 """
@@ -92,7 +91,7 @@ def test_text_bearing_surfaces_never_animate_transforms() -> None:
                     checked.add(name)
 
     # The walk must actually reach the capsule birth, not pass vacuously.
-    assert {"loom-capsule-unroll", "loom-task-row-enter", "loom-task-copy-in", "loom-task-verb-in"} <= checked
+    assert {"loom-capsule-unroll", "loom-task-capsule-land", "loom-task-copy-in", "loom-task-verb-in"} <= checked
     assert "loom-reasoning-handoff" in checked
 
 
@@ -109,10 +108,14 @@ def test_capsule_unrolls_from_its_bead_through_clip_path_only() -> None:
 
     assert "--capsule-bead-end: 33px;" in motion
     assert "--capsule-bead-end: 43px;" in motion
-    assert "animation: loom-capsule-unroll 460ms var(--loom-motion-unroll) 40ms backwards;" in motion
-    assert "animation: loom-capsule-unroll 520ms var(--loom-motion-unroll) calc(var(--capsule-lead) + 40ms) backwards;" in motion
-    # The anchor leads a group's first row by one beat; later rows need none.
-    assert ".task-flow-group.is-running .task-flow-row-wrap:first-child {\n  --capsule-lead: 90ms;" in motion
+    # Thinking still unrolls; task commands must be readable from first paint.
+    assert "animation: loom-capsule-unroll" in read(THINKING)
+    land = keyframes(motion, "loom-task-capsule-land")
+    assert "clip-path" not in land and not TRANSFORM_PROPERTY.search(land)
+    assert "opacity: 0;" not in land
+    copy_rules = [body for selector, body in rules(motion)
+                  if selector == ".turn-process.is-live .task-flow-group.is-running .task-flow-row-main"]
+    assert len(copy_rules) == 1 and "animation: none;" in copy_rules[0]
 
 
 def test_beads_pop_on_sampled_springs() -> None:
@@ -144,10 +147,10 @@ def test_only_the_live_anchor_group_animates() -> None:
     # Every birth/tick rule is scoped to the running anchor of a live turn, so
     # finished groups and remounted history stay still.
     for selector in (
-        ".task-flow-group-header {\n  animation: loom-capsule-unroll",
+        ".task-flow-group-header {\n  animation: loom-task-capsule-land",
         ".task-flow-group-icon {\n  animation: loom-task-icon-spring",
         ".task-flow-row-wrap {\n  contain: layout style;",
-        ".task-flow-row {\n  animation: loom-capsule-unroll",
+        ".task-flow-row {\n  animation: loom-task-capsule-land",
         ".task-flow-status-dot {\n  animation: loom-task-dot-settle",
     ):
         start = motion.index(selector)
@@ -250,10 +253,11 @@ def test_stickers_pop_once_in_the_live_process() -> None:
     assert (
         ".turn-process.is-live .markdown-body img.assistant-inline-sticker {\n"
         "  transform-origin: 50% 70%;\n"
-        "  animation: loom-sticker-pop 640ms var(--loom-spring-soft) backwards;"
+        "  animation: loom-sticker-pop 220ms var(--loom-spring-soft) backwards;"
     ) in generation
     assert ".is-streaming img.assistant-inline-sticker" not in generation
     pop = keyframes(generation, "loom-sticker-pop")
+    assert "opacity: 0;" not in pop, "Stickers must not disappear when remounted"
     # The sticker's own `transform` is its baseline offset; never replace it.
     assert "transform:" not in pop and "scale:" in pop and "rotate:" in pop
 
@@ -279,3 +283,11 @@ def test_reduced_motion_outranks_every_capsule_birth() -> None:
     ):
         assert selector + "," in media
         assert ':root[data-loom-reduced-motion="true"] ' + selector + "," in setting
+
+
+def test_reasoning_capsule_stays_inside_folding_clip() -> None:
+    thinking = read(THINKING)
+    layout = next(body for selector, body in rules(thinking)
+                  if selector == ".live-reasoning" and "display: grid" in body)
+    assert "margin-top: 0;" in layout
+    assert not re.search(r"margin-top:\s*-", layout)

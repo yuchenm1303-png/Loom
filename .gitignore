@@ -65,6 +65,8 @@ venv/
 /artifacts/
 /browser-screenshots/
 /tr-work/
+/scratch/
+/desktop-react/design/*.local.json
 /label-date-generator/
 /.tmp-*/
 
