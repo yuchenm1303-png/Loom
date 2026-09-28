@@ -32,7 +32,7 @@ export function ContextMeter({ report, compacting, progress, busy, onCompact }: 
   const { language } = useI18n();
   const zh = language === "zh-CN";
   const [open, setOpen] = useState(false);
-  const panelPresence = useMotionPresence(open, 300);
+  const panelPresence = useMotionPresence(open, 240);
   const rootRef = useRef<HTMLDivElement | null>(null);
 
   useLayoutEffect(() => {
