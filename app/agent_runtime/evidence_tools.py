@@ -98,6 +98,7 @@ def durable_tool_result_tool(store: FileAgentSessionStore) -> AgentTool:
         },
         handler=read_result,
         effect=ToolEffect.READ_ONLY,
+        supports_parallel_tool_calls=True,
     )
 
 
@@ -125,6 +126,7 @@ def run_scratch_dir_tool(store: FileAgentSessionStore) -> AgentTool:
         input_schema={"type": "object", "properties": {}, "additionalProperties": False},
         handler=scratch_dir,
         effect=ToolEffect.READ_ONLY,
+        supports_parallel_tool_calls=True,
     )
 
 
