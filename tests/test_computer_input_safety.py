@@ -336,7 +336,7 @@ def test_multi_key_key_action_is_a_real_chord_and_normalizes_control(monkeypatch
     assert calls[:4] == [("down", "ctrl"), ("down", "a"), ("up", "a"), ("up", "ctrl")]
 
 
-def test_console_text_uses_virtual_keys_instead_of_unicode_packets(monkeypatch):
+def test_console_text_uses_native_input_buffer_to_bypass_ime(monkeypatch):
     import sys
     import threading
     from types import SimpleNamespace
@@ -354,9 +354,13 @@ def test_console_text_uses_virtual_keys_instead_of_unicode_packets(monkeypatch):
     operator = object.__new__(PyWinAutoWindowsOperator)
     operator._lock = threading.RLock()
     operator._control_maps = {}
+    native_calls: list[tuple[int, str]] = []
+    operator._write_console_input = lambda hwnd, text: native_calls.append((hwnd, text)) or True
     observation = SimpleNamespace(
         observation_id="obs",
-        frame=ComputerFrame(frame_id="f", origin_x=0, origin_y=0, width=100, height=100),
+        frame=ComputerFrame(
+            frame_id="f", origin_x=0, origin_y=0, width=100, height=100, window_id="0x1234"
+        ),
         active_window=SimpleNamespace(process_name="cmd.exe"),
     )
 
@@ -366,7 +370,30 @@ def test_console_text_uses_virtual_keys_instead_of_unicode_packets(monkeypatch):
     )
 
     assert execution.ok is True
-    assert "virtual-key console fallback" in execution.message
+    assert "native console input buffer" in execution.message
+    assert native_calls == [(0x1234, "echo ok\n")]
+    assert calls == []
+
+
+def test_console_input_falls_back_to_virtual_keys_when_attach_is_unavailable(monkeypatch):
+    import sys
+    from types import SimpleNamespace
+
+    calls: list[tuple[object, ...]] = []
+    monkeypatch.setitem(
+        sys.modules,
+        "pyautogui",
+        SimpleNamespace(
+            write=lambda text, interval=0: calls.append(("write", text, interval)),
+            press=lambda key: calls.append(("press", key)),
+            keyUp=lambda key: calls.append(("up", key)),
+        ),
+    )
+    operator = _operator()
+    operator._write_console_input = lambda _hwnd, _text: False
+
+    operator._send_console_text("echo ok\n")
+
     assert calls[:2] == [("write", "echo ok", 0), ("press", "enter")]
 
 

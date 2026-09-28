@@ -314,7 +314,7 @@ class PyWinAutoWindowsOperator:
             "dpi_awareness": self.dpi_awareness,
             "observation": "active-window screenshot + window list, with a deadline-bounded UI Automation layer",
             "pointer_fallback": "Win32 virtual-desktop coordinates",
-            "keyboard_fallback": "explicit key chords + console virtual keys + SendInput Unicode text",
+            "keyboard_fallback": "explicit key chords + native console input buffer + virtual-key/Unicode fallback",
             "secure_desktop": False,
             "elevated_window_access": "subject to Windows UIPI/integrity boundaries",
             "capture_profile": self.capture_profile,
@@ -527,8 +527,12 @@ class PyWinAutoWindowsOperator:
                     observation.active_window.process_name if observation.active_window is not None else ""
                 ).strip().casefold()
                 if process_name in _CONSOLE_PROCESSES:
-                    self._send_console_text(action.text)
-                    fallback_name = "virtual-key console fallback"
+                    hwnd = self._parse_window_id(observation.frame.window_id)
+                    if self._write_console_input(hwnd, action.text):
+                        fallback_name = "native console input buffer"
+                    else:
+                        self._send_console_text(action.text)
+                        fallback_name = "virtual-key console fallback"
                 else:
                     self._send_unicode_text(action.text)
                     fallback_name = "Unicode SendInput fallback"
@@ -763,6 +767,132 @@ class PyWinAutoWindowsOperator:
             flush_ascii()
         finally:
             self._release_modifiers()
+
+    @staticmethod
+    def _write_console_input(hwnd: int, text: str) -> bool:
+        """Write Unicode key records directly to a console input buffer.
+
+        Physical VK input still passes through the active IME. With Sogou in
+        Chinese mode that leaves the command in the IME composition popup and
+        an apparently empty console. WriteConsoleInputW targets conhost's input
+        queue directly, preserving Unicode while bypassing IME composition.
+
+        Attaching would detach a process that already owns a console, so that
+        case deliberately falls back to virtual keys. Loom's packaged desktop
+        worker is console-free in production.
+        """
+
+        if not text:
+            return True
+
+        import win32process
+
+        kernel32 = ctypes.windll.kernel32
+        kernel32.GetConsoleWindow.restype = ctypes.c_void_p
+        kernel32.AttachConsole.argtypes = [ctypes.c_ulong]
+        kernel32.AttachConsole.restype = ctypes.c_int
+        kernel32.CreateFileW.argtypes = [
+            ctypes.c_wchar_p,
+            ctypes.c_ulong,
+            ctypes.c_ulong,
+            ctypes.c_void_p,
+            ctypes.c_ulong,
+            ctypes.c_ulong,
+            ctypes.c_void_p,
+        ]
+        kernel32.CreateFileW.restype = ctypes.c_void_p
+        kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
+        kernel32.CloseHandle.restype = ctypes.c_int
+        kernel32.FreeConsole.restype = ctypes.c_int
+        if int(kernel32.GetConsoleWindow() or 0):
+            return False
+        try:
+            process_id = int(win32process.GetWindowThreadProcessId(int(hwnd))[1])
+        except Exception:
+            return False
+        if not process_id or not bool(kernel32.AttachConsole(process_id)):
+            return False
+
+        INVALID_HANDLE_VALUE = ctypes.c_void_p(-1).value
+        GENERIC_READ = 0x80000000
+        GENERIC_WRITE = 0x40000000
+        FILE_SHARE_READ = 0x00000001
+        FILE_SHARE_WRITE = 0x00000002
+        OPEN_EXISTING = 3
+        KEY_EVENT = 0x0001
+
+        class CHAR_UNION(ctypes.Union):
+            _fields_ = [("UnicodeChar", ctypes.c_wchar), ("AsciiChar", ctypes.c_char)]
+
+        class KEY_EVENT_RECORD(ctypes.Structure):
+            _fields_ = [
+                ("bKeyDown", ctypes.c_int),
+                ("wRepeatCount", ctypes.c_ushort),
+                ("wVirtualKeyCode", ctypes.c_ushort),
+                ("wVirtualScanCode", ctypes.c_ushort),
+                ("uChar", CHAR_UNION),
+                ("dwControlKeyState", ctypes.c_ulong),
+            ]
+
+        class EVENT_UNION(ctypes.Union):
+            _fields_ = [("KeyEvent", KEY_EVENT_RECORD), ("padding", ctypes.c_byte * 16)]
+
+        class INPUT_RECORD(ctypes.Structure):
+            _fields_ = [("EventType", ctypes.c_ushort), ("Event", EVENT_UNION)]
+
+        kernel32.WriteConsoleInputW.argtypes = [
+            ctypes.c_void_p,
+            ctypes.POINTER(INPUT_RECORD),
+            ctypes.c_ulong,
+            ctypes.POINTER(ctypes.c_ulong),
+        ]
+        kernel32.WriteConsoleInputW.restype = ctypes.c_int
+
+        handle = INVALID_HANDLE_VALUE
+        try:
+            handle = kernel32.CreateFileW(
+                "CONIN$",
+                GENERIC_READ | GENERIC_WRITE,
+                FILE_SHARE_READ | FILE_SHARE_WRITE,
+                None,
+                OPEN_EXISTING,
+                0,
+                None,
+            )
+            if handle in (0, INVALID_HANDLE_VALUE):
+                return False
+            records: list[INPUT_RECORD] = []
+            encoded = text.encode("utf-16-le")
+            for index in range(0, len(encoded), 2):
+                code_unit = int.from_bytes(encoded[index : index + 2], "little")
+                char = chr(code_unit)
+                for is_down in (True, False):
+                    record = INPUT_RECORD()
+                    record.EventType = KEY_EVENT
+                    record.Event.KeyEvent = KEY_EVENT_RECORD(
+                        int(is_down),
+                        1,
+                        0,
+                        0,
+                        CHAR_UNION(UnicodeChar=char),
+                        0,
+                    )
+                    records.append(record)
+            array_type = INPUT_RECORD * len(records)
+            written = ctypes.c_ulong(0)
+            ok = bool(
+                kernel32.WriteConsoleInputW(
+                    handle,
+                    array_type(*records),
+                    len(records),
+                    ctypes.byref(written),
+                )
+            )
+            return ok and int(written.value) == len(records)
+        finally:
+            if handle not in (0, INVALID_HANDLE_VALUE):
+                kernel32.CloseHandle(handle)
+            kernel32.FreeConsole()
 
     def _release_modifiers(self) -> None:
         """Force every modifier key up, whatever state the last action left.
