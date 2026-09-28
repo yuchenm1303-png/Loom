@@ -178,6 +178,7 @@ class TurnRunner:
                         max_output_tokens=resolved_output_reserve or None,
                         reasoning=reasoning,
                         session_id=session.session_id,
+                        parallel_tool_calls=True,
                     )
                     request_preparation_ms = round(
                         (time.perf_counter() - request_preparation_started) * 1000
