@@ -462,8 +462,8 @@
   transform: translateY(-1px);
 }
 
-.thread-header [class*="context"][role="dialog"],
-.thread-header [class*="context"][role="menu"] {
+.thread-header [class*="context"][role="dialog"]:not(.context-meter-panel),
+.thread-header [class*="context"][role="menu"]:not(.context-meter-panel) {
   position: absolute;
   z-index: 90;
   transform-origin: top right;
@@ -502,8 +502,8 @@
 
 /* Light-theme context window: a quiet floating card rather than another
    heavy toolbar surface. */
-html[data-loom-theme="light"] .thread-header [class*="context"][role="dialog"],
-html[data-loom-theme="light"] .thread-header [class*="context"][role="menu"] {
+html[data-loom-theme="light"] .thread-header [class*="context"][role="dialog"]:not(.context-meter-panel),
+html[data-loom-theme="light"] .thread-header [class*="context"][role="menu"]:not(.context-meter-panel) {
   border-color: rgba(28,31,37,.10) !important;
   background:
     radial-gradient(120% 80% at 82% -12%, rgba(105,90,216,.065), transparent 52%),
@@ -535,16 +535,16 @@ html[data-loom-theme="light"] .thread-header [class*="context"][aria-expanded="t
 
 @media (prefers-reduced-motion: reduce) {
   .thread-header [class*="context"][aria-expanded],
-  .thread-header [class*="context"][role="dialog"],
-  .thread-header [class*="context"][role="menu"] {
+  .thread-header [class*="context"][role="dialog"]:not(.context-meter-panel),
+  .thread-header [class*="context"][role="menu"]:not(.context-meter-panel) {
     animation: none !important;
     transition-duration: .001ms !important;
   }
 }
 
 html[data-loom-reduced-motion="true"] .thread-header [class*="context"][aria-expanded],
-html[data-loom-reduced-motion="true"] .thread-header [class*="context"][role="dialog"],
-html[data-loom-reduced-motion="true"] .thread-header [class*="context"][role="menu"] {
+html[data-loom-reduced-motion="true"] .thread-header [class*="context"][role="dialog"]:not(.context-meter-panel),
+html[data-loom-reduced-motion="true"] .thread-header [class*="context"][role="menu"]:not(.context-meter-panel) {
   animation: none !important;
   transition-duration: .001ms !important;
 }
