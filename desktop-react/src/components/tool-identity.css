@@ -16,6 +16,27 @@
   overflow: visible;
 }
 
+/* Computer Use reads more clearly as a pointer than as a monitor. Keep the
+   original SVG's box for sizing, then paint a lightweight cursor/click mark on
+   top so task rows stay aligned with the rest of the tool glyphs. */
+.tool-identity-glyph[data-tool-family="computer"] {
+  position: relative;
+}
+
+.tool-identity-glyph[data-tool-family="computer"] > svg {
+  opacity: 0;
+}
+
+.tool-identity-glyph[data-tool-family="computer"]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M7.2 4.1 17.5 13.7l-4.7.7 2.5 5.2-2.35 1.1-2.45-5.25-3.3 3.45V4.1Z'/%3E%3Cpath d='M4.1 5.1 2.45 3.8M5.55 2.9 5.05 1M3.05 8.1 1 8.55'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M7.2 4.1 17.5 13.7l-4.7.7 2.5 5.2-2.35 1.1-2.45-5.25-3.3 3.45V4.1Z'/%3E%3Cpath d='M4.1 5.1 2.45 3.8M5.55 2.9 5.05 1M3.05 8.1 1 8.55'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+
 /* Filled brand marks look optically larger than stroked capability marks at
    the same nominal box. Pull them in a fraction instead of shrinking every
    capability glyph. */
