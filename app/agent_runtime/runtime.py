@@ -763,6 +763,14 @@ class AgentRuntime:
         self._release_step_context(step)
         self._record(session, AgentEventKind.TURN_FAILED, data={"error": session.error})
 
+    def _prepared_supports_parallel(
+        self,
+        prepared: PreparedToolCall,
+        step: StepContext,
+    ) -> bool:
+        _ = step
+        return bool(prepared.tool.supports_parallel_tool_calls)
+
     def _prepare_parallel_prefix(
         self,
         session: AgentSession,
@@ -792,7 +800,7 @@ class AgentRuntime:
                 break
             if (
                 prepared.decision is not PermissionDecision.ALLOW
-                or not prepared.tool.supports_parallel_tool_calls
+                or not self._prepared_supports_parallel(prepared, step)
             ):
                 break
             batch.append(prepared)
@@ -898,7 +906,7 @@ class AgentRuntime:
                 )
                 return False
 
-            if prepared.tool.supports_parallel_tool_calls:
+            if self._prepared_supports_parallel(prepared, execution_step):
                 batch = self._prepare_parallel_prefix(session, execution_step, prepared)
                 if len(batch) > 1:
                     del session.pending_tool_calls[:len(batch)]
@@ -1043,12 +1051,14 @@ class AgentRuntime:
             step,
             emit_event=emit_event,
         )
-        try:
-            result = prepared.tool.handler(context, prepared.call.arguments)
-            if not isinstance(result, ToolResult):
-                raise TypeError("agent tool handler must return ToolResult")
-        except Exception as exc:
-            result = ToolResult(ok=False, content=f"{type(exc).__name__}: {exc}")
+        # Keep the same execution boundary as the serial runtime. The
+        # orchestrator performs final permission enforcement and typed exec
+        # sandbox-denial classification; parallelism must not bypass either.
+        result = self.orchestrator.execute(
+            prepared,
+            context,
+            approval_granted=False,
+        )
         diff_snapshot = (
             tracker.snapshot(max_chars=self.limits.max_tool_result_chars)
             if tracker.revision != diff_revision_before
