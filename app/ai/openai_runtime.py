@@ -90,8 +90,9 @@ def _message_payload(
             else:  # pragma: no cover - contracts reject unsupported parts
                 raise TypeError("unsupported message content part")
         payload["content"] = content
-    if message.name:
-        payload["name"] = message.name
+    # Loom uses message.name to identify transient context and tool results
+    # internally. Chat Completions does not need that label on the wire, and
+    # several compatible endpoints reject it even for system/user messages.
     if message.tool_call_id:
         payload["tool_call_id"] = message.tool_call_id
     if message.reasoning:

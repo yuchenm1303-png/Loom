@@ -35,10 +35,12 @@ from app.ai import (
     ProviderConnection,
     StreamEvent,
     StreamEventKind,
+    ToolCall,
     ToolDefinition,
 )
 from app.ai.openai_streaming import OpenAIStreamingChatBackend
 from app.ai.openai_runtime import _message_payload, _retryable_provider_error
+from app.ai.opencode_go_runtime import opencode_go_protocol
 from app.ai.errors import AIEmptyResponseError, AITransportError
 from app.ai.streaming_platform import (
     ProviderStreamEvent,
@@ -256,6 +258,26 @@ def test_openai_native_payload_preserves_auto_image_detail():
         "url": "data:image/png;base64,AA",
         "detail": "auto",
     }
+
+
+def test_chat_completions_omits_internal_message_names_but_keeps_tool_identity():
+    messages = (
+        AIMessage(role=MessageRole.SYSTEM, name="loom_runtime_state", content="state"),
+        AIMessage(role=MessageRole.USER, name="loom_project_instructions", content="rules"),
+        AIMessage(
+            role=MessageRole.ASSISTANT,
+            content="",
+            tool_calls=(ToolCall(call_id="call-1", name="echo", arguments={"value": "ok"}),),
+        ),
+        AIMessage(role=MessageRole.TOOL, name="echo", tool_call_id="call-1", content="ok"),
+    )
+
+    payloads = [_message_payload(message) for message in messages]
+
+    assert all("name" not in payload for payload in payloads)
+    assert payloads[2]["tool_calls"][0]["function"]["name"] == "echo"
+    assert payloads[3]["tool_call_id"] == "call-1"
+    assert opencode_go_protocol("glm-5.3-flash") == "chat-completions"
 
 
 def test_compatible_provider_omits_auto_but_preserves_explicit_image_detail():
