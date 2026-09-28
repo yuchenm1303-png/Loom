@@ -31,6 +31,7 @@ import {
 } from "react";
 import { artifactName, artifactRenderer, canInlineRenderArtifact } from "../artifactRenderers";
 import { useI18n } from "../i18n";
+import { useMotionPresence } from "../motion/useMotionPresence";
 import { TURN_SETTLE_HOLD_MS } from "../presentationTiming";
 import type { TranscriptItem } from "../types/loom";
 import { ArtifactRenderSurface } from "./ArtifactRenderSurface";
@@ -523,7 +524,11 @@ const ActivityRow = memo(function ActivityRow({ item, open, onToggle }: Activity
   const active = isActiveActivityStatus(status);
   const executing = isExecutingActivityStatus(status);
   const expandable = active || hasActivityDetail(item);
-  const detail = open ? activityDetail(item) : "";
+  const detailPresence = useMotionPresence(open, 260);
+  const cachedDetailRef = useRef("");
+  const liveDetail = open ? activityDetail(item) : "";
+  if (open) cachedDetailRef.current = liveDetail;
+  const visibleDetail = open ? liveDetail : cachedDetailRef.current;
   const stats = item.type === "file_edit" && (!active || open) ? diffStats(item.diff) : null;
   const verbKey = active ? "active" : "rested";
   const identity = activityIdentity(item);
@@ -575,18 +580,23 @@ const ActivityRow = memo(function ActivityRow({ item, open, onToggle }: Activity
       </button>
 
       {expandable ? (
-        <div className={`task-flow-inline-detail-grid ${open ? "open" : ""}`}>
+        <div
+          className={`task-flow-inline-detail-grid ${open ? "open" : ""}`}
+          data-motion-phase={detailPresence.phase}
+        >
           <div className="task-flow-inline-detail-inner">
-            <div className="task-flow-inline-detail">
-              {detail ? (
-                <pre>{detail}</pre>
-              ) : active ? (
-                <div className="task-flow-live-detail" role="status">
-                  <span className="task-flow-live-detail-glow" aria-hidden="true" />
-                  <span>{liveActivityHint(item, status)}</span>
-                </div>
-              ) : null}
-            </div>
+            {detailPresence.mounted ? (
+              <div className="task-flow-inline-detail">
+                {visibleDetail ? (
+                  <pre>{visibleDetail}</pre>
+                ) : active ? (
+                  <div className="task-flow-live-detail" role="status">
+                    <span className="task-flow-live-detail-glow" aria-hidden="true" />
+                    <span>{liveActivityHint(item, status)}</span>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         </div>
       ) : null}
