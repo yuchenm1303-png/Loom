@@ -154,7 +154,7 @@ function MemoryPill({ tone = "muted", children }: { tone?: string; children: str
   );
 }
 
-function MemoryPanel({ threadId, running }: MemorySettingsBridgeProps) {
+export function MemoryPanel({ threadId, running }: MemorySettingsBridgeProps) {
   const [preferences, setPreferences] = useState<MemoryPreferences>(DEFAULT_MEMORY);
   const [status, setStatus] = useState<MemoryStatus | null>(null);
   const [memories, setMemories] = useState<MemoryRecordView[]>([]);
