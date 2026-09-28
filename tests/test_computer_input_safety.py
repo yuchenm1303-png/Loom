@@ -354,6 +354,12 @@ def test_console_text_uses_native_input_buffer_to_bypass_ime(monkeypatch):
     operator = object.__new__(PyWinAutoWindowsOperator)
     operator._lock = threading.RLock()
     operator._control_maps = {}
+    operator._console_target = lambda _hwnd, _process: {
+        "interactive": True,
+        "console_kind": "cmd.exe",
+        "target_pid": 4242,
+        "classification": "interactive_cmd",
+    }
     native_calls: list[tuple[int, str]] = []
     operator._write_console_input = lambda hwnd, text: native_calls.append((hwnd, text)) or {
         "ok": True,
@@ -380,6 +386,9 @@ def test_console_text_uses_native_input_buffer_to_bypass_ime(monkeypatch):
         "ok": True,
         "stage": "completed",
         "target_pid": 4242,
+        "interactive": True,
+        "console_kind": "cmd.exe",
+        "classification": "interactive_cmd",
     }
     assert native_calls == [(0x1234, "echo ok\n")]
     assert calls == []
@@ -405,6 +414,80 @@ def test_console_input_falls_back_to_virtual_keys_when_attach_is_unavailable(mon
     operator._send_console_text("echo ok\n")
 
     assert calls[:2] == [("write", "echo ok", 0), ("press", "enter")]
+
+
+def test_console_type_fails_closed_instead_of_using_ime_sensitive_fallback(monkeypatch):
+    import sys
+    import threading
+    from types import SimpleNamespace
+
+    calls: list[tuple[object, ...]] = []
+    monkeypatch.setitem(
+        sys.modules,
+        "pyautogui",
+        SimpleNamespace(
+            write=lambda *args, **kwargs: calls.append(("write", *args)),
+            press=lambda key: calls.append(("press", key)),
+            keyUp=lambda key: calls.append(("up", key)),
+        ),
+    )
+    operator = object.__new__(PyWinAutoWindowsOperator)
+    operator._lock = threading.RLock()
+    operator._control_maps = {}
+    operator._console_target = lambda _hwnd, _process: {
+        "interactive": True,
+        "classification": "interactive_cmd",
+        "target_pid": 4242,
+    }
+    operator._write_console_input = lambda _hwnd, _text: {
+        "ok": False,
+        "stage": "attach_console",
+        "target_pid": 4242,
+        "win32_error": 5,
+    }
+    observation = SimpleNamespace(
+        observation_id="obs",
+        frame=ComputerFrame(
+            frame_id="f", origin_x=0, origin_y=0, width=100, height=100, window_id="0x1234"
+        ),
+        active_window=SimpleNamespace(process_name="cmd.exe"),
+    )
+
+    execution = operator.execute(
+        ComputerAction(type=ComputerActionType.TYPE, text="CU_TEST"), observation
+    )
+
+    assert execution.ok is False
+    assert execution.fallback_used is False
+    assert execution.details["input_backend"] == "console-input-failed"
+    assert execution.details["win32_error"] == 5
+    assert calls == [], "a failed native console write must not fall back through the IME"
+
+
+def test_noninteractive_cmd_wrapper_is_refused_before_any_input(monkeypatch):
+    import sys
+    from types import SimpleNamespace
+
+    monkeypatch.setitem(
+        sys.modules,
+        "win32process",
+        SimpleNamespace(GetWindowThreadProcessId=lambda _hwnd: (77, 21852)),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "psutil",
+        SimpleNamespace(
+            Process=lambda _pid: SimpleNamespace(
+                cmdline=lambda: ["cmd.exe", "/d", "/s", "/c", "extension-host.exe"]
+            )
+        ),
+    )
+
+    result = PyWinAutoWindowsOperator._console_target(0x107DE, "cmd.exe")
+
+    assert result["target_pid"] == 21852
+    assert result["interactive"] is False
+    assert result["classification"] == "noninteractive_cmd_wrapper"
 
 
 def test_console_buffer_writer_uses_isolated_console_free_helper(monkeypatch):
