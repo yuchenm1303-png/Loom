@@ -63,12 +63,8 @@ body {
 .thread-status-chip,
 .thread-meta-chip { font-size: 12px !important; }
 
-/* Empty conversation state ---------------------------------------------- */
-.empty-kicker { font-size: 12.5px !important; }
-.empty-state > p { font-size: 14.5px !important; }
-.starter-eyebrow { font-size: 12px !important; }
-.starter-content strong { font-size: 13.5px !important; }
-.starter-content > span:last-child { font-size: 12.5px !important; }
+/* The conversation home sizes its text from the tokens above
+   (components/conversation-home.css, home-token-activity.css). */
 
 /* Main transcript -------------------------------------------------------- */
 .user-message,

@@ -1198,6 +1198,10 @@ export default function App() {
             promptDisabled={conversationDisabled}
             onPrompt={(prompt) => loom.send(prompt)}
             onApproval={handleApproval}
+            onOpenInsights={() => {
+              setSettingsOpen(false);
+              setProfileOpen(true);
+            }}
           />
           <TranscriptScrollController
             items={transcriptItems}

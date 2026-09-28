@@ -993,86 +993,9 @@ html[data-loom-theme="light"] .error-icon {
 }
 
 /* Light theme control-surface polish -------------------------------------- */
-/* Empty state cards, header controls, and composer actions still inherit
+/* Header controls and composer actions still inherit
    dark-surface literals from their component styles. Keep light mode airy and
    clearly interactive without turning every secondary control into a gray slab. */
-
-/* Empty workspace hero. */
-html[data-loom-theme="light"] .empty-kicker {
-  color: #6b5ed0;
-}
-
-html[data-loom-theme="light"] .empty-state > h1 {
-  color: #20242b;
-  text-shadow: none;
-}
-
-html[data-loom-theme="light"] .empty-state > p {
-  color: #626b76;
-}
-
-/* Starter actions become white product cards rather than dark buttons. */
-html[data-loom-theme="light"] .starter-card {
-  border-color: #d9dde3;
-  background:
-    linear-gradient(180deg, rgba(255,255,255,.99), rgba(248,249,251,.99));
-  color: #20242b;
-  box-shadow:
-    0 7px 20px rgba(27,31,40,.045),
-    inset 0 1px 0 rgba(255,255,255,.96);
-}
-
-html[data-loom-theme="light"] .starter-card::before {
-  background: radial-gradient(circle at 16% 0%, rgba(105,90,216,.095), transparent 46%);
-}
-
-html[data-loom-theme="light"] .starter-card:hover:not(:disabled) {
-  border-color: rgba(105,90,216,.26);
-  background:
-    linear-gradient(180deg, #ffffff, #fafafe);
-  box-shadow:
-    0 12px 30px rgba(27,31,40,.075),
-    0 0 0 1px rgba(105,90,216,.035),
-    inset 0 1px 0 rgba(255,255,255,.98);
-}
-
-html[data-loom-theme="light"] .starter-card:focus-visible {
-  outline: 2px solid rgba(105,90,216,.30);
-  outline-offset: 2px;
-}
-
-html[data-loom-theme="light"] .starter-icon {
-  color: #6557c8;
-  border-color: rgba(105,90,216,.16);
-  background: rgba(105,90,216,.075);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.9);
-}
-
-html[data-loom-theme="light"] .starter-card:hover:not(:disabled) .starter-icon {
-  color: #5749b9;
-  border-color: rgba(105,90,216,.25);
-  background: rgba(105,90,216,.105);
-}
-
-html[data-loom-theme="light"] .starter-eyebrow {
-  color: #7164cc !important;
-}
-
-html[data-loom-theme="light"] .starter-content strong {
-  color: #2a2f36;
-}
-
-html[data-loom-theme="light"] .starter-content > span:last-child {
-  color: #68717c;
-}
-
-html[data-loom-theme="light"] .starter-arrow {
-  color: #8a929d;
-}
-
-html[data-loom-theme="light"] .starter-card:hover:not(:disabled) .starter-arrow {
-  color: #6253ca;
-}
 
 /* Header status and action controls. */
 html[data-loom-theme="light"] .thread-status-chip {

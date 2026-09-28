@@ -1,0 +1,350 @@
+/* Conversation home: the launch surface shown while a thread has no items.
+   Layout, intro and starter actions live here, the activity card in
+   home-token-activity.css, and the orbit emblem's internals in styles.css. */
+
+.empty-state {
+  --home-width: 720px;
+  --home-radius: 16px;
+  /* Space between the intro and the activity card; the queries below shrink it. */
+  --home-section-gap: 24px;
+  --home-ink: #f1f2f5;
+  --home-ink-2: #c1c6cf;
+  --home-ink-3: #8b929e;
+  --home-ink-4: #676e7a;
+  --home-accent-rgb: 139,124,246;
+  --home-surface: rgba(22,24,30,.88);
+  --home-surface-hover: rgba(26,28,35,.96);
+  --home-shadow:
+    inset 0 1px 0 rgba(255,255,255,.04),
+    0 1px 2px rgba(0,0,0,.28),
+    0 12px 30px -16px rgba(0,0,0,.6);
+  --home-shadow-hover:
+    inset 0 1px 0 rgba(255,255,255,.055),
+    0 2px 5px rgba(0,0,0,.28),
+    0 20px 40px -18px rgba(0,0,0,.7);
+
+  width: 100%;
+  flex: 1 0 auto;
+  margin: 0;
+  /* The extra bottom padding lifts the block slightly above the geometric
+     centre, where a centred composition reads as centred. */
+  padding: 12px 0 calc(12px + 4cqh);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: var(--home-ink-2);
+}
+
+html[data-loom-theme="light"] .empty-state {
+  --home-ink: #1b1e24;
+  --home-ink-2: #454b55;
+  --home-ink-3: #6c7380;
+  --home-ink-4: #979ea9;
+  --home-accent-rgb: 105,90,216;
+  --home-surface: #ffffff;
+  --home-surface-hover: #ffffff;
+  --home-shadow:
+    0 0 0 1px rgba(24,27,36,.035),
+    0 1px 2px rgba(24,27,36,.05),
+    0 10px 24px -14px rgba(24,27,36,.14);
+  --home-shadow-hover:
+    0 0 0 1px rgba(24,27,36,.04),
+    0 3px 6px rgba(24,27,36,.05),
+    0 18px 34px -16px rgba(24,27,36,.2);
+}
+
+/* The home fits the viewport at ordinary window heights; below that it
+   scrolls instead of clipping the starters. */
+.transcript-scroll.is-empty {
+  overscroll-behavior: contain;
+  container-type: size;
+}
+
+.transcript.is-empty {
+  padding-block: 0;
+}
+
+/* Staggered entrance: intro, then activity, then actions. `backwards` keeps
+   no transform around once the entrance has finished. */
+.empty-state > * {
+  animation: loom-home-rise 560ms var(--ease-out) backwards;
+}
+
+.empty-state > :nth-child(2) { animation-delay: 70ms; }
+.empty-state > :nth-child(3) { animation-delay: 140ms; }
+
+@keyframes loom-home-rise {
+  from { opacity: 0; transform: translateY(10px); }
+}
+
+/* Intro --------------------------------------------------------------------- */
+.empty-intro {
+  width: min(var(--home-width), 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.empty-intro .empty-hero {
+  flex: none;
+  width: 104px;
+  height: 84px;
+  margin: 0 0 12px;
+}
+
+.empty-intro h1 {
+  margin: 0;
+  color: var(--home-ink);
+  font-size: 28px;
+  line-height: 1.18;
+  font-weight: 660;
+  letter-spacing: -.028em;
+  text-wrap: balance;
+}
+
+.empty-intro p {
+  max-width: 540px;
+  margin: 8px 0 0;
+  color: var(--home-ink-3);
+  font-size: var(--loom-font-ui, 13.5px);
+  line-height: 1.55;
+  text-wrap: balance;
+}
+
+html[data-loom-theme="light"] .empty-intro h1 {
+  text-shadow: none;
+}
+
+/* Starter actions ----------------------------------------------------------- */
+.starter-grid {
+  width: min(var(--home-width), 100%);
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.starter-card {
+  --starter-rgb: 139,124,246;
+  /* Written by starterCardPointerGlow.ts while the pointer is over a card. */
+  --starter-x: 18%;
+  --starter-y: 24%;
+  position: relative;
+  min-height: 76px;
+  padding: 14px 42px 14px 14px;
+  border: 0;
+  border-radius: 14px;
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  align-items: center;
+  column-gap: 12px;
+  overflow: hidden;
+  isolation: isolate;
+  background: var(--home-surface);
+  box-shadow: var(--home-shadow);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    transform 240ms var(--ease-out),
+    box-shadow 240ms var(--ease-out),
+    background-color 200ms ease;
+}
+
+.starter-card:nth-child(2) { --starter-rgb: 104,138,248; }
+.starter-card:nth-child(3) { --starter-rgb: 172,112,238; }
+.starter-card:nth-child(4) { --starter-rgb: 78,156,236; }
+
+html[data-loom-theme="light"] .starter-card { --starter-rgb: 105,90,216; }
+html[data-loom-theme="light"] .starter-card:nth-child(2) { --starter-rgb: 58,100,222; }
+html[data-loom-theme="light"] .starter-card:nth-child(3) { --starter-rgb: 136,76,204; }
+html[data-loom-theme="light"] .starter-card:nth-child(4) { --starter-rgb: 26,121,196; }
+
+/* Accent light that follows the pointer inside the card. */
+.starter-card::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(
+    240px circle at var(--starter-x) var(--starter-y),
+    rgba(var(--starter-rgb),.13),
+    rgba(var(--starter-rgb),.045) 42%,
+    transparent 72%
+  );
+  opacity: 0;
+  transition: opacity 220ms ease;
+  pointer-events: none;
+}
+
+html[data-loom-theme="light"] .starter-card::before {
+  background: radial-gradient(
+    240px circle at var(--starter-x) var(--starter-y),
+    rgba(var(--starter-rgb),.075),
+    rgba(var(--starter-rgb),.025) 42%,
+    transparent 72%
+  );
+}
+
+.starter-card:hover:not(:disabled) {
+  transform: translateY(-1px);
+  background: var(--home-surface-hover);
+  box-shadow: var(--home-shadow-hover);
+}
+
+.starter-card:hover:not(:disabled)::before,
+.starter-card[data-starter-pointer="true"]::before {
+  opacity: 1;
+}
+
+.starter-card:active:not(:disabled) {
+  transform: scale(.992);
+  transition-duration: 90ms;
+}
+
+.starter-card:focus-visible {
+  outline: none;
+  box-shadow: var(--home-shadow-hover), 0 0 0 2px rgba(var(--starter-rgb),.5);
+}
+
+.starter-card:disabled {
+  opacity: .5;
+  cursor: default;
+}
+
+.starter-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  display: grid;
+  place-items: center;
+  color: rgb(var(--starter-rgb));
+  background: rgba(var(--starter-rgb),.13);
+  box-shadow: inset 0 0 0 1px rgba(var(--starter-rgb),.16);
+  transition:
+    transform 280ms var(--ease-spring),
+    background-color 200ms ease;
+}
+
+html[data-loom-theme="light"] .starter-icon {
+  background: rgba(var(--starter-rgb),.08);
+  box-shadow: inset 0 0 0 1px rgba(var(--starter-rgb),.1);
+}
+
+.starter-card:hover:not(:disabled) .starter-icon {
+  transform: scale(1.05);
+  background: rgba(var(--starter-rgb),.18);
+}
+
+html[data-loom-theme="light"] .starter-card:hover:not(:disabled) .starter-icon {
+  background: rgba(var(--starter-rgb),.12);
+}
+
+.starter-content {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.starter-content strong {
+  color: var(--home-ink);
+  font-size: var(--loom-font-ui, 13.5px);
+  font-weight: 620;
+  line-height: 1.3;
+  letter-spacing: -.006em;
+}
+
+.starter-content > span {
+  color: var(--home-ink-3);
+  font-size: var(--loom-font-meta, 12.5px);
+  line-height: 1.45;
+}
+
+.starter-arrow {
+  position: absolute;
+  top: 13px;
+  right: 13px;
+  color: var(--home-ink-4);
+  transition:
+    color 180ms ease,
+    transform 280ms var(--ease-spring);
+}
+
+.starter-card:hover:not(:disabled) .starter-arrow {
+  color: rgb(var(--starter-rgb));
+  transform: translate(2px, -2px);
+}
+
+/* Short and narrow conversation panes --------------------------------------
+   Queries resolve against .transcript-scroll.is-empty, the pane between the
+   header and the composer, not the window. Each step gives up the least useful
+   piece first so the starters stay on screen: the emblem shrinks, then goes,
+   then the copy lines do. */
+@container (max-height: 640px) {
+  .empty-intro .empty-hero {
+    width: 84px;
+    height: 66px;
+    margin-bottom: 8px;
+    scale: .8;
+  }
+
+  .empty-intro h1 { font-size: 25px; }
+  .empty-state { --home-section-gap: 18px; }
+}
+
+@container (max-height: 560px) {
+  .empty-intro .empty-hero { display: none; }
+}
+
+@container (max-height: 480px) {
+  .empty-intro p { display: none; }
+  .empty-state { --home-section-gap: 14px; }
+}
+
+@container (max-width: 620px) or (max-height: 480px) {
+  .starter-card {
+    min-height: 58px;
+    padding: 10px 34px 10px 10px;
+    grid-template-columns: 34px minmax(0, 1fr);
+    column-gap: 10px;
+    border-radius: 13px;
+  }
+
+  .starter-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+  }
+
+  .starter-content > span { display: none; }
+  .starter-arrow { top: 11px; right: 11px; }
+}
+
+@container (max-width: 440px) {
+  .starter-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Motion preferences -------------------------------------------------------- */
+html[data-loom-reduced-motion="true"] .empty-state > * {
+  animation: none;
+}
+
+html[data-loom-reduced-motion="true"] .starter-card,
+html[data-loom-reduced-motion="true"] .starter-card::before,
+html[data-loom-reduced-motion="true"] .starter-icon,
+html[data-loom-reduced-motion="true"] .starter-arrow {
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .empty-state > * { animation: none; }
+
+  .starter-card,
+  .starter-card::before,
+  .starter-icon,
+  .starter-arrow { transition: none; }
+}

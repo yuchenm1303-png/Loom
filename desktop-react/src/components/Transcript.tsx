@@ -11,7 +11,6 @@ import {
   Pencil,
   Reply,
   Search,
-  Sparkles,
   Terminal,
   ThumbsDown,
   ThumbsUp,
@@ -31,6 +30,7 @@ import {
   type ReactNode,
 } from "react";
 import { artifactName, artifactRenderer, canInlineRenderArtifact } from "../artifactRenderers";
+import { useI18n } from "../i18n";
 import { TURN_SETTLE_HOLD_MS } from "../presentationTiming";
 import type { TranscriptItem } from "../types/loom";
 import { ArtifactRenderSurface } from "./ArtifactRenderSurface";
@@ -60,6 +60,8 @@ interface TranscriptProps {
   promptDisabled?: boolean;
   onPrompt?(prompt: string): Promise<void> | void;
   onApproval(item: TranscriptItem, approved: boolean): void;
+  /** Opens the usage insights page from the home activity card. */
+  onOpenInsights?(): void;
 }
 
 type TranscriptBlock =
@@ -84,34 +86,44 @@ interface ActivitySummaryData {
   failed: boolean;
 }
 
+// [English, Simplified Chinese]. The prompt follows the interface language so
+// the agent answers in it too.
 const starterPrompts = [
   {
     icon: Search,
-    eyebrow: "Understand",
-    title: "Inspect this project",
-    copy: "Map the architecture and tell me what matters first.",
-    prompt: "Inspect this project, map the architecture, and tell me what I should understand first.",
+    title: ["Inspect this project", "了解这个项目"],
+    copy: ["Map the architecture and tell me what matters first.", "梳理架构，告诉我最先该关注什么。"],
+    prompt: [
+      "Inspect this project, map the architecture, and tell me what I should understand first.",
+      "检查这个项目，梳理它的架构，并告诉我最先应该了解什么。",
+    ],
   },
   {
     icon: Code2,
-    eyebrow: "Build",
-    title: "Implement a feature",
-    copy: "Turn a product idea into a focused code change.",
-    prompt: "Help me implement a feature in this project. Start by identifying the smallest clean approach.",
+    title: ["Implement a feature", "实现一个功能"],
+    copy: ["Turn a product idea into a focused code change.", "把产品想法变成一次聚焦的代码改动。"],
+    prompt: [
+      "Help me implement a feature in this project. Start by identifying the smallest clean approach.",
+      "帮我在这个项目中实现一个功能。先找出最小、最干净的实现方式。",
+    ],
   },
   {
     icon: Bug,
-    eyebrow: "Debug",
-    title: "Trace a problem",
-    copy: "Follow the failure to its root cause before changing code.",
-    prompt: "Investigate the current project for the problem I am seeing and trace it to the root cause before making changes.",
+    title: ["Trace a problem", "排查一个问题"],
+    copy: ["Follow the failure to its root cause before changing code.", "先追到根本原因，再动手改代码。"],
+    prompt: [
+      "Investigate the current project for the problem I am seeing and trace it to the root cause before making changes.",
+      "排查当前项目中我遇到的问题，在修改代码之前先追查到根本原因。",
+    ],
   },
   {
     icon: Zap,
-    eyebrow: "Automate",
-    title: "Run a workflow",
-    copy: "Use tools and the workspace to complete a multi-step task.",
-    prompt: "Use the available tools and workspace to complete a useful multi-step task for this project.",
+    title: ["Run a workflow", "运行一个工作流"],
+    copy: ["Use tools and the workspace to complete a multi-step task.", "借助工具和工作区完成一个多步骤任务。"],
+    prompt: [
+      "Use the available tools and workspace to complete a useful multi-step task for this project.",
+      "使用可用的工具和工作区，为这个项目完成一个有用的多步骤任务。",
+    ],
   },
 ] as const;
 
@@ -1501,49 +1513,55 @@ const TurnView = memo(function TurnView({
   && previous.decisionInteractiveItemId === next.decisionInteractiveItemId
 ));
 
-function EmptyState({ disabled, onPrompt }: { disabled?: boolean; onPrompt?(prompt: string): Promise<void> | void }) {
+function EmptyState({ disabled, onPrompt, onOpenInsights }: {
+  disabled?: boolean;
+  onPrompt?(prompt: string): Promise<void> | void;
+  onOpenInsights?(): void;
+}) {
+  const { language } = useI18n();
+  const lang = language === "zh-CN" ? 1 : 0;
   return (
     <section className="empty-state">
       <div className="empty-intro">
-        <div className="empty-brand-lockup">
-          <div className="empty-hero" aria-hidden="true">
-            <span className="empty-hero-aura" />
-            <span className="empty-hero-field" />
-            <span className="empty-loom-sweep" />
-            <span className="empty-loom-orbit empty-loom-orbit-a" />
-            <span className="empty-loom-orbit empty-loom-orbit-b" />
-            <span className="empty-loom-orbit empty-loom-orbit-c" />
-            <span className="empty-loom-core" />
-            <span className="empty-loom-pulse empty-loom-pulse-a" />
-            <span className="empty-loom-pulse empty-loom-pulse-b" />
-            <span className="empty-spark spark-one" />
-            <span className="empty-spark spark-two" />
-            <span className="empty-spark spark-three" />
-          </div>
-          <div className="empty-kicker"><Sparkles size={12} /> Loom workspace</div>
+        <div className="empty-hero" aria-hidden="true">
+          <span className="empty-hero-aura" />
+          <span className="empty-hero-field" />
+          <span className="empty-loom-sweep" />
+          <span className="empty-loom-orbit empty-loom-orbit-a" />
+          <span className="empty-loom-orbit empty-loom-orbit-b" />
+          <span className="empty-loom-orbit empty-loom-orbit-c" />
+          <span className="empty-loom-core" />
+          <span className="empty-loom-pulse empty-loom-pulse-a" />
+          <span className="empty-loom-pulse empty-loom-pulse-b" />
+          <span className="empty-spark spark-one" />
+          <span className="empty-spark spark-two" />
+          <span className="empty-spark spark-three" />
         </div>
-        <h1>What are we working on?</h1>
-        <p>Inspect a codebase, make a change, debug a failure, or hand Loom a multi-step task.</p>
+        <h1>{lang ? "今天我们做点什么？" : "What are we working on?"}</h1>
+        <p>
+          {lang
+            ? "浏览代码库、修改代码、排查故障，或把一个多步骤任务交给 Loom。"
+            : "Inspect a codebase, make a change, debug a failure, or hand Loom a multi-step task."}
+        </p>
       </div>
 
-      <HomeTokenActivity />
+      <HomeTokenActivity onOpenInsights={onOpenInsights} />
 
       <div className="starter-grid">
-        {starterPrompts.map(({ icon: Icon, eyebrow, title, copy, prompt }) => (
+        {starterPrompts.map(({ icon: Icon, title, copy, prompt }) => (
           <button
             className="starter-card"
             type="button"
-            key={title}
+            key={title[0]}
             disabled={disabled}
-            onClick={() => onPrompt?.(prompt)}
+            onClick={() => onPrompt?.(prompt[lang])}
           >
-            <span className="starter-icon"><Icon size={15} /></span>
+            <span className="starter-icon"><Icon size={17} strokeWidth={1.85} /></span>
             <span className="starter-content">
-              <span className="starter-eyebrow">{eyebrow}</span>
-              <strong>{title}</strong>
-              <span>{copy}</span>
+              <strong>{title[lang]}</strong>
+              <span>{copy[lang]}</span>
             </span>
-            <ArrowUpRight className="starter-arrow" size={14} />
+            <ArrowUpRight className="starter-arrow" size={15} strokeWidth={1.8} aria-hidden="true" />
           </button>
         ))}
       </div>
@@ -1551,7 +1569,7 @@ function EmptyState({ disabled, onPrompt }: { disabled?: boolean; onPrompt?(prom
   );
 }
 
-export function Transcript({ items, running, currentTurnId, workspace, promptDisabled, onPrompt, onApproval }: TranscriptProps) {
+export function Transcript({ items, running, currentTurnId, workspace, promptDisabled, onPrompt, onApproval, onOpenInsights }: TranscriptProps) {
   const turnBlocks = useStableTurnBlocks(items);
   const activeTurnId = running && currentTurnId ? String(currentTurnId) : "";
   const decisionInteractiveItemId = useMemo(() => {
@@ -1576,7 +1594,7 @@ export function Transcript({ items, running, currentTurnId, workspace, promptDis
       </div>
       <main className={`transcript ${!items.length ? "is-empty" : ""}`} aria-live="polite">
         {!items.length ? (
-          <EmptyState disabled={promptDisabled} onPrompt={onPrompt} />
+          <EmptyState disabled={promptDisabled} onPrompt={onPrompt} onOpenInsights={onOpenInsights} />
         ) : turnBlocks.map((block, index) => (
           block.kind === "turn" ? (
             <TurnView
