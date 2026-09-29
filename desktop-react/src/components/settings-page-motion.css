@@ -1,105 +1,278 @@
-/* Settings page navigation motion
-   --------------------------------
-   Section changes use one persistent compositor layer. The destination page
-   commits immediately; only this wrapper moves. Avoid animating every heading,
-   card and row independently because dense pages amplify layer creation and
-   text rasterization costs on Windows high-DPI displays. */
+/* Settings navigation motion
+   ==========================
+   Keep section changes polished without turning the whole Settings screen into
+   a pile of independently animated layers. The destination page still commits
+   immediately; one compositor surface carries the main directional motion and
+   only the page heading / top-level sections get a very small follow-through.
+   This keeps Windows high-DPI text crisp while making navigation feel deliberate
+   instead of like a hard content swap. */
 
-.settings-page-surface {
+.settings-shell.settings-refined .settings-page-surface {
+  position: relative;
   min-width: 0;
+  isolation: isolate;
   opacity: 1;
-  transform: translate3d(0, 0, 0);
+  transform: translate3d(0, 0, 0) scale(1);
+  transform-origin: 50% 18px;
   backface-visibility: hidden;
   contain: paint style;
   transition:
-    opacity 170ms cubic-bezier(.2,.72,.18,1),
-    transform 220ms cubic-bezier(.16,.78,.18,1);
+    opacity 190ms cubic-bezier(.2,.72,.18,1),
+    transform 270ms cubic-bezier(.16,.82,.18,1);
 }
 
-.settings-page-surface[data-page-motion="entering-forward"] {
-  opacity: .78;
-  transform: translate3d(7px, 0, 0);
+/* A tiny accent trace gives the eye a stable origin while the new page settles.
+   It is intentionally a hairline rather than a full-page glow, so light mode
+   stays clean and business-like. */
+.settings-shell.settings-refined .settings-page-surface::after {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  top: 8px;
+  left: 8px;
+  width: min(150px, 24%);
+  height: 1px;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--sr-accent) 54%, transparent),
+    color-mix(in srgb, var(--sr-accent) 18%, transparent) 46%,
+    transparent 100%
+  );
+  opacity: 0;
+  transform: translate3d(0, 0, 0) scaleX(.72);
+  transform-origin: left center;
+  pointer-events: none;
+  transition:
+    opacity 220ms ease,
+    transform 310ms cubic-bezier(.16,.82,.18,1);
+}
+
+.settings-shell.settings-refined .settings-page-surface[data-page-motion="entering-forward"] {
+  opacity: .62;
+  transform: translate3d(13px, 2px, 0) scale(.996);
   transition: none;
   will-change: opacity, transform;
 }
 
-.settings-page-surface[data-page-motion="entering-backward"] {
-  opacity: .78;
-  transform: translate3d(-7px, 0, 0);
+.settings-shell.settings-refined .settings-page-surface[data-page-motion="entering-backward"] {
+  opacity: .62;
+  transform: translate3d(-13px, 2px, 0) scale(.996);
   transition: none;
   will-change: opacity, transform;
 }
 
-.settings-page-surface[data-page-motion="idle"] {
+.settings-shell.settings-refined .settings-page-surface[data-page-motion="entering-forward"]::after {
+  opacity: .46;
+  transform: translate3d(9px, 0, 0) scaleX(.92);
+  transition: none;
+}
+
+.settings-shell.settings-refined .settings-page-surface[data-page-motion="entering-backward"]::after {
+  opacity: .46;
+  transform: translate3d(-7px, 0, 0) scaleX(.92);
+  transition: none;
+}
+
+.settings-shell.settings-refined .settings-page-surface[data-page-motion="idle"] {
+  opacity: 1;
+  transform: translate3d(0, 0, 0) scale(1);
+  will-change: auto;
+}
+
+/* Layered follow-through: only structural blocks move, never every row/card.
+   The page wrapper supplies the horizontal direction; these elements settle a
+   few pixels vertically so the result feels dimensional rather than like a flat
+   slide. */
+.settings-shell.settings-refined .settings-page-surface > .settings-page-heading,
+.settings-shell.settings-refined .settings-page-surface > .settings-section {
   opacity: 1;
   transform: translate3d(0, 0, 0);
-  will-change: auto;
+  transition:
+    opacity 210ms cubic-bezier(.2,.72,.18,1),
+    transform 300ms cubic-bezier(.16,.82,.18,1);
+}
+
+.settings-shell.settings-refined .settings-page-surface[data-page-motion^="entering-"] > .settings-page-heading {
+  opacity: .72;
+  transform: translate3d(0, 3px, 0);
+  transition: none;
+}
+
+.settings-shell.settings-refined .settings-page-surface[data-page-motion^="entering-"] > .settings-section {
+  opacity: .76;
+  transform: translate3d(0, 5px, 0);
+  transition: none;
+}
+
+.settings-shell.settings-refined .settings-page-surface[data-page-motion="idle"] > .settings-page-heading {
+  transition-delay: 12ms;
+}
+
+.settings-shell.settings-refined .settings-page-surface[data-page-motion="idle"] > .settings-section:nth-child(2) {
+  transition-delay: 24ms;
+}
+
+.settings-shell.settings-refined .settings-page-surface[data-page-motion="idle"] > .settings-section:nth-child(3) {
+  transition-delay: 38ms;
+}
+
+.settings-shell.settings-refined .settings-page-surface[data-page-motion="idle"] > .settings-section:nth-child(4) {
+  transition-delay: 50ms;
 }
 
 /* Sidebar navigation
    ------------------
-   The active row owns a highlight pill (.settings-nav-pip). On a section change
-   SettingsPage releases the new pill from the previous row's position and lets
-   it glide home with the Web Animations API (transform only), so the highlight
-   travels between rows instead of blinking. The pill sits behind every label:
-   .settings-nav is the stacking context, rows are plain positioned boxes, and
-   the pill has a negative z-index. Row feedback stays a cheap colour fade, with
-   no whole-button shadow or translation repaint while the page is mounting. */
-.settings-nav {
+   The active row owns a real moving highlight pill. SettingsPage uses FLIP via
+   Web Animations to move this pill from the old row to the new row, so section
+   changes read as one continuous selection rather than two unrelated flashes. */
+.settings-shell.settings-refined .settings-nav {
   position: relative;
   isolation: isolate;
 }
 
-.settings-nav button {
+.settings-shell.settings-refined .settings-nav button {
   position: relative;
+  z-index: 0;
+  transform: translate3d(0, 0, 0);
   transition:
     color 150ms ease,
-    background-color 160ms ease !important;
+    background-color 160ms ease,
+    transform 170ms cubic-bezier(.2,.8,.2,1) !important;
 }
 
-.settings-nav-pip {
+.settings-shell.settings-refined .settings-nav button:hover:not(.active) {
+  transform: translate3d(1px, 0, 0);
+}
+
+.settings-shell.settings-refined .settings-nav button:active {
+  transform: scale(.985);
+}
+
+.settings-shell.settings-refined .settings-nav-pip {
   position: absolute;
-  z-index: -1;
+  z-index: 0;
   inset: 0;
   display: block;
+  overflow: hidden;
   border-radius: inherit;
   opacity: 0;
   pointer-events: none;
+  transform: translate3d(0, 0, 0);
+  backface-visibility: hidden;
+  transition:
+    opacity 150ms ease,
+    box-shadow 200ms ease;
 }
 
-.settings-nav button.active .settings-nav-pip {
+.settings-shell.settings-refined .settings-nav-pip::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--sr-accent) 9%, transparent),
+    color-mix(in srgb, var(--sr-accent) 3%, transparent) 54%,
+    transparent 84%
+  );
+  opacity: .9;
+  pointer-events: none;
+}
+
+.settings-shell.settings-refined .settings-nav button.active .settings-nav-pip {
   opacity: 1;
 }
 
-.settings-nav button > svg,
-.settings-nav button > span {
-  transition: color 150ms ease !important;
+.settings-shell.settings-refined .settings-nav button > svg,
+.settings-shell.settings-refined .settings-nav button > span:not(.settings-nav-pip) {
+  position: relative;
+  z-index: 1;
+  transform: translate3d(0, 0, 0);
+  transition:
+    color 150ms ease,
+    transform 210ms cubic-bezier(.2,.8,.2,1) !important;
+}
+
+.settings-shell.settings-refined .settings-nav button.active > svg {
+  transform: translate3d(1px, 0, 0) scale(1.06);
+}
+
+.settings-shell.settings-refined .settings-nav button.active > span:not(.settings-nav-pip) {
+  transform: translate3d(1px, 0, 0);
+}
+
+/* The accent rail expands gently as the travelling pill lands. */
+.settings-shell.settings-refined .settings-nav-pip::before {
+  transform: scaleY(.78);
+  opacity: .72;
+  transform-origin: center;
+  transition:
+    transform 230ms cubic-bezier(.2,.8,.2,1),
+    opacity 180ms ease;
+}
+
+.settings-shell.settings-refined .settings-nav button.active .settings-nav-pip::before {
+  transform: scaleY(1);
+  opacity: 1;
+}
+
+/* Light mode gets the same motion with slightly quieter trace intensity. */
+html[data-loom-theme="light"] .settings-shell.settings-refined .settings-page-surface::after {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--sr-accent) 40%, transparent),
+    color-mix(in srgb, var(--sr-accent) 12%, transparent) 46%,
+    transparent 100%
+  );
+}
+
+html[data-loom-theme="light"] .settings-shell.settings-refined .settings-nav-pip::after {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--sr-accent) 7%, transparent),
+    transparent 72%
+  );
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .settings-page-surface,
-  .settings-nav button,
-  .settings-nav button > svg,
-  .settings-nav button > span {
+  .settings-shell.settings-refined .settings-page-surface,
+  .settings-shell.settings-refined .settings-page-surface::after,
+  .settings-shell.settings-refined .settings-page-surface > .settings-page-heading,
+  .settings-shell.settings-refined .settings-page-surface > .settings-section,
+  .settings-shell.settings-refined .settings-nav button,
+  .settings-shell.settings-refined .settings-nav button > svg,
+  .settings-shell.settings-refined .settings-nav button > span,
+  .settings-shell.settings-refined .settings-nav-pip,
+  .settings-shell.settings-refined .settings-nav-pip::before {
     animation: none !important;
     transition: none !important;
     transform: none !important;
   }
 
-  .settings-page-surface {
+  .settings-shell.settings-refined .settings-page-surface,
+  .settings-shell.settings-refined .settings-page-surface > .settings-page-heading,
+  .settings-shell.settings-refined .settings-page-surface > .settings-section {
     opacity: 1 !important;
   }
 }
 
-html[data-loom-reduced-motion="true"] .settings-page-surface,
-html[data-loom-reduced-motion="true"] .settings-nav button,
-html[data-loom-reduced-motion="true"] .settings-nav button > svg,
-html[data-loom-reduced-motion="true"] .settings-nav button > span {
+html[data-loom-reduced-motion="true"] .settings-shell.settings-refined .settings-page-surface,
+html[data-loom-reduced-motion="true"] .settings-shell.settings-refined .settings-page-surface::after,
+html[data-loom-reduced-motion="true"] .settings-shell.settings-refined .settings-page-surface > .settings-page-heading,
+html[data-loom-reduced-motion="true"] .settings-shell.settings-refined .settings-page-surface > .settings-section,
+html[data-loom-reduced-motion="true"] .settings-shell.settings-refined .settings-nav button,
+html[data-loom-reduced-motion="true"] .settings-shell.settings-refined .settings-nav button > svg,
+html[data-loom-reduced-motion="true"] .settings-shell.settings-refined .settings-nav button > span,
+html[data-loom-reduced-motion="true"] .settings-shell.settings-refined .settings-nav-pip,
+html[data-loom-reduced-motion="true"] .settings-shell.settings-refined .settings-nav-pip::before {
   animation: none !important;
   transition: none !important;
   transform: none !important;
 }
 
-html[data-loom-reduced-motion="true"] .settings-page-surface {
+html[data-loom-reduced-motion="true"] .settings-shell.settings-refined .settings-page-surface,
+html[data-loom-reduced-motion="true"] .settings-shell.settings-refined .settings-page-surface > .settings-page-heading,
+html[data-loom-reduced-motion="true"] .settings-shell.settings-refined .settings-page-surface > .settings-section {
   opacity: 1 !important;
 }
