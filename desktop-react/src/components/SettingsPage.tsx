@@ -34,7 +34,7 @@ import {
   Wrench,
   type LucideIcon,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import {
   DEFAULT_SHORTCUTS,
   SHORTCUTS_CHANGED_EVENT,
@@ -42,6 +42,7 @@ import {
   type ShortcutCommandId,
   type ShortcutSettings,
 } from "../keyboardShortcuts";
+import { useI18n } from "../i18n";
 import { applyThemePreference, type LoomThemePreference } from "../theme";
 import { useMotionPresence } from "../motion/useMotionPresence";
 import type {
@@ -55,6 +56,7 @@ import { MemoryPanel } from "./SettingsMemoryBridge";
 import { SettingsWebSearchPanel } from "./SettingsWebSearchPanel";
 import { ConnectorsSettings } from "./ConnectorsSettings";
 import { ConnectorLifecycleStatus } from "./ConnectorLifecycleStatus";
+import { translateSettingsText } from "./LanguageSettingsDock";
 import "./settings-connectors.css";
 import { setSettingsRoute, useSettingsRoute } from "./settingsNavigation";
 import "./settings-page.css";
@@ -63,6 +65,7 @@ import "./settings-maturity.css";
 import "./settings-appearance.css";
 import "./settings-terminal.css";
 import "./settings-page-motion.css";
+import "./settings-refined.css";
 
 type PageKey =
   | "general"
@@ -87,6 +90,8 @@ type SettingsPageMotion =
   | "idle"
   | "entering-forward"
   | "entering-backward";
+
+type SettingsNotice = { tone: "error" | "success"; text: string; id: number };
 
 type CapabilityKey =
   | "computerUse"
@@ -486,7 +491,7 @@ function SettingSwitch({ checked, disabled, label, onChange }: { checked: boolea
   );
 }
 
-function StatusPill({ tone, children }: { tone: string; children: string }) {
+function StatusPill({ tone, children }: { tone: string; children: ReactNode }) {
   return <span className={`settings-status-pill ${tone}`}><span className="settings-status-dot" />{children}</span>;
 }
 
@@ -526,20 +531,63 @@ function SelectControl({ value, options, onChange, label }: { value: string; opt
   );
 }
 
+function reducedMotionPreferred(): boolean {
+  return document.documentElement.dataset.loomReducedMotion === "true"
+    || Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)").matches);
+}
+
+const SCALE_OPTIONS = (["90", "100", "110", "120", "130"] as const).map((value) => ({ value, label: `${value}%` }));
+
+// A summary value that plays a one-off "settled" cue when it changes. Nothing
+// animates on first mount (data-changed stays false), so opening the page adds
+// no extra motion on top of the page transition.
+function LiveValue({ value }: { value: string }) {
+  const previous = useRef(value);
+  const changes = useRef(0);
+  if (previous.current !== value) {
+    previous.current = value;
+    changes.current += 1;
+  }
+  return <b key={changes.current} className="live-value" data-changed={changes.current > 0}>{value}</b>;
+}
+
+// One thumb glides between equal-width cells (transform only), so choosing a
+// value reads as a single continuous motion instead of two unrelated buttons.
+function SegmentedControl<T extends string>({ value, options, onChange, label }: { value: T; options: { value: T; label: string }[]; onChange(value: T): void; label: string }) {
+  const index = Math.max(0, options.findIndex((option) => option.value === value));
+  return (
+    <div className="appearance-segmented" role="group" aria-label={label} style={{ "--seg-count": options.length, "--seg-index": index } as CSSProperties}>
+      <span className="appearance-segmented-thumb" aria-hidden="true" />
+      {options.map((option) => (
+        <button type="button" key={option.value} className={option.value === value ? "active" : ""} aria-pressed={option.value === value} onClick={() => onChange(option.value)}>{option.label}</button>
+      ))}
+    </div>
+  );
+}
+
 export function SettingsPage({ runtime, models, threadId, running, onRefreshModels, onClose }: SettingsPageProps) {
   const activeRoute = useSettingsRoute();
+  const { language } = useI18n();
   const [page, setPage] = useState<PageKey>(() => activeRoute as PageKey);
   const settingsScrollRef = useRef<HTMLDivElement>(null);
   const navigationTransitionRef = useRef(0);
   const navigationFrameRef = useRef<number | null>(null);
+  const navRef = useRef<HTMLElement>(null);
+  const navPipFromRef = useRef<number | null>(null);
   const [pageMotion, setPageMotion] = useState<SettingsPageMotion>("idle");
   const [query, setQuery] = useState("");
   const [settings, setSettings] = useState<DesktopSettings>(() => mergedSettings(runtime));
   const [modelState, setModelState] = useState<ModelSnapshot | null>(models);
   const [busyCapability, setBusyCapability] = useState<CapabilityKey | null>(null);
-  const [notice, setNotice] = useState<{ tone: "error" | "success"; text: string } | null>(null);
+  const [notice, setNoticeState] = useState<SettingsNotice | null>(null);
+  const noticeSeqRef = useRef(0);
+  // Each notice gets its own id so the toast countdown restarts even when two
+  // messages arrive back to back.
+  const setNotice = (next: Omit<SettingsNotice, "id"> | null) => {
+    setNoticeState(next ? { ...next, id: ++noticeSeqRef.current } : null);
+  };
   const noticePresence = useMotionPresence(Boolean(notice), 200);
-  const lastNoticeRef = useRef<{ tone: "error" | "success"; text: string } | null>(notice);
+  const lastNoticeRef = useRef<SettingsNotice | null>(notice);
   if (notice) lastNoticeRef.current = notice;
   const visibleNotice = notice ?? lastNoticeRef.current;
   const [plugins, setPlugins] = useState<PluginRecord[] | null>(null);
@@ -564,8 +612,11 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
     }
 
     const direction = PAGE_ORDER.indexOf(nextPage) > PAGE_ORDER.indexOf(page) ? "forward" : "backward";
-    const reduceMotion = document.documentElement.dataset.loomReducedMotion === "true"
-      || Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)").matches);
+    const reduceMotion = reducedMotionPreferred();
+
+    // Remember where the highlight is now so the sidebar pill can glide from
+    // there to its new row (see the layout effect below).
+    navPipFromRef.current = navRef.current?.querySelector<HTMLElement>("button.active")?.getBoundingClientRect().top ?? null;
 
     // Commit the destination immediately. The old implementation deliberately
     // waited for a 142 ms exit, forced a synchronous render, and
@@ -595,6 +646,25 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
     navigationTransitionRef.current += 1;
     if (navigationFrameRef.current !== null) cancelAnimationFrame(navigationFrameRef.current);
   }, []);
+
+  // Sidebar highlight: the active row owns a pill (.settings-nav-pip). On a
+  // section change the new pill starts at the previous row's position and glides
+  // home (FLIP, transform only). Because the pill lives inside its row it can
+  // never drift when labels reflow, and ordinary renders measure nothing.
+  useLayoutEffect(() => {
+    const from = navPipFromRef.current;
+    navPipFromRef.current = null;
+    if (from === null || reducedMotionPreferred()) return;
+    const row = navRef.current?.querySelector<HTMLElement>("button.active");
+    const pip = row?.querySelector<HTMLElement>(".settings-nav-pip");
+    if (!row || !pip || typeof pip.animate !== "function") return;
+    const distance = from - row.getBoundingClientRect().top;
+    if (Math.abs(distance) < 1) return;
+    pip.animate(
+      [{ transform: `translate3d(0, ${distance}px, 0)` }, { transform: "translate3d(0, 0, 0)" }],
+      { duration: 260 + Math.min(140, Math.abs(distance) * 0.35), easing: "cubic-bezier(.2,.8,.2,1)" },
+    );
+  }, [page]);
 
   useEffect(() => {
     const merged = mergedSettings(runtime);
@@ -666,10 +736,13 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
   const filteredGroups = useMemo(() => {
     const needle = query.trim().toLowerCase();
     if (!needle) return NAV_GROUPS;
+    // Match the label the user sees, not only its English source.
+    const matches = (label: string) => label.toLowerCase().includes(needle)
+      || translateSettingsText(label, language).toLowerCase().includes(needle);
     return NAV_GROUPS
-      .map((group) => ({ ...group, items: group.items.filter((item) => item.label.toLowerCase().includes(needle)) }))
+      .map((group) => ({ ...group, items: group.items.filter((item) => matches(item.label)) }))
       .filter((group) => group.items.length);
-  }, [query]);
+  }, [query, language]);
 
   const capabilityEnabled = (key: CapabilityKey) => settings.capabilities?.[key] !== false;
   const statusFor = (key: CapabilityKey) => runtime.capabilityStatus?.[key];
@@ -902,7 +975,17 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
     const appearance = { ...DEFAULT_APPEARANCE, ...(settings.appearance ?? {}) } as AppearanceSettings;
     const densityLabel = titleCase(appearance.density);
     const widthLabel = titleCase(appearance.conversationWidth);
-    const themeLabel = appearance.theme === "system" ? "System theme" : `${titleCase(appearance.theme)} theme`;
+    const px = (value: string) => Number.parseInt(value, 10);
+    // The mock workspace is driven entirely by these custom properties, so a
+    // change in any layout preference is visible (and animates) before the user
+    // leaves this page.
+    const previewStyle = {
+      "--pv-sidebar": px(SIDEBAR_WIDTH_VALUES[appearance.sidebarWidth] ?? SIDEBAR_WIDTH_VALUES.standard),
+      "--pv-inspector": px(INSPECTOR_WIDTH_VALUES[appearance.inspectorWidth] ?? INSPECTOR_WIDTH_VALUES.standard),
+      "--pv-conversation": px(CONVERSATION_WIDTH_VALUES[appearance.conversationWidth] ?? CONVERSATION_WIDTH_VALUES.balanced),
+      "--pv-text": appearance.chatFontSize,
+      "--pv-leading": MESSAGE_LINE_HEIGHT_VALUES[appearance.messageLineHeight] ?? MESSAGE_LINE_HEIGHT_VALUES.comfortable,
+    } as CSSProperties;
     return (
       <>
         <div className="settings-page-heading settings-heading-with-action">
@@ -912,15 +995,29 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
 
         <div className="appearance-overview-card">
           <div className="appearance-overview-copy">
-            <span className="settings-eyebrow">Live workspace</span>
-            <strong>{appearance.scale}% scale · {densityLabel} density</strong>
+            <span className="settings-eyebrow">Preview</span>
+            <strong>Live workspace</strong>
             <p>Layout, message typography, motion, and code preferences update immediately. The preview reflects the current reading profile.</p>
-            <div className="appearance-overview-meta"><span>{themeLabel}</span><span>{widthLabel} conversation</span><span>{appearance.chatFontSize}px chat text</span><span>{appearance.ambientEffects ? "Ambient on" : "Ambient off"}</span></div>
+            <div className="appearance-overview-meta">
+              <span><em>Theme</em><LiveValue value={titleCase(appearance.theme)} /></span>
+              <span><em>Scale</em><LiveValue value={`${appearance.scale}%`} /></span>
+              <span><em>Density</em><LiveValue value={densityLabel} /></span>
+              <span><em>Width</em><LiveValue value={widthLabel} /></span>
+              <span><em>Text</em><LiveValue value={`${appearance.chatFontSize}px`} /></span>
+              <span><em>Ambient</em><LiveValue value={appearance.ambientEffects ? "On" : "Off"} /></span>
+            </div>
           </div>
-          <div className="appearance-workspace-preview" aria-hidden="true">
-            <div className="appearance-preview-sidebar" />
-            <div className="appearance-preview-main"><span /><span /><span /></div>
-            <div className="appearance-preview-inspector" />
+          <div className="appearance-workspace-preview" aria-hidden="true" data-density={appearance.density} data-ambient={appearance.ambientEffects ? "on" : "off"} style={previewStyle}>
+            <div className="appearance-preview-sidebar"><i className="pv-mark" /><i className="pv-row" /><i className="pv-row current" /><i className="pv-row" /></div>
+            <div className="appearance-preview-main">
+              <div className="appearance-preview-conversation">
+                <i className="pv-user" />
+                <div className="pv-reply"><i /><i /><i /><i className="accent" /></div>
+                <div className="pv-activity"><i className="dot" /><i className="bar" /></div>
+                <i className="pv-composer" />
+              </div>
+            </div>
+            <div className="appearance-preview-inspector"><i className="pv-head" /><i className="pv-row" /><i className="pv-row" /></div>
           </div>
         </div>
 
@@ -945,12 +1042,12 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
                   <span className={`appearance-theme-preview ${option.value}`} aria-hidden="true">
                     <i className="appearance-theme-preview-sidebar" />
                     <i className="appearance-theme-preview-content"><b /><b /><b /></i>
+                    <span className="appearance-theme-badge"><Check size={12} strokeWidth={2.6} /></span>
                   </span>
                   <span className="appearance-theme-option-copy">
                     <span className="appearance-theme-option-title">
                       <Icon size={15} strokeWidth={1.8} />
                       <strong>{option.label}</strong>
-                      {active ? <Check size={14} className="appearance-theme-check" /> : null}
                     </span>
                     <span>{option.detail}</span>
                   </span>
@@ -962,7 +1059,7 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
 
         <Section title="Interface" caption="Global sizing and motion preferences. Changes apply immediately and persist across restarts.">
           <div className="settings-card mature-preference-list">
-            <PreferenceRow icon={Type} title="Interface scale" detail="Scale the complete desktop UI for comfortable reading on small or high-DPI displays."><div className="appearance-segmented">{(["90", "100", "110", "120", "130"] as const).map((scale) => <button type="button" key={scale} className={appearance.scale === scale ? "active" : ""} onClick={() => void saveSetting("appearance.scale", scale, `Interface scale set to ${scale}%.`)}>{scale}%</button>)}</div></PreferenceRow>
+            <PreferenceRow icon={Type} title="Interface scale" detail="Scale the complete desktop UI for comfortable reading on small or high-DPI displays."><SegmentedControl label="Interface scale" value={appearance.scale} options={SCALE_OPTIONS} onChange={(scale) => void saveSetting("appearance.scale", scale, `Interface scale set to ${scale}%.`)} /></PreferenceRow>
             <PreferenceRow icon={Gauge} title="Content density" detail="Control spacing across conversation, activity, tool, and settings rows."><SelectControl label="Content density" value={appearance.density} options={[{ value: "compact", label: "Compact" }, { value: "comfortable", label: "Comfortable" }, { value: "spacious", label: "Spacious" }]} onChange={(value) => void saveSetting("appearance.density", value)} /></PreferenceRow>
             <PreferenceRow icon={Moon} title="Reduce motion" detail="Minimize decorative transitions, pulses, and status animation."><SettingSwitch checked={appearance.reducedMotion} label="Reduce motion" onChange={(value) => void saveSetting("appearance.reducedMotion", value)} /></PreferenceRow>
             <PreferenceRow icon={Sparkles} title="Ambient effects" detail="Show the subtle conversation glow and background atmosphere behind messages."><SettingSwitch checked={appearance.ambientEffects} label="Ambient conversation effects" onChange={(value) => void saveSetting("appearance.ambientEffects", value)} /></PreferenceRow>
@@ -1022,10 +1119,10 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
             const enabled = capabilityEnabled(item.key);
             const status = statusFor(item.key);
             const provider = item.key === "webSearch" && enabled ? text(status?.provider, "") : "";
-            const baseBadge = capabilityLabel(status, enabled);
-            const badge = provider ? { ...baseBadge, text: `${baseBadge.text} · ${titleCase(provider)}` } : baseBadge;
-            const description = provider ? `${item.description} Active provider: ${titleCase(provider)}.` : item.description;
-            return <div className="capability-row" key={item.key}><div className="capability-icon"><Icon size={17} /></div><div className="capability-copy"><div className="capability-title-line"><strong>{item.title}</strong><StatusPill tone={badge.tone}>{badge.text}</StatusPill></div><span>{description}</span></div>{item.detailPage ? <button type="button" className="settings-row-link" onClick={() => navigateToPage(item.detailPage!)}><ChevronRight size={15} /></button> : <span className="settings-row-link-spacer" />}<SettingSwitch checked={enabled} disabled={running || busyCapability !== null} label={`Toggle ${item.title}`} onChange={(value) => void setCapability(item.key, value)} /></div>;
+            const badge = capabilityLabel(status, enabled);
+            // The provider name is its own text node so the surrounding words stay
+            // translatable; a single interpolated string could not be matched.
+            return <div className="capability-row" key={item.key}><div className="capability-icon"><Icon size={17} /></div><div className="capability-copy"><div className="capability-title-line"><strong>{item.title}</strong><StatusPill tone={badge.tone}>{badge.text}{provider ? ` · ${titleCase(provider)}` : null}</StatusPill></div><span>{item.description}{provider ? <> Active provider: <b>{titleCase(provider)}</b></> : null}</span></div>{item.detailPage ? <button type="button" className="settings-row-link" onClick={() => navigateToPage(item.detailPage!)}><ChevronRight size={15} /></button> : <span className="settings-row-link-spacer" />}<SettingSwitch checked={enabled} disabled={running || busyCapability !== null} label={`Toggle ${item.title}`} onChange={(value) => void setCapability(item.key, value)} /></div>;
           })}
         </div>
       </Section>
@@ -1053,7 +1150,7 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
     const currentTab = (bridge.current_tab as Record<string, unknown> | undefined) ?? {};
     return <><div className="settings-page-heading settings-heading-with-switch"><div><span className="settings-eyebrow">Web interaction</span><h1>Browser</h1><p>Drive your current signed-in Edge/Chrome tab by default, or explicitly choose a clean isolated browser.</p></div><div className="settings-master-switch"><StatusPill tone={badge.tone}>{badge.text}</StatusPill><SettingSwitch checked={enabled} disabled={running || busyCapability !== null} label="Toggle Browser Use" onChange={(value) => void setCapability("browserUse", value)} /></div></div>
       <Section title="Browser runtime"><div className="settings-card settings-detail-list"><DetailRow label="Requested backend" value={requestedConnection} /><DetailRow label="Actual backend" value={selectedConnection} /><DetailRow label="Backend" value={text(browserStatus?.backend, capabilityStatusText(browserStatus))} /><DetailRow label="Current browser bridge" value={extensionConnected ? "Connected" : "Not connected"} /><DetailRow label="Browser" value={text(bridge.browser, extensionConnected ? "Chromium browser" : "Not connected")} /><DetailRow label="Current tab" value={text(currentTab.title, currentTab.url ? String(currentTab.url) : "Not reported")} /><DetailRow label="Active sessions" value={String(browserStatus?.active_sessions ?? "Not reported")} /></div></Section>
-      <div className={`settings-callout ${extensionConnected ? "" : "warning"}`}>{extensionConnected ? <Check size={16} /> : <CircleAlert size={16} />}<div><strong>{extensionConnected ? "Current browser is connected." : "Current Browser Bridge is offline."}</strong><span>{extensionConnected ? "The next current-browser session uses this browser's active tab, cookies, and login state." : "Loom will stop current-browser tasks instead of opening an isolated browser or using Computer Use."}</span></div></div>
+      <div className={`settings-callout ${extensionConnected ? "ok" : "warning"}`}>{extensionConnected ? <Check size={16} /> : <CircleAlert size={16} />}<div><strong>{extensionConnected ? "Current browser is connected." : "Current Browser Bridge is offline."}</strong><span>{extensionConnected ? "The next current-browser session uses this browser's active tab, cookies, and login state." : "Loom will stop current-browser tasks instead of opening an isolated browser or using Computer Use."}</span></div></div>
       <Section title="Current Browser extension" caption="Loom prepares a paired local extension. Browser store publishing is not required for development or local installs.">
         <div className="settings-card mature-preference-list">
           <PreferenceRow icon={Plug} title="Install or update" detail="One click updates an existing bridge automatically. The browser requires one confirmation only for the first local installation.">
@@ -1428,23 +1525,25 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
   })();
 
   return (
-    <div className="settings-shell">
+    <div className="settings-shell settings-refined">
       <aside className="settings-sidebar">
         <div className="settings-sidebar-top">
           <button type="button" className="settings-back" onClick={onClose}><ArrowLeft size={15} /><span>Back to Loom</span></button>
           <div className="settings-sidebar-title"><span className="settings-brand-orb"><Bot size={16} /></span><div><strong>Settings</strong><span>Local agent controls</span></div></div>
           <label className="settings-search"><Search size={14} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search settings" /></label>
         </div>
-        <nav className="settings-nav" aria-label="Settings navigation">
-          {filteredGroups.map((group) => <section key={group.label}><span className="settings-nav-label">{group.label}</span>{group.items.map((item) => { const Icon = item.icon; return <button type="button" key={item.key} className={page === item.key ? "active" : ""} aria-current={page === item.key ? "page" : undefined} onClick={() => navigateToPage(item.key)}><Icon size={16} strokeWidth={1.7} /><span>{item.label}</span></button>; })}</section>)}
+        <nav className="settings-nav" aria-label="Settings navigation" ref={navRef}>
+          {filteredGroups.map((group) => <section key={group.label}><span className="settings-nav-label">{group.label}</span>{group.items.map((item) => { const Icon = item.icon; return <button type="button" key={item.key} className={page === item.key ? "active" : ""} aria-current={page === item.key ? "page" : undefined} onClick={() => navigateToPage(item.key)}><i className="settings-nav-pip" aria-hidden="true" /><Icon size={16} strokeWidth={1.7} /><span>{item.label}</span></button>; })}</section>)}
+          {filteredGroups.length === 0 ? <div className="settings-nav-empty"><Search size={15} strokeWidth={1.7} /><span>No matching settings</span></div> : null}
         </nav>
-        <div className="settings-sidebar-footer"><span className="settings-runtime-dot" /><div><strong>Loom runtime</strong><span>{running ? "Turn active" : "Ready for changes"}</span></div></div>
+        <div className="settings-sidebar-footer" data-running={running ? "true" : "false"}><span className="settings-runtime-dot" /><div><strong>Loom runtime</strong><span>{running ? "Turn active" : "Ready for changes"}</span></div></div>
       </aside>
       <main className="settings-main"><div className="settings-main-scroll" ref={settingsScrollRef}><div className="settings-content"><div className="settings-page-surface" data-page={page} data-page-motion={pageMotion}>{content}</div></div></div></main>
       {noticePresence.mounted && visibleNotice ? (
         <div className={`settings-toast ${visibleNotice.tone}`} data-motion-phase={noticePresence.phase}>
           {visibleNotice.tone === "success" ? <Check size={15} /> : <CircleAlert size={15} />}
           <span>{visibleNotice.text}</span>
+          <i className="settings-toast-timer" key={visibleNotice.id} aria-hidden="true" />
         </div>
       ) : null}
     </div>

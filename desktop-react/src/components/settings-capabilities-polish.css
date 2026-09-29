@@ -242,69 +242,6 @@
   box-shadow: none;
 }
 
-/* The legacy SettingsPage still renders English copy for these rows. Keep the
-   Chinese renderer copy while presenting the page in the simplified layout. */
-html[data-loom-language="zh-CN"] .capability-list .capability-copy > span {
-  font-size: 0;
-}
-
-html[data-loom-language="zh-CN"] .capability-list .capability-copy > span::after {
-  display: block;
-  color: #7f8793;
-  font-size: 12px;
-  line-height: 1.45;
-}
-
-html[data-loom-language="zh-CN"] .capability-list .capability-row:nth-child(1) .capability-copy > span::after {
-  content: "允许 Loom 暴露截图、UIA、鼠标和键盘等桌面控制工具。";
-}
-
-html[data-loom-language="zh-CN"] .capability-list .capability-row:nth-child(2) .capability-copy > span::after {
-  content: "允许 Loom 暴露 Chrome / Edge 会话与本地 CDP 连接相关的浏览器自动化工具。";
-}
-
-html[data-loom-language="zh-CN"] .capability-list .capability-row:nth-child(3) .capability-copy > span::after {
-  content: "向 Agent 暴露已配置的公网搜索提供商。";
-}
-
-html[data-loom-language="zh-CN"] .capability-list .capability-row:nth-child(4) .capability-copy > span::after {
-  content: "暴露从已配置 Model Context Protocol 服务发现到的工具。";
-}
-
-html[data-loom-language="zh-CN"] .capability-list .capability-row:nth-child(5) .capability-copy > span::after {
-  content: "让 Loom 发现并加载当前工作区可用的 SKILL.md 工作流。";
-}
-
-html[data-loom-language="zh-CN"] .capability-list .capability-row:nth-child(6) .capability-copy > span::after {
-  content: "让 Agent 按需发现延迟加载的集成工具，减少一次性注入的上下文。";
-}
-
-html[data-loom-language="zh-CN"] .capability-list .capability-row:nth-child(7) .capability-copy > span::after {
-  content: "允许在 Loom 的受限执行语言中组合多个工具调用。";
-}
-
-html[data-loom-language="zh-CN"] .capability-list .capability-row:nth-child(2) .capability-title-line > strong,
-html[data-loom-language="zh-CN"] .capability-list .capability-row:nth-child(3) .capability-title-line > strong,
-html[data-loom-language="zh-CN"] .capability-list .capability-row:nth-child(6) .capability-title-line > strong,
-html[data-loom-language="zh-CN"] .capability-list .capability-row:nth-child(7) .capability-title-line > strong {
-  font-size: 0;
-}
-
-html[data-loom-language="zh-CN"] .capability-list .capability-row:nth-child(2) .capability-title-line > strong::after,
-html[data-loom-language="zh-CN"] .capability-list .capability-row:nth-child(3) .capability-title-line > strong::after,
-html[data-loom-language="zh-CN"] .capability-list .capability-row:nth-child(6) .capability-title-line > strong::after,
-html[data-loom-language="zh-CN"] .capability-list .capability-row:nth-child(7) .capability-title-line > strong::after {
-  color: #eceef2;
-  font-size: 13.5px;
-  font-weight: 640;
-  letter-spacing: -.006em;
-}
-
-html[data-loom-language="zh-CN"] .capability-list .capability-row:nth-child(2) .capability-title-line > strong::after { content: "浏览器控制"; }
-html[data-loom-language="zh-CN"] .capability-list .capability-row:nth-child(3) .capability-title-line > strong::after { content: "网页搜索"; }
-html[data-loom-language="zh-CN"] .capability-list .capability-row:nth-child(6) .capability-title-line > strong::after { content: "工具搜索"; }
-html[data-loom-language="zh-CN"] .capability-list .capability-row:nth-child(7) .capability-title-line > strong::after { content: "代码模式"; }
-
 @media (max-width: 760px) {
   .settings-content:has(.capability-list) > .settings-page-heading {
     flex-direction: column;

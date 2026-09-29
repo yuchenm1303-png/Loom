@@ -36,49 +36,39 @@
   will-change: auto;
 }
 
-/* Navigation feedback stays independent from the content handoff. Keep it to
-   cheap color changes plus the small active rail; no whole-button shadow or
-   translation repaint is needed while the main page is mounting. */
-.settings-nav button {
+/* Sidebar navigation
+   ------------------
+   The active row owns a highlight pill (.settings-nav-pip). On a section change
+   SettingsPage releases the new pill from the previous row's position and lets
+   it glide home with the Web Animations API (transform only), so the highlight
+   travels between rows instead of blinking. The pill sits behind every label:
+   .settings-nav is the stacking context, rows are plain positioned boxes, and
+   the pill has a negative z-index. Row feedback stays a cheap colour fade, with
+   no whole-button shadow or translation repaint while the page is mounting. */
+.settings-nav {
   position: relative;
   isolation: isolate;
+}
+
+.settings-nav button {
+  position: relative;
   transition:
     color 150ms ease,
-    background-color 160ms ease,
-    border-color 160ms ease !important;
+    background-color 160ms ease !important;
 }
 
-.settings-nav button::before {
-  content: "";
+.settings-nav-pip {
   position: absolute;
-  z-index: 0;
-  left: 0;
-  top: 50%;
-  width: 2px;
-  height: 17px;
-  border-radius: 999px;
-  background: #9485ee;
+  z-index: -1;
+  inset: 0;
+  display: block;
+  border-radius: inherit;
   opacity: 0;
-  transform: translateY(-50%) scaleY(.42);
-  transform-origin: center;
-  transition:
-    opacity 140ms ease,
-    transform 190ms cubic-bezier(.16,.78,.18,1);
+  pointer-events: none;
 }
 
-.settings-nav button.active {
-  box-shadow: none !important;
-}
-
-.settings-nav button.active::before {
-  opacity: .92;
-  transform: translateY(-50%) scaleY(1);
-}
-
-.settings-nav button > svg,
-.settings-nav button > span {
-  position: relative;
-  z-index: 1;
+.settings-nav button.active .settings-nav-pip {
+  opacity: 1;
 }
 
 .settings-nav button > svg,
@@ -86,19 +76,9 @@
   transition: color 150ms ease !important;
 }
 
-html[data-loom-theme="light"] .settings-nav button::before {
-  background: #6d5bd0;
-}
-
-html[data-loom-theme="light"] .settings-nav button.active {
-  background: rgba(105,90,216,.055);
-  border-color: rgba(105,90,216,.10);
-}
-
 @media (prefers-reduced-motion: reduce) {
   .settings-page-surface,
   .settings-nav button,
-  .settings-nav button::before,
   .settings-nav button > svg,
   .settings-nav button > span {
     animation: none !important;
@@ -113,7 +93,6 @@ html[data-loom-theme="light"] .settings-nav button.active {
 
 html[data-loom-reduced-motion="true"] .settings-page-surface,
 html[data-loom-reduced-motion="true"] .settings-nav button,
-html[data-loom-reduced-motion="true"] .settings-nav button::before,
 html[data-loom-reduced-motion="true"] .settings-nav button > svg,
 html[data-loom-reduced-motion="true"] .settings-nav button > span {
   animation: none !important;
