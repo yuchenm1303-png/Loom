@@ -117,6 +117,7 @@ function providerSetup(group: ModelGroup): ProviderSetup {
 // Hue and chroma feed OKLCH in model-picker.css for both logos and fallback monograms.
 const PROVIDER_LOGOS: Record<string, string> = {
   minimax: minimaxLogo,
+  "managed-relay:minimax": minimaxLogo,
   deepseek: deepseekLogo,
   "opencode-go": opencodeLogo,
   "managed-relay:openai": openaiLogo,
@@ -129,6 +130,7 @@ const PROVIDER_LOGOS: Record<string, string> = {
 };
 const PROVIDER_TINTS: Record<string, readonly [hue: number, chroma: number]> = {
   minimax: [16, 0.14],
+  "managed-relay:minimax": [16, 0.14],
   deepseek: [262, 0.13],
   "opencode-go": [168, 0.1],
   "managed-relay": [295, 0.13],
