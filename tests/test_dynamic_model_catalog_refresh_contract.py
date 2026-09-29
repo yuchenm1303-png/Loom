@@ -117,3 +117,14 @@ def test_transient_catalog_fallback_keeps_last_authoritative_provider_rows() -> 
     assert 'profile.catalogSource !== "provider"' in manager
     assert "A failed /models request must not masquerade as a provider deletion." in manager
     assert "normal deletion semantics resume immediately" in manager
+
+
+def test_provider_catalog_network_calls_are_parallelized() -> None:
+    bridge = BRIDGE.read_text(encoding="utf-8")
+
+    assert "ThreadPoolExecutor(max_workers=4" in bridge
+    assert "opencode_future = pool.submit(_fetch_opencode_go_model_ids)" in bridge
+    assert "pool.submit(_fetch_minimax_model_ids" in bridge
+    assert "pool.submit(_fetch_deepseek_model_ids" in bridge
+    assert "pool.submit(_fetch_managed_model_ids" in bridge
+    assert "bounded by one provider timeout" in bridge
