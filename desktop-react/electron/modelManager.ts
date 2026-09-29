@@ -310,7 +310,25 @@ export class DesktopModelManager {
     if (cached) return cached;
     const resolved = this.runBridge<ModelLaunchSpec>("resolve", { selection });
     const safe = this.metadata().profiles.find((profile) => profile.selection === selection);
-    const next = { ...resolved, vision: safe?.vision ?? resolved.vision ?? true };
+    const catalog = this.registryCache?.profiles.find((profile) => profile.selection === selection);
+    // Provider discovery happens in the short-lived catalog bridge process.
+    // Carry its published metadata into the durable launch spec here so a
+    // newly discovered model keeps its real context/capability information
+    // when the later resolve call runs in a fresh Python process.
+    const next = {
+      ...resolved,
+      groupId: catalog?.groupId ?? resolved.groupId,
+      groupName: catalog?.groupName ?? resolved.groupName,
+      groupOrder: catalog?.groupOrder ?? resolved.groupOrder,
+      family: catalog?.family ?? resolved.family,
+      protocol: catalog?.protocol ?? resolved.protocol,
+      configured: catalog?.configured ?? resolved.configured,
+      available: catalog?.available ?? resolved.available ?? true,
+      catalogSource: catalog?.catalogSource ?? resolved.catalogSource,
+      contextLimits: catalog?.contextLimits ?? resolved.contextLimits,
+      reasoning: catalog?.reasoning ?? resolved.reasoning ?? null,
+      vision: safe?.vision ?? catalog?.vision ?? resolved.vision ?? true,
+    };
     this.launchCache.set(selection, next);
     return next;
   }
