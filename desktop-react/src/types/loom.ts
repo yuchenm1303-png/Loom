@@ -238,6 +238,8 @@ export interface ModelProfile {
   configured?: boolean;
   setupOnly?: boolean;
   statusMessage?: string;
+  available?: boolean;
+  catalogSource?: "provider" | "fallback" | "saved" | "runtime" | string;
   vision?: boolean;
   reasoning?: ModelReasoningState | null;
 }
@@ -252,6 +254,8 @@ export interface ModelSnapshot {
   activeModelId: string | null;
   current: CurrentModel | null;
   recentModels: string[];
+  catalogRefreshedAt?: number;
+  catalogTtlMs?: number;
 }
 
 export interface AddModelInput {
