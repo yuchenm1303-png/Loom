@@ -298,7 +298,11 @@ def _normalize_url(value: str) -> str:
 
 
 def _is_minimax_model(model: str) -> bool:
-    return str(model or "").strip().casefold() in _MINIMAX_MODEL_KEYS
+    folded = str(model or "").strip().casefold()
+    # The bundled IDs are a fallback/metadata catalog, not an allow-list.
+    # Future MiniMax releases advertised by /models must be usable without a
+    # Loom release first.
+    return bool(folded and (folded in _MINIMAX_MODEL_KEYS or folded.startswith("minimax-")))
 
 
 def _looks_like_deepseek_connection(
@@ -476,6 +480,52 @@ def _fetch_opencode_go_model_ids(timeout: float = 3.5) -> list[str]:
         model_id = str(item.get("id") or "").strip()
         folded = model_id.casefold()
         if not model_id or folded in seen:
+            continue
+        seen.add(folded)
+        result.append(model_id)
+        limits = model_context_limits_from_provider_listing(item)
+        if limits.context_window_tokens or limits.output_reserve_tokens:
+            _DISCOVERED_CONTEXT_LIMITS[folded] = limits
+    return result
+
+
+def _minimax_models_url(environ: Mapping[str, str] | None = None) -> str:
+    return f"{_legacy_minimax_base_url(environ)}/models"
+
+
+def _fetch_minimax_model_ids(
+    api_key: str,
+    environ: Mapping[str, str] | None = None,
+    timeout: float = 3.5,
+) -> list[str]:
+    api_key = str(api_key or "").strip()
+    if not api_key:
+        return []
+    request = urllib.request.Request(
+        _minimax_models_url(environ),
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Accept": "application/json",
+            "User-Agent": "Loom/minimax-catalog",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except (OSError, urllib.error.URLError, json.JSONDecodeError):
+        return []
+    data = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(data, list):
+        return []
+
+    result: list[str] = []
+    seen: set[str] = set()
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        model_id = str(item.get("id") or "").strip()
+        folded = model_id.casefold()
+        if not model_id or folded in seen or not _is_minimax_model(model_id):
             continue
         seen.add(folded)
         result.append(model_id)
@@ -781,6 +831,21 @@ def _managed_display_name(model: str) -> str:
     return _MANAGED_MODEL_DISPLAY_NAMES.get(value.casefold(), value)
 
 
+def _minimax_display_name(model: str) -> str:
+    value = str(model or "").strip()
+    known = _MANAGED_MODEL_DISPLAY_NAMES.get(value.casefold())
+    if known:
+        return known
+    if value.casefold().startswith("minimax-"):
+        suffix = value[len("MiniMax-"):] if value.startswith("MiniMax-") else value.split("-", 1)[1]
+        return "MiniMax " + suffix.replace("-", " ")
+    return value
+
+
+def _with_catalog_source(profile: dict[str, Any], source: str) -> dict[str, Any]:
+    return {**profile, "catalogSource": source, "available": True}
+
+
 def _safe_minimax(
     model: str = MINIMAX_DEFAULT_MODEL,
     environ: Mapping[str, str] | None = None,
@@ -792,7 +857,7 @@ def _safe_minimax(
         "selection": _minimax_selection_for_model(model),
         "id": _managed_profile_id(model),
         "kind": "builtin",
-        "name": _managed_display_name(model),
+        "name": _minimax_display_name(model),
         "groupId": "minimax",
         "groupName": "MiniMax",
         "groupOrder": 10,
@@ -849,6 +914,8 @@ def _managed_group(model: str) -> tuple[str, str, int]:
     normalized = "-".join(folded.replace("_", "-").split())
     while "--" in normalized:
         normalized = normalized.replace("--", "-")
+    if normalized.startswith("minimax-"):
+        return "managed-relay:minimax", "MiniMax · Muxway", 15
     if normalized.startswith(("gpt-", "chatgpt-", "codex-", "o1", "o3", "o4")):
         return "managed-relay:openai", "OpenAI", 40
     return "managed-relay", "Muxway Relay", 45
@@ -883,8 +950,6 @@ def _safe_managed(
     model = str(model or "").strip()
     if not model:
         raise ValueError("managed model id must not be empty")
-    if _is_minimax_model(model):
-        return _safe_minimax(model, environ)
 
     group_id, group_name, group_order = _managed_group(model)
     profile: dict[str, Any] = {
@@ -973,6 +1038,8 @@ def _safe_saved(entry: StoredModel) -> dict[str, Any]:
         "selection": entry.selection,
         "id": entry.model_id,
         "kind": "saved",
+        "catalogSource": "saved",
+        "available": True,
         "name": entry.display_name,
         "groupId": f"saved:{entry.model_id}",
         "groupName": "Custom APIs",
@@ -1021,59 +1088,83 @@ def _with_reasoning(profile: dict[str, Any], reasoning_store: ReasoningConfigSto
 
 
 def _managed_profiles(store: ModelConfigStore, environ: Mapping[str, str] | None = None) -> list[dict[str, Any]]:
-    # Different providers may intentionally expose the same model id. Keep
-    # selection/provider as the real identity. OpenCode goes first so legacy
-    # code that collapses by bare model id still resolves official built-ins
-    # (MiniMax/DeepSeek) last, preserving historical behavior.
+    # Provider /models is authoritative for what is available right now. The
+    # bundled catalogs only keep Loom usable when discovery is unavailable and
+    # provide local metadata such as display names/protocol hints.
     profiles: list[dict[str, Any]] = []
 
     opencode_key = _opencode_go_key(store, environ)
-    opencode_model_ids = _fetch_opencode_go_model_ids() or list(OPENCODE_GO_FALLBACK_MODEL_IDS)
+    discovered_opencode = _fetch_opencode_go_model_ids()
+    opencode_model_ids = discovered_opencode or list(OPENCODE_GO_FALLBACK_MODEL_IDS)
+    opencode_source = "provider" if discovered_opencode else "fallback"
     seen_opencode: set[str] = set()
     for model_id in opencode_model_ids:
         folded = str(model_id or "").strip().casefold()
         if not folded or folded in seen_opencode:
             continue
         seen_opencode.add(folded)
-        profiles.append(_safe_opencode_go(model_id, configured=bool(opencode_key)))
+        profiles.append(
+            _with_catalog_source(
+                _safe_opencode_go(model_id, configured=bool(opencode_key)),
+                opencode_source,
+            )
+        )
 
-    profiles.extend(_safe_minimax(model_id, environ) for model_id in MINIMAX_MODEL_IDS)
+    minimax_key = _primary_minimax_key(environ)
+    discovered_minimax = _fetch_minimax_model_ids(minimax_key, environ) if minimax_key else []
+    minimax_model_ids = discovered_minimax or list(MINIMAX_MODEL_IDS)
+    minimax_source = "provider" if discovered_minimax else "fallback"
+    seen_minimax: set[str] = set()
+    for model_id in minimax_model_ids:
+        folded = str(model_id or "").strip().casefold()
+        if not folded or folded in seen_minimax:
+            continue
+        seen_minimax.add(folded)
+        profiles.append(
+            _with_catalog_source(
+                _with_discovered_limits(_safe_minimax(model_id, environ)),
+                minimax_source,
+            )
+        )
 
     deepseek_key = _deepseek_key(store, environ)
-    deepseek_model_ids = list(DEEPSEEK_FALLBACK_MODEL_IDS)
-    if deepseek_key:
-        discovered = _fetch_deepseek_model_ids(deepseek_key, environ)
-        if discovered:
-            deepseek_model_ids = discovered
+    discovered_deepseek = _fetch_deepseek_model_ids(deepseek_key, environ) if deepseek_key else []
+    deepseek_model_ids = discovered_deepseek or list(DEEPSEEK_FALLBACK_MODEL_IDS)
+    deepseek_source = "provider" if discovered_deepseek else "fallback"
     seen_deepseek: set[str] = set()
     for model_id in deepseek_model_ids:
         folded = str(model_id or "").strip().casefold()
         if not folded or folded in seen_deepseek:
             continue
         seen_deepseek.add(folded)
-        profiles.append(_with_discovered_limits(_safe_deepseek(model_id, environ)))
+        profiles.append(
+            _with_catalog_source(
+                _with_discovered_limits(_safe_deepseek(model_id, environ)),
+                deepseek_source,
+            )
+        )
 
     api_key = _managed_relay_key(store, environ, Path(__file__).resolve().parent)
     if api_key:
         model_ids = _fetch_managed_model_ids(api_key, environ)
         if not model_ids:
             profiles.append(_safe_managed_catalog_status(environ))
-        # Do not invent a fallback model when discovery fails. A stale phantom
-        # cqu-default hid endpoint/key problems and made the UI disagree with
-        # the Relay catalog. An empty or unavailable catalog is represented by
-        # a non-selectable provider-status row instead of disappearing.
-        # Provider identity is part of model identity. A Relay model may have
-        # the same bare model id as OpenCode Go or another provider and still
-        # needs to remain selectable through the Relay credential.
+        # Relay model identity stays tied to Relay even when its bare model ID
+        # happens to match an official provider. This lets a newly advertised
+        # MiniMax/OpenAI model appear immediately without being silently
+        # discarded or rerouted to credentials for a different provider.
         seen: set[str] = set()
         for model_id in model_ids:
             folded = str(model_id or "").strip().casefold()
-            if not folded or folded in seen or _is_minimax_model(model_id):
+            if not folded or folded in seen:
                 continue
             seen.add(folded)
             profiles.append(
-                _with_discovered_limits(
-                    _safe_managed(model_id, environ, configured=True)
+                _with_catalog_source(
+                    _with_discovered_limits(
+                        _safe_managed(model_id, environ, configured=True)
+                    ),
+                    "provider",
                 )
             )
     return profiles
