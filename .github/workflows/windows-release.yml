@@ -1,12 +1,27 @@
 name: Windows Release
 
 on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version bump for this release
+        required: true
+        default: patch
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
   push:
     tags:
       - "v*"
 
 permissions:
   contents: write
+
+concurrency:
+  group: windows-release
+  cancel-in-progress: false
 
 jobs:
   publish-windows-x64:
@@ -21,17 +36,62 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.repository.default_branch || github.ref }}
+          fetch-depth: 0
 
-      - name: Validate release tag and package version
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Prepare release version
+        id: release
         shell: pwsh
         run: |
-          $package = Get-Content "$env:GITHUB_WORKSPACE\desktop-react\package.json" -Raw | ConvertFrom-Json
-          $expected = "v$($package.version)"
-          $actual = "${{ github.ref_name }}"
-          if ($actual -ne $expected) {
-            throw "Release tag $actual does not match desktop package version $expected. Bump desktop-react/package.json before tagging."
+          $packagePath = Join-Path $env:GITHUB_WORKSPACE "desktop-react\package.json"
+          $defaultBranch = "${{ github.event.repository.default_branch }}"
+
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            if ("${{ github.ref_name }}" -ne $defaultBranch) {
+              throw "Manual Windows releases must be started from the default branch '$defaultBranch'. Choose '$defaultBranch' in the Run workflow branch selector."
+            }
+
+            Push-Location (Join-Path $env:GITHUB_WORKSPACE "desktop-react")
+            npm version "${{ inputs.bump }}" --no-git-tag-version
+            if ($LASTEXITCODE -ne 0) { throw "Failed to bump desktop package version." }
+            Pop-Location
+
+            $package = Get-Content $packagePath -Raw | ConvertFrom-Json
+            $tag = "v$($package.version)"
+
+            git fetch --tags origin
+            git show-ref --verify --quiet "refs/tags/$tag"
+            if ($LASTEXITCODE -eq 0) {
+              throw "Release tag $tag already exists. Refusing to overwrite an existing release."
+            }
+
+            Write-Host "Manual release prepared: $tag (${{ inputs.bump }} bump)"
+            "manual=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            "version=$($package.version)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           }
-          Write-Host "Publishing Loom $actual"
+          else {
+            $package = Get-Content $packagePath -Raw | ConvertFrom-Json
+            $expected = "v$($package.version)"
+            $actual = "${{ github.ref_name }}"
+            if ($actual -ne $expected) {
+              throw "Release tag $actual does not match desktop package version $expected. Bump desktop-react/package.json before tagging."
+            }
+
+            Write-Host "Tagged release validated: $actual"
+            "manual=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            "version=$($package.version)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            "tag=$actual" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          }
 
       - name: Validate trusted release OAuth configuration
         shell: pwsh
@@ -42,14 +102,6 @@ jobs:
           if ([string]::IsNullOrWhiteSpace($env:LOOM_GITHUB_CLIENT_SECRET)) {
             throw "Missing Actions secret LOOM_GITHUB_CLIENT_SECRET."
           }
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
 
       - name: Install desktop dependencies
         working-directory: desktop-react
@@ -65,6 +117,7 @@ jobs:
           $releaseDir = Join-Path $env:GITHUB_WORKSPACE "desktop-react\release"
           $installer = Get-ChildItem $releaseDir -Filter "Loom-Setup-*.exe" | Select-Object -First 1
           $metadata = Join-Path $releaseDir "latest.yml"
+          $blockmap = Get-ChildItem $releaseDir -Filter "Loom-Setup-*.exe.blockmap" | Select-Object -First 1
           $resources = Join-Path $releaseDir "win-unpacked\resources"
           $runtime = Join-Path $resources "python.exe"
           $packagePath = Join-Path $env:GITHUB_WORKSPACE "desktop-react\package.json"
@@ -73,6 +126,7 @@ jobs:
           if (-not $installer) { throw "Loom Setup executable was not produced." }
           if ($installer.Length -lt 1000000) { throw "Loom Setup executable is unexpectedly small: $($installer.Length) bytes" }
           if (-not (Test-Path $metadata)) { throw "latest.yml was not produced; installed clients would not discover this release." }
+          if (-not $blockmap) { throw "NSIS blockmap was not produced." }
           if (-not (Test-Path $runtime)) { throw "Packaged private Python runtime was not found at $runtime" }
 
           $latest = Get-Content $metadata -Raw
@@ -86,27 +140,116 @@ jobs:
 
           Write-Host "Release candidate verified: $($installer.Name)"
 
-      - name: Publish GitHub release and updater metadata
-        working-directory: desktop-react
-        run: npx electron-builder --win nsis --x64 --publish always
-
-      - name: Verify published artifacts were generated locally
+      - name: Commit version bump and create release tag
+        if: github.event_name == 'workflow_dispatch'
         shell: pwsh
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          $defaultBranch = "${{ github.event.repository.default_branch }}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add desktop-react/package.json
+          git diff --cached --quiet
+          if ($LASTEXITCODE -eq 0) {
+            throw "Manual release did not produce a package version change."
+          }
+          git diff --cached --check
+          if ($LASTEXITCODE -ne 0) { throw "Version bump contains invalid whitespace changes." }
+
+          git commit -m "chore(release): Loom $env:RELEASE_TAG"
+          if ($LASTEXITCODE -ne 0) { throw "Failed to create release version commit." }
+
+          git fetch origin $defaultBranch --tags
+          $remoteTip = (git rev-parse "origin/$defaultBranch").Trim()
+          $releaseBase = (git rev-parse "HEAD^").Trim()
+          if ($remoteTip -ne $releaseBase) {
+            throw "The default branch moved while the release candidate was building. No release was published. Run Windows Release again from the latest $defaultBranch."
+          }
+
+          git ls-remote --exit-code --tags origin "refs/tags/$env:RELEASE_TAG" *> $null
+          if ($LASTEXITCODE -eq 0) {
+            throw "Remote tag $env:RELEASE_TAG already exists. Refusing to overwrite it."
+          }
+
+          git push origin "HEAD:refs/heads/$defaultBranch"
+          if ($LASTEXITCODE -ne 0) { throw "Failed to push the release version commit to $defaultBranch." }
+
+          git tag -a $env:RELEASE_TAG -m "Loom $env:RELEASE_TAG"
+          if ($LASTEXITCODE -ne 0) { throw "Failed to create release tag $env:RELEASE_TAG." }
+          git push origin "refs/tags/$env:RELEASE_TAG"
+          if ($LASTEXITCODE -ne 0) { throw "Failed to push release tag $env:RELEASE_TAG." }
+
+      - name: Publish GitHub release and updater metadata
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
         run: |
           $releaseDir = Join-Path $env:GITHUB_WORKSPACE "desktop-react\release"
           $installer = Get-ChildItem $releaseDir -Filter "Loom-Setup-*.exe" | Select-Object -First 1
           $metadata = Join-Path $releaseDir "latest.yml"
           $blockmap = Get-ChildItem $releaseDir -Filter "Loom-Setup-*.exe.blockmap" | Select-Object -First 1
-          if (-not $installer) { throw "Published installer is missing." }
-          if (-not (Test-Path $metadata)) { throw "Published latest.yml is missing." }
-          if (-not $blockmap) { throw "Published NSIS blockmap is missing." }
+
+          gh release view $env:RELEASE_TAG *> $null
+          if ($LASTEXITCODE -eq 0) {
+            throw "GitHub Release $env:RELEASE_TAG already exists. Refusing to overwrite published updater assets."
+          }
+
+          gh release create $env:RELEASE_TAG "$($installer.FullName)" "$($blockmap.FullName)" "$metadata" --verify-tag --title "Loom $env:RELEASE_TAG" --generate-notes
+          if ($LASTEXITCODE -ne 0) { throw "Failed to publish GitHub Release $env:RELEASE_TAG." }
+
+      - name: Verify published release assets
+        id: published
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          $releaseDir = Join-Path $env:GITHUB_WORKSPACE "desktop-react\release"
+          $installer = Get-ChildItem $releaseDir -Filter "Loom-Setup-*.exe" | Select-Object -First 1
+          $blockmap = Get-ChildItem $releaseDir -Filter "Loom-Setup-*.exe.blockmap" | Select-Object -First 1
+
+          $assetNames = @(gh release view $env:RELEASE_TAG --json assets --jq '.assets[].name')
+          if ($LASTEXITCODE -ne 0) { throw "Could not read back GitHub Release $env:RELEASE_TAG." }
+
+          foreach ($expected in @($installer.Name, $blockmap.Name, "latest.yml")) {
+            if ($assetNames -notcontains $expected) {
+              throw "Published release is missing required updater asset: $expected"
+            }
+          }
+
+          $releaseUrl = (gh release view $env:RELEASE_TAG --json url --jq '.url').Trim()
+          if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($releaseUrl)) {
+            throw "Published release URL could not be resolved."
+          }
+          "url=$releaseUrl" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          Write-Host "Published release verified: $releaseUrl"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Loom-Windows-Release-${{ github.ref_name }}
+          name: Loom-Windows-Release-${{ steps.release.outputs.tag }}
           path: |
             desktop-react/release/Loom-Setup-*.exe
             desktop-react/release/Loom-Setup-*.exe.blockmap
             desktop-react/release/latest.yml
           if-no-files-found: error
           retention-days: 30
+
+      - name: Release summary
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+          RELEASE_URL: ${{ steps.published.outputs.url }}
+        run: |
+          @"
+          ## Loom Windows release published
+
+          - Version: `$env:RELEASE_VERSION`
+          - Tag: `$env:RELEASE_TAG`
+          - GitHub Release: $env:RELEASE_URL
+          - Updater metadata: `latest.yml`
+          - Installer and NSIS blockmap verified
+
+          Installed updater-enabled Loom clients can now discover this version automatically.
+          "@ | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
