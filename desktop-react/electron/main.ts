@@ -1162,7 +1162,7 @@ ipcMain.handle("loom:account-register", (_event, email: string, password: string
   runAccountAction(() => accountClient.register(String(email || ""), String(password || "")))
 );
 ipcMain.handle("loom:account-logout", () => runAccountAction(() => accountClient.logout()));
-ipcMain.handle("loom:model-list", () => modelManager.snapshot());
+ipcMain.handle("loom:model-list", (_event, forceRefresh?: boolean) => modelManager.listSnapshot(Boolean(forceRefresh)));
 ipcMain.handle("loom:model-provider-key", (_event, provider: string, apiKey: string) =>
   modelManager.setProviderKey(String(provider || ""), String(apiKey || ""))
 );
