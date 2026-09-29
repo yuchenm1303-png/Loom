@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import path from "node:path";
 
 export interface ModelReasoningOption {
@@ -32,6 +32,8 @@ export interface ModelProfile {
   configured?: boolean;
   setupOnly?: boolean;
   statusMessage?: string;
+  available?: boolean;
+  catalogSource?: "provider" | "fallback" | "saved" | "runtime" | string;
   vision?: boolean;
   contextLimits?: {
     contextWindowTokens?: number;
@@ -54,6 +56,8 @@ export interface ModelSnapshot {
   activeModelId: string | null;
   current: Omit<ModelLaunchSpec, "apiKey"> | null;
   recentModels: string[];
+  catalogRefreshedAt?: number;
+  catalogTtlMs?: number;
 }
 
 export interface AddModelInput {
@@ -108,10 +112,18 @@ export class DesktopModelManager {
   private currentSpec: ModelLaunchSpec | null = null;
   private recentModels: string[] = [];
   private registryCache: RegistrySnapshot | null = null;
+  private registryCacheAt = 0;
   private metadataCache: ModelMetadataSnapshot | null = null;
   private launchCache = new Map<string, ModelLaunchSpec>();
+  private catalogRefreshPromise: Promise<ModelSnapshot> | null = null;
+  private readonly catalogTtlMs: number;
 
-  constructor(private readonly repoRoot: string) {}
+  constructor(private readonly repoRoot: string) {
+    const configured = Number(process.env.LOOM_MODEL_CATALOG_TTL_MS || "");
+    this.catalogTtlMs = Number.isFinite(configured) && configured > 0
+      ? Math.min(30 * 60_000, Math.max(30_000, Math.round(configured)))
+      : 5 * 60_000;
+  }
 
   get current(): ModelLaunchSpec | null {
     return this.currentSpec;
@@ -132,23 +144,57 @@ export class DesktopModelManager {
     return this.metadataCache;
   }
 
+  private mergeRegistry(registry: RegistrySnapshot, metadata: ModelMetadataSnapshot): RegistrySnapshot {
+    const declared = new Map(metadata.profiles.map((profile) => [profile.selection, profile]));
+    const profiles = registry.profiles.map((profile) => {
+      const safe = declared.get(profile.selection);
+      return {
+        ...profile,
+        vision: safe?.vision ?? profile.vision ?? true,
+        available: profile.available !== false,
+      };
+    });
+    const primary = profiles.find((profile) => profile.selection === registry.primary.selection)
+      ?? { ...registry.primary, vision: registry.primary.vision ?? true, available: true };
+    return { ...registry, primary, profiles };
+  }
+
+  private adoptRegistry(registry: RegistrySnapshot, metadata: ModelMetadataSnapshot): RegistrySnapshot {
+    const merged = this.mergeRegistry(registry, metadata);
+    this.registryCache = merged;
+    this.registryCacheAt = Date.now();
+
+    // A provider may remove/rename a model between refreshes. Drop stale launch
+    // cache entries so a future click cannot resurrect an old provider listing.
+    // The model already bound to the live conversation is deliberately kept:
+    // it remains usable until the user changes it, and snapshotFor marks it as
+    // unavailable instead of silently switching the conversation.
+    const currentSelection = this.currentSpec?.selection ?? "";
+    const liveSelections = new Set(merged.profiles.map((profile) => profile.selection));
+    for (const selection of [...this.launchCache.keys()]) {
+      if (selection !== currentSelection && !liveSelections.has(selection)) {
+        this.launchCache.delete(selection);
+      }
+    }
+    return merged;
+  }
+
+  private catalogFresh(): boolean {
+    return Boolean(
+      this.registryCache
+      && this.registryCacheAt
+      && Date.now() - this.registryCacheAt < this.catalogTtlMs
+    );
+  }
+
   registry(forceRefresh = false): RegistrySnapshot {
     if (!forceRefresh && this.registryCache) return this.registryCache;
     const registry = this.runBridge<RegistrySnapshot>("list", {});
     const metadata = this.metadata(forceRefresh);
-    const declared = new Map(metadata.profiles.map((profile) => [profile.selection, profile]));
-    const profiles = registry.profiles.map((profile) => {
-      const safe = declared.get(profile.selection);
-      return { ...profile, vision: safe?.vision ?? profile.vision ?? true };
-    });
-    const primary = profiles.find((profile) => profile.selection === registry.primary.selection)
-      ?? { ...registry.primary, vision: registry.primary.vision ?? true };
-    this.registryCache = { ...registry, primary, profiles };
-    return this.registryCache;
+    return this.adoptRegistry(registry, metadata);
   }
 
-  snapshotFor(spec: ModelLaunchSpec | null, forceRefresh = false): ModelSnapshot {
-    const registry = this.registry(forceRefresh);
+  private snapshotFromRegistry(spec: ModelLaunchSpec | null, registry: RegistrySnapshot): ModelSnapshot {
     const currentProfile = spec
       ? registry.profiles.find((profile) => profile.selection === spec.selection)
       : undefined;
@@ -168,20 +214,95 @@ export class DesktopModelManager {
           family: currentProfile?.family ?? spec.family,
           protocol: currentProfile?.protocol ?? spec.protocol,
           configured: currentProfile?.configured ?? spec.configured,
+          available: currentProfile ? currentProfile.available !== false : false,
+          catalogSource: currentProfile?.catalogSource ?? (spec ? "runtime" : undefined),
+          statusMessage: currentProfile?.statusMessage ?? (
+            spec && !currentProfile
+              ? "This model is no longer advertised by the provider. The current conversation keeps its binding until you choose another model."
+              : undefined
+          ),
           vision: currentProfile?.vision ?? spec.vision ?? true,
           contextLimits: currentProfile?.contextLimits ?? spec.contextLimits,
-          reasoning: spec.reasoning ?? null,
+          reasoning: currentProfile?.reasoning ?? spec.reasoning ?? null,
         }
       : null;
+
+    let profiles = registry.profiles;
+    if (spec && !currentProfile) {
+      // Preserve the missing current model as a disabled row. New catalog
+      // entries appear immediately, removed entries disappear, but the active
+      // thread never jumps to a different model behind the user's back.
+      const unavailable: ModelProfile = {
+        selection: spec.selection,
+        id: spec.id,
+        kind: spec.kind,
+        name: spec.name,
+        adapter: spec.adapter,
+        baseUrl: spec.baseUrl,
+        model: spec.model,
+        groupId: spec.groupId,
+        groupName: spec.groupName,
+        groupOrder: spec.groupOrder,
+        family: spec.family,
+        protocol: spec.protocol,
+        configured: spec.configured,
+        available: false,
+        catalogSource: "runtime",
+        statusMessage: "No longer advertised by the provider",
+        vision: spec.vision ?? true,
+        contextLimits: spec.contextLimits,
+        reasoning: spec.reasoning ?? null,
+      };
+      profiles = [...profiles, unavailable];
+    }
+
     return {
       ...registry,
+      profiles,
       current,
       recentModels: [...this.recentModels],
+      catalogRefreshedAt: this.registryCacheAt || undefined,
+      catalogTtlMs: this.catalogTtlMs,
     };
+  }
+
+  snapshotFor(spec: ModelLaunchSpec | null, forceRefresh = false): ModelSnapshot {
+    const registry = this.registry(forceRefresh);
+    return this.snapshotFromRegistry(spec, registry);
   }
 
   snapshot(forceRefresh = false): ModelSnapshot {
     return this.snapshotFor(this.currentSpec, forceRefresh);
+  }
+
+  async listSnapshot(forceRefresh = false): Promise<ModelSnapshot> {
+    if (!forceRefresh && this.catalogFresh() && this.registryCache) {
+      return this.snapshotFromRegistry(this.currentSpec, this.registryCache);
+    }
+    if (this.catalogRefreshPromise) return this.catalogRefreshPromise;
+
+    this.catalogRefreshPromise = (async () => {
+      try {
+        const [registry, metadata] = await Promise.all([
+          this.runBridgeAsync<RegistrySnapshot>("list", {}),
+          this.runAdminAsync<ModelMetadataSnapshot>("metadata", {}),
+        ]);
+        const adopted = this.adoptRegistry(registry, metadata);
+        this.metadataCache = metadata;
+        return this.snapshotFromRegistry(this.currentSpec, adopted);
+      } catch (error) {
+        // A transient /models outage must not make every model disappear.
+        // Keep the last known good catalog when one exists; first launch still
+        // surfaces the real discovery error so setup problems are diagnosable.
+        if (this.registryCache) {
+          return this.snapshotFromRegistry(this.currentSpec, this.registryCache);
+        }
+        throw error;
+      } finally {
+        this.catalogRefreshPromise = null;
+      }
+    })();
+    return this.catalogRefreshPromise;
   }
 
   resolve(selection: string): ModelLaunchSpec {
@@ -197,6 +318,7 @@ export class DesktopModelManager {
   add(input: AddModelInput): ModelProfile {
     const profile = this.runBridge<ModelProfile>("save", input as unknown as Record<string, unknown>);
     this.registryCache = null;
+    this.registryCacheAt = 0;
     this.metadataCache = null;
     this.launchCache.delete(profile.selection);
     return profile;
@@ -207,6 +329,7 @@ export class DesktopModelManager {
     if (!selection) throw new Error("Model profile is required");
     const profile = this.runAdmin<ModelProfile>("update", input as unknown as Record<string, unknown>);
     this.registryCache = null;
+    this.registryCacheAt = 0;
     this.metadataCache = null;
     this.launchCache.delete(selection);
     if (this.currentSpec?.selection === selection) {
@@ -226,6 +349,7 @@ export class DesktopModelManager {
     if (!value) throw new Error("Model profile is required");
     const registry = this.runBridge<RegistrySnapshot>("delete", { selection: value });
     this.registryCache = null;
+    this.registryCacheAt = 0;
     this.metadataCache = null;
     this.launchCache.delete(value);
     if (this.currentSpec?.selection === value) this.currentSpec = null;
@@ -257,6 +381,7 @@ export class DesktopModelManager {
       apiKey: secret,
     });
     this.registryCache = null;
+    this.registryCacheAt = 0;
     this.metadataCache = null;
     for (const key of [...this.launchCache.keys()]) {
       if (
@@ -363,8 +488,69 @@ export class DesktopModelManager {
     return this.runPythonBridge<T>("loom_model_bridge.py", command, payload);
   }
 
+  private runBridgeAsync<T>(
+    command: "list",
+    payload: Record<string, unknown>,
+  ): Promise<T> {
+    return this.runPythonBridgeAsync<T>("loom_model_bridge.py", command, payload);
+  }
+
   private runAdmin<T>(command: "metadata" | "update" | "test", payload: Record<string, unknown>): T {
     return this.runPythonBridge<T>("loom_model_admin.py", command, payload);
+  }
+
+  private runAdminAsync<T>(command: "metadata", payload: Record<string, unknown>): Promise<T> {
+    return this.runPythonBridgeAsync<T>("loom_model_admin.py", command, payload);
+  }
+
+  private runPythonBridgeAsync<T>(
+    scriptName: string,
+    command: string,
+    payload: Record<string, unknown>,
+  ): Promise<T> {
+    const python = process.env.LOOM_PYTHON || (process.platform === "win32" ? "python" : "python3");
+    const script = path.join(this.repoRoot, scriptName);
+    return new Promise<T>((resolve, reject) => {
+      const child = spawn(python, [script, command], {
+        cwd: this.repoRoot,
+        env: { ...process.env, PYTHONUTF8: "1" },
+        windowsHide: true,
+        stdio: ["pipe", "pipe", "pipe"],
+        timeout: 20_000,
+      });
+      let stdout = "";
+      let stderr = "";
+      let settled = false;
+      child.stdout.setEncoding("utf8");
+      child.stderr.setEncoding("utf8");
+      child.stdout.on("data", (chunk) => { stdout += String(chunk); });
+      child.stderr.on("data", (chunk) => { stderr += String(chunk); });
+      child.on("error", (error) => {
+        if (settled) return;
+        settled = true;
+        reject(error);
+      });
+      child.on("close", (code) => {
+        if (settled) return;
+        settled = true;
+        const raw = stdout.trim();
+        if (!raw) {
+          reject(new Error(stderr.trim() || `${scriptName} exited with ${code ?? "unknown status"}`));
+          return;
+        }
+        try {
+          const envelope = JSON.parse(raw) as BridgeEnvelope<T>;
+          if (!envelope.ok || envelope.result === undefined) {
+            reject(new Error(envelope.error || `${scriptName} request failed`));
+            return;
+          }
+          resolve(envelope.result);
+        } catch {
+          reject(new Error(`${scriptName} returned invalid JSON: ${raw.slice(0, 240)}`));
+        }
+      });
+      child.stdin.end(JSON.stringify(payload));
+    });
   }
 
   private runPythonBridge<T>(scriptName: string, command: string, payload: Record<string, unknown>): T {
