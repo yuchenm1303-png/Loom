@@ -33,7 +33,12 @@ export function useAccount() {
     try {
       const result = await window.loom.accountStatus();
       if (result.ok) {
-        setAccount(result.snapshot);
+        setAccount((current) => ({
+          ...result.snapshot,
+          // A status probe intentionally cannot reconstruct a pending verifier
+          // from the server. Keep it while this window remains open.
+          verification: result.snapshot.authenticated ? undefined : current.verification,
+        }));
         setError(null);
       } else {
         setError(result.error);
@@ -82,9 +87,37 @@ export function useAccount() {
     [run],
   );
 
+  const verifyEmail = useCallback(
+    (email: string, code: string) => run(() => window.loom.accountVerifyEmail(email, code)),
+    [run],
+  );
+
+  const resendVerification = useCallback(
+    (email: string) => run(() => window.loom.accountResendVerification(email)),
+    [run],
+  );
+
+  const cancelVerification = useCallback(() => {
+    setAccount((current) => ({ ...current, verification: undefined }));
+    setError(null);
+  }, []);
+
   const logout = useCallback(async () => {
     await run(() => window.loom.accountLogout());
   }, [run]);
 
-  return { account, ready, busy, error, clearError, refresh, login, register, logout };
+  return {
+    account,
+    ready,
+    busy,
+    error,
+    clearError,
+    refresh,
+    login,
+    register,
+    verifyEmail,
+    resendVerification,
+    cancelVerification,
+    logout,
+  };
 }
