@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import App from "./App";
 import { BootErrorBoundary } from "./components/BootErrorBoundary";
 import { GlobalContextMenu } from "./components/GlobalContextMenu";
+import { SoftwareUpdatePortal } from "./components/SoftwareUpdatePortal";
 import { I18nProvider, bootstrapDocumentLanguage } from "./i18n";
 import { bootstrapTheme } from "./theme";
 import { applyRendererScale, installNativeRendererScaleSync } from "./rendererScale";
@@ -143,7 +144,7 @@ try {
     "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace",
   );
   document.documentElement.style.setProperty("--loom-code-font-size", "12px");
-  document.documentElement.style.setProperty("--loom-code-line-height", "1.62");
+  document.documentElement.style.setProperty("--loom-code-line-height", CODE_LINE_HEIGHTS[codeLineHeight]);
 }
 
 bootstrapTheme();
@@ -158,6 +159,7 @@ createRoot(rootElement).render(
     <BootErrorBoundary>
       <I18nProvider>
         <App />
+        <SoftwareUpdatePortal />
         <GlobalContextMenu />
       </I18nProvider>
     </BootErrorBoundary>
