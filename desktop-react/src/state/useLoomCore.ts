@@ -116,7 +116,41 @@ function terminalErrorTurnId(items: TranscriptItem[], preferredTurnId?: string |
 function modelsForThread(snapshot: ModelSnapshot | null, thread?: ThreadRecord | null): ModelSnapshot | null {
   if (!snapshot || !thread?.modelSelection) return snapshot;
   const profile = snapshot.profiles.find((candidate) => candidate.selection === thread.modelSelection);
-  if (!profile) return snapshot;
+
+  if (!profile) {
+    // Catalog refreshes are allowed to remove models, but a conversation is an
+    // immutable record of the model it was bound to. Preserve that binding in
+    // the UI as an unavailable row instead of falling back visually (or
+    // operationally) to whatever model happens to be globally current.
+    const model = String(thread.model || "").trim() || "Unavailable model";
+    const adapter = String(thread.modelProvider || "").trim() || "openai-compatible";
+    const unavailable = {
+      selection: thread.modelSelection,
+      id: `unavailable:${thread.modelSelection}`,
+      kind: thread.modelSelection.startsWith("profile:") ? "saved" as const : "builtin" as const,
+      name: model,
+      adapter,
+      baseUrl: String(thread.modelBaseUrl || ""),
+      model,
+      available: false,
+      catalogSource: "runtime",
+      statusMessage: "This model is no longer advertised by the provider. Choose another model to replace this conversation binding.",
+      vision: thread.modelVision ?? true,
+      reasoning: null,
+    };
+    return {
+      ...snapshot,
+      profiles: [...snapshot.profiles, unavailable],
+      current: {
+        ...unavailable,
+        provider: adapter,
+        reasoning: thread.reasoning
+          ? { kind: thread.reasoning.kind, value: thread.reasoning.value, defaultValue: thread.reasoning.value, options: [], source: "thread" }
+          : null,
+      },
+    };
+  }
+
   const reasoning = profile.reasoning && thread.reasoning
     ? { ...profile.reasoning, ...thread.reasoning }
     : profile.reasoning ?? null;
