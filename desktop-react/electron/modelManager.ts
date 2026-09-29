@@ -159,8 +159,48 @@ export class DesktopModelManager {
     return { ...registry, primary, profiles };
   }
 
+  private preserveLastKnownProviderCatalog(next: RegistrySnapshot): RegistrySnapshot {
+    const previous = this.registryCache;
+    if (!previous) return next;
+
+    const degradedGroups = new Set(
+      next.profiles
+        .filter((profile) => profile.catalogSource === "fallback")
+        .map((profile) => profile.groupId || profile.selection),
+    );
+    const relayDegraded = next.profiles.some((profile) =>
+      Boolean(
+        profile.setupOnly
+        && profile.statusMessage
+        && (profile.groupId === "managed-relay" || profile.groupId?.startsWith("managed-relay:")),
+      ),
+    );
+    if (!degradedGroups.size && !relayDegraded) return next;
+
+    const retained = previous.profiles.filter((profile) => {
+      if (profile.catalogSource !== "provider") return false;
+      const groupId = profile.groupId || profile.selection;
+      if (degradedGroups.has(groupId)) return true;
+      return Boolean(relayDegraded && groupId.startsWith("managed-relay"));
+    });
+    if (!retained.length) return next;
+
+    // A failed /models request must not masquerade as a provider deletion.
+    // Keep the last authoritative provider rows and use the bundled fallback
+    // only to fill holes. Once discovery succeeds again (catalogSource=provider)
+    // normal deletion semantics resume immediately.
+    const retainedSelections = new Set(retained.map((profile) => profile.selection));
+    const profiles = [
+      ...retained,
+      ...next.profiles.filter((profile) => !retainedSelections.has(profile.selection)),
+    ];
+    const primary = profiles.find((profile) => profile.selection === next.primary.selection)
+      ?? next.primary;
+    return { ...next, profiles, primary };
+  }
+
   private adoptRegistry(registry: RegistrySnapshot, metadata: ModelMetadataSnapshot): RegistrySnapshot {
-    const merged = this.mergeRegistry(registry, metadata);
+    const merged = this.preserveLastKnownProviderCatalog(this.mergeRegistry(registry, metadata));
     this.registryCache = merged;
     this.registryCacheAt = Date.now();
 
