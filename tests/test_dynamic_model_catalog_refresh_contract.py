@@ -9,6 +9,9 @@ PRELOAD = ROOT / "desktop-react" / "electron" / "preload.cts"
 CORE = ROOT / "desktop-react" / "src" / "state" / "useLoomCore.ts"
 COMPOSER = ROOT / "desktop-react" / "src" / "components" / "ComposerBase.tsx"
 PANEL = ROOT / "desktop-react" / "src" / "components" / "ModelPanel.tsx"
+SETTINGS = ROOT / "desktop-react" / "src" / "components" / "SettingsPage.tsx"
+SETTINGS_MODELS = ROOT / "desktop-react" / "src" / "components" / "ModelsSettingsPanel.tsx"
+APP = ROOT / "desktop-react" / "src" / "App.tsx"
 
 
 def test_minimax_catalog_is_discovered_from_provider_with_local_fallback() -> None:
@@ -68,3 +71,27 @@ def test_removed_current_model_is_preserved_but_marked_unavailable() -> None:
     assert 'selection !== currentSelection && !liveSelections.has(selection)' in manager
     assert 'profile.available === false ? "Unavailable"' in panel
     assert 'disabled={profile.available === false' in panel
+
+
+def test_settings_models_page_also_refreshes_on_open() -> None:
+    settings = SETTINGS.read_text(encoding="utf-8")
+    settings_models = SETTINGS_MODELS.read_text(encoding="utf-8")
+    app = APP.read_text(encoding="utf-8")
+
+    assert "onRefreshModels?(forceRefresh?: boolean): Promise<ModelSnapshot> | void;" in settings
+    assert 'if (page !== "models" || !onRefreshModels) return;' in settings
+    assert "onRefreshModels(true)" in settings
+    assert "onRefreshModels={loom.refreshModels}" in app
+    assert "listModels<ModelSnapshot>(true)" in settings_models
+
+
+def test_thread_specific_removed_model_does_not_fall_back_to_global_current() -> None:
+    core = CORE.read_text(encoding="utf-8")
+
+    start = core.index("function modelsForThread(")
+    end = core.index("function buildApprovalResponse", start) if "function buildApprovalResponse" in core[start:] else core.index("export function", start)
+    block = core[start:end]
+    assert "if (!profile) {" in block
+    assert "available: false" in block
+    assert "This model is no longer advertised by the provider" in block
+    assert "profiles: [...snapshot.profiles, unavailable]" in block
