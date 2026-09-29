@@ -8,7 +8,16 @@ export interface LoomAccountUser {
   email: string;
   display_name?: string;
   status: string;
+  email_verified?: boolean;
+  email_verified_at?: number | null;
   created_at?: number;
+}
+
+export interface LoomEmailVerificationState {
+  email: string;
+  expiresIn: number;
+  resendAfter: number;
+  issuedAt: number;
 }
 
 export interface LoomAccountSnapshot {
@@ -18,6 +27,7 @@ export interface LoomAccountSnapshot {
   authenticated: boolean;
   user: LoomAccountUser | null;
   serviceUrl: string;
+  verification?: LoomEmailVerificationState;
 }
 
 interface TokenSession {
@@ -33,6 +43,19 @@ interface AuthResponse {
   expires_in: number;
   token_type?: string;
   user: LoomAccountUser;
+}
+
+interface VerificationRequiredResponse {
+  verification_required: true;
+  email: string;
+  expires_in: number;
+  resend_after: number;
+}
+
+interface ResendVerificationResponse {
+  ok: boolean;
+  expires_in: number;
+  resend_after: number;
 }
 
 /**
@@ -176,6 +199,22 @@ export class LoomAccountClient {
     };
   }
 
+  private verificationSnapshot(
+    email: string,
+    expiresIn: number,
+    resendAfter: number,
+  ): LoomAccountSnapshot {
+    return {
+      ...this.snapshot(null),
+      verification: {
+        email: String(email || "").trim().toLowerCase(),
+        expiresIn: Math.max(1, Number(expiresIn || 600)),
+        resendAfter: Math.max(0, Number(resendAfter || 60)),
+        issuedAt: Date.now(),
+      },
+    };
+  }
+
   private async request<T>(
     endpoint: string,
     init: RequestInit = {},
@@ -204,8 +243,6 @@ export class LoomAccountClient {
           signal: controller.signal,
         });
       } catch (cause) {
-        // Distinguish "the service never answered" from "the service answered
-        // with an error", so the UI can tell the user which one to fix.
         if (cause instanceof Error && cause.name === "AbortError") {
           throw new AccountHttpError(
             0,
@@ -263,9 +300,6 @@ export class LoomAccountClient {
     let session = await this.loadSession();
 
     if (!session) {
-      // No stored credential — but the UI still has to distinguish "signed out"
-      // from "cannot reach the service", so probe instead of assuming the
-      // service is up just because a URL is configured.
       return this.snapshot(null, await this.probe());
     }
 
@@ -273,9 +307,6 @@ export class LoomAccountClient {
       try {
         session = await this.refresh(session);
       } catch (error) {
-        // Only a rejected credential means the session is dead. A transport
-        // failure is an outage, and deleting the stored session for it would
-        // sign the user out over a dropped connection.
         if (!isAuthRejection(error)) return this.snapshot(session, false);
         await this.clearSession();
         return this.snapshot(null);
@@ -313,11 +344,30 @@ export class LoomAccountClient {
   }
 
   async register(email: string, password: string): Promise<LoomAccountSnapshot> {
-    const response = await this.request<AuthResponse>("/auth/register", {
+    const response = await this.request<AuthResponse | VerificationRequiredResponse>("/auth/register", {
       method: "POST",
       body: JSON.stringify({ email, password }),
     });
+    if ("verification_required" in response && response.verification_required) {
+      return this.verificationSnapshot(response.email || email, response.expires_in, response.resend_after);
+    }
+    return this.snapshot(await this.saveSession(response as AuthResponse));
+  }
+
+  async verifyEmail(email: string, code: string): Promise<LoomAccountSnapshot> {
+    const response = await this.request<AuthResponse>("/auth/verify-email", {
+      method: "POST",
+      body: JSON.stringify({ email, code }),
+    });
     return this.snapshot(await this.saveSession(response));
+  }
+
+  async resendVerification(email: string): Promise<LoomAccountSnapshot> {
+    const response = await this.request<ResendVerificationResponse>("/auth/resend-verification", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    });
+    return this.verificationSnapshot(email, response.expires_in, response.resend_after);
   }
 
   async logout(): Promise<LoomAccountSnapshot> {
