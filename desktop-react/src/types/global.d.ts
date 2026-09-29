@@ -31,6 +31,8 @@ export interface LoomBridge {
   accountStatus(): Promise<LoomAccountResult>;
   accountLogin(email: string, password: string): Promise<LoomAccountResult>;
   accountRegister(email: string, password: string): Promise<LoomAccountResult>;
+  accountVerifyEmail(email: string, code: string): Promise<LoomAccountResult>;
+  accountResendVerification(email: string): Promise<LoomAccountResult>;
   accountLogout(): Promise<LoomAccountResult>;
   listModels<T = unknown>(forceRefresh?: boolean): Promise<T>;
   setModelProviderKey<T = unknown>(provider: string, apiKey: string): Promise<T>;
