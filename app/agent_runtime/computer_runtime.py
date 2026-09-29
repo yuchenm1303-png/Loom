@@ -612,12 +612,14 @@ class ComputerSessionStore:
     ) -> dict[str, object]:
         before_window = before.observation.active_window.window_id if before.observation.active_window else ""
         after_window = after.observation.active_window.window_id if after.observation.active_window else ""
+        before_window_key = ComputerSessionStore._window_id_key(before_window)
+        after_window_key = ComputerSessionStore._window_id_key(after_window)
         visual_changed = before.observation.image_sha256 != after.observation.image_sha256
-        active_window_changed = before_window != after_window
+        active_window_changed = before_window_key != after_window_key
         method = "post-action-observation"
         target_confirmed = None
         if action.type is ComputerActionType.SWITCH_WINDOW:
-            target_confirmed = after_window == action.window_id
+            target_confirmed = after_window_key == ComputerSessionStore._window_id_key(action.window_id)
             method = "foreground-window-id"
         return {
             "method": method,
@@ -628,6 +630,23 @@ class ComputerSessionStore:
             "before_image_sha256": before.observation.image_sha256,
             "after_image_sha256": after.observation.image_sha256,
         }
+
+    @staticmethod
+    def _window_id_key(value: object) -> str:
+        """Canonicalize Win32 HWNDs before comparing observations.
+
+        Window ids are serialized as hexadecimal strings, but producers do not
+        promise one letter case.  Comparing ``0x30D42`` with ``0x30d42`` as raw
+        text produced a false target mismatch in a real Computer Use trace.
+        """
+
+        text = str(value or "").strip()
+        if not text:
+            return ""
+        try:
+            return f"0x{int(text, 0):x}"
+        except (TypeError, ValueError):
+            return text.casefold()
 
     @staticmethod
     def _owner(value: str) -> str:

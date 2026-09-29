@@ -5,8 +5,13 @@ import json
 import pytest
 
 from app.agent_runtime.computer_grounding import parse_ui_tars_prediction
-from app.agent_runtime.computer_runtime import ComputerSessionStore, ComputerUseRuntime
-from app.agent_runtime.computer_single_loop_runtime import SingleLoopComputerRuntime
+from app.agent_runtime.computer_runtime import (
+    ComputerSessionStore,
+    ComputerStateSnapshot,
+    ComputerStepOutcome,
+    ComputerUseRuntime,
+)
+from app.agent_runtime.computer_single_loop_runtime import SingleLoopComputerRuntime, _classify_effect
 from app.agent_runtime.mcp_configured_runtime import ConfiguredMCPRuntime
 from app.agent_runtime.computer_types import (
     ComputerAction,
@@ -325,6 +330,65 @@ def test_coordinate_click_with_no_observable_effect_returns_false(tmp_path):
     assert result.data["verification"]["effect_reason"] == "no_observable_change_after_pointer_input"
     assert "no observable UI change" in result.content
     runtime.close()
+
+
+def test_window_ids_are_compared_as_hwnds_not_case_sensitive_text():
+    action = ComputerAction(type=ComputerActionType.SWITCH_WINDOW, window_id="0x30D42")
+    before_observation = ComputerObservation(
+        observation_id="before",
+        frame=ComputerFrame(frame_id="f1", origin_x=0, origin_y=0, width=100, height=100),
+        image_data=b"before",
+        active_window=ComputerWindow(window_id="0x1", title="Loom", foreground=True),
+    )
+    after_observation = ComputerObservation(
+        observation_id="after",
+        frame=ComputerFrame(frame_id="f2", origin_x=0, origin_y=0, width=100, height=100),
+        image_data=b"after",
+        active_window=ComputerWindow(window_id="0x30d42", title="CU_NEW", foreground=True),
+    )
+    execution = ComputerExecution(ok=True, message="switched", action=action)
+
+    verification = ComputerSessionStore._verify(
+        ComputerStateSnapshot(1, before_observation),
+        ComputerStateSnapshot(2, after_observation),
+        action,
+        execution,
+    )
+
+    assert verification["target_confirmed"] is True
+    assert verification["active_window_changed"] is True
+
+
+def test_foreground_loss_after_input_is_uncertain_not_success():
+    action = ComputerAction(type=ComputerActionType.HOTKEY, keys=("ctrl", "shift"))
+    before_observation = ComputerObservation(
+        observation_id="before",
+        frame=ComputerFrame(frame_id="f1", origin_x=0, origin_y=0, width=100, height=100),
+        image_data=b"terminal",
+        active_window=ComputerWindow(window_id="0x30d42", title="CU_NEW", foreground=True),
+    )
+    after_observation = ComputerObservation(
+        observation_id="after",
+        frame=ComputerFrame(frame_id="f2", origin_x=0, origin_y=0, width=100, height=100),
+        image_data=b"loom",
+        active_window=ComputerWindow(window_id="0x1601b8", title="Loom", foreground=True),
+    )
+    execution = ComputerExecution(ok=True, message="hotkey completed", action=action)
+    before = ComputerStateSnapshot(49, before_observation)
+    after = ComputerStateSnapshot(50, after_observation)
+    outcome = ComputerStepOutcome(
+        before,
+        ComputerPrediction(action=action),
+        execution,
+        after,
+        ComputerSessionStore._verify(before, after, action, execution),
+    )
+
+    verification = _classify_effect(outcome)
+
+    assert verification["effect"] == "uncertain"
+    assert verification["effect_reason"] == "foreground_target_lost_after_input"
+    assert verification["semantic_verified"] is False
 
 
 def test_coordinate_click_is_not_promoted_to_uia_even_when_control_is_under_point(tmp_path):
