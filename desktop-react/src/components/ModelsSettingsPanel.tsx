@@ -522,9 +522,15 @@ export function ModelsSettingsPanel({ initialSnapshot, runtimeModel, running, on
                   </div>
                 ) : null}
                 <div className="models-profile-actions">
-                  <button type="button" className={active ? "active" : ""} disabled={running || Boolean(busy) || active} onClick={() => void activate(profile)}>
+                  <button
+                    type="button"
+                    className={active ? "active" : ""}
+                    disabled={profile.available === false || running || Boolean(busy) || active}
+                    title={profile.available === false ? (profile.statusMessage || "No longer advertised by the provider") : undefined}
+                    onClick={() => void activate(profile)}
+                  >
                     {isSwitching ? <RefreshCw size={13} className="model-spin" /> : active ? <Check size={13} /> : <ChevronRight size={13} />}
-                    {active ? c.current : c.setActive}
+                    {profile.available === false ? (language === "zh-CN" ? "已失效" : "Unavailable") : active ? c.current : c.setActive}
                   </button>
                   <button type="button" disabled={isTesting} onClick={() => void test(profile)}><Wifi size={13} />{isTesting ? c.testing : c.test}</button>
                   {profile.kind === "saved" ? (
