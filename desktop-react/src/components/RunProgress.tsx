@@ -130,7 +130,7 @@ function phaseFor(items: TranscriptItem[], threadStatus: string | undefined, lan
     }
     return zh ? "正在思考下一步操作" : "Thinking about the next action";
   }
-  if (latestActivity?.type === "file_edit") return zh ? "正在检查文件修改" : "Reviewing file changes";
+  if (latestActivity?.type === "file_edit") return zh ? "正在等待模型回复" : "Waiting for model response";
 
   const latestAssistant = [...items].reverse().find((item) => item.type === "assistant_message");
   if (latestAssistant && String(latestAssistant.text ?? "").trim()) return zh ? "正在整理回复" : "Preparing response";

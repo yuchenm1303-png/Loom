@@ -17,6 +17,7 @@ from .browser_runtime import (
     redact_browser_url,
 )
 from .browser_session import BrowserPageState
+from .contracts import AgentEventKind
 from .tools import ToolExposure, ToolRegistry, ToolResult
 
 
@@ -273,12 +274,12 @@ class BrowserRuntime(_BrowserRuntime):
     """
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
-        super().__init__(*args, **kwargs)
-
         self._browser_feedback: dict[str, BrowserStateSnapshot] = {}
         self._browser_feedback_turns: dict[str, str] = {}
         self._browser_feedback_effect: dict[str, tuple[str, str]] = {}
         self._browser_visual_feedback: dict[str, tuple[bytes, str]] = {}
+
+        super().__init__(*args, **kwargs)
 
         # browser_screenshot stays directly available because it is the intended
         # DOM->vision fallback. Less common/high-authority browser capabilities are
@@ -305,6 +306,16 @@ class BrowserRuntime(_BrowserRuntime):
         self._browser_feedback_turns.pop(session_id, None)
         self._browser_feedback_effect.pop(session_id, None)
         self._browser_visual_feedback.pop(session_id, None)
+
+    def _record(self, session, kind, *, data):
+        event = super()._record(session, kind, data=data)
+        # Keep the transient observation through rejected model samples so a
+        # retry can still see it. Once a response is committed, its browser
+        # context is in the model's history and must not be sent as fresh input
+        # on every later step of the same turn.
+        if kind is AgentEventKind.MODEL_RESPONSE:
+            self._clear_browser_feedback(session.session_id)
+        return event
 
     def start_turn(self, session_id, user_text, *, turn_id: str | None = None):
         # Latest DOM/image feedback is intentionally one-turn memory. A live browser

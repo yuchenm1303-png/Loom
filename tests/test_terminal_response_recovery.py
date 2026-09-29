@@ -30,7 +30,7 @@ def _runtime(tmp_path, responses):
     return runtime, store, platform, session
 
 
-def test_terminal_validator_rejects_unclosed_inline_code_and_emphasis() -> None:
+def test_terminal_validator_accepts_imperfect_markdown_in_completed_answer() -> None:
     inline = ModelResponse(
         text="2. **Commit 2：feat(ai): 支持把内嵌`",
         finish_reason="stop",
@@ -40,8 +40,8 @@ def test_terminal_validator_rejects_unclosed_inline_code_and_emphasis() -> None:
         finish_reason="stop",
     )
 
-    assert invalid_terminal_response(inline) == "unterminated_inline_code"
-    assert invalid_terminal_response(emphasis) == "unterminated_emphasis"
+    assert invalid_terminal_response(inline) == ""
+    assert invalid_terminal_response(emphasis) == ""
 
 
 def test_recovery_text_merges_suffix_without_losing_or_duplicating_prefix() -> None:
@@ -55,29 +55,23 @@ def test_recovery_text_merges_suffix_without_losing_or_duplicating_prefix() -> N
     assert merge_recovery_text("hello wor", "world") == "hello world"
 
 
-def test_turn_recovers_cut_inline_markdown_into_one_complete_final_answer(tmp_path) -> None:
+def test_turn_commits_completed_answer_without_retrying_for_inline_markdown(tmp_path) -> None:
     partial = "建议方案：**Commit 2：支持把内嵌`"
-    continuation = "reasoning` 配套完成。**"
     runtime, store, platform, session = _runtime(
         tmp_path,
         [
             ModelResponse(text=partial, finish_reason="stop", reasoning="r1"),
-            ModelResponse(text=continuation, finish_reason="stop", reasoning="r2"),
         ],
     )
 
     result = runtime.start_turn(session.session_id, "给我完整建议")
     restored = store.load(session.session_id)
 
-    expected = "建议方案：**Commit 2：支持把内嵌`reasoning` 配套完成。**"
+    expected = partial
     assert result.status is AgentStatus.COMPLETED
     assert result.final_text == expected
     assert restored.final_text == expected
-    assert len(platform.requests) == 2
-    # The retry sees the rejected prefix as assistant context, but the durable
-    # final response is reconstructed as one self-contained message.
-    retry_messages = platform.requests[1][1].messages
-    assert any(getattr(message, "content", "") == partial for message in retry_messages)
+    assert len(platform.requests) == 1
 
 
 def test_turn_recovers_an_unclosed_decision_block_before_commit(tmp_path) -> None:

@@ -6,6 +6,7 @@ from pathlib import Path
 from app.agent_runtime.browser_runtime_v1 import BrowserRuntime
 from app.agent_runtime.browser_security import BrowserSecurityPolicy
 from app.agent_runtime.browser_session import BrowserLaunchOptions, BrowserPageState
+from app.agent_runtime.contracts import AgentEventKind
 from app.agent_runtime.sandbox import SandboxManager, SandboxPolicy
 from app.agent_runtime.storage import FileAgentSessionStore
 from app.agent_runtime.tools import ToolResult
@@ -182,6 +183,45 @@ def test_identical_post_click_state_is_uncertain_not_confirmed(tmp_path):
     messages, _ = runtime._prepare_model_request(session, _step(runtime, session), None)
     text = next(part for part in messages[-1].content if isinstance(part, TextPart))
     assert "effect: uncertain" in text.text
+    runtime.close()
+
+
+def test_browser_observation_is_not_replayed_after_committed_model_response(tmp_path):
+    runtime, workspace = _runtime(tmp_path)
+    session = _session(runtime, workspace)
+    runtime._append_tool_result(
+        session,
+        ToolCall(call_id="call-1", name="browser_state", arguments={}),
+        _state_result(revision=1, dom="FRESH DOM"),
+        failed=False,
+    )
+
+    _, first_extra = runtime._prepare_model_request(session, _step(runtime, session), None)
+    assert first_extra["browser_observation"]["state_revision"] == 1
+
+    # A rejected sample may be retried with the same transient observation.
+    runtime._record(session, AgentEventKind.MODEL_RESPONSE_REJECTED, data={"reason": "invalid_provider_response"})
+    _, retry_extra = runtime._prepare_model_request(session, _step(runtime, session), None)
+    assert retry_extra["browser_observation"]["state_revision"] == 1
+
+    runtime._record(session, AgentEventKind.MODEL_RESPONSE, data={"text": "I saw the page."})
+    messages, later_extra = runtime._prepare_model_request(session, _step(runtime, session), None)
+    assert "browser_observation" not in later_extra
+    assert not any(
+        isinstance(message.content, tuple)
+        and any(isinstance(part, TextPart) and "FRESH DOM" in part.text for part in message.content)
+        for message in messages
+    )
+
+    # A subsequent browser result still provides fresh transient input.
+    runtime._append_tool_result(
+        session,
+        ToolCall(call_id="call-2", name="browser_state", arguments={}),
+        _state_result(revision=2, dom="NEW DOM"),
+        failed=False,
+    )
+    _, fresh_extra = runtime._prepare_model_request(session, _step(runtime, session), None)
+    assert fresh_extra["browser_observation"]["state_revision"] == 2
     runtime.close()
 
 
