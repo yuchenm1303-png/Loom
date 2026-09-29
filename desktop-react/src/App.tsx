@@ -1225,6 +1225,7 @@ export default function App() {
             onModelProfileChange={loom.switchModelProfile}
             onCustomModelChange={loom.switchCurrentModel}
             onConfigureModelProvider={loom.configureModelProvider}
+            onRefreshModels={loom.refreshModels}
             onAddModel={loom.addModel}
             onDeleteModel={loom.deleteModel}
             onReasoningChange={loom.setReasoning}
