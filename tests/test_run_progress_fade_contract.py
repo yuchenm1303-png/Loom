@@ -25,3 +25,19 @@ def test_transcript_content_fades_before_reaching_top_status() -> None:
     assert "transparent 100%" in motion
     assert "max-width: min(48vw, 640px);" not in progress
     assert "-webkit-mask-image" not in progress
+
+
+def test_transcript_edges_dissolve_into_header_and_composer() -> None:
+    motion = MOTION.read_text(encoding="utf-8")
+
+    assert ".conversation-stage:has(.transcript-entry)::before" in motion
+    assert "bottom: 0;" in motion
+    assert "height: 54px;" in motion
+
+    assert ".conversation-stage:not(.is-running):has(.transcript-entry)::after" in motion
+    assert "top: 0;" in motion
+    assert "height: 46px;" in motion
+
+    assert "--loom-edge-fade-strong" in motion
+    assert 'html[data-loom-theme="light"] .conversation-stage {' in motion
+    assert "pointer-events: none;" in motion

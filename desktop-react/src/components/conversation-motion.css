@@ -685,10 +685,57 @@
 
 
 /* Content-edge fade ---------------------------------------------------------
-   The top strip stays full-width, but the transcript should visually dissolve
-   as it approaches the strip instead of hitting a hard horizontal cut. This is
-   a presentation overlay only; the scroll viewport and hit targets are not
-   clipped or masked. */
+   The transcript should disappear into the surrounding chrome rather than
+   ending on a hard horizontal cut. Keep this as a paint-only overlay instead
+   of masking the scroller: hit targets, the native scrollbar, scroll anchoring,
+   and Chromium's text rasterization remain untouched. */
+.conversation-stage {
+  --loom-edge-fade-strong: rgba(11,12,15,.90);
+  --loom-edge-fade-mid: rgba(11,12,15,.44);
+  --loom-edge-fade-soft: rgba(11,12,15,.12);
+}
+
+/* Lower edge: messages sink underneath the composer instead of colliding with
+   its top boundary. The transcript already reserves bottom padding, so at rest
+   this mostly falls over breathing room; it becomes visible while scrolling. */
+.conversation-stage:has(.transcript-entry)::before {
+  content: "";
+  position: absolute;
+  z-index: 3;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 54px;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    var(--loom-edge-fade-soft) 36%,
+    var(--loom-edge-fade-mid) 72%,
+    var(--loom-edge-fade-strong) 100%
+  );
+}
+
+/* Upper edge in the idle state mirrors the lower dissolve beneath the header. */
+.conversation-stage:not(.is-running):has(.transcript-entry)::after {
+  content: "";
+  position: absolute;
+  z-index: 3;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 46px;
+  pointer-events: none;
+  background: linear-gradient(
+    180deg,
+    var(--loom-edge-fade-strong) 0%,
+    var(--loom-edge-fade-mid) 34%,
+    var(--loom-edge-fade-soft) 68%,
+    transparent 100%
+  );
+}
+
+/* While running, begin the same dissolve below the 38px live status strip. */
 .conversation-stage.is-running::after {
   content: "";
   position: absolute;
@@ -700,14 +747,20 @@
   pointer-events: none;
   background: linear-gradient(
     180deg,
-    rgba(12,13,17,.78) 0%,
-    rgba(12,13,17,.42) 30%,
-    rgba(12,13,17,.13) 68%,
+    var(--loom-edge-fade-strong) 0%,
+    var(--loom-edge-fade-mid) 30%,
+    var(--loom-edge-fade-soft) 68%,
     transparent 100%
   );
 }
 
 /* Light theme keeps exactly the same motion hierarchy. */
+html[data-loom-theme="light"] .conversation-stage {
+  --loom-edge-fade-strong: rgba(247,247,248,.94);
+  --loom-edge-fade-mid: rgba(247,247,248,.50);
+  --loom-edge-fade-soft: rgba(247,247,248,.14);
+}
+
 html[data-loom-theme="light"] .conversation-stage,
 html[data-loom-theme="light"] .transcript {
   --loom-pill-border: rgba(31,35,42,.075);
