@@ -69,8 +69,10 @@ jobs:
             $tag = "v$($package.version)"
 
             git fetch --tags origin
-            git show-ref --verify --quiet "refs/tags/$tag"
-            if ($LASTEXITCODE -eq 0) {
+            if ($LASTEXITCODE -ne 0) { throw "Failed to refresh release tags from origin." }
+            $existingTags = @(git tag --list $tag)
+            if ($LASTEXITCODE -ne 0) { throw "Failed to inspect local release tags." }
+            if ($existingTags -contains $tag) {
               throw "Release tag $tag already exists. Refusing to overwrite an existing release."
             }
 
@@ -168,8 +170,9 @@ jobs:
             throw "The default branch moved while the release candidate was building. No release was published. Run Windows Release again from the latest $defaultBranch."
           }
 
-          git ls-remote --exit-code --tags origin "refs/tags/$env:RELEASE_TAG" *> $null
-          if ($LASTEXITCODE -eq 0) {
+          $remoteTags = @(git ls-remote --tags origin "refs/tags/$env:RELEASE_TAG")
+          if ($LASTEXITCODE -ne 0) { throw "Failed to inspect remote release tags." }
+          if ($remoteTags.Count -gt 0) {
             throw "Remote tag $env:RELEASE_TAG already exists. Refusing to overwrite it."
           }
 
@@ -191,8 +194,9 @@ jobs:
           $metadata = Join-Path $releaseDir "latest.yml"
           $blockmap = Get-ChildItem $releaseDir -Filter "Loom-Setup-*.exe.blockmap" | Select-Object -First 1
 
-          gh release view $env:RELEASE_TAG *> $null
-          if ($LASTEXITCODE -eq 0) {
+          $releaseTags = @(gh release list --limit 1000 --json tagName --jq '.[].tagName')
+          if ($LASTEXITCODE -ne 0) { throw "Failed to inspect existing GitHub Releases." }
+          if ($releaseTags -contains $env:RELEASE_TAG) {
             throw "GitHub Release $env:RELEASE_TAG already exists. Refusing to overwrite published updater assets."
           }
 
