@@ -25,6 +25,7 @@ type ThreadReadCacheEntry = { result: ThreadReadResult; cachedAt: number };
 
 const THREAD_READ_CACHE_LIMIT = 3;
 const THREAD_READ_CACHE_TTL_MS = 45_000;
+const MODEL_CATALOG_POLL_MS = 60_000;
 
 function flattenItems(turns: TurnRecord[]): TranscriptItem[] {
   return turns.flatMap((turn) => turn.items ?? []);
@@ -347,8 +348,8 @@ export function useLoom() {
     await refreshThreads();
   }, [refreshProjects, refreshThreads]);
 
-  const refreshModels = useCallback(async () => {
-    const snapshot = await requireBridge().listModels<ModelSnapshot>();
+  const refreshModels = useCallback(async (forceRefresh = false) => {
+    const snapshot = await requireBridge().listModels<ModelSnapshot>(forceRefresh);
     setModels(snapshot);
     return snapshot;
   }, []);
@@ -966,6 +967,25 @@ export function useLoom() {
     };
   }, [openThread, refreshModels, refreshProjects, refreshThreads]);
 
+  useEffect(() => {
+    const refreshIfVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      void refreshModels(false).catch(() => {
+        // The model manager preserves the last-known-good snapshot on transient
+        // provider failures. Polling should therefore stay silent and retry on
+        // the next TTL/focus boundary instead of surfacing background noise.
+      });
+    };
+    const timer = window.setInterval(refreshIfVisible, MODEL_CATALOG_POLL_MS);
+    window.addEventListener("focus", refreshIfVisible);
+    document.addEventListener("visibilitychange", refreshIfVisible);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refreshIfVisible);
+      document.removeEventListener("visibilitychange", refreshIfVisible);
+    };
+  }, [refreshModels]);
+
   const activeModels = useMemo(
     () => modelsForThread(models, active?.thread),
     [active?.thread, models],
@@ -1000,6 +1020,7 @@ export function useLoom() {
     forkThread,
     setThreadView,
     refreshProjects,
+    refreshModels,
     createProject,
     renameProject,
     setProjectInstructions,
@@ -1039,6 +1060,7 @@ export function useLoom() {
     projectsSupported,
     createProject,
     refreshContext,
+    refreshModels,
     refreshProjects,
     removeProject,
     renameProject,
