@@ -22,36 +22,7 @@ body {
   font-size: var(--loom-font-body);
 }
 
-/* Sidebar ---------------------------------------------------------------- */
-.sidebar .brand-row strong { font-size: 15px !important; }
-.sidebar .brand-row span { font-size: 13px !important; }
-.sidebar .brand-mark { font-size: 14px !important; }
-.sidebar .new-thread-copy { font-size: 13.5px !important; }
-.sidebar .new-thread kbd,
-.sidebar .search-shortcut { font-size: var(--loom-font-micro) !important; }
-.sidebar .search-box input { font-size: 13.5px !important; }
-.sidebar .sidebar-section-label { font-size: 12px !important; }
-.sidebar .section-count { font-size: var(--loom-font-micro) !important; }
-.sidebar .thread-title { font-size: 13.5px !important; }
-.sidebar .thread-meta { font-size: 12px !important; }
-.sidebar .sidebar-empty strong { font-size: 13px !important; }
-.sidebar .sidebar-empty > span:last-of-type,
-.sidebar .sidebar-empty button { font-size: 12px !important; }
-.sidebar .sidebar-footer-button { font-size: 13px !important; }
-.sidebar .footer-badge { font-size: var(--loom-font-micro) !important; }
-
-.compact-sidebar-header > strong::after { font-size: 12px !important; }
-.compact-search input { font-size: 13.5px !important; }
-.workspace-group-header > span { font-size: 13px !important; }
-.workspace-group-header > span.workspace-group-count { font-size: 12px !important; }
-.workspace-group-empty { font-size: 12.5px !important; }
-.workspace-group-rename,
-.workspace-group-menu button,
-.compact-thread-rename { font-size: 13px !important; }
-.compact-thread-title { font-size: 13.5px !important; }
-.compact-sidebar-empty,
-.compact-sidebar-empty button { font-size: 12.5px !important; }
-.compact-sidebar-footer > button { font-size: 13px !important; }
+/* The sidebar sets its own whole-pixel sizes (components/sidebar.css). */
 
 /* Conversation header ---------------------------------------------------- */
 .thread-heading strong { font-size: 14.5px !important; }

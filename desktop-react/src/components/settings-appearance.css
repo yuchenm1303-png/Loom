@@ -255,8 +255,7 @@ html[data-loom-density="spacious"] .settings-detail-row {
 }
 
 html[data-loom-density="spacious"] .activity-row,
-html[data-loom-density="spacious"] .tool-row,
-html[data-loom-density="spacious"] .thread-row {
+html[data-loom-density="spacious"] .tool-row {
   min-height: 54px;
 }
 

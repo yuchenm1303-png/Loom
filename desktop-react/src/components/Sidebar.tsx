@@ -2,13 +2,13 @@ import {
   Archive,
   ArchiveRestore,
   ArrowLeft,
-  ChevronDown,
   ChevronRight,
   Copy,
   Ellipsis,
   Eye,
   EyeOff,
   Folder,
+  FolderOpen,
   FolderPlus,
   GitFork,
   Pencil,
@@ -21,13 +21,161 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { createPortal } from "react-dom";
+import { useI18n } from "../i18n";
 import type { ProjectRecord, ThreadRecord } from "../types/loom";
 import "./sidebar.css";
-import "./sidebar-project-actions.css";
 
 type ThreadView = "active" | "archived";
 type Notice = { kind: "success" | "error"; text: string };
 type ContextMenuState = { threadId: string; x: number; y: number };
+
+// Sidebar copy follows the interface language, like the rest of the shell.
+const SIDEBAR_COPY = {
+  en: {
+    addProject: "Add project",
+    archive: "Archive",
+    archiveEmpty: "Archive is empty",
+    archived: "Conversation archived",
+    backToConversations: "Back to conversations",
+    busyMove: "This conversation is running. Move it once it finishes.",
+    clearSearch: "Clear search",
+    collapse: (name: string) => `Collapse ${name}`,
+    conversationActions: "Conversation actions",
+    conversations: "Conversations",
+    copy: "Copy",
+    copied: (label: string) => `Copied ${label}`,
+    copyFailed: (reason: string) => `Could not copy: ${reason}`,
+    copyId: "Copy conversation ID",
+    copyPath: "Copy workspace path",
+    copyTitle: "Copy title",
+    current: "Current",
+    deleted: "Conversation deleted",
+    deleteConfirm: "Click again to delete",
+    deleteConversation: "Delete conversation",
+    expand: (name: string) => `Expand ${name}`,
+    fork: "Fork",
+    forked: "Forked into a new conversation",
+    idLabel: "conversation ID",
+    markRead: "Mark as read",
+    markUnread: "Mark as unread",
+    moreActions: "More actions",
+    movedIn: (name: string) => `Moved to ${name}`,
+    movedOut: "Removed from project",
+    moveToProject: "Move to project",
+    newConversation: "New conversation",
+    newInProject: (name: string) => `New conversation in ${name}`,
+    noConversations: "No conversations yet",
+    noMatches: "No matching conversations",
+    noProjects: "No projects yet",
+    openArchive: "Open archive",
+    openProject: (root: string) => `Open project details · ${root}`,
+    pathLabel: "workspace path",
+    pin: "Pin",
+    project: "project",
+    projectAdded: "Project added",
+    projectAddFailed: "Could not add the project.",
+    projectRemoved: (name: string) => `${name} removed from the list`,
+    projectRemoveFailed: "Could not remove the project.",
+    projectRenamed: "Project renamed",
+    projectRenameFailed: "Could not rename the project.",
+    projects: "Projects",
+    putInProject: "Add to project",
+    recent: "Recent",
+    removeFromProject: "Remove from project",
+    removeProject: (name: string) => `Remove ${name}`,
+    removeProjectConfirm: (name: string, count: number) => [
+      `Remove ${name} from Loom's project list?`,
+      "The folder and its files are not touched.",
+      ...(count ? [`${count} conversation${count === 1 ? "" : "s"} stay in Loom and become unfiled.`] : []),
+    ].join("\n\n"),
+    rename: "Rename",
+    renamed: "Conversation renamed",
+    renameConversation: "Rename conversation",
+    renameFailed: (reason: string) => `Could not rename: ${reason}`,
+    renameProject: (name: string) => `Rename ${name}`,
+    restore: "Restore",
+    restored: "Conversation restored",
+    running: "Running",
+    search: "Search conversations",
+    searchArchived: "Search archived",
+    titleLabel: "title",
+    unpin: "Unpin",
+    unread: "Unread",
+    untitled: "New conversation",
+  },
+  zh: {
+    addProject: "添加项目",
+    archive: "归档",
+    archiveEmpty: "归档为空",
+    archived: "会话已归档",
+    backToConversations: "返回对话",
+    busyMove: "当前任务运行中，结束后才能移动这个对话到项目。",
+    clearSearch: "清除搜索",
+    collapse: (name: string) => `折叠 ${name}`,
+    conversationActions: "对话操作",
+    conversations: "对话",
+    copy: "复制",
+    copied: (label: string) => `${label}已复制`,
+    copyFailed: (reason: string) => `复制失败：${reason}`,
+    copyId: "复制会话 ID",
+    copyPath: "复制工作区路径",
+    copyTitle: "复制标题",
+    current: "当前",
+    deleted: "会话已删除",
+    deleteConfirm: "再次点击确认删除",
+    deleteConversation: "删除会话",
+    expand: (name: string) => `展开 ${name}`,
+    fork: "分叉",
+    forked: "已创建分叉会话",
+    idLabel: "会话 ID",
+    markRead: "标记为已读",
+    markUnread: "标记为未读",
+    moreActions: "更多操作",
+    movedIn: (name: string) => `已放入项目「${name}」`,
+    movedOut: "已移出项目",
+    moveToProject: "移动到项目",
+    newConversation: "新对话",
+    newInProject: (name: string) => `在 ${name} 中新建对话`,
+    noConversations: "还没有对话",
+    noMatches: "没有匹配的对话",
+    noProjects: "暂无项目",
+    openArchive: "打开归档",
+    openProject: (root: string) => `打开项目详情 · ${root}`,
+    pathLabel: "工作区路径",
+    pin: "置顶",
+    project: "项目",
+    projectAdded: "项目已添加",
+    projectAddFailed: "无法添加项目。",
+    projectRemoved: (name: string) => `已从列表移除 ${name}`,
+    projectRemoveFailed: "无法移除项目。",
+    projectRenamed: "项目已重命名",
+    projectRenameFailed: "无法重命名项目。",
+    projects: "项目",
+    putInProject: "放入项目",
+    recent: "最近",
+    removeFromProject: "移出项目",
+    removeProject: (name: string) => `移除 ${name}`,
+    removeProjectConfirm: (name: string, count: number) => [
+      `从 Loom 的项目列表中移除「${name}」？`,
+      "文件夹及其中的文件不会被改动。",
+      ...(count ? [`其中 ${count} 个对话会保留在 Loom 中，变为未归入项目。`] : []),
+    ].join("\n\n"),
+    rename: "重命名",
+    renamed: "会话已重命名",
+    renameConversation: "重命名对话",
+    renameFailed: (reason: string) => `重命名失败：${reason}`,
+    renameProject: (name: string) => `重命名 ${name}`,
+    restore: "恢复",
+    restored: "会话已恢复",
+    running: "运行中",
+    search: "搜索对话",
+    searchArchived: "搜索归档",
+    titleLabel: "标题",
+    unpin: "取消置顶",
+    unread: "未读",
+    untitled: "新对话",
+  },
+} as const;
 
 interface SidebarProps {
   threads: ThreadRecord[];
@@ -138,11 +286,10 @@ async function writeClipboard(value: string): Promise<void> {
   textarea.remove();
 }
 
-function errorText(cause: unknown): string {
+/** Server error text, with the running-thread refusal replaced by `busyMove`. */
+function errorText(cause: unknown, busyMove: string): string {
   const text = cause instanceof Error ? cause.message : String(cause);
-  if (text.includes("cannot move a running thread between projects")) {
-    return "当前任务运行中，结束后才能移动这个对话到项目。";
-  }
+  if (text.includes("cannot move a running thread between projects")) return busyMove;
   return text;
 }
 
@@ -186,6 +333,8 @@ export function Sidebar({
   onFork,
   onViewChange,
 }: SidebarProps) {
+  const { language } = useI18n();
+  const copy = SIDEBAR_COPY[language === "zh-CN" ? "zh" : "en"];
   const [query, setQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [pinnedIds, setPinnedIds] = useState<Set<string>>(() => readStoredIds(PINNED_STORAGE_KEY));
@@ -346,7 +495,7 @@ export function Sidebar({
     closeContextMenu();
     setDeleteArmed(false);
     setRenamingId(thread.id);
-    setRenameValue(thread.title || "New conversation");
+    setRenameValue(thread.title || copy.untitled);
     requestAnimationFrame(() => {
       renameRef.current?.focus();
       renameRef.current?.select();
@@ -362,9 +511,9 @@ export function Sidebar({
     setBusyThreadId(thread.id);
     try {
       await onRename(thread.id, title);
-      setNotice({ kind: "success", text: "会话已重命名" });
+      setNotice({ kind: "success", text: copy.renamed });
     } catch (cause) {
-      setNotice({ kind: "error", text: `重命名失败：${errorText(cause)}` });
+      setNotice({ kind: "error", text: copy.renameFailed(errorText(cause, copy.busyMove)) });
     } finally {
       renameCommittingRef.current = false;
       setBusyThreadId(null);
@@ -385,7 +534,7 @@ export function Sidebar({
       await action();
       setNotice({ kind: "success", text: successText });
     } catch (cause) {
-      setNotice({ kind: "error", text: errorText(cause) });
+      setNotice({ kind: "error", text: errorText(cause, copy.busyMove) });
     } finally {
       setBusyThreadId(null);
     }
@@ -395,20 +544,20 @@ export function Sidebar({
     const nextArchived = !Boolean(thread.archived);
     return runRemoteAction(
       thread,
-      nextArchived ? "会话已归档" : "会话已恢复",
+      nextArchived ? copy.archived : copy.restored,
       () => onArchive(thread.id, nextArchived),
     );
   };
 
   const forkThread = (thread: ThreadRecord) => runRemoteAction(
     thread,
-    "已创建分叉会话",
+    copy.forked,
     () => onFork(thread.id),
   );
 
   const deleteThread = (thread: ThreadRecord) => runRemoteAction(
     thread,
-    "会话已删除",
+    copy.deleted,
     async () => {
       await onDelete(thread.id);
       updateStoredSet(PINNED_STORAGE_KEY, setPinnedIds, thread.id, false);
@@ -420,7 +569,7 @@ export function Sidebar({
     if (threadIsBusy(thread)) {
       closeContextMenu();
       setProjectExpanded(false);
-      setNotice({ kind: "error", text: "当前任务运行中，结束后才能移动这个对话到项目。" });
+      setNotice({ kind: "error", text: copy.busyMove });
       return Promise.resolve();
     }
     const currentProjectId = (thread.projectId || "").trim();
@@ -431,20 +580,20 @@ export function Sidebar({
     }
     const targetProject = projects.find((project) => project.id === projectId);
     const successText = projectId
-      ? `已放入项目「${targetProject?.name || "项目"}」`
-      : "已移出项目";
+      ? copy.movedIn(targetProject?.name || copy.project)
+      : copy.movedOut;
     return runRemoteAction(thread, successText, () => onMoveProject(thread.id, projectId));
   };
 
   const copyThreadValue = async (thread: ThreadRecord, label: string, value: string) => {
     try {
       await writeClipboard(value);
-      setNotice({ kind: "success", text: `${label}已复制` });
+      setNotice({ kind: "success", text: copy.copied(label) });
       closeContextMenu();
       setCopyExpanded(false);
       setProjectExpanded(false);
     } catch (cause) {
-      setNotice({ kind: "error", text: `复制失败：${errorText(cause)}` });
+      setNotice({ kind: "error", text: copy.copyFailed(errorText(cause, copy.busyMove)) });
     }
   };
 
@@ -453,9 +602,9 @@ export function Sidebar({
     if (!picked) return;
     try {
       await onAddProject(picked);
-      setNotice({ kind: "success", text: "项目已添加" });
+      setNotice({ kind: "success", text: copy.projectAdded });
     } catch (cause) {
-      setNotice({ kind: "error", text: cause instanceof Error ? cause.message : "Could not add the project." });
+      setNotice({ kind: "error", text: cause instanceof Error ? cause.message : copy.projectAddFailed });
     }
   };
 
@@ -474,25 +623,19 @@ export function Sidebar({
     if (!project || !next || next === project.name) return;
     try {
       await onRenameProject(projectId, next);
-      setNotice({ kind: "success", text: "项目已重命名" });
+      setNotice({ kind: "success", text: copy.projectRenamed });
     } catch (cause) {
-      setNotice({ kind: "error", text: cause instanceof Error ? cause.message : "Could not rename the project." });
+      setNotice({ kind: "error", text: cause instanceof Error ? cause.message : copy.projectRenameFailed });
     }
   };
 
   const confirmRemoveProject = async (projectId: string) => {
     const project = projects.find((entry) => entry.id === projectId);
     if (!project) return;
-    const count = project.threadCount;
-    const lines = [
-      `Remove ${project.name} from Loom's project list?`,
-      "The folder and its files are not touched.",
-    ];
-    if (count) lines.push(`${count} conversation${count === 1 ? "" : "s"} stay in Loom and become unfiled.`);
-    if (!window.confirm(lines.join("\n\n"))) return;
+    if (!window.confirm(copy.removeProjectConfirm(project.name, project.threadCount))) return;
     try {
       await onRemoveProject(projectId);
-      setNotice({ kind: "success", text: `${project.name} removed from the list.` });
+      setNotice({ kind: "success", text: copy.projectRemoved(project.name) });
       setCollapsedProjectIds((current) => {
         const next = new Set(current);
         next.delete(projectId);
@@ -500,7 +643,7 @@ export function Sidebar({
         return next;
       });
     } catch (cause) {
-      setNotice({ kind: "error", text: cause instanceof Error ? cause.message : "Could not remove the project." });
+      setNotice({ kind: "error", text: cause instanceof Error ? cause.message : copy.projectRemoveFailed });
     }
   };
 
@@ -606,6 +749,7 @@ export function Sidebar({
       <div
         key={thread.id}
         className={`compact-thread-row ${active ? "active" : ""} ${pinned ? "pinned" : ""} ${unread ? "unread" : ""} ${renaming ? "renaming" : ""}`}
+        data-loom-own-menu=""
         onContextMenu={(event) => {
           event.preventDefault();
           openContextMenu(thread, event.clientX, event.clientY);
@@ -613,7 +757,6 @@ export function Sidebar({
       >
         {renaming ? (
           <div className="compact-thread-main rename-main">
-            <span className={`compact-thread-dot ${running ? "running" : unread ? "unread" : ""}`} aria-hidden="true" />
             <input
               ref={renameRef}
               className="compact-thread-rename"
@@ -630,40 +773,42 @@ export function Sidebar({
                   setRenamingId(null);
                 }
               }}
-              aria-label="Rename conversation"
+              aria-label={copy.renameConversation}
             />
+            <span className={`compact-thread-dot ${running ? "running" : unread ? "unread" : ""}`} aria-hidden="true" />
           </div>
         ) : (
           <button
             className="compact-thread-main"
             onClick={() => void openThread(thread)}
             type="button"
-            title={`${thread.title || "New conversation"}${time ? ` · ${time}` : ""}${pinned ? " · pinned" : ""}`}
+            title={`${thread.title || copy.untitled}${time ? ` · ${time}` : ""}`}
             aria-current={active ? "page" : undefined}
           >
+            <span className="compact-thread-title">{thread.title || copy.untitled}</span>
             <span className={`compact-thread-dot ${running ? "running" : unread ? "unread" : ""}`} aria-hidden="true" />
-            <span className="compact-thread-title">{thread.title || "New conversation"}</span>
-            {running ? <span className="sr-only">Running</span> : null}
-            {unread ? <span className="sr-only">Unread</span> : null}
+            {running ? <span className="sr-only">{copy.running}</span> : null}
+            {unread ? <span className="sr-only">{copy.unread}</span> : null}
           </button>
         )}
 
-        <div className="thread-quick-actions" aria-label="Conversation quick actions">
+        <div className="thread-quick-actions" aria-label={copy.conversationActions}>
           <button
             type="button"
             className={pinned ? "is-active" : ""}
             onClick={() => togglePinned(thread.id)}
-            title={pinned ? "Unpin" : "Pin"}
-            aria-label={pinned ? "Unpin conversation" : "Pin conversation"}
+            title={pinned ? copy.unpin : copy.pin}
+            aria-label={pinned ? copy.unpin : copy.pin}
             disabled={busy}
           >
-            {pinned ? <PinOff size={13} strokeWidth={1.8} /> : <Pin size={13} strokeWidth={1.8} />}
+            {/* Filled when pinned: the button doubles as the row's pinned mark. */}
+            <Pin size={13} strokeWidth={1.8} fill={pinned ? "currentColor" : "none"} />
           </button>
           <button
             type="button"
             onClick={() => void archiveThread(thread)}
-            title={thread.archived ? "Restore" : "Archive"}
-            aria-label={thread.archived ? "Restore conversation" : "Archive conversation"}
+            title={thread.archived ? copy.restore : copy.archive}
+            aria-label={thread.archived ? copy.restore : copy.archive}
             disabled={busy || running}
           >
             {thread.archived ? <ArchiveRestore size={13} strokeWidth={1.8} /> : <Archive size={13} strokeWidth={1.8} />}
@@ -674,8 +819,8 @@ export function Sidebar({
               const rect = event.currentTarget.getBoundingClientRect();
               openContextMenu(thread, rect.right + 7, rect.top - 5);
             }}
-            title="More actions"
-            aria-label="More conversation actions"
+            title={copy.moreActions}
+            aria-label={copy.moreActions}
             disabled={busy}
           >
             <Ellipsis size={14} strokeWidth={1.9} />
@@ -690,10 +835,10 @@ export function Sidebar({
     if (!projectSections.length) return null;
 
     return (
-      <section className="sidebar-section project-section" aria-label="Projects">
+      <section className="sidebar-section project-section" aria-label={copy.projects}>
         <div className="sidebar-section-title">
-          <span>项目</span>
-          <button type="button" onClick={() => void addProject()} title="Add project" aria-label="Add project">
+          <span>{copy.projects}</span>
+          <button type="button" onClick={() => void addProject()} title={copy.addProject} aria-label={copy.addProject}>
             <Plus size={13} strokeWidth={1.8} />
           </button>
         </div>
@@ -729,8 +874,8 @@ export function Sidebar({
                         type="button"
                         className="project-disclosure-button"
                         onClick={() => toggleProjectCollapsed(project.id)}
-                        title={`${collapsed ? "展开" : "折叠"} ${project.name}`}
-                        aria-label={`${collapsed ? "展开" : "折叠"} ${project.name}`}
+                        title={collapsed ? copy.expand(project.name) : copy.collapse(project.name)}
+                        aria-label={collapsed ? copy.expand(project.name) : copy.collapse(project.name)}
                         aria-expanded={!collapsed}
                       >
                         <ChevronRight className="project-disclosure-chevron" size={14} strokeWidth={1.9} aria-hidden="true" />
@@ -739,24 +884,26 @@ export function Sidebar({
                         type="button"
                         className="project-group-main"
                         onClick={() => void onOpenProject(project.id)}
-                        title={`打开项目详情 · ${project.root}`}
+                        title={copy.openProject(project.root)}
                         aria-current={selected ? "page" : undefined}
                       >
-                        <Folder size={15} strokeWidth={1.75} aria-hidden="true" />
+                        {collapsed
+                          ? <Folder size={16} strokeWidth={1.75} aria-hidden="true" />
+                          : <FolderOpen size={16} strokeWidth={1.75} aria-hidden="true" />}
                         <span>{project.name}</span>
                         {visibleCount ? <small>{visibleCount}</small> : null}
                       </button>
                     </>
                   )}
 
-                  <div className="project-group-actions" aria-label="Project actions">
-                    <button type="button" onClick={() => void onNew(project.root || undefined, project.id)} title={`New conversation in ${project.name}`} aria-label={`New conversation in ${project.name}`}>
+                  <div className="project-group-actions" aria-label={copy.projects}>
+                    <button type="button" onClick={() => void onNew(project.root || undefined, project.id)} title={copy.newInProject(project.name)} aria-label={copy.newInProject(project.name)}>
                       <Plus size={14} strokeWidth={1.8} />
                     </button>
-                    <button type="button" onClick={() => beginProjectRename(project.id)} title={`Rename ${project.name}`} aria-label={`Rename ${project.name}`}>
+                    <button type="button" onClick={() => beginProjectRename(project.id)} title={copy.renameProject(project.name)} aria-label={copy.renameProject(project.name)}>
                       <Pencil size={13.5} strokeWidth={1.8} />
                     </button>
-                    <button type="button" className="danger" onClick={() => void confirmRemoveProject(project.id)} title={`Remove ${project.name}`} aria-label={`Remove ${project.name}`}>
+                    <button type="button" className="danger" onClick={() => void confirmRemoveProject(project.id)} title={copy.removeProject(project.name)} aria-label={copy.removeProject(project.name)}>
                       <Trash2 size={13.5} strokeWidth={1.8} />
                     </button>
                   </div>
@@ -783,8 +930,8 @@ export function Sidebar({
     if (!projectsSupported || threadView === "archived") return null;
     if (!normalThreads.length) return null;
     return (
-      <section className="sidebar-section recent-section" aria-label="Recent conversations">
-        <div className="sidebar-section-title"><span>最近</span></div>
+      <section className="sidebar-section recent-section" aria-label={copy.recent}>
+        <div className="sidebar-section-title"><span>{copy.recent}</span></div>
         <div className="workspace-thread-list recent-thread-list">
           {normalThreads.map(renderThreadRow)}
         </div>
@@ -795,7 +942,7 @@ export function Sidebar({
   return (
     <aside className="sidebar compact-sidebar codex-sidebar">
       <div className="codex-sidebar-topbar">
-        <button type="button" className="codex-sidebar-brand" title="Loom" aria-label="Loom">
+        <div className="codex-sidebar-brand">
           <span className="codex-sidebar-brand-mark" aria-hidden="true">
             <span className="codex-sidebar-brand-aura" />
             <span className="codex-sidebar-brand-orbit codex-sidebar-brand-orbit-a codex-sidebar-brand-orbit-back" />
@@ -806,16 +953,15 @@ export function Sidebar({
             <span className="codex-sidebar-brand-spark codex-sidebar-brand-spark-a" />
             <span className="codex-sidebar-brand-spark codex-sidebar-brand-spark-b" />
           </span>
-          <span className="codex-sidebar-brand-label">{threadView === "archived" ? "Archive" : "Loom"}</span>
-          <ChevronDown size={14} strokeWidth={1.8} />
-        </button>
+          <span className="codex-sidebar-brand-label">{threadView === "archived" ? copy.archive : "Loom"}</span>
+        </div>
         <div className="compact-sidebar-actions">
           <button
             type="button"
             onClick={searchOpen ? closeSearch : focusSearch}
             className={searchOpen ? "active" : ""}
-            title="Search conversations"
-            aria-label="Search conversations"
+            title={`${copy.search} · Ctrl K`}
+            aria-label={copy.search}
           >
             <Search size={16} strokeWidth={1.85} />
           </button>
@@ -824,14 +970,19 @@ export function Sidebar({
 
       {threadView !== "archived" ? (
         <div className="codex-sidebar-primary">
-          <button type="button" className="sidebar-new-conversation" onClick={() => void onNew()}>
+          <button
+            type="button"
+            className="sidebar-new-conversation"
+            onClick={() => void onNew()}
+            title={`${copy.newConversation} · Ctrl N`}
+          >
             <Plus size={17} strokeWidth={1.9} />
-            <span>新对话</span>
+            <span>{copy.newConversation}</span>
           </button>
           {projectsSupported ? (
             <button type="button" className="sidebar-secondary-action" onClick={() => void addProject()}>
               <FolderPlus size={16} strokeWidth={1.75} />
-              <span>添加项目</span>
+              <span>{copy.addProject}</span>
             </button>
           ) : null}
         </div>
@@ -850,21 +1001,21 @@ export function Sidebar({
                 closeSearch();
               }
             }}
-            placeholder={threadView === "archived" ? "Search archived" : "Search conversations"}
-            aria-label="Search conversations"
+            placeholder={threadView === "archived" ? copy.searchArchived : copy.search}
+            aria-label={copy.search}
             tabIndex={searchOpen ? 0 : -1}
           />
           {query ? (
-            <button type="button" onClick={() => setQuery("")} aria-label="Clear search">
+            <button type="button" onClick={() => setQuery("")} aria-label={copy.clearSearch}>
               <X size={13} strokeWidth={1.9} />
             </button>
           ) : null}
         </div>
       </div>
 
-      <div className="compact-thread-scroll" aria-label={threadView === "archived" ? "Archived conversations" : "Conversations"}>
-        {renderRecent()}
+      <div className="compact-thread-scroll" aria-label={threadView === "archived" ? copy.archive : copy.conversations}>
         {renderProjects()}
+        {renderRecent()}
 
         {(!projectsSupported || threadView === "archived") ? (
           <>
@@ -877,8 +1028,8 @@ export function Sidebar({
                     <button
                       type="button"
                       onClick={() => void onNew(group.workspace || undefined)}
-                      title={`New thread in ${group.displayLabel}`}
-                      aria-label={`New thread in ${group.displayLabel}`}
+                      title={copy.newInProject(group.displayLabel)}
+                      aria-label={copy.newInProject(group.displayLabel)}
                     >
                       <Plus size={15} strokeWidth={1.7} />
                     </button>
@@ -894,21 +1045,21 @@ export function Sidebar({
 
         {projectsSupported && threadView !== "archived" && !projectSections.length && !normalThreads.length ? (
           <div className="compact-sidebar-empty">
-            <span>{query ? "No matching conversations" : "No conversations yet"}</span>
+            <span>{query ? copy.noMatches : copy.noConversations}</span>
             <button type="button" onClick={query ? () => setQuery("") : () => void onNew()}>
-              {query ? "Clear search" : "New conversation"}
+              {query ? copy.clearSearch : copy.newConversation}
             </button>
           </div>
         ) : null}
 
         {(!projectsSupported || threadView === "archived") && !legacyWorkspaceGroups.length ? (
           <div className="compact-sidebar-empty">
-            <span>{query ? "No matching conversations" : threadView === "archived" ? "Archive is empty" : "No conversations yet"}</span>
+            <span>{query ? copy.noMatches : threadView === "archived" ? copy.archiveEmpty : copy.noConversations}</span>
             <button
               type="button"
               onClick={query ? () => setQuery("") : threadView === "archived" ? () => void onViewChange("active") : () => void onNew()}
             >
-              {query ? "Clear search" : threadView === "archived" ? "Back to conversations" : "New conversation"}
+              {query ? copy.clearSearch : threadView === "archived" ? copy.backToConversations : copy.newConversation}
             </button>
           </div>
         ) : null}
@@ -920,10 +1071,10 @@ export function Sidebar({
         <button
           type="button"
           onClick={() => void onViewChange(threadView === "archived" ? "active" : "archived")}
-          title={threadView === "archived" ? "Back to conversations" : "Open archive"}
+          title={threadView === "archived" ? copy.backToConversations : copy.openArchive}
         >
           {threadView === "archived" ? <ArrowLeft size={14} strokeWidth={1.7} /> : <Archive size={14} strokeWidth={1.7} />}
-          <span>{threadView === "archived" ? "Conversations" : "Archive"}</span>
+          <span>{threadView === "archived" ? copy.conversations : copy.archive}</span>
           {threadView === "active" && archivedCount > 0 ? <span className="archive-count">{archivedCount}</span> : null}
         </button>
       </div>
@@ -934,11 +1085,11 @@ export function Sidebar({
           className={`thread-context-menu ${contextMenuClosing ? "is-closing" : ""}`.trim()}
           style={{ left: contextMenu.x, top: contextMenu.y }}
           role="menu"
-          aria-label="Conversation actions"
+          aria-label={copy.conversationActions}
         >
           <button type="button" role="menuitem" onClick={() => beginRename(menuThread)}>
             <Pencil size={16} strokeWidth={1.75} />
-            <span>重命名</span>
+            <span>{copy.rename}</span>
             <kbd>Ctrl+Alt+R</kbd>
           </button>
           <button
@@ -950,7 +1101,7 @@ export function Sidebar({
             }}
           >
             {pinnedIds.has(menuThread.id) ? <PinOff size={16} strokeWidth={1.75} /> : <Pin size={16} strokeWidth={1.75} />}
-            <span>{pinnedIds.has(menuThread.id) ? "取消置顶" : "置顶"}</span>
+            <span>{pinnedIds.has(menuThread.id) ? copy.unpin : copy.pin}</span>
             <kbd>Ctrl+Alt+P</kbd>
           </button>
           <button
@@ -962,7 +1113,7 @@ export function Sidebar({
             }}
           >
             {unreadIds.has(menuThread.id) ? <Eye size={16} strokeWidth={1.75} /> : <EyeOff size={16} strokeWidth={1.75} />}
-            <span>{unreadIds.has(menuThread.id) ? "标记为已读" : "标记为未读"}</span>
+            <span>{unreadIds.has(menuThread.id) ? copy.markRead : copy.markUnread}</span>
             <kbd>Ctrl+Shift+U</kbd>
           </button>
 
@@ -973,18 +1124,18 @@ export function Sidebar({
                 role="menuitem"
                 className={projectExpanded ? "submenu-open" : ""}
                 disabled={threadIsBusy(menuThread)}
-                title={threadIsBusy(menuThread) ? "当前任务运行中，结束后才能移动这个对话到项目。" : undefined}
+                title={threadIsBusy(menuThread) ? copy.busyMove : undefined}
                 onClick={() => {
                   setProjectExpanded((current) => !current);
                   setCopyExpanded(false);
                 }}
               >
                 {menuThread.projectId ? <Folder size={16} strokeWidth={1.75} /> : <FolderPlus size={16} strokeWidth={1.75} />}
-                <span>{menuThread.projectId ? "移动到项目" : "放入项目"}</span>
+                <span>{menuThread.projectId ? copy.moveToProject : copy.putInProject}</span>
                 <ChevronRight className="menu-chevron" size={15} strokeWidth={1.75} />
               </button>
               {projectExpanded ? (
-                <div className="thread-project-submenu" role="group" aria-label="Project actions">
+                <div className="thread-project-submenu" role="group" aria-label={copy.moveToProject}>
                   {menuThread.projectId ? (
                     <button
                       type="button"
@@ -993,7 +1144,7 @@ export function Sidebar({
                       disabled={threadIsBusy(menuThread)}
                     >
                       <X size={14} strokeWidth={1.8} />
-                      <span>移出项目</span>
+                      <span>{copy.removeFromProject}</span>
                     </button>
                   ) : null}
                   {menuThread.projectId && projects.length ? <div className="thread-project-submenu-separator" /> : null}
@@ -1010,11 +1161,11 @@ export function Sidebar({
                       >
                         <Folder size={14} strokeWidth={1.75} />
                         <span>{project.name}</span>
-                        {selected ? <small>当前</small> : null}
+                        {selected ? <small>{copy.current}</small> : null}
                       </button>
                     );
                   })}
-                  {!projects.length && !menuThread.projectId ? <div className="thread-project-submenu-empty">暂无项目</div> : null}
+                  {!projects.length && !menuThread.projectId ? <div className="thread-project-submenu-empty">{copy.noProjects}</div> : null}
                 </div>
               ) : null}
             </>
@@ -1027,7 +1178,7 @@ export function Sidebar({
             onClick={() => void archiveThread(menuThread)}
           >
             {menuThread.archived ? <ArchiveRestore size={16} strokeWidth={1.75} /> : <Archive size={16} strokeWidth={1.75} />}
-            <span>{menuThread.archived ? "恢复" : "归档"}</span>
+            <span>{menuThread.archived ? copy.restore : copy.archive}</span>
             <kbd>Ctrl+Shift+A</kbd>
           </button>
 
@@ -1043,14 +1194,14 @@ export function Sidebar({
             }}
           >
             <Copy size={16} strokeWidth={1.75} />
-            <span>复制</span>
+            <span>{copy.copy}</span>
             <ChevronRight className="menu-chevron" size={15} strokeWidth={1.75} />
           </button>
           {copyExpanded ? (
-            <div className="thread-copy-submenu" role="group" aria-label="Copy conversation data">
-              <button type="button" onClick={() => void copyThreadValue(menuThread, "标题", menuThread.title || "New conversation")}>复制标题</button>
-              <button type="button" onClick={() => void copyThreadValue(menuThread, "会话 ID", menuThread.id)}>复制会话 ID</button>
-              <button type="button" onClick={() => void copyThreadValue(menuThread, "工作区路径", menuThread.workspace || "")}>复制工作区路径</button>
+            <div className="thread-copy-submenu" role="group" aria-label={copy.copy}>
+              <button type="button" onClick={() => void copyThreadValue(menuThread, copy.titleLabel, menuThread.title || copy.untitled)}>{copy.copyTitle}</button>
+              <button type="button" onClick={() => void copyThreadValue(menuThread, copy.idLabel, menuThread.id)}>{copy.copyId}</button>
+              <button type="button" onClick={() => void copyThreadValue(menuThread, copy.pathLabel, menuThread.workspace || "")}>{copy.copyPath}</button>
             </div>
           ) : null}
 
@@ -1061,7 +1212,7 @@ export function Sidebar({
             onClick={() => void forkThread(menuThread)}
           >
             <GitFork size={16} strokeWidth={1.75} />
-            <span>分叉</span>
+            <span>{copy.fork}</span>
           </button>
 
           <div className="thread-menu-separator" />
@@ -1080,7 +1231,7 @@ export function Sidebar({
             }}
           >
             <Trash2 size={16} strokeWidth={1.75} />
-            <span>{deleteArmed ? "再次点击确认删除" : "删除会话"}</span>
+            <span>{deleteArmed ? copy.deleteConfirm : copy.deleteConversation}</span>
           </button>
         </div>,
         document.body,

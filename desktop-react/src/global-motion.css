@@ -158,13 +158,7 @@
 
 /* Controls should feel responsive, not twitchy. */
 .settings-nav button,
-.settings-back,
-.sidebar-new-conversation,
-.sidebar-secondary-action,
-.project-group-main,
-.compact-sidebar-actions button,
-.thread-quick-actions button,
-.project-group-actions button {
+.settings-back {
   transition-duration: var(--loom-motion-control);
 }
 

@@ -224,7 +224,10 @@ export function GlobalContextMenu() {
         while (ancestor && !(ancestor instanceof HTMLElement)) ancestor = ancestor.parentElement;
         target = ancestor instanceof HTMLElement ? ancestor : null;
       }
-      if (!target || target.closest(".loom-context-menu")) return;
+      // Elements marked data-loom-own-menu (sidebar conversations) open their
+      // own menu from onContextMenu; this capture listener runs first, so it
+      // must stand aside or both menus open on one right-click.
+      if (!target || target.closest(".loom-context-menu, [data-loom-own-menu]")) return;
 
       event.preventDefault();
 

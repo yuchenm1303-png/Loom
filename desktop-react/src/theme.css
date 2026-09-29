@@ -102,92 +102,6 @@ html[data-loom-theme="light"] *::-webkit-scrollbar-thumb:hover {
   background: #b7bcc5;
 }
 
-/* Sidebar */
-html[data-loom-theme="light"] .sidebar,
-html[data-loom-theme="light"] .sidebar.sidebar.compact-sidebar {
-  background:
-    radial-gradient(260px 120px at 12% -42px, rgba(105,90,216,.055), transparent 72%),
-    linear-gradient(180deg, #f4f5f6 0%, #eff1f3 100%) !important;
-  border-right-color: rgba(28,31,37,.09) !important;
-  box-shadow: inset -1px 0 rgba(255,255,255,.72);
-}
-
-html[data-loom-theme="light"] .compact-sidebar::before {
-  background: linear-gradient(180deg, rgba(255,255,255,.52), transparent 24%);
-}
-
-html[data-loom-theme="light"] .codex-sidebar-topbar,
-html[data-loom-theme="light"] .compact-sidebar-header {
-  border-bottom-color: rgba(28,31,37,.07);
-}
-
-html[data-loom-theme="light"] .codex-sidebar-brand,
-html[data-loom-theme="light"] .codex-sidebar-brand span,
-html[data-loom-theme="light"] .compact-sidebar-header > strong {
-  color: #20232a;
-}
-
-html[data-loom-theme="light"] .codex-sidebar-brand:hover,
-html[data-loom-theme="light"] .compact-sidebar-actions button:hover,
-html[data-loom-theme="light"] .sidebar-secondary-action:hover,
-html[data-loom-theme="light"] .thread-row:hover,
-html[data-loom-theme="light"] .project-row:hover,
-html[data-loom-theme="light"] .workspace-group-header:hover {
-  background: rgba(28,31,37,.045) !important;
-}
-
-html[data-loom-theme="light"] .codex-sidebar .codex-sidebar-topbar .compact-sidebar-actions {
-  border-color: rgba(28,31,37,.085);
-  background: rgba(255,255,255,.46);
-}
-
-html[data-loom-theme="light"] .codex-sidebar .sidebar-new-conversation {
-  color: #343842;
-  background: transparent;
-  border-color: transparent;
-  box-shadow: none;
-}
-
-html[data-loom-theme="light"] .codex-sidebar .sidebar-new-conversation > svg {
-  color: #7669d0;
-}
-
-html[data-loom-theme="light"] .codex-sidebar .sidebar-new-conversation:hover {
-  color: #282432;
-  background: rgba(105,90,216,.055) !important;
-  border-color: rgba(105,90,216,.075) !important;
-  box-shadow: none;
-}
-
-html[data-loom-theme="light"] .codex-sidebar .sidebar-secondary-action {
-  background: transparent;
-  border-color: transparent;
-  box-shadow: none;
-}
-
-html[data-loom-theme="light"] .codex-sidebar .sidebar-secondary-action:hover {
-  background: rgba(28,31,37,.035) !important;
-  border-color: rgba(28,31,37,.035) !important;
-  box-shadow: none;
-}
-
-html[data-loom-theme="light"] .compact-sidebar-actions button,
-html[data-loom-theme="light"] .compact-search button,
-html[data-loom-theme="light"] .sidebar-section-title button,
-html[data-loom-theme="light"] .project-group-actions button,
-html[data-loom-theme="light"] .thread-quick-actions button,
-html[data-loom-theme="light"] .workspace-group-header button,
-html[data-loom-theme="light"] .sidebar-secondary-action {
-  color: #69717d;
-}
-
-html[data-loom-theme="light"] .thread-row,
-html[data-loom-theme="light"] .project-row,
-html[data-loom-theme="light"] .workspace-group-header,
-html[data-loom-theme="light"] .sidebar-section-title {
-  color: #4e5560;
-}
-
 /* Header + transcript */
 html[data-loom-theme="light"] .thread-header,
 html[data-loom-theme="light"] .thread-header.polished-thread-header {
@@ -733,89 +647,6 @@ html[data-loom-theme="light"] {
   --semantic-info-border: rgba(63,112,181,.25);
 }
 
-/* Sidebar hierarchy: inactive items remain quieter than the active thread,
-   but no longer inherit pale dark-theme text on a pale surface. */
-html[data-loom-theme="light"] .codex-sidebar .compact-thread-title {
-  color: var(--loom-text-secondary);
-}
-
-html[data-loom-theme="light"] .codex-sidebar .compact-thread-row:hover .compact-thread-title,
-html[data-loom-theme="light"] .codex-sidebar .compact-thread-row:focus-within .compact-thread-title {
-  color: #282d34;
-}
-
-html[data-loom-theme="light"] .codex-sidebar .compact-thread-row.active {
-  background: rgba(105,90,216,.105);
-  border-color: rgba(105,90,216,.10);
-}
-
-html[data-loom-theme="light"] .codex-sidebar .compact-thread-row.active .compact-thread-title,
-html[data-loom-theme="light"] .codex-sidebar .compact-thread-row.unread .compact-thread-title {
-  color: #2d3138;
-}
-
-html[data-loom-theme="light"] .codex-sidebar .compact-thread-dot {
-  border-color: #89919c;
-}
-
-html[data-loom-theme="light"] .codex-sidebar .compact-thread-row.active .compact-thread-dot {
-  border-color: #7164ca;
-  background: #7164ca;
-}
-
-html[data-loom-theme="light"] .codex-sidebar .project-group-main,
-html[data-loom-theme="light"] .codex-sidebar .project-group.is-collapsed .project-group-main {
-  color: #414852;
-}
-
-html[data-loom-theme="light"] .codex-sidebar .project-group-main:hover,
-html[data-loom-theme="light"] .codex-sidebar .project-group-row:focus-within .project-group-main {
-  color: #252a31;
-  background: rgba(28,31,37,.045);
-}
-
-html[data-loom-theme="light"] .codex-sidebar .project-group-main span {
-  color: inherit;
-}
-
-html[data-loom-theme="light"] .codex-sidebar .project-group-main small,
-html[data-loom-theme="light"] .codex-sidebar .workspace-group-header > span.workspace-group-count {
-  color: #68717c;
-}
-
-html[data-loom-theme="light"] .codex-sidebar .project-disclosure-chevron,
-html[data-loom-theme="light"] .codex-sidebar .project-group-main > svg:not(.project-disclosure-chevron),
-html[data-loom-theme="light"] .codex-sidebar .workspace-group-header > span.workspace-group-label {
-  color: #59626d !important;
-}
-
-html[data-loom-theme="light"] .codex-sidebar .project-thread-list {
-  border-left-color: rgba(28,31,37,.105);
-}
-
-html[data-loom-theme="light"] .codex-sidebar .sidebar-section-title {
-  color: #626a75;
-}
-
-html[data-loom-theme="light"] .codex-sidebar .recent-section .sidebar-section-title {
-  color: #4a515c;
-}
-
-html[data-loom-theme="light"] .codex-sidebar .compact-sidebar-footer > button,
-html[data-loom-theme="light"] .codex-sidebar .compact-sidebar-empty {
-  color: #626a75;
-}
-
-html[data-loom-theme="light"] .codex-sidebar .compact-sidebar-footer > button:hover {
-  color: #30353d;
-  background: rgba(28,31,37,.045);
-}
-
-html[data-loom-theme="light"] .codex-sidebar .archive-count {
-  color: #626a75;
-  background: rgba(28,31,37,.055);
-}
-
 /* Tool / process timeline. */
 html[data-loom-theme="light"] .task-flow {
   --flow-text: #4b535f;
@@ -1084,20 +915,6 @@ html[data-loom-theme="light"] .workspace-path-button:not(:disabled):hover {
   border-color: rgba(105,90,216,.12);
 }
 
-/* Sidebar search / utility buttons should read as controls, not disabled icons. */
-html[data-loom-theme="light"] .codex-sidebar .compact-sidebar-actions button {
-  color: #606a75;
-  border-color: rgba(28,31,37,.09);
-  background: rgba(255,255,255,.70);
-}
-
-html[data-loom-theme="light"] .codex-sidebar .compact-sidebar-actions button:hover,
-html[data-loom-theme="light"] .codex-sidebar .compact-sidebar-actions button.active {
-  color: #30363e;
-  border-color: rgba(105,90,216,.18);
-  background: #ffffff;
-}
-
 /* Composer action states: accent when actionable, deliberately pale when not. */
 html[data-loom-theme="light"] .composer .send-button:not(:disabled):not(.stop) {
   background: #695ad8;
@@ -1335,8 +1152,6 @@ html[data-loom-theme="light"] .review-summary-footer:hover {
 html[data-loom-theme="light"] .review-summary-footer svg {
   color: #695ad8;
 }
-
-
 
 /* Light theme: models settings manager ------------------------------------ */
 /* ModelsSettingsPanel is a newer surface than the legacy model-summary cards.
@@ -1767,7 +1582,6 @@ html[data-loom-theme="light"] .models-modal-actions button.primary {
     border-top-color: rgba(28,31,37,.075);
   }
 }
-
 
 /* Light theme: settings-wide surface completion -------------------------- */
 /* A number of newer Settings modules are intentionally authored dark-first.
@@ -2512,7 +2326,6 @@ html[data-loom-theme="light"] .shortcuts-callout span {
   color: #69727d;
 }
 
-
 /* Light theme: context budget dashboard ---------------------------------- */
 /* The context widget can be supplied by different desktop/runtime revisions.
    These aliases deliberately cover the known naming variants and make the
@@ -2975,7 +2788,6 @@ html[data-loom-theme="light"] .thread-header :is(
   }
 }
 
-
 /* Light theme: composer control-bar refinement --------------------------- */
 /* Treat the composer footer as one coherent control bar: shared heights,
    quieter default buttons, explicit active states, and a status pill that
@@ -3299,7 +3111,6 @@ html[data-loom-theme="light"] .composer-hint {
   }
 }
 
-
 /* Light theme: artifact path accent --------------------------------------- */
 /* File paths are actionable identifiers, not code blocks. In light mode use a
    soft Loom-purple tag so they read as interactive metadata instead of a dark
@@ -3327,82 +3138,7 @@ html[data-loom-theme="light"] .turn-artifacts-file-strip button:hover > svg {
   color: #5548b4;
 }
 
-
-/* Light theme: sidebar rename + task-flow shimmer ------------------------ */
-/* Sidebar rename ----------------------------------------------------------- */
-/* The inline editor and quick-action reveal were still using the dark sidebar
-   treatment. In light mode make editing read as a soft purple focus state. */
-html[data-loom-theme="light"] .compact-thread-row.renaming {
-  border-radius: 9px;
-  background: rgba(105,90,216,.045);
-}
-
-html[data-loom-theme="light"] .compact-thread-row.renaming .rename-main {
-  min-height: 31px;
-}
-
-html[data-loom-theme="light"] .compact-thread-rename {
-  height: 27px;
-  padding: 0 8px;
-  border: 1px solid rgba(105,90,216,.24);
-  border-radius: 7px;
-  background: rgba(105,90,216,.075);
-  color: #3f368f;
-  caret-color: #695ad8;
-  font-size: 12.5px;
-  box-shadow:
-    0 0 0 2px rgba(105,90,216,.055),
-    inset 0 1px rgba(255,255,255,.82);
-  transition:
-    border-color 140ms ease,
-    background 140ms ease,
-    box-shadow 160ms ease;
-}
-
-html[data-loom-theme="light"] .compact-thread-rename:focus {
-  border-color: rgba(105,90,216,.38);
-  background: rgba(105,90,216,.09);
-  box-shadow:
-    0 0 0 3px rgba(105,90,216,.085),
-    inset 0 1px rgba(255,255,255,.9);
-}
-
-html[data-loom-theme="light"] .thread-quick-actions {
-  background: linear-gradient(
-    90deg,
-    rgba(247,248,250,0),
-    rgba(247,248,250,.90) 20%,
-    rgba(247,248,250,.98) 44%,
-    rgba(247,248,250,1) 100%
-  );
-}
-
-html[data-loom-theme="light"] .compact-thread-row.active .thread-quick-actions {
-  background: linear-gradient(
-    90deg,
-    rgba(240,238,251,0),
-    rgba(240,238,251,.92) 20%,
-    rgba(240,238,251,.98) 44%,
-    rgba(240,238,251,1) 100%
-  );
-}
-
-html[data-loom-theme="light"] .thread-quick-actions button {
-  color: #727b86;
-  background: transparent;
-}
-
-html[data-loom-theme="light"] .thread-quick-actions button:hover:not(:disabled) {
-  color: #5144ad;
-  background: rgba(105,90,216,.08);
-}
-
-html[data-loom-theme="light"] .thread-quick-actions button.is-active {
-  color: #5d50bc;
-  background: rgba(105,90,216,.075);
-}
-
-/* Running task-flow accents ------------------------------------------------- */
+/* Light theme: running task-flow accents ------------------------------------------------- */
 /* The live row surface itself (lavender capsule -> neutral capsule on
    completion) is owned by conversation-motion.css, as is the single running
    sheen. An older transparent override here used to win the cascade and hide
@@ -3443,220 +3179,6 @@ html[data-loom-theme="light"] .task-flow-group.is-running .task-flow-group-icon 
     animation: none !important;
   }
 }
-
-
-/* Light theme: refined sidebar edit state -------------------------------- */
-/* Make active/rename rows feel integrated with the sidebar instead of like
-   stacked glossy pills. Editing is signaled by a thin purple focus treatment,
-   not a filled lavender slab. */
-
-html[data-loom-theme="light"] .compact-thread-row {
-  border-radius: 10px;
-}
-
-html[data-loom-theme="light"] .compact-thread-row.active {
-  background:
-    linear-gradient(180deg, rgba(105,90,216,.050), rgba(105,90,216,.032));
-  border-color: rgba(105,90,216,.07);
-  box-shadow:
-    inset 2px 0 0 rgba(105,90,216,.22),
-    inset 0 1px rgba(255,255,255,.72);
-}
-
-html[data-loom-theme="light"] .compact-thread-row.renaming {
-  background:
-    linear-gradient(180deg, rgba(105,90,216,.038), rgba(105,90,216,.022));
-  border-color: rgba(105,90,216,.08);
-  box-shadow:
-    inset 2px 0 0 rgba(105,90,216,.26),
-    inset 0 1px rgba(255,255,255,.76);
-}
-
-html[data-loom-theme="light"] .compact-thread-row.renaming .rename-main {
-  min-height: 33px;
-  align-items: center;
-}
-
-html[data-loom-theme="light"] .compact-thread-row.renaming .compact-thread-dot {
-  border-color: rgba(105,90,216,.48);
-  background: #695ad8;
-  box-shadow: none;
-}
-
-/* Embedded editor: mostly white, only a quiet purple edge. */
-html[data-loom-theme="light"] .compact-thread-rename {
-  height: 29px;
-  padding: 0 9px;
-  border: 1px solid rgba(105,90,216,.16);
-  border-radius: 8px;
-  background:
-    linear-gradient(180deg, rgba(255,255,255,.94), rgba(250,250,253,.88));
-  color: #373d46;
-  caret-color: #695ad8;
-  font-size: 12.7px;
-  font-weight: 540;
-  box-shadow:
-    inset 0 1px rgba(255,255,255,.96),
-    0 1px 2px rgba(27,31,40,.035);
-  transition:
-    border-color 140ms ease,
-    background 140ms ease,
-    box-shadow 160ms ease,
-    color 140ms ease;
-}
-
-html[data-loom-theme="light"] .compact-thread-rename:hover {
-  border-color: rgba(105,90,216,.21);
-  background: #ffffff;
-}
-
-html[data-loom-theme="light"] .compact-thread-rename:focus {
-  border-color: rgba(105,90,216,.30);
-  background: #ffffff;
-  color: #2f353d;
-  box-shadow:
-    0 0 0 2px rgba(105,90,216,.055),
-    0 2px 7px rgba(48,42,112,.055),
-    inset 0 1px rgba(255,255,255,.98);
-}
-
-html[data-loom-theme="light"] .compact-thread-rename::selection {
-  background: rgba(105,90,216,.16);
-  color: #2f353d;
-}
-
-/* The action reveal should feel like a continuation of the row, not a second
-   toolbar pasted on top. */
-html[data-loom-theme="light"] .thread-quick-actions {
-  top: 2px;
-  right: 2px;
-  height: 27px;
-  gap: 2px;
-  padding-left: 18px;
-  padding-right: 1px;
-  background: linear-gradient(
-    90deg,
-    rgba(248,249,251,0) 0%,
-    rgba(248,249,251,.62) 22%,
-    rgba(248,249,251,.90) 48%,
-    rgba(248,249,251,.99) 100%
-  );
-}
-
-html[data-loom-theme="light"] .compact-thread-row.active .thread-quick-actions,
-html[data-loom-theme="light"] .compact-thread-row.renaming .thread-quick-actions {
-  background: linear-gradient(
-    90deg,
-    rgba(246,245,252,0) 0%,
-    rgba(246,245,252,.64) 22%,
-    rgba(246,245,252,.90) 48%,
-    rgba(246,245,252,.99) 100%
-  );
-}
-
-html[data-loom-theme="light"] .thread-quick-actions button {
-  width: 25px;
-  height: 25px;
-  border: 1px solid transparent;
-  border-radius: 7px;
-  background: transparent;
-  color: #77808b;
-  box-shadow: none;
-  transition:
-    color 120ms ease,
-    background 120ms ease,
-    border-color 120ms ease,
-    transform 120ms ease;
-}
-
-html[data-loom-theme="light"] .thread-quick-actions button:hover:not(:disabled) {
-  color: #5144ad;
-  border-color: rgba(105,90,216,.10);
-  background: rgba(105,90,216,.055);
-}
-
-html[data-loom-theme="light"] .thread-quick-actions button.is-active {
-  color: #5548b3;
-  border-color: rgba(105,90,216,.09);
-  background: rgba(105,90,216,.050);
-}
-
-html[data-loom-theme="light"] .thread-quick-actions button:active:not(:disabled) {
-  transform: scale(.965);
-}
-
-/* Pinned action remains visible but quiet when the row is not hovered. */
-html[data-loom-theme="light"] .compact-thread-row.pinned:not(:hover):not(:focus-within) .thread-quick-actions {
-  opacity: .72;
-}
-
-html[data-loom-theme="light"] .compact-thread-row.pinned:not(:hover):not(:focus-within) .thread-quick-actions button:not(.is-active) {
-  opacity: .42;
-}
-
-
-/* Light theme: sidebar edit vertical alignment --------------------------- */
-/* Center the rename editor and quick-action rail from the row's actual box
-   instead of pinning the action rail to a fixed top offset. */
-html[data-loom-theme="light"] .compact-thread-row.renaming {
-  min-height: 35px;
-}
-
-html[data-loom-theme="light"] .compact-thread-row.renaming .compact-thread-main.rename-main {
-  min-height: 33px;
-  height: 33px;
-  padding-top: 0;
-  padding-bottom: 0;
-}
-
-html[data-loom-theme="light"] .compact-thread-row.renaming .compact-thread-rename {
-  height: 29px;
-  align-self: center;
-  margin: 0;
-}
-
-html[data-loom-theme="light"] .compact-thread-row.renaming .compact-thread-dot {
-  align-self: center;
-  justify-self: center;
-}
-
-html[data-loom-theme="light"] .thread-quick-actions {
-  top: 50%;
-  right: 3px;
-  height: 29px;
-  min-height: 29px;
-  padding-top: 0;
-  padding-bottom: 0;
-  transform: translateY(-50%);
-  align-items: center;
-}
-
-html[data-loom-theme="light"] .thread-quick-actions button {
-  width: 25px;
-  height: 25px;
-  min-width: 25px;
-  min-height: 25px;
-  margin: 0;
-  align-self: center;
-}
-
-html[data-loom-theme="light"] .compact-thread-row.renaming .thread-quick-actions {
-  background: linear-gradient(
-    90deg,
-    rgba(246,245,252,0) 0%,
-    rgba(246,245,252,.58) 20%,
-    rgba(246,245,252,.88) 46%,
-    rgba(246,245,252,.985) 100%
-  );
-}
-
-/* Keep normal/active rows on the same vertical rhythm so switching into rename
-   does not make the action rail jump by a pixel. */
-html[data-loom-theme="light"] .compact-thread-row:not(.renaming) .thread-quick-actions {
-  top: 50%;
-  transform: translateY(-50%);
-}
-
 
 /* Light theme: runtime inspector completion ------------------------------- */
 /* The account dialog no longer needs overrides here: src/components/account-auth.css
@@ -3863,7 +3385,6 @@ html[data-loom-theme="light"] .runtime-stream-mark i {
 html[data-loom-theme="light"] .runtime-stream-mark.live i {
   background: #695ad8;
 }
-
 
 /* Light theme: review workspace completion ------------------------------- */
 /* The review workspace is authored dark-first. Keep dark mode intact and

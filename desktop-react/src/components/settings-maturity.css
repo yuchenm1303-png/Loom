@@ -706,8 +706,7 @@ button.general-default-card:hover .general-default-card-head > svg:last-child,
 }
 
 html[data-loom-density="compact"] .activity-row,
-html[data-loom-density="compact"] .tool-row,
-html[data-loom-density="compact"] .thread-row {
+html[data-loom-density="compact"] .tool-row {
   min-height: 32px;
 }
 

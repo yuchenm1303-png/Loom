@@ -29,7 +29,6 @@ import { Transcript } from "./components/Transcript";
 import { TranscriptScrollController } from "./components/TranscriptScrollController";
 import "./components/inline-thinking.css";
 import "./components/review-dock.css";
-import "./components/sidebar-codex-polish.css";
 import "./components/shortcut-runtime.css";
 import "./components/workspace-panels.css";
 import "./components/thread-switch-transition.css";
