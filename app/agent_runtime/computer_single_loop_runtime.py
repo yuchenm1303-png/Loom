@@ -9,7 +9,12 @@ from typing import Any, Mapping
 from app.ai import AIMessage, ImagePart, MessageRole, TextPart
 
 from .computer_diagnostics import ComputerDiagnostics
-from .computer_runtime import ComputerStateSnapshot, ComputerStepOutcome, ComputerUseRuntime
+from .computer_runtime import (
+    ComputerSessionStore,
+    ComputerStateSnapshot,
+    ComputerStepOutcome,
+    ComputerUseRuntime,
+)
 from .computer_types import ComputerAction, ComputerActionType, ComputerFrame, ComputerPoint
 from .contracts import AgentEventKind, ToolEffect
 from .tools import AgentTool, ToolContext, ToolExposure, ToolRegistry, ToolResult
@@ -281,7 +286,10 @@ def _classify_effect(outcome: ComputerStepOutcome) -> dict[str, object]:
         if after.observation.active_window is not None
         else ""
     )
-    active_window_changed = before_window != after_window
+    active_window_changed = (
+        ComputerSessionStore._window_id_key(before_window)
+        != ComputerSessionStore._window_id_key(after_window)
+    )
     ratio = _visual_delta_ratio(before.observation, after.observation)
     visual_changed = ratio >= _VISUAL_CHANGE_RATIO if ratio >= 0 else bool(base.get("visual_changed"))
     target_confirmed = base.get("target_confirmed")
@@ -292,8 +300,12 @@ def _classify_effect(outcome: ComputerStepOutcome) -> dict[str, object]:
         reason = "foreground_window_confirmed"
         semantic_verified = True
     elif active_window_changed:
-        effect = "changed"
-        reason = "foreground_window_changed"
+        # A foreground change is success only for an explicit window switch.
+        # For typing, keys and pointer input it means the post-action observer
+        # can no longer prove which window consumed the input.  Calling that
+        # ``changed`` caused the model to turn focus races into false passes.
+        effect = "uncertain"
+        reason = "foreground_target_lost_after_input"
     elif visual_changed:
         effect = "changed"
         reason = "observable_visual_change"
