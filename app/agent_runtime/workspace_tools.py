@@ -129,6 +129,12 @@ def workspace_write_tool() -> AgentTool:
             if target.stat().st_size > _MAX_READ_FILE_BYTES:
                 raise ValueError("existing workspace text file exceeds editable size limit")
             before = target.read_text(encoding="utf-8")
+        if before == text:
+            return ToolResult(
+                ok=True,
+                content=f"Workspace file already has this content; no file was changed: {relative}",
+                data={"path": relative, "chars": len(text), "changed": False},
+            )
         target.parent.mkdir(parents=True, exist_ok=True)
         context.raise_if_cancelled()
         target.write_text(text, encoding="utf-8")
@@ -185,6 +191,8 @@ def workspace_replace_tool() -> AgentTool:
                 ok=False,
                 content=f"old_text matched {count} locations; provide a more specific exact block",
             )
+        if old_text == new_text:
+            return ToolResult(ok=False, content="old_text and new_text are identical; no file was changed")
         updated = text.replace(old_text, new_text, 1)
         if len(updated) > _MAX_WRITE_CHARS:
             raise ValueError(f"updated workspace text exceeds {_MAX_WRITE_CHARS:,} characters")

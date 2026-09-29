@@ -53,6 +53,8 @@ class TurnDiffTracker:
         relative = str(path or "").replace("\\", "/").lstrip("/")
         if not relative:
             raise ValueError("diff path must not be empty")
+        if before == after:
+            return
         with self._lock:
             tracked = self._files.get(relative)
             if tracked is None:
