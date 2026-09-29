@@ -6,6 +6,21 @@ export interface LoomNotification {
   params?: Record<string, unknown>;
 }
 
+export interface SoftwareUpdateState {
+  enabled: boolean;
+  phase: "disabled" | "idle" | "checking" | "available" | "downloading" | "downloaded" | "up-to-date" | "error";
+  currentVersion: string;
+  availableVersion?: string;
+  releaseName?: string | null;
+  releaseDate?: string;
+  percent?: number;
+  transferred?: number;
+  total?: number;
+  bytesPerSecond?: number;
+  checkedAt?: string;
+  error?: string;
+}
+
 const FRAME_BATCH_MS = 16;
 const BATCHED_ITEM_METHODS = new Set(["item/started", "item/delta", "item/completed"]);
 
@@ -63,6 +78,14 @@ const api = {
     ipcRenderer.invoke("loom:read-local-media", targetPath, workspaceRoot),
   pickDirectory: () => ipcRenderer.invoke("loom:pick-directory"),
   pickFiles: () => ipcRenderer.invoke("loom:pick-files"),
+  getUpdateStatus: () => ipcRenderer.invoke("loom:update-status") as Promise<SoftwareUpdateState>,
+  checkForUpdates: () => ipcRenderer.invoke("loom:update-check") as Promise<SoftwareUpdateState>,
+  installUpdate: () => ipcRenderer.invoke("loom:update-install") as Promise<{ accepted: boolean; state: SoftwareUpdateState }>,
+  onUpdateStatus: (listener: (payload: SoftwareUpdateState) => void) => {
+    const wrapped = (_event: Electron.IpcRendererEvent, payload: SoftwareUpdateState) => listener(payload);
+    ipcRenderer.on("loom:update-status-changed", wrapped);
+    return () => ipcRenderer.removeListener("loom:update-status-changed", wrapped);
+  },
   setZoomFactor: (factor: number) => {
     const numeric = Number(factor);
     const safe = Number.isFinite(numeric) ? Math.min(1.3, Math.max(0.9, numeric)) : 1;
