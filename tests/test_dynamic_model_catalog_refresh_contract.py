@@ -45,7 +45,7 @@ def test_desktop_model_catalog_has_ttl_and_async_refresh_path() -> None:
     assert "async listSnapshot(forceRefresh = false)" in manager
     assert "this.runBridgeAsync<RegistrySnapshot>" in manager
     assert "this.catalogRefreshPromise" in manager
-    assert "last-known-good catalog" in manager
+    assert "last known good catalog" in manager
     assert 'modelManager.listSnapshot(Boolean(forceRefresh))' in main
     assert 'listModels: (forceRefresh = false)' in preload
 
