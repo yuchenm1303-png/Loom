@@ -1329,6 +1329,7 @@ export default function App() {
             models={loom.models}
             threadId={thread?.id}
             running={Boolean(running)}
+            onRefreshModels={loom.refreshModels}
             onClose={() => setSettingsOpen(false)}
           />
           <SettingsComputerLogExport />
