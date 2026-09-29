@@ -88,8 +88,12 @@ function profileGroupId(profile: ModelProfile): string {
   return profile.groupId || profile.selection;
 }
 
-function selectableProfiles(group: ModelGroup): ModelProfile[] {
+function visibleProfiles(group: ModelGroup): ModelProfile[] {
   return group.profiles.filter((profile) => !profile.setupOnly);
+}
+
+function selectableProfiles(group: ModelGroup): ModelProfile[] {
+  return visibleProfiles(group).filter((profile) => profile.available !== false);
 }
 
 interface ProviderSetup {
@@ -399,6 +403,7 @@ interface ModelPanelProps {
   onSwitchProfile(selection: string): Promise<void> | void;
   onSwitchCurrent(model: string): Promise<void> | void;
   onConfigureProvider(provider: string, apiKey: string): Promise<void> | void;
+  onRefresh?(): Promise<void> | void;
   onAddModel(input: AddModelInput): Promise<void> | void;
   onDeleteModel(selection: string): Promise<void> | void;
   onReasoningChange(kind: string, value: string): Promise<void> | void;
@@ -443,6 +448,7 @@ export function ModelPanel({
   onSwitchProfile,
   onSwitchCurrent,
   onConfigureProvider,
+  onRefresh,
   onAddModel,
   onDeleteModel,
   onReasoningChange,
@@ -465,6 +471,18 @@ export function ModelPanel({
   const [query, setQuery] = useState("");
   const [groupQuery, setGroupQuery] = useState("");
   const [pendingSelection, setPendingSelection] = useState("");
+  const refreshRef = useRef(onRefresh);
+  refreshRef.current = onRefresh;
+
+  useEffect(() => {
+    // Opening the picker must never wait on provider discovery. Refresh in the
+    // background; the existing snapshot remains interactive until the new
+    // catalog arrives.
+    void Promise.resolve(refreshRef.current?.()).catch(() => {
+      // DesktopModelManager keeps the last-known-good catalog on transient
+      // provider errors, so a background refresh failure is intentionally quiet.
+    });
+  }, []);
 
   const currentModel = snapshot?.current?.model || runtimeModel || "MiniMax-M3";
   const currentName = snapshot?.current?.name || (currentModel.toLowerCase().includes("minimax") ? "MiniMax" : "Current API");
@@ -514,7 +532,7 @@ export function ModelPanel({
   );
   const recentProfiles = useMemo(
     () => recent
-      .map((item) => profiles.find((profile) => profile.model === item))
+      .map((item) => profiles.find((profile) => profile.model === item && profile.available !== false))
       .filter((profile): profile is ModelProfile => Boolean(profile))
       .slice(0, 3),
     [profiles, recent],
@@ -806,7 +824,8 @@ export function ModelPanel({
 
   if (view === "group" && activeGroup) {
     const setup = providerSetup(activeGroup);
-    const choices = selectableProfiles(activeGroup);
+    const availableChoices = selectableProfiles(activeGroup);
+    const choices = visibleProfiles(activeGroup);
     const tokens = queryTokens(groupQuery);
     const visible = tokens.length ? choices.filter((profile) => profileMatches(profile, "", tokens)) : choices;
     const families = new Map<string, ModelProfile[]>();
@@ -817,7 +836,7 @@ export function ModelPanel({
       families.set(family, list);
     }
     const credentialTarget = setup.needsKey ? setup.credentialTarget : null;
-    const showSearch = choices.length > 8 && !credentialTarget;
+    const showSearch = availableChoices.length > 8 && !credentialTarget;
 
     return (
       <div className="mp mp-provider" data-direction={direction} onKeyDown={handlePickerKeyDown}>
@@ -828,7 +847,7 @@ export function ModelPanel({
               <span>{activeGroup.name}</span>
             </>
           )}
-          meta={`${choices.length} ${choices.length === 1 ? "model" : "models"}`}
+          meta={`${availableChoices.length} ${availableChoices.length === 1 ? "model" : "models"}`}
           backLabel="Back to providers"
           onBack={() => navigate("profiles", "back")}
         />
@@ -913,9 +932,11 @@ export function ModelPanel({
                       profile={profile}
                       current={current}
                       pending={pendingSelection === profile.selection}
-                      disabled={deleting || (!current && (locked || setup.needsKey))}
-                      dimmed={Boolean(running) || setup.needsKey}
-                      meta={reasoningLabel(profile)}
+                      disabled={profile.available === false || deleting || (!current && (locked || setup.needsKey))}
+                      dimmed={profile.available === false || Boolean(running) || setup.needsKey}
+                      meta={profile.available === false ? "Unavailable" : reasoningLabel(profile)}
+                      metaAttention={profile.available === false}
+                      title={profile.available === false ? (profile.statusMessage || "No longer advertised by the provider") : undefined}
                       onSelect={() => void chooseProfile(profile)}
                     />
                     {deletable ? (
