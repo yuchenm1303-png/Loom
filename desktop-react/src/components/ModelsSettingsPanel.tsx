@@ -245,7 +245,7 @@ export function ModelsSettingsPanel({ initialSnapshot, runtimeModel, running, on
     setBusy("refresh");
     setError("");
     try {
-      commit(await window.loom.listModels<ModelSnapshot>());
+      commit(await window.loom.listModels<ModelSnapshot>(true));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -254,7 +254,7 @@ export function ModelsSettingsPanel({ initialSnapshot, runtimeModel, running, on
   }
 
   async function activate(profile: ModelProfile) {
-    if (running || busy || profile.selection === current?.selection) return;
+    if (profile.available === false || running || busy || profile.selection === current?.selection) return;
     setBusy(`activate:${profile.selection}`);
     setError("");
     try {
@@ -427,7 +427,9 @@ export function ModelsSettingsPanel({ initialSnapshot, runtimeModel, running, on
             <div className="models-active-copy">
               <div className="models-active-title-line">
                 <span className="settings-eyebrow">{current?.kind === "saved" ? c.saved : c.managed}</span>
-                <span className="models-ready-badge"><i />{c.ready}</span>
+                <span className={`models-ready-badge ${current?.available === false ? "is-unavailable" : ""}`}>
+                  <i />{current?.available === false ? (language === "zh-CN" ? "已失效" : "Unavailable") : c.ready}
+                </span>
               </div>
               <strong>{current?.name || currentModel}</strong>
               <span>{adapterLabel(current?.provider || current?.adapter || "openai-compatible")}</span>
@@ -527,7 +529,7 @@ export function ModelsSettingsPanel({ initialSnapshot, runtimeModel, running, on
                   <button type="button" disabled={isTesting} onClick={() => void test(profile)}><Wifi size={13} />{isTesting ? c.testing : c.test}</button>
                   {profile.kind === "saved" ? (
                     <>
-                      <button type="button" disabled={running || Boolean(busy) || active} title={active ? c.activeEdit : c.edit} onClick={() => openEdit(profile)}><Pencil size={13} />{c.edit}</button>
+                      <button type="button" disabled={profile.available === false || running || Boolean(busy) || active} title={active ? c.activeEdit : c.edit} onClick={() => openEdit(profile)}><Pencil size={13} />{c.edit}</button>
                       <button type="button" className={confirmDelete === profile.selection ? "danger confirm" : "danger"} disabled={running || Boolean(busy)} onClick={() => void remove(profile)}>
                         {isDeleting ? <RefreshCw size={13} className="model-spin" /> : <Trash2 size={13} />}
                         {confirmDelete === profile.selection ? c.confirmDelete : c.delete}
