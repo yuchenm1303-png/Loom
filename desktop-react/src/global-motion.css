@@ -101,61 +101,6 @@
   transition-timing-function: var(--loom-ease-in), ease;
 }
 
-/* Settings section navigation ------------------------------------------------
-   Avoid Document View Transition snapshots here. They cross-faded rasterized
-   copies of the old/new settings viewport, which is especially visible as
-   doubled text on light backgrounds. The React page switch now hands this
-   surface a short leave -> swap -> enter sequence with no overlap. */
-.settings-page-surface {
-  min-width: 0;
-  display: grid;
-  gap: 24px;
-  contain: layout paint style;
-  opacity: 1;
-  transform: translate3d(0, 0, 0);
-  will-change: auto;
-  transition:
-    transform 250ms var(--loom-ease-out),
-    opacity 190ms ease;
-}
-
-.settings-page-surface[data-page-motion="leaving-forward"],
-.settings-page-surface[data-page-motion="leaving-backward"] {
-  opacity: 0;
-  will-change: transform, opacity;
-  transition-duration: 118ms, 104ms;
-  transition-timing-function: var(--loom-ease-in), ease;
-}
-
-.settings-page-surface[data-page-motion="leaving-forward"] {
-  transform: translate3d(0, -5px, 0);
-}
-
-.settings-page-surface[data-page-motion="leaving-backward"] {
-  transform: translate3d(0, 5px, 0);
-}
-
-.settings-page-surface[data-page-motion="entering-forward"],
-.settings-page-surface[data-page-motion="entering-backward"] {
-  opacity: 0;
-  will-change: transform, opacity;
-  transition: none;
-}
-
-.settings-page-surface[data-page-motion="entering-forward"] {
-  transform: translate3d(0, 8px, 0);
-}
-
-.settings-page-surface[data-page-motion="entering-backward"] {
-  transform: translate3d(0, -8px, 0);
-}
-
-.settings-page-surface[data-page-motion="idle"] {
-  opacity: 1;
-  transform: translate3d(0, 0, 0);
-  will-change: auto;
-}
-
 /* Controls should feel responsive, not twitchy. */
 .settings-nav button,
 .settings-back {

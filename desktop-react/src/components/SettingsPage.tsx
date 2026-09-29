@@ -35,7 +35,6 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { flushSync } from "react-dom";
 import {
   DEFAULT_SHORTCUTS,
   SHORTCUTS_CHANGED_EVENT,
@@ -86,8 +85,6 @@ type PageKey =
 
 type SettingsPageMotion =
   | "idle"
-  | "leaving-forward"
-  | "leaving-backward"
   | "entering-forward"
   | "entering-backward";
 
@@ -198,7 +195,6 @@ const PAGE_ORDER: PageKey[] = [
   "terminal", "plugins", "connectors", "mcp", "skills", "memory", "permissions", "shortcuts", "privacy", "developer",
 ];
 
-const SETTINGS_SECTION_EXIT_MS = 142;
 
 const DEFAULT_CAPABILITIES: Record<CapabilityKey, boolean> = {
   computerUse: true,
@@ -535,7 +531,6 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
   const [page, setPage] = useState<PageKey>(() => activeRoute as PageKey);
   const settingsScrollRef = useRef<HTMLDivElement>(null);
   const navigationTransitionRef = useRef(0);
-  const navigationTimerRef = useRef<number | null>(null);
   const navigationFrameRef = useRef<number | null>(null);
   const [pageMotion, setPageMotion] = useState<SettingsPageMotion>("idle");
   const [query, setQuery] = useState("");
@@ -556,17 +551,13 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
   const [cdpDraft, setCdpDraft] = useState(settings.browser?.cdpUrl ?? DEFAULT_BROWSER.cdpUrl);
 
   const navigateToPage = (nextPage: PageKey) => {
-    if (nextPage === page && pageMotion === "idle") {
+    if (nextPage === page) {
       setSettingsRoute(nextPage);
       settingsScrollRef.current?.scrollTo({ top: 0, behavior: "instant" });
       return;
     }
 
     const transitionId = ++navigationTransitionRef.current;
-    if (navigationTimerRef.current !== null) {
-      window.clearTimeout(navigationTimerRef.current);
-      navigationTimerRef.current = null;
-    }
     if (navigationFrameRef.current !== null) {
       cancelAnimationFrame(navigationFrameRef.current);
       navigationFrameRef.current = null;
@@ -575,45 +566,33 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
     const direction = PAGE_ORDER.indexOf(nextPage) > PAGE_ORDER.indexOf(page) ? "forward" : "backward";
     const reduceMotion = document.documentElement.dataset.loomReducedMotion === "true"
       || Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)").matches);
-    const commitPage = () => {
-      flushSync(() => {
-        setPage(nextPage);
-        setSettingsRoute(nextPage);
-      });
-      settingsScrollRef.current?.scrollTo({ top: 0, behavior: "instant" });
-    };
+
+    // Commit the destination immediately. The old implementation deliberately
+    // waited for a 142 ms exit, forced a synchronous render with flushSync, and
+    // then held the new page for two more frames. Dense settings pages made
+    // that choreography feel like input lag. Keep one persistent compositor
+    // layer instead: replace its content now, paint one lightweight directional
+    // start pose, then release it into the enter transition on the next frame.
+    setPage(nextPage);
+    setSettingsRoute(nextPage);
+    settingsScrollRef.current?.scrollTo({ top: 0, behavior: "instant" });
 
     if (reduceMotion) {
-      commitPage();
       setPageMotion("idle");
       return;
     }
 
-    // Section changes are deliberately two-phase. The outgoing page becomes
-    // fully invisible before the next page mounts, so text/cards never exist
-    // as two translucent snapshots at once (the source of the old ghosting).
-    setPageMotion(direction === "forward" ? "leaving-forward" : "leaving-backward");
-    navigationTimerRef.current = window.setTimeout(() => {
-      navigationTimerRef.current = null;
-      if (navigationTransitionRef.current !== transitionId) return;
-
-      commitPage();
-      setPageMotion(direction === "forward" ? "entering-forward" : "entering-backward");
-
-      // Give the newly keyed surface one clean painted frame in its start
-      // pose, then release it into the compositor-only enter transition.
+    setPageMotion(direction === "forward" ? "entering-forward" : "entering-backward");
+    navigationFrameRef.current = requestAnimationFrame(() => {
       navigationFrameRef.current = requestAnimationFrame(() => {
-        navigationFrameRef.current = requestAnimationFrame(() => {
-          navigationFrameRef.current = null;
-          if (navigationTransitionRef.current === transitionId) setPageMotion("idle");
-        });
+        navigationFrameRef.current = null;
+        if (navigationTransitionRef.current === transitionId) setPageMotion("idle");
       });
-    }, SETTINGS_SECTION_EXIT_MS);
+    });
   };
 
   useEffect(() => () => {
     navigationTransitionRef.current += 1;
-    if (navigationTimerRef.current !== null) window.clearTimeout(navigationTimerRef.current);
     if (navigationFrameRef.current !== null) cancelAnimationFrame(navigationFrameRef.current);
   }, []);
 
@@ -1457,11 +1436,11 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
           <label className="settings-search"><Search size={14} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search settings" /></label>
         </div>
         <nav className="settings-nav" aria-label="Settings navigation">
-          {filteredGroups.map((group) => <section key={group.label}><span className="settings-nav-label">{group.label}</span>{group.items.map((item) => { const Icon = item.icon; return <button type="button" key={item.key} className={activeRoute === item.key ? "active" : ""} aria-current={activeRoute === item.key ? "page" : undefined} onClick={() => navigateToPage(item.key)}><Icon size={16} strokeWidth={1.7} /><span>{item.label}</span></button>; })}</section>)}
+          {filteredGroups.map((group) => <section key={group.label}><span className="settings-nav-label">{group.label}</span>{group.items.map((item) => { const Icon = item.icon; return <button type="button" key={item.key} className={page === item.key ? "active" : ""} aria-current={page === item.key ? "page" : undefined} onClick={() => navigateToPage(item.key)}><Icon size={16} strokeWidth={1.7} /><span>{item.label}</span></button>; })}</section>)}
         </nav>
         <div className="settings-sidebar-footer"><span className="settings-runtime-dot" /><div><strong>Loom runtime</strong><span>{running ? "Turn active" : "Ready for changes"}</span></div></div>
       </aside>
-      <main className="settings-main"><div className="settings-main-scroll" ref={settingsScrollRef}><div className="settings-content"><div className="settings-page-surface" key={page} data-page={page} data-page-motion={pageMotion}>{content}</div></div></div></main>
+      <main className="settings-main"><div className="settings-main-scroll" ref={settingsScrollRef}><div className="settings-content"><div className="settings-page-surface" data-page={page} data-page-motion={pageMotion}>{content}</div></div></div></main>
       {noticePresence.mounted && visibleNotice ? (
         <div className={`settings-toast ${visibleNotice.tone}`} data-motion-phase={noticePresence.phase}>
           {visibleNotice.tone === "success" ? <Check size={15} /> : <CircleAlert size={15} />}
