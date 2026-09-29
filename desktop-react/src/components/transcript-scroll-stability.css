@@ -15,7 +15,8 @@
 
 .transcript-jump-latest {
   position: absolute;
-  z-index: 32;
+  /* Conversation affordance: stay above messages, but below transient UI layers. */
+  z-index: 4;
   left: 50%;
   bottom: 16px;
   width: 42px;
@@ -61,6 +62,18 @@
 
 .transcript-jump-latest.is-visible:active {
   transform: translate(-50%, 0) scale(.96);
+}
+
+/*
+ * The jump button belongs to the transcript, not to the global overlay layer.
+ * Composer popovers can rise into the conversation viewport; hiding the button
+ * for the lifetime of that popover avoids a competing circular control showing
+ * through / on top of model, permission, or sticker cards.
+ */
+.workspace:has(.composer-popover) .transcript-jump-latest {
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, 6px) scale(.96);
 }
 
 .transcript-jump-latest:focus-visible {

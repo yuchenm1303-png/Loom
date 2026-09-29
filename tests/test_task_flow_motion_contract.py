@@ -207,3 +207,19 @@ def test_inline_task_detail_preserves_content_through_collapse() -> None:
     assert "grid-template-rows 260ms" in closed
     assert "opacity 150ms ease 62ms" in closed
     assert "overflow-anchor: none;" in motion
+
+
+def test_jump_to_latest_yields_to_transient_composer_surfaces() -> None:
+    source = (ROOT / "desktop-react" / "src" / "components" / "transcript-scroll-stability.css").read_text(encoding="utf-8")
+
+    jump_start = source.index(".transcript-jump-latest {")
+    jump_end = source.index(".transcript-jump-latest.is-visible", jump_start)
+    jump_rule = source[jump_start:jump_end]
+    assert "z-index: 4;" in jump_rule
+    assert "z-index: 32;" not in jump_rule
+
+    occlusion_start = source.index(".workspace:has(.composer-popover) .transcript-jump-latest {")
+    occlusion_end = source.index("}", occlusion_start)
+    occlusion_rule = source[occlusion_start:occlusion_end]
+    assert "opacity: 0;" in occlusion_rule
+    assert "pointer-events: none;" in occlusion_rule
