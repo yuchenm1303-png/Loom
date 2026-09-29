@@ -72,6 +72,7 @@ def test_saved_relay_connection_is_promoted_to_managed_credential(tmp_path, monk
 def test_managed_profiles_keep_minimax_official_and_relay_separate(tmp_path, monkeypatch):
     store = _store(tmp_path)
 
+    monkeypatch.setattr(bridge, "_primary_minimax_key", lambda environ=None: "")
     monkeypatch.setattr(bridge, "_managed_relay_key", lambda _store, environ=None, repo_root=None: "relay-secret")
     monkeypatch.setattr(
         bridge,
@@ -80,17 +81,18 @@ def test_managed_profiles_keep_minimax_official_and_relay_separate(tmp_path, mon
     )
 
     profiles = bridge._managed_profiles(store)
-    by_model = {profile["model"]: profile for profile in profiles}
+    official = next(profile for profile in profiles if profile["selection"] == bridge.PRIMARY_SELECTION)
+    relayed = next(profile for profile in profiles if profile["selection"] == "managed:MiniMax-M3")
+    by_selection = {profile["selection"]: profile for profile in profiles}
 
-    assert by_model["MiniMax-M3"]["selection"] == bridge.PRIMARY_SELECTION
-    assert by_model["MiniMax-M3"]["baseUrl"] == bridge.MINIMAX_BASE_URL
-    assert by_model["MiniMax-M2.7"]["baseUrl"] == bridge.MINIMAX_BASE_URL
-    assert by_model["MiniMax-M2.5"]["baseUrl"] == bridge.MINIMAX_BASE_URL
-    assert by_model["cqu-default"]["selection"] == bridge.CQU_SELECTION
-    assert by_model["cqu-default"]["name"] == "CQU-弘深深"
-    assert by_model["cqu-default"]["baseUrl"] == bridge.MANAGED_RELAY_BASE_URL
-    assert by_model["custom-agent"]["selection"] == "managed:custom-agent"
-    assert by_model["custom-agent"]["baseUrl"] == bridge.MANAGED_RELAY_BASE_URL
+    assert official["baseUrl"] == bridge.MINIMAX_BASE_URL
+    assert official["groupId"] == "minimax"
+    assert relayed["baseUrl"] == bridge.MANAGED_RELAY_BASE_URL
+    assert relayed["groupId"] == "managed-relay:minimax"
+    assert relayed["groupName"] == "MiniMax · Muxway"
+    assert by_selection[bridge.CQU_SELECTION]["name"] == "CQU-弘深深"
+    assert by_selection[bridge.CQU_SELECTION]["baseUrl"] == bridge.MANAGED_RELAY_BASE_URL
+    assert by_selection["managed:custom-agent"]["baseUrl"] == bridge.MANAGED_RELAY_BASE_URL
 
 
 def test_unprovisioned_profiles_show_builtin_minimax_and_deepseek_models(tmp_path, monkeypatch):
@@ -98,6 +100,7 @@ def test_unprovisioned_profiles_show_builtin_minimax_and_deepseek_models(tmp_pat
     monkeypatch.setattr(bridge, "_credential_get", lambda _alias: None)
     monkeypatch.setattr(bridge, "_credential_set", lambda _alias, _value: None)
 
+    monkeypatch.setattr(bridge, "_fetch_minimax_model_ids", lambda *_args, **_kwargs: [])
     profiles = bridge._managed_profiles(store, {"MINIMAX_API_KEY": "minimax-secret"})
     by_model = {profile["model"]: profile for profile in profiles}
 
@@ -106,6 +109,34 @@ def test_unprovisioned_profiles_show_builtin_minimax_and_deepseek_models(tmp_pat
     assert all(by_model[model]["baseUrl"] == bridge.MINIMAX_BASE_URL for model in bridge.MINIMAX_MODEL_IDS)
     assert all(by_model[model]["baseUrl"] == bridge.DEEPSEEK_BASE_URL for model in bridge.DEEPSEEK_FALLBACK_MODEL_IDS)
     assert by_model[bridge.DEEPSEEK_DEFAULT_MODEL]["selection"] == bridge.DEEPSEEK_SELECTION
+
+
+def test_builtin_minimax_profiles_follow_official_model_discovery(tmp_path, monkeypatch):
+    store = _store(tmp_path)
+    monkeypatch.setattr(bridge, "_fetch_opencode_go_model_ids", lambda: [])
+    monkeypatch.setattr(bridge, "_opencode_go_key", lambda *_args, **_kwargs: "")
+    monkeypatch.setattr(bridge, "_primary_minimax_key", lambda environ=None: "minimax-secret")
+    monkeypatch.setattr(
+        bridge,
+        "_fetch_minimax_model_ids",
+        lambda api_key, environ=None, timeout=3.5: [
+            "MiniMax-M3.1-Flash-Preview",
+            "MiniMax-M3",
+        ],
+    )
+    monkeypatch.setattr(bridge, "_deepseek_key", lambda *_args, **_kwargs: "")
+    monkeypatch.setattr(bridge, "_managed_relay_key", lambda *_args, **_kwargs: "")
+
+    profiles = bridge._managed_profiles(store)
+    minimax = [profile for profile in profiles if profile.get("groupId") == "minimax"]
+
+    assert [profile["model"] for profile in minimax] == [
+        "MiniMax-M3.1-Flash-Preview",
+        "MiniMax-M3",
+    ]
+    assert minimax[0]["name"] == "MiniMax M3.1 Flash Preview"
+    assert minimax[0]["selection"] == "builtin:minimax:MiniMax-M3.1-Flash-Preview"
+    assert all(profile["catalogSource"] == "provider" for profile in minimax)
 
 
 def test_builtin_deepseek_profiles_follow_official_model_discovery(tmp_path, monkeypatch):
