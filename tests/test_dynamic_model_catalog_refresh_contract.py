@@ -107,3 +107,13 @@ def test_discovered_metadata_is_carried_into_launch_specs() -> None:
     assert "contextLimits: catalog?.contextLimits ?? resolved.contextLimits" in block
     assert "reasoning: catalog?.reasoning ?? resolved.reasoning ?? null" in block
     assert "vision: safe?.vision ?? catalog?.vision ?? resolved.vision ?? true" in block
+
+
+def test_transient_catalog_fallback_keeps_last_authoritative_provider_rows() -> None:
+    manager = MANAGER.read_text(encoding="utf-8")
+
+    assert "private preserveLastKnownProviderCatalog(next: RegistrySnapshot)" in manager
+    assert 'profile.catalogSource === "fallback"' in manager
+    assert 'profile.catalogSource !== "provider"' in manager
+    assert "A failed /models request must not masquerade as a provider deletion." in manager
+    assert "normal deletion semantics resume immediately" in manager
