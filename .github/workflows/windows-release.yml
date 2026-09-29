@@ -1,0 +1,95 @@
+name: Windows Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  publish-windows-x64:
+    runs-on: windows-latest
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      LOOM_GITHUB_CLIENT_ID: ${{ vars.LOOM_GITHUB_CLIENT_ID }}
+      LOOM_GITHUB_CLIENT_SECRET: ${{ secrets.LOOM_GITHUB_CLIENT_SECRET }}
+      LOOM_GITHUB_OAUTH_SCOPES: ${{ vars.LOOM_GITHUB_OAUTH_SCOPES || 'repo read:org' }}
+      LOOM_GITHUB_CALLBACK_PATH: ${{ vars.LOOM_GITHUB_CALLBACK_PATH || '/oauth/github/callback' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate release tag and package version
+        shell: pwsh
+        run: |
+          $package = Get-Content "$env:GITHUB_WORKSPACE\desktop-react\package.json" -Raw | ConvertFrom-Json
+          $expected = "v$($package.version)"
+          $actual = "${{ github.ref_name }}"
+          if ($actual -ne $expected) {
+            throw "Release tag $actual does not match desktop package version $expected. Bump desktop-react/package.json before tagging."
+          }
+          Write-Host "Publishing Loom $actual"
+
+      - name: Validate trusted release OAuth configuration
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:LOOM_GITHUB_CLIENT_ID)) {
+            throw "Missing Actions variable LOOM_GITHUB_CLIENT_ID."
+          }
+          if ([string]::IsNullOrWhiteSpace($env:LOOM_GITHUB_CLIENT_SECRET)) {
+            throw "Missing Actions secret LOOM_GITHUB_CLIENT_SECRET."
+          }
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install desktop dependencies
+        working-directory: desktop-react
+        run: npm install --no-audit --no-fund
+
+      - name: Build and publish Windows update
+        working-directory: desktop-react
+        run: npm run package:win:publish
+
+      - name: Verify updater metadata and packaged runtime
+        shell: pwsh
+        run: |
+          $releaseDir = Join-Path $env:GITHUB_WORKSPACE "desktop-react\release"
+          $installer = Get-ChildItem $releaseDir -Filter "Loom-Setup-*.exe" | Select-Object -First 1
+          $metadata = Join-Path $releaseDir "latest.yml"
+          $resources = Join-Path $releaseDir "win-unpacked\resources"
+          $runtime = Join-Path $resources "python.exe"
+
+          if (-not $installer) { throw "Loom Setup executable was not produced." }
+          if ($installer.Length -lt 1000000) { throw "Loom Setup executable is unexpectedly small: $($installer.Length) bytes" }
+          if (-not (Test-Path $metadata)) { throw "latest.yml was not produced; installed clients would not discover this release." }
+          if (-not (Test-Path $runtime)) { throw "Packaged private Python runtime was not found at $runtime" }
+
+          $latest = Get-Content $metadata -Raw
+          if ($latest -notmatch "version:\s+$([regex]::Escape((Get-Content \"$env:GITHUB_WORKSPACE\desktop-react\package.json\" -Raw | ConvertFrom-Json).version))") {
+            throw "latest.yml version does not match package.json."
+          }
+
+          & $runtime self-test
+          if ($LASTEXITCODE -ne 0) { throw "Packaged runtime self-test failed with exit code $LASTEXITCODE" }
+
+          Write-Host "Installer: $($installer.Name)"
+          Write-Host "Updater metadata: $metadata"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Loom-Windows-Release-${{ github.ref_name }}
+          path: |
+            desktop-react/release/Loom-Setup-*.exe
+            desktop-react/release/Loom-Setup-*.exe.blockmap
+            desktop-react/release/latest.yml
+          if-no-files-found: error
+          retention-days: 30
