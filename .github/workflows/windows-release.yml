@@ -55,11 +55,11 @@ jobs:
         working-directory: desktop-react
         run: npm install --no-audit --no-fund
 
-      - name: Build and publish Windows update
+      - name: Build Windows release candidate
         working-directory: desktop-react
-        run: npm run package:win:publish
+        run: npm run package:win
 
-      - name: Verify updater metadata and packaged runtime
+      - name: Verify release candidate
         shell: pwsh
         run: |
           $releaseDir = Join-Path $env:GITHUB_WORKSPACE "desktop-react\release"
@@ -67,6 +67,8 @@ jobs:
           $metadata = Join-Path $releaseDir "latest.yml"
           $resources = Join-Path $releaseDir "win-unpacked\resources"
           $runtime = Join-Path $resources "python.exe"
+          $packagePath = Join-Path $env:GITHUB_WORKSPACE "desktop-react\package.json"
+          $packageVersion = (Get-Content $packagePath -Raw | ConvertFrom-Json).version
 
           if (-not $installer) { throw "Loom Setup executable was not produced." }
           if ($installer.Length -lt 1000000) { throw "Loom Setup executable is unexpectedly small: $($installer.Length) bytes" }
@@ -74,15 +76,30 @@ jobs:
           if (-not (Test-Path $runtime)) { throw "Packaged private Python runtime was not found at $runtime" }
 
           $latest = Get-Content $metadata -Raw
-          if ($latest -notmatch "version:\s+$([regex]::Escape((Get-Content \"$env:GITHUB_WORKSPACE\desktop-react\package.json\" -Raw | ConvertFrom-Json).version))") {
+          $expectedVersionLine = "version:\s+$([regex]::Escape($packageVersion))"
+          if ($latest -notmatch $expectedVersionLine) {
             throw "latest.yml version does not match package.json."
           }
 
           & $runtime self-test
           if ($LASTEXITCODE -ne 0) { throw "Packaged runtime self-test failed with exit code $LASTEXITCODE" }
 
-          Write-Host "Installer: $($installer.Name)"
-          Write-Host "Updater metadata: $metadata"
+          Write-Host "Release candidate verified: $($installer.Name)"
+
+      - name: Publish GitHub release and updater metadata
+        working-directory: desktop-react
+        run: npx electron-builder --win nsis --x64 --publish always
+
+      - name: Verify published artifacts were generated locally
+        shell: pwsh
+        run: |
+          $releaseDir = Join-Path $env:GITHUB_WORKSPACE "desktop-react\release"
+          $installer = Get-ChildItem $releaseDir -Filter "Loom-Setup-*.exe" | Select-Object -First 1
+          $metadata = Join-Path $releaseDir "latest.yml"
+          $blockmap = Get-ChildItem $releaseDir -Filter "Loom-Setup-*.exe.blockmap" | Select-Object -First 1
+          if (-not $installer) { throw "Published installer is missing." }
+          if (-not (Test-Path $metadata)) { throw "Published latest.yml is missing." }
+          if (-not $blockmap) { throw "Published NSIS blockmap is missing." }
 
       - uses: actions/upload-artifact@v4
         with:
