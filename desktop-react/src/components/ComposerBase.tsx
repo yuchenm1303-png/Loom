@@ -35,6 +35,8 @@ import "./composer-control-pills.css";
 
 interface ComposerProps {
   threadId?: string;
+  draftValue?: string;
+  onDraftValueChange?(value: string): void;
   disabled?: boolean;
   running?: boolean;
   model?: string;
@@ -126,6 +128,8 @@ function PermissionIcon({ mode }: { mode: string }) {
 
 export function Composer({
   threadId,
+  draftValue,
+  onDraftValueChange,
   disabled,
   running,
   model,
@@ -149,7 +153,9 @@ export function Composer({
 }: ComposerProps) {
   const { language } = useI18n();
   const zh = language === "zh-CN";
-  const [value, setValue] = useState("");
+  const [localValue, setLocalValue] = useState("");
+  const value = draftValue ?? localValue;
+  const setValue = onDraftValueChange ?? setLocalValue;
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [attachError, setAttachError] = useState("");
   const [dragging, setDragging] = useState(false);

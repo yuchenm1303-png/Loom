@@ -24,10 +24,19 @@ import "./composer.css";
 
 type ComposerProps = ComponentProps<typeof ComposerBase>;
 
-function SteeringComposer({ threadId, onSend, onInterrupt, imagesAllowed = true }: ComposerProps) {
+function SteeringComposer({
+  threadId,
+  draftValue,
+  onDraftValueChange,
+  onSend,
+  onInterrupt,
+  imagesAllowed = true,
+}: ComposerProps) {
   const { language } = useI18n();
   const zh = language === "zh-CN";
-  const [value, setValue] = useState("");
+  const [localValue, setLocalValue] = useState("");
+  const value = draftValue ?? localValue;
+  const setValue = onDraftValueChange ?? setLocalValue;
   const [focused, setFocused] = useState(false);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [attachError, setAttachError] = useState("");
@@ -270,7 +279,35 @@ function SteeringComposer({ threadId, onSend, onInterrupt, imagesAllowed = true 
   );
 }
 
+const UNBOUND_DRAFT_KEY = "__loom_unbound_composer__";
+
 export function Composer(props: ComposerProps) {
-  if (props.running) return <SteeringComposer {...props} />;
-  return <ComposerBase {...props} />;
+  // Own drafts above the idle/steering variants. Those two surfaces intentionally
+  // remount when a turn starts or finishes, so keeping text inside either child
+  // makes unsent input vanish during a normal running-state transition.
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const draftKey = props.threadId || UNBOUND_DRAFT_KEY;
+  const draftValue = drafts[draftKey] ?? "";
+
+  const setDraftValue = (nextValue: string) => {
+    setDrafts((current) => {
+      if (!nextValue) {
+        if (!(draftKey in current)) return current;
+        const next = { ...current };
+        delete next[draftKey];
+        return next;
+      }
+      if (current[draftKey] === nextValue) return current;
+      return { ...current, [draftKey]: nextValue };
+    });
+  };
+
+  const sharedProps = {
+    ...props,
+    draftValue,
+    onDraftValueChange: setDraftValue,
+  };
+
+  if (props.running) return <SteeringComposer {...sharedProps} />;
+  return <ComposerBase {...sharedProps} />;
 }
