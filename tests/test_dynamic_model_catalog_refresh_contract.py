@@ -95,3 +95,15 @@ def test_thread_specific_removed_model_does_not_fall_back_to_global_current() ->
     assert "available: false" in block
     assert "This model is no longer advertised by the provider" in block
     assert "profiles: [...snapshot.profiles, unavailable]" in block
+
+
+def test_discovered_metadata_is_carried_into_launch_specs() -> None:
+    manager = MANAGER.read_text(encoding="utf-8")
+
+    resolve_start = manager.index("  resolve(selection: string): ModelLaunchSpec {")
+    resolve_end = manager.index("  add(input: AddModelInput)", resolve_start)
+    block = manager[resolve_start:resolve_end]
+    assert "const catalog = this.registryCache?.profiles.find" in block
+    assert "contextLimits: catalog?.contextLimits ?? resolved.contextLimits" in block
+    assert "reasoning: catalog?.reasoning ?? resolved.reasoning ?? null" in block
+    assert "vision: safe?.vision ?? catalog?.vision ?? resolved.vision ?? true" in block
