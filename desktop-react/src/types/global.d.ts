@@ -32,7 +32,7 @@ export interface LoomBridge {
   accountLogin(email: string, password: string): Promise<LoomAccountResult>;
   accountRegister(email: string, password: string): Promise<LoomAccountResult>;
   accountLogout(): Promise<LoomAccountResult>;
-  listModels<T = unknown>(): Promise<T>;
+  listModels<T = unknown>(forceRefresh?: boolean): Promise<T>;
   setModelProviderKey<T = unknown>(provider: string, apiKey: string): Promise<T>;
   switchModelProfile<T = unknown>(selection: string): Promise<T>;
   switchModelProfile<T = unknown>(threadId: string, selection: string): Promise<T>;
