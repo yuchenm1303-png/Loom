@@ -7,6 +7,7 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
+from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -1087,6 +1088,18 @@ def _with_reasoning(profile: dict[str, Any], reasoning_store: ReasoningConfigSto
     return payload
 
 
+def _catalog_future_result(future: Future[list[str]] | None) -> list[str]:
+    if future is None:
+        return []
+    try:
+        return future.result()
+    except Exception:
+        # Discovery is advisory. Provider-specific fallback/status handling
+        # below decides what remains visible without turning a catalog refresh
+        # into an application failure.
+        return []
+
+
 def _managed_profiles(store: ModelConfigStore, environ: Mapping[str, str] | None = None) -> list[dict[str, Any]]:
     # Provider /models is authoritative for what is available right now. The
     # bundled catalogs only keep Loom usable when discovery is unavailable and
@@ -1094,7 +1107,24 @@ def _managed_profiles(store: ModelConfigStore, environ: Mapping[str, str] | None
     profiles: list[dict[str, Any]] = []
 
     opencode_key = _opencode_go_key(store, environ)
-    discovered_opencode = _fetch_opencode_go_model_ids()
+    minimax_key = _primary_minimax_key(environ)
+    deepseek_key = _deepseek_key(store, environ)
+    relay_key = _managed_relay_key(store, environ, Path(__file__).resolve().parent)
+
+    # Catalog endpoints are independent network observations. Fetch them
+    # concurrently so opening the picker is bounded by one provider timeout
+    # instead of the sum of every provider timeout.
+    with ThreadPoolExecutor(max_workers=4, thread_name_prefix="loom-model-catalog") as pool:
+        opencode_future = pool.submit(_fetch_opencode_go_model_ids)
+        minimax_future = pool.submit(_fetch_minimax_model_ids, minimax_key, environ) if minimax_key else None
+        deepseek_future = pool.submit(_fetch_deepseek_model_ids, deepseek_key, environ) if deepseek_key else None
+        relay_future = pool.submit(_fetch_managed_model_ids, relay_key, environ) if relay_key else None
+
+        discovered_opencode = _catalog_future_result(opencode_future)
+        discovered_minimax = _catalog_future_result(minimax_future)
+        discovered_deepseek = _catalog_future_result(deepseek_future)
+        relay_model_ids = _catalog_future_result(relay_future)
+
     opencode_model_ids = discovered_opencode or list(OPENCODE_GO_FALLBACK_MODEL_IDS)
     opencode_source = "provider" if discovered_opencode else "fallback"
     seen_opencode: set[str] = set()
@@ -1110,8 +1140,6 @@ def _managed_profiles(store: ModelConfigStore, environ: Mapping[str, str] | None
             )
         )
 
-    minimax_key = _primary_minimax_key(environ)
-    discovered_minimax = _fetch_minimax_model_ids(minimax_key, environ) if minimax_key else []
     minimax_model_ids = discovered_minimax or list(MINIMAX_MODEL_IDS)
     minimax_source = "provider" if discovered_minimax else "fallback"
     seen_minimax: set[str] = set()
@@ -1127,8 +1155,6 @@ def _managed_profiles(store: ModelConfigStore, environ: Mapping[str, str] | None
             )
         )
 
-    deepseek_key = _deepseek_key(store, environ)
-    discovered_deepseek = _fetch_deepseek_model_ids(deepseek_key, environ) if deepseek_key else []
     deepseek_model_ids = discovered_deepseek or list(DEEPSEEK_FALLBACK_MODEL_IDS)
     deepseek_source = "provider" if discovered_deepseek else "fallback"
     seen_deepseek: set[str] = set()
@@ -1144,9 +1170,8 @@ def _managed_profiles(store: ModelConfigStore, environ: Mapping[str, str] | None
             )
         )
 
-    api_key = _managed_relay_key(store, environ, Path(__file__).resolve().parent)
-    if api_key:
-        model_ids = _fetch_managed_model_ids(api_key, environ)
+    if relay_key:
+        model_ids = relay_model_ids
         if not model_ids:
             profiles.append(_safe_managed_catalog_status(environ))
         # Relay model identity stays tied to Relay even when its bare model ID
