@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import contextvars
+import logging
 import queue
 import threading
 import time
@@ -9,6 +10,9 @@ import time
 from app.ai.execution_control import ExecutionControl, ModelCancelled, ModelSteered, current_control
 
 from .model_replan import begin_sampling, changed, end_sampling
+
+
+_log = logging.getLogger(__name__)
 
 
 class ModelExecutor:
@@ -62,7 +66,10 @@ class ModelExecutor:
             # Still waiting for the first sign of life. Non-streaming backends
             # never report any, which is why this path keeps the old meaning.
             if now >= deadline:
-                raise TimeoutError("model request deadline exceeded")
+                raise TimeoutError(
+                    "model request deadline exceeded: no provider output received "
+                    f"within {int(self.timeout)}s"
+                )
             return
         idle = now - progress_at
         if idle >= self.stall_timeout:
@@ -104,16 +111,27 @@ class ModelExecutor:
             try:
                 while True:
                     self._check_signal(token, steering_revision)
-                    self._check_deadlines(control, started, deadline)
                     try:
                         ok, result = results.get(timeout=0.05)
                     except queue.Empty:
+                        self._check_deadlines(control, started, deadline)
                         continue
                     self._check_signal(token, steering_revision)
                     if not ok:
                         raise result
                     return result
-            except BaseException:
+            except BaseException as exc:
+                if isinstance(exc, TimeoutError):
+                    progress_at = control.progress_at
+                    _log.warning(
+                        "Model request timed out: profile=%s elapsed=%.1fs "
+                        "received_provider_output=%s last_output_gap=%s error=%s",
+                        profile_id,
+                        time.monotonic() - started,
+                        bool(progress_at),
+                        f"{time.monotonic() - progress_at:.1f}s" if progress_at else "n/a",
+                        exc,
+                    )
                 # Provider stream readers register close callbacks on the request
                 # control. A steer therefore stops token generation promptly while
                 # leaving the turn's CancellationToken untouched.
