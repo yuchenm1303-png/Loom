@@ -47,6 +47,7 @@ interface ComposerProps {
   onModelProfileChange?(selection: string): Promise<void> | void;
   onCustomModelChange?(model: string): Promise<void> | void;
   onConfigureModelProvider?(provider: string, apiKey: string): Promise<void> | void;
+  onRefreshModels?(forceRefresh?: boolean): Promise<unknown> | void;
   onAddModel?(input: AddModelInput): Promise<void> | void;
   onDeleteModel?(selection: string): Promise<void> | void;
   onReasoningChange?(kind: string, value: string): Promise<void> | void;
@@ -137,6 +138,7 @@ export function Composer({
   onModelProfileChange,
   onCustomModelChange,
   onConfigureModelProvider,
+  onRefreshModels,
   onAddModel,
   onDeleteModel,
   onReasoningChange,
@@ -501,6 +503,9 @@ export function Composer({
                     onConfigureProvider={async (provider, apiKey) => {
                       if (!onConfigureModelProvider) throw new Error("Provider configuration is unavailable.");
                       await onConfigureModelProvider(provider, apiKey);
+                    }}
+                    onRefresh={async () => {
+                      await onRefreshModels?.(true);
                     }}
                     onAddModel={async (input) => {
                       if (!onAddModel) throw new Error("Adding model APIs is unavailable.");
