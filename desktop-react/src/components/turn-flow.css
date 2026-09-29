@@ -13,12 +13,12 @@
 /* Long transcripts can contain hundreds of completed turns. Let Chromium skip
    style/layout/paint for history that is well outside the viewport while keeping
    the real DOM, selection semantics, find-in-page and dynamic heights intact.
-   The `auto` intrinsic size remembers a turn's measured block size after first
+   The `auto` intrinsic block size remembers a turn's measured height after first
    reveal; 420px is only the cold-start estimate for never-seen history. */
 @supports (content-visibility: auto) {
   .turn-block.is-complete {
     content-visibility: auto;
-    contain-intrinsic-size: auto 420px;
+    contain-intrinsic-block-size: auto 420px;
   }
 }
 
