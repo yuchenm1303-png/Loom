@@ -183,7 +183,7 @@ function UpdatePanel() {
       setState((current) => ({
         enabled: current?.enabled ?? true,
         currentVersion: current?.currentVersion ?? "—",
-        ...current,
+        ...(current ?? {}),
         phase: "error",
         error: cause instanceof Error ? cause.message : String(cause),
       }));
@@ -205,7 +205,7 @@ function UpdatePanel() {
       setState((current) => ({
         enabled: current?.enabled ?? true,
         currentVersion: current?.currentVersion ?? "—",
-        ...current,
+        ...(current ?? {}),
         phase: "error",
         error: cause instanceof Error ? cause.message : String(cause),
       }));
