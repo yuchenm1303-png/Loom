@@ -111,6 +111,24 @@ html[data-loom-theme="light"] .context-meter-panel {
  * the light conversation theme. Keep one compact visual language across the
  * composer, sent-message attachments, and runtime permission prompts. */
 
+/* Composer attachments belong to the prompt stack, not to a separate padded
+   row. The previous 7px attachment-only top padding compounded with the
+   composer's own inset, leaving the chip visibly too low inside the rounded
+   field. Pull it into the same vertical rhythm as the textarea. */
+html .composer:has(.composer-attachments) {
+  padding-top: 11px;
+}
+
+html .composer .composer-attachments {
+  padding: 0 0 6px;
+  align-items: flex-start;
+  justify-content: flex-start;
+}
+
+html .composer .composer-attachments + .composer-input-row {
+  margin-top: 0;
+}
+
 /* Sent-message file cards: a little more breathing room for real filenames,
    without turning the attachment into a second message bubble. */
 html .user-message-attachment-card {
