@@ -568,7 +568,7 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
       || Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)").matches);
 
     // Commit the destination immediately. The old implementation deliberately
-    // waited for a 142 ms exit, forced a synchronous render with flushSync, and
+    // waited for a 142 ms exit, forced a synchronous render, and
     // then held the new page for two more frames. Dense settings pages made
     // that choreography feel like input lag. Keep one persistent compositor
     // layer instead: replace its content now, paint one lightweight directional
