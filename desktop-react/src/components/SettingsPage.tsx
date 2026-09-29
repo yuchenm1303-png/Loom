@@ -179,6 +179,7 @@ interface SettingsPageProps {
   models: ModelSnapshot | null;
   threadId?: string | null;
   running: boolean;
+  onRefreshModels?(forceRefresh?: boolean): Promise<ModelSnapshot> | void;
   onClose(): void;
 }
 
@@ -529,7 +530,7 @@ function SelectControl({ value, options, onChange, label }: { value: string; opt
   );
 }
 
-export function SettingsPage({ runtime, models, threadId, running, onClose }: SettingsPageProps) {
+export function SettingsPage({ runtime, models, threadId, running, onRefreshModels, onClose }: SettingsPageProps) {
   const activeRoute = useSettingsRoute();
   const [page, setPage] = useState<PageKey>(() => activeRoute as PageKey);
   const settingsScrollRef = useRef<HTMLDivElement>(null);
@@ -624,6 +625,20 @@ export function SettingsPage({ runtime, models, threadId, running, onClose }: Se
   useEffect(() => {
     setModelState(models);
   }, [models]);
+
+  useEffect(() => {
+    if (page !== "models" || !onRefreshModels) return;
+    let disposed = false;
+    void Promise.resolve(onRefreshModels(true))
+      .then((snapshot) => {
+        if (!disposed && snapshot) setModelState(snapshot);
+      })
+      .catch(() => {
+        // Keep the existing settings snapshot on transient provider failures.
+        // The desktop model manager owns last-known-good fallback behavior.
+      });
+    return () => { disposed = true; };
+  }, [onRefreshModels, page]);
 
   useEffect(() => {
     applyAppearance(settings);
