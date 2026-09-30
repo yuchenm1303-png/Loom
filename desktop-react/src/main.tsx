@@ -150,8 +150,8 @@ try {
     "--loom-code-font",
     "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace",
   );
-  document.documentElement.style.setProperty("--loom-code-font-size", `${codeFontSize}px`);
-  document.documentElement.style.setProperty("--loom-code-line-height", CODE_LINE_HEIGHTS[codeLineHeight]);
+  document.documentElement.style.setProperty("--loom-code-font-size", "12px");
+  document.documentElement.style.setProperty("--loom-code-line-height", "1.62");
 }
 
 bootstrapTheme();
