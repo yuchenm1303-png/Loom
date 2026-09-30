@@ -7,29 +7,27 @@ try {
   for (const selector of [".stop", ".stop svg", ".stop rect", "input", "#portal button"]) {
     await page.locator(selector).hover();
     const cursor = await page.locator(selector).evaluate((el) => getComputedStyle(el).cursor);
-    assert.equal(cursor, "none");
+    assert.match(cursor, /yukino-mouse.*0 0/);
   }
   const pseudo = await page.locator(".stop").evaluate((el) => getComputedStyle(el, "::after").cursor);
-  assert.equal(pseudo, "none");
+  assert.match(pseudo, /yukino-mouse.*0 0/);
   await page.locator(".stop").evaluate((el) => { el.disabled = true; });
-  assert.equal(await page.locator(".stop").evaluate((el) => getComputedStyle(el).cursor), "none");
+  assert.match(await page.locator(".stop").evaluate((el) => getComputedStyle(el).cursor), /yukino-mouse.*0 0/);
   for (const [x, y] of [[990, 200], [999, 749], [500, 749], [500, 200]]) {
     await page.setViewportSize({ width: 1000, height: 750 });
     await page.mouse.move(x, y);
-    const pointer = await page.locator(".loom-custom-pointer-image").evaluate((el) => {
-      const rect = el.getBoundingClientRect();
-      return { x: rect.x, y: rect.y, hidden: el.hidden, loaded: el.complete && el.naturalWidth > 0 };
-    });
-    assert.deepEqual(pointer, { x, y, hidden: false, loaded: true }, "arrow hotspot stays at the pointer at viewport edges");
-    assert.equal(await page.locator("body").evaluate((el) => getComputedStyle(el).cursor), "none");
+    assert.equal(await page.locator(".loom-custom-pointer-image").count(), 0, "pointer must not depend on a moving DOM image");
+    assert.match(await page.locator("body").evaluate((el) => getComputedStyle(el).cursor), /yukino-mouse.*0 0/);
   }
   await page.evaluate(() => { document.documentElement.style.zoom = "1.3"; });
   await page.mouse.move(450, 300);
-  await page.waitForFunction(() => {
-    const rect = document.querySelector(".loom-custom-pointer-image").getBoundingClientRect();
-    return Math.abs(rect.x - 450) < 1 && Math.abs(rect.y - 300) < 1;
-  });
+  assert.match(await page.locator("body").evaluate((el) => getComputedStyle(el).cursor), /yukino-mouse.*0 0/);
   await page.evaluate(() => { document.documentElement.style.removeProperty("zoom"); });
+  await page.evaluate(() => {
+    const end = performance.now() + 400;
+    while (performance.now() < end) { /* simulate a heavy synchronous render */ }
+  });
+  assert.equal(await page.locator(".loom-custom-pointer-layer").count(), 0);
   await page.evaluate(() => {
     window.clicks = 0;
     document.querySelector("#portal button").addEventListener("click", () => window.clicks++);
