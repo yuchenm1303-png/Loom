@@ -19,6 +19,36 @@ _SERIALIZED_TOOL_PROTOCOL_RE = re.compile(
     re.IGNORECASE,
 )
 _INLINE_STICKER_RE = re.compile(r"\[\[AI_LEDGER_INLINE_STICKER:[a-z0-9_]{2,48}\]\]", re.I)
+# Match an assistant's immediate commitment, not suggestions addressed to the
+# user or generic future plans. Inspect prose only so examples/quotes are safe.
+_ACTION_PROMISE_RE = re.compile(
+    r"(?:^|[。！？.!?\n]\s*)(?:"
+    r"(?:我(?:现在|接下来|这就|马上)?(?:先|再|会|将|要)|接下来我(?:会|将|先)?)"
+    r"(?:去|来|继续)?(?:去|查|搜索|检索|看|检查|读取|打开|访问|运行|执行|测试|验证|修改|修复|更新|提交|推送|下载|安装)"
+    r"|(?:I(?:['’]ll| will| am going to)|Let me)\s+(?:now\s+|first\s+|next\s+)?"
+    r"(?:check|search|look|inspect|read|open|visit|run|execute|test|verify|edit|fix|update|commit|push|download|install)\b"
+    r")",
+    re.I,
+)
+_ACTION_RESULT_RE = re.compile(
+    r"(?:已(?:经)?(?:完成|修复|修改|更新|提交|推送|检查|验证)|"
+    r"(?:检查|测试|验证|查询|运行)结果|(?:结果|结论)[：:]|"
+    r"\b(?:completed|verified|passed|the results? (?:is|are)|I (?:found|checked|ran|fixed))\b)", re.I,
+)
+
+
+def unfulfilled_action_promise(text: str) -> bool:
+    """Recognize short progress-only replies incorrectly emitted as terminal."""
+    prose = _INLINE_STICKER_RE.sub("", visible_model_text(text)).strip()
+    if not prose or len(prose) > 800:
+        return False
+    # A final answer may quote an earlier promise or include example code.
+    prose = re.sub(r"```.*?```|`[^`\n]*`|\"[^\"\n]*\"|“[^”\n]*”", "", prose, flags=re.S)
+    prose = "\n".join(line for line in prose.splitlines() if not line.lstrip().startswith((">", "-", "*")))
+    match = _ACTION_PROMISE_RE.search(prose)
+    return bool(match and not _ACTION_RESULT_RE.search(prose[match.end():]))
+
+
 TERMINAL_RECOVERY_INSTRUCTION = (
     "Your previous response was rejected because it was empty, malformed (including invalid native tool-call "
     "arguments), ended with an incomplete serialized structure, or contained reasoning without a user-visible "
@@ -107,6 +137,8 @@ def invalid_terminal_response(response: ModelResponse) -> str:
         return "unterminated_code_fence"
     if _DANGLING_DISCOURSE_RE.search(visible):
         return "unfinished_terminal_text"
+    if unfulfilled_action_promise(visible):
+        return "unfulfilled_action_promise"
     return ""
 
 

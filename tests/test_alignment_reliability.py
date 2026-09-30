@@ -191,11 +191,14 @@ def test_dangling_terminal_response_is_retried_without_poisoning_history(tmp_pat
     runtime.close()
 
 
-def test_stop_while_introducing_next_action_is_retried_as_a_tool_call(tmp_path):
-    unfinished = (
+@pytest.mark.parametrize("unfinished, reason", [
+    ("我先检查日志。[[AI_LEDGER_INLINE_STICKER:joy_burst]]", "unfulfilled_action_promise"),
+    (
         "`Shell Folders` 还有 3 项指向 OneDrive。"
-        "我会一并改成绝对路径："
-    )
+        "我会一并改成绝对路径：", "unfinished_terminal_text",
+    ),
+])
+def test_stop_while_introducing_next_action_is_retried_as_a_tool_call(tmp_path, unfinished, reason):
     calls = []
     platform = Scripted([
         ModelResponse(text=unfinished, finish_reason="stop"),
@@ -222,7 +225,7 @@ def test_stop_while_introducing_next_action_is_retried_as_a_tool_call(tmp_path):
     assert recovery_messages[1].name == "loom_terminal_recovery"
     rejected = [event for event in runtime.store.events(session.session_id)
         if event.kind.value == "model_response_rejected"]
-    assert rejected[-1].data["reason"] == "unfinished_terminal_text"
+    assert rejected[-1].data["reason"] == reason
     runtime.close()
 
 

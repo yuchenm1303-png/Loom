@@ -154,6 +154,7 @@ class TurnRunner:
                             content=(
                                 _UNFINISHED_RECOVERY_INSTRUCTION
                                 if recovery_instruction in RESUMABLE_TERMINAL_REASONS
+                                or recovery_instruction == "unfulfilled_action_promise"
                                 else _TRUNCATED_RECOVERY_INSTRUCTION
                                 if recovery_partial
                                 else _TERMINAL_RECOVERY_INSTRUCTION
@@ -359,7 +360,12 @@ class TurnRunner:
                     # self-contained assistant message before validation/commit;
                     # otherwise Loom would permanently discard the already-shown
                     # prefix and make a successful recovery look truncated.
-                    if recovery_partial and response.text and not response.tool_calls:
+                    # An action promise is replayed as context, never appended to
+                    # the replacement answer: it is progress, not a cut-off prefix.
+                    if (
+                        recovery_partial and response.text and not response.tool_calls
+                        and recovery_instruction != "unfulfilled_action_promise"
+                    ):
                         merged_text = merge_recovery_text(recovery_partial, response.text)
                         if merged_text != response.text:
                             merged_response = replace(
@@ -421,6 +427,7 @@ class TurnRunner:
                     resume_from_partial = (
                         invalid_terminal.startswith("incomplete_finish:")
                         or invalid_terminal in RESUMABLE_TERMINAL_REASONS
+                        or invalid_terminal == "unfulfilled_action_promise"
                         or (
                             invalid_terminal == "unterminated_code_fence"
                             and "```loom-decision" in str(response.text or "")
