@@ -366,6 +366,7 @@ export function TranscriptScrollController({
     };
 
     const onPointerDown = (event: PointerEvent) => {
+      if (scroller.classList.contains("loom-custom-scrollable")) return;
       if (event.button !== 0 || scroller.scrollHeight <= scroller.clientHeight) return;
       const rect = scroller.getBoundingClientRect();
       const nativeGutter = Math.max(0, scroller.offsetWidth - scroller.clientWidth);

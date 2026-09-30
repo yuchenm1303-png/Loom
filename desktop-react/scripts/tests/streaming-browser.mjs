@@ -115,6 +115,15 @@ try {
     return el.scrollHeight - el.clientHeight - el.scrollTop < 3;
   });
 
+  const customThumb = page.locator(".loom-scroll-y:not([hidden]) .loom-scroll-thumb").first();
+  await customThumb.focus(); await page.keyboard.press("Home");
+  await page.evaluate((text) => window.renderScrolled(text + "\n\nMore output and another delta", true), longTable);
+  await frames(12);
+  assert.equal(await page.locator(".transcript-scroll").evaluate((el) => el.scrollTop), 0,
+    "custom scrollbar input detaches from live follow");
+  await customThumb.focus(); await page.keyboard.press("End");
+  await page.waitForFunction(() => !document.querySelector(".transcript-jump-latest").classList.contains("is-visible"));
+
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.evaluate(() => { window.resetStream(); window.renderStream("中".repeat(800), true); });
   assert.equal(await length(), 800);

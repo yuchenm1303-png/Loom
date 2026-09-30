@@ -6,6 +6,7 @@ import { MarkdownMessage } from "../../src/components/MarkdownMessage";
 import { TranscriptScrollController } from "../../src/components/TranscriptScrollController";
 import type { TranscriptItem } from "../../src/types/loom";
 import "../../src/styles.css";
+import "../../src/customScrollbars";
 
 const root = createRoot(document.getElementById("root")!);
 const fixtures = window as unknown as {

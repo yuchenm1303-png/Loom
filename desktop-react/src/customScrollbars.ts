@@ -2,6 +2,7 @@ import "./custom-scrollbars.css";
 
 type Bar = { target: HTMLElement; axis: "x" | "y"; track: HTMLDivElement; thumb: HTMLDivElement };
 const entries = new Map<HTMLElement, Bar[]>();
+const observedChildren = new Map<HTMLElement, Element>();
 const dirty = new Set<HTMLElement>();
 const added = new Set<Element>();
 let frame = 0;
@@ -39,6 +40,10 @@ function update(bar: Bar) {
     }
   }
   if (bottom <= top || right <= left) { bar.track.hidden = true; return; }
+  const hitX = vertical ? rect.right - 6 : (left + right) / 2;
+  const hitY = vertical ? (top + bottom) / 2 : rect.bottom - 6;
+  const hit = document.elementsFromPoint(hitX, hitY).find((node) => !host.contains(node));
+  if (hit && !el.contains(hit) && !hit.contains(el)) { bar.track.hidden = true; return; }
   const trackLength = Math.max(1, length - 4);
   const size = Math.min(trackLength, Math.max(24, trackLength * viewport / extent));
   const offset = (trackLength - size) * Math.max(0, position) / Math.max(1, extent - viewport);
@@ -125,7 +130,7 @@ function register(el: HTMLElement) {
   entries.set(el, bars);
   el.classList.add("loom-custom-scrollable");
   resize.observe(el);
-  if (el.firstElementChild) resize.observe(el.firstElementChild);
+  if (el.firstElementChild) { resize.observe(el.firstElementChild); observedChildren.set(el, el.firstElementChild); }
   schedule(el);
 }
 
@@ -140,9 +145,20 @@ function flush() {
   for (const node of added) if (node.isConnected) discover(node);
   added.clear();
   for (const [target, bars] of entries) if (!target.isConnected) {
-    bars.forEach((bar) => bar.track.remove()); resize.unobserve(target); entries.delete(target); dirty.delete(target);
+    bars.forEach((bar) => bar.track.remove()); resize.unobserve(target);
+    const child = observedChildren.get(target);
+    if (child) resize.unobserve(child);
+    observedChildren.delete(target); entries.delete(target); dirty.delete(target);
   }
-  for (const target of dirty) entries.get(target)?.forEach(update);
+  for (const target of dirty) {
+    const previous = observedChildren.get(target);
+    if (previous !== target.firstElementChild) {
+      if (previous) resize.unobserve(previous);
+      observedChildren.delete(target);
+      if (target.firstElementChild) { resize.observe(target.firstElementChild); observedChildren.set(target, target.firstElementChild); }
+    }
+    entries.get(target)?.forEach(update);
+  }
   dirty.clear();
 }
 
@@ -155,11 +171,19 @@ function onScroll(event: Event) {
 function updateAll() { for (const el of entries.keys()) schedule(el); }
 const mutation = new MutationObserver((records) => {
   for (const record of records) {
-    if (!(record.target instanceof Element) || host.contains(record.target)) continue;
-    markAncestors(record.target);
-    if (record.type === "attributes") { added.add(record.target); schedule(); }
-    for (const node of record.addedNodes) if (node instanceof Element) { added.add(node); schedule(); }
-    if (record.removedNodes.length) schedule();
+    const target = record.target instanceof Element ? record.target : record.target.parentElement;
+    if (!target || host.contains(target)) continue;
+    markAncestors(target);
+    if (record.type === "attributes") { added.add(target); schedule(); }
+    for (const node of record.addedNodes) if (node instanceof Element) {
+      added.add(node); schedule();
+      if (node.matches('[role="dialog"], [role="menu"], .settings-host, .global-context-menu')) updateAll();
+    }
+    if (record.removedNodes.length) {
+      schedule();
+      if (Array.from(record.removedNodes).some((node) => node instanceof Element
+        && node.matches('[role="dialog"], [role="menu"], .settings-host, .global-context-menu'))) updateAll();
+    }
   }
 });
 host = document.createElement("div");
@@ -168,11 +192,14 @@ document.body.append(host);
 discover(document.body);
 mutation.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ["class"], characterData: true });
 document.addEventListener("scroll", onScroll, true);
+const onInput = (event: Event) => { if (event.target instanceof Element) markAncestors(event.target); };
+document.addEventListener("input", onInput, true);
 window.addEventListener("resize", updateAll);
 document.addEventListener("transitionend", updateAll);
 if (import.meta.hot) import.meta.hot.dispose(() => {
   mutation.disconnect(); resize.disconnect(); cancelAnimationFrame(frame);
   entries.forEach((_bars, target) => target.classList.remove("loom-custom-scrollable"));
   host.remove(); document.removeEventListener("scroll", onScroll, true);
+  document.removeEventListener("input", onInput, true);
   window.removeEventListener("resize", updateAll); document.removeEventListener("transitionend", updateAll);
 });
