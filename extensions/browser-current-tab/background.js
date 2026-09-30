@@ -46,6 +46,49 @@ const HUD_TAB_QUERY = "loom-hud-tab-id";
 // Keep debugger attachments for the browser session. Attaching and detaching
 // around every screenshot or input makes Chromium's debugging banner flash.
 const attachedDebuggerTabs = new Set();
+const TAB_SESSION_IDS_KEY = "loomTabSessionIds";
+let ownershipQueue = Promise.resolve();
+const commandQueues = new Map();
+const inFlightCommands = new Set();
+const windowQueues = new Map();
+
+function withWindowLock(windowId, work) {
+  const previous = windowQueues.get(windowId) || Promise.resolve();
+  const next = previous.catch(() => {}).then(work);
+  windowQueues.set(windowId, next);
+  return next.finally(() => {
+    if (windowQueues.get(windowId) === next) windowQueues.delete(windowId);
+  });
+}
+
+function withOwnershipLock(work) {
+  const next = ownershipQueue.then(work);
+  ownershipQueue = next.catch(() => {});
+  return next;
+}
+
+const commandSession = (args = {}) => String(args.session_id || "legacy");
+
+async function tabAvailable(tabId, args) {
+  const stored = await chrome.storage.session.get(TAB_SESSION_IDS_KEY);
+  const owner = (stored[TAB_SESSION_IDS_KEY] || {})[String(tabId)];
+  return !owner || owner === commandSession(args);
+}
+
+async function claimTab(tab, args) {
+  return withOwnershipLock(async () => {
+    const stored = await chrome.storage.session.get(TAB_SESSION_IDS_KEY);
+    const owners = { ...(stored[TAB_SESSION_IDS_KEY] || {}) };
+    const key = String(tab.id);
+    const session = commandSession(args);
+    if (owners[key] && owners[key] !== session) {
+      throw new Error("This tab is controlled by another Loom task; use a different tab.");
+    }
+    owners[key] = session;
+    await chrome.storage.session.set({ [TAB_SESSION_IDS_KEY]: owners });
+    return tab;
+  });
+}
 
 chrome.debugger.onDetach.addListener((source) => {
   if (typeof source.tabId === "number") attachedDebuggerTabs.delete(source.tabId);
@@ -139,7 +182,21 @@ async function pollOnce() {
   const payload = await response.json();
   if (!payload.command) return;
   const command = payload.command;
-  bridgeRuntime.phase = "executing";
+  // Poll again while another session is waiting on a page. Commands belonging
+  // to one controller stay ordered; different controllers run independently.
+  const session = commandSession(command.args);
+  const previous = commandQueues.get(session) || Promise.resolve();
+  const job = previous.catch(() => {}).then(() => executeCommand(command));
+  commandQueues.set(session, job);
+  inFlightCommands.add(job);
+  job.catch((cause) => console.warn("[loom-browser-bridge]", cause)).finally(() => {
+    inFlightCommands.delete(job);
+    if (commandQueues.get(session) === job) commandQueues.delete(session);
+  });
+  if (inFlightCommands.size >= 8) await Promise.race([...inFlightCommands].map((job) => job.catch(() => {})));
+}
+
+async function executeCommand(command) {
   let result = null;
   let ok = false;
   let error = "";
@@ -149,7 +206,6 @@ async function pollOnce() {
   } catch (cause) {
     error = cause instanceof Error ? cause.message : String(cause);
   }
-  bridgeRuntime.phase = "reporting";
   await bridgeFetch("/browser-extension/v1/result", {
     method: "POST",
     body: JSON.stringify({ id: command.id, ok, result, error }),
@@ -166,7 +222,7 @@ async function startPolling() {
       // reported commands. Alarms and clicks may request a check, but neither
       // can reload the worker concurrently with a browser action.
       bridgeRuntime.phase = "idle";
-      if (bridgeRuntime.updateRequested) {
+      if (bridgeRuntime.updateRequested && inFlightCommands.size === 0) {
         bridgeRuntime.updateRequested = false;
         await applyInstalledUpdateAtCommandBoundary();
       }
@@ -210,10 +266,24 @@ async function tabFromArgs(args = {}) {
   if (raw) {
     const tabId = Number.parseInt(raw, 10);
     if (!Number.isInteger(tabId)) throw new Error("tab_id must be numeric for the extension backend");
-    return chrome.tabs.get(tabId);
+    const tab = await chrome.tabs.get(tabId);
+    if (!(await tabAvailable(tabId, args))) throw new Error("This tab is controlled by another Loom task; use a different tab.");
+    return tab;
   }
   const tab = await queryActiveTab();
   if (!tab || typeof tab.id !== "number") throw new Error("Active browser tab has no tab id");
+  if (args.session_id) {
+    const stored = await chrome.storage.session.get(TAB_SESSION_IDS_KEY);
+    const owners = stored[TAB_SESSION_IDS_KEY] || {};
+    const tabs = await chrome.tabs.query({});
+    const mine = tabs.find((item) => owners[String(item.id)] === commandSession(args));
+    if (mine) return mine;
+    if (!(await tabAvailable(tab.id, args))) {
+      const { own } = await ownedTabIds();
+      const free = tabs.find((item) => own.includes(item.id) && !owners[String(item.id)]);
+      return free || await placeInLoomGroup(await chrome.tabs.create({ url: "about:blank", active: false }));
+    }
+  }
   return tab;
 }
 
@@ -304,21 +374,28 @@ async function isLoomWorkTab(tab) {
 
 async function markLoomWorkTab(tab, { adopted = false } = {}) {
   if (!tab || typeof tab.id !== "number") return tab;
-  const key = adopted ? ADOPTED_TAB_IDS_KEY : OWNED_TAB_IDS_KEY;
-  const stored = await chrome.storage.session.get(key);
-  const ids = new Set(Array.isArray(stored[key]) ? stored[key] : []);
-  ids.add(tab.id);
-  await chrome.storage.session.set({ [key]: [...ids] });
-  return tab;
+  return withOwnershipLock(async () => {
+    const key = adopted ? ADOPTED_TAB_IDS_KEY : OWNED_TAB_IDS_KEY;
+    const stored = await chrome.storage.session.get(key);
+    const ids = new Set(Array.isArray(stored[key]) ? stored[key] : []);
+    ids.add(tab.id);
+    await chrome.storage.session.set({ [key]: [...ids] });
+    return tab;
+  });
 }
 
 async function forgetLoomWorkTab(tabId) {
-  const stored = await chrome.storage.session.get([OWNED_TAB_IDS_KEY, ADOPTED_TAB_IDS_KEY]);
-  const drop = (key) => {
-    const ids = Array.isArray(stored[key]) ? stored[key] : [];
-    return { [key]: ids.filter((id) => id !== tabId) };
-  };
-  await chrome.storage.session.set({ ...drop(OWNED_TAB_IDS_KEY), ...drop(ADOPTED_TAB_IDS_KEY) });
+  await withOwnershipLock(async () => {
+    const stored = await chrome.storage.session.get([TAB_SESSION_IDS_KEY, OWNED_TAB_IDS_KEY, ADOPTED_TAB_IDS_KEY]);
+    const owners = { ...(stored[TAB_SESSION_IDS_KEY] || {}) };
+    delete owners[String(tabId)];
+    await chrome.storage.session.set({ [TAB_SESSION_IDS_KEY]: owners });
+    const drop = (key) => {
+      const ids = Array.isArray(stored[key]) ? stored[key] : [];
+      return { [key]: ids.filter((id) => id !== tabId) };
+    };
+    await chrome.storage.session.set({ ...drop(OWNED_TAB_IDS_KEY), ...drop(ADOPTED_TAB_IDS_KEY) });
+  });
   await forgetElements(tabId);
 }
 
@@ -334,23 +411,27 @@ async function hudTabIds() {
 
 async function markHudTab(tabId) {
   if (!Number.isInteger(tabId)) return;
-  try {
-    const ids = await hudTabIds();
-    // Same reason markSessionActive diffs: storage.set does not, and every write
-    // wakes the HUD listener in every page that holds one.
-    if (ids.includes(tabId)) return;
-    await chrome.storage.session.set({ [HUD_TAB_IDS_KEY]: [...ids, tabId] });
-  } catch (cause) {
-    console.warn("[loom-browser-bridge] could not record the driven tab", cause);
-  }
+  return withOwnershipLock(async () => {
+    try {
+      const ids = await hudTabIds();
+      // Same reason markSessionActive diffs: storage.set does not, and every write
+      // wakes the HUD listener in every page that holds one.
+      if (ids.includes(tabId)) return;
+      await chrome.storage.session.set({ [HUD_TAB_IDS_KEY]: [...ids, tabId] });
+    } catch (cause) {
+      console.warn("[loom-browser-bridge] could not record the driven tab", cause);
+    }
+  });
 }
 
 async function forgetHudTab(tabId) {
-  try {
-    const ids = await hudTabIds();
-    if (!ids.includes(tabId)) return;
-    await chrome.storage.session.set({ [HUD_TAB_IDS_KEY]: ids.filter((id) => id !== tabId) });
-  } catch (_) {}
+  return withOwnershipLock(async () => {
+    try {
+      const ids = await hudTabIds();
+      if (!ids.includes(tabId)) return;
+      await chrome.storage.session.set({ [HUD_TAB_IDS_KEY]: ids.filter((id) => id !== tabId) });
+    } catch (_) {}
+  });
 }
 
 // The tab a command is really acting on, which is the only tab whose HUD should
@@ -385,23 +466,33 @@ async function markSessionActive(active) {
   }
 }
 
-async function releaseTabs() {
-  const attached = [...attachedDebuggerTabs];
-  attachedDebuggerTabs.clear();
-  await Promise.all(attached.map((tabId) => chrome.debugger.detach({ tabId }).catch(() => {})));
-  // Only the borrowed ones. Releasing Loom's own tabs too made every new session
-  // fail to recognise the tab it had just been working in, so it opened another,
-  // and another - it fought the user for the foreground instead of staying put.
-  // The group is left alone: the tabs stay visible and the next session reuses
-  // the group rather than stacking up a second one.
-  const stored = await chrome.storage.session.get(ADOPTED_TAB_IDS_KEY);
-  const released = Array.isArray(stored[ADOPTED_TAB_IDS_KEY]) ? stored[ADOPTED_TAB_IDS_KEY].length : 0;
-  await chrome.storage.session.remove(ADOPTED_TAB_IDS_KEY);
-  // Loom's own tabs stay Loom's, but nothing is being driven any more, so no tab
-  // keeps the HUD once the browser is handed back.
-  await chrome.storage.session.remove(HUD_TAB_IDS_KEY);
-  await markSessionActive(false);
-  return { released };
+async function releaseTabs(args = {}) {
+  return withOwnershipLock(async () => {
+    const session = commandSession(args);
+    const leases = await chrome.storage.session.get(TAB_SESSION_IDS_KEY);
+    const owners = { ...(leases[TAB_SESSION_IDS_KEY] || {}) };
+    const tabs = Object.keys(owners).filter((id) => owners[id] === session).map(Number);
+    const attached = tabs.filter((id) => attachedDebuggerTabs.has(id));
+    attached.forEach((id) => attachedDebuggerTabs.delete(id));
+    await Promise.all(attached.map((tabId) => chrome.debugger.detach({ tabId }).catch(() => {})));
+    // Only the borrowed ones. Releasing Loom's own tabs too made every new session
+    // fail to recognise the tab it had just been working in, so it opened another,
+    // and another - it fought the user for the foreground instead of staying put.
+    // The group is left alone: the tabs stay visible and the next session reuses
+    // the group rather than stacking up a second one.
+    const stored = await chrome.storage.session.get(ADOPTED_TAB_IDS_KEY);
+    const adopted = Array.isArray(stored[ADOPTED_TAB_IDS_KEY]) ? stored[ADOPTED_TAB_IDS_KEY] : [];
+    const released = adopted.filter((id) => tabs.includes(id)).length;
+    await chrome.storage.session.set({ [ADOPTED_TAB_IDS_KEY]: adopted.filter((id) => !tabs.includes(id)) });
+    // Loom's own tabs stay Loom's, but nothing is being driven any more, so no tab
+    // keeps the HUD once the browser is handed back.
+    const hud = await hudTabIds();
+    await chrome.storage.session.set({ [HUD_TAB_IDS_KEY]: hud.filter((id) => !tabs.includes(id)) });
+    tabs.forEach((id) => delete owners[String(id)]);
+    await chrome.storage.session.set({ [TAB_SESSION_IDS_KEY]: owners });
+    await markSessionActive(Object.keys(owners).length > 0);
+    return { released };
+  });
 }
 
 async function placeInLoomGroup(tab, { adopted = false } = {}) {
@@ -491,20 +582,24 @@ async function collectStateForTab(tab, options = {}) {
 }
 
 async function rememberElements(tabId, elements) {
-  // Only the opaque loom_id is kept: it is all elementRefFor needs, and storing
-  // the serialized element would put page text into extension storage.
-  const ids = (Array.isArray(elements) ? elements : []).map((item) => String(item?.loom_id || ""));
-  const stored = await chrome.storage.session.get(ELEMENT_IDS_KEY);
-  const byTab = { ...(stored[ELEMENT_IDS_KEY] || {}) };
-  byTab[String(tabId)] = ids;
-  await chrome.storage.session.set({ [ELEMENT_IDS_KEY]: byTab });
+  return withOwnershipLock(async () => {
+    // Only the opaque loom_id is kept: it is all elementRefFor needs, and storing
+    // the serialized element would put page text into extension storage.
+    const ids = (Array.isArray(elements) ? elements : []).map((item) => String(item?.loom_id || ""));
+    const stored = await chrome.storage.session.get(ELEMENT_IDS_KEY);
+    const byTab = { ...(stored[ELEMENT_IDS_KEY] || {}) };
+    byTab[String(tabId)] = ids;
+    await chrome.storage.session.set({ [ELEMENT_IDS_KEY]: byTab });
+  });
 }
 
 async function forgetElements(tabId) {
-  const stored = await chrome.storage.session.get(ELEMENT_IDS_KEY);
-  const byTab = { ...(stored[ELEMENT_IDS_KEY] || {}) };
-  delete byTab[String(tabId)];
-  await chrome.storage.session.set({ [ELEMENT_IDS_KEY]: byTab });
+  return withOwnershipLock(async () => {
+    const stored = await chrome.storage.session.get(ELEMENT_IDS_KEY);
+    const byTab = { ...(stored[ELEMENT_IDS_KEY] || {}) };
+    delete byTab[String(tabId)];
+    await chrome.storage.session.set({ [ELEMENT_IDS_KEY]: byTab });
+  });
 }
 
 async function elementRefFor(tabId, index) {
@@ -600,6 +695,7 @@ async function navigate(args) {
     : destination.preserveUrl
       ? await focusExistingTab(destination.tab)
       : await chrome.tabs.update(destination.tab.id, { url });
+  await claimTab(tab, args);
   await markHudTab(tab.id);
   if (!destination.preserveUrl) await waitForTabComplete(tab.id);
   return collectStateForTab(await chrome.tabs.get(tab.id), { showHud: true });
@@ -607,14 +703,16 @@ async function navigate(args) {
 
 async function focusExistingTab(tab) {
   const adopted = (await isLoomWorkTab(tab)) ? tab : await placeInLoomGroup(tab, { adopted: true });
-  const active = await chrome.tabs.update(adopted.id, { active: true });
-  // Best effort, like every other focus change here. The tab is already
-  // activated by this point, so a window that was closed or is being dragged
-  // out from under us must not turn a navigation that worked into a failure.
-  if (typeof active.windowId === "number") {
-    await chrome.windows.update(active.windowId, { focused: true }).catch(() => {});
-  }
-  return chrome.tabs.get(active.id);
+  return withWindowLock(adopted.windowId, async () => {
+    const active = await chrome.tabs.update(adopted.id, { active: true });
+    // Best effort, like every other focus change here. The tab is already
+    // activated by this point, so a window that was closed or is being dragged
+    // out from under us must not turn a navigation that worked into a failure.
+    if (typeof active.windowId === "number") {
+      await chrome.windows.update(active.windowId, { focused: true }).catch(() => {});
+    }
+    return chrome.tabs.get(active.id);
+  });
 }
 
 async function resolveNavigationDestination(args, url) {
@@ -626,7 +724,11 @@ async function resolveNavigationDestination(args, url) {
   // window is preferable to a duplicate Loom tab. Query strings and fragments
   // often contain rotating console/OAuth/session tokens, so origin + pathname is
   // the stable identity used after an exact match.
-  const candidates = await chrome.tabs.query({});
+  const allCandidates = await chrome.tabs.query({});
+  const candidates = [];
+  for (const candidate of allCandidates) {
+    if (await tabAvailable(candidate.id, args)) candidates.push(candidate);
+  }
   const exact = candidates.find((candidate) => {
     if (!isInjectableUrl(candidate.url || "")) return false;
     try { return new URL(candidate.url).href === targetUrl; } catch (_) { return false; }
@@ -657,20 +759,32 @@ async function resolveNavigationDestination(args, url) {
   // authenticated live session and must beat an exact tokenless duplicate.
   const reusable = target.search ? (exact || samePage) : (samePage || exact);
   if (reusable) {
+    try {
+      await claimTab(reusable, args);
+    } catch (cause) {
+      if (!String(cause.message).includes("another Loom task")) throw cause;
+      return { create: true, tab: current };
+    }
     return {
       create: false,
       tab: (await isLoomWorkTab(reusable)) ? reusable : await placeInLoomGroup(reusable, { adopted: true }),
       preserveUrl: true,
     };
   }
-  if (await isLoomWorkTab(current)) return { create: false, tab: current };
+  if (await isLoomWorkTab(current)) {
+    await claimTab(current, args);
+    return { create: false, tab: current };
+  }
   // A session binds to whatever the user happened to be looking at, so "current"
   // is usually their tab, not Loom's. Without this, every session concluded it had
   // no work tab and opened another one. Loom's own tab in this window is the work
   // tab regardless of where the user's attention is.
   const { own } = await ownedTabIds();
   const mine = candidates.find((candidate) => own.includes(candidate.id));
-  if (mine) return { create: false, tab: mine };
+  if (mine) {
+    await claimTab(mine, args);
+    return { create: false, tab: mine };
+  }
   return { create: true, tab: current };
 }
 
@@ -1166,21 +1280,23 @@ async function switchTab(args) {
   const tabId = Number.parseInt(String(args.tab_id || ""), 10);
   if (!Number.isInteger(tabId)) throw new Error("tab_id must be numeric for the extension backend");
   const target = await chrome.tabs.get(tabId);
-  await chrome.tabs.update(tabId, { active: true });
-  // The switch has already happened; raising the window is the finishing touch
-  // and not worth failing the call over.
-  if (typeof target.windowId === "number") {
-    await chrome.windows.update(target.windowId, { focused: true }).catch(() => {});
-  }
-  await markHudTab(tabId);
-  return collectStateForTab(await chrome.tabs.get(tabId), { showHud: true });
+  return withWindowLock(target.windowId, async () => {
+    await chrome.tabs.update(tabId, { active: true });
+    // The switch has already happened; raising the window is the finishing touch
+    // and not worth failing the call over.
+    if (typeof target.windowId === "number") {
+      await chrome.windows.update(target.windowId, { focused: true }).catch(() => {});
+    }
+    await markHudTab(tabId);
+    return collectStateForTab(await chrome.tabs.get(tabId), { showHud: true });
+  });
 }
 
 async function closeTab(args) {
   const tabId = Number.parseInt(String(args.tab_id || ""), 10);
   if (!Number.isInteger(tabId)) throw new Error("tab_id must be numeric for the extension backend");
   await chrome.tabs.remove(tabId);
-  return collectStateForTab(await tabFromArgs({}), { showHud: true });
+  return collectStateForTab(await tabFromArgs({ ...args, tab_id: "" }), { showHud: true });
 }
 
 async function screenshot(args) {
@@ -1216,18 +1332,22 @@ async function screenshot(args) {
   // visible tab, so a background capture would silently hand back a picture of
   // whatever the user is reading. Front Loom's tab just long enough, then put
   // the user back where they were.
-  let restore = null;
-  if (!tab.active) {
-    const [previous] = await chrome.tabs.query({ active: true, windowId: tab.windowId });
-    restore = previous && previous.id !== tab.id ? previous.id : null;
-    await chrome.tabs.update(tab.id, { active: true });
-  }
-  let dataUrl;
-  try {
-    dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "png" });
-  } finally {
-    if (restore !== null) await chrome.tabs.update(restore, { active: true }).catch(() => {});
-  }
+  const dataUrl = await withWindowLock(tab.windowId, async () => {
+    const current = await chrome.tabs.get(tab.id);
+    let restore = null;
+    if (!current.active) {
+      const [previous] = await chrome.tabs.query({ active: true, windowId: tab.windowId });
+      restore = previous && previous.id !== tab.id ? previous.id : null;
+      await chrome.tabs.update(tab.id, { active: true });
+    }
+    let captured;
+    try {
+      captured = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "png" });
+    } finally {
+      if (restore !== null) await chrome.tabs.update(restore, { active: true }).catch(() => {});
+    }
+    return captured;
+  });
   if (isInjectableUrl(tab.url || "")) {
     await inject(tab.id, runPageAction, ["hud_status", { title: "Screenshot captured", subtitle: "Saved into Loom workspace" }]).catch(() => {});
   }
@@ -1238,6 +1358,35 @@ async function screenshot(args) {
 }
 
 async function dispatchCommand(action, args) {
+  if (action !== "release_tabs" && action !== "downloads") {
+    let tab = await tabFromArgs(args);
+    try {
+      await claimTab(tab, args);
+    } catch (cause) {
+      // Two controllers can start against the same foreground tab. Only the
+      // winner adopts it; the other gets a separate work tab, not a busy error.
+      if (args.tab_id || !String(cause.message).includes("another Loom task")) throw cause;
+      tab = await placeInLoomGroup(await chrome.tabs.create({ url: "about:blank", active: false }));
+      await claimTab(tab, args);
+    }
+    args = { ...args, tab_id: String(tab.id) };
+  }
+  const result = await performCommand(action, args);
+  if (result?.page_info?.tab_id) {
+    await claimTab(await chrome.tabs.get(Number(result.page_info.tab_id)), args);
+    result.page_info.session_id = commandSession(args);
+  }
+  if (Array.isArray(result?.tabs)) {
+    const visible = [];
+    for (const tab of result.tabs) {
+      if (await tabAvailable(Number(tab.tab_id), args)) visible.push(tab);
+    }
+    result.tabs = visible;
+  }
+  return result;
+}
+
+async function performCommand(action, args) {
   // Any command means Loom is driving this browser, and release_tabs is the one
   // that ends the session. Recording it here rather than at a session-start hook
   // keeps the flag true for the whole time commands are arriving, including after
@@ -1270,7 +1419,7 @@ async function dispatchCommand(action, args) {
     case "cookies": return listCookies(args);
     case "clear_cookies": return clearCookies(args);
     case "downloads": return listDownloads(args);
-    case "release_tabs": return releaseTabs();
+    case "release_tabs": return releaseTabs(args);
     default: throw new Error(`Unsupported Loom browser extension action: ${action}`);
   }
 }
