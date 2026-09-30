@@ -1,7 +1,7 @@
 /* Loom chat mascot ---------------------------------------------------------
- * A tiny pixel companion that sits on the upper-right edge of the composer.
- * Keep this layer presentation-only so it never steals clicks, focus, drops,
- * or panel interactions from the composer underneath it.
+ * Pixel companion perched on the upper-right edge of the composer.
+ * Keep the sprite on an integer pixel grid: Chromium can corrupt/pancake a
+ * pixel-art background when it is continuously GPU-scaled on a pseudo element.
  */
 
 .composer-stage {
@@ -13,76 +13,55 @@
   content: "";
   position: absolute;
   z-index: 36;
-  right: max(28px, calc((100% - var(--content-width)) / 2 + 14px));
-  bottom: calc(100% - 17px);
-  width: 94px;
-  aspect-ratio: 1;
+  right: max(30px, calc((100% - var(--content-width)) / 2 + 18px));
+  bottom: calc(100% - 10px);
+  width: 64px;
+  height: 64px;
   pointer-events: none;
   user-select: none;
-  background: url("./assets/loom-mascot.png") center bottom / contain no-repeat;
+  background-image: url("./assets/loom-mascot.png");
+  background-repeat: no-repeat;
+  background-position: center bottom;
+  background-size: 64px 64px;
   image-rendering: pixelated;
-  transform-origin: 58% 100%;
-  translate: 0 0;
-  scale: 1;
-  filter: drop-shadow(0 5px 7px rgba(34, 28, 72, .16));
-  will-change: translate, scale, filter;
-  transition:
-    translate 220ms cubic-bezier(.2, .78, .2, 1),
-    scale 220ms cubic-bezier(.2, .78, .2, 1),
-    filter 220ms ease,
-    opacity 180ms ease;
-  animation: loom-mascot-idle 6.8s ease-in-out infinite;
+  image-rendering: crisp-edges;
+  transform: none;
+  translate: none;
+  scale: none;
+  will-change: auto;
+  transition: bottom 180ms cubic-bezier(.2, .78, .2, 1), opacity 160ms ease;
+  animation: loom-mascot-idle-safe 7.2s steps(1, end) infinite;
 }
 
-/* A tiny acknowledgement when the pointer reaches the composer. It feels like
-   the mascot notices the user without turning the pet into another button. */
+/* Notice the user without scaling the bitmap. Moving by whole CSS pixels keeps
+   the sprite crisp and avoids the flattened/compositor-artifact seen before. */
 .composer-stage:has(.composer:hover)::after,
 .composer-stage:has(.composer:focus-within)::after {
-  translate: 0 -3px;
-  scale: 1.025;
-  filter:
-    drop-shadow(0 6px 9px rgba(34, 28, 72, .18))
-    drop-shadow(0 0 5px rgba(127, 111, 235, .10));
+  bottom: calc(100% - 8px);
 }
 
-/* The conversation stage is immediately before the composer stage in App.
-   Reuse that existing running state so no extra React state or subscriptions
-   are needed for the pet. */
+/* The conversation stage is immediately before the composer stage in App. */
 .conversation-stage.is-running + .composer-stage::after {
-  animation: loom-mascot-working 2.15s ease-in-out infinite;
-  filter:
-    drop-shadow(0 6px 10px rgba(34, 28, 72, .18))
-    drop-shadow(0 0 7px rgba(137, 119, 245, .14));
+  animation: loom-mascot-working-safe 2.4s steps(1, end) infinite;
 }
 
-html[data-loom-theme="light"] .composer-stage::after {
-  filter: drop-shadow(0 5px 7px rgba(54, 47, 86, .12));
+@keyframes loom-mascot-idle-safe {
+  0%, 83%, 89%, 95%, 100% { bottom: calc(100% - 10px); }
+  86%, 92% { bottom: calc(100% - 11px); }
 }
 
-html[data-loom-theme="light"] .conversation-stage.is-running + .composer-stage::after {
-  filter:
-    drop-shadow(0 5px 8px rgba(54, 47, 86, .13))
-    drop-shadow(0 0 6px rgba(117, 98, 226, .10));
-}
-
-@keyframes loom-mascot-idle {
-  0%, 82%, 100% { translate: 0 0; }
-  86% { translate: 0 -1px; }
-  89% { translate: 0 0; }
-  93% { translate: 0 -2px; }
-  96% { translate: 0 0; }
-}
-
-@keyframes loom-mascot-working {
-  0%, 100% { translate: 0 0; scale: 1; }
-  50% { translate: 0 -2px; scale: 1.012; }
+@keyframes loom-mascot-working-safe {
+  0%, 100% { bottom: calc(100% - 10px); }
+  50% { bottom: calc(100% - 12px); }
 }
 
 @media (max-width: 760px) {
   .composer-stage::after {
-    right: 16px;
-    bottom: calc(100% - 15px);
-    width: 76px;
+    right: 18px;
+    bottom: calc(100% - 9px);
+    width: 64px;
+    height: 64px;
+    background-size: 64px 64px;
   }
 }
 
