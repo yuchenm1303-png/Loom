@@ -12,6 +12,7 @@ import { applyRendererScale, installNativeRendererScaleSync } from "./rendererSc
 import { installWebBridge, isLoomWebRuntime } from "./webBridge";
 import "./starterCardPointerGlow";
 import "./pointerClick";
+import "./customPointer";
 import "./customScrollbars";
 import "./styles.css";
 import "./shell-fix.css";
