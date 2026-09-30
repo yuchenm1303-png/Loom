@@ -1,9 +1,12 @@
 """Contracts for the live capsule motion language in the transcript.
 
-Thinking capsules unroll from their bead; task capsules appear at full width
-so commands are readable immediately. Icons retain their spring motion. These tests pin the
-parts that are easy to regress silently: text-bearing surfaces never animate
-transforms, only the live anchor animates, and history never replays motion.
+Thinking capsules unroll from their bead. Task capsules inflate from a shallow
+clip with their body lit from inside, so commands are readable from frame 0;
+the same light returns in the outcome colour when a task settles and, softly,
+when the user opens a group. Icons retain their spring motion. These tests pin
+the parts that are easy to regress silently: text-bearing surfaces never
+animate transforms, only the live anchor animates, and history never replays
+motion.
 """
 
 import re
@@ -139,9 +142,12 @@ def test_only_the_live_anchor_group_animates() -> None:
     transcript = read(TRANSCRIPT)
     motion = read(MOTION)
 
-    assert "const liveActivityBlocks = useMemo(() => {" in transcript
-    assert "index === blocks.length - 1 || block.items.some((item) => isActiveActivityStatus(itemStatus(item)))" in transcript
-    assert "keepOpen={liveActivityBlocks.has(index)}" in transcript
+    # A group is the live anchor while one of its rows is genuinely active, or
+    # (between tool batches) while it is the latest group of a turn that is
+    # still alive. Everything else is history.
+    assert "const activeActivityBlocks = useMemo(() => {" in transcript
+    assert "if (block.items.some((item) => isActiveActivityStatus(itemStatus(item)))) live.add(index);" in transcript
+    assert "keepOpen={activeActivityBlocks.has(index) || continuingActivityBlock === index}" in transcript
     assert "keepOpen={keepActivityOpen}" not in transcript
 
     # Every birth/tick rule is scoped to the running anchor of a live turn, so
@@ -280,6 +286,12 @@ def test_reduced_motion_outranks_every_capsule_birth() -> None:
         ".turn-process.is-live .task-flow-group-title",
         ".turn-process.is-live .task-flow-status::after",
         ".turn-process.is-live .task-flow-status-dot",
+        ".turn-process.is-live .task-flow-group.is-running .task-flow-group-header::before",
+        ".turn-process.is-live .task-flow-group.is-running .task-flow-row::before",
+        ".turn-process.is-live .task-flow-group.is-running .task-flow-chevron",
+        ".task-flow-group.is-unfolding .task-flow-row",
+        ".task-flow-group.is-unfolding .task-flow-row::before",
+        ".task-flow-group.is-unfolding .task-flow-row-icon",
     ):
         assert selector + "," in media
         assert ':root[data-loom-reduced-motion="true"] ' + selector + "," in setting
@@ -291,3 +303,99 @@ def test_reasoning_capsule_stays_inside_folding_clip() -> None:
                   if selector == ".live-reasoning" and "display: grid" in body)
     assert "margin-top: 0;" in layout
     assert not re.search(r"margin-top:\s*-", layout)
+
+
+def test_capsule_inflate_is_a_shallow_clip_that_never_hides_text() -> None:
+    motion = read(MOTION)
+
+    for name, horizontal in (("loom-capsule-swell", "6%"), ("loom-capsule-swell-header", "8px")):
+        frames = keyframes(motion, name)
+        # A clip, never a transform or a fade: text-bearing surfaces stay native.
+        assert "clip-path" in frames
+        assert not TRANSFORM_PROPERTY.search(frames) and "opacity" not in frames
+        # The first frame is only a little smaller than the capsule, so every
+        # command is readable from frame 0 (the bead-sized clip that once hid
+        # commands is reserved for thinking capsules).
+        assert f"clip-path: inset(4px {horizontal} 4px {horizontal} round 999px)" in frames
+        # It opens past the border box so the capsule's own shadow is revealed
+        # before the clip is released.
+        assert "inset(-26px -26px -26px -26px round 999px)" in frames
+
+    row_rules = [body for selector, body in rules(motion)
+                 if selector == ".turn-process.is-live .task-flow-group.is-running .task-flow-row"]
+    assert len(row_rules) == 1
+    assert "loom-task-capsule-land" in row_rules[0] and "loom-capsule-swell" in row_rules[0]
+    assert "loom-capsule-unroll" not in row_rules[0]
+
+
+def test_capsule_light_is_paint_only_and_rides_the_clip() -> None:
+    motion = read(MOTION)
+    swell = keyframes(motion, "loom-capsule-swell")
+
+    for name in ("loom-capsule-glow", "loom-capsule-confirm"):
+        frames = keyframes(motion, name)
+        # The light tracks the clip edge (inset) and paints an inner shadow.
+        assert "inset:" in frames and "box-shadow" in frames
+        # Paint properties only: no compositor layer is ever created over text.
+        assert not TRANSFORM_PROPERTY.search(frames)
+        assert "opacity" not in frames and "filter" not in frames
+        # Same stops as the clip it rides, so the glow edge hugs the capsule.
+        for stop in ("0% {", "58% {", "100% {"):
+            assert stop in frames and stop in swell
+
+
+def test_status_flip_restarts_the_light_in_the_outcome_colour() -> None:
+    motion = read(MOTION)
+
+    # A running row ignites in the accent colour; a settling row confirms in its
+    # outcome colour. The animation *name* differs, and that is what restarts it.
+    assert (".turn-process.is-live .task-flow-group.is-running .task-flow-row.is-active::before {\n"
+            "  animation: loom-capsule-glow") in motion
+    assert (".turn-process.is-live .task-flow-group.is-running .task-flow-row.is-resting::before {\n"
+            "  animation: loom-capsule-confirm") in motion
+    assert "--capsule-glow: var(--semantic-success-strong" in motion
+    assert "--capsule-glow: var(--semantic-danger-strong" in motion
+    assert ".task-flow-row.is-resting:has(.task-flow-status:is(.failed, .denied))" in motion
+    # Outcome colours belong to the live anchor; opening a group later is not a
+    # verdict, so those rows keep the accent light.
+    assert "\n.task-flow-group .task-flow-row.is-resting {" not in motion
+
+
+def test_unfold_is_user_initiated_and_transient() -> None:
+    transcript = read(TRANSCRIPT)
+    motion = read(MOTION)
+
+    assert "const [unfolding, setUnfolding] = useState(false);" in transcript
+    assert "setUnfolding(!open);" in transcript and "setOpen(!open);" in transcript
+    assert '${unfolding ? "is-unfolding" : ""}' in transcript
+    assert "window.setTimeout(() => setUnfolding(false), 900)" in transcript
+
+    for selector in (
+        ".task-flow-group.is-unfolding .task-flow-row {",
+        ".task-flow-group.is-unfolding .task-flow-row::before {",
+        ".task-flow-group.is-unfolding .task-flow-row-icon {",
+    ):
+        assert selector in motion
+    # The cascade hangs off the transient class only: an open group that is
+    # merely mounted (history) never plays it.
+    assert ".task-flow-group.is-open .task-flow-row" not in motion
+    assert "--fold-lead: 230ms" in motion
+
+
+def test_pointer_lens_writes_two_variables_and_respects_reduced_motion() -> None:
+    lens = read(SRC / "taskCapsuleLens.ts")
+    motion = read(MOTION)
+
+    assert 'setProperty("--lens-x"' in lens and 'setProperty("--lens-y"' in lens
+    assert "requestAnimationFrame" in lens
+    assert 'document.documentElement.dataset.loomReducedMotion === "true"' in lens
+    # A module, so its top-level state cannot collide with starterCardPointerGlow.ts.
+    assert "export {};" in lens
+    assert 'import "../taskCapsuleLens";' in read(TRANSCRIPT)
+
+    start = motion.index(".task-flow-group .task-flow-row.is-expandable::after,")
+    rule = motion[start:motion.index("}", start)]
+    assert "var(--lens-x" in rule and "var(--lens-y" in rule
+    assert "opacity: 0;" in rule and "transition: opacity" in rule
+    # The light is a gradient on its own pseudo-element: nothing moves.
+    assert not TRANSFORM_PROPERTY.search(rule) and "filter" not in rule

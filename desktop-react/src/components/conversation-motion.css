@@ -362,17 +362,24 @@
   width: 30%;
   border-radius: inherit;
   pointer-events: none;
-  background: linear-gradient(
-    102deg,
-    transparent 0%,
-    rgba(var(--loom-live-accent), .025) 18%,
-    rgba(var(--loom-live-accent), .09) 35%,
-    rgba(var(--loom-live-accent-strong), .20) 47%,
-    rgba(var(--loom-live-core), .22) 53%,
-    rgba(var(--loom-live-accent-strong), .12) 60%,
-    rgba(var(--loom-live-accent), .035) 73%,
-    transparent 100%
-  );
+  /* The band is a soft body plus two hairline glints. The <i> overhangs its
+     clip by 1px, so the glints sit 1px inside: as the band travels it catches
+     the pill's upper rim (cool white) and lower rim (accent), like light
+     crossing a glass capsule. Still one moving layer. */
+  background:
+    linear-gradient(90deg, transparent 4%, rgba(255,255,255,.55) 50%, transparent 96%) 0 1px / 100% 1px no-repeat,
+    linear-gradient(90deg, transparent 4%, rgba(var(--loom-live-accent-strong), .46) 52%, transparent 96%) 0 calc(100% - 1px) / 100% 1px no-repeat,
+    linear-gradient(
+      102deg,
+      transparent 0%,
+      rgba(var(--loom-live-accent), .025) 18%,
+      rgba(var(--loom-live-accent), .09) 35%,
+      rgba(var(--loom-live-accent-strong), .20) 47%,
+      rgba(var(--loom-live-core), .22) 53%,
+      rgba(var(--loom-live-accent-strong), .12) 60%,
+      rgba(var(--loom-live-accent), .035) 73%,
+      transparent 100%
+    );
   transform: translate3d(0,0,0) skewX(-9deg);
   animation: loom-task-running-sheen 4.8s linear 480ms infinite both paused;
 }
@@ -412,8 +419,19 @@
    in (.is-running, decided by Transcript's Sequence). Groups that later
    content has followed are history and stay still, even when a live turn
    remounts.
-   Task capsules appear at their full readable width. Only the icon springs;
-   the surface gently fades without clipping commands or shifting text.
+
+   Task capsules are born by one gesture: the pill inflates from a slightly
+   smaller pill while its body is lit from inside, then the light drains away.
+   - The inflate is a clip-path (never a transform) that starts at 94% width /
+     8px shorter, so every command is readable from the first frame and the
+     text is never scaled or moved.
+   - The light is a text-free ::before that tracks the same clip edge. Both are
+     paint-only, so no text layer is ever promoted (no LCD -> greyscale flip).
+   - Elasticity lives on the parts without text: the icon bead springs, the
+     chevron unfurls, the status dot pops.
+   - The same light returns in the outcome colour when a task settles
+     (--capsule-glow: green / red), and once more, softly, when the user opens
+     a group (.is-unfolding, set by Transcript for one beat, never on mount).
    Thinking capsules retain their separate unroll choreography. */
 .task-flow-group-header {
   /* The bead is the icon's circle; the unroll starts from exactly this disc. */
@@ -424,10 +442,42 @@
 .task-flow-group .task-flow-row {
   --capsule-bead-start: 16px;
   --capsule-bead-end: 43px;
+  --capsule-glow: rgb(var(--loom-live-accent-strong));
+}
+
+.task-flow-group-header {
+  --capsule-glow: rgb(var(--loom-live-accent-strong));
+}
+
+/* Outcome colours come from the shared semantic palette, so light and dark
+   themes inherit their own contrast. They belong to the live anchor only: that
+   is where a task settles. Opening a group later is not a verdict, so its rows
+   keep the accent light. */
+.turn-process.is-live .task-flow-group.is-running .task-flow-row.is-resting {
+  --capsule-glow: var(--semantic-success-strong, #70a186);
+}
+
+.turn-process.is-live .task-flow-group.is-running .task-flow-row.is-resting:has(.task-flow-status:is(.failed, .denied)) {
+  --capsule-glow: var(--semantic-danger-strong, #c7727c);
+}
+
+.turn-process.is-live .task-flow-group.is-running .task-flow-row.is-resting:has(.task-flow-status:is(.cancelled, .interrupted)) {
+  --capsule-glow: color-mix(in srgb, currentColor 70%, transparent);
 }
 
 .turn-process.is-live .task-flow-group.is-running .task-flow-group-header {
-  animation: loom-task-capsule-land 240ms var(--loom-motion-unroll) backwards;
+  animation: loom-task-capsule-land 240ms var(--loom-motion-unroll) backwards,
+    loom-capsule-swell-header 420ms linear backwards;
+}
+
+.turn-process.is-live .task-flow-group.is-running .task-flow-group-header::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  animation: loom-capsule-glow 440ms linear backwards;
 }
 
 .turn-process.is-live .task-flow-group.is-running .task-flow-group-icon {
@@ -456,13 +506,43 @@
   animation: none !important;
 }
 
-/* First and subsequent rows are readable immediately. */
+/* The anchor leads by one beat: a group is born with its first row, which
+   follows the header capsule by 50ms. Rows appended later join an anchor that
+   already exists and start at once. Commands stay readable either way, since
+   the pending state already shows the smaller pill with its text. */
 .turn-process.is-live .task-flow-group.is-running .task-flow-row-wrap:first-child {
-  --capsule-lead: 0ms;
+  --capsule-lead: 50ms;
 }
 
 .turn-process.is-live .task-flow-group.is-running .task-flow-row {
-  animation: loom-task-capsule-land 280ms var(--loom-motion-unroll) backwards;
+  animation: loom-task-capsule-land 320ms var(--loom-motion-unroll) var(--capsule-lead) backwards,
+    loom-capsule-swell 440ms linear var(--capsule-lead) backwards;
+}
+
+.turn-process.is-live .task-flow-group.is-running .task-flow-row::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+/* Two names for the same light: a status flip swaps the animation name, which
+   is what restarts it, so a running row ignites in the accent colour and a
+   settling row confirms in its outcome colour. */
+.turn-process.is-live .task-flow-group.is-running .task-flow-row.is-active::before {
+  animation: loom-capsule-glow 460ms linear var(--capsule-lead) backwards;
+}
+
+.turn-process.is-live .task-flow-group.is-running .task-flow-row.is-resting::before {
+  animation: loom-capsule-confirm 520ms linear var(--capsule-lead) backwards;
+}
+
+.turn-process.is-live .task-flow-group.is-running .task-flow-chevron {
+  /* Only the from-frame is authored, so rows without detail keep their own
+     resting opacity (0) instead of flashing visible. */
+  animation: loom-task-chevron-in 300ms cubic-bezier(.2,.8,.2,1) calc(var(--capsule-lead) + 40ms) backwards;
 }
 
 .turn-process.is-live .task-flow-group.is-running .task-flow-row-icon {
@@ -478,8 +558,8 @@
 
 .turn-process.is-live .task-flow-group.is-running .task-flow-status {
   position: relative;
-  /* The status dot settles alongside the already readable capsule. */
-  animation: loom-task-status-in 220ms var(--loom-spring-pop) backwards;
+  /* The dot pops once the capsule has mostly inflated. */
+  animation: loom-task-status-in 240ms var(--loom-spring-pop) calc(var(--capsule-lead) + 90ms) backwards;
 }
 
 /* Completion: the dot settles with a spring tick and one expanding ring. The
@@ -868,17 +948,22 @@ html[data-loom-theme="light"] .task-flow-row.is-executing {
 }
 
 html[data-loom-theme="light"] .task-flow-sheen > i {
-  background: linear-gradient(
-    102deg,
-    transparent 0%,
-    rgba(var(--loom-live-accent), .018) 18%,
-    rgba(var(--loom-live-accent), .065) 35%,
-    rgba(var(--loom-live-accent), .14) 47%,
-    rgba(255,255,255,.65) 53%,
-    rgba(var(--loom-live-accent), .09) 61%,
-    rgba(var(--loom-live-accent), .025) 73%,
-    transparent 100%
-  );
+  /* White cannot read against the light pill's own inner highlight, so both
+     rim glints are accent-tinted here. */
+  background:
+    linear-gradient(90deg, transparent 4%, rgba(var(--loom-live-accent-strong), .40) 50%, transparent 96%) 0 1px / 100% 1px no-repeat,
+    linear-gradient(90deg, transparent 4%, rgba(var(--loom-live-accent-strong), .34) 52%, transparent 96%) 0 calc(100% - 1px) / 100% 1px no-repeat,
+    linear-gradient(
+      102deg,
+      transparent 0%,
+      rgba(var(--loom-live-accent), .018) 18%,
+      rgba(var(--loom-live-accent), .065) 35%,
+      rgba(var(--loom-live-accent), .14) 47%,
+      rgba(255,255,255,.65) 53%,
+      rgba(var(--loom-live-accent), .09) 61%,
+      rgba(var(--loom-live-accent), .025) 73%,
+      transparent 100%
+    );
 }
 
 html[data-loom-theme="light"] .task-flow-live-detail {
@@ -1125,6 +1210,12 @@ html[data-loom-theme="light"] .conversation-stage.is-running::after {
   .turn-process.is-live .task-flow-status,
   .turn-process.is-live .task-flow-status::after,
   .turn-process.is-live .task-flow-status-dot,
+  .turn-process.is-live .task-flow-group.is-running .task-flow-group-header::before,
+  .turn-process.is-live .task-flow-group.is-running .task-flow-row::before,
+  .turn-process.is-live .task-flow-group.is-running .task-flow-chevron,
+  .task-flow-group.is-unfolding .task-flow-row,
+  .task-flow-group.is-unfolding .task-flow-row::before,
+  .task-flow-group.is-unfolding .task-flow-row-icon,
   .task-flow-sheen > i,
   .task-flow-live-detail-glow,
   .task-flow-between-sheen > i,
@@ -1154,6 +1245,12 @@ html[data-loom-theme="light"] .conversation-stage.is-running::after {
 :root[data-loom-reduced-motion="true"] .turn-process.is-live .task-flow-status,
 :root[data-loom-reduced-motion="true"] .turn-process.is-live .task-flow-status::after,
 :root[data-loom-reduced-motion="true"] .turn-process.is-live .task-flow-status-dot,
+:root[data-loom-reduced-motion="true"] .turn-process.is-live .task-flow-group.is-running .task-flow-group-header::before,
+:root[data-loom-reduced-motion="true"] .turn-process.is-live .task-flow-group.is-running .task-flow-row::before,
+:root[data-loom-reduced-motion="true"] .turn-process.is-live .task-flow-group.is-running .task-flow-chevron,
+:root[data-loom-reduced-motion="true"] .task-flow-group.is-unfolding .task-flow-row,
+:root[data-loom-reduced-motion="true"] .task-flow-group.is-unfolding .task-flow-row::before,
+:root[data-loom-reduced-motion="true"] .task-flow-group.is-unfolding .task-flow-row-icon,
 :root[data-loom-reduced-motion="true"] .task-flow-sheen > i,
 :root[data-loom-reduced-motion="true"] .task-flow-live-detail-glow,
 :root[data-loom-reduced-motion="true"] .task-flow-between-sheen > i,
@@ -1169,8 +1266,190 @@ html[data-loom-theme="light"] .conversation-stage.is-running::after {
 /* Keep the full row readable from its first frame. A bead-sized clip hid
    commands for hundreds of milliseconds and looked like broken layout. */
 @keyframes loom-task-capsule-land {
-  from { opacity: .72; }
+  from { opacity: .84; }
   to { opacity: 1; }
+}
+
+/* Capsule inflate. Text is never scaled: the visible pill is a rounded clip
+   that grows from 94% width / 8px shorter to its full box, then opens past it
+   (-26px) so the capsule's own drop shadow is revealed before the clip is
+   released instead of snapping in on the last frame. Every segment is eased
+   per keyframe, hence the linear() on the animation itself. */
+@keyframes loom-capsule-swell {
+  0% {
+    clip-path: inset(4px 6% 4px 6% round 999px);
+    animation-timing-function: cubic-bezier(.2,.85,.25,1);
+  }
+  58% {
+    clip-path: inset(0 0 0 0 round 999px);
+    animation-timing-function: ease-out;
+  }
+  100% {
+    clip-path: inset(-26px -26px -26px -26px round 999px);
+  }
+}
+
+/* The header hugs its content, so its inflate is measured in pixels. */
+@keyframes loom-capsule-swell-header {
+  0% {
+    clip-path: inset(4px 8px 4px 8px round 999px);
+    animation-timing-function: cubic-bezier(.2,.85,.25,1);
+  }
+  58% {
+    clip-path: inset(0 0 0 0 round 999px);
+    animation-timing-function: ease-out;
+  }
+  100% {
+    clip-path: inset(-26px -26px -26px -26px round 999px);
+  }
+}
+
+/* Body lit from inside. The inset tracks the clip above (same stops, same
+   clock), so the glow edge rides the growing capsule; the falloff is a soft
+   inner shadow, not a line. Only paint properties: no transform, no opacity,
+   no filter, therefore no compositor layer over the text. */
+@keyframes loom-capsule-glow {
+  0% {
+    inset: 4px 6%;
+    box-shadow:
+      inset 0 0 0 1px color-mix(in srgb, var(--capsule-glow) 0%, transparent),
+      inset 0 0 0 0 color-mix(in srgb, var(--capsule-glow) 0%, transparent);
+    animation-timing-function: cubic-bezier(.2,.85,.25,1);
+  }
+  18% {
+    box-shadow:
+      inset 0 0 0 1px color-mix(in srgb, var(--capsule-glow) 24%, transparent),
+      inset 0 0 15px 1px color-mix(in srgb, var(--capsule-glow) 30%, transparent);
+  }
+  58% {
+    inset: 0;
+    box-shadow:
+      inset 0 0 0 1px color-mix(in srgb, var(--capsule-glow) 14%, transparent),
+      inset 0 0 14px 0 color-mix(in srgb, var(--capsule-glow) 15%, transparent);
+    animation-timing-function: ease-out;
+  }
+  100% {
+    inset: 0;
+    box-shadow:
+      inset 0 0 0 1px color-mix(in srgb, var(--capsule-glow) 0%, transparent),
+      inset 0 0 12px 0 color-mix(in srgb, var(--capsule-glow) 0%, transparent);
+  }
+}
+
+/* The same light under another name, slightly brighter and starting nearer
+   the edge: a pill that is already full size answers a status change with a
+   pulse that travels out to its rim. */
+@keyframes loom-capsule-confirm {
+  0% {
+    inset: 4px 3%;
+    box-shadow:
+      inset 0 0 0 1px color-mix(in srgb, var(--capsule-glow) 0%, transparent),
+      inset 0 0 0 0 color-mix(in srgb, var(--capsule-glow) 0%, transparent);
+    animation-timing-function: cubic-bezier(.2,.85,.25,1);
+  }
+  20% {
+    box-shadow:
+      inset 0 0 0 1px color-mix(in srgb, var(--capsule-glow) 34%, transparent),
+      inset 0 0 15px 1px color-mix(in srgb, var(--capsule-glow) 30%, transparent);
+  }
+  58% {
+    inset: 0;
+    box-shadow:
+      inset 0 0 0 1px color-mix(in srgb, var(--capsule-glow) 18%, transparent),
+      inset 0 0 14px 0 color-mix(in srgb, var(--capsule-glow) 15%, transparent);
+    animation-timing-function: ease-out;
+  }
+  100% {
+    inset: 0;
+    box-shadow:
+      inset 0 0 0 1px color-mix(in srgb, var(--capsule-glow) 0%, transparent),
+      inset 0 0 12px 0 color-mix(in srgb, var(--capsule-glow) 0%, transparent);
+  }
+}
+
+/* The chevron unfurls from the left. `translate` is an individual property,
+   so the open-state rotation on transform is never clobbered. */
+@keyframes loom-task-chevron-in {
+  from { opacity: 0; translate: -4px 0; }
+}
+
+/* Unfold: opening a group pops its rows out one after another. Transcript sets
+   .is-unfolding for a single beat after the user's click, so remounted history
+   never replays it. Softer than a live birth: the rows cascade 40ms apart and
+   the beads spring. */
+.task-flow-group.is-unfolding .task-flow-row-wrap:nth-child(1) { --fold-lead: 30ms; }
+.task-flow-group.is-unfolding .task-flow-row-wrap:nth-child(2) { --fold-lead: 70ms; }
+.task-flow-group.is-unfolding .task-flow-row-wrap:nth-child(3) { --fold-lead: 110ms; }
+.task-flow-group.is-unfolding .task-flow-row-wrap:nth-child(4) { --fold-lead: 150ms; }
+.task-flow-group.is-unfolding .task-flow-row-wrap:nth-child(5) { --fold-lead: 190ms; }
+.task-flow-group.is-unfolding .task-flow-row-wrap:nth-child(n + 6) { --fold-lead: 230ms; }
+
+.task-flow-group.is-unfolding .task-flow-row {
+  --capsule-glow: rgb(var(--loom-live-accent-strong));
+  animation: loom-task-capsule-land 320ms var(--loom-motion-unroll) var(--fold-lead, 0ms) backwards,
+    loom-capsule-swell 440ms linear var(--fold-lead, 0ms) backwards;
+}
+
+.task-flow-group.is-unfolding .task-flow-row::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  animation: loom-capsule-glow 460ms linear var(--fold-lead, 0ms) backwards;
+}
+
+.task-flow-group.is-unfolding .task-flow-row-icon {
+  animation: loom-task-icon-spring 520ms var(--loom-spring-pop) var(--fold-lead, 0ms) backwards;
+}
+
+/* Lens: a soft pointer light inside expandable capsules. taskCapsuleLens.ts
+   writes --lens-x/--lens-y (px, capsule-relative) while the pointer moves; with
+   no pointer data the light rests near the bead. It fades in and out and never
+   moves anything but its own gradient. */
+.task-flow-group .task-flow-row.is-expandable::after,
+.task-flow-group-header::after {
+  content: "";
+  display: block;
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: radial-gradient(
+    160px 46px at var(--lens-x, 34px) var(--lens-y, 50%),
+    rgba(var(--loom-live-accent), .14),
+    rgba(var(--loom-live-accent), .045) 55%,
+    transparent 100%
+  );
+  opacity: 0;
+  transition: opacity 220ms ease;
+}
+
+.task-flow-group .task-flow-row.is-expandable:hover::after,
+.task-flow-group-header:hover::after {
+  opacity: 1;
+}
+
+html[data-loom-theme="light"] .task-flow-group .task-flow-row.is-expandable::after,
+html[data-loom-theme="light"] .task-flow-group-header::after {
+  background: radial-gradient(
+    170px 46px at var(--lens-x, 34px) var(--lens-y, 50%),
+    rgba(var(--loom-live-accent), .10),
+    rgba(var(--loom-live-accent), .03) 55%,
+    transparent 100%
+  );
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .task-flow-group .task-flow-row.is-expandable::after,
+  .task-flow-group-header::after { transition: none; }
+}
+
+:root[data-loom-reduced-motion="true"] .task-flow-group .task-flow-row.is-expandable::after,
+:root[data-loom-reduced-motion="true"] .task-flow-group-header::after {
+  transition: none;
 }
 
 /* Reduced motion keeps the static executing tint and status indicator. */

@@ -68,3 +68,22 @@ def test_sheen_fades_after_execution_and_obeys_reduced_motion() -> None:
     reduced = source[source.index("@media (prefers-reduced-motion: reduce)"):]
     assert ".task-flow-row > .task-flow-sheen { display: none;" in reduced
     assert ':root[data-loom-reduced-motion="true"] .task-flow-row > .task-flow-sheen' in reduced
+
+
+def test_running_band_catches_both_rims_without_a_second_layer() -> None:
+    source = MOTION.read_text(encoding="utf-8")
+
+    block = source[source.index(".task-flow-sheen > i"):source.index(".task-flow-row.is-resting")]
+    # Two 1px glints (upper and lower rim) live in the same moving element's
+    # background, so the sheen is still one layer and one animation.
+    assert block.count("no-repeat") == 2
+    assert "0 1px / 100% 1px no-repeat" in block
+    assert "0 calc(100% - 1px) / 100% 1px no-repeat" in block
+    assert block.count("animation:") == 1
+
+    light_start = source.index('html[data-loom-theme="light"] .task-flow-sheen > i')
+    light_end = source.index('html[data-loom-theme="light"] .task-flow-live-detail', light_start)
+    light = source[light_start:light_end]
+    # White cannot read against the light pill's own highlight: both glints tint.
+    assert light.count("no-repeat") == 2
+    assert "rgba(255,255,255,.55)" not in light

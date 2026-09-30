@@ -52,6 +52,7 @@ import "./message-actions.css";
 import "./task-flow-folding.css";
 import "./turn-flow.css";
 import "./conversation-motion.css";
+import "../taskCapsuleLens";
 
 interface TranscriptProps {
   items: TranscriptItem[];
@@ -688,6 +689,10 @@ function ActivityFlow({
   const hasActiveRows = compactItems.some((item) => isActiveActivityStatus(itemStatus(item)));
   const betweenSteps = Boolean(running && continuing && !hasActiveRows);
   const [open, setOpen] = useState(true);
+  // Opening a group pops its rows out once (.is-unfolding in conversation-motion.css).
+  // It is only ever set by the user's click, never on mount, so remounted
+  // history stays still.
+  const [unfolding, setUnfolding] = useState(false);
   const [openRows, setOpenRows] = useState<Set<string>>(() => new Set());
   const wasRunningRef = useRef(false);
 
@@ -705,19 +710,29 @@ function ActivityFlow({
     wasRunningRef.current = running;
   }, [running]);
 
+  useEffect(() => {
+    if (!unfolding) return;
+    // Long enough for the last staggered row (230ms lead + 460ms glow).
+    const timer = window.setTimeout(() => setUnfolding(false), 900);
+    return () => window.clearTimeout(timer);
+  }, [unfolding]);
+
   const title = activityGroupTitle(compactItems, running && !betweenSteps);
   const groupIdentity = activityGroupIdentity(compactItems);
 
   return (
     <section
-      className={`task-flow task-flow-group ${open ? "is-open" : ""} ${running ? "is-running" : ""} ${betweenSteps ? "is-between-steps" : ""}`}
+      className={`task-flow task-flow-group ${open ? "is-open" : ""} ${running ? "is-running" : ""} ${betweenSteps ? "is-between-steps" : ""} ${unfolding ? "is-unfolding" : ""}`}
       data-tool-family={groupIdentity.family}
       aria-label="Task activity"
     >
       <button
         type="button"
         className="task-flow-group-header"
-        onClick={() => setOpen((value) => !value)}
+        onClick={() => {
+          setUnfolding(!open);
+          setOpen(!open);
+        }}
         aria-expanded={open}
       >
         {betweenSteps ? <span className="task-flow-between-sheen" aria-hidden="true"><i /></span> : null}
