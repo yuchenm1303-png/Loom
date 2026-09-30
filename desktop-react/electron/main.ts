@@ -15,6 +15,13 @@ import {
 import { LoomAccountClient, type LoomAccountSnapshot } from "./accountClient.js";
 import { accountErrorPayload, type AccountErrorPayload } from "./accountErrors.js";
 import { closeHudOverlayWindow, createHudOverlayWindow, sendHudUpdate } from "./hudWindow.js";
+import {
+  sendRelayNotification,
+  startWebRelay,
+  stopWebRelay,
+  type WebRelayOperations,
+} from "./remoteRelay.js";
+import { webRelayAuthPayload } from "./webRelayAuth.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -592,6 +599,32 @@ async function serveLocalArtifact(request: { url: string }): Promise<Response> {
   }
 }
 
+const MAX_RELAY_ARTIFACT_BYTES = 48 * 1024 * 1024;
+
+/**
+ * Reads an artifact for Loom Web. The `loom-artifact://` URL that the renderer
+ * uses is minted by `localArtifactPreviewUrl` and only resolves inside a
+ * renderer session through `protocol.handle`, so the relay reads the bytes
+ * directly here — mirroring the directory-to-index.html fallback and workspace
+ * checks that `serveLocalArtifact` performs for that URL.
+ */
+async function readRelayArtifact(targetPath: string, workspaceRoot: string): Promise<{
+  base64: string;
+  mimeType: string;
+}> {
+  const requested = resolveWorkspaceLocalPath(targetPath, workspaceRoot);
+  const root = await fs.realpath(path.resolve(String(workspaceRoot || "").trim()));
+  const resolved = (await fs.stat(requested)).isDirectory()
+    ? path.join(requested, "index.html")
+    : requested;
+  const { target, stat } = await resolveWorkspaceFile(resolved, root);
+  if (stat.size > MAX_RELAY_ARTIFACT_BYTES) {
+    throw new Error("Artifact is too large for Loom Web preview (48 MB max).");
+  }
+  const bytes = await fs.readFile(target);
+  return { base64: bytes.toString("base64"), mimeType: artifactMimeType(target) };
+}
+
 async function openLocalArtifact(targetPath: string, workspaceRoot: string): Promise<boolean> {
   const { root, target } = await resolveWorkspaceFile(targetPath, workspaceRoot);
   const extension = path.extname(target).toLowerCase();
@@ -864,6 +897,7 @@ const artifactPreviewRoots = new Map<string, string>();
 const modelManager = new DesktopModelManager(REPO_ROOT);
 function handleRuntimeNotification(payload: JsonRpcResponse): void {
   mainWindow?.webContents.send("loom:notification", payload);
+  sendRelayNotification(payload);
   if (payload.method === "hud/update") sendHudUpdate(payload.params ?? {});
 }
 const rpc = new LoomRpcProcess(handleRuntimeNotification, modelManager);
@@ -1085,88 +1119,31 @@ function createWindow(): void {
   });
 }
 
-ipcMain.handle("loom:connect", () => rpc.connect());
-ipcMain.handle("loom:call", (_event, method: string, params?: Record<string, unknown>) => rpc.call(method, params ?? {}));
-ipcMain.handle("loom:disconnect", () => rpc.stop());
-ipcMain.handle("loom:set-native-theme", (_event, source: "system" | "light" | "dark") => {
-  const next = source === "light" || source === "dark" ? source : "system";
-  nativeTheme.themeSource = next;
-  const resolved = nativeTheme.shouldUseDarkColors ? "dark" : "light";
-  const window = mainWindow;
-  if (window && !window.isDestroyed()) {
-    window.setBackgroundColor(resolved === "dark" ? "#0d0e11" : "#f7f7f8");
-  }
-  return resolved;
-});
-ipcMain.handle("loom:export-computer-logs", () => exportComputerLogs());
-ipcMain.handle("loom:export-browser-logs", () => exportBrowserLogs());
-ipcMain.handle("loom:setup-browser-extension", (_event, browser: "edge" | "chrome" = "edge", extensionConnected = false) => setupBrowserExtension(browser, extensionConnected));
-ipcMain.handle("loom:reveal-path", (_event, targetPath: string) => revealPath(targetPath));
-ipcMain.handle("loom:copy-image-source", (_event, source: string) => copyImageSource(source));
-ipcMain.handle("loom:clipboard-read-text", () => clipboard.readText());
-ipcMain.handle("loom:clipboard-write-text", (_event, value: string) => {
+// ---------------------------------------------------------------------------
+// Shared desktop operations
+//
+// Everything the Loom Web relay can invoke lives here as a named function, and
+// the renderer's IPC channels below delegate to those same functions, so the two
+// transports cannot drift apart. Renderer-only channels — native theme, file
+// dialogs, account actions — keep their own handlers and are deliberately absent
+// from the table: a web client has no renderer to answer a dialog.
+// ---------------------------------------------------------------------------
+
+function runWriteClipboardText(value: string): boolean {
   clipboard.writeText(String(value || ""));
   return true;
-});
-ipcMain.handle("loom:open-external", (_event, url: string) => openExternalUrl(url));
-ipcMain.handle("loom:open-local-artifact", (_event, targetPath: string, workspaceRoot: string) => (
-  openLocalArtifact(targetPath, workspaceRoot)
-));
-ipcMain.handle("loom:local-artifact-preview-url", (_event, targetPath: string, workspaceRoot: string) => (
-  localArtifactPreviewUrl(targetPath, workspaceRoot)
-));
-ipcMain.handle("loom:read-local-image", (_event, targetPath: string, workspaceRoot: string) => (
-  readLocalImage(targetPath, workspaceRoot)
-));
-ipcMain.handle("loom:read-local-media", (_event, targetPath: string, workspaceRoot: string) => (
-  readLocalMedia(targetPath, workspaceRoot)
-));
-ipcMain.handle("loom:pick-files", async () => {
-  const result = await dialog.showOpenDialog({ title: "Attach files", properties: ["openFile", "multiSelections"] });
-  return result.canceled ? [] : result.filePaths;
-});
-ipcMain.handle("loom:stage-temp-file", async (_event, name: string, bytes: Uint8Array) => {
+}
+
+async function runStageTempFile(name: string, bytes: Uint8Array): Promise<string> {
   const safe = (name || "pasted.png").replace(/[^A-Za-z0-9._-]+/g, "_").slice(-80) || "pasted.png";
   const folder = path.join(app.getPath("temp"), "loom-attachments");
   await fs.mkdir(folder, { recursive: true });
   const target = path.join(folder, `${crypto.randomUUID().slice(0, 8)}-${safe}`);
   await fs.writeFile(target, Buffer.from(bytes));
   return target;
-});
-ipcMain.handle("loom:pick-directory", async () => {
-  const result = await dialog.showOpenDialog({ title: "Add project folder", properties: ["openDirectory", "createDirectory"] });
-  return result.canceled || !result.filePaths.length ? "" : result.filePaths[0];
-});
-// Account handlers return a discriminated result rather than rejecting: an IPC
-// rejection only carries an Error's message, which would drop the service's
-// machine readable `code` and force the renderer to show raw English text.
-type AccountIpcResult =
-  | { ok: true; snapshot: LoomAccountSnapshot }
-  | { ok: false; error: AccountErrorPayload };
-
-async function runAccountAction(
-  action: () => Promise<LoomAccountSnapshot>,
-): Promise<AccountIpcResult> {
-  try {
-    return { ok: true, snapshot: await action() };
-  } catch (error) {
-    return { ok: false, error: accountErrorPayload(error) };
-  }
 }
 
-ipcMain.handle("loom:account-status", () => runAccountAction(() => accountClient.status()));
-ipcMain.handle("loom:account-login", (_event, email: string, password: string) =>
-  runAccountAction(() => accountClient.login(String(email || ""), String(password || "")))
-);
-ipcMain.handle("loom:account-register", (_event, email: string, password: string) =>
-  runAccountAction(() => accountClient.register(String(email || ""), String(password || "")))
-);
-ipcMain.handle("loom:account-logout", () => runAccountAction(() => accountClient.logout()));
-ipcMain.handle("loom:model-list", (_event, forceRefresh?: boolean) => modelManager.listSnapshot(Boolean(forceRefresh)));
-ipcMain.handle("loom:model-provider-key", (_event, provider: string, apiKey: string) =>
-  modelManager.setProviderKey(String(provider || ""), String(apiKey || ""))
-);
-ipcMain.handle("loom:model-switch", async (_event, threadOrSelection: string, maybeSelection?: string) => {
+async function runSwitchModelProfile(threadOrSelection: string, maybeSelection?: string): Promise<ModelRestartResult> {
   if (maybeSelection === undefined) {
     const selection = String(threadOrSelection || "").trim();
     if (!selection) throw new Error("Model profile is required");
@@ -1175,13 +1152,13 @@ ipcMain.handle("loom:model-switch", async (_event, threadOrSelection: string, ma
   const selection = String(maybeSelection || "").trim();
   if (!selection) throw new Error("Model profile is required");
   return changeThreadModel(threadOrSelection, modelManager.resolve(selection));
-});
-ipcMain.handle("loom:model-switch-current", async (
-  _event,
+}
+
+async function runSwitchCurrentModel(
   threadOrModel: string,
   selectionOrUndefined?: string,
   modelOrUndefined?: string,
-) => {
+): Promise<ModelRestartResult> {
   if (modelOrUndefined === undefined) {
     const model = String(threadOrModel || "").trim();
     if (!model) throw new Error("Model ID is required");
@@ -1192,8 +1169,12 @@ ipcMain.handle("loom:model-switch-current", async (
   if (!selection) throw new Error("Model profile is required");
   if (!model) throw new Error("Model ID is required");
   return changeThreadModel(threadOrModel, modelManager.resolveModelNameFor(selection, model));
-});
-ipcMain.handle("loom:model-add", async (_event, threadOrInput: string | AddModelInput, maybeInput?: AddModelInput) => {
+}
+
+async function runAddModel(
+  threadOrInput: string | AddModelInput,
+  maybeInput?: AddModelInput,
+): Promise<ModelRestartResult> {
   const threadScoped = typeof threadOrInput === "string";
   const input = (threadScoped ? maybeInput : threadOrInput) as AddModelInput | undefined;
   if (!input) throw new Error("Model connection input is required");
@@ -1203,8 +1184,9 @@ ipcMain.handle("loom:model-add", async (_event, threadOrInput: string | AddModel
   }
   await rpc.assertRestartSafe();
   return changeModel(() => modelManager.useProfile(profile.selection), { persistSelection: profile.selection });
-});
-ipcMain.handle("loom:model-update", async (_event, input: EditModelInput) => {
+}
+
+async function runUpdateModel(input: EditModelInput): Promise<ReturnType<DesktopModelManager["snapshot"]>> {
   await rpc.assertRestartSafe();
   const selection = String(input?.selection || "").trim();
   if (!selection) throw new Error("Model profile is required");
@@ -1213,10 +1195,11 @@ ipcMain.handle("loom:model-update", async (_event, input: EditModelInput) => {
   }
   modelManager.update(input);
   return modelManager.snapshot();
-});
-ipcMain.handle("loom:model-test", async (_event, selection: string) => modelManager.test(selection));
-ipcMain.handle("loom:model-delete", async (_event, selection: string) => deleteModel(selection));
-ipcMain.handle("loom:reasoning-set", async (_event, ...args: string[]): Promise<ReasoningUpdateResult & { thread?: Record<string, unknown> }> => {
+}
+
+async function runSetReasoning(
+  ...args: string[]
+): Promise<ReasoningUpdateResult & { thread?: Record<string, unknown> }> {
   if (args.length === 2) {
     const [kind, value] = args;
     const current = modelManager.current ?? modelManager.ensureInitial();
@@ -1257,7 +1240,140 @@ ipcMain.handle("loom:reasoning-set", async (_event, ...args: string[]): Promise<
     ? { ...spec, reasoning: { ...spec.reasoning, kind: runtimeReasoning.kind || spec.reasoning.kind, value: runtimeReasoning.value || spec.reasoning.value } }
     : spec;
   return { runtime: result.runtime ?? {}, models: modelManager.snapshotFor(current), thread: result.thread };
+}
+
+/**
+ * Arg coercion is intentionally identical to the preload relay's table: the web
+ * client sends `unknown[]`, so every value is coerced defensively here.
+ */
+const desktopOperations: WebRelayOperations = {
+  connect: async () => rpc.connect(),
+  call: async (args) => rpc.call(String(args[0] || ""), (args[1] || {}) as Record<string, unknown>),
+  listModels: async (args) => modelManager.listSnapshot(Boolean(args[0])),
+  setModelProviderKey: async (args) => modelManager.setProviderKey(String(args[0] || ""), String(args[1] || "")),
+  switchModelProfile: async (args) => args.length > 1
+    ? runSwitchModelProfile(String(args[0] || ""), String(args[1] || ""))
+    : runSwitchModelProfile(String(args[0] || "")),
+  switchCurrentModel: async (args) => args.length > 2
+    ? runSwitchCurrentModel(String(args[0] || ""), String(args[1] || ""), String(args[2] || ""))
+    : runSwitchCurrentModel(String(args[0] || "")),
+  addModel: async (args) => args.length > 1
+    ? runAddModel(String(args[0] || ""), (args[1] || {}) as AddModelInput)
+    : runAddModel((args[0] || {}) as AddModelInput),
+  updateModel: async (args) => runUpdateModel((args[0] || {}) as EditModelInput),
+  testModel: async (args) => modelManager.test(String(args[0] || "")),
+  deleteModel: async (args) => deleteModel(String(args[0] || "")),
+  setReasoning: async (args) => runSetReasoning(...args.map((value) => String(value || ""))),
+  exportComputerLogs: async () => exportComputerLogs(),
+  exportBrowserLogs: async () => exportBrowserLogs(),
+  setupBrowserExtension: async (args) => setupBrowserExtension(
+    (args[0] || "edge") as "edge" | "chrome",
+    Boolean(args[1]),
+  ),
+  revealPath: async (args) => revealPath(String(args[0] || "")),
+  copyImageSource: async (args) => copyImageSource(String(args[0] || "")),
+  readClipboardText: async () => clipboard.readText(),
+  writeClipboardText: async (args) => runWriteClipboardText(String(args[0] || "")),
+  openExternal: async (args) => openExternalUrl(String(args[0] || "")),
+  readLocalImage: async (args) => readLocalImage(String(args[0] || ""), String(args[1] || "")),
+  readLocalMedia: async (args) => readLocalMedia(String(args[0] || ""), String(args[1] || "")),
+  stageTempFile: async (args) => {
+    const bytes = Buffer.from(String(args[1] || ""), "base64");
+    if (bytes.byteLength > MAX_RELAY_ARTIFACT_BYTES) {
+      throw new Error("Attachment is too large for Loom Web (48 MB max).");
+    }
+    return runStageTempFile(String(args[0] || "attachment"), new Uint8Array(bytes));
+  },
+  readLocalArtifact: async (args) => readRelayArtifact(String(args[0] || ""), String(args[1] || "")),
+};
+
+ipcMain.handle("loom:connect", () => rpc.connect());
+ipcMain.handle("loom:call", (_event, method: string, params?: Record<string, unknown>) => rpc.call(method, params ?? {}));
+ipcMain.handle("loom:disconnect", () => rpc.stop());
+ipcMain.handle("loom:set-native-theme", (_event, source: "system" | "light" | "dark") => {
+  const next = source === "light" || source === "dark" ? source : "system";
+  nativeTheme.themeSource = next;
+  const resolved = nativeTheme.shouldUseDarkColors ? "dark" : "light";
+  const window = mainWindow;
+  if (window && !window.isDestroyed()) {
+    window.setBackgroundColor(resolved === "dark" ? "#0d0e11" : "#f7f7f8");
+  }
+  return resolved;
 });
+ipcMain.handle("loom:export-computer-logs", () => exportComputerLogs());
+ipcMain.handle("loom:export-browser-logs", () => exportBrowserLogs());
+ipcMain.handle("loom:setup-browser-extension", (_event, browser: "edge" | "chrome" = "edge", extensionConnected = false) => setupBrowserExtension(browser, extensionConnected));
+ipcMain.handle("loom:reveal-path", (_event, targetPath: string) => revealPath(targetPath));
+ipcMain.handle("loom:copy-image-source", (_event, source: string) => copyImageSource(source));
+ipcMain.handle("loom:clipboard-read-text", () => clipboard.readText());
+ipcMain.handle("loom:clipboard-write-text", (_event, value: string) => runWriteClipboardText(value));
+ipcMain.handle("loom:open-external", (_event, url: string) => openExternalUrl(url));
+ipcMain.handle("loom:open-local-artifact", (_event, targetPath: string, workspaceRoot: string) => (
+  openLocalArtifact(targetPath, workspaceRoot)
+));
+ipcMain.handle("loom:local-artifact-preview-url", (_event, targetPath: string, workspaceRoot: string) => (
+  localArtifactPreviewUrl(targetPath, workspaceRoot)
+));
+ipcMain.handle("loom:read-local-image", (_event, targetPath: string, workspaceRoot: string) => (
+  readLocalImage(targetPath, workspaceRoot)
+));
+ipcMain.handle("loom:read-local-media", (_event, targetPath: string, workspaceRoot: string) => (
+  readLocalMedia(targetPath, workspaceRoot)
+));
+ipcMain.handle("loom:pick-files", async () => {
+  const result = await dialog.showOpenDialog({ title: "Attach files", properties: ["openFile", "multiSelections"] });
+  return result.canceled ? [] : result.filePaths;
+});
+ipcMain.handle("loom:stage-temp-file", (_event, name: string, bytes: Uint8Array) => runStageTempFile(name, bytes));
+ipcMain.handle("loom:pick-directory", async () => {
+  const result = await dialog.showOpenDialog({ title: "Add project folder", properties: ["openDirectory", "createDirectory"] });
+  return result.canceled || !result.filePaths.length ? "" : result.filePaths[0];
+});
+// Account handlers return a discriminated result rather than rejecting: an IPC
+// rejection only carries an Error's message, which would drop the service's
+// machine readable `code` and force the renderer to show raw English text.
+type AccountIpcResult =
+  | { ok: true; snapshot: LoomAccountSnapshot }
+  | { ok: false; error: AccountErrorPayload };
+
+async function runAccountAction(
+  action: () => Promise<LoomAccountSnapshot>,
+): Promise<AccountIpcResult> {
+  try {
+    return { ok: true, snapshot: await action() };
+  } catch (error) {
+    return { ok: false, error: accountErrorPayload(error) };
+  }
+}
+
+ipcMain.handle("loom:account-status", () => runAccountAction(() => accountClient.status()));
+ipcMain.handle("loom:account-login", (_event, email: string, password: string) =>
+  runAccountAction(() => accountClient.login(String(email || ""), String(password || "")))
+);
+ipcMain.handle("loom:account-register", (_event, email: string, password: string) =>
+  runAccountAction(() => accountClient.register(String(email || ""), String(password || "")))
+);
+ipcMain.handle("loom:account-logout", () => runAccountAction(() => accountClient.logout()));
+ipcMain.handle("loom:model-list", (_event, forceRefresh?: boolean) => modelManager.listSnapshot(Boolean(forceRefresh)));
+ipcMain.handle("loom:model-provider-key", (_event, provider: string, apiKey: string) =>
+  modelManager.setProviderKey(String(provider || ""), String(apiKey || ""))
+);
+ipcMain.handle("loom:model-switch", (_event, threadOrSelection: string, maybeSelection?: string) => (
+  runSwitchModelProfile(threadOrSelection, maybeSelection)
+));
+ipcMain.handle("loom:model-switch-current", (
+  _event,
+  threadOrModel: string,
+  selectionOrUndefined?: string,
+  modelOrUndefined?: string,
+) => runSwitchCurrentModel(threadOrModel, selectionOrUndefined, modelOrUndefined));
+ipcMain.handle("loom:model-add", (_event, threadOrInput: string | AddModelInput, maybeInput?: AddModelInput) => (
+  runAddModel(threadOrInput, maybeInput)
+));
+ipcMain.handle("loom:model-update", (_event, input: EditModelInput) => runUpdateModel(input));
+ipcMain.handle("loom:model-test", async (_event, selection: string) => modelManager.test(selection));
+ipcMain.handle("loom:model-delete", async (_event, selection: string) => deleteModel(selection));
+ipcMain.handle("loom:reasoning-set", (_event, ...args: string[]) => runSetReasoning(...args));
 
 app.setName("Loom");
 
@@ -1269,6 +1385,9 @@ app.whenReady().then(() => {
   if (process.platform === "win32") app.setAppUserModelId("com.loom.agent");
   createWindow();
   createHudOverlayWindow();
+  // The relay owns its own reconnect loop; it stays idle until an account
+  // session exists, and a failed auth lookup just schedules a retry.
+  startWebRelay({ auth: webRelayAuthPayload, operations: desktopOperations });
 });
 app.on("activate", () => {
   if (!mainWindow) createWindow();
@@ -1279,4 +1398,5 @@ app.on("window-all-closed", () => {
 app.on("before-quit", () => {
   rpc.stop();
   closeHudOverlayWindow();
+  stopWebRelay();
 });

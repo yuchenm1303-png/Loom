@@ -38,7 +38,21 @@ async function readCurrentAccessToken(): Promise<{ accessToken: string; userId: 
   return { accessToken, userId: Number(status.user.id), email: String(status.user.email || "") };
 }
 
-ipcMain.handle("loom:web-relay-auth", async () => {
+export type WebRelayAuth = {
+  accessToken: string;
+  userId: number;
+  email: string;
+  deviceId: string;
+  deviceName: string;
+  platform: string;
+  appVersion: string;
+};
+
+/**
+ * Shared by the `loom:web-relay-auth` IPC channel (renderer) and the main-process
+ * relay, so both agree on identity, device id, and token refresh behaviour.
+ */
+export async function webRelayAuthPayload(): Promise<WebRelayAuth> {
   const identity = await readCurrentAccessToken();
   return {
     ...identity,
@@ -47,4 +61,6 @@ ipcMain.handle("loom:web-relay-auth", async () => {
     platform: process.platform,
     appVersion: app.getVersion(),
   };
-});
+}
+
+ipcMain.handle("loom:web-relay-auth", () => webRelayAuthPayload());
