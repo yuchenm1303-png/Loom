@@ -38,7 +38,9 @@
 :root :is(body, #root) *,
 :root :is(body, #root) *::before,
 :root :is(body, #root) *::after {
-  cursor: url("./assets/yukino-mouse.png"), auto !important;
+  /* The 70px image needs a centred hotspot: a top-left hotspot extends the
+     whole image below/right of bottom controls, causing Chromium fallback. */
+  cursor: url("./assets/yukino-mouse.png") 35 35, auto !important;
 }
 html, body, #root {
   width: 100%;
