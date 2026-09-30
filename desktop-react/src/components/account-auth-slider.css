@@ -1,0 +1,97 @@
+/* Sliding segmented control for Loom account auth mode.
+   This layer intentionally comes after the premium account refinement. */
+
+.loom-account-tabs {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 4px;
+  overflow: hidden;
+}
+
+.loom-account-tabs::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  top: 4px;
+  bottom: 4px;
+  left: 4px;
+  width: calc((100% - 12px) / 2);
+  border: 1px solid color-mix(in srgb, var(--accent, #8b7cf6) 26%, var(--border, #292d38));
+  border-radius: 8px;
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--accent, #8b7cf6) 10%, var(--panel-soft, #191c24)),
+      color-mix(in srgb, var(--panel, #101217) 96%, var(--accent, #8b7cf6) 4%)
+    );
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, .22),
+    inset 0 1px 0 color-mix(in srgb, var(--accent-soft, #aaa0ff) 8%, transparent);
+  pointer-events: none;
+  transform: translateX(0);
+  transition:
+    transform 260ms var(--loom-ease-out, cubic-bezier(.2,.74,.18,1)),
+    background 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.loom-account-tabs:has(button:nth-child(2).active)::before {
+  transform: translateX(calc(100% + 4px));
+}
+
+.loom-account-tabs button {
+  position: relative;
+  z-index: 1;
+  border-color: transparent !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.loom-account-tabs button:hover:not(.active) {
+  background: transparent !important;
+  color: var(--text-2, #bcc1cb);
+}
+
+.loom-account-tabs button.active {
+  background: transparent !important;
+  color: color-mix(in srgb, var(--accent-soft, #aaa0ff) 94%, white 6%);
+  box-shadow: none !important;
+}
+
+html[data-loom-theme="light"] .loom-account-tabs {
+  border-color: color-mix(in srgb, var(--border, #d8dbe1) 82%, transparent);
+  background: color-mix(in srgb, var(--panel-soft, #f0f1f3) 92%, #eef0f4 8%);
+  box-shadow: inset 0 1px 2px rgba(25, 30, 42, .055);
+}
+
+html[data-loom-theme="light"] .loom-account-tabs::before {
+  border-color: color-mix(in srgb, var(--accent, #695ad8) 24%, var(--border, #d8dbe1));
+  background: #fff;
+  box-shadow:
+    0 2px 8px rgba(38, 44, 56, .10),
+    0 1px 2px rgba(38, 44, 56, .08),
+    inset 0 1px 0 rgba(255, 255, 255, .95);
+}
+
+html[data-loom-theme="light"] .loom-account-tabs button.active {
+  color: var(--accent, #695ad8);
+}
+
+html[data-loom-theme="light"] .loom-account-tabs button:hover:not(.active) {
+  color: var(--text-2, #4d5564);
+}
+
+html[data-loom-reduced-motion="true"] .loom-account-tabs::before,
+:root[data-loom-reduced-motion="true"] .loom-account-tabs::before {
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loom-account-tabs::before {
+    transition: none;
+  }
+}
