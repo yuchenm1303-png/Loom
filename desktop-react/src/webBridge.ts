@@ -3,7 +3,7 @@ import type { LoomNotification } from "./types/global";
 
 const WEB_PLATFORM_MARKER = "web";
 const DEFAULT_WS_PATH = "/api/ws/browser";
-const DEVICE_WAIT_MS = 8_000;
+const SOCKET_WAIT_MS = 8_000;
 const HEARTBEAT_MS = 30_000;
 const MAX_STAGED_BYTES = 48 * 1024 * 1024;
 
@@ -32,8 +32,6 @@ let socketPromise: Promise<WebSocket> | null = null;
 let connectPromise: Promise<unknown> | null = null;
 let nextId = 1;
 let heartbeatTimer: number | null = null;
-let deviceOnline = false;
-let deviceStatusWaiter: ((online: boolean) => void) | null = null;
 const blobUrls = new Set<string>();
 
 function webSocketUrl(): string {
@@ -94,10 +92,8 @@ function closeSocket(): void {
   const current = socket;
   socket = null;
   socketPromise = null;
-  deviceOnline = false;
-  deviceStatusWaiter = null;
   stopHeartbeat();
-  failPending("Loom Desktop disconnected from the web session.");
+  failPending("Loom Web connection closed.");
   if (current && current.readyState < WebSocket.CLOSING) current.close(1000, "client closed");
 }
 
@@ -110,12 +106,7 @@ function handleRelayMessage(raw: string): void {
   }
 
   if (message.type === "device_status") {
-    deviceOnline = Boolean(message.online);
-    if (deviceStatusWaiter) {
-      const waiter = deviceStatusWaiter;
-      deviceStatusWaiter = null;
-      waiter(deviceOnline);
-    }
+    window.dispatchEvent(new CustomEvent("loom:web-device-status", { detail: message }));
     return;
   }
   if (message.type === "invoke_result") {
@@ -137,6 +128,11 @@ async function ensureSocket(): Promise<WebSocket> {
   if (socket?.readyState === WebSocket.OPEN) return socket;
   if (socketPromise) return socketPromise;
 
+  const account = await accountRequest("status");
+  if (!account.ok || !account.snapshot.authenticated) {
+    throw new Error("Sign in to Loom Web before connecting.");
+  }
+
   socketPromise = new Promise<WebSocket>((resolve, reject) => {
     const ws = new WebSocket(webSocketUrl());
     socket = ws;
@@ -145,7 +141,7 @@ async function ensureSocket(): Promise<WebSocket> {
         ws.close();
         reject(new Error("Could not connect to Loom Web."));
       }
-    }, DEVICE_WAIT_MS);
+    }, SOCKET_WAIT_MS);
 
     ws.addEventListener("open", () => {
       window.clearTimeout(timeout);
@@ -159,9 +155,8 @@ async function ensureSocket(): Promise<WebSocket> {
       if (socket === ws) {
         socket = null;
         socketPromise = null;
-        deviceOnline = false;
         stopHeartbeat();
-        failPending("Loom Desktop went offline.");
+        failPending("Loom Web connection closed.");
       }
     });
     ws.addEventListener("error", () => {
@@ -174,28 +169,7 @@ async function ensureSocket(): Promise<WebSocket> {
   return socketPromise;
 }
 
-async function waitForDevice(): Promise<void> {
-  if (deviceOnline) return;
-  const ws = await ensureSocket();
-  if (deviceOnline) return;
-  const online = await new Promise<boolean>((resolve) => {
-    let settled = false;
-    const finish = (value: boolean) => {
-      if (settled) return;
-      settled = true;
-      resolve(value);
-    };
-    deviceStatusWaiter = finish;
-    window.setTimeout(() => finish(deviceOnline), DEVICE_WAIT_MS);
-    if (ws.readyState !== WebSocket.OPEN) finish(false);
-  });
-  if (!online) {
-    throw new Error("Loom Desktop is offline. Open the latest Loom Desktop, sign in to the same account, then retry.");
-  }
-}
-
 async function invoke<T = unknown>(operation: string, args: unknown[] = []): Promise<T> {
-  await waitForDevice();
   const ws = await ensureSocket();
   const id = nextId++;
   const message: InvokeMessage = { type: "invoke", id, operation, args };
@@ -268,9 +242,8 @@ export function installWebBridge(): void {
       connectPromise = (async () => {
         const account = await accountRequest("status");
         if (!account.ok || !account.snapshot.authenticated) {
-          throw new Error("Sign in to Loom Web before connecting to your desktop.");
+          throw new Error("Sign in to Loom Web before connecting.");
         }
-        await waitForDevice();
         return invoke("connect", []);
       })();
       try { return await connectPromise; } finally { connectPromise = null; }

@@ -8,6 +8,15 @@ services:
     restart: unless-stopped
     environment:
       LOOM_ACCOUNT_API_BASE_URL: https://account.smirel.com/v1
+      LOOM_WEB_ORIGIN: ${LOOM_WEB_ORIGIN:-https://loom.smirel.com}
+      LOOM_WEB_PROVIDER: ${LOOM_WEB_PROVIDER:-openai-compatible}
+      LOOM_WEB_BASE_URL: ${LOOM_WEB_BASE_URL:-}
+      LOOM_WEB_MODEL: ${LOOM_WEB_MODEL:-}
+      LOOM_WEB_API_KEY: ${LOOM_WEB_API_KEY:-}
+      LOOM_WEB_SELECTION: ${LOOM_WEB_SELECTION:-cloud:default}
+      LOOM_WEB_PERMISSION_MODE: ${LOOM_WEB_PERMISSION_MODE:-workspace}
+    volumes:
+      - loom_web_data:/var/lib/loom-web
     networks:
       - edge
     security_opt:
@@ -15,6 +24,9 @@ services:
     read_only: true
     tmpfs:
       - /tmp:size=64m,mode=1777
+
+volumes:
+  loom_web_data:
 
 networks:
   edge:
