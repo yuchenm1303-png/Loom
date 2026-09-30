@@ -40,9 +40,6 @@ function mergeDeltaParams(
 }
 
 const api = {
-  windowControl: process.platform === "win32"
-    ? (action: string, point?: { x: number; y: number }) => ipcRenderer.invoke("loom:window-control", action, point)
-    : undefined,
   connect: () => ipcRenderer.invoke("loom:connect"),
   call: (method: string, params: Record<string, unknown> = {}) => ipcRenderer.invoke("loom:call", method, params),
   disconnect: () => ipcRenderer.invoke("loom:disconnect"),

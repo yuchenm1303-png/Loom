@@ -6,7 +6,6 @@ import fs from "node:fs/promises";
 import fsSync from "node:fs";
 import crypto from "node:crypto";
 import readline from "node:readline";
-import { installWindowChrome } from "./windowChrome.js";
 import {
   DesktopModelManager,
   type AddModelInput,
@@ -1059,7 +1058,6 @@ function createWindow(): void {
     minHeight: 680,
     backgroundColor: nativeTheme.shouldUseDarkColors ? "#0d0e11" : "#f7f7f8",
     title: "Loom",
-    frame: process.platform !== "win32",
     icon: windowIcon,
     autoHideMenuBar: true,
     show: false,
@@ -1071,7 +1069,6 @@ function createWindow(): void {
     },
   });
   const window = mainWindow;
-  installWindowChrome(window);
   let rendererDocumentUrl = "";
   window.once("ready-to-show", () => window.show());
   window.webContents.on("did-finish-load", () => {

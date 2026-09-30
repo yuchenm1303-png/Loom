@@ -366,7 +366,6 @@ export function TranscriptScrollController({
     };
 
     const onPointerDown = (event: PointerEvent) => {
-      if (scroller.classList.contains("loom-custom-scrollable")) return;
       if (event.button !== 0 || scroller.scrollHeight <= scroller.clientHeight) return;
       const rect = scroller.getBoundingClientRect();
       const nativeGutter = Math.max(0, scroller.offsetWidth - scroller.clientWidth);
@@ -429,10 +428,6 @@ export function TranscriptScrollController({
     };
 
     scroller.addEventListener("scroll", onScroll, { passive: true });
-    const onCustomDragStart = () => detachFromLiveFollow(scroller);
-    const onCustomDragEnd = () => { markReturnIntent(); resumeIfUserReturnedToBottom(); setJumpVisible(userDetachedRef.current && !isNearBottom(scroller)); };
-    scroller.addEventListener("loom:scrollbar-drag-start", onCustomDragStart);
-    scroller.addEventListener("loom:scrollbar-drag-end", onCustomDragEnd);
     scroller.addEventListener("wheel", onWheel, { passive: true });
     scroller.addEventListener("touchstart", onTouchStart, { passive: true });
     scroller.addEventListener("touchmove", onTouchMove, { passive: true });
@@ -463,8 +458,6 @@ export function TranscriptScrollController({
 
     return () => {
       scroller.removeEventListener("scroll", onScroll);
-      scroller.removeEventListener("loom:scrollbar-drag-start", onCustomDragStart);
-      scroller.removeEventListener("loom:scrollbar-drag-end", onCustomDragEnd);
       scroller.removeEventListener("wheel", onWheel);
       scroller.removeEventListener("touchstart", onTouchStart);
       scroller.removeEventListener("touchmove", onTouchMove);

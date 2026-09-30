@@ -1,5 +1,4 @@
 import { StrictMode } from "react";
-import { WindowChrome } from "./components/WindowChrome";
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import { WebAppGate } from "./components/WebAppGate";
@@ -13,7 +12,6 @@ import { installWebBridge, isLoomWebRuntime } from "./webBridge";
 import "./starterCardPointerGlow";
 import "./pointerClick";
 import "./customPointer";
-import "./customScrollbars";
 import "./styles.css";
 import "./shell-fix.css";
 import "./components/model-panel-overrides.css";
@@ -164,7 +162,6 @@ if (!rootElement) throw new Error("Loom renderer root element is missing");
 
 createRoot(rootElement).render(
   <StrictMode>
-    <WindowChrome>
     <BootErrorBoundary>
       <I18nProvider>
         <WebAppGate>
@@ -174,6 +171,5 @@ createRoot(rootElement).render(
         </WebAppGate>
       </I18nProvider>
     </BootErrorBoundary>
-    </WindowChrome>
   </StrictMode>,
 );
