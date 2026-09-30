@@ -17,4 +17,6 @@ COPY --from=web /src/desktop-react/dist ./static
 RUN useradd --system --uid 10001 --home /nonexistent --shell /usr/sbin/nologin loomweb
 USER loomweb
 EXPOSE 8790
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8790/api/healthz', timeout=3).read()" || exit 1
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8790", "--ws-max-size", "67108864", "--proxy-headers", "--forwarded-allow-ips=*"]
