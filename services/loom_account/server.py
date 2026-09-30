@@ -11,11 +11,15 @@ import json
 import os
 import re
 import secrets
+import smtplib
 import sqlite3
+import ssl
 import threading
 import time
 import uuid
 from dataclasses import dataclass
+from email.message import EmailMessage
+from email.utils import formataddr
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -24,6 +28,7 @@ from typing import Any, Collection
 
 _EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 _PASSWORD_ITERATIONS = 600_000
+_VERIFICATION_CODE_RE = re.compile(r"^\d{6}$")
 
 # Peers allowed to set the client address through a forwarding header. The
 # service is meant to sit behind a TLS-terminating reverse proxy, so loopback is
@@ -85,6 +90,22 @@ def _token_hash(token: str) -> str:
 
 def _new_token(prefix: str) -> str:
     return f"{prefix}_{secrets.token_urlsafe(32)}"
+
+
+def _new_verification_code() -> str:
+    return f"{secrets.randbelow(1_000_000):06d}"
+
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return str(value).strip().casefold() in {"1", "true", "yes", "on"}
+
+
+def _verification_hash(secret: bytes, user_id: int, purpose: str, code: str) -> str:
+    message = f"{int(user_id)}:{purpose}:{code}".encode("utf-8")
+    return hmac.new(secret, message, hashlib.sha256).hexdigest()
 
 
 def _password_hash(password: str) -> str:
@@ -150,6 +171,118 @@ class AccountConfig:
     db_path: Path
     access_ttl_seconds: int = 15 * 60
     refresh_ttl_seconds: int = 30 * 24 * 60 * 60
+    verification_ttl_seconds: int = 10 * 60
+    verification_resend_cooldown_seconds: int = 60
+    verification_max_attempts: int = 6
+    verification_secret_path: Path | None = None
+
+
+@dataclass(frozen=True)
+class SMTPConfig:
+    host: str = ""
+    port: int = 587
+    username: str = ""
+    password: str = ""
+    from_address: str = ""
+    from_name: str = "Loom"
+    tls_mode: str = "starttls"
+    timeout_seconds: int = 15
+
+    @property
+    def configured(self) -> bool:
+        return bool(self.host.strip() and self.from_address.strip())
+
+    @classmethod
+    def from_environment(cls) -> "SMTPConfig":
+        return cls(
+            host=str(os.environ.get("LOOM_ACCOUNT_SMTP_HOST") or "").strip(),
+            port=max(1, int(os.environ.get("LOOM_ACCOUNT_SMTP_PORT") or "587")),
+            username=str(os.environ.get("LOOM_ACCOUNT_SMTP_USERNAME") or "").strip(),
+            password=str(os.environ.get("LOOM_ACCOUNT_SMTP_PASSWORD") or ""),
+            from_address=str(
+                os.environ.get("LOOM_ACCOUNT_SMTP_FROM")
+                or os.environ.get("LOOM_ACCOUNT_SMTP_USERNAME")
+                or ""
+            ).strip(),
+            from_name=str(os.environ.get("LOOM_ACCOUNT_SMTP_FROM_NAME") or "Loom").strip() or "Loom",
+            tls_mode=str(os.environ.get("LOOM_ACCOUNT_SMTP_TLS_MODE") or "starttls").strip().casefold(),
+            timeout_seconds=max(3, int(os.environ.get("LOOM_ACCOUNT_SMTP_TIMEOUT") or "15")),
+        )
+
+
+class SMTPMailer:
+    def __init__(self, config: SMTPConfig) -> None:
+        self.config = config
+
+    @property
+    def configured(self) -> bool:
+        return self.config.configured
+
+    def send_verification_code(self, email: str, code: str, ttl_seconds: int) -> None:
+        if not self.configured:
+            raise AccountError(
+                HTTPStatus.SERVICE_UNAVAILABLE,
+                "EMAIL_DELIVERY_UNAVAILABLE",
+                "Email verification is not configured on this server.",
+            )
+        minutes = max(1, (int(ttl_seconds) + 59) // 60)
+        message = EmailMessage()
+        message["Subject"] = "Loom verification code · Loom 邮箱验证码"
+        message["From"] = formataddr((self.config.from_name, self.config.from_address))
+        message["To"] = email
+        message.set_content(
+            f"Your Loom verification code is {code}. It expires in {minutes} minutes.\n\n"
+            f"你的 Loom 邮箱验证码是 {code}，{minutes} 分钟内有效。\n\n"
+            "If you did not request this code, you can ignore this email.\n"
+            "如果这不是你的操作，可以忽略这封邮件。"
+        )
+        html_body = (
+            '<!doctype html><html><body style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;'
+            'background:#f6f7f9;padding:32px;color:#17181a">'
+            '<div style="max-width:520px;margin:auto;background:#fff;border:1px solid #e8eaed;border-radius:18px;padding:32px">'
+            '<div style="font-size:20px;font-weight:700;margin-bottom:8px">Verify your Loom account</div>'
+            '<div style="color:#666;margin-bottom:24px">验证你的 Loom 账号</div>'
+            f'<div style="font-size:34px;letter-spacing:8px;font-weight:750;padding:18px 20px;background:#f5f6f8;border-radius:14px;text-align:center">{code}</div>'
+            f'<p style="color:#666;line-height:1.65;margin-top:24px">This code expires in {minutes} minutes.<br>验证码将在 {minutes} 分钟后失效。</p>'
+            '<p style="color:#999;font-size:13px;line-height:1.6">If you did not request this code, simply ignore this email.<br>如果这不是你的操作，可以忽略这封邮件。</p>'
+            '</div></body></html>'
+        )
+        message.add_alternative(html_body, subtype="html")
+
+        mode = self.config.tls_mode
+        if mode not in {"starttls", "implicit", "plain"}:
+            raise AccountError(
+                HTTPStatus.SERVICE_UNAVAILABLE,
+                "EMAIL_DELIVERY_UNAVAILABLE",
+                "The server email transport is misconfigured.",
+            )
+        context = ssl.create_default_context()
+        try:
+            if mode == "implicit":
+                client: smtplib.SMTP = smtplib.SMTP_SSL(
+                    self.config.host,
+                    self.config.port,
+                    timeout=self.config.timeout_seconds,
+                    context=context,
+                )
+            else:
+                client = smtplib.SMTP(
+                    self.config.host, self.config.port, timeout=self.config.timeout_seconds
+                )
+            with client:
+                client.ehlo()
+                if mode == "starttls":
+                    client.starttls(context=context)
+                    client.ehlo()
+                if self.config.username:
+                    client.login(self.config.username, self.config.password)
+                client.send_message(message)
+        except (OSError, smtplib.SMTPException) as exc:
+            raise AccountError(
+                HTTPStatus.SERVICE_UNAVAILABLE,
+                "EMAIL_DELIVERY_FAILED",
+                "Verification email could not be sent. Try again shortly.",
+            ) from exc
 
 
 class AccountStore:
@@ -157,7 +290,29 @@ class AccountStore:
         self.config = config
         self.config.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._guard = threading.RLock()
+        self._verification_secret = self._load_verification_secret()
         self._initialize()
+
+    def _load_verification_secret(self) -> bytes:
+        target = self.config.verification_secret_path or (self.config.db_path.parent / "verification-secret")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            value = target.read_bytes()
+            if len(value) >= 32:
+                return value
+        except FileNotFoundError:
+            pass
+        value = secrets.token_bytes(32)
+        try:
+            fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        except FileExistsError:
+            existing = target.read_bytes()
+            if len(existing) < 32:
+                raise RuntimeError("Loom account verification secret is invalid")
+            return existing
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(value)
+        return value
 
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.config.db_path, timeout=15, isolation_level=None)
@@ -176,6 +331,7 @@ class AccountStore:
                     password_hash TEXT NOT NULL,
                     display_name TEXT NOT NULL DEFAULT '',
                     status TEXT NOT NULL DEFAULT 'active',
+                    email_verified_at INTEGER,
                     created_at INTEGER NOT NULL,
                     updated_at INTEGER NOT NULL
                 );
@@ -192,19 +348,40 @@ class AccountStore:
                     revoked_at INTEGER
                 );
 
+                CREATE TABLE IF NOT EXISTS email_verifications (
+                    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    purpose TEXT NOT NULL,
+                    code_hash TEXT NOT NULL,
+                    expires_at INTEGER NOT NULL,
+                    attempts INTEGER NOT NULL DEFAULT 0,
+                    created_at INTEGER NOT NULL,
+                    sent_at INTEGER NOT NULL,
+                    PRIMARY KEY(user_id, purpose)
+                );
+
                 CREATE INDEX IF NOT EXISTS idx_sessions_access_hash ON sessions(access_hash);
                 CREATE INDEX IF NOT EXISTS idx_sessions_refresh_hash ON sessions(refresh_hash);
                 CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
                 """
             )
+            columns = {str(row["name"]) for row in db.execute("PRAGMA table_info(users)").fetchall()}
+            if "email_verified_at" not in columns:
+                db.execute("ALTER TABLE users ADD COLUMN email_verified_at INTEGER")
+                db.execute(
+                    "UPDATE users SET email_verified_at = created_at "
+                    "WHERE status = 'active' AND email_verified_at IS NULL"
+                )
 
     @staticmethod
     def _safe_user(row: sqlite3.Row) -> dict[str, Any]:
+        verified_at = row["email_verified_at"]
         return {
             "id": int(row["id"]),
             "email": str(row["email"]),
             "display_name": str(row["display_name"] or ""),
             "status": str(row["status"]),
+            "email_verified": verified_at is not None,
+            "email_verified_at": int(verified_at) if verified_at is not None else None,
             "created_at": int(row["created_at"]),
         }
 
@@ -215,8 +392,9 @@ class AccountStore:
         try:
             with self._guard, self._connect() as db:
                 cursor = db.execute(
-                    "INSERT INTO users(email, password_hash, created_at, updated_at) VALUES (?, ?, ?, ?)",
-                    (email, _password_hash(password), now, now),
+                    "INSERT INTO users(email, password_hash, email_verified_at, created_at, updated_at) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    (email, _password_hash(password), now, now, now),
                 )
                 row = db.execute("SELECT * FROM users WHERE id = ?", (int(cursor.lastrowid),)).fetchone()
         except sqlite3.IntegrityError as exc:
@@ -233,13 +411,175 @@ class AccountStore:
             )
         return self._safe_user(row)
 
+    def begin_registration(self, email: str, password: str) -> dict[str, Any]:
+        email = _normalize_email(email)
+        password = _validate_password(password)
+        now = _now()
+        with self._guard, self._connect() as db:
+            row = db.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+            if row is not None:
+                if row["email_verified_at"] is not None or str(row["status"]) != "pending":
+                    raise AccountError(
+                        HTTPStatus.CONFLICT,
+                        "EMAIL_EXISTS",
+                        "An account with this email already exists.",
+                    )
+                db.execute(
+                    "UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?",
+                    (_password_hash(password), now, int(row["id"])),
+                )
+                row = db.execute("SELECT * FROM users WHERE id = ?", (int(row["id"]),)).fetchone()
+            else:
+                cursor = db.execute(
+                    "INSERT INTO users(email, password_hash, status, email_verified_at, created_at, updated_at) "
+                    "VALUES (?, ?, 'pending', NULL, ?, ?)",
+                    (email, _password_hash(password), now, now),
+                )
+                row = db.execute(
+                    "SELECT * FROM users WHERE id = ?", (int(cursor.lastrowid),)
+                ).fetchone()
+        if row is None:
+            raise AccountError(
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+                "ACCOUNT_CREATE_FAILED",
+                "Account could not be created.",
+            )
+        return self._safe_user(row)
+
+    def pending_user(self, email: str) -> dict[str, Any] | None:
+        email = _normalize_email(email)
+        with self._connect() as db:
+            row = db.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+        if row is None or row["email_verified_at"] is not None or str(row["status"]) != "pending":
+            return None
+        return self._safe_user(row)
+
+    def issue_email_verification(self, user_id: int, purpose: str = "registration") -> str:
+        now = _now()
+        code = _new_verification_code()
+        code_hash = _verification_hash(self._verification_secret, user_id, purpose, code)
+        with self._guard, self._connect() as db:
+            existing = db.execute(
+                "SELECT sent_at FROM email_verifications WHERE user_id = ? AND purpose = ?",
+                (user_id, purpose),
+            ).fetchone()
+            if existing is not None:
+                retry_at = int(existing["sent_at"]) + self.config.verification_resend_cooldown_seconds
+                if retry_at > now:
+                    raise AccountError(
+                        HTTPStatus.TOO_MANY_REQUESTS,
+                        "VERIFICATION_COOLDOWN",
+                        "Wait a moment before requesting another verification code.",
+                    )
+            db.execute(
+                """
+                INSERT INTO email_verifications(
+                    user_id, purpose, code_hash, expires_at, attempts, created_at, sent_at
+                ) VALUES (?, ?, ?, ?, 0, ?, ?)
+                ON CONFLICT(user_id, purpose) DO UPDATE SET
+                    code_hash = excluded.code_hash,
+                    expires_at = excluded.expires_at,
+                    attempts = 0,
+                    created_at = excluded.created_at,
+                    sent_at = excluded.sent_at
+                """,
+                (
+                    user_id,
+                    purpose,
+                    code_hash,
+                    now + self.config.verification_ttl_seconds,
+                    now,
+                    now,
+                ),
+            )
+        return code
+
+    def clear_email_verification(self, user_id: int, purpose: str = "registration") -> None:
+        with self._guard, self._connect() as db:
+            db.execute(
+                "DELETE FROM email_verifications WHERE user_id = ? AND purpose = ?",
+                (user_id, purpose),
+            )
+
+    def verify_email(self, email: str, code: str, purpose: str = "registration") -> dict[str, Any]:
+        email = _normalize_email(email)
+        code = str(code or "").strip()
+        if not _VERIFICATION_CODE_RE.fullmatch(code):
+            raise AccountError(
+                HTTPStatus.BAD_REQUEST,
+                "INVALID_VERIFICATION_CODE",
+                "Enter the 6-digit verification code.",
+            )
+        now = _now()
+        with self._guard, self._connect() as db:
+            row = db.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+            if row is None:
+                raise AccountError(
+                    HTTPStatus.BAD_REQUEST,
+                    "INVALID_VERIFICATION_CODE",
+                    "The verification code is invalid.",
+                )
+            if row["email_verified_at"] is not None:
+                raise AccountError(
+                    HTTPStatus.CONFLICT,
+                    "EMAIL_ALREADY_VERIFIED",
+                    "This email address is already verified. Sign in instead.",
+                )
+            verification = db.execute(
+                "SELECT * FROM email_verifications WHERE user_id = ? AND purpose = ?",
+                (int(row["id"]), purpose),
+            ).fetchone()
+            if verification is None or int(verification["expires_at"]) <= now:
+                if verification is not None:
+                    db.execute(
+                        "DELETE FROM email_verifications WHERE user_id = ? AND purpose = ?",
+                        (int(row["id"]), purpose),
+                    )
+                raise AccountError(
+                    HTTPStatus.BAD_REQUEST,
+                    "VERIFICATION_CODE_EXPIRED",
+                    "The verification code has expired. Request a new one.",
+                )
+            attempts = int(verification["attempts"] or 0)
+            if attempts >= self.config.verification_max_attempts:
+                raise AccountError(
+                    HTTPStatus.TOO_MANY_REQUESTS,
+                    "VERIFICATION_ATTEMPTS_EXCEEDED",
+                    "Too many incorrect codes. Request a new one.",
+                )
+            actual = _verification_hash(self._verification_secret, int(row["id"]), purpose, code)
+            if not hmac.compare_digest(actual, str(verification["code_hash"])):
+                db.execute(
+                    "UPDATE email_verifications SET attempts = attempts + 1 WHERE user_id = ? AND purpose = ?",
+                    (int(row["id"]), purpose),
+                )
+                raise AccountError(
+                    HTTPStatus.BAD_REQUEST,
+                    "INVALID_VERIFICATION_CODE",
+                    "The verification code is invalid.",
+                )
+            db.execute(
+                "UPDATE users SET status = 'active', email_verified_at = ?, updated_at = ? WHERE id = ?",
+                (now, now, int(row["id"])),
+            )
+            db.execute(
+                "DELETE FROM email_verifications WHERE user_id = ? AND purpose = ?",
+                (int(row["id"]), purpose),
+            )
+            row = db.execute("SELECT * FROM users WHERE id = ?", (int(row["id"]),)).fetchone()
+        if row is None:
+            raise AccountError(
+                HTTPStatus.INTERNAL_SERVER_ERROR,
+                "ACCOUNT_CREATE_FAILED",
+                "Account could not be activated.",
+            )
+        return self._safe_user(row)
+
     def authenticate(self, email: str, password: str) -> dict[str, Any]:
         email = _normalize_email(email)
         with self._connect() as db:
             row = db.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
         if row is None:
-            # Burn the same KDF cost as a real account. Short-circuiting here
-            # would turn response latency into an email-enumeration oracle.
             _password_matches(str(password or ""), _decoy_password_hash())
             raise AccountError(
                 HTTPStatus.UNAUTHORIZED,
@@ -251,6 +591,12 @@ class AccountStore:
                 HTTPStatus.UNAUTHORIZED,
                 "INVALID_CREDENTIALS",
                 "Email or password is incorrect.",
+            )
+        if row["email_verified_at"] is None:
+            raise AccountError(
+                HTTPStatus.FORBIDDEN,
+                "EMAIL_NOT_VERIFIED",
+                "Verify your email address before signing in.",
             )
         if str(row["status"]) != "active":
             raise AccountError(
@@ -454,8 +800,6 @@ class SlidingWindowLimiter:
             self._widest_window = max(self._widest_window, window_seconds)
             events = [stamp for stamp in self._events.get(key, []) if stamp >= cutoff]
             if len(events) >= limit:
-                # Keep the pruned list so the window keeps sliding while the
-                # caller is being throttled.
                 self._events[key] = events
                 raise AccountError(
                     HTTPStatus.TOO_MANY_REQUESTS,
@@ -471,14 +815,80 @@ class SlidingWindowLimiter:
 
 
 class AccountApplication:
-    def __init__(self, store: AccountStore) -> None:
+    def __init__(
+        self,
+        store: AccountStore,
+        *,
+        mailer: Any | None = None,
+        require_email_verification: bool = False,
+    ) -> None:
         self.store = store
         self.limiter = SlidingWindowLimiter()
+        self.mailer = mailer
+        self.require_email_verification = bool(require_email_verification)
+
+    def _verification_payload(self, email: str) -> dict[str, Any]:
+        return {
+            "verification_required": True,
+            "email": email,
+            "expires_in": self.store.config.verification_ttl_seconds,
+            "resend_after": self.store.config.verification_resend_cooldown_seconds,
+        }
+
+    def _require_mailer(self) -> Any:
+        mailer = self.mailer
+        if mailer is None or not bool(getattr(mailer, "configured", False)):
+            raise AccountError(
+                HTTPStatus.SERVICE_UNAVAILABLE,
+                "EMAIL_DELIVERY_UNAVAILABLE",
+                "Email verification is not configured on this server.",
+            )
+        return mailer
+
+    def _send_verification(self, user: dict[str, Any]) -> None:
+        mailer = self._require_mailer()
+        code = self.store.issue_email_verification(int(user["id"]))
+        try:
+            mailer.send_verification_code(
+                str(user["email"]), code, self.store.config.verification_ttl_seconds
+            )
+        except Exception:
+            self.store.clear_email_verification(int(user["id"]))
+            raise
 
     def register(self, body: dict[str, Any], client_key: str) -> dict[str, Any]:
         self.limiter.check(f"register:{client_key}", 5, 60)
-        user = self.store.register(str(body.get("email") or ""), str(body.get("password") or ""))
+        email = str(body.get("email") or "")
+        password = str(body.get("password") or "")
+        if not self.require_email_verification:
+            user = self.store.register(email, password)
+            return {**self.store.create_session(int(user["id"])), "user": user}
+
+        self._require_mailer()
+        user = self.store.begin_registration(email, password)
+        self._send_verification(user)
+        return self._verification_payload(str(user["email"]))
+
+    def verify_email(self, body: dict[str, Any], client_key: str) -> dict[str, Any]:
+        email = _normalize_email(str(body.get("email") or ""))
+        self.limiter.check(f"verify-ip:{client_key}", 12, 10 * 60)
+        self.limiter.check(f"verify-email:{email}", 12, 10 * 60)
+        user = self.store.verify_email(email, str(body.get("code") or ""))
         return {**self.store.create_session(int(user["id"])), "user": user}
+
+    def resend_verification(self, body: dict[str, Any], client_key: str) -> dict[str, Any]:
+        email = _normalize_email(str(body.get("email") or ""))
+        self.limiter.check(f"resend-ip:{client_key}", 5, 10 * 60)
+        self.limiter.check(f"resend-email:{email}", 3, 10 * 60)
+        self._require_mailer()
+        user = self.store.pending_user(email)
+        if user is not None:
+            self._send_verification(user)
+        return {
+            "ok": True,
+            "expires_in": self.store.config.verification_ttl_seconds,
+            "resend_after": self.store.config.verification_resend_cooldown_seconds,
+        }
 
     def login(self, body: dict[str, Any], client_key: str) -> dict[str, Any]:
         self.limiter.check(f"login:{client_key}", 20, 60)
@@ -510,9 +920,6 @@ class AccountApplication:
 class AccountRequestHandler(BaseHTTPRequestHandler):
     server_version = "LoomAccount/1"
 
-    # Requests larger than _MAX_BODY_BYTES are refused before parsing. A bounded
-    # prefix is still drained so the client can finish writing and read the 413;
-    # answering without draining makes the client observe a connection reset.
     _MAX_BODY_BYTES = 64 * 1024
     _MAX_DRAIN_BYTES = 1024 * 1024
 
@@ -567,12 +974,7 @@ class AccountRequestHandler(BaseHTTPRequestHandler):
     def _client_key(self) -> str:
         peer = str(self.client_address[0] if self.client_address else "unknown")
         if not _is_trusted_proxy(peer, getattr(self.server, "trusted_proxies", ())):
-            # Any caller can send X-Real-IP, so only believe it when the
-            # immediate peer is a proxy we control. Otherwise every request
-            # could mint itself a fresh rate-limit bucket.
             return peer
-        # The proxy overwrites these headers, so the leftmost entry is the
-        # address it actually observed.
         forwarded = self.headers.get("X-Real-IP") or self.headers.get("X-Forwarded-For") or ""
         candidate = forwarded.split(",")[0].strip()
         return candidate or peer
@@ -589,6 +991,10 @@ class AccountRequestHandler(BaseHTTPRequestHandler):
         body = self._json_body()
         if path == "/v1/auth/register":
             return self.application.register(body, self._client_key())
+        if path == "/v1/auth/verify-email":
+            return self.application.verify_email(body, self._client_key())
+        if path == "/v1/auth/resend-verification":
+            return self.application.resend_verification(body, self._client_key())
         if path == "/v1/auth/login":
             return self.application.login(body, self._client_key())
         if path == "/v1/auth/refresh":
@@ -655,8 +1061,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    db_path = Path(args.db).expanduser().resolve()
     config = AccountConfig(
-        db_path=Path(args.db).expanduser().resolve(),
+        db_path=db_path,
         access_ttl_seconds=max(
             60,
             int(os.environ.get("LOOM_ACCOUNT_ACCESS_TTL", str(15 * 60))),
@@ -665,8 +1072,22 @@ def main(argv: list[str] | None = None) -> int:
             300,
             int(os.environ.get("LOOM_ACCOUNT_REFRESH_TTL", str(30 * 24 * 60 * 60))),
         ),
+        verification_ttl_seconds=max(
+            120, int(os.environ.get("LOOM_ACCOUNT_VERIFICATION_TTL", "600"))
+        ),
+        verification_resend_cooldown_seconds=max(
+            10, int(os.environ.get("LOOM_ACCOUNT_VERIFICATION_RESEND_COOLDOWN", "60"))
+        ),
+        verification_max_attempts=max(
+            3, int(os.environ.get("LOOM_ACCOUNT_VERIFICATION_MAX_ATTEMPTS", "6"))
+        ),
+        verification_secret_path=db_path.parent / "verification-secret",
     )
-    application = AccountApplication(AccountStore(config))
+    application = AccountApplication(
+        AccountStore(config),
+        mailer=SMTPMailer(SMTPConfig.from_environment()),
+        require_email_verification=_env_bool("LOOM_ACCOUNT_REQUIRE_EMAIL_VERIFICATION", False),
+    )
     trusted_proxies_setting = os.environ.get("LOOM_ACCOUNT_TRUSTED_PROXIES")
     trusted_proxies = (
         _DEFAULT_TRUSTED_PROXIES

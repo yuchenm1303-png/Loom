@@ -36,6 +36,8 @@ import "./components/project-details-panel-theme.css";
 import "./global-motion.css";
 import "./components/generation-motion.css";
 import "./components/conversation-home.css";
+import "./components/account-auth-refined.css";
+import "./components/account-auth-slider.css";
 
 installWebBridge();
 

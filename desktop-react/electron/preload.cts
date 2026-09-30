@@ -48,6 +48,8 @@ const api = {
   accountStatus: () => ipcRenderer.invoke("loom:account-status"),
   accountLogin: (email: string, password: string) => ipcRenderer.invoke("loom:account-login", email, password),
   accountRegister: (email: string, password: string) => ipcRenderer.invoke("loom:account-register", email, password),
+  accountVerifyEmail: (email: string, code: string) => ipcRenderer.invoke("loom:account-verify-email", email, code),
+  accountResendVerification: (email: string) => ipcRenderer.invoke("loom:account-resend-verification", email),
   accountLogout: () => ipcRenderer.invoke("loom:account-logout"),
   listModels: (forceRefresh = false) => ipcRenderer.invoke("loom:model-list", Boolean(forceRefresh)),
   setModelProviderKey: (provider: string, apiKey: string) => ipcRenderer.invoke("loom:model-provider-key", provider, apiKey),

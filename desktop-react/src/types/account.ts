@@ -3,7 +3,16 @@ export interface LoomAccountUser {
   email: string;
   display_name?: string;
   status: string;
+  email_verified?: boolean;
+  email_verified_at?: number | null;
   created_at?: number;
+}
+
+export interface LoomEmailVerificationState {
+  email: string;
+  expiresIn: number;
+  resendAfter: number;
+  issuedAt: number;
 }
 
 export interface LoomAccountSnapshot {
@@ -13,6 +22,8 @@ export interface LoomAccountSnapshot {
   authenticated: boolean;
   user: LoomAccountUser | null;
   serviceUrl: string;
+  /** Present while a newly-created account is waiting for its email code. */
+  verification?: LoomEmailVerificationState;
 }
 
 /** Mirrors `AccountErrorPayload` in `desktop-react/electron/accountErrors.ts`. */
