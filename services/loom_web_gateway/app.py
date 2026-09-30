@@ -11,15 +11,24 @@ import httpx
 from fastapi import FastAPI, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
 
+from runtime import CloudRuntimeError, CloudRuntimePool
+
 ACCOUNT_BASE_URL = os.environ.get("LOOM_ACCOUNT_API_BASE_URL", "https://account.smirel.com/v1").rstrip("/")
 STATIC_DIR = Path(os.environ.get("LOOM_WEB_STATIC_DIR", "/app/static")).resolve()
 ACCESS_COOKIE = "loom_web_access"
 REFRESH_COOKIE = "loom_web_refresh"
 ACCESS_MAX_AGE = 15 * 60
 REFRESH_MAX_AGE = 30 * 24 * 60 * 60
-MAX_MESSAGE_BYTES = 64 * 1024 * 1024
 
-app = FastAPI(title="Loom Web Gateway", docs_url=None, redoc_url=None, openapi_url=None)
+# These operations require a physical desktop device. Everything else executes
+# inside the Web runtime and remains available when every Desktop is offline.
+DEVICE_OPERATIONS = {
+    "setupBrowserExtension",
+    "revealPath",
+    "copyImageSource",
+}
+
+app = FastAPI(title="Loom Web", docs_url=None, redoc_url=None, openapi_url=None)
 
 
 def _snapshot(user: dict[str, Any] | None, *, reachable: bool = True) -> dict[str, Any]:
@@ -84,7 +93,7 @@ async def _authenticated_user(access_token: str) -> tuple[int, dict[str, Any] | 
 
 async def _browser_identity(request: Request) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
     access = request.cookies.get(ACCESS_COOKIE, "")
-    status, user = await _authenticated_user(access)
+    _, user = await _authenticated_user(access)
     if user:
         return user, None
     refresh = request.cookies.get(REFRESH_COOKIE, "")
@@ -202,11 +211,54 @@ class RelayHub:
 
 
 hub = RelayHub()
+runtimes = CloudRuntimePool(hub.broadcast_notification)
+
+
+@app.on_event("shutdown")
+async def shutdown_runtime_pool() -> None:
+    await runtimes.close()
 
 
 async def _ws_user_from_access(access: str) -> dict[str, Any] | None:
     _, user = await _authenticated_user(access)
     return user
+
+
+async def _run_cloud_invoke(peer: BrowserPeer, request_id: Any, operation: str, args: list[Any]) -> None:
+    try:
+        result = await runtimes.invoke(peer.user_id, operation, args)
+        await peer.send({"type": "invoke_result", "id": request_id, "result": result})
+    except CloudRuntimeError as exc:
+        await peer.send({
+            "type": "invoke_result",
+            "id": request_id,
+            "error": {"code": "WEB_RUNTIME_ERROR", "message": str(exc)},
+        })
+    except Exception as exc:
+        await peer.send({
+            "type": "invoke_result",
+            "id": request_id,
+            "error": {"code": "WEB_RUNTIME_FAILURE", "message": f"Loom Web operation failed: {exc}"},
+        })
+
+
+async def _run_device_invoke(peer: BrowserPeer, request_id: Any, operation: str, args: list[Any]) -> None:
+    async with hub.lock:
+        device = hub.devices.get(peer.user_id)
+    if device is None:
+        await peer.send({
+            "type": "invoke_result",
+            "id": request_id,
+            "error": {"code": "DEVICE_OFFLINE", "message": "This action needs a connected Loom Desktop device."},
+        })
+        return
+    await device.send({
+        "type": "invoke",
+        "browserId": peer.id,
+        "id": request_id,
+        "operation": operation,
+        "args": args,
+    })
 
 
 @app.websocket("/api/ws/browser")
@@ -241,18 +293,12 @@ async def browser_socket(websocket: WebSocket) -> None:
             if frame.get("type") != "invoke":
                 continue
             request_id = frame.get("id")
-            async with hub.lock:
-                device = hub.devices.get(user_id)
-            if device is None:
-                await peer.send({"type": "invoke_result", "id": request_id, "error": {"message": "Loom Desktop is offline."}})
-                continue
-            await device.send({
-                "type": "invoke",
-                "browserId": peer.id,
-                "id": request_id,
-                "operation": str(frame.get("operation") or ""),
-                "args": frame.get("args") if isinstance(frame.get("args"), list) else [],
-            })
+            operation = str(frame.get("operation") or "")
+            args = frame.get("args") if isinstance(frame.get("args"), list) else []
+            if operation in DEVICE_OPERATIONS:
+                asyncio.create_task(_run_device_invoke(peer, request_id, operation, args))
+            else:
+                asyncio.create_task(_run_cloud_invoke(peer, request_id, operation, args))
     except (WebSocketDisconnect, RuntimeError, ValueError):
         pass
     finally:
@@ -274,7 +320,6 @@ async def device_socket(websocket: WebSocket) -> None:
         return
     await websocket.accept()
     peer = DevicePeer(user_id=user_id, websocket=websocket)
-    old: DevicePeer | None = None
     async with hub.lock:
         old = hub.devices.get(user_id)
         hub.devices[user_id] = peer
@@ -296,10 +341,6 @@ async def device_socket(websocket: WebSocket) -> None:
                 device = frame.get("device")
                 peer.device = device if isinstance(device, dict) else {}
                 await hub.broadcast_device_status(user_id)
-            elif kind == "notification":
-                payload = frame.get("payload")
-                if isinstance(payload, dict):
-                    await hub.broadcast_notification(user_id, payload)
             elif kind == "invoke_result":
                 browser_id = str(frame.get("browserId") or "")
                 async with hub.lock:
@@ -311,6 +352,8 @@ async def device_socket(websocket: WebSocket) -> None:
                     else:
                         forwarded["result"] = frame.get("result")
                     await browser.send(forwarded)
+            # Desktop runtime notifications stay local to Desktop. Web runtime
+            # has its own independent notification stream and conversation state.
     except (WebSocketDisconnect, RuntimeError, ValueError):
         pass
     finally:

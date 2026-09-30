@@ -13,6 +13,7 @@ import { installWebBridge, isLoomWebRuntime } from "./webBridge";
 import "./starterCardPointerGlow";
 import "./pointerClick";
 import "./customScrollbars";
+import "./loomPetRuntime";
 import "./styles.css";
 import "./shell-fix.css";
 import "./loom-mascot.css";
