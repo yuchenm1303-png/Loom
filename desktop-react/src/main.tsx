@@ -12,6 +12,7 @@ import { installWebBridge, isLoomWebRuntime } from "./webBridge";
 import "./starterCardPointerGlow";
 import "./styles.css";
 import "./shell-fix.css";
+import "./loom-mascot.css";
 import "./components/model-panel-overrides.css";
 import "./components/inline-thinking.css";
 import "./components/composer-stability.css";
