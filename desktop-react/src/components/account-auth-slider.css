@@ -1,5 +1,7 @@
-/* Sliding segmented control for Loom account auth mode.
-   This layer intentionally comes after the premium account refinement. */
+/* Robust sliding segmented control for Loom account auth mode.
+   This deliberately avoids :has() so the movement is reliable in every
+   supported Electron renderer. The selected button itself is the travelling
+   pill; its label fades in only after the pill has mostly reached its target. */
 
 .loom-account-tabs {
   position: relative;
@@ -9,46 +11,34 @@
   gap: 4px;
   padding: 4px;
   overflow: hidden;
-}
-
-.loom-account-tabs::before {
-  content: "";
-  position: absolute;
-  z-index: 0;
-  top: 4px;
-  bottom: 4px;
-  left: 4px;
-  width: calc((100% - 12px) / 2);
-  border: 1px solid color-mix(in srgb, var(--accent, #8b7cf6) 26%, var(--border, #292d38));
-  border-radius: 8px;
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--accent, #8b7cf6) 10%, var(--panel-soft, #191c24)),
-      color-mix(in srgb, var(--panel, #101217) 96%, var(--accent, #8b7cf6) 4%)
-    );
+  border: 1px solid color-mix(in srgb, var(--border-soft, #1d2028) 86%, transparent);
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--bg-deep, #090a0d) 96%, transparent);
   box-shadow:
-    0 2px 8px rgba(0, 0, 0, .22),
-    inset 0 1px 0 color-mix(in srgb, var(--accent-soft, #aaa0ff) 8%, transparent);
-  pointer-events: none;
-  transform: translateX(0);
-  transition:
-    transform 260ms var(--loom-ease-out, cubic-bezier(.2,.74,.18,1)),
-    background 180ms ease,
-    border-color 180ms ease,
-    box-shadow 180ms ease;
+    inset 0 1px 2px rgba(0, 0, 0, .20),
+    0 1px 0 color-mix(in srgb, var(--text, #f0f1f4) 2%, transparent);
 }
 
-.loom-account-tabs:has(button:nth-child(2).active)::before {
-  transform: translateX(calc(100% + 4px));
+/* Kill the old pseudo-thumb completely. */
+.loom-account-tabs::before {
+  content: none !important;
+  display: none !important;
 }
 
 .loom-account-tabs button {
   position: relative;
   z-index: 1;
-  border-color: transparent !important;
+  height: 36px;
+  border: 1px solid transparent !important;
+  border-radius: 9px;
   background: transparent !important;
   box-shadow: none !important;
+  color: var(--muted, #858c99);
+  will-change: transform, color, box-shadow;
+  transform: translate3d(0, 0, 0);
+  transition:
+    color 150ms ease,
+    opacity 150ms ease;
 }
 
 .loom-account-tabs button:hover:not(.active) {
@@ -56,42 +46,147 @@
   color: var(--text-2, #bcc1cb);
 }
 
+/*
+ * The active button is the actual sliding thumb. Its grid slot never changes,
+ * so translating it by one slot makes the pill visibly travel between Login
+ * and Register. The text stays transparent for most of the trip so the two
+ * labels do not visually overlap.
+ */
 .loom-account-tabs button.active {
-  background: transparent !important;
-  color: color-mix(in srgb, var(--accent-soft, #aaa0ff) 94%, white 6%);
-  box-shadow: none !important;
-}
-
-html[data-loom-theme="light"] .loom-account-tabs {
-  border-color: color-mix(in srgb, var(--border, #d8dbe1) 82%, transparent);
-  background: color-mix(in srgb, var(--panel-soft, #f0f1f3) 92%, #eef0f4 8%);
-  box-shadow: inset 0 1px 2px rgba(25, 30, 42, .055);
-}
-
-html[data-loom-theme="light"] .loom-account-tabs::before {
-  border-color: color-mix(in srgb, var(--accent, #695ad8) 24%, var(--border, #d8dbe1));
-  background: #fff;
+  z-index: 2;
+  border-color: color-mix(in srgb, var(--accent, #8b7cf6) 31%, var(--border, #292d38)) !important;
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--accent, #8b7cf6) 13%, var(--panel-soft, #191c24)),
+      color-mix(in srgb, var(--panel, #101217) 96%, var(--accent, #8b7cf6) 4%)
+    ) !important;
+  color: color-mix(in srgb, var(--accent-soft, #aaa0ff) 96%, white 4%);
   box-shadow:
-    0 2px 8px rgba(38, 44, 56, .10),
-    0 1px 2px rgba(38, 44, 56, .08),
-    inset 0 1px 0 rgba(255, 255, 255, .95);
+    0 4px 12px rgba(0, 0, 0, .26),
+    0 1px 3px rgba(0, 0, 0, .18),
+    inset 0 1px 0 color-mix(in srgb, var(--accent-soft, #aaa0ff) 9%, transparent) !important;
 }
 
-html[data-loom-theme="light"] .loom-account-tabs button.active {
-  color: var(--accent, #695ad8);
+/* Login becomes active: the pill travels from the Register slot back left. */
+.loom-account-tabs button:first-child.active {
+  animation: loom-account-slider-to-left 360ms cubic-bezier(.20, .82, .20, 1) both;
+}
+
+/* Register becomes active: the pill travels from the Login slot to the right. */
+.loom-account-tabs button:nth-child(2).active {
+  animation: loom-account-slider-to-right 360ms cubic-bezier(.20, .82, .20, 1) both;
+}
+
+@keyframes loom-account-slider-to-right {
+  0% {
+    transform: translate3d(calc(-100% - 4px), 0, 0) scale(.985);
+    color: transparent;
+    box-shadow:
+      0 3px 9px rgba(0, 0, 0, .20),
+      inset 0 1px 0 color-mix(in srgb, var(--accent-soft, #aaa0ff) 8%, transparent);
+  }
+  72% {
+    transform: translate3d(4px, 0, 0) scale(1);
+    color: transparent;
+  }
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+    color: color-mix(in srgb, var(--accent-soft, #aaa0ff) 96%, white 4%);
+  }
+}
+
+@keyframes loom-account-slider-to-left {
+  0% {
+    transform: translate3d(calc(100% + 4px), 0, 0) scale(.985);
+    color: transparent;
+    box-shadow:
+      0 3px 9px rgba(0, 0, 0, .20),
+      inset 0 1px 0 color-mix(in srgb, var(--accent-soft, #aaa0ff) 8%, transparent);
+  }
+  72% {
+    transform: translate3d(-4px, 0, 0) scale(1);
+    color: transparent;
+  }
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+    color: color-mix(in srgb, var(--accent-soft, #aaa0ff) 96%, white 4%);
+  }
+}
+
+/* Light theme: visibly separate the white thumb from the cool-grey track. */
+html[data-loom-theme="light"] .loom-account-tabs {
+  border-color: color-mix(in srgb, var(--border, #d8dbe1) 88%, transparent);
+  background: #eceef2;
+  box-shadow:
+    inset 0 1px 2px rgba(25, 30, 42, .065),
+    0 1px 0 rgba(255, 255, 255, .72);
+}
+
+html[data-loom-theme="light"] .loom-account-tabs button {
+  color: var(--muted, #68707e);
 }
 
 html[data-loom-theme="light"] .loom-account-tabs button:hover:not(.active) {
   color: var(--text-2, #4d5564);
 }
 
-html[data-loom-reduced-motion="true"] .loom-account-tabs::before,
-:root[data-loom-reduced-motion="true"] .loom-account-tabs::before {
-  transition: none;
+html[data-loom-theme="light"] .loom-account-tabs button.active {
+  border-color: color-mix(in srgb, var(--accent, #695ad8) 23%, var(--border, #d8dbe1)) !important;
+  background: #fff !important;
+  color: var(--accent, #695ad8);
+  box-shadow:
+    0 5px 14px rgba(38, 44, 56, .12),
+    0 1px 3px rgba(38, 44, 56, .10),
+    inset 0 1px 0 rgba(255, 255, 255, .98) !important;
+}
+
+html[data-loom-theme="light"] .loom-account-tabs button:first-child.active {
+  animation-name: loom-account-slider-to-left-light;
+}
+
+html[data-loom-theme="light"] .loom-account-tabs button:nth-child(2).active {
+  animation-name: loom-account-slider-to-right-light;
+}
+
+@keyframes loom-account-slider-to-right-light {
+  0% {
+    transform: translate3d(calc(-100% - 4px), 0, 0) scale(.985);
+    color: transparent;
+  }
+  72% {
+    transform: translate3d(4px, 0, 0) scale(1);
+    color: transparent;
+  }
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+    color: var(--accent, #695ad8);
+  }
+}
+
+@keyframes loom-account-slider-to-left-light {
+  0% {
+    transform: translate3d(calc(100% + 4px), 0, 0) scale(.985);
+    color: transparent;
+  }
+  72% {
+    transform: translate3d(-4px, 0, 0) scale(1);
+    color: transparent;
+  }
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+    color: var(--accent, #695ad8);
+  }
+}
+
+/* Respect Loom's explicit reduced-motion preference. */
+html[data-loom-reduced-motion="true"] .loom-account-tabs button.active,
+:root[data-loom-reduced-motion="true"] .loom-account-tabs button.active {
+  animation: none !important;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .loom-account-tabs::before {
-    transition: none;
+  .loom-account-tabs button.active {
+    animation: none !important;
   }
 }
