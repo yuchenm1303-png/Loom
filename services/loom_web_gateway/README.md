@@ -23,17 +23,21 @@ share process lifetime or local files.
 
 ## Runtime model configuration
 
-The Web runtime uses a server-managed model connection. Configure the deployment with:
+Production Loom Web uses a server-managed Muxway Relay credential. The credential never
+reaches browser JavaScript. The Web runtime reads the Relay `/models` catalog, exposes every
+model authorized for that credential, and can switch models independently from Loom Desktop.
 
-- `LOOM_WEB_PROVIDER` — `openai` or `openai-compatible`
-- `LOOM_WEB_MODEL` — model id
-- `LOOM_WEB_API_KEY` — provider credential
-- `LOOM_WEB_BASE_URL` — required for `openai-compatible`
-- `LOOM_WEB_SELECTION` — optional UI selection id, defaults to `cloud:default`
+Configure the deployment with:
+
+- `LOOM_WEB_BASE_URL` — Relay endpoint, defaults to `https://muxway.dev/v1`
+- `LOOM_WEB_MODEL` — preferred/default model, defaults to `MiniMax-M3`
+- `LOOM_WEB_API_KEY` — dedicated Loom Web Relay credential
 - `LOOM_WEB_PERMISSION_MODE` — defaults to `workspace`
 
-`LOOM_WEB_API_KEY_FILE` can be used instead of `LOOM_WEB_API_KEY` when the deployment
-platform provides a mounted secret file.
+`LOOM_WEB_API_KEY_FILE` is preferred in production so the Relay credential can be mounted as
+a read-only secret instead of being written into Compose or browser-visible configuration.
+The selected Web model is persisted per Loom account inside `loom_web_data`; Desktop model
+selection remains independent.
 
 ## Endpoints
 
