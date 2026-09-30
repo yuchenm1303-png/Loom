@@ -3,6 +3,12 @@ const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 const SENTENCE_BREAK = /[。！？!?；;\n]/u;
 const SOFT_BREAK = /[，,：:\s]/u;
 
+// Parsing a growing Markdown table is substantially more expensive than prose.
+// Batch long messages without dropping canonical text or slowing catch-up.
+export function streamingFrameInterval(length: number): number {
+  return length >= 12000 ? 120 : length >= 4000 ? 80 : 28;
+}
+
 function paintBudget(remaining: number, elapsedMs: number, finalizing: boolean): number {
   const elapsed = Math.min(96, Math.max(12, Number.isFinite(elapsedMs) ? elapsedMs : 32));
   const backlogBoost = remaining > 1200
@@ -38,7 +44,10 @@ export function advanceStreamingText(
   if (current === target) return target;
 
   const remaining = target.length - current.length;
-  const budget = paintBudget(remaining, elapsedMs, finalizing);
+  const batches = streamingFrameInterval(target.length) > 28
+    ? Math.max(1, Math.min(4, Math.floor(elapsedMs / 28)))
+    : 1;
+  const budget = paintBudget(remaining, elapsedMs / batches, finalizing) * batches;
   const softBoundaryFloor = Math.max(3, Math.floor(budget * 0.72));
 
   let end = current.length;
@@ -47,7 +56,7 @@ export function advanceStreamingText(
     end += part.segment.length;
     count += 1;
     if (count >= budget) break;
-    if (count >= 2 && SENTENCE_BREAK.test(part.segment)) break;
+    if (count >= 2 * batches && SENTENCE_BREAK.test(part.segment)) break;
     if (count >= softBoundaryFloor && SOFT_BREAK.test(part.segment)) break;
   }
   return target.slice(0, end);

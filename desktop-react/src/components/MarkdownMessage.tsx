@@ -339,16 +339,17 @@ function findStreamingTail(node: StreamNode): StreamTailMatch | null {
   const children = node.children;
   if (!children) return null;
 
-  let match: StreamTailMatch | null = null;
-  children.forEach((child, index) => {
+  // Only the final eligible node is needed; walking from the end avoids
+  // revisiting every completed row of a growing table on each paint.
+  for (let index = children.length - 1; index >= 0; index -= 1) {
+    const child = children[index];
     if (child.type === "text" && child.value?.trim()) {
-      match = { parent: node, childIndex: index };
-      return;
+      return { parent: node, childIndex: index };
     }
     const nested = findStreamingTail(child);
-    if (nested) match = nested;
-  });
-  return match;
+    if (nested) return nested;
+  }
+  return null;
 }
 
 /**

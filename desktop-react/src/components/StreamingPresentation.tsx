@@ -1,6 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { PRESENTATION_FRAME_MS } from "../presentationTiming";
-import { advanceStreamingText } from "./streamingText";
+import { advanceStreamingText, streamingFrameInterval } from "./streamingText";
 
 // Scoped to a mounted turn: moving its final answer must not lose paint progress.
 // Leaving a thread discards this state, so reopening history never replays it.
@@ -110,7 +109,7 @@ export function useStreamingPresentation(content: string, streaming: boolean, me
       }
 
       const elapsed = lastPaintAtRef.current ? now - lastPaintAtRef.current : 32;
-      if (lastPaintAtRef.current && elapsed < PRESENTATION_FRAME_MS) {
+      if (lastPaintAtRef.current && elapsed < streamingFrameInterval(target.length)) {
         frameRef.current = requestAnimationFrame(tick);
         return;
       }

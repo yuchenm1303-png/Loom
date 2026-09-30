@@ -29,7 +29,16 @@
 
 * {
   box-sizing: border-box;
-  cursor: url("./assets/yukino-mouse.png"), auto;
+}
+
+/* Include body-mounted portals and pseudo-elements. Component hover/disabled
+   rules (including resize handles) must not replace the chosen cursor. */
+:root,
+:root :is(body, #root),
+:root :is(body, #root) *,
+:root :is(body, #root) *::before,
+:root :is(body, #root) *::after {
+  cursor: url("./assets/yukino-mouse.png"), auto !important;
 }
 html, body, #root {
   width: 100%;

@@ -5,7 +5,36 @@ import ts from "typescript";
 
 const source = readFileSync(new URL("../../src/components/streamingText.ts", import.meta.url), "utf8");
 const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
-const { advanceStreamingText, streamingGraphemes } = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString("base64")}`);
+const { advanceStreamingText, streamingGraphemes, streamingFrameInterval } = await import(`data:text/javascript;base64,${Buffer.from(compiled).toString("base64")}`);
+
+test("long messages batch paints while retaining grapheme boundaries and exact content", () => {
+  assert.equal(streamingFrameInterval(1000), 28);
+  assert.equal(streamingFrameInterval(6000), 80);
+  assert.equal(streamingFrameInterval(14000), 120);
+  const target = "👨‍👩‍👧‍👦".repeat(1300);
+  const first = advanceStreamingText("", target, 120);
+  assert.ok(streamingGraphemes(first).length > 18);
+  let visible = first;
+  let frames = 1;
+  while (visible !== target && frames++ < 1000) {
+    const next = advanceStreamingText(visible, target, 120, true);
+    assert.ok(next.length > visible.length);
+    assert.equal(next.length % "👨‍👩‍👧‍👦".length, 0);
+    visible = next;
+  }
+  assert.equal(visible, target);
+});
+
+test("a long Markdown table converges without dropping rows or delimiters", () => {
+  const target = "| Name | Result |\n| --- | --- |\n" + "| 流式检查 | ✅ 成功 |\n".repeat(400);
+  let visible = "";
+  let frames = 0;
+  while (visible !== target && frames++ < 3000) {
+    visible = advanceStreamingText(visible, target, 80, true);
+    assert.ok(target.startsWith(visible));
+  }
+  assert.equal(visible, target);
+});
 
 test("coarse chunks are bounded and converge exactly", () => {
   const target = "中".repeat(800);

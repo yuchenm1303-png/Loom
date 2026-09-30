@@ -79,6 +79,8 @@ export function TranscriptScrollController({
   const lastActivityItemIdRef = useRef("");
   const lastScrollTopRef = useRef(0);
   const frameRef = useRef<number | null>(null);
+  const bottomTargetRef = useRef(0);
+  const bottomTargetDirtyRef = useRef(true);
   const snapBottomRef = useRef(false);
   const touchYRef = useRef<number | null>(null);
   const scrollbarPointerRef = useRef<number | null>(null);
@@ -118,6 +120,7 @@ export function TranscriptScrollController({
   };
 
   const scheduleBottomSync = (scroller: HTMLDivElement, force = false, snap = false) => {
+    bottomTargetDirtyRef.current = true;
     if (force) forceBottomRef.current = true;
     if (snap) snapBottomRef.current = true;
     if (isPanelResizeActive() || frameRef.current !== null) return;
@@ -132,8 +135,16 @@ export function TranscriptScrollController({
       snapBottomRef.current = false;
       if (!followingRef.current && !forced) return;
 
-      const target = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
-      const distance = target - scroller.scrollTop;
+      // Layout only needs measuring after content/viewport changes. Easing
+      // toward an unchanged bottom should not measure a long table every frame.
+      if (bottomTargetDirtyRef.current) {
+        bottomTargetRef.current = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+        bottomTargetDirtyRef.current = false;
+      }
+      const target = bottomTargetRef.current;
+      const currentTop = scroller.scrollTop;
+      const distance = target - currentTop;
+      let nextTop = target;
       const absoluteDistance = Math.abs(distance);
       const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
         || document.documentElement.dataset.loomReducedMotion === "true";
@@ -154,18 +165,17 @@ export function TranscriptScrollController({
           maxStep,
           Math.max(LIVE_FOLLOW_MIN_STEP_PX, absoluteDistance * ease),
         );
-        scroller.scrollTop = distance >= 0
-          ? Math.min(target, scroller.scrollTop + delta)
-          : Math.max(target, scroller.scrollTop - delta);
-      } else {
-        scroller.scrollTop = target;
+        nextTop = distance >= 0
+          ? Math.min(target, currentTop + delta)
+          : Math.max(target, currentTop - delta);
       }
+      if (Math.abs(nextTop - currentTop) > 0.01) scroller.scrollTop = nextTop;
 
-      lastScrollTopRef.current = scroller.scrollTop;
+      lastScrollTopRef.current = nextTop;
       followingRef.current = true;
       setJumpVisible(false);
 
-      if (easeLiveGrowth && Math.abs(target - scroller.scrollTop) > SCROLL_EPSILON_PX) {
+      if (easeLiveGrowth && Math.abs(target - nextTop) > SCROLL_EPSILON_PX) {
         frameRef.current = requestAnimationFrame(step);
       }
     };
