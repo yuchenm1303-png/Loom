@@ -11,6 +11,7 @@ import { applyRendererScale, installNativeRendererScaleSync } from "./rendererSc
 import { installWebBridge, isLoomWebRuntime } from "./webBridge";
 import "./starterCardPointerGlow";
 import "./pointerClick";
+import "./loomPetRuntime";
 import "./styles.css";
 import "./shell-fix.css";
 import "./loom-mascot.css";
@@ -149,8 +150,8 @@ try {
     "--loom-code-font",
     "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace",
   );
-  document.documentElement.style.setProperty("--loom-code-font-size", "12px");
-  document.documentElement.style.setProperty("--loom-code-line-height", "1.62");
+  document.documentElement.style.setProperty("--loom-code-font-size", `${codeFontSize}px`);
+  document.documentElement.style.setProperty("--loom-code-line-height", CODE_LINE_HEIGHTS[codeLineHeight]);
 }
 
 bootstrapTheme();
