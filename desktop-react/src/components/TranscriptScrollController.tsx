@@ -80,6 +80,7 @@ export function TranscriptScrollController({
   const lastScrollTopRef = useRef(0);
   const frameRef = useRef<number | null>(null);
   const bottomTargetRef = useRef(0);
+  const viewportHeightRef = useRef(0);
   const bottomTargetDirtyRef = useRef(true);
   const snapBottomRef = useRef(false);
   const touchYRef = useRef<number | null>(null);
@@ -125,7 +126,8 @@ export function TranscriptScrollController({
     if (snap) snapBottomRef.current = true;
     if (isPanelResizeActive() || frameRef.current !== null) return;
 
-    const step = () => {
+    let lastStepAt = 0;
+    const step = (now: number) => {
       frameRef.current = null;
       if (isPanelResizeActive()) return;
 
@@ -138,7 +140,8 @@ export function TranscriptScrollController({
       // Layout only needs measuring after content/viewport changes. Easing
       // toward an unchanged bottom should not measure a long table every frame.
       if (bottomTargetDirtyRef.current) {
-        bottomTargetRef.current = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+        viewportHeightRef.current = scroller.clientHeight;
+        bottomTargetRef.current = Math.max(0, scroller.scrollHeight - viewportHeightRef.current);
         bottomTargetDirtyRef.current = false;
       }
       const target = bottomTargetRef.current;
@@ -153,6 +156,7 @@ export function TranscriptScrollController({
         (liveMotion || forced)
         && !snapNow
         && !reducedMotion
+        && absoluteDistance <= Math.max(840, viewportHeightRef.current * 2)
         && absoluteDistance > SCROLL_EPSILON_PX
       );
 
@@ -161,14 +165,18 @@ export function TranscriptScrollController({
         const ease = LIVE_FOLLOW_NEAR_EASE
           + (LIVE_FOLLOW_FAR_EASE - LIVE_FOLLOW_NEAR_EASE) * pressure;
         const maxStep = 24 + (LIVE_FOLLOW_MAX_STEP_PX - 24) * pressure;
+        // Match the same motion on 60/120/144Hz displays and after slow frames.
+        const frames = lastStepAt ? Math.min(3, Math.max(0.25, (now - lastStepAt) / (1000 / 60))) : 1;
+        const timedEase = 1 - Math.pow(1 - ease, frames);
         const delta = Math.min(
-          maxStep,
-          Math.max(LIVE_FOLLOW_MIN_STEP_PX, absoluteDistance * ease),
+          maxStep * frames,
+          Math.max(LIVE_FOLLOW_MIN_STEP_PX * frames, absoluteDistance * timedEase),
         );
         nextTop = distance >= 0
           ? Math.min(target, currentTop + delta)
           : Math.max(target, currentTop - delta);
       }
+      lastStepAt = now;
       if (Math.abs(nextTop - currentTop) > 0.01) scroller.scrollTop = nextTop;
 
       lastScrollTopRef.current = nextTop;

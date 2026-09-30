@@ -231,7 +231,7 @@ function LiveReasoning({ reasoning, workspace, streaming, messageKey, interrupte
         <div className="live-reasoning-grid">
           <div className="live-reasoning-inner">
             <div className="live-reasoning-copy">
-              <MarkdownMessage content={reasoning} compact workspace={workspace} streaming={streaming} messageKey={messageKey} interrupted={interrupted} />
+              <MarkdownMessage content={reasoning} compact workspace={workspace} streaming={streaming && open} messageKey={messageKey} interrupted={interrupted || !open} />
             </div>
           </div>
         </div>

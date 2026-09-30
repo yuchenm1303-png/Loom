@@ -937,6 +937,9 @@ export function useLoom() {
         }
       } else if (message.method === "turn/completed") {
         const turn = params.turn as TurnRecord | undefined;
+        // A delayed completion from a previous turn must not stop a new turn
+        // (or switch its composer from steer back to send).
+        if (turn && activeTurnIdRef.current && turn.id !== activeTurnIdRef.current) return;
         // Keep a terminal-error guard for this turn until TURN_STARTED names a
         // genuinely new turn. Late/stale thread updates from the failed worker
         // must not resurrect steering mode after completion.

@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { advanceStreamingText, streamingFrameInterval } from "./streamingText";
+import { useReducedMotion } from "../motion/useReducedMotion";
 
 // Scoped to a mounted turn: moving its final answer must not lose paint progress.
 // Leaving a thread discards this state, so reopening history never replays it.
@@ -34,11 +35,6 @@ export function StreamingPresentation({ children }: { children: ReactNode }) {
   );
 }
 
-function reducedMotion() {
-  return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
-    || document.documentElement.dataset.loomReducedMotion === "true";
-}
-
 export function useStreamingPresentation(content: string, streaming: boolean, messageKey?: string, interrupted = false) {
   const snapshots = useContext(PresentationContext);
   const reportPresentation = useContext(ReportPresentationContext);
@@ -47,12 +43,13 @@ export function useStreamingPresentation(content: string, streaming: boolean, me
     return saved && content.startsWith(saved.visible) ? saved.visible : streaming ? "" : content;
   });
   const [visible, setVisible] = useState(initial);
-  const [reduce, setReduce] = useState(reducedMotion);
+  const reduce = useReducedMotion();
   const visibleRef = useRef(initial);
   const targetRef = useRef(content);
   const receivingRef = useRef(streaming);
   const frameRef = useRef<number | null>(null);
   const lastPaintAtRef = useRef(0);
+  const drainStartedAtRef = useRef<number | null>(null);
   const animate = useRef(streaming || initial !== content);
   const painting = !reduce && !interrupted && visible !== content;
 
@@ -70,18 +67,25 @@ export function useStreamingPresentation(content: string, streaming: boolean, me
   }, [visible, messageKey, snapshots]);
 
   useEffect(() => {
-    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const sync = () => setReduce(Boolean(reducedMotion()));
-    media.addEventListener("change", sync);
-    const observer = new MutationObserver(sync);
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-loom-reduced-motion"] });
-    return () => { media.removeEventListener("change", sync); observer.disconnect(); };
+    // Background rAF is suspended by Chromium. Resume at runtime truth rather
+    // than replaying an invisible backlog when the user returns.
+    const syncVisibility = () => {
+      if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
+      frameRef.current = null;
+      lastPaintAtRef.current = 0;
+      visibleRef.current = targetRef.current;
+      setVisible(targetRef.current);
+    };
+    document.addEventListener("visibilitychange", syncVisibility);
+    return () => document.removeEventListener("visibilitychange", syncVisibility);
   }, []);
 
   useLayoutEffect(() => {
     targetRef.current = content;
     receivingRef.current = streaming;
     animate.current ||= streaming;
+    if (streaming) drainStartedAtRef.current = null;
+    else drainStartedAtRef.current ??= performance.now();
 
     const commit = (next: string) => {
       visibleRef.current = next;
@@ -93,7 +97,7 @@ export function useStreamingPresentation(content: string, streaming: boolean, me
       lastPaintAtRef.current = 0;
     };
 
-    if (reduce || interrupted || !animate.current || !content.startsWith(visibleRef.current)) {
+    if (reduce || interrupted || document.hidden || !animate.current || !content.startsWith(visibleRef.current)) {
       cancel();
       commit(content);
       return;
@@ -109,6 +113,14 @@ export function useStreamingPresentation(content: string, streaming: boolean, me
       }
 
       const elapsed = lastPaintAtRef.current ? now - lastPaintAtRef.current : 32;
+      // Finish before the process fold (460ms). Large final chunks must not
+      // hold tool entrances or keep the final answer typing for many seconds.
+      if ((!receivingRef.current && drainStartedAtRef.current !== null
+        && now - drainStartedAtRef.current >= 420) || elapsed > 1000) {
+        commit(target);
+        lastPaintAtRef.current = now;
+        return;
+      }
       if (lastPaintAtRef.current && elapsed < streamingFrameInterval(target.length)) {
         frameRef.current = requestAnimationFrame(tick);
         return;

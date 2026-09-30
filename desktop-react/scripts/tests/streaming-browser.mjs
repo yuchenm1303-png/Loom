@@ -53,15 +53,67 @@ try {
   assert.equal(await page.locator("table").count(), 1);
 
   await page.evaluate(() => { window.resetStream(); window.renderStream("<think>" + "思".repeat(800), true); });
+  // Collapsed reasoning is synchronized immediately and must not hold tools.
+  assert.equal(await length(), 800);
+  await page.locator(".live-reasoning-trigger").click();
+  await page.evaluate(() => window.renderStream("<think>" + "思".repeat(1600), true));
   await frames(2);
-  assert.ok(await length() < 800, "reasoning must use the same presentation buffer");
-  await page.evaluate(() => window.renderStream("<think>" + "思".repeat(800), false, "interrupted"));
-  assert.equal(await length(), 800, "interrupt flushes immediately without lingering animation");
+  assert.ok(await length() < 1600, "expanded reasoning must use the same presentation buffer");
+  await page.evaluate(() => window.renderStream("<think>" + "思".repeat(1600), false, "interrupted"));
+  assert.equal(await length(), 1600, "interrupt flushes immediately without lingering animation");
   assert.equal(await page.locator(".is-streaming").count(), 0);
+
+  await page.evaluate(() => {
+    window.resetStream();
+    window.renderItems([
+      { id: "reasoning", threadId: "thread-1", turnId: "turn-1", type: "assistant_message", reasoning: "思".repeat(12000), text: "", status: "completed" },
+      { id: "tool", threadId: "thread-1", turnId: "turn-1", type: "tool_call", toolName: "exec_command", status: "running", arguments: { cmd: "echo test" } },
+    ], true);
+  });
+  await frames(2);
+  assert.equal(await page.locator(".entry-activity").count(), 1, "collapsed reasoning cannot delay a tool entrance");
+
+  await page.evaluate(() => {
+    window.resetStream();
+    Object.defineProperty(document, "hidden", { configurable: true, value: true });
+    document.dispatchEvent(new Event("visibilitychange"));
+    window.renderPlain("后台".repeat(8000), true);
+  });
+  assert.equal(await length(), 16000, "background updates synchronize without rAF backlog");
+  await page.evaluate(() => {
+    Object.defineProperty(document, "hidden", { configurable: true, value: false });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
 
   await page.evaluate(() => { window.resetStream(); window.renderStream("历史".repeat(400), false, "completed", "history"); });
   assert.equal(await length(), 800, "history never replays typing");
   assert.equal(await page.locator(".stream-text-chunk").count(), 0, "history has no per-glyph nodes");
+
+  const longTable = "| Name | Result |\n| --- | --- |\n" + "| Streaming row | ✅ completed with full details |\n".repeat(400);
+  await page.evaluate((text) => { window.resetStream(); window.renderPlain(text, true); }, longTable);
+  await frames(3);
+  await page.evaluate((text) => window.renderPlain(text, false), longTable);
+  await page.waitForFunction(() => document.querySelectorAll("tbody tr").length === 400, { timeout: 2500 });
+  assert.equal(await page.locator(".is-streaming").count(), 0, "long final backlog drains before settling finishes");
+
+  await page.evaluate((text) => { window.resetStream(); window.renderScrolled(text, false); }, longTable);
+  await page.waitForFunction(() => {
+    const el = document.querySelector(".transcript-scroll");
+    return el.scrollHeight - el.clientHeight - el.scrollTop < 3;
+  });
+  await page.locator(".transcript-scroll").hover();
+  await page.mouse.wheel(0, -600);
+  await page.waitForFunction(() => document.querySelector(".transcript-jump-latest").classList.contains("is-visible"));
+  const detachedTop = await page.locator(".transcript-scroll").evaluate((el) => el.scrollTop);
+  await page.evaluate((text) => window.renderScrolled(text + "\n\nMore output", true), longTable);
+  await frames(20);
+  const stillDetached = await page.locator(".transcript-scroll").evaluate((el) => el.scrollTop);
+  assert.ok(Math.abs(detachedTop - stillDetached) < 3, "streaming must not pull a reader away from history");
+  await page.locator(".transcript-jump-latest").click();
+  await page.waitForFunction(() => {
+    const el = document.querySelector(".transcript-scroll");
+    return el.scrollHeight - el.clientHeight - el.scrollTop < 3;
+  });
 
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.evaluate(() => { window.resetStream(); window.renderStream("中".repeat(800), true); });
@@ -70,7 +122,7 @@ try {
   await page.evaluate(() => { document.documentElement.dataset.loomReducedMotion = "true"; window.renderStream("中".repeat(1600), true); });
   await page.waitForFunction(() => document.querySelector(".markdown-body").textContent.length === 1600);
   assert.deepEqual(errors, []);
-  console.log("PASS: actual Transcript lifecycle, coarse chunks, final relocation, bounded prose DOM, reasoning, interrupt, history, reduced motion, StrictMode");
+  console.log("PASS: Transcript lifecycle, long tables, scroll detachment/return, final relocation, bounded DOM, collapsed/expanded reasoning, interrupt, history, reduced motion, StrictMode");
 } finally {
   await browser.close();
 }
