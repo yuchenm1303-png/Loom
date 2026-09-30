@@ -1,6 +1,6 @@
 import "./custom-scrollbars.css";
 
-type Bar = { target: HTMLElement; axis: "x" | "y"; track: HTMLDivElement; thumb: HTMLDivElement };
+type Bar = { target: HTMLElement; axis: "x" | "y"; track: HTMLDivElement; thumb: HTMLDivElement; base?: { cross: number; start: number; end: number } };
 const entries = new Map<HTMLElement, Bar[]>();
 const observedChildren = new Map<HTMLElement, Element>();
 const dirty = new Set<HTMLElement>();
@@ -22,8 +22,10 @@ function update(bar: Bar) {
   const extent = vertical ? el.scrollHeight : el.scrollWidth;
   const position = vertical ? el.scrollTop : el.scrollLeft;
   const length = vertical ? rect.height : rect.width;
+  const overflow = getComputedStyle(el);
   // A collapsed or offscreen panel must not leave an interactive floating bar.
-  const visible = rect.width > 0 && rect.height > 0 && extent > viewport + 1
+  const visible = /^(auto|scroll)$/.test(vertical ? overflow.overflowY : overflow.overflowX)
+    && rect.width > 0 && rect.height > 0 && extent > viewport + 1
     && rect.bottom > 0 && rect.right > 0 && rect.top < innerHeight && rect.left < innerWidth
     && el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true });
   bar.track.hidden = !visible;
@@ -44,7 +46,11 @@ function update(bar: Bar) {
   const hitY = vertical ? (top + bottom) / 2 : rect.bottom - 6;
   const hit = document.elementsFromPoint(hitX, hitY).find((node) => !host.contains(node));
   if (hit && !el.contains(hit) && !hit.contains(el)) { bar.track.hidden = true; return; }
-  const trackLength = Math.max(1, length - 4);
+  const otherAxisScrolls = vertical ? el.scrollWidth > el.clientWidth + 1 : el.scrollHeight > el.clientHeight + 1;
+  const trackLength = Math.max(1, length - 4 - (otherAxisScrolls ? 10 : 0));
+  bar.base = vertical
+    ? { cross: rect.right - 10, start: top, end: Math.min(bottom, rect.top + 2 + trackLength) }
+    : { cross: rect.bottom - 10, start: left, end: Math.min(right, rect.left + 2 + trackLength) };
   const size = Math.min(trackLength, Math.max(24, trackLength * viewport / extent));
   const offset = (trackLength - size) * Math.max(0, position) / Math.max(1, extent - viewport);
   Object.assign(bar.track.style, vertical
@@ -160,6 +166,17 @@ function flush() {
     entries.get(target)?.forEach(update);
   }
   dirty.clear();
+  // Nested scrollports can share a right/bottom edge. Keep both controls, but
+  // allocate distinct lanes instead of painting two thumbs on top of each other.
+  const placed: { axis: "x" | "y"; cross: number; start: number; end: number }[] = [];
+  for (const bars of entries.values()) for (const bar of bars) {
+    if (bar.track.hidden || !bar.base) continue;
+    let cross = bar.base.cross;
+    while (placed.some((other) => other.axis === bar.axis && Math.abs(other.cross - cross) < 10
+      && other.start < bar.base!.end && bar.base!.start < other.end)) cross -= 10;
+    bar.track.style[bar.axis === "y" ? "left" : "top"] = `${cross}px`;
+    placed.push({ axis: bar.axis, cross, start: bar.base.start, end: bar.base.end });
+  }
 }
 
 function onScroll(event: Event) {
@@ -174,7 +191,10 @@ const mutation = new MutationObserver((records) => {
     const target = record.target instanceof Element ? record.target : record.target.parentElement;
     if (!target || host.contains(target)) continue;
     markAncestors(target);
-    if (record.type === "attributes") { added.add(target); schedule(); }
+    if (record.type === "attributes") {
+      added.add(target); schedule();
+      for (const el of entries.keys()) if (target.contains(el)) schedule(el);
+    }
     for (const node of record.addedNodes) if (node instanceof Element) {
       added.add(node); schedule();
       if (node.matches('[role="dialog"], [role="menu"], .settings-host, .global-context-menu')) updateAll();
@@ -190,7 +210,7 @@ host = document.createElement("div");
 host.className = "loom-scrollbar-layer";
 document.body.append(host);
 discover(document.body);
-mutation.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ["class"], characterData: true });
+mutation.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ["class", "style"], characterData: true });
 document.addEventListener("scroll", onScroll, true);
 const onInput = (event: Event) => { if (event.target instanceof Element) markAncestors(event.target); };
 document.addEventListener("input", onInput, true);

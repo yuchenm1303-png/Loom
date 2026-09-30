@@ -38,6 +38,22 @@ try {
   assert.equal(await page.locator(".test-scroll").evaluate((el) => getComputedStyle(el).scrollbarWidth), "none");
   await page.locator(".test-scroll").evaluate((el) => el.remove());
   await page.waitForFunction(() => !document.querySelector(".loom-scroll-track"));
+  await page.evaluate(() => {
+    const outer = document.createElement("div"), inner = document.createElement("div"), content = document.createElement("div");
+    outer.className = "nested-outer";
+    Object.assign(outer.style, { width: "300px", height: "200px", overflow: "auto", margin: "40px" });
+    Object.assign(inner.style, { width: "300px", height: "400px", overflow: "auto" });
+    content.style.height = "1600px";
+    inner.append(content); outer.append(inner); document.querySelector(".loom-window-content").append(outer);
+  });
+  await page.waitForFunction(() => document.querySelectorAll(".loom-scroll-y:not([hidden])").length === 2);
+  const lanes = await page.locator(".loom-scroll-y:not([hidden])").evaluateAll((bars) => bars.map((bar) => bar.getBoundingClientRect().left));
+  assert.ok(Math.abs(lanes[0] - lanes[1]) >= 10, "nested thumbs sharing an edge must use separate lanes");
+  await page.locator(".nested-outer").evaluate((el) => { el.style.overflow = "hidden"; });
+  await page.waitForFunction(() => document.querySelectorAll(".loom-scroll-y:not([hidden])").length === 1);
+  await page.locator(".nested-outer").evaluate((el) => el.remove());
+  await page.waitForFunction(() => !document.querySelector(".loom-scroll-track"));
   assert.deepEqual(errors, []);
   console.log("PASS: titlebar controls/drag, cursor, vertical/horizontal scrollbar drag/keyboard and unmount cleanup");
+  console.log("PASS: nested scrollbar lanes and dynamic overflow changes");
 } finally { await browser.close(); }
