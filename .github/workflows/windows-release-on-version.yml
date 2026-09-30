@@ -1,0 +1,133 @@
+name: Windows Release On Version Commit
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "desktop-react/package.json"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: windows-release
+  cancel-in-progress: false
+
+jobs:
+  publish-windows-x64:
+    if: startsWith(github.event.head_commit.message, 'chore(release): Loom v')
+    runs-on: windows-latest
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      LOOM_GITHUB_CLIENT_ID: ${{ vars.LOOM_GITHUB_CLIENT_ID }}
+      LOOM_GITHUB_CLIENT_SECRET: ${{ secrets.LOOM_GITHUB_CLIENT_SECRET }}
+      LOOM_GITHUB_OAUTH_SCOPES: ${{ vars.LOOM_GITHUB_OAUTH_SCOPES || 'repo read:org' }}
+      LOOM_GITHUB_CALLBACK_PATH: ${{ vars.LOOM_GITHUB_CALLBACK_PATH || '/oauth/github/callback' }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Resolve immutable release version
+        id: release
+        shell: pwsh
+        run: |
+          $packagePath = Join-Path $env:GITHUB_WORKSPACE "desktop-react\package.json"
+          $package = Get-Content $packagePath -Raw | ConvertFrom-Json
+          $version = [string]$package.version
+          $tag = "v$version"
+          $expectedMessage = "chore(release): Loom $tag"
+          if ("${{ github.event.head_commit.message }}" -ne $expectedMessage) {
+            throw "Release commit message must be exactly '$expectedMessage'."
+          }
+          git fetch --tags origin
+          if ((git tag --list $tag).Count -gt 0) { throw "Tag $tag already exists." }
+          $existing = @(gh release list --limit 1000 --json tagName --jq '.[].tagName')
+          if ($existing -contains $tag) { throw "Release $tag already exists." }
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "tag=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Validate trusted OAuth configuration
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:LOOM_GITHUB_CLIENT_ID)) { throw "Missing LOOM_GITHUB_CLIENT_ID." }
+          if ([string]::IsNullOrWhiteSpace($env:LOOM_GITHUB_CLIENT_SECRET)) { throw "Missing LOOM_GITHUB_CLIENT_SECRET." }
+
+      - name: Install desktop dependencies
+        working-directory: desktop-react
+        run: npm install --no-audit --no-fund
+
+      - name: Build Windows release candidate
+        working-directory: desktop-react
+        run: npm run package:win
+
+      - name: Verify release candidate
+        shell: pwsh
+        run: |
+          $releaseDir = Join-Path $env:GITHUB_WORKSPACE "desktop-react\release"
+          $installer = Get-ChildItem $releaseDir -Filter "Loom-Setup-*.exe" | Select-Object -First 1
+          $metadata = Join-Path $releaseDir "latest.yml"
+          $blockmap = Get-ChildItem $releaseDir -Filter "Loom-Setup-*.exe.blockmap" | Select-Object -First 1
+          $runtime = Join-Path $releaseDir "win-unpacked\resources\python.exe"
+          if (-not $installer) { throw "Loom Setup executable was not produced." }
+          if ($installer.Length -lt 1000000) { throw "Installer is unexpectedly small." }
+          if (-not (Test-Path $metadata)) { throw "latest.yml was not produced." }
+          if (-not $blockmap) { throw "NSIS blockmap was not produced." }
+          if (-not (Test-Path $runtime)) { throw "Packaged Python runtime was not produced." }
+          & $runtime self-test
+          if ($LASTEXITCODE -ne 0) { throw "Packaged runtime self-test failed." }
+          $latest = Get-Content $metadata -Raw
+          if ($latest -notmatch "version:\s+$([regex]::Escape('${{ steps.release.outputs.version }}'))") {
+            throw "latest.yml version does not match package.json."
+          }
+
+      - name: Publish immutable tag and GitHub Release
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a $env:RELEASE_TAG $env:GITHUB_SHA -m "Loom $env:RELEASE_TAG"
+          git push origin "refs/tags/$env:RELEASE_TAG"
+          if ($LASTEXITCODE -ne 0) { throw "Failed to publish release tag." }
+
+          $releaseDir = Join-Path $env:GITHUB_WORKSPACE "desktop-react\release"
+          $installer = Get-ChildItem $releaseDir -Filter "Loom-Setup-*.exe" | Select-Object -First 1
+          $blockmap = Get-ChildItem $releaseDir -Filter "Loom-Setup-*.exe.blockmap" | Select-Object -First 1
+          $metadata = Join-Path $releaseDir "latest.yml"
+          gh release create $env:RELEASE_TAG "$($installer.FullName)" "$($blockmap.FullName)" "$metadata" --verify-tag --title "Loom $env:RELEASE_TAG" --generate-notes
+          if ($LASTEXITCODE -ne 0) { throw "Failed to publish GitHub Release." }
+
+      - name: Verify published updater assets
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          $names = @(gh release view $env:RELEASE_TAG --json assets --jq '.assets[].name')
+          foreach ($suffix in @('.exe', '.exe.blockmap')) {
+            if (-not ($names | Where-Object { $_.EndsWith($suffix) })) { throw "Published release is missing $suffix asset." }
+          }
+          if ($names -notcontains 'latest.yml') { throw "Published release is missing latest.yml." }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Loom-Windows-Release-${{ steps.release.outputs.tag }}
+          path: |
+            desktop-react/release/Loom-Setup-*.exe
+            desktop-react/release/Loom-Setup-*.exe.blockmap
+            desktop-react/release/latest.yml
+          if-no-files-found: error
+          retention-days: 30
