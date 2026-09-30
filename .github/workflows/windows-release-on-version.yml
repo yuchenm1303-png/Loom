@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   publish-windows-x64:
-    if: startsWith(github.event.head_commit.message, 'chore(release): Loom v')
+    if: "startsWith(github.event.head_commit.message, 'chore(release): Loom v')"
     runs-on: windows-latest
     env:
       CSC_IDENTITY_AUTO_DISCOVERY: "false"
