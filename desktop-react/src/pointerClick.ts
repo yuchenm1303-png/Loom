@@ -1,5 +1,4 @@
 import "./pointer-click.css";
-import "./loomPetRuntime";
 
 const ripples = new Map<HTMLElement, Animation>();
 let layer: HTMLDivElement | null = null;
