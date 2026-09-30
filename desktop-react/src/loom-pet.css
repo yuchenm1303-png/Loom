@@ -4,8 +4,9 @@
 .loom-pet {
   position: absolute;
   z-index: 36;
-  right: max(30px, calc((100% - var(--content-width)) / 2 + 18px));
-  bottom: calc(100% - 4px);
+  left: var(--pet-left, 0px);
+  top: var(--pet-top, 0px);
+  visibility: hidden;
   display: block;
   width: 64px;
   height: 64px;
@@ -16,9 +17,10 @@
   appearance: none;
   cursor: pointer;
   user-select: none;
-  touch-action: manipulation;
+  touch-action: none;
   transform-origin: 50% 100%;
 }
+.loom-pet[data-anchored="true"] { visibility: visible; }
 
 .loom-pet-svg {
   display: block;
@@ -36,20 +38,81 @@
 
 .loom-pet-approval-mark,
 .loom-pet-success-spark,
-.loom-pet-sleep-mark { opacity: 0; pointer-events: none; }
+.loom-pet-sleep-mark,
+.loom-pet-thoughts { opacity: 0; pointer-events: none; }
 
 .loom-pet[data-state="idle"] { animation: loom-pet-idle 7.2s steps(1, end) infinite; }
 .loom-pet[data-state="listening"] { transform: translateY(-1px); }
 .loom-pet[data-state="working"] { animation: loom-pet-working 1.8s steps(1, end) infinite; }
 .loom-pet[data-state="working"] .loom-pet-sky { animation: loom-pet-twinkle 2.4s steps(1, end) infinite; }
+.loom-pet[data-state="working"] .loom-pet-thoughts { opacity: 1; }
+.loom-pet[data-state="working"] .loom-pet-thoughts path { animation: loom-pet-thought 2.4s steps(1, end) infinite; }
+.loom-pet[data-state="working"] .pet-thought-two { animation-delay: .3s; }
+.loom-pet[data-state="working"] .pet-thought-three { animation-delay: .6s; }
 .loom-pet[data-state="approval"] { animation: loom-pet-notice 1.4s steps(1, end) infinite; }
 .loom-pet[data-state="approval"] .loom-pet-approval-mark { opacity: 1; }
 .loom-pet[data-state="sleeping"] .loom-pet-sleep-mark { animation: loom-pet-sleep 2.8s steps(1, end) infinite; }
 .loom-pet[data-state="sleeping"] .loom-pet-sky { opacity: .65; }
 
-.loom-pet.is-playful { animation: loom-pet-hop .8s steps(1, end) 1; }
 .loom-pet.is-celebrating { animation: loom-pet-hop 1.1s steps(1, end) 1; }
 .loom-pet.is-celebrating .loom-pet-success-spark { animation: loom-pet-spark 1.1s steps(1, end) 1; }
+.loom-pet[data-reaction="hello"] { animation: loom-pet-hello .7s steps(1, end) 1; }
+.loom-pet[data-reaction="wake"] { animation: loom-pet-wake .9s steps(1, end) 1; }
+.loom-pet[data-reaction="petting"] { animation: loom-pet-nuzzle 1.4s steps(1, end) 1; }
+.loom-pet[data-reaction="hop"] { animation: loom-pet-hop .9s steps(1, end) 1; }
+.loom-pet[data-reaction="tickle"] { animation: loom-pet-tickle 1s steps(1, end) 1; }
+.loom-pet[data-reaction="delight"] { animation: loom-pet-tickle 1.5s steps(1, end) 1; }
+.loom-pet[data-dragging="true"] { animation: none !important; transform: none !important; cursor: grabbing; }
+
+/* Emotes belong to a transient reaction, not to the character's permanent art.
+ * Re-mounting only this layer lets repeated strokes replay without restarting
+ * the pet's task state or intercepting the composer underneath. */
+.loom-pet-emote { position: absolute; inset: 0; pointer-events: none; }
+.loom-pet-emote svg { display: block; width: 64px; height: 64px; overflow: visible; shape-rendering: crispEdges; }
+.pet-heart, .pet-mote { opacity: 0; }
+.pet-heart { fill: #d8a1d6; }
+.pet-mote { fill: #ffd67e; }
+.loom-pet:is([data-reaction="petting"], [data-reaction="delight"]) .pet-heart { animation: loom-pet-heart 1.4s steps(1, end) 1; }
+.loom-pet .pet-heart-two { animation-delay: .18s; }
+.loom-pet:is([data-reaction="hop"], [data-reaction="tickle"], [data-reaction="delight"], [data-reaction="wake"]) .pet-mote { animation: loom-pet-mote .9s steps(1, end) 1; }
+.loom-pet .pet-mote-two { animation-delay: .12s; }
+.loom-pet .pet-mote-three { animation-delay: .24s; }
+
+@keyframes loom-pet-thought {
+  0%, 100% { opacity: .15; }
+  25%, 60% { opacity: 1; }
+  80% { opacity: .4; }
+}
+@keyframes loom-pet-hello {
+  0%, 100% { transform: translateY(0); }
+  30%, 65% { transform: translateY(-1px); }
+}
+@keyframes loom-pet-wake {
+  0%, 100% { transform: translateX(0); }
+  30% { transform: translateX(-1px); }
+  55% { transform: translateX(1px); }
+}
+@keyframes loom-pet-nuzzle {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-1px); }
+  40%, 80% { transform: translateX(1px); }
+}
+@keyframes loom-pet-tickle {
+  0%, 45%, 90%, 100% { transform: translateY(0); }
+  15%, 65% { transform: translateY(-3px); }
+  30%, 80% { transform: translateY(-1px); }
+}
+@keyframes loom-pet-heart {
+  0%, 100% { opacity: 0; transform: translateY(0); }
+  15% { opacity: 1; transform: translateY(-1px); }
+  45% { opacity: 1; transform: translateY(-3px); }
+  75% { opacity: .7; transform: translateY(-6px); }
+}
+@keyframes loom-pet-mote {
+  0%, 100% { opacity: 0; }
+  15%, 50% { opacity: 1; transform: translateY(-1px); }
+  75% { opacity: .5; transform: translateY(-3px); }
+}
 
 @keyframes loom-pet-idle {
   0%, 83%, 91%, 100% { transform: translateY(0); }
@@ -85,7 +148,6 @@
   45% { opacity: .5; }
 }
 
-@media (max-width: 760px) { .loom-pet { right: 18px; } }
 @media (prefers-reduced-motion: reduce) {
   .loom-pet, .loom-pet * { animation: none !important; transition: none !important; }
   .loom-pet[data-state="sleeping"] .loom-pet-sleep-mark { opacity: .8; }
@@ -97,3 +159,5 @@ html[data-loom-reduced-motion="true"] .loom-pet *,
 .loom-pet[data-reduced-motion="true"] * { animation: none !important; transition: none !important; }
 .loom-pet[data-reduced-motion="true"][data-state="sleeping"] .loom-pet-sleep-mark { opacity: .8; }
 .loom-pet[data-reduced-motion="true"].is-celebrating .loom-pet-success-spark { opacity: 1; }
+.loom-pet[data-reduced-motion="true"]:is([data-reaction="petting"], [data-reaction="delight"]) .pet-heart-one,
+.loom-pet[data-reduced-motion="true"]:is([data-reaction="hop"], [data-reaction="tickle"], [data-reaction="wake"]) .pet-mote-two { opacity: 1; }
