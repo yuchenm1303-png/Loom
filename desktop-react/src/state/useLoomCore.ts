@@ -506,8 +506,15 @@ export function useLoom() {
     threadViewRef.current = view;
     setThreadViewState(view);
     const list = await refreshThreads(view);
-    await ensureSelection(list);
-  }, [ensureSelection, refreshThreads]);
+    const currentId = activeIdRef.current;
+    if (currentId && list.some((thread) => thread.id === currentId)) return;
+
+    // A list-view switch is navigation, not a request to open whichever row
+    // happens to sort first. Invalidate any in-flight read from the previous
+    // view, then leave the destination list unselected until the user clicks.
+    openRequestRef.current += 1;
+    clearActive();
+  }, [clearActive, refreshThreads]);
 
   const newThread = useCallback(async (workspace?: string, projectId?: string) => {
     const requestId = ++openRequestRef.current;
