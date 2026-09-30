@@ -44,6 +44,7 @@ import {
 } from "../keyboardShortcuts";
 import { useI18n } from "../i18n";
 import { applyThemePreference, type LoomThemePreference } from "../theme";
+import { applyPetVisibility, DEFAULT_PET_ENABLED, DESKTOP_SETTINGS_STORAGE_KEY } from "../petPreferences";
 import { useMotionPresence } from "../motion/useMotionPresence";
 import type {
   InitializeResult,
@@ -109,6 +110,7 @@ type AppearanceSettings = {
   chatFontSize: number;
   messageLineHeight: "compact" | "comfortable" | "relaxed";
   ambientEffects: boolean;
+  petEnabled: boolean;
   codeFont: string;
   codeFontSize: number;
   codeLineHeight: "compact" | "comfortable" | "relaxed";
@@ -187,7 +189,7 @@ interface NavItem {
   icon: LucideIcon;
 }
 
-const LOCAL_DESKTOP_SETTINGS_KEY = "loom.settings.desktop.v2";
+const LOCAL_DESKTOP_SETTINGS_KEY = DESKTOP_SETTINGS_STORAGE_KEY;
 const BROWSER_AUTO_MIGRATION_KEY = "loom.settings.browser-auto-default.v1";
 const SETTINGS_UPDATE_PREFIX = "__setting__:";
 
@@ -213,6 +215,7 @@ const DEFAULT_APPEARANCE: AppearanceSettings = {
   chatFontSize: 13,
   messageLineHeight: "comfortable",
   ambientEffects: true,
+  petEnabled: DEFAULT_PET_ENABLED,
   codeFont: "system",
   codeFontSize: 12,
   codeLineHeight: "comfortable",
@@ -464,6 +467,7 @@ function applyAppearance(settings: DesktopSettings): void {
   document.documentElement.dataset.loomReducedMotion = String(appearance.reducedMotion);
   document.documentElement.dataset.loomDensity = appearance.density;
   document.documentElement.dataset.loomAmbientEffects = String(appearance.ambientEffects);
+  applyPetVisibility(appearance.petEnabled);
   document.documentElement.dataset.loomCodeWrap = String(appearance.codeWrap);
   document.documentElement.style.setProperty("--content-width", CONVERSATION_WIDTH_VALUES[appearance.conversationWidth] ?? CONVERSATION_WIDTH_VALUES.balanced);
   document.documentElement.style.setProperty("--sidebar-width", SIDEBAR_WIDTH_VALUES[appearance.sidebarWidth] ?? SIDEBAR_WIDTH_VALUES.standard);
@@ -1016,6 +1020,7 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
             <PreferenceRow icon={Gauge} title="Content density" detail="Control spacing across conversation, activity, tool, and settings rows."><SelectControl label="Content density" value={appearance.density} options={[{ value: "compact", label: "Compact" }, { value: "comfortable", label: "Comfortable" }, { value: "spacious", label: "Spacious" }]} onChange={(value) => void saveSetting("appearance.density", value)} /></PreferenceRow>
             <PreferenceRow icon={Moon} title="Reduce motion" detail="Minimize decorative transitions, pulses, and status animation."><SettingSwitch checked={appearance.reducedMotion} label="Reduce motion" onChange={(value) => void saveSetting("appearance.reducedMotion", value)} /></PreferenceRow>
             <PreferenceRow icon={Sparkles} title="Ambient effects" detail="Show the subtle conversation glow and background atmosphere behind messages."><SettingSwitch checked={appearance.ambientEffects} label="Ambient conversation effects" onChange={(value) => void saveSetting("appearance.ambientEffects", value)} /></PreferenceRow>
+            <PreferenceRow icon={Bot} title="Loom pet" detail="Show the interactive companion above the message box. Hidden by default."><SettingSwitch checked={appearance.petEnabled === true} label="Loom pet" onChange={(value) => void saveSetting("appearance.petEnabled", value)} /></PreferenceRow>
           </div>
         </Section>
 

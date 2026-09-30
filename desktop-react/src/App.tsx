@@ -21,6 +21,7 @@ import { ReviewInteractionBridge } from "./components/ReviewInteractionBridge";
 import { ReviewWorkspace } from "./components/ReviewWorkspace";
 import { RunProgress } from "./components/RunProgress";
 import { LoomPet } from "./loomPetRuntime";
+import { usePetEnabled } from "./petPreferences";
 import { SettingsComputerLogExport } from "./components/SettingsComputerLogExport";
 import { SettingsPage } from "./components/SettingsPage";
 import { Sidebar } from "./components/Sidebar";
@@ -357,6 +358,7 @@ function animateLayoutAnchors(
 
 
 export default function App() {
+  const petEnabled = usePetEnabled();
   const loom = useLoom();
   const account = useAccount();
   const { t } = useI18n();
@@ -1212,7 +1214,7 @@ export default function App() {
         </div>
 
         <div className="composer-stage">
-          {thread && <LoomPet key={thread.id} running={running}
+          {petEnabled && thread && <LoomPet key={thread.id} running={running}
             approval={thread.status === "waiting_approval" || transcriptItems.some((item) => item.type === "approval" && !isResolvedApproval(item))}
             completed={thread.status === "completed"} />}
           <Composer

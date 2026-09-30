@@ -334,6 +334,8 @@ const STATIC_SETTING_TRANSLATIONS: Record<string, string> = {
   "Scale the complete desktop UI for comfortable reading on small or high-DPI displays.": "缩放整个桌面界面，让小屏或高 DPI 显示器上阅读更舒适。",
   "Control spacing across conversation, activity, tool, and settings rows.": "控制对话、活动、工具和设置各行之间的间距。",
   "Ambient effects": "氛围效果",
+  "Loom pet": "Loom 宠物",
+  "Show the interactive companion above the message box. Hidden by default.": "在输入框上方显示可互动的宠物，默认隐藏。",
   "Show the subtle conversation glow and background atmosphere behind messages.": "在消息背后显示细腻的对话光晕与背景氛围。",
   "Workspace layout": "工作区布局",
   "Shape the three-column desktop workspace without changing any project or conversation data.": "调整三栏桌面工作区的布局，不会改动任何项目或对话数据。",

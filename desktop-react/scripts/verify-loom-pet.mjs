@@ -17,6 +17,7 @@ const result = await build({
     import {createRoot} from 'react-dom/client';
     import {LoomPet} from './src/loomPetRuntime';
     import {LoomPetArt} from './src/LoomPetArt';
+    import {usePetEnabled, applyPetVisibility, DESKTOP_SETTINGS_STORAGE_KEY} from './src/petPreferences';
     import './src/components/composer.css';
     import './src/components/composer-stability.css';
     function Harness() {
@@ -24,9 +25,14 @@ const result = await build({
       const [approval,setApproval]=useState(false);
       const [completed,setCompleted]=useState(false);
       const [thread,setThread]=useState(1);
-      window.petControls={setRunning,setApproval,setCompleted,setThread};
+      const enabled=usePetEnabled();
+      const enablePet=(value)=>{
+        localStorage.setItem(DESKTOP_SETTINGS_STORAGE_KEY,JSON.stringify({appearance:{petEnabled:value}}));
+        applyPetVisibility(value);
+      };
+      window.petControls={setRunning,setApproval,setCompleted,setThread,enablePet};
       return <><div className="workspace"><div className="approval-card" hidden={!approval}><button onClick={()=>window.approved=true}>Approve</button></div>
-        <div className="composer-stage"><LoomPet key={thread} running={running} approval={approval} completed={completed}/><div key={running?'steering':'idle'} className={'composer-wrap '+(running?'is-working':'')}><form className="composer"><textarea aria-label="Message"/><div className="composer-toolbar">Send</div></form><div className="composer-hint">Enter to send</div></div></div></div>
+        <div className="composer-stage">{enabled&&<LoomPet key={thread} running={running} approval={approval} completed={completed}/>}<div key={running?'steering':'idle'} className={'composer-wrap '+(running?'is-working':'')}><form className="composer"><textarea aria-label="Message"/><div className="composer-toolbar">Send</div></form><div className="composer-hint">Enter to send</div></div></div></div>
         <div className="art-review">{[0,1,2].map(pose=><div key={pose}><LoomPetArt pose={pose}/><small>Tail pose {pose}</small></div>)}</div>
         <div className="dark-review"><LoomPetArt/></div></>;
     }
@@ -55,6 +61,9 @@ try {
   await page.clock.install();
   await page.goto(pathToFileURL(join(dir, 'review.html')).href);
   const pet = page.locator('button.loom-pet');
+  await page.waitForFunction(()=>Boolean(window.petControls));
+  assert.equal(await pet.count(),0,'new users must not mount the pet');
+  await page.evaluate(()=>petControls.enablePet(true));
   await pet.waitFor();
   await page.screenshot({path:join(dir, 'art-review.png')});
   await page.locator('.art-review .loom-pet-svg').first().screenshot({path:join(dir, 'pet-preview.png')});
@@ -187,6 +196,17 @@ try {
   await floor();
   await page.evaluate(()=>document.querySelector('.workspace').style.zoom='1.25');
   await page.clock.runFor(100); await floor();
+  await page.evaluate(()=>petControls.enablePet(false));
+  await page.waitForFunction(()=>!document.querySelector('button.loom-pet'));
+  await page.reload();
+  await page.waitForFunction(()=>Boolean(window.petControls));
+  assert.equal(await pet.count(),0,'hidden preference must survive reload');
+  await page.evaluate(()=>petControls.enablePet(true));
+  await pet.waitFor();
+  await page.reload();
+  await pet.waitFor();
+  await page.evaluate(()=>petControls.enablePet(false));
+  await page.waitForFunction(()=>!document.querySelector('button.loom-pet'));
   assert.deepEqual(errors, []);
   console.log('PASS: border anchoring with real wrapper padding/height/zoom; head petting, strokes, tail tickling, body hops, click combo, typing, drag/keyboard repositioning, preserved editing focus, approval navigation without approval, sleep/wake, task states, reduced motion, narrow layout.');
 } finally { await browser.close(); }
