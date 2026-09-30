@@ -10,10 +10,10 @@ services:
       LOOM_ACCOUNT_API_BASE_URL: https://account.smirel.com/v1
       LOOM_WEB_ORIGIN: ${LOOM_WEB_ORIGIN:-https://loom.smirel.com}
       LOOM_WEB_PROVIDER: ${LOOM_WEB_PROVIDER:-openai-compatible}
-      LOOM_WEB_BASE_URL: ${LOOM_WEB_BASE_URL:-}
-      LOOM_WEB_MODEL: ${LOOM_WEB_MODEL:-}
+      LOOM_WEB_BASE_URL: ${LOOM_WEB_BASE_URL:-https://muxway.dev/v1}
+      LOOM_WEB_MODEL: ${LOOM_WEB_MODEL:-MiniMax-M3}
       LOOM_WEB_API_KEY: ${LOOM_WEB_API_KEY:-}
-      LOOM_WEB_SELECTION: ${LOOM_WEB_SELECTION:-cloud:default}
+      LOOM_WEB_SELECTION: ${LOOM_WEB_SELECTION:-managed:MiniMax-M3}
       LOOM_WEB_PERMISSION_MODE: ${LOOM_WEB_PERMISSION_MODE:-workspace}
     volumes:
       - loom_web_data:/var/lib/loom-web
