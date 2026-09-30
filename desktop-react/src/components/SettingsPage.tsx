@@ -34,7 +34,7 @@ import {
   Wrench,
   type LucideIcon,
 } from "lucide-react";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import {
   DEFAULT_SHORTCUTS,
   SHORTCUTS_CHANGED_EVENT,
@@ -59,6 +59,7 @@ import { ConnectorLifecycleStatus } from "./ConnectorLifecycleStatus";
 import { translateSettingsText } from "./LanguageSettingsDock";
 import "./settings-connectors.css";
 import { setSettingsRoute, useSettingsRoute } from "./settingsNavigation";
+import { playPageTransition, prepareNavTravel, reducedMotionPreferred, type PageFlow } from "./settingsMotion";
 import "./settings-page.css";
 import "./settings-general-polish.css";
 import "./settings-maturity.css";
@@ -85,11 +86,6 @@ type PageKey =
   | "shortcuts"
   | "privacy"
   | "developer";
-
-type SettingsPageMotion =
-  | "idle"
-  | "entering-forward"
-  | "entering-backward";
 
 type SettingsNotice = { tone: "error" | "success"; text: string; id: number };
 
@@ -194,11 +190,6 @@ interface NavItem {
 const LOCAL_DESKTOP_SETTINGS_KEY = "loom.settings.desktop.v2";
 const BROWSER_AUTO_MIGRATION_KEY = "loom.settings.browser-auto-default.v1";
 const SETTINGS_UPDATE_PREFIX = "__setting__:";
-
-const PAGE_ORDER: PageKey[] = [
-  "general", "appearance", "models", "capabilities", "computer", "browser", "websearch",
-  "terminal", "plugins", "connectors", "mcp", "skills", "memory", "permissions", "shortcuts", "privacy", "developer",
-];
 
 
 const DEFAULT_CAPABILITIES: Record<CapabilityKey, boolean> = {
@@ -341,6 +332,10 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
     ],
   },
 ];
+
+// The order the sidebar shows the pages in. Navigation direction comes from here,
+// so the page travels the way the highlight does.
+const NAV_ORDER: PageKey[] = NAV_GROUPS.flatMap((group) => group.items.map((item) => item.key));
 
 const CAPABILITIES: {
   key: CapabilityKey;
@@ -531,11 +526,6 @@ function SelectControl({ value, options, onChange, label }: { value: string; opt
   );
 }
 
-function reducedMotionPreferred(): boolean {
-  return document.documentElement.dataset.loomReducedMotion === "true"
-    || Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)").matches);
-}
-
 const SCALE_OPTIONS = (["90", "100", "110", "120", "130"] as const).map((value) => ({ value, label: `${value}%` }));
 
 // A summary value that plays a one-off "settled" cue when it changes. Nothing
@@ -570,11 +560,10 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
   const { language } = useI18n();
   const [page, setPage] = useState<PageKey>(() => activeRoute as PageKey);
   const settingsScrollRef = useRef<HTMLDivElement>(null);
-  const navigationTransitionRef = useRef(0);
-  const navigationFrameRef = useRef<number | null>(null);
+  const surfaceRef = useRef<HTMLDivElement>(null);
   const navRef = useRef<HTMLElement>(null);
-  const navPipFromRef = useRef<number | null>(null);
-  const [pageMotion, setPageMotion] = useState<SettingsPageMotion>("idle");
+  // Set by navigateToPage, consumed by the layout effect that plays the page in.
+  const pageFlowRef = useRef<{ flow: PageFlow; travel: number } | null>(null);
   const [query, setQuery] = useState("");
   const [settings, setSettings] = useState<DesktopSettings>(() => mergedSettings(runtime));
   const [modelState, setModelState] = useState<ModelSnapshot | null>(models);
@@ -605,65 +594,29 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
       return;
     }
 
-    const transitionId = ++navigationTransitionRef.current;
-    if (navigationFrameRef.current !== null) {
-      cancelAnimationFrame(navigationFrameRef.current);
-      navigationFrameRef.current = null;
-    }
+    // While the layout is still clean, note how far the sidebar highlight has to
+    // travel. The page travels the same way (down the list = up from below).
+    const travel = prepareNavTravel(navRef.current, nextPage);
+    const forward = travel !== 0 ? travel > 0 : NAV_ORDER.indexOf(nextPage) > NAV_ORDER.indexOf(page);
+    pageFlowRef.current = { flow: forward ? "forward" : "backward", travel };
 
-    const direction = PAGE_ORDER.indexOf(nextPage) > PAGE_ORDER.indexOf(page) ? "forward" : "backward";
-    const reduceMotion = reducedMotionPreferred();
-
-    // Remember where the highlight is now so the sidebar pill can glide from
-    // there to its new row (see the layout effect below).
-    navPipFromRef.current = navRef.current?.querySelector<HTMLElement>("button.active")?.getBoundingClientRect().top ?? null;
-
-    // Commit the destination immediately. The old implementation deliberately
-    // waited for a 142 ms exit, forced a synchronous render, and
-    // then held the new page for two more frames. Dense settings pages made
-    // that choreography feel like input lag. Keep one persistent compositor
-    // layer instead: replace its content now, paint one lightweight directional
-    // start pose, then release it into the enter transition on the next frame.
+    // Commit the destination immediately: no exit to wait for, no timers, no
+    // second render. The new page is keyed (see the surface below), so it mounts
+    // fresh and settings-page-motion.css lifts it into place on the first frame.
     setPage(nextPage);
     setSettingsRoute(nextPage);
     settingsScrollRef.current?.scrollTo({ top: 0, behavior: "instant" });
-
-    if (reduceMotion) {
-      setPageMotion("idle");
-      return;
-    }
-
-    setPageMotion(direction === "forward" ? "entering-forward" : "entering-backward");
-    navigationFrameRef.current = requestAnimationFrame(() => {
-      navigationFrameRef.current = requestAnimationFrame(() => {
-        navigationFrameRef.current = null;
-        if (navigationTransitionRef.current === transitionId) setPageMotion("idle");
-      });
-    });
   };
 
-  useEffect(() => () => {
-    navigationTransitionRef.current += 1;
-    if (navigationFrameRef.current !== null) cancelAnimationFrame(navigationFrameRef.current);
-  }, []);
-
-  // Sidebar highlight: the active row owns a pill (.settings-nav-pip). On a
-  // section change the new pill starts at the previous row's position and glides
-  // home (FLIP, transform only). Because the pill lives inside its row it can
-  // never drift when labels reflow, and ordinary renders measure nothing.
+  // Play the navigation: the sidebar highlight travels and the new page rises in.
+  // The work itself waits for the next frame (settingsMotion.ts), so this effect
+  // costs the click nothing.
   useLayoutEffect(() => {
-    const from = navPipFromRef.current;
-    navPipFromRef.current = null;
-    if (from === null || reducedMotionPreferred()) return;
-    const row = navRef.current?.querySelector<HTMLElement>("button.active");
-    const pip = row?.querySelector<HTMLElement>(".settings-nav-pip");
-    if (!row || !pip || typeof pip.animate !== "function") return;
-    const distance = from - row.getBoundingClientRect().top;
-    if (Math.abs(distance) < 1) return;
-    pip.animate(
-      [{ transform: `translate3d(0, ${distance}px, 0)` }, { transform: "translate3d(0, 0, 0)" }],
-      { duration: 260 + Math.min(140, Math.abs(distance) * 0.35), easing: "cubic-bezier(.2,.8,.2,1)" },
-    );
+    const surface = surfaceRef.current;
+    const pending = pageFlowRef.current;
+    pageFlowRef.current = null;
+    if (!surface || !pending || reducedMotionPreferred()) return;
+    return playPageTransition(surface, navRef.current, pending.flow, pending.travel);
   }, [page]);
 
   useEffect(() => {
@@ -1533,12 +1486,12 @@ export function SettingsPage({ runtime, models, threadId, running, onRefreshMode
           <label className="settings-search"><Search size={14} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search settings" /></label>
         </div>
         <nav className="settings-nav" aria-label="Settings navigation" ref={navRef}>
-          {filteredGroups.map((group) => <section key={group.label}><span className="settings-nav-label">{group.label}</span>{group.items.map((item) => { const Icon = item.icon; return <button type="button" key={item.key} className={page === item.key ? "active" : ""} aria-current={page === item.key ? "page" : undefined} onClick={() => navigateToPage(item.key)}><i className="settings-nav-pip" aria-hidden="true" /><Icon size={16} strokeWidth={1.7} /><span>{item.label}</span></button>; })}</section>)}
+          {filteredGroups.map((group) => <section key={group.label}><span className="settings-nav-label">{group.label}</span>{group.items.map((item) => { const Icon = item.icon; return <button type="button" key={item.key} data-nav={item.key} className={page === item.key ? "active" : ""} aria-current={page === item.key ? "page" : undefined} onClick={() => navigateToPage(item.key)}><i className="settings-nav-pip" aria-hidden="true" /><Icon size={16} strokeWidth={1.7} /><span>{item.label}</span></button>; })}</section>)}
           {filteredGroups.length === 0 ? <div className="settings-nav-empty"><Search size={15} strokeWidth={1.7} /><span>No matching settings</span></div> : null}
         </nav>
         <div className="settings-sidebar-footer" data-running={running ? "true" : "false"}><span className="settings-runtime-dot" /><div><strong>Loom runtime</strong><span>{running ? "Turn active" : "Ready for changes"}</span></div></div>
       </aside>
-      <main className="settings-main"><div className="settings-main-scroll" ref={settingsScrollRef}><div className="settings-content"><div className="settings-page-surface" data-page={page} data-page-motion={pageMotion}>{content}</div></div></div></main>
+      <main className="settings-main"><div className="settings-main-scroll" ref={settingsScrollRef}><div className="settings-content"><div className="settings-page-surface" data-page={page} ref={surfaceRef}><Fragment key={page}>{content}</Fragment></div></div></div></main>
       {noticePresence.mounted && visibleNotice ? (
         <div className={`settings-toast ${visibleNotice.tone}`} data-motion-phase={noticePresence.phase}>
           {visibleNotice.tone === "success" ? <Check size={15} /> : <CircleAlert size={15} />}

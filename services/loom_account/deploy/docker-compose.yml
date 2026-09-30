@@ -22,6 +22,9 @@ services:
       dockerfile: services/loom_account/Dockerfile
     image: loom-account:local
     restart: unless-stopped
+    env_file:
+      - path: .env.search
+        required: false
     environment:
       LOOM_ACCOUNT_DB: /data/accounts.db
       # Comma-separated peers allowed to set the client address through

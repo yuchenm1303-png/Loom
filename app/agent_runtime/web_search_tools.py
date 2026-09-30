@@ -4,21 +4,23 @@ import json
 
 from .contracts import ToolEffect
 from .tools import AgentTool, ToolContext, ToolResult
-from .web_search import WebSearchProvider
+from .web_search import WebSearchError, WebSearchProvider
 
 
 def web_search_tools(provider: WebSearchProvider | None) -> tuple[AgentTool, ...]:
     def status(context: ToolContext, arguments: dict[str, object]) -> ToolResult:
         _ = context, arguments
         name = provider.provider_name if provider is not None else "disabled"
+        reason = str(getattr(provider, "last_error", "") or "")
         return ToolResult(
-            ok=True,
+            ok=not bool(reason),
             content=(
-                f"Web search provider: {name}."
+                f"Web search provider: {name}." + (f" Last search failed: {reason}" if reason else "")
                 if provider is not None
                 else "Web search is not configured. Set a supported search provider API key."
             ),
-            data={"enabled": provider is not None, "provider": name},
+            data={"enabled": provider is not None, "provider": name,
+                  "state": "error" if reason else "ready" if provider else "disabled", "reason": reason},
         )
 
     tools: list[AgentTool] = [
@@ -37,7 +39,15 @@ def web_search_tools(provider: WebSearchProvider | None) -> tuple[AgentTool, ...
             context.raise_if_cancelled()
             query = str(arguments.get("query") or "").strip()
             count = int(arguments.get("count") or 8)
-            response = provider.search(query, count=count)
+            try:
+                response = provider.search(query, count=count)
+            except WebSearchError as exc:
+                return ToolResult(
+                    ok=False,
+                    content=f"Web search failed: {exc}",
+                    data={"provider": provider.provider_name, "query": query,
+                          "state": "error", "errorCode": exc.code},
+                )
             rows = []
             for index, result in enumerate(response.results, start=1):
                 rows.append(
@@ -59,7 +69,8 @@ def web_search_tools(provider: WebSearchProvider | None) -> tuple[AgentTool, ...
             return ToolResult(
                 ok=True,
                 content=(
-                    "No web results found."
+                    "Search completed with zero results for this query. "
+                    "This does not establish that the topic has no public sources."
                     if not rows
                     else json.dumps(rows, ensure_ascii=False, indent=2)
                 ),

@@ -117,6 +117,19 @@ beforeEach(async () => {
   installFetch({});
 });
 
+test("shared search requires sign-in and refreshes account auth without a search key", async () => {
+  const client = newClient();
+  await assert.rejects(client.search("docs", 3), (error) => error.code === "MISSING_TOKEN");
+  await seedSession({ accessToken: "expired", refreshToken: "refresh", expiresAt: Date.now() - 1, user: USER });
+  installFetch({
+    "/v1/auth/refresh": () => reply(200, sessionBody()),
+    "/v1/search": () => reply(200, { provider: "loom", results: [] }),
+  });
+  assert.equal((await client.search("docs", 3)).provider, "loom");
+  assert.equal(calls[1].headers.get("Authorization"), "Bearer loom_access_fresh");
+  assert.deepEqual(JSON.parse(calls[1].body), { query: "docs", count: 3 });
+});
+
 test("an unconfigured build reports itself instead of calling out", async () => {
   delete process.env.LOOM_ACCOUNT_API_BASE_URL;
   state.isPackaged = true;

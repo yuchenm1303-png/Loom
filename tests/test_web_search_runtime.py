@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import pytest
 from urllib.parse import parse_qs, urlsplit
 
 from app.agent_runtime import (
@@ -19,6 +20,9 @@ from app.agent_runtime import (
 )
 from app.agent_runtime.workspace_tools import loom_default_tools
 from app.ai import AGENT_FAST_ROLE, ModelResponse, ToolCall
+from app.agent_runtime.web_search import WebSearchError
+from app.agent_runtime.web_search_tools import web_search_tools
+from app.agent_runtime.tools import ToolContext
 
 
 class ScriptedPlatform:
@@ -105,6 +109,126 @@ def test_duckduckgo_provider_is_keyless_and_parses_public_results():
     assert response.results[0].url == "https://example.com/fresh"
     assert response.results[0].source == "example.com"
     assert "Current public-web information" in response.results[0].snippet
+
+
+def test_ddg_verification_is_failure_and_parallel_batch_stops_requesting(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+
+    calls = []
+    def transport(url, timeout):
+        calls.append(url)
+        return '<html><form id="challenge-form">Unfortunately, bots use DuckDuckGo too.</form></html>'
+
+    provider = DuckDuckGoWebSearchProvider(transport=transport)
+    tool = next(t for t in web_search_tools(provider) if t.name == "web_search")
+    context = ToolContext(session_id="test", turn_id="test", workspace=tmp_path)
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        results = list(pool.map(lambda q: tool.handler(context, {"query": q}), ["OpenAI", "ant-ling", "API docs"]))
+    assert len(calls) == 1
+    assert all(not r.ok and r.data["errorCode"] == "blocked" for r in results)
+    assert all("No web results found" not in r.content for r in results)
+    assert "verification" in provider.last_error
+
+
+def test_ddg_blocked_provider_recovers_after_cooldown(monkeypatch):
+    from app.agent_runtime import web_search as module
+
+    now = [100.0]
+    monkeypatch.setattr(module.time, "monotonic", lambda: now[0])
+    pages = iter(['<form id="challenge-form"></form>',
+                  '<a class="result__a" href="https://example.com">Recovered</a>'])
+    provider = DuckDuckGoWebSearchProvider(transport=lambda *_: next(pages))
+    with pytest.raises(WebSearchError):
+        provider.search("OpenAI")
+    now[0] += 61.0
+    assert provider.search("OpenAI").results[0].title == "Recovered"
+    assert provider.last_error == ""
+
+
+def test_ddg_lite_fallback_parses_links_and_nested_snippets():
+    calls = []
+    def transport(url, timeout):
+        calls.append(url)
+        if "html.duckduckgo" in url:
+            return '<html>Unexpected upstream page</html>'
+        return '''<table><tr><td><a class="result-link" href="https://example.org/docs">API <b>Docs</b></a></td></tr>
+          <tr><td class="result-snippet">Before <span>nested</span> after.</td></tr></table>'''
+    response = DuckDuckGoWebSearchProvider(transport=transport).search("docs")
+    assert len(calls) == 2
+    assert response.results[0].title == "API Docs"
+    assert response.results[0].snippet == "Before nested after."
+
+
+def test_ddg_unknown_page_cannot_become_empty_success():
+    provider = DuckDuckGoWebSearchProvider(transport=lambda *_: '<html>Service unavailable</html>')
+    with pytest.raises(WebSearchError) as error:
+        provider.search("OpenAI")
+    assert error.value.code == "invalid_response"
+
+
+def test_ddg_explicit_no_results_is_valid_and_does_not_retry():
+    calls = []
+    def transport(url, timeout):
+        calls.append(url)
+        return '<div class="no-results">No results found for obscure query</div>'
+    assert not DuckDuckGoWebSearchProvider(transport=transport).search("obscure").results
+    assert len(calls) == 1
+
+
+def test_ddg_valid_empty_lite_response_overrides_html_failure():
+    pages = iter(['<html>Invalid HTML response</html>', '<div class="no-results">No results found for query</div>'])
+    response = DuckDuckGoWebSearchProvider(transport=lambda *_: next(pages)).search("query")
+    assert response.results == ()
+
+
+@pytest.mark.parametrize("factory", [BraveWebSearchProvider, TavilyWebSearchProvider])
+def test_api_error_payload_is_not_zero_results(factory):
+    provider = factory("test-key", transport=lambda *_: {"error": "upstream error"})
+    with pytest.raises(WebSearchError):
+        provider.search("OpenAI")
+
+
+def test_json_transport_reports_rate_limit_without_exposing_response(monkeypatch):
+    from urllib.error import HTTPError
+    from app.agent_runtime import web_search as module
+    class Opener:
+        def open(self, *args, **kwargs):
+            raise HTTPError("https://api.tavily.com/search", 429, "secret-body", {}, None)
+    monkeypatch.setattr(module, "build_opener", lambda *_: Opener())
+    with pytest.raises(WebSearchError) as error:
+        TavilyWebSearchProvider("secret-key").search("OpenAI")
+    assert error.value.code == "rate_limited"
+    assert "secret" not in str(error.value)
+
+
+def test_loom_shared_provider_never_sends_bridge_auth_to_remote_host():
+    from app.agent_runtime.web_search import LoomWebSearchProvider
+    for url in ["https://example.com/search", "http://localhost:1234/search", "http://127.0.0.1:1234/search?x=1"]:
+        with pytest.raises(ValueError):
+            LoomWebSearchProvider(url, "bridge-secret")
+
+
+def test_shared_provider_reports_auth_and_recovers(monkeypatch):
+    from app.agent_runtime import web_search as module
+    from urllib.error import HTTPError
+    from io import BytesIO
+    class Opener:
+        attempts = 0
+        def open(self, request, **kwargs):
+            self.attempts += 1
+            assert request.get_header("Authorization") == "Bearer bridge-secret"
+            if self.attempts == 1:
+                raise HTTPError(request.full_url, 401, "token-details", {}, None)
+            return BytesIO(json.dumps({"results": [{"title": "Docs", "url": "https://example.com", "snippet": "API", "source": "example.com"}]}).encode())
+    opener = Opener()
+    monkeypatch.setattr(module, "build_opener", lambda *_: opener)
+    provider = module.LoomWebSearchProvider("http://127.0.0.1:1234/search", "bridge-secret")
+    with pytest.raises(WebSearchError) as error:
+        provider.search("docs")
+    assert error.value.code == "authentication"
+    assert "Sign in" in provider.last_error
+    assert provider.search("docs").results[0].title == "Docs"
+    assert provider.last_error == ""
 
 
 def test_brave_provider_uses_fixed_endpoint_and_subscription_header():

@@ -143,8 +143,9 @@ class WebSearchRuntime(_DefaultSemanticMemoryRuntime):
         provider = self.web_search_provider
         choice = self.web_search_provider_choice
         enabled = provider is not None
+        reason = self.web_search_error or str(getattr(provider, "last_error", "") or "")
         if enabled:
-            state = "error" if self.web_search_error else "ready"
+            state = "error" if reason else "ready"
         elif choice in {"off", "none", "disabled"}:
             state = "disabled"
         else:
@@ -156,7 +157,7 @@ class WebSearchRuntime(_DefaultSemanticMemoryRuntime):
             "choice": choice,
             "keySource": self.web_search_key_source if enabled else "none",
             "state": state,
-            "reason": self.web_search_error,
+            "reason": reason,
         }
 
 

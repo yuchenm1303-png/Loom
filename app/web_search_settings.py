@@ -29,7 +29,7 @@ from app.agent_runtime.web_search import (
 # The values the desktop settings page may store. "auto" means "use whatever
 # the environment or a stored credential provides, otherwise Loom's keyless
 # public provider"; "off" removes the web_search tool from the model entirely.
-WEB_SEARCH_PROVIDER_CHOICES = ("auto", "duckduckgo", "tavily", "brave", "off")
+WEB_SEARCH_PROVIDER_CHOICES = ("auto", "loom", "duckduckgo", "tavily", "brave", "off")
 
 WEB_SEARCH_KEYRING_SERVICE = "loom-agent/web-search"
 
@@ -140,6 +140,8 @@ class WebSearchConfigurator:
         try:
             if choice == "off":
                 return None, "none", ""
+            if choice == "loom":
+                return web_search_provider_from_env({**env, "LOOM_WEB_SEARCH_PROVIDER": "loom"}), "account", ""
             if choice == "duckduckgo":
                 return web_search_provider_from_values("duckduckgo"), "none", ""
             if choice in _KEYED_PROVIDERS:
@@ -151,11 +153,21 @@ class WebSearchConfigurator:
                     if value:
                         return web_search_provider_from_values(choice, value), "environment", ""
                 return None, "none", f"{choice} Search requires an API key"
-            # auto: respect the environment, then Loom's keyless public default.
+            # Explicit environment choices/credentials win. Otherwise prefer
+            # saved API credentials before the keyless HTML fallback.
+            explicit_env = any(str(env.get(name) or "").strip() for name in (
+                "LOOM_WEB_SEARCH_PROVIDER", "LOOM_WEB_SEARCH_API_KEY",
+                "BRAVE_SEARCH_API_KEY", "TAVILY_API_KEY",
+            ))
+            if not explicit_env:
+                for name in ("tavily", "brave"):
+                    stored = self.vault.get(name)
+                    if stored:
+                        return web_search_provider_from_values(name, stored), "keyring", ""
             provider = web_search_provider_from_env(env)
             if provider is None:
                 return None, "none", ""
-            source = "environment" if provider.provider_name in _KEYED_PROVIDERS else "none"
+            source = "account" if provider.provider_name == "loom" else "environment" if provider.provider_name in _KEYED_PROVIDERS else "none"
             return provider, source, ""
         except ValueError as exc:
             # A contradictory configuration (for example a generic key with no
@@ -192,7 +204,8 @@ class WebSearchConfigurator:
         payload["available"] = True
         payload["choice"] = choice
         payload["keyRequired"] = choice in _KEYED_PROVIDERS
-        payload["keyConfigured"] = self._key_available(choice)
+        active = str(payload.get("provider") or "")
+        payload["keyConfigured"] = self._key_available(active if choice == "auto" else choice)
         if payload.get("state") == "not_configured" and choice in _KEYED_PROVIDERS:
             payload.setdefault("reason", f"{choice} Search requires an API key")
         return payload

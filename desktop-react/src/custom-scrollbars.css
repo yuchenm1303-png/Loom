@@ -1,0 +1,8 @@
+:root body .loom-custom-scrollable { scrollbar-width: none !important; }
+:root body .loom-custom-scrollable::-webkit-scrollbar { width: 0 !important; height: 0 !important; }
+.loom-scrollbar-layer { position: fixed; inset: 0; z-index: 10000; pointer-events: none; }
+.loom-scroll-track { position: absolute; pointer-events: auto; border-radius: 8px; background: transparent; }
+.loom-scroll-track[hidden] { display: none; }
+.loom-scroll-track:hover { background: var(--accent-faint); }
+.loom-scroll-thumb { border-radius: 8px; background: var(--muted); opacity: .45; touch-action: none; user-select: none; }
+.loom-scroll-thumb:hover, .loom-scroll-thumb:focus-visible { opacity: .85; outline: 1px solid var(--accent); }

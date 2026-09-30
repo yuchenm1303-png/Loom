@@ -1,0 +1,7 @@
+.loom-window-shell { display: flex; flex-direction: column; height: 100%; width: 100%; }
+.loom-titlebar { display: flex; flex: 0 0 32px; background: var(--bg); color: var(--text-2); border-bottom: 1px solid var(--border-soft); user-select: none; }
+.loom-titlebar-drag { flex: 1; min-width: 0; display: flex; align-items: center; padding-left: 14px; font-size: 12px; touch-action: none; }
+.loom-titlebar button { width: 46px; border: 0; background: transparent; color: inherit; display: grid; place-items: center; }
+.loom-titlebar button:hover { background: var(--panel-hover); }
+.loom-titlebar .loom-window-close:hover { background: #c42b1c; color: white; }
+.loom-window-content { flex: 1; min-height: 0; position: relative; }

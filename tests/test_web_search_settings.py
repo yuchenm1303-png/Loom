@@ -36,6 +36,61 @@ from app.web_search_settings import (
 SECRET = "tvly-live-do-not-leak-0123456789"
 
 
+def test_auto_uses_shared_search_without_device_api_key(tmp_path):
+    runtime = _runtime(tmp_path)
+    try:
+        configurator, _ = _configurator(runtime, tmp_path, environ={
+            "LOOM_SEARCH_RELAY_URL": "http://127.0.0.1:12345/search",
+            "LOOM_SEARCH_RELAY_TOKEN": "bridge-secret",
+        })
+        result = configurator.apply()
+        assert result["provider"] == "loom"
+        assert result["keySource"] == "account"
+        assert result["keyRequired"] is False
+        assert "bridge-secret" not in repr(result)
+    finally:
+        runtime.close()
+
+
+def test_auto_prefers_saved_search_key_and_reports_it(tmp_path):
+    runtime = _runtime(tmp_path)
+    try:
+        vault = _Vault({"tavily/api-key": SECRET})
+        configurator, _ = _configurator(runtime, tmp_path, vault=vault)
+        result = configurator.apply()
+        assert result["provider"] == "tavily"
+        assert result["keySource"] == "keyring"
+        assert result["keyConfigured"] is True
+        assert SECRET not in repr(result)
+    finally:
+        runtime.close()
+
+
+def test_auto_preserves_explicit_environment_choice_over_saved_key(tmp_path):
+    runtime = _runtime(tmp_path)
+    try:
+        vault = _Vault({"tavily/api-key": SECRET})
+        configurator, _ = _configurator(runtime, tmp_path, vault=vault,
+                                       environ={"LOOM_WEB_SEARCH_PROVIDER": "off"})
+        assert configurator.apply()["enabled"] is False
+    finally:
+        runtime.close()
+
+
+def test_settings_status_reports_live_ddg_verification_error(tmp_path):
+    from app.agent_runtime.web_search import DuckDuckGoWebSearchProvider
+    runtime = _runtime(tmp_path)
+    try:
+        configurator, _ = _configurator(runtime, tmp_path)
+        provider = DuckDuckGoWebSearchProvider(transport=lambda *_: '<form id="challenge-form"></form>')
+        runtime.web_search_install_provider(provider)
+        assert configurator.test()["ok"] is False
+        assert configurator.status()["state"] == "error"
+        assert "verification" in configurator.status()["reason"]
+    finally:
+        runtime.close()
+
+
 class _Platform:
     """The configurator never runs a turn, so this only has to exist."""
 

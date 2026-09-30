@@ -195,3 +195,15 @@ curl -s -X POST "$BASE/auth/refresh" -H 'Content-Type: application/json' \
 The automated suites covering this are `tests/test_loom_account_service.py`
 (application level) and `tests/test_loom_account_http.py` (real HTTP server,
 routing, status codes, rate limiting, request limits).
+## Shared search
+
+The account service exposes `POST /v1/search` for signed-in Loom devices.
+Copy `.env.example` to `.env.search` and set `TAVILY_API_KEY` on the server,
+then recreate the account container. The optional env file is loaded by Compose;
+it must not be committed or included in desktop builds.
+
+Requests require a valid Loom bearer access token and are limited to 30 searches
+per account per minute, shared across devices. Only bounded query/count inputs
+and normalized results travel over this route; provider credentials and upstream
+error bodies are never returned. Desktop builds automatically use the account
+service when no personal search key is configured.

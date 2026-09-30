@@ -20,6 +20,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Collection
+from .search import SearchServiceError, search as shared_search
 
 
 _EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
@@ -506,6 +507,20 @@ class AccountApplication:
             )
         return {"user": self.store.user_for_access_token(token.strip())}
 
+    def search(self, body: dict[str, Any], authorization: str) -> dict[str, Any]:
+        user = self.me(authorization)["user"]
+        query = " ".join(str(body.get("query") or "").split())
+        count = body.get("count", 8)
+        if not query or len(query) > 400 or len(query.split()) > 50:
+            raise AccountError(400, "INVALID_SEARCH_QUERY", "Search query must contain 1–400 characters and at most 50 words.")
+        if isinstance(count, bool) or not isinstance(count, int) or not 1 <= count <= 20:
+            raise AccountError(400, "INVALID_SEARCH_COUNT", "Search result count must be within 1–20.")
+        self.limiter.check(f"search:{user['id']}", 30, 60)
+        try:
+            return shared_search(query, count)
+        except SearchServiceError as exc:
+            raise AccountError(exc.status, exc.code, str(exc)) from None
+
 
 class AccountRequestHandler(BaseHTTPRequestHandler):
     server_version = "LoomAccount/1"
@@ -587,6 +602,8 @@ class AccountRequestHandler(BaseHTTPRequestHandler):
             raise AccountError(HTTPStatus.NOT_FOUND, "NOT_FOUND", "Endpoint not found.")
 
         body = self._json_body()
+        if path == "/v1/search":
+            return self.application.search(body, self.headers.get("Authorization") or "")
         if path == "/v1/auth/register":
             return self.application.register(body, self._client_key())
         if path == "/v1/auth/login":

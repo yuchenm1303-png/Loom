@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="ch-zh-hans">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0"
+    />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+    <title>PMSS</title>
+
+    <style>
+      body {
+        margin: 0;
+      }
+      .preloader,
+      .preloader::before,
+      .preloader::after {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        border: 2px solid #7c5fda;
+        border-left-color: transparent;
+        border-radius: 50%;
+      }
+
+      .preloader {
+        transform: translate(-50%, -50%) rotate(0);
+        height: 80px;
+        width: 80px;
+        animation: animation-rotate 1s linear infinite;
+      }
+
+      .preloader::before {
+        content: '';
+        transform: translate(-50%, -50%) rotate(0);
+        height: 40px;
+        width: 40px;
+        animation: animation-rotate 1s linear infinite;
+      }
+
+      .preloader::after {
+        content: '';
+        transform: translate(-50%, -50%) rotate(0);
+        height: 50px;
+        width: 50px;
+        animation: animation-rotate 2s linear infinite;
+      }
+
+      @keyframes animation-rotate {
+        100% {
+          transform: translate(-50%, -50%) rotate(360deg);
+        }
+      }
+    </style>
+  <link href="./css/vendor.dd618d.css" rel="stylesheet"><link href="./css/main.dd618d.css" rel="stylesheet"></head>
+  <body class="-pmss-root">
+    <div id="app"><div class="preloader"></div></div>
+
+    <!-- mxgraph -->
+    <script>
+      function getTokenCookie(name) {
+        var arr,
+          reg = new RegExp('(^| )' + name + '=([^;]*)(;|$)   ')
+        if ((arr = document.cookie.match(reg))) return unescape(arr[2])
+        else return null
+      }
+    </script>
+  <script type="text/javascript" src="./js/vendor.dd618d.js"></script><script type="text/javascript" src="./js/main.dd618d.js"></script></body>
+</html>

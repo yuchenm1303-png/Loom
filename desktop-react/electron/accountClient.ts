@@ -98,6 +98,7 @@ function configuredAccountBaseUrl(): string {
 export class LoomAccountClient {
   private memorySession: TokenSession | null = null;
   private readonly baseUrl: string;
+  private refreshInFlight: Promise<TokenSession> | null = null;
 
   constructor() {
     this.baseUrl = configuredAccountBaseUrl();
@@ -236,11 +237,35 @@ export class LoomAccountClient {
   }
 
   private async refresh(session: TokenSession): Promise<TokenSession> {
-    const response = await this.request<AuthResponse>("/auth/refresh", {
-      method: "POST",
-      body: JSON.stringify({ refresh_token: session.refreshToken }),
-    });
-    return this.saveSession(response);
+    if (this.memorySession && this.memorySession.refreshToken !== session.refreshToken) return this.memorySession;
+    if (this.refreshInFlight) return this.refreshInFlight;
+    this.refreshInFlight = (async () => {
+      const response = await this.request<AuthResponse>("/auth/refresh", {
+        method: "POST",
+        body: JSON.stringify({ refresh_token: session.refreshToken }),
+      });
+      return this.saveSession(response);
+    })();
+    try {
+      return await this.refreshInFlight;
+    } finally {
+      this.refreshInFlight = null;
+    }
+  }
+
+  /** Search credentials remain on the account server; only account auth travels. */
+  async search(query: string, count: number): Promise<unknown> {
+    let session = await this.loadSession();
+    if (!session) throw new AccountHttpError(401, "MISSING_TOKEN", "Sign in to Loom to use shared search.");
+    if (session.expiresAt <= Date.now() + 30_000) session = await this.refresh(session);
+    const init = { method: "POST", body: JSON.stringify({ query, count }) };
+    try {
+      return await this.request("/search", init, session.accessToken);
+    } catch (error) {
+      if (!(error instanceof AccountHttpError) || error.status !== 401) throw error;
+      session = await this.refresh(session);
+      return this.request("/search", init, session.accessToken);
+    }
   }
 
   /**

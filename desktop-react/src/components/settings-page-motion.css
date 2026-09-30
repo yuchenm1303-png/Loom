@@ -1,131 +1,107 @@
 /* Settings navigation motion
    ==========================
-   Keep section changes polished without turning the whole Settings screen into
-   a pile of independently animated layers. The destination page still commits
-   immediately; one compositor surface carries the main directional motion and
-   only the page heading / top-level sections get a very small follow-through.
-   This keeps Windows high-DPI text crisp while making navigation feel deliberate
-   instead of like a hard content swap. */
+   One gesture in three parts, every moving piece transform/opacity on few or
+   small things:
+
+   1. The sidebar highlight glides to the new row (settingsMotion.ts, FLIP). It is
+      text-free, so it may stretch while it is fast, and it passes *under* every
+      label on its way.
+   2. The new page rises into place in a short cascade. Only the page's top-level
+      blocks move (heading first, then each section), each on the compositor, each
+      starting on the very first painted frame. The direction follows the
+      highlight: going down the sidebar the page lifts up from below, going up it
+      settles down from above.
+   3. Light: the rail of the new row flares as the highlight lands, and the small
+      dash in front of the page eyebrow draws itself out.
+
+   The destination is committed immediately and the old page is never kept around:
+   nothing waits and nothing re-renders while it plays. settingsMotion.ts marks the
+   blocks for a moment (data-flow on the persistent surface, data-flow-block on
+   each block) and removes the marks afterwards, so sections that appear later on
+   the same page (a toggle revealing a card, a list finishing loading) never replay
+   the entrance. */
+
+/* Set inline on each block by settingsMotion.ts. Registered as non-inherited so
+   that writing them never restyles a block's descendants (a page can be hundreds
+   of nodes and this happens in the navigation frame). */
+@property --flow-delay {
+  syntax: "<time>";
+  inherits: false;
+  initial-value: 0ms;
+}
+
+@property --flow-distance {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 16px;
+}
+
+.settings-shell.settings-refined {
+  --flow-fade: 230ms;
+  --flow-move: 470ms;
+  --flow-ease: cubic-bezier(.16, 1, .3, 1);
+}
 
 .settings-shell.settings-refined .settings-page-surface {
   position: relative;
   min-width: 0;
   isolation: isolate;
-  opacity: 1;
-  transform: translate3d(0, 0, 0) scale(1);
-  transform-origin: 50% 18px;
-  backface-visibility: hidden;
+  /* Blocks start a few px off their mark. Paint containment clips them to the
+     surface, so they can never stretch the scroller (no scrollbar flicker on
+     short pages) or bleed over the sidebar. */
   contain: paint style;
-  transition:
-    opacity 190ms cubic-bezier(.2,.72,.18,1),
-    transform 270ms cubic-bezier(.16,.82,.18,1);
 }
 
-/* A tiny accent trace gives the eye a stable origin while the new page settles.
-   It is intentionally a hairline rather than a full-page glow, so light mode
-   stays clean and business-like. */
-.settings-shell.settings-refined .settings-page-surface::after {
-  content: "";
-  position: absolute;
-  z-index: 0;
-  top: 8px;
-  left: 8px;
-  width: min(150px, 24%);
-  height: 1px;
-  border-radius: 999px;
-  background: linear-gradient(
-    90deg,
-    color-mix(in srgb, var(--sr-accent) 54%, transparent),
-    color-mix(in srgb, var(--sr-accent) 18%, transparent) 46%,
-    transparent 100%
-  );
-  opacity: 0;
-  transform: translate3d(0, 0, 0) scaleX(.72);
+@keyframes settings-block-fade {
+  from { opacity: 0; }
+}
+
+@keyframes settings-block-rise {
+  from { transform: translate3d(0, var(--flow-distance), 0); }
+}
+
+@keyframes settings-block-fall {
+  from { transform: translate3d(0, calc(var(--flow-distance) * -.55), 0); }
+}
+
+@keyframes settings-eyebrow-draw {
+  from { transform: scaleX(0); opacity: 0; }
+}
+
+/* Two animations, not one: the page is readable almost at once (fast fade) while
+   the lift keeps gliding for a beat longer. The delay is per block, set inline by
+   settingsMotion.ts from a short ladder. */
+.settings-shell.settings-refined .settings-page-surface[data-flow] [data-flow-block] {
+  animation:
+    settings-block-fade var(--flow-fade) ease-out var(--flow-delay) backwards,
+    settings-block-rise var(--flow-move) var(--flow-ease) var(--flow-delay) backwards;
+}
+
+.settings-shell.settings-refined .settings-page-surface[data-flow="backward"] [data-flow-block] {
+  animation-name: settings-block-fade, settings-block-fall;
+}
+
+/* The dash before the page eyebrow draws out of its left end just after the
+   heading lands. It is 14x2px and text-free, so it is free to scale. */
+.settings-shell.settings-refined .settings-page-surface[data-flow] .settings-page-heading .settings-eyebrow::before {
   transform-origin: left center;
-  pointer-events: none;
-  transition:
-    opacity 220ms ease,
-    transform 310ms cubic-bezier(.16,.82,.18,1);
+  animation: settings-eyebrow-draw 420ms var(--flow-ease) 110ms backwards;
 }
 
-.settings-shell.settings-refined .settings-page-surface[data-page-motion="entering-forward"] {
-  opacity: .62;
-  transform: translate3d(13px, 2px, 0) scale(.996);
-  transition: none;
-  will-change: opacity, transform;
-}
-
-.settings-shell.settings-refined .settings-page-surface[data-page-motion="entering-backward"] {
-  opacity: .62;
-  transform: translate3d(-13px, 2px, 0) scale(.996);
-  transition: none;
-  will-change: opacity, transform;
-}
-
-.settings-shell.settings-refined .settings-page-surface[data-page-motion="entering-forward"]::after {
-  opacity: .46;
-  transform: translate3d(9px, 0, 0) scaleX(.92);
-  transition: none;
-}
-
-.settings-shell.settings-refined .settings-page-surface[data-page-motion="entering-backward"]::after {
-  opacity: .46;
-  transform: translate3d(-7px, 0, 0) scaleX(.92);
-  transition: none;
-}
-
-.settings-shell.settings-refined .settings-page-surface[data-page-motion="idle"] {
-  opacity: 1;
-  transform: translate3d(0, 0, 0) scale(1);
-  will-change: auto;
-}
-
-/* Layered follow-through: only structural blocks move, never every row/card.
-   The page wrapper supplies the horizontal direction; these elements settle a
-   few pixels vertically so the result feels dimensional rather than like a flat
-   slide. */
-.settings-shell.settings-refined .settings-page-surface > .settings-page-heading,
-.settings-shell.settings-refined .settings-page-surface > .settings-section {
-  opacity: 1;
-  transform: translate3d(0, 0, 0);
-  transition:
-    opacity 210ms cubic-bezier(.2,.72,.18,1),
-    transform 300ms cubic-bezier(.16,.82,.18,1);
-}
-
-.settings-shell.settings-refined .settings-page-surface[data-page-motion^="entering-"] > .settings-page-heading {
-  opacity: .72;
-  transform: translate3d(0, 3px, 0);
-  transition: none;
-}
-
-.settings-shell.settings-refined .settings-page-surface[data-page-motion^="entering-"] > .settings-section {
-  opacity: .76;
-  transform: translate3d(0, 5px, 0);
-  transition: none;
-}
-
-.settings-shell.settings-refined .settings-page-surface[data-page-motion="idle"] > .settings-page-heading {
-  transition-delay: 12ms;
-}
-
-.settings-shell.settings-refined .settings-page-surface[data-page-motion="idle"] > .settings-section:nth-child(2) {
-  transition-delay: 24ms;
-}
-
-.settings-shell.settings-refined .settings-page-surface[data-page-motion="idle"] > .settings-section:nth-child(3) {
-  transition-delay: 38ms;
-}
-
-.settings-shell.settings-refined .settings-page-surface[data-page-motion="idle"] > .settings-section:nth-child(4) {
-  transition-delay: 50ms;
+/* The update card lives in General only. React removes it a frame or two after
+   the page changes; until then it would sit above the new page's blocks. */
+.settings-shell.settings-refined .settings-page-surface:not([data-page="general"]) > .software-update-section {
+  display: none;
 }
 
 /* Sidebar navigation
    ------------------
-   The active row owns a real moving highlight pill. SettingsPage uses FLIP via
-   Web Animations to move this pill from the old row to the new row, so section
-   changes read as one continuous selection rather than two unrelated flashes. */
+   The active row owns a real moving highlight pill. settingsMotion.ts plays it from
+   the previous row with the Web Animations API, so a section change reads as one
+   continuous selection. It replaces the old pill on the spot (no cross-fade: two
+   pills at once looked like a smear), and the active row sits *below* the other
+   rows in the nav's stacking context, so the pill passes behind every label on
+   its way instead of wiping them out. */
 .settings-shell.settings-refined .settings-nav {
   position: relative;
   isolation: isolate;
@@ -139,6 +115,10 @@
     color 150ms ease,
     background-color 160ms ease,
     transform 170ms cubic-bezier(.2,.8,.2,1) !important;
+}
+
+.settings-shell.settings-refined .settings-nav button.active {
+  z-index: -1;
 }
 
 .settings-shell.settings-refined .settings-nav button:hover:not(.active) {
@@ -158,11 +138,7 @@
   border-radius: inherit;
   opacity: 0;
   pointer-events: none;
-  transform: translate3d(0, 0, 0);
-  backface-visibility: hidden;
-  transition:
-    opacity 150ms ease,
-    box-shadow 200ms ease;
+  transition: none;
 }
 
 .settings-shell.settings-refined .settings-nav-pip::after {
@@ -202,7 +178,17 @@
   transform: translate3d(1px, 0, 0);
 }
 
-/* The accent rail expands gently as the travelling pill lands. */
+/* The new row is only "selected" once the pill has travelled there (script sets
+   --nav-arrive on it); the old row lets go at once. Transitions take their timing
+   from the state they are heading to, so this delays activation and nothing else. */
+.settings-shell.settings-refined .settings-nav button.active,
+.settings-shell.settings-refined .settings-nav button.active > svg,
+.settings-shell.settings-refined .settings-nav button.active > span:not(.settings-nav-pip) {
+  transition-delay: var(--nav-arrive, 0ms) !important;
+}
+
+/* The accent rail firms up as the pill lands (the flare itself is played from
+   script, timed to the trip). */
 .settings-shell.settings-refined .settings-nav-pip::before {
   transform: scaleY(.78);
   opacity: .72;
@@ -217,16 +203,6 @@
   opacity: 1;
 }
 
-/* Light mode gets the same motion with slightly quieter trace intensity. */
-html[data-loom-theme="light"] .settings-shell.settings-refined .settings-page-surface::after {
-  background: linear-gradient(
-    90deg,
-    color-mix(in srgb, var(--sr-accent) 40%, transparent),
-    color-mix(in srgb, var(--sr-accent) 12%, transparent) 46%,
-    transparent 100%
-  );
-}
-
 html[data-loom-theme="light"] .settings-shell.settings-refined .settings-nav-pip::after {
   background: linear-gradient(
     90deg,
@@ -236,10 +212,8 @@ html[data-loom-theme="light"] .settings-shell.settings-refined .settings-nav-pip
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .settings-shell.settings-refined .settings-page-surface,
-  .settings-shell.settings-refined .settings-page-surface::after,
-  .settings-shell.settings-refined .settings-page-surface > .settings-page-heading,
-  .settings-shell.settings-refined .settings-page-surface > .settings-section,
+  .settings-shell.settings-refined .settings-page-surface[data-flow] [data-flow-block],
+  .settings-shell.settings-refined .settings-page-surface[data-flow] .settings-page-heading .settings-eyebrow::before,
   .settings-shell.settings-refined .settings-nav button,
   .settings-shell.settings-refined .settings-nav button > svg,
   .settings-shell.settings-refined .settings-nav button > span,
@@ -249,18 +223,10 @@ html[data-loom-theme="light"] .settings-shell.settings-refined .settings-nav-pip
     transition: none !important;
     transform: none !important;
   }
-
-  .settings-shell.settings-refined .settings-page-surface,
-  .settings-shell.settings-refined .settings-page-surface > .settings-page-heading,
-  .settings-shell.settings-refined .settings-page-surface > .settings-section {
-    opacity: 1 !important;
-  }
 }
 
-html[data-loom-reduced-motion="true"] .settings-shell.settings-refined .settings-page-surface,
-html[data-loom-reduced-motion="true"] .settings-shell.settings-refined .settings-page-surface::after,
-html[data-loom-reduced-motion="true"] .settings-shell.settings-refined .settings-page-surface > .settings-page-heading,
-html[data-loom-reduced-motion="true"] .settings-shell.settings-refined .settings-page-surface > .settings-section,
+html[data-loom-reduced-motion="true"] .settings-shell.settings-refined .settings-page-surface[data-flow] [data-flow-block],
+html[data-loom-reduced-motion="true"] .settings-shell.settings-refined .settings-page-surface[data-flow] .settings-page-heading .settings-eyebrow::before,
 html[data-loom-reduced-motion="true"] .settings-shell.settings-refined .settings-nav button,
 html[data-loom-reduced-motion="true"] .settings-shell.settings-refined .settings-nav button > svg,
 html[data-loom-reduced-motion="true"] .settings-shell.settings-refined .settings-nav button > span,
@@ -269,10 +235,4 @@ html[data-loom-reduced-motion="true"] .settings-shell.settings-refined .settings
   animation: none !important;
   transition: none !important;
   transform: none !important;
-}
-
-html[data-loom-reduced-motion="true"] .settings-shell.settings-refined .settings-page-surface,
-html[data-loom-reduced-motion="true"] .settings-shell.settings-refined .settings-page-surface > .settings-page-heading,
-html[data-loom-reduced-motion="true"] .settings-shell.settings-refined .settings-page-surface > .settings-section {
-  opacity: 1 !important;
 }

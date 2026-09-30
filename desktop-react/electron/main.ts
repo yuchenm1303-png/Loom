@@ -6,6 +6,7 @@ import fs from "node:fs/promises";
 import fsSync from "node:fs";
 import crypto from "node:crypto";
 import readline from "node:readline";
+import { installWindowChrome } from "./windowChrome.js";
 import {
   DesktopModelManager,
   type AddModelInput,
@@ -22,6 +23,7 @@ import {
   type WebRelayOperations,
 } from "./remoteRelay.js";
 import { webRelayAuthPayload } from "./webRelayAuth.js";
+import { createSearchRelay } from "./searchRelay.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -751,8 +753,8 @@ class LoomRpcProcess {
   async connect(): Promise<unknown> {
     if (this.child && this.initialized) return this.initializeResult;
     if (this.connectPromise) return this.connectPromise;
-    if (!this.child) this.startProcess();
     this.connectPromise = (async () => {
+      if (!this.child) await this.startProcess();
       const result = await this.call("initialize", {
         protocolVersion: 1,
         clientInfo: { name: "loom-react-desktop", version: "0.1.0" },
@@ -818,7 +820,8 @@ class LoomRpcProcess {
     this.child?.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", method, params })}\n`, "utf8");
   }
 
-  private startProcess(): void {
+  private async startProcess(): Promise<void> {
+    const searchRelay = await sharedSearchRelay();
     const spec = this.models.current ?? this.models.ensureInitial();
     const python = resolvePythonExecutable();
     const script = path.join(REPO_ROOT, "loom_app_server.py");
@@ -830,6 +833,7 @@ class LoomRpcProcess {
       cwd: REPO_ROOT,
       env: {
         ...process.env,
+        ...searchRelay.env,
         PYTHONUTF8: "1",
         PYTHONPATH: appendPythonPath(process.env.PYTHONPATH),
         LOOM_DESKTOP_PYTHON: python,
@@ -902,6 +906,11 @@ function handleRuntimeNotification(payload: JsonRpcResponse): void {
 }
 const rpc = new LoomRpcProcess(handleRuntimeNotification, modelManager);
 const accountClient = new LoomAccountClient();
+let searchRelayPromise: ReturnType<typeof createSearchRelay> | null = null;
+function sharedSearchRelay(): ReturnType<typeof createSearchRelay> {
+  if (!searchRelayPromise) searchRelayPromise = createSearchRelay((query, count) => accountClient.search(query, count));
+  return searchRelayPromise;
+}
 
 async function changeModel(
   apply: () => ModelLaunchSpec,
@@ -1050,6 +1059,7 @@ function createWindow(): void {
     minHeight: 680,
     backgroundColor: nativeTheme.shouldUseDarkColors ? "#0d0e11" : "#f7f7f8",
     title: "Loom",
+    frame: process.platform !== "win32",
     icon: windowIcon,
     autoHideMenuBar: true,
     show: false,
@@ -1061,6 +1071,7 @@ function createWindow(): void {
     },
   });
   const window = mainWindow;
+  installWindowChrome(window);
   let rendererDocumentUrl = "";
   window.once("ready-to-show", () => window.show());
   window.webContents.on("did-finish-load", () => {

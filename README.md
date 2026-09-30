@@ -354,6 +354,12 @@ $env:LOOM_WEB_SEARCH_PROVIDER="off"
 
 Unless explicitly disabled, Loom exposes `web_search` using the built-in DuckDuckGo provider when no Brave/Tavily credentials are present. `web_search_status` reports the active provider. Set `LOOM_WEB_SEARCH_PROVIDER=off` to remove external search from the runtime. Search results contain ranked titles, URLs, source hosts, and snippets.
 
+For reliable desktop search, open **Settings → Web Search**, select **Tavily** or **Brave**, save that service's API key, and run **Test search**. Keys are stored in the OS credential store. The **Auto** option respects explicit environment configuration, then prefers a saved Tavily key or Brave key before using DuckDuckGo.
+
+Desktop builds also provide **Loom shared search**: sign in to Loom and choose **Auto** or **Loom shared search**. Auto prefers a personal API key when one is configured, then the account-backed search service. The desktop main process handles account authentication and token refresh through an authenticated loopback bridge; the Tavily key stays on the server. Devices do not download or synchronize the provider key. Older desktop builds need an update to use this route; Loom Web uses the runtime of its connected desktop.
+
+DuckDuckGo is a best-effort HTML fallback, not a credential-backed search API. Verification pages and unrecognized responses are reported as search failures, never as empty successful searches. A verification block pauses further DuckDuckGo requests for 60 seconds, including concurrent tool batches. The HTML and Lite layouts are both supported; only an explicit no-results page is treated as an empty result. Neither a search failure nor an empty query result establishes that a topic has no public sources.
+
 Permission behavior:
 
 - `read-only` — external search is denied and no network request is made

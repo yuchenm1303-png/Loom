@@ -21,6 +21,7 @@ export type ComputerLogExportResult = DiagnosticLogExportResult;
 export type BrowserLogExportResult = DiagnosticLogExportResult;
 
 export interface LoomBridge {
+  windowControl?(action: "state" | "minimize" | "maximize" | "close" | "move", point?: { x: number; y: number }): Promise<{ maximized: boolean; x: number; y: number; width: number; height: number } | null>;
   connect(): Promise<unknown>;
   call<T = unknown>(method: string, params?: Record<string, unknown>): Promise<T>;
   disconnect(): Promise<void>;

@@ -121,6 +121,35 @@ def test_healthz_needs_no_credentials(base_url: str) -> None:
     assert payload == {"ok": True}
 
 
+def test_shared_search_requires_auth_and_limits_per_user(base_url, monkeypatch):
+    from services.loom_account import server as module
+    calls = []
+    def fake_search(query, count):
+        calls.append((query, count))
+        return {"provider": "loom", "query": query, "results": [{"title": "Docs", "url": "https://example.com"}]}
+    monkeypatch.setattr(module, "shared_search", fake_search)
+    assert _call(base_url, "/v1/search", body={"query": "docs", "count": 2})[0] == 401
+    registered = _register(base_url)
+    token = registered["access_token"]
+    assert _call(base_url, "/v1/search", body={"query": "docs", "count": True}, token=token)[0] == 400
+    for _ in range(30):
+        status, result, _ = _call(base_url, "/v1/search", body={"query": "docs", "count": 2}, token=token)
+        assert status == 200 and result["provider"] == "loom"
+    assert _call(base_url, "/v1/search", body={"query": "docs", "count": 2}, token=token)[0] == 429
+    assert len(calls) == 30
+    # A second device/session of the same user cannot bypass the quota.
+    status, login, _ = _call(base_url, "/v1/auth/login", body={"email": "user@example.com", "password": _PASSWORD})
+    assert status == 200
+    assert _call(base_url, "/v1/search", body={"query": "docs", "count": 2}, token=login["access_token"])[0] == 429
+
+
+def test_shared_search_without_server_key_returns_unconfigured(base_url, monkeypatch):
+    monkeypatch.delenv("TAVILY_API_KEY", raising=False)
+    token = _register(base_url)["access_token"]
+    status, result, _ = _call(base_url, "/v1/search", body={"query": "docs", "count": 2}, token=token)
+    assert status == 503 and result["error"]["code"] == "SEARCH_UNCONFIGURED"
+
+
 def test_full_sign_in_lifecycle_over_http(base_url: str) -> None:
     registered = _register(base_url, "Lifecycle@Example.com")
     assert registered["user"]["email"] == "lifecycle@example.com"

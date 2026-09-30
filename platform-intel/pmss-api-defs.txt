@@ -1,0 +1,241 @@
+﻿POST  /assetAnalyse/add   
+POST  /assetAnalyse/countMatrixWeight   
+POST  /assetAnalyse/delete   
+GET   /assetAnalyse/economic/getMarketOpen   
+GET   /assetAnalyse/economic/getMarketPartIncome   
+GET   /assetAnalyse/fairness/getHightPgHHI   
+GET   /assetAnalyse/fairness/getLowPgHHI   
+GET   /assetAnalyse/fairness/getPlantRunRation   
+GET   /assetAnalyse/fairness/getSurplusProvideRation   
+GET   /assetAnalyse/fairness/getWholeConcentration   
+GET   /assetAnalyse/getAnalyse   
+GET   /assetAnalyse/getCaseGroups   
+GET   /assetAnalyse/getMatrixData   
+GET   /assetAnalyse/getPriceType   
+GET   /assetAnalyse/listCaseOptions   
+GET   /assetAnalyse/listMarketSystemOptions   
+GET   /assetAnalyse/listMarketSystemType   
+GET   /assetAnalyse/listSceneOptions   
+GET   /assetAnalyse/marketPrice/getMarketPriceAndLoadDemand   
+GET   /assetAnalyse/marketPrice/getMarketPriceAndPgCost   
+GET   /assetAnalyse/marketSecurity/getHighBidPriceRation   
+GET   /assetAnalyse/marketSecurity/getLowBidPriceRation   
+GET   /assetAnalyse/marketSecurity/getPriceRangeRatio   
+GET   /assetAnalyse/marketSecurity/getTransSdBalanceIndex   
+GET   /assetAnalyse/marketSecurity/getUnitBidPowerHoldRation   
+GET   /assetAnalyse/overview/list   
+GET   /assetAnalyse/powerSystemSecurity/getLineBlockHappenRatio   
+GET   /assetAnalyse/powerSystemSecurity/getLineUseRatio   
+GET   /assetAnalyse/powerSystemSecurity/getPowerSystemSecurity   
+POST  /assetAnalyse/saveMatrixData   
+POST  /daSpotReplay/createReplay   
+POST  /daSpotReplay/delete   
+GET   /daSpotReplay/export   
+GET   /daSpotReplay/list   
+GET   /daTradeSummary/get   
+GET   /marketAnalyse/analyse/getMarketEvaluationList   
+POST  /marketAnalyse/analyse/reNameMarketEvaluation   
+GET   /powerModel/getMinePowerModelOptions   
+GET   /scene/tansDistMaintenance/list   输变电检修计划-查询
+POST  agent/addAgentModel   新建智能代理
+POST  agent/copyAgentModel   智能代理另存为
+POST  agent/deleteAgentModelById   删除智能代理
+GET   agent/getAgentModelById   
+      agent/listAgentModelByUserId   
+GET   agent/listAgentModelByUserId   
+POST  agent/updateAgentModel   更新智能代理
+POST  agent/updateAgentModelNameById   重命名智能代理
+POST  agent/updateAuthTypeById   设置共享属性
+POST  ancillaryServiceModel/copy   另存为辅助服务品种
+POST  ancillaryServiceModel/create   新建辅助服务品种
+POST  ancillaryServiceModel/delete   删除辅助服务品种
+GET   ancillaryServiceModel/listByType   获取辅助服务品种列表
+POST  ancillaryServiceModel/rename   重命名辅助服务品种
+POST  ancillaryServiceModel/update   保存辅助服务品种
+POST  ancillaryServiceModel/updateAuthTypeById   设为共享
+POST  billingAnalysis/createSolution   新建现货结算分析
+POST  billingAnalysis/deteleSolution   删除现货结算分析
+GET   billingAnalysis/queryAnalysisData   获取列表数据
+GET   billingAnalysis/queryDeviceDatas   获取列表数据
+GET   billingAnalysis/querySmUnitRate   获取列表数据
+GET   billingAnalysis/querySolutions   获取现货结算分析列表
+POST  curveMgmt/addDayByPeriodCurve   
+POST  curveMgmt/addMonthByDayCurve   
+POST  curveMgmt/addMonthByDayTypeCurve   
+POST  curveMgmt/addYearByMonthCurve   
+GET   curveMgmt/getMonthByDayCurveById   
+POST  curveMgmt/updateMonthByDayCurve   
+GET   logincontroller/getStrengthValidate   获取密码校验配置
+POST  longTermTradeModelMgmt/addLongTermBasicInfo   
+POST  longTermTradeModelMgmt/copyLongTermBasicInfo   另存为中长期交易品种
+POST  longTermTradeModelMgmt/deleteLongTermBasicInfoById   删除中长期交易品种
+GET   longTermTradeModelMgmt/getLongTermBasicInfoById   
+GET   longTermTradeModelMgmt/listLongTermBasicInfoByUserId   
+POST  longTermTradeModelMgmt/updateAuthTypeById   设为共享
+POST  longTermTradeModelMgmt/updateLongTermBasicInfo   
+POST  longTermTradeModelMgmt/updateLongTermBasicInfoNameById   重命名中长期交易品种
+GET   marketResult/unitSettle/getUnitDeclareNDeal   
+      marketRisk/getTypeList   
+      marketRisk/selectByType   
+GET   marketSystem/getBuiltInMarketSystemDict   
+GET   marketSystem/list   
+      modelTag/getModelOptions   获取标签的下拉列表
+GET   netGraph/judgeGraphValid   验证拓扑图有效性
+POST  netGraph/update   更新拓扑
+GET   personalInfoManagement/personalBasicInfo/initPersonalInfo   获取基本信息
+POST  personalInfoManagement/personalBasicInfo/saveEdit   保存基本信息
+      pmssCommon/getSelectOptions   获取字典数据
+      powerModel/getMinePowerModelOptions   获取电网模型下拉列表
+GET   powerModel/unit/list   
+POST  powerModel/upload   从文件导入
+POST  process   保存流程
+POST  process/closeSlProcessByProjectId   
+POST  process/completeSlProcessTaskInstance   结束任务
+GET   process/findAllSlProcessTaskVO   
+GET   process/findSlProcessTaskInstanceListByProjectId   获取流程任务进度列表
+GET   process/getProcessTaskInstance   获取单个任务流程实例
+GET   process/judgeProcessStatusByProjectId   
+      process/releaseResultByProjectId   
+      process/startSlProcessManageByProjectId   
+POST  process/startSlProcessTaskInstance   开始任务
+POST  process/suspendSlProcessTaskInstance   暂停任务
+GET   project/getProjectSimulateInfo   
+      project/list   获取模拟工程列表
+GET   project/list   
+GET   project/listSimulateCaseByProjectId   
+POST  project/remove   删除模拟
+POST  project/rename   重命名模拟
+GET   project/simulateByProjectId   
+POST  rcLt/create   新建中长期交易回溯
+POST  rcLt/delete   删除中长期交易回溯
+GET   rcLt/getLtTransStage   
+      rcLt/getLtTransUnitOptions   
+GET   rcLt/getProdLtOpenOptions   获取开盘列表
+GET   rcLt/getRcLtSummary   获取回溯信息
+GET   rcLt/list   
+GET   rcLt/rcLtLgCheck/getSummary   获取保函不一致概览
+GET   rcLt/rcLtLgCheck/listLgBeforeOpen   获取开盘前保函电量
+GET   rcLt/rcLtLgCheck/listLgChangeCheck   获取交易中保函电量
+GET   rcLt/transClearCheck/getRcOverview   获取交易出清概览数据
+GET   rcLt/transClearCheck/getStatis   获取图数据
+GET   rcLt/transClearCheck/listCentralizeDeal   获取集中竞价成交序列
+GET   rcLt/transClearCheck/listContinuityDeal   获取连续竞价成交序列
+GET   rcLt/transClearCheck/listDeclare   获取申报记录
+POST  rcLt/transDeclareReplay/add   新建申报数据
+POST  rcLt/transDeclareReplay/delete   删除申报数据
+POST  rcLt/transDeclareReplay/executeCal   执行计算
+POST  rcLt/transDeclareReplay/update   修改申报数据
+GET   rcLt/transSummary/listSingleTransSummary   获取单品种交易概览
+GET   rcLt/transSummary/listWholeDealResult   获取整体成交结果
+      resultCheck/systemBalance/getSystemBalance   获取负荷数据
+      risk/listStandardProject   获取基准工程
+POST  roleSelect/agent/cache   
+GET   roleSelect/getAgentForAllUnSelectedUnit   
+GET   roleSelect/getUnitInfos   
+GET   roleSelect/getUserInfos   
+POST  roleSelect/intelligentAgent   
+DELETE room/role/agent   
+      roomManage/checkUserRelatedRoom   
+DELETE roomManage/delRoom   
+POST  roomManage/roomCreate   创建模拟
+POST  roomManage/roomEnterCheck   
+POST  scene/admin/setExampleOrNot   设为共享
+POST  scene/copy   另存为运行场景
+POST  scene/create   新建运行场景
+POST  scene/createAsync   新建运行场景
+POST  scene/delete   删除运行场景
+POST  scene/deleteAsync   异步删除运行场景
+GET   scene/getSceneDateOptions   
+GET   scene/list   获取运行场景列表
+POST  scene/rename   重命名运行场景
+GET   scene/unitMaintenance/list   机组检修计划-查询
+POST  sectionParam/secionDevice/add   添加断面设备
+POST  sectionParam/secionDevice/delete   删除断面设备
+POST  sectionParam/secionDevice/save   更新断面设备
+POST  sectionParam/section/add   创建断面信息
+POST  sectionParam/section/save   更新断面信息
+POST  sectionParam/sectionInfo/delete   删除断面信息
+      sectionParam/sectionInfo/getCandidateDeviceOptions   获取设备列表
+      sectionParam/sectionInfo/getSectionOptions   获取断面字典
+GET   sectionParam/sectionInfo/list   获取断面信息列表
+      sectionParam/sectionInfo/listFreeStateSection   获取未归类的断面列表
+POST  sectionParam/transLimitTemporary/add   创建断面极限
+POST  sectionParam/transLimitTemporary/delete   删除断面极限
+      sectionParam/transLimitTemporary/getUnusualSectionOptions   获取临态断面下拉列表
+GET   sectionParam/transLimitTemporary/list   获取断面极限列表
+POST  sectionParam/transLimitTemporary/save   更新断面极限
+POST  sectionParam/transLimitUsual/add   创建常态断面
+POST  sectionParam/transLimitUsual/delete   删除常态断面
+GET   sectionParam/transLimitUsual/list   获取常态断面列表
+POST  sectionParam/transLimitUsual/save   更新常态断面
+POST  simulate/execute   
+      simulate/executeSync   
+GET   simulate/getSimulateDebugInfo   
+GET   simulate/parameter   
+POST  simulate/parameter   
+GET   simulate/parameter/listConstraintRelax   
+      simulate/separateExecuteSync   
+POST  slCourse/cancelPublishCourse   取消发布课程
+POST  slCourse/publishCourse   发布课程
+POST  slLt/addDeclare   添加竞价申报
+GET   slLt/bilateral/contract   
+POST  slLt/bilateral/doConfirm   
+GET   slLt/composite/contract   获取已成交序列
+GET   slLt/composite/declare   
+GET   slLt/composite/monitor   获取集中竞价曲线数据
+POST  slLt/doRepealDeclare   撤销申报
+GET   slLt/findDealListToCreator   
+GET   slLt/findDeclareListToCreator   
+GET   slLt/getTimeSharingEnergy   
+POST  slLt/listed/doDeList   
+GET   slLt/listed/findDealListByRoleEleId   
+GET   slLt/listLongTermInstanceByProjectId   
+GET   slLt/result/detail   获取中长期成交详情
+GET   slLt/result/getDealOverview   获取成交概览
+GET   slLt/result/getFinishLtMarketPlayerDetail   获取市场主体详情
+GET   slLt/result/getMarketPlayerDetail   获取市场主体详情
+GET   slLt/result/getRoleSelectMarketMemberDictTree   获取市场主体树
+GET   slLt/result/listFinishLtMarketPlayerDeal   获取用户侧成交情况
+GET   slLt/result/listLtResultUnitAndUser   获取机组列表
+GET   slLt/result/listMarketPlayerDeal   获取发电侧成交情况
+GET   slLt/result/overview   获取成交概览
+GET   spotMarketStat/get   市场统计-获取
+DELETE spotModel   删除现货品种
+POST  spotModel   创建现货品种信息
+POST  spotModel/copy   现货品种另存为
+GET   spotModel/detail   
+GET   spotModel/listByType   
+POST  spotModel/rename   重命名现货品种
+POST  spotModel/update   保存现货品种信息
+POST  spotModel/updateAuthTypeById   设为共享
+GET   tmScene/curve/getCurve   
+GET   tmScene/curve/getCurveDayByPeriod   
+POST  tmScene/curve/saveCurve   
+POST  tmScene/curve/saveCurveDayByPeriod   
+POST  train/course   
+      train/course/   
+      train/course/courseId   
+POST  train/course/courseId   
+GET   train/course/courseId/projects   
+GET   train/course/courseId/projects/   
+GET   train/courses/page/type   
+      train/multi/course   
+GET   train/multi/courses/page/projects/status   
+      train/project/id/name   
+POST  train/single/course/project/id/name   
+      train/single/course/project/projectId   
+      train/single/course/project/status   
+      train/single/course/projrct/action   
+      train/single/course/status   
+GET   train/single/courses   
+      train/single/project/id   
+GET   train/single/projects   
+GET   unitConstraint/list   获取机组约束列表
+POST  unitConstraint/save   更新机组约束
+GET   unitEnergyRange/list   获取机组电量约束列表
+POST  unitEnergyRange/save   更新电量机组约束
+POST  unitParam/doUpdateUnitStaticParam   
+GET   unitParam/getUnitStaticParamList   
+GET   version/algorithm   获取算法版本
+GET   version/system   获取后端版本
+POST  xxx   从文件导入

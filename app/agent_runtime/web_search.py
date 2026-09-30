@@ -3,6 +3,8 @@ from __future__ import annotations
 import html
 import json
 import os
+import threading
+import time
 from dataclasses import dataclass
 from html.parser import HTMLParser
 from typing import Any, Callable, Mapping, Protocol
@@ -21,7 +23,9 @@ _DDG_LITE_ENDPOINT = "https://lite.duckduckgo.com/lite/"
 
 
 class WebSearchError(RuntimeError):
-    pass
+    def __init__(self, message: str, *, code: str = "provider_error") -> None:
+        super().__init__(message)
+        self.code = code
 
 
 @dataclass(frozen=True, slots=True)
@@ -140,7 +144,9 @@ def _default_json_transport(
     except HTTPError as exc:
         if 300 <= int(exc.code) < 400:
             raise WebSearchError("web search provider redirect was refused") from exc
-        raise WebSearchError(f"web search provider returned HTTP {exc.code}") from exc
+        code = "rate_limited" if exc.code == 429 else "authentication" if exc.code in {401, 403} else "provider_error"
+        hint = " Check the search API key and permissions." if code == "authentication" else " Retry later or check the search API quota." if code == "rate_limited" else ""
+        raise WebSearchError(f"web search provider returned HTTP {exc.code}.{hint}", code=code) from exc
     except URLError as exc:
         reason = type(getattr(exc, "reason", None)).__name__ or "network error"
         raise WebSearchError(f"web search provider request failed: {reason}") from exc
@@ -181,7 +187,8 @@ def _default_text_transport(url: str, timeout_seconds: float) -> str:
     except HTTPError as exc:
         if 300 <= int(exc.code) < 400:
             raise WebSearchError("web search provider redirect was refused") from exc
-        raise WebSearchError(f"web search provider returned HTTP {exc.code}") from exc
+        code = "blocked" if exc.code in {403, 429} else "provider_error"
+        raise WebSearchError(f"DuckDuckGo search returned HTTP {exc.code}; search failed, not zero results.", code=code) from exc
     except URLError as exc:
         reason = type(getattr(exc, "reason", None)).__name__ or "network error"
         raise WebSearchError(f"web search provider request failed: {reason}") from exc
@@ -195,7 +202,8 @@ def _decode_duckduckgo_href(value: str) -> str:
     if not href:
         return ""
     parsed = urlsplit(href)
-    if parsed.netloc.endswith("duckduckgo.com") and parsed.path.startswith("/l/"):
+    host = parsed.hostname or ""
+    if (host == "duckduckgo.com" or host.endswith(".duckduckgo.com")) and parsed.path.startswith("/l/"):
         for key, item in parse_qsl(parsed.query, keep_blank_values=True):
             if key == "uddg" and item:
                 return item
@@ -211,11 +219,17 @@ class _DuckDuckGoHTMLParser(HTMLParser):
         self._current: dict[str, str] | None = None
         self._capture = ""
         self._pieces: list[str] = []
+        self._capture_tag = ""
+        self._capture_depth = 0
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         attrs_map = {key: value or "" for key, value in attrs}
         classes = set(str(attrs_map.get("class") or "").split())
-        if tag == "a" and "result__a" in classes:
+        if self._capture:
+            if tag == self._capture_tag:
+                self._capture_depth += 1
+            return
+        if tag == "a" and classes.intersection({"result__a", "result-link"}):
             if self._current and self._current.get("title") and self._current.get("url"):
                 self.results.append(self._current)
             self._current = {
@@ -224,12 +238,16 @@ class _DuckDuckGoHTMLParser(HTMLParser):
                 "snippet": "",
             }
             self._capture = "title"
+            self._capture_tag = tag
+            self._capture_depth = 1
             self._pieces = []
             return
-        if self._current is not None and tag in {"a", "div", "span"} and (
+        if self._current is not None and tag in {"a", "div", "span", "td"} and (
             "result__snippet" in classes or "result-snippet" in classes
         ):
             self._capture = "snippet"
+            self._capture_tag = tag
+            self._capture_depth = 1
             self._pieces = []
 
     def handle_data(self, data: str) -> None:
@@ -239,6 +257,11 @@ class _DuckDuckGoHTMLParser(HTMLParser):
     def handle_endtag(self, tag: str) -> None:
         if not self._capture:
             return
+        if tag != self._capture_tag:
+            return
+        self._capture_depth -= 1
+        if self._capture_depth:
+            return
         value = " ".join("".join(self._pieces).split())
         if self._current is not None and value:
             existing = self._current.get(self._capture, "")
@@ -246,7 +269,7 @@ class _DuckDuckGoHTMLParser(HTMLParser):
         if tag == "a" and self._capture == "title":
             self._capture = ""
             self._pieces = []
-        elif self._capture == "snippet" and tag in {"a", "div", "span"}:
+        elif self._capture == "snippet":
             if self._current and self._current.get("title") and self._current.get("url"):
                 self.results.append(self._current)
                 self._current = None
@@ -286,6 +309,32 @@ def _parse_duckduckgo_results(markup: str, *, limit: int) -> list[dict[str, str]
 TextTransport = Callable[[str, float], str]
 
 
+def _duckduckgo_page_results(markup: str, *, limit: int) -> list[dict[str, str]]:
+    page = markup.casefold()
+    if any(marker in page for marker in (
+        "challenge-form", "anomaly.js", "anomaly-modal", "bots use duckduckgo",
+    )):
+        raise WebSearchError(
+            "DuckDuckGo blocked automated search with a verification page. "
+            "Configure a Brave or Tavily API key in Web Search settings. "
+            "This is a search failure, not evidence that no web sources exist.",
+            code="blocked",
+        )
+    rows = _parse_duckduckgo_results(markup, limit=limit)
+    if rows:
+        return rows
+    if any(marker in page for marker in (
+        'class="no-results', "no results found for", "no more results",
+    )):
+        return []
+    raise WebSearchError(
+        "DuckDuckGo returned an unrecognized search page; results could not be parsed. "
+        "Configure a Brave or Tavily API key in Web Search settings. "
+        "Do not interpret this failure as no web results.",
+        code="invalid_response",
+    )
+
+
 class DuckDuckGoWebSearchProvider:
     """Keyless public-web fallback used by Loom desktop/source builds."""
 
@@ -297,6 +346,11 @@ class DuckDuckGoWebSearchProvider:
     ) -> None:
         self.timeout_seconds = max(1.0, min(120.0, float(timeout_seconds)))
         self._transport = transport or _default_text_transport
+        # Agent tool batches can invoke several searches concurrently. Avoid
+        # hammering a public HTML endpoint after its first verification page.
+        self._search_lock = threading.Lock()
+        self._blocked_until = 0.0
+        self.last_error = ""
 
     @property
     def provider_name(self) -> str:
@@ -305,16 +359,34 @@ class DuckDuckGoWebSearchProvider:
     def search(self, query: str, *, count: int = 8) -> WebSearchResponse:
         text = _validate_query(query)
         limit = _validate_count(count)
+        with self._search_lock:
+            if time.monotonic() < self._blocked_until:
+                raise WebSearchError(self.last_error, code="blocked")
+            try:
+                response = self._search(text, limit)
+            except WebSearchError as exc:
+                self.last_error = str(exc)
+                if exc.code == "blocked":
+                    self._blocked_until = time.monotonic() + 60.0
+                raise
+            self.last_error = ""
+            self._blocked_until = 0.0
+            return response
+
+    def _search(self, text: str, limit: int) -> WebSearchResponse:
         params = urlencode({"q": text})
         rows: list[dict[str, str]] = []
         last_error: Exception | None = None
         for endpoint in (_DDG_HTML_ENDPOINT, _DDG_LITE_ENDPOINT):
             try:
                 markup = self._transport(endpoint + "?" + params, self.timeout_seconds)
-                rows = _parse_duckduckgo_results(markup, limit=limit)
-                if rows:
-                    break
-            except Exception as exc:
+                rows = _duckduckgo_page_results(markup, limit=limit)
+                # An explicitly empty results page is a valid response too.
+                last_error = None
+                break
+            except WebSearchError as exc:
+                if exc.code == "blocked":
+                    raise
                 last_error = exc
         if not rows and last_error is not None:
             if isinstance(last_error, WebSearchError):
@@ -374,10 +446,15 @@ class BraveWebSearchProvider:
             None,
             self.timeout_seconds,
         )
+        if payload.get("error"):
+            raise WebSearchError("Brave Search returned an API error", code="provider_error")
         web = payload.get("web")
-        rows = web.get("results") if isinstance(web, dict) else []
-        if rows is None:
-            rows = []
+        if web is not None and not isinstance(web, dict):
+            raise WebSearchError("Brave Search response contains invalid web results", code="invalid_response")
+        # Brave may omit the web section for a valid query with no matches.
+        if web is None and not isinstance(payload.get("query"), dict):
+            raise WebSearchError("Brave Search returned an unrecognized response", code="invalid_response")
+        rows = web.get("results", []) if isinstance(web, dict) else []
         if not isinstance(rows, list):
             raise WebSearchError("Brave Search response contains invalid web results")
         results: list[WebSearchResult] = []
@@ -461,7 +538,9 @@ class TavilyWebSearchProvider:
             body,
             self.timeout_seconds,
         )
-        rows = payload.get("results") or []
+        if payload.get("error") or "results" not in payload:
+            raise WebSearchError("Tavily Search returned an API error or unrecognized response", code="invalid_response")
+        rows = payload.get("results")
         if not isinstance(rows, list):
             raise WebSearchError("Tavily response contains invalid results")
         results: list[WebSearchResult] = []
@@ -489,6 +568,55 @@ class TavilyWebSearchProvider:
             results=tuple(results),
             request_id=str(payload.get("request_id") or ""),
         )
+
+
+class LoomWebSearchProvider:
+    """Authenticated desktop bridge. Tavily credentials never reach Python."""
+
+    provider_name = "loom"
+
+    def __init__(self, url: str, token: str, *, timeout_seconds: float = 20.0) -> None:
+        parsed = urlsplit(url)
+        if (parsed.scheme != "http" or parsed.hostname != "127.0.0.1" or not parsed.port
+                or parsed.path != "/search" or parsed.username or parsed.password or parsed.query or parsed.fragment):
+            raise ValueError("Loom search requires the authenticated desktop loopback bridge")
+        if not token:
+            raise ValueError("Loom search requires a desktop bridge token")
+        self._url, self._token = url, token
+        self.timeout_seconds = timeout_seconds
+        self.last_error = ""
+
+    def search(self, query: str, *, count: int = 8) -> WebSearchResponse:
+        text, limit = _validate_query(query), _validate_count(count)
+        request = Request(self._url, data=json.dumps({"query": text, "count": limit}).encode(),
+                          headers={"Authorization": "Bearer " + self._token,
+                                   "Content-Type": "application/json"}, method="POST")
+        try:
+            with build_opener(_NoRedirectHandler()).open(request, timeout=self.timeout_seconds) as response:
+                raw = response.read(_MAX_RESPONSE_BYTES + 1)
+            if len(raw) > _MAX_RESPONSE_BYTES:
+                raise ValueError("oversized response")
+            payload = json.loads(raw)
+            if not isinstance(payload, dict) or not isinstance(payload.get("results"), list):
+                raise ValueError("invalid response")
+            results = tuple(WebSearchResult(
+                title=row["title"], url=row["url"], snippet=row.get("snippet", ""),
+                source=row.get("source", ""), score=row.get("score"),
+            ) for row in payload["results"][:limit])
+        except HTTPError as exc:
+            code = "authentication" if exc.code in {401, 403} else "rate_limited" if exc.code == 429 else "provider_error"
+            hint = "Sign in to Loom to use shared search." if code == "authentication" else "Shared search is rate limited; retry later." if code == "rate_limited" else "Loom shared search is unavailable."
+            self.last_error = hint
+            raise WebSearchError(hint, code=code) from None
+        except (URLError, TimeoutError):
+            self.last_error = "Could not reach Loom shared search. Check the account service connection."
+            raise WebSearchError(self.last_error, code="unavailable") from None
+        except (ValueError, UnicodeDecodeError, TypeError, KeyError):
+            self.last_error = "Loom shared search returned an invalid response."
+            raise WebSearchError(self.last_error, code="invalid_response") from None
+        self.last_error = ""
+        return WebSearchResponse(provider=self.provider_name, query=text, results=results,
+                                 request_id=str(payload.get("request_id") or ""))
 
 
 # Provider names the desktop settings page may store. "auto" is resolved by the
@@ -560,6 +688,10 @@ def web_search_provider_from_env(
 
     if provider in {"off", "none", "disabled"}:
         return None
+    relay_url = str(values.get("LOOM_SEARCH_RELAY_URL") or "").strip()
+    relay_token = str(values.get("LOOM_SEARCH_RELAY_TOKEN") or "").strip()
+    if provider == "loom":
+        return LoomWebSearchProvider(relay_url, relay_token, timeout_seconds=timeout)
     if provider in {"duckduckgo", "ddg", "public", "default", "builtin"}:
         return DuckDuckGoWebSearchProvider(timeout_seconds=timeout)
     if not provider:
@@ -572,6 +704,8 @@ def web_search_provider_from_env(
                 "LOOM_WEB_SEARCH_API_KEY requires LOOM_WEB_SEARCH_PROVIDER=brave or tavily"
             )
         else:
+            if relay_url:
+                return LoomWebSearchProvider(relay_url, relay_token, timeout_seconds=timeout)
             return DuckDuckGoWebSearchProvider(timeout_seconds=timeout)
 
     if provider == "brave":

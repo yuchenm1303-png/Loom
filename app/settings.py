@@ -155,7 +155,7 @@ _ALLOWED_SETTING_PATHS: dict[str, tuple[type, Any]] = {
     "memory.autoExtract": (bool, None),
     "memory.semanticAuto": (bool, None),
     "memory.idleSeconds": (int, range(0, 601)),
-    "webSearch.provider": (str, {"auto", "duckduckgo", "tavily", "brave", "off"}),
+    "webSearch.provider": (str, {"auto", "loom", "duckduckgo", "tavily", "brave", "off"}),
     "privacy.telemetry": (bool, None),
     "privacy.crashReports": (bool, None),
 }

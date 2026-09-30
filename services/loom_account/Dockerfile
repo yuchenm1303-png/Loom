@@ -7,7 +7,8 @@ RUN useradd --create-home --uid 10001 loom \
     && chown loom:loom /data
 
 WORKDIR /app
-COPY services /app/services
+COPY services/__init__.py /app/services/__init__.py
+COPY services/loom_account/__init__.py services/loom_account/server.py services/loom_account/search.py /app/services/loom_account/
 
 ENV PYTHONUNBUFFERED=1 \
     LOOM_ACCOUNT_HOST=0.0.0.0 \

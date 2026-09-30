@@ -67,7 +67,7 @@ type WebSearchConfigureResult = {
 
 /** Display order. Keyed providers sit above the keyless one so the key field,
  *  which only applies to them, is visible while the user is choosing. */
-const PROVIDER_ORDER = ["auto", "tavily", "brave", "duckduckgo", "off"] as const;
+const PROVIDER_ORDER = ["auto", "loom", "tavily", "brave", "duckduckgo", "off"] as const;
 
 /** Mirrors `_KEYED_PROVIDERS` in app/web_search_settings.py. Kept in sync by
  *  hand: the frontend uses it only to decide whether to show the key field, and
@@ -233,7 +233,9 @@ export function SettingsWebSearchPanel({
 
   const stateLabel = t(`settings.websearch.state${pascal(state)}`);
   const keySourceLabel =
-    status?.keySource === "keyring"
+    status?.keySource === "account"
+      ? t("settings.websearch.keySourceAccount")
+      : status?.keySource === "keyring"
       ? t("settings.websearch.keySourceKeyring")
       : status?.keySource === "environment"
         ? t("settings.websearch.keySourceEnvironment")
