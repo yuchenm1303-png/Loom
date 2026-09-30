@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer, webFrame, webUtils } from "electron";
+import "./remoteRelay.cjs";
 
 export interface LoomNotification {
   jsonrpc: "2.0";

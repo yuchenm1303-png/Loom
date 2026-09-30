@@ -1,0 +1,22 @@
+services:
+  loom-web:
+    build:
+      context: ../..
+      dockerfile: services/loom_web_gateway/Dockerfile
+    image: loom-web:local
+    container_name: loom-web
+    restart: unless-stopped
+    environment:
+      LOOM_ACCOUNT_API_BASE_URL: https://account.smirel.com/v1
+    networks:
+      - edge
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+
+networks:
+  edge:
+    external: true
+    name: ${LOOM_EDGE_NETWORK:-termrelay_termrelay-internal}

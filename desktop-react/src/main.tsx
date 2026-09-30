@@ -1,12 +1,14 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
+import { WebAppGate } from "./components/WebAppGate";
 import { BootErrorBoundary } from "./components/BootErrorBoundary";
 import { GlobalContextMenu } from "./components/GlobalContextMenu";
 import { SoftwareUpdatePortal } from "./components/SoftwareUpdatePortal";
 import { I18nProvider, bootstrapDocumentLanguage } from "./i18n";
 import { bootstrapTheme } from "./theme";
 import { applyRendererScale, installNativeRendererScaleSync } from "./rendererScale";
+import { installWebBridge, isLoomWebRuntime } from "./webBridge";
 import "./starterCardPointerGlow";
 import "./styles.css";
 import "./shell-fix.css";
@@ -34,6 +36,8 @@ import "./components/project-details-panel-theme.css";
 import "./global-motion.css";
 import "./components/generation-motion.css";
 import "./components/conversation-home.css";
+
+installWebBridge();
 
 const CONVERSATION_WIDTHS: Record<string, string> = {
   focused: "740px",
@@ -158,9 +162,11 @@ createRoot(rootElement).render(
   <StrictMode>
     <BootErrorBoundary>
       <I18nProvider>
-        <App />
-        <SoftwareUpdatePortal />
-        <GlobalContextMenu />
+        <WebAppGate>
+          <App />
+          {!isLoomWebRuntime() ? <SoftwareUpdatePortal /> : null}
+          <GlobalContextMenu />
+        </WebAppGate>
       </I18nProvider>
     </BootErrorBoundary>
   </StrictMode>,

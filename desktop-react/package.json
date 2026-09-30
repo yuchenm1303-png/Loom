@@ -35,7 +35,8 @@
     "start": "npm run build && electron dist-electron/entry.js",
     "package:win:dir": "npm run build && npm run build:runtime:win && electron-builder --win --x64 --dir",
     "package:win": "npm run build && npm run build:runtime:win && electron-builder --win nsis --x64 --publish never",
-    "package:win:publish": "npm run build && npm run build:runtime:win && electron-builder --win nsis --x64 --publish always"
+    "package:win:publish": "npm run build && npm run build:runtime:win && electron-builder --win nsis --x64 --publish always",
+    "build:web": "npm run prepare:stickers && tsc --noEmit && vite build"
   },
   "dependencies": {
     "electron-updater": "^6.8.10",
@@ -47,7 +48,8 @@
     "rehype-highlight": "^7.0.2",
     "rehype-katex": "^7.0.1",
     "remark-gfm": "^4.0.1",
-    "remark-math": "^6.0.0"
+    "remark-math": "^6.0.0",
+    "ws": "^8.18.3"
   },
   "devDependencies": {
     "@microsoft/mxc-sdk": "0.8.0",
@@ -60,7 +62,8 @@
     "electron-builder": "^26.15.3",
     "typescript": "^5.9.2",
     "vite": "^7.1.0",
-    "wait-on": "^8.0.4"
+    "wait-on": "^8.0.4",
+    "@types/ws": "^8.18.1"
   },
   "build": {
     "appId": "com.loom.agent",
