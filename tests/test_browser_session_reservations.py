@@ -95,34 +95,6 @@ def test_total_session_limit_counts_backend_that_is_still_starting() -> None:
     assert manager.active_count() == 0
 
 
-@pytest.mark.parametrize("close_all", [False, True])
-def test_retiring_owner_does_not_leak_a_connection_still_opening(close_all):
-    entered, release = threading.Event(), threading.Event()
-    backend = _BlockingBackend(entered, release)
-    manager = BrowserSessionManager(lambda options: backend, max_sessions_total=1)
-    errors = []
-
-    def open_connection():
-        try:
-            manager.start("owner-a")
-        except BrowserError as exc:
-            errors.append(str(exc))
-
-    thread = threading.Thread(target=open_connection)
-    thread.start()
-    assert entered.wait(2)
-    if close_all:
-        manager.close_all()
-    else:
-        manager.close_owner("owner-a")
-    release.set()
-    thread.join(timeout=5)
-    assert not thread.is_alive()
-    assert errors == ["browser owner ended while the connection was opening"]
-    assert backend.closed
-    assert manager.active_count() == 0
-
-
 def test_per_owner_limit_counts_backend_that_is_still_starting() -> None:
     entered = threading.Event()
     release = threading.Event()

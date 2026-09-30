@@ -161,43 +161,6 @@ def _runtime(tmp_path, responses, *, mode=PermissionMode.APPROVAL):
     return runtime, platform, session, calls, created, workspace
 
 
-def test_completed_turn_releases_browser_capacity_for_another_task(tmp_path):
-    runtime, _, session, _, created, _ = _runtime(
-        tmp_path, [ModelResponse(text="Done")], mode=PermissionMode.FULL_ACCESS
-    )
-    store = runtime.browser_sessions
-    store.max_sessions_total = 1
-    store.start(session.session_id)
-    try:
-        runtime.start_turn(session.session_id, "Finish")
-        assert runtime.get_session(session.session_id).status is AgentStatus.COMPLETED
-        assert created[0].closed
-        assert store.active_count() == 0
-        store.start("another-task")
-        assert store.active_count() == 1
-    finally:
-        runtime.close()
-
-
-@pytest.mark.parametrize("kind", [
-    AgentEventKind.TURN_FAILED, AgentEventKind.TURN_CANCELLED,
-    AgentEventKind.TURN_INTERRUPTED, AgentEventKind.LIMIT_REACHED,
-])
-def test_terminal_events_release_only_their_owners_browser(tmp_path, kind):
-    runtime, _, session, _, created, _ = _runtime(tmp_path, [])
-    store = runtime.browser_sessions
-    store.start(session.session_id)
-    other = store.start("another-task")
-    try:
-        runtime._record(session, kind, data={})
-        assert created[0].closed
-        assert not created[1].closed
-        assert not store.list(session.session_id)
-        assert store.list("another-task")[0]["browser_id"] == other.browser_id
-    finally:
-        runtime.close()
-
-
 def test_security_policy_blocks_local_and_obfuscated_ip_forms():
     policy = BrowserSecurityPolicy(resolve_dns=False)
     blocked = (

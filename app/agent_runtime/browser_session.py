@@ -231,7 +231,6 @@ class BrowserSessionManager:
         self._sessions: dict[str, ManagedBrowserSession] = {}
         self._starting_total = 0
         self._starting_by_owner: dict[str, int] = {}
-        self._owner_generations: dict[str, int] = {}
 
     def start(
         self,
@@ -276,7 +275,6 @@ class BrowserSessionManager:
                 )
             self._starting_total += 1
             self._starting_by_owner[owner] = self._starting_by_owner.get(owner, 0) + 1
-            generation = self._owner_generations.get(owner, 0)
 
         backend: BrowserBackend | None = None
         try:
@@ -305,14 +303,7 @@ class BrowserSessionManager:
 
         with self._lock:
             self._release_start_reservation_locked(owner)
-            retired = generation != self._owner_generations.get(owner, 0)
-            if not retired:
-                self._sessions[managed.browser_id] = managed
-        if retired:
-            try:
-                backend.close()
-            finally:
-                raise BrowserUnavailableError("browser owner ended while the connection was opening")
+            self._sessions[managed.browser_id] = managed
         return managed
 
     def _release_start_reservation_locked(self, owner: str) -> None:
@@ -447,7 +438,6 @@ class BrowserSessionManager:
     def close_owner(self, owner_session_id: str) -> int:
         owner = _key(owner_session_id, "owner_session_id")
         with self._lock:
-            self._owner_generations[owner] = self._owner_generations.get(owner, 0) + 1
             ids = [item.browser_id for item in self._sessions.values() if item.owner_session_id == owner]
         closed = 0
         for browser_id in ids:
@@ -461,9 +451,6 @@ class BrowserSessionManager:
 
     def close_all(self) -> int:
         with self._lock:
-            owners = set(self._starting_by_owner) | {item.owner_session_id for item in self._sessions.values()}
-            for owner in owners:
-                self._owner_generations[owner] = self._owner_generations.get(owner, 0) + 1
             items = list(self._sessions.values())
         closed = 0
         for item in items:

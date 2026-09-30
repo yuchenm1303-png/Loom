@@ -76,7 +76,7 @@ class FakeExtensionBridge:
                     "current_window": True,
                 }
             ],
-            "page_info": {"element_count": 1, "tab_id": "7", "session_id": (args or {}).get("session_id")},
+            "page_info": {"element_count": 1, "tab_id": "7"},
         }
 
 
@@ -105,25 +105,8 @@ def test_extension_backend_maps_browser_actions_to_bridge_commands():
     assert data.startswith(b"\x89PNG")
 
     assert [action for action, _args in bridge.calls] == ["state", "click", "type_text", "scroll", "screenshot"]
-    session_id = bridge.calls[0][1]["session_id"]
-    assert bridge.calls[1][1] == {"index": 0, "tab_id": "7", "session_id": session_id}
-    assert bridge.calls[2][1] == {"index": 0, "text": "hello", "clear": False, "tab_id": "7", "session_id": session_id}
-
-
-def test_old_extension_cannot_silently_share_or_globally_release_tabs():
-    class OldBridge(FakeExtensionBridge):
-        def call(self, action, args=None, *, timeout=None):
-            result = super().call(action, args, timeout=timeout)
-            if "page_info" in result:
-                result["page_info"].pop("session_id", None)
-            return result
-
-    bridge = OldBridge()
-    backend = BrowserExtensionSessionBackend(options=BrowserLaunchOptions(), bridge=bridge)
-    with pytest.raises(BrowserError, match="Reload or repair"):
-        backend.start()
-    backend.close()
-    assert not any(action == "release_tabs" for action, _ in bridge.calls)
+    assert bridge.calls[1][1] == {"index": 0, "tab_id": "7"}
+    assert bridge.calls[2][1] == {"index": 0, "text": "hello", "clear": False, "tab_id": "7"}
 
 
 def test_extension_bridge_serves_long_poll_commands_and_results():
@@ -372,15 +355,7 @@ def test_runtime_can_select_current_tab_extension_backend(tmp_path, monkeypatch)
         assert store is not None
         item = store.start("owner")
         assert item.last_state.title == "Example"
-        assert store.max_sessions_total == 8
-        other = store.start("other-owner")
-        assert other.browser_id != item.browser_id
-        assert item.backend._session_id != other.backend._session_id
-        store.close("owner", item.browser_id)
-        assert len(store.list("other-owner")) == 1
-        assert FakeExtensionBridge.created[-1].calls[-1] == (
-            "release_tabs", {"session_id": item.backend._session_id}
-        )
+        assert store.max_sessions_total == 1
         assert store.filter_unsafe_background_tabs is True
 
         tool = runtime.tools.get("browser_open")

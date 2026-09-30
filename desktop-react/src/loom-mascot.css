@@ -1,0 +1,4 @@
+/* Legacy compatibility import.
+ * The old PNG/pseudo-element mascot has been removed. The code-drawn Loom pet
+ * is mounted by loomPetRuntime.tsx and owns its styles in loom-pet.css.
+ */

@@ -20,7 +20,6 @@ import { ProjectDetailsPanel } from "./components/ProjectDetailsPanel";
 import { ReviewInteractionBridge } from "./components/ReviewInteractionBridge";
 import { ReviewWorkspace } from "./components/ReviewWorkspace";
 import { RunProgress } from "./components/RunProgress";
-import { LoomPet } from "./loomPetRuntime";
 import { SettingsComputerLogExport } from "./components/SettingsComputerLogExport";
 import { SettingsPage } from "./components/SettingsPage";
 import { Sidebar } from "./components/Sidebar";
@@ -1212,9 +1211,6 @@ export default function App() {
         </div>
 
         <div className="composer-stage">
-          {thread && <LoomPet key={thread.id} running={running}
-            approval={thread.status === "waiting_approval" || transcriptItems.some((item) => item.type === "approval" && !isResolvedApproval(item))}
-            completed={thread.status === "completed"} />}
           <Composer
             threadId={thread?.id}
             disabled={!thread || loom.connection !== "ready" || archived}

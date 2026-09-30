@@ -608,15 +608,12 @@ class BrowserRuntime(WebSearchRuntime):
         self.browser_extension_bridge = extension_bridge
         # Never expose or persist the configured control endpoint in tool/status
         # payloads. Keep it only inside the backend closure used for attachment.
-        # A local Chromium profile cannot be launched twice. Attached browsers,
-        # however, support independent tab controllers; do not make one task's
-        # handle consume the entire runtime's capacity.
-        exclusive_browser = profile_persistence
+        exclusive_browser = profile_persistence or cdp_attached or extension_attached
         self.browser_sessions = (
             BrowserSessionStore(
                 factory,
                 url_policy=self.browser_security_policy,
-                max_sessions_per_owner=1 if exclusive_browser or cdp_attached or extension_attached else 2,
+                max_sessions_per_owner=1 if exclusive_browser else 2,
                 max_sessions_total=1 if exclusive_browser else 8,
                 filter_unsafe_background_tabs=cdp_attached or extension_attached,
             )
@@ -913,9 +910,6 @@ class BrowserRuntime(WebSearchRuntime):
             "external_browser": attached or extension,
             "cdp_endpoint_exposed": False,
             "active_sessions": active,
-            "owned_sessions": active,
-            "total_active_sessions": store.active_count() if store is not None else 0,
-            "max_sessions_total": store.max_sessions_total if store is not None else 0,
             "session_persistence": persistence,
             "crash_recovery": recovery,
             "secret_injection": False,
@@ -959,19 +953,6 @@ class BrowserRuntime(WebSearchRuntime):
         if self.browser_sessions is not None and str(current.permission_mode.value) != str(getattr(mode, "value", mode)):
             self.browser_sessions.close_owner(session_id)
         return super().set_permission_mode(session_id, mode)
-
-    def _record(self, session, kind, *, data):
-        from .contracts import AgentEventKind
-
-        if kind in {
-            AgentEventKind.TURN_COMPLETED,
-            AgentEventKind.TURN_FAILED,
-            AgentEventKind.TURN_CANCELLED,
-            AgentEventKind.TURN_INTERRUPTED,
-            AgentEventKind.LIMIT_REACHED,
-        } and getattr(self, "browser_sessions", None) is not None:
-            self.browser_sessions.close_owner(session.session_id)
-        return super()._record(session, kind, data=data)
 
     def recover_interrupted(self, session_id):
         if self.browser_sessions is not None:

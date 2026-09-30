@@ -255,7 +255,7 @@ def test_only_borrowed_tabs_are_handed_back_when_the_session_closes(background):
     # The group is the user's visible record of which tabs Loom touched, and the
     # next session reuses it rather than stacking up a second "Loom" group.
     assert "OWNED_GROUP_IDS_KEY" not in release
-    assert '"release_tabs"' in _function_body(background, "performCommand")
+    assert '"release_tabs"' in _function_body(background, "dispatchCommand")
 
     # The two kinds have to be recorded apart for the above to mean anything.
     mark = _function_body(background, "markLoomWorkTab")
@@ -486,9 +486,9 @@ def test_the_hud_is_driven_by_session_state_not_by_the_current_action(background
     )
 
     # Set on any command, cleared when the browser is handed back.
-    dispatch = _function_body(background, "performCommand")
+    dispatch = _function_body(background, "dispatchCommand")
     assert 'if (action !== "release_tabs") await markSessionActive(true)' in dispatch
-    assert "markSessionActive(Object.keys(owners).length > 0)" in _function_body(background, "releaseTabs")
+    assert "markSessionActive(false)" in _function_body(background, "releaseTabs")
     # Only on a transition, or every command wakes the listener in every page.
     mark = _function_body(background, "markSessionActive")
     assert "=== next) return" in mark
