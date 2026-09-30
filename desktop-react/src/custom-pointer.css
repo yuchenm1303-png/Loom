@@ -1,0 +1,10 @@
+:root[data-loom-custom-pointer="true"],
+:root[data-loom-custom-pointer="true"] :is(body, #root),
+:root[data-loom-custom-pointer="true"] :is(body, #root) *,
+:root[data-loom-custom-pointer="true"] :is(body, #root) *::before,
+:root[data-loom-custom-pointer="true"] :is(body, #root) *::after {
+  cursor: none !important;
+}
+.loom-custom-pointer-layer { position: fixed; inset: 0; pointer-events: none; overflow: hidden; contain: strict; z-index: 2147483647; }
+.loom-custom-pointer-image { position: absolute; left: 0; top: 0; width: 70px; height: 70px; max-width: none; pointer-events: none; will-change: transform; }
+.loom-custom-pointer-image[hidden] { display: none; }

@@ -574,6 +574,7 @@ class BrowserExtensionSessionBackend:
         self._started = False
         self._started_at_ms = 0
         self._tab_id = ""
+        self._session_id = str(uuid.uuid4())
 
     def start(self) -> BrowserPageState:
         self.bridge.start()
@@ -586,12 +587,14 @@ class BrowserExtensionSessionBackend:
 
     def _target_args(self, extra: dict[str, Any] | None = None) -> dict[str, Any]:
         payload = dict(extra or {})
+        payload["session_id"] = self._session_id
         if self._tab_id:
             payload["tab_id"] = self._tab_id
         return payload
 
     def _call_state(self, action: str, args: dict[str, Any] | None = None) -> BrowserPageState:
         payload = dict(args or {})
+        payload["session_id"] = self._session_id
         self._log(
             "backend.action.started",
             action=action,
@@ -790,7 +793,7 @@ class BrowserExtensionSessionBackend:
                 # tabs the user has since gone back to using. A short timeout: a
                 # close must not block on an extension that is already gone, and
                 # a browser that never answers has no ownership left to release.
-                result = self.bridge.call("release_tabs", {}, timeout=5.0)
+                result = self.bridge.call("release_tabs", {"session_id": self._session_id}, timeout=5.0)
                 released = int(result.get("released") or 0)
             except Exception:
                 released = -1
@@ -811,6 +814,15 @@ class BrowserExtensionSessionBackend:
             return
 
     def _state_from_result(self, result: dict[str, Any]) -> BrowserPageState:
+        page_info = result.get("page_info") if isinstance(result.get("page_info"), dict) else {}
+        if page_info.get("session_id") != self._session_id:
+            # Old extensions ignore session_id and release every controller's
+            # tabs. Never silently enable parallel control against that worker.
+            self._started = False
+            raise BrowserError(
+                "Reload or repair the Loom browser extension (0.1.18 or newer) "
+                "to enable isolated browser sessions."
+            )
         self.state_revision += 1
         tabs_raw = result.get("tabs") or ()
         tabs: list[dict[str, object]] = []
@@ -830,7 +842,6 @@ class BrowserExtensionSessionBackend:
                 )
         errors_raw = result.get("errors") or ()
         errors = tuple(str(item)[:2000] for item in errors_raw if item) if isinstance(errors_raw, list) else ()
-        page_info = result.get("page_info") if isinstance(result.get("page_info"), dict) else {}
         tab_id = str(page_info.get("tab_id") or result.get("tab_id") or "").strip()
         if tab_id:
             self._tab_id = tab_id[:128]

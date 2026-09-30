@@ -338,8 +338,8 @@ def browser_tools(runtime: "BrowserRuntime") -> tuple[AgentTool, ...]:
         factory = factory_with_downloads
         url = str(arguments.get("url") or "").strip()
 
-        # Persistent-profile, CDP and extension modes intentionally expose only one
-        # live browser slot. browser_open used to treat a second call from the same
+        # Attached modes keep one reusable handle per owner, but allow other
+        # owners to control their own tabs concurrently. A second call from the same
         # Loom session as a request for a second browser, so an already-controlled,
         # healthy browser deterministically produced "browser session limit reached
         # (1)". Make the operation idempotent for that exclusive configured

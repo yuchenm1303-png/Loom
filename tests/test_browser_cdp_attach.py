@@ -109,7 +109,7 @@ def test_runtime_attaches_to_configured_external_browser_without_exposing_endpoi
         assert item.backend is backend
         assert backend.cdp_url == endpoint
         assert backend.user_data_dir is None
-        assert store.max_sessions_total == 1
+        assert store.max_sessions_total == 8
         assert store.filter_unsafe_background_tabs is True
 
         tool = runtime.tools.get("browser_open")

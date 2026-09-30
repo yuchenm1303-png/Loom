@@ -14,6 +14,26 @@ The desktop default is now **Automatic · current browser first**. Loom keeps th
 
 CDP attach remains an explicit developer/debug route rather than the normal way to operate an everyday browser.
 
+## Concurrent tasks and release
+
+Extension bridge and CDP connections allow up to eight browser controllers across
+Loom tasks. Each attached task keeps one reusable controller and can operate tabs
+in different windows. Local launches using the same persistent Chromium profile
+remain exclusive because Chromium locks that profile directory.
+
+The extension requires version 0.1.18 or newer. Commands carry a controller ID;
+tabs leased by another controller are excluded from navigation reuse and tab
+lists, and explicit attempts to operate those tabs fail without changing them.
+Commands within one controller run in order, while a wait or navigation in one
+controller does not stop commands in another. Closing a controller releases only
+its debugger attachments, borrowed tabs and HUD state, preserving open pages.
+
+Completed, failed, cancelled, interrupted and limit-ended turns release their
+browser controllers automatically. Waiting for approval retains the controller
+until the turn ends. `browser_status` reports the current owner's count as
+`active_sessions` and `owned_sessions`, and the runtime-wide count (including
+opening reservations) as `total_active_sessions`.
+
 ## Install the unpacked extension
 
 1. Open Chrome or Edge.
