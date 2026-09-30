@@ -1,0 +1,19 @@
+.loom-pointer-click-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  pointer-events: none;
+  overflow: hidden;
+  contain: strict;
+}
+
+.loom-pointer-click-ripple {
+  position: absolute;
+  width: 42px;
+  height: 42px;
+  border: 1.5px solid var(--accent, #8b7cf6);
+  border-radius: 50%;
+  background: radial-gradient(circle, transparent 45%, var(--accent-faint, rgba(139, 124, 246, .12)) 100%);
+  pointer-events: none;
+  opacity: 0;
+}
