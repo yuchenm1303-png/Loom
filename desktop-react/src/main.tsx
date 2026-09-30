@@ -34,6 +34,7 @@ import "./global-motion.css";
 import "./components/generation-motion.css";
 import "./components/conversation-home.css";
 import "./components/account-auth-refined.css";
+import "./components/account-auth-slider.css";
 
 const CONVERSATION_WIDTHS: Record<string, string> = {
   focused: "740px",
