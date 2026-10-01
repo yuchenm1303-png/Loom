@@ -16,6 +16,7 @@ from .execution_binding import action_binding_digest
 from .history import repair_tool_history
 from .model_replan import revision as steering_revision
 from .model_replan import wait_for_signal
+from .model_execution import ModelRequestTimeout
 from .turn_response_validation import (
     COMPLETE_FINISH_REASONS,
     RESUMABLE_TERMINAL_REASONS,
@@ -323,7 +324,18 @@ class TurnRunner:
                             recovery_reasoning = ""
                             retry_sampling = True
                             break
-                        except AITransportError as exc:
+                        except (AITransportError, ModelRequestTimeout) as exc:
+                            if isinstance(exc, ModelRequestTimeout):
+                                rt._record(session, Event.MODEL_RESPONSE_REJECTED, data={
+                                    **model_identity,
+                                    "step_id": step.step_id,
+                                    "reason": exc.reason,
+                                    "error_type": type(exc).__name__,
+                                    "error": str(exc),
+                                    "attempt": attempt,
+                                    "retryable": exc.retryable,
+                                    "will_retry": exc.retryable and attempt < rt.limits.model_retries,
+                                })
                             if not exc.retryable or attempt >= rt.limits.model_retries:
                                 raise
                             next_attempt = attempt + 1
@@ -348,6 +360,13 @@ class TurnRunner:
                                 retry_sampling = True
                                 break
                             attempt = next_attempt
+                            if isinstance(exc, ModelRequestTimeout):
+                                # A timed-out sample may already have streamed a
+                                # partial reply. Give the retry a fresh step so
+                                # its deltas cannot append to that abandoned text.
+                                rt._release_step_context(step)
+                                retry_sampling = True
+                                break
                             continue
 
                     if retry_sampling:

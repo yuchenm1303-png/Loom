@@ -15,12 +15,21 @@ from .model_replan import begin_sampling, changed, end_sampling
 _log = logging.getLogger(__name__)
 
 
+class ModelRequestTimeout(TimeoutError):
+    """Only safe model-sampling timeouts may be retried; tools never run here."""
+
+    def __init__(self, message: str, *, reason: str, retryable: bool) -> None:
+        super().__init__(message)
+        self.reason = reason
+        self.retryable = retryable
+
+
 class ModelExecutor:
     """Bounded model execution.
 
     The bound used to be one number: 150 seconds of wall clock, whatever the
     request was doing. That is the right question to ask of a request that has
-    produced nothing and the wrong one to ask of a response that is streaming
+      produced nothing and the wrong one to ask of a response that is streaming
     perfectly well and is merely long. A reasoning model at max effort emits
     tens of thousands of thinking tokens at a steady ~195/s, so 150s was a hard
     ceiling of roughly 29,000 tokens: past that, the turn could not succeed no
@@ -66,21 +75,24 @@ class ModelExecutor:
             # Still waiting for the first sign of life. Non-streaming backends
             # never report any, which is why this path keeps the old meaning.
             if now >= deadline:
-                raise TimeoutError(
+                raise ModelRequestTimeout(
                     "model request deadline exceeded: no provider output received "
-                    f"within {int(self.timeout)}s"
+                    f"within {int(self.timeout)}s",
+                    reason="first_output_timeout", retryable=True,
                 )
             return
         idle = now - progress_at
         if idle >= self.stall_timeout:
-            raise TimeoutError(
+            raise ModelRequestTimeout(
                 f"model stopped producing output for {int(idle)}s "
-                f"(stall timeout {int(self.stall_timeout)}s)"
+                f"(stall timeout {int(self.stall_timeout)}s)",
+                reason="stream_stall_timeout", retryable=True,
             )
         if now - started >= self.max_duration:
-            raise TimeoutError(
+            raise ModelRequestTimeout(
                 f"model request exceeded its maximum duration of {int(self.max_duration)}s "
-                "while still producing output"
+                "while still producing output",
+                reason="max_duration_timeout", retryable=False,
             )
 
     def execute(self, platform, profile_id, request, token, *, steering_revision: int | None = None):
@@ -125,7 +137,7 @@ class ModelExecutor:
                     progress_at = control.progress_at
                     _log.warning(
                         "Model request timed out: profile=%s elapsed=%.1fs "
-                        "received_provider_output=%s last_output_gap=%s error=%s",
+                        "received_generated_content=%s last_output_gap=%s error=%s",
                         profile_id,
                         time.monotonic() - started,
                         bool(progress_at),

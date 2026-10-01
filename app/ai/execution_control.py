@@ -32,14 +32,14 @@ class ExecutionControl:
 
     @property
     def progress_at(self) -> float:
-        """When the provider last produced anything; 0.0 if it never has."""
+        """Last substantive text/reasoning/tool fragment; 0 before generation."""
 
         return self._progress_at
 
     def note_progress(self) -> None:
         """Record that the provider is still producing.
 
-        Called per raw provider chunk rather than per surfaced event, and that
+        Called per substantive provider chunk rather than per surfaced event, and that
         distinction is the whole point: reasoning deltas are accumulated for the
         end of the turn and never become StreamEvents, so a thinking model can
         stream healthily for two minutes while everything downstream sees

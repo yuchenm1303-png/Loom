@@ -102,11 +102,8 @@ class OpenAIStreamingChatBackend(OpenAIChatBackend):
         try:
             for chunk in stream:
                 check_cancelled()
-                # Every chunk counts as progress, including reasoning-only
-                # chunks. Compatible providers may publish their explicitly
-                # exposed reasoning separately; replay-only provider state still
-                # remains private.
-                note_progress()
+                # Role/empty/usage envelopes do not mean generation started.
+                # Reasoning and native tool fragments count even when private.
                 chunk_count += 1
                 chunk_id = str(getattr(chunk, "id", "") or "").strip()
                 if chunk_id:
@@ -121,6 +118,17 @@ class OpenAIStreamingChatBackend(OpenAIChatBackend):
                     continue
                 choice = choices[0]
                 delta = getattr(choice, "delta", None)
+                if delta is not None and (
+                    getattr(delta, "content", None)
+                    or getattr(delta, "reasoning_content", None)
+                    or any(
+                        getattr(call, "id", None)
+                        or getattr(getattr(call, "function", None), "name", None)
+                        or getattr(getattr(call, "function", None), "arguments", None)
+                        for call in (getattr(delta, "tool_calls", None) or ())
+                    )
+                ):
+                    note_progress()
                 if delta is not None:
                     # Keep provider reasoning separate from assistant text. It
                     # remains replayable transport state and, because this

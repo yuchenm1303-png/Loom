@@ -111,6 +111,22 @@ The partial Web UI message is presentation-only and is never written to the sess
 
 ## Compatibility
 
+### Generation deadlines and recovery
+
+The model executor waits up to 150 seconds for substantive generation. Empty,
+role-only, usage, and lifecycle envelopes do not start or refresh generation
+progress. Text, reasoning (including private reasoning), and native tool-call
+fragments do. After generation starts, a 60-second gap aborts the request; an
+actively generating request also has a 900-second maximum duration.
+
+First-output and stalled-stream deadlines raise `ModelRequestTimeout` with an
+explicit retryable reason. The turn runner uses its existing bounded model retry
+budget and cancellation-aware backoff. Each timeout retry gets a new model step
+inside the same logical turn, discards the abandoned partial response, and retains
+completed tool results. It does not replay tool side effects. Runaway-duration and
+concurrency-limit failures do not enter this retry path. Timeout rejection events
+record the reason, attempt, and whether another attempt will run.
+
 `StreamingAIPlatform` starts with streaming disabled. This preserves the old synchronous completion behavior for detached/legacy users of the AI platform.
 
 The top-level Loom `AgentRuntime` enables streaming when the configured platform exposes the streaming hooks. Test doubles and embedders that only implement `execute_chat` continue to work unchanged.

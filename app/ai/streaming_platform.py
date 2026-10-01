@@ -220,9 +220,11 @@ class StreamingAIPlatform(AIPlatform):
                 # Backends report normalized progress here. The OpenAI-compatible
                 # backend also reports per raw chunk so long reasoning periods
                 # remain distinguishable from a dead connection.
-                note_progress()
                 if not isinstance(raw_event, StreamEvent):
                     raise TypeError("streaming model backend must yield StreamEvent values")
+                if (raw_event.text_delta or raw_event.reasoning_delta
+                        or raw_event.tool_call_id or raw_event.tool_name or raw_event.arguments_delta):
+                    note_progress()
                 normalized_events: list[StreamEvent]
                 if raw_event.kind is StreamEventKind.TEXT_DELTA:
                     normalized_events = [

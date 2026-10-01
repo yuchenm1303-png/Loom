@@ -25,6 +25,51 @@ from app.agent_runtime.model_execution import ModelExecutor
 from app.ai.execution_control import note_progress
 
 
+def test_timeout_policy_separates_first_output_stall_and_runaway(monkeypatch):
+    from types import SimpleNamespace
+    from app.agent_runtime.model_execution import ModelRequestTimeout
+    executor = ModelExecutor(timeout=150, stall_timeout=60, max_duration=900)
+    clock = [70.0]
+    monkeypatch.setattr("app.agent_runtime.model_execution.time.monotonic", lambda: clock[0])
+    # Empty connection envelopes never update progress_at. Still in first-output grace.
+    executor._check_deadlines(SimpleNamespace(progress_at=0), 0, 150)
+    with pytest.raises(ModelRequestTimeout) as failure:
+        executor._check_deadlines(SimpleNamespace(progress_at=10), 0, 150)
+    assert failure.value.reason == "stream_stall_timeout"
+    assert failure.value.retryable
+    clock[0] = 151
+    with pytest.raises(ModelRequestTimeout) as failure:
+        executor._check_deadlines(SimpleNamespace(progress_at=0), 0, 150)
+    assert failure.value.reason == "first_output_timeout"
+    assert failure.value.retryable
+    clock[0] = 901
+    with pytest.raises(ModelRequestTimeout) as failure:
+        executor._check_deadlines(SimpleNamespace(progress_at=900), 0, 150)
+    assert failure.value.reason == "max_duration_timeout"
+    assert not failure.value.retryable
+
+
+def test_abandoned_request_closes_and_cannot_replace_retry_result():
+    import threading
+    from app.ai.execution_control import current_control
+    from app.agent_runtime.model_execution import ModelRequestTimeout
+    closed = threading.Event()
+    finished = threading.Event()
+    class Slow:
+        def execute_chat(self, profile, request):
+            control = current_control.get()
+            control.on_cancel(closed.set)
+            closed.wait(3)
+            finished.set()
+            return "abandoned reply"
+    executor = ModelExecutor(timeout=0.1)
+    with pytest.raises(ModelRequestTimeout):
+        executor.execute(Slow(), "p", {}, _Token())
+    assert closed.wait(2)
+    assert finished.wait(2)
+    assert executor.execute(_Platform(chunks=0, gap=0), "p", {}, _Token()) == "completed"
+
+
 class _Token:
     cancelled = False
     steering_revision = 0

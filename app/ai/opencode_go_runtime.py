@@ -322,9 +322,10 @@ class _OpenCodeGoResponsesBackend:
         try:
             for event in stream:
                 check_cancelled()
-                note_progress()
                 chunks += 1
                 event_type = str(getattr(event, "type", "") or "")
+                if event_type.endswith(".delta") and getattr(event, "delta", None):
+                    note_progress()
                 if event_type == "response.output_text.delta":
                     delta = str(getattr(event, "delta", "") or "")
                     if delta:
@@ -579,10 +580,14 @@ class _OpenCodeGoMessagesBackend:
                 data = line[5:].strip()
                 if not data or data == "[DONE]":
                     continue
-                note_progress()
                 chunks += 1
                 event = json.loads(data)
                 event_type = str(event.get("type") or "")
+                payload = event.get("delta") or event.get("content_block") or {}
+                if event_type in {"content_block_delta", "content_block_start"} and any(
+                    payload.get(key) for key in ("text", "thinking", "partial_json", "signature", "name")
+                ):
+                    note_progress()
                 if event_type == "message_start":
                     message = event.get("message") or {}
                     response_id = str(message.get("id") or "")

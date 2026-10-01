@@ -369,6 +369,29 @@ def _streaming_backend(completions) -> OpenAIStreamingChatBackend:
     )
 
 
+@pytest.mark.parametrize("delta, expected", [
+    (SimpleNamespace(role="assistant", content="", tool_calls=[]), False),
+    (SimpleNamespace(content="", reasoning_content="", tool_calls=[]), False),
+    (SimpleNamespace(content="answer", tool_calls=[]), True),
+    (SimpleNamespace(reasoning_content="thinking", tool_calls=[]), True),
+    (SimpleNamespace(tool_calls=[SimpleNamespace(function=SimpleNamespace(arguments='{"x":'))]), True),
+])
+def test_only_substantive_provider_chunks_start_generation_clock(delta, expected):
+    from app.ai.execution_control import ExecutionControl, current_control
+    chunks = [
+        SimpleNamespace(choices=[SimpleNamespace(delta=delta, finish_reason=None)]),
+        SimpleNamespace(choices=[SimpleNamespace(delta=None, finish_reason="stop")]),
+    ]
+    backend = _streaming_backend(SimpleNamespace(create=lambda **kwargs: iter(chunks)))
+    control = ExecutionControl()
+    binding = current_control.set(control)
+    try:
+        list(backend.stream(_request()))
+    finally:
+        current_control.reset(binding)
+    assert bool(control.progress_at) is expected
+
+
 def test_peer_closing_the_stream_mid_body_is_retryable():
     # The exact failure a relay produces when it drops a long answer: no status
     # code, no error body, and a message that matches none of the retryable

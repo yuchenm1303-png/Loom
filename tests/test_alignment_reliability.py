@@ -567,6 +567,54 @@ def test_stream_retry_does_not_duplicate_tool_side_effect(tmp_path):
     rt.close()
 
 
+@pytest.mark.parametrize("reason", ["first_output_timeout", "stream_stall_timeout"])
+def test_model_timeout_after_tool_retries_sampling_without_repeating_tool(tmp_path, reason):
+    from app.agent_runtime.model_execution import ModelRequestTimeout
+    class P:
+        count = 0
+        def execute_chat(self, profile, request):
+            self.count += 1
+            if self.count == 1:
+                return ModelResponse(tool_calls=(ToolCall("effect-once", "effect", {}),))
+            if self.count == 2:
+                raise ModelRequestTimeout("provider stalled", reason=reason, retryable=True)
+            assert any(message.role is MessageRole.TOOL for message in request.messages)
+            return ModelResponse(text="done")
+    calls = []
+    rt = make_runtime(tmp_path, P(), [AgentTool("effect", "test", {"type": "object"},
+        lambda c, a: calls.append(1) or ToolResult(True, "done"))])
+    session = rt.create_session("agent.fast")
+    result = rt.start_turn(session.session_id, "work")
+    assert result.status is AgentStatus.COMPLETED
+    assert calls == [1]
+    rejected = [e for e in rt.store.events(session.session_id) if e.kind.value == "model_response_rejected"]
+    assert rejected[-1].data["reason"] == reason
+    assert rejected[-1].data["will_retry"] is True
+    requests = [e for e in rt.store.events(session.session_id) if e.kind.value == "model_requested"]
+    assert len(requests) == 3
+    assert requests[-1].data["step_id"] != requests[-2].data["step_id"]
+    assert len({e.turn_id for e in requests}) == 1
+    rt.close()
+
+
+@pytest.mark.parametrize("retryable, expected_calls", [(True, 3), (False, 1)])
+def test_model_timeout_retries_are_bounded(tmp_path, retryable, expected_calls):
+    from app.agent_runtime.model_execution import ModelRequestTimeout
+    class P:
+        count = 0
+        def execute_chat(self, profile, request):
+            self.count += 1
+            raise ModelRequestTimeout("timed out", reason="test_timeout", retryable=retryable)
+    platform = P()
+    rt = make_runtime(tmp_path, platform)
+    session = rt.create_session("agent.fast")
+    result = rt.start_turn(session.session_id, "work")
+    assert result.status is AgentStatus.FAILED
+    assert platform.count == expected_calls
+    assert not any(e.kind.value == "turn_completed" for e in rt.store.events(session.session_id))
+    rt.close()
+
+
 def test_peer_disconnect_mid_stream_is_survived_by_the_turn(tmp_path):
     """The production failure, end to end: a relay drops a streaming response.
 
