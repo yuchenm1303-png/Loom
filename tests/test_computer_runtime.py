@@ -326,7 +326,7 @@ def test_coordinate_click_with_no_observable_effect_returns_false(tmp_path):
     assert len(operator.executed) == 1
     assert result.ok is False
     assert result.data["verification"]["execution_ok"] is True
-    assert result.data["verification"]["effect"] == "unchanged"
+    assert result.data["verification"]["effect"] == "uncertain"
     assert result.data["verification"]["effect_reason"] == "no_observable_change_after_pointer_input"
     assert "no observable UI change" in result.content
     runtime.close()

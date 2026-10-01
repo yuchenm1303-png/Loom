@@ -418,6 +418,7 @@ class ComputerAction:
         if self.text:
             payload["text"] = "[TRANSIENT_TEXT]"
             payload["text_length"] = len(self.text)
+            payload["text_length_source"] = "resolved_input_not_readback"
         if self.keys:
             payload["keys"] = list(self.keys)
         if self.type is ComputerActionType.SCROLL:

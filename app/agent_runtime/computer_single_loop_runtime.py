@@ -21,9 +21,9 @@ from .tools import AgentTool, ToolContext, ToolExposure, ToolRegistry, ToolResul
 
 
 # Pointer actions are the ones where a successful input injection can still be a
-# user-visible failure: Windows accepted the mouse event, but the application did
-# not react. Those are the actions for which Loom may return ok=false after a
-# post-action observation.
+# unverified result: Windows accepted the mouse event, but the observer cannot
+# prove the application result. ok=false is conservative, not a claim that no
+# DOM event occurred.
 _POINTER_ACTIONS = frozenset(
     {
         ComputerActionType.CLICK,
@@ -177,7 +177,8 @@ def _single_action_schema() -> dict[str, Any]:
             "control_id": {"type": "string", "maxLength": 128},
             "end_point": point,
             "window_id": {"type": "string", "maxLength": 128},
-            "text": {"type": "string", "maxLength": 20000},
+            "text": {"type": "string", "maxLength": 20000,
+                     "description": "Literal text to type. Never copy loom-transient-computer references from previous tool history: those are private one-shot handles, not input text."},
             "keys": {
                 "type": "array",
                 "items": {"type": "string", "maxLength": 64},
@@ -297,9 +298,13 @@ def _classify_effect(outcome: ComputerStepOutcome) -> dict[str, object]:
     target_confirmed = base.get("target_confirmed")
 
     semantic_verified = bool(execution.native)
+    if action.type is ComputerActionType.TYPE:
+        semantic_verified = bool(execution.details.get("content_verified"))
+    elif action.type is ComputerActionType.CLEAR_TEXT:
+        semantic_verified = bool(execution.native and execution.details.get("after_ime_composition") is False)
     if action.type is ComputerActionType.SWITCH_WINDOW and target_confirmed is True:
-        effect = "changed"
-        reason = "foreground_window_confirmed"
+        effect = "changed" if active_window_changed else "noop"
+        reason = "foreground_window_confirmed" if active_window_changed else "already_foreground"
         semantic_verified = True
     elif active_window_changed:
         # A foreground change is success only for an explicit window switch.
@@ -308,11 +313,15 @@ def _classify_effect(outcome: ComputerStepOutcome) -> dict[str, object]:
         # ``changed`` caused the model to turn focus races into false passes.
         effect = "uncertain"
         reason = "foreground_target_lost_after_input"
+        semantic_verified = False
+    elif semantic_verified and action.type is ComputerActionType.TYPE:
+        effect = "changed"
+        reason = "focused_value_readback_matched"
     elif visual_changed:
         effect = "changed"
         reason = "observable_visual_change"
     elif action.type in _POINTER_ACTIONS and not execution.native:
-        effect = "unchanged"
+        effect = "uncertain"
         reason = "no_observable_change_after_pointer_input"
     else:
         effect = "uncertain"
@@ -326,6 +335,7 @@ def _classify_effect(outcome: ComputerStepOutcome) -> dict[str, object]:
         "effect": effect,
         "effect_reason": reason,
         "semantic_verified": semantic_verified,
+        "noop": effect == "noop",
         "visual_delta_ratio": None if ratio < 0 else round(float(ratio), 6),
     }
 
@@ -746,7 +756,7 @@ class SingleLoopComputerRuntime(ComputerUseRuntime):
             return False
         current = self._attempt_from(action, before, "")
         return all(
-            previous.effect == "unchanged" and self._same_attempt(previous, current)
+            previous.effect in {"unchanged", "unobserved_pointer"} and self._same_attempt(previous, current)
             for previous in history[-2:]
         )
 
@@ -891,13 +901,14 @@ class SingleLoopComputerRuntime(ComputerUseRuntime):
         outcome = store.execute(context.session_id, before.state_revision, action)
         outcome.verification.update(_classify_effect(outcome))
         effect = str(outcome.verification.get("effect") or "uncertain")
-        self._record_attempt(context, action, outcome.before, effect)
+        self._record_attempt(context, action, outcome.before,
+                             "unobserved_pointer" if outcome.verification.get("effect_reason") == "no_observable_change_after_pointer_input" else effect)
         self._mark_visual_feedback(context)
         self._trace_effect(context, outcome)
 
         execution_ok = bool(outcome.execution is not None and outcome.execution.ok)
         semantic_verified = bool(outcome.verification.get("semantic_verified"))
-        pointer_no_effect = action.type in _POINTER_ACTIONS and effect == "unchanged"
+        pointer_no_effect = action.type in _POINTER_ACTIONS and outcome.verification.get("effect_reason") == "no_observable_change_after_pointer_input"
         target_failed = (
             action.type is ComputerActionType.SWITCH_WINDOW
             and outcome.verification.get("target_confirmed") is False
@@ -908,11 +919,13 @@ class SingleLoopComputerRuntime(ComputerUseRuntime):
             content = "The desktop input failed to execute. Inspect the attached current screenshot and choose another action."
         elif pointer_no_effect:
             content = (
-                "Input was injected successfully, but no observable UI change followed this pointer action. "
-                "Treat the action as not having worked; inspect the attached screenshot and do not blindly repeat the same target."
+                "Input was injected successfully, but no observable UI change was detected after this pointer action. "
+                "Its semantic result is uncertain, not proof that the application received no event. Check application state and do not blindly repeat the same target."
             )
         elif target_failed:
             content = "The requested window did not become the foreground window. Inspect the attached screenshot and choose another strategy."
+        elif effect == "noop":
+            content = "Target was already foreground; no window switch was needed. Target identity is verified, not a state change."
         elif effect == "changed" and semantic_verified:
             content = "Computer action executed and its intended semantic result was verified. Inspect the attached fresh screenshot before choosing the next action."
         elif effect == "changed":
