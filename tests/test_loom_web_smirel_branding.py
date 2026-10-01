@@ -6,18 +6,14 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_loom_web_uses_original_smirel_brand_and_portal_skeleton():
     gate = (ROOT / "desktop-react/src/components/WebAppGate.tsx").read_text(encoding="utf-8")
-    portal = (ROOT / "desktop-react/src/components/WebPortal.tsx").read_text(encoding="utf-8")
     logo = (ROOT / "desktop-react/public/smirel-logo.svg").read_text(encoding="utf-8")
     mark = (ROOT / "desktop-react/public/smirel-mark.svg").read_text(encoding="utf-8")
-    assert 'import { WebPortal' in gate
-    assert 'className="release-card cards fade"' in portal
-    assert 'className="account-card cards fade"' in portal
-    assert 'className="utility-grid fade"' in portal
-    assert "LATEST RELEASE" in portal
-    assert "ACCOUNT ACCESS" in portal
+    assert "function SmirelShell" in gate
+    assert "smirel-web-shell" in gate
+    assert "SMIREL · LOOM WEB" in gate
+    assert "LOOM ACCOUNT" in gate
     assert "smirel-logo" in logo.lower()
     assert "Smirel API" in mark
-
 
 def test_loom_web_loads_the_canonical_listing_studio_glass_assets():
     portal = (ROOT / "desktop-react/src/components/WebPortal.tsx").read_text(encoding="utf-8")

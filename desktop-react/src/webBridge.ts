@@ -107,9 +107,7 @@ function webSocketUrl(): string {
   const configured = String(import.meta.env.VITE_LOOM_WEB_SOCKET_URL || "").trim();
   const scheme = window.location.protocol === "https:" ? "wss:" : "ws:";
   const target = new URL(configured || `${scheme}//${window.location.host}${DEFAULT_WS_PATH}`, window.location.href);
-  const deviceId = selectedWebDeviceId();
-  if (deviceId) target.searchParams.set("device", deviceId);
-  else target.searchParams.delete("device");
+  target.searchParams.delete("device");
   return target.toString();
 }
 
@@ -350,9 +348,10 @@ export async function getWebDeviceStatus(): Promise<WebDeviceStatus> {
   });
 }
 
-export async function selectWebDevice(deviceId: string): Promise<void> {
-  const ws = await ensureSocket();
-  ws.send(JSON.stringify({ type: "select_device", deviceId: normalizeDeviceId(deviceId) }));
+export async function selectWebDevice(_deviceId: string): Promise<void> {
+  // Compatibility shim for older UI modules. Routing is account-scoped:
+  // there is exactly one current Host, so there is nothing to select.
+  await ensureSocket();
 }
 
 export function activateWebRemoteDevice(deviceId: string): void {

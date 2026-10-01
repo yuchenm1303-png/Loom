@@ -37,7 +37,9 @@ def test_legacy_running_composer_css_never_hides_an_input_row() -> None:
 def test_running_turn_uses_a_dedicated_editable_steering_state() -> None:
     source = COMPOSER.read_text(encoding="utf-8")
 
-    assert 'if (props.running) return <SteeringComposer {...props} />;' in source
+    assert 'if (props.running) return <SteeringComposer {...sharedProps} />;' in source
+    assert "draftValue," in source
+    assert "onDraftValueChange: setDraftValue" in source
     assert 'className={`composer is-steering ${focused ? "is-focused" : ""} ${dragging ? "is-dragging" : ""}`}' in source
     assert 'className={`composer is-running ${focused ? "is-focused" : ""}`}' not in source
     assert '"Guide the current task…"' in source
@@ -54,7 +56,8 @@ def test_running_turn_uses_a_dedicated_editable_steering_state() -> None:
 def test_running_send_is_routed_to_turn_steer_not_a_second_turn_start() -> None:
     source = LOOM_STATE.read_text(encoding="utf-8")
 
-    assert 'const running = Boolean(loom.turnActive || threadIsRunning(thread));' in source
+    assert "const running = Boolean(loom.turnActive || threadIsRunning(thread))" in source
+    assert "&& !activeTurnHasTerminalError;" in source
     assert 'if (!running) {' in source
     assert 'await loom.send(input, attachments);' in source
     assert 'window.loom.call<SteeringReceipt>("turn/steer", {' in source

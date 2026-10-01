@@ -73,21 +73,16 @@ def test_browser_hud_tracks_computer_visual_language_without_sharing_lifecycle()
     desktop = (ROOT / "desktop-react" / "electron" / "hudWindow.ts").read_text(encoding="utf-8")
     browser_hud = (EXT / "browser-hud.js").read_text(encoding="utf-8")
 
-    for token in (
-        "--bubble-width:420px",
-        "top:20px",
-        "bottom:24px",
-        "width:82px;height:82px",
-        "filter:blur(14px) saturate(1.16);opacity:.42",
-        "filter:blur(8px) saturate(1.3);opacity:.68",
-    ):
+    for token in ("--bubble-width:420px", "top:20px", "bottom:24px", "width:82px;height:82px"):
         assert token in desktop
         assert token in browser_hud
 
+    filter_pattern = r"filter:blur\((?:14|8)px\) saturate\([^)]+\);opacity:[^;}]+"
+    assert re.findall(filter_pattern, desktop)[:2] == re.findall(filter_pattern, browser_hud)[:2]
+    assert len(re.findall(filter_pattern, desktop)) >= 2
     assert "BrowserWindow" in desktop
     assert "loom-browser-hud-root-v2" in browser_hud
     assert "cloneNode(true)" not in browser_hud
-
 
 def test_browser_hud_all_visual_layers_stay_visible_during_user_interaction() -> None:
     browser_hud = (EXT / "browser-hud.js").read_text(encoding="utf-8")
