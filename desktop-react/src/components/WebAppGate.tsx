@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAccount } from "../state/useAccount";
 import { isLoomWebRuntime } from "../webBridge";
 import {
@@ -27,6 +27,13 @@ export function WebAppGate({ children }: { children: ReactNode }) {
   const [pairing, setPairing] = useState(false);
   const [pairAttempts, setPairAttempts] = useState(0);
   const [pairingSucceeded, setPairingSucceeded] = useState(false);
+  const hostStateRef = useRef<HostState>("idle");
+  const connectPromiseRef = useRef<Promise<void> | null>(null);
+
+  const setTrackedHostState = useCallback((next: HostState) => {
+    hostStateRef.current = next;
+    setHostState(next);
+  }, []);
 
   useEffect(() => {
     if (!web) return;
@@ -42,19 +49,32 @@ export function WebAppGate({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("loom:web-auth-changed", refresh);
   }, [account.refresh, web]);
 
-  const connectCurrentHost = useCallback(async () => {
+  const connectCurrentHost = useCallback(async (options?: { force?: boolean }) => {
     if (!web || !account.ready || !account.account.authenticated) return;
-    setHostState("connecting");
+    const force = Boolean(options?.force);
+    if (!force && hostStateRef.current === "online") return;
+    if (connectPromiseRef.current) return connectPromiseRef.current;
+
+    if (hostStateRef.current !== "online") setTrackedHostState("connecting");
+    const attempt = (async () => {
+      try {
+        await window.loom.connect();
+        setTrackedHostState("online");
+        setHostError("");
+      } catch (cause) {
+        const error = cause as Error & { code?: string };
+        setTrackedHostState("offline");
+        setHostError(error.message || String(cause));
+      }
+    })();
+
+    connectPromiseRef.current = attempt;
     try {
-      await window.loom.connect();
-      setHostState("online");
-      setHostError("");
-    } catch (cause) {
-      const error = cause as Error & { code?: string };
-      setHostState("offline");
-      setHostError(error.message || String(cause));
+      await attempt;
+    } finally {
+      if (connectPromiseRef.current === attempt) connectPromiseRef.current = null;
     }
-  }, [account.account.authenticated, account.ready, web]);
+  }, [account.account.authenticated, account.ready, setTrackedHostState, web]);
 
   useEffect(() => {
     if (!web || !account.ready || !account.account.authenticated) return;
@@ -66,14 +86,14 @@ export function WebAppGate({ children }: { children: ReactNode }) {
     const onDeviceStatus = (event: Event) => {
       const detail = (event as CustomEvent<DeviceStatus>).detail;
       if (detail?.online) {
-        void connectCurrentHost();
+        if (hostStateRef.current !== "online") void connectCurrentHost();
         return;
       }
-      setHostState((current) => current === "online" ? "offline" : current);
+      if (hostStateRef.current === "online") setTrackedHostState("offline");
     };
     window.addEventListener("loom:web-device-status", onDeviceStatus);
     return () => window.removeEventListener("loom:web-device-status", onDeviceStatus);
-  }, [account.account.authenticated, account.ready, connectCurrentHost, web]);
+  }, [account.account.authenticated, account.ready, connectCurrentHost, setTrackedHostState, web]);
 
   useEffect(() => {
     if (!web || !account.ready || !account.account.authenticated || !account.account.user) return;
@@ -94,19 +114,18 @@ export function WebAppGate({ children }: { children: ReactNode }) {
         if (host.relayReady) {
           setPairAttempts(0);
           setPairingSucceeded(false);
-          void connectCurrentHost();
-        } else if (pairing) {
-          setHostState("pairing");
-        } else if (pairingSucceeded) {
-          setHostState("connecting");
+          if (hostStateRef.current !== "online") void connectCurrentHost();
+        } else if (pairing && hostStateRef.current !== "online") {
+          setTrackedHostState("pairing");
+        } else if (pairingSucceeded && hostStateRef.current !== "online") {
+          setTrackedHostState("connecting");
         }
       } else {
         setLocalHost(null);
-        setHostState((current) => (
-          current === "online" || current === "connecting" || current === "pairing"
-            ? current
-            : "missing"
-        ));
+        const current = hostStateRef.current;
+        if (current !== "online" && current !== "connecting" && current !== "pairing") {
+          setTrackedHostState("missing");
+        }
       }
 
       timer = window.setTimeout(probe, DISCOVERY_INTERVAL_MS);
@@ -125,6 +144,7 @@ export function WebAppGate({ children }: { children: ReactNode }) {
     discoveryNonce,
     pairing,
     pairingSucceeded,
+    setTrackedHostState,
     web,
   ]);
 
@@ -146,7 +166,7 @@ export function WebAppGate({ children }: { children: ReactNode }) {
       void (async () => {
         if (cancelled) return;
         setPairing(true);
-        setHostState("pairing");
+        if (hostStateRef.current !== "online") setTrackedHostState("pairing");
         setHostError("");
         const result = await pairLocalLoomHost();
         if (cancelled) return;
@@ -154,11 +174,11 @@ export function WebAppGate({ children }: { children: ReactNode }) {
         setPairAttempts((value) => value + 1);
         if (result.ok) {
           setPairingSucceeded(true);
-          setHostState("connecting");
+          if (hostStateRef.current !== "online") setTrackedHostState("connecting");
           setHostError("");
           setDiscoveryNonce((value) => value + 1);
-        } else {
-          setHostState("offline");
+        } else if (hostStateRef.current !== "online") {
+          setTrackedHostState("offline");
           setHostError(result.error);
         }
       })();
@@ -175,6 +195,7 @@ export function WebAppGate({ children }: { children: ReactNode }) {
     pairAttempts,
     pairing,
     pairingSucceeded,
+    setTrackedHostState,
     web,
   ]);
 
@@ -183,10 +204,10 @@ export function WebAppGate({ children }: { children: ReactNode }) {
     setPairingSucceeded(false);
     setPairing(false);
     setHostError("");
-    setHostState("discovering");
+    setTrackedHostState("discovering");
     setDiscoveryNonce((value) => value + 1);
-    void connectCurrentHost();
-  }, [connectCurrentHost]);
+    void connectCurrentHost({ force: true });
+  }, [connectCurrentHost, setTrackedHostState]);
 
   if (!web) return children;
 

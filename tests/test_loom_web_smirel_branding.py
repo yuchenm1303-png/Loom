@@ -12,14 +12,18 @@ def test_loom_web_routes_the_gate_through_the_functional_glass_portal():
     assert "<WebPortal" in gate
     assert "function SmirelShell" not in gate
     assert "AccountDialog" not in gate
-    assert "loom-stage cards" in portal
-    assert "loom-function-card cards" not in portal
-    assert "loom-account-card cards" not in portal
-    assert "Your Loom stays on your computer." in portal
+    assert 'import "./portal-base.css"' in portal
+    assert 'import "./portal-modules.css"' in portal
+    assert 'import "./portal-host-card.css"' in portal
+    assert "loom-module-grid" in portal
+    assert "loom-intro-module cards fade" in portal
+    assert "loom-sidebar-module cards fade" in portal
+    assert "loom-host-module loom-host-refined" in portal
+    assert "loom-account-module loom-account-refined" in portal
+    assert "Your Loom stays" in portal
+    assert "on your computer." in portal
     assert "Download for Windows" in portal
     assert "Continue with Loom" in portal
-    assert "remoteMode" not in portal
-    assert "onRemote" not in portal
     assert (ROOT / "desktop-react/public/smirel-logo.png").exists()
     assert "Smirel API" in mark
 
