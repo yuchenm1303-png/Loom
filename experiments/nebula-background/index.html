@@ -6,20 +6,16 @@
 <meta name="color-scheme" content="dark" />
 <title>Loom Nebula Background Preview</title>
 <style>
-*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#020617}.space{position:fixed;inset:0;overflow:hidden;background:#020617}canvas{position:absolute;inset:0;width:100%;height:100%;display:block}#nebula{z-index:0}#stars{z-index:2;pointer-events:none}.vignette{position:absolute;inset:0;z-index:3;pointer-events:none;background:radial-gradient(circle at 55% 43%,transparent 18%,rgba(1,4,18,.03) 58%,rgba(0,2,12,.28) 100%),linear-gradient(to bottom,rgba(2,4,18,.02),rgba(1,3,15,.08))}@media(prefers-reduced-motion:reduce){#stars{opacity:.72}}
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#020617}.space{position:fixed;inset:0;overflow:hidden;background:#020617}canvas{position:absolute;inset:0;width:100%;height:100%;display:block}#nebula{z-index:0}#stars{z-index:2;pointer-events:none}.vignette{position:absolute;inset:0;z-index:3;pointer-events:none;background:radial-gradient(circle at 58% 42%,transparent 17%,rgba(1,4,18,.025) 55%,rgba(0,2,12,.30) 100%),linear-gradient(to bottom,rgba(2,4,18,.01),rgba(1,3,15,.08))}@media(prefers-reduced-motion:reduce){#stars{opacity:.72}}
 </style>
 </head>
 <body>
-<div class="space" aria-hidden="true">
-  <canvas id="nebula"></canvas>
-  <canvas id="stars"></canvas>
-  <div class="vignette"></div>
-</div>
+<div class="space" aria-hidden="true"><canvas id="nebula"></canvas><canvas id="stars"></canvas><div class="vignette"></div></div>
 <script>
 (()=>{
   const canvas=document.getElementById('nebula');
   const gl=canvas.getContext('webgl',{alpha:false,antialias:false,powerPreference:'high-performance'});
-  if(!gl){canvas.style.background='radial-gradient(ellipse at 58% 40%,#61288d 0%,#18357d 30%,#07183d 58%,#020617 100%)';return;}
+  if(!gl){canvas.style.background='radial-gradient(ellipse at 60% 38%,#5949b3 0%,#193f87 28%,#07183d 56%,#020617 100%)';return;}
   const vert=`attribute vec2 a_position;void main(){gl_Position=vec4(a_position,0.,1.);}`;
   const frag=`
 precision highp float;
@@ -27,82 +23,85 @@ uniform vec2 u_resolution;
 uniform float u_time;
 float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453123);}
 float noise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);float a=hash(i),b=hash(i+vec2(1.,0.)),c=hash(i+vec2(0.,1.)),d=hash(i+vec2(1.,1.));return mix(mix(a,b,f.x),mix(c,d,f.x),f.y);}
-float fbm(vec2 p){float v=0.,a=.53;mat2 m=mat2(.80,.60,-.60,.80);for(int i=0;i<6;i++){v+=a*noise(p);p=m*p*2.03+vec2(17.1,9.2);a*=.49;}return v;}
+float fbm(vec2 p){float v=0.,a=.52;mat2 m=mat2(.80,.60,-.60,.80);for(int i=0;i<6;i++){v+=a*noise(p);p=m*p*2.04+vec2(17.1,9.2);a*=.49;}return v;}
 float gauss(vec2 p,vec2 c,vec2 s){vec2 d=(p-c)/s;return exp(-dot(d,d));}
 void main(){
   vec2 uv=gl_FragCoord.xy/u_resolution.xy;
   float asp=u_resolution.x/u_resolution.y;
   vec2 p=(uv-.5)*vec2(asp,1.0);
-  float t=u_time*.014;
+  float t=u_time*.010;
 
-  vec2 q=vec2(fbm(p*1.12+vec2(t*.025,-t*.015)),fbm(p*1.12+vec2(5.2,1.4)-vec2(t*.018,t*.012)));
-  vec2 r=vec2(fbm(p*1.72+2.75*q+vec2(1.8,8.1)),fbm(p*1.72+2.75*q+vec2(8.3,2.7)));
-  float n1=fbm(p*2.15+2.20*r+vec2(t*.018,-t*.010));
-  float n2=fbm(p*3.55+1.35*q-1.15*r-vec2(t*.012,t*.009));
-  float fine=fbm(p*7.2+1.8*r+vec2(t*.028,-t*.014));
+  vec2 q=vec2(fbm(p*1.18+vec2(t*.018,-t*.010)),fbm(p*1.18+vec2(5.3,1.4)-vec2(t*.013,t*.009)));
+  vec2 r=vec2(fbm(p*1.95+2.6*q+vec2(1.8,8.1)),fbm(p*1.95+2.6*q+vec2(8.4,2.8)));
+  float n1=fbm(p*2.35+2.10*r+vec2(t*.014,-t*.008));
+  float n2=fbm(p*4.0+1.25*q-1.20*r-vec2(t*.010,t*.007));
+  float fine=fbm(p*8.5+1.70*r+vec2(t*.022,-t*.011));
 
-  float curve=p.y-(0.17*p.x+0.075*sin(p.x*2.15+0.8));
-  float width=.30+.055*(n1-.5);
-  float band=exp(-pow(abs(curve)/width,1.65));
-  float halo=exp(-pow(abs(curve)/(.58+.08*q.x),1.55));
+  float curve=p.y-(0.22*p.x+0.08*sin(p.x*2.0+0.5));
+  float narrow=exp(-pow(abs(curve)/(.19+.035*n1),1.9));
+  float medium=exp(-pow(abs(curve)/(.36+.05*q.x),1.7));
+  float halo=exp(-pow(abs(curve)/(.58+.06*q.y),1.55));
 
-  float leftLobe=gauss(p,vec2(-.72,-.14),vec2(.78,.42));
-  float mainLobe=gauss(p,vec2(.34,.08),vec2(.88,.46));
-  float rightLobe=gauss(p,vec2(1.02,.24),vec2(.72,.42));
-  float continuity=clamp(.60*band+.24*halo+.22*leftLobe+.32*mainLobe+.18*rightLobe,0.,1.);
+  float left=gauss(p,vec2(-.72,-.15),vec2(.70,.28));
+  float center=gauss(p,vec2(.28,.05),vec2(.82,.30));
+  float right=gauss(p,vec2(.98,.22),vec2(.64,.26));
+  float envelope=clamp(.52*medium+.20*halo+.18*left+.30*center+.16*right,0.,1.);
 
-  float structure=.58+.62*smoothstep(.30,.72,n1+.16*n2);
-  float cloud=clamp(continuity*structure,0.,1.);
-  float wisps=smoothstep(.48,.76,fine+.18*n2)*halo;
-  float veins=smoothstep(.50,.77,fbm(p*4.7-1.7*q+2.3*r))*cloud;
-  float dust=smoothstep(.54,.78,fbm(p*3.05+2.2*q-1.4*r+vec2(4.2,1.7)))*cloud;
+  float broken=.62+.55*smoothstep(.38,.72,n1+.12*n2);
+  float cloud=clamp(envelope*broken,0.,1.);
+  float filament=smoothstep(.53,.77,fine+.20*n2)*narrow;
+  float veins=smoothstep(.52,.76,fbm(p*5.4-1.5*q+2.2*r))*medium;
+  float dust=smoothstep(.50,.74,fbm(p*3.4+2.2*q-1.55*r+vec2(4.2,1.7)))*medium;
 
-  float edgeUpper=smoothstep(.05,.30,curve)*exp(-pow(abs(curve)/.36,1.8));
-  float edgeLower=smoothstep(.05,.30,-curve)*exp(-pow(abs(curve)/.39,1.8));
-  float pinkField=smoothstep(.35,.74,fbm(p*1.85+vec2(-3.7,2.1)-1.5*r))*cloud;
-  float cyanField=smoothstep(.42,.76,fbm(p*2.15+vec2(3.0,5.4)+1.7*q))*cloud;
-  float roseField=smoothstep(.58,.82,n2)*mainLobe*band;
+  float pinkField=smoothstep(.40,.76,fbm(p*2.05+vec2(-3.8,2.0)-1.4*r))*cloud;
+  float cyanField=smoothstep(.44,.76,fbm(p*2.35+vec2(3.1,5.5)+1.8*q))*cloud;
+  float roseField=smoothstep(.58,.82,n2)*center*narrow;
+  float whiteCore=gauss(p,vec2(.42,.10),vec2(.22,.085))*narrow;
 
-  vec3 deep=vec3(.008,.018,.075);
-  vec3 navy=vec3(.018,.070,.190);
-  vec3 blue=vec3(.035,.165,.420);
-  vec3 violet=vec3(.245,.070,.500);
-  vec3 purple=vec3(.470,.105,.700);
-  vec3 magenta=vec3(.820,.185,.690);
-  vec3 rose=vec3(1.000,.420,.670);
-  vec3 cyan=vec3(.070,.620,.900);
-  vec3 ice=vec3(.500,.880,1.000);
-  vec3 warm=vec3(1.000,.720,.800);
+  vec3 deep=vec3(.005,.015,.060);
+  vec3 navy=vec3(.014,.055,.165);
+  vec3 blue=vec3(.030,.155,.400);
+  vec3 violet=vec3(.210,.055,.430);
+  vec3 purple=vec3(.430,.090,.650);
+  vec3 magenta=vec3(.790,.150,.660);
+  vec3 rose=vec3(1.000,.390,.670);
+  vec3 cyan=vec3(.050,.610,.900);
+  vec3 aqua=vec3(.180,.790,.960);
+  vec3 ice=vec3(.650,.920,1.000);
+  vec3 warm=vec3(1.000,.690,.760);
 
   vec3 col=deep;
-  col+=navy*(.34+.26*uv.x);
-  col+=blue*halo*.16;
-  col+=violet*cloud*.42;
-  col+=purple*cloud*veins*.50;
-  col+=magenta*pinkField*.62;
-  col+=rose*roseField*.48;
-  col+=cyan*(cyanField*.54+edgeUpper*.34);
-  col+=ice*pow(cyanField,2.2)*.18;
-  col+=magenta*edgeLower*.20;
-  col+=vec3(.40,.18,.74)*wisps*.28;
+  col+=navy*(.22+.22*uv.x);
+  col+=blue*halo*.10;
+  col+=violet*cloud*.22;
+  col+=purple*veins*.32;
+  col+=magenta*pinkField*.48;
+  col+=rose*roseField*.42;
+  col+=cyan*cyanField*.48;
+  col+=aqua*pow(cyanField,2.2)*.20;
+  col+=ice*filament*.16;
+  col+=magenta*filament*pinkField*.14;
 
-  float core=gauss(p,vec2(.30,.06),vec2(.33,.16))*cloud;
-  col+=warm*pow(core,2.2)*.38;
-  col+=ice*pow(core,4.0)*.18;
+  float hot=pow(whiteCore,2.8);
+  col+=warm*hot*.58;
+  col+=ice*pow(hot,1.7)*.44;
 
-  col*=1.0-.36*dust;
-  col+=vec3(.15,.05,.27)*dust*.10;
+  col*=1.0-.50*dust;
+  col+=vec3(.05,.015,.11)*dust*.10;
 
-  vec2 sp=uv*u_resolution/2.2;
+  float rim=abs(dFdx(cloud))+abs(dFdy(cloud));
+  col+=mix(cyan,rose,pinkField)*rim*1.45;
+
+  vec2 sp=uv*u_resolution/2.25;
   float s=hash(floor(sp));
-  float star=step(.9972,s)*pow(hash(floor(sp)+19.3),5.0);
-  float star2=step(.99915,hash(floor(sp*.46)+7.2));
-  col+=vec3(.72,.86,1.0)*star*.72;
-  col+=vec3(.95,.79,1.0)*star2*1.20;
+  float star=step(.9974,s)*pow(hash(floor(sp)+19.3),4.5);
+  float star2=step(.9993,hash(floor(sp*.48)+7.2));
+  col+=vec3(.72,.86,1.0)*star*.62;
+  col+=vec3(.96,.83,1.0)*star2*.90;
 
-  float vig=1.0-.19*dot(uv-.5,uv-.5);
+  float vig=1.0-.18*dot(uv-.5,uv-.5);
   col*=vig;
-  col=pow(max(col,0.0),vec3(.90));
+  col=pow(max(col,0.0),vec3(.92));
   gl_FragColor=vec4(col,1.0);
 }`;
   function shader(type,src){const s=gl.createShader(type);gl.shaderSource(s,src);gl.compileShader(s);if(!gl.getShaderParameter(s,gl.COMPILE_STATUS))throw new Error(gl.getShaderInfoLog(s));return s;}
@@ -113,11 +112,11 @@ void main(){
   const start=performance.now();function frame(now){gl.uniform2f(res,canvas.width,canvas.height);gl.uniform1f(time,reduced?0:(now-start)/1000);gl.drawArrays(gl.TRIANGLES,0,3);requestAnimationFrame(frame);}requestAnimationFrame(frame);
 })();
 (()=>{
-  const canvas=document.getElementById('stars'),ctx=canvas.getContext('2d',{alpha:true}),reduced=matchMedia('(prefers-reduced-motion: reduce)').matches,DPR=Math.min(devicePixelRatio||1,2);let w=0,h=0,cx=0,cy=0,particles=[],raf=0,last=performance.now();const count=reduced?110:460;
-  function make(far=false){const span=Math.max(w,h);return{x:(Math.random()-.5)*span*1.95,y:(Math.random()-.5)*span*1.34,z:far?1160+Math.random()*260:40+Math.random()*1360,pz:0,r:.22+Math.random()*1.10,a:.14+Math.random()*.72,t:Math.random(),tw:Math.random()*6.283};}
+  const canvas=document.getElementById('stars'),ctx=canvas.getContext('2d',{alpha:true}),reduced=matchMedia('(prefers-reduced-motion: reduce)').matches,DPR=Math.min(devicePixelRatio||1,2);let w=0,h=0,cx=0,cy=0,particles=[],raf=0,last=performance.now();const count=reduced?95:360;
+  function make(far=false){const span=Math.max(w,h);return{x:(Math.random()-.5)*span*1.95,y:(Math.random()-.5)*span*1.34,z:far?1180+Math.random()*260:45+Math.random()*1390,pz:0,r:.20+Math.random()*.95,a:.12+Math.random()*.66,t:Math.random(),tw:Math.random()*6.283};}
   function seed(){particles=Array.from({length:count},()=>make());}
-  function resize(){w=innerWidth;h=innerHeight;cx=w*.53;cy=h*.46;canvas.width=Math.floor(w*DPR);canvas.height=Math.floor(h*DPR);canvas.style.width=w+'px';canvas.style.height=h+'px';ctx.setTransform(DPR,0,0,DPR,0,0);seed();}
-  function draw(p,dt,now){p.pz=p.z;p.z-=(reduced?.24:1.04)*dt*(.68+(1420-p.z)/760);if(p.z<16)Object.assign(p,make(true));const f=560,sx=cx+p.x/p.z*f,sy=cy+p.y/p.z*f,px=cx+p.x/Math.max(p.pz,20)*f,py=cy+p.y/Math.max(p.pz,20)*f;if(sx<-100||sx>w+100||sy<-100||sy>h+100){Object.assign(p,make(true));return;}const d=1-Math.min(p.z/1420,1),tw=.83+Math.sin(now*.0017+p.tw)*.17,size=p.r*(.42+d*3.15),a=p.a*(.18+d*.88)*tw;let rgb='220,233,255';if(p.t>.75)rgb='151,223,255';else if(p.t<.18)rgb='255,200,244';if(d>.54&&!reduced){ctx.beginPath();ctx.moveTo(px,py);ctx.lineTo(sx,sy);ctx.strokeStyle=`rgba(${rgb},${a*.58*d})`;ctx.lineWidth=Math.max(.35,size*.56);ctx.stroke();}ctx.beginPath();ctx.arc(sx,sy,size,0,6.283);ctx.fillStyle=`rgba(${rgb},${a})`;ctx.shadowBlur=d>.60?4+d*11:0;ctx.shadowColor=`rgba(${rgb},${a})`;ctx.fill();ctx.shadowBlur=0;}
+  function resize(){w=innerWidth;h=innerHeight;cx=w*.54;cy=h*.46;canvas.width=Math.floor(w*DPR);canvas.height=Math.floor(h*DPR);canvas.style.width=w+'px';canvas.style.height=h+'px';ctx.setTransform(DPR,0,0,DPR,0,0);seed();}
+  function draw(p,dt,now){p.pz=p.z;p.z-=(reduced?.22:.94)*dt*(.68+(1450-p.z)/790);if(p.z<16)Object.assign(p,make(true));const f=565,sx=cx+p.x/p.z*f,sy=cy+p.y/p.z*f,px=cx+p.x/Math.max(p.pz,20)*f,py=cy+p.y/Math.max(p.pz,20)*f;if(sx<-100||sx>w+100||sy<-100||sy>h+100){Object.assign(p,make(true));return;}const d=1-Math.min(p.z/1450,1),tw=.84+Math.sin(now*.0017+p.tw)*.16,size=p.r*(.38+d*2.85),a=p.a*(.15+d*.82)*tw;let rgb='220,233,255';if(p.t>.76)rgb='145,220,255';else if(p.t<.18)rgb='255,199,241';if(d>.58&&!reduced){ctx.beginPath();ctx.moveTo(px,py);ctx.lineTo(sx,sy);ctx.strokeStyle=`rgba(${rgb},${a*.50*d})`;ctx.lineWidth=Math.max(.3,size*.50);ctx.stroke();}ctx.beginPath();ctx.arc(sx,sy,size,0,6.283);ctx.fillStyle=`rgba(${rgb},${a})`;ctx.shadowBlur=d>.64?4+d*10:0;ctx.shadowColor=`rgba(${rgb},${a})`;ctx.fill();ctx.shadowBlur=0;}
   function frame(now){const dt=Math.min((now-last)/16.6667,2.2);last=now;ctx.clearRect(0,0,w,h);for(const p of particles)draw(p,dt,now);raf=requestAnimationFrame(frame);}addEventListener('resize',resize,{passive:true});document.addEventListener('visibilitychange',()=>{if(document.hidden)cancelAnimationFrame(raf);else{last=performance.now();raf=requestAnimationFrame(frame);}});resize();raf=requestAnimationFrame(frame);
 })();
 </script>
