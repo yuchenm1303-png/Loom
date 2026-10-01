@@ -116,6 +116,31 @@ function isAntLingSelection(selection: string): boolean {
   return value === ANT_LING_SELECTION || value.startsWith(ANT_LING_SELECTION_PREFIX);
 }
 
+// TTL freshness must use a monotonic clock. Date.now() can jump backwards after
+// NTP corrections, suspend/resume or a manual clock change and accidentally pin
+// a cache entry as fresh. Keep Date.now() only for the user-facing refresh label.
+function monotonicNow(): number {
+  return typeof performance !== "undefined" && typeof performance.now === "function"
+    ? performance.now()
+    : Number(process.hrtime.bigint() / 1_000_000n);
+}
+
+interface LaunchCacheEntry {
+  // Bridge-owned values (including credentials) are stable until the selection
+  // is explicitly invalidated. Catalog-owned fields are projected into `spec`.
+  base: ModelLaunchSpec;
+  spec: ModelLaunchSpec;
+  // Explicit user choices must survive a provider-catalog refresh.
+  modelOverride?: string;
+  reasoningOverride?: ModelReasoningState | null;
+}
+
+const EMPTY_REGISTRY: RegistrySnapshot = {
+  primary: null as unknown as ModelProfile,
+  profiles: [],
+  activeModelId: null,
+};
+
 interface AntLingRegistrySnapshot {
   profiles: ModelProfile[];
   activeSelection: string | null;
@@ -126,8 +151,9 @@ export class DesktopModelManager {
   private recentModels: string[] = [];
   private registryCache: RegistrySnapshot | null = null;
   private registryCacheAt = 0;
+  private registryCacheMonotonicAt = 0;
   private metadataCache: ModelMetadataSnapshot | null = null;
-  private launchCache = new Map<string, ModelLaunchSpec>();
+  private launchCache = new Map<string, LaunchCacheEntry>();
   private catalogRefreshPromise: Promise<ModelSnapshot> | null = null;
   private readonly catalogTtlMs: number;
 
@@ -241,33 +267,88 @@ export class DesktopModelManager {
     const merged = this.preserveLastKnownProviderCatalog(this.mergeRegistry(registry, metadata));
     this.registryCache = merged;
     this.registryCacheAt = Date.now();
+    this.registryCacheMonotonicAt = monotonicNow();
 
     const currentSelection = this.currentSpec?.selection ?? "";
     const liveSelections = new Set(merged.profiles.map((profile) => profile.selection));
-    for (const selection of [...this.launchCache.keys()]) {
+    for (const [selection, entry] of [...this.launchCache.entries()]) {
       if (selection !== currentSelection && !liveSelections.has(selection)) {
         this.launchCache.delete(selection);
+        continue;
       }
+      const refreshed = this.refreshLaunchEntry(entry, merged, metadata);
+      this.launchCache.set(selection, refreshed);
+      // Keep the active runtime spec coherent too. The old patch refreshed only
+      // launchCache, but main.ts reads `current` directly when starting/switching
+      // the runtime, so leaving currentSpec stale could retain old limits/auth.
+      if (selection === currentSelection) this.currentSpec = refreshed.spec;
     }
     return merged;
   }
 
+  private refreshLaunchEntry(
+    entry: LaunchCacheEntry,
+    registry: RegistrySnapshot,
+    metadata: ModelMetadataSnapshot,
+  ): LaunchCacheEntry {
+    const projected = this.projectLaunchSpec(entry.base, registry, metadata);
+    return {
+      ...entry,
+      spec: {
+        ...projected,
+        ...(entry.modelOverride ? { model: entry.modelOverride } : {}),
+        ...(entry.reasoningOverride !== undefined ? { reasoning: entry.reasoningOverride } : {}),
+      },
+    };
+  }
+
+  private projectLaunchSpec(
+    base: ModelLaunchSpec,
+    registry: RegistrySnapshot,
+    metadata: ModelMetadataSnapshot,
+  ): ModelLaunchSpec {
+    const safe = metadata.profiles.find((profile) => profile.selection === base.selection);
+    const catalog = registry.profiles.find((profile) => profile.selection === base.selection);
+    return {
+      ...base,
+      groupId: catalog?.groupId ?? base.groupId,
+      groupName: catalog?.groupName ?? base.groupName,
+      groupOrder: catalog?.groupOrder ?? base.groupOrder,
+      family: catalog?.family ?? base.family,
+      protocol: catalog?.protocol ?? base.protocol,
+      configured: catalog?.configured ?? base.configured,
+      available: catalog?.available ?? base.available ?? true,
+      catalogSource: catalog?.catalogSource ?? base.catalogSource,
+      contextLimits: catalog?.contextLimits ?? base.contextLimits,
+      reasoning: catalog?.reasoning ?? base.reasoning ?? null,
+      vision: safe?.vision ?? catalog?.vision ?? base.vision ?? true,
+      authMode: catalog?.authMode ?? base.authMode,
+    };
+  }
+
   private catalogFresh(): boolean {
-    return Boolean(
-      this.registryCache
-      && this.registryCacheAt
-      && Date.now() - this.registryCacheAt < this.catalogTtlMs
-    );
+    if (!this.registryCache || !this.registryCacheMonotonicAt) return false;
+    return monotonicNow() - this.registryCacheMonotonicAt < this.catalogTtlMs;
   }
 
   registry(forceRefresh = false): RegistrySnapshot {
-    if (!forceRefresh && this.registryCache) return this.registryCache;
+    // Enforce the same TTL on synchronous callers as listSnapshot(). Previously
+    // this path returned any cached registry forever, making the TTL decorative.
+    if (!forceRefresh && this.registryCache && this.catalogFresh()) return this.registryCache;
     const registry = this.mergeAntLingRegistry(
       this.runBridge<RegistrySnapshot>("list", {}),
       this.antLingRegistry(),
     );
     const metadata = this.metadata(forceRefresh);
     return this.adoptRegistry(registry, metadata);
+  }
+
+  private invalidateCaches(launchSelections: readonly string[] = []): void {
+    this.registryCache = null;
+    this.registryCacheAt = 0;
+    this.registryCacheMonotonicAt = 0;
+    this.metadataCache = null;
+    for (const selection of launchSelections) this.launchCache.delete(selection);
   }
 
   private snapshotFromRegistry(spec: ModelLaunchSpec | null, registry: RegistrySnapshot): ModelSnapshot {
@@ -381,37 +462,18 @@ export class DesktopModelManager {
 
   resolve(selection: string): ModelLaunchSpec {
     const cached = this.launchCache.get(selection);
-    if (cached) return cached;
-    const resolved = isAntLingSelection(selection)
+    if (cached) return cached.spec;
+    const base = isAntLingSelection(selection)
       ? this.runPythonBridge<ModelLaunchSpec>("loom_ant_ling_bridge.py", "resolve", { selection })
       : this.runBridge<ModelLaunchSpec>("resolve", { selection });
-    const safe = this.metadata().profiles.find((profile) => profile.selection === selection);
-    const catalog = this.registryCache?.profiles.find((profile) => profile.selection === selection);
-    const next = {
-      ...resolved,
-      groupId: catalog?.groupId ?? resolved.groupId,
-      groupName: catalog?.groupName ?? resolved.groupName,
-      groupOrder: catalog?.groupOrder ?? resolved.groupOrder,
-      family: catalog?.family ?? resolved.family,
-      protocol: catalog?.protocol ?? resolved.protocol,
-      configured: catalog?.configured ?? resolved.configured,
-      available: catalog?.available ?? resolved.available ?? true,
-      catalogSource: catalog?.catalogSource ?? resolved.catalogSource,
-      contextLimits: catalog?.contextLimits ?? resolved.contextLimits,
-      reasoning: catalog?.reasoning ?? resolved.reasoning ?? null,
-      vision: safe?.vision ?? catalog?.vision ?? resolved.vision ?? true,
-      authMode: catalog?.authMode ?? resolved.authMode,
-    };
-    this.launchCache.set(selection, next);
-    return next;
+    const spec = this.projectLaunchSpec(base, this.registryCache ?? EMPTY_REGISTRY, this.metadata());
+    this.launchCache.set(selection, { base, spec });
+    return spec;
   }
 
   add(input: AddModelInput): ModelProfile {
     const profile = this.runBridge<ModelProfile>("save", input as unknown as Record<string, unknown>);
-    this.registryCache = null;
-    this.registryCacheAt = 0;
-    this.metadataCache = null;
-    this.launchCache.delete(profile.selection);
+    this.invalidateCaches([profile.selection]);
     return profile;
   }
 
@@ -419,10 +481,7 @@ export class DesktopModelManager {
     const selection = String(input.selection || "").trim();
     if (!selection) throw new Error("Model profile is required");
     const profile = this.runAdmin<ModelProfile>("update", input as unknown as Record<string, unknown>);
-    this.registryCache = null;
-    this.registryCacheAt = 0;
-    this.metadataCache = null;
-    this.launchCache.delete(selection);
+    this.invalidateCaches([selection]);
     if (this.currentSpec?.selection === selection) {
       this.currentSpec = this.resolve(selection);
     }
@@ -439,10 +498,7 @@ export class DesktopModelManager {
     const value = String(selection || "").trim();
     if (!value) throw new Error("Model profile is required");
     const registry = this.runBridge<RegistrySnapshot>("delete", { selection: value });
-    this.registryCache = null;
-    this.registryCacheAt = 0;
-    this.metadataCache = null;
-    this.launchCache.delete(value);
+    this.invalidateCaches([value]);
     if (this.currentSpec?.selection === value) this.currentSpec = null;
     return registry;
   }
@@ -475,20 +531,11 @@ export class DesktopModelManager {
       throw new Error("Ant Ling built-in models use your Loom account. Use Add connection for your own Ant Ling API key.");
     }
     this.runBridge<{ provider: string; configured: boolean }>("set-provider-key", { provider: value, apiKey: secret });
-    this.registryCache = null;
-    this.registryCacheAt = 0;
-    this.metadataCache = null;
-    for (const key of [...this.launchCache.keys()]) {
-      if (
-        key.startsWith("builtin:opencode-go:")
-        || key === "builtin:ant-ling"
-        || key.startsWith("builtin:ant-ling:")
-        || key.startsWith("managed:")
-        || key === "builtin:cqu"
-      ) {
-        this.launchCache.delete(key);
-      }
-    }
+    // A resolved launch base embeds credentials. Any selection may therefore be
+    // stale after a key rotation; a hardcoded provider-prefix list is unsafe.
+    const currentSelection = this.currentSpec?.selection ?? null;
+    this.invalidateCaches([...this.launchCache.keys()]);
+    if (currentSelection) this.currentSpec = this.resolve(currentSelection);
     return this.snapshot(true);
   }
 
@@ -509,7 +556,13 @@ export class DesktopModelManager {
         });
     if (!profile.reasoning) throw new Error("Selected model does not expose reasoning controls");
     this.currentSpec = { ...current, reasoning: profile.reasoning };
-    this.launchCache.set(current.selection, this.currentSpec);
+    const entry = this.launchCache.get(current.selection);
+    this.launchCache.set(current.selection, {
+      base: entry?.base ?? this.currentSpec,
+      spec: this.currentSpec,
+      ...(entry?.modelOverride ? { modelOverride: entry.modelOverride } : {}),
+      reasoningOverride: profile.reasoning,
+    });
     if (this.registryCache) {
       this.registryCache = {
         ...this.registryCache,
@@ -527,7 +580,6 @@ export class DesktopModelManager {
     const next = this.resolve(selection);
     this.rememberCurrentModel(next.model);
     this.currentSpec = next;
-    this.launchCache.set(selection, next);
     return next;
   }
 
@@ -561,7 +613,13 @@ export class DesktopModelManager {
       reasoning: described.reasoning ?? null,
     };
     this.currentSpec = next;
-    this.launchCache.set(next.selection, next);
+    const entry = this.launchCache.get(next.selection);
+    this.launchCache.set(next.selection, {
+      base: entry?.base ?? next,
+      spec: next,
+      modelOverride: described.model || value,
+      reasoningOverride: described.reasoning ?? null,
+    });
     return next;
   }
 

@@ -43,6 +43,11 @@ def test_desktop_model_catalog_has_ttl_and_async_refresh_path() -> None:
     assert "async listSnapshot(forceRefresh = false)" in manager
     assert "this.runBridgeAsync<RegistrySnapshot>" in manager
     assert "this.catalogRefreshPromise" in manager
+    assert "registryCacheMonotonicAt" in manager
+    assert "monotonicNow() - this.registryCacheMonotonicAt < this.catalogTtlMs" in manager
+    registry_start = manager.index("  registry(forceRefresh = false): RegistrySnapshot {")
+    registry_end = manager.index("  private invalidateCaches", registry_start)
+    assert "this.catalogFresh()" in manager[registry_start:registry_end]
     assert 'modelManager.listSnapshot(Boolean(forceRefresh))' in main
     assert 'listModels: (forceRefresh = false)' in preload
 
@@ -100,10 +105,14 @@ def test_discovered_metadata_is_carried_into_launch_specs() -> None:
     resolve_start = manager.index("  resolve(selection: string): ModelLaunchSpec {")
     resolve_end = manager.index("  add(input: AddModelInput)", resolve_start)
     block = manager[resolve_start:resolve_end]
-    assert "const catalog = this.registryCache?.profiles.find" in block
-    assert "contextLimits: catalog?.contextLimits ?? resolved.contextLimits" in block
-    assert "reasoning: catalog?.reasoning ?? resolved.reasoning ?? null" in block
-    assert "vision: safe?.vision ?? catalog?.vision ?? resolved.vision ?? true" in block
+    assert "this.projectLaunchSpec(" in block
+    projection_start = manager.index("  private projectLaunchSpec(")
+    projection_end = manager.index("  private catalogFresh()", projection_start)
+    projection = manager[projection_start:projection_end]
+    assert "contextLimits: catalog?.contextLimits ?? base.contextLimits" in projection
+    assert "reasoning: catalog?.reasoning ?? base.reasoning ?? null" in projection
+    assert "vision: safe?.vision ?? catalog?.vision ?? base.vision ?? true" in projection
+    assert "authMode: catalog?.authMode ?? base.authMode" in projection
 
 
 def test_transient_catalog_fallback_keeps_last_authoritative_provider_rows() -> None:
