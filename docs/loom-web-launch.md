@@ -170,3 +170,15 @@ Validated: frontend type check/build, public health endpoint, signed-in and
 signed-out browser layouts at 1440/900/390px, register/password controls, and
 original hover/press transforms. Auth checks use a mocked account; no real
 credentials or Host operations are required for presentation verification.
+
+### Composition revision
+
+The portal now uses two unequal, vertically offset glass surfaces. Introduction
+and download share the main surface; Host status and account/device details
+share the smaller side surface. Account height follows its content. The headline
+uses sans-serif and serif italic lines, with the original words preserved.
+This avoids stretching sparse account information into an oversized card.
+Surface styles and original hover/press rules remain supplied by Smirel.
+
+Verified signed-in and signed-out layouts at 2557, 1920, 1440, 900 and 390px,
+plus register/password controls, original hover/press transforms, and healthz.
