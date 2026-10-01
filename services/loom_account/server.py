@@ -25,6 +25,7 @@ from .search import SearchServiceError, search as shared_search
 
 _EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 _PASSWORD_ITERATIONS = 600_000
+_PAIR_TTL_SECONDS = 120
 
 # Peers allowed to set the client address through a forwarding header. The
 # service is meant to sit behind a TLS-terminating reverse proxy, so loopback is
@@ -658,6 +659,8 @@ class AccountApplication:
     def __init__(self, store: AccountStore) -> None:
         self.store = store
         self.limiter = SlidingWindowLimiter()
+        self._pairing_guard = threading.Lock()
+        self._pairing_tickets: dict[str, tuple[float, dict[str, Any]]] = {}
 
     def register(self, body: dict[str, Any], client_key: str) -> dict[str, Any]:
         self.limiter.check(f"register:{client_key}", 5, 60)
@@ -689,6 +692,30 @@ class AccountApplication:
                 "Sign in to continue.",
             )
         return {"user": self.store.user_for_access_token(token.strip())}
+
+    def issue_device_pair(self, authorization: str, client_key: str) -> dict[str, Any]:
+        user = self.me(authorization)["user"]
+        user_id = int(user["id"])
+        self.limiter.check(f"pair-issue:{user_id}:{client_key}", 20, 60)
+        ticket = _new_token("loom_pair")
+        now = time.monotonic()
+        with self._pairing_guard:
+            self._pairing_tickets = {key: value for key, value in self._pairing_tickets.items() if value[0] > now}
+            self._pairing_tickets[ticket] = (now + _PAIR_TTL_SECONDS, dict(user))
+        return {"pairing_ticket": ticket, "expires_in": _PAIR_TTL_SECONDS}
+
+    def exchange_device_pair(self, body: dict[str, Any], client_key: str) -> dict[str, Any]:
+        self.limiter.check(f"pair-exchange:{client_key}", 30, 60)
+        ticket = str(body.get("pairing_ticket") or "").strip()
+        if not ticket.startswith("loom_pair_") or len(ticket) > 256:
+            raise AccountError(HTTPStatus.UNAUTHORIZED, "INVALID_PAIRING_TICKET", "This Loom Host pairing request is no longer valid.")
+        now = time.monotonic()
+        with self._pairing_guard:
+            entry = self._pairing_tickets.pop(ticket, None)
+        if entry is None or entry[0] <= now:
+            raise AccountError(HTTPStatus.UNAUTHORIZED, "INVALID_PAIRING_TICKET", "This Loom Host pairing request is no longer valid.")
+        user = entry[1]
+        return {**self.store.create_session(int(user["id"])), "user": user}
 
     def _admin(self, authorization: str) -> dict[str, Any]:
         user = self.me(authorization)["user"]
@@ -830,6 +857,8 @@ class AccountRequestHandler(BaseHTTPRequestHandler):
             return self.application.admin_set_user_status_by_id(int(match.group(1)), "disabled" if match.group(2) == "disable" else "active", authorization)
         if match := re.fullmatch(r"/v1/admin/sessions/([^/]+)/revoke", path):
             return self.application.admin_revoke_session(match.group(1), authorization)
+        if path == "/v1/auth/device-pair/issue": return self.application.issue_device_pair(authorization, self._client_key())
+        if path == "/v1/auth/device-pair/exchange": return self.application.exchange_device_pair(body, self._client_key())
         if path == "/v1/admin/users/status": return self.application.admin_set_user_status(body, authorization)
         if path == "/v1/admin/users/role": return self.application.admin_set_user_role(body, authorization)
         if path == "/v1/admin/users/revoke-sessions": return self.application.admin_revoke_user_sessions(body, authorization)

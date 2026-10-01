@@ -56,7 +56,6 @@
     "@types/node": "^22.15.0",
     "@types/react": "^19.1.10",
     "@types/react-dom": "^19.1.7",
-    "@vitejs/plugin-react": "^4.4.1",
     "concurrently": "^9.2.1",
     "electron": "^36.4.0",
     "electron-builder": "^26.15.3",
@@ -101,7 +100,7 @@
         "to": "browser-current-tab"
       }
     ],
-    "artifactName": "Loom-Setup-${version}-${arch}.${ext}",
+    "artifactName": "Loom-Setup-x64.${ext}",
     "win": {
       "target": [
         {
@@ -115,8 +114,9 @@
       "icon": "build/icon.png"
     },
     "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
+      "oneClick": true,
+      "allowToChangeInstallationDirectory": false,
+      "runAfterFinish": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Loom"

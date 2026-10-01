@@ -5,9 +5,12 @@ Summary: Personal general-purpose tool-using AI agent
 Requires-Python: >=3.11
 Description-Content-Type: text/markdown
 Requires-Dist: openai<3,>=1
+Requires-Dist: httpx<1,>=0.27
 Requires-Dist: keyring<26,>=25
 Requires-Dist: PyYAML<7,>=6
 Requires-Dist: jsonschema<5,>=4.23
+Requires-Dist: pypdf<7,>=5
+Requires-Dist: mcp<3,>=2.1
 Requires-Dist: pywinpty<4,>=3.0.5; platform_system == "Windows"
 Provides-Extra: dev
 Requires-Dist: pytest<9,>=8; extra == "dev"
@@ -15,13 +18,19 @@ Provides-Extra: browser
 Requires-Dist: browser-use<0.14,>=0.13.10; extra == "browser"
 Provides-Extra: mcp
 Requires-Dist: mcp<3,>=2.1; extra == "mcp"
-Provides-Extra: desktop
-Requires-Dist: PySide6<7,>=6.7; extra == "desktop"
 Provides-Extra: computer
 Requires-Dist: Pillow<13,>=11; extra == "computer"
-Requires-Dist: pyautogui<0.10,>=0.9.54; extra == "computer"
-Requires-Dist: pywinauto<0.7,>=0.6.9; extra == "computer"
-Requires-Dist: pywin32<400,>=306; extra == "computer"
+Requires-Dist: psutil<8,>=5.9; platform_system == "Windows" and extra == "computer"
+Requires-Dist: pyautogui<0.10,>=0.9.54; platform_system == "Windows" and extra == "computer"
+Requires-Dist: pywinauto<0.7,>=0.6.9; platform_system == "Windows" and extra == "computer"
+Requires-Dist: pywin32<400,>=306; platform_system == "Windows" and extra == "computer"
+Provides-Extra: desktop-agent
+Requires-Dist: browser-use<0.14,>=0.13.10; extra == "desktop-agent"
+Requires-Dist: Pillow<13,>=11; extra == "desktop-agent"
+Requires-Dist: psutil<8,>=5.9; platform_system == "Windows" and extra == "desktop-agent"
+Requires-Dist: pyautogui<0.10,>=0.9.54; platform_system == "Windows" and extra == "desktop-agent"
+Requires-Dist: pywinauto<0.7,>=0.6.9; platform_system == "Windows" and extra == "desktop-agent"
+Requires-Dist: pywin32<400,>=306; platform_system == "Windows" and extra == "desktop-agent"
 
 # Loom
 
@@ -333,14 +342,17 @@ Explicit user/API controls are available in the CLI:
 
 ## Web search
 
-Loom supports external public-web search through credential-backed provider adapters. Search is intentionally separate from arbitrary subprocess network access and is classified as a `SENSITIVE` tool effect.
+Loom supports external public-web search as a first-class `web_search` tool. Search is intentionally separate from arbitrary subprocess network access and is classified as a `SENSITIVE` tool effect.
+
+Desktop/source builds default to a keyless DuckDuckGo public-search adapter, so ordinary web search works without creating a provider account. Operators can still select a credential-backed provider for more predictable API behavior.
 
 Supported providers:
 
-- Brave Search API
-- Tavily Search API
+- DuckDuckGo public search — built-in default, no API key required
+- Brave Search API — optional
+- Tavily Search API — optional
 
-The easiest setup auto-detects a provider-specific key:
+To use Brave or Tavily, set a provider-specific key:
 
 ```powershell
 $env:BRAVE_SEARCH_API_KEY="your-brave-key"
@@ -374,7 +386,13 @@ Disable search explicitly with:
 $env:LOOM_WEB_SEARCH_PROVIDER="off"
 ```
 
-When no provider is configured, Loom exposes only `web_search_status`; the `web_search` tool itself is absent from the model's `ToolRouter`. When configured, `web_search` returns ranked titles, URLs, source hosts, and snippets.
+Unless explicitly disabled, Loom exposes `web_search` using the built-in DuckDuckGo provider when no Brave/Tavily credentials are present. `web_search_status` reports the active provider. Set `LOOM_WEB_SEARCH_PROVIDER=off` to remove external search from the runtime. Search results contain ranked titles, URLs, source hosts, and snippets.
+
+For reliable desktop search, open **Settings → Web Search**, select **Tavily** or **Brave**, save that service's API key, and run **Test search**. Keys are stored in the OS credential store. The **Auto** option respects explicit environment configuration, then prefers a saved Tavily key or Brave key before using DuckDuckGo.
+
+Desktop builds also provide **Loom shared search**: sign in to Loom and choose **Auto** or **Loom shared search**. Auto prefers a personal API key when one is configured, then the account-backed search service. The desktop main process handles account authentication and token refresh through an authenticated loopback bridge; the Tavily key stays on the server. Devices do not download or synchronize the provider key. Older desktop builds need an update to use this route; Loom Web uses the runtime of its connected desktop.
+
+DuckDuckGo is a best-effort HTML fallback, not a credential-backed search API. Verification pages and unrecognized responses are reported as search failures, never as empty successful searches. A verification block pauses further DuckDuckGo requests for 60 seconds, including concurrent tool batches. The HTML and Lite layouts are both supported; only an explicit no-results page is treated as an empty result. Neither a search failure nor an empty query result establishes that a topic has no public sources.
 
 Permission behavior:
 

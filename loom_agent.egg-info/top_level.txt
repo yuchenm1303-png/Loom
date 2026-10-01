@@ -1,5 +1,6 @@
 app
 loom_app_server
+loom_chatgpt_mcp
 loom_cli
-loom_desktop
+loom_model_bridge
 loom_web
