@@ -39,6 +39,7 @@ export function WebAppGate({ children }: { children: ReactNode }) {
   const [discoveryNonce, setDiscoveryNonce] = useState(0);
 
   const activeDeviceId = remoteDeviceId || localDeviceId;
+  const localRelayReady = localHost?.relayReady ?? null;
   const remoteDevices = useMemo(() => devices.filter((device) => device.id && device.id !== localDeviceId), [devices, localDeviceId]);
 
   useEffect(() => {
@@ -61,7 +62,7 @@ export function WebAppGate({ children }: { children: ReactNode }) {
     const probe = async () => {
       if (inFlight || cancelled) return;
       inFlight = true;
-      if (!localDeviceId && !localHost) setHostState("discovering");
+      if (!localDeviceId) setHostState("discovering");
       const host = await discoverLocalLoomHost();
       inFlight = false;
       if (cancelled) return;
@@ -73,10 +74,12 @@ export function WebAppGate({ children }: { children: ReactNode }) {
           setHostState("offline");
           setHostError("Loom Host is installed, but it is not connected to this Loom account yet.");
         }
-      } else if (!localDeviceId) {
+      } else {
         setLocalHost(null);
-        setHostState("missing");
-        setHostError("");
+        if (!localDeviceId) {
+          setHostState("missing");
+          setHostError("");
+        }
       }
       timer = window.setTimeout(probe, DISCOVERY_INTERVAL_MS);
     };
@@ -92,7 +95,6 @@ export function WebAppGate({ children }: { children: ReactNode }) {
     account.ready,
     discoveryNonce,
     localDeviceId,
-    localHost,
     remoteDeviceId,
     web,
   ]);
@@ -116,14 +118,14 @@ export function WebAppGate({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!web || !account.ready || !account.account.authenticated || !activeDeviceId) return;
-    if (!remoteDeviceId && localHost && !localHost.relayReady) return;
+    if (!remoteDeviceId && localRelayReady === false) return;
     void connectActiveDevice();
   }, [
     account.account.authenticated,
     account.ready,
     activeDeviceId,
     connectActiveDevice,
-    localHost,
+    localRelayReady,
     remoteDeviceId,
     web,
   ]);
@@ -136,14 +138,14 @@ export function WebAppGate({ children }: { children: ReactNode }) {
       if (!activeDeviceId || detail?.selectedDeviceId !== activeDeviceId) return;
       if (!detail.online) {
         setHostState("offline");
-        if (!hostError) setHostError(remoteDeviceId ? "That remote Loom device is offline." : "Loom Host on this computer is not connected yet.");
+        setHostError((current) => current || (remoteDeviceId ? "That remote Loom device is offline." : "Loom Host on this computer is not connected yet."));
         return;
       }
       void connectActiveDevice();
     };
     window.addEventListener("loom:web-device-status", onDeviceStatus);
     return () => window.removeEventListener("loom:web-device-status", onDeviceStatus);
-  }, [account.account.authenticated, account.ready, activeDeviceId, connectActiveDevice, hostError, remoteDeviceId, web]);
+  }, [account.account.authenticated, account.ready, activeDeviceId, connectActiveDevice, remoteDeviceId, web]);
 
   const loadRemoteDevices = useCallback(async () => {
     setShowRemote((current) => !current);
@@ -231,7 +233,7 @@ export function WebAppGate({ children }: { children: ReactNode }) {
       ? "Remote mode is explicit and temporary. Your local computer remains the default the next time you open Loom Web."
       : missing
         ? "Install the lightweight Loom Host once. It runs quietly in the background, starts with Windows, updates itself, and this page will connect automatically when installation finishes."
-        : hostInstalled && localHost?.relayReady === false
+        : hostInstalled && localRelayReady === false
           ? "The local Host is installed. Open Loom once to sign in with the same account; after that you can close the Desktop window and use only this website."
           : discovering || connecting
             ? "No command line or device picker is needed. Loom Web is binding itself to the Host on this physical computer."
