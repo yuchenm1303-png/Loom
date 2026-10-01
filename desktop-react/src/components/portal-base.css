@@ -1,13 +1,11 @@
 /* Loom owns the information architecture. The glass surface itself remains the original Smirel .cards system. */
-html[data-loom-web="true"] body { background: #21313c; }
-
 .loom-portal-page {
   position: relative;
   min-height: 100vh;
   overflow-x: hidden;
   overflow-y: auto;
   color: #fff;
-  background: transparent;
+  background: #21313c;
   --loom-muted: rgba(255,255,255,.60);
   --loom-soft: rgba(255,255,255,.38);
   --loom-line: rgba(255,255,255,.105);

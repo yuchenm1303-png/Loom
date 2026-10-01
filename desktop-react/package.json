@@ -26,17 +26,18 @@
     "check:live-account": "npm run build:electron && node --experimental-test-module-mocks --test scripts/check-live-account.mjs",
     "dev:ready:ufo": "node scripts/dev-ready-ufo.mjs",
     "predev": "npm run prepare:stickers",
-    "prebuild": "npm run prepare:stickers",
+    "prebuild:renderer": "npm run prepare:stickers",
+    "build:renderer": "tsc --noEmit && vite build",
     "build:electron": "tsc -p tsconfig.electron.json",
     "build:runtime:win": "node scripts/build-windows-runtime.mjs",
     "dev": "npm run clean:electron && npm run build:electron && concurrently -k \"vite --host 127.0.0.1\" \"tsc -p tsconfig.electron.json --watch --preserveWatchOutput\" \"wait-on http://127.0.0.1:5173 && electron dist-electron/entry.js --dev-url=http://127.0.0.1:5173\"",
-    "build": "npm run clean:electron && npm run build:electron && tsc --noEmit && vite build",
+    "build": "npm run clean:electron && npm run build:electron && npm run build:renderer",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.electron.json --noEmit",
     "start": "npm run build && electron dist-electron/entry.js",
     "package:win:dir": "npm run build && npm run build:runtime:win && electron-builder --win --x64 --dir",
     "package:win": "npm run build && npm run build:runtime:win && electron-builder --win nsis --x64 --publish never",
     "package:win:publish": "npm run build && npm run build:runtime:win && electron-builder --win nsis --x64 --publish always",
-    "build:web": "npm run prepare:stickers && tsc --noEmit && vite build"
+    "build:web": "npm run build:renderer"
   },
   "dependencies": {
     "electron-updater": "^6.8.10",

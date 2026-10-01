@@ -189,12 +189,25 @@ body copy, side-panel text, gutters, and padding scale with viewport size;
 mobile overrides retain the single-column layout. The glass surface and original
 hover/press behavior remain unchanged. Build and responsive checks passed.
 
-### Automatic deployment source
+### Automatic deployment source and renderer parity
 
-The production timer runs `/opt/loom-web-deploy/autosync.sh`, which resets
-`/opt/loom-web-main-src` to GitHub `origin/main` and rebuilds the web image.
-Portal changes must be committed and pushed to GitHub `main` before publication.
-A static-only image overlay will otherwise be replaced by the next main deployment.
+The production timer executes the version-controlled
+`scripts/deploy-loom-web-main.sh`. It resets `/opt/loom-web-main-src` to GitHub
+`origin/main`, runs the same canonical `npm run build` renderer pipeline used by
+Desktop, builds the gateway image with `LOOM_BUILD_SHA=<main SHA>`, and only writes
+the deployed marker after the running container reports that exact SHA.
+
+There is one application renderer: `desktop-react/src/main.tsx` renders the same
+`App` for Desktop and Web. `WebAppGate` may show the pre-entry `WebPortal`, but
+Web-specific CSS is not allowed to target the shared application surface. Portal
+styles live only in `portal-*.css` and the temporary external styles mounted by
+`WebPortal`; they are removed or cease to match when the portal unmounts.
+
+`index.html` is served with `Cache-Control: no-store`, while hashed Vite assets are
+immutable. `/api/healthz` and static responses expose the image build SHA, so a
+stale deployment can be distinguished from a browser preference immediately.
+Portal or application UI changes must be committed to GitHub `main`; server-local
+static overlays are not part of the production architecture.
 
 The refined Host card also imports `portal-host-card.css`. Preserve current
 release metadata and Host connection fixes when restoring presentation changes

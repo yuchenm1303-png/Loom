@@ -30,7 +30,7 @@ def test_loom_web_routes_the_gate_through_the_functional_glass_portal():
 
 def test_loom_web_loads_the_canonical_listing_studio_glass_assets():
     portal = (ROOT / "desktop-react/src/components/WebPortal.tsx").read_text(encoding="utf-8")
-    glue = (ROOT / "desktop-react/src/components/web-smirel.css").read_text(encoding="utf-8")
+    glue = (ROOT / "desktop-react/src/components/portal-base.css").read_text(encoding="utf-8")
     required = [
         "styles-v3.css",
         "cosmic-bright-v1.css",
@@ -50,3 +50,6 @@ def test_loom_web_loads_the_canonical_listing_studio_glass_assets():
     assert "https://smirel.com/download/wallpaper-beach-blue-v1-original.png" in portal
     assert ".smirel-web-shell" not in glue
     assert "background: #06080d" not in glue
+    assert 'html[data-loom-web="true"]' not in glue
+    assert not (ROOT / "desktop-react/src/components/web-smirel.css").exists()
+    assert not (ROOT / "desktop-react/src/web-gate.css").exists()
