@@ -54,5 +54,15 @@ def test_web_gate_does_not_demote_an_online_host_during_background_discovery() -
     assert "const connectPromiseRef = useRef<Promise<void> | null>(null)" in source
     assert 'if (!force && hostStateRef.current === "online") return;' in source
     assert 'if (hostStateRef.current !== "online") void connectCurrentHost();' in source
-    assert 'if (hostStateRef.current === "online") setTrackedHostState("offline");' in source
+    assert 'setTrackedHostState("offline");' in source
     assert "void connectCurrentHost({ force: true });" in source
+
+
+def test_web_gate_requires_explicit_user_entry_after_host_is_online() -> None:
+    source = WEB_GATE.read_text(encoding="utf-8")
+    assert "const [entered, setEntered] = useState(false);" in source
+    assert 'if (hostStateRef.current === "online") {' in source
+    assert "setEntered(true);" in source
+    assert 'hostState !== "online" || !entered' in source
+    assert "onEnter={enterOrRetry}" in source
+    assert "setEntered(false);" in source
