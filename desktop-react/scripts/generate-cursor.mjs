@@ -27,12 +27,13 @@ try {
     characterLayer.height = decoration.naturalHeight;
     const characterContext = characterLayer.getContext("2d");
     characterContext.drawImage(decoration, 0, 0);
-    characterContext.clearRect(0, 0, pointer.naturalWidth, pointer.naturalHeight);
+    characterContext.clearRect(0, 0, 10, 9);
     // Give the enlarged pointer its own space without scaling or covering the character.
     ctx.drawImage(characterLayer, 0, 18);
-    // Scale both pointer axes equally; keep the click hotspot at (0, 0).
+    // The SVG defines the enlarged arm lengths, retaining the original stroke thickness.
+    // Draw at its native size and keep the click hotspot at (0, 0).
     ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(pointer, 0, 0, pointer.naturalWidth * 2, pointer.naturalHeight * 2);
+    ctx.drawImage(pointer, 0, 0);
     return canvas.toDataURL("image/png").split(",")[1];
   }, {
     character: `data:image/png;base64,${character.toString("base64")}`,

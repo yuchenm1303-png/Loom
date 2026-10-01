@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="10" height="9" viewBox="0 0 10 9">
-  <!-- Trace the original corner pointer at its original size and position.
-       Generate black and white variants without changing the silhouette. -->
-  <path d="M0 0H10V5H6V9H0Z" fill="#000"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="20" height="18" viewBox="0 0 20 18">
+  <!-- Extend both arms while retaining the original 6px/5px stroke thickness.
+       The inner corner must stay open, not become a magnified solid block. -->
+  <path d="M0 0H20V5H6V18H0Z" fill="#000"/>
 </svg>

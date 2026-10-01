@@ -25,13 +25,12 @@ try {
     return {
       width: canvas.width, height: canvas.height,
       whiteFill: composite[(2 * canvas.width + 2) * 4] === 255,
-      doubled: Array.from({ length: 20 * 18 }, (_, index) => {
-        const x = index % 20;
-        const y = Math.floor(index / 20);
+      extendedArms: [[19, 2], [2, 17]].every(([x, y]) => {
         const offset = (y * canvas.width + x) * 4;
-        if (y >= 10 && x >= 12) return composite[offset + 3] === 0;
         return composite[offset] === 255 && composite[offset + 3] === 255;
-      }).every(Boolean),
+      }),
+      openCorner: [[6, 5], [10, 10], [19, 17]].every(([x, y]) =>
+        composite[(y * canvas.width + x) * 4 + 3] === 0),
       preserved: composite.every((value, index) => {
         const pixel = Math.floor(index / 4);
         return Math.floor(pixel / canvas.width) < 18 || value === source[index];
@@ -41,7 +40,8 @@ try {
   assert.equal(pointerAsset.width, 70);
   assert.equal(pointerAsset.height, 88);
   assert.ok(pointerAsset.whiteFill, "dark surfaces must use a white pointer");
-  assert.ok(pointerAsset.doubled, "pointer width and height must both double: 10x9 to 20x18");
+  assert.ok(pointerAsset.extendedArms, "both arms must extend to the enlarged 20x18 bounds");
+  assert.ok(pointerAsset.openCorner, "the enlarged pointer must retain its open corner and original stroke thickness");
   assert.ok(pointerAsset.preserved, "all character pixels must remain unchanged below the enlarged pointer");
   await page.evaluate(() => {
     const surface = document.createElement("div");
