@@ -6,16 +6,18 @@
 <meta name="color-scheme" content="dark" />
 <title>Loom Nebula Background Preview</title>
 <style>
-*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#020617}.space{position:fixed;inset:0;overflow:hidden;background:#020617}canvas{position:absolute;inset:0;width:100%;height:100%;display:block}#nebula{z-index:0}#stars{z-index:2;pointer-events:none}.vignette{position:absolute;inset:0;z-index:3;pointer-events:none;background:radial-gradient(circle at 58% 42%,transparent 17%,rgba(1,4,18,.025) 55%,rgba(0,2,12,.30) 100%),linear-gradient(to bottom,rgba(2,4,18,.01),rgba(1,3,15,.08))}@media(prefers-reduced-motion:reduce){#stars{opacity:.72}}
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#020617}.space{position:fixed;inset:0;overflow:hidden;background:#020617}canvas{position:absolute;inset:0;width:100%;height:100%;display:block}#nebula{z-index:0}#stars{z-index:2;pointer-events:none}.vignette{position:absolute;inset:0;z-index:3;pointer-events:none;background:radial-gradient(circle at 58% 42%,transparent 18%,rgba(1,4,18,.025) 56%,rgba(0,2,12,.29) 100%),linear-gradient(to bottom,rgba(2,4,18,.01),rgba(1,3,15,.08))}@media(prefers-reduced-motion:reduce){#stars{opacity:.72}}
 </style>
 </head>
 <body>
-<div class="space" aria-hidden="true"><canvas id="nebula"></canvas><canvas id="stars"></canvas><div class="vignette"></div></div>
+<div class="space" id="space" aria-hidden="true"><canvas id="nebula"></canvas><canvas id="stars"></canvas><div class="vignette"></div></div>
 <script>
 (()=>{
   const canvas=document.getElementById('nebula');
+  const space=document.getElementById('space');
+  const fallback=()=>{canvas.style.display='none';space.style.background='radial-gradient(ellipse at 68% 30%,rgba(86,128,255,.72) 0%,rgba(76,28,150,.46) 23%,transparent 48%),radial-gradient(ellipse at 32% 62%,rgba(214,48,207,.42) 0%,rgba(64,35,139,.25) 27%,transparent 54%),linear-gradient(145deg,#020617 0%,#07183d 48%,#020617 100%)';};
   const gl=canvas.getContext('webgl',{alpha:false,antialias:false,powerPreference:'high-performance'});
-  if(!gl){canvas.style.background='radial-gradient(ellipse at 60% 38%,#5949b3 0%,#193f87 28%,#07183d 56%,#020617 100%)';return;}
+  if(!gl){fallback();return;}
   const vert=`attribute vec2 a_position;void main(){gl_Position=vec4(a_position,0.,1.);}`;
   const frag=`
 precision highp float;
@@ -23,89 +25,55 @@ uniform vec2 u_resolution;
 uniform float u_time;
 float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453123);}
 float noise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);float a=hash(i),b=hash(i+vec2(1.,0.)),c=hash(i+vec2(0.,1.)),d=hash(i+vec2(1.,1.));return mix(mix(a,b,f.x),mix(c,d,f.x),f.y);}
-float fbm(vec2 p){float v=0.,a=.52;mat2 m=mat2(.80,.60,-.60,.80);for(int i=0;i<6;i++){v+=a*noise(p);p=m*p*2.04+vec2(17.1,9.2);a*=.49;}return v;}
+float fbm(vec2 p){float v=0.,a=.52;mat2 m=mat2(.80,.60,-.60,.80);for(int i=0;i<6;i++){v+=a*noise(p);p=m*p*2.03+vec2(17.1,9.2);a*=.49;}return v;}
 float gauss(vec2 p,vec2 c,vec2 s){vec2 d=(p-c)/s;return exp(-dot(d,d));}
 void main(){
   vec2 uv=gl_FragCoord.xy/u_resolution.xy;
   float asp=u_resolution.x/u_resolution.y;
   vec2 p=(uv-.5)*vec2(asp,1.0);
   float t=u_time*.010;
-
   vec2 q=vec2(fbm(p*1.18+vec2(t*.018,-t*.010)),fbm(p*1.18+vec2(5.3,1.4)-vec2(t*.013,t*.009)));
-  vec2 r=vec2(fbm(p*1.95+2.6*q+vec2(1.8,8.1)),fbm(p*1.95+2.6*q+vec2(8.4,2.8)));
-  float n1=fbm(p*2.35+2.10*r+vec2(t*.014,-t*.008));
-  float n2=fbm(p*4.0+1.25*q-1.20*r-vec2(t*.010,t*.007));
-  float fine=fbm(p*8.5+1.70*r+vec2(t*.022,-t*.011));
-
-  float curve=p.y-(0.22*p.x+0.08*sin(p.x*2.0+0.5));
-  float narrow=exp(-pow(abs(curve)/(.19+.035*n1),1.9));
-  float medium=exp(-pow(abs(curve)/(.36+.05*q.x),1.7));
-  float halo=exp(-pow(abs(curve)/(.58+.06*q.y),1.55));
-
-  float left=gauss(p,vec2(-.72,-.15),vec2(.70,.28));
-  float center=gauss(p,vec2(.28,.05),vec2(.82,.30));
-  float right=gauss(p,vec2(.98,.22),vec2(.64,.26));
-  float envelope=clamp(.52*medium+.20*halo+.18*left+.30*center+.16*right,0.,1.);
-
-  float broken=.62+.55*smoothstep(.38,.72,n1+.12*n2);
-  float cloud=clamp(envelope*broken,0.,1.);
-  float filament=smoothstep(.53,.77,fine+.20*n2)*narrow;
-  float veins=smoothstep(.52,.76,fbm(p*5.4-1.5*q+2.2*r))*medium;
-  float dust=smoothstep(.50,.74,fbm(p*3.4+2.2*q-1.55*r+vec2(4.2,1.7)))*medium;
-
-  float pinkField=smoothstep(.40,.76,fbm(p*2.05+vec2(-3.8,2.0)-1.4*r))*cloud;
-  float cyanField=smoothstep(.44,.76,fbm(p*2.35+vec2(3.1,5.5)+1.8*q))*cloud;
+  vec2 r=vec2(fbm(p*1.92+2.55*q+vec2(1.8,8.1)),fbm(p*1.92+2.55*q+vec2(8.4,2.8)));
+  float n1=fbm(p*2.32+2.08*r+vec2(t*.014,-t*.008));
+  float n2=fbm(p*3.95+1.25*q-1.18*r-vec2(t*.010,t*.007));
+  float fine=fbm(p*8.2+1.68*r+vec2(t*.021,-t*.011));
+  float curve=p.y-(0.20*p.x+0.075*sin(p.x*2.05+0.55));
+  float narrow=exp(-pow(abs(curve)/(.20+.035*n1),1.86));
+  float medium=exp(-pow(abs(curve)/(.38+.05*q.x),1.68));
+  float halo=exp(-pow(abs(curve)/(.62+.06*q.y),1.52));
+  float left=gauss(p,vec2(-.72,-.15),vec2(.72,.30));
+  float center=gauss(p,vec2(.28,.05),vec2(.84,.32));
+  float right=gauss(p,vec2(.98,.22),vec2(.66,.28));
+  float envelope=clamp(.47*medium+.17*halo+.16*left+.27*center+.15*right,0.,1.);
+  float cloud=clamp(envelope*(.50+.66*smoothstep(.34,.72,n1+.13*n2)),0.,1.);
+  float filament=smoothstep(.54,.78,fine+.18*n2)*narrow;
+  float veins=smoothstep(.53,.77,fbm(p*5.2-1.45*q+2.15*r))*medium;
+  float dust=smoothstep(.51,.75,fbm(p*3.35+2.15*q-1.50*r+vec2(4.2,1.7)))*medium;
+  float pinkField=smoothstep(.42,.76,fbm(p*2.02+vec2(-3.8,2.0)-1.38*r))*cloud;
+  float cyanField=smoothstep(.45,.77,fbm(p*2.32+vec2(3.1,5.5)+1.72*q))*cloud;
   float roseField=smoothstep(.58,.82,n2)*center*narrow;
-  float whiteCore=gauss(p,vec2(.42,.10),vec2(.22,.085))*narrow;
-
-  vec3 deep=vec3(.005,.015,.060);
-  vec3 navy=vec3(.014,.055,.165);
-  vec3 blue=vec3(.030,.155,.400);
-  vec3 violet=vec3(.210,.055,.430);
-  vec3 purple=vec3(.430,.090,.650);
-  vec3 magenta=vec3(.790,.150,.660);
-  vec3 rose=vec3(1.000,.390,.670);
-  vec3 cyan=vec3(.050,.610,.900);
-  vec3 aqua=vec3(.180,.790,.960);
-  vec3 ice=vec3(.650,.920,1.000);
-  vec3 warm=vec3(1.000,.690,.760);
-
+  float whiteCore=gauss(p,vec2(.42,.10),vec2(.22,.09))*narrow;
+  float edgeBand=smoothstep(.12,.20,abs(curve))*(1.0-smoothstep(.20,.34,abs(curve)))*medium;
+  vec3 deep=vec3(.005,.015,.060),navy=vec3(.014,.055,.165),blue=vec3(.030,.155,.400),violet=vec3(.205,.055,.420),purple=vec3(.430,.090,.650),magenta=vec3(.790,.150,.660),rose=vec3(1.000,.390,.670),cyan=vec3(.050,.610,.900),aqua=vec3(.180,.790,.960),ice=vec3(.650,.920,1.000),warm=vec3(1.000,.690,.760);
   vec3 col=deep;
-  col+=navy*(.22+.22*uv.x);
-  col+=blue*halo*.10;
-  col+=violet*cloud*.22;
-  col+=purple*veins*.32;
-  col+=magenta*pinkField*.48;
-  col+=rose*roseField*.42;
-  col+=cyan*cyanField*.48;
-  col+=aqua*pow(cyanField,2.2)*.20;
-  col+=ice*filament*.16;
-  col+=magenta*filament*pinkField*.14;
-
-  float hot=pow(whiteCore,2.8);
-  col+=warm*hot*.58;
-  col+=ice*pow(hot,1.7)*.44;
-
-  col*=1.0-.50*dust;
-  col+=vec3(.05,.015,.11)*dust*.10;
-
-  float rim=abs(dFdx(cloud))+abs(dFdy(cloud));
-  col+=mix(cyan,rose,pinkField)*rim*1.45;
-
-  vec2 sp=uv*u_resolution/2.25;
-  float s=hash(floor(sp));
-  float star=step(.9974,s)*pow(hash(floor(sp)+19.3),4.5);
-  float star2=step(.9993,hash(floor(sp*.48)+7.2));
-  col+=vec3(.72,.86,1.0)*star*.62;
-  col+=vec3(.96,.83,1.0)*star2*.90;
-
-  float vig=1.0-.18*dot(uv-.5,uv-.5);
-  col*=vig;
-  col=pow(max(col,0.0),vec3(.92));
-  gl_FragColor=vec4(col,1.0);
+  col+=navy*(.20+.22*uv.x);
+  col+=blue*halo*.09;
+  col+=violet*cloud*.20;
+  col+=purple*veins*.30;
+  col+=magenta*pinkField*.46;
+  col+=rose*roseField*.40;
+  col+=cyan*cyanField*.47;
+  col+=aqua*pow(cyanField,2.2)*.18;
+  col+=ice*filament*.15;
+  col+=mix(cyan,rose,pinkField)*edgeBand*(.18+.32*filament);
+  float hot=pow(whiteCore,2.8);col+=warm*hot*.54;col+=ice*pow(hot,1.7)*.40;
+  col*=1.0-.48*dust;col+=vec3(.05,.015,.11)*dust*.09;
+  vec2 sp=uv*u_resolution/2.25;float s=hash(floor(sp));float star=step(.9974,s)*pow(hash(floor(sp)+19.3),4.5);float star2=step(.9993,hash(floor(sp*.48)+7.2));col+=vec3(.72,.86,1.0)*star*.62;col+=vec3(.96,.83,1.0)*star2*.90;
+  float vig=1.0-.18*dot(uv-.5,uv-.5);col*=vig;col=pow(max(col,0.0),vec3(.92));gl_FragColor=vec4(col,1.0);
 }`;
-  function shader(type,src){const s=gl.createShader(type);gl.shaderSource(s,src);gl.compileShader(s);if(!gl.getShaderParameter(s,gl.COMPILE_STATUS))throw new Error(gl.getShaderInfoLog(s));return s;}
-  const program=gl.createProgram();gl.attachShader(program,shader(gl.VERTEX_SHADER,vert));gl.attachShader(program,shader(gl.FRAGMENT_SHADER,frag));gl.linkProgram(program);if(!gl.getProgramParameter(program,gl.LINK_STATUS))throw new Error(gl.getProgramInfoLog(program));gl.useProgram(program);
+  function compile(type,src){const s=gl.createShader(type);gl.shaderSource(s,src);gl.compileShader(s);if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)){console.error(gl.getShaderInfoLog(s));return null;}return s;}
+  const vs=compile(gl.VERTEX_SHADER,vert),fs=compile(gl.FRAGMENT_SHADER,frag);if(!vs||!fs){fallback();return;}
+  const program=gl.createProgram();gl.attachShader(program,vs);gl.attachShader(program,fs);gl.linkProgram(program);if(!gl.getProgramParameter(program,gl.LINK_STATUS)){console.error(gl.getProgramInfoLog(program));fallback();return;}gl.useProgram(program);
   const b=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,b);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),gl.STATIC_DRAW);const pos=gl.getAttribLocation(program,'a_position');gl.enableVertexAttribArray(pos);gl.vertexAttribPointer(pos,2,gl.FLOAT,false,0,0);
   const res=gl.getUniformLocation(program,'u_resolution'),time=gl.getUniformLocation(program,'u_time');const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
   function resize(){const scale=Math.min(devicePixelRatio||1,1.35);canvas.width=Math.max(1,Math.floor(innerWidth*scale));canvas.height=Math.max(1,Math.floor(innerHeight*scale));gl.viewport(0,0,canvas.width,canvas.height);}addEventListener('resize',resize,{passive:true});resize();
