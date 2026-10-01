@@ -39,7 +39,7 @@
 :root :is(body, #root) *::before,
 :root :is(body, #root) *::after {
   /* The arrow at the top-left owns the hotspot; the character is decoration. */
-  cursor: url("./assets/yukino-mouse.png") 0 0, auto !important;
+  cursor: url("./assets/yukino-cursor.png") 0 0, auto !important;
 }
 html, body, #root {
   width: 100%;

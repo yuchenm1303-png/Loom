@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="20" height="28" viewBox="0 0 20 28">
+  <!-- The top-left tip is the click hotspot. White fill remains visible on dark surfaces. -->
+  <path d="M0 0V21L5.5 16.5L10 26L14 24L9.5 15H18Z"
+    fill="#fff" stroke="#20232b" stroke-width="1.5" stroke-linejoin="round"/>
+</svg>
