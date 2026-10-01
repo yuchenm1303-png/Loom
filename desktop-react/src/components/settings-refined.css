@@ -193,6 +193,13 @@ html[data-loom-theme="light"] .settings-host {
     inset 0 1px 0 color-mix(in srgb, white 24%, transparent);
 }
 
+/* The gear: a touch larger than a nav icon, on a lighter stroke so its teeth stay
+   crisp at this size (the alignment sheet pins every orb glyph to 16px). */
+.settings-shell.settings-refined .settings-brand-orb > svg {
+  width: 18px;
+  height: 18px;
+}
+
 .settings-shell.settings-refined .settings-sidebar-title strong {
   color: var(--sr-ink);
 }
