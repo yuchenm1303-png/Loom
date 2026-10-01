@@ -1,0 +1,23 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><style>
+html,body { margin:0; height:100%; background:#0f1115; }
+* { box-sizing:border-box; }
+.settings-host { height:100%; }
+</style></head><body><div class="settings-host"><div class="settings-shell settings-refined">
+<aside class="settings-sidebar"><div class="settings-sidebar-top"><div class="settings-sidebar-title"><strong>设置</strong></div><div class="settings-search"><span>搜索</span><input placeholder="搜索设置"></div></div>
+<nav class="settings-nav"></nav><div class="settings-sidebar-footer">Loom 运行时</div></aside><main class="settings-main"></main>
+</div></div><script type="module">
+import "/src/components/settings-page.css";
+import "/src/components/settings-maturity.css";
+import "/src/components/settings-page-motion.css";
+import "/src/components/settings-refined.css";
+const nav = document.querySelector("nav");
+for (let group = 0; group < 4; group++) {
+  const section = document.createElement("section");
+  section.innerHTML = '<span class="settings-nav-label">设置分组</span>';
+  for (let row = 0; row < 6; row++) {
+    section.innerHTML += `<button data-nav="${group}-${row}"><i class="settings-nav-pip"></i><svg width="16" height="16"></svg><span>浏览器设置 ${group}-${row}</span></button>`;
+  }
+  nav.append(section);
+}
+</script></body></html>

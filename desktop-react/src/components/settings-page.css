@@ -135,7 +135,9 @@
 
 .settings-nav {
   min-height: 0;
+  overflow-x: hidden;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   padding: 18px 0 10px;
   display: grid;
   align-content: start;
