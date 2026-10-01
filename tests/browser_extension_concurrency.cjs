@@ -110,7 +110,7 @@ async function main() {
     globalThis.waitA = new Promise((resolve) => { releaseA = resolve; });
     globalThis.commands = [
       { id: 'a1', action: 'wait', args: { session_id: 'a' } },
-      { id: 'a2', action: 'state', args: { session_id: 'a' } },
+      ...Array.from({ length: 7 }, (_, i) => ({ id: 'a' + (i + 2), action: 'state', args: { session_id: 'a' } })),
       { id: 'b1', action: 'state', args: { session_id: 'b' } }
     ];
     getClientId = async () => 'client';
@@ -124,13 +124,34 @@ async function main() {
       if (action === 'wait') await waitA;
       return {};
     };
-    await pollOnce(); await pollOnce(); await pollOnce();
+    for (let i = 0; i < 9; i++) await pollOnce();
   })()`);
   await new Promise((resolve) => setImmediate(resolve));
   assert(p.run(`events.includes('b1:result')`), 'B must finish before A stops waiting');
   assert(!p.run(`events.includes('a:state')`), 'commands in A must remain ordered');
   await p.run(`(async () => { releaseA(); await Promise.all([...inFlightCommands]); })()`);
   assert(p.run(`events.indexOf('a1:result') < events.indexOf('a:state')`));
+
+  // A restarted broker must retire old leases and debugger attachments without
+  // closing the pages. Exercise reset through the real poll path.
+  const r = harness();
+  await r.run(`dispatchCommand('state', { session_id: 'dead-runtime:tab' })`);
+  r.run(`attachedDebuggerTabs.add(1)`);
+  r.storage.loomBrowserBrokerId = 'old-broker';
+  const pageCount = r.tabs.size;
+  await r.run(`(async () => {
+    getClientId = async () => 'client'; browserName = () => 'Edge';
+    bridgeFetch = async (url, options) => options ? {} : {
+      ok: true, json: async () => ({ command: { id: 'new', action: 'state', args: {
+        session_id: 'new-runtime:tab', broker_id: 'new-broker'
+      } } })
+    };
+    await pollOnce(); await Promise.all([...inFlightCommands]);
+  })()`);
+  assert.deepEqual(r.detached, [1]);
+  assert.equal(r.storage.loomBrowserBrokerId, 'new-broker');
+  assert.equal(r.storage.loomTabSessionIds[1], 'new-runtime:tab');
+  assert.equal(r.tabs.size, pageCount);
   console.log('Browser extension concurrency: independent tabs, scoped release, cross-session progress and ordering passed.');
 }
 

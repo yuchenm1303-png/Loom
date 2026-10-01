@@ -5,6 +5,8 @@ import hmac
 import json
 import os
 import secrets
+import subprocess
+import sys
 import threading
 import time
 import uuid
@@ -14,6 +16,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
+from urllib.error import HTTPError, URLError
+from urllib.request import ProxyHandler, Request, build_opener
 
 from .browser_diagnostics import BrowserDiagnosticLog, summarize_bridge_args, summarize_browser_state_payload
 from .browser_session import (
@@ -100,6 +104,7 @@ class _BridgeCommand:
     error: str = ""
     dispatched_at: float = 0.0
     cancelled: bool = False
+    runtime_id: str = ""
 
 
 class BrowserExtensionBridge:
@@ -120,6 +125,7 @@ class BrowserExtensionBridge:
         command_timeout: float = 45.0,
         poll_timeout: float = 25.0,
         diagnostics: BrowserDiagnosticLog | None = None,
+        shared_service: bool = False,
     ) -> None:
         host = str(host or "").strip()
         if host not in {"127.0.0.1", "::1"}:
@@ -127,6 +133,8 @@ class BrowserExtensionBridge:
         port = int(port)
         if not 0 <= port <= 65535:
             raise ValueError("browser extension bridge port must be within 0..65535")
+        if shared_service and port == 0:
+            raise ValueError("a shared browser bridge requires a fixed loopback port")
         token = str(token or _load_or_create_install_token()).strip()
         if len(token) < 8:
             raise ValueError("browser extension bridge token must be at least 8 characters")
@@ -153,6 +161,15 @@ class BrowserExtensionBridge:
         self._last_poll_at = 0.0
         self._last_result_at = 0.0
         self._bind_error = ""
+        self._shared_service = bool(shared_service)
+        self._remote = False
+        self._runtime_id = uuid.uuid4().hex
+        self._broker_id = uuid.uuid4().hex
+        self._runtime_clients: dict[str, float] = {}
+        self._runtime_sessions: dict[str, set[str]] = {}
+        self._retired_runtimes: set[str] = set()
+        self._heartbeat_stop = threading.Event()
+        self._heartbeat_thread: threading.Thread | None = None
         self._log("bridge.created", host=self.host, port=self.port, command_timeout=self.command_timeout)
 
     @classmethod
@@ -165,6 +182,7 @@ class BrowserExtensionBridge:
             port=int(env("LOOM_BROWSER_EXTENSION_PORT", str(DEFAULT_EXTENSION_PORT))),
             token=env("LOOM_BROWSER_EXTENSION_TOKEN", _load_or_create_install_token()),
             command_timeout=float(env("LOOM_BROWSER_EXTENSION_TIMEOUT", "45")),
+            shared_service=True,
         )
 
     @property
@@ -174,6 +192,10 @@ class BrowserExtensionBridge:
 
     @property
     def connected(self) -> bool:
+        if self._closed:
+            return False
+        if self._remote:
+            return bool(self.status().get("connected"))
         with self._condition:
             return bool(self._last_poll_at and time.monotonic() - self._last_poll_at < 40.0)
 
@@ -190,6 +212,15 @@ class BrowserExtensionBridge:
             return self._closed
 
     def status(self) -> dict[str, object]:
+        if self._remote and not self._closed:
+            try:
+                result = self._remote_request("status")
+                return {**result["status"], "bridge_role": "client"}
+            except BrowserError:
+                return {
+                    "connected": False, "bridge_role": "client", "port_conflict": "",
+                    "pending_commands": 0, "queued_commands": 0,
+                }
         with self._condition:
             return {
                 "url": self.url,
@@ -207,7 +238,110 @@ class BrowserExtensionBridge:
                 "queued_commands": len(self._commands),
                 "port_conflict": self._bind_error,
                 "diagnostics": self.diagnostics.status(expose_path=False),
+                "bridge_role": "service",
+                "runtime_clients": len(self._runtime_clients),
             }
+
+    def _remote_request(self, endpoint: str, body=None, *, timeout: float = 2.0):
+        data = json.dumps(body).encode("utf-8") if body is not None else None
+        request = Request(
+            f"{self.url}/browser-extension/v1/runtime/{endpoint}", data=data,
+            headers={"X-Loom-Token": self.token, "X-Loom-Runtime-ID": self._runtime_id,
+                     "Content-Type": "application/json"},
+        )
+        try:
+            with build_opener(ProxyHandler({})).open(request, timeout=timeout) as response:
+                payload = json.loads(response.read(32_000_000).decode("utf-8"))
+        except HTTPError as exc:
+            if exc.code == HTTPStatus.UNAUTHORIZED:
+                raise BrowserError("existing browser bridge uses a different pairing credential") from None
+            raise BrowserError(f"shared browser bridge request failed (HTTP {exc.code})") from None
+        except (OSError, URLError, ValueError):
+            raise BrowserError("shared browser bridge is unavailable; retry after the service reconnects") from None
+        if not isinstance(payload, dict):
+            raise BrowserError("invalid shared browser bridge response")
+        if payload.get("ok") is not True:
+            raise BrowserError(str(payload.get("error") or "invalid shared browser bridge response"))
+        return payload
+
+    def _connect_existing(self) -> bool:
+        try:
+            request = Request(f"{self.url}/browser-extension/v1/health")
+            with build_opener(ProxyHandler({})).open(request, timeout=1.0) as response:
+                health = json.loads(response.read(4096).decode("utf-8"))
+        except HTTPError:
+            self._bind_error = f"port {self.port} is occupied by a service that is not a compatible Loom browser bridge"
+            return False
+        except (OSError, URLError):
+            return False
+        except ValueError:
+            self._bind_error = f"port {self.port} is occupied by a service that is not a compatible Loom browser bridge"
+            return False
+        if not isinstance(health, dict) or health.get("ok") is not True or health.get("protocol_version") != 1:
+            self._bind_error = f"port {self.port} is occupied by a service that is not a compatible Loom browser bridge"
+            return False
+        if health.get("shared_runtime_protocol") != 1:
+            self._bind_error = "the existing browser bridge does not support shared runtimes; restart Loom with the updated bridge"
+            return False
+        try:
+            self._remote_request("status")
+        except BrowserError as exc:
+            self._bind_error = str(exc)
+            return False
+        self._remote = True
+        self._bind_error = ""
+        self._log("bridge.shared.connected", port=self.port)
+        if self._heartbeat_thread is None:
+            self._heartbeat_thread = threading.Thread(target=self._heartbeat, name="loom-browser-bridge-client", daemon=True)
+            self._heartbeat_thread.start()
+        return True
+
+    def _heartbeat(self) -> None:
+        while not self._heartbeat_stop.wait(15.0):
+            try:
+                self._remote_request("status")
+            except BrowserError:
+                with self._condition:
+                    if not self._closed and self._shared_service:
+                        self._remote = False
+                        self._bind_error = ""
+                        self._start_shared_service()
+
+    def _start_shared_service(self) -> None:
+        if self._connect_existing() or self._bind_error:
+            return
+        # A separate process owns the listening socket, so closing the first
+        # Loom runtime cannot take the bridge away from the remaining clients.
+        try:
+            process = subprocess.Popen(
+                # Loom's packaged python.exe is a frozen launcher supporting
+                # -c, not Python's general -m CLI. This works in both builds.
+                [sys.executable, "-c", "from app.agent_runtime.browser_bridge_service import main; main()"],
+                cwd=str(Path(__file__).resolve().parents[2]), stdin=subprocess.PIPE,
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, text=True,
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+            )
+        except OSError:
+            self._bind_error = "shared browser bridge could not launch its Python service"
+            return
+        assert process.stdin is not None
+        try:
+            with process.stdin:
+                json.dump({
+                    "host": self.host, "port": self.port, "token": self.token,
+                    "command_timeout": self.command_timeout, "poll_timeout": self.poll_timeout,
+                }, process.stdin)
+        except OSError:
+            self._bind_error = "shared browser bridge service exited before initialization"
+            return
+        deadline = time.monotonic() + 5.0
+        while time.monotonic() < deadline:
+            if self._connect_existing() or self._bind_error:
+                return
+            # A simultaneous launcher may lose the bind and exit before the
+            # winner is ready. Discover the winner for the whole startup window.
+            time.sleep(0.05)
+        self._bind_error = "shared browser bridge could not start; check the Loom Python runtime"
 
     @property
     def port_conflict(self) -> str:
@@ -218,16 +352,23 @@ class BrowserExtensionBridge:
 
     def start(self) -> None:
         with self._condition:
-            if self._server is not None:
+            if self._closed:
+                raise BrowserError("browser extension bridge is closed")
+            if self._server is not None or self._remote:
+                return
+            if self._shared_service:
+                self._start_shared_service()
                 return
             handler_cls = self._make_handler()
             try:
                 self._server = _BridgeServer((self.host, self.port), handler_cls)
             except OSError as exc:
+                if self._connect_existing():
+                    return
                 # Losing the port must not stop Loom from starting: the browser is
                 # one capability, and the honest outcome is a bridge that reports
                 # why it is unavailable rather than one that silently competes.
-                self._bind_error = (
+                self._bind_error = self._bind_error or (
                     f"another process already owns the browser bridge port {self.port}. "
                     "This is usually a second Loom instance - close it, or set "
                     "LOOM_BROWSER_EXTENSION_PORT to give this one its own port."
@@ -246,6 +387,17 @@ class BrowserExtensionBridge:
         self._log("bridge.started", host=self.host, port=self.port, url_exposed=False, token_exposed=False)
 
     def stop(self) -> None:
+        with self._condition:
+            if self._closed:
+                return
+            self._closed = True
+        self._heartbeat_stop.set()
+        if self._remote:
+            try:
+                self._remote_request("detach", {})
+            except BrowserError:
+                pass
+            return
         with self._condition:
             self._closed = True
             server = self._server
@@ -299,6 +451,7 @@ class BrowserExtensionBridge:
         args: dict[str, Any] | None = None,
         *,
         timeout: float | None = None,
+        _runtime_id: str = "",
     ) -> dict[str, Any]:
         """Run one command in the extension.
 
@@ -313,12 +466,27 @@ class BrowserExtensionBridge:
             # told the extension is unresponsive, which sends them to reinstall an
             # extension that was never the problem.
             raise BrowserError(self.port_conflict)
+        if self._remote:
+            wait_seconds = self.command_timeout if timeout is None else max(1.0, float(timeout))
+            response = self._remote_request("call", {"action": str(action), "args": dict(args or {}), "timeout": wait_seconds}, timeout=wait_seconds + 3.0)
+            result = response.get("result") or {}
+            info = result.get("page_info") if isinstance(result, dict) else None
+            if isinstance(info, dict):
+                expected = f"{self._runtime_id}:{(args or {}).get('session_id') or 'default'}"
+                if info.get("session_id") != expected or info.get("broker_id") != response.get("broker_id"):
+                    raise BrowserError("reload the Loom browser extension (0.1.19 or newer) for shared runtime control")
+                info["session_id"] = (args or {}).get("session_id")
+            return result
         action_name = str(action)
         wait_seconds = self.command_timeout if timeout is None else max(1.0, float(timeout))
+        command_args = dict(args or {})
+        if command_args.get("session_id"):
+            command_args["broker_id"] = self._broker_id
         command = _BridgeCommand(
             command_id=uuid.uuid4().hex,
             action=action_name,
-            args=dict(args or {}),
+            args=command_args,
+            runtime_id=_runtime_id,
         )
         self._log(
             "bridge.command.queued",
@@ -330,6 +498,8 @@ class BrowserExtensionBridge:
             if self._closed:
                 self._log("bridge.command.rejected", command_id=command.command_id, action=action_name, reason="closed")
                 raise BrowserError("browser extension bridge is closed")
+            if _runtime_id in self._retired_runtimes:
+                raise BrowserError("browser runtime is disconnected")
             self._commands.append(command)
             self._pending[command.command_id] = command
             self._condition.notify_all()
@@ -394,6 +564,44 @@ class BrowserExtensionBridge:
         except Exception:
             return
 
+    def _touch_runtime(self, runtime_id: str) -> None:
+        with self._condition:
+            if not runtime_id or runtime_id in self._retired_runtimes or self._closed:
+                raise BrowserError("browser runtime is disconnected")
+            self._runtime_clients[runtime_id] = time.monotonic()
+
+    def detach_runtime(self, runtime_id: str) -> None:
+        with self._condition:
+            self._retired_runtimes.add(runtime_id)
+            self._runtime_clients.pop(runtime_id, None)
+            sessions = self._runtime_sessions.pop(runtime_id, set())
+            for command_id, command in list(self._pending.items()):
+                if command.runtime_id != runtime_id:
+                    continue
+                command.cancelled = True
+                command.error = "browser runtime disconnected"
+                command.event.set()
+                self._pending.pop(command_id, None)
+            self._commands[:] = [command for command in self._commands if not command.cancelled]
+            # These releases are queued after any already-dispatched action.
+            # The extension orders commands per session and preserves all pages.
+            for session in sessions:
+                command = _BridgeCommand(
+                    command_id=uuid.uuid4().hex, action="release_tabs",
+                    args={"session_id": session, "broker_id": self._broker_id},
+                )
+                self._commands.append(command)
+                self._pending[command.command_id] = command
+            self._condition.notify_all()
+
+    def reap_runtimes(self, *, idle_seconds: float = 90.0) -> int:
+        with self._condition:
+            stale = [runtime for runtime, stamp in self._runtime_clients.items()
+                     if time.monotonic() - stamp > idle_seconds]
+        for runtime in stale:
+            self.detach_runtime(runtime)
+        return len(stale)
+
     def _make_handler(self):
         bridge = self
 
@@ -412,7 +620,18 @@ class BrowserExtensionBridge:
             def do_GET(self) -> None:
                 parsed = urlsplit(self.path)
                 if parsed.path == "/browser-extension/v1/health":
-                    self._send_json({"ok": True, "protocol_version": 1})
+                    self._send_json({"ok": True, "protocol_version": 1, "shared_runtime_protocol": 1})
+                    return
+                if parsed.path == "/browser-extension/v1/runtime/status":
+                    if not self._authorized(parsed):
+                        self._send_json({"ok": False, "error": "unauthorized"}, HTTPStatus.UNAUTHORIZED)
+                        return
+                    try:
+                        runtime = self._runtime_id()
+                        bridge._touch_runtime(runtime)
+                        self._send_json({"ok": True, "status": bridge.status()})
+                    except BrowserError as exc:
+                        self._send_json({"ok": False, "error": str(exc)})
                     return
                 if parsed.path == "/browser-extension/v1/poll":
                     if not self._authorized(parsed):
@@ -437,6 +656,16 @@ class BrowserExtensionBridge:
                                     continue
                                 if bridge._pending.get(candidate.command_id) is not candidate:
                                     continue
+                                if candidate.args.get("broker_id"):
+                                    try:
+                                        compatible = tuple(int(part) for part in version.split(".")) >= (0, 1, 19)
+                                    except ValueError:
+                                        compatible = False
+                                    if not compatible:
+                                        candidate.error = "reload the Loom browser extension (0.1.19 or newer) for shared runtime control"
+                                        bridge._pending.pop(candidate.command_id, None)
+                                        candidate.event.set()
+                                        continue
                                 candidate.dispatched_at = time.monotonic()
                                 command = candidate
                                 break
@@ -476,6 +705,36 @@ class BrowserExtensionBridge:
 
             def do_POST(self) -> None:
                 parsed = urlsplit(self.path)
+                if parsed.path in {"/browser-extension/v1/runtime/call", "/browser-extension/v1/runtime/detach"}:
+                    if not self._authorized(parsed):
+                        self._send_json({"ok": False, "error": "unauthorized"}, HTTPStatus.UNAUTHORIZED)
+                        return
+                    try:
+                        runtime = self._runtime_id()
+                        if parsed.path.endswith("/detach"):
+                            bridge.detach_runtime(runtime)
+                            self._send_json({"ok": True})
+                            return
+                        body = self._read_json()
+                        bridge._touch_runtime(runtime)
+                        action = body.get("action")
+                        arguments = body.get("args")
+                        if not isinstance(action, str) or not action or not isinstance(arguments, dict):
+                            raise BrowserError("runtime call requires an action and object arguments")
+                        session = f"{runtime}:{arguments.get('session_id') or 'default'}"
+                        arguments = {**arguments, "session_id": session, "broker_id": bridge._broker_id}
+                        with bridge._condition:
+                            if runtime in bridge._retired_runtimes:
+                                raise BrowserError("browser runtime is disconnected")
+                            bridge._runtime_sessions.setdefault(runtime, set()).add(session)
+                        result = bridge.call(action, arguments, timeout=min(300.0, max(1.0, float(body.get("timeout") or bridge.command_timeout))), _runtime_id=runtime)
+                        if action == "release_tabs":
+                            with bridge._condition:
+                                bridge._runtime_sessions.get(runtime, set()).discard(session)
+                        self._send_json({"ok": True, "result": result, "broker_id": bridge._broker_id})
+                    except (BrowserError, ValueError, TypeError) as exc:
+                        self._send_json({"ok": False, "error": str(exc)})
+                    return
                 if parsed.path == "/browser-extension/v1/register":
                     if not self._authorized(parsed):
                         bridge._log("bridge.auth.rejected", endpoint="register")
@@ -539,6 +798,15 @@ class BrowserExtensionBridge:
                     return False
                 supplied = self.headers.get("X-Loom-Token", "")
                 return hmac.compare_digest(str(supplied), bridge.token)
+
+            def _runtime_id(self) -> str:
+                value = str(self.headers.get("X-Loom-Runtime-ID") or "")
+                try:
+                    if uuid.UUID(value).hex != value:
+                        raise ValueError
+                except ValueError:
+                    raise BrowserError("invalid browser runtime identity") from None
+                return value
 
             def _read_json(self) -> dict[str, Any]:
                 length = int(self.headers.get("Content-Length") or "0")

@@ -47,6 +47,7 @@ const HUD_TAB_QUERY = "loom-hud-tab-id";
 // around every screenshot or input makes Chromium's debugging banner flash.
 const attachedDebuggerTabs = new Set();
 const TAB_SESSION_IDS_KEY = "loomTabSessionIds";
+const BROKER_ID_KEY = "loomBrowserBrokerId";
 let ownershipQueue = Promise.resolve();
 const commandQueues = new Map();
 const inFlightCommands = new Set();
@@ -182,6 +183,15 @@ async function pollOnce() {
   const payload = await response.json();
   if (!payload.command) return;
   const command = payload.command;
+  if (command.args?.broker_id) {
+    const stored = await chrome.storage.session.get(BROKER_ID_KEY);
+    if (stored[BROKER_ID_KEY] !== command.args.broker_id) {
+      // A service restart invalidates old leases. Finish already-dispatched
+      // actions before resetting ownership so old work cannot reclaim new tabs.
+      await Promise.all([...inFlightCommands].map((job) => job.catch(() => {})));
+      await resetBroker(command.args.broker_id);
+    }
+  }
   // Poll again while another session is waiting on a page. Commands belonging
   // to one controller stay ordered; different controllers run independently.
   const session = commandSession(command.args);
@@ -193,7 +203,7 @@ async function pollOnce() {
     inFlightCommands.delete(job);
     if (commandQueues.get(session) === job) commandQueues.delete(session);
   });
-  if (inFlightCommands.size >= 8) await Promise.race([...inFlightCommands].map((job) => job.catch(() => {})));
+  if (commandQueues.size >= 8) await Promise.race([...inFlightCommands].map((job) => job.catch(() => {})));
 }
 
 async function executeCommand(command) {
@@ -1375,6 +1385,7 @@ async function dispatchCommand(action, args) {
   if (result?.page_info?.tab_id) {
     await claimTab(await chrome.tabs.get(Number(result.page_info.tab_id)), args);
     result.page_info.session_id = commandSession(args);
+    if (args.broker_id) result.page_info.broker_id = args.broker_id;
   }
   if (Array.isArray(result?.tabs)) {
     const visible = [];
@@ -1384,6 +1395,19 @@ async function dispatchCommand(action, args) {
     result.tabs = visible;
   }
   return result;
+}
+
+async function resetBroker(brokerId) {
+  return withOwnershipLock(async () => {
+    const attached = [...attachedDebuggerTabs];
+    attachedDebuggerTabs.clear();
+    await Promise.all(attached.map((tabId) => chrome.debugger.detach({ tabId }).catch(() => {})));
+    await chrome.storage.session.set({
+      [BROKER_ID_KEY]: brokerId, [TAB_SESSION_IDS_KEY]: {},
+      [ADOPTED_TAB_IDS_KEY]: [], [HUD_TAB_IDS_KEY]: [],
+    });
+    await markSessionActive(false);
+  });
 }
 
 async function performCommand(action, args) {

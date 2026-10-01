@@ -21,7 +21,7 @@ Loom tasks. Each attached task keeps one reusable controller and can operate tab
 in different windows. Local launches using the same persistent Chromium profile
 remain exclusive because Chromium locks that profile directory.
 
-The extension requires version 0.1.18 or newer. Commands carry a controller ID;
+The extension requires version 0.1.19 or newer. Commands carry a controller ID;
 tabs leased by another controller are excluded from navigation reuse and tab
 lists, and explicit attempts to operate those tabs fail without changing them.
 Commands within one controller run in order, while a wait or navigation in one
@@ -33,6 +33,28 @@ browser controllers automatically. Waiting for approval retains the controller
 until the turn ends. `browser_status` reports the current owner's count as
 `active_sessions` and `owned_sessions`, and the runtime-wide count (including
 opening reservations) as `total_active_sessions`.
+
+## Sharing the bridge across Loom runtimes
+
+The production bridge listens in a separate, hidden Python service. Every Loom
+runtime connects as an authenticated client, including the runtime that started
+the service. An existing compatible bridge on the configured loopback port is
+reused rather than treated as a busy browser or bound a second time. The health
+endpoint advertises `shared_runtime_protocol: 1`; runtime status and command
+endpoints require the pairing credential and a runtime identity.
+
+The broker namespaces controller IDs by runtime, routes each result to its
+caller, and cancels/releases only the disconnecting runtime's commands and tabs.
+Closing the first Loom runtime does not stop the shared service. Client
+heartbeats run every 15 seconds; clients missing for 90 seconds are retired, and
+the service exits after five minutes without runtime clients. A broker restart
+resets stale extension leases before new commands run, while preserving pages.
+Commands whose delivery is uncertain are not automatically replayed.
+
+A different credential, unrelated listener, or older Loom bridge is reported
+explicitly rather than overwritten or silently rerouted to another port. An
+already-running bridge from an older build must be restarted once with the new
+code. Reload/repair the browser extension to version 0.1.19 as well.
 
 ## Install the unpacked extension
 

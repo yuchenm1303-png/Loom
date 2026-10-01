@@ -931,6 +931,8 @@ class BrowserRuntime(WebSearchRuntime):
             bridge_status = self.browser_extension_bridge.status()
             status["extension_bridge"] = {
                 "connected": bool(bridge_status.get("connected")),
+                "bridge_role": str(bridge_status.get("bridge_role") or "unknown"),
+                "runtime_clients": int(bridge_status.get("runtime_clients") or 0),
                 "last_client_id": str(bridge_status.get("last_client_id") or ""),
                 "last_client_version": str(bridge_status.get("last_client_version") or ""),
                 "browser": str(bridge_status.get("browser") or ""),
