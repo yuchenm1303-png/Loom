@@ -1,5 +1,5 @@
 (() => {
-  const API = '/api/v1';
+  const API = location.hostname === 'loom.smirel.com' ? '/admin-api/v1' : '/api/v1';
   const $ = (id) => document.getElementById(id);
   const state = { access: sessionStorage.getItem('loom_admin_access') || '', refresh: sessionStorage.getItem('loom_admin_refresh') || '', me: null, overview: null, users: [], sessions: [], audit: [], flags: [] };
 
