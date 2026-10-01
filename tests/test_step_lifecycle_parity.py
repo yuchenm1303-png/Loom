@@ -147,7 +147,7 @@ def test_transport_retry_reuses_exact_step_and_prepared_request(tmp_path):
     assert "late_tool" not in requested_names
 
 
-def test_invalid_tool_arguments_become_observation_and_turn_continues(tmp_path):
+def test_invalid_tool_arguments_discard_the_batch_and_the_turn_recovers(tmp_path):
     executed: list[dict[str, object]] = []
 
     def handler(_context, arguments):
@@ -194,11 +194,19 @@ def test_invalid_tool_arguments_become_observation_and_turn_continues(tmp_path):
 
     result = runtime.start_turn(session.session_id, "Inspect the path.")
 
+    # One malformed call rejects the whole native batch: nothing is executed and
+    # no assistant/tool history is committed, so the retried request carries the
+    # schema hint as a recovery instruction instead of a tool observation.
     assert result.status is AgentStatus.COMPLETED
     assert result.final_text == "recovered"
     assert executed == []
     stored = runtime.store.load(session.session_id)
-    tool_messages = [message for message in stored.messages if message.role is MessageRole.TOOL]
-    assert len(tool_messages) == 1
-    assert "Invalid tool request:" in str(tool_messages[0].content)
+    assert [message.role for message in stored.messages] == [MessageRole.USER, MessageRole.ASSISTANT]
+    assert not any(message.tool_calls for message in stored.messages)
+
+    recovery = [message for message in platform.requests[-1].messages if message.name == "loom_terminal_recovery"]
+    assert len(recovery) == 1
+    assert "failed schema validation" in str(recovery[0].content)
+    assert "Invalid tool: inspect_path" in str(recovery[0].content)
+    assert 'Required properties: ["path"]' in str(recovery[0].content)
     assert len(platform.requests) == 2
