@@ -17,6 +17,10 @@ type TargetAddressSpaceRequestInit = RequestInit & {
   targetAddressSpace?: "loopback";
 };
 
+type NavigatorWithUAData = Navigator & {
+  userAgentData?: { platform?: string };
+};
+
 function requestInit(init: RequestInit = {}): TargetAddressSpaceRequestInit {
   return {
     ...init,
@@ -73,6 +77,7 @@ export async function openLocalLoomHost(): Promise<boolean> {
 }
 
 export function isWindowsBrowser(): boolean {
-  const platform = String(navigator.userAgentData?.platform || navigator.platform || navigator.userAgent || "").toLowerCase();
+  const nav = navigator as NavigatorWithUAData;
+  const platform = String(nav.userAgentData?.platform || nav.platform || nav.userAgent || "").toLowerCase();
   return platform.includes("win");
 }
