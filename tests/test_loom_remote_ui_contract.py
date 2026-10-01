@@ -14,16 +14,16 @@ def test_web_ui_has_no_multi_host_selector() -> None:
     assert "Remote devices" not in gate
 
 
-def test_gateway_enforces_single_current_host_routing() -> None:
+def test_gateway_routes_each_browser_to_one_selected_host() -> None:
     source = GATEWAY.read_text(encoding="utf-8")
-    assert "self.devices: dict[int, DevicePeer] = {}" in source
-    assert 'reason="newer Loom Desktop connected"' in source
-    assert "selected_device_id" not in source
-    assert '"HOST_NOT_SELECTED"' not in source
+    assert "self.devices: dict[int, dict[str, DevicePeer]] = {}" in source
+    assert "selected_device_id" in source
+    assert "device = await hub.device_for_browser(peer)" in source
+    assert 'reason="newer Loom Desktop connected"' not in source
 
 
-def test_legacy_bridge_selector_cannot_change_gateway_target() -> None:
+def test_web_bridge_sends_its_device_target_during_connect() -> None:
     source = BRIDGE.read_text(encoding="utf-8")
-    assert 'target.searchParams.set("device"' not in source
+    assert "const selectedDeviceId = selectedWebDeviceId();" in source
+    assert 'target.searchParams.set("device", selectedDeviceId)' in source
     assert 'type: "select_device"' not in source
-    assert "await ensureSocket();" in source

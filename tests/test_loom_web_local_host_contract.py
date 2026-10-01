@@ -21,7 +21,7 @@ def test_every_web_invoke_routes_to_local_host() -> None:
     assert "asyncio.create_task(_run_device_invoke(peer, request_id, operation, args))" in GATEWAY
     assert '"HOST_OFFLINE"' in GATEWAY
     assert 'elif kind == "notification":' in GATEWAY
-    assert "await hub.broadcast_notification(user_id, payload)" in GATEWAY
+    assert "await hub.broadcast_notification(user_id, peer.device_id, payload)" in GATEWAY
 
 
 def test_desktop_window_is_not_the_host_lifetime() -> None:

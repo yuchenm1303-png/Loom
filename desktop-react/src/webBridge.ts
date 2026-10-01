@@ -110,7 +110,9 @@ function webSocketUrl(): string {
   const configured = String(import.meta.env.VITE_LOOM_WEB_SOCKET_URL || "").trim();
   const scheme = window.location.protocol === "https:" ? "wss:" : "ws:";
   const target = new URL(configured || `${scheme}//${window.location.host}${DEFAULT_WS_PATH}`, window.location.href);
-  target.searchParams.delete("device");
+  const selectedDeviceId = selectedWebDeviceId();
+  if (selectedDeviceId) target.searchParams.set("device", selectedDeviceId);
+  else target.searchParams.delete("device");
   return target.toString();
 }
 
@@ -170,6 +172,7 @@ function closeSocket(): void {
   const current = socket;
   socket = null;
   socketPromise = null;
+  lastDeviceStatus = null;
   stopHeartbeat();
   failPending("Loom Web connection closed.");
   if (current && current.readyState < WebSocket.CLOSING) current.close(1000, "client closed");
