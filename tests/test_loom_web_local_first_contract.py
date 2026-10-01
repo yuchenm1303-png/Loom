@@ -7,27 +7,29 @@ WEB_GATE = ROOT / "desktop-react" / "src" / "components" / "WebAppGate.tsx"
 REMOTE_RELAY = ROOT / "desktop-react" / "electron" / "remoteRelay.ts"
 
 
-def test_gateway_has_one_current_host_per_account() -> None:
+def test_gateway_keeps_hosts_by_device_id_instead_of_eviction() -> None:
     source = GATEWAY.read_text(encoding="utf-8")
-    assert "self.devices: dict[int, DevicePeer] = {}" in source
-    assert "self.devices: dict[int, dict[str, DevicePeer]] = {}" not in source
-    assert 'reason="newer Loom Desktop connected"' in source
-    assert "newer Loom Host instance connected for this device" not in source
+    assert "self.devices: dict[int, dict[str, DevicePeer]] = {}" in source
+    assert "devices = hub.devices.setdefault(user_id, {})" in source
+    assert "devices[device_id] = peer" in source
+    assert 'reason="newer Loom Desktop connected"' not in source
+    assert "newer Loom Host instance connected for this device" in source
 
 
-def test_browser_routes_by_account_without_device_selection() -> None:
+def test_browser_routes_to_its_selected_device() -> None:
     source = GATEWAY.read_text(encoding="utf-8")
-    assert "device = hub.devices.get(peer.user_id)" in source
+    assert 'selected_device_id: str = ""' in source
+    assert "device = await hub.device_for_browser(peer)" in source
+    assert 'websocket.query_params.get("device")' in source
+    assert '"selectedDeviceId": browser.selected_device_id' in source
+    assert '"devices": [dict(device.device) for device in devices]' in source
     assert '"code": "HOST_OFFLINE"' in source
-    assert '"code": "HOST_NOT_SELECTED"' not in source
-    assert "selected_device_id" not in source
-    assert 'kind == "select_device"' not in source
 
 
-def test_websocket_does_not_encode_a_device_routing_target() -> None:
+def test_websocket_encodes_the_selected_device_routing_target() -> None:
     bridge = WEB_BRIDGE.read_text(encoding="utf-8")
-    assert 'target.searchParams.delete("device")' in bridge
-    assert 'target.searchParams.set("device"' not in bridge
+    assert "const selectedDeviceId = selectedWebDeviceId();" in bridge
+    assert 'target.searchParams.set("device", selectedDeviceId)' in bridge
     assert 'type: "select_device"' not in bridge
 
 
