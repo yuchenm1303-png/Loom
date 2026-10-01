@@ -21,7 +21,6 @@ const PORTAL_STYLES = [
   "https://smirel.com/download/release-history-v1.css",
   "https://smirel.com/download/beach-wallpaper-v1.css",
   "https://smirel.com/download/wallpaper-ready-v1.css",
-  "/loom-portal-polish.css",
 ] as const;
 
 const RELEASE = {
