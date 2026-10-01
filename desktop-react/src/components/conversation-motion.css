@@ -726,6 +726,8 @@
 /* The top run state becomes a quiet floating capsule. The task timeline keeps
    the expressive motion; this remains the stable global status anchor. */
 .conversation-stage > .run-progress-frame.top {
+  display: flex;
+  align-items: center;
   min-height: 38px;
   padding: 0;
   border-bottom: 1px solid rgba(255,255,255,.04);
@@ -737,6 +739,7 @@
 
 .conversation-stage > .run-progress-frame.top .run-progress-inline {
   width: 100%;
+  box-sizing: border-box;
   min-height: 38px;
   margin: 0;
   padding: 3px 16px;
