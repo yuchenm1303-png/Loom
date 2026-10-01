@@ -7,13 +7,13 @@ import {
   discoverLocalLoomHost,
   isWindowsBrowser,
   LOOM_WINDOWS_INSTALLER_URL,
-  openLocalLoomHost,
+  pairLocalLoomHost,
   rememberLocalLoomHost,
   type LocalLoomHost,
 } from "../localHostDiscovery";
 import "../web-gate.css";
 
-type HostState = "idle" | "discovering" | "connecting" | "online" | "missing" | "offline";
+type HostState = "idle" | "discovering" | "pairing" | "connecting" | "online" | "missing" | "offline";
 
 type RelayDevice = { id?: string; name?: string; platform?: string; version?: string };
 type DeviceStatus = {
@@ -24,6 +24,7 @@ type DeviceStatus = {
 };
 
 const DISCOVERY_INTERVAL_MS = 1_500;
+const AUTO_PAIR_ATTEMPTS = 3;
 
 export function WebAppGate({ children }: { children: ReactNode }) {
   const account = useAccount();
@@ -37,6 +38,9 @@ export function WebAppGate({ children }: { children: ReactNode }) {
   const [showRemote, setShowRemote] = useState(false);
   const [remoteLoading, setRemoteLoading] = useState(false);
   const [discoveryNonce, setDiscoveryNonce] = useState(0);
+  const [pairing, setPairing] = useState(false);
+  const [pairAttempts, setPairAttempts] = useState(0);
+  const [pairingSucceeded, setPairingSucceeded] = useState(false);
 
   const activeDeviceId = remoteDeviceId || localDeviceId;
   const localRelayReady = localHost?.relayReady ?? null;
@@ -49,10 +53,9 @@ export function WebAppGate({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("loom:web-auth-changed", refresh);
   }, [account.refresh, web]);
 
-  // The website continuously looks for a Host on *this* physical computer.
-  // Discovery is read-only and loopback-only; no Agent operation is exposed on
-  // localhost. Once found, the normal authenticated WSS relay is bound to that
-  // exact device id.
+  // Continuously discover the Host on this physical computer. Discovery is
+  // read-only; all privileged Loom operations still travel through the normal
+  // authenticated WSS relay after the exact local device id is selected.
   useEffect(() => {
     if (!web || !account.ready || !account.account.authenticated || !account.account.user || remoteDeviceId) return;
     let cancelled = false;
@@ -66,13 +69,22 @@ export function WebAppGate({ children }: { children: ReactNode }) {
       const host = await discoverLocalLoomHost();
       inFlight = false;
       if (cancelled) return;
+
       if (host) {
         rememberLocalLoomHost(host.deviceId);
         setLocalHost(host);
         setLocalDeviceId(host.deviceId);
-        if (!host.relayReady) {
+        if (host.relayReady) {
+          setPairAttempts(0);
+          setPairingSucceeded(false);
+          setHostError("");
+          if (hostState !== "online") setHostState("connecting");
+        } else if (pairing) {
+          setHostState("pairing");
+        } else if (pairingSucceeded) {
+          setHostState("connecting");
+        } else {
           setHostState("offline");
-          setHostError("Loom Host is installed, but it is not connected to this Loom account yet.");
         }
       } else {
         setLocalHost(null);
@@ -94,7 +106,66 @@ export function WebAppGate({ children }: { children: ReactNode }) {
     account.account.user,
     account.ready,
     discoveryNonce,
+    hostState,
     localDeviceId,
+    pairing,
+    pairingSucceeded,
+    remoteDeviceId,
+    web,
+  ]);
+
+  // A newly installed Host has no account credential yet. The signed-in website
+  // automatically mints a short-lived one-time pairing ticket and hands only
+  // that ticket to localhost. The Host exchanges it for its own session, so the
+  // browser's HttpOnly refresh token never crosses the loopback boundary.
+  useEffect(() => {
+    if (
+      !web
+      || !account.ready
+      || !account.account.authenticated
+      || remoteDeviceId
+      || !localHost
+      || localHost.relayReady
+      || pairing
+      || pairingSucceeded
+      || pairAttempts >= AUTO_PAIR_ATTEMPTS
+    ) return;
+
+    let cancelled = false;
+    const delay = pairAttempts === 0 ? 250 : 1_500 * (pairAttempts + 1);
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        if (cancelled) return;
+        setPairing(true);
+        setHostState("pairing");
+        setHostError("");
+        const result = await pairLocalLoomHost();
+        if (cancelled) return;
+        setPairing(false);
+        setPairAttempts((value) => value + 1);
+        if (result.ok) {
+          setPairingSucceeded(true);
+          setHostState("connecting");
+          setHostError("");
+          setDiscoveryNonce((value) => value + 1);
+        } else {
+          setHostState("offline");
+          setHostError(result.error);
+        }
+      })();
+    }, delay);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [
+    account.account.authenticated,
+    account.ready,
+    localHost,
+    pairAttempts,
+    pairing,
+    pairingSucceeded,
     remoteDeviceId,
     web,
   ]);
@@ -103,8 +174,6 @@ export function WebAppGate({ children }: { children: ReactNode }) {
     if (!web || !activeDeviceId || !account.account.authenticated) return;
     setHostState("connecting");
     try {
-      // select_device is explicit even for local mode. The socket URL also
-      // carries the remembered local id as a backwards-compatible fast path.
       await selectWebDevice(activeDeviceId);
       await window.loom.connect();
       setHostState("online");
@@ -138,7 +207,7 @@ export function WebAppGate({ children }: { children: ReactNode }) {
       if (!activeDeviceId || detail?.selectedDeviceId !== activeDeviceId) return;
       if (!detail.online) {
         setHostState("offline");
-        setHostError((current) => current || (remoteDeviceId ? "That remote Loom device is offline." : "Loom Host on this computer is not connected yet."));
+        setHostError((current) => current || (remoteDeviceId ? "That remote Loom device is offline." : "Loom Host on this computer is reconnecting."));
         return;
       }
       void connectActiveDevice();
@@ -152,8 +221,8 @@ export function WebAppGate({ children }: { children: ReactNode }) {
     if (showRemote) return;
     setRemoteLoading(true);
     try {
-      // An empty explicit selection opens the authenticated browser socket only
-      // to obtain the user's device list; it never falls back to a remote Host.
+      // Empty explicit selection opens only the authenticated browser socket to
+      // obtain the account's device list. It never auto-selects another machine.
       await selectWebDevice("");
     } catch (cause) {
       setHostError(cause instanceof Error ? cause.message : String(cause));
@@ -180,10 +249,14 @@ export function WebAppGate({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const openHost = useCallback(async () => {
-    const opened = await openLocalLoomHost();
-    if (!opened) setHostError("Could not open Loom Host. Start Loom from the Start menu, then this page will reconnect automatically.");
-  }, []);
+  const retryLocalPairing = useCallback(() => {
+    setPairAttempts(0);
+    setPairingSucceeded(false);
+    setPairing(false);
+    setHostError("");
+    setHostState(localHost ? "offline" : "discovering");
+    setDiscoveryNonce((value) => value + 1);
+  }, [localHost]);
 
   if (!web) return children;
 
@@ -194,7 +267,7 @@ export function WebAppGate({ children }: { children: ReactNode }) {
           <section className="boot-error-card web-gate-card">
             <div className="brand-mark large" aria-hidden="true">L</div>
             <h1>Loom</h1>
-            <p>Sign in once. After that, opening this website is enough — Loom automatically uses the Host on this computer and never silently jumps to another device.</p>
+            <p>Sign in once. After that, opening this website is enough — Loom automatically finds, links and reconnects the Host on this computer.</p>
           </section>
         </main>
         <AccountDialog
@@ -217,27 +290,39 @@ export function WebAppGate({ children }: { children: ReactNode }) {
   if (hostState !== "online") {
     const discovering = hostState === "idle" || hostState === "discovering";
     const connecting = hostState === "connecting";
+    const pairingHost = hostState === "pairing" || pairing;
     const missing = hostState === "missing" && !localDeviceId;
     const hostInstalled = Boolean(localHost || localDeviceId);
+    const pairingExhausted = Boolean(localHost && !localHost.relayReady && pairAttempts >= AUTO_PAIR_ATTEMPTS && !pairingSucceeded);
     const remote = Boolean(remoteDeviceId);
+
     const title = remote
       ? (connecting ? "Connecting to remote Loom…" : "Remote Loom is offline")
-      : discovering
-        ? "Finding Loom on this computer…"
-        : connecting
-          ? "Connecting to this computer…"
-          : missing
-            ? "Enable Loom on this computer"
-            : "Loom Host is ready on this computer";
+      : pairingHost
+        ? "Linking Loom Host securely…"
+        : discovering
+          ? "Finding Loom on this computer…"
+          : connecting
+            ? "Connecting to this computer…"
+            : missing
+              ? "Enable Loom on this computer"
+              : pairingExhausted
+                ? "Loom Host needs attention"
+                : "Reconnecting Loom Host…";
+
     const description = remote
       ? "Remote mode is explicit and temporary. Your local computer remains the default the next time you open Loom Web."
       : missing
-        ? "Install the lightweight Loom Host once. It runs quietly in the background, starts with Windows, updates itself, and this page will connect automatically when installation finishes."
-        : hostInstalled && localRelayReady === false
-          ? "The local Host is installed. Open Loom once to sign in with the same account; after that you can close the Desktop window and use only this website."
-          : discovering || connecting
-            ? "No command line or device picker is needed. Loom Web is binding itself to the Host on this physical computer."
-            : "The local Host was found, but its authenticated relay is not online yet. This page keeps retrying automatically.";
+        ? "Install Loom Host once. It runs quietly in the background, starts with Windows, updates itself, and this page connects automatically as soon as installation finishes."
+        : pairingHost
+          ? "The website is authorizing this computer with a short-lived one-time ticket. No Desktop login or copied token is needed."
+          : pairingExhausted
+            ? "Automatic linking did not finish. Retry here; you normally never need to open the Desktop window or choose a device manually."
+            : discovering || connecting
+              ? "No command line, Desktop window or device picker is needed. Loom Web is binding itself to the Host on this physical computer."
+              : hostInstalled
+                ? "The local Host is installed and the page keeps reconnecting automatically."
+                : "Loom Web is checking this computer.";
 
     return (
       <main className="boot-error" aria-label="Loom Host connection">
@@ -246,8 +331,11 @@ export function WebAppGate({ children }: { children: ReactNode }) {
           <h1>{title}</h1>
           <p>{description}</p>
 
-          {(discovering || connecting) ? (
-            <div className="web-gate-status-row"><span className="web-gate-spinner" aria-hidden="true" /> Checking this computer</div>
+          {(discovering || connecting || pairingHost) ? (
+            <div className="web-gate-status-row">
+              <span className="web-gate-spinner" aria-hidden="true" />
+              {pairingHost ? "Securing this Host" : connecting ? "Connecting Host" : "Checking this computer"}
+            </div>
           ) : null}
 
           <div className="web-gate-actions">
@@ -257,14 +345,16 @@ export function WebAppGate({ children }: { children: ReactNode }) {
             {missing ? (
               <button className="web-gate-button secondary" type="button" onClick={() => setDiscoveryNonce((value) => value + 1)}>Check again</button>
             ) : null}
-            {!remote && hostInstalled && hostState === "offline" ? (
-              <button className="web-gate-button primary" type="button" onClick={() => void openHost()}>Open Loom once</button>
+            {!remote && pairingExhausted ? (
+              <button className="web-gate-button primary" type="button" onClick={retryLocalPairing}>Retry secure link</button>
             ) : null}
             {remote ? (
               <button className="web-gate-button secondary" type="button" onClick={() => {
                 setRemoteDeviceId("");
                 setHostState("discovering");
                 setHostError("");
+                setPairAttempts(0);
+                setPairingSucceeded(false);
                 setDiscoveryNonce((value) => value + 1);
               }}>Use this computer</button>
             ) : null}
