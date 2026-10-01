@@ -23,6 +23,18 @@ def test_registry_exposes_ant_ling_before_key_is_configured(tmp_path, monkeypatc
     assert all(profile["baseUrl"] == "https://api.ant-ling.com/v1" for profile in profiles)
 
 
+def test_stored_key_stays_configured_when_model_discovery_is_unavailable(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("LOOM_HOME", str(tmp_path))
+    monkeypatch.setattr(bridge, "_api_key", lambda: "sk-test")
+    monkeypatch.setattr(bridge, "_fetch_models", lambda _key: ([], True))
+
+    registry = bridge._registry()
+
+    assert registry["profiles"]
+    assert all(profile["configured"] is True for profile in registry["profiles"])
+    assert [profile["model"] for profile in registry["profiles"]] == list(bridge.ANT_LING_FALLBACK_MODEL_IDS)
+
+
 def test_resolve_routes_ant_ling_to_official_openai_compatible_endpoint(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("LOOM_HOME", str(tmp_path))
     monkeypatch.setattr(bridge, "_api_key", lambda: "sk-test")

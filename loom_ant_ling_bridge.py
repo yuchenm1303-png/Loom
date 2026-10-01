@@ -204,11 +204,13 @@ def _registry() -> dict[str, Any]:
     selection_store = ModelSelectionStore(home)
     key = _api_key()
     discovered: list[str] = []
-    rejected = False
     if key:
-        discovered, rejected = _fetch_models(key)
+        # The OpenAI-compatible chat endpoint is the runtime contract. Model
+        # discovery is optional metadata and must never turn an already stored
+        # credential back into a disconnected UI state.
+        discovered, _ = _fetch_models(key)
     model_ids = discovered or list(ANT_LING_FALLBACK_MODEL_IDS)
-    configured = bool(key) and not rejected
+    configured = bool(key)
     source = "provider" if discovered else "fallback"
     profiles = [
         _profile(model, configured=configured, source=source, reasoning_store=reasoning_store)

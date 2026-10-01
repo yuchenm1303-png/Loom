@@ -872,13 +872,7 @@ export function ModelPanel({
 
         <div className="mp-body" ref={providerListRef}>
           {credentialTarget ? (
-            <form
-              className="mp-connect"
-              onSubmit={(event) => {
-                event.preventDefault();
-                void configureProvider(credentialTarget.provider);
-              }}
-            >
+            <div className="mp-connect">
               <div className="mp-connect-copy">
                 <span className="mp-connect-icon" aria-hidden="true"><KeyRound size={15} strokeWidth={1.9} /></span>
                 <span className="mp-connect-text">
@@ -901,13 +895,24 @@ export function ModelPanel({
                   aria-label={credentialTarget.placeholder}
                   autoComplete="off"
                   autoFocus
+                  onKeyDown={(event) => {
+                    if (event.key !== "Enter") return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    void configureProvider(credentialTarget.provider);
+                  }}
                 />
-                <button type="submit" disabled={!providerKey.trim() || providerConfiguring}>
+                <button
+                  type="button"
+                  disabled={!providerKey.trim() || providerConfiguring}
+                  onClick={() => void configureProvider(credentialTarget.provider)}
+                >
                   {providerConfiguring ? <LoaderCircle size={14} strokeWidth={2} className="mp-spin" /> : null}
                   Connect
                 </button>
               </div>
-            </form>
+              {error ? <div className="mp-notice is-error">{error}</div> : null}
+            </div>
           ) : null}
 
           {setup.statusProfiles.map((profile) => (
@@ -975,7 +980,7 @@ export function ModelPanel({
           {confirmDelete ? (
             <div className="mp-notice is-error">Click the trash icon again to delete this saved connection.</div>
           ) : null}
-          {error ? <div className="mp-notice is-error">{error}</div> : null}
+          {!credentialTarget && error ? <div className="mp-notice is-error">{error}</div> : null}
         </div>
       </div>
     );
