@@ -1,0 +1,16 @@
+# Optional overlay for the reference deployment where Caddy already runs on
+# the TermRelay internal Docker network. Use together with docker-compose.yml.
+services:
+  loom-account:
+    networks:
+      - proxy
+    environment:
+      LOOM_ACCOUNT_TRUSTED_PROXIES: "127.0.0.1,::1,172.18.0.0/16"
+  loom-model-gateway:
+    networks:
+      - proxy
+
+networks:
+  proxy:
+    external: true
+    name: ${LOOM_EDGE_NETWORK:-termrelay_termrelay-internal}
