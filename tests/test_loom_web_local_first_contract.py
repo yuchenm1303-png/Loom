@@ -45,4 +45,4 @@ def test_web_gate_automatically_follows_current_account_host() -> None:
     assert "selectWebDevice" not in source
     assert "connectRemote" not in source
     assert "Remote devices" not in source
-    assert "one current Host" in source
+    assert 'window.addEventListener("loom:web-device-status", onDeviceStatus)' in source
