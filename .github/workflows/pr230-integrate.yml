@@ -1,0 +1,134 @@
+name: PR230 integrate main
+
+on:
+  push:
+    branches: [feat/web-local-first-host]
+
+permissions:
+  contents: write
+
+jobs:
+  integrate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/web-local-first-host
+          fetch-depth: 0
+      - name: Merge main and preserve local-first pairing
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          set +e
+          git merge --no-ff --no-commit origin/main
+          merge_status=$?
+          set -e
+          if [ "$merge_status" -ne 0 ]; then
+            conflicts="$(git diff --name-only --diff-filter=U)"
+            echo "$conflicts"
+            while IFS= read -r path; do
+              [ -z "$path" ] && continue
+              case "$path" in
+                desktop-react/src/components/WebAppGate.tsx)
+                  git checkout --ours -- "$path"
+                  git add "$path"
+                  ;;
+                services/loom_account/server.py)
+                  git checkout --theirs -- "$path"
+                  git add "$path"
+                  ;;
+                *)
+                  echo "Unexpected merge conflict: $path" >&2
+                  exit 1
+                  ;;
+              esac
+            done <<< "$conflicts"
+          fi
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("services/loom_account/server.py")
+          source = path.read_text(encoding="utf-8")
+
+          if "_PAIR_TTL_SECONDS = 120" not in source:
+              source = source.replace(
+                  "_PASSWORD_ITERATIONS = 600_000\n",
+                  "_PASSWORD_ITERATIONS = 600_000\n_PAIR_TTL_SECONDS = 120\n",
+                  1,
+              )
+
+          if "self._pairing_guard = threading.Lock()" not in source:
+              source = source.replace(
+                  "        self.limiter = SlidingWindowLimiter()\n",
+                  "        self.limiter = SlidingWindowLimiter()\n"
+                  "        self._pairing_guard = threading.Lock()\n"
+                  "        self._pairing_tickets: dict[str, tuple[float, dict[str, Any]]] = {}\n",
+                  1,
+              )
+
+          if "def issue_device_pair(" not in source:
+              marker = "    def _admin(self, authorization: str) -> dict[str, Any]:\n"
+              if marker not in source:
+                  marker = "    def search(self, body: dict[str, Any], authorization: str) -> dict[str, Any]:\n"
+              methods = '''    def issue_device_pair(self, authorization: str, client_key: str) -> dict[str, Any]:
+              user = self.me(authorization)["user"]
+              user_id = int(user["id"])
+              self.limiter.check(f"pair-issue:{user_id}:{client_key}", 20, 60)
+              ticket = _new_token("loom_pair")
+              now = time.monotonic()
+              with self._pairing_guard:
+                  self._pairing_tickets = {
+                      key: value for key, value in self._pairing_tickets.items() if value[0] > now
+                  }
+                  self._pairing_tickets[ticket] = (now + _PAIR_TTL_SECONDS, dict(user))
+              return {"pairing_ticket": ticket, "expires_in": _PAIR_TTL_SECONDS}
+
+          def exchange_device_pair(self, body: dict[str, Any], client_key: str) -> dict[str, Any]:
+              self.limiter.check(f"pair-exchange:{client_key}", 30, 60)
+              ticket = str(body.get("pairing_ticket") or "").strip()
+              if not ticket.startswith("loom_pair_") or len(ticket) > 256:
+                  raise AccountError(
+                      HTTPStatus.UNAUTHORIZED,
+                      "INVALID_PAIRING_TICKET",
+                      "This Loom Host pairing request is no longer valid.",
+                  )
+              now = time.monotonic()
+              with self._pairing_guard:
+                  entry = self._pairing_tickets.pop(ticket, None)
+              if entry is None or entry[0] <= now:
+                  raise AccountError(
+                      HTTPStatus.UNAUTHORIZED,
+                      "INVALID_PAIRING_TICKET",
+                      "This Loom Host pairing request is no longer valid.",
+                  )
+              user = entry[1]
+              return {**self.store.create_session(int(user["id"])), "user": user}
+
+          '''
+              if marker not in source:
+                  raise SystemExit("AccountApplication insertion marker not found")
+              source = source.replace(marker, methods + marker, 1)
+
+          if 'path == "/v1/auth/device-pair/issue"' not in source:
+              marker = '        if path == "/v1/admin/users/status": return self.application.admin_set_user_status(body, authorization)\n'
+              if marker not in source:
+                  raise SystemExit("Account route insertion marker not found")
+              routes = '''        if path == "/v1/auth/device-pair/issue":
+              return self.application.issue_device_pair(authorization, self._client_key())
+          if path == "/v1/auth/device-pair/exchange":
+              return self.application.exchange_device_pair(body, self._client_key())
+          '''
+              source = source.replace(marker, routes + marker, 1)
+
+          path.write_text(source, encoding="utf-8")
+          PY
+          git rm -f .github/workflows/pr230-integrate.yml
+          git add -A
+          python -m compileall -q services/loom_account services/loom_web_gateway
+          python -m pytest tests/test_loom_account_pairing.py tests/test_loom_admin.py -q
+          git commit -m "Merge main and reconcile Loom Web local-first host"
+          git push origin HEAD:feat/web-local-first-host
