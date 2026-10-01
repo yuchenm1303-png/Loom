@@ -49,9 +49,9 @@ def _home() -> Path:
 def _relay_key() -> str:
     """Return Loom's customer/device Relay credential, never an Ant Ling key.
 
-    The Ant Ling upstream credential stays on Muxway.  The desktop only owns a
+    The Ant Ling upstream credential stays on Muxway. The desktop only owns a
     Relay credential whose server-side group decides whether Ling/Ring models
-    are visible and callable for this installation/user package.
+    are callable for this installation/user package.
     """
 
     store = ModelConfigStore(_home())
@@ -135,9 +135,6 @@ def _profile(
         "baseUrl": base_url,
         "model": model,
         "vision": model.casefold().endswith("-vl"),
-        # A profile exists only after Muxway advertises it to this Relay
-        # credential, so the built-in provider is already connected from the
-        # user's point of view. There is deliberately no Ant Ling key prompt.
         "configured": True,
         "available": True,
         "catalogSource": source,
@@ -153,13 +150,35 @@ def _profile(
     return payload
 
 
+def _access_status_profile(message: str) -> dict[str, Any]:
+    return {
+        "selection": f"{ANT_LING_SELECTION_PREFIX}__managed_access_status__",
+        "id": "ant-ling-managed-access-status",
+        "kind": "builtin",
+        "name": "Managed access",
+        "groupId": "ant-ling",
+        "groupName": "Ant Ling",
+        "groupOrder": 25,
+        "adapter": "openai-compatible",
+        "baseUrl": _relay_base_url(),
+        "model": "",
+        "vision": False,
+        "configured": True,
+        "available": False,
+        "catalogSource": "fallback",
+        "managed": True,
+        "setupOnly": True,
+        "statusMessage": message,
+    }
+
+
 def _fetch_models(relay_key: str, timeout: float = 3.5) -> list[str]:
     """Read the authoritative Ant Ling entitlement from Muxway `/models`.
 
-    No local fallback is used here.  If the server does not advertise a Ling or
-    Ring model to this Relay credential, Loom must not surface it as a built-in
-    model.  The Relay also enforces the same model list on inference requests,
-    so a hand-crafted client request cannot bypass the UI entitlement.
+    The Relay is authoritative for inference access. The local fallback catalog
+    is display-only: it keeps the built-in Ant Ling provider visible when an
+    account has not been granted access yet, but those rows remain disabled and
+    cannot bypass server-side entitlement checks.
     """
 
     secret = str(relay_key or "").strip()
@@ -210,14 +229,35 @@ def _registry() -> dict[str, Any]:
     selection_store = ModelSelectionStore(home)
     relay_key = _relay_key()
     model_ids = _fetch_models(relay_key) if relay_key else []
-    profiles = [
-        _profile(model, source="provider", reasoning_store=reasoning_store)
-        for model in model_ids
-    ]
+
+    if model_ids:
+        profiles = [
+            _profile(model, source="provider", reasoning_store=reasoning_store)
+            for model in model_ids
+        ]
+    else:
+        message = (
+            "Ant Ling is a Loom built-in provider, but this Loom account/device has not been granted managed Ant Ling access yet. "
+            "An administrator can enable it on the Relay; no Ant Ling API key is required here."
+        )
+        profiles = [
+            {
+                **_profile(model, source="fallback", reasoning_store=reasoning_store),
+                "available": False,
+                "statusMessage": message,
+            }
+            for model in ANT_LING_FALLBACK_MODEL_IDS
+        ]
+        profiles.append(_access_status_profile(message))
+
     active = str(selection_store.get() or "").strip()
+    active_is_available = any(
+        profile.get("selection") == active and profile.get("available") is not False
+        for profile in profiles
+    )
     return {
         "profiles": profiles,
-        "activeSelection": active if profiles and _model_from_selection(active) else None,
+        "activeSelection": active if active_is_available and _model_from_selection(active) else None,
     }
 
 
@@ -230,6 +270,12 @@ def _resolve(selection: str) -> dict[str, Any]:
         raise RuntimeError(
             "Loom managed-model access is not provisioned. Sign in/use a Loom package with built-in model access, "
             "or add your own Ant Ling API under Add connection."
+        )
+    entitled = {item.casefold() for item in _fetch_models(relay_key)}
+    if model.casefold() not in entitled:
+        raise RuntimeError(
+            "Ant Ling built-in access is not enabled for this Loom account/device. "
+            "Enable the model in the Loom/Muxway admin policy, or use Add connection with your own Ant Ling key."
         )
     reasoning_store = ReasoningConfigStore(_home())
     profile = _profile(model, source="runtime", reasoning_store=reasoning_store)
