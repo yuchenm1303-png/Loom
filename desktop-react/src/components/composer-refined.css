@@ -1,0 +1,951 @@
+/* Composer refinement layer
+   =========================
+   One late stylesheet that gives the composer and everything that opens from it
+   (permission, model and expression popovers, attachments) the same quiet,
+   precise finish. The earlier composer sheets each patched the one before:
+   gradients, inner highlights, glows, lift-on-hover and a light streak on every
+   chip. Together they read as moulded plastic. This layer takes the surface back
+   to what it is, a hairline-bordered panel in a single colour, with colour spent
+   only where it means something.
+
+   Rules of engagement
+   - Every rule starts with :root .composer-wrap.composer-refined (0,3,0), which
+     outranks the html[data-loom-theme="light"] overrides in theme.css and the
+     pill sheets without !important.
+   - No gradients, no inner highlights, no coloured glows, nothing that lifts,
+     scales or sweeps on hover. State is a tint of the surface.
+   - Layout, motion (data-motion-phase) and font sizes owned by typography-scale.css
+     are not restated here; this layer is skin only.
+   - Tokens are --cq-*; popovers sit inside .composer-wrap, so they share them. */
+
+/* -------------------------------------------------------------------------- */
+/* Tokens                                                                      */
+/* -------------------------------------------------------------------------- */
+
+:root .composer-wrap.composer-refined {
+  --cq-surface: #15171c;
+  --cq-pop: #181a20;
+  --cq-field: rgba(255, 255, 255, .04);
+  --cq-line: rgba(255, 255, 255, .08);
+  --cq-line-strong: rgba(255, 255, 255, .14);
+  --cq-hover: rgba(255, 255, 255, .05);
+  --cq-press: rgba(255, 255, 255, .08);
+  --cq-selected: rgba(255, 255, 255, .07);
+
+  --cq-ink: #eceef3;
+  --cq-ink-2: #b5bbc6;
+  --cq-ink-3: #8f96a3;
+  --cq-ink-4: #6f7684;
+
+  --cq-accent: var(--accent);
+  --cq-accent-ink: #b9b0ff;
+  --cq-focus-line: color-mix(in srgb, var(--accent) 42%, rgba(255, 255, 255, .1));
+  --cq-ring: color-mix(in srgb, var(--accent) 11%, transparent);
+
+  --cq-safe: #86b9a0;
+  --cq-warn: #d3a762;
+  --cq-danger: #dc8791;
+
+  --cq-send: #e9ebf1;
+  --cq-send-ink: #15171c;
+  --cq-send-hover: #ffffff;
+
+  --cq-shadow-rest: 0 1px 2px rgba(0, 0, 0, .4), 0 18px 40px -22px rgba(0, 0, 0, .7);
+  --cq-shadow-pop: 0 1px 2px rgba(0, 0, 0, .35), 0 26px 64px -20px rgba(0, 0, 0, .78);
+}
+
+:root[data-loom-theme="light"] .composer-wrap.composer-refined {
+  --cq-surface: #ffffff;
+  --cq-pop: #ffffff;
+  --cq-field: rgba(24, 28, 38, .035);
+  --cq-line: rgba(24, 28, 38, .09);
+  --cq-line-strong: rgba(24, 28, 38, .16);
+  --cq-hover: rgba(24, 28, 38, .045);
+  --cq-press: rgba(24, 28, 38, .075);
+  --cq-selected: rgba(24, 28, 38, .06);
+
+  --cq-ink: #1b1e26;
+  --cq-ink-2: #454b57;
+  --cq-ink-3: #656c79;
+  --cq-ink-4: #858c99;
+
+  --cq-accent-ink: #5547b6;
+  --cq-focus-line: color-mix(in srgb, var(--accent) 38%, rgba(24, 28, 38, .1));
+  --cq-ring: color-mix(in srgb, var(--accent) 9%, transparent);
+
+  --cq-safe: #2f7a58;
+  --cq-warn: #94661a;
+  --cq-danger: #b3404e;
+
+  --cq-send: #1b1e26;
+  --cq-send-ink: #ffffff;
+  --cq-send-hover: #323746;
+
+  --cq-shadow-rest: 0 1px 2px rgba(20, 24, 34, .05), 0 16px 34px -20px rgba(20, 24, 34, .18);
+  --cq-shadow-pop: 0 1px 2px rgba(20, 24, 34, .06), 0 24px 56px -18px rgba(20, 24, 34, .24);
+}
+
+/* -------------------------------------------------------------------------- */
+/* The input surface                                                           */
+/* -------------------------------------------------------------------------- */
+
+/* Everything decorative goes: the haze, the hairline glow, the sparkle, the
+   blurred halo under the whole footer. */
+:root .composer-wrap.composer-refined::before,
+:root .composer-wrap.composer-refined .composer::before,
+:root .composer-wrap.composer-refined .composer::after,
+:root .composer-wrap.composer-refined .composer-glow,
+:root .composer-wrap.composer-refined .composer-spark {
+  display: none;
+}
+
+:root .composer-wrap.composer-refined .composer,
+:root .composer-wrap.composer-refined .composer:hover,
+:root .composer-wrap.composer-refined .composer:focus-within:not(.is-focused) {
+  border: 1px solid var(--cq-line);
+  border-radius: 18px;
+  background: var(--cq-surface);
+  box-shadow: var(--cq-shadow-rest);
+  transform: none;
+}
+
+:root .composer-wrap.composer-refined .composer:hover,
+:root .composer-wrap.composer-refined .composer.has-panel {
+  border-color: var(--cq-line-strong);
+}
+
+/* Focus is carried by the border and one soft ring, nothing else. */
+:root .composer-wrap.composer-refined .composer.is-focused {
+  border-color: var(--cq-focus-line);
+  background: var(--cq-surface);
+  box-shadow: var(--cq-shadow-rest), 0 0 0 3px var(--cq-ring);
+  transform: none;
+}
+
+:root .composer-wrap.composer-refined .composer.is-dragging {
+  border-color: var(--cq-focus-line);
+  background: color-mix(in srgb, var(--accent) 5%, var(--cq-surface));
+}
+
+:root .composer-wrap.composer-refined .composer textarea {
+  color: var(--cq-ink);
+  caret-color: var(--cq-accent-ink);
+}
+
+:root .composer-wrap.composer-refined .composer textarea::placeholder,
+:root .composer-wrap.composer-refined .composer.is-focused textarea::placeholder {
+  color: var(--cq-ink-4);
+  opacity: 1;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Toolbar                                                                     */
+/* -------------------------------------------------------------------------- */
+
+:root .composer-wrap.composer-refined .composer .composer-divider {
+  height: 14px;
+  background: var(--cq-line);
+}
+
+/* Controls are plain: no border, no fill at rest. Hover and open are a tint of
+   the surface. They never lift, scale, or throw a light streak across. */
+:root .composer-wrap.composer-refined .composer .composer-tool,
+:root .composer-wrap.composer-refined .composer .composer-chip {
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--cq-ink-2);
+  font-weight: 500;
+  transform: none;
+  transition: background-color 140ms ease, color 140ms ease;
+}
+
+:root .composer-wrap.composer-refined .composer .composer-tool {
+  color: var(--cq-ink-3);
+}
+
+:root .composer-wrap.composer-refined .composer .composer-chip::before {
+  display: none;
+}
+
+:root .composer-wrap.composer-refined .composer .composer-tool:hover:not(:disabled),
+:root .composer-wrap.composer-refined .composer .composer-chip:hover:not(:disabled) {
+  border: 0;
+  background: var(--cq-hover);
+  box-shadow: none;
+  color: var(--cq-ink);
+  transform: none;
+}
+
+:root .composer-wrap.composer-refined .composer .composer-tool:active:not(:disabled),
+:root .composer-wrap.composer-refined .composer .composer-chip:active:not(:disabled) {
+  background: var(--cq-press);
+  box-shadow: none;
+  transform: none;
+}
+
+:root .composer-wrap.composer-refined .composer .composer-chip.is-open {
+  border: 0;
+  background: var(--cq-selected);
+  box-shadow: none;
+  color: var(--cq-ink);
+  transform: none;
+}
+
+:root .composer-wrap.composer-refined .composer .composer-tool:focus-visible,
+:root .composer-wrap.composer-refined .composer .composer-chip:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 60%, transparent);
+  outline-offset: 1px;
+  box-shadow: none;
+}
+
+:root .composer-wrap.composer-refined .composer .composer-tool:disabled {
+  color: var(--cq-ink-4);
+  opacity: .7;
+}
+
+/* Icons are one neutral ink; the chevron is quieter still. The only colour on
+   the bar is a warm icon when access is unrestricted: that is the one thing here
+   worth noticing. */
+:root .composer-wrap.composer-refined .composer .composer-tool > svg,
+:root .composer-wrap.composer-refined .composer .composer-chip > svg:not(.composer-chip-chevron),
+:root .composer-wrap.composer-refined .composer .permission-chip > svg:not(.composer-chip-chevron),
+:root .composer-wrap.composer-refined .composer .model-chip > svg:not(.composer-chip-chevron) {
+  color: var(--cq-ink-3);
+  transform: none;
+  transition: color 140ms ease;
+}
+
+:root .composer-wrap.composer-refined .composer .composer-chip:hover:not(:disabled) > svg:not(.composer-chip-chevron),
+:root .composer-wrap.composer-refined .composer .composer-chip.is-open > svg:not(.composer-chip-chevron),
+:root .composer-wrap.composer-refined .composer .composer-tool:hover:not(:disabled) > svg {
+  color: var(--cq-ink-2);
+  transform: none;
+}
+
+:root .composer-wrap.composer-refined .composer .permission-chip[data-mode="full-access"] > svg:not(.composer-chip-chevron) {
+  color: var(--cq-warn);
+}
+
+:root .composer-wrap.composer-refined .composer .composer-chip-chevron {
+  color: var(--cq-ink-4);
+  opacity: 1;
+}
+
+:root .composer-wrap.composer-refined .composer .composer-chip:hover .composer-chip-chevron,
+:root .composer-wrap.composer-refined .composer .composer-chip.is-open .composer-chip-chevron {
+  color: var(--cq-ink-3);
+  opacity: 1;
+  transform: none;
+}
+
+:root .composer-wrap.composer-refined .composer .composer-chip.is-open .composer-chip-chevron {
+  transform: rotate(180deg);
+}
+
+/* Send: a flat, high-contrast key. The surface-inverse colour reads as the one
+   primary action without any shine. */
+:root .composer-wrap.composer-refined .composer .send-button {
+  border: 0;
+  border-radius: 10px;
+  box-shadow: none;
+  transform: none;
+  transition: background-color 140ms ease, color 140ms ease;
+}
+
+:root .composer-wrap.composer-refined .composer .send-button::after {
+  display: none;
+}
+
+:root .composer-wrap.composer-refined .composer .send-button:not(:disabled):not(.stop) {
+  background: var(--cq-send);
+  color: var(--cq-send-ink);
+}
+
+:root .composer-wrap.composer-refined .composer .send-button:hover:not(:disabled):not(.stop) {
+  background: var(--cq-send-hover);
+  box-shadow: none;
+  transform: none;
+}
+
+:root .composer-wrap.composer-refined .composer .send-button:active:not(:disabled) {
+  transform: none;
+  opacity: .88;
+}
+
+:root .composer-wrap.composer-refined .composer .send-button:disabled {
+  background: var(--cq-hover);
+  color: var(--cq-ink-4);
+  box-shadow: none;
+}
+
+:root .composer-wrap.composer-refined .composer .send-button.stop,
+:root .composer-wrap.composer-refined .composer .send-button.stop:disabled {
+  border: 0;
+  background: var(--cq-selected);
+  color: var(--cq-ink);
+  box-shadow: none;
+}
+
+:root .composer-wrap.composer-refined .composer .send-button.stop:hover:not(:disabled) {
+  background: var(--cq-press);
+}
+
+:root .composer-wrap.composer-refined .composer-hint {
+  color: var(--cq-ink-4);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Popovers                                                                    */
+/* -------------------------------------------------------------------------- */
+
+/* One quiet surface: hairline border, a single soft shadow, no arrow, no
+   gradient, no highlight. */
+:root .composer-wrap.composer-refined .composer-popover {
+  padding: 6px;
+  border: 1px solid var(--cq-line);
+  border-radius: 16px;
+  background: var(--cq-pop);
+  box-shadow: var(--cq-shadow-pop);
+}
+
+:root .composer-wrap.composer-refined .composer-popover::before {
+  display: none;
+}
+
+/* Headers read as text. The icon tile, the bordered "context" pill and the
+   heavier weights are decoration. */
+:root .composer-wrap.composer-refined .composer-popover-head {
+  align-items: center;
+  gap: 12px;
+  padding: 10px 10px 12px;
+  border-bottom: 1px solid var(--cq-line);
+}
+
+:root .composer-wrap.composer-refined .composer-popover-icon {
+  display: none;
+}
+
+:root .composer-wrap.composer-refined .composer-popover-heading strong {
+  color: var(--cq-ink);
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+:root .composer-wrap.composer-refined .composer-popover-heading span:not(.composer-popover-icon) {
+  color: var(--cq-ink-3);
+  font-size: 11.5px;
+}
+
+:root .composer-wrap.composer-refined .composer-popover-context {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--cq-ink-4);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+/* Option lists: rows are plain until hovered; the chosen one is a tint with a
+   check, not a bordered card with a bar and a gradient. */
+:root .composer-wrap.composer-refined .composer-option-list,
+:root .composer-wrap.composer-refined .permission-popover .composer-option-list {
+  gap: 2px;
+  padding: 6px 0 4px;
+}
+
+:root .composer-wrap.composer-refined .composer-option,
+:root .composer-wrap.composer-refined .permission-popover .permission-option {
+  min-height: 56px;
+  padding: 9px 10px;
+  grid-template-columns: 28px minmax(0, 1fr) 22px;
+  gap: 10px;
+  border: 0;
+  border-radius: 11px;
+  background: transparent;
+  box-shadow: none;
+  transform: none;
+  transition: background-color 130ms ease, color 130ms ease;
+}
+
+:root .composer-wrap.composer-refined .composer-option:hover:not(:disabled),
+:root .composer-wrap.composer-refined .permission-popover .permission-option:hover:not(:disabled) {
+  border: 0;
+  background: var(--cq-hover);
+  box-shadow: none;
+  transform: none;
+}
+
+:root .composer-wrap.composer-refined .composer-option:active:not(:disabled) {
+  background: var(--cq-press);
+  transform: none;
+}
+
+:root .composer-wrap.composer-refined .composer-option.active,
+:root .composer-wrap.composer-refined .permission-popover .permission-option.active {
+  border: 0;
+  background: var(--cq-selected);
+  box-shadow: none;
+}
+
+:root .composer-wrap.composer-refined .composer-option.danger:not(.active):hover:not(:disabled) {
+  border: 0;
+  background: var(--cq-hover);
+}
+
+:root .composer-wrap.composer-refined .composer-option:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 60%, transparent);
+  outline-offset: -2px;
+}
+
+/* The icon is a bare glyph in the first column, not a bordered tile. */
+:root .composer-wrap.composer-refined .composer-option-icon,
+:root .composer-wrap.composer-refined .permission-popover .composer-option-icon {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--cq-ink-3);
+  transform: none;
+}
+
+:root .composer-wrap.composer-refined .composer-option.active .composer-option-icon {
+  color: var(--cq-ink);
+}
+
+:root .composer-wrap.composer-refined .permission-popover .permission-option:hover:not(:disabled) .composer-option-icon {
+  transform: none;
+}
+
+:root .composer-wrap.composer-refined .composer-option-icon.danger,
+:root .composer-wrap.composer-refined .composer-option.active .composer-option-icon.danger {
+  color: var(--cq-danger);
+}
+
+:root .composer-wrap.composer-refined .composer-option-icon.safe,
+:root .composer-wrap.composer-refined .composer-option-icon.recommended,
+:root .composer-wrap.composer-refined .composer-option-icon.flexible {
+  border: 0;
+  background: transparent;
+}
+
+:root .composer-wrap.composer-refined .composer-option-title-row strong,
+:root .composer-wrap.composer-refined .permission-popover .composer-option-title-row strong {
+  color: var(--cq-ink);
+  font-size: 13px;
+  font-weight: 550;
+}
+
+:root .composer-wrap.composer-refined .composer-option-description,
+:root .composer-wrap.composer-refined .permission-popover .composer-option-description {
+  color: var(--cq-ink-3);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+/* Tags: a tinted word, not an outlined pill. Colour appears only where it
+   carries meaning (the safe end, the recommended default, the risky end). */
+:root .composer-wrap.composer-refined .permission-badge,
+:root .composer-wrap.composer-refined .model-active-badge,
+:root .composer-wrap.composer-refined .permission-popover .permission-badge {
+  min-height: 17px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 5px;
+  background: var(--cq-hover);
+  color: var(--cq-ink-3);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+:root .composer-wrap.composer-refined .permission-badge.safe {
+  background: color-mix(in srgb, var(--cq-safe) 12%, transparent);
+  color: var(--cq-safe);
+}
+
+:root .composer-wrap.composer-refined .permission-badge.recommended,
+:root .composer-wrap.composer-refined .model-active-badge {
+  background: color-mix(in srgb, var(--accent) 13%, transparent);
+  color: var(--cq-accent-ink);
+}
+
+:root .composer-wrap.composer-refined .permission-badge.flexible {
+  background: var(--cq-hover);
+  color: var(--cq-ink-3);
+}
+
+:root .composer-wrap.composer-refined .permission-badge.danger {
+  background: color-mix(in srgb, var(--cq-danger) 12%, transparent);
+  color: var(--cq-danger);
+}
+
+:root .composer-wrap.composer-refined .composer-option-check,
+:root .composer-wrap.composer-refined .permission-popover .permission-option.active .composer-option-check,
+:root .composer-wrap.composer-refined .composer-option.active .composer-option-check {
+  background: none;
+  box-shadow: none;
+}
+
+:root .composer-wrap.composer-refined .composer-option.active .composer-option-check,
+:root .composer-wrap.composer-refined .permission-popover .permission-option.active .composer-option-check {
+  color: var(--cq-accent-ink);
+}
+
+:root .composer-wrap.composer-refined .permission-popover .permission-footnote {
+  margin-top: 4px;
+  padding: 10px 10px 6px;
+  border-top: 1px solid var(--cq-line);
+  color: var(--cq-ink-4);
+  font-size: 11px;
+}
+
+:root .composer-wrap.composer-refined .permission-popover .permission-footnote > svg {
+  color: var(--cq-ink-4);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Model popover                                                               */
+/* -------------------------------------------------------------------------- */
+
+/* The picker manages its own insets (full-bleed footer, scrolling list). */
+:root .composer-wrap.composer-refined .composer-popover.model-manager-popover {
+  padding: 0;
+  border-radius: 16px;
+  border-color: var(--cq-line);
+  background: var(--cq-pop);
+  box-shadow: var(--cq-shadow-pop);
+}
+
+/* The picker is token-driven (--mp-*); point the tokens at the same quiet
+   palette. --mp-accent-strong stays: it is the check mark and the focus colour,
+   and the old primary button text relies on its contrast. */
+:root .composer-wrap.composer-refined .model-manager-popover .mp {
+  --mp-text: var(--cq-ink);
+  --mp-muted: var(--cq-ink-3);
+  --mp-faint: var(--cq-ink-4);
+  --mp-accent: var(--cq-accent-ink);
+  --mp-accent-soft: color-mix(in srgb, var(--accent) 13%, transparent);
+  --mp-hover: var(--cq-hover);
+  --mp-press: var(--cq-press);
+  --mp-current: var(--cq-selected);
+  --mp-current-hover: var(--cq-press);
+  --mp-hairline: var(--cq-line);
+  --mp-field: var(--cq-field);
+  --mp-field-hover: var(--cq-hover);
+  --mp-field-border: var(--cq-line);
+  --mp-field-focus: var(--cq-field);
+  --mp-focus-border: color-mix(in srgb, var(--accent) 36%, var(--cq-line-strong));
+  --mp-focus-ring: color-mix(in srgb, var(--accent) 8%, transparent);
+  --mp-ring: color-mix(in srgb, var(--accent) 55%, transparent);
+  --mp-tray: transparent;
+  --mp-danger: var(--cq-danger);
+  --mp-danger-soft: color-mix(in srgb, var(--cq-danger) 12%, transparent);
+}
+
+:root .composer-wrap.composer-refined .model-manager-popover .mp-head-title {
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+/* Search: a quiet field. Focus is one clear border and a barely-there ring,
+   not a glowing outline. */
+:root .composer-wrap.composer-refined .model-manager-popover .mp-search:focus-within {
+  color: var(--cq-ink-2);
+}
+
+/* Provider marks: one neutral tile and a single-ink glyph. The brand colours
+   (red, blue, green) were the loudest thing in the list. */
+:root .composer-wrap.composer-refined .model-manager-popover .mp-mark {
+  background: var(--cq-hover);
+  box-shadow: none;
+  color: var(--cq-ink-2);
+  font-weight: 600;
+}
+
+:root .composer-wrap.composer-refined .model-manager-popover .mp-row:hover:not(:disabled) .mp-mark,
+:root .composer-wrap.composer-refined .model-manager-popover .mp-row.is-current .mp-mark {
+  color: var(--cq-ink);
+}
+
+:root .composer-wrap.composer-refined .model-manager-popover .mp-badge {
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+:root .composer-wrap.composer-refined .model-manager-popover .mp-row-title {
+  font-weight: 500;
+}
+
+:root .composer-wrap.composer-refined .model-manager-popover .mp-provider .mp-row-title {
+  font-weight: 550;
+}
+
+/* Footer actions are text, separated by one hairline. */
+:root .composer-wrap.composer-refined .model-manager-popover .mp-foot {
+  background: transparent;
+}
+
+/* Primary actions share the send key's look: flat and inverse. */
+:root .composer-wrap.composer-refined .model-manager-popover .mp-primary,
+:root .composer-wrap.composer-refined .model-manager-popover .mp-connect-form button {
+  background: var(--cq-send);
+  color: var(--cq-send-ink);
+  font-weight: 550;
+  filter: none;
+  transition: background-color 140ms ease, opacity 140ms ease;
+}
+
+:root .composer-wrap.composer-refined .model-manager-popover .mp-primary:hover:not(:disabled),
+:root .composer-wrap.composer-refined .model-manager-popover .mp-connect-form button:hover:not(:disabled) {
+  background: var(--cq-send-hover);
+  filter: none;
+}
+
+:root .composer-wrap.composer-refined .model-manager-popover .mp-primary:focus-visible {
+  box-shadow: 0 0 0 3px var(--cq-ring);
+}
+
+:root .composer-wrap.composer-refined .model-manager-popover .mp-connect-icon {
+  background: var(--cq-hover);
+  color: var(--cq-ink-3);
+}
+
+:root .composer-wrap.composer-refined .model-manager-popover .mp-notice {
+  background: var(--cq-hover);
+}
+
+:root .composer-wrap.composer-refined .model-manager-popover .mp-notice.is-error {
+  background: color-mix(in srgb, var(--cq-danger) 11%, transparent);
+  color: var(--cq-danger);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Reasoning control (model popover, home layer)                               */
+/* -------------------------------------------------------------------------- */
+
+/* The woven thread keeps its geometry, its stops and its bead gliding between
+   levels. What goes is the show: the blue-to-orchid gradient, the twisting
+   plies, the comet that crosses the thread on a loop, the breathing halo, the
+   ripple and sparks, the glossy pearl. Thread, stops and bead are one flat
+   colour, and nothing moves unless the level changes. */
+:root .composer-wrap.composer-refined .rt {
+  --cq-thread: var(--accent);
+  --rt-cool: var(--cq-thread);
+  --rt-warm: var(--cq-thread);
+  --rt-track: var(--cq-line-strong);
+  --rt-stop: var(--cq-ink-4);
+  --rt-surface: var(--cq-pop);
+  --rt-text: var(--cq-ink);
+  --rt-muted: var(--cq-ink-3);
+  --rt-faint: var(--cq-ink-4);
+  --rt-hover: var(--cq-hover);
+  --rt-danger: var(--cq-danger);
+  --rt-danger-soft: color-mix(in srgb, var(--cq-danger) 12%, transparent);
+}
+
+:root .composer-wrap.composer-refined .rt-strand,
+:root .composer-wrap.composer-refined .rt-comet,
+:root .composer-wrap.composer-refined .rt-aura,
+:root .composer-wrap.composer-refined .rt-burst,
+:root .composer-wrap.composer-refined .rt-orbit,
+:root .composer-wrap.composer-refined .rt-ghost,
+:root .composer-wrap.composer-refined .rt-spine::after,
+:root .composer-wrap.composer-refined .rt-auto-line::after,
+:root .composer-wrap.composer-refined .rt-auto-badge::before {
+  display: none;
+}
+
+:root .composer-wrap.composer-refined .rt-eyebrow {
+  font-weight: 500;
+  letter-spacing: .06em;
+}
+
+:root .composer-wrap.composer-refined .rt-spine {
+  background: var(--cq-thread);
+}
+
+:root .composer-wrap.composer-refined .rt-stop::after {
+  background: var(--cq-thread);
+  box-shadow: 0 0 0 2px var(--rt-surface);
+}
+
+:root .composer-wrap.composer-refined .rt-option:not([aria-disabled="true"]):hover .rt-stop {
+  scale: 1.2;
+}
+
+:root .composer-wrap.composer-refined .rt-option.is-active,
+:root .composer-wrap.composer-refined .rt-option.is-active:hover {
+  color: var(--cq-ink);
+}
+
+:root .composer-wrap.composer-refined .rt-option.is-active .rt-label {
+  font-weight: 550;
+}
+
+:root .composer-wrap.composer-refined .rt-core {
+  background: var(--cq-thread);
+  box-shadow:
+    0 0 0 3px var(--rt-surface),
+    0 0 0 4px color-mix(in srgb, var(--cq-thread) 38%, transparent);
+}
+
+/* Managed ("Auto"): a quiet hairline either side of a quiet word. */
+:root .composer-wrap.composer-refined .rt-auto-line::before {
+  background: var(--cq-line-strong);
+  box-shadow: none;
+}
+
+:root .composer-wrap.composer-refined .rt-auto-line:last-child::before {
+  background: var(--cq-line-strong);
+}
+
+:root .composer-wrap.composer-refined .rt-auto-badge {
+  padding: 3px 11px;
+  border: 0;
+  background: var(--cq-hover);
+  color: var(--cq-ink-2);
+  font-weight: 500;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Expression (sticker) popover                                                */
+/* -------------------------------------------------------------------------- */
+
+:root .composer-wrap.composer-refined .sticker-panel {
+  gap: 18px;
+  padding: 14px 10px 8px;
+}
+
+/* The panel repeated the popover's own header, with a tinted tile. Keep the
+   words, drop the tile, and let them read as a caption. */
+:root .composer-wrap.composer-refined .sticker-panel-symbol {
+  display: none;
+}
+
+:root .composer-wrap.composer-refined .sticker-panel-summary {
+  padding: 0;
+}
+
+:root .composer-wrap.composer-refined .sticker-panel-summary strong {
+  color: var(--cq-ink-2);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+:root .composer-wrap.composer-refined .sticker-panel-summary span:not(.sticker-panel-symbol) {
+  color: var(--cq-ink-4);
+  font-size: 11.5px;
+}
+
+:root .composer-wrap.composer-refined .sticker-settings-grid {
+  gap: 18px;
+}
+
+:root .composer-wrap.composer-refined .sticker-setting {
+  gap: 9px;
+}
+
+:root .composer-wrap.composer-refined .sticker-setting-head strong {
+  color: var(--cq-ink);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+:root .composer-wrap.composer-refined .sticker-setting-head small {
+  color: var(--cq-ink-3);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+/* The value is a number beside the label, not a button. */
+:root .composer-wrap.composer-refined .sticker-setting-head em {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--cq-ink-2);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* Slider: a hairline track, a flat fill, a plain white thumb. */
+:root .composer-wrap.composer-refined .sticker-setting input[type="range"] {
+  height: 3px;
+  background: linear-gradient(
+    to right,
+    var(--accent) 0,
+    var(--accent) var(--sticker-progress),
+    var(--cq-line-strong) var(--sticker-progress),
+    var(--cq-line-strong) 100%
+  );
+}
+
+:root .composer-wrap.composer-refined .sticker-setting input[type="range"]::-webkit-slider-thumb {
+  width: 15px;
+  height: 15px;
+  border: 0;
+  background: #ffffff;
+  box-shadow: 0 0 0 1px rgba(20, 24, 34, .14), 0 1px 4px rgba(0, 0, 0, .35);
+}
+
+:root .composer-wrap.composer-refined .sticker-setting input[type="range"]:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 1px rgba(20, 24, 34, .14), 0 0 0 4px var(--cq-ring);
+}
+
+:root .composer-wrap.composer-refined .sticker-panel-actions {
+  padding-top: 4px;
+}
+
+:root .composer-wrap.composer-refined .sticker-reset-button,
+:root .composer-wrap.composer-refined .sticker-save-button {
+  min-height: 32px;
+  border: 0;
+  border-radius: 9px;
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+:root .composer-wrap.composer-refined .sticker-reset-button {
+  background: transparent;
+  color: var(--cq-ink-3);
+}
+
+:root .composer-wrap.composer-refined .sticker-reset-button:hover:not(:disabled) {
+  background: var(--cq-hover);
+  color: var(--cq-ink);
+}
+
+:root .composer-wrap.composer-refined .sticker-save-button {
+  background: var(--cq-send);
+  color: var(--cq-send-ink);
+}
+
+:root .composer-wrap.composer-refined .sticker-save-button:hover:not(:disabled) {
+  background: var(--cq-send-hover);
+}
+
+:root .composer-wrap.composer-refined .sticker-save-button.saved {
+  background: color-mix(in srgb, var(--cq-safe) 16%, transparent);
+  color: var(--cq-safe);
+}
+
+:root .composer-wrap.composer-refined .sticker-panel-error {
+  border: 0;
+  background: color-mix(in srgb, var(--cq-danger) 11%, transparent);
+  color: var(--cq-danger);
+}
+
+:root .composer-wrap.composer-refined .sticker-panel-note {
+  background: var(--cq-hover);
+  color: var(--cq-ink-3);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Attachments, quote, messages                                                */
+/* -------------------------------------------------------------------------- */
+
+/* A file chip is a hairline-bordered field. The gradient, the drop shadow and
+   the lavender tile behind the file glyph are gone; the glyph itself is a
+   desaturated ink. Image previews are already just the image and stay. */
+:root .composer-wrap.composer-refined .composer-attachment:not(.is-image-preview) {
+  border: 1px solid var(--cq-line);
+  border-radius: 10px;
+  background: var(--cq-field);
+  box-shadow: none;
+  color: var(--cq-ink-2);
+}
+
+:root .composer-wrap.composer-refined .composer-attachment:not(.is-image-preview):hover {
+  border-color: var(--cq-line-strong);
+  background: var(--cq-hover);
+  box-shadow: none;
+}
+
+:root .composer-wrap.composer-refined .composer-attachment:has(> svg)::before {
+  border: 0;
+  background-color: var(--cq-hover);
+  filter: grayscale(1);
+}
+
+:root[data-loom-theme="light"] .composer-wrap.composer-refined .composer-attachment:has(> svg)::before {
+  filter: grayscale(1) brightness(.62);
+}
+
+:root .composer-wrap.composer-refined .composer-attachment.is-blocked:has(> svg)::before {
+  border: 0;
+  background-color: color-mix(in srgb, var(--cq-danger) 12%, transparent);
+}
+
+:root .composer-wrap.composer-refined .composer-attachment-thumb {
+  border-color: var(--cq-line);
+}
+
+:root .composer-wrap.composer-refined .composer-attachment-name {
+  color: var(--cq-ink-2);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+:root .composer-wrap.composer-refined .composer-attachment-size {
+  color: var(--cq-ink-4);
+  font-size: 11px;
+}
+
+:root .composer-wrap.composer-refined .composer-attachment:not(.is-image-preview) button {
+  color: var(--cq-ink-4);
+  transform: none;
+}
+
+:root .composer-wrap.composer-refined .composer-attachment:not(.is-image-preview) button:hover {
+  background: var(--cq-hover);
+  color: var(--cq-ink);
+}
+
+/* The quote is a plain field with a hairline bar, like a pull-quote. */
+:root .composer-wrap.composer-refined .composer-quote-reply {
+  border: 1px solid var(--cq-line);
+  background: var(--cq-field);
+  box-shadow: inset 2px 0 0 var(--cq-line-strong);
+}
+
+:root .composer-wrap.composer-refined .composer-quote-mark {
+  background: none;
+  color: var(--cq-ink-4);
+}
+
+:root .composer-wrap.composer-refined .composer-quote-label {
+  color: var(--cq-ink-3);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+:root .composer-wrap.composer-refined .composer-quote-preview {
+  color: var(--cq-ink-3);
+  font-size: 11.5px;
+}
+
+:root .composer-wrap.composer-refined .composer-quote-clear {
+  color: var(--cq-ink-4);
+  transform: none;
+}
+
+:root .composer-wrap.composer-refined .composer-quote-clear:hover {
+  background: var(--cq-hover);
+  color: var(--cq-ink);
+}
+
+:root .composer-wrap.composer-refined .composer-attach-error {
+  color: var(--cq-danger);
+}
+
+:root .composer-wrap.composer-refined .composer-popover-error {
+  border: 0;
+  background: color-mix(in srgb, var(--cq-danger) 11%, transparent);
+  color: var(--cq-danger);
+}

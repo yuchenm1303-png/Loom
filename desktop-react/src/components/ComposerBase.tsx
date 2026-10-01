@@ -330,7 +330,7 @@ export function Composer({
   const stickersOff = stickerPreferences?.frequency === 0;
 
   return (
-    <div className="composer-wrap" ref={composerRootRef}>
+    <div className="composer-wrap composer-refined" ref={composerRootRef}>
       <form
         className={`composer ${focused ? "is-focused" : ""} ${running ? "is-running" : ""} ${openPanel ? "has-panel" : ""} ${dragging ? "is-dragging" : ""}`}
         onSubmit={submit}
@@ -396,6 +396,7 @@ export function Composer({
               <button
                 type="button"
                 className={`composer-chip permission-chip ${openPanel === "permission" ? "is-open" : ""}`}
+                data-mode={permissionMode || "approval"}
                 title={zh ? "权限设置" : "Permission profile"}
                 aria-haspopup="menu"
                 aria-expanded={openPanel === "permission"}

@@ -38,6 +38,7 @@ import "./components/project-details-panel-theme.css";
 import "./global-motion.css";
 import "./components/generation-motion.css";
 import "./components/conversation-home.css";
+import "./components/composer-refined.css";
 
 installWebBridge();
 

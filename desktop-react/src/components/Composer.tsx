@@ -181,7 +181,7 @@ function SteeringComposer({
   }
 
   return (
-    <div className="composer-wrap live-steering-composer">
+    <div className="composer-wrap composer-refined live-steering-composer">
       <form
         // Live steering is deliberately not `.is-running`: that legacy class
         // belongs to the old non-interactive working footer and historically
