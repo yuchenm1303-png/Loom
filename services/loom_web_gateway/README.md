@@ -1,48 +1,83 @@
 # Loom Web
 
 `loom.smirel.com` is the browser client for the same **local Loom Host** used by Loom Desktop.
-There is only one Agent runtime and one source of truth for conversations, model settings,
-approvals, workspace files, Browser Use, Computer Use and local tools.
+There is only one Agent runtime per computer and one source of truth on that computer for
+conversations, model settings, approvals, workspace files, Browser Use, Computer Use and
+local tools.
 
 The cloud gateway does **not** run an Agent. It only serves the shared React frontend,
-authenticates the Loom account, and relays WebSocket traffic between the browser and the
-user's local Loom Host.
+authenticates the Loom account, and relays WebSocket traffic between a browser and the
+specific Loom Host that browser selected.
+
+## Local-first product rule
+
+Normal Loom usage is local-first:
+
+- opening Loom Web from Loom Desktop binds that browser to **this computer's** stable
+  `deviceId`;
+- the browser stores that local binding and reconnects to the same Host on later visits;
+- signing in to `loom.smirel.com` without a local binding does **not** pick another online
+  computer on the account;
+- another computer may only be selected by an explicit remote-control flow (Loom Remote).
+
+This is intentionally different from treating the account as one global remote Host. A user
+who opens Loom on computer B should never discover that commands were silently executed on
+computer A.
 
 ## Architecture
 
 ```text
-                       local computer
-                  +----------------------+
-Desktop React ---->  Loom Host / App Server  <---- WSS relay ---- Browser React
-                  | Agent Runtime        |                     loom.smirel.com
-                  | models / sessions    |
-                  | shell / files        |
-                  | Browser / Computer   |
-                  | approvals / tools    |
-                  +----------------------+
-
-Cloud gateway: authentication + static frontend + encrypted relay only
+computer A                                  cloud                    computer B
++----------------------+              +----------------+          +----------------------+
+| Desktop React        |              | loom.smirel.com|          | Desktop React        |
+| Loom Host / AppServer|<--- outbound | auth + WSS     | outbound->| Loom Host / AppServer|
+| Agent / files / tools|      WSS     | relay only     |     WSS  | Agent / files / tools|
++----------------------+              +-------+--------+          +----------------------+
+                                             ^
+                                             |
+                                      browser session
+                                      bound to one deviceId
 ```
 
 Desktop and Web use the same `desktop-react` renderer and the same host operation table.
 The transport is the only difference:
 
 - Desktop: React -> Electron IPC -> local Loom Host
-- Web: React -> WSS gateway -> local Loom Host
+- Web: React -> WSS gateway -> explicitly bound Loom Host
 
 Closing the Desktop window does not stop Loom Host. On Windows the installed app registers a
 background-host login launch and keeps a tray entry so Web access remains available without
 an Electron window being open. The tray provides **Open Loom**, **Open Loom Web**, and
-**Quit Loom Host**.
+**Quit Loom Host**. **Open Loom Web** includes this computer's `deviceId` in the initial URL;
+the browser consumes it into local storage and removes it from the visible URL.
+
+## Multi-device routing
+
+A Loom account can have multiple online Hosts at the same time. The gateway stores devices as:
+
+```text
+user_id -> device_id -> DevicePeer
+browser_id -> selected_device_id
+```
+
+A newer connection replaces only an older connection with the **same** `deviceId`; it does
+not disconnect the user's other computers. Invocations and runtime notifications are routed
+only between a browser and its selected device. This keeps streaming deltas, approvals and
+turn completion from leaking across two computers logged into the same account.
+
+The gateway already supports an explicit `select_device` browser frame for the future Loom
+Remote UI. Normal Web startup never sends one automatically for an unrelated device.
 
 ## Security boundary
 
 - Browser authentication uses Secure, HttpOnly, SameSite=Strict cookies.
-- The local Host connects **outbound** to `wss://loom.smirel.com/api/ws/device`; no inbound
+- Each local Host connects **outbound** to `wss://loom.smirel.com/api/ws/device`; no inbound
   port is opened on the user's computer.
 - The Host authenticates with the user's Loom Account access token in the WSS Authorization
   header. Browser JavaScript never receives that token.
 - The gateway only connects browser and Host peers belonging to the same authenticated user.
+- A local `deviceId` is a routing identifier, not an authentication secret; account auth still
+  gates every browser and Host connection.
 - Operation names are allow-listed by the Host's shared `desktopOperations` table.
 - App Server approvals, sandboxing and permission checks are unchanged because Web invokes
   the exact same local App Server as Desktop.
@@ -51,7 +86,7 @@ an Electron window being open. The tray provides **Open Loom**, **Open Loom Web*
 
 - `GET /api/healthz`
 - `GET|POST /api/auth/*` — same-origin account facade
-- `WS /api/ws/browser` — authenticated browser transport
+- `WS /api/ws/browser?device=<deviceId>` — authenticated browser transport bound to one Host
 - `WS /api/ws/device` — outbound local Loom Host transport
 - `GET /setup` — retired; returns 410 because Web no longer has a cloud model credential
 
