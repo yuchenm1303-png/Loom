@@ -72,8 +72,8 @@ class ComputerRect:
 
     def center_in(self, frame: "ComputerFrame") -> ComputerPoint:
         return ComputerPoint(
-            x=((self.left + self.right) / 2 - frame.origin_x) / frame.width,
-            y=((self.top + self.bottom) / 2 - frame.origin_y) / frame.height,
+            x=((self.left + self.right - 1) // 2 - frame.origin_x) / max(1, frame.width - 1),
+            y=((self.top + self.bottom - 1) // 2 - frame.origin_y) / max(1, frame.height - 1),
         )
 
     def to_dict(self) -> dict[str, int]:

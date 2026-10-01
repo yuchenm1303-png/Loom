@@ -1236,6 +1236,11 @@ class PyWinAutoWindowsOperator:
                 rect = wrapper.rectangle()
                 candidate = ComputerRect(int(rect.left), int(rect.top), int(rect.right), int(rect.bottom))
                 info = getattr(wrapper, "element_info", None)
+                # Structural browser shells must not consume the bounded control
+                # shortlist before the page's actionable descendants are reached.
+                control_type = str(getattr(info, "control_type", "") or wrapper.friendly_class_name())
+                if control_type in {"Pane", "ToolBar", "Window"}:
+                    continue
                 name = str(getattr(info, "name", "") or getattr(wrapper, "window_text", lambda: "")())
                 control_type = str(getattr(info, "control_type", "") or wrapper.friendly_class_name())
                 automation_id = str(getattr(info, "automation_id", "") or "")

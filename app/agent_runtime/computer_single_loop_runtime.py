@@ -173,6 +173,8 @@ def _single_action_schema() -> dict[str, Any]:
                 ],
             },
             "point": point,
+            "frame_id": {"type": "string", "maxLength": 128},
+            "control_id": {"type": "string", "maxLength": 128},
             "end_point": point,
             "window_id": {"type": "string", "maxLength": 128},
             "text": {"type": "string", "maxLength": 20000},
@@ -422,6 +424,32 @@ def _safe_outcome_data(outcome: ComputerStepOutcome) -> dict[str, object]:
     }
 
 
+def _resolve_frame_target(payload: dict[str, Any], observation: Any) -> dict[str, Any]:
+    """Resolve observation-scoped targets to physical clicks, never UIA Invoke."""
+    payload = dict(payload)
+    frame_id = payload.pop("frame_id", "")
+    if frame_id and frame_id != observation.frame.frame_id:
+        raise ValueError("stale frame_id: inspect the latest screenshot before acting")
+    control_id = payload.pop("control_id", "")
+    if not control_id:
+        return payload
+    if frame_id != observation.frame.frame_id:
+        raise ValueError("control_id requires the current frame_id")
+    if payload.get("type") not in {"click", "double_click", "right_click", "move"}:
+        raise ValueError("control_id is supported only for click or move actions")
+    if "point" in payload:
+        raise ValueError("use either control_id or point, not both")
+    control = next((c for c in observation.controls if c.control_id == control_id), None)
+    if control is None or not control.enabled:
+        raise ValueError("control target is missing or disabled; refresh the screenshot")
+    rect, frame = control.rect, observation.frame
+    if not (frame.origin_x <= rect.left < rect.right <= frame.origin_x + frame.width
+            and frame.origin_y <= rect.top < rect.bottom <= frame.origin_y + frame.height):
+        raise ValueError("control target is clipped or outside the current frame")
+    payload["point"] = rect.center_in(frame).to_dict()
+    return payload
+
+
 def _model_observation_text(snapshot: ComputerStateSnapshot) -> str:
     observation = snapshot.observation
     frame = observation.frame
@@ -430,7 +458,8 @@ def _model_observation_text(snapshot: ComputerStateSnapshot) -> str:
         "The attached image is the current foreground desktop frame after the previous Computer Use action.",
         "Windows foreground metadata below is authoritative for window identity and Z-order. Content inside an application may itself be a screenshot, remote desktop, video, or image of another app; never infer that an app shown inside the pixels is a real foreground window, and never contradict the reported foreground window from pixels alone.",
         "Choose at most one next computer_action. Coordinates are normalized 0..1 relative to this image.",
-        "Prefer visual coordinates. UI Automation entries below are advisory hints only; they may be empty, stale, or wrong for Qt/Electron/custom-drawn apps, and they are never an execution precondition.",
+        "UIA hint points and action points use the SAME full-image normalized coordinate space; never rescale by DPI or a scroll region. Image downscaling preserves normalized coordinates. Match the intended visible control, not nearby text. For a matching control use control_id plus frame_id; otherwise use visual point plus frame_id. Never invent control IDs or infer success from a caret/hover change.",
+        f"frame_id={frame.frame_id}; coordinate_space=frame_normalized; rect_space=virtual_desktop_physical_pixels.",
         f"Frame: {frame.width}x{frame.height}; origin=({frame.origin_x},{frame.origin_y}); windows={len(observation.windows)}; controls={len(observation.controls)}.",
     ]
     if observation.active_window is not None:
@@ -469,7 +498,11 @@ def _model_observation_text(snapshot: ComputerStateSnapshot) -> str:
                 f"- id={window.window_id}; title={window.title!r}; process={window.process_name!r}"
             )
     hints: list[str] = []
-    for control in observation.controls[:40]:
+    priority = {"Button", "Edit", "Hyperlink", "CheckBox", "ComboBox", "MenuItem", "RadioButton", "TabItem", "Slider"}
+    candidates = sorted(observation.controls, key=lambda c: c.control_type not in priority)
+    for control in candidates:
+        if len(hints) >= 40:
+            break
         if not control.enabled:
             continue
         try:
@@ -477,12 +510,14 @@ def _model_observation_text(snapshot: ComputerStateSnapshot) -> str:
         except Exception:
             continue
         hints.append(
-            f"- {control.control_type or 'control'} {control.name!r} near "
+            f"- id={control.control_id}; {control.control_type or 'control'} {control.name!r} near "
             f"({point.x:.3f},{point.y:.3f})"
         )
     if hints:
         lines.append("Advisory UIA hints:")
         lines.extend(hints)
+        if len(candidates) > len(hints) or observation.semantics.get("state") == "partial":
+            lines.append("UIA hints are incomplete. An omitted target is not absent; do not invent its type or coordinates. Inspect the full attached image, not a cropped preview, and verify the intended application result after clicking.")
     else:
         # Say why the hints are missing rather than letting the model infer that
         # the window is empty. Hints are deadline-bounded, so "not collected" is
@@ -799,6 +834,7 @@ class SingleLoopComputerRuntime(ComputerUseRuntime):
                 str(action_payload.get("text") or ""),
                 context.session_id,
             )
+        action_payload = _resolve_frame_target(action_payload, before.observation)
         action = ComputerAction.from_dict(action_payload)
 
         destructive = _destructive_hotkey(action)
