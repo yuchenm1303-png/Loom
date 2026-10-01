@@ -43,6 +43,7 @@ export function WebAppGate({ children }: { children: ReactNode }) {
   const [pairingSucceeded, setPairingSucceeded] = useState(false);
 
   const activeDeviceId = remoteDeviceId || localDeviceId;
+  const localHostDeviceId = localHost?.deviceId ?? "";
   const localRelayReady = localHost?.relayReady ?? null;
   const remoteDevices = useMemo(() => devices.filter((device) => device.id && device.id !== localDeviceId), [devices, localDeviceId]);
 
@@ -78,7 +79,7 @@ export function WebAppGate({ children }: { children: ReactNode }) {
           setPairAttempts(0);
           setPairingSucceeded(false);
           setHostError("");
-          if (hostState !== "online") setHostState("connecting");
+          setHostState((current) => current === "online" ? current : "connecting");
         } else if (pairing) {
           setHostState("pairing");
         } else if (pairingSucceeded) {
@@ -106,7 +107,6 @@ export function WebAppGate({ children }: { children: ReactNode }) {
     account.account.user,
     account.ready,
     discoveryNonce,
-    hostState,
     localDeviceId,
     pairing,
     pairingSucceeded,
@@ -124,15 +124,15 @@ export function WebAppGate({ children }: { children: ReactNode }) {
       || !account.ready
       || !account.account.authenticated
       || remoteDeviceId
-      || !localHost
-      || localHost.relayReady
+      || !localHostDeviceId
+      || localRelayReady !== false
       || pairing
       || pairingSucceeded
       || pairAttempts >= AUTO_PAIR_ATTEMPTS
     ) return;
 
     let cancelled = false;
-    const delay = pairAttempts === 0 ? 250 : 1_500 * (pairAttempts + 1);
+    const delay = pairAttempts === 0 ? 350 : 1_500 * (pairAttempts + 1);
     const timer = window.setTimeout(() => {
       void (async () => {
         if (cancelled) return;
@@ -162,7 +162,8 @@ export function WebAppGate({ children }: { children: ReactNode }) {
   }, [
     account.account.authenticated,
     account.ready,
-    localHost,
+    localHostDeviceId,
+    localRelayReady,
     pairAttempts,
     pairing,
     pairingSucceeded,
@@ -221,8 +222,6 @@ export function WebAppGate({ children }: { children: ReactNode }) {
     if (showRemote) return;
     setRemoteLoading(true);
     try {
-      // Empty explicit selection opens only the authenticated browser socket to
-      // obtain the account's device list. It never auto-selects another machine.
       await selectWebDevice("");
     } catch (cause) {
       setHostError(cause instanceof Error ? cause.message : String(cause));
@@ -254,9 +253,9 @@ export function WebAppGate({ children }: { children: ReactNode }) {
     setPairingSucceeded(false);
     setPairing(false);
     setHostError("");
-    setHostState(localHost ? "offline" : "discovering");
+    setHostState(localHostDeviceId ? "offline" : "discovering");
     setDiscoveryNonce((value) => value + 1);
-  }, [localHost]);
+  }, [localHostDeviceId]);
 
   if (!web) return children;
 
@@ -292,8 +291,8 @@ export function WebAppGate({ children }: { children: ReactNode }) {
     const connecting = hostState === "connecting";
     const pairingHost = hostState === "pairing" || pairing;
     const missing = hostState === "missing" && !localDeviceId;
-    const hostInstalled = Boolean(localHost || localDeviceId);
-    const pairingExhausted = Boolean(localHost && !localHost.relayReady && pairAttempts >= AUTO_PAIR_ATTEMPTS && !pairingSucceeded);
+    const hostInstalled = Boolean(localHostDeviceId || localDeviceId);
+    const pairingExhausted = Boolean(localHostDeviceId && localRelayReady === false && pairAttempts >= AUTO_PAIR_ATTEMPTS && !pairingSucceeded);
     const remote = Boolean(remoteDeviceId);
 
     const title = remote
