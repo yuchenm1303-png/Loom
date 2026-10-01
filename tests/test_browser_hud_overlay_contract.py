@@ -77,12 +77,15 @@ def test_browser_hud_tracks_computer_visual_language_without_sharing_lifecycle()
         assert token in desktop
         assert token in browser_hud
 
+    # The edge breathing layers intentionally share the same visual parameters;
+    # their runtime/lifecycle implementations remain independent.
     filter_pattern = r"filter:blur\((?:14|8)px\) saturate\([^)]+\);opacity:[^;}]+"
     assert re.findall(filter_pattern, desktop)[:2] == re.findall(filter_pattern, browser_hud)[:2]
     assert len(re.findall(filter_pattern, desktop)) >= 2
     assert "BrowserWindow" in desktop
     assert "loom-browser-hud-root-v2" in browser_hud
     assert "cloneNode(true)" not in browser_hud
+
 
 def test_browser_hud_all_visual_layers_stay_visible_during_user_interaction() -> None:
     browser_hud = (EXT / "browser-hud.js").read_text(encoding="utf-8")
