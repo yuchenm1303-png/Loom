@@ -176,6 +176,54 @@ async def auth_logout(request: Request) -> Response:
     return response
 
 
+@app.post("/api/auth/device-pair")
+async def auth_device_pair(request: Request) -> Response:
+    """Mint a short-lived ticket for the Host on this browser's computer.
+
+    The browser never receives its HttpOnly access/refresh credentials. The
+    account service exchanges this one-time ticket into a completely independent
+    Host session, so later token rotation cannot sign either side out.
+    """
+    access = request.cookies.get(ACCESS_COOKIE, "")
+    _, user = await _authenticated_user(access)
+    rotated: dict[str, Any] | None = None
+    if not user:
+        refresh = request.cookies.get(REFRESH_COOKIE, "")
+        if refresh:
+            refresh_status, candidate = await _refresh(refresh)
+            if refresh_status == 200:
+                candidate_access = str(candidate.get("access_token") or "")
+                _, user = await _authenticated_user(candidate_access)
+                if user:
+                    access = candidate_access
+                    rotated = candidate
+    if not user or not access:
+        return JSONResponse({"ok": False, "error": _error("AUTH_REQUIRED", "Sign in to Loom Web first.", 401)}, status_code=401)
+
+    status, payload = await _account_request(
+        "POST",
+        "/auth/device-pair/issue",
+        token=access,
+        json_body={},
+    )
+    if status != 200:
+        error = payload.get("error") if isinstance(payload.get("error"), dict) else {}
+        response = JSONResponse({"ok": False, "error": _error(
+            str(error.get("code") or "PAIRING_FAILED"),
+            str(error.get("message") or "Could not pair Loom Host."),
+            status,
+        )}, status_code=status or 502)
+    else:
+        response = JSONResponse({
+            "ok": True,
+            "pairing_ticket": str(payload.get("pairing_ticket") or ""),
+            "expires_in": int(payload.get("expires_in") or 0),
+        })
+    if rotated:
+        _set_session_cookies(response, rotated)
+    return response
+
+
 @dataclass
 class BrowserPeer:
     id: str
@@ -348,9 +396,6 @@ async def browser_socket(websocket: WebSocket) -> None:
             request_id = frame.get("id")
             operation = str(frame.get("operation") or "")
             args = frame.get("args") if isinstance(frame.get("args"), list) else []
-            # Every operation goes only to the device explicitly bound to this
-            # browser session. A signed-in browser never falls back to some other
-            # online computer on the account.
             asyncio.create_task(_run_device_invoke(peer, request_id, operation, args))
     except (WebSocketDisconnect, RuntimeError, ValueError):
         pass
@@ -431,9 +476,6 @@ async def device_socket(websocket: WebSocket) -> None:
                 if isinstance(payload, dict) and peer.device_id:
                     notification_type = str(payload.get("method") or payload.get("type") or "unknown")
                     logger.info("relay notification type=%s device=%s", notification_type, peer.device_id)
-                    # Streaming deltas, turn completion and approvals stay scoped
-                    # to browsers attached to this exact Host. Another signed-in
-                    # computer on the account cannot receive this Host's stream.
                     await hub.broadcast_notification(user_id, peer.device_id, payload)
     except (WebSocketDisconnect, RuntimeError, ValueError):
         pass
