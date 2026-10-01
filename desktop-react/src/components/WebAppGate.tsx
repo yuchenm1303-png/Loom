@@ -27,6 +27,7 @@ export function WebAppGate({ children }: { children: ReactNode }) {
   const [pairing, setPairing] = useState(false);
   const [pairAttempts, setPairAttempts] = useState(0);
   const [pairingSucceeded, setPairingSucceeded] = useState(false);
+  const [entered, setEntered] = useState(false);
   const hostStateRef = useRef<HostState>("idle");
   const connectPromiseRef = useRef<Promise<void> | null>(null);
 
@@ -49,6 +50,10 @@ export function WebAppGate({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("loom:web-auth-changed", refresh);
   }, [account.refresh, web]);
 
+  useEffect(() => {
+    if (!account.ready || !account.account.authenticated || !account.account.user) setEntered(false);
+  }, [account.account.authenticated, account.account.user, account.ready]);
+
   const connectCurrentHost = useCallback(async (options?: { force?: boolean }) => {
     if (!web || !account.ready || !account.account.authenticated) return;
     const force = Boolean(options?.force);
@@ -63,6 +68,7 @@ export function WebAppGate({ children }: { children: ReactNode }) {
         setHostError("");
       } catch (cause) {
         const error = cause as Error & { code?: string };
+        setEntered(false);
         setTrackedHostState("offline");
         setHostError(error.message || String(cause));
       }
@@ -89,7 +95,10 @@ export function WebAppGate({ children }: { children: ReactNode }) {
         if (hostStateRef.current !== "online") void connectCurrentHost();
         return;
       }
-      if (hostStateRef.current === "online") setTrackedHostState("offline");
+      if (hostStateRef.current === "online") {
+        setEntered(false);
+        setTrackedHostState("offline");
+      }
     };
     window.addEventListener("loom:web-device-status", onDeviceStatus);
     return () => window.removeEventListener("loom:web-device-status", onDeviceStatus);
@@ -200,6 +209,7 @@ export function WebAppGate({ children }: { children: ReactNode }) {
   ]);
 
   const retry = useCallback(() => {
+    setEntered(false);
     setPairAttempts(0);
     setPairingSucceeded(false);
     setPairing(false);
@@ -208,6 +218,14 @@ export function WebAppGate({ children }: { children: ReactNode }) {
     setDiscoveryNonce((value) => value + 1);
     void connectCurrentHost({ force: true });
   }, [connectCurrentHost, setTrackedHostState]);
+
+  const enterOrRetry = useCallback(() => {
+    if (hostStateRef.current === "online") {
+      setEntered(true);
+      return;
+    }
+    retry();
+  }, [retry]);
 
   if (!web) return children;
 
@@ -221,14 +239,14 @@ export function WebAppGate({ children }: { children: ReactNode }) {
           ? "offline"
           : "idle";
 
-  if (!account.ready || !account.account.authenticated || !account.account.user || hostState !== "online") {
+  if (!account.ready || !account.account.authenticated || !account.account.user || hostState !== "online" || !entered) {
     return (
       <WebPortal
         account={account}
         hostState={portalState}
         hostError={hostError}
         selectedDeviceName={localHost?.deviceName || ""}
-        onEnter={retry}
+        onEnter={enterOrRetry}
       />
     );
   }
