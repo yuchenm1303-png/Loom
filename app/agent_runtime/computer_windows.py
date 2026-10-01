@@ -161,6 +161,30 @@ def _warm_uia_client() -> None:
     Desktop(backend="uia")
 
 
+def _focused_hwnd_for_thread(thread_id: int) -> int:
+    """Use the typed Win32 API, not an optional pywin32 export."""
+    from ctypes import wintypes
+
+    class GUIThreadInfo(ctypes.Structure):
+        _fields_ = [("cbSize", wintypes.DWORD), ("flags", wintypes.DWORD),
+                    ("hwndActive", wintypes.HWND), ("hwndFocus", wintypes.HWND),
+                    ("hwndCapture", wintypes.HWND), ("hwndMenuOwner", wintypes.HWND),
+                    ("hwndMoveSize", wintypes.HWND), ("hwndCaret", wintypes.HWND),
+                    ("rcCaret", wintypes.RECT)]
+
+    user32 = ctypes.WinDLL("user32", use_last_error=True)
+    query = user32.GetGUIThreadInfo
+    query.argtypes = [wintypes.DWORD, ctypes.POINTER(GUIThreadInfo)]
+    query.restype = wintypes.BOOL
+    info = GUIThreadInfo()
+    info.cbSize = ctypes.sizeof(info)
+    if not query(thread_id, ctypes.byref(info)):
+        raise ctypes.WinError(ctypes.get_last_error())
+    if not info.hwndFocus:
+        raise RuntimeError("target GUI thread has no focused window")
+    return int(info.hwndFocus)
+
+
 class ComputerOperator(Protocol):
     name: str
 
@@ -792,13 +816,14 @@ class PyWinAutoWindowsOperator:
         details: dict[str, object] = {"ime_clear_steps": steps, "after_ime_composition": None}
         context = 0
         try:
-            import win32gui
             import win32process
             from ctypes import wintypes
 
             hwnd = self._parse_window_id(frame.window_id)
             thread_id = win32process.GetWindowThreadProcessId(hwnd)[0]
-            focus = int(win32gui.GetGUIThreadInfo(thread_id).get("hwndFocus") or hwnd)
+            details["ime_probe_stage"] = "focused_window"
+            focus = _focused_hwnd_for_thread(thread_id)
+            details["ime_probe_stage"] = "load_imm32"
             imm = ctypes.WinDLL("imm32", use_last_error=True)
             imm.ImmGetContext.argtypes = [wintypes.HWND]
             imm.ImmGetContext.restype = wintypes.HANDLE
@@ -806,6 +831,7 @@ class PyWinAutoWindowsOperator:
             imm.ImmGetCompositionStringW.argtypes = [wintypes.HANDLE, wintypes.DWORD, ctypes.c_void_p, wintypes.DWORD]
             imm.ImmGetCompositionStringW.restype = ctypes.c_long
             imm.ImmNotifyIME.argtypes = [wintypes.HANDLE, wintypes.DWORD, wintypes.DWORD, wintypes.DWORD]
+            details["ime_probe_stage"] = "get_context"
             context = imm.ImmGetContext(focus)
             if context:
                 size = imm.ImmGetCompositionStringW(context, 0x0008, None, 0)
