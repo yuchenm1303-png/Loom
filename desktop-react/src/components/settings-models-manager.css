@@ -706,6 +706,65 @@
 .models-modal-head > button { width: 30px; height: 30px; display: grid; place-items: center; border: 0; border-radius: 7px; background: transparent; color: #7f8692; cursor: pointer; }
 .models-modal-head > button:hover { background: rgba(255,255,255,.045); color: #d5d8de; }
 
+.models-provider-preset {
+  width: 100%;
+  min-height: 58px;
+  display: grid;
+  grid-template-columns: 34px minmax(0,1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 11px;
+  border: 1px solid rgba(255,255,255,.07);
+  border-radius: 10px;
+  background: #0f1115;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 150ms ease, background 150ms ease, transform 150ms ease;
+}
+
+.models-provider-preset:hover {
+  transform: translateY(-1px);
+  border-color: rgba(154,140,255,.22);
+  background: rgba(154,140,255,.045);
+}
+
+.models-provider-preset.active {
+  border-color: rgba(154,140,255,.28);
+  background: rgba(154,140,255,.065);
+}
+
+.models-provider-preset-mark {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(154,140,255,.18);
+  border-radius: 10px;
+  background: rgba(154,140,255,.09);
+  color: #b9b0ff;
+  font-size: 13px;
+  font-weight: 760;
+}
+
+.models-provider-preset > span:nth-child(2) {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.models-provider-preset strong { color: #e3e5e9; font-size: 12px; }
+.models-provider-preset small { color: #727986; font-size: 10.5px; line-height: 1.35; }
+
+.models-provider-preset-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: #9189d7;
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+
 .models-form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0,1fr));

@@ -110,6 +110,10 @@ _EXACT: dict[str, ModelReasoningSpec] = {
     "qwen3.6-plus": _budget(("none", "high", "max"), default="high"),
     "qwen3.7-plus": _budget(("none", "high", "max"), default="high"),
     "qwen3.7-max": _budget(("none", "high", "max"), default="high"),
+    # Ant Ling Ling-3.0-flash uses the OpenAI-compatible `thinking` object
+    # with enabled/disabled values. The existing thinking transport emits that
+    # exact wire shape, so this model can expose its native control directly.
+    "ling-3.0-flash": _thinking(("disabled", "enabled"), default="enabled"),
     "minimax-m3": _thinking(("disabled", "adaptive"), default="adaptive"),
     "muse-spark-1.2-contributor": _effort(
         ("minimal", "low", "medium", "high", "xhigh"),
