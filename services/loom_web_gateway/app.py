@@ -44,6 +44,15 @@ def _error(code: str, message: str, status: int = 0) -> dict[str, Any]:
     return payload
 
 
+def _device_id(value: Any) -> str:
+    candidate = str(value or "").strip()
+    if not candidate or len(candidate) > 128:
+        return ""
+    if any(character not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.:" for character in candidate):
+        return ""
+    return candidate
+
+
 def _set_session_cookies(response: Response, payload: dict[str, Any]) -> None:
     access = str(payload.get("access_token") or "")
     refresh = str(payload.get("refresh_token") or "")
@@ -172,6 +181,7 @@ class BrowserPeer:
     id: str
     user_id: int
     websocket: WebSocket
+    selected_device_id: str = ""
     send_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     closed: bool = False
 
@@ -193,6 +203,7 @@ class BrowserPeer:
 class DevicePeer:
     user_id: int
     websocket: WebSocket
+    device_id: str = ""
     device: dict[str, Any] = field(default_factory=dict)
     send_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     closed: bool = False
@@ -213,25 +224,35 @@ class DevicePeer:
 
 class RelayHub:
     def __init__(self) -> None:
-        self.devices: dict[int, DevicePeer] = {}
+        self.devices: dict[int, dict[str, DevicePeer]] = {}
         self.browsers: dict[str, BrowserPeer] = {}
         self.lock = asyncio.Lock()
 
     async def browser_status(self, browser: BrowserPeer) -> None:
         async with self.lock:
-            device = self.devices.get(browser.user_id)
-        await browser.send({"type": "device_status", "online": device is not None, "device": device.device if device else None})
+            device_map = self.devices.get(browser.user_id, {})
+            selected = device_map.get(browser.selected_device_id) if browser.selected_device_id else None
+            devices = [dict(peer.device) for peer in device_map.values() if not peer.closed and peer.device_id]
+        await browser.send({
+            "type": "device_status",
+            "online": selected is not None and not selected.closed,
+            "device": dict(selected.device) if selected and not selected.closed else None,
+            "selectedDeviceId": browser.selected_device_id or None,
+            "devices": devices,
+        })
 
     async def broadcast_device_status(self, user_id: int) -> None:
         async with self.lock:
-            device = self.devices.get(user_id)
             peers = [peer for peer in self.browsers.values() if peer.user_id == user_id]
-        payload = {"type": "device_status", "online": device is not None, "device": device.device if device else None}
-        await asyncio.gather(*(peer.send(payload) for peer in peers), return_exceptions=True)
+        await asyncio.gather(*(self.browser_status(peer) for peer in peers), return_exceptions=True)
 
-    async def broadcast_notification(self, user_id: int, payload: dict[str, Any]) -> None:
+    async def broadcast_notification(self, user_id: int, device_id: str, payload: dict[str, Any]) -> None:
         async with self.lock:
-            peers = [peer for peer in self.browsers.values() if peer.user_id == user_id]
+            peers = [
+                peer
+                for peer in self.browsers.values()
+                if peer.user_id == user_id and peer.selected_device_id == device_id
+            ]
         await asyncio.gather(*(peer.send({"type": "notification", "payload": payload}) for peer in peers), return_exceptions=True)
 
 
@@ -245,13 +266,26 @@ async def _ws_user_from_access(access: str) -> dict[str, Any] | None:
 
 async def _run_device_invoke(peer: BrowserPeer, request_id: Any, operation: str, args: list[Any]) -> None:
     logger.info("relay invoke operation=%s", operation)
-    async with hub.lock:
-        device = hub.devices.get(peer.user_id)
-    if device is None:
+    if not peer.selected_device_id:
         await peer.send({
             "type": "invoke_result",
             "id": request_id,
-            "error": {"code": "HOST_OFFLINE", "message": "Your Loom Host is offline. Start Loom on your computer; the Host can remain running in the background."},
+            "error": {
+                "code": "HOST_NOT_SELECTED",
+                "message": "This browser is not linked to a Loom Host on this computer. Open Loom Web from Loom on this computer. Remote devices are never selected automatically.",
+            },
+        })
+        return
+    async with hub.lock:
+        device = hub.devices.get(peer.user_id, {}).get(peer.selected_device_id)
+    if device is None or device.closed:
+        await peer.send({
+            "type": "invoke_result",
+            "id": request_id,
+            "error": {
+                "code": "HOST_OFFLINE",
+                "message": "Loom on this computer is offline. Start Loom on this computer; its Host can remain running in the background.",
+            },
         })
         return
     sent = await device.send({
@@ -265,7 +299,7 @@ async def _run_device_invoke(peer: BrowserPeer, request_id: Any, operation: str,
         await peer.send({
             "type": "invoke_result",
             "id": request_id,
-            "error": {"code": "HOST_OFFLINE", "message": "Your Loom Host disconnected before the request was sent."},
+            "error": {"code": "HOST_OFFLINE", "message": "Loom on this computer disconnected before the request was sent."},
         })
 
 
@@ -285,8 +319,14 @@ async def browser_socket(websocket: WebSocket) -> None:
     if user_id <= 0:
         await websocket.close(code=4401, reason="invalid account")
         return
+    selected_device_id = _device_id(websocket.query_params.get("device", ""))
     await websocket.accept()
-    peer = BrowserPeer(id=uuid.uuid4().hex, user_id=user_id, websocket=websocket)
+    peer = BrowserPeer(
+        id=uuid.uuid4().hex,
+        user_id=user_id,
+        websocket=websocket,
+        selected_device_id=selected_device_id,
+    )
     async with hub.lock:
         hub.browsers[peer.id] = peer
     await hub.browser_status(peer)
@@ -295,17 +335,22 @@ async def browser_socket(websocket: WebSocket) -> None:
             frame = await websocket.receive_json()
             if not isinstance(frame, dict):
                 continue
-            if frame.get("type") == "ping":
+            kind = frame.get("type")
+            if kind == "ping":
                 await peer.send({"type": "pong"})
                 continue
-            if frame.get("type") != "invoke":
+            if kind == "select_device":
+                peer.selected_device_id = _device_id(frame.get("deviceId"))
+                await hub.browser_status(peer)
+                continue
+            if kind != "invoke":
                 continue
             request_id = frame.get("id")
             operation = str(frame.get("operation") or "")
             args = frame.get("args") if isinstance(frame.get("args"), list) else []
-            # Every operation goes to the user's local Loom Host. Desktop and Web
-            # therefore share one App Server, Agent Runtime, model registry,
-            # conversation store, approval chain and tool execution environment.
+            # Every operation goes only to the device explicitly bound to this
+            # browser session. A signed-in browser never falls back to some other
+            # online computer on the account.
             asyncio.create_task(_run_device_invoke(peer, request_id, operation, args))
     except (WebSocketDisconnect, RuntimeError, ValueError):
         pass
@@ -330,15 +375,6 @@ async def device_socket(websocket: WebSocket) -> None:
     await websocket.accept()
     logger.info("relay device connected")
     peer = DevicePeer(user_id=user_id, websocket=websocket)
-    async with hub.lock:
-        old = hub.devices.get(user_id)
-        hub.devices[user_id] = peer
-    if old is not None and old.websocket is not websocket:
-        try:
-            await old.websocket.close(code=4001, reason="newer Loom Desktop connected")
-        except RuntimeError:
-            pass
-    await hub.broadcast_device_status(user_id)
     try:
         while True:
             frame = await websocket.receive_json()
@@ -349,18 +385,41 @@ async def device_socket(websocket: WebSocket) -> None:
                 await peer.send({"type": "pong"})
             elif kind == "device_hello":
                 device = frame.get("device")
-                peer.device = device if isinstance(device, dict) else {}
+                payload = dict(device) if isinstance(device, dict) else {}
+                device_id = _device_id(payload.get("id"))
+                if not device_id:
+                    await websocket.close(code=4400, reason="valid device id required")
+                    return
+                payload["id"] = device_id
+                peer.device_id = device_id
+                peer.device = payload
+                async with hub.lock:
+                    device_map = hub.devices.setdefault(user_id, {})
+                    old = device_map.get(device_id)
+                    device_map[device_id] = peer
+                if old is not None and old.websocket is not websocket:
+                    try:
+                        await old.websocket.close(code=4001, reason="newer Loom Host instance connected for this device")
+                    except RuntimeError:
+                        pass
                 logger.info(
-                    "relay device hello platform=%s version=%s",
+                    "relay device hello id=%s platform=%s version=%s",
+                    device_id,
                     str(peer.device.get("platform") or "unknown"),
                     str(peer.device.get("version") or "unknown"),
                 )
                 await hub.broadcast_device_status(user_id)
             elif kind == "invoke_result":
+                if not peer.device_id:
+                    continue
                 browser_id = str(frame.get("browserId") or "")
                 async with hub.lock:
                     browser = hub.browsers.get(browser_id)
-                if browser and browser.user_id == user_id:
+                if (
+                    browser
+                    and browser.user_id == user_id
+                    and browser.selected_device_id == peer.device_id
+                ):
                     forwarded = {"type": "invoke_result", "id": frame.get("id")}
                     if "error" in frame:
                         forwarded["error"] = frame.get("error")
@@ -369,20 +428,25 @@ async def device_socket(websocket: WebSocket) -> None:
                     await browser.send(forwarded)
             elif kind == "notification":
                 payload = frame.get("payload")
-                if isinstance(payload, dict):
+                if isinstance(payload, dict) and peer.device_id:
                     notification_type = str(payload.get("method") or payload.get("type") or "unknown")
-                    logger.info("relay notification type=%s", notification_type)
-                    # Streaming deltas, turn completion, approvals and every other
-                    # App Server notification are the same stream Desktop receives.
-                    await hub.broadcast_notification(user_id, payload)
+                    logger.info("relay notification type=%s device=%s", notification_type, peer.device_id)
+                    # Streaming deltas, turn completion and approvals stay scoped
+                    # to browsers attached to this exact Host. Another signed-in
+                    # computer on the account cannot receive this Host's stream.
+                    await hub.broadcast_notification(user_id, peer.device_id, payload)
     except (WebSocketDisconnect, RuntimeError, ValueError):
         pass
     finally:
         peer.closed = True
-        async with hub.lock:
-            if hub.devices.get(user_id) is peer:
-                hub.devices.pop(user_id, None)
-        logger.info("relay device disconnected")
+        if peer.device_id:
+            async with hub.lock:
+                device_map = hub.devices.get(user_id)
+                if device_map and device_map.get(peer.device_id) is peer:
+                    device_map.pop(peer.device_id, None)
+                    if not device_map:
+                        hub.devices.pop(user_id, None)
+        logger.info("relay device disconnected id=%s", peer.device_id or "unregistered")
         await hub.broadcast_device_status(user_id)
 
 
