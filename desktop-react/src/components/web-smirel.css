@@ -305,25 +305,26 @@ html[data-loom-web="true"] body {
   letter-spacing: .13em;
 }
 
+.smirel-web-shell .loom-account-close {
+  display: none;
+}
+
 .smirel-web-shell .loom-account-header {
   grid-template-columns: 88px 1fr;
   align-items: flex-start;
 }
 
-.smirel-web-shell .loom-account-brand-logo {
+.smirel-web-shell .loom-account-mark {
   width: 82px;
-  min-width: 82px;
   height: 31px;
-  display: flex;
-  align-items: center;
+  border: 0;
+  border-radius: 0;
   margin-top: 2px;
+  background: url(/smirel-logo.svg) center / contain no-repeat;
 }
 
-.smirel-web-shell .loom-account-brand-logo img {
-  display: block;
-  width: 82px;
-  height: auto;
-  object-fit: contain;
+.smirel-web-shell .loom-account-mark svg {
+  display: none;
 }
 
 .smirel-web-shell .loom-account-tabs {
