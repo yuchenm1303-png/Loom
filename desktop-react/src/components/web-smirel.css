@@ -1,9 +1,25 @@
 /* Portal-only glue. The glass system itself is vendored verbatim from Chen-s-Homepage/download. */
 html[data-loom-web="true"] body { background: #21313c; }
-.loom-portal-page { position: relative; min-height: 100vh; color: #fff; }
+.loom-portal-page {
+  position: relative;
+  height: 100%;
+  min-height: 100vh;
+  overflow-x: hidden;
+  overflow-y: auto;
+  color: #fff;
+  background: transparent;
+  --text: #fff;
+  --muted: rgba(255,255,255,.67);
+  --soft: rgba(255,255,255,.42);
+  --card: #00000040;
+  --card-hover: rgba(0,0,0,.4);
+  --line: rgba(255,255,255,.12);
+}
+.loom-portal-page > .cosmos { z-index: 0 !important; }
 .loom-portal-shell { position: relative; z-index: 2; }
 .loom-portal-brand { gap: 12px; }
-.loom-portal-logo { display:block; width:104px; height:34px; object-fit:contain; }
+.loom-portal-logo { display:none; }
+.loom-portal-brand::before { content:""; display:block; width:34px; height:34px; flex:0 0 34px; background:url('/smirel-mark.svg') center/contain no-repeat; }
 .loom-portal-brand-divider { width:1px; height:24px; background:rgba(255,255,255,.13); }
 .loom-portal-brand .brand-copy strong { font-size:.92rem; }
 .loom-portal-brand .brand-copy small { font-size:.58rem; }
