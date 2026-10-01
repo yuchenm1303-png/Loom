@@ -250,7 +250,7 @@ function UpdatePanel() {
 
           <div className="software-update-footnote">
             <span>{formatCheckedAt(state?.checkedAt)}</span>
-            <span>Checks after launch and every 4 hours · downloads happen in the background</span>
+            <span>Checks after launch, rechecks shortly after, every 30 min, and when Loom returns to focus</span>
           </div>
         </div>
 

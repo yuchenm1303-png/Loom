@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import electronUpdater, {
   type AppUpdater,
   type ProgressInfo,
@@ -30,9 +30,17 @@ export interface SoftwareUpdateState {
   error?: string;
 }
 
-const STARTUP_CHECK_DELAY_MS = 15_000;
-const PERIODIC_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1_000;
+// Check quickly after launch, then re-check during the first few minutes so a
+// release published just after Loom starts is still discovered promptly. After
+// that, keep a modest background cadence and opportunistically refresh when the
+// user returns to Loom after being away.
+const STARTUP_CHECK_DELAY_MS = 5_000;
+const EARLY_RECHECK_DELAYS_MS = [2 * 60_000, 10 * 60_000];
+const PERIODIC_CHECK_INTERVAL_MS = 30 * 60_000;
+const FOCUS_RECHECK_MIN_AGE_MS = 5 * 60_000;
+const ERROR_RETRY_DELAY_MS = 60_000;
 const STATUS_CHANNEL = "loom:update-status-changed";
+const RELEASE_BASE_URL = "https://github.com/yuchenm1303-png/Loom/releases/tag";
 
 function getAutoUpdater(): AppUpdater {
   // electron-updater is CommonJS. Destructuring the default import keeps the
@@ -49,9 +57,14 @@ let state: SoftwareUpdateState = {
   currentVersion: app.getVersion(),
 };
 let checkPromise: Promise<SoftwareUpdateState> | null = null;
-let promptedVersion: string | null = null;
+let availablePromptPromise: Promise<void> | null = null;
+let announcedVersion: string | null = null;
+let promptedDownloadedVersion: string | null = null;
+let lastCheckStartedAt = 0;
 let startupTimer: NodeJS.Timeout | null = null;
 let periodicTimer: NodeJS.Timeout | null = null;
+let errorRetryTimer: NodeJS.Timeout | null = null;
+const earlyRecheckTimers: NodeJS.Timeout[] = [];
 
 function publicState(): SoftwareUpdateState {
   return { ...state };
@@ -98,9 +111,65 @@ function errorText(error: unknown): string {
   return String(error || "Unknown update error");
 }
 
+function updateInFlight(): boolean {
+  return state.phase === "available" || state.phase === "downloading" || state.phase === "downloaded";
+}
+
+function activeWindow(): BrowserWindow | undefined {
+  return BrowserWindow.getFocusedWindow()
+    ?? BrowserWindow.getAllWindows().find((window) => !window.isDestroyed());
+}
+
+function clearErrorRetry(): void {
+  if (!errorRetryTimer) return;
+  clearTimeout(errorRetryTimer);
+  errorRetryTimer = null;
+}
+
+function scheduleErrorRetry(): void {
+  if (!updateEnabled || errorRetryTimer || updateInFlight()) return;
+  errorRetryTimer = setTimeout(() => {
+    errorRetryTimer = null;
+    void checkForUpdates();
+  }, ERROR_RETRY_DELAY_MS);
+  errorRetryTimer.unref?.();
+}
+
+async function offerAvailableUpdate(info: UpdateInfo): Promise<void> {
+  if (!updateEnabled || announcedVersion === info.version) return;
+  announcedVersion = info.version;
+
+  const options = {
+    type: "info" as const,
+    title: "Loom update available",
+    message: `Loom ${info.version} is available.`,
+    detail: "Loom is downloading the update in the background. You can keep working, and Loom will ask again when it is ready to install.",
+    buttons: ["Download in background", "View release"],
+    defaultId: 0,
+    cancelId: 0,
+    noLink: true,
+  };
+
+  const parent = activeWindow();
+  const result = parent
+    ? await dialog.showMessageBox(parent, options)
+    : await dialog.showMessageBox(options);
+
+  if (result.response === 1) {
+    await shell.openExternal(`${RELEASE_BASE_URL}/v${encodeURIComponent(info.version)}`);
+  }
+}
+
 async function offerDownloadedUpdate(info: UpdateInfo): Promise<void> {
-  if (!updateEnabled || promptedVersion === info.version) return;
-  promptedVersion = info.version;
+  if (!updateEnabled || promptedDownloadedVersion === info.version) return;
+  promptedDownloadedVersion = info.version;
+
+  // Never stack the install prompt on top of the just-discovered prompt. If the
+  // update is tiny or the connection is fast, wait until the first dialog is
+  // dismissed before asking whether to restart.
+  if (availablePromptPromise) {
+    await availablePromptPromise.catch(() => undefined);
+  }
 
   const options = {
     type: "info" as const,
@@ -113,7 +182,7 @@ async function offerDownloadedUpdate(info: UpdateInfo): Promise<void> {
     noLink: true,
   };
 
-  const parent = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows().find((window) => !window.isDestroyed());
+  const parent = activeWindow();
   const result = parent
     ? await dialog.showMessageBox(parent, options)
     : await dialog.showMessageBox(options);
@@ -126,7 +195,10 @@ async function offerDownloadedUpdate(info: UpdateInfo): Promise<void> {
 async function checkForUpdates(): Promise<SoftwareUpdateState> {
   if (!updateEnabled) return publicState();
   if (checkPromise) return checkPromise;
+  if (updateInFlight()) return publicState();
 
+  clearErrorRetry();
+  lastCheckStartedAt = Date.now();
   checkPromise = (async () => {
     setState({
       phase: "checking",
@@ -142,6 +214,7 @@ async function checkForUpdates(): Promise<SoftwareUpdateState> {
       await autoUpdater.checkForUpdates();
     } catch (error) {
       setState({ phase: "error", error: errorText(error) });
+      scheduleErrorRetry();
     }
 
     return publicState();
@@ -161,6 +234,12 @@ function installDownloadedUpdate(): { accepted: boolean; state: SoftwareUpdateSt
   return { accepted: true, state: publicState() };
 }
 
+function maybeCheckAfterFocus(): void {
+  if (!updateEnabled || !lastCheckStartedAt || checkPromise || updateInFlight()) return;
+  if (Date.now() - lastCheckStartedAt < FOCUS_RECHECK_MIN_AGE_MS) return;
+  void checkForUpdates();
+}
+
 function configureUpdater(): void {
   if (!updateEnabled) return;
 
@@ -173,6 +252,7 @@ function configureUpdater(): void {
   });
 
   autoUpdater.on("update-available", (info) => {
+    clearErrorRetry();
     setState({
       phase: "available",
       ...updateInfoPatch(info),
@@ -180,10 +260,13 @@ function configureUpdater(): void {
       percent: 0,
       transferred: 0,
     });
+    availablePromptPromise = offerAvailableUpdate(info).finally(() => {
+      availablePromptPromise = null;
+    });
   });
 
   autoUpdater.on("update-not-available", (info) => {
-    promptedVersion = null;
+    clearErrorRetry();
     setState({
       phase: "up-to-date",
       ...updateInfoPatch(info),
@@ -216,6 +299,7 @@ function configureUpdater(): void {
 
   autoUpdater.on("error", (error) => {
     setState({ phase: "error", error: errorText(error) });
+    scheduleErrorRetry();
   });
 }
 
@@ -228,8 +312,18 @@ function startAutomaticChecks(): void {
   }, STARTUP_CHECK_DELAY_MS);
   startupTimer.unref?.();
 
+  for (const delay of EARLY_RECHECK_DELAYS_MS) {
+    const timer = setTimeout(() => {
+      const index = earlyRecheckTimers.indexOf(timer);
+      if (index >= 0) earlyRecheckTimers.splice(index, 1);
+      if (!updateInFlight()) void checkForUpdates();
+    }, delay);
+    timer.unref?.();
+    earlyRecheckTimers.push(timer);
+  }
+
   periodicTimer = setInterval(() => {
-    void checkForUpdates();
+    if (!updateInFlight()) void checkForUpdates();
   }, PERIODIC_CHECK_INTERVAL_MS);
   periodicTimer.unref?.();
 }
@@ -246,6 +340,7 @@ app.on("browser-window-created", (_event, window) => {
       window.webContents.send(STATUS_CHANNEL, publicState());
     }
   });
+  window.on("focus", maybeCheckAfterFocus);
 });
 
 app.whenReady().then(() => {
@@ -255,6 +350,10 @@ app.whenReady().then(() => {
 app.on("before-quit", () => {
   if (startupTimer) clearTimeout(startupTimer);
   if (periodicTimer) clearInterval(periodicTimer);
+  if (errorRetryTimer) clearTimeout(errorRetryTimer);
+  for (const timer of earlyRecheckTimers) clearTimeout(timer);
+  earlyRecheckTimers.length = 0;
   startupTimer = null;
   periodicTimer = null;
+  errorRetryTimer = null;
 });
