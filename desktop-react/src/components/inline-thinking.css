@@ -6,19 +6,19 @@
   display: none !important;
 }
 
-/* Keep the thinking glyph visible beside the live status text. The runtime now
+/* Keep the thinking bead visible beside the live status text. The runtime now
    closes stale reasoning steps correctly, so this no longer leaves an orphaned
    mark after tool activity. The glyph itself lives in thinking-glyph.css. */
 .turn-block > .inline-thinking {
-  gap: 8px;
+  gap: 5px;
   margin-left: 0;
 }
 
-/* One cadence for the whole row: the glyph's thread crosses the bead, then the
-   shimmer carries the light across the label. */
+/* One cadence for the whole row, and one light: the bead gives off a pulse, the
+   same soft light passes over the label as the pulse leaves, then both rest. */
 .inline-thinking,
 .live-reasoning {
-  --thinking-cycle: 2.15s;
+  --thinking-cycle: 2.6s;
   align-self: flex-start;
   min-width: 0;
   color: #8f95a1;
@@ -28,7 +28,7 @@
   min-height: 28px;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 5px;
   margin-top: -5px;
   padding: 1px 0;
   animation: inline-thinking-enter 180ms cubic-bezier(.2,.8,.2,1) both;
@@ -49,7 +49,7 @@
 }
 
 .turn-block > .inline-thinking .thinking-shimmer {
-  animation: loom-task-copy-in 260ms cubic-bezier(.2,.82,.2,1) 250ms backwards;
+  animation: loom-task-copy-in 260ms cubic-bezier(.2,.82,.2,1) 250ms backwards, var(--thinking-sweep);
 }
 
 /* The live reasoning capsule is born the same way, unless it replaces a pending
@@ -71,7 +71,7 @@
 }
 
 .turn-process.is-live .live-reasoning:not(.is-handoff) .live-reasoning-trigger .thinking-shimmer {
-  animation: loom-task-copy-in 260ms cubic-bezier(.2,.82,.2,1) 150ms backwards;
+  animation: loom-task-copy-in 260ms cubic-bezier(.2,.82,.2,1) 150ms backwards, var(--thinking-sweep);
 }
 
 .turn-process.is-live .live-reasoning.is-handoff .live-reasoning-trigger {
@@ -85,47 +85,61 @@
 }
 
 /* A capsule that has yielded to task activity stays mounted but collapsed
-   (generation-motion.css); pause its thread instead of repainting it unseen. */
-.turn-block:has(.task-flow-group.is-running) > .inline-thinking .tg-ply {
+   (generation-motion.css); pause its light instead of repainting it unseen. */
+.turn-block:has(.task-flow-group.is-running) > .inline-thinking .tg-pulse,
+.turn-block:has(.task-flow-group.is-running) > .inline-thinking .tg-bead,
+.turn-block:has(.task-flow-group.is-running) > .inline-thinking .thinking-shimmer {
   animation-play-state: paused;
 }
 
+/* The label is lit by a single soft band that passes over it. It is the label's
+   own text painted through a gradient (no second copy of the string, so nothing
+   to keep in sync and one antialiasing pass), the band keeps one hue (the text's
+   own colour brightening toward --shimmer-peak) and its edges are feathered. One
+   slow, almost even pass takes 94% of the cycle; a short stillness closes it. */
 .thinking-shimmer {
-  position: relative;
+  --shimmer-base: #7d8595;
+  --shimmer-peak: #e9e7f8;
+  --thinking-sweep: thinking-text-shimmer var(--thinking-cycle, 2.6s) cubic-bezier(.33, .1, .67, .9) infinite;
+
   display: inline-block;
   font-size: 12.5px;
-  font-weight: 620;
+  font-weight: 600;
   line-height: 1.45;
   letter-spacing: .01em;
   white-space: nowrap;
-  color: #838c9a;
-  isolation: isolate;
+  color: var(--shimmer-base);
   contain: paint;
-}
-
-.thinking-shimmer::after {
-  content: "正在思考…";
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  color: transparent;
-  pointer-events: none;
   background-image: linear-gradient(
-    102deg,
-    transparent 0%,
-    transparent 27%,
-    rgba(244,242,255,.96) 43%,
-    #b7a8ff 53%,
-    #7bc8ff 58%,
-    transparent 72%,
-    transparent 100%
+    100deg,
+    var(--shimmer-base) 0%,
+    var(--shimmer-base) 35%,
+    color-mix(in srgb, var(--shimmer-peak) 16%, var(--shimmer-base)) 38.75%,
+    color-mix(in srgb, var(--shimmer-peak) 50%, var(--shimmer-base)) 42.5%,
+    color-mix(in srgb, var(--shimmer-peak) 84%, var(--shimmer-base)) 46.25%,
+    var(--shimmer-peak) 50%,
+    color-mix(in srgb, var(--shimmer-peak) 84%, var(--shimmer-base)) 53.75%,
+    color-mix(in srgb, var(--shimmer-peak) 50%, var(--shimmer-base)) 57.5%,
+    color-mix(in srgb, var(--shimmer-peak) 16%, var(--shimmer-base)) 61.25%,
+    var(--shimmer-base) 65%,
+    var(--shimmer-base) 100%
   );
-  background-size: 260% 100%;
-  background-position: 150% 0;
+  background-size: 300% 100%;
+  background-repeat: no-repeat;
+  background-position: 98% 0;
   -webkit-background-clip: text;
   background-clip: text;
-  will-change: background-position, opacity;
-  animation: thinking-text-shimmer var(--thinking-cycle, 2.15s) linear infinite;
+  -webkit-text-fill-color: transparent;
+  animation: var(--thinking-sweep);
+}
+
+/* Forced colours drop backgrounds: show the plain label. */
+@media (forced-colors: active) {
+  .thinking-shimmer {
+    background: none;
+    -webkit-text-fill-color: currentColor;
+    animation: none;
+  }
 }
 
 .live-reasoning {
@@ -147,7 +161,7 @@
   background: transparent;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 5px;
   color: #8f95a1;
   cursor: pointer;
   text-align: left;
@@ -202,7 +216,7 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   background:
-    linear-gradient(90deg, rgba(125,105,230,.055), rgba(74,168,236,.018) 42%, transparent 74%);
+    linear-gradient(90deg, rgba(125,105,230,.05), transparent 72%);
 }
 
 .live-reasoning-copy::before {
@@ -215,31 +229,18 @@
   background: linear-gradient(
     180deg,
     transparent,
-    rgba(129,110,231,.82),
-    rgba(91,184,246,.72),
-    rgba(181,149,255,.62),
+    rgba(140,124,244,.5),
+    rgba(184,172,255,.84),
+    rgba(140,124,244,.5),
     transparent
   );
-  box-shadow: 0 0 8px rgba(112,95,228,.18);
-  animation: reasoning-rail-sweep 2.35s cubic-bezier(.4,0,.2,1) infinite;
+  box-shadow: 0 0 6px rgba(122,106,236,.16);
+  animation: reasoning-rail-sweep var(--thinking-cycle, 2.6s) ease-in-out infinite;
 }
 
 html[data-loom-theme="light"] .thinking-shimmer {
-  color: #667181;
-  font-weight: 640;
-}
-
-html[data-loom-theme="light"] .thinking-shimmer::after {
-  background-image: linear-gradient(
-    102deg,
-    transparent 0%,
-    transparent 27%,
-    rgba(81,67,185,.74) 43%,
-    #6955d4 52%,
-    #359edb 58%,
-    transparent 72%,
-    transparent 100%
-  );
+  --shimmer-base: #788292;
+  --shimmer-peak: #4f47b0;
 }
 
 html[data-loom-theme="light"] .live-reasoning-chevron {
@@ -254,38 +255,27 @@ html[data-loom-theme="light"] .live-reasoning-copy {
   border-left-color: rgba(105,90,216,.28);
   color: #505a68;
   background:
-    linear-gradient(90deg, rgba(105,90,216,.055), rgba(64,158,224,.018) 45%, transparent 76%);
+    linear-gradient(90deg, rgba(105,90,216,.05), transparent 74%);
 }
 
 html[data-loom-theme="light"] .live-reasoning-copy::before {
   background: linear-gradient(
     180deg,
     transparent,
-    rgba(96,78,204,.82),
-    rgba(50,157,225,.70),
-    rgba(137,102,224,.58),
+    rgba(100,84,214,.5),
+    rgba(84,68,200,.8),
+    rgba(100,84,214,.5),
     transparent
   );
-  box-shadow: 0 0 7px rgba(91,73,199,.15);
+  box-shadow: 0 0 6px rgba(91,73,199,.14);
 }
 
 @keyframes thinking-text-shimmer {
-  0%, 8% {
-    background-position: 150% 0;
-    opacity: 0;
+  0% {
+    background-position: 98% 0;
   }
-  14% {
-    opacity: .72;
-  }
-  48% {
-    opacity: 1;
-  }
-  82% {
-    opacity: .74;
-  }
-  90%, 100% {
-    background-position: -150% 0;
-    opacity: 0;
+  94%, 100% {
+    background-position: 2% 0;
   }
 }
 
@@ -309,10 +299,10 @@ html[data-loom-theme="light"] .live-reasoning-copy::before {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .thinking-shimmer::after,
   .live-reasoning-copy::before,
   .inline-thinking,
   .turn-block > .inline-thinking .tg,
+  .thinking-shimmer,
   .turn-block > .inline-thinking .thinking-shimmer,
   .live-reasoning,
   .live-reasoning .live-reasoning-trigger,
@@ -322,22 +312,14 @@ html[data-loom-theme="light"] .live-reasoning-copy::before {
   }
 
   .thinking-shimmer {
-    background: none;
-  }
-
-  html[data-loom-theme="light"] .thinking-shimmer {
-    color: #687282;
-  }
-
-  .thinking-shimmer::after {
-    content: none;
+    background-position: 98% 0;
   }
 }
 
-:root[data-loom-reduced-motion="true"] .thinking-shimmer::after,
 :root[data-loom-reduced-motion="true"] .live-reasoning-copy::before,
 :root[data-loom-reduced-motion="true"] .inline-thinking,
 :root[data-loom-reduced-motion="true"] .turn-block > .inline-thinking .tg,
+:root[data-loom-reduced-motion="true"] .thinking-shimmer,
 :root[data-loom-reduced-motion="true"] .turn-block > .inline-thinking .thinking-shimmer,
 :root[data-loom-reduced-motion="true"] .live-reasoning,
 :root[data-loom-reduced-motion="true"] .live-reasoning .live-reasoning-trigger,
@@ -346,6 +328,6 @@ html[data-loom-theme="light"] .live-reasoning-copy::before {
   animation: none !important;
 }
 
-:root[data-loom-reduced-motion="true"] .thinking-shimmer::after {
-  content: none;
+:root[data-loom-reduced-motion="true"] .thinking-shimmer {
+  background-position: 98% 0;
 }
