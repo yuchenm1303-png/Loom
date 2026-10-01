@@ -34,17 +34,15 @@ try {
       width: canvas.width, height: canvas.height,
       pointerAngle: Math.atan2((top + bottom) / 2, -(left + right) / 2) * 180 / Math.PI,
       whiteFill: composite[(2 * canvas.width + 2) * 4] === 255,
-      extendedArms: [[13, 2], [2, 11]].every(([x, y]) => {
+      extendedArms: [[15, 2], [2, 13]].every(([x, y]) => {
         const offset = (y * canvas.width + x) * 4;
         return composite[offset] === 255 && composite[offset + 3] > 180;
       }),
-      thickerStrokes: [[5, 9], [10, 4]].every(([x, y]) =>
-        composite[(y * canvas.width + x) * 4 + 3] === 255),
-      openCorner: [[7, 6], [10, 10], [15, 2], [2, 13]].every(([x, y]) =>
+      openCorner: [[6, 5], [10, 10], [17, 2], [2, 15]].every(([x, y]) =>
         composite[(y * canvas.width + x) * 4 + 3] === 0),
       preserved: composite.every((value, index) => {
         const pixel = Math.floor(index / 4);
-        return (pixel % canvas.width < 14 && Math.floor(pixel / canvas.width) < 12) || value === source[index];
+        return (pixel % canvas.width < 16 && Math.floor(pixel / canvas.width) < 14) || value === source[index];
       }),
     };
   });
@@ -52,9 +50,8 @@ try {
   assert.equal(pointerAsset.height, 67);
   assert.ok(Math.abs(pointerAsset.pointerAngle - 135) < 0.1, "pointer must sit at 135 degrees upper-left of the character center");
   assert.ok(pointerAsset.whiteFill, "dark surfaces must use a white pointer");
-  assert.ok(pointerAsset.extendedArms, "both arms must reach the shortened 14x12 bounds");
-  assert.ok(pointerAsset.thickerStrokes, "both strokes must be slightly heavier");
-  assert.ok(pointerAsset.openCorner, "the shorter, heavier pointer must retain its open corner");
+  assert.ok(pointerAsset.extendedArms, "both arms must reach the shortened 16x14 bounds");
+  assert.ok(pointerAsset.openCorner, "the enlarged pointer must retain its open corner and original stroke thickness");
   assert.ok(pointerAsset.preserved, "all character pixels must remain unchanged at an equal X/Y offset from the hotspot");
   await page.evaluate(() => {
     const surface = document.createElement("div");
