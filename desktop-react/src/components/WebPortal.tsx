@@ -167,9 +167,9 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
             </p>
 
             <div className="loom-stage-actions">
-              <button className="loom-primary-action" type="button" onClick={primaryAction} disabled={authenticated && hostState === "checking"}>
+              {!authenticated ? <button className="loom-primary-action" type="button" onClick={primaryAction}>
                 <span>{primaryLabel}</span><span aria-hidden="true">→</span>
-              </button>
+              </button> : null}
               <a className="loom-secondary-action" href={RELEASE.download}>
                 <span><strong>{zh ? "下载 Windows 版" : "Download for Windows"}</strong><small>Windows 10 / 11 · x64 · {RELEASE.package}</small></span>
                 <span aria-hidden="true">↓</span>
@@ -211,7 +211,7 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
                 <div><dt>{zh ? "这台电脑" : "This computer"}</dt><dd>{selectedDeviceName || (zh ? "等待发现" : "Waiting for discovery")}</dd></div>
               </dl>
 
-              <button className="loom-form-submit loom-host-action" type="button" onClick={primaryAction} disabled={hostState === "checking"}><span>{primaryLabel}</span><span aria-hidden="true">→</span></button>
+              {hostState !== "checking" ? <button className="loom-form-submit loom-host-action" type="button" onClick={primaryAction}><span>{primaryLabel}</span><span aria-hidden="true">→</span></button> : null}
               <button className="loom-account-switch" type="button" onClick={() => void account.logout()}>{zh ? "退出登录" : "Sign out"}</button>
             </>}
           </aside>
