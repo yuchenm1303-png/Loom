@@ -9,7 +9,6 @@ import {
   type LocalLoomHost,
 } from "../localHostDiscovery";
 import { WebPortal, type PortalHostState } from "./WebPortal";
-import "./web-smirel.css";
 
 type HostState = "idle" | "discovering" | "pairing" | "connecting" | "online" | "missing" | "offline";
 type DeviceStatus = { online?: boolean; device?: { id?: string; name?: string; platform?: string; version?: string } | null };
@@ -38,9 +37,7 @@ export function WebAppGate({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!web) return;
-    document.documentElement.dataset.loomWeb = "true";
     document.title = "Loom Web · Smirel";
-    return () => { delete document.documentElement.dataset.loomWeb; };
   }, [web]);
 
   useEffect(() => {

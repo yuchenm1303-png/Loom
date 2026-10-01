@@ -14,6 +14,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 
 ACCOUNT_BASE_URL = os.environ.get("LOOM_ACCOUNT_API_BASE_URL", "https://account.smirel.com/v1").rstrip("/")
 STATIC_DIR = Path(os.environ.get("LOOM_WEB_STATIC_DIR", "/app/static")).resolve()
+BUILD_SHA = str(os.environ.get("LOOM_BUILD_SHA", "unknown") or "unknown").strip()
 ACCESS_COOKIE = "loom_web_access"
 REFRESH_COOKIE = "loom_web_refresh"
 ACCESS_MAX_AGE = 15 * 60
@@ -112,8 +113,8 @@ async def _browser_identity(request: Request) -> tuple[dict[str, Any] | None, di
 
 
 @app.get("/api/healthz")
-async def healthz() -> dict[str, bool]:
-    return {"ok": True}
+async def healthz() -> dict[str, Any]:
+    return {"ok": True, "buildSha": BUILD_SHA}
 
 
 @app.get("/setup")
@@ -457,14 +458,29 @@ async def device_socket(websocket: WebSocket) -> None:
         logger.info("relay device disconnected id=%s", peer.device_id or "unregistered")
         await hub.broadcast_device_status(user_id)
 
+def _static_headers(path: Path) -> dict[str, str]:
+    headers = {"X-Loom-Build": BUILD_SHA}
+    if path.name == "index.html":
+        headers["Cache-Control"] = "no-store, max-age=0"
+        return headers
+    try:
+        relative = path.relative_to(STATIC_DIR)
+    except ValueError:
+        relative = path
+    if relative.parts and relative.parts[0] == "assets":
+        headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    else:
+        headers["Cache-Control"] = "no-cache, must-revalidate"
+    return headers
+
+
 @app.get("/{full_path:path}")
 async def spa(full_path: str) -> Response:
     relative = full_path.strip("/")
     candidate = (STATIC_DIR / relative).resolve() if relative else STATIC_DIR / "index.html"
     if STATIC_DIR in candidate.parents and candidate.is_file():
-        headers = {"Cache-Control": "no-cache, must-revalidate"} if candidate.name == "index.html" else None
-        return FileResponse(candidate, headers=headers)
+        return FileResponse(candidate, headers=_static_headers(candidate))
     index = STATIC_DIR / "index.html"
     if index.is_file():
-        return FileResponse(index, headers={"Cache-Control": "no-cache, must-revalidate"})
+        return FileResponse(index, headers=_static_headers(index))
     return JSONResponse({"error": "Loom Web frontend is not built."}, status_code=503)
