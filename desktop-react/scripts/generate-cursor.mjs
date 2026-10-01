@@ -25,7 +25,8 @@ try {
     // Keep the character intact; replace the original tiny black arrow area only.
     ctx.clearRect(0, 0, pointer.naturalWidth, pointer.naturalHeight);
     // Enlarge only the pointer; the character and top-left hotspot stay unchanged.
-    ctx.drawImage(pointer, 0, 0, pointer.naturalWidth * 1.2, pointer.naturalHeight * 1.2);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(pointer, 0, 0, pointer.naturalWidth * 2, pointer.naturalHeight * 2);
     return canvas.toDataURL("image/png").split(",")[1];
   }, {
     character: `data:image/png;base64,${character.toString("base64")}`,

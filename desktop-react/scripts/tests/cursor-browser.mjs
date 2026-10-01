@@ -24,15 +24,23 @@ try {
     return {
       width: canvas.width, height: canvas.height,
       whiteFill: composite[(2 * canvas.width + 2) * 4] === 255,
+      doubled: Array.from({ length: 20 * 18 }, (_, index) => {
+        const x = index % 20;
+        const y = Math.floor(index / 20);
+        if (y >= 10 && x >= 12) return true;
+        const offset = (y * canvas.width + x) * 4;
+        return composite[offset] === 255 && composite[offset + 3] === 255;
+      }).every(Boolean),
       preserved: composite.every((value, index) => {
         const pixel = Math.floor(index / 4);
-        return (pixel % canvas.width < 12 && Math.floor(pixel / canvas.width) < 11) || value === source[index];
+        return (pixel % canvas.width < 20 && Math.floor(pixel / canvas.width) < 18) || value === source[index];
       }),
     };
   });
   assert.equal(pointerAsset.width, 70);
   assert.equal(pointerAsset.height, 70);
   assert.ok(pointerAsset.whiteFill, "dark surfaces must use a white pointer");
+  assert.ok(pointerAsset.doubled, "pointer width and height must both double: 10x9 to 20x18");
   assert.ok(pointerAsset.preserved, "character pixels outside the enlarged pointer must remain unchanged");
   await page.evaluate(() => {
     const surface = document.createElement("div");
