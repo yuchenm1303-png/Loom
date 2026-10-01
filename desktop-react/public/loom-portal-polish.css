@@ -1,0 +1,112 @@
+/* Loom portal presentation. Kept separate from host, account and relay behavior. */
+.loom-portal-page {
+  --loom-muted: #b9cedd;
+  --loom-soft: #9fb8ca;
+  --loom-line: rgba(210, 233, 250, .16);
+}
+.loom-portal-page .loom-portal-shell {
+  width: min(1280px, calc(100% - 96px)) !important;
+  min-height: 100dvh;
+  padding: 42px 0 32px !important;
+  justify-content: flex-start !important;
+}
+.loom-portal-page .loom-site-header {
+  height: 54px;
+  margin: 0 0 clamp(48px, 8vh, 88px) !important;
+  padding: 0 8px !important;
+  border: 0 !important;
+  background: transparent !important;
+  backdrop-filter: none !important;
+}
+.loom-portal-page .loom-portal-brand { gap: 20px; }
+.loom-portal-page .loom-smirel-wordmark { width: 112px; height: 40px; }
+.loom-portal-page .brand-copy strong { font-size: 20px !important; font-weight: 650; }
+.loom-portal-page .brand-copy small { color: #c1d4e2 !important; font-size: 9px !important; letter-spacing: .14em !important; margin-top: 5px; }
+.loom-portal-page .loom-version-chip { padding: 7px 12px; border: 1px solid #d4ebfa24; color: #d3e5f1; background: #152d4055; font-size: 10px; }
+.loom-portal-page .loom-stage {
+  grid-template-columns: minmax(0, 1.4fr) minmax(340px, 1fr) !important;
+  min-height: 550px;
+  border: 1px solid #c8e5f430 !important;
+  border-radius: 26px !important;
+  background: linear-gradient(125deg, rgba(17, 43, 63, .91), rgba(32, 54, 74, .81)) !important;
+  backdrop-filter: blur(28px) !important;
+  -webkit-backdrop-filter: blur(28px) !important;
+  box-shadow: 0 28px 90px #06182940, inset 0 1px 0 #ffffff12 !important;
+  overflow: hidden;
+  transform: none !important;
+}
+.loom-portal-page .loom-stage::before, .loom-portal-page .loom-stage::after { display: none !important; }
+.loom-portal-page .loom-stage-copy { padding: clamp(36px, 4.8vw, 72px) !important; justify-content: center; }
+.loom-portal-page .loom-stage-copy .kicker { display: flex; align-items: center; gap: 10px; color: #b7d1e2 !important; font-size: 10px; letter-spacing: .16em; }
+.loom-portal-page .loom-stage-copy .kicker::before { content: ''; width: 6px; height: 6px; flex: none; border-radius: 50%; background: #a5e8dc; box-shadow: 0 0 12px #a5e8dc66; }
+.loom-portal-page .loom-stage-copy h1 {
+  max-width: 600px;
+  margin: 26px 0 0;
+  color: #eef8ff;
+  font-size: clamp(42px, 4.2vw, 64px) !important;
+  line-height: 1.12 !important;
+  font-weight: 600 !important;
+  letter-spacing: -.055em;
+  text-wrap: balance;
+}
+.loom-portal-page .loom-stage-description { max-width: 490px; margin: 24px 0 0; color: #b9cedd !important; font-size: 14px !important; line-height: 1.85; }
+.loom-portal-page .loom-stage-actions { margin-top: 36px; gap: 12px; }
+.loom-portal-page .loom-secondary-action {
+  min-width: 260px;
+  min-height: 68px;
+  padding: 15px 20px;
+  border: 1px solid #e9f7ff;
+  border-radius: 12px;
+  color: #19394e !important;
+  background: #d8edfa !important;
+  box-shadow: 0 8px 26px #061d2d33;
+}
+.loom-portal-page .loom-secondary-action strong { font-size: 13px; font-weight: 650; }
+.loom-portal-page .loom-secondary-action small { color: #486a80 !important; font-size: 11px; margin-top: 4px; }
+.loom-portal-page .loom-secondary-action > span:last-child { font-size: 22px; }
+.loom-portal-page .loom-secondary-action:hover { background: #eff9ff !important; transform: translateY(-2px); }
+.loom-portal-page .loom-primary-action, .loom-portal-page .loom-form-submit { min-height: 44px; border-radius: 11px; border: 1px solid #b7ddf233; color: #e1eef6; background: #b7ddf212; font-size: 12px; }
+.loom-portal-page .loom-primary-action:hover, .loom-portal-page .loom-form-submit:hover { background: #b7ddf226; }
+.loom-portal-page .loom-control { padding: 42px !important; border-left: 1px solid #cce5f226; background: #081e2c26 !important; justify-content: center; }
+.loom-portal-page .loom-control-top { gap: 18px; flex-wrap: wrap; }
+.loom-portal-page .loom-control .kicker { color: #a9c3d5 !important; font-size: 10px; letter-spacing: .15em; }
+.loom-portal-page .loom-control-top h2 { max-width: 300px; margin-top: 12px; color: #f2f8fc; font-size: 28px; line-height: 1.25; font-weight: 600; }
+.loom-portal-page .loom-control-copy { margin-top: 22px; color: #b9cedd !important; font-size: 12px; line-height: 1.8; overflow-wrap: anywhere; }
+.loom-portal-page .loom-security-label, .loom-portal-page .loom-connection-badge { min-height: 28px; border: 1px solid #b7ddf226; color: #c3dce9; font-size: 9px; background: #b7ddf212; }
+.loom-portal-page .loom-connection-track { height: 3px; margin-top: 25px; background: #bddcf01a; }
+.loom-portal-page .loom-connection-track.is-working span { background: linear-gradient(90deg, transparent, #b1e3f8, transparent); }
+.loom-portal-page .loom-control-details { margin-top: 26px; }
+.loom-portal-page .loom-control-details > div { padding: 17px 0; grid-template-columns: 88px minmax(0, 1fr); gap: 16px; }
+.loom-portal-page .loom-control-details dt { color: #9fb8ca; font-size: 11px; }
+.loom-portal-page .loom-control-details dd { color: #e1edf5; font-size: 11px; white-space: normal; overflow-wrap: anywhere; }
+.loom-portal-page .loom-account-switch { margin-top: 22px; padding: 5px 0; color: #b2c7d6; font-size: 11px; }
+.loom-portal-page .loom-account-switch:hover { color: #fff; }
+.loom-portal-page .loom-account-form label > span { color: #c0d3e0; font-size: 11px; }
+.loom-portal-page .loom-account-form input { height: 46px; border: 1px solid #b7ddf233; border-radius: 10px; background: #081e2c40; color: #f2f8fc; font-size: 13px; }
+.loom-portal-page .loom-account-form input::placeholder { color: #92acbe; }
+.loom-portal-page .loom-account-form input:focus { border-color: #b6e2fb; box-shadow: 0 0 0 3px #b6e2fb12; }
+.loom-portal-page :is(button, a, input):focus-visible { outline: 2px solid #bae7ff; outline-offset: 4px; }
+@media (max-width: 960px) {
+  .loom-portal-page .loom-portal-shell { width: calc(100% - 48px) !important; padding-top: 28px !important; }
+  .loom-portal-page .loom-stage { grid-template-columns: minmax(0, 1.15fr) minmax(300px, 1fr) !important; }
+  .loom-portal-page .loom-stage-copy, .loom-portal-page .loom-control { padding: 32px !important; }
+  .loom-portal-page .loom-stage-copy h1 { font-size: 44px !important; }
+}
+@media (max-width: 720px) {
+  .loom-portal-page .loom-portal-shell { width: calc(100% - 32px) !important; padding: 22px 0 !important; }
+  .loom-portal-page .loom-site-header { margin-bottom: 30px !important; padding: 0 !important; }
+  .loom-portal-page .loom-smirel-wordmark { width: 85px; }
+  .loom-portal-page .loom-portal-brand { gap: 12px; }
+  .loom-portal-page .brand-copy strong { font-size: 18px !important; }
+  .loom-portal-page .loom-stage { grid-template-columns: minmax(0, 1fr) !important; border-radius: 20px !important; }
+  .loom-portal-page .loom-stage-copy, .loom-portal-page .loom-control { padding: 30px 24px !important; }
+  .loom-portal-page .loom-stage-copy h1 { font-size: clamp(34px, 9vw, 48px) !important; }
+  .loom-portal-page .loom-control { border-left: 0; border-top: 1px solid #cce5f226; }
+  .loom-portal-page .loom-stage-actions { display: grid; grid-template-columns: 1fr; margin-top: 28px; }
+  .loom-portal-page .loom-secondary-action { min-width: 0; width: 100%; }
+  .loom-portal-page .loom-control-top h2 { font-size: 25px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .loom-portal-page *, .loom-portal-page *::before, .loom-portal-page *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+  .loom-portal-page .loom-connection-track.is-working span { left: 33%; }
+}
