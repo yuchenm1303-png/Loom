@@ -428,7 +428,7 @@ function applyStaticSettingsLanguage(language: LoomLanguage): void {
 }
 
 function resolveLanguageMount(): HTMLElement | null {
-  return document.querySelector<HTMLElement>(".settings-sidebar-top");
+  return document.querySelector<HTMLElement>(".general-overview-card");
 }
 
 export function LanguageSettingsDock() {
