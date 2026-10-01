@@ -24,7 +24,7 @@ REFRESH_MAX_AGE = 30 * 24 * 60 * 60
 # starts a second Agent Runtime on the server.
 
 app = FastAPI(title="Loom Web", docs_url=None, redoc_url=None, openapi_url=None)
-logger = logging.getLogger("loom.web.relay")
+logger = logging.getLogger("uvicorn.error")
 
 
 def _snapshot(user: dict[str, Any] | None, *, reachable: bool = True) -> dict[str, Any]:
