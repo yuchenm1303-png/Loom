@@ -153,68 +153,69 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
             <span className="loom-brand-divider" aria-hidden="true" />
             <span className="brand-copy"><strong>Loom</strong><small>Personal AI Agent</small></span>
           </a>
-          <div className="loom-header-meta">
-            <span>{RELEASE.version}</span>
-            <i aria-hidden="true" />
-            <span>{authenticated ? (zh ? "已登录" : "Signed in") : (zh ? "需要登录" : "Sign in required")}</span>
-          </div>
+          <div className="loom-version-chip"><span>{RELEASE.version}</span></div>
         </header>
 
-        <section className="loom-home-card cards fade">
-          <div className="loom-home-copy">
+        <section className="loom-stage cards fade">
+          <div className="loom-stage-copy">
             <p className="kicker">LOOM · LOCAL-FIRST AGENT</p>
-            <h1>{zh ? "电脑上运行，浏览器里继续。" : "Runs on your computer. Continues in your browser."}</h1>
-            <p className="loom-home-description">
+            <h1>{zh ? "你的 Loom，始终在自己的电脑上。" : "Your Loom stays on your computer."}</h1>
+            <p className="loom-stage-description">
               {zh
-                ? "桌面端与网页版共用同一个 Loom Host。你的会话、文件、审批与 Computer Use 都留在本机运行，网页只负责安全连接。"
-                : "Desktop and Web use the same Loom Host. Conversations, files, approvals and Computer Use stay on your computer; the browser is only the secure way in."}
+                ? "桌面端负责真正运行 Agent，网页只是安全入口。无论从哪里打开，继续的都是同一个会话、文件、审批和 Computer Use。"
+                : "Desktop runs the Agent. The web is simply a secure way back in — to the same conversations, files, approvals and Computer Use."}
             </p>
 
-            <div className="loom-home-actions">
+            <div className="loom-stage-actions">
               <button className="loom-primary-action" type="button" onClick={primaryAction} disabled={authenticated && hostState === "checking"}>
                 <span>{primaryLabel}</span><span aria-hidden="true">→</span>
               </button>
               <a className="loom-secondary-action" href={RELEASE.download}>
-                <span>{zh ? "下载 Windows 版" : "Download for Windows"}</span><span aria-hidden="true">↓</span>
+                <span><strong>{zh ? "下载 Windows 版" : "Download for Windows"}</strong><small>Windows 10 / 11 · x64 · {RELEASE.package}</small></span>
+                <span aria-hidden="true">↓</span>
               </a>
-            </div>
-
-            <div className="loom-release-note">
-              <span>Windows 10 / 11 · x64</span><i aria-hidden="true" /><span>{RELEASE.version}</span><i aria-hidden="true" /><span>{RELEASE.package}</span>
             </div>
           </div>
 
-          <aside className="loom-access" id="account">
+          <aside className="loom-control" id="account">
             {!authenticated ? <>
-              <div className="loom-access-head">
-                <div><p className="kicker">ACCOUNT</p><h2>{authMode === "login" ? (zh ? "登录 Loom" : "Sign in to Loom") : (zh ? "创建 Loom 账户" : "Create your Loom account")}</h2></div>
-                <span className="loom-access-badge">SECURE</span>
+              <div className="loom-control-top">
+                <div>
+                  <p className="kicker">LOOM ACCOUNT</p>
+                  <h2>{authMode === "login" ? (zh ? "登录后继续" : "Continue with Loom") : (zh ? "创建你的 Loom 账户" : "Create your Loom account")}</h2>
+                </div>
+                <span className="loom-security-label">SECURE</span>
               </div>
-              <p className="loom-access-copy">{zh ? "登录后会自动寻找这台电脑上的 Loom Host。" : "After sign-in, Loom Web automatically looks for the Loom Host on this computer."}</p>
+              <p className="loom-control-copy">{zh ? "登录后会自动寻找并连接这台电脑上的 Loom Host。" : "Sign in and Loom Web will automatically find and connect to the Loom Host on this computer."}</p>
               <form className="login-form loom-account-form" onSubmit={submitAuth} autoComplete="on">
                 <label><span>{zh ? "邮箱" : "Email"}</span><input id="emailInput" type="email" autoComplete="email" placeholder="name@example.com" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>
                 <label className="password-field"><span>{zh ? "密码" : "Password"}</span><input type={showPassword ? "text" : "password"} autoComplete={authMode === "login" ? "current-password" : "new-password"} placeholder="••••••••" value={password} onChange={(event) => setPassword(event.target.value)} required /><button className="password-toggle" type="button" aria-pressed={showPassword} onClick={() => setShowPassword((value) => !value)}>{showPassword ? (zh ? "隐藏" : "Hide") : (zh ? "显示" : "Show")}</button></label>
                 <button className="loom-form-submit" type="submit" disabled={!account.ready || account.busy}><span>{!account.ready ? (zh ? "加载中…" : "Loading…") : account.busy ? (zh ? "处理中…" : "Working…") : authMode === "login" ? (zh ? "登录" : "Sign in") : (zh ? "创建账户" : "Create account")}</span><span aria-hidden="true">→</span></button>
               </form>
-              <button className="loom-account-switch" type="button" onClick={() => { account.clearError(); setAuthMode(authMode === "login" ? "register" : "login"); }}>{authMode === "login" ? (zh ? "没有账户？创建一个" : "No account? Create one") : (zh ? "已有账户？返回登录" : "Already have an account? Sign in")}</button>
+              <button className="loom-account-switch" type="button" onClick={() => { account.clearError(); setAuthMode(authMode === "login" ? "register" : "login"); }}>{authMode === "login" ? (zh ? "没有账户？创建一个" : "New to Loom? Create an account") : (zh ? "已有账户？返回登录" : "Already have an account? Sign in")}</button>
               {account.error ? <p className="form-note is-error">{account.error.message}</p> : null}
             </> : <>
-              <div className="loom-access-head">
-                <div><p className="kicker">LOOM HOST</p><h2>{hostLabel}</h2></div>
+              <div className="loom-control-top">
+                <div>
+                  <p className="kicker">LOOM HOST</p>
+                  <h2>{hostLabel}</h2>
+                </div>
                 <span className={`loom-connection-badge${hostState === "online" ? " is-online" : hostState === "checking" ? " is-working" : ""}`}><i aria-hidden="true" />{hostState === "checking" ? (zh ? "连接中" : "CONNECTING") : hostState === "online" ? (zh ? "在线" : "ONLINE") : (zh ? "需要连接" : "ACTION NEEDED")}</span>
               </div>
-              <p className="loom-access-copy">{hostError || hostText}</p>
-              <div className="loom-connection-details">
-                <div><span>{zh ? "账户" : "Account"}</span><strong>{account.account.user?.email}</strong></div>
-                <div><span>{zh ? "当前电脑" : "This computer"}</span><strong>{selectedDeviceName || (zh ? "等待发现" : "Waiting for discovery")}</strong></div>
-              </div>
-              <button className="loom-form-submit loom-reconnect-button" type="button" onClick={primaryAction} disabled={hostState === "checking"}><span>{primaryLabel}</span><span aria-hidden="true">→</span></button>
-              <button className="loom-account-switch" type="button" onClick={() => void account.logout()}>{zh ? "退出当前账户" : "Sign out"}</button>
+
+              <p className="loom-control-copy">{hostError || hostText}</p>
+              <div className={`loom-connection-track${hostState === "checking" ? " is-working" : hostState === "online" ? " is-online" : ""}`} aria-hidden="true"><span /></div>
+
+              <dl className="loom-control-details">
+                <div><dt>{zh ? "账户" : "Account"}</dt><dd>{account.account.user?.email}</dd></div>
+                <div><dt>{zh ? "这台电脑" : "This computer"}</dt><dd>{selectedDeviceName || (zh ? "等待发现" : "Waiting for discovery")}</dd></div>
+              </dl>
+
+              <button className="loom-form-submit loom-host-action" type="button" onClick={primaryAction} disabled={hostState === "checking"}><span>{primaryLabel}</span><span aria-hidden="true">→</span></button>
+              <button className="loom-account-switch" type="button" onClick={() => void account.logout()}>{zh ? "退出登录" : "Sign out"}</button>
             </>}
           </aside>
         </section>
-
-        <footer className="footer fade loom-site-footer"><span>© 2026 Smirel · Loom</span><span>{zh ? "本地 Agent · 安全网页入口" : "Local Agent · Secure web access"}</span></footer>
       </main>
     </div>
   );
