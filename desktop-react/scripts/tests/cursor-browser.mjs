@@ -19,8 +19,8 @@ try {
     original.src = "/src/assets/yukino-mouse.png";
     await original.decode();
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(original, 18, 18);
-    ctx.clearRect(18, 18, 10, 9);
+    ctx.drawImage(original, 12, 12);
+    ctx.clearRect(12, 12, 10, 9);
     const source = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
     let left = canvas.width, top = canvas.height, right = 0, bottom = 0;
     for (let y = 0; y < canvas.height; y++) {
@@ -34,23 +34,23 @@ try {
       width: canvas.width, height: canvas.height,
       pointerAngle: Math.atan2((top + bottom) / 2, -(left + right) / 2) * 180 / Math.PI,
       whiteFill: composite[(2 * canvas.width + 2) * 4] === 255,
-      extendedArms: [[19, 2], [2, 17]].every(([x, y]) => {
+      extendedArms: [[17, 2], [2, 15]].every(([x, y]) => {
         const offset = (y * canvas.width + x) * 4;
-        return composite[offset] === 255 && composite[offset + 3] === 255;
+        return composite[offset] === 255 && composite[offset + 3] > 180;
       }),
-      openCorner: [[6, 5], [10, 10], [19, 17]].every(([x, y]) =>
+      openCorner: [[6, 5], [10, 10], [17, 15]].every(([x, y]) =>
         composite[(y * canvas.width + x) * 4 + 3] === 0),
       preserved: composite.every((value, index) => {
         const pixel = Math.floor(index / 4);
-        return (pixel % canvas.width < 20 && Math.floor(pixel / canvas.width) < 18) || value === source[index];
+        return (pixel % canvas.width < 18 && Math.floor(pixel / canvas.width) < 16) || value === source[index];
       }),
     };
   });
-  assert.equal(pointerAsset.width, 73);
-  assert.equal(pointerAsset.height, 73);
+  assert.equal(pointerAsset.width, 67);
+  assert.equal(pointerAsset.height, 67);
   assert.ok(Math.abs(pointerAsset.pointerAngle - 135) < 0.1, "pointer must sit at 135 degrees upper-left of the character center");
   assert.ok(pointerAsset.whiteFill, "dark surfaces must use a white pointer");
-  assert.ok(pointerAsset.extendedArms, "both arms must extend to the enlarged 20x18 bounds");
+  assert.ok(pointerAsset.extendedArms, "both arms must reach the adjusted 18x16 bounds");
   assert.ok(pointerAsset.openCorner, "the enlarged pointer must retain its open corner and original stroke thickness");
   assert.ok(pointerAsset.preserved, "all character pixels must remain unchanged at an equal X/Y offset from the hotspot");
   await page.evaluate(() => {

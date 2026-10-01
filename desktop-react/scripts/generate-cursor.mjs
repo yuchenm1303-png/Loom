@@ -39,7 +39,7 @@ try {
     }
     // Equal X/Y offsets put the pointer diagonally upper-left of the character,
     // not directly above it. Trim unused padding to keep the native cursor compact.
-    const offset = 18;
+    const offset = 12;
     const size = Math.max(offset + right, offset + bottom, pointer.naturalWidth, pointer.naturalHeight) + 2;
     canvas.width = size;
     canvas.height = size;
