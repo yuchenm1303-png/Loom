@@ -1,0 +1,55 @@
+name: PR230 final HUD parity
+
+on:
+  push:
+    branches: [feat/web-local-first-host]
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/web-local-first-host
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Align Browser HUD with Desktop HUD and validate
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("extensions/browser-current-tab/browser-hud.js")
+          source = path.read_text(encoding="utf-8")
+          replacements = {
+              "const GENERATION = '0.1.14';": "const GENERATION = '0.1.15';",
+              ".edge::before{filter:blur(14px) saturate(1.16);opacity:.42;": ".edge::before{--breath-min:.22;--breath-max:.50;filter:blur(14px) saturate(1.08);opacity:var(--breath-min);",
+              ".edge::after{filter:blur(8px) saturate(1.3);opacity:.68;": ".edge::after{--breath-min:.32;--breath-max:.64;filter:blur(8px) saturate(1.18);opacity:var(--breath-min);",
+              "@keyframes loomBrowserOrbit{to{--angle:360deg}}@keyframes loomBrowserBreath{0%,100%{opacity:.42}50%{opacity:.76}}": "@keyframes loomBrowserOrbit{to{--angle:360deg}}@keyframes loomBrowserBreath{0%,100%{opacity:var(--breath-min,.24)}50%{opacity:var(--breath-max,.58)}}",
+          }
+          for old, new in replacements.items():
+              if old not in source:
+                  raise SystemExit(f"Expected Browser HUD source fragment not found: {old}")
+              source = source.replace(old, new, 1)
+          path.write_text(source, encoding="utf-8")
+          PY
+
+          python -m pip install -e '.[dev,browser]'
+          python -m pytest -q tests/test_browser_hud_overlay_contract.py
+          python -m pytest -q --tb=short
+
+          rm -f .ci-pr230-failure.txt
+          rm -f .github/workflows/pr230-integrate.yml
+          rm -f .github/workflows/pr230-finalize.yml
+          git add -A
+          git commit -m "fix(browser): keep HUD visual language in sync"
+          git push origin HEAD:feat/web-local-first-host
