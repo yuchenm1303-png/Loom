@@ -188,3 +188,15 @@ The wide-screen composition no longer caps the shell at 1180px. At 1440,
 body copy, side-panel text, gutters, and padding scale with viewport size;
 mobile overrides retain the single-column layout. The glass surface and original
 hover/press behavior remain unchanged. Build and responsive checks passed.
+
+### Automatic deployment source
+
+The production timer runs `/opt/loom-web-deploy/autosync.sh`, which resets
+`/opt/loom-web-main-src` to GitHub `origin/main` and rebuilds the web image.
+Portal changes must be committed and pushed to GitHub `main` before publication.
+A static-only image overlay will otherwise be replaced by the next main deployment.
+
+The refined Host card also imports `portal-host-card.css`. Preserve current
+release metadata and Host connection fixes when restoring presentation changes
+onto a newer main revision. The restored presentation was published from an
+isolated checkout of current GitHub main to avoid deploying unrelated local commits.

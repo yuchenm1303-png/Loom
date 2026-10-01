@@ -27,9 +27,9 @@ const PORTAL_STYLES = [
 ] as const;
 
 const RELEASE = {
-  version: "v0.1.7",
+  version: "v0.1.8",
   package: "137.6 MiB",
-  download: "https://github.com/yuchenm1303-png/Loom/releases/download/v0.1.7/Loom-Setup-0.1.7-x64.exe",
+  download: "https://github.com/yuchenm1303-png/Loom/releases/latest/download/Loom-Setup-x64.exe",
 } as const;
 
 const HOST_COPY = {
