@@ -294,3 +294,51 @@ html[data-loom-reduced-motion="true"] .language-settings-options button {
   transition: none;
   animation: none;
 }
+
+/* General settings placement -------------------------------------------------
+   Language is a normal General preference now, not a persistent sidebar card. */
+.general-overview-card > .language-settings-dock {
+  grid-column: 1 / -1;
+  min-height: 54px;
+  margin-top: -2px;
+  padding: 13px 4px 0;
+  border-top: 1px solid rgba(255,255,255,.055);
+  border-bottom: 0;
+}
+
+.general-overview-card > .language-settings-dock .language-settings-icon {
+  width: 28px;
+  height: 28px;
+  padding: 5px;
+  border-radius: 9px;
+  color: #aaa1ed;
+  background: rgba(139,124,246,.075);
+}
+
+.general-overview-card > .language-settings-dock .language-settings-copy strong {
+  color: #e5e7ec;
+  font-size: 13px;
+}
+
+.general-overview-card > .language-settings-dock .language-settings-copy span {
+  color: #777f8c;
+  font-size: 11.5px;
+  white-space: normal;
+}
+
+html[data-loom-theme="light"] .general-overview-card > .language-settings-dock {
+  border-top-color: rgba(31,36,48,.09);
+}
+
+html[data-loom-theme="light"] .general-overview-card > .language-settings-dock .language-settings-icon {
+  color: #6a55c5;
+  background: rgba(105,90,216,.08);
+}
+
+html[data-loom-theme="light"] .general-overview-card > .language-settings-dock .language-settings-copy strong {
+  color: #272c35;
+}
+
+html[data-loom-theme="light"] .general-overview-card > .language-settings-dock .language-settings-copy span {
+  color: #747c89;
+}
