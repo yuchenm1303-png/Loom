@@ -46,3 +46,23 @@ def test_web_gate_automatically_follows_current_account_host() -> None:
     assert "connectRemote" not in source
     assert "Remote devices" not in source
     assert 'window.addEventListener("loom:web-device-status", onDeviceStatus)' in source
+
+
+def test_web_gate_does_not_demote_an_online_host_during_background_discovery() -> None:
+    source = WEB_GATE.read_text(encoding="utf-8")
+    assert 'const hostStateRef = useRef<HostState>("idle")' in source
+    assert "const connectPromiseRef = useRef<Promise<void> | null>(null)" in source
+    assert 'if (!force && hostStateRef.current === "online") return;' in source
+    assert 'if (hostStateRef.current !== "online") void connectCurrentHost();' in source
+    assert 'setTrackedHostState("offline");' in source
+    assert "void connectCurrentHost({ force: true });" in source
+
+
+def test_web_gate_requires_explicit_user_entry_after_host_is_online() -> None:
+    source = WEB_GATE.read_text(encoding="utf-8")
+    assert "const [entered, setEntered] = useState(false);" in source
+    assert 'if (hostStateRef.current === "online") {' in source
+    assert "setEntered(true);" in source
+    assert 'hostState !== "online" || !entered' in source
+    assert "onEnter={enterOrRetry}" in source
+    assert "setEntered(false);" in source
