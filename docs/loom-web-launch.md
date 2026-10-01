@@ -146,3 +146,15 @@ Run `scripts/loom_target_verify.sh` from a host with network access to
   local dev. The production compose is generated on the host.
 - `services/loom_web_gateway/requirements.txt` — Python dependencies.
 - `services/loom_web_gateway/README.md` — endpoint reference.
+## Portal presentation and automatic deployment
+
+The production timer runs `/opt/loom-web-deploy/autosync.sh`, which resets
+`/opt/loom-web-main-src` to GitHub `origin/main` and rebuilds the web image.
+Portal changes must be committed and pushed to GitHub `main` before publication.
+A static-only image overlay will otherwise be replaced by the next main deployment.
+
+The portal uses two offset glass surfaces and the refined Host/account card.
+`portal-base.css`, `portal-modules.css`, and `portal-host-card.css` are imported by
+`WebPortal.tsx`; the original Smirel glass material and hover/press rules remain
+external. Preserve current release metadata and Host connection logic when
+restoring presentation changes onto a newer main revision.

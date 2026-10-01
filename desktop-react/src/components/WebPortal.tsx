@@ -1,5 +1,9 @@
+import "./portal-base.css";
+import "./portal-modules.css";
+import "./portal-host-card.css";
 import type { CSSProperties, FormEvent } from "react";
 import { useEffect, useState } from "react";
+import { Laptop, Download, UserRound, LogOut, Check, ArrowRight } from "lucide-react";
 import { useI18n } from "../i18n";
 import { useAccount } from "../state/useAccount";
 
@@ -85,6 +89,8 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
   hostError: string;
   selectedDeviceName: string;
   onEnter: () => void;
+  remoteMode?: boolean;
+  onRemote?: () => void;
 }) {
   usePortalStyles();
   const { language } = useI18n();
@@ -137,14 +143,16 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
 
   const primaryLabel = !authenticated
     ? (zh ? "登录并打开 Loom Web" : "Sign in to Loom Web")
-    : hostState === "checking"
-      ? (zh ? "正在连接…" : "Connecting…")
-      : hostState === "unbound"
-        ? (zh ? "查找本机 Loom Host" : "Find Loom Host")
-        : (zh ? "重新连接 Loom Host" : "Reconnect Loom Host");
+    : hostState === "online"
+      ? (zh ? "打开 Loom Web" : "Open Loom Web")
+      : hostState === "checking"
+        ? (zh ? "正在连接…" : "Connecting…")
+        : hostState === "unbound"
+          ? (zh ? "查找本机 Loom Host" : "Find Loom Host")
+          : (zh ? "重新连接 Loom Host" : "Reconnect Loom Host");
 
   return (
-    <div className="loom-portal-page">
+    <div className="loom-portal-page is-modular">
       <PortalWallpaper />
       <main className="release-shell loom-portal-shell">
         <header className="topbar fade loom-site-header">
@@ -156,29 +164,30 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
           <div className="loom-version-chip"><span>{RELEASE.version}</span></div>
         </header>
 
-        <section className="loom-stage cards fade">
-          <div className="loom-stage-copy">
+        <section className="loom-module-grid">
+          <article className="loom-stage-copy loom-intro-module cards fade">
+            <div className="loom-intro-copy">
             <p className="kicker">LOOM · LOCAL-FIRST AGENT</p>
-            <h1>{zh ? "你的 Loom，始终在自己的电脑上。" : "Your Loom stays on your computer."}</h1>
+            <h1><span className="loom-heading-main">{zh ? "你的 Loom，" : "Your Loom stays"}</span>{" "}<span className="loom-heading-accent">{zh ? "始终在自己的电脑上。" : "on your computer."}</span></h1>
             <p className="loom-stage-description">
               {zh
                 ? "桌面端负责真正运行 Agent，网页只是安全入口。无论从哪里打开，继续的都是同一个会话、文件、审批和 Computer Use。"
                 : "Desktop runs the Agent. The web is simply a secure way back in — to the same conversations, files, approvals and Computer Use."}
             </p>
 
-            <div className="loom-stage-actions">
-              {!authenticated ? <button className="loom-primary-action" type="button" onClick={primaryAction}>
-                <span>{primaryLabel}</span><span aria-hidden="true">→</span>
-              </button> : null}
-              <a className="loom-secondary-action" href={RELEASE.download}>
-                <span><strong>{zh ? "下载 Windows 版" : "Download for Windows"}</strong><small>Windows 10 / 11 · x64 · {RELEASE.package}</small></span>
-                <span aria-hidden="true">↓</span>
-              </a>
+            {!authenticated ? <div className="loom-stage-actions"><button className="loom-primary-action" type="button" onClick={primaryAction}><span>{primaryLabel}</span><span aria-hidden="true">→</span></button></div> : null}
             </div>
+          <div className="loom-download-module" aria-labelledby="loom-download-title">
+            <div className="loom-download-product"><Laptop size={26} aria-hidden="true" /><div><h2 id="loom-download-title">Loom for Windows</h2><p>Windows 10 / 11 · x64 · {RELEASE.package}</p></div></div>
+            <div className="loom-download-version"><span>{RELEASE.version} · Stable</span><a href="https://github.com/yuchenm1303-png/Loom/releases" target="_blank" rel="noreferrer">{zh ? "更新日志" : "Release notes"}<span aria-hidden="true"> ↗</span></a></div>
+            <a className="loom-secondary-action" href={RELEASE.download}><span><strong>{zh ? "下载 Windows 版" : "Download for Windows"}</strong></span><Download size={16} aria-hidden="true" /></a>
           </div>
 
+          </article>
+
           <aside className="loom-control" id="account">
-            {!authenticated ? <>
+            <div className="loom-sidebar-module cards fade">
+            {!authenticated ? <section className="loom-login-module">
               <div className="loom-control-top">
                 <div>
                   <p className="kicker">LOOM ACCOUNT</p>
@@ -194,26 +203,43 @@ export function WebPortal({ account, hostState, hostError, selectedDeviceName, o
               </form>
               <button className="loom-account-switch" type="button" onClick={() => { account.clearError(); setAuthMode(authMode === "login" ? "register" : "login"); }}>{authMode === "login" ? (zh ? "没有账户？创建一个" : "New to Loom? Create an account") : (zh ? "已有账户？返回登录" : "Already have an account? Sign in")}</button>
               {account.error ? <p className="form-note is-error">{account.error.message}</p> : null}
-            </> : <>
-              <div className="loom-control-top">
-                <div>
+            </section> : <>
+              <section className="loom-host-module loom-host-refined" data-host-state={hostState} aria-label={zh ? "Host 连接" : "Host connection"}>
+                <div className="loom-host-meta">
                   <p className="kicker">LOOM HOST</p>
-                  <h2>{hostLabel}</h2>
+                  <span className={`loom-connection-badge${hostState === "online" ? " is-online" : hostState === "checking" ? " is-working" : ""}`}>
+                    <i aria-hidden="true" />{hostState === "online" ? (zh ? "在线" : "Online") : hostState === "checking" ? (zh ? "连接中" : "Connecting") : hostState === "idle" ? (zh ? "等待中" : "Waiting") : hostState === "unbound" ? (zh ? "未发现" : "Not found") : (zh ? "离线" : "Offline")}
+                  </span>
                 </div>
-                <span className={`loom-connection-badge${hostState === "online" ? " is-online" : hostState === "checking" ? " is-working" : ""}`}><i aria-hidden="true" />{hostState === "checking" ? (zh ? "连接中" : "CONNECTING") : hostState === "online" ? (zh ? "在线" : "ONLINE") : (zh ? "需要连接" : "ACTION NEEDED")}</span>
-              </div>
-
-              <p className="loom-control-copy">{hostError || hostText}</p>
-              <div className={`loom-connection-track${hostState === "checking" ? " is-working" : hostState === "online" ? " is-online" : ""}`} aria-hidden="true"><span /></div>
-
-              <dl className="loom-control-details">
-                <div><dt>{zh ? "账户" : "Account"}</dt><dd>{account.account.user?.email}</dd></div>
-                <div><dt>{zh ? "这台电脑" : "This computer"}</dt><dd>{selectedDeviceName || (zh ? "等待发现" : "Waiting for discovery")}</dd></div>
-              </dl>
-
-              {hostState !== "checking" ? <button className="loom-form-submit loom-host-action" type="button" onClick={primaryAction}><span>{primaryLabel}</span><span aria-hidden="true">→</span></button> : null}
-              <button className="loom-account-switch" type="button" onClick={() => void account.logout()}>{zh ? "退出登录" : "Sign out"}</button>
+                <div className="loom-host-summary">
+                  <span className="loom-host-emblem" aria-hidden="true"><Laptop size={27} strokeWidth={1.5} /><i /></span>
+                  <div role="status" aria-live="polite" aria-atomic="true">
+                    <h2>{hostLabel}</h2>
+                    <p className="loom-host-target">{hostState === "online" ? (zh ? "当前电脑" : "This computer") : selectedDeviceName || (zh ? "你的本地工作区" : "Your local workspace")}</p>
+                  </div>
+                </div>
+                <p className="loom-control-copy">{hostError || hostText}</p>
+                {hostState === "checking" || hostState === "online" ? <div className={`loom-connection-track${hostState === "checking" ? " is-working" : " is-online"}`} aria-hidden="true"><span /></div> : null}
+                {hostState !== "checking" ? <button className="loom-form-submit loom-host-action" type="button" onClick={primaryAction}><span>{primaryLabel}</span><ArrowRight size={15} aria-hidden="true" /></button> : null}
+              </section>
+              <section className="loom-account-module loom-account-refined" aria-label={zh ? "账户与设备" : "Account and device"}>
+                <div className="loom-account-heading">
+                  <h2>{zh ? "账户与设备" : "Account & device"}</h2>
+                  <button className="loom-account-switch" type="button" disabled={account.busy} onClick={() => void account.logout()}><LogOut size={13} aria-hidden="true" />{zh ? "退出登录" : "Sign out"}</button>
+                </div>
+                <dl className="loom-identity-list">
+                  <div className="loom-identity-row">
+                    <dt><UserRound size={18} strokeWidth={1.5} aria-hidden="true" /><span>{zh ? "已登录账户" : "Signed-in account"}</span></dt>
+                    <dd><span>{account.account.user?.email}</span><Check size={13} aria-hidden="true" /></dd>
+                  </div>
+                  <div className="loom-identity-row">
+                    <dt><Laptop size={18} strokeWidth={1.5} aria-hidden="true" /><span>{zh ? "当前电脑" : "This computer"}</span></dt>
+                    <dd><span>{selectedDeviceName || (zh ? "等待发现" : "Waiting for discovery")}</span></dd>
+                  </div>
+                </dl>
+              </section>
             </>}
+            </div>
           </aside>
         </section>
       </main>
