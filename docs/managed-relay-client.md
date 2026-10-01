@@ -39,11 +39,11 @@ After the server-side entitlement change, hiding a model is not only a UI filter
 Ant Ling is a Loom-managed built-in provider. The desktop never stores the Loom-owned `sk-studio-...` upstream credential and never calls `api.ant-ling.com` with that credential. Instead it:
 
 1. authenticates to `https://muxway.dev/v1` with the customer/device Relay credential;
-2. reads `/models` and keeps only server-authorized `Ling-*` / `Ring-*` models;
+2. reads `/models` and enables only server-authorized `Ling-*` / `Ring-*` models;
 3. sends inference to Muxway with the Relay credential;
 4. relies on Muxway to keep the real Ant Ling upstream key server-side and to enforce the TermRelay group/model policy.
 
-If the customer's Relay group does not advertise any Ling/Ring model, the Ant Ling built-in group is not shown. This is deliberate: there is no client fallback that could accidentally re-enable a model removed by the administrator.
+The Ant Ling provider stays visible in Loom even when the current account/device has no Ant Ling entitlement. In that state Loom shows the bundled Ling/Ring catalog as unavailable/locked rows. This is display-only: selecting or hand-crafting an unentitled model still fails the Relay entitlement check, so visibility never grants access.
 
 Users who want to use their own Ant Ling account can still choose `Add connection` and supply `https://api.ant-ling.com/v1` plus their own key. That saved connection is separate from the Loom-managed Ant Ling provider.
 
@@ -71,7 +71,7 @@ Put `loom-relay-credential.json` next to `loom_model_bridge.py` in the customer 
 
 On first launch, Loom consumes the provisioning file, writes the credential to the OS credential store under the alias `managed/relay`, and then deletes the plaintext provisioning file on a best-effort basis.
 
-After that, the customer does not need to enter any key. Loom calls `https://muxway.dev/v1/models` with the stored Relay credential and shows only models allowed for that customer group. The provisioning `baseUrl` is persisted alongside the managed Relay connection metadata so custom deployments keep using the endpoint they were packaged for.
+After that, the customer does not need to enter any key. Loom calls `https://muxway.dev/v1/models` with the stored Relay credential and enables only models allowed for that customer group. The provisioning `baseUrl` is persisted alongside the managed Relay connection metadata so custom deployments keep using the endpoint they were packaged for.
 
 ## Updating or disabling access
 
@@ -81,7 +81,7 @@ Change the customer's TermRelay group or API key status on the server:
 - remove `cqu-default` from the group list to close CQU for that customer;
 - remove `MiniMax-M3` to close MiniMax;
 - disable or expire the customer's API key to cut all built-in Relay access;
-- move the key to another group to change the visible model set and effective quota/policy.
+- move the key to another group to change the enabled model set and effective quota/policy.
 
 No client update is required for these server-side model entitlement changes.
 
