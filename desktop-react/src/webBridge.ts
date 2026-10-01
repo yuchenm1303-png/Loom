@@ -8,6 +8,7 @@ const HEARTBEAT_MS = 30_000;
 const MAX_STAGED_BYTES = 48 * 1024 * 1024;
 const LOCAL_DEVICE_QUERY = "local_device";
 const LOCAL_DEVICE_STORAGE_KEY = "loom.web.localDeviceId";
+const REMOTE_DEVICE_SESSION_KEY = "loom.web.remoteDeviceId";
 
 type InvokeMessage = {
   type: "invoke";
@@ -16,16 +17,18 @@ type InvokeMessage = {
   args: unknown[];
 };
 
-type RelayDevice = Record<string, unknown> & { id?: string; name?: string; platform?: string; version?: string };
+export type WebRelayDevice = Record<string, unknown> & { id?: string; name?: string; platform?: string; version?: string };
+
+export type WebDeviceStatus = {
+  type: "device_status";
+  online: boolean;
+  device?: WebRelayDevice | null;
+  selectedDeviceId?: string | null;
+  devices?: WebRelayDevice[];
+};
 
 type RelayMessage =
-  | {
-      type: "device_status";
-      online: boolean;
-      device?: RelayDevice | null;
-      selectedDeviceId?: string | null;
-      devices?: RelayDevice[];
-    }
+  | WebDeviceStatus
   | { type: "invoke_result"; id: number; result?: unknown; error?: { message?: string; code?: string } }
   | { type: "notification"; payload?: LoomNotification }
   | { type: "pong" };
@@ -43,6 +46,7 @@ let connectPromise: Promise<unknown> | null = null;
 let nextId = 1;
 let heartbeatTimer: number | null = null;
 let localDeviceId = "";
+let lastDeviceStatus: WebDeviceStatus | null = null;
 const blobUrls = new Set<string>();
 
 function normalizeDeviceId(value: unknown): string {
@@ -58,6 +62,7 @@ function captureLocalDeviceBinding(): string {
     queryDeviceId = normalizeDeviceId(url.searchParams.get(LOCAL_DEVICE_QUERY));
     if (queryDeviceId) {
       window.localStorage.setItem(LOCAL_DEVICE_STORAGE_KEY, queryDeviceId);
+      try { window.sessionStorage.removeItem(REMOTE_DEVICE_SESSION_KEY); } catch {}
       url.searchParams.delete(LOCAL_DEVICE_QUERY);
       window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
     }
@@ -79,11 +84,30 @@ function captureLocalDeviceBinding(): string {
   return localDeviceId;
 }
 
+function remoteWebDeviceId(): string {
+  try {
+    return normalizeDeviceId(window.sessionStorage.getItem(REMOTE_DEVICE_SESSION_KEY));
+  } catch {
+    return "";
+  }
+}
+
+export function webExecutionMode(): "local" | "remote" {
+  const remote = remoteWebDeviceId();
+  const local = captureLocalDeviceBinding();
+  return remote && remote !== local ? "remote" : "local";
+}
+
+export function selectedWebDeviceId(): string {
+  const remote = remoteWebDeviceId();
+  return remote || captureLocalDeviceBinding();
+}
+
 function webSocketUrl(): string {
   const configured = String(import.meta.env.VITE_LOOM_WEB_SOCKET_URL || "").trim();
   const scheme = window.location.protocol === "https:" ? "wss:" : "ws:";
   const target = new URL(configured || `${scheme}//${window.location.host}${DEFAULT_WS_PATH}`, window.location.href);
-  const deviceId = captureLocalDeviceBinding();
+  const deviceId = selectedWebDeviceId();
   if (deviceId) target.searchParams.set("device", deviceId);
   else target.searchParams.delete("device");
   return target.toString();
@@ -160,6 +184,7 @@ function handleRelayMessage(raw: string): void {
   }
 
   if (message.type === "device_status") {
+    lastDeviceStatus = message;
     window.dispatchEvent(new CustomEvent("loom:web-device-status", { detail: message }));
     return;
   }
@@ -301,9 +326,55 @@ export function localWebDeviceId(): string {
   return captureLocalDeviceBinding();
 }
 
+export function currentWebDeviceStatus(): WebDeviceStatus | null {
+  return lastDeviceStatus ? { ...lastDeviceStatus, devices: [...(lastDeviceStatus.devices || [])] } : null;
+}
+
+export async function getWebDeviceStatus(): Promise<WebDeviceStatus> {
+  const existing = currentWebDeviceStatus();
+  if (existing) return existing;
+  await ensureSocket();
+  const afterConnect = currentWebDeviceStatus();
+  if (afterConnect) return afterConnect;
+  return new Promise<WebDeviceStatus>((resolve, reject) => {
+    const timeout = window.setTimeout(() => {
+      window.removeEventListener("loom:web-device-status", onStatus);
+      reject(new Error("Could not load Loom devices."));
+    }, 2_500);
+    const onStatus = (event: Event) => {
+      window.clearTimeout(timeout);
+      window.removeEventListener("loom:web-device-status", onStatus);
+      resolve((event as CustomEvent<WebDeviceStatus>).detail);
+    };
+    window.addEventListener("loom:web-device-status", onStatus);
+  });
+}
+
 export async function selectWebDevice(deviceId: string): Promise<void> {
   const ws = await ensureSocket();
   ws.send(JSON.stringify({ type: "select_device", deviceId: normalizeDeviceId(deviceId) }));
+}
+
+export function activateWebRemoteDevice(deviceId: string): void {
+  const target = normalizeDeviceId(deviceId);
+  if (!target) return;
+  const local = captureLocalDeviceBinding();
+  try {
+    if (target === local) window.sessionStorage.removeItem(REMOTE_DEVICE_SESSION_KEY);
+    else window.sessionStorage.setItem(REMOTE_DEVICE_SESSION_KEY, target);
+  } catch {
+    // Remote mode is intentionally session-scoped. If storage is unavailable,
+    // the browser simply remains on its current execution target.
+    return;
+  }
+  closeSocket();
+  window.location.reload();
+}
+
+export function activateLocalWebDevice(): void {
+  try { window.sessionStorage.removeItem(REMOTE_DEVICE_SESSION_KEY); } catch {}
+  closeSocket();
+  window.location.reload();
 }
 
 export function installWebBridge(): void {
@@ -341,6 +412,7 @@ export function installWebBridge(): void {
       return result;
     },
     accountLogout: async () => {
+      try { window.sessionStorage.removeItem(REMOTE_DEVICE_SESSION_KEY); } catch {}
       closeSocket();
       const result = await accountRequest("logout", { method: "POST", body: "{}" });
       dispatchAuthChanged();

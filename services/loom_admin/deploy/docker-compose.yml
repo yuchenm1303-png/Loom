@@ -1,0 +1,25 @@
+services:
+  loom-admin:
+    image: loom-admin:local
+    container_name: loom-admin
+    restart: unless-stopped
+    networks:
+      - edge
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx:size=16m,mode=0755
+      - /var/run:size=4m,mode=0755
+      - /tmp:size=16m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8800/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 4
+      start_period: 5s
+
+networks:
+  edge:
+    external: true
+    name: termrelay_termrelay-internal
