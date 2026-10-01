@@ -10,17 +10,26 @@ BRIDGE = ROOT / "loom_ant_ling_bridge.py"
 MANAGER = ROOT / "desktop-react" / "electron" / "modelManager.ts"
 
 
-def test_registry_hides_ant_ling_without_managed_relay_access(tmp_path, monkeypatch) -> None:
+def test_registry_keeps_ant_ling_visible_without_managed_relay_access(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("LOOM_HOME", str(tmp_path))
     monkeypatch.setattr(bridge, "_relay_key", lambda: "")
+    monkeypatch.setattr(bridge, "_relay_base_url", lambda: "https://muxway.dev/v1")
 
     registry = bridge._registry()
+    profiles = registry["profiles"]
+    models = [profile for profile in profiles if not profile.get("setupOnly")]
+    status = [profile for profile in profiles if profile.get("setupOnly")]
 
-    assert registry["profiles"] == []
+    assert [profile["model"] for profile in models] == list(bridge.ANT_LING_FALLBACK_MODEL_IDS)
+    assert all(profile["groupId"] == "ant-ling" for profile in profiles)
+    assert all(profile["configured"] is True for profile in profiles)
+    assert all(profile["available"] is False for profile in models)
+    assert len(status) == 1
+    assert "not been granted" in status[0]["statusMessage"]
     assert registry["activeSelection"] is None
 
 
-def test_registry_only_exposes_ant_ling_models_advertised_by_muxway(tmp_path, monkeypatch) -> None:
+def test_registry_only_enables_ant_ling_models_advertised_by_muxway(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("LOOM_HOME", str(tmp_path))
     monkeypatch.setattr(bridge, "_relay_key", lambda: "relay-test")
     monkeypatch.setattr(
@@ -39,6 +48,7 @@ def test_registry_only_exposes_ant_ling_models_advertised_by_muxway(tmp_path, mo
     ]
     assert all(profile["groupId"] == "ant-ling" for profile in profiles)
     assert all(profile["configured"] is True for profile in profiles)
+    assert all(profile["available"] is True for profile in profiles)
     assert all(profile["managed"] is True for profile in profiles)
     assert all(profile["baseUrl"] == "https://muxway.dev/v1" for profile in profiles)
 
@@ -47,6 +57,7 @@ def test_resolve_uses_relay_credential_not_ant_ling_upstream_key(tmp_path, monke
     monkeypatch.setenv("LOOM_HOME", str(tmp_path))
     monkeypatch.setattr(bridge, "_relay_key", lambda: "relay-customer-key")
     monkeypatch.setattr(bridge, "_relay_base_url", lambda: "https://muxway.dev/v1")
+    monkeypatch.setattr(bridge, "_fetch_models", lambda _key: ["Ling-3.0-flash"])
 
     resolved = bridge._resolve(bridge.ANT_LING_SELECTION)
 
@@ -55,6 +66,19 @@ def test_resolve_uses_relay_credential_not_ant_ling_upstream_key(tmp_path, monke
     assert resolved["model"] == "Ling-3.0-flash"
     assert resolved["apiKey"] == "relay-customer-key"
     assert resolved["configured"] is True
+
+
+def test_resolve_rejects_model_not_entitled_by_muxway(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("LOOM_HOME", str(tmp_path))
+    monkeypatch.setattr(bridge, "_relay_key", lambda: "relay-customer-key")
+    monkeypatch.setattr(bridge, "_fetch_models", lambda _key: [])
+
+    try:
+        bridge._resolve(bridge.ANT_LING_SELECTION)
+    except RuntimeError as exc:
+        assert "not enabled" in str(exc)
+    else:
+        raise AssertionError("managed Ant Ling must not bypass Relay entitlement")
 
 
 def test_custom_ant_ling_model_keeps_provider_identity() -> None:
