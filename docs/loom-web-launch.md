@@ -182,3 +182,9 @@ Surface styles and original hover/press rules remain supplied by Smirel.
 
 Verified signed-in and signed-out layouts at 2557, 1920, 1440, 900 and 390px,
 plus register/password controls, original hover/press transforms, and healthz.
+
+The wide-screen composition no longer caps the shell at 1180px. At 1440,
+1920, and 2557px, the shell occupies about 91% of the viewport width. Headline,
+body copy, side-panel text, gutters, and padding scale with viewport size;
+mobile overrides retain the single-column layout. The glass surface and original
+hover/press behavior remain unchanged. Build and responsive checks passed.
