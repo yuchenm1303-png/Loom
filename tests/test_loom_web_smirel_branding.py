@@ -4,16 +4,25 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_loom_web_uses_original_smirel_brand_and_portal_skeleton():
+def test_loom_web_routes_the_gate_through_the_functional_glass_portal():
     gate = (ROOT / "desktop-react/src/components/WebAppGate.tsx").read_text(encoding="utf-8")
-    logo = (ROOT / "desktop-react/public/smirel-logo.svg").read_text(encoding="utf-8")
+    portal = (ROOT / "desktop-react/src/components/WebPortal.tsx").read_text(encoding="utf-8")
     mark = (ROOT / "desktop-react/public/smirel-mark.svg").read_text(encoding="utf-8")
-    assert "function SmirelShell" in gate
-    assert "smirel-web-shell" in gate
-    assert "SMIREL · LOOM WEB" in gate
-    assert "LOOM ACCOUNT" in gate
-    assert "smirel-logo" in logo.lower()
+    assert 'import { WebPortal, type PortalHostState } from "./WebPortal"' in gate
+    assert "<WebPortal" in gate
+    assert "function SmirelShell" not in gate
+    assert "AccountDialog" not in gate
+    assert "loom-stage cards" in portal
+    assert "loom-function-card cards" not in portal
+    assert "loom-account-card cards" not in portal
+    assert "Your Loom stays on your computer." in portal
+    assert "Download for Windows" in portal
+    assert "Continue with Loom" in portal
+    assert "remoteMode" not in portal
+    assert "onRemote" not in portal
+    assert (ROOT / "desktop-react/public/smirel-logo.png").exists()
     assert "Smirel API" in mark
+
 
 def test_loom_web_loads_the_canonical_listing_studio_glass_assets():
     portal = (ROOT / "desktop-react/src/components/WebPortal.tsx").read_text(encoding="utf-8")
