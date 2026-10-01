@@ -25,6 +25,7 @@ from .search import SearchServiceError, search as shared_search
 
 _EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 _PASSWORD_ITERATIONS = 600_000
+_PAIR_TTL_SECONDS = 120
 
 # Peers allowed to set the client address through a forwarding header. The
 # service is meant to sit behind a TLS-terminating reverse proxy, so loopback is
@@ -239,8 +240,6 @@ class AccountStore:
         with self._connect() as db:
             row = db.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
         if row is None:
-            # Burn the same KDF cost as a real account. Short-circuiting here
-            # would turn response latency into an email-enumeration oracle.
             _password_matches(str(password or ""), _decoy_password_hash())
             raise AccountError(
                 HTTPStatus.UNAUTHORIZED,
@@ -455,8 +454,6 @@ class SlidingWindowLimiter:
             self._widest_window = max(self._widest_window, window_seconds)
             events = [stamp for stamp in self._events.get(key, []) if stamp >= cutoff]
             if len(events) >= limit:
-                # Keep the pruned list so the window keeps sliding while the
-                # caller is being throttled.
                 self._events[key] = events
                 raise AccountError(
                     HTTPStatus.TOO_MANY_REQUESTS,
@@ -475,6 +472,8 @@ class AccountApplication:
     def __init__(self, store: AccountStore) -> None:
         self.store = store
         self.limiter = SlidingWindowLimiter()
+        self._pairing_guard = threading.Lock()
+        self._pairing_tickets: dict[str, tuple[float, dict[str, Any]]] = {}
 
     def register(self, body: dict[str, Any], client_key: str) -> dict[str, Any]:
         self.limiter.check(f"register:{client_key}", 5, 60)
@@ -507,6 +506,41 @@ class AccountApplication:
             )
         return {"user": self.store.user_for_access_token(token.strip())}
 
+    def issue_device_pair(self, authorization: str, client_key: str) -> dict[str, Any]:
+        user = self.me(authorization)["user"]
+        user_id = int(user["id"])
+        self.limiter.check(f"pair-issue:{user_id}:{client_key}", 20, 60)
+        ticket = _new_token("loom_pair")
+        now = time.monotonic()
+        with self._pairing_guard:
+            cutoff = now
+            self._pairing_tickets = {
+                key: value for key, value in self._pairing_tickets.items() if value[0] > cutoff
+            }
+            self._pairing_tickets[ticket] = (now + _PAIR_TTL_SECONDS, dict(user))
+        return {"pairing_ticket": ticket, "expires_in": _PAIR_TTL_SECONDS}
+
+    def exchange_device_pair(self, body: dict[str, Any], client_key: str) -> dict[str, Any]:
+        self.limiter.check(f"pair-exchange:{client_key}", 30, 60)
+        ticket = str(body.get("pairing_ticket") or "").strip()
+        if not ticket.startswith("loom_pair_") or len(ticket) > 256:
+            raise AccountError(
+                HTTPStatus.UNAUTHORIZED,
+                "INVALID_PAIRING_TICKET",
+                "This Loom Host pairing request is no longer valid.",
+            )
+        now = time.monotonic()
+        with self._pairing_guard:
+            entry = self._pairing_tickets.pop(ticket, None)
+        if entry is None or entry[0] <= now:
+            raise AccountError(
+                HTTPStatus.UNAUTHORIZED,
+                "INVALID_PAIRING_TICKET",
+                "This Loom Host pairing request is no longer valid.",
+            )
+        user = entry[1]
+        return {**self.store.create_session(int(user["id"])), "user": user}
+
     def search(self, body: dict[str, Any], authorization: str) -> dict[str, Any]:
         user = self.me(authorization)["user"]
         query = " ".join(str(body.get("query") or "").split())
@@ -524,10 +558,6 @@ class AccountApplication:
 
 class AccountRequestHandler(BaseHTTPRequestHandler):
     server_version = "LoomAccount/1"
-
-    # Requests larger than _MAX_BODY_BYTES are refused before parsing. A bounded
-    # prefix is still drained so the client can finish writing and read the 413;
-    # answering without draining makes the client observe a connection reset.
     _MAX_BODY_BYTES = 64 * 1024
     _MAX_DRAIN_BYTES = 1024 * 1024
 
@@ -582,12 +612,7 @@ class AccountRequestHandler(BaseHTTPRequestHandler):
     def _client_key(self) -> str:
         peer = str(self.client_address[0] if self.client_address else "unknown")
         if not _is_trusted_proxy(peer, getattr(self.server, "trusted_proxies", ())):
-            # Any caller can send X-Real-IP, so only believe it when the
-            # immediate peer is a proxy we control. Otherwise every request
-            # could mint itself a fresh rate-limit bucket.
             return peer
-        # The proxy overwrites these headers, so the leftmost entry is the
-        # address it actually observed.
         forwarded = self.headers.get("X-Real-IP") or self.headers.get("X-Forwarded-For") or ""
         candidate = forwarded.split(",")[0].strip()
         return candidate or peer
@@ -612,6 +637,13 @@ class AccountRequestHandler(BaseHTTPRequestHandler):
             return self.application.refresh(body, self._client_key())
         if path == "/v1/auth/logout":
             return self.application.logout(body)
+        if path == "/v1/auth/device-pair/issue":
+            return self.application.issue_device_pair(
+                self.headers.get("Authorization") or "",
+                self._client_key(),
+            )
+        if path == "/v1/auth/device-pair/exchange":
+            return self.application.exchange_device_pair(body, self._client_key())
         raise AccountError(HTTPStatus.NOT_FOUND, "NOT_FOUND", "Endpoint not found.")
 
     def do_GET(self) -> None:
