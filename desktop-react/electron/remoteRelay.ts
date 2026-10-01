@@ -6,6 +6,7 @@ import WebSocket from "ws";
 // local Host; this module never starts a second Agent Runtime.
 
 const DEFAULT_RELAY_URL = "wss://loom.smirel.com/api/ws/device";
+const DEFAULT_WEB_URL = "https://loom.smirel.com";
 const HEARTBEAT_MS = 30_000;
 const RETRY_MIN_MS = 4_000;
 const RETRY_MAX_MS = 30_000;
@@ -65,15 +66,27 @@ function showLoomWindow(): void {
   window.focus();
 }
 
+async function openLocalLoomWeb(): Promise<void> {
+  const target = new URL(DEFAULT_WEB_URL);
+  try {
+    const auth = await options?.auth();
+    if (auth?.deviceId) target.searchParams.set("local_device", auth.deviceId);
+  } catch {
+    // The web sign-in screen is still useful when Desktop is signed out. It will
+    // not auto-select any remote Host because no local device marker is present.
+  }
+  await shell.openExternal(target.toString());
+}
+
 async function ensureHostTray(): Promise<void> {
   if (hostTray || process.platform === "darwin") return;
   let icon = nativeImage.createEmpty();
   try { icon = await app.getFileIcon(process.execPath, { size: "small" }); } catch {}
   hostTray = new Tray(icon);
-  hostTray.setToolTip("Loom Host · Web access available in background");
+  hostTray.setToolTip("Loom Host · local Web access available in background");
   hostTray.setContextMenu(Menu.buildFromTemplate([
     { label: "Open Loom", click: () => showLoomWindow() },
-    { label: "Open Loom Web", click: () => void shell.openExternal("https://loom.smirel.com") },
+    { label: "Open Loom Web", click: () => void openLocalLoomWeb() },
     { type: "separator" },
     {
       label: "Quit Loom Host",
