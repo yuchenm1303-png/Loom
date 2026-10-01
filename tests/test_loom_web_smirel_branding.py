@@ -4,23 +4,40 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_loom_web_gate_uses_original_smirel_brand_asset():
+def test_loom_web_uses_original_smirel_brand_and_portal_skeleton():
     gate = (ROOT / "desktop-react/src/components/WebAppGate.tsx").read_text(encoding="utf-8")
+    portal = (ROOT / "desktop-react/src/components/WebPortal.tsx").read_text(encoding="utf-8")
     logo = (ROOT / "desktop-react/public/smirel-logo.svg").read_text(encoding="utf-8")
+    mark = (ROOT / "desktop-react/public/smirel-mark.svg").read_text(encoding="utf-8")
+    assert 'import { WebPortal' in gate
+    assert 'className="release-card cards fade"' in portal
+    assert 'className="account-card cards fade"' in portal
+    assert 'className="utility-grid fade"' in portal
+    assert "LATEST RELEASE" in portal
+    assert "ACCOUNT ACCESS" in portal
+    assert "smirel-logo" in logo.lower()
+    assert "Smirel API" in mark
 
-    assert 'const SMIREL_LOGO = "/smirel-logo.svg"' in gate
-    assert "SMIREL · LOOM WEB" in gate
-    assert '<img src={SMIREL_LOGO} alt="Smirel" />' in gate
-    assert "smirel-logo-title" in logo
 
-
-def test_smirel_web_shell_styles_are_scoped_to_web_gate():
-    gate = (ROOT / "desktop-react/src/components/WebAppGate.tsx").read_text(encoding="utf-8")
-    css = (ROOT / "desktop-react/src/components/web-smirel.css").read_text(encoding="utf-8")
-
-    assert 'import "./web-smirel.css"' in gate
-    assert ".smirel-web-shell" in css
-    assert ".smirel-web-shell .loom-account-dialog" in css
-    assert ".smirel-web-shell .loom-account-close" in css
-    assert "background: url(/smirel-logo.svg)" in css
-    assert 'html[data-loom-web="true"] body' in css
+def test_loom_web_loads_the_canonical_listing_studio_glass_assets():
+    portal = (ROOT / "desktop-react/src/components/WebPortal.tsx").read_text(encoding="utf-8")
+    glue = (ROOT / "desktop-react/src/components/web-smirel.css").read_text(encoding="utf-8")
+    required = [
+        "styles-v3.css",
+        "cosmic-bright-v1.css",
+        "portal-polish-v1.css",
+        "portal-polish-v2.css",
+        "portal-account-v1.css",
+        "portal-account-v2.css",
+        "layout-visual-restore-v1.css",
+        "cursor-reference-source-v1.css",
+        "session-boot-v1.css",
+        "release-history-v1.css",
+        "beach-wallpaper-v1.css",
+        "wallpaper-ready-v1.css",
+    ]
+    for name in required:
+        assert f"https://smirel.com/download/{name}" in portal
+    assert "https://smirel.com/download/wallpaper-beach-blue-v1-original.png" in portal
+    assert ".smirel-web-shell" not in glue
+    assert "background: #06080d" not in glue

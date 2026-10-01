@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title desc">
+  <title id="title">Smirel API</title>
+  <desc id="desc">Smirel API brand mark</desc>
+  <defs>
+    <linearGradient id="g" x1="8" y1="8" x2="56" y2="56" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#38BDF8"/>
+      <stop offset="0.52" stop-color="#14B8A6"/>
+      <stop offset="1" stop-color="#22C55E"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="18" fill="#081018"/>
+  <path d="M44.5 18.5C41.2 15.7 36.8 14 31.7 14c-8.3 0-14.2 4.1-14.2 10.4 0 6.9 6.3 8.6 13.7 10.1 5.8 1.2 8.4 2 8.4 5.1 0 2.9-2.8 4.7-7.3 4.7-4.6 0-8.9-1.6-12.8-4.8" fill="none" stroke="url(#g)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
