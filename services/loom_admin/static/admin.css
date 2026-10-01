@@ -58,3 +58,12 @@ html, body { min-height:100%; }
 .loom-admin-detail-actions { display:flex;justify-content:flex-end;gap:8px;margin-top:18px; }
 @media(max-width:1050px){.loom-admin-system-grid{grid-template-columns:1fr}.loom-admin-nav{display:none}}
 @media(max-width:760px){.loom-admin-detail-grid{grid-template-columns:1fr}.loom-admin-auth-card{margin-top:26px}}
+
+.loom-admin-model-access{grid-column:1/-1;margin-top:6px;padding-top:16px;border-top:1px solid rgba(255,255,255,.09);display:grid;gap:12px}
+.loom-admin-model-access-head{display:flex;align-items:center;justify-content:space-between;gap:16px;font-weight:650}
+.loom-admin-model-access-head label{display:flex;align-items:center;gap:7px;color:var(--muted);font-size:12px;font-weight:600}
+.loom-admin-model-access small{color:var(--muted)}
+.loom-admin-model-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.loom-admin-model-toggle{display:flex;align-items:center;gap:8px;padding:9px 10px;border:1px solid rgba(255,255,255,.08);border-radius:10px;background:rgba(255,255,255,.025);font-size:12px}
+.loom-admin-model-toggle input,.loom-admin-model-access-head input{accent-color:#8b7cff}
+@media(max-width:720px){.loom-admin-model-grid{grid-template-columns:1fr}}

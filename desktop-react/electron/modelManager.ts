@@ -43,6 +43,7 @@ export interface ModelProfile {
     toolOutputTokenLimit?: number;
   };
   reasoning?: ModelReasoningState | null;
+  authMode?: "loom-account" | string;
 }
 
 export interface ModelLaunchSpec extends ModelProfile {
@@ -299,6 +300,7 @@ export class DesktopModelManager {
           vision: currentProfile?.vision ?? spec.vision ?? true,
           contextLimits: currentProfile?.contextLimits ?? spec.contextLimits,
           reasoning: currentProfile?.reasoning ?? spec.reasoning ?? null,
+          authMode: currentProfile?.authMode ?? spec.authMode,
         }
       : null;
 
@@ -324,6 +326,7 @@ export class DesktopModelManager {
         vision: spec.vision ?? true,
         contextLimits: spec.contextLimits,
         reasoning: spec.reasoning ?? null,
+        authMode: spec.authMode,
       };
       profiles = [...profiles, unavailable];
     }
@@ -397,6 +400,7 @@ export class DesktopModelManager {
       contextLimits: catalog?.contextLimits ?? resolved.contextLimits,
       reasoning: catalog?.reasoning ?? resolved.reasoning ?? null,
       vision: safe?.vision ?? catalog?.vision ?? resolved.vision ?? true,
+      authMode: catalog?.authMode ?? resolved.authMode,
     };
     this.launchCache.set(selection, next);
     return next;
@@ -468,15 +472,9 @@ export class DesktopModelManager {
     if (!value) throw new Error("Provider is required");
     if (!secret) throw new Error("API key is required");
     if (value.toLowerCase() === "ant-ling") {
-      this.runPythonBridge<{ configured: boolean }>("loom_ant_ling_bridge.py", "set-key", {
-        apiKey: secret,
-      });
-    } else {
-      this.runBridge<{ provider: string; configured: boolean }>("set-provider-key", {
-        provider: value,
-        apiKey: secret,
-      });
+      throw new Error("Ant Ling built-in models use your Loom account. Use Add connection for your own Ant Ling API key.");
     }
+    this.runBridge<{ provider: string; configured: boolean }>("set-provider-key", { provider: value, apiKey: secret });
     this.registryCache = null;
     this.registryCacheAt = 0;
     this.metadataCache = null;

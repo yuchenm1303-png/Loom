@@ -1,1 +1,1 @@
-"""Loom model gateway."""
+"""Loom built-in model gateway."""

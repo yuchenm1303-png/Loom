@@ -749,7 +749,17 @@ class LoomRpcProcess {
   constructor(
     private readonly notify: (payload: JsonRpcResponse) => void,
     private readonly models: DesktopModelManager,
+    private readonly account: LoomAccountClient,
   ) {}
+
+  private async materializeModelSpec(spec: ModelLaunchSpec): Promise<ModelLaunchSpec> {
+    if (spec.authMode !== "loom-account") return spec;
+    return { ...spec, apiKey: await this.account.modelCredential() };
+  }
+
+  async modelParams(spec: ModelLaunchSpec): Promise<Record<string, unknown>> {
+    return runtimeModelParams(await this.materializeModelSpec(spec));
+  }
 
   get ready(): boolean {
     return Boolean(this.child && this.initialized);
@@ -831,7 +841,7 @@ class LoomRpcProcess {
 
   async setModel(spec: ModelLaunchSpec): Promise<unknown> {
     if (!this.child || !this.initialized) return this.connect();
-    const runtime = await this.call("runtime/set_model", runtimeModelParams(spec));
+    const runtime = await this.call("runtime/set_model", await this.modelParams(spec));
     this.initializeResult = initializationFromRuntime(runtime);
     return this.initializeResult;
   }
@@ -867,7 +877,8 @@ class LoomRpcProcess {
 
   private async startProcess(): Promise<void> {
     const searchRelay = await sharedSearchRelay();
-    const spec = this.models.current ?? this.models.ensureInitial();
+    const selectedSpec = this.models.current ?? this.models.ensureInitial();
+    const spec = await this.materializeModelSpec(selectedSpec);
     const python = resolvePythonExecutable();
     const script = path.join(REPO_ROOT, "loom_app_server.py");
     const args = [script, "--workspace", REPO_ROOT, "--provider", spec.provider, "--model", spec.model, "--selection", spec.selection, "--local-ipc"];
@@ -948,13 +959,13 @@ let mainWindow: BrowserWindow | null = null;
 const artifactWindows = new Set<BrowserWindow>();
 const artifactPreviewRoots = new Map<string, string>();
 const modelManager = new DesktopModelManager(REPO_ROOT);
+const accountClient = new LoomAccountClient();
 function handleRuntimeNotification(payload: JsonRpcResponse): void {
   mainWindow?.webContents.send("loom:notification", payload);
   sendRelayNotification(payload);
   if (payload.method === "hud/update") sendHudUpdate(payload.params ?? {});
 }
-const rpc = new LoomRpcProcess(handleRuntimeNotification, modelManager);
-const accountClient = new LoomAccountClient();
+const rpc = new LoomRpcProcess(handleRuntimeNotification, modelManager, accountClient);
 let searchRelayPromise: ReturnType<typeof createSearchRelay> | null = null;
 function sharedSearchRelay(): ReturnType<typeof createSearchRelay> {
   if (!searchRelayPromise) searchRelayPromise = createSearchRelay((query, count) => accountClient.search(query, count));
@@ -1000,7 +1011,7 @@ async function changeThreadModel(
   if (!id) throw new Error("Thread is required");
   const result = await rpc.call("thread/set_model", {
     threadId: id,
-    ...runtimeModelParams(spec),
+    ...(await rpc.modelParams(spec)),
   }) as { thread?: Record<string, unknown>; runtime?: unknown };
   const confirmedSelection = String(result.thread?.modelSelection ?? "");
   const confirmedModel = String(result.thread?.model ?? "");

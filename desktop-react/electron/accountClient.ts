@@ -25,6 +25,8 @@ interface TokenSession {
   refreshToken: string;
   expiresAt: number;
   user: LoomAccountUser;
+  modelToken?: string;
+  modelExpiresAt?: number;
 }
 
 interface AuthResponse {
@@ -92,7 +94,7 @@ function configuredAccountBaseUrl(): string {
     // A malformed optional config file must not stop Loom from starting.
   }
 
-  return app.isPackaged ? "" : "http://127.0.0.1:8787/v1";
+  return app.isPackaged ? "https://account.smirel.com/v1" : "http://127.0.0.1:8787/v1";
 }
 
 export class LoomAccountClient {
@@ -134,12 +136,30 @@ export class LoomAccountClient {
     }
   }
 
+  private async persistSession(session: TokenSession): Promise<TokenSession> {
+    this.memorySession = session;
+    if (safeStorage.isEncryptionAvailable()) {
+      const target = this.sessionPath();
+      await fs.mkdir(path.dirname(target), { recursive: true });
+      await fs.writeFile(target, safeStorage.encryptString(JSON.stringify(session)), { mode: 0o600 });
+    }
+    return session;
+  }
+
   private async saveSession(response: AuthResponse): Promise<TokenSession> {
+    const previous = this.memorySession;
     const session: TokenSession = {
       accessToken: String(response.access_token || ""),
       refreshToken: String(response.refresh_token || ""),
       expiresAt: Date.now() + Math.max(1, Number(response.expires_in || 900)) * 1000,
       user: response.user,
+      ...(
+        previous?.user?.id === response.user?.id
+        && previous.modelToken
+        && Number(previous.modelExpiresAt || 0) > Date.now() + 60_000
+          ? { modelToken: previous.modelToken, modelExpiresAt: previous.modelExpiresAt }
+          : {}
+      ),
     };
     if (!session.accessToken || !session.refreshToken || !session.user) {
       throw new AccountHttpError(
@@ -149,13 +169,7 @@ export class LoomAccountClient {
       );
     }
 
-    this.memorySession = session;
-    if (safeStorage.isEncryptionAvailable()) {
-      const target = this.sessionPath();
-      await fs.mkdir(path.dirname(target), { recursive: true });
-      await fs.writeFile(target, safeStorage.encryptString(JSON.stringify(session)), { mode: 0o600 });
-    }
-    return session;
+    return this.persistSession(session);
   }
 
   private async clearSession(): Promise<void> {
@@ -249,6 +263,39 @@ export class LoomAccountClient {
     } finally {
       this.refreshInFlight = null;
     }
+  }
+
+  /** Mint/cache a scoped built-in-model token tied to the current Loom login session. */
+  async modelCredential(): Promise<string> {
+    let session = await this.loadSession();
+    if (!session) throw new AccountHttpError(401, "MISSING_TOKEN", "Sign in to Loom to use built-in models.");
+    if (session.modelToken && Number(session.modelExpiresAt || 0) > Date.now() + 5 * 60_000) {
+      return session.modelToken;
+    }
+    if (session.expiresAt <= Date.now() + 30_000) session = await this.refresh(session);
+
+    const issue = async () => this.request<{ model_token: string; expires_in: number }>(
+      "/models/credential",
+      { method: "POST", body: JSON.stringify({}) },
+      session!.accessToken,
+    );
+    let result: { model_token: string; expires_in: number };
+    try {
+      result = await issue();
+    } catch (error) {
+      if (!(error instanceof AccountHttpError) || error.status !== 401) throw error;
+      session = await this.refresh(session);
+      result = await issue();
+    }
+    const token = String(result.model_token || "").trim();
+    if (!token) throw new AccountHttpError(0, "MODEL_CREDENTIAL_INVALID", "Loom did not return a model credential.");
+    session = {
+      ...session,
+      modelToken: token,
+      modelExpiresAt: Date.now() + Math.max(60, Number(result.expires_in || 0)) * 1000,
+    };
+    await this.persistSession(session);
+    return token;
   }
 
   /** Search credentials remain on the account server; only account auth travels. */

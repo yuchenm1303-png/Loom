@@ -61,13 +61,6 @@ interface ProviderCredentialTarget {
 }
 
 function providerCredentialTarget(groupId: string): ProviderCredentialTarget | null {
-  if (groupId === "ant-ling") {
-    return {
-      provider: "ant-ling",
-      label: "Ant Ling",
-      placeholder: "Ant Ling API key",
-    };
-  }
   if (groupId === "opencode-go") {
     return {
       provider: "opencode-go",
