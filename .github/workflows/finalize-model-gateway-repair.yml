@@ -1,0 +1,50 @@
+name: Repair Loom model gateway finalize
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/finalize-model-gateway-repair.yml
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Reconstruct validated gateway patch
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import base64, gzip
+          text = Path('.github/workflows/finalize-model-gateway.yml').read_text()
+          lines = text.splitlines()
+          start = next(i for i, line in enumerate(lines) if "cat <<'PATCH64'" in line) + 1
+          end = next(i for i in range(start, len(lines)) if lines[i].strip() == 'PATCH64')
+          encoded = ''.join(line.strip() for line in lines[start:end])
+          assert len(encoded) == 24716, len(encoded)
+          assert encoded[24585] == 't', encoded[24565:24605]
+          encoded = encoded[:24585] + 'T' + encoded[24586:]
+          Path('/tmp/gateway.patch').write_bytes(gzip.decompress(base64.b64decode(encoded)))
+          PY
+          git apply --check /tmp/gateway.patch
+          git apply /tmp/gateway.patch
+          git diff --check
+      - name: Validate focused tests
+        shell: bash
+        run: |
+          python -m pip install -q -e '.[dev]'
+          pytest -q tests/test_ant_ling_bridge.py tests/test_loom_admin.py tests/test_loom_model_gateway.py
+      - name: Commit and publish
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Route Ant Ling through Loom model gateway'
+          git push origin HEAD:main
