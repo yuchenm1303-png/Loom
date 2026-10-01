@@ -63,21 +63,6 @@ const EMPTY_FORM: ModelFormState = {
   vision: true,
 };
 
-const ANT_LING_BASE_URL = "https://api.ant-ling.com/v1";
-const ANT_LING_DEFAULT_MODEL = "Ling-3.0-flash";
-const ANT_LING_MODELS = [
-  { id: "Ling-3.0-flash", vision: false },
-  { id: "Ling-3.0-flash-VL", vision: true },
-  { id: "Ling-3.0-tiny", vision: false },
-  { id: "Ling-2.6-1T", vision: false },
-  { id: "Ring-2.6-1T", vision: false },
-  { id: "Ling-2.6-flash", vision: false },
-] as const;
-
-function isAntLingBaseUrl(value: string): boolean {
-  return String(value || "").trim().replace(/\/$/, "") === ANT_LING_BASE_URL;
-}
-
 const COPY = {
   en: {
     eyebrow: "Inference",
@@ -120,9 +105,6 @@ const COPY = {
     noRecent: "No recent model IDs yet.",
     addTitle: "Add model connection",
     editTitle: "Edit model connection",
-    antLingPreset: "Ant Ling",
-    antLingPresetDesc: "OpenAI-compatible · official endpoint · 256K model family",
-    antLingUsePreset: "Use preset",
     name: "Connection name",
     apiType: "API type",
     baseUrl: "Base URL",
@@ -183,9 +165,6 @@ const COPY = {
     noRecent: "暂时没有最近使用的 Model ID。",
     addTitle: "添加模型连接",
     editTitle: "编辑模型连接",
-    antLingPreset: "蚂蚁百灵",
-    antLingPresetDesc: "OpenAI 兼容 · 官方接口 · 256K 模型系列",
-    antLingUsePreset: "使用预设",
     name: "连接名称",
     apiType: "API 类型",
     baseUrl: "Base URL",
@@ -310,18 +289,6 @@ export function ModelsSettingsPanel({ initialSnapshot, runtimeModel, running, on
     setError("");
   }
 
-  function applyAntLingPreset() {
-    setForm((current) => ({
-      ...current,
-      name: language === "zh-CN" ? "蚂蚁百灵" : "Ant Ling",
-      adapter: "openai-compatible",
-      baseUrl: ANT_LING_BASE_URL,
-      model: ANT_LING_DEFAULT_MODEL,
-      vision: false,
-    }));
-    setError("");
-  }
-
   function openEdit(profile: ModelProfile) {
     if (profile.kind !== "saved" || profile.selection === current?.selection) return;
     setForm({
@@ -428,7 +395,6 @@ export function ModelsSettingsPanel({ initialSnapshot, runtimeModel, running, on
   const currentTestError = current ? testErrors[current.selection] : "";
   const currentReasoning = current?.reasoning;
   const recent = (snapshot?.recentModels ?? []).filter((value) => value && value !== currentModel).slice(0, 8);
-  const antLingForm = form.adapter === "openai-compatible" && isAntLingBaseUrl(form.baseUrl);
 
   return (
     <div className="models-settings-manager">
@@ -602,17 +568,10 @@ export function ModelsSettingsPanel({ initialSnapshot, runtimeModel, running, on
               <div><span className="models-modal-icon">{formMode === "add" ? <Plus size={17} /> : <Pencil size={17} />}</span><div><strong>{formMode === "add" ? c.addTitle : c.editTitle}</strong><span>{adapterLabel(form.adapter)}</span></div></div>
               <button type="button" onClick={() => setFormMode(null)}><X size={16} /></button>
             </div>
-            {formMode === "add" ? (
-              <button type="button" className={`models-provider-preset ${antLingForm ? "active" : ""}`} onClick={applyAntLingPreset}>
-                <span className="models-provider-preset-mark">A</span>
-                <span><strong>{c.antLingPreset}</strong><small>{c.antLingPresetDesc}</small></span>
-                <span className="models-provider-preset-action">{c.antLingUsePreset}<ChevronRight size={13} /></span>
-              </button>
-            ) : null}
             <div className="models-form-grid">
               <label className="wide"><span>{c.name}</span><input autoFocus value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label>
               <label><span>{c.apiType}</span><select value={form.adapter} onChange={(event) => setForm({ ...form, adapter: event.target.value as ModelFormState["adapter"] })}><option value="openai-compatible">OpenAI Compatible</option><option value="openai">OpenAI</option></select></label>
-              <label><span>{c.modelId}</span>{antLingForm ? <select value={form.model} onChange={(event) => { const next = ANT_LING_MODELS.find((item) => item.id === event.target.value); setForm({ ...form, model: event.target.value, vision: Boolean(next?.vision) }); }}>{ANT_LING_MODELS.map((item) => <option key={item.id} value={item.id}>{item.id}</option>)}</select> : <input value={form.model} onChange={(event) => setForm({ ...form, model: event.target.value })} />}</label>
+              <label><span>{c.modelId}</span><input value={form.model} onChange={(event) => setForm({ ...form, model: event.target.value })} /></label>
               <label className="wide"><span>{c.baseUrl}</span><input value={form.baseUrl} disabled={form.adapter === "openai"} placeholder={form.adapter === "openai" ? "OpenAI default" : "https://api.example.com/v1"} onChange={(event) => setForm({ ...form, baseUrl: event.target.value })} /></label>
               <label className="wide"><span>{formMode === "edit" ? c.apiKeyEdit : c.apiKey}</span><div className="models-secret-field"><KeyRound size={14} /><input type="password" value={form.apiKey} onChange={(event) => setForm({ ...form, apiKey: event.target.value })} /></div></label>
               <div className="models-form-switch wide"><div><Eye size={15} /><span><strong>{c.vision}</strong><small>{c.visionDesc}</small></span></div><button type="button" role="switch" aria-checked={form.vision} className={form.vision ? "on" : ""} onClick={() => setForm({ ...form, vision: !form.vision })}><i /></button></div>

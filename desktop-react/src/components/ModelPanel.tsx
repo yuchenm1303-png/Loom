@@ -61,13 +61,6 @@ interface ProviderCredentialTarget {
 }
 
 function providerCredentialTarget(groupId: string): ProviderCredentialTarget | null {
-  if (groupId === "ant-ling") {
-    return {
-      provider: "ant-ling",
-      label: "Ant Ling",
-      placeholder: "Ant Ling API key",
-    };
-  }
   if (groupId === "opencode-go") {
     return {
       provider: "opencode-go",
@@ -139,7 +132,6 @@ const PROVIDER_TINTS: Record<string, readonly [hue: number, chroma: number]> = {
   minimax: [16, 0.14],
   "managed-relay:minimax": [16, 0.14],
   deepseek: [262, 0.13],
-  "ant-ling": [318, 0.11],
   "opencode-go": [168, 0.1],
   "managed-relay": [295, 0.13],
   "managed-relay:openai": [0, 0],
@@ -872,7 +864,13 @@ export function ModelPanel({
 
         <div className="mp-body" ref={providerListRef}>
           {credentialTarget ? (
-            <div className="mp-connect">
+            <form
+              className="mp-connect"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void configureProvider(credentialTarget.provider);
+              }}
+            >
               <div className="mp-connect-copy">
                 <span className="mp-connect-icon" aria-hidden="true"><KeyRound size={15} strokeWidth={1.9} /></span>
                 <span className="mp-connect-text">
@@ -895,24 +893,13 @@ export function ModelPanel({
                   aria-label={credentialTarget.placeholder}
                   autoComplete="off"
                   autoFocus
-                  onKeyDown={(event) => {
-                    if (event.key !== "Enter") return;
-                    event.preventDefault();
-                    event.stopPropagation();
-                    void configureProvider(credentialTarget.provider);
-                  }}
                 />
-                <button
-                  type="button"
-                  disabled={!providerKey.trim() || providerConfiguring}
-                  onClick={() => void configureProvider(credentialTarget.provider)}
-                >
+                <button type="submit" disabled={!providerKey.trim() || providerConfiguring}>
                   {providerConfiguring ? <LoaderCircle size={14} strokeWidth={2} className="mp-spin" /> : null}
                   Connect
                 </button>
               </div>
-              {error ? <div className="mp-notice is-error">{error}</div> : null}
-            </div>
+            </form>
           ) : null}
 
           {setup.statusProfiles.map((profile) => (
@@ -980,7 +967,7 @@ export function ModelPanel({
           {confirmDelete ? (
             <div className="mp-notice is-error">Click the trash icon again to delete this saved connection.</div>
           ) : null}
-          {!credentialTarget && error ? <div className="mp-notice is-error">{error}</div> : null}
+          {error ? <div className="mp-notice is-error">{error}</div> : null}
         </div>
       </div>
     );
