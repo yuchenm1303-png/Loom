@@ -16,6 +16,9 @@ jobs:
         with:
           ref: feat/web-local-first-host
           fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
       - name: Merge main and preserve local-first pairing
         shell: bash
         run: |
@@ -95,7 +98,8 @@ jobs:
           PY
           git rm -f .github/workflows/pr230-integrate.yml
           git add -A
+          python -m pip install -e '.[dev,browser]'
           python -m compileall -q services/loom_account services/loom_web_gateway
-          python -m pytest tests/test_loom_account_pairing.py tests/test_loom_admin.py -q
+          python -m pytest
           git commit -m "Merge main and reconcile Loom Web local-first host"
           git push origin HEAD:feat/web-local-first-host
